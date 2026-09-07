@@ -23,7 +23,7 @@ Thry shader, because that prefix is the exact test the sweep uses for "already l
 It decided whether a source was a Thry shader by looking for two marker properties,
 `shader_is_using_thry_editor` and `ThryShaderOptimizerLockButton`. **Locking strips both.**
 So an already-locked Poiyomi looked like no Thry shader at all, the copy was named plainly,
-and the sweep locked it — resolving `_YAPS_SocketPos`, `_YAPS_SocketFlags` and every other
+and the sweep locked it: resolving `_YAPS_SocketPos`, `_YAPS_SocketFlags` and every other
 property the deform reads into numbers. A declaration became a constant:
 
 ```

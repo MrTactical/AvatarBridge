@@ -13,7 +13,7 @@ like it was doing nothing.
 given and stay bent, or snap to an angle from several metres off.
 
 **A ring stays a ring.** Only a hole ever wrote the flag that tells them apart, so a ring that
-arrived after a hole was treated as a hole — and a freshly spawned ring prop would swallow a plug
+arrived after a hole was treated as a hole, and a freshly spawned ring prop would swallow a plug
 whole.
 
 **Whole-avatar and multi-material plugs work properly.** A plug whose mesh spans several
@@ -55,7 +55,7 @@ leads with which version built it and what to do about it.
   left. They reset to the far edge now, deliberately not the middle: the middle decodes to the
   plug's own base, which is the strongest bend there is.
 - A ring asserts the hole flag as well as a hole clearing it, so neither depends on an exit that
-  may never fire — a prop despawning inside the trigger, the plug being toggled off, an instance
+  may never fire: a prop despawning inside the trigger, the plug being toggled off, an instance
   change.
 - Smoothing default lowered from 0.05 to 0.02, measured: the channel resolves to about a
   millimetre and the deform is sensitive enough to show one step of it.

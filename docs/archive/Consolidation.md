@@ -1,4 +1,4 @@
-# Consolidation — the tool's own optimisation pass
+# Consolidation: the tool's own optimisation pass
 
 Written 2026-08-19, after the 4.1.1 release, from a complaint that is correct: the thing has grown
 by accretion and it shows. `docs/archive/Optimisation.md` is about making avatars cheaper. This is about
@@ -13,14 +13,14 @@ ChilloutVR Toolkit and the CCK Animator Tester; `Tools/YAPS/` holds Setup and tw
 `GameObject/YAPS/` adds two more. Four separate `EditorWindow`s: AvatarBridgeWindow,
 ToolkitWindow, YapsSetupWindow, CckAnimatorTester.
 
-Every one of them is the same shape — pick an avatar, choose some options, press a button — and
+Every one of them is the same shape, pick an avatar, choose some options, press a button, and
 each expresses it differently. The converter uses numbered steps with collapsing cards, the setup
 tab uses a different card set, the Toolkit uses one card per tool with its own button, YAPS Setup
 uses its own again. Nothing tells a user which window holds the thing they want.
 
 **47 settings, 40 of them booleans**, in one flat class, rendered into one collapsed card holding
 six subheadings. A user went looking for two of them and could not find them, which is what
-prompted this document. Two of those settings — `weighAvatar` and `surveyAvatar` — do not change
+prompted this document. Two of those settings, `weighAvatar` and `surveyAvatar`, do not change
 the avatar at all. They are a different KIND of setting living in the same list as the rest.
 
 **AnimatorMerger.cs is 10,398 lines**, a fifth of the whole codebase, and holds the layer merge,
@@ -52,12 +52,12 @@ the specific thing that went wrong.
 the converter and setup. Today a change to how conversions end has to be made twice and was,
 twice this week. Behaviour-identical, and the corpus proves it.
 
-**4. Split AnimatorMerger.** Not a rewrite — a move. The physics toggle rewiring is a self-contained
+**4. Split AnimatorMerger.** Not a rewrite: a move. The physics toggle rewiring is a self-contained
 ~500 lines that took three attempts to fix partly because of where it lives; restore-clip synthesis
 is another cluster. Both lift into their own files with no behaviour change, which the corpus can
 prove in one run.
 
-**5. Dedupe the helpers.** `Underlying`, `UniqueChildName`, path helpers — one home each.
+**5. Dedupe the helpers.** `Underlying`, `UniqueChildName`, path helpers: one home each.
 Mechanical, zero risk, and it stops the next person writing a fourth copy.
 
 **6. Settings by category, not by hand-placed subheading.** Mark each setting as changing the
@@ -67,7 +67,7 @@ in one method. Do this last: it is the one that most easily turns into a rewrite
 **7. The YAPS package's file list must verify itself.** It names which `Editor/Core` files come
 with the standalone package, because most of Core is converter-only and would drag the VRChat SDK
 in behind it. `Editor/Toolkit` ships whole, so adding cards there in 4.1.0 added references the
-list did not know about — and both 4.1.0 and 4.1.1 shipped a YAPS package that fails to compile
+list did not know about, and both 4.1.0 and 4.1.1 shipped a YAPS package that fails to compile
 on import:
 
 ```
@@ -99,29 +99,29 @@ actually produced rather than trusting an empty error list.
 
 7, 5, 3, 4, 1 and 2, in that order, each compiled before the next started.
 
-- **7** — the packer refuses to build a YAPS package whose closure is open, naming the file and
+- **7**: the packer refuses to build a YAPS package whose closure is open, naming the file and
   the type. Reintroducing the 4.1.1 bug now aborts the build.
-- **5** — `Underlying` lives in `BridgeContext` alone. Three copies existed and two of them
+- **5**: `Underlying` lives in `BridgeContext` alone. Three copies existed and two of them
   guarded against a cycle while the third looped unbounded.
-- **3** — `BridgeFinish.Run` is the ending both flows share. Setup gained the survey and weight
+- **3**: `BridgeFinish.Run` is the ending both flows share. Setup gained the survey and weight
   cards by getting the same ending; it still has no HTML report, because `DiagnosticsWriter` and
   `HtmlReportWriter` are guarded on the VRChat SDK for reasons nobody remembers. Worth its own
   change.
-- **4** — the physics rewiring is `AnimatorMerger.Physics.cs`, 816 lines of a partial class.
+- **4**: the physics rewiring is `AnimatorMerger.Physics.cs`, 816 lines of a partial class.
   The original is down to 9,607 from 10,398. A move, not a rewrite: same access, same signatures.
-- **1** — the Toolkit is a **panel**, mounted by its own window and by the main window's new
+- **1**: the Toolkit is a **panel**, mounted by its own window and by the main window's new
   **Tools** tab. Same cards, one implementation. The tab exists without the VRChat SDK, which is
   exactly who it is for.
-- **2** — the two reading settings sit under *Analyse this avatar* in both flows, under "What the
+- **2**: the two reading settings sit under *Analyse this avatar* in both flows, under "What the
   report tells you".
 
-**6 was not done, on purpose.** Its intent — separate what changes the avatar from what only
-reads it — is what 2 delivered, in the place a user actually looks. What remains of it is an
+**6 was not done, on purpose.** Its intent: separate what changes the avatar from what only
+reads it: is what 2 delivered, in the place a user actually looks. What remains of it is an
 attribute system serving two fields, which is the "turns into a rewrite" this document warned
 about. Worth revisiting only if a third reading-only setting appears.
 
 ## Order
 
-3, 5 and 4 first — they are invisible to users and the corpus proves them outright. Then 2, which
+3, 5 and 4 first: they are invisible to users and the corpus proves them outright. Then 2, which
 is small and answers the actual complaint. Then 1, which deserves its own release and its own
 testing. Then 6, if it still seems worth it.

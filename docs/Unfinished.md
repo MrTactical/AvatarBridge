@@ -27,22 +27,22 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    Swept the codebase after: no other cross-define reference exists.*
 
    **The gap this exposed is CLOSED 2026-08-24: `Dev/Build/check-defines.sh`.** There are four
-   install combinations (Magica ±, DynamicBone ±) and every other gate — corpus, test project,
-   the editor sitting open — runs the one with both installed, so a define mistake shipped
+   install combinations (Magica ±, DynamicBone ±) and every other gate: corpus, test project,
+   the editor sitting open: runs the one with both installed, so a define mistake shipped
    invisibly and killed the tool outright for whoever hit it.
 
    No Unity launch and no domain reload: Unity leaves the exact compile arguments for
    `Assembly-CSharp-Editor` in a response file under `Library/Bee/artifacts/*.dag/`, so the
-   script reuses them — all 323 references, the source list, the language version — and only
+   script reuses them, all 323 references, the source list, the language version, and only
    swaps the two `-define:` lines. Four real compiles of the real assembly, seconds each.
    Errors outside AvatarBridge are counted and ignored, because a project full of other assets'
    editor scripts is not this gate's business.
 
    **Self-tested against the bug it exists for**: reintroducing the `MagicaClothWriter` call in
-   `DynamicBoneWriter` makes it fail on MAGICA=0 DYNBONE=1 with `CS0103` at lines 43 and 44 —
+   `DynamicBoneWriter` makes it fail on MAGICA=0 DYNBONE=1 with `CS0103` at lines 43 and 44:
    the same file, lines and columns the tester's log carried. Run it before any release that
    touches physics or the defines.
-2. **The sweep's 131 carried toggle failures** — triaged as avatar-side, no tool signature; the
+2. **The sweep's 131 carried toggle failures**: triaged as avatar-side, no tool signature; the
    prediction that Fury's wired socket toggles flip to "responded" is worth checking in the next
    digests.
 3. **The body-mesh fallback: ANSWERED 2026-08-24, and the answer is no** (section below). The
@@ -52,14 +52,14 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    sits at the socket, so a hand in somebody's lap resolves ownership to THEIR hip and ignores
    their plug. `_YAPS_SocketOrigin` is the foundation for the fix; it needs an owner anchor
    baked for dedicated meshes and its own test pass.
-4. **The GPU bridge** (`YAPS5.md`, candidate 4) — blit or RT camera into a texture parser gives
+4. **The GPU bridge** (`YAPS5.md`, candidate 4): blit or RT camera into a texture parser gives
    per-client audio for zero sync and zero contacts. Local Play mode first, then an upload.
 5. **A shipped plug's colour changes in VR on Poiyomi 9, and does not on Poiyomi 8.** A user
    report, so it outranks everything else here. The shape is right and only the colour moves.
    Nothing in the shipped YAPS reads the eye, the camera or the screen; it rewrites position,
    normal and tangent in the vertex stage and stops. What Poi 9 adds that Poi 8 does not have in
-   the same shader is two more `ForwardBase` passes — an `EarlyZ` depth prepass (`ZWrite On`,
-   `ColorMask 0`, drawn first) and an outline pass — where Poi 8 ships both as separate shader
+   the same shader is two more `ForwardBase` passes: an `EarlyZ` depth prepass (`ZWrite On`,
+   `ColorMask 0`, drawn first) and an outline pass: where Poi 8 ships both as separate shader
    files you opt into. Both carry a vertex program the patcher patches. A prepass whose deform
    disagrees with the base pass's by any amount depth-tests the plug against its own undeformed
    silhouette, which reads as colour going wrong while the shape stays right. **Unproven**: ask
@@ -311,49 +311,49 @@ A whole avatar baked as one plug turned up four separate faults. Recorded here
 because they were found in a session, not in a report, and the queue is the only thing that
 outlives scrollback.
 
-1. **The bake made a new material every time — FIXED 2026-08-26.** Both material sites asked
+1. **The bake made a new material every time: FIXED 2026-08-26.** Both material sites asked
    `AssetDatabase.GenerateUniqueAssetPath`, so a plug removed and baked again left `Fur_YAPS_`,
    `Fur_YAPS_ 1`, `Fur_YAPS_ 2` behind it, one full material per click, in a user's project.
    `YapsBaker.Generated` now derives a path that does not move and re-derives the values from the
    source onto whatever is already there. The file keeps its GUID, so anything already pointing at
-   it stays pointed at the right thing, and what was there is never trusted — only its identity —
+   it stays pointed at the right thing, and what was there is never trusted, only its identity,
    so an asset left by an older version cannot carry stale settings forward. One helper serves
    both sites; the primary and the mirrored slots had drifted into two different conventions.
 
-   **The BAKE TEXTURE was the same bug and was missed — FIXED 2026-09-03.** Only the material
+   **The BAKE TEXTURE was the same bug and was missed: FIXED 2026-09-03.** Only the material
    sites were changed in August. The 10 MB bake asset still asked for a unique path, so a
    reconvert left `YAPS Body bake` and `YAPS Body bake 1` side by side, and the name it was
    carefully avoiding belonged to the same plug from the previous run. Named for the renderer and
    the plug now, and the existing one is deleted first. Ceiling: two plugs on one renderer whose
    roots share a name AND a parent name would still collide.
 
-2. **Additional meshes under the armature do not bend — FIXED 2026-08-26, UNTESTED IN UNITY.**
+2. **Additional meshes under the armature do not bend: FIXED 2026-08-26, UNTESTED IN UNITY.**
    A plug whose root bone is the Armature patched ONE renderer's materials; every other skinned
    mesh weighted to the same bones kept its own shader and stayed rigid, which is the seam the
    multi-material work closes, one level up. `MirrorToRenderers` now bakes each of them, and the
-   bake is per mesh because the texture is indexed by mesh-global vertex id — what they share is
+   bake is per mesh because the texture is indexed by mesh-global vertex id: what they share is
    the primary's FRAME and LENGTH, via a new `shareFrameWith` on `YapsBaker.Bake`, so they bend
    as one object rather than each measuring its own idea of where the shaft is. Scoped to the
    `CVRAvatar`, not the scene root, or two avatars under one container lend each other meshes.
    Skipped entirely when the author names a material slot: that says "this mesh, this slot".
 
    **`BakedSlot` gained a `renderer`**, because a plug spanning meshes has a slot 0 on each of
-   them. Matching on the number alone would have handed one mesh's material to another on Remove
-   — the "IT BROKE, my fur!!!" failure of 2026-08-25 exactly, one level up.
+   them. Matching on the number alone would have handed one mesh's material to another on Remove:
+the "IT BROKE, my fur!!!" failure of 2026-08-25 exactly, one level up.
 
    *Compile-checked only.* `check-defines.sh` links the project's compiled Runtime assembly, so
-   a Runtime change cannot be validated there — the documented blind spot. Needs a real Unity
+   a Runtime change cannot be validated there: the documented blind spot. Needs a real Unity
    compile and a bake on an avatar with a second weighted mesh.
 
-3. **Poiyomi's auto-lock — ANSWERED 2026-08-26, and the pink fix had already closed it.**
+3. **Poiyomi's auto-lock: ANSWERED 2026-08-26, and the pink fix had already closed it.**
    Read out of `ShaderOptimizer.SetLockedForAllMaterials` rather than guessed. The sweep takes
    every material whose shader uses the optimizer and is not already locked, and its test for
-   "already locked" is `shader.name.StartsWith("Hidden/Locked/")` — the exact prefix the pink fix
+   "already locked" is `shader.name.StartsWith("Hidden/Locked/")`: the exact prefix the pink fix
    gave us. So auto-lock-on-upload skips our materials, and has been skipping them since that fix.
 
    Worth knowing what it would have done: locking resolves properties to constants, and OUR
    properties are the ones animation drives (`_YAPS_Enabled`, `_YAPS_BakeScale`, the knobs). A
-   locked YAPS material would have frozen at whatever it happened to hold — a plug that never
+   locked YAPS material would have frozen at whatever it happened to hold: a plug that never
    toggles and never resizes, in game only.
 
    **One gap closed with it.** `IsShaderUsingThryOptimizer` keys on the `ThryShaderOptimizerLockButton`
@@ -366,12 +366,12 @@ outlives scrollback.
    recovered by re-baking. Guarding it means writing Thry's own lock records, which is
    impersonating another tool's bookkeeping to survive a button the user deliberately pressed.
 
-4. **Parallel paths — AUDITED 2026-08-26, two closed and one recorded.**
+4. **Parallel paths: AUDITED 2026-08-26, two closed and one recorded.**
 
    *Window vs inspector, CLOSED.* Three doors bake a single plug and only one went through
    `BakeAndRefreshMenu`. The window's row button and its make-this-a-plug flow called the bare
    `Bake`, so they left the contact channel holding a previous build's frames and the menu
-   animator unrefreshed — the same divergence as yesterday's, in two more places. Both now go
+   animator unrefreshed: the same divergence as yesterday's, in two more places. Both now go
    through the same door as the inspector. `BuildAll` keeps the bare `Bake` deliberately: it does
    the menu and the channel once, for the whole avatar, which is the point of a batch.
 
@@ -407,7 +407,7 @@ outlives scrollback.
 4. **Parallel paths that disagree.** Two doors to the same job diverged on the same day: the
    window's Build wired the contact channel and the inspector's Bake did not, and Remove cleared
    channels where Sweep did the leftovers. Both were fixed one at a time. That is a class, not
-   two bugs — every pair of entry points into one operation wants auditing against each other:
+   two bugs: every pair of entry points into one operation wants auditing against each other:
    window Build vs inspector Bake, Remove vs Sweep, native builder vs converter.
 
 ### RESOLVED IN THE EDITOR 2026-08-26: the two routes now behave identically
@@ -421,7 +421,7 @@ the body and the collar ran different envelopes. With those closed, channel and 
 agree at the shipped -89.98 import rotation, carried meshes in step.
 
 What the editor still cannot prove, for the game test: the REAL triggers' sizes and encoding
-(the probe measured half-extents normalisation once — worth re-confirming), the 10 Hz sync
+(the probe measured half-extents normalisation once: worth re-confirming), the 10 Hz sync
 stepping, the posed-skeleton per-vertex divergence on a whole-avatar plug, and the known gap
 that the material driver carries socket values to the PRIMARY material only, so a carried mesh
 in game deforms by lights alone until the channel build reaches its materials.
@@ -429,7 +429,7 @@ in game deforms by lights alone until the channel build reaches its materials.
 ### The prior state, kept for the record: the channel route deformed differently
 
 2026-08-26, end of a long day, and this is where it stands. The socket preview can now write
-EITHER route — `previewAsChannel` on the socket, under "See it work" — so the question is one
+EITHER route, `previewAsChannel` on the socket, under "See it work", so the question is one
 tickbox in the editor rather than an upload:
 
     off   world position and a true forward   deform is CORRECT
@@ -455,7 +455,7 @@ wrong. Fixed on the way, all real and all confirmed:
 OFF, at the same socket position. The preview encodes using the same extents and bake scale the
 shader decodes with, so the round trip should be EXACT and the two readings identical. The
 earlier reading was "close, but not 100%", and if that holds it means something between encode and
-decode is changing the value — which is the thread to pull, because by construction nothing should.
+decode is changing the value, which is the thread to pull, because by construction nothing should.
 
 Three instruments were themselves wrong before they measured anything, which is most of why this
 took as long as it did: a motion-time readout that never animated, a `GestureLeft` control that
@@ -477,14 +477,14 @@ takes `boxSize` from `BoxCollider.size`, a full size. So the halving simply made
 volume half what was intended. Fixed, and the channel now fires.
 
 **What is left is the decode.** Same socket, two transports, two different deforms. Through
-contacts, on an armature plug, the body does not bend and only the face breaks — vertices before
+contacts, on an armature plug, the body does not bend and only the face breaks: vertices before
 the socket ride the curve untouched and only those past it collapse, so that reads as the socket
 landing far along the shaft when the prop is right in front. One line does it:
 
     offset = (_YAPS_SocketPos.xyz * 2 - 1) * _YAPS_ChannelExtents.xyz * max(_YAPS_BakeScale, 0.0001)
 
 Two suspects, one measurement each. Is `penetration` normalised across the box's half-extents or
-its full size — the contact probe's 1 m box answers that by where cyan reaches max, the face or
+its full size: the contact probe's 1 m box answers that by where cyan reaches max, the face or
 halfway to it. And `_YAPS_BakeScale` is in the multiply, driven on an armature plug by the
 wearer's own size clips, so it may be scaling the offset a second time.
 
@@ -495,7 +495,7 @@ channel).
 
 Also found on the way: **a sender that disappears never fires an exit.** Move a prop away and the
 exit task clears the value; DELETE it and the last value stays written forever. A plug would stay
-bent toward a socket that no longer exists. Exit tasks are not enough — the value wants a decay or
+bent toward a socket that no longer exists. Exit tasks are not enough: the value wants a decay or
 a staleness check.
 
 ### A stale material is invisible, and it wasted three readings
@@ -505,9 +505,9 @@ running the previous shader, and nothing said so. The tell each time was a debug
 a question the shader it was running had never been asked.
 
 **DONE 2026-08-26, in the two places a person actually looks.** The material's own YAPS panel
-gets a warning under the banner, because that is where somebody reads a value and believes it —
+gets a warning under the banner, because that is where somebody reads a value and believes it:
 which is exactly how all three readings were lost. And the Setup window's row goes amber with
-"its shader is older than the toolkit — Build refreshes it", because there the fix is one click
+"its shader is older than the toolkit: Build refreshes it", because there the fix is one click
 away and the row already had a mechanism for saying so.
 
 Still open below: the project-wide sweep. A warning only reaches a material somebody happens to
@@ -516,14 +516,14 @@ select or an avatar somebody happens to scan, and a prop prefab is neither.
 ### Nothing revisits a prop, so a shader fix never reaches it
 
 Found 2026-08-26, after the two-socket prop fix. A patched shader's name hashes the emitted
-source, so `IsStale` knows when a material has fallen behind and both bake paths re-patch it —
+source, so `IsStale` knows when a material has fallen behind and both bake paths re-patch it:
 but only when something bakes. An avatar gets baked because its scene is open and Build is
 pressed. **A prop is a prefab sitting in the project, and nothing ever opens it**, so every
 shader-level fix reaches everyone except the props, and the only cure today is to make a new one.
 
 The fix is not a prop button. It is one project-wide sweep: walk the materials carrying
 `_YAPS_Bake`, ask `IsStale`, `Refresh` the ones that answer yes. That catches props, avatars in
-scenes nobody has opened, and anything imported from someone else's package — the same blind
+scenes nobody has opened, and anything imported from someone else's package: the same blind
 spot in three shapes. `YapsShaderPatcher` already has every piece; what is missing is the caller
 and a line in the window saying it exists.
 
@@ -538,25 +538,25 @@ and "make a new one" is not an answer for a prop somebody has positioned and tun
     and the replacement wrote one clip to both sides, so an author's distinct left-strafe clip was
     lost. Checked against the CCK's own `AvatarAnimator.controller` before touching anything: it
     has separate children at `x: -0.5` and `x: +0.5` and points BOTH at clip `004085e0…`, so CVR
-    ships mirrored strafe — but the slots are real and can hold different clips.
+    ships mirrored strafe, but the slots are real and can hold different clips.
 
     **The corpus could not judge it, so the corpus was given the shape it lacked.**
     `Fixture_AsymmetricStrafe` (built by `FixtureBuilder.RunStrafeOnly`, so the two existing
     fixtures are not rebuilt from a source scene that has been hand-edited since) carries a
     velocity tree with a different clip on each side of every sideways direction. Run against the
-    unfixed tool it lost three clips — `(1,0)` played `Fix_StrafeL`, and both diagonals the same —
+    unfixed tool it lost three clips, `(1,0)` played `Fix_StrafeL`, and both diagonals the same,
     which is the point of building it before the fix rather than after.
 
     `Slot` still describes the direction PAIR, because CVR's slot set is pair-shaped; a `Side`
     now rides beside it, picks are keyed `(Slot, Side)`, and replacement is child-driven so each
     CCK position asks for its own side. A source with one clip for both sides still fills both,
-    by falling back to the opposite side — which is what every symmetric avatar relies on.
+    by falling back to the opposite side, which is what every symmetric avatar relies on.
     After: `(-1,0)=>Fix_StrafeL (1,0)=>Fix_StrafeR`, both diagonals likewise.
   - **F11, slider hole-drop degrades to hole-filling.** `kept.Count >= 2` sends a slider tree with
     one surviving child to the generic filler, which inserts the placeholder clip the report text
     beside it promises sliders never get.
   - **F12, gesture-hand promotion by substring.** `layerName.Contains("left")` on a lowercased
-    name: "Copyright pose" contains "right". The tempting fix is wrong — `\bleft\b` cannot match
+    name: "Copyright pose" contains "right". The tempting fix is wrong: `\bleft\b` cannot match
     `GestureLeft`, there is no boundary inside one run of word characters, and lowercasing has
     already flattened the camel hump. The right fix is to promote only layers that actually WRITE
     a gesture parameter.
@@ -567,12 +567,12 @@ and "make a new one" is not an answer for a prop somebody has positioned and tun
   - **F19/F20, the shader surface.** The patcher's regexes are unanchored and comment-blind, and
     the socket decoder admits a coloured light whose alpha is zero (`&& colour.a > 0`), which also
     defeats the self-exclusion test that consumes its verdict. Held back because a shader change
-    cannot be judged from this machine — see the body-mesh section for what that cost on 2026-08-24.
+    cannot be judged from this machine; see the body-mesh section for what that cost on 2026-08-24.
 
-- **A rebuild refreshes the shader now, not just the bake — FIXED 2026-08-24.** Every shader-level
+- **A rebuild refreshes the shader now, not just the bake: FIXED 2026-08-24.** Every shader-level
   fix used to reach nobody who had already converted. `BakeSocket` and `Bake` took a refresh
   branch whenever the material carried `_YAPS_Bake` and never called `Patch` again, and the patch
-  was named `Hash(sourcePath + Revision + unit.Count)` — a hand-written `Revision` constant that
+  was named `Hash(sourcePath + Revision + unit.Count)`: a hand-written `Revision` constant that
   did not move when the emitted code did. Found by adding a property and watching it never arrive:
   the material's shader had nine copies of a property added that morning and none of one added
   that evening, because the morning's landed on a FIRST patch and the evening's needed a second.
@@ -583,19 +583,19 @@ and "make a new one" is not an answer for a prop somebody has positioned and tun
   declared default, which the bake then sets.
 
   **The original is recovered from the PATCH, not from the component.** The first version asked
-  `socket.bakedFrom`, which only the tool's own bake ever fills in — a CONVERTED avatar adopts its
+  `socket.bakedFrom`, which only the tool's own bake ever fills in: a CONVERTED avatar adopts its
   components and leaves it null, so the check would have done nothing for the majority of avatars
   and looked like it worked. `_YAPS_SourceShader` already carried the source shader's name in a
   hidden property's description, so `OriginalShaderOf` reads it back and `Refresh` re-patches
   through a stand-in material. Verified in the editor: a socket material's shader moved from
   `56f6502ef13e` to `253145a5a99b` on a rebuild and gained the property it had been missing.
 
-- **Corpus classes: CLOSED 2026-08-22** — Fixture_DeformSocket and Fixture_HeadTransplant are in
+- **Corpus classes: CLOSED 2026-08-22**: Fixture_DeformSocket and Fixture_HeadTransplant are in
   the corpus and its baseline; the transplant fixture came out on the real Head with zero errors.
 - **Pointer capping: CLOSED 2026-08-24, declined with the measurement.** Two questions, both
   answered without a run. *Which families does anything read?* A census over the 93 corpus files
   carrying contact receivers, senders split from receivers: `TPS_Orf_Root`/`SPSLL_Socket_Root`
-  heard in 4 files, `SPSLL_Socket_Hole` 3, `Ring` 2, twins alongside — and the front pair,
+  heard in 4 files, `SPSLL_Socket_Hole` 3, `Ring` 2, twins alongside, and the front pair,
   `TPS_Orf_Norm`/`SPSLL_Socket_Front`, heard by NOTHING. That looked like four dead pointers a
   socket until `YapsPropBuilder.FrontTypes` turned out to be exactly that pair: it is the prop
   channel's FX/FY/FZ front axis. No corpus avatar hears it because no corpus avatar carries a
@@ -604,17 +604,17 @@ and "make a new one" is not an answer for a prop somebody has positioned and tun
   *Should the COUNT be capped like marker lights?* No, the limits are not alike. Lights are four
   slots a MESH and a fifth evicts the lowest range, which is why the lighthouse had to exist.
   Pointers are 512 overlapping PAIRS instance-wide, and a pointer costs nothing until it is
-  inside a receiver — 174 idle pointers standing in a room spend none of the budget. A count cap
+  inside a receiver: 174 idle pointers standing in a room spend none of the budget. A count cap
   would break sockets in the common case to save a resource nobody is spending. If pair
   exhaustion ever appears in the wild, the lever is the overlap, not the socket's description of
   itself.
-- **DPS range offset, ON ICE 2026-08-23** — the +0.003 offset makes YAPS sockets and plugs
+- **DPS range offset, ON ICE 2026-08-23**: the +0.003 offset makes YAPS sockets and plugs
   invisible to every mod decoding at 0.001, sound mods included: NAK's PlapPlapForAll needs
   `RoundToInt(Repeat(range*500+500,50)+200)` to hit 205/210/225/245, and our 0.4130/0.4230/0.4530/
   0.4930 all land on x.5 and read Invalid. No range separates a sound mod from a toy mod, so it is
   one choice for both. **PR MERGED 2026-08-28 (a13175a), and that is not yet the trigger.** The
   mod's source now bounds the estimate with the stated length, so it engages at contact rather
-  than across a room — but its latest RELEASE is still 2026-07-05, so nobody running it has the
+  than across a room, but its latest RELEASE is still 2026-07-05, so nobody running it has the
   fix. The condition was always "merges AND users update"; only the first half has happened.
   The trigger is now **a CVRGoesBrrr release containing a13175a, plus a window for people to
   take it**. When that lands, exact VRCFury ranges (0.4106/0.4206/0.4506/0.4906) restore every
@@ -635,7 +635,7 @@ and "make a new one" is not an answer for a prop somebody has positioned and tun
 penetration bug of the last three sittings came out of.**
 
 Conversion used to keep VRCFury's baked rig and adapt it in place. So an avatar ended up with
-a socket that was *Fury's socket, retuned* — while the YAPS tool built a different thing entirely
+a socket that was *Fury's socket, retuned*, while the YAPS tool built a different thing entirely
 from the same description. Two shapes, one name, and every difference between them is somewhere
 a bug can live. All of these did:
 
@@ -652,14 +652,14 @@ Five of six are things a native socket cannot have. Each was found by somebody w
 in game, none by any check here, and each fix was a patch on Fury's scaffolding rather than a
 removal of it.
 
-**What the conversion now does — built 2026-08-22, in `YapsSocketRebuilder.cs`:**
+**What the conversion now does: built 2026-08-22, in `YapsSocketRebuilder.cs`:**
 
 1. **Read** every DPS, TPS and SPS socket and plug: transform, kind, the mesh it deforms, the
    shapes it stages, the radius measured from that mesh, the toggle that owns it.
-2. **Strip** the legacy rig completely — no baked objects, no services, no exclusivity layers,
+2. **Strip** the legacy rig completely: no baked objects, no services, no exclusivity layers,
    nothing of Fury's left to switch off.
 3. **Rebuild** through the same code the YAPS tool uses, at the transforms that were read.
-4. **Repoint** the author's reaction layers onto the rebuilt socket's depth parameter — when the
+4. **Repoint** the author's reaction layers onto the rebuilt socket's depth parameter: when the
    socket read exactly one; several are kept as authored, and the report says so.
 
 Then a converted socket IS a native socket. Odessa becomes a valid test for every avatar, the
@@ -682,14 +682,14 @@ a socket rebuilt natively would have published one name while the author's clips
 and every reaction would have gone silent. Measured across the corpus: **72 depth-animation layer mentions, 6 empty**,
 so roughly sixty-six carry real animation an author built. Not droppable.
 
-The repoint itself is a known job — `AnimatorMerger` already renames parameter references across
+The repoint itself is a known job: `AnimatorMerger` already renames parameter references across
 a whole controller. The trap it must avoid is the one that has bitten here before: **renaming a
 layer's parameter references never touches its clips.** The clips animate blendshapes and stay
 exactly as they are; only the layer's read of the depth value moves. Backwards, that silences a
 channel or resizes a mesh.
 
 **Then a corpus, and an avatar with an always-visible head added to it.** There were zero of
-those in 84 — which is exactly why this class kept reaching users — until Fixture_HeadTransplant
+those in 84, which is exactly why this class kept reaching users, until Fixture_HeadTransplant
 and Fixture_DeformSocket joined the corpus on 2026-08-22.
 
 *Supersedes the earlier entry here, which proposed waking everything Fury left switched off. That
@@ -706,13 +706,13 @@ socket's pointers, marker lights and receivers switched on. So a socket can prev
 do nothing in game, and it did: pointers visible in CVR's own debug view, no bend, and the tool
 saying the socket was fine throughout.
 
-4.3.0 makes the window HONEST — each socket row says which of the three is dark and what it
+4.3.0 makes the window HONEST: each socket row says which of the three is dark and what it
 costs. That closes the lie. It does not close the gap.
 
 The gap worth closing is a preview that resolves a socket the way the game does: pointer and
 trigger overlap by geometry, the enabled and active state of both, the depth it would publish,
 the parameters it would drive. Then "it previews" and "it works" are the same sentence, and this
-entire class of report — works in editor, dead in game — stops existing.
+entire class of report, works in editor, dead in game, stops existing.
 
 Wants measuring first: how much of CVR's contact resolution has to be reproduced before the
 answer is trustworthy. A preview that is right most of the time is worse than one that is
@@ -744,11 +744,11 @@ plugs.
 
 ## The body-mesh fallback is our line, not ChilloutVR's
 
-*Opened 2026-08-23. Not a transport — a limit we imposed on ourselves that costs sync bits.*
+*Opened 2026-08-23. Not a transport: a limit we imposed on ourselves that costs sync bits.*
 
 A socket whose shapes live on the BODY mesh cannot use the shader deform, so its reactions go
 through the animator: a depth trigger, a parameter, a layer. That parameter is wearer-only unless
-synced, which is the 32-bits-a-socket tickbox. A socket with its own mesh pays none of that — its
+synced, which is the 32-bits-a-socket tickbox. A socket with its own mesh pays none of that: its
 deform runs in the shader, on every client, free.
 
 The whole difference is one line, `yaps_socket.cginc`:
@@ -769,7 +769,7 @@ PLUG deform, not this one. There is a second net as well: `_YAPS_SocketDepth` ov
 computed depth whenever it is >= 0 (`yaps_socket.cginc:147`), so the animator channel still wins
 where it is driven.
 
-**But it is not only where we look for a plug — corrected 2026-08-23.** `socketWorld` reaches
+**But it is not only where we look for a plug: corrected 2026-08-23.** `socketWorld` reaches
 further down than the depth maths:
 
 ```
@@ -785,14 +785,14 @@ THEIR hip. Any candidate has to be checked against the hand case, not just the j
 **The hard part is not the line, it is what to put in it.** Candidates:
 
 1. **A baked offset**, `_YAPS_SocketOrigin` in the renderer's local space, set at bake time from
-   the socket's transform. Correct whenever the socket does not move relative to the renderer —
+   the socket's transform. Correct whenever the socket does not move relative to the renderer:
    and wrong the moment a bone does, since a body mesh's transform is the avatar root while the
    socket rides a bone. Fine for a chest, wrong for a jaw.
 2. **The socket's own marker light.** It sits exactly at the socket and tracks its bone for free,
    and the shader already reads lights. But the lighthouse lights one socket at a time, so this
    only works for the lit one.
 3. **The vertex's own world position.** Tracks skinning perfectly and costs nothing, but depth
-   then varies across the shape by a few centimetres out of the reach — a gradient where the
+   then varies across the shape by a few centimetres out of the reach: a gradient where the
    stages want one uniform weight. May be invisible on a bulge and visible on a staged sequence.
    Worse since the ownership finding above: one position per VERTEX means the nearest hip is
    resolved per vertex too, so vertices can disagree about whose plug it is. Candidates 1 and 2
@@ -801,7 +801,7 @@ THEIR hip. Any candidate has to be checked against the hand case, not just the j
 None is free of a catch, which is why this is a spike and not a patch. Worth it: it would move
 every body-mesh socket onto the free path and retire the sync tickbox for most avatars.
 
-**The hand case is measured now, and it closes the question — 2026-08-24.** Grepping the
+**The hand case is measured now, and it closes the question: 2026-08-24.** Grepping the
 baseline digests: 79 avatars, 19 with sockets, and all 19 carry hand or foot sockets
 ("Handjob L/R" on nearly every one, "Footjob"/"Steppies" on about twelve). Far-from-root
 sockets are not an edge case, they are the standard loadout. So no single position can be put
@@ -809,14 +809,14 @@ in the line: depth wants the socket, ownership wants the wearer, and every candi
 failed by making one value answer both.
 
 **The answer is a split, not a choice.** `YapsSocketOwnPlug` keeps reading the renderer's
-object origin, which for a body mesh is the avatar root beside the wearer's hip — the accident
+object origin, which for a body mesh is the avatar root beside the wearer's hip: the accident
 that worked, now on purpose. Depth reads the origin plus a baked `_YAPS_SocketOrigin` offset.
 Both default to zero, so a dedicated socket mesh, where the two coincide, is bit-for-bit
 unchanged. Candidate 1's jaw catch still stands but now costs only depth accuracy, never
 ownership; a socket that rides a far bone keeps the animator channel, which still overrides.
 
 One consequence worth its own line: the split also shows the SHIPPED behaviour is wrong for
-dedicated hand-socket meshes — their origin IS the socket, so ownership already resolves
+dedicated hand-socket meshes: their origin IS the socket, so ownership already resolves
 against the hand, and a hand in somebody's lap can claim their hip and ignore their plug.
 
 **Fixed 2026-08-24, by deleting the question rather than answering it.** The obvious repair was
@@ -826,14 +826,14 @@ There is no static point on a hand that tracks the wearer's hips.
 
 So ask what the test is FOR. Its own comment says: an avatar carrying both a plug and a socket
 has the plug's tracker a hand's width from its crotch socket, permanently within a plug length,
-and the socket reads as always full. That is a crotch socket beside the wearer's own plug — and
+and the socket reads as always full. That is a crotch socket beside the wearer's own plug, and
 it is the one case where the nearest-hip heuristic is reliable, because the socket really is at
 the wearer's hip. Everywhere else the test is not merely unreliable, it is unwanted: a handjob
 socket SHOULD react to the wearer's own plug.
 
 `_YAPS_SocketNoSelfExclude`, baked. Zero keeps today's behaviour, which is what every material
 baked before this reads, so nothing shipped changes until it is rebuilt. The baker sets it when
-no plug of the avatar's rests within its own length of the socket — measured off the tracker
+no plug of the avatar's rests within its own length of the socket: measured off the tracker
 light, because that is the point the shader itself measures from and its intensity carries the
 plug's length. The converter asks the same question of `ctx.YapsPlugs`, which needs no lights to
 exist yet.
@@ -843,14 +843,14 @@ exist yet.
 clients in one instance. Nothing in the editor or the corpus can see it: a second client run by
 hand is the only test that would.
 
-### Built and measured 2026-08-24 — and the sync saving is NOT there
+### Built and measured 2026-08-24, and the sync saving is NOT there
 
 The split is written: `_YAPS_SocketOrigin` in `yaps_socket.cginc`, baked by `BakeSocket`,
 defaulting to zero so a dedicated socket mesh is bit-for-bit unchanged. Subset run of the 19
 socketed avatars plus a no-socket control came back 20/20 identical, so nothing regressed.
 Tested by hand on a real body-mesh socket (Sootie, "Pussy hole" on `Base`, two staged shapes):
 
-- **The bake is right.** `_YAPS_SocketOrigin` came out (0, -0.0197, 0.6863) — the socket's true
+- **The bake is right.** `_YAPS_SocketOrigin` came out (0, -0.0197, 0.6863): the socket's true
   pelvis position in the mesh's own space, X on the midline. `_YAPS_SocketPower` 1,
   `_YAPS_SocketDepth` -1.
 - **The deform is right.** Driving `_YAPS_SocketDepth` by hand opens both shapes in order.
@@ -859,7 +859,7 @@ Tested by hand on a real body-mesh socket (Sootie, "Pussy hole" on `Base`, two s
   forcing depth to 1 on the mere existence of ANY vertex light in ANY of the four slots: still
   nothing. `unity_4LightAtten0` is zero on that renderer.
 
-Vertex lights are not broken in general — the PLUG bends in the same scene, and that needs a
+Vertex lights are not broken in general: the PLUG bends in the same scene, and that needs a
 plug mesh to read a socket's markers. The difference is the renderer: a small prop mesh gets its
 four slots, a 34k-vertex skinned body gets none. Unity ranks a renderer's candidate vertex
 lights by influence, and a marker light is BLACK, so it brings no luminance to rank with.
@@ -872,7 +872,7 @@ the only route, and the tickbox stays. The opposite of what was assumed when thi
 What the work still buys, and why it is kept: a socket is no longer measured from the wrong
 point when its mesh is not its own, and `_YAPS_SocketOrigin` is the correct foundation for the
 dedicated-mesh ownership fix parked above. Do not reopen this as a sync-saving idea without
-first re-measuring the light delivery — that is the thing that killed it.
+first re-measuring the light delivery: that is the thing that killed it.
 
 **Also on the same axis:** the GPU bridge (`YAPS5.md`, candidate 4) can write
 `Transform.localPosition` and `localScale` per client for nothing. So a reaction rigged to BONES
@@ -885,11 +885,11 @@ but it is what YAPS should prefer for anything it builds itself. Blendshape weig
 ## YAPS 5: the plug follows a path, not a point
 *Status: planned, unstarted.*
 
-*The other half of YAPS 5 — how a plug FINDS a socket — lives in `YAPS5.md`, which gathers every
+*The other half of YAPS 5, how a plug FINDS a socket, lives in `YAPS5.md`, which gathers every
 transport, every measured limit, and the order they get built in. This section is what the plug
 does once found.*
 
-Today `yaps_resolve.cginc` holds exactly one socket — one position, one forward, one
+Today `yaps_resolve.cginc` holds exactly one socket: one position, one forward, one
 engagement, chosen as the single best candidate. Give it an **ordered list of sockets with
 arc-length ranges** and three of the four things on the wishlist fall out of one change:
 
@@ -904,12 +904,12 @@ frames rather than a second shaft. It costs nothing and it cannot be two differe
 
 **Multiple plugs per socket is a separate, much smaller job.** The bending already works:
 every plug resolves sockets in its own shader, so two plugs into one socket needs no change
-at all. What breaks is the socket's *shapes* — a ChilloutVR trigger writes from whichever
+at all. What breaks is the socket's *shapes*: a ChilloutVR trigger writes from whichever
 sender touched it last, so two plugs fight over the depth instead of the deepest winning.
 Socket-side, no extra sync, and it can ship on its own.
 
 **What the platform gives and charges for.** Unity hands a mesh four vertex-light slots and a
-socket takes two — but the third slot is spoken for by the tracker light of whatever enters the
+socket takes two, but the third slot is spoken for by the tracker light of whatever enters the
 socket, and that tracker lives on a prop or on the other person, so it can never be counted at
 build time. **The light path therefore carries exactly ONE socket, not two.** Two lit sockets
 plus a tracker is five lights for four slots, and Unity fills by range, so the casualty is
@@ -1017,7 +1017,7 @@ plays them from its own state machine, so nothing competes:
 | `ToggleDefault`, `ToggleState1`–`7` | stances meant to be held | the toggle list |
 | `LocSitting` | the avatar's sit pose | automatically, in chairs |
 | `LocCrouch* / LocProne* / LocFlying / LocSwimming*` | stance art | CVR's own states |
-| `LocIdle / LocWalking* / LocRunning*` | already done, by LocomotionGrafter | — |
+| `LocIdle / LocWalking* / LocRunning*` | already done, by LocomotionGrafter | - |
 
 Locomotion stays with the grafter, and the reason is measured rather than preferred: the CCK
 reuses eleven clips, every one of them a Right variant (`LocWalkingStrafeRight`,
@@ -1060,7 +1060,7 @@ fit, because "which of my poses survived" is the first question anyone will ask.
 *Status: planned, unstarted.*
 
 Ten thousand lines, the most fragile thing in the package, and the place where a bug is
-hardest to see because nothing throws — the avatar simply behaves slightly wrongly.
+hardest to see because nothing throws: the avatar simply behaves slightly wrongly.
 
 **A conflict map.** Which layers write the same binding, in what order, at what weight, and
 who wins. Half the toggle failures this project has fixed are two layers writing one
@@ -1087,15 +1087,15 @@ rather than to luck.
 ---
 
 ## Marker lights are a broadcast, and the room is listening
-*Status: reference — measured facts, kept for design work; the distilled limits are in `YAPS5.md`.*
+*Status: reference: measured facts, kept for design work; the distilled limits are in `YAPS5.md`.*
 
 Added 2026-08-17, after a user reported their controllers vibrating whenever they came within
 two metres of a converted avatar. Everything here was learned from source, and it changes what a
 socket is allowed to be.
 
 **A marker light is the only thing an avatar does that reaches into someone else's.** Its range
-is a message — every decoder reads `range % 0.1` and matches 0.01 hole, 0.02 ring, 0.05 front,
-0.09 plug tip — and anything on the platform may listen. Raliv's shader matches within 0.005; a
+is a message: every decoder reads `range % 0.1` and matches 0.01 hole, 0.02 ring, 0.05 front,
+0.09 plug tip, and anything on the platform may listen. Raliv's shader matches within 0.005; a
 toy mod reading the same protocol in C# matches within 0.001. VRChat authors +0.0006, inside
 both, which is why a stock converted avatar drove a stranger's toy across a room. YAPS authors
 +0.003, which DPS reads and that mod does not.
@@ -1118,7 +1118,7 @@ so the quiet offset remains the default long after any merge.
 
 **A tempting idea that does not work: shrinking the ranges.** Since only `range % 0.1` is read,
 0.0106 decodes exactly like 0.4106 and reaches a fortieth as far. It would ease vertex-slot
-pressure — but Unity ranks the four per-object light slots BY RANGE, so a tiny light is the
+pressure, but Unity ranks the four per-object light slots BY RANGE, so a tiny light is the
 first evicted by every stock DPS avatar in the room. It would work alone and fail in company,
 which is the opposite of what a compatibility feature needs. Worth keeping only as a "YAPS talks
 to YAPS and nothing else" mode, where our own decoder sets the rules.
@@ -1126,7 +1126,7 @@ to YAPS and nothing else" mode, where our own decoder sets the rules.
 ---
 
 ## Two walls the transports hit, and whether a shader goes round them
-*Status: the light-slot fix landed, and the authority-gate wall is DISPROVEN in game 2026-08-22 — cross-avatar prop writes work, see `YAPS5.md`. The 512-pair cap stands.*
+*Status: the light-slot fix landed, and the authority-gate wall is DISPROVEN in game 2026-08-22: cross-avatar prop writes work, see `YAPS5.md`. The 512-pair cap stands.*
 
 Read out of the client 2026-08-22 while costing a contact-based replacement for the marker-light
 channel. Both of these are platform behaviour, not our code, and both bound what any redesign can
@@ -1138,14 +1138,14 @@ another prop (if either is synced by you), a sender that is *your own* avatar, o
 is **no branch for another player's avatar**, so a remote sender falls through and returns false
 and the value is silently never written. This is very likely a client bug rather than policy: the
 prop branch falls back to `IsSyncedByMe()`, and that fallback is simply missing for avatar
-senders, so even the prop's own syncer is refused. It predicts the split we have been chasing —
+senders, so even the prop's own syncer is refused. It predicts the split we have been chasing:
 avatar-to-avatar works (the gate only runs for spawnable triggers), old DPS props work (lights,
 never this path), YAPS props work on your own sockets and never on someone else's. **Test before
 building anything around it, and report it upstream if it holds.**
 
 **512 overlapping contact pairs, instance-wide.** `CollectPairsJob` caps `pairs` at 512 and re-adds
 *previous* pairs first, so an established interaction is sticky and cannot be evicted, but in a
-saturated instance a new one may never register — "works once I am in it, will not start in a
+saturated instance a new one may never register: "works once I am in it, will not start in a
 crowd". The broadphase itself is brute force over every sender for every receiver, but Burst and
 parallel with a squared-distance test, so it is sub-millisecond and not the constraint. Rejections
 on tags, `contentType` and owner happen *before* a pair is written, so **tags are the lever on the
@@ -1159,7 +1159,7 @@ Two routes, and the cheap one is much more interesting than the famous one.
 `unity_LightColor` alongside its position and range. Our markers are black with non-zero intensity
 (zero intensity drops a light from the per-object list entirely), so three channels per light are
 sitting unused. If a root light's colour carried the socket's axis, a YAPS-native socket would
-need **one** light instead of two — and with the tracker holding a slot, that is three sockets in
+need **one** light instead of two, and with the tracker holding a slot, that is three sockets in
 the budget instead of one. Legacy plugs still need the root+front pair, so this is a YAPS-native
 mode alongside the compatibility pair, not a replacement. Cheap to spike, and the open questions
 are small: whether CVR's asset filter clamps light colour or intensity on avatars, and how much
@@ -1191,12 +1191,12 @@ rather than "wrong socket found".
 
 **Original note, written before the spike:**
 
-**The screen-space atlas is real, and we would write it better than SPS — but do not build it
+**The screen-space atlas is real, and we would write it better than SPS, but do not build it
 yet.** Sockets render a small quad encoding their world position into a reserved screen region;
 the plug samples it back through a named GrabPass. It is the only channel that dodges *both* walls
 above: no light slots, no contact pairs, no parameters, so no authority gate and no sync bits, and
 no cap on socket count. And the reason SPS's does not survive conversion is one we could simply
-not have — theirs is written for VRChat's double-wide, ours would be instanced-native from the
+not have: theirs is written for VRChat's double-wide, ours would be instanced-native from the
 first line (`UNITY_DECLARE_SCREENSPACE_TEXTURE`, the same family the shader patcher already
 applies). Against it: a named GrabPass is a real per-frame cost; the atlas quads must escape
 frustum culling; and the unsolved one is **cell collisions between avatars**, because two avatars
@@ -1210,7 +1210,7 @@ colour. The atlas stays designed and unbuilt until something forces it.
 ---
 
 ## The WASM route, and what it would make of all this
-*Status: blocked — access declined 2026-08-19.*
+*Status: blocked: access declined 2026-08-19.*
 
 Read from the local client on 2026-08-17. **That install is the `public-scripting` beta**, and the
 bridge's initialiser sits behind `#if WASM_SCRIPTING_ENABLED`, which a ChilloutVR dev confirmed is
@@ -1240,7 +1240,7 @@ That is the entire YAPS resolver, in ordinary code:
 
 **The backwards-compatibility prize is bigger than the feature.** A script does not need anyone
 else to cooperate: it can walk another avatar's hierarchy and read their sockets *whatever
-protocol they speak* — Raliv's lights, TPS and SPS pointers, YAPS markers — because it reads the
+protocol they speak*, Raliv's lights, TPS and SPS pointers, YAPS markers, because it reads the
 components rather than waiting for Unity to hand it four light slots or for a contact pair to
 survive the budget. Everything on the platform becomes findable, including content that will
 never be converted and whose authors are long gone. That is what "force everything over to YAPS"
@@ -1428,7 +1428,7 @@ did not fire either (a sender that despawns inside a trigger never fires one).
 reset engagement: the sliders then read `E 0, H 0, X 46, Y 60, Z 99`. So the exit task works, and
 the axes latching is harmless while engagement is 0, because engagement gates the whole deform.
 
-**The latch only bites when the exit does not fire at all** — a prop despawning inside the box,
+**The latch only bites when the exit does not fire at all**: a prop despawning inside the box,
 the plug's own object being toggled off (disabling a collider fires no exit), an instance change,
 a sender leaving the room. That is how E came to be stuck at 61 with nothing nearby, and in THAT
 state the plug is bent toward a phantom socket with nothing to clear it. Not the everyday case,

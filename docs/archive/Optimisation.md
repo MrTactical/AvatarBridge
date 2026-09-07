@@ -9,9 +9,9 @@ regression corpus as it stood after 4.0.4.
 | measure | across 84 avatars |
 |---|---|
 | menu parameters that change nothing when toggled | **1,596 of 2,977 (54%)** |
-| CVRPointers, each one a contact | 2,373 — **28 an avatar** |
-| MagicaCloth solvers, each at 90 Hz | 1,549 — **18 an avatar** |
-| contact triggers | 697 — 8 an avatar |
+| CVRPointers, each one a contact | 2,373: **28 an avatar** |
+| MagicaCloth solvers, each at 90 Hz | 1,549: **18 an avatar** |
+| contact triggers | 697: 8 an avatar |
 | animator layers | average **49**, worst **263** |
 | animator parameters | average 104, worst **424** |
 
@@ -39,7 +39,7 @@ One place: the ChilloutVR Toolkit, on the "What this avatar costs" card. "Weigh 
 it" acts, "Put the textures back" undoes the import settings.
 
 Converting does NOT optimise on its own. It measures, and the converter's report ends with a
-button offering the figure it found — "Make it lighter — 34.2 MB to reclaim" — which hands the
+button offering the figure it found, "Make it lighter, 34.2 MB to reclaim", which hands the
 converted avatar to the toolkit. So a conversion always tells you the number, and pressing
 something is what changes anything.
 
@@ -47,7 +47,7 @@ Which means the toolkit is the whole of it, and it has to stand on its own: it w
 that were never converted, and on machines with no VRChat SDK installed at all.
 `Dev/Build/compile-check.sh` builds the assembly both ways for that reason.
 
-## Phase 0 — the weight card
+## Phase 0: the weight card
 
 One card, in the converter's report and in the ChilloutVR Toolkit, so it works on avatars that
 were never converted. Each number is shown against the platform limit it spends.
@@ -59,7 +59,7 @@ VRAM is computed from the graphics format and the mip chain, NOT from `Profiler.
 GetRuntimeMemorySizeLong`. That was the obvious source and it is wrong for this: in the editor
 every texture also keeps a copy on the CPU side, so it answers exactly twice the truth for all of
 them, which is worse than a rough number because it looks exact. Crunch does not reduce this
-figure either — it shrinks the download and unpacks to plain DXT on upload.
+figure either: it shrinks the download and unpacks to plain DXT on upload.
 
 **Meshes.** Renderers, triangles, submeshes, bones, skinned against static, blendshape count and
 how many of those are ever animated.
@@ -91,7 +91,7 @@ two that meets the target. `TargetDensity` is 2000 texels per metre and the floo
 256: below that the map is looked at from ten centimetres away in VR and the memory saved is not
 worth the argument. Twelve worst are named, the tail is one line with its total.
 
-Read/Write Enabled on a texture is called out on its own — it doubles the cost for a readback
+Read/Write Enabled on a texture is called out on its own: it doubles the cost for a readback
 nothing on an avatar performs. Non-readable MESHES are read anyway; that flag only bars access at
 runtime, and the editor holds the source data regardless.
 
@@ -102,7 +102,7 @@ material locked shader copies.
 Measured against Abbess: 333.3 MB of texture across 229 maps, 93.4 MB of it recoverable without
 anything visible changing.
 
-## The survey — what the sweep becomes
+## The survey: what the sweep becomes
 
 The toggle sweep drives every parameter and watches what moves. That is the *verifier*, and it is
 only half a tool: it can tell you something did not appear to happen, and never why. The other
@@ -111,12 +111,12 @@ and it is what Phase 1, the weight card and half the roadmap have all been quiet
 
 **What the model holds:**
 
-- **Every parameter** — type, default, synced or local, and both directions: who WRITES it (clips,
+- **Every parameter**: type, default, synced or local, and both directions: who WRITES it (clips,
   drivers, triggers, parameter streams, the menu, the game itself) and who READS it (transitions,
   blend trees, drivers).
-- **Every layer** — mask, weight, blend mode, default state, the bindings its clips actually
+- **Every layer**: mask, weight, blend mode, default state, the bindings its clips actually
   touch, and its timing: exit times, wait states, what a sequence is waiting for.
-- **Every control** — toggles, sliders, dropdowns with their named options, joysticks, colours —
+- **Every control**, toggles, sliders, dropdowns with their named options, joysticks, colours,
   and the parameter each one drives.
 - **The graph joining them**: control to parameter to layer to binding to object, followed either
   way. A preset stops being mysterious the moment you can see one int driving twelve bools.
@@ -129,7 +129,7 @@ and it is what Phase 1, the weight card and half the roadmap have all been quiet
 - **Dead controls.** A menu entry whose parameter nothing reads: it will always look broken.
 - **Conflicts.** Two layers writing one binding, in order, with the winner named. Half the toggle
   bugs this project has ever fixed were this.
-- **Subordination.** "This toggle does nothing while that preset is active" — the Abbess case,
+- **Subordination.** "This toggle does nothing while that preset is active": the Abbess case,
   stated instead of guessed.
 - **Unreachable states**, and transition conditions that can never be true.
 - **Plain words for every control**: *Hoodie switches 3 objects and 2 blendshapes.* That sentence
@@ -140,10 +140,10 @@ parameter should change; the sweep moves it and looks. Where the two disagree, t
 is itself a finding worth printing, because it means something is driving the avatar that reading
 it did not reveal.
 
-This absorbs four roadmap items — the conflict map, the weight audit, state-machine reachability,
-and "explain a parameter" — into one pass. They were always the same tool seen from four angles.
+This absorbs four roadmap items: the conflict map, the weight audit, state-machine reachability,
+and "explain a parameter": into one pass. They were always the same tool seen from four angles.
 
-## Phase 1 — the free wins
+## Phase 1: the free wins
 
 Nothing behavioural, everything provable, all of it already detectable:
 
@@ -196,8 +196,8 @@ should say WHY something looks dead: overridden by a driver, behind a wait, or g
 ### Built 2026-08-18, in the Toolkit
 
 `Editor/Toolkit/FreeWins.cs`, reached from the **Free wins** card. Toolkit first because the
-converter already removes both of these on the way through — Abbess converts with zero empty
-layers and zero unused parameters — so the avatars that carry them are the native ones the
+converter already removes both of these on the way through: Abbess converts with zero empty
+layers and zero unused parameters, so the avatars that carry them are the native ones the
 Toolkit exists for. It writes a tidied COPY of the controller and repoints the avatar at it.
 
 **The placeholder clips are NOT removed, and this list was wrong to call them a free win.** Unity
@@ -214,7 +214,7 @@ Two guards, both learned the hard way in `Dev/Probes/FreeWinsProbe.cs`:
   level down. The probe now asserts the shared override still points where it did, because the
   first version of the probe edited that shared asset and then deleted what it pointed at.
 
-## Phase 2 — capped resources
+## Phase 2: capped resources
 
 Contacts are the only thing here with a hard platform limit and silent failure past it. 28
 pointers an avatar is four a socket: SPS root, SPS front, TPS root, TPS norm. Two questions worth
@@ -239,8 +239,8 @@ One socket, described five times over for five decoders, then doubled for a self
 
 **The twins are NOT duplicates, and collapsing them is off the table.** That was the plan here,
 and the corpus refused it. `[pointer families]` in the digest counts `twinOnly`: triggers that
-accept the twin and NOT the base. On the five pointer-heaviest avatars it is never zero —
-Obsidian 4, Abbess 6, Deathclaw 4, Umbreon 4, Sally 4 — and the listeners are always the same
+accept the twin and NOT the base. On the five pointer-heaviest avatars it is never zero:
+Obsidian 4, Abbess 6, Deathclaw 4, Umbreon 4, Sally 4, and the listeners are always the same
 shape:
 
 ```
@@ -271,7 +271,7 @@ nothing
 
 The front pair reads as four dead pointers a socket. It is not: `YapsPropBuilder.FrontTypes` is
 that exact pair, and it carries the prop channel's FX/FY/FZ front axis. Nothing in the corpus
-hears it because no corpus avatar carries a prop — the corpus enumerates SCENES and props are
+hears it because no corpus avatar carries a prop: the corpus enumerates SCENES and props are
 spawnables. The consumer is our own system, and capping the family would have cost props their
 axis silently. A census over avatars can only prove what avatars read.
 
@@ -283,7 +283,7 @@ count would break sockets in the common case to save a resource nobody is spendi
 exhaustion ever turns up in the wild, the lever is the overlap, not the socket's description of
 itself.
 
-## Phase 3 — textures, by density rather than by guess
+## Phase 3: textures, by density rather than by guess
 
 **Built 2026-08-19, and it acts.** `AvatarSlimmer` resizes by the density below, compresses what
 is uncompressed, and picks a format from what a texture HOLDS: BC4 where three colour channels
@@ -326,7 +326,7 @@ arithmetic that got there.
 **Format, in the same pass.** VRAM and download size are reported separately, because crunch
 compression shrinks the download and not the memory, and people conflate the two constantly.
 
-## Phase 4 — physics
+## Phase 4: physics
 
 **Measurement built 2026-08-19.** The card counts simulated TRANSFORMS, not components: one
 corpus avatar runs 164 solvers over 1,070 of them.
@@ -340,20 +340,20 @@ another person in the room.
 
 **Merging is off the table too, and the measurement is why.** `ClothMergeProbe` counted the
 ceiling across the corpus on both gates a merge needs: nothing switching two solvers apart, and
-settings that already agree. **1189 MagicaCloth solvers, 203 mergeable — 17%.** Settings is the
+settings that already agree. **1189 MagicaCloth solvers, 203 mergeable: 17%.** Settings is the
 tighter gate in **73 of 73** crowded parents; the toggle gate, the one this plan said to check
 first, never binds at all. Aeromorph is the shape of it: 10 solvers under a single toggle state,
 7 distinct settings groups, 3 merges available.
 
 The cause is our own conversion doing the right thing. Each solver is tuned from its source
-PhysBone individually, particle radius included, measured per chain from the mesh it moves —
+PhysBone individually, particle radius included, measured per chain from the mesh it moves:
 Lanacan's report shows `0.02 → 0.021` off a 10,676-vertex sample. Chains measured individually
 do not fingerprint alike, so they cannot share one settings block.
 
 And 17% of the solver COUNT is not 17% of the cost. This section already said the number that
 matters is particles, and merging two solvers simulates exactly the same transforms under one
 component: it buys the per-solver overhead and nothing else. Against that, a wrong merge retunes
-a chain to whichever settings won — hair that moves like a skirt, no error, found in game. The
+a chain to whichever settings won: hair that moves like a skirt, no error, found in game. The
 probe's own fingerprint skips properties whose path contains `root` or `collider`, so a genuine
 tuning field named that way would make two different chains look identical; every error in that
 list runs toward merging things that should not merge.
@@ -364,7 +364,7 @@ hand.
 
 What is left in this phase is the toe and finger skips, which already exist as settings.
 
-## Phase 5 — report only
+## Phase 5: report only
 
 **Built 2026-08-19.** Atlas candidates are named on the card: materials sharing a shader that
 nothing animates apart, checked against object-reference swaps and material property curves.

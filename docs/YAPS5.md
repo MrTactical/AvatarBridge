@@ -3,7 +3,7 @@
 How a plug finds a socket is the whole system; everything else is presentation. This gathers
 every route that exists, every route proposed, and every measured limit, from a month of in-game
 failures and two nights reading the client. The feature wishlist (paths, portals, multi-socket)
-stays in `Unfinished.md` — those ride on whatever transport wins here.
+stays in `Unfinished.md`: those ride on whatever transport wins here.
 
 Status words used below: **shipped** (in the package), **built** (in the code, unreleased),
 **proposed** (designed, not started), **postponed** (designed, deliberately not built),
@@ -56,7 +56,7 @@ designing; every failed idea so far died on one of these.
 | ring root | 0.4230 |
 | hole root | 0.4130 |
 
-The tracker belongs to whatever ENTERS a socket — a prop or the other person — so it can never
+The tracker belongs to whatever ENTERS a socket, a prop or the other person, so it can never
 be counted at build time and one slot is always spoken for. Two lit sockets plus a tracker is
 five lights for four slots, and the casualty is always the lowest range: the hole root. That is
 the bug that presented as "holes broken, rings fine". **The light path carries exactly one
@@ -69,25 +69,25 @@ company. Raliv's tolerance is 0.005, toy mods 0.001; the +0.003 offset keeps DPS
 mods deliberately.
 
 **Contacts: 4096 registrations and 512 overlapping pairs, instance-wide.** Broadphase is brute
-force but Burst — volume count is not the cost. Previous pairs re-add FIRST, so an interaction
+force but Burst: volume count is not the cost. Previous pairs re-add FIRST, so an interaction
 is sticky once started and may silently never start in a saturated instance. Rejections on tags
 and owner flags happen before a pair is written: **tags are the lever on the 512.**
 
 **Contacts are wearer-only.** The wearer computes; anything remote viewers must see has to be a
 synced parameter. Six floats is ~6% of the 3200-bit cap.
 
-**Penetration space depends on the receiver's shape.** Box: local, oriented, normalised — the
+**Penetration space depends on the receiver's shape.** Box: local, oriented, normalised: the
 right one, and the default when no Collider sits on the trigger's object. Sphere: WORLD axes, no
-rotation — unusable on anything that turns. A stray Collider silently changes the shape.
+rotation: unusable on anything that turns. A stray Collider silently changes the shape.
 
-**Prop writes are the toucher's job — tested, works.** `HasProbableAuthorityToApplySync` has
+**Prop writes are the toucher's job: tested, works.** `HasProbableAuthorityToApplySync` has
 branches for prop senders, the world, and your OWN avatar, and none for another player's avatar.
 That is not a wall, it is the wearer-only rule extended to props: the toucher's client passes the
-own-avatar branch, applies the write, and the value networks to everyone from there — each client
+own-avatar branch, applies the write, and the value networks to everyone from there: each client
 handles only its own avatar's touches, so nothing double-writes. Proven in game 2026-08-22 with
 the same shared avatar on both wearers: the prop bent for the partner's sockets on both screens,
 partner on stable, spawner on beta. Consequence: a prop that ignores someone's sockets has an
-avatar-side problem — pointers missing, dark, or mistyped — never a client refusal.
+avatar-side problem, pointers missing, dark, or mistyped, never a client refusal.
 
 ---
 
@@ -95,17 +95,17 @@ avatar-side problem — pointers missing, dark, or mistyped — never a client r
 
 In the order they are worth doing, cheapest and least disruptive first.
 
-### 1. The lighthouse — SHIPPED in 4.3.0, without the constraint
+### 1. The lighthouse: SHIPPED in 4.3.0, without the constraint
 
 As first sketched: one marker pair per avatar instead of one per socket. Root and front lights ride a
 `ParentConstraint` with every socket as a source; animating the source weights snaps the pair
 onto whichever socket is active, tracking its bone. Legacy plugs see a completely standard DPS
-pair and cannot tell the difference — that is the point.
+pair and cannot tell the difference: that is the point.
 
 - Fixes eviction outright: two lights on the avatar, nothing to evict.
 - The socket menu becomes real: "active socket" moves the lighthouse, instead of Unity choosing
   by range.
-- One socket at a time for legacy readers — which is not a compromise, it is DPS's own ceiling,
+- One socket at a time for legacy readers, which is not a compromise, it is DPS's own ceiling,
   and the four-slot table above shows even two were never actually possible.
 - YAPS-to-YAPS can drive it automatically: plug's sender trips the socket's receiver, the synced
   parameter moves the lighthouse. Legacy props fall back to the menu.
@@ -113,23 +113,23 @@ pair and cannot tell the difference — that is the point.
 Built without `ParentConstraint`, which dissolved both open questions: a DISABLED light never
 enters Unity's ranking, so every socket keeps its own pair on its own bone and a selector layer
 enables exactly one. A "Marker lights" dropdown (Int, synced, 32 bits) moves it, starts on Off,
-and choosing a socket switches that socket on as well as lit — the dropdown is the one control an
+and choosing a socket switches that socket on as well as lit: the dropdown is the one control an
 old toy needs. One socket means no chooser. `YapsLighthouse.cs`, called by both the conversion and the tool.
 
-### 2. Light colour as data — demoted 2026-08-22
+### 2. Light colour as data: demoted 2026-08-22
 *Demoted the day the gate test passed: its consumer was YAPS light-readers, and contacts are now
-proven, so lights are legacy-only — and legacy plugs cannot read colour. Kept for the record.*
+proven, so lights are legacy-only, and legacy plugs cannot read colour. Kept for the record.*
 
 A vertex light hands the shader `unity_LightColor` beside position and range. The markers are
 black on purpose (zero INTENSITY kills a light, black does not), so three channels per light sit
 unused. Encode the socket's axis in the root light's colour and a YAPS-native socket needs ONE
-light, not two — three sockets in the light budget, or one socket plus the lighthouse pair.
+light, not two: three sockets in the light budget, or one socket plus the lighthouse pair.
 
 Strictly a YAPS-native lane: legacy plugs still need the pair, so this never replaces the
 lighthouse, it rides beside it. Open: whether upload filtering clamps colour or intensity, and
 how much precision survives the intensity multiply.
 
-### 3. Contacts, kept and hardened — built
+### 3. Contacts, kept and hardened: built
 
 The native tier already works avatar-to-avatar and is the most information-dense channel
 available without scripting. What this plan changes is posture, not machinery:
@@ -139,7 +139,7 @@ available without scripting. What this plan changes is posture, not machinery:
 - Audit every receiver for the box/sphere trap: no Collider on trigger objects, ever.
 - Keep tags tight so rejected pairs stay off the 512.
 
-### 4. The GPU bridge: blit or camera, then a texture parser — PROPOSED, 2026-08-23
+### 4. The GPU bridge: blit or camera, then a texture parser: PROPOSED, 2026-08-23
 
 **A per-client compute channel that ends in component properties, with no scripting and no sync.**
 Found by asking why PlapPlapForAll works for everyone when contacts are wearer-only.
@@ -153,8 +153,8 @@ Found by asking why PlapPlapForAll works for everyone when contacts are wearer-o
   the avatar do not collide. No culling mask forced, no camera cap. A camera route also gets real
   scene geometry and per-object vertex lights, which a blit cannot see.
 - `CVRTexturePropertyParser` reads one pixel, one channel, remaps `minValue`..`maxValue`, and
-  writes it into a component. `CVRTexturePropertyParserTask` resolves the target by REFLECTION —
-  `GetField` then `GetProperty`, public instance only — so it reaches any public field or property.
+  writes it into a component. `CVRTexturePropertyParserTask` resolves the target by REFLECTION:
+  `GetField` then `GetProperty`, public instance only, so it reaches any public field or property.
 - `CVRShaderGlobals.SetGlobalTexture` publishes a RenderTexture globally, so a shader elsewhere on
   the avatar can sample the result without a parser at all.
 
@@ -166,7 +166,7 @@ Found by asking why PlapPlapForAll works for everyone when contacts are wearer-o
 a hard limit, not a gap in our reading.
 
 **So: sound is solved and costs nothing.** A socket's audio can be computed on every listener's own
-GPU and played locally — no synced parameter, no contact pair, no marker-light tolerance, nothing
+GPU and played locally: no synced parameter, no contact pair, no marker-light tolerance, nothing
 to install. That beats the addon route on every axis: PCS and Wholesome each ship their own contact
 receivers, which spend from the instance-wide 512-pair budget AND are forced local here, so their
 sounds are wearer-only on a converted avatar today. Ship the machinery, not the audio: we cannot
@@ -175,11 +175,11 @@ redistribute Noachi's or Dismay's clips.
 Untested: whether it survives an upload, and what a per-frame blit or camera actually costs. Steps
 are local Play mode, then upload, then a second client.
 
-### 5. The screen-space atlas — postponed, deliberately
+### 5. The screen-space atlas: postponed, deliberately
 
 Sockets render encoded quads into a reserved screen region; plugs sample it back through a named
 GrabPass. The only channel that dodges the light slots, the pair cap, the sync bits AND the
-authority gate, with no socket-count ceiling — and where SPS's atlas is double-wide-native and
+authority gate, with no socket-count ceiling, and where SPS's atlas is double-wide-native and
 dies under ChilloutVR's instancing, this one would be instanced-native from the first line.
 
 **SPIKED AND PROVEN IN GAME, 2026-08-27.** A writer quad stamping a known value into a fixed
@@ -254,13 +254,13 @@ mm worst case, which is what was measured.
 
 **That makes the case for cells stronger, for a different reason than assumed.** Precision trades
 directly against range, and the clamp shows range cannot be bought by growing the box. A **0.5 m
-cell gives 0.5 x 0.000488, about 0.24 mm** — five times finer than the contact channel — with
+cell gives 0.5 x 0.000488, about 0.24 mm**, five times finer than the contact channel, with
 range coming from HOW MANY cells exist rather than from how big one is. That is the argument for
 the spatial hash, measured rather than asserted.
 
 Also confirmed by construction: the payload has to come from the object's own matrix, since no
 script runs on someone else's avatar to set a material value. So **a socket marker for this can
-never be a skinned mesh** — Unity skins into world space and hands a SkinnedMeshRenderer identity,
+never be a skinned mesh**: Unity skins into world space and hands a SkinnedMeshRenderer identity,
 so a skinned marker cannot say where it is. Same fact as the channel decoding unrotated, from the
 other side.
 
@@ -313,14 +313,14 @@ compensates through `_TexelSize.y`; anything doing its own readback has to as we
       OWN SHADER rather than
       in C#                      not started, and the real work
 
-**Still unanswered before this could ship:** the per-frame cost. A named grab runs PER CAMERA —
-main view, each eye, the portrait, the CVR camera, every mirror — so the atlas has to be ONE grab
+**Still unanswered before this could ship:** the per-frame cost. A named grab runs PER CAMERA:
+main view, each eye, the portrait, the CVR camera, every mirror, so the atlas has to be ONE grab
 shared by everybody, never one per socket, or it scales catastrophically. That constraint is also
 why cell allocation matters: a shared atlas is the only affordable shape. And a viewer whose
 safety settings block custom shaders gets nothing from it, where marker lights survive that,
 because lights are components rather than shader work. So it is a third leg, not a replacement.
 
-### 6. Scripting — blocked
+### 6. Scripting: blocked
 
 The endgame: read any avatar's sockets whatever protocol they speak, no slots, no pairs, no
 bits. Access was requested and declined 2026-08-19 (world scripting is their focus). Everything
@@ -331,17 +331,17 @@ already script-first, contacts next, lights last.
 
 ## Order of work
 
-1. ~~Reserve the tracker's light slot~~ — **done**, `b82e9d0`.
-2. ~~The two-person authority-gate test~~ — done 2026-08-22, gate disproven: cross-avatar prop writes work, the toucher's client syncs them.
-3. ~~The socket rebuild~~ — **shipped in 4.3.0** (2026-08-23): corpus 385/386/387 clean, a tester's rebuilt mouth socket working with a DPS prop in game.
-4. ~~Lighthouse~~ — **built 2026-08-22** without the constraint: per-socket pairs, one enabled, dropdown selector.
-5. Light colour: shelved — its consumer was YAPS light-readers, and the gate test proved contacts trustworthy, so lights are legacy-only and legacy plugs cannot read colour. Revisit only if fallback pressure appears.
-6. ~~Corpus, with the two missing avatar classes added~~ — done: Fixture_DeformSocket and
+1. ~~Reserve the tracker's light slot~~: **done**, `b82e9d0`.
+2. ~~The two-person authority-gate test~~: done 2026-08-22, gate disproven: cross-avatar prop writes work, the toucher's client syncs them.
+3. ~~The socket rebuild~~: **shipped in 4.3.0** (2026-08-23): corpus 385/386/387 clean, a tester's rebuilt mouth socket working with a DPS prop in game.
+4. ~~Lighthouse~~: **built 2026-08-22** without the constraint: per-socket pairs, one enabled, dropdown selector.
+5. Light colour: shelved: its consumer was YAPS light-readers, and the gate test proved contacts trustworthy, so lights are legacy-only and legacy plugs cannot read colour. Revisit only if fallback pressure appears.
+6. ~~Corpus, with the two missing avatar classes added~~: done: Fixture_DeformSocket and
    Fixture_HeadTransplant are in the corpus and its baseline, and gated 4.3.0.
-7. ~~Spike the screen-space atlas~~ — **done 2026-08-27, and it works.** GrabPass survives a
+7. ~~Spike the screen-space atlas~~: **done 2026-08-27, and it works.** GrabPass survives a
    ChilloutVR avatar upload, cross-avatar, in mirrors. See candidate 5 for the measurements and
    for what is still unanswered: the per-camera cost, and cell allocation.
-8. The contact channel reaching a tool-built plug — **fixed in 4.4.0**. It had never worked in game
+8. The contact channel reaching a tool-built plug: **fixed in 4.4.0**. It had never worked in game
    for anybody on that path.
 
 ### Cost, measured in the editor 2026-08-27
@@ -459,7 +459,7 @@ Every question that could have killed it has an answer:
    individually, but a new per-socket cost where lights had none.
 3. **The resolver holds ONE socket.** `yaps_resolve.cginc` picks a single best candidate, and the
    atlas returns a NEIGHBOURHOOD. Spike 3 found two and threw one away. The feature wishlist in
-   `Unfinished.md` — a ring mid-shaft and a hole at the tip, portals, duplication — is exactly
+   `Unfinished.md`, a ring mid-shaft and a hole at the tip, portals, duplication, is exactly
    "stop discarding what the atlas already returns", so the transport and the features want the
    same change.
 
@@ -472,20 +472,20 @@ block beside the existing `YapsSocketDeform` call, imports it and reports. It to
 ships.
 
 Two things learned building it, both worth keeping. Anchor on the CALL, `YapsSocketDeform(yapsPosition`,
-never on the string `YapsSocketDeform(` — the DEFINITION matches first, spans two lines, and an
+never on the string `YapsSocketDeform(`: the DEFINITION matches first, spans two lines, and an
 insert lands in the middle of its parameter list. And read through `_YAPS_Bake`, a `Texture2D`
 already declared and already read with `.Load`: that is an unfiltered point read at integer
 coordinates, which is exactly what a one-pixel cell needs, since filtering would blend the
 neighbours that break it. The production version wants `.Load` on a `Texture2D`, not `tex2Dlod` on
 a `sampler2D`.
 
-**2. One renderer per socket costs nothing measurable** — already answered by the cost run. The
+**2. One renderer per socket costs nothing measurable**: already answered by the cost run. The
 "extra sockets" in that test were real renderers, one mesh each, and thirty-two measured the same
 as two. A socket gaining a mesh is a draw call it did not have, but it does not show.
 
 **3. The resolver still holds ONE socket.** That is the work, not a question. `yaps_resolve.cginc`
 picks a single best candidate; the atlas hands back a neighbourhood. Everything on the feature
-wishlist in `Unfinished.md` — a ring mid-shaft and a hole at the tip, portals, duplication — is
+wishlist in `Unfinished.md`, a ring mid-shaft and a hole at the tip, portals, duplication, is
 described there as needing "an ordered list of sockets with arc-length ranges", which is what the
 atlas already returns and the resolver currently discards.
 ### Spike 4, 2026-08-27: a plug and a socket, on the atlas alone
@@ -612,7 +612,7 @@ two correctly reported past the tip rather than lost.
   under what the spacing bound suggests.
 - Two sockets in one OCTANT is the last clash, and nothing here fixes it. It is also the
   genuinely ambiguous case.
-- ~~No socket KIND in the payload~~ — **built.** The facing pixel's alpha was carrying a
+- ~~No socket KIND in the payload~~: **built.** The facing pixel's alpha was carrying a
   second copy of the tag that nothing read, so it carries the kind instead: sixteen fit.
   A ring is turned to meet its approach; a HOLE keeps its sign and is dropped from the chain
   when approached from behind. The facing read moved into the gather with it, which costs one
@@ -621,8 +621,8 @@ two correctly reported past the tip rather than lost.
 - 343 headers a vertex at radius 3 has not been benchmarked. The tap harness exists.
 - ~~NONE OF IT HAS BEEN IN GAME.~~ **CLOSED 2026-09-03, all four steps of pass 1.** Spike 1
   had proved only that a named GrabPass survives a ChilloutVR upload and returns what another
-  avatar rendered. Everything since — the cell hash, the tag, the two homes, the octant
-  buckets, the additive alpha header, the level pyramid, the whole two-pass socket shader —
+  avatar rendered. Everything since: the cell hash, the tag, the two homes, the octant
+  buckets, the additive alpha header, the level pyramid, the whole two-pass socket shader:
   had only ever run in the editor. It all runs in game. See the pass 1 record below.
 - **Nothing is in the shipped shaders.** `yaps_resolve.cginc` still resolves ONE socket from
   lights and contacts. How the atlas coexists with those two, and what happens when only one
@@ -738,9 +738,9 @@ whole transport exists for and the one no editor test can show. Spike 1 proved a
 survives the round trip; this proves the addressed, hashed, bucketed, levelled version of it
 does, between two people, in a public instance.
 
-**Stereo needed nothing.** The reasoning in the plug shader's header — the patch is written
+**Stereo needed nothing.** The reasoning in the plug shader's header: the patch is written
 in clip space ignoring the eye, so both slices of the instanced array carry identical content
-and slice 0 is always right — held without a line changing. Same for the row order: the
+and slice 0 is always right: held without a line changing. Same for the row order: the
 platform default was correct in game and `_ForceRow` was never needed.
 
 **The mirror settles the per-camera question**, which is the one that killed marker lights as

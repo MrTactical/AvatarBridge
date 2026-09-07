@@ -77,7 +77,7 @@ namespace AvatarBridge
         // The YAPS tool's own chapter in the README, and its bug report:
         // the same issue tracker while the tool ships inside AvatarBridge,
         // with the environment blob saying which tool it came from.
-        public const string YapsHelp = Repo + "#yaps--penetration-that-works-in-chilloutvr";
+        public const string YapsHelp = Repo + "#yaps-penetration-that-works-in-chilloutvr";
 
         public static void OpenYapsBugReport()
         {
