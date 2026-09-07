@@ -240,7 +240,7 @@ namespace AvatarBridge
                 // builds its UI from the properties its shader declares and looks
                 // them up by name and index; handing it a subset makes it
                 // dereference something that is not there, and Poiyomi's threw on
-                // every repaint. Ours appearing in its panel is cosmetic; taking
+                // every repaint. The YAPS ones appearing in its panel is cosmetic; taking
                 // its editor down is not.
                 original.OnGUI(editor, properties);
             }

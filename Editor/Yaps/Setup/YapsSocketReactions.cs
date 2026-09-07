@@ -303,7 +303,7 @@ namespace AvatarBridge
 
         // The channel without the generated reaction layer: trigger plus
         // parameter, for rebuilt conversions where the reactions are the
-        // author's own layers and only the wire is ours. The trigger is a box
+        // author's own layers and only the wire is generated. The trigger is a box
         // behind the socket plane, one reach deep, read by Set From Position on
         // Z: 0 at the plane, 1 a reach in.
         public static string EnsureDepthChannel(YapsSocket socket, UnityEditor.Animations.AnimatorController controller,

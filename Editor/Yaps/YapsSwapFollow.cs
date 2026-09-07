@@ -49,7 +49,7 @@ namespace AvatarBridge.Yaps
         }
 
         // The one that does the work. Everything else here just decides which
-        // clips to hand it. `skipped` names clips that matched but are not ours
+        // clips to hand it. `skipped` names clips that matched but are not this tool's
         // to edit, so the caller can say so rather than leaving a plug that
         // half works.
         public static int RepointInClips(IEnumerable<AnimationClip> clips, string path,
@@ -69,7 +69,7 @@ namespace AvatarBridge.Yaps
                 {
                     continue;
                 }
-                // NEVER a clip we do not own. A clip under Packages, or the CCK's,
+                // NEVER a clip this tool does not own. A clip under Packages, or the CCK's,
                 // is shared with every project that has it: editing in place
                 // reaches the package file itself. The native path walks the
                 // user's LIVE controllers, so this is not hypothetical the way it

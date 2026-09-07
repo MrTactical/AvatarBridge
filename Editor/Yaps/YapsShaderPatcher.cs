@@ -167,7 +167,7 @@ namespace AvatarBridge
         //
         // Poiyomi strips a shader from the BUILD when it carries Thry's two
         // marker properties and is not named "Hidden/Locked/...", reading that
-        // as an unlocked uber-shader. Our patch of a Poiyomi material inherits
+        // as an unlocked uber-shader. A patch of a Poiyomi material inherits
         // both markers, so under any other name it is excluded from the bundle
         // and the avatar uploads PINK: correct in the editor, missing in game,
         // which is the worst failure this tool can produce.
@@ -178,7 +178,7 @@ namespace AvatarBridge
         // The name does a second job. Auto-lock-on-upload takes every material
         // whose shader uses the optimizer and is not already locked, and its
         // test for "already locked" is this exact prefix. Swept into a lock,
-        // OUR properties resolve to constants, and those are the ones animation
+        // THESE properties resolve to constants, and those are the ones animation
         // drives, so the deform would freeze at whatever the material held.
         //
         // Hence BOTH markers, not just the editor's: the sweep keys on
@@ -344,7 +344,7 @@ namespace AvatarBridge
                 shaderFile.Text = shaderFile.Text.Remove(existing.Index, existing.Length);
             }
 
-            // The marker properties, into the Properties block beside ours.
+            // The marker properties, into the Properties block beside the YAPS ones.
             var properties = Regex.Match(shaderFile.Text, @"Properties\s*\{");
             if (properties.Success)
             {
@@ -411,7 +411,7 @@ namespace AvatarBridge
                 {
                     // A shadow caster is allowed to be out of reach. Unity's own
                     // vertShadowCaster lives in its CGIncludes, not in the shader's source
-                    // unit, so there is nothing of ours to edit. The shadow is cosmetic,
+                    // unit, so there is nothing here to edit. The shadow is cosmetic,
                     // the deform is the feature.
                     if (IsShadowCasterPass(shaderFile.Text, block.Index))
                     {

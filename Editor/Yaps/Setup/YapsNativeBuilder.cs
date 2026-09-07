@@ -119,10 +119,10 @@ namespace AvatarBridge
             if (shader == null) { o.Message = "could not patch the shader: " + refusal; return o; }
 
             // A material THIS toolkit generated is never an original, even when it
-            // looks like one. Remove's fallback puts the source shader back on our
+            // looks like one. Remove's fallback puts the source shader back on the
             // clone and leaves it in the slot, so the next bake sees no _YAPS_Bake
             // and clones it again, burying the real original one level deeper every
-            // round. Re-patch ours in place.
+            // round. Re-patch it in place.
             bool oursAlready = IsGenerated(source);
             if (oursAlready && !source.HasProperty("_YAPS_Bake"))
             {
@@ -748,7 +748,7 @@ namespace AvatarBridge
             Material material;
             if (source.HasProperty("_YAPS_Bake"))
             {
-                // Ours to refresh: a socket's own material, baked before.
+                // Generated here already: a socket's own material, baked before.
                 material = source;
                 // Refresh the SHADER too when the tool has moved on since this was
                 // patched. A material keeps its values across a shader swap, and a
@@ -930,7 +930,7 @@ namespace AvatarBridge
                 Material target;
                 if (IsGenerated(was) && !was.HasProperty("_YAPS_Bake"))
                 {
-                    // Ours, with its shader reverted by a previous Remove.
+                    // Generated here, with its shader reverted by a previous Remove.
                     // Re-patch in place rather than cloning a clone.
                     var again = YapsShaderPatcher.Patch(was, dir, report, out _, out _);
                     if (again != null)
@@ -944,7 +944,7 @@ namespace AvatarBridge
                 }
                 if (was.HasProperty("_YAPS_Bake"))
                 {
-                    // Ours already, from an earlier bake: refresh it, and do NOT record it
+                    // Generated already, from an earlier bake: refresh it, and do NOT record it
                     // as the slot's original. Recording it makes Remove put a patched
                     // material back and call that a restore.
                     target = was;
@@ -958,7 +958,7 @@ namespace AvatarBridge
                     var shader = YapsShaderPatcher.Patch(was, dir, report, out string refusal, out _);
                     if (shader == null)
                     {
-                        // Leave a material we cannot patch alone and say so:
+                        // Leave a material that cannot be patched alone and say so:
                         // silently skipping it is what produces a tear nobody
                         // can account for.
                         report?.Warning("YAPS", $"\"{was.name}\" keeps its own shader",
@@ -1067,7 +1067,7 @@ namespace AvatarBridge
                 var slots = SlotsWeightedTo(skin, plug.rootBone);
                 if (slots.Count == 0) continue;
 
-                // A mesh with a plug of its own is not ours to take. Both would bake
+                // A mesh with a plug of its own is not this plug's to take. Both would bake
                 // the same material and whichever ran last would win, so which frame
                 // the mesh wore depended on hierarchy order: it bent with the body
                 // until the second bake, then snapped to its own. A component is the

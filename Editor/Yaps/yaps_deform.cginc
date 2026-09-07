@@ -453,7 +453,7 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     // marker light reads exactly like a working contact channel.
     //
     // It cannot be a colour. The patcher edits a host shader's VERTEX
-    // stage and nothing else, so there is no fragment of ours to paint in.
+    // stage and nothing else, so there is no fragment left to paint in.
     // Every host shader shares where the vertices go, so the answer is
     // given as LENGTH:
     //

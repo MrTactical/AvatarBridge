@@ -263,7 +263,7 @@ int YapsClassifyLight(uint slot, float3 plugOrigin)
 
     int digit = (int) round(fmod(range, 0.1) * 100.0);
 
-    // Ours first: the two digits legacy never claimed.
+    // YAPS first: the two digits legacy never claimed.
     if (digit == 7) return YAPS_LIGHT_ROOT;
     if (digit == 0) return YAPS_LIGHT_FRONT;
 

@@ -197,7 +197,7 @@ namespace AvatarBridge
                     Pass("Report animated PhysBone properties",
                          PhysBoneConverter.ReportAnimatedPhysBoneProperties, PassTraits.EditsClips),
                     // The atlas objects went early; their curves go here,
-                    // once the clips are ours. Before the rename so its
+                    // once the clips are the conversion's own. Before the rename so its
                     // dead-path sweep judges a clean set.
                     Pass("Strip screen-atlas curves", YapsConverter.StripAtlasCurves,
                          PassTraits.EditsClips),

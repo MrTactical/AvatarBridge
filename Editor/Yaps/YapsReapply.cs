@@ -47,7 +47,7 @@ namespace AvatarBridge
             foreach (var material in materials)
             {
                 string folder = Path.GetDirectoryName(AssetDatabase.GetAssetPath(material))?.Replace('\\', '/');
-                // A material inside a package is not ours to write beside.
+                // A material inside a package is not the toolkit's to write beside.
                 if (folder != null && !folder.StartsWith("Assets/", System.StringComparison.OrdinalIgnoreCase))
                 {
                     refusals.Add($"{material.name}: lives in {folder}, which is not in Assets; move it first");

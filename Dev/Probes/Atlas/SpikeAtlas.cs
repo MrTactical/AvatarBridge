@@ -10,7 +10,7 @@
 // world position this way: no light slots, no contact pairs, no sync bits,
 // and nothing a viewer can switch off short of blocking the shader.
 //
-// Play Mode proves OUR half. Whether ChilloutVR's asset filter keeps a
+// Play Mode proves this half. Whether ChilloutVR's asset filter keeps a
 // GrabPass through an upload is a separate question and only an upload can
 // answer it.
 using System.Linq;
@@ -165,7 +165,7 @@ public class SpikeAtlas : EditorWindow
             if (t == root.transform) continue;
             // Big enough that frustum culling never drops it, small enough
             // that a FAILED shader is a patch rather than a wall: the error
-            // shader ignores our vertex maths and draws the real geometry,
+            // shader ignores the spike's vertex maths and draws the real geometry,
             // and at 100 units that filled the whole view with magenta.
             t.localScale = Vector3.one * 2f;
         }
@@ -241,7 +241,7 @@ public class SpikeAtlas : EditorWindow
         layer.defaultWeight = 1f;
         ac.layers = layers;
 
-        // AddLayer embeds the state machine in the asset for us. Building one
+        // AddLayer embeds the state machine in the asset. Building one
         // by hand and assigning it serializes as a layer with no states.
         var sm = layer.stateMachine;
         var sOff = sm.AddState("Off");

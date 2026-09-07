@@ -79,8 +79,8 @@ namespace AvatarBridge
             var collisions = new List<string>();
             foreach (var p in source.parameters)
             {
-                // The template's menu parameter is called "Input"; ours is renamed; see the
-                // HeightParam comment for the 250%-slider story that forced it.
+                // The template's menu parameter is called "Input"; the injected
+                // one is renamed. See the HeightParam comment for why.
                 string targetName = p.name == TemplateParam ? HeightParam : p.name;
                 if (have.Add(targetName))
                 {

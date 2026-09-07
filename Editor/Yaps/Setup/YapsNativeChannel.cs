@@ -170,7 +170,7 @@ namespace AvatarBridge
 
         // What a previous build wired, and nothing else. Drivers are only
         // taken when everything they carry is the channel's own: an avatar
-        // may have drivers of its own and they are not ours to delete.
+        // may have drivers of its own, which are not the toolkit's to delete.
         static void Clear(CVRAvatar avatar, AnimatorController controller)
         {
             foreach (var t in avatar.GetComponentsInChildren<Transform>(true).ToList())

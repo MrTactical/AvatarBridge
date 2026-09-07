@@ -252,7 +252,7 @@ namespace AvatarBridge
         {
             if (target == null || avatar == null) return null;
             var settings = avatar.avatarSettings != null ? avatar.avatarSettings.settings : null;
-            // Ours by what it SWITCHES, never by what it is called: the
+            // The toolkit's by what it SWITCHES, never by what it is called: the
             // label follows the bone, so renaming the bone or moving the
             // socket renames the entry, and matching on the name would add
             // a second one instead of renaming the first.
@@ -321,7 +321,7 @@ namespace AvatarBridge
         // in game. In edit mode no animator ran and the baked 1 stood, which is
         // why it looked like the deform itself had broken.
         //
-        // Ours are skipped: a generated clip is this toggle's own, and finding
+        // Generated clips are skipped: one is this toggle's own, and finding
         // it would make the toggle stand down for itself.
         static string DrivenByOwnClip(CVRAvatar avatar, string plugPath)
         {
@@ -351,7 +351,7 @@ namespace AvatarBridge
         {
             if (plug == null || avatar == null || material == null || plug.Target == null) return null;
             var settings = avatar.avatarSettings != null ? avatar.avatarSettings.settings : null;
-            // Ours by the clip it plays, not by its name: the label follows
+            // The toolkit's by the clip it plays, not by its name: the label follows
             // the bone and may have moved since the last build.
             string plugPath = AnimationUtility.CalculateTransformPath(plug.Target.transform, avatar.transform);
             var ours = settings?.FirstOrDefault(e => e != null

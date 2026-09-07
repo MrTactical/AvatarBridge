@@ -871,7 +871,7 @@ namespace AvatarBridge
         }
 
         // The naming tables are compile-time constants, so anything this
-        // finds is OUR bug and not the avatar's. It is reported anyway rather
+        // finds is this tool's bug and not the avatar's. It is reported anyway rather
         // than only logged: a user whose conversion is wrong because of it
         // deserves the reason in the same file as everything else.
         //

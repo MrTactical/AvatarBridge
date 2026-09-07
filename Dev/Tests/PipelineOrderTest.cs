@@ -54,7 +54,7 @@ namespace AvatarBridge.Regression
             };
             fail += Check("correct ordering is accepted", BridgePipeline.Validate(good) == null);
 
-            // An editor with nothing to make the clips ours is just as wrong.
+            // An editor with nothing to take the clips over is just as wrong.
             var orphan = new List<BridgePass> { P("Constraints", PassTraits.EditsClips) };
             fail += Check("clip editor with no self-containment at all is REJECTED",
                 BridgePipeline.Validate(orphan) != null);

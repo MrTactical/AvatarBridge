@@ -5,7 +5,7 @@
 //   Tools > YAPS > Atlas: Poiyomi headroom
 //
 // Every atlas spike so far used a clean twenty-line shader. A real plug wears
-// somebody's Poiyomi, already patched by us, already doing vertex work, and
+// somebody's Poiyomi, already patched, already doing vertex work, and
 // compiled across Poiyomi's own variants. Adding a hash and twenty-seven
 // texture reads to THAT is a different proposition: instruction counts,
 // register pressure, and interpolator budget are all unknown.

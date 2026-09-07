@@ -137,7 +137,7 @@ namespace AvatarBridge
 
         static void CarryDpsSocket(Material s, Material t, List<Carried> carried, List<string> unmapped)
         {
-            // DPS depths are metres past the socket, ours fractions of a
+            // DPS depths are metres past the socket, YAPS fractions of a
             // plug a socket cannot know. Carried against a 0.3 m
             // reference, which keeps the order and the proportions.
             const float reference = 0.3f;

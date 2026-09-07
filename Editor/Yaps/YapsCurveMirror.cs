@@ -120,7 +120,7 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                // The bone this clip scales, if any of ours.
+                // The bone this clip scales, if it is one of the plug's.
                 Transform bone = null;
                 string bonePath = null;
                 var bindings = AnimationUtility.GetCurveBindings(clip);

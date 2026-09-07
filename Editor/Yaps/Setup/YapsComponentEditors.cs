@@ -281,7 +281,7 @@ namespace AvatarBridge
                 // socket that is no longer there.
                 var socket = existing.GetComponent<YapsSocket>();
                 if (socket != null) Set(socket, false, spawnPlugIfNone: false);
-                // Set destroys OUR preview socket itself, so by here it is usually
+                // Set destroys the preview socket itself, so by here it is usually
                 // gone. Handing Unity a destroyed object throws ArgumentNullException
                 // on objectToUndo. The null check is Unity's overloaded ==, which
                 // reports a destroyed object as null, which is what is wanted.
@@ -308,7 +308,7 @@ namespace AvatarBridge
             if (!on) { Remove(); YapsShapeSim.Release(socket); }
             socket.PreviewTick();
             Animate(on);
-            // A socket WE dropped exists only to be previewed against, so
+            // A socket the toolkit dropped exists only to be previewed against, so
             // switching its preview off is asking for it to go rather than
             // to sit there inert. Last, because PreviewTick above still
             // needs it alive to write the cleared flags back.

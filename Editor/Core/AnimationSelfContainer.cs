@@ -22,7 +22,7 @@ namespace AvatarBridge
     //
     // Two deliberate exclusions: the CCK's own assets (uploading requires the CCK installed,
     // so they are guaranteed present in any project that can upload), and anything already in
-    // the output folder (ours, travels with the conversion).
+    // the output folder (generated, travels with the conversion).
     public static class AnimationSelfContainer
     {
         const string Category = "Animator";
@@ -161,7 +161,7 @@ namespace AvatarBridge
             if (motion is BlendTree tree)
             {
                 // A tree owned by some other asset can't be edited in place; that would
-                // reach into somebody else's controller. Clone it into ours first.
+                // reach into somebody else's controller. Clone it first.
                 string treePath = AssetDatabase.GetAssetPath(tree);
                 var sourceTree = tree;
                 bool ours = treePath == controllerPath;

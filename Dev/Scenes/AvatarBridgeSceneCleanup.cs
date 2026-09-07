@@ -108,7 +108,7 @@ namespace AvatarBridge.Regression
                         // Only re-activate where a conversion is demonstrably why it was switched
                         // off; i.e. this scene HAD a leftover. Turning every descriptor on
                         // unconditionally would override deliberate choices in scenes holding
-                        // several avatars, and that is the user's call, not ours.
+                        // several avatars, and that is the user's call.
                         foreach (var root in scene.GetRootGameObjects())
                         {
                             foreach (var d in root.GetComponentsInChildren<VRCAvatarDescriptor>(true))
