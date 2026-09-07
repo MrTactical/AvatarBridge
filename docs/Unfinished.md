@@ -65,6 +65,11 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    silhouette, which reads as colour going wrong while the shape stays right. **Unproven**: ask
    the user to turn Early Z and the outline off and reupload, or reproduce it locally against the
    Poiyomi 9.3 in `Fixing The Flexing` with MockHMD.
+
+   **Waiting on a live case, decided 2026-09-07.** Neither route is worth building a repro for
+   before 4.5.0 goes out: the reporter is one avatar and the hypothesis needs a headset on a real
+   upload. Watch for it in the reports after the release and take the next one that shows it,
+   with the Poiyomi version and whether Early Z and the outline are on.
 6. **The atlas is proven in game and nothing of it is in the shipped shaders.** Pass 1 passed all
    four steps 2026-09-03 (`YAPS5.md`). `yaps_resolve.cginc` still resolves ONE socket from lights
    and contacts. How the three coexist, and what a pair sees when only one side has the atlas, is
