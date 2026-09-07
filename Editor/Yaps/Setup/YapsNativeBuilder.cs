@@ -181,7 +181,8 @@ namespace AvatarBridge
             //
             // The wearer's own sockets are permanently in reach and permanently
             // nearest, so a plug that does not skip them never looks at anybody
-            // else's.
+            // else's. The atlas skips them only past engagement onset now, so
+            // the flag still decides whether ownership is asked about at all.
             var ownAvatar = plug.GetComponentInParent<CVRAvatar>(true);
             bool ownSockets = ownAvatar != null
                               && ownAvatar.GetComponentsInChildren<YapsSocket>(true).Length > 0;

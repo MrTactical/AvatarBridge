@@ -350,6 +350,64 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    colour, so an occupied cell paints a few pixels near the corner of the screen. Count follows
    socket count, not grid, so it does not grow. A user will report it as a rendering bug.
 
+## The atlas carrying own-body sockets, spiked 2026-09-07
+
+*Status: on the `atlas-own-body` branch, NOT on `dev`, and untested in game.*
+
+**Why this was opened.** The contact channel is the only part of YAPS that spends sync bits, and
+`YapsChannel.cs:130` says plainly what they buy: the value goes "straight into a synced parameter
+so other people see it too". Since 4.5.0 the atlas serves other people, for nothing. If the atlas
+could also carry the wearer's own sockets, the channel could become a `#` local, which costs no
+bits at all, and the whole bill would go away.
+
+**What the atlas already has.** Everything the channel carries: position, facing, kind, the tag,
+and an engagement derived from distance (`chain.engaged`, `yaps_resolve.cginc:522`). Nothing new
+would have to be published. The exclusion was one line.
+
+**The change on the branch.** Own-body sockets are dropped only past engagement onset:
+
+```
+if (_YAPS_SelfTag >= 0 && d > len * YAPS_ATLAS_REACH && YapsSameBodyAt(root, at)) continue;
+```
+
+Outside that range a socket on this body is not one the shaft is entering, it is the body the
+shaft grows from, and dropping it keeps other people reachable. Inside it, being nearest is
+correct rather than a monopoly. The distance test also now short-circuits the ownership scan,
+which walks up to 255 players, so the near case got cheaper.
+
+**The enabling probe: `Dev/Probes/Atlas/YapsFakePlayers.cs`.** The ownership test reads
+`_CVR_PlayerHipPositions` and `CVRGlobalParams1`, which the client writes and which are ZERO in
+the editor. So `YapsSameBodyAt` has always taken its "claim nothing" exit here and no socket was
+ever rejected: every own-body path behaved in the editor the way it behaves for a lone prop, and
+the only way to see the real behaviour was to upload. The component publishes fake hips, one per
+listed transform, at the 255 the shader declares. This is worth keeping whatever happens to the
+rule.
+
+**What is proven**: it compiles, and the reasoning above.
+**What is not**: anything about the result. Wanted, in order:
+
+1. Play mode with fake players, one hip on the wearer: the plug still refuses a distant own-body
+   socket and still finds another body's.
+2. Play mode, own socket brought inside engagement range: the plug takes it.
+3. Both at once, which is the whole question. A wearer's own socket near the plug and somebody
+   else's further off, and whether the chain holds both.
+4. In game, where the hips are real.
+
+**Do not ship it before 3 and 4.** The failure it risks is a plug bending into its own wearer,
+which is the exact thing the ownership test exists to prevent.
+
+**Then, and only then, the payoff:** rename the channel's parameters to `#` locals and measure
+what the sync tally drops to. That is a separate change and must not ride along with this one.
+
+**Also parked here: allow and deny per socket.** A socket that publishes nothing is unresolvable,
+which is the cleanest possible deny, and half the machinery exists already as the tag filter
+(`_YAPS_TagInclude` / `_YAPS_TagExclude`, and the atlas reader checks the tag too). The catch is
+that it has to be SYNCED, or a viewer would not know a socket was denied and would resolve it off
+their own atlas anyway. One synced int as a bitmask covers 32 sockets in 32 bits, which is
+nothing against the 3200-bit budget. Unstarted.
+
+---
+
 ## Two reports from the field, 2026-09-07
 
 ### One cloth per PhysBone, 94 of them on one avatar (issue #7)

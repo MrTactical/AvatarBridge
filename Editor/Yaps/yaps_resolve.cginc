@@ -17,8 +17,9 @@
 //      10 Hz, so it carries a near-static offset.
 //   2. Protocol lights, refining at contact range. Free, and bounded
 //      close deliberately: the per-camera problem only shows at distance.
-//   3. The screen atlas, for a socket on somebody else's avatar. Carries
-//      its own facing and kind, so it is taken outright.
+//   3. The screen atlas. Any socket the camera drew, on somebody else's
+//      avatar or, once it is close enough to be engaged, the wearer's own.
+//      Carries its own facing and kind, so it is taken outright.
 //
 #ifndef YAPS_RESOLVE_INCLUDED
 #define YAPS_RESOLVE_INCLUDED
@@ -445,18 +446,26 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
                 // before the deform ever saw it. Range is what rejects.
                 if (d > far) continue;
 
-                // OWN BODY, the same question the lights ask. The atlas is
-                // the transport for OTHER PEOPLE's sockets, and a wearer's
-                // own is permanently nearest, so without this it takes link
-                // 0 for ever and nobody else is ever seen.
+                // OWN BODY, the same question the lights ask, but asked
+                // only of a socket too far away to be engaged.
                 //
-                // Nothing is lost. A wearer's own sockets already reach
-                // this plug through the channel, exactly and locally.
+                // A wearer's own socket is permanently in reach and
+                // permanently nearest, so admitting it unconditionally
+                // takes link 0 for ever and nobody else is ever seen. The
+                // range test is what stops that: past engagement onset a
+                // socket on this body is not one the shaft is entering, it
+                // is just the body the shaft grows from, and it is dropped.
+                // Inside that range it is admitted, and being nearest is
+                // then correct rather than a monopoly.
+                //
+                // The distance test comes first for its own sake as well:
+                // the ownership scan walks up to 255 players, and this way
+                // it runs only for a socket far enough away to be in doubt.
                 //
                 // Tested here rather than after the sort, so a rejected
-                // entry leaves no hole in the list. The scan inside is over
-                // players, not taps, and only for a socket past range.
-                if (_YAPS_SelfTag >= 0 && YapsSameBodyAt(root, at)) continue;
+                // entry leaves no hole in the list.
+                if (_YAPS_SelfTag >= 0 && d > len * YAPS_ATLAS_REACH
+                    && YapsSameBodyAt(root, at)) continue;
 
                 // Insertion sort, nearest first. THE ORDER IS THE PATH:
                 // socket one is the one the shaft meets first.
