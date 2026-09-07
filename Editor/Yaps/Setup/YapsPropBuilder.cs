@@ -368,13 +368,12 @@ namespace AvatarBridge
             }
 
             var engage = Host("E").AddComponent<CVRSpawnableTrigger>();
-            // FULL size. Halved here on the same belief the avatar side
-            // carried, that a distance-only trigger becomes a sphere whose
-            // radius is areaSize.x. The client has no sphere case: it takes
-            // boxSize from areaSize whole. Fixed for avatars in 53e293c and
-            // this path was never revisited, so a prop's engagement volume
-            // was half what it should be while its axis triggers below were
-            // always full, exactly the mismatch avatars had.
+            // FULL size. Halved here on the same belief the avatar side carried,
+            // that a distance-only trigger becomes a sphere whose radius is
+            // areaSize.x. The client has no sphere case: it takes boxSize from
+            // areaSize whole. Fixed for avatars first, and this path was never
+            // revisited, so a prop's engagement volume was half what it should be
+            // while its axis triggers below were always full.
             engage.areaSize = box;
             engage.useAdvancedTrigger = true;
             engage.allowedTypes = SocketTypes;
@@ -427,12 +426,11 @@ namespace AvatarBridge
                     updateMethod = CVRSpawnableTriggerTaskStay.UpdateMethod.SetFromPosition,
                     minValue = 0f, maxValue = 1f,
                 });
-                // Let go on the way out, to the FAR edge. A stay task with no
-                // exit keeps its last reading, taken at the edge of the box,
-                // and the next socket to arrive snaps the plug toward
-                // wherever the previous one left. One is a whole extent out,
-                // past where engagement fades; the middle would be the plug's
-                // own base, which is the strongest bend there is.
+                // Let go on the way out, to the FAR edge. A stay task with no exit
+                // keeps its last reading, taken at the edge of the box, and the next
+                // socket to arrive snaps the plug toward wherever the previous one
+                // left. One is a whole extent out, past where engagement fades; the
+                // middle would be the plug's own base, the strongest bend there is.
                 axis.exitTasks.Add(new CVRSpawnableTriggerTask
                 {
                     settingIndex = slot[name], settingValue = 1f,

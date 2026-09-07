@@ -13,18 +13,16 @@ namespace AvatarBridge
 {
     public static class YapsAtlas
     {
-        // ON. It was off while nothing read the atlas, because writing costs
-        // a handful of tiny draws per socket and a grab is a full screen copy
-        // per camera with mirrors getting their own, so publishing to a
-        // screen nobody reads charges the whole room for nothing. The
-        // resolver reads it now, on both builders.
+        // ON. It was off while nothing read the atlas, because writing costs a
+        // handful of tiny draws per socket and a grab is a full screen copy per
+        // camera with mirrors getting their own, so publishing to a screen
+        // nobody reads charges the whole room for nothing. The resolver reads
+        // it now, on both builders.
         //
         // Still unproven in ChilloutVR: what it costs in a crowded instance,
-        // how it behaves in mirrors and in VR, and whether a viewer with
-        // custom shaders blocked sees anything at all. That is Phase B, and
-        // this switch is what makes Phase B possible to run rather than a
-        // claim that it is finished. It also paints: the payload is colour,
-        // so an occupied cell puts a few pixels on screen.
+        // how it behaves in mirrors and in VR, and whether a viewer with custom
+        // shaders blocked sees anything at all. It also paints: the payload is
+        // colour, so an occupied cell puts a few pixels on screen.
         public const bool Enabled = true;
 
         // Must match YAPS_ATLAS_LEVELS in yaps_atlas.cginc. Only the mesh
@@ -138,20 +136,18 @@ namespace AvatarBridge
 
         // One unit quad per (level, home), flagged by z. The writer reads that
         // flag to decide which level it is publishing to and which of the
-        // cell's two homes it is filling. Two homes because a socket that
-        // loses a slot clash is still readable from the other one.
+        // cell's two homes it is filling. Two homes because a socket that loses
+        // a slot clash is still readable from the other one.
         //
-        // The shader ignores this object's transform and writes clip space,
-        // so the quads themselves are never seen. The matrix is the payload.
+        // The shader ignores this object's transform and writes clip space, so
+        // the quads themselves are never seen. The matrix is the payload.
         //
-        // EVERY POSITION IS ZERO and the corner lives in UV0 instead, which
-        // is what keeps that true for a viewer who has custom shaders turned
-        // off. ChilloutVR replaces the shader then, not the mesh, and the
-        // replacement reads POSITION the ordinary way: corners in POSITION
-        // drew these as metre-wide grey slabs hanging off the avatar, big
-        // enough to fill the view. A degenerate triangle rasterises nothing
-        // under any shader, so the mesh can no longer be drawn by a shader
-        // that does not understand it.
+        // EVERY POSITION IS ZERO and the corner lives in UV0 instead, which is
+        // what keeps that true for a viewer who has custom shaders turned off.
+        // ChilloutVR replaces the shader then, not the mesh, and the
+        // replacement reads POSITION the ordinary way: corners in POSITION drew
+        // these as metre-wide grey slabs hanging off the avatar. A degenerate
+        // triangle rasterises nothing under any shader.
         static Mesh LevelQuads()
         {
             string path = Folder + "/YAPS Atlas Quads.asset";
@@ -212,12 +208,11 @@ namespace AvatarBridge
             return Save(mesh, path, have != null);
         }
 
-        // One degenerate triangle. The grab pass writes no colour and no
-        // depth, so the draw exists only to make the grab run, and a grab
-        // runs because the pass is rendered rather than because it covers a
-        // pixel. It used to be a millimetre across, which was already too
-        // small to notice under a replacement shader, but zero is the same
-        // answer without depending on how far away somebody stands.
+        // One degenerate triangle. The grab pass writes no colour and no depth,
+        // so the draw exists only to make the grab run, and a grab runs because
+        // the pass is rendered rather than because it covers a pixel. It used
+        // to be a millimetre across; zero is the same answer without depending
+        // on how far away somebody stands.
         static Mesh GrabTriangle()
         {
             string path = Folder + "/YAPS Atlas Grab.asset";
