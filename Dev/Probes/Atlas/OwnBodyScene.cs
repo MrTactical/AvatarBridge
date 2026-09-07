@@ -5,11 +5,10 @@
 // yaps_resolve.cginc, and testing a copy proves nothing about the original.
 // The instrument has to be a real patched plug on a real avatar.
 //
-// What this does is the part that is easy to get wrong by hand: every avatar
-// in the scene gets a hip published, including the wearer's own, because a
-// wearer with no hip of their own reads as somebody else and the ownership
-// test never fires. Then it reads back the flags that decide whether the test
-// runs at all, so a null result is not mistaken for a passing one.
+// The hips themselves come from YapsFakePlayers, which needs nothing in the
+// scene. This reads back the three things that decide whether the test runs at
+// all: two bodies, the fake hips switched on, and the two material flags. Each
+// of them fails by rejecting nothing, which reads exactly like a pass.
 //
 //   Tools/YAPS/Own-body test: wire fake players
 #if CVR_CCK_EXISTS && UNITY_EDITOR
@@ -24,8 +23,6 @@ namespace AvatarBridge.Regression
 {
     public static class OwnBodyScene
     {
-        const string HolderName = "YAPS Fake Players";
-
         [MenuItem("Tools/YAPS/Own-body test: wire fake players")]
         static void Wire()
         {
@@ -37,13 +34,15 @@ namespace AvatarBridge.Regression
                 return;
             }
 
-            var holder = GameObject.Find(HolderName) ?? new GameObject(HolderName);
-            Undo.RegisterCreatedObjectUndo(holder, "Wire fake players");
-            var fake = holder.GetComponent<YapsFakePlayers>() ?? holder.AddComponent<YapsFakePlayers>();
-            fake.hips = avatars.Select(HipOf).Where(h => h != null).ToList();
+            int hips = avatars.Count(a => YapsFakePlayers.HipOf(a) != null);
 
             var report = new StringBuilder();
-            report.AppendLine($"OWN-BODY: {fake.hips.Count} hip(s) published, one per avatar.");
+            report.AppendLine($"OWN-BODY: {hips} hip(s) available, one per avatar.");
+            report.AppendLine(YapsFakePlayers.On
+                ? "  Fake players are ON, so the ownership test runs."
+                : "  Fake players are OFF. Turn them on: Tools/YAPS/Fake CVR player hips. " +
+                  "Until then the hips are zero, YapsSameBodyAt claims nothing, and NO socket " +
+                  "is rejected: the test would pass without running.");
             if (avatars.Length < 2)
             {
                 report.AppendLine("  ONLY ONE BODY. The ownership test needs a second: duplicate the " +
@@ -54,7 +53,8 @@ namespace AvatarBridge.Regression
             foreach (var avatar in avatars)
             {
                 report.AppendLine($"  {avatar.name}");
-                report.AppendLine($"    hip: {(HipOf(avatar) != null ? HipOf(avatar).name : "NONE, using nothing")}");
+                var hip = YapsFakePlayers.HipOf(avatar);
+                report.AppendLine($"    hip: {(hip != null ? hip.name : "NONE")}");
                 var plugs = PatchedMaterials(avatar.gameObject);
                 if (plugs.Count == 0)
                 {
@@ -87,22 +87,6 @@ namespace AvatarBridge.Regression
             report.AppendLine("     further off, and whether the chain still holds the second.");
 
             Debug.Log(report.ToString());
-            Selection.activeGameObject = holder;
-            EditorUtility.SetDirty(holder);
-        }
-
-        static Transform HipOf(CVRAvatar avatar)
-        {
-            var animator = avatar.GetComponent<Animator>();
-            if (animator != null && animator.isHuman)
-            {
-                var hip = animator.GetBoneTransform(HumanBodyBones.Hips);
-                if (hip != null) { return hip; }
-            }
-            // A body with no humanoid rig still needs a position, and the root
-            // is nearer the truth than nothing: an absent hip reads as absent
-            // and the ownership test claims nothing.
-            return avatar.transform;
         }
 
         static List<Material> PatchedMaterials(GameObject root)
