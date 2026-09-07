@@ -243,6 +243,19 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    run is the part that is owed. Nothing ships off a switch that was flipped to make a test
    possible.
 
+   **C3 PAID 2026-09-07, run 393, the whole corpus with the atlas on and the package split in
+   place.** 87 of 87 converted, and not one avatar changed its error count against the pre-4.4.0
+   baseline: the seven that carry errors carry the same ones. Warnings moved on nine, mostly
+   down; the two that rose are the tool saying more, a texture-reclaim line and the new
+   driver-ceiling notice on a plug whose materials did not all fit. Everything else in the diffs
+   is the em-dash removal, the `Sitting` to `#Seated` rename and the dropped jaw setting.
+
+   Not proven, only reasoned: a uniform +1 converted and +1 skipped on nearly every avatar, which
+   is the shape of a pass added since the baseline rather than per-avatar breakage. The digest
+   counts those two rather than naming them, and this run overwrote the digests it would have
+   been compared against. One conversion in the editor and a read of the pass list would settle
+   it.
+
    Phase D, retire the contact channel: D1 prove the texture-parser route to the animator. D2 move
    socket shapes, depth and haptics onto it. D3 delete `YapsChannel` and its triggers. D4 KEEP the
    TPS material import, which is a separate thing from the tag plumbing.
