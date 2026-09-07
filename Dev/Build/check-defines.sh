@@ -28,7 +28,14 @@
 #   check-defines.sh [project]     default: the corpus project
 set -uo pipefail
 
-PROJ="${1:-D:/UnityVRCCrap/Attempt Conversion}"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=/dev/null
+[ -f "$REPO/Dev/local.cfg" ] && . "$REPO/Dev/local.cfg"
+PROJ="${1:-${AVATARBRIDGE_PROJECT:-}}"
+[ -n "$PROJ" ] || {
+  echo "pass a project path, or set AVATARBRIDGE_PROJECT in Dev/local.cfg" >&2
+  exit 2
+}
 UNITY_ROOT="${UNITY_ROOT:-C:/Program Files/Unity/Hub/Editor/2022.3.22f1}"
 
 RSP="$(ls -t "$PROJ"/Library/Bee/artifacts/*.dag/Assembly-CSharp-Editor.rsp 2>/dev/null | head -1)"

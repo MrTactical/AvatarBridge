@@ -1,6 +1,6 @@
 // Spike 3: can a plug find a socket it was never told about?
 //
-// Written for Joe. Dev only, pruned from public builds.
+// Dev only, pruned from public builds.
 //
 //   Tools > YAPS > Screen atlas: rendezvous
 //

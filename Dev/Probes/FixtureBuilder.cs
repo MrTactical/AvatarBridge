@@ -25,7 +25,10 @@ namespace AvatarBridge.Dev
     public static class FixtureBuilder
     {
         const string SourceScene = "Sootie Scene";
-        static readonly string Log = "D:/AvatarBridge/Regression/fixture-builder.log";
+        // Beside the digests, so the log survives a reimport. Same variable
+        // the regression runner reads.
+        static readonly string Log =
+            (Environment.GetEnvironmentVariable("AVATARBRIDGE_REPO") ?? ".") + "/Regression/fixture-builder.log";
         static StringBuilder _log = new StringBuilder();
 
         public static void Run()

@@ -262,7 +262,7 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    sounds: the bake texture grows and the deform gains a loop. Not a transport problem, which is
    why no amount of atlas work reaches it.
 
-   **D5, THE OTHER DIRECTION, Joe's idea 2026-09-06.** The atlas carries socket to plug and
+   **D5, THE OTHER DIRECTION, raised 2026-09-06.** The atlas carries socket to plug and
    nothing else, so a plug now resolves at range while the socket it entered still finds the plug
    the old way: a tracker light in one of four vertex slots, or the contact channel. The visible
    consequence is a plug that bends while the socket stays shut, and it gets worse the more
@@ -307,7 +307,7 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
 
 ### Four found wearing the avatar, 2026-08-25/26
 
-Joe baked a whole avatar as one plug and four separate faults fell out of it. Recorded here
+A whole avatar baked as one plug turned up four separate faults. Recorded here
 because they were found in a session, not in a report, and the queue is the only thing that
 outlives scrollback.
 
@@ -453,7 +453,7 @@ wrong. Fixed on the way, all real and all confirmed:
 
 **The next measurement, not yet taken:** read "Gap to socket" with the channel preview ON and then
 OFF, at the same socket position. The preview encodes using the same extents and bake scale the
-shader decodes with, so the round trip should be EXACT and the two readings identical. Joe's
+shader decodes with, so the round trip should be EXACT and the two readings identical. The
 earlier reading was "close, but not 100%", and if that holds it means something between encode and
 decode is changing the value — which is the thread to pull, because by construction nothing should.
 
@@ -527,7 +527,7 @@ scenes nobody has opened, and anything imported from someone else's package — 
 spot in three shapes. `YapsShaderPatcher` already has every piece; what is missing is the caller
 and a line in the window saying it exists.
 
-Joe's question is the right one: it should just work. A user has no way to know a shader moved,
+The question is the right one: it should just work. A user has no way to know a shader moved,
 and "make a new one" is not an answer for a prop somebody has positioned and tuned.
 
 - **External audit 2026-08-25, the five deferred findings.** An audit by another agent
@@ -666,8 +666,8 @@ Then a converted socket IS a native socket. Odessa becomes a valid test for ever
 scanner and the preview see one shape, and this whole table stops being possible.
 
 Two thirds of the machinery already exists: plugs are re-baked today rather than adapted, and the
-toggles are rebuilt by Bake and Verify, which was the objection that looked hardest until Joe
-pointed out it is already solved.
+toggles are rebuilt by Bake and Verify, which was the objection that looked hardest until it
+turned out to be solved already.
 
 **Step 4 was the one the spike found, and it was not optional.** Before the rebuild the two paths
 did not name the depth parameter alike:
@@ -718,7 +718,7 @@ Wants measuring first: how much of CVR's contact resolution has to be reproduced
 answer is trustworthy. A preview that is right most of the time is worse than one that is
 honest about being a preview.
 
-**One member of this class is FIXED 2026-08-25: the squish.** Joe wore a plug in game and was
+**One member of this class is FIXED 2026-08-25: the squish.** A plug worn in game was
 compressed hard; the editor showed it correct, and scaling the plug made the mismatch worse.
 `_YAPS_BakeScale` is written as `1` at Bake, meaning "the size it was baked at", but
 `MirrorBoneScale` copied the bone's `m_LocalScale` curve across as an ABSOLUTE number. The two
@@ -840,8 +840,8 @@ exist yet.
 
 **What is proven**: it compiles in all four define combinations, and the reasoning above.
 **What is not**: the payoff is a hand socket reacting to a STRANGER's plug, which needs two
-clients in one instance. Nothing in the editor or the corpus can see it — a second client run by
-Joe is the only test that would.
+clients in one instance. Nothing in the editor or the corpus can see it: a second client run by
+hand is the only test that would.
 
 ### Built and measured 2026-08-24 — and the sync saving is NOT there
 
@@ -1212,7 +1212,7 @@ colour. The atlas stays designed and unbuilt until something forces it.
 ## The WASM route, and what it would make of all this
 *Status: blocked — access declined 2026-08-19.*
 
-Read from Joe's client on 2026-08-17. **His install is the `public-scripting` beta**, and the
+Read from the local client on 2026-08-17. **That install is the `public-scripting` beta**, and the
 bridge's initialiser sits behind `#if WASM_SCRIPTING_ENABLED`, which a ChilloutVR dev confirmed is
 defined only on that branch. So none of this is in stable, and nothing here can be built yet.
 Written down because it changes what YAPS 5 should aim at.
@@ -1290,7 +1290,7 @@ everyone, writing against a documented API is ordinary work and none of the abov
 then this section is a design sketch, not a plan, and nothing else in the project depends on it.
 
 **The authoring half exists.** An experimental CCK with WASM components is in closed testing.
-So this is moving rather than hypothetical, and Joe already runs the scripting branch, which
+So this is moving rather than hypothetical, and the scripting branch is already installed here, which
 means the week it reaches everybody a prototype is possible: one plug, one socket, a resolver
 that reads transforms and writes `_YAPS_SocketPos`, and the answer to whether any of the rest is
 worth designing.
@@ -1446,7 +1446,7 @@ sensitive enough that this reads as a constant stutter. The marker light path on
 is smooth, because it samples continuously rather than about ten times a second.
 
 **How big is the wander?** Measured by simulating it. `ChannelHandDrive` can wobble its input by a
-chosen number of slider units while delivering at 10 a second, and Joe matched the in-game look
+chosen number of slider units while delivering at 10 a second, and the in-game look was matched
 by eye at **0.07 units**. The channel box is 1.78 m across and a slider unit is 1.8 cm, so the
 apparent socket movement is about **1.2 mm**.
 
@@ -1513,7 +1513,7 @@ plug "freaks out sometimes" with no other pattern to it.
 
 ## User reports from stable, 2026-08-27
 
-Both from a user on the shipped build, relayed by Joe. Neither is reproduced here yet, and
+Both from a user on the shipped build. Neither is reproduced here yet, and
 neither should be closed on the reasoning below alone.
 
 ### Duplicate SPS toggles after conversion

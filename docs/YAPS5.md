@@ -686,7 +686,7 @@ over more screen. It costs no read either, since a plug still taps its neighbour
 rect at grid 64, slot 1, four levels is 1088 x 256 pixels, and the writer places pixels from
 `_ScreenParams`. Every camera that has to carry the atlas must be at least that wide.
 ChilloutVR renders mirrors into their own render texture, and a mirror is routinely rendered
-smaller than the main view. Joe's mirror test passed at grid 16, which is 272 pixels wide, so
+smaller than the main view. The in-game mirror test passed at grid 16, which is 272 pixels wide, so
 it says nothing about 1088.
 
 **The measurement:** raise the spike's grid to 64 and repeat the mirror test. If the mirror
@@ -725,7 +725,7 @@ Pass 1, in order, each step only after the one before holds:
 
 ### Pass 1 PASSED, all four steps, 2026-09-03
 
-Worn rig on a humanoid avatar, uploaded through the CCK, tested by Joe.
+Worn rig on a humanoid avatar, uploaded through the CCK, tested in game.
 
     editor Play, worn        bends to a hand brought near it
     in game, flat screen     bends, engaged colour

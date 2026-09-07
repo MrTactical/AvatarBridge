@@ -1,6 +1,6 @@
 // Spike 2: does a MOVING world position survive the atlas?
 //
-// Written for Joe, in this project only. Not part of AvatarBridge.
+// Dev only, in this project. Not part of AvatarBridge.
 //
 //   Tools > YAPS > Screen atlas: position round trip
 //

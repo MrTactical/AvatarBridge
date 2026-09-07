@@ -1,6 +1,6 @@
 // Spike 4: a plug and a socket, running on nothing but the screen atlas.
 //
-// Written for Joe. Dev only, pruned from public builds.
+// Dev only, pruned from public builds.
 //
 //   Tools > YAPS > Screen atlas: plug and socket
 //
@@ -192,7 +192,7 @@ public class SpikePlug : EditorWindow
             + " m, four times a step. A socket publishes to every level and a plug reads one.");
         _cellRadius = EditorGUILayout.IntSlider("Neighbour radius, cells", _cellRadius, 0, 3);
         int cells = (2 * _cellRadius + 1) * (2 * _cellRadius + 1) * (2 * _cellRadius + 1);
-        // The number Joe actually asked for, and it comes from the
+        // The number actually asked for, and it comes from the
         // NEIGHBOURHOOD rather than from the length of the list.
         // Buckets change the bound. Coverage still wants cell >= L/2r, but
         // an OCTANT separates sockets half a cell apart rather than a whole

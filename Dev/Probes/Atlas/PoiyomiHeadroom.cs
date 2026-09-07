@@ -1,6 +1,6 @@
 // Can a patched Poiyomi vertex stage take the atlas read?
 //
-// Written for Joe. Dev only, pruned from public builds.
+// Dev only, pruned from public builds.
 //
 //   Tools > YAPS > Atlas: Poiyomi headroom
 //

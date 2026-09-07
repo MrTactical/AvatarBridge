@@ -1,6 +1,6 @@
 // Does a screen-space atlas work, and how much precision survives it?
 //
-// Written for Joe, in this project only. Not part of AvatarBridge.
+// Dev only, in this project. Not part of AvatarBridge.
 //
 //   Tools > YAPS > Screen atlas spike
 //

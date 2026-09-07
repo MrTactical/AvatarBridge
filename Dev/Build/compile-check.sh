@@ -11,7 +11,7 @@
 #
 # The second one matters. A ChilloutVR-only user installs AvatarBridge for
 # the toolkit and never has the VRChat SDK, so every #else branch has to
-# stand on its own. Unity in Joe's projects only ever compiles the first.
+# stand on its own. Unity in the local projects only ever compiles the first.
 #
 # Mono's csc, not the Roslyn one under lib/mono/msbuild: that one fails to
 # start and prints no error CS lines at all, which reads as a clean pass.
