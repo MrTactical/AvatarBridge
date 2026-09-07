@@ -508,9 +508,22 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
         }
     }
 
+    // A HOLE ENDS THE PATH. Entries are nearest first, so the chain runs to
+    // the first hole and stops: a ring is passed through, a hole is entered
+    // and has no exit. Without this the shaft threaded a hole and carried on
+    // to whatever was behind it, which is visible the moment two sockets are
+    // in reach at once.
+    //
+    // The stop is carried in a flag rather than a break, because the loop has
+    // to unroll to keep every index constant.
     int count = 0;
+    bool ended = false;
     [unroll] for (int i2 = 0; i2 < YAPS_CHAIN_MAX; i2++)
-        if (sockK[i2] > -0.5) count++;
+    {
+        bool live = sockK[i2] > -0.5 && !ended;
+        if (live) count++;
+        ended = ended || (live && sockK[i2] > 0.5);
+    }
     chain.count = count;
 
     // Chords rather than true cubic arc length, as the single-socket

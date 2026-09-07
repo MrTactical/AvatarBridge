@@ -448,8 +448,21 @@ contradictory were the scene view and the game view disagreeing, and one
 "nothing resolved" was the plug's own enable toggled off in the avatar menu,
 which scales the deform to zero while leaving every debug view working.
 
-Still to do in game: whether the chain still holds a second person's socket
-when the wearer's own is nearer, which needs a real second player.
+### The chain ran past a hole, found 2026-09-07
+
+Setting the two-body case up showed the shaft entering a hole and carrying on
+to the socket behind it. A ring is passed through; a hole is entered and has no
+exit, so it must be the last link. The chain was counting entries and never
+looking at kind, and only the last link was ever tapered.
+
+It predates this branch, but chains longer than one link used to need two other
+people's sockets in reach at once, so it was hard to meet. Admitting the
+wearer's own sockets makes it ordinary. Fixed by running the chain to the first
+hole and stopping.
+
+Still to do in game: the two-body case, which passed in the editor. The chain
+held the wearer's own socket first and the other body's second, which is the
+right order.
 
 ## Two reports from the field, 2026-09-07
 
