@@ -462,6 +462,18 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
                 // the ownership scan walks up to 255 players, and this way
                 // it runs only for a socket far enough away to be in doubt.
                 //
+                // MEASURED 2026-09-07: it almost never runs. The scan above
+                // reads three cells about len/2 wide around the midpoint, so
+                // nothing past roughly len * 1.2 is ever returned to be
+                // tested, and the gate sits at len * 1.6. At 0.22, 0.30,
+                // 0.80 and 1.20 m there is no distance that is both visible
+                // and past the gate; only near 0.50 m, where the level
+                // rounds up, does a band exist at all. So this reads as a
+                // range rule and behaves as "own-body sockets are admitted".
+                // Kept because the day a level rounds the other way it is
+                // the only thing standing between a plug and a socket on its
+                // own hip, and it costs one comparison.
+                //
                 // Tested here rather than after the sort, so a rejected
                 // entry leaves no hole in the list.
                 if (_YAPS_SelfTag >= 0 && d > len * YAPS_ATLAS_REACH

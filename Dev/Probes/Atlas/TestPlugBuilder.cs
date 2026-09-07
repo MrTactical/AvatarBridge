@@ -47,9 +47,11 @@ namespace AvatarBridge.Regression
             // SOCKETS FIRST. The plug's bake decides SelfTag from whether the
             // avatar has any, so a plug baked before them is baked at -1.
             //
-            // Two, at the distances the rule turns on: one inside engagement
-            // onset and one in the band that must be rejected. Both on the
-            // plug's own forward, since that is where a plug looks.
+            // Two. NEAR is inside engagement onset and is the case that
+            // matters. BAND is past the atlas's own reach, not past the
+            // ownership gate: for a plug this long no socket can be both
+            // visible to the grid and far enough to be rejected, so what it
+            // actually measures is where the neighbourhood scan stops.
             int already = avatar.GetComponentsInChildren<YapsSocket>(true).Length;
             if (already == 0)
             {

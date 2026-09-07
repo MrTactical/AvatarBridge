@@ -408,6 +408,36 @@ nothing against the 3200-bit budget. Unstarted.
 
 ---
 
+### Measured in the editor, 2026-09-07
+
+Own-body sockets resolve through the atlas. A plug with its own socket 0.22 m
+away reads "Resolved by: full" once the exclusion is relaxed, so the accept
+half of the change works.
+
+The reject half turns out to be unreachable. The atlas reads a three-cell
+neighbourhood around the shaft midpoint, with a cell size derived from plug
+length, so it returns nothing further than roughly 1.2 times the plug's length.
+The ownership gate sits at 1.6 times. Checked at 0.15, 0.22, 0.30, 0.50, 0.80
+and 1.20 metres: only at 0.50, where the level rounds up, is there any distance
+at which a socket is both visible and past the gate.
+
+So the change means "the atlas admits own-body sockets" and the range wording
+was wrong. The gate is kept as one comparison of insurance, and because it
+short-circuits the ownership scan, but it should not be described as the thing
+that protects against a plug bending at its wearer's own hip. The neighbourhood
+scan is what does that.
+
+Two things this cost, both worth remembering. The far constant reads like the
+atlas's reach and is only a filter applied downstream of a tighter one. And
+every wrong reading along the way came from the editor's scene view, which
+draws on a different camera from the one carrying the atlas: the "Atlas target"
+view is the only one that can say so, and it should be the first reading taken,
+not the last.
+
+Still to do in game: whether the chain still holds a second person's socket
+when the wearer's own is nearer, which the editor cannot answer because it
+needs a real second player.
+
 ## Two reports from the field, 2026-09-07
 
 ### One cloth per PhysBone, 94 of them on one avatar (issue #7)
