@@ -112,7 +112,7 @@ yaps_files() {
 #
 # This is a closure check, not a compiler: it catches a shipped file
 # referencing a type that stayed behind. For the real thing, compile the
-# package's own file list against the CCK with no VRChat SDK defined — and
+# package's own file list against the CCK with no VRChat SDK defined, and
 # use MonoBleedingEdge/bin/mono.exe with lib/mono/4.5/csc.exe, since the
 # Roslyn csc under lib/mono/msbuild fails to start and prints no "error CS"
 # lines, which reads as a clean compile.

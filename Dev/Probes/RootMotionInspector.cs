@@ -11,7 +11,7 @@ namespace AvatarBridge.Regression
     // which I got wrong twice, once producing a 104-metre spread on a curve measured in metres.
     public static class RootMotionInspector
     {
-        [MenuItem("Tools/AvatarBridge Dev/Inspect — root motion on transplanted poses")]
+        [MenuItem("Tools/AvatarBridge Dev/Inspect: root motion on transplanted poses")]
         public static void Run()
         {
             string path = System.Environment.GetEnvironmentVariable("AVATARBRIDGE_CONTROLLER");

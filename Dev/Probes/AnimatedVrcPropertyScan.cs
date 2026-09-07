@@ -20,7 +20,7 @@ namespace AvatarBridge.Regression
     // not sufficient. A non-zero here is a real avatar doing it in the wild.
     public static class AnimatedVrcPropertyScan
     {
-        [MenuItem("Tools/AvatarBridge Dev/Scan — animated VRC-component properties")]
+        [MenuItem("Tools/AvatarBridge Dev/Scan: animated VRC-component properties")]
         public static void Run()
         {
             var tally = new Dictionary<(string type, string property), (int curves, HashSet<string> clips)>();

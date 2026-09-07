@@ -98,7 +98,7 @@ namespace AvatarBridge
                 var s = new List<string>();
                 if (Plugs.Count > 0) s.Add($"{Plugs.Count} plug{(Plugs.Count == 1 ? "" : "s")}");
                 if (Sockets.Count > 0) s.Add($"{Sockets.Count} socket{(Sockets.Count == 1 ? "" : "s")} ({holes} hole{(holes == 1 ? "" : "s")}, {Sockets.Count - holes} ring{(Sockets.Count - holes == 1 ? "" : "s")})");
-                string already = yaps == Total ? " — all already YAPS" : yaps > 0 ? $" — {yaps} already YAPS" : "";
+                string already = yaps == Total ? ", all already YAPS" : yaps > 0 ? $", {yaps} already YAPS" : "";
                 return "Found " + string.Join(" and ", s) + already + ".";
             }
         }
@@ -357,21 +357,21 @@ namespace AvatarBridge
             if (f.IsYapsAlready) f.ReadableBy |= Speaks.YAPS;
 
             if (f.Material != null && !f.IsYapsAlready)
-                f.Notes.Add($"{f.Origin} deform — upgrade carries its settings onto YAPS");
+                f.Notes.Add($"{f.Origin} deform, upgrade carries its settings onto YAPS");
             if ((f.ReadableBy & Speaks.DPS) == 0) f.Notes.Add("no tip light: DPS sockets cannot see it");
             if ((f.ReadableBy & (Speaks.TPS | Speaks.SPS)) == 0) f.Notes.Add("no plug pointers: contact sockets cannot see it");
             // Behind the toolkit: the row goes amber and Build is the fix,
             // which is the whole point of saying it here rather than only
             // on the material.
             if (f.Material != null && f.IsYapsAlready && YapsShaderPatcher.IsStale(f.Material))
-                f.Notes.Add("its shader is older than the toolkit — Build refreshes it");
+                f.Notes.Add("its shader is older than the toolkit; Build refreshes it");
             // A debug view REPLACES the deform, and it is a material value, so
             // it uploads. On an ordinary plug that is a curiosity; on a
             // whole-avatar plug it flattens the avatar for everyone, and it
             // survives the upload looking like a broken bake.
             if (f.Material != null && f.Material.HasProperty("_YAPS_Debug")
                 && f.Material.GetFloat("_YAPS_Debug") > 0.5f)
-                f.Notes.Add("a DEBUG VIEW is on — it replaces the deform and will upload with the avatar");
+                f.Notes.Add("a DEBUG VIEW is on, it replaces the deform and will upload with the avatar");
         }
 
         static void Classify(Found f)
@@ -401,8 +401,8 @@ namespace AvatarBridge
             else f.Origin = YapsLegacyMap.Origin.SPS;
             if (f.Root != null && f.Root.name == "YAPS Socket") f.IsYapsAlready = true;
 
-            if (!f.HasAxis) f.Notes.Add("no axis — plugs will aim at it rather than thread it");
-            if (rootLight == null && !f.IsYapsAlready) f.Notes.Add("no marker lights — DPS plugs and light-only plugs cannot see it");
+            if (!f.HasAxis) f.Notes.Add("no axis, plugs will aim at it rather than thread it");
+            if (rootLight == null && !f.IsYapsAlready) f.Notes.Add("no marker lights, DPS plugs and light-only plugs cannot see it");
 
             // Switched off is the difference between the preview and the game.
             // The preview reads transforms and bends a plug whatever state
@@ -417,12 +417,12 @@ namespace AvatarBridge
                 && (!p.enabled || !p.gameObject.activeInHierarchy));
             if (socketItselfOff)
             {
-                f.Notes.Add("switched off — everything under it is dark until it is switched back on, " +
+                f.Notes.Add("switched off, everything under it is dark until it is switched back on, " +
                             "which is what its menu toggle does in game");
             }
             else if (darkPointers > 0)
             {
-                f.Notes.Add($"{darkPointers} of its pointers are switched off — nothing can find it in " +
+                f.Notes.Add($"{darkPointers} of its pointers are switched off, nothing can find it in " +
                             "game, however well it previews");
             }
             int darkLights = f.Lights.Count(l => l != null
@@ -444,7 +444,7 @@ namespace AvatarBridge
                 }
                 else
                 {
-                    f.Notes.Add($"{darkLights} of its marker lights are switched off — DPS plugs cannot see it");
+                    f.Notes.Add($"{darkLights} of its marker lights are switched off, DPS plugs cannot see it");
                 }
             }
             if (f.Root != null)
@@ -453,7 +453,7 @@ namespace AvatarBridge
                     .Count(t => t != null && (!t.enabled || !t.gameObject.activeInHierarchy));
                 if (deaf > 0 && !socketItselfOff)
                 {
-                    f.Notes.Add($"{deaf} of its receivers are switched off — it says where it is and " +
+                    f.Notes.Add($"{deaf} of its receivers are switched off, it says where it is and " +
                                 "never notices a plug arrive, which previews fine and does nothing in game");
                 }
             }

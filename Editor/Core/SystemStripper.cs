@@ -163,7 +163,7 @@ namespace AvatarBridge
             {
                 ctx.Report.Warning("System stripping", "GoGo Loco kept, but its home layers aren't merged",
                     "Stripping is off and this avatar carries GoGo Loco, but the Base/Action layers " +
-                    "— where GoGo's poses and dances actually live — aren't ticked under \"Animator " +
+                    ", where GoGo's poses and dances actually live, aren't ticked under \"Animator " +
                     "layers to merge\". The pose wheel will convert and drive nothing. Tick Base and " +
                     "Action and convert again to bring GoGo across whole.");
             }
@@ -360,7 +360,7 @@ namespace AvatarBridge
                 {
                     ctx.Report.Converted(Category, $"Kept shared layer \"{layer.name}\" and pruned it instead",
                         $"{strippedRefs} of its {refs.Count} parameter references belong to stripped systems, " +
-                        "but this layer is a shared blend tree — VRChat tooling packs unrelated toggles into " +
+                        "but this layer is a shared blend tree: VRChat tooling packs unrelated toggles into " +
                         "one of these for performance. Removing it would take the other " +
                         $"{refs.Count - strippedRefs} along with it (that is how an avatar loses its whole " +
                         "wardrobe to an SPS strip). The stripped branches are pruned out individually below.");
@@ -392,7 +392,7 @@ namespace AvatarBridge
                     ctx.Report.Converted(Category, $"Removed animator layer \"{layer.name}\"",
                         nameHit ? "Matched a stripped system by name."
                         : referenceHit ? $"{strippedRefs}/{refs.Count} parameter references belong to a stripped system."
-                        : "A Base/Additive/Action layer referencing GoGo parameters — locomotion " +
+                        : "A Base/Additive/Action layer referencing GoGo parameters: locomotion " +
                           "replacements are all-or-nothing, and left in place with its parameters " +
                           "stripped this layer overrides ChilloutVR's own locomotion with half-dead " +
                           "animation.");
@@ -489,7 +489,7 @@ namespace AvatarBridge
                     string evidence = perLayer.TryGetValue(layer, out var names)
                         ? $" The stripped parameter names that emptied it: {string.Join(", ", names)}. " +
                           "If one of these is a control you actually use, its machinery was " +
-                          "misclassified — say so in an issue with this line, it is exactly the " +
+                          "misclassified: say so in an issue with this line, it is exactly the " +
                           "evidence needed."
                         : "";
                     ctx.Report.Converted(Category, $"Removed emptied animator layer \"{layer.name}\"",
@@ -827,12 +827,12 @@ namespace AvatarBridge
             }
 
             ctx.Report.Converted(Category,
-                $"Removed VRCFury's parameter compressor — {doomed.Count} layer(s), " +
+                $"Removed VRCFury's parameter compressor: {doomed.Count} layer(s), " +
                 $"{mirrors.Count} mirrored and {slotNames.Count} slot parameter(s)",
                 "It works around VRChat's 256-parameter limit by de-syncing your parameters and " +
                 "rotating copies of them through a couple of slots twice a second. ChilloutVR has " +
                 "3200 bits and syncs straight from the animator, so this cost a per-frame blend " +
-                "tree and — because the originals were left marked not-synced — stopped the values " +
+                "tree and, because the originals were left marked not-synced, stopped the values " +
                 $"reaching anyone at all. {mirrors.Values.Distinct().Count()} parameter(s) now sync " +
                 "natively and without the delay.");
         }
@@ -882,8 +882,8 @@ namespace AvatarBridge
                 UnityEngine.Object.DestroyImmediate(transform.gameObject);
                 removed++;
             }
-            ctx.Report.Converted(Category, $"Removed the avatar's VRChat face-tracking rig — {removed} object(s)",
-                $"{string.Join(", ", names)}{(doomed.Count > names.Count ? ", …" : "")} — the chosen face " +
+            ctx.Report.Converted(Category, $"Removed the avatar's VRChat face-tracking rig: {removed} object(s)",
+                $"{string.Join(", ", names)}{(doomed.Count > names.Count ? ", …" : "")}: the chosen face " +
                 "tracking mode provides its own, and two rigs driving the same blendshapes fight each other. " +
                 "Choose \"None\" if you want the original rig left in place.");
         }
@@ -950,7 +950,7 @@ namespace AvatarBridge
                 "are CONTACTS, and contacts are budgeted for the whole instance rather than per " +
                 "avatar: 512 overlapping pairs per frame, and everything past that is dropped " +
                 "silently. One converted avatar can carry over a hundred, so two people close " +
-                "together spend the room's budget and every contact in it starts failing — sockets " +
+                "together spend the room's budget and every contact in it starts failing: sockets " +
                 "stop engaging and plugs stop bending, for bystanders too. YAPS needs two of these " +
                 "per plug and keeps them. Tick \"Keep the OGB/PCS haptics contacts\" if you drive a " +
                 "toy from them and would rather pay that price.");

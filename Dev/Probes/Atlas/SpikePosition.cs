@@ -48,7 +48,7 @@ public class SpikePosition : EditorWindow
         EditorGUILayout.HelpBox(
             "Build, press Play, then drag the marker around the scene. The error is measured "
             + "against the marker's real position, so it should stay small near the world origin "
-            + "and grow as you move away — that growth is the argument for encoding within a "
+            + "and grow as you move away: that growth is the argument for encoding within a "
             + "spatial-hash cell rather than across the whole world.", MessageType.Info);
 
         _extent = EditorGUILayout.Slider("Box half-size, metres", _extent, 1f, 64f);

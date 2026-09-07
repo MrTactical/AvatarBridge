@@ -216,7 +216,7 @@ namespace AvatarBridge
         {
             if (!Application.isPlaying)
             {
-                Debug.LogWarning("[AvatarBridge] The tester needs play mode — animators only evaluate there.");
+                Debug.LogWarning("[AvatarBridge] The tester needs play mode: animators only evaluate there.");
                 return null;
             }
             var avatar = ResolveAvatar();
@@ -233,7 +233,7 @@ namespace AvatarBridge
             }
             if (animator.runtimeAnimatorController == null)
             {
-                Debug.LogWarning($"[AvatarBridge] \"{avatar.name}\"'s Animator has no controller assigned — " +
+                Debug.LogWarning($"[AvatarBridge] \"{avatar.name}\"'s Animator has no controller assigned: " +
                                  "was this conversion finished, or the assignment lost with an unsaved scene?");
                 return null;
             }
@@ -292,7 +292,7 @@ namespace AvatarBridge
                 var failure = new BridgeElements.Card("The tester failed to build its UI");
                 failure.Body.Add(BridgeElements.Hint(
                     $"{e.GetType().Name}: {e.Message}\n\nThe full stack trace is in the Console. " +
-                    "This is a bug in AvatarBridge, not in your avatar — please report it with " +
+                    "This is a bug in AvatarBridge, not in your avatar: please report it with " +
                     "that message."));
                 rootVisualElement.Add(failure);
             }
@@ -307,7 +307,7 @@ namespace AvatarBridge
             catch (System.Exception e)
             {
                 Debug.LogException(e);
-                var card = new BridgeElements.Card($"{what} — failed to build");
+                var card = new BridgeElements.Card($"{what}: failed to build");
                 card.Body.Add(BridgeElements.Hint($"{e.GetType().Name}: {e.Message}"));
                 return card;
             }
@@ -352,10 +352,10 @@ namespace AvatarBridge
             pick.Body.Add(field);
             pick.Body.Add(BridgeElements.Hint(
                 avatar == null
-                    ? "No ChilloutVR avatar found — select one in the scene, or drop it above."
+                    ? "No ChilloutVR avatar found: select one in the scene, or drop it above."
                     : (Application.isPlaying
                         ? $"Driving \"{avatar.name}\". Every control writes what ChilloutVR itself writes."
-                        : $"Found \"{avatar.name}\" — enter PLAY MODE to drive it; animators only evaluate there.")));
+                        : $"Found \"{avatar.name}\": enter PLAY MODE to drive it; animators only evaluate there.")));
             pick.Body.Add(BridgeElements.Hint(
                 "VRChat's Gesture Manager cannot drive a converted avatar: it needs the VRC " +
                 "descriptor, which conversion removes. This window is the ChilloutVR-side equivalent."));
@@ -456,16 +456,16 @@ namespace AvatarBridge
             stanceRow.Add(stanceCaption);
             foreach (var (name, tip) in new[]
             {
-                ("Standing", "Grounded, nothing else — Standard Locomotion."),
+                ("Standing", "Grounded, nothing else: Standard Locomotion."),
                 ("Crouching", "Crouching + Grounded, Upright into the crouch band (0.40–0.75). " +
                               "In VR the game derives this from your real height."),
-                ("Prone", "Prone + Grounded, Upright below 0.40 — the game's prone threshold."),
-                ("Airborne", "Grounded off, nothing else — the jump/fall chain " +
+                ("Prone", "Prone + Grounded, Upright below 0.40: the game's prone threshold."),
+                ("Airborne", "Grounded off, nothing else: the jump/fall chain " +
                              "(JumpStart, JumpAir, then JumpLand when Grounded returns)."),
-                ("Flying", "Flying on, Grounded off. An AnyState override in the CCK layer — " +
+                ("Flying", "Flying on, Grounded off. An AnyState override in the CCK layer: " +
                            "it interrupts every state, emotes included."),
-                ("Sitting", "Sitting + Grounded — the game KEEPS Grounded true in chairs."),
-                ("Swimming", "Swimming + Grounded — the game keeps Grounded true in water too."),
+                ("Sitting", "Sitting + Grounded: the game KEEPS Grounded true in chairs."),
+                ("Swimming", "Swimming + Grounded: the game keeps Grounded true in water too."),
             })
             {
                 string captured = name;
@@ -489,7 +489,7 @@ namespace AvatarBridge
                 value = ReadParam(quiet, "Upright") ?? 1f,
                 showInputField = true,
                 tooltip = "Viewpoint height over avatar height, clamped 0..1. In VR the game " +
-                          "derives stance from it — dragging below 0.75 crouches, below 0.40 " +
+                          "derives stance from it: dragging below 0.75 crouches, below 0.40 " +
                           "goes prone, exactly like the client.",
             };
             upright.RegisterValueChangedCallback(e =>
@@ -559,7 +559,7 @@ namespace AvatarBridge
             }) { text = "Cancel" });
             face.Body.Add(emoteRow);
             face.Body.Add(BridgeElements.Hint(
-                "Visemes and blink are held on the face mesh every frame, after the animator — the " +
+                "Visemes and blink are held on the face mesh every frame, after the animator: the " +
                 "same place and order ChilloutVR writes them. So they beat any animation using the " +
                 "same blendshape, here and in game. An expression that stops closing the eyes while " +
                 "this window is open would do the same thing in game."));
@@ -615,7 +615,7 @@ namespace AvatarBridge
             // animation rapidly looping that the wearer cannot see at all.
             var remote = new BridgeElements.Card("Remote view");
             remote.Body.Add(BridgeElements.Hint(
-                "Snaps every \"#\" local parameter to its default — the value it holds forever " +
+                "Snaps every \"#\" local parameter to its default: the value it holds forever " +
                 "on OTHER players' clients, which never receive local parameters or parameter " +
                 "streams. Watch the Animator layers readout after pressing: any layer that " +
                 "starts cycling or lands in a different state here is doing exactly that in " +
@@ -788,7 +788,7 @@ namespace AvatarBridge
                 card.Body.Add(BridgeElements.Hint(
                     animator == null || asset == null
                         ? "No animator controller to read yet."
-                        : "Enter PLAY MODE — layer weights and playing clips only exist while the " +
+                        : "Enter PLAY MODE: layer weights and playing clips only exist while the " +
                           "animator evaluates. This is the same readout ChilloutVR's CCK Debugger " +
                           "shows in game, so what you see here is what a tester would report."));
                 return card;
@@ -851,8 +851,8 @@ namespace AvatarBridge
                 row.tooltip = conflicts
                     ? $"Layer {i} sits ABOVE the hand-pose layer ({handTop}) and its mask lets it write " +
                       "finger muscles. On Override at weight 1 it replaces whatever pose a gesture just " +
-                      "played — the fingers stop moving in game even though the gesture is playing here."
-                    : $"Layer {i} \"{layer.name}\" — {layer.blendingMode}, default weight " +
+                      "played: the fingers stop moving in game even though the gesture is playing here."
+                    : $"Layer {i} \"{layer.name}\": {layer.blendingMode}, default weight " +
                       $"{layer.defaultWeight:0.##}, mask " +
                       (layer.avatarMask != null ? layer.avatarMask.name : "none") + ".";
 
@@ -896,7 +896,7 @@ namespace AvatarBridge
             if (handTop < 0)
             {
                 card.Body.Add(BridgeElements.Hint(
-                    "No LeftHand/RightHand layer — this avatar's own gesture layers took over the " +
+                    "No LeftHand/RightHand layer: this avatar's own gesture layers took over the " +
                     "hand pose, so nothing here is checked against them."));
             }
 
@@ -934,7 +934,7 @@ namespace AvatarBridge
                         }
                     }
                     rows[i].playing.text = text.Count == 0
-                        ? "—"
+                        ? "-"
                         : string.Join(", ", text.GetRange(0, Mathf.Min(3, text.Count)))
                           + (text.Count > 3 ? $" +{text.Count - 3}" : "");
                     // Null hands the colour back to the stylesheet rather than pinning a
@@ -1241,7 +1241,7 @@ namespace AvatarBridge
             card.SetSummary($"{shapes.Count} blendshapes  (native)");
             card.Body.Add(BridgeElements.Hint(
                 $"This avatar uses ChilloutVR's NATIVE face tracking, so there are no per-expression " +
-                $"animator parameters to drive — CVRFaceTracking writes these {shapes.Count} blendshapes on " +
+                $"animator parameters to drive: CVRFaceTracking writes these {shapes.Count} blendshapes on " +
                 $"\"{native.FaceMesh.name}\" straight from the headset. The sliders below make the same " +
                 "writes, so a shape that moves is mapped to real geometry. Whether a headset feeds it is " +
                 "only answerable in game."));
@@ -1249,7 +1249,7 @@ namespace AvatarBridge
             if (shapes.Count == 0)
             {
                 card.Body.Add(BridgeElements.Hint(
-                    "No slot names a blendshape that exists on this mesh — the mapping is empty. " +
+                    "No slot names a blendshape that exists on this mesh: the mapping is empty. " +
                     "Assign shapes on the CVRFaceTracking component, or convert again with a face " +
                     "mesh whose shapes follow Unified Expressions naming."));
                 return;
@@ -1314,7 +1314,7 @@ namespace AvatarBridge
             })
             {
                 text = "Clear all shapes  (back to 0)",
-                tooltip = "Native shapes rest at 0 — unlike the VRCFT rig, whose eyelids and pupils " +
+                tooltip = "Native shapes rest at 0: unlike the VRCFT rig, whose eyelids and pupils " +
                           "rest part-open. These are driven from the headset, so 0 is the true rest.",
             };
             reset.style.marginTop = 6;
@@ -1423,9 +1423,9 @@ namespace AvatarBridge
             var watched = avatar != null ? avatar.GetComponentInChildren<Animator>(true) : null;
             var watchedController = watched != null ? watched.runtimeAnimatorController : null;
             parent.Add(BridgeElements.Hint(watchedController != null
-                ? $"Reading \"{watchedController.name}\" — this card refreshes itself when the " +
+                ? $"Reading \"{watchedController.name}\": this card refreshes itself when the " +
                   "controller or its parameters change."
-                : "No animator controller assigned — every entry stays greyed until one is."));
+                : "No animator controller assigned: every entry stays greyed until one is."));
 
             // Menus routinely run past thirty entries; a filter beats scrolling. Rows register
             // themselves with their searchable text and the filter just flips display.
@@ -1458,7 +1458,7 @@ namespace AvatarBridge
                 {
                     element.SetEnabled(false);
                     element.tooltip = $"\"{parameterName}\" is not declared in the current " +
-                        "animator controller — driving it would do nothing, in game or here. " +
+                        "animator controller: driving it would do nothing, in game or here. " +
                         "It lights up the moment the controller declares it.";
                     missingCount++;
                 }

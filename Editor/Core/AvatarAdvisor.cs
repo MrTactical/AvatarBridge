@@ -76,7 +76,7 @@ namespace AvatarBridge
                     Kind = AdviceKind.Manual,
                     Setting = "This avatar is built by a baker",
                     Finding =
-                        "VRCFury or Modular Avatar will add to this avatar when it converts — clothing, " +
+                        "VRCFury or Modular Avatar will add to this avatar when it converts: clothing, " +
                         "toggles, physics, contacts and parameters that are not on it yet. Everything " +
                         "counted below is therefore a floor, not a total, and a count of zero means " +
                         "\"none before baking\" rather than \"none\". The conversion report is measured " +
@@ -130,7 +130,7 @@ namespace AvatarBridge
                     Setting = "Convert PhysBones to",
                     Finding = baked
                         ? "No PhysBones on the avatar yet, but its baker usually brings them with the " +
-                          "hair and clothing it adds. Left as it is — set this to \"None\" only if you " +
+                          "hair and clothing it adds. Left as it is: set this to \"None\" only if you " +
                           "know nothing it adds has physics."
                         : "No PhysBones on this avatar, and nothing here bakes any in. There is nothing " +
                           "for the physics target to convert.",
@@ -154,7 +154,7 @@ namespace AvatarBridge
                         ? $"{count} on this avatar, and neither MagicaCloth2 nor DynamicBone is installed, " +
                           "so there is nothing to convert them into. Import MagicaCloth2 for the best " +
                           "result in ChilloutVR."
-                        : $"{count} on this avatar, and the physics target is \"None\" — its hair, tail and " +
+                        : $"{count} on this avatar, and the physics target is \"None\": its hair, tail and " +
                           $"clothing would come across rigid. {Nice(target)} is installed and can take them.",
                     Apply = target == PhysicsTarget.None ? (Action<BridgeSettings>)null
                         : s => s.physicsTarget = target,
@@ -168,7 +168,7 @@ namespace AvatarBridge
                     Setting = "Convert PhysBones to",
                     Finding = $"MagicaCloth2 is not installed, so {count} cannot be converted. Import it, " +
                               "or switch to DynamicBone" + (BridgeDefines.HasDynamicBone
-                                  ? " — which is installed." : ", which is not installed either."),
+                                  ? ", which is installed." : ", which is not installed either."),
                     Apply = BridgeDefines.HasDynamicBone
                         ? s => s.physicsTarget = PhysicsTarget.DynamicBone : (Action<BridgeSettings>)null,
                 });
@@ -232,7 +232,7 @@ namespace AvatarBridge
                 Finding = $"{chains.Count} chain{(chains.Count == 1 ? " runs" : "s run")} through toe bones. " +
                           "They are excluded by default: simulated toes splay and swing while the foot " +
                           "itself is planted by IK, which reads as broken feet rather than as physics. " +
-                          "Your call — turn it on if this avatar's toe physics are deliberate.",
+                          "Your call: turn it on if this avatar's toe physics are deliberate.",
                 Apply = s => s.convertToePhysBones = true,
                 Targets = chains.ToArray(),
             });
@@ -258,7 +258,7 @@ namespace AvatarBridge
                     {
                         Kind = AdviceKind.Confirm,
                         Setting = "Face tracking",
-                        Finding = $"{where}. ChilloutVR's own component reads them directly — no OSC and " +
+                        Finding = $"{where}. ChilloutVR's own component reads them directly: no OSC and " +
                                   "no per-shape animator layers needed.",
                         Targets = new UnityEngine.Object[] { mesh.gameObject },
                     });
@@ -270,7 +270,7 @@ namespace AvatarBridge
                         Kind = AdviceKind.Change,
                         Setting = "Face tracking",
                         Finding = $"{where}. ChilloutVR reads those directly through its native component, " +
-                                  "which is the cheapest and most reliable route — it needs no extra " +
+                                  "which is the cheapest and most reliable route: it needs no extra " +
                                   "package and spends no animator layers.",
                         Apply = s => s.faceTrackingMode = FaceTrackingMode.Native,
                         Targets = new UnityEngine.Object[] { mesh.gameObject },
@@ -298,7 +298,7 @@ namespace AvatarBridge
                               (installed
                                   ? "CVR-VRCFT replaces the rig with a parameter-driven one that works here."
                                   : $"CVR-VRCFT would be the route, but \"{FaceTrackingPackages.DisplayName}\" " +
-                                    "is missing — reimport AvatarBridge to get it back."),
+                                    "is missing: reimport AvatarBridge to get it back."),
                     Apply = installed && settings.faceTrackingMode != FaceTrackingMode.DragonSkyRunner
                         ? s => s.faceTrackingMode = FaceTrackingMode.DragonSkyRunner
                         : (Action<BridgeSettings>)null,
@@ -345,7 +345,7 @@ namespace AvatarBridge
                               "experimental: GoGo replaces ChilloutVR's locomotion layer outright, so " +
                               "Base, Additive and Action must all be ticked or the avatar has no " +
                               "locomotion at all. Poses will not lock movement and the viewpoint stays " +
-                              "at standing height in floor poses — neither has an equivalent here.",
+                              "at standing height in floor poses: neither has an equivalent here.",
                     // Puts the way back one press away. Keeping GoGo stays a choice; this is a
                     // Manual, so the apply-everything button still leaves it alone.
                     Apply = s => s.stripGogoLoco = true,
@@ -415,7 +415,7 @@ namespace AvatarBridge
                     {
                         Kind = AdviceKind.Manual,
                         Setting = setting,
-                        Finding = "Off, and its slot is empty right now — but this avatar is built " +
+                        Finding = "Off, and its slot is empty right now, but this avatar is built " +
                                   "by a baker, and VRCFury or Modular Avatar can create one during " +
                                   "the bake, which is what the conversion actually reads. If one " +
                                   "arrives while the box is off it is dropped whole, and the only " +
@@ -442,7 +442,7 @@ namespace AvatarBridge
                     {
                         Kind = AdviceKind.Confirm,
                         Setting = setting,
-                        Finding = $"On, and this avatar's {type} slot is empty — but VRCFury or Modular " +
+                        Finding = $"On, and this avatar's {type} slot is empty, but VRCFury or Modular " +
                                   "Avatar can build one during the bake, which is where the conversion " +
                                   "reads it from. Left on, because that costs nothing if no layer ever " +
                                   "arrives and loses the whole layer if one does.",
@@ -453,7 +453,7 @@ namespace AvatarBridge
                 {
                     Kind = AdviceKind.Change,
                     Setting = setting,
-                    Finding = $"On, but this avatar has no {type} layer of its own — the slot is empty, " +
+                    Finding = $"On, but this avatar has no {type} layer of its own: the slot is empty, " +
                               "or holds VRChat's default. Nothing converts either way; the setting is " +
                               "left over from another avatar, since these persist between them. " +
                               "Switching it off keeps the box honest about this avatar.",
@@ -476,7 +476,7 @@ namespace AvatarBridge
                     Setting = "Action (emotes, AFK)",
                     Finding = $"This avatar has its own Action layer ({actionLayer.layers.Length} layer" +
                               $"{(actionLayer.layers.Length == 1 ? "" : "s")}), and it is not being " +
-                              "converted. Action holds emotes and AFK — whether that matters is yours " +
+                              "converted. Action holds emotes and AFK: whether that matters is yours " +
                               "to decide, which is why this is not ticked for you: the layer takes " +
                               "FULL BODY control, VRChat's emote triggers have no ChilloutVR " +
                               "equivalent so some states may be unreachable, and a misfire is very " +
@@ -498,7 +498,7 @@ namespace AvatarBridge
                     Finding = $"This avatar has its own Additive layer ({additiveLayer.layers.Length} " +
                               $"layer{(additiveLayer.layers.Length == 1 ? "" : "s")}), and it is not " +
                               "being converted. Additive is usually idle breathing, blended on top of " +
-                              "whatever else is playing — small, and easy not to miss. Turn it on if " +
+                              "whatever else is playing: small, and easy not to miss. Turn it on if " +
                               "this avatar's resting motion looks dead without it.",
                     Apply = s => s.convertAdditiveLayer = true,
                 });
@@ -613,13 +613,13 @@ namespace AvatarBridge
                 Kind = AdviceKind.Manual,
                 Setting = "Patch non-SPI shaders for VR",
                 Finding = $"{missing.Count} shader{(missing.Count == 1 ? "" : "s")} never declare" +
-                          $"{(missing.Count == 1 ? "s" : "")} single-pass instanced stereo — " +
+                          $"{(missing.Count == 1 ? "s" : "")} single-pass instanced stereo: " +
                           $"{string.Join(", ", missing.Take(3))}" +
                           (missing.Count > 3 ? $" and {missing.Count - 3} more" : "") + ". ChilloutVR " +
                           "renders single-pass instanced where VRChat renders double-wide, so these can " +
                           "look right in VRChat and draw into one eye only here. Patching copies them " +
                           "with the macros added and leaves the originals alone. Your call, because a " +
-                          "copy is checked for compile errors and nothing more — whether it LOOKS right " +
+                          "copy is checked for compile errors and nothing more: whether it LOOKS right " +
                           "can only be judged with the avatar on, in both eyes.",
                 Apply = s => s.patchNonSpiShaders = true,
                 Targets = offenders.ToArray(),

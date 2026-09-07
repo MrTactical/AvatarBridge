@@ -17,7 +17,7 @@ namespace AvatarBridge.Regression
     // unset cases.
     public static class ContactAnchorTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test — contact anchoring")]
+        [MenuItem("Tools/AvatarBridge Dev/Test: contact anchoring")]
         public static void Run()
         {
             int fail = 0;
@@ -84,8 +84,8 @@ namespace AvatarBridge.Regression
             }
 
             Debug.Log(fail == 0
-                ? "[ContactAnchorTest] PASS — contacts anchor at rootTransform, repoint keys unchanged."
-                : $"[ContactAnchorTest] FAIL — {fail} case(s) wrong.");
+                ? "[ContactAnchorTest] PASS: contacts anchor at rootTransform, repoint keys unchanged."
+                : $"[ContactAnchorTest] FAIL: {fail} case(s) wrong.");
             if (Application.isBatchMode) EditorApplication.Exit(fail == 0 ? 0 : 1);
         }
     }

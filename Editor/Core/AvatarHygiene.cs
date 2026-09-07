@@ -79,10 +79,10 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted("Audio",
                     $"{flattened} flat (2D) audio source(s) made positional",
-                    $"On: {string.Join(", ", flat)}{(flattened > flat.Count ? ", …" : "")} — these were " +
+                    $"On: {string.Join(", ", flat)}{(flattened > flat.Count ? ", …" : "")}: these were " +
                     "authored with Spatial Blend below fully 3D. ChilloutVR decides whether to " +
                     "spatialize a source from that blend alone, and one that does not reach fully 3D " +
-                    "is never handed to the spatializer — so it plays for the wearer and can be " +
+                    "is never handed to the spatializer, so it plays for the wearer and can be " +
                     "silent for everyone else, which reads as a broken sound rather than a flat one. " +
                     "An avatar's sound belongs to a body in a room, so the blend is set to 3D.");
             }
@@ -91,7 +91,7 @@ namespace AvatarBridge
             {
                 ctx.Report.Approximated("Audio",
                     $"{nearby.Count} audio source(s) stop carrying within a few metres",
-                    $"{string.Join(", ", nearby)} — left exactly as the author set them, because how " +
+                    $"{string.Join(", ", nearby)}, left exactly as the author set them, because how " +
                     "far a sound should carry is a decision rather than a defect. Worth knowing all " +
                     "the same: past that distance the sound is silent, so a listener standing a normal " +
                     "conversational distance away hears nothing while you hear it perfectly. If one of " +
@@ -102,12 +102,12 @@ namespace AvatarBridge
             {
                 ctx.Report.Approximated("Audio",
                     $"{clamped} audio source(s) clamped to VRChat's avatar audio limits",
-                    $"On: {string.Join(", ", notes)}{(clamped > notes.Count ? ", …" : "")} — doppler 0, " +
+                    $"On: {string.Join(", ", notes)}{(clamped > notes.Count ? ", …" : "")}: doppler 0, " +
                     "min distance at least 0.3 m, max distance at most 40 m. VRChat silently enforces " +
                     "these on every avatar, so this is how the avatar actually sounded there. ChilloutVR " +
                     "feeds avatar sources to its spatializer unclamped, and a source with min distance 0 " +
                     "mounted on the wearer's own body can silence the ENTIRE game's audio (voice, video, " +
-                    "props) while the avatar is worn — the mix recovers when it unloads.");
+                    "props) while the avatar is worn; the mix recovers when it unloads.");
             }
         }
 
@@ -125,7 +125,7 @@ namespace AvatarBridge
                 ctx.Report.Warning("Meshes", "Bounding boxes left as the avatar had them",
                     "The avatar's own volume could not be measured from its meshes, so there was nothing " +
                     "trustworthy to size the culling boxes against. If meshes vanish at the edge of the " +
-                    "screen in game, that is what this would have fixed — please report the avatar.");
+                    "screen in game, that is what this would have fixed; please report the avatar.");
                 return;
             }
 
@@ -152,10 +152,10 @@ namespace AvatarBridge
             if (changed > 0)
             {
                 ctx.Report.Converted("Meshes",
-                    $"{changed} skinned mesh bounding box(es) resized to the avatar — " +
+                    $"{changed} skinned mesh bounding box(es) resized to the avatar: " +
                     $"{envelope.size.x:0.##} × {envelope.size.y:0.##} × {envelope.size.z:0.##} m",
                     "Unity culls a skinned mesh by its authored bind-pose box, not by where animation, physics " +
-                    "or cloth actually put the vertices — so a mesh can vanish at screen edges while plainly on " +
+                    "or cloth actually put the vertices, so a mesh can vanish at screen edges while plainly on " +
                     "camera. Each box is now the avatar's own measured volume with " +
                     $"{height * BoundsPaddingFraction:0.##} m of clearance around it for hair, skirts and tails " +
                     "to swing into, placed where the avatar actually is rather than centred on each mesh's root " +

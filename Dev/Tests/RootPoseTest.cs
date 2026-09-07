@@ -19,7 +19,7 @@ namespace AvatarBridge.Regression
     // must lose its root curves, or it walks the wearer around with no input.
     public static class RootPoseTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test — root pose kept on Action poses")]
+        [MenuItem("Tools/AvatarBridge Dev/Test: root pose kept on Action poses")]
         public static void Run()
         {
             int fail = 0;
@@ -99,8 +99,8 @@ namespace AvatarBridge.Regression
             fail += Check("homebound clip untouched", Varies(spared, "RootQ.y"));
 
             Debug.Log(fail == 0
-                ? "[RootPoseTest] PASS — pose kept and baked for Action poses, travel stripped, sources never mutated."
-                : $"[RootPoseTest] FAIL — {fail} case(s) wrong.");
+                ? "[RootPoseTest] PASS: pose kept and baked for Action poses, travel stripped, sources never mutated."
+                : $"[RootPoseTest] FAIL: {fail} case(s) wrong.");
             if (Application.isBatchMode) EditorApplication.Exit(fail == 0 ? 0 : 1);
         }
     }

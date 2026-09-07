@@ -236,20 +236,20 @@ namespace AvatarBridge
                 if (success && prefab != null)
                 {
                     ctx.Report.Converted("Conversion", "Converted avatar saved as a prefab",
-                        $"{path} — a crash or an unsaved scene can no longer lose the conversion; " +
+                        $"{path}: a crash or an unsaved scene can no longer lose the conversion; " +
                         "drag the prefab back into the scene to continue where you left off.");
                 }
                 else
                 {
                     ctx.Report.Warning("Conversion", "Could not save the converted avatar as a prefab",
-                        "The scene object is still fine — save the scene to keep it. The usual cause " +
+                        "The scene object is still fine, save the scene to keep it. The usual cause " +
                         "is a component Unity refuses to persist; the console names it.");
                 }
             }
             catch (Exception e)
             {
                 ctx.Report.Warning("Conversion", "Could not save the converted avatar as a prefab",
-                    $"{e.Message} — the scene object is still fine; save the scene to keep it.");
+                    $"{e.Message}; the scene object is still fine; save the scene to keep it.");
             }
         }
 
@@ -292,10 +292,10 @@ namespace AvatarBridge
                 : noDomain ? "Reload Domain is off"
                 : "it is on";
 
-            ctx.Report.Warning("Conversion", "Unity's \"Enter Play Mode Options\" is on — turn it off before testing",
+            ctx.Report.Warning("Conversion", "Unity's \"Enter Play Mode Options\" is on, turn it off before testing",
                 $"Edit → Project Settings → Editor → Enter Play Mode Settings ({which}). It skips the scene " +
                 "and/or domain reload, so pressing Play rebinds every Animator against state left over from " +
-                "edit mode — and the controller this conversion just wrote is the newest thing in the project. " +
+                "edit mode, and the controller this conversion just wrote is the newest thing in the project. " +
                 "Two things that get blamed on conversion come from this and nothing else: Unity dying on Play " +
                 "with \"Assertion failed on expression: 'MecanimDataWasBuilt()'\" and a SIGSEGV inside " +
                 "GenerateGraph, and an avatar that looks right in the scene but renders with the wrong " +
@@ -313,7 +313,7 @@ namespace AvatarBridge
                 int used = usage.Item2; // base controller + menu entries = actual sync
                 ctx.Report.Converted("Sync", $"{used} of 3200 sync bits used",
                     "In the CCK inspector this is the SECOND number of \"(0, N) of 3200\". The first is the " +
-                    "override controller, which AvatarBridge doesn't use — so \"0\" there is expected, not a problem.");
+                    "override controller, which AvatarBridge doesn't use, so \"0\" there is expected, not a problem.");
             }
             catch (Exception e)
             {
@@ -384,7 +384,7 @@ namespace AvatarBridge
             {
                 ctx.Report.Warning("Avatar",
                     $"{missingPrefabs.Count} missing prefab(s) in the avatar's hierarchy",
-                    $"{string.Join("; ", missingPrefabs)} — the prefab asset these were instances of " +
+                    $"{string.Join("; ", missingPrefabs)}: the prefab asset these were instances of " +
                     "isn't in this project, so each is an empty shell where a feature used to be. The " +
                     "avatar converts fine without them; if the feature matters, import the package it " +
                     "came from and convert again.");
@@ -394,12 +394,12 @@ namespace AvatarBridge
                 return;
             }
             ctx.Report.Warning("Avatar",
-                $"{missing} missing script(s) on the avatar — a package it was built with is not installed",
+                $"{missing} missing script(s) on the avatar, a package it was built with is not installed",
                 $"On: {string.Join(", ", examples)}{(missing > examples.Count ? ", …" : "")}. If this " +
                 "avatar uses VRCFury or Modular Avatar, INSTALL THEM BEFORE CONVERTING: both do their " +
                 "real work at build time (toggles, armature merges, animation path rewriting), and " +
                 "without them everything they would have baked is silently missing from the conversion " +
-                "— features can look converted and still do nothing in game.");
+                "; features can look converted and still do nothing in game.");
         }
 
         static void PrepareTarget(BridgeContext ctx)
@@ -489,16 +489,16 @@ namespace AvatarBridge
             }
             animator.runtimeAnimatorController = null;
             ctx.Report.Error("Animator",
-                "Controller unlinked from the Animator — it CRASHES Unity",
+                "Controller unlinked from the Animator, it CRASHES Unity",
                 "This avatar's controller references assets that resolve to nothing, and Unity " +
-                "builds a Mecanim playable graph from a controller whenever the Animator awakens — " +
+                "builds a Mecanim playable graph from a controller whenever the Animator awakens; " +
                 "which merely SELECTING the object in the Inspector is enough to do. That walks " +
                 "into the missing references and takes the editor down with no error, losing " +
                 "unsaved work. The reference has been removed so the editor can't do it. " +
                 "ChilloutVR is unaffected by the removal itself: the CVRAvatar still carries the " +
                 "base controller and the overrides, which is what the client reads on load. But " +
                 "the broken references are still in that controller, so fix them and convert " +
-                "again before uploading — see the unresolvable-asset error for where they came " +
+                "again before uploading; see the unresolvable-asset error for where they came " +
                 "from, usually a VRCFury or Modular Avatar bake that errored partway.");
         }
     }

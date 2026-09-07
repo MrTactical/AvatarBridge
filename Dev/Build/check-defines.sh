@@ -5,8 +5,8 @@
 #
 # 4.3.1 shipped exactly that bug: DynamicBoneWriter called two helpers on
 # MagicaClothWriter, and a project with DynamicBone and no MagicaCloth2
-# could not compile at all. Every gate we own — corpus, test project, the
-# editor sitting open — runs the both-installed combination, so nothing
+# could not compile at all. Every gate here, the corpus, the test project, the
+# editor sitting open, runs the both-installed combination, so nothing
 # caught it. A user did.
 #
 # No Unity launch and no domain reload: Unity leaves the exact compile
@@ -47,7 +47,7 @@ fi
 CSC="$UNITY_ROOT/Editor/Data/DotNetSdkRoslyn/csc.dll"
 DOTNET="$UNITY_ROOT/Editor/Data/NetCoreRuntime/dotnet.exe"
 if [ ! -f "$CSC" ] || [ ! -f "$DOTNET" ]; then
-  echo "no Roslyn at $UNITY_ROOT — set UNITY_ROOT to the editor this project uses" >&2
+  echo "no Roslyn at $UNITY_ROOT: set UNITY_ROOT to the editor this project uses" >&2
   exit 2
 fi
 
@@ -64,8 +64,8 @@ for magica in 1 0; do
     name="MAGICA=$magica DYNBONE=$dynbone"
     out="$WORK/out-$magica$dynbone.dll"
     # The stock arguments, minus our two defines and its output, plus the
-    # combination under test. Everything else — 300-odd references, the
-    # source list, langversion — is exactly what Unity itself used.
+    # combination under test. Everything else, 300-odd references, the
+    # source list, langversion, is exactly what Unity itself used.
     grep -v "^-define:AVATARBRIDGE_MAGICA$\|^-define:AVATARBRIDGE_DYNBONE$\|^-out:" "$RSP" > "$WORK/args.rsp"
     echo "-out:\"$out\"" >> "$WORK/args.rsp"
     [ "$magica" = 1 ] && echo "-define:AVATARBRIDGE_MAGICA" >> "$WORK/args.rsp"
@@ -74,7 +74,7 @@ for magica in 1 0; do
     log="$WORK/log-$magica$dynbone.txt"
     ( cd "$PROJ" && "$DOTNET" "$CSC" "@$WORK/args.rsp" ) > "$log" 2>&1
     # csc's exit code is unreliable through the wrapper; the errors are the
-    # answer. Ours only — a project full of other assets' scripts is not
+    # answer. This project only: a project full of other assets' scripts is not
     # this gate's business.
     ours="$(grep "error CS" "$log" | grep -i "AvatarBridge" | sort -u)"
     any="$(grep -c "error CS" "$log")"
@@ -92,5 +92,5 @@ for magica in 1 0; do
 done
 
 echo
-if [ "$fail" = 0 ]; then echo "all four combinations compile"; else echo "a combination is broken — see above"; fi
+if [ "$fail" = 0 ]; then echo "all four combinations compile"; else echo "a combination is broken: see above"; fi
 exit "$fail"

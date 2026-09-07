@@ -29,7 +29,7 @@ namespace AvatarBridge.Regression
     // count what a pass actually met; this counts what a scene appears to hold.
     public static class ComponentCensus
     {
-        [MenuItem("Tools/AvatarBridge Dev/Scan — VRC components on corpus avatars")]
+        [MenuItem("Tools/AvatarBridge Dev/Scan: VRC components on corpus avatars")]
         public static void Run()
         {
             var tally = new Dictionary<string, (int count, HashSet<string> scenes)>();

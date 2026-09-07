@@ -87,8 +87,8 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category,
                     $"Kept the depth reactions on {socketRoots.Count} socket(s)",
-                    "The animations a socket plays as a plug arrives — bulges, winces, whatever " +
-                    "its author built — are kept and pointed at the rebuilt socket's own depth " +
+                    "The animations a socket plays as a plug arrives, bulges, winces, whatever " +
+                    "its author built, are kept and pointed at the rebuilt socket's own depth " +
                     "trigger. ChilloutVR runs that trigger on the wearer's machine alone, so by " +
                     "default the parameter is local: free against the sync budget, and the " +
                     "shapes play for you. \"Show the avatar's OWN depth animations to other " +
@@ -100,7 +100,7 @@ namespace AvatarBridge
             if (plugRoots.Count > 0 && ctx.YapsPlugs.Count == 0)
             {
                 ctx.Report.Warning(Category, "No plug could be converted",
-                    "The objects are here but nothing usable came out of them — the entries above " +
+                    "The objects are here but nothing usable came out of them; the entries above " +
                     "say why for each. The avatar is otherwise unaffected.");
             }
         }
@@ -217,7 +217,7 @@ namespace AvatarBridge
                 "The mesh data it bends by is baked into a texture, and the deform is patched into " +
                 "a private copy of the shader, so nothing else on the avatar is affected." +
                 (skippedShadowPasses > 0
-                    ? $" {skippedShadowPasses} shadow pass(es) were left undeformed — Unity's own " +
+                    ? $" {skippedShadowPasses} shadow pass(es) were left undeformed: Unity's own " +
                       "shadow vertex function lives inside the engine and cannot be patched, and an " +
                       "unbent shadow is a far smaller loss than no deform at all."
                     : ""));
@@ -601,8 +601,8 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category, $"{wired} socket menu toggle(s) wired to their sockets",
                     "VRCFury's socket toggles drove its deleted atlas, so the menu looked right and " +
-                    "did nothing. Each is now wired to its whole socket — lights, pointers and depth " +
-                    "trigger together — so \"one socket at a time\" is the wearer's choice again.");
+                    "did nothing. Each is now wired to its whole socket, lights, pointers and depth " +
+                    "trigger together, so \"one socket at a time\" is the wearer's choice again.");
             }
             if (unwired.Count > 0)
             {
@@ -880,7 +880,7 @@ namespace AvatarBridge
                     "so they open around what arrives rather than sitting rigid. " +
                     (alreadyAnimated > 0
                         ? $"{alreadyAnimated} of them already play those shapes from a contact, and " +
-                          "that is left exactly as it was — the shader only acts when nothing has " +
+                          "that is left exactly as it was; the shader only acts when nothing has " +
                           "told it a depth, which is precisely when the contact route is inert. "
                         : "") +
                     "What that buys is DPS content: Raliv's system is marker lights with no " +
@@ -902,14 +902,14 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category,
                     $"{noShapes} socket(s) have no blendshapes to deform",
                     "Nothing was changed for these. A socket deform reshapes the author's own " +
-                    "blendshapes, so a socket built without any has nothing to open with — its " +
+                    "blendshapes, so a socket built without any has nothing to open with; its " +
                     "contacts and marker lights work exactly as before.");
             }
             if (failures.Count > 0)
             {
                 ctx.Report.Warning(Category,
                     $"{failures.Count} socket(s) could not be given a deform",
-                    "Everything else about them is untouched and they still work as sockets — " +
+                    "Everything else about them is untouched and they still work as sockets: " +
                     "they simply will not reshape around a plug. " + string.Join("; ", failures));
             }
         }
@@ -1004,7 +1004,7 @@ namespace AvatarBridge
                     "This avatar's penetrator could not be converted, but its sockets work",
                     $"Found {found}, and no VRChat SPS setup. YAPS builds a plug from the objects " +
                     "VRChat's SPS bake leaves behind, and DPS and TPS predate all of that, so there " +
-                    "is nothing here to build one from — the plug keeps a shader whose deform " +
+                    "is nothing here to build one from; the plug keeps a shader whose deform " +
                     "system does not exist in ChilloutVR, and it will not bend. Its SOCKETS are " +
                     "fine: their marker lights and contacts come through untouched, so other " +
                     "people's plugs can use them normally. To convert the plug too, set the avatar " +
@@ -1015,7 +1015,7 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category,
                     "Kept this avatar's existing penetration sockets",
                     $"Found {found} belonging to DPS or TPS rather than VRChat's SPS, so there was " +
-                    "nothing for YAPS to build — but nothing was taken away either. The marker " +
+                    "nothing for YAPS to build, but nothing was taken away either. The marker " +
                     "lights and contacts come through as they were, so plugs belonging to other " +
                     "players can use these sockets exactly as they did before. Leaving the YAPS " +
                     "setting ON is what keeps the contacts and the depth reactions that go with " +
@@ -1194,7 +1194,7 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category,
                     $"Pointed {repointed} material swap(s) at the baked material",
                     "An animation on this avatar assigns a material to the same mesh slot the " +
-                    "bake replaced — a skin picker, a variant toggle, whatever it is. Left alone " +
+                    "bake replaced: a skin picker, a variant toggle, whatever it is. Left alone " +
                     "it hands the slot back to the material you baked FROM, which carries no " +
                     "deform, so the plug straightens the moment you press Play and reads as " +
                     "never baked. Those swaps now point at the baked material instead, including " +
@@ -1382,11 +1382,11 @@ namespace AvatarBridge
             {
                 ctx.Report.Warning(Category,
                     $"{missed.Count} animated plug blendshape(s) are not in the bake",
-                    $"{string.Join(", ", missed.Take(8))}{(missed.Count > 8 ? ", …" : "")} — the bake " +
+                    $"{string.Join(", ", missed.Take(8))}{(missed.Count > 8 ? ", …" : "")}: the bake " +
                     $"holds the {YapsBaker.MaxShapes} shapes that move the plug most, and these did " +
                     "not make the cut. They still change the mesh; the deform simply measures " +
                     "against the plug without them, so the bend is slightly off while they are " +
-                    "raised. Bulge shapes on a SOCKET are unaffected by this — those are ordinary " +
+                    "raised. Bulge shapes on a SOCKET are unaffected by this; those are ordinary " +
                     "animation and have no limit.");
             }
         }

@@ -20,7 +20,7 @@ namespace AvatarBridge.Regression
     // nothing, which is exactly what the comment did.
     public static class PipelineOrderTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test — pass ordering invariant")]
+        [MenuItem("Tools/AvatarBridge Dev/Test: pass ordering invariant")]
         public static void Run()
         {
             int fail = 0;
@@ -70,8 +70,8 @@ namespace AvatarBridge.Regression
             fail += Check($"the SHIPPING pipeline validates ({live ?? "sound"})", live == null);
 
             Debug.Log(fail == 0
-                ? "[PipelineOrderTest] PASS — bad orders are caught, the shipping order is sound."
-                : $"[PipelineOrderTest] FAIL — {fail} case(s) wrong.");
+                ? "[PipelineOrderTest] PASS: bad orders are caught, the shipping order is sound."
+                : $"[PipelineOrderTest] FAIL: {fail} case(s) wrong.");
             if (Application.isBatchMode) EditorApplication.Exit(fail == 0 ? 0 : 1);
         }
     }

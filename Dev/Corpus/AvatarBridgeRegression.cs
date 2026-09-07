@@ -816,7 +816,7 @@ namespace AvatarBridge.Regression
 
         static void AppendCvrSide(StringBuilder sb, GameObject target)
         {
-            if (target == null) { sb.Append("[cvr]\nNO TARGET — conversion produced nothing\n"); return; }
+            if (target == null) { sb.Append("[cvr]\nNO TARGET: conversion produced nothing\n"); return; }
 
             var avatar = target.GetComponent<CVRAvatar>();
             if (avatar == null) { sb.Append("[cvr]\nNO CVRAvatar on target\n"); return; }
@@ -1179,7 +1179,7 @@ namespace AvatarBridge.Regression
                     .FindProperty("m_Controller").objectReferenceValue as RuntimeAnimatorController;
                 var getter = a.runtimeAnimatorController;
                 sb.Append("  ").Append(HierarchyPath(target, a)).Append(" -> ")
-                  .Append(serialized == null ? "NULL (no controller — broken or unassigned)" : serialized.name);
+                  .Append(serialized == null ? "NULL (no controller: broken or unassigned)" : serialized.name);
                 if (getter != serialized)
                 {
                     sb.Append("  [getter disagrees: ")

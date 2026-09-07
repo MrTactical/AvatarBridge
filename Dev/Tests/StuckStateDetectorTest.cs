@@ -17,7 +17,7 @@ namespace AvatarBridge.Regression
     // gesture on "> 1.9 and < 2.1" and leaving on its complement.
     public static class StuckStateDetectorTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test — stuck-state detector")]
+        [MenuItem("Tools/AvatarBridge Dev/Test: stuck-state detector")]
         public static void Run()
         {
             int failures = 0;
@@ -76,8 +76,8 @@ namespace AvatarBridge.Regression
                 build: (c, from, to) => { });
 
             Debug.Log(failures == 0
-                ? "[StuckStateTest] PASS — detector fires on both dead-exit shapes and stays quiet on all four legitimate ones."
-                : $"[StuckStateTest] FAIL — {failures} case(s) wrong. The detector cannot be trusted until these pass.");
+                ? "[StuckStateTest] PASS: detector fires on both dead-exit shapes and stays quiet on all four legitimate ones."
+                : $"[StuckStateTest] FAIL: {failures} case(s) wrong. The detector cannot be trusted until these pass.");
             if (Application.isBatchMode)
             {
                 EditorApplication.Exit(failures == 0 ? 0 : 1);
@@ -108,7 +108,7 @@ namespace AvatarBridge.Regression
             AssetDatabase.DeleteAsset(path);
 
             bool ok = flagged == shouldFlag;
-            Debug.Log($"[StuckStateTest] {(ok ? "ok  " : "WRONG")} {label} — expected {(shouldFlag ? "flag" : "no flag")}, got {(flagged ? "flag" : "no flag")}");
+            Debug.Log($"[StuckStateTest] {(ok ? "ok  " : "WRONG")} {label}: expected {(shouldFlag ? "flag" : "no flag")}, got {(flagged ? "flag" : "no flag")}");
             return ok ? 0 : 1;
         }
     }

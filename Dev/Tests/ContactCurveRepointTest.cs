@@ -16,7 +16,7 @@ namespace AvatarBridge.Regression
     // Create and are never read again, so those drop with the warning.
     public static class ContactCurveRepointTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test — contact curve repointing")]
+        [MenuItem("Tools/AvatarBridge Dev/Test: contact curve repointing")]
         public static void Run()
         {
             int fail = 0;
@@ -67,8 +67,8 @@ namespace AvatarBridge.Regression
             AssetDatabase.DeleteAsset(path);
 
             Debug.Log(fail == 0
-                ? "[ContactCurveRepointTest] PASS — position follows the contact, filters drop loud."
-                : $"[ContactCurveRepointTest] FAIL — {fail} case(s) wrong.");
+                ? "[ContactCurveRepointTest] PASS: position follows the contact, filters drop loud."
+                : $"[ContactCurveRepointTest] FAIL: {fail} case(s) wrong.");
             if (Application.isBatchMode) EditorApplication.Exit(fail == 0 ? 0 : 1);
         }
     }
