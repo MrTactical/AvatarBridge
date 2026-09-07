@@ -15,17 +15,16 @@ namespace AvatarBridge
     {
         // DPS's digits, offset into the quiet part of the band.
         //
-        // A decoder reads range % 0.1 and compares it to 0.01 hole, 0.02
-        // ring, 0.05 front, 0.09 plug tip. Raliv's shader accepts anything
-        // within 0.005 of those; toy mods reading the same protocol in C#
-        // accept 0.001 (CVRGoesBrrr, verified against its source). VRCFury
-        // authors +0.0006, inside both, so its sockets drive a bystander's
-        // toy and their controllers from across a room.
+        // A decoder reads range % 0.1 against 0.01 hole, 0.02 ring, 0.05 front,
+        // 0.09 plug tip. Raliv's shader accepts anything within 0.005 of those;
+        // toy mods reading the same protocol in C# accept 0.001. VRCFury
+        // authors +0.0006, inside both, so its sockets drive a bystander's toy
+        // from across a room.
         //
         // +0.003 is outside the mod's window and half of Raliv's, so DPS
-        // content still reads the socket and a toy mod does not answer it.
-        // The shader reconstructs range from an attenuation uniform and
-        // loses about 0.0005 doing it, which this clears twice over.
+        // content still reads the socket and a toy mod does not answer it. The
+        // shader reconstructs range from an attenuation uniform and loses about
+        // 0.0005 doing it, which this clears twice over.
         public const float HoleRange = 0.4130f;
         public const float RingRange = 0.4230f;
         public const float FrontRange = 0.4530f;
@@ -146,17 +145,15 @@ namespace AvatarBridge
                       "uploading.");
         }
 
-        // A socket in the scene rather than a prefab on disk, for previewing
-        // a plug against. Same construction as the universal prefabs, so
-        // there is one definition of what a socket is.
+        // A socket in the scene rather than a prefab on disk, for previewing a
+        // plug against. Same construction as the universal prefabs, so there is
+        // one definition of what a socket is.
         //
-        // withLights false builds one that can ONLY be found by contacts.
-        // A socket normally announces itself both ways, and the light path
-        // is so much more forgiving that it covered for a contact channel
-        // which had never once worked in game — through every editor test
-        // anyone ever ran. A preview that emits lights cannot tell you
-        // anything about the channel, so testing it needs a socket that
-        // has nothing else to offer.
+        // withLights false builds one that can ONLY be found by contacts. A
+        // socket normally announces itself both ways, and the light path is so
+        // much more forgiving that it covered for a contact channel which had
+        // never once worked in game, through every editor test. A preview that
+        // emits lights cannot tell you anything about the channel.
         public static GameObject BuildPreviewSocket(string name, YapsSocket.SocketKind kind,
             bool withLights = true)
         {
@@ -249,13 +246,13 @@ namespace AvatarBridge
 
         // --- the build ---------------------------------------------------
 
-        // Unity gives a mesh four vertex light slots, refills them every
-        // frame from the ranges in reach, and a socket takes two. Every lit
-        // socket therefore competes for those slots on every avatar standing
-        // near it, not just its own, and a crowd of them makes the winners
-        // change frame to frame. The converter caps a converted avatar the
-        // same way a socket built here is capped. Holes first, then rings,
-        // then hierarchy order, so a rebuild keeps the same ones.
+        // Unity gives a mesh four vertex light slots, refills them every frame
+        // from the ranges in reach, and a socket takes two. Every lit socket
+        // competes for those slots on every avatar standing near it, not just
+        // its own, and a crowd of them makes the winners change frame to frame.
+        // A converted avatar is capped the same way a socket built here is.
+        // Holes first, then rings, then hierarchy order, so a rebuild keeps the
+        // same ones.
         public static bool WithinLightCap(YapsSocket socket)
         {
             if (socket == null) return false;
@@ -269,10 +266,10 @@ namespace AvatarBridge
         // socket, and there is no way to count those at build time. So the
         // budget always reserves one slot for a tracker it cannot see.
         //
-        // Getting this wrong is what broke holes and left rings working. The
-        // tracker outranks every marker at 0.4930, a front is 0.4530 and a
-        // ring root 0.4230, so with two sockets lit the fifth candidate is
-        // always the hole root at 0.4130 and Unity drops exactly that one.
+        // Getting this wrong broke holes and left rings working. The tracker
+        // outranks every marker at 0.4930, a front is 0.4530 and a ring root
+        // 0.4230, so with two sockets lit the fifth candidate is always the
+        // hole root at 0.4130 and Unity drops exactly that one.
         static int Places(YapsSocket socket)
         {
             var avatar = socket.GetComponentInParent<CVRAvatar>(true);
@@ -329,9 +326,9 @@ namespace AvatarBridge
                 if (l.transform.IsChildOf(t) && Owned(l.transform, t)) continue;
                 if (!YapsScanner.IsProtocolLight(l)) continue;
                 int d = YapsScanner.LightDigit(l);
-                // 1 to 4 legacy roots, 7 the YAPS root; 5 and 6 legacy
-                // fronts, 0 the YAPS front. A rebuild that did not know the
-                // YAPS digits would add a second pair beside them.
+                // 1 to 4 legacy roots, 7 the YAPS root; 5 and 6 legacy fronts, 0
+                // the YAPS front. A rebuild that did not know the YAPS digits
+                // would add a second pair beside them.
                 if ((d >= 1 && d <= 4) || d == 7) hasRootLight = true;
                 if (d == 5 || d == 6 || d == 0) hasFrontLight = true;
             }
@@ -344,10 +341,10 @@ namespace AvatarBridge
             Replace(t, LightsName, lights =>
             {
                 if (!socket.emitLights) return;
-                // Every lit-capable socket CARRIES its pair; only the one
-                // within the cap starts enabled. A disabled light never
-                // enters Unity's per-mesh ranking, so the rest cost
-                // nothing until the lighthouse menu hands them the slot.
+                // Every lit-capable socket CARRIES its pair; only the one within
+                // the cap starts enabled. A disabled light never enters Unity's
+                // per-mesh ranking, so the rest cost nothing until the lighthouse
+                // menu hands them the slot.
                 if (!hasRootLight) MarkerLight(lights, "Root", hole ? HoleRange : RingRange, Vector3.zero);
                 if (!hasFrontLight) MarkerLight(lights, "Front", FrontRange, new Vector3(0, 0, FrontOffset));
                 lights.gameObject.SetActive(WithinLightCap(socket));
@@ -368,11 +365,10 @@ namespace AvatarBridge
                 bool anySpsRoot = havePointers.Any(k => k.StartsWith("SPSLL_Socket_Root") || k.StartsWith("SPSLL_Socket_Hole") || k.StartsWith("SPSLL_Socket_Ring"));
                 // Each tag twice: the bare one and its _SelfNotOnHips twin.
                 //
-                // The twin is not a duplicate, it is the SELF channel. A
-                // socket's own Self trigger listens for the twin ALONE, so a
-                // socket carrying only the bare tag answers everybody else
-                // and is dead to the person wearing it. Measured that way on
-                // a built socket: worked remotely, nothing locally.
+                // The twin is not a duplicate, it is the SELF channel. A socket's
+                // own Self trigger listens for the twin ALONE, so a socket
+                // carrying only the bare tag answers everybody else and is dead
+                // to the person wearing it.
                 //
                 // YapsPropBuilder has always emitted both. Sockets did not.
                 if (!anySpsRoot)

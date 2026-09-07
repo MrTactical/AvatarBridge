@@ -65,10 +65,9 @@ namespace AvatarBridge
             { "YAPS Hole", "YAPS Ring", "Hole", "Ring", "YAPS Socket", "BakedSpsSocket" };
 
         // The bone a socket or plug hangs from: its parent, through a YAPS
-        // folder and through VRCFury's wrappers, and nothing when that is
-        // the avatar itself. A converted socket sits in
-        // "[VF80] Blowjob/Original Object/BakedSpsSocket", and a label
-        // built from a wrapper told the wearer nothing about which hole
+        // folder and through VRCFury's wrappers, and nothing when that is the
+        // avatar itself. A converted socket sits several wrappers deep, and a
+        // label built from a wrapper told the wearer nothing about which socket
         // their menu was pointing at.
         public static string BoneOf(Transform t, CVRAvatar avatar)
         {
@@ -185,8 +184,8 @@ namespace AvatarBridge
         // it was missing here, so a deform already animated from the shipped
         // controller read as not animated at all and YAPS built a toggle
         // against it. The Animator's own slot holds a generated override that
-        // is not what ships, and avatarSettings holds the fallback. All of
-        // them are read anyway: a clip only has to be reachable to fire.
+        // is not what ships, and avatarSettings holds the fallback. All of them
+        // are read anyway: a clip only has to be reachable to fire.
         static IEnumerable<AnimationClip> ClipsOfAvatar(CVRAvatar avatar, Animator animator)
         {
             var seen = new HashSet<AnimationClip>();
@@ -313,26 +312,23 @@ namespace AvatarBridge
 
         // Does the AVATAR already drive the deform itself?
         //
-        // ToggledBy answers "is the plug's mesh hidden by something", which
-        // is a different question and misses the one that matters: an author
-        // whose own animation already writes material._YAPS_Enabled. Joe's
-        // horse rig drives it from an erection slider past 0.52 — the enable
-        // mirror had wired it correctly — and YAPS then added a menu toggle
-        // writing the SAME property from its own layer. Two drivers, one
-        // property, and the toggle defaults OFF, so it won and the plug
-        // never deformed in play mode or in game no matter where the slider
-        // sat. In edit mode no animator ran and the baked 1 stood, which is
+        // ToggledBy answers "is the plug's mesh hidden by something", which is
+        // a different question and misses the one that matters: an author whose
+        // own animation already writes material._YAPS_Enabled from a slider of
+        // their own. YAPS then added a menu toggle writing the SAME property
+        // from its own layer. Two drivers, one property, and the toggle
+        // defaults OFF, so it won and the plug never deformed in play mode or
+        // in game. In edit mode no animator ran and the baked 1 stood, which is
         // why it looked like the deform itself had broken.
         //
-        // Ours are skipped: a generated clip is this toggle's own, and
-        // finding it would make the toggle stand down for itself.
+        // Ours are skipped: a generated clip is this toggle's own, and finding
+        // it would make the toggle stand down for itself.
         static string DrivenByOwnClip(CVRAvatar avatar, string plugPath)
         {
-            // Through ClipsOfAvatar, not the Animator's own slot alone. An
-            // avatar whose deform is already animated from the shipped
-            // controller read as having no controller at all: this returned
-            // null, and the toggle was built anyway, straight into the
-            // two-drivers-one-property fight above.
+            // Through ClipsOfAvatar, not the Animator's own slot alone. An avatar
+            // whose deform is already animated from the shipped controller read as
+            // having no controller at all: this returned null, and the toggle was
+            // built anyway, straight into the two-drivers-one-property fight above.
             foreach (var clip in ClipsOfAvatar(avatar, avatar.GetComponent<Animator>()))
             {
                 if (clip == null || Generated(clip) || !YapsCurveMirror.UserOwned(clip)) continue;
