@@ -795,7 +795,7 @@ are candidates, exactly as in VRChat.
 
 **A converted avatar is editable.** Every socket and plug the converter builds carries a `YAPS
 Socket` / `YAPS Plug` component: the tool below reads them, so you can retune what the author
-set and Build again. **Edited the material in Poiyomi?** *Tools ▸ Avatar Bridge ▸ Re-apply YAPS
+set and Build again. **Edited the material in Poiyomi?** *Tools ▸ YAPS ▸ Re-apply YAPS
 to selected materials* puts the deform back after an unlock/edit/re-lock.
 
 ### The YAPS tool

@@ -20,7 +20,7 @@
 // after the patched shader is assigned, and the bake texture survives a
 // round trip it would otherwise not.
 
-#if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
+#if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -32,7 +32,7 @@ namespace AvatarBridge
     public static class YapsReapply
     {
         const string Prefix = "_YAPS_";
-        const string MenuPath = "Tools/Avatar Bridge/Re-apply YAPS to selected materials";
+        const string MenuPath = "Tools/YAPS/Re-apply YAPS to selected materials";
 
         [MenuItem(MenuPath, true)]
         static bool Validate() => Selected().Count > 0;
