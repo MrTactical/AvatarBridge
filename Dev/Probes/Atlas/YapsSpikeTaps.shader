@@ -19,7 +19,7 @@
 // tex2Dlod, because sampling in a vertex shader needs an explicit LOD and
 // the stereo macro has no vertex-stage form. Under single-pass instanced the
 // real thing reads a texture array, which may not cost exactly the same. The
-// SHAPE of the answer — flat, linear, or ruinous — is what this is for.
+// SHAPE of the answer, flat, linear, or ruinous, is what this is for.
 Shader "YAPS/Spike Taps"
 {
     Properties

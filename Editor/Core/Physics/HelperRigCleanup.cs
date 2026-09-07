@@ -80,8 +80,8 @@ namespace AvatarBridge
                     if (!sources.Any(s => s.sourceTransform != null && rig.Contains(s.sourceTransform))) continue;
 
                     // The bone the rig was driving, which is where a cloth
-                    // goes. It is often not weighted itself — the relay
-                    // writes a holder and the mesh hangs below it — so the
+                    // goes. It is often not weighted itself, since the relay
+                    // writes a holder and the mesh hangs below it, so the
                     // test is whether a cloth there would move any mesh at
                     // all, not whether this exact bone deforms. Climbing to
                     // a skinned ancestor instead lands on Hips, which would

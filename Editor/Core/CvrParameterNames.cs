@@ -25,7 +25,7 @@ namespace AvatarBridge
             // at full weight, so renaming onto Sitting handed CVR's own
             // sitting signal to a layer that outranks CVR's sitting. The
             // moment the game sat you down, the avatar's VRChat seated state
-            // fired as well and won — landing mid-blend, because those states
+            // fired as well and won, landing mid-blend, because those states
             // are usually blend trees driven by parameters CVR never feeds.
             // That is the "bicycle pose", confirmed in game 2026-08-28, and it
             // is why sitting was the ONLY locomotion state that broke: no

@@ -467,8 +467,8 @@ namespace AvatarBridge
         }
 
         // Which side of the avatar a child sits on. DirectionOf folds east
-        // into west on purpose — CVR's slot set is direction-PAIR shaped and
-        // classification wants the pair — but the sign is thrown away there
+        // into west on purpose, since CVR's slot set is direction-PAIR shaped and
+        // classification wants the pair, but the sign is thrown away there
         // and something has to remember it, or a source with a real left and
         // a real strafe clip has one of them written to both sides and the
         // other never placed at all.

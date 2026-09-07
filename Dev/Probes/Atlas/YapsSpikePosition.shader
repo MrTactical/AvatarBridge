@@ -14,7 +14,7 @@
 //
 // Encoding here is deliberately naive: normalised across a fixed box around
 // the world origin. That is the WRONG scheme for shipping and the spike
-// should show why — a half float carries about three decimal digits of
+// should show why: a half float carries about three decimal digits of
 // relative precision, so this is excellent near the origin and poor far from
 // it. The fix is to encode the offset within a spatial-hash cell instead,
 // where the payload is never more than half a cell. Measure the naive one

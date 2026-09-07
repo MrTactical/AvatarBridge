@@ -355,7 +355,7 @@ namespace AvatarBridge
         }
 
         // A chain that moves nothing on its own: no mesh is weighted to any
-        // bone in it. Rigs like cake PB are built this way — a cascade of
+        // bone in it. Some rigs are built this way: a cascade of
         // helper bones, each stage doing one job and feeding the next, with
         // constraints copying the composed result onto the avatar's real
         // bones.

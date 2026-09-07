@@ -4,7 +4,7 @@
 // Fury builds "vrcfAlwaysVisibleHead" as a copy of the head so a VRChat
 // player can see their own, because VRChat hides the real one in first
 // person. ChilloutVR hides yours by itself, so the copy solves a problem
-// this platform does not have — and it arrives switched OFF, waiting for a
+// this platform does not have, and it arrives switched OFF, waiting for a
 // Fury service that gets deleted here.
 //
 // Anything baked onto it comes off worst. A mouth socket parked there is
@@ -56,7 +56,7 @@ namespace AvatarBridge
                 if (copy == null || copy == head || head.IsChildOf(copy)) continue;
 
                 // Only while the real head still has a mesh of its own. The
-                // copy is redundant because ChilloutVR hides yours natively —
+                // copy is redundant because ChilloutVR hides yours natively,
                 // but if a setup MOVED the head mesh here instead of copying
                 // it, deleting this takes the avatar's face with it.
                 if (!HeadStillHasAMesh(ctx, head, copy))

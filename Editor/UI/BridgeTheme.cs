@@ -133,7 +133,7 @@ namespace AvatarBridge
             }
             // A caller may hand over a name that is already themed. Prefixing
             // that again asks Unity for "d_d_Avatar Icon", which it answers
-            // with a console ERROR rather than an exception — so the catch
+            // with a console ERROR rather than an exception, so the catch
             // below never saw it and every repaint logged one.
             string bare = name.StartsWith("d_", System.StringComparison.Ordinal) ? name.Substring(2) : name;
             try

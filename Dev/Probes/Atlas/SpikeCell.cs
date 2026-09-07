@@ -248,7 +248,7 @@ public class SpikeCell : EditorWindow
         // A camera only grabs if something carrying the GrabPass renders in
         // it. The plug marker is a small cube near the origin, so an extra
         // camera looking from across the scene may simply not see it and
-        // never grab at all — which is why the first per-camera measurement
+        // never grab at all, which is why the first per-camera measurement
         // was unverified. The shader writes clip space and ignores this
         // object's transform, so scale changes nothing except the bounds.
         var grab = GameObject.CreatePrimitive(PrimitiveType.Quad);

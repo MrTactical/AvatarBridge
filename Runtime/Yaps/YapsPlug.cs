@@ -126,7 +126,7 @@ namespace AvatarBridge.Yaps
         // One entry per material slot the bake replaced, because a plug's
         // vertices can span several. A whole avatar baked as one plug wears
         // three materials, and patching only one leaves the rest of the mesh
-        // rigid while the patched part bends — the mesh tears along the
+        // rigid while the patched part bends, so the mesh tears along the
         // seam. bakedFrom above stays for the primary slot so an avatar
         // baked before this still restores.
         [System.Serializable]
@@ -136,7 +136,7 @@ namespace AvatarBridge.Yaps
             public Material was;
 
             // Which renderer's slot. A plug rooted high enough spans several
-            // meshes, and slot 0 of a collar is not slot 0 of the body — a
+            // meshes, and slot 0 of a collar is not slot 0 of the body, so a
             // record keyed on the number alone puts one mesh's material onto
             // another. Empty means the plug's own renderer, so records
             // written before a plug could span meshes still resolve.

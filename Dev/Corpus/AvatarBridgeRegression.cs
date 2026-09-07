@@ -50,9 +50,9 @@ namespace AvatarBridge.Regression
                     throw new InvalidOperationException(
                         "Set the AVATARBRIDGE_REPO environment variable to the AvatarBridge checkout path.");
                 // A flag-on run keeps its own Baseline and Current. The two
-                // answer different questions — one asks whether existing
+                // answer different questions: one asks whether existing
                 // users are unaffected, the other whether the new feature
-                // is stable — and sharing a folder would have each
+                // is stable, and sharing a folder would have each
                 // overwrite the other's reference.
                 string suffix = YapsMode ? "/Regression/Yaps" : "/Regression";
                 // The fallback solver is a different avatar at the end of the
@@ -535,7 +535,7 @@ namespace AvatarBridge.Regression
         }
 
         // The sweep rides every corpus conversion: it drives each menu
-        // parameter and reports what does not come back. Names only —
+        // parameter and reports what does not come back. Names only,
         // readings vary run to run, names of broken things do not. Runs
         // last: it moves the scene, and the scene is never saved.
         static void AppendSweep(StringBuilder sb, GameObject target)
@@ -635,7 +635,7 @@ namespace AvatarBridge.Regression
         //
         // A scene that was converted by hand and saved keeps the converted
         // root and its source switched off, so every run afterwards reports
-        // "leftover conversions removed: 1" — true, harmless, and noise in
+        // "leftover conversions removed: 1", true, harmless, and noise in
         // a diff forever. This applies the same two rules ResetScene and the
         // convert path already use, then saves, so the scene goes back to
         // the state the corpus assumes.
@@ -711,7 +711,7 @@ namespace AvatarBridge.Regression
         }
 
         // Set AVATARBRIDGE_YAPS=1 to convert with the penetration system
-        // on — the DEFAULT since 2026-08-15, so Regression/Yaps is what a
+        // on, the DEFAULT since 2026-08-15, so Regression/Yaps is what a
         // user gets. Unset measures the opt-out (convertYapsSystems false),
         // which still has to hold: it is one tick away for anyone. The
         // folder names predate the flip and stay, so both accepted

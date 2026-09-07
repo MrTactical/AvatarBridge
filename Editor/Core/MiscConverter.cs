@@ -629,7 +629,7 @@ namespace AvatarBridge
                 // renders into a RenderTexture is KEPT and depth-clamped,
                 // and the filter hands it a per-instance copy of the
                 // texture. Stripping those took a supported feature off
-                // people's avatars — a mirror, a screen, or the camera an
+                // people's avatars: a mirror, a screen, or the camera an
                 // effect blits through to reach a texture parser.
                 if (cam.targetTexture != null)
                 {

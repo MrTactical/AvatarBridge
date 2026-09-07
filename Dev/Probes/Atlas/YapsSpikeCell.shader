@@ -12,7 +12,7 @@
 // The payload is already normalised to 0..1 by construction, and it never
 // spans more than one cell, so precision is cellSize times the half-float
 // step: about 0.24 mm at half a metre. Range comes from how many cells
-// exist rather than from how big one is, which is the whole point — spike 2
+// exist rather than from how big one is, which is the whole point. Spike 2
 // measured that a bigger box buys range only by losing precision.
 //
 // The hash is INTEGER, not the usual sin/frac float trick, because the two
