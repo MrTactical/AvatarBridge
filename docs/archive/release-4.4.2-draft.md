@@ -37,7 +37,7 @@ The report names how many swaps were repointed.
 
 ## Both fixes cover the native toolkit too
 
-We missed a couple of things on the first pass and they are in here as well.
+A couple of things were missed on the first pass and are in here as well.
 
 The fix above first shipped as a converter step, so it only ran when converting an avatar
 from VRChat. **Setting a plug or socket up natively with the YAPS window replaces the same
@@ -60,7 +60,7 @@ nothing. Quietly. Your size slider would move the mesh and the deform would keep
 against the shape it started at.
 
 **And a swap in a clip that is not yours is now reported instead of edited.** A clip inside a
-package, or the CCK's own, is shared with every project that has it, so we leave it alone:
+package, or the CCK's own, is shared with every project that has it, so it is left alone:
 but you get told, with the clip named, because a plug that works until somebody presses one
 particular toggle is worse than one that says what it could not reach.
 

@@ -163,13 +163,13 @@ Found by asking why PlapPlapForAll works for everyone when contacts are wearer-o
 
 **What it cannot:** animator parameters (behind `SetFloat`) and blendshape weights (behind
 `SetBlendShapeWeight`). Both are methods; reflection here only does fields and properties. This is
-a hard limit, not a gap in our reading.
+a hard limit, not a gap in the reading.
 
 **So: sound is solved and costs nothing.** A socket's audio can be computed on every listener's own
 GPU and played locally: no synced parameter, no contact pair, no marker-light tolerance, nothing
 to install. That beats the addon route on every axis: PCS and Wholesome each ship their own contact
 receivers, which spend from the instance-wide 512-pair budget AND are forced local here, so their
-sounds are wearer-only on a converted avatar today. Ship the machinery, not the audio: we cannot
+sounds are wearer-only on a converted avatar today. Ship the machinery, not the audio: it cannot
 redistribute Noachi's or Dismay's clips.
 
 Untested: whether it survives an upload, and what a per-frame blit or camera actually costs. Steps
@@ -197,7 +197,7 @@ resolution-versus-lag trade the channel has applies. `Assets/YapsSpike/` and
 Writing the patch in CLIP space, ignoring both the object's transform and the eye, makes it
 stereo-proof by construction: both slices of the eye texture array get identical content, so there
 is no double-wide layout maths to get wrong. That is the part of SPS that does not survive
-conversion, and we simply never have it. It also means the patch lands at the same UV in every
+conversion, and it is simply never available. It also means the patch lands at the same UV in every
 camera's frame, so a grab leaking between cameras still finds the right pixels.
 
 **The cell problem may have an answer that fails safe.** Give each socket a build-time random id,
@@ -466,7 +466,7 @@ Every question that could have killed it has an answer:
 ### Two of the three implementation questions are closed, 2026-08-27
 
 **1. A patched Poiyomi CAN take it.** The real shader a plug wears, 723 KB of locked Poiyomi with
-our deform already injected, took the hash and twenty-seven reads: **compiles, zero messages**.
+the deform already injected, took the hash and twenty-seven reads: **compiles, zero messages**.
 `Dev/Probes/Atlas/PoiyomiHeadroom.cs` copies the shader a plug is actually wearing, injects the
 block beside the existing `YapsSocketDeform` call, imports it and reports. It touches nothing that
 ships.

@@ -2,7 +2,7 @@
 
 The single list. Every open piece of work lives here and nowhere else. Check this document
 before starting on a new idea, in case something similar is already on it, and whenever the
-question is "what's next" or "what do we have to do". An item leaves this file by shipping, or
+question is "what's next" or "what is left to do". An item leaves this file by shipping, or
 by a decision recorded in `archive/`. The standing rule still outranks everything on it: a bug
 somebody hits while wearing an avatar comes first.
 
@@ -292,7 +292,7 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
 
    **FIXED 2026-09-03.** The report string that removes VRChat's own screen atlas used to say
    ChilloutVR "publishes player positions to shaders directly, so none of that machinery is
-   needed here", four bullets before the one that adds ours. It now says those objects speak
+   needed here", four bullets before the one that adds this tool's. It now says those objects speak
    VRChat's protocol, which is true whether or not the atlas is switched on.
 
    **FIXED 2026-09-03.** The prop detector and the atlasing advice both offered this tool's own
@@ -349,9 +349,9 @@ the "IT BROKE, my fur!!!" failure of 2026-08-25 exactly, one level up.
    Read out of `ShaderOptimizer.SetLockedForAllMaterials` rather than guessed. The sweep takes
    every material whose shader uses the optimizer and is not already locked, and its test for
    "already locked" is `shader.name.StartsWith("Hidden/Locked/")`: the exact prefix the pink fix
-   gave us. So auto-lock-on-upload skips our materials, and has been skipping them since that fix.
+   gave it. So auto-lock-on-upload skips these materials, and has been skipping them since that fix.
 
-   Worth knowing what it would have done: locking resolves properties to constants, and OUR
+   Worth knowing what it would have done: locking resolves properties to constants, and the YAPS
    properties are the ones animation drives (`_YAPS_Enabled`, `_YAPS_BakeScale`, the knobs). A
    locked YAPS material would have frozen at whatever it happened to hold: a plug that never
    toggles and never resizes, in game only.
@@ -361,8 +361,8 @@ the "IT BROKE, my fur!!!" failure of 2026-08-25 exactly, one level up.
    the lock button without the editor marker would have been named plainly and swept in. Both
    markers now.
 
-   **Still open, and left alone on purpose:** an explicit "Unlock all materials" grabs ours too,
-   and tries to restore a `TAG_ORIGINAL_SHADER` we never wrote. The result is a broken material,
+   **Still open, and left alone on purpose:** an explicit "Unlock all materials" grabs these too,
+   and tries to restore a `TAG_ORIGINAL_SHADER` that was never written. The result is a broken material,
    recovered by re-baking. Guarding it means writing Thry's own lock records, which is
    impersonating another tool's bookkeeping to survive a button the user deliberately pressed.
 
@@ -599,7 +599,7 @@ and "make a new one" is not an answer for a prop somebody has positioned and tun
   `TPS_Orf_Norm`/`SPSLL_Socket_Front`, heard by NOTHING. That looked like four dead pointers a
   socket until `YapsPropBuilder.FrontTypes` turned out to be exactly that pair: it is the prop
   channel's FX/FY/FZ front axis. No corpus avatar hears it because no corpus avatar carries a
-  prop, and the corpus enumerates scenes while props are spawnables. Our own system is the
+  prop, and the corpus enumerates scenes while props are spawnables. This tool's own system is the
   consumer; capping the family would silently cost props their axis.
   *Should the COUNT be capped like marker lights?* No, the limits are not alike. Lights are four
   slots a MESH and a fifth evicts the lowest range, which is why the lighthouse had to exist.
@@ -610,7 +610,7 @@ and "make a new one" is not an answer for a prop somebody has positioned and tun
   itself.
 - **DPS range offset, ON ICE 2026-08-23**: the +0.003 offset makes YAPS sockets and plugs
   invisible to every mod decoding at 0.001, sound mods included: NAK's PlapPlapForAll needs
-  `RoundToInt(Repeat(range*500+500,50)+200)` to hit 205/210/225/245, and our 0.4130/0.4230/0.4530/
+  `RoundToInt(Repeat(range*500+500,50)+200)` to hit 205/210/225/245, and the 0.4130/0.4230/0.4530/
   0.4930 all land on x.5 and read Invalid. No range separates a sound mod from a toy mod, so it is
   one choice for both. **PR MERGED 2026-08-28 (a13175a), and that is not yet the trigger.** The
   mod's source now bounds the estimate with the stated length, so it engages at contact rather
@@ -742,9 +742,9 @@ plugs.
 
 ---
 
-## The body-mesh fallback is our line, not ChilloutVR's
+## The body-mesh fallback is this tool's line, not ChilloutVR's
 
-*Opened 2026-08-23. Not a transport: a limit we imposed on ourselves that costs sync bits.*
+*Opened 2026-08-23. Not a transport: a limit imposed here that costs sync bits.*
 
 A socket whose shapes live on the BODY mesh cannot use the shader deform, so its reactions go
 through the animator: a depth trigger, a parameter, a layer. That parameter is wearer-only unless
@@ -769,7 +769,7 @@ PLUG deform, not this one. There is a second net as well: `_YAPS_SocketDepth` ov
 computed depth whenever it is >= 0 (`yaps_socket.cginc:147`), so the animator channel still wins
 where it is driven.
 
-**But it is not only where we look for a plug: corrected 2026-08-23.** `socketWorld` reaches
+**But it is not only where the plug is looked for: corrected 2026-08-23.** `socketWorld` reaches
 further down than the depth maths:
 
 ```
@@ -987,7 +987,7 @@ the Toolkit rather than a thing only the harness runs.
 features you want, watch the bits, and let it name the cheapest thing to drop. Most avatars
 that go over do it by accident, in a menu they never counted.
 
-**An upload preflight.** One list, run before uploading: our diagnostics, the CCK's own
+**An upload preflight.** One list, run before uploading: these diagnostics, the CCK's own
 validators, the texture flags, parameters past the cap, missing metas. Everything that
 currently fails at the last moment, in an order that says which to fix first.
 
@@ -1100,7 +1100,7 @@ toy mod reading the same protocol in C# matches within 0.001. VRChat authors +0.
 both, which is why a stock converted avatar drove a stranger's toy across a room. YAPS authors
 +0.003, which DPS reads and that mod does not.
 
-**Toy integration cannot be made safe from the socket side, and that is not our bug.** The mod
+**Toy integration cannot be made safe from the socket side, and that is not a bug here.** The mod
 computes reach as `1 - distance / giver.Length`, and estimates `Length` from whichever renderer
 sits first under the avatar root rather than reading the length DPS states in the tip light's
 intensity. A socket is only ever the target of somebody else's number. So:
@@ -1121,7 +1121,7 @@ so the quiet offset remains the default long after any merge.
 pressure, but Unity ranks the four per-object light slots BY RANGE, so a tiny light is the
 first evicted by every stock DPS avatar in the room. It would work alone and fail in company,
 which is the opposite of what a compatibility feature needs. Worth keeping only as a "YAPS talks
-to YAPS and nothing else" mode, where our own decoder sets the rules.
+to YAPS and nothing else" mode, where this decoder sets the rules.
 
 ---
 
@@ -1129,7 +1129,7 @@ to YAPS and nothing else" mode, where our own decoder sets the rules.
 *Status: the light-slot fix landed, and the authority-gate wall is DISPROVEN in game 2026-08-22: cross-avatar prop writes work, see `YAPS5.md`. The 512-pair cap stands.*
 
 Read out of the client 2026-08-22 while costing a contact-based replacement for the marker-light
-channel. Both of these are platform behaviour, not our code, and both bound what any redesign can
+channel. Both of these are platform behaviour, not this tool's code, and both bound what any redesign can
 achieve.
 
 **A prop can only be driven by your own avatar.** Every contact write into a `CVRSpawnable` value
@@ -1138,7 +1138,7 @@ another prop (if either is synced by you), a sender that is *your own* avatar, o
 is **no branch for another player's avatar**, so a remote sender falls through and returns false
 and the value is silently never written. This is very likely a client bug rather than policy: the
 prop branch falls back to `IsSyncedByMe()`, and that fallback is simply missing for avatar
-senders, so even the prop's own syncer is refused. It predicts the split we have been chasing:
+senders, so even the prop's own syncer is refused. It predicts the split chased here:
 avatar-to-avatar works (the gate only runs for spawnable triggers), old DPS props work (lights,
 never this path), YAPS props work on your own sockets and never on someone else's. **Test before
 building anything around it, and report it upstream if it holds.**
@@ -1156,7 +1156,7 @@ on tags, `contentType` and owner happen *before* a pair is written, so **tags ar
 Two routes, and the cheap one is much more interesting than the famous one.
 
 **The light colour is free, and nobody is using it.** A vertex light hands the shader
-`unity_LightColor` alongside its position and range. Our markers are black with non-zero intensity
+`unity_LightColor` alongside its position and range. These markers are black with non-zero intensity
 (zero intensity drops a light from the per-object list entirely), so three channels per light are
 sitting unused. If a root light's colour carried the socket's axis, a YAPS-native socket would
 need **one** light instead of two, and with the tracker holding a slot, that is three sockets in
@@ -1176,7 +1176,7 @@ the resolution-versus-lag trade above applies to it at all. `Assets/YapsSpike/` 
 Writing the patch in clip space, ignoring the object's transform and the eye, makes it
 stereo-proof by construction: both slices of the eye texture array get identical content, so
 there is no double-wide layout maths to get wrong. This is the part that does not survive
-conversion from VRChat, and we simply do not have it.
+conversion from VRChat, and it is simply not available here.
 
 **Still unanswered, in order:** whether ChilloutVR's asset filter keeps a `GrabPass` through an
 upload (only an upload can say); the per-frame cost of a named grab in VR; whether the patch
@@ -1191,12 +1191,11 @@ rather than "wrong socket found".
 
 **Original note, written before the spike:**
 
-**The screen-space atlas is real, and we would write it better than SPS, but do not build it
+**The screen-space atlas is real, and it could be written better than SPS, but do not build it
 yet.** Sockets render a small quad encoding their world position into a reserved screen region;
 the plug samples it back through a named GrabPass. It is the only channel that dodges *both* walls
 above: no light slots, no contact pairs, no parameters, so no authority gate and no sync bits, and
-no cap on socket count. And the reason SPS's does not survive conversion is one we could simply
-not have: theirs is written for VRChat's double-wide, ours would be instanced-native from the
+no cap on socket count. And the reason SPS's does not survive conversion is one that need not apply here: theirs is written for VRChat's double-wide, this would be instanced-native from the
 first line (`UNITY_DECLARE_SCREENSPACE_TEXTURE`, the same family the shader patcher already
 applies). Against it: a named GrabPass is a real per-frame cost; the atlas quads must escape
 frustum culling; and the unsolved one is **cell collisions between avatars**, because two avatars
@@ -1246,7 +1245,7 @@ survive the budget. Everything on the platform becomes findable, including conte
 never be converted and whose authors are long gone. That is what "force everything over to YAPS"
 can actually mean: not converting other people's avatars, but understanding them.
 
-**It stays a tier, not a replacement.** Our sockets must keep emitting lights and pointers, since
+**It stays a tier, not a replacement.** These sockets must keep emitting lights and pointers, since
 that is the only way somebody else's plug finds us, and a script cannot run on stable or for a
 wearer who refuses it. So: script when it is there, contacts next, lights last, which is the
 tiering the resolver already has.
@@ -1609,4 +1608,4 @@ avatar to write against, so it waits for one.
 
 One thing it confirms rather than threatens: "The plug mesh must be straight / fully extended in
 the editor" is their constraint too. The bake measures a rest pose because the technique requires
-it, not because ours is weak.
+it, not because this one is weak.

@@ -272,7 +272,7 @@ nothing
 The front pair reads as four dead pointers a socket. It is not: `YapsPropBuilder.FrontTypes` is
 that exact pair, and it carries the prop channel's FX/FY/FZ front axis. Nothing in the corpus
 hears it because no corpus avatar carries a prop: the corpus enumerates SCENES and props are
-spawnables. The consumer is our own system, and capping the family would have cost props their
+spawnables. The consumer is this tool's own system, and capping the family would have cost props their
 axis silently. A census over avatars can only prove what avatars read.
 
 And the count should not be capped the way lights are, because the limits are not alike. Lights
@@ -345,7 +345,7 @@ tighter gate in **73 of 73** crowded parents; the toggle gate, the one this plan
 first, never binds at all. Aeromorph is the shape of it: 10 solvers under a single toggle state,
 7 distinct settings groups, 3 merges available.
 
-The cause is our own conversion doing the right thing. Each solver is tuned from its source
+The cause is the conversion doing the right thing. Each solver is tuned from its source
 PhysBone individually, particle radius included, measured per chain from the mesh it moves:
 Lanacan's report shows `0.02 → 0.021` off a 10,676-vertex sample. Chains measured individually
 do not fingerprint alike, so they cannot share one settings block.

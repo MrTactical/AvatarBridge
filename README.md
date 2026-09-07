@@ -1062,7 +1062,7 @@ alone.
   debug view (on the material's YAPS panel) straightens the plug and puts the answer in its
   LENGTH: a quarter means nothing found the socket, a half the contact channel, three quarters
   a marker light, full the screen atlas. Length rather than colour because a patched shader only lets the toolkit edit the vertex
-  stage, so there is no fragment of ours to paint. It is the first thing to look at when a plug
+  stage, so there is no fragment of its own to paint. It is the first thing to look at when a plug
   bends toward the wrong thing, or toward nothing. The screen atlas needs a view at least 552 by
   520 pixels and stands down below that, so a small window answers three quarters where a full
   screen answers full. *Atlas taps* beside it answers the follow-up
@@ -1988,7 +1988,7 @@ The report names each one, because the editor gives no hint and the effect only 
 somebody sees it in game. Assign it a real material, or, if the system exists only to spawn
 another one and was never meant to be seen, turn its **Renderer** off.
 
-**If it used to have a picture and now draws as white squares, that was a bug of ours, fixed in
+**If it used to have a picture and now draws as white squares, that was a bug in AvatarBridge, fixed in
 3.6.0: reconvert.** VRCFury bakes generated textures as sub-assets of a single file in its temp
 folder and deletes that folder on its next build. Conversion rescued the material and its shader
 out of there but left the *textures* pointing in, so the pictures died with the folder while
