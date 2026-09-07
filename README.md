@@ -547,6 +547,14 @@ after that cancellation and is only ever multiplied by scale, so it behaves iden
 size. The cost is `gravityFalloff`, which existed only as `m_Gravity`'s cancellation and can't
 come along; the report names each chain that had one.
 
+**One cloth can hold many chains.** A VRChat PhysBone simulates one root, so an author who
+wants twenty-six hair strands writes twenty-six components, and converting them one for one
+lands twenty-six solvers on the avatar. MagicaCloth2 takes any number of independent roots per
+component, so chains that would have been identical anyway are grouped into one: same settings,
+same colliders, same parent, same kind. They still swing independently, and the report says
+what was grouped and under what. A chain with an ignore list, a PhysBone parameter or its own
+toggle keeps its own component, because none of those survive sharing one.
+
 > ⚠️ **Physics can only be judged in game.** Nothing steps a cloth solver in edit mode, and shaking
 > the avatar root in play mode proves nothing: MagicaCloth2's speed limits make a chain follow
 > rigidly the moment they're exceeded, so a fast shake looks still whatever the settings say.
@@ -1360,6 +1368,7 @@ Analyse sets them to match. Open it to override a measurement deliberately, not 
 | **Convert PhysBones to** | MagicaCloth 2 | MagicaCloth 2 gives the best result in ChilloutVR; DynamicBone is the built-in fallback. Analyse checks which is actually installed |
 | **Delete PhysBones after converting** | on | Removes the VRChat components once their replacements exist. Off leaves both, which uploads but simulates nothing |
 | **GrabbyBones mod support** | on | Keeps chains grabbable by the GrabbyBones mod, the closest thing CVR has to VRChat's bone grabbing |
+| **Group identical PhysBone chains** | on | A VRChat PhysBone holds one chain, so a hairstyle built strand by strand ships one component per strand. MagicaCloth2 simulates any number of chains in one component, and each one saved is a solver team and a proxy mesh the avatar stops paying for. Only chains matching on settings, colliders, parent and kind are grouped, and they still move independently. Off gives one component per chain, the way VRChat had them |
 | **Face tracking** | Native CVR Component | Native drives blendshapes through CVR's own `CVRFaceTracking`: self-contained, a bit stiff. *Unity Animator Blendtrees (DSR)* rebuilds DragonSkyRunner's rig onto the avatar: smoother, more expressive. *Keep the avatar's own rig* strips nothing. Both set-up modes replace any existing FT rig |
 | **Remove GoGo Loco (recommended)** | on | Strips GoGo Loco, whose locomotion VRChat needs and ChilloutVR provides natively |
 | **Penetration** | Convert to YAPS | One choice, three answers. *Convert to YAPS* rebuilds the penetration system for ChilloutVR: a from-scratch deform, the author's own tuning carried across, sockets found by contacts and DPS marker lights, readable by and reading every system on the platform. The OGB, PCS and Wholesome haptics stacks are stripped either way: they cost no sync bits, but each is a contact, and ChilloutVR budgets 512 overlapping pairs a frame for the whole instance: a converted avatar carried over a hundred. *Keep the OGB / PCS haptics contacts* brings them back if you drive a toy from them. *Leave as VRChat built it* touches nothing, and functions nowhere. The choice needs the 18+ [YAPS add-on](#yaps-penetration-that-works-in-chilloutvr) installed; without it the penetration is removed and the report names the add-on |

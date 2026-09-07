@@ -66,6 +66,13 @@ namespace AvatarBridge
         // Name converted MagicaCloth objects after their PhysBone parameter so the
         // GrabbyBones mod drives the avatar's _IsGrabbed / _Angle grab-reactive logic.
         public bool grabbyBonesSupport = true;
+        // Simulate PhysBones that would produce identical cloths with one
+        // multi-root cloth. A VRCPhysBone has one root, so a hairstyle built
+        // strand by strand is one component per strand; MagicaCloth2 takes
+        // any number of roots per component, and every component saved is a
+        // proxy mesh and a solver team. Only merges chains that match on
+        // settings, colliders, parent and kind.
+        public bool groupIdenticalPhysBones = true;
         // Start each cloth from the MagicaCloth2 preset that fits the
         // chain. Structure comes from the PhysBone either way.
         public bool useMagicaPresets = true;

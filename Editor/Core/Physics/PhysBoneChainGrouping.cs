@@ -1,0 +1,158 @@
+#if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS && AVATARBRIDGE_MAGICA
+using System.Collections.Generic;
+using System.Linq;
+using UnityEngine;
+
+namespace AvatarBridge
+{
+    // Folds sibling PhysBones that would produce identical cloths into one
+    // multi-root cloth.
+    //
+    // A VRCPhysBone has one root; authors who want 26 hair strands write 26
+    // components, and converting one-for-one lands 26 solvers on the avatar
+    // where MagicaCloth2 wants one component holding 26 root bones. Every
+    // extra component is its own proxy mesh and its own solver team, so the
+    // count is a real cost, not just a long hierarchy.
+    //
+    // The bar for merging is "the two components would have been identical
+    // anyway": same settings, same colliders, same on/off state, same
+    // parent, same classified kind. Anything a merge could not express
+    // (an ignore list, a PhysBone parameter, a per-chain toggle) keeps its
+    // own component.
+    public static class PhysBoneChainGrouping
+    {
+        const string Category = "PhysBones -> MagicaCloth2";
+
+        // Anchored volumes are measured and given collision bones per side.
+        // A merged left and right would share one radius and one collision
+        // bone, so they stay apart whatever their settings say.
+        static readonly HashSet<string> NeverMerge = new HashSet<string>
+        {
+            "Breast", "Butt", "Belly", "Thigh",
+        };
+
+        public static List<PhysBoneChainData> Merge(BridgeContext ctx, List<PhysBoneChainData> chains)
+        {
+            if (!ctx.Settings.groupIdenticalPhysBones || chains.Count < 2)
+            {
+                return chains;
+            }
+
+            var result = new List<PhysBoneChainData>();
+            var buckets = new Dictionary<string, PhysBoneChainData>();
+            int folded = 0;
+            var names = new SortedSet<string>(StableSampleOrder.Instance);
+
+            foreach (var chain in chains)
+            {
+                string key = KeyFor(chain);
+                if (key == null)
+                {
+                    result.Add(chain);
+                    continue;
+                }
+                if (!buckets.TryGetValue(key, out var head))
+                {
+                    buckets[key] = chain;
+                    result.Add(chain);
+                    continue;
+                }
+                head.MergedRoots.Add(chain.Root);
+                head.MergedSources.Add(chain.SourceGameObject);
+                folded++;
+                var parent = chain.Root.parent;
+                names.Add(parent != null ? parent.name : chain.Root.name);
+            }
+
+            if (folded > 0)
+            {
+                int groups = buckets.Values.Count(c => c.MergedRoots.Count > 0);
+                ctx.Report.Converted(Category,
+                    $"{folded + groups} identical chain(s) simulated by {groups} cloth(s)",
+                    "These PhysBones were separate components with the same settings, the same " +
+                    "colliders and the same parent: a hairstyle built one strand at a time, a pair " +
+                    "of ears, a row of charms. One MagicaCloth2 component simulates any number of " +
+                    "independent root bones, and each component it saves is a proxy mesh and a " +
+                    "solver team the avatar no longer pays for. The chains still move separately: " +
+                    "they share settings, not physics. Grouped under " +
+                    string.Join(", ", names.Take(6)) + (names.Count > 6 ? ", …" : "") +
+                    ". Turn off \"Group identical PhysBone chains\" for one component per chain, " +
+                    "the way the VRChat avatar had them.");
+            }
+            return result;
+        }
+
+        // Null means "keep this one on its own".
+        static string KeyFor(PhysBoneChainData data)
+        {
+            if (data.Root == null || data.SourceGameObject == null || data.Synthesized)
+            {
+                return null;
+            }
+            // The holder's name IS the GrabbyBones parameter, so a chain the
+            // animator names cannot share a holder with anything.
+            if (!string.IsNullOrEmpty(data.Parameter))
+            {
+                return null;
+            }
+            // Exclusions are per component in MagicaCloth2: it has no ignore
+            // list, so they are expressed by rooting around the excluded
+            // bones, and that root set belongs to one chain.
+            if (data.Ignores.Count > 0 || data.HumanoidExclusions.Count > 0 || data.ToeExclusions.Count > 0)
+            {
+                return null;
+            }
+            // A curve is sampled along the chain by normalised depth, so two
+            // chains of different length read different values off the same
+            // curve even when every other number matches.
+            if (HasCurve(data.PullCurve) || HasCurve(data.SpringCurve) || HasCurve(data.StiffnessCurve)
+                || HasCurve(data.ImmobileCurve) || HasCurve(data.RadiusCurve))
+            {
+                return null;
+            }
+            var cls = MagicaPresetLibrary.Classify(data);
+            if (cls == null || NeverMerge.Contains(cls.Name))
+            {
+                return null;
+            }
+            // Same parent on both the bone and the component's own object:
+            // a toggle that hides one of these hides all of them, which is
+            // what lets them share a component's enabled flag.
+            var rootParent = data.Root.parent;
+            var sourceParent = data.SourceGameObject.transform.parent;
+            if (rootParent == null || sourceParent == null)
+            {
+                return null;
+            }
+
+            var colliders = string.Join(",", data.Colliders
+                .Where(c => c != null)
+                .Select(c => c.GetInstanceID().ToString())
+                .OrderBy(s => s, StableSampleOrder.Instance));
+
+            return string.Join("|",
+                cls.Name,
+                rootParent.GetInstanceID().ToString(),
+                sourceParent.GetInstanceID().ToString(),
+                colliders,
+                data.IsAdvancedIntegration ? "adv" : "simple",
+                F(data.Pull), F(data.Spring), F(data.Stiffness),
+                F(data.Gravity), F(data.GravityFalloff), F(data.Immobile), F(data.Radius),
+                data.ImmobileTypeName, data.LimitTypeName,
+                F(data.MaxAngleX), F(data.MaxAngleZ), F(data.MaxStretch), F(data.MaxSquish),
+                F(data.EndpointPosition.x), F(data.EndpointPosition.y), F(data.EndpointPosition.z),
+                data.MultiChildTypeName,
+                data.RootHasMultipleChildren ? "multi" : "single",
+                data.IsAnimated ? "animated" : "static",
+                data.InitiallyActive ? "on" : "off",
+                data.ComponentEnabled ? "enabled" : "disabled");
+        }
+
+        static bool HasCurve(AnimationCurve curve) => curve != null && curve.length > 0;
+
+        // Rounded, because two strands of one hairstyle are authored by
+        // copying a component and the odd float differs in the last bit.
+        static string F(float value) => value.ToString("0.####");
+    }
+}
+#endif
