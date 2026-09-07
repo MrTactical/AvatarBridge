@@ -70,10 +70,24 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    before 4.5.0 goes out: the reporter is one avatar and the hypothesis needs a headset on a real
    upload. Watch for it in the reports after the release and take the next one that shows it,
    with the Poiyomi version and whether Early Z and the outline are on.
-6. **The atlas is proven in game and nothing of it is in the shipped shaders.** Pass 1 passed all
-   four steps 2026-09-03 (`YAPS5.md`). `yaps_resolve.cginc` still resolves ONE socket from lights
-   and contacts. How the three coexist, and what a pair sees when only one side has the atlas, is
-   the design work and is unanswered.
+6. **The atlas shipped in 4.5.0. Phases A, B and C are closed.** Pass 1 passed all four steps
+   2026-09-03 (`YAPS5.md`), and the sub-entries below record the rest.
+
+   **This header used to say the resolver still answered from lights and contacts alone, and that
+   the coexistence was unanswered. It was stale from 2026-09-04 and cost a wrong "what's next" on
+   2026-09-07.** What `yaps_resolve.cginc` does now: channel, then lights, then the atlas, each
+   overwriting the last where it answers, `socket.tier` recording which one did, and the
+   behind-the-base guard last so it judges whichever answer survived.
+
+   **What a pair sees when only one side has the atlas is answered too.** C2 keeps sockets
+   emitting stock DPS ranges byte for byte, so a plug that does not read the atlas still finds
+   them by light, and B3 proved that direction in game against a legacy avatar.
+
+   **The one part of C1 still violated** is its own rule that the blend must not depend on
+   presence: `YapsAtlasFits` is a camera test, so a target under 552 by 520 drops to the light
+   tier. Accepted for the self portrait, and B1 showed every camera that matters (desktop view,
+   desktop mirror, VR both eyes) fits and agrees. Revisit only if a divergence turns up between
+   two cameras that BOTH fit.
 
    **A1 done 2026-09-03**: the protocol version is mixed into the cell tag, so a socket from a
    different protocol is dropped by the check that already runs. Frozen with it: the hashes, the
