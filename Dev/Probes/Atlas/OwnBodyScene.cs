@@ -16,6 +16,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using ABI.CCK.Components;
+using AvatarBridge.Yaps;
 using UnityEditor;
 using UnityEngine;
 
@@ -58,7 +59,16 @@ namespace AvatarBridge.Regression
                 var plugs = PatchedMaterials(avatar.gameObject);
                 if (plugs.Count == 0)
                 {
-                    report.AppendLine("    no patched plug material found; this body can only be a socket carrier");
+                    // Say WHICH of the two it is. No component means the avatar
+                    // was never rigged; components but no patched material means
+                    // it was rigged and not built, and those want different
+                    // buttons.
+                    int rigPlugs = avatar.GetComponentsInChildren<YapsPlug>(true).Length;
+                    int rigSockets = avatar.GetComponentsInChildren<YapsSocket>(true).Length;
+                    report.AppendLine($"    no patched plug material. YapsPlug {rigPlugs}, " +
+                        $"YapsSocket {rigSockets}: " + (rigPlugs == 0
+                            ? "not rigged for YAPS, so convert or set it up first"
+                            : "rigged but not built, so run the toolkit's Build on it"));
                     continue;
                 }
                 foreach (var m in plugs)
