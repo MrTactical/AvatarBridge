@@ -172,8 +172,7 @@ namespace AvatarBridge.Regression
             float len = plug.lengthOverride > 0f ? plug.lengthOverride : Length;
             Debug.Log($"OTHER BODY: the wearer's socket is {OwnAt:0.00} m from the plug and the " +
                 $"other body's is {OtherAt:0.00} m, both inside the roughly {Reach(len):0.00} m " +
-                "the atlas can see.
-" +
+                "the atlas can see. " +
                 "View Off: the plug should take the wearer's own, being nearer. Then swap the two " +
                 "distances and it should follow the other body's. Anything else, and admitting " +
                 "own-body sockets has cost somebody the socket they were using.");
