@@ -496,11 +496,10 @@ namespace AvatarBridge
                         .Select(o => o.Name).ToList();
                     if (twins.Count > 0) f.Notes.Add("on the same spot as " + string.Join(", ", twins) + " — one too many?");
                 }
-                // A mesh another plug carries is not a plug. It gets a row —
-                // it IS being changed, and a change nobody can see is the one
-                // people add a second plug to fix — but a nested, quiet one
-                // that says whose it is and offers none of the controls that
-                // would make it a peer.
+                // A mesh another plug carries is not a plug. It gets a row, since it IS
+                // being changed and a change nobody can see is the one people add a
+                // second plug to fix, but a nested quiet one that says whose it is and
+                // offers none of the controls that would make it a peer.
                 if (f.CarriedBy != null)
                 {
                     var carried = BridgeElements.ReportRow("part of",
@@ -523,9 +522,9 @@ namespace AvatarBridge
                 }
 
                 bool complete = f.Notes.Count == 0;
-                // Nothing to fix but something to say gets a softer green
-                // than a silent row: working as designed must never wear
-                // the colour that means "you have a problem".
+                // Nothing to fix but something to say gets a softer green than a silent
+                // row: working as designed must never wear the colour that means "you
+                // have a problem".
                 var settled = BridgeTheme.Dark ? new Color(0.42f, 0.72f, 0.52f) : new Color(0.28f, 0.55f, 0.35f);
                 var colour = f.IsYapsAlready && complete
                              ? (f.Expected.Count > 0 ? settled : BridgeTheme.Good)
@@ -602,10 +601,9 @@ namespace AvatarBridge
                 }
                 else if (plugComp != null)
                 {
-                    // The plug's half of the same idea. A socket previews by
-                    // dropping a plug in front of it; a plug had no row chip
-                    // at all, because there was nothing for it to bend toward
-                    // until the test socket existed.
+                    // The plug's half of the same idea. A socket previews by dropping a
+                    // plug in front of it; a plug had no row chip at all, because there was
+                    // nothing for it to bend toward until the test socket existed.
                     bool testing = YapsPreview.TestSocketInScene;
                     var chip = BridgeElements.Chip(testing ? "previewing" : "preview",
                         BridgeTheme.Good, testing, () =>
@@ -661,12 +659,11 @@ namespace AvatarBridge
         static void Adopt(YapsScanner.Found f)
         {
             if (f.Root == null) return;
-            // Never a mesh another plug carries. It wears a patched material,
-            // so it reads as a plug, and adopting it hands it a component —
-            // which is a claim on the mesh, which makes the carrier let go of
-            // it, which leaves it bending on its own frame. That is Build
-            // re-creating the exact component the user just deleted, every
-            // time they press it.
+            // Never a mesh another plug carries. It wears a patched material, so it
+            // reads as a plug, and adopting it hands it a component, which is a
+            // claim on the mesh, which makes the carrier let go of it, which leaves
+            // it bending on its own frame. That is Build re-creating the exact
+            // component the user just deleted, every time they press it.
             if (f.CarriedBy != null) return;
             if (f.Kind == YapsScanner.Kind.Socket)
             {
@@ -698,12 +695,12 @@ namespace AvatarBridge
             {
                 var plug = f.Root.GetComponent<YapsPlug>();
                 if (plug == null) return;
-                // The same door the inspector's Bake goes through, menu and
-                // channel included. Bake alone left the channel holding the
-                // frames of a previous build and the menu animator unrefreshed,
-                // so one plug came out differently depending on which button
-                // was pressed. BuildAll below does those two once, for the
-                // whole avatar, which is why it can call the bare Bake.
+                // The same door the inspector's Bake goes through, menu and channel
+                // included. Bake alone left the channel holding the frames of a
+                // previous build and the menu animator unrefreshed, so one plug came
+                // out differently depending on which button was pressed. BuildAll below
+                // does those two once for the whole avatar, which is why it can call
+                // the bare Bake.
                 var o = YapsNativeBuilder.BakeAndRefreshMenu(plug);
                 if (!o.Ok) Debug.LogError("[YAPS] " + o.Message);
                 _summary.text = o.Message + (o.Notes.Count > 0 ? "  " + string.Join(" ", o.Notes) : "");
@@ -766,12 +763,11 @@ namespace AvatarBridge
                 plug = Undo.AddComponent<YapsPlug>(go);
                 plug.renderer = renderer;
                 plug.rootBone = rootBone;
-                // Left on auto. Pinning it to the best-weighted slot here
-                // reads as helpful and is not: an explicit slot means "this
-                // one only", so a plug whose vertices span several materials
-                // silently bakes into one and tears along the seam. The bake
-                // finds every slot the chain reaches; a number is the author
-                // overriding that, not the tool guessing for them.
+                // Left on auto. Pinning it to the best-weighted slot here reads as
+                // helpful and is not: an explicit slot means "this one only", so a plug
+                // whose vertices span several materials silently bakes into one and
+                // tears along the seam. The bake finds every slot the chain reaches; a
+                // number is the author overriding that, not the tool guessing.
                 plug.materialSlot = -1;
             }
             else if (rootBone != null && plug.renderer != renderer
@@ -826,10 +822,10 @@ namespace AvatarBridge
                 socketsBuilt++;
                 lines.AddRange(YapsNativeBuilder.BuildSocket(s));
             }
-            // The writers go on the sockets; the surface they publish to
-            // goes on the avatar. Only the converter used to add it, so a
-            // hand-built avatar had sockets writing to a screen nothing
-            // grabbed. One switch for both halves, as on the convert path.
+            // The writers go on the sockets; the surface they publish to goes on
+            // the avatar. Only the converter used to add it, so a hand-built avatar
+            // had sockets writing to a screen nothing grabbed. One switch for both
+            // halves, as on the convert path.
             if (YapsAtlas.Enabled && YapsAtlas.AddClear(_target.transform) != null
                 && YapsAtlas.AddGrab(_target.transform) != null)
             {
