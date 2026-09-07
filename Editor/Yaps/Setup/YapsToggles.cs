@@ -382,8 +382,8 @@ namespace AvatarBridge
             string dir = YapsNativeBuilder.OutputRoot + "/" + Sanitise(avatar.name);
             YapsNativeBuilder.EnsureFolderPublic(dir);
             string path = AnimationUtility.CalculateTransformPath(plug.Target.transform, avatar.transform);
-            var on = Clip(path, plug.Target.GetType(), 1f, dir + "/" + Sanitise(label) + " on.anim");
-            var off = Clip(path, plug.Target.GetType(), 0f, dir + "/" + Sanitise(label) + " off.anim");
+            var on = Clip(path, plug.Target.GetType(), "material._YAPS_Enabled", 1f, dir + "/" + Sanitise(label) + " on.anim");
+            var off = Clip(path, plug.Target.GetType(), "material._YAPS_Enabled", 0f, dir + "/" + Sanitise(label) + " off.anim");
 
             if (avatar.avatarSettings == null)
             {
@@ -412,7 +412,78 @@ namespace AvatarBridge
             return $"{label}: menu toggle \"{label}\" added ({machine}), on and off clips beside the bake";
         }
 
-        static AnimationClip Clip(string path, System.Type type, float value, string assetPath)
+        // Whether this plug will answer sockets on its own wearer. A separate
+        // row from the deform toggle because it answers a different question:
+        // not whether the plug bends, but whose sockets it bends toward.
+        //
+        // OFF by default, and that is the whole reason it exists. A hole ends
+        // the shaft, and a socket the wearer is wearing is nearly always
+        // nearer to their own plug than anybody else's, so on by default would
+        // end the chain at home and never reach the person in front of them.
+        //
+        // Only written where it can do something. Without the atlas, or on an
+        // avatar with no sockets of its own, it would sit in the menu changing
+        // nothing, and a dead menu row is worse than no row.
+        public static string EnsureSelfToggle(YapsPlug plug, CVRAvatar avatar, Material material, string label)
+        {
+            if (plug == null || avatar == null || material == null || plug.Target == null) return null;
+            if (!material.HasProperty("_YAPS_SelfAllow")) return null;
+            if (!material.HasProperty("_YAPS_SelfTag") || material.GetFloat("_YAPS_SelfTag") < 0f) return null;
+            if (!material.HasProperty("_YAPS_UseAtlas") || material.GetFloat("_YAPS_UseAtlas") <= 0.5f) return null;
+
+            var settings = avatar.avatarSettings != null ? avatar.avatarSettings.settings : null;
+            string plugPath = AnimationUtility.CalculateTransformPath(plug.Target.transform, avatar.transform);
+            // Found by the curve it writes, not by its name, the same way the
+            // deform toggle is: the label follows the bone and may have moved.
+            var ours = settings?.FirstOrDefault(e => e != null
+                && e.type == CVRAdvancedSettingsEntry.SettingsType.Toggle && e.toggleSettings != null
+                && e.toggleSettings.useAnimationClip && Generated(e.toggleSettings.animationClip)
+                && AnimationUtility.GetCurveBindings(e.toggleSettings.animationClip)
+                    .Any(b => b.path == plugPath && b.propertyName == "material._YAPS_SelfAllow"));
+            if (ours != null)
+            {
+                string renamed = Rename(avatar, ours, label);
+                // The entry can outlive its layer, if the animator was never
+                // regenerated. Written now, in place.
+                string wired = YapsAasAnimator.Wire(avatar, ours);
+                return (renamed ?? $"{label}: menu toggle already there") + (wired != null ? "; " + wired : "");
+            }
+
+            string dir = YapsNativeBuilder.OutputRoot + "/" + Sanitise(avatar.name);
+            YapsNativeBuilder.EnsureFolderPublic(dir);
+            var on = Clip(plugPath, plug.Target.GetType(), "material._YAPS_SelfAllow", 1f,
+                dir + "/" + Sanitise(label) + " on.anim");
+            var off = Clip(plugPath, plug.Target.GetType(), "material._YAPS_SelfAllow", 0f,
+                dir + "/" + Sanitise(label) + " off.anim");
+
+            if (avatar.avatarSettings == null)
+            {
+                avatar.avatarSettings = new CVRAdvancedAvatarSettings { settings = new List<CVRAdvancedSettingsEntry>(), initialized = true };
+            }
+            avatar.avatarUsesAdvancedSettings = true;
+            settings = avatar.avatarSettings.settings;
+            string machine = MachineName(settings, label);
+            Undo.RecordObject(avatar, "YAPS toggle");
+            NoteAdded(machine);
+            settings.Add(new CVRAdvancedSettingsEntry
+            {
+                name = label,
+                machineName = machine,
+                type = CVRAdvancedSettingsEntry.SettingsType.Toggle,
+                toggleSettings = new CVRAdvancesAvatarSettingGameObjectToggle
+                {
+                    defaultValue = false,
+                    usedType = CVRAdvancesAvatarSettingBase.ParameterType.Bool,
+                    useAnimationClip = true,
+                    animationClip = on,
+                    offAnimationClip = off,
+                },
+            });
+            EditorUtility.SetDirty(avatar);
+            return $"{label}: menu toggle \"{label}\" added ({machine}), off by default";
+        }
+
+        static AnimationClip Clip(string path, System.Type type, string property, float value, string assetPath)
         {
             var clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(assetPath);
             if (clip == null)
@@ -421,7 +492,7 @@ namespace AvatarBridge
                 AssetDatabase.CreateAsset(clip, assetPath);
             }
             clip.ClearCurves();
-            clip.SetCurve(path, type, "material._YAPS_Enabled", AnimationCurve.Constant(0f, 1f / 60f, value));
+            clip.SetCurve(path, type, property, AnimationCurve.Constant(0f, 1f / 60f, value));
             EditorUtility.SetDirty(clip);
             return clip;
         }
