@@ -19,7 +19,7 @@ namespace AvatarBridge.Regression
     // WITH a warning, and both outcomes appear in the report.
     public static class PhysColliderCurveTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test — collider enable curves")]
+        [MenuItem("Tools/AvatarBridge Dev/Test: collider enable curves")]
         public static void Run()
         {
             int fail = 0;
@@ -86,8 +86,8 @@ namespace AvatarBridge.Regression
 
             AssetDatabase.DeleteAsset(path);
             Debug.Log(fail == 0
-                ? "[PhysColliderCurveTest] PASS — mapped curves rewired, unmapped dropped loudly, none left dead."
-                : $"[PhysColliderCurveTest] FAIL — {fail} case(s) wrong.");
+                ? "[PhysColliderCurveTest] PASS: mapped curves rewired, unmapped dropped loudly, none left dead."
+                : $"[PhysColliderCurveTest] FAIL: {fail} case(s) wrong.");
             if (Application.isBatchMode) EditorApplication.Exit(fail == 0 ? 0 : 1);
         }
     }

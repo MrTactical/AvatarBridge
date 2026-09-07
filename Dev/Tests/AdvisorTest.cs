@@ -26,7 +26,7 @@ namespace AvatarBridge.Regression
     // twelve plausibly-named blendshapes would only be testing this file's guess at the naming.
     public static class AdvisorTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test — avatar advisor")]
+        [MenuItem("Tools/AvatarBridge Dev/Test: avatar advisor")]
         public static void Run()
         {
             int fail = 0;
@@ -137,8 +137,8 @@ namespace AvatarBridge.Regression
             }
 
             Debug.Log(fail == 0
-                ? "[AdvisorTest] PASS — the advisor decides what it can and declines what it can't."
-                : $"[AdvisorTest] FAIL — {fail} case(s) wrong.");
+                ? "[AdvisorTest] PASS: the advisor decides what it can and declines what it can't."
+                : $"[AdvisorTest] FAIL: {fail} case(s) wrong.");
             if (Application.isBatchMode) EditorApplication.Exit(fail == 0 ? 0 : 1);
         }
 

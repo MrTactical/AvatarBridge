@@ -1,4 +1,4 @@
-// Tools > YAPS > Setup. The toolkit's window for any ChilloutVR avatar
+﻿// Tools > YAPS > Setup. The toolkit's window for any ChilloutVR avatar
 // or prop, on the converter's own elements. Pick, scan and add, build.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
@@ -103,7 +103,7 @@ namespace AvatarBridge
                 var discord = BridgeElements.Link(
                     BridgeLinks.HasDiscordLink ? $"Discord: {BridgeLinks.DiscordUser}" : $"Copy Discord: {BridgeLinks.DiscordUser}",
                     BridgeLinks.OpenDiscord);
-                discord.tooltip = "Best for quick questions — please use GitHub issues for bugs so they don't get lost.";
+                discord.tooltip = "Best for quick questions; please use GitHub issues for bugs so they don't get lost.";
                 footer.Add(discord);
             }
             return footer;
@@ -175,7 +175,7 @@ namespace AvatarBridge
             have.Body.Add(BridgeElements.Hint(
                 "Select the top object of a plug or socket meant to be spawned in ChilloutVR. It gets a CVR " +
                 "Spawnable, a pickup anyone can take and a collider to grab by, and it finds sockets through " +
-                "their marker lights — every client works those out for itself, so nobody owns the answer and " +
+                "their marker lights: every client works those out for itself, so nobody owns the answer and " +
                 "nobody takes the prop off anyone. The synced channel is the exact route and a separate choice; " +
                 "it hands the prop to whoever's socket touches it. Verify before each upload: the CCK inspector " +
                 "can blank a channel value's parameter name."));
@@ -185,7 +185,7 @@ namespace AvatarBridge
             _quiet = Btn(QuietLabel(), () => { SceneQuiet.Toggle(); _quiet.text = QuietLabel(); });
             _quiet.tooltip = "Hides the CCK component icons, the pointers' blue spheres, the triggers' boxes, MagicaCloth's collider " +
                              "wires and Light icons in the scene view, so socket and plug gizmos can be seen. " +
-                             "An editor preference only — nothing on the avatar changes — and it puts back " +
+                             "An editor preference only, nothing on the avatar changes, and it puts back " +
                              "exactly what it found.";
             have.Body.Add(BridgeElements.Row(_quiet));
 
@@ -220,8 +220,8 @@ namespace AvatarBridge
             _build = new BridgeElements.PrimaryButton("Bake every plug and verify", BuildAll);
             build.Body.Add(_build);
             build.Body.Add(BridgeElements.Hint(
-                "Bakes each YAPS Plug under the picked object — measuring the mesh, patching its own " +
-                "shader, writing the knobs, announcing it to every socket family — and rebuilds each " +
+                "Bakes each YAPS Plug under the picked object, measuring the mesh, patching its own " +
+                "shader, writing the knobs, announcing it to every socket family, and rebuilds each " +
                 "YAPS Socket's markers. Then checks the lot. Safe to run again; it edits, not stacks."));
 
             // What it did, line by line, where the button is. A summary
@@ -236,7 +236,7 @@ namespace AvatarBridge
             {
                 cross.Body.Add(BridgeElements.Hint(
                     "AvatarBridge does that, and carries a VRChat avatar's DPS, TPS or SPS across as YAPS " +
-                    "automatically — same shader, same wire format as this. Tools ▸ Avatar Bridge ▸ " +
+                    "automatically: same shader, same wire format as this. Tools ▸ Avatar Bridge ▸ " +
                     "VRChat to ChilloutVR Converter."));
                 cross.Body.Add(BridgeElements.Row(Btn("Open AvatarBridge", () =>
                     EditorApplication.ExecuteMenuItem("Tools/Avatar Bridge/VRChat to ChilloutVR Converter"))));
@@ -245,7 +245,7 @@ namespace AvatarBridge
             {
                 cross.Body.Add(BridgeElements.Hint(
                     "AvatarBridge does that, and carries a VRChat avatar's DPS, TPS or SPS across as YAPS " +
-                    "automatically — same shader, same wire format as this. It is not in this project."));
+                    "automatically: same shader, same wire format as this. It is not in this project."));
                 cross.Body.Add(BridgeElements.Row(BridgeElements.Link("Get AvatarBridge (GitHub)  ↗",
                     () => Application.OpenURL(BridgeLinks.Repo))));
             }
@@ -301,7 +301,7 @@ namespace AvatarBridge
             props.Body.Add(BridgeElements.Hint(
                 "Writes YAPS Hole and YAPS Ring to Assets/YAPS/Prefabs; drag one under a bone on any " +
                 "avatar and every plug on the platform reads it. The plug prop is a whole spawnable in " +
-                "one click — built, baked on the current shader, pickup and contact channel wired — to " +
+                "one click, built, baked on the current shader, pickup and contact channel wired, to " +
                 "drop in the scene and upload. Make it again after updating: a prop already uploaded " +
                 "keeps the bake and the shader copy it was built with, which is why an old one bends oddly."));
             _pages.Add(props);
@@ -397,7 +397,7 @@ namespace AvatarBridge
             }
             else if (anyIssue)
             {
-                _next.text = "Everything here is YAPS, but something is missing — the amber rows say what. " +
+                _next.text = "Everything here is YAPS, but something is missing: the amber rows say what. " +
                              "Build fixes what it can (markers, bakes); a socket with no axis wants turning " +
                              "so its arrow points where a plug enters.";
                 _next.messageType = HelpBoxMessageType.Warning;
@@ -409,15 +409,15 @@ namespace AvatarBridge
                 if (bare > 0)
                 {
                     _next.text = $"All YAPS, and {bare} of it came from a conversion with nothing on it you " +
-                                 "can edit yet. Click \"make editable\" on a row — or Build, which does all " +
-                                 "of them — and each socket and plug gets its component, filled from what " +
+                                 "can edit yet. Click \"make editable\" on a row, or Build, which does all " +
+                                 "of them, and each socket and plug gets its component, filled from what " +
                                  "was built. Then retune anything you like and Build again.";
                     _next.messageType = HelpBoxMessageType.Info;
                 }
                 else
                 {
                     _next.text = "All YAPS and editable. Click a row to select it and retune it in the " +
-                                 "Inspector — kind, shapes, every knob — then Build to bake the changes. " +
+                                 "Inspector, kind, shapes, every knob, then Build to bake the changes. " +
                                  "Upload as normal.";
                     _next.messageType = HelpBoxMessageType.Info;
                 }
@@ -449,9 +449,9 @@ namespace AvatarBridge
             bool bone = root != null && go.transform != root && IsBone(go.transform, root);
             bool mesh = go.GetComponent<Renderer>() != null;
             _selection.text = bone
-                ? $"Selected: bone \"{go.name}\" — a socket added now goes under it and follows it; Make a plug bakes the mesh this bone drives, from this bone down."
-                : mesh ? $"Selected: mesh \"{go.name}\" — Make a plug will bake this one."
-                : $"Selected: \"{go.name}\" — not a bone, so a socket goes in the YAPS folder; not a mesh, so no plug.";
+                ? $"Selected: bone \"{go.name}\": a socket added now goes under it and follows it; Make a plug bakes the mesh this bone drives, from this bone down."
+                : mesh ? $"Selected: mesh \"{go.name}\": Make a plug will bake this one."
+                : $"Selected: \"{go.name}\": not a bone, so a socket goes in the YAPS folder; not a mesh, so no plug.";
             if (_addHole != null) _addHole.text = bone ? $"Add a hole under {go.name}" : "Add a hole";
             if (_addRing != null) _addRing.text = bone ? $"Add a ring under {go.name}" : "Add a ring";
             if (_makePlug != null)
@@ -494,18 +494,17 @@ namespace AvatarBridge
                     var twins = _scan.Sockets.Where(o => o != f && o.Root != null
                         && Vector3.Distance(o.Root.position, f.Root.position) < 0.03f)
                         .Select(o => o.Name).ToList();
-                    if (twins.Count > 0) f.Notes.Add("on the same spot as " + string.Join(", ", twins) + " — one too many?");
+                    if (twins.Count > 0) f.Notes.Add("on the same spot as " + string.Join(", ", twins) + ", one too many?");
                 }
-                // A mesh another plug carries is not a plug. It gets a row —
-                // it IS being changed, and a change nobody can see is the one
-                // people add a second plug to fix — but a nested, quiet one
-                // that says whose it is and offers none of the controls that
-                // would make it a peer.
+                // A mesh another plug carries is not a plug. It gets a row, since it IS
+                // being changed and a change nobody can see is the one people add a
+                // second plug to fix, but a nested quiet one that says whose it is and
+                // offers none of the controls that would make it a peer.
                 if (f.CarriedBy != null)
                 {
                     var carried = BridgeElements.ReportRow("part of",
                         f.Name,
-                        $"carried by \"{YapsToggles.LabelFor(f.CarriedBy)}\" — its bones move this mesh, so it " +
+                        $"carried by \"{YapsToggles.LabelFor(f.CarriedBy)}\": its bones move this mesh, so it " +
                         "was baked with that plug's frame and length and bends as one piece with it. " +
                         "Nothing to set here: it wears that plug's settings. Give it its own plug only if " +
                         "you want it to bend separately.",
@@ -523,9 +522,9 @@ namespace AvatarBridge
                 }
 
                 bool complete = f.Notes.Count == 0;
-                // Nothing to fix but something to say gets a softer green
-                // than a silent row: working as designed must never wear
-                // the colour that means "you have a problem".
+                // Nothing to fix but something to say gets a softer green than a silent
+                // row: working as designed must never wear the colour that means "you
+                // have a problem".
                 var settled = BridgeTheme.Dark ? new Color(0.42f, 0.72f, 0.52f) : new Color(0.28f, 0.55f, 0.35f);
                 var colour = f.IsYapsAlready && complete
                              ? (f.Expected.Count > 0 ? settled : BridgeTheme.Good)
@@ -602,10 +601,9 @@ namespace AvatarBridge
                 }
                 else if (plugComp != null)
                 {
-                    // The plug's half of the same idea. A socket previews by
-                    // dropping a plug in front of it; a plug had no row chip
-                    // at all, because there was nothing for it to bend toward
-                    // until the test socket existed.
+                    // The plug's half of the same idea. A socket previews by dropping a
+                    // plug in front of it; a plug had no row chip at all, because there was
+                    // nothing for it to bend toward until the test socket existed.
                     bool testing = YapsPreview.TestSocketInScene;
                     var chip = BridgeElements.Chip(testing ? "previewing" : "preview",
                         BridgeTheme.Good, testing, () =>
@@ -661,12 +659,11 @@ namespace AvatarBridge
         static void Adopt(YapsScanner.Found f)
         {
             if (f.Root == null) return;
-            // Never a mesh another plug carries. It wears a patched material,
-            // so it reads as a plug, and adopting it hands it a component —
-            // which is a claim on the mesh, which makes the carrier let go of
-            // it, which leaves it bending on its own frame. That is Build
-            // re-creating the exact component the user just deleted, every
-            // time they press it.
+            // Never a mesh another plug carries. It wears a patched material, so it
+            // reads as a plug, and adopting it hands it a component, which is a
+            // claim on the mesh, which makes the carrier let go of it, which leaves
+            // it bending on its own frame. That is Build re-creating the exact
+            // component the user just deleted, every time they press it.
             if (f.CarriedBy != null) return;
             if (f.Kind == YapsScanner.Kind.Socket)
             {
@@ -698,12 +695,12 @@ namespace AvatarBridge
             {
                 var plug = f.Root.GetComponent<YapsPlug>();
                 if (plug == null) return;
-                // The same door the inspector's Bake goes through, menu and
-                // channel included. Bake alone left the channel holding the
-                // frames of a previous build and the menu animator unrefreshed,
-                // so one plug came out differently depending on which button
-                // was pressed. BuildAll below does those two once, for the
-                // whole avatar, which is why it can call the bare Bake.
+                // The same door the inspector's Bake goes through, menu and channel
+                // included. Bake alone left the channel holding the frames of a
+                // previous build and the menu animator unrefreshed, so one plug came
+                // out differently depending on which button was pressed. BuildAll below
+                // does those two once for the whole avatar, which is why it can call
+                // the bare Bake.
                 var o = YapsNativeBuilder.BakeAndRefreshMenu(plug);
                 if (!o.Ok) Debug.LogError("[YAPS] " + o.Message);
                 _summary.text = o.Message + (o.Notes.Count > 0 ? "  " + string.Join(" ", o.Notes) : "");
@@ -766,12 +763,11 @@ namespace AvatarBridge
                 plug = Undo.AddComponent<YapsPlug>(go);
                 plug.renderer = renderer;
                 plug.rootBone = rootBone;
-                // Left on auto. Pinning it to the best-weighted slot here
-                // reads as helpful and is not: an explicit slot means "this
-                // one only", so a plug whose vertices span several materials
-                // silently bakes into one and tears along the seam. The bake
-                // finds every slot the chain reaches; a number is the author
-                // overriding that, not the tool guessing for them.
+                // Left on auto. Pinning it to the best-weighted slot here reads as
+                // helpful and is not: an explicit slot means "this one only", so a plug
+                // whose vertices span several materials silently bakes into one and
+                // tears along the seam. The bake finds every slot the chain reaches; a
+                // number is the author overriding that, not the tool guessing.
                 plug.materialSlot = -1;
             }
             else if (rootBone != null && plug.renderer != renderer
@@ -826,6 +822,16 @@ namespace AvatarBridge
                 socketsBuilt++;
                 lines.AddRange(YapsNativeBuilder.BuildSocket(s));
             }
+            // The writers go on the sockets; the surface they publish to goes on
+            // the avatar. Only the converter used to add it, so a hand-built avatar
+            // had sockets writing to a screen nothing grabbed. One switch for both
+            // halves, as on the convert path.
+            if (YapsAtlas.Enabled && YapsAtlas.AddClear(_target.transform) != null
+                && YapsAtlas.AddGrab(_target.transform) != null)
+            {
+                lines.Add("Added the screen surface plugs read each other through.");
+            }
+
             // Last, and once: the channel reads the frames the bakes just
             // measured, and it replaces its own wiring rather than stacking.
             lines.AddRange(YapsNativeChannel.Build(_target.GetComponentInChildren<CVRAvatar>()));

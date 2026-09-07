@@ -71,7 +71,7 @@ namespace AvatarBridge.Regression
                     .FirstOrDefault(t => t != null);
                 if (type == null)
                 {
-                    Debug.LogError($"[CckContract] TYPE MISSING: {typeName} — the CCK no longer has it, " +
+                    Debug.LogError($"[CckContract] TYPE MISSING: {typeName}: the CCK no longer has it, " +
                                    "or moved it. Everything naming it will fail to compile.");
                     missingTypes++;
                     continue;
@@ -82,7 +82,7 @@ namespace AvatarBridge.Regression
                     checkedMembers++;
                     if (!have.Contains(member))
                     {
-                        Debug.LogError($"[CckContract] MEMBER MISSING: {typeName}.{member} — this CCK has " +
+                        Debug.LogError($"[CckContract] MEMBER MISSING: {typeName}.{member}: this CCK has " +
                                        $"[{string.Join(", ", have)}]. Resolve it by name (see TryOperator) " +
                                        "or the tool will not build for anyone on this version.");
                         missingMembers++;
@@ -91,7 +91,7 @@ namespace AvatarBridge.Regression
             }
 
             string verdict = missingTypes == 0 && missingMembers == 0
-                ? $"[CckContract] OK — all {checkedMembers} member(s) across {Required.Length} type(s) present."
+                ? $"[CckContract] OK: all {checkedMembers} member(s) across {Required.Length} type(s) present."
                 : $"[CckContract] {missingTypes} type(s) and {missingMembers} member(s) MISSING.";
             Debug.Log(verdict);
             if (Application.isBatchMode)

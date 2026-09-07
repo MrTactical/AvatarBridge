@@ -186,7 +186,7 @@ ul{margin:.3rem 0;padding-left:1.2rem}li{margin:.15rem 0}
 .dim{color:var(--dim)}
 </style></head><body><main>");
 
-            sb.Append("<h1>Corpus run — ").Append(H(label)).Append("</h1>");
+            sb.Append("<h1>Corpus run: ").Append(H(label)).Append("</h1>");
             sb.Append("<div class='sub'>").Append(H(runInfo)).Append("</div>");
 
             int stuck = swept.Sum(a => a.Sweep[2]);

@@ -62,7 +62,7 @@ namespace AvatarBridge
                     autoOverrideNote =
                         $"The viewpoint this avatar shipped with in VRChat lands {authoredOff:0.##} m from its " +
                         $"head bone, past the {tolerance:0.##} m this rig's own proportions allow, so it is in " +
-                        "the wrong place rather than merely unusual — you would spawn looking out of the " +
+                        "the wrong place rather than merely unusual: you would spawn looking out of the " +
                         $"avatar's body. The CCK's Auto placement (midpoint of the eye bones) lands {autoOff:0.##} m " +
                         "from the head and was used instead. The author's value is normally preferred, because a " +
                         "human placed it by eye; it is only overridden when it fails a check the rig itself " +
@@ -78,11 +78,11 @@ namespace AvatarBridge
                 authoredIsWrong = true;
                 autoOverrideNote =
                     $"The viewpoint this avatar shipped with in VRChat sits {aboveEyes:0.###} m ABOVE the " +
-                    $"midpoint of its eye bones — more than the {eyeSeparation:0.###} m between the eyes " +
+                    $"midpoint of its eye bones, more than the {eyeSeparation:0.###} m between the eyes " +
                     "themselves, so it is on the brow or above it rather than behind the eyes. A viewpoint " +
                     "is never legitimately above the eyes: you would spawn looking over your own face. The " +
                     "CCK's Auto placement (the eye midpoint) was used instead. Below the eyes is left alone " +
-                    "— down a muzzle or inside a helmet is a real choice — and the author's value is " +
+                    ", down a muzzle or inside a helmet is a real choice, and the author's value is " +
                     "otherwise always preferred. Drag the gizmo on the CVRAvatar if neither is right.";
             }
 
@@ -108,7 +108,7 @@ namespace AvatarBridge
                     "humanoid Head bone. On a decoy rig that bone is part of the stand-in skeleton and " +
                     "skins nothing, so the client hides nothing and you spend the session looking at " +
                     "the inside of your own head. One was added to the head you can actually see " +
-                    "instead. It only affects YOUR camera — everyone else sees the whole avatar — and " +
+                    "instead. It only affects YOUR camera, everyone else sees the whole avatar, and " +
                     "deleting it puts your head back in shot.");
             }
 
@@ -120,28 +120,28 @@ namespace AvatarBridge
                     "at are a hidden stand-in skeleton, and constraints relay them onto the body " +
                     "you can actually see. ChilloutVR parents both the viewpoint and the voice " +
                     "position to the humanoid Head bone, so the viewpoint this avatar shipped " +
-                    "with — and the CCK's Auto button, and every estimate here — all land on the " +
+                    "with, and the CCK's Auto button, and every estimate here, all land on the " +
                     $"stand-in, {moved:0.##} m from where this avatar's face is. Far enough to sit " +
                     "INSIDE the head, which looks fine until you glance down and the inside of " +
                     $"your own mouth fills the screen. Both were measured on the relayed bones " +
-                    $"instead — {decoyDetail}. Check them with the CVRAvatar gizmo before " +
+                    $"instead: {decoyDetail}. Check them with the CVRAvatar gizmo before " +
                     "uploading: the markers ride the humanoid Head bone whatever happens, so on a " +
                     "rig like this they can be put in the right place but not made to track it " +
                     "perfectly. Drag either gizmo if you want it elsewhere.");
             }
             else if (authoredIsWrong)
             {
-                ctx.Report.Approximated(Category, "Viewpoint — the CCK's Auto placement, not the author's",
+                ctx.Report.Approximated(Category, "Viewpoint: the CCK's Auto placement, not the author's",
                     autoOverrideNote);
             }
             else if (haveAuthored && autoView)
             {
                 float apart = Vector3.Distance(authored, viewAuto);
-                ctx.Report.Converted(Category, "Viewpoint — the author's own, from the VRChat descriptor",
+                ctx.Report.Converted(Category, "Viewpoint: the author's own, from the VRChat descriptor",
                     $"Placed at the viewpoint this avatar shipped with in VRChat. The CCK's Auto " +
                     $"button (midpoint of the eye bones) would put it {apart:0.###} m away" +
                     (apart > 0.05f
-                        ? " — they disagree by more than a viewpoint usually moves, which happens when a " +
+                        ? ": they disagree by more than a viewpoint usually moves, which happens when a " +
                           "rig's eye bones sit somewhere other than its eyes, or when the author placed " +
                           "the value by eye and was a little out. The author's is kept: it is right far " +
                           "more often, and it is the only one of the two a human ever looked through."
@@ -189,7 +189,7 @@ namespace AvatarBridge
             {
                 ctx.Report.Warning(Category, "Face mesh",
                     "No viseme mesh on the VRC descriptor, and no skinned mesh with blendshapes to fall back " +
-                    "on — visemes, blink and face tracking have nothing to bind to.");
+                    "on: visemes, blink and face tracking have nothing to bind to.");
             }
 
             // --- Voice position ------------------------------------------------------
@@ -229,13 +229,13 @@ namespace AvatarBridge
                 var before = cvrAvatar.viewPosition;
                 cvrAvatar.viewPosition = rescued;
                 ctx.Report.Approximated(Category, "Viewpoint moved onto the visible body",
-                    $"The viewpoint worked out from this rig — {Vec(before)} — is further from every " +
+                    $"The viewpoint worked out from this rig, {Vec(before)}, is further from every " +
                     "bone that actually deforms mesh than this rig's own proportions allow, so it " +
                     "was placed on a skeleton you can't see. " +
                     "That happens when the humanoid map points at a stand-in: a decoy rig, a " +
                     "poseclone, or a FinalIK proxy. Every distance check still passes, because they " +
                     "all measure against that same skeleton. Re-placed from the eye markers that ARE " +
-                    $"on the body — {rescueDetail} — giving {Vec(rescued)}. Nothing moves when the " +
+                    $"on the body, {rescueDetail}, giving {Vec(rescued)}. Nothing moves when the " +
                     "original already lands on the body, so this can only ever fire on a rig where " +
                     "it was wrong. Check it with the CVRAvatar gizmo before uploading.");
 
@@ -249,11 +249,11 @@ namespace AvatarBridge
                     cvrAvatar.voicePosition = rescued;
                     ctx.Report.Approximated(Category, "Voice position moved onto the visible body",
                         $"It was at {Vec(voiceBefore)}, off the body for the same reason as the " +
-                        "viewpoint — this rig's humanoid jaw and head are part of the stand-in " +
+                        "viewpoint: this rig's humanoid jaw and head are part of the stand-in " +
                         "skeleton, so there was nothing on the real face to measure from. Placed " +
                         "with the viewpoint, which puts your voice at the avatar's face rather than " +
                         "in the air beside it. Drag it onto the mouth on the CVRAvatar if you want " +
-                        "it exact — it is a little high by design, sitting at eye level.");
+                        "it exact: it is a little high by design, sitting at eye level.");
                 }
             }
 
@@ -261,8 +261,8 @@ namespace AvatarBridge
             {
                 ctx.Report.Warning(Category,
                     $"None of this avatar's {mappedBones} humanoid bones move any geometry",
-                    "Unity's humanoid map points at a skeleton that deforms no mesh — a stand-in, a " +
-                    "poseclone, or a FinalIK proxy — and the visible body is driven from it " +
+                    "Unity's humanoid map points at a skeleton that deforms no mesh: a stand-in, a " +
+                    "poseclone, or a FinalIK proxy, and the visible body is driven from it " +
                     "indirectly. That matters here because ChilloutVR hangs the viewpoint, the voice " +
                     "position AND first-person head hiding off humanoid bones, so all three follow " +
                     "the stand-in rather than the body you see. They may be measurably correct " +
@@ -294,7 +294,7 @@ namespace AvatarBridge
                     (autoVoice
                         ? (hasJaw ? "voice at the jaw bone" : "voice just ahead of the head bone (no jaw bone)")
                         : "voice measured from the viseme mesh") +
-                    " — the same positions the Auto buttons on the CVRAvatar inspector produce.");
+                    ": the same positions the Auto buttons on the CVRAvatar inspector produce.");
             }
             // Only when the CCK-Auto path placed the voice. Otherwise
             // MouthLocator already reported where and how.
@@ -307,7 +307,7 @@ namespace AvatarBridge
                               AvatarFeatureDetect.JawIsBelievable(ctx.Target, animator, jawBone, out _);
                 ctx.Report.Converted(Category, "Voice position",
                     (hasJaw
-                        ? "At the jaw bone — a bone that exists is worth more than any estimate."
+                        ? "At the jaw bone: a bone that exists is worth more than any estimate."
                         : "Just ahead of the head bone; this rig has no jaw bone to use. " +
                           "Offsets are applied along the AVATAR's forward, not the head bone's, " +
                           "because a bone's own axes can point anywhere.") +
@@ -350,7 +350,7 @@ namespace AvatarBridge
                     ctx.Report.Approximated(Category, "Visemes were parameter-driven in VRChat",
                         "This avatar drove its visemes from its own animator (\"Viseme Parameter " +
                         "Only\"), a system that has no feed here. ChilloutVR's native visemes were " +
-                        "wired to the same blendshapes instead — the client writes them every " +
+                        "wired to the same blendshapes instead: the client writes them every " +
                         "frame after the animator, so lip sync works and the old animator system " +
                         "simply loses the shapes it can no longer reach.");
                 }
@@ -359,7 +359,7 @@ namespace AvatarBridge
             {
                 ctx.Report.Warning(Category, "Visemes",
                     "None on the VRC descriptor, and no standard viseme blendshapes (vrc.v_aa / v_aa / aa …) " +
-                    "on the face mesh — the avatar will have no lip sync in ChilloutVR.");
+                    "on the face mesh: the avatar will have no lip sync in ChilloutVR.");
             }
 
             // --- Blinking ------------------------------------------------------------
@@ -369,7 +369,7 @@ namespace AvatarBridge
                 // found" reads like the avatar has no blink at all.
                 ctx.Report.Approximated(Category, "Eyelids are bone-driven",
                     "This avatar blinks by rotating eyelid BONES, which ChilloutVR's blink cannot " +
-                    "drive — its native blink is blendshape-only. Blink blendshapes are searched " +
+                    "drive: its native blink is blendshape-only. Blink blendshapes are searched " +
                     "for on the face mesh instead; if none exist, the eyes will not blink here, " +
                     "and the fix is authoring a blink blendshape.");
             }
@@ -408,7 +408,7 @@ namespace AvatarBridge
                 cvrAvatar.useEyeMovement = false;
                 ctx.Report.Converted(Category, "Eye movement disabled",
                     "The VRChat avatar has eye look turned off, so ChilloutVR's idle eye movement " +
-                    "is turned off too — the CCK's default would have added eye darting the author " +
+                    "is turned off too: the CCK's default would have added eye darting the author " +
                     "never gave this avatar.");
                 return;
             }
@@ -474,7 +474,7 @@ namespace AvatarBridge
             {
                 ctx.Report.Warning(Category, "Eye look",
                     "The VRChat descriptor names eye bones, but they could not be found on the " +
-                    "converted copy — gaze was not set up.");
+                    "converted copy: gaze was not set up.");
                 return;
             }
 
@@ -489,7 +489,7 @@ namespace AvatarBridge
             ctx.Report.Converted(Category, "Eye movement",
                 $"{eyes.Count} eye(s) set up in Transform mode, gaze limits measured from the " +
                 $"VRChat poses (up {sample.eyeAngleLimitUp:0.#}°, down {Mathf.Abs(sample.eyeAngleLimitDown):0.#}°, " +
-                $"in {Mathf.Abs(sample.eyeAngleLimitIn):0.#}°, out {sample.eyeAngleLimitOut:0.#}°) — the angle " +
+                $"in {Mathf.Abs(sample.eyeAngleLimitIn):0.#}°, out {sample.eyeAngleLimitOut:0.#}°): the angle " +
                 "between looking-straight and each directional pose IS that direction's limit, so " +
                 "these are measured off your avatar rather than defaulted. (Stored signed: ChilloutVR " +
                 "wants Down and In negative.)");
@@ -673,7 +673,7 @@ namespace AvatarBridge
                 cvrAvatar.blinkBlendshape[0] = single;
                 AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Combined");
                 ctx.Report.Warning(Category, "Blink blendshape auto-detected",
-                    $"Descriptor set none, and only \"{single}\" was found — a {(left != null ? "left" : "right")}-side " +
+                    $"Descriptor set none, and only \"{single}\" was found: a {(left != null ? "left" : "right")}-side " +
                     "shape with no counterpart, so blinking will close one eye. Wired as Combined; if the " +
                     "other eye's shape exists under a name without a side marker, assign it on the CVRAvatar " +
                     "and set Blink Mode to Separate.");
@@ -704,7 +704,7 @@ namespace AvatarBridge
                 AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Separate");
                 ctx.Report.Converted(Category, "Blink blendshapes",
                     $"\"{left}\" / \"{right}\" (Separate). " + (namesLeft || namesRight
-                        ? $"The descriptor named only \"{blinkShape}\" — VRChat has a single eyelid slot — " +
+                        ? $"The descriptor named only \"{blinkShape}\", VRChat has a single eyelid slot, " +
                           "so the other side was matched on the same mesh, otherwise one eye would never close."
                         : $"The descriptor named \"{blinkShape}\", but this mesh also carries a separate " +
                           "left/right pair, which ChilloutVR can drive independently. To go back to the " +

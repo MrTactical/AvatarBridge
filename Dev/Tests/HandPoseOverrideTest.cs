@@ -24,7 +24,7 @@ namespace AvatarBridge.Regression
     // test that only checked the first.
     public static class HandPoseOverrideTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test — hand pose override audit")]
+        [MenuItem("Tools/AvatarBridge Dev/Test: hand pose override audit")]
         public static void Run()
         {
             int fail = 0;
@@ -115,8 +115,8 @@ namespace AvatarBridge.Regression
             }
 
             Debug.Log(fail == 0
-                ? "[HandPoseOverrideTest] PASS — the duplicate is muzzled, the real hand layer is not."
-                : $"[HandPoseOverrideTest] FAIL — {fail} case(s) wrong.");
+                ? "[HandPoseOverrideTest] PASS: the duplicate is muzzled, the real hand layer is not."
+                : $"[HandPoseOverrideTest] FAIL: {fail} case(s) wrong.");
             if (Application.isBatchMode) EditorApplication.Exit(fail == 0 ? 0 : 1);
         }
     }

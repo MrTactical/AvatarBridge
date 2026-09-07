@@ -48,7 +48,7 @@ namespace AvatarBridge
                 int used = usage.Item2;
                 if (used >= 3200)
                     return $"; ⚠ THE AVATAR IS AT THE 3200-BIT SYNC CAP ({used}), so ChilloutVR will not register this " +
-                           "parameter and only the wearer will see the shapes — free some bits and build again";
+                           "parameter and only the wearer will see the shapes: free some bits and build again";
                 if (used > 3100)
                     return $"; ⚠ {used} of 3200 sync bits used, so there is barely room for it";
                 return $"; {used} of 3200 sync bits used";
@@ -141,19 +141,11 @@ namespace AvatarBridge
             return Controllers(socket).Any(c => c.layers.Any(l => l.name == layerName || (!string.IsNullOrEmpty(socket.builtLayer) && l.name == socket.builtLayer)));
         }
 
-        // Strength lives in the clips, so changing it rewrites them. The
-        // layer stays at full weight: a partial one creeps to full in game,
-        // blending against its own last frame where nothing else writes
-        // these shapes. Returns whether a built layer took the new value.
-        public static bool SetStrength(YapsSocket socket)
-        {
-            if (!Exists(socket)) return false;
-            Build(socket);
-            return true;
-        }
-
         // Builds or rebuilds the reactions for one socket. Returns what
         // happened, or null when the socket has nothing to react with.
+        // Strength lives in the clips, so changing it rebuilds. The layer
+        // stays at full weight: a partial one creeps to full in game,
+        // blending against its own last frame.
         public static string Build(YapsSocket socket)
         {
             if (socket == null) return null;
@@ -301,11 +293,11 @@ namespace AvatarBridge
             return note;
         }
 
-        // A box behind the socket plane, one reach deep, read by Set From
-        // Position on Z: 0 at the plane, 1 a reach in.
         // The channel without the generated reaction layer: trigger plus
-        // parameter. For rebuilt conversions, where the reactions are the
-        // author's own layers and only the wire is ours.
+        // parameter, for rebuilt conversions where the reactions are the
+        // author's own layers and only the wire is generated. The trigger is a box
+        // behind the socket plane, one reach deep, read by Set From Position on
+        // Z: 0 at the plane, 1 a reach in.
         public static string EnsureDepthChannel(YapsSocket socket, UnityEditor.Animations.AnimatorController controller,
             string parameter = null)
         {

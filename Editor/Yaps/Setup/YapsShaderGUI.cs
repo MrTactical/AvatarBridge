@@ -65,9 +65,9 @@ namespace AvatarBridge
                 Blurb = "How the shaft sits when nothing is bending it.",
                 Knobs = new[]
                 {
-                    new Knob("_YAPS_Curvature", "Curvature", RowKind.Slider, "DPS", "a resting bend along the whole shaft — positive bends up"),
+                    new Knob("_YAPS_Curvature", "Curvature", RowKind.Slider, "DPS", "a resting bend along the whole shaft: positive bends up"),
                     new Knob("_YAPS_ReCurvature", "Recurvature", RowKind.Slider, "DPS", "a second bend gathered at the tip, opposite in sign: sweep, then hook"),
-                    new Knob("_YAPS_EntranceStiffness", "Entrance stiffness", RowKind.Slider, "DPS", "how much the base resists bending toward a socket — 0 bends evenly from the root"),
+                    new Knob("_YAPS_EntranceStiffness", "Entrance stiffness", RowKind.Slider, "DPS", "how much the base resists bending toward a socket: 0 bends evenly from the root"),
                 }},
             new Section { Title = "Inside a socket", Tint = TintIn,
                 Blurb = "What a socket does to the shaft while the plug is in it: a grip at the opening, a swell just short of it.",
@@ -82,7 +82,7 @@ namespace AvatarBridge
                 Blurb = "What the shaft does when no socket is using it: shrink a little, wriggle. All of it stops as a socket takes over.",
                 Knobs = new[]
                 {
-                    new Knob("_YAPS_IdleLength", "Idle length", RowKind.Slider, "TPS", "how much of its length it keeps — 1 is no change"),
+                    new Knob("_YAPS_IdleLength", "Idle length", RowKind.Slider, "TPS", "how much of its length it keeps: 1 is no change"),
                     new Knob("_YAPS_IdleWidth", "Idle width", RowKind.Slider, "TPS", "how much of its width it keeps"),
                     new Knob("_YAPS_WriggleStrength", "Wriggle", RowKind.Slider, "DPS", "idle motion, tip-heavy"),
                     new Knob("_YAPS_WriggleSpeed", "Wriggle speed", RowKind.Slider, "DPS"),
@@ -93,7 +93,7 @@ namespace AvatarBridge
                 {
                     new Knob("_YAPS_PumpStrength", "Pumping", RowKind.Slider, "TPS", "a stroke along the shaft, only while engaged"),
                     new Knob("_YAPS_PumpSpeed", "Pumping speed", RowKind.Slider, "TPS"),
-                    new Knob("_YAPS_PumpWidth", "Pumping width", RowKind.Slider, "TPS", "how much of the shaft pumps — 1 is the whole length, small values move only the tip"),
+                    new Knob("_YAPS_PumpWidth", "Pumping width", RowKind.Slider, "TPS", "how much of the shaft pumps: 1 is the whole length, small values move only the tip"),
                 }},
             new Section { Title = "The bend toward a socket", Tint = TintCurve,
                 Blurb = "How the shaft arrives at a socket.",
@@ -108,7 +108,8 @@ namespace AvatarBridge
                 Blurb = "Which sockets this plug will bend toward.",
                 Knobs = new[]
                 {
-                    new Knob("_YAPS_SelfTag", "Own-avatar tag", RowKind.Float, help: "which sockets are this plug's wearer's, so it ignores them — -1 on a prop"),
+                    new Knob("_YAPS_SelfTag", "Own-avatar tag", RowKind.Float, help: "which sockets are this plug's wearer's, so it ignores them: -1 on a prop"),
+                    new Knob("_YAPS_UseAtlas", "Read the screen atlas", RowKind.Slider, help: "the transport that does not need a light slot or a contact: sockets draw where they are into a corner of the screen and this plug reads it back. The converter sets it; off falls back to the contact channel and the marker lights. Debug's Resolved by says which one answered."),
                 }},
             new Section { Title = "Socket", Tint = TintSocket,
                 Blurb = "For a mesh that is a socket: how its shapes open as a plug goes in.",
@@ -129,7 +130,7 @@ namespace AvatarBridge
                 Blurb = "Views that say why nothing is happening.",
                 Knobs = new[]
                 {
-                    new Knob("_YAPS_Debug", "View", RowKind.Enum, help: "Colours the plug so you can see why it is doing what it is doing. The plug goes straight and its LENGTH carries the answer.  Resolved by: what found the socket. A third means nothing found it, two thirds the contact channel, full a marker light.  Gap to socket: how far away it is, as a fraction of the plug. Shortening smoothly is normal; a jump means it was handed a different socket.  Engagement: the switch that turns the bend on. A tenth at zero, full at one. When this collapses the plug springs straight back to its rest shape.  Socket facing: which way the socket points against the plug. Full is the same way, half is square across, nothing is facing straight back.  Turn it back Off before you upload; the toolkit warns you if you forget."),
+                    new Knob("_YAPS_Debug", "View", RowKind.Enum, help: "Colours the plug so you can see why it is doing what it is doing. The plug goes straight and its LENGTH carries the answer.  Resolved by: what found the socket. A quarter means nothing found it, a half the contact channel, three quarters a marker light, full the screen atlas.  Gap to socket: how far away it is, as a fraction of the plug. Shortening smoothly is normal; a jump means it was handed a different socket.  Engagement: the switch that turns the bend on. A tenth at zero, full at one. When this collapses the plug springs straight back to its rest shape.  Socket facing: which way the socket points against the plug. Full is the same way, half is square across, nothing is facing straight back. Nothing is rejected for it; the deform turns a socket to meet the approach.  Atlas taps: what the screen carried, when the answer above is \"nothing\". A tenth means it carried nothing, a third that something was there but was not this plug's, two thirds that it was and was either out of reach or on your own body, full that a socket came back.  Atlas target: whether the atlas could be on THIS camera at all, which is the one thing the views above cannot say. A tenth means the target is too small to hold it, four tenths that the screen it read was a different one from the one being drawn, seven tenths that it read the right screen and found nothing there, full that the transport is on this camera. Read it in the view, then in a mirror.  Turn it back Off before you upload; the toolkit warns you if you forget."),
                 }},
         };
 
@@ -166,10 +167,9 @@ namespace AvatarBridge
         {
             EnsureStyles();
             // Not ToDictionary: a shader may declare the same property name
-            // twice and Unity hands both back. Poiyomi does, with
-            // m_start_PoiLightData under two different headers, and a
-            // duplicate key threw here on every repaint, which made the
-            // material uninspectable rather than merely noisy.
+            // twice and Unity hands both back. Poiyomi does, and a duplicate
+            // key threw here on every repaint, which made the material
+            // uninspectable rather than merely noisy.
             var byName = new Dictionary<string, MaterialProperty>(properties.Length);
             foreach (var p in properties) byName[p.name] = p;
             var material = editor.target as Material;
@@ -211,7 +211,7 @@ namespace AvatarBridge
             {
                 string key = material.shader.name + "/Internals";
                 if (!Open.TryGetValue(key, out bool open)) open = false;
-                open = SectionHeader("Internals", new Color(0.4f, 0.4f, 0.4f), open, "written by the bake and the channel — read-only");
+                open = SectionHeader("Internals", new Color(0.4f, 0.4f, 0.4f), open, "written by the bake and the channel: read-only");
                 Open[key] = open;
                 if (open)
                 {
@@ -237,12 +237,11 @@ namespace AvatarBridge
             if (original != null)
             {
                 // The FULL list, not the filtered one. A shader's own editor
-                // builds its UI from the properties its shader declares and
-                // looks them up by name and index; handing it a subset makes
-                // it dereference something that is not there. Poiyomi's threw
-                // NullReferenceException in ShaderPart.IsPropertyValueDefault
-                // on every repaint. Ours appearing in its panel as well is
-                // cosmetic; taking its editor down is not.
+                // builds its UI from the properties its shader declares and looks
+                // them up by name and index; handing it a subset makes it
+                // dereference something that is not there, and Poiyomi's threw on
+                // every repaint. The YAPS ones appearing in its panel is cosmetic; taking
+                // its editor down is not.
                 original.OnGUI(editor, properties);
             }
             else
@@ -280,15 +279,13 @@ namespace AvatarBridge
             GUILayout.Space(6);
 
             // A material can be running a shader older than the toolkit, and
-            // nothing said so. Three readings were wasted in one afternoon
-            // on values a stale shader had never been asked for, and the
-            // material panel is exactly where somebody reads a value and
-            // believes it, so the warning belongs here as much as anywhere.
+            // nothing said so. The material panel is where somebody reads a
+            // value and believes it, so the warning belongs here.
             if (YapsShaderPatcher.IsStale(material))
             {
                 EditorGUILayout.HelpBox(
                     "This material is running a shader older than the toolkit, so what you see here " +
-                    "is not what the current version does. Bake it again to refresh it — the knobs " +
+                    "is not what the current version does. Bake it again to refresh it: the knobs " +
                     "and the bake are kept.", MessageType.Warning);
                 GUILayout.Space(4);
             }

@@ -22,7 +22,7 @@ namespace AvatarBridge
     //
     // Two deliberate exclusions: the CCK's own assets (uploading requires the CCK installed,
     // so they are guaranteed present in any project that can upload), and anything already in
-    // the output folder (ours, travels with the conversion).
+    // the output folder (generated, travels with the conversion).
     public static class AnimationSelfContainer
     {
         const string Category = "Animator";
@@ -74,10 +74,10 @@ namespace AvatarBridge
                 AssetDatabase.SaveAssets();
                 copiedClips.Sort(StringComparer.Ordinal);
                 ctx.Report.Converted(Category,
-                    $"Controller made self-contained — {copiedClips.Count} clip(s), {copiedMasks} mask(s) copied into RehomedAssets",
+                    $"Controller made self-contained: {copiedClips.Count} clip(s), {copiedMasks} mask(s) copied into RehomedAssets",
                     "Every animation the avatar plays now ships inside the output folder. The controller used to " +
                     "reference clips wherever the source avatar kept them; in a project without those folders each " +
-                    "missing clip silently plays as stillness — frozen fingers, dead emotes — with no error anywhere. " +
+                    "missing clip silently plays as stillness, frozen fingers, dead emotes, with no error anywhere. " +
                     "The CCK's own clips are the one exclusion: uploading requires the CCK installed, so those are " +
                     "always present. Copied: " + string.Join(", ", copiedClips) + ".");
             }
@@ -161,7 +161,7 @@ namespace AvatarBridge
             if (motion is BlendTree tree)
             {
                 // A tree owned by some other asset can't be edited in place; that would
-                // reach into somebody else's controller. Clone it into ours first.
+                // reach into somebody else's controller. Clone it first.
                 string treePath = AssetDatabase.GetAssetPath(tree);
                 var sourceTree = tree;
                 bool ours = treePath == controllerPath;
@@ -286,7 +286,7 @@ namespace AvatarBridge
             }
             if (path == controllerPath)
             {
-                return false; // embedded in the controller — already travels with it
+                return false; // embedded in the controller, already travels with it
             }
             if (path.StartsWith(outputDir.TrimEnd('/') + "/", StringComparison.Ordinal))
             {

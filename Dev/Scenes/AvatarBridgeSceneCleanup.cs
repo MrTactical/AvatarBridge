@@ -36,10 +36,10 @@ namespace AvatarBridge.Regression
             "/Samples/", "/Scenes/SampleScene", "/MISC/",
         };
 
-        [MenuItem("Tools/AvatarBridge Dev/Scenes — list what would be cleaned (dry run)")]
+        [MenuItem("Tools/AvatarBridge Dev/Scenes: list what would be cleaned (dry run)")]
         public static void DryRun() => Run(false);
 
-        [MenuItem("Tools/AvatarBridge Dev/Scenes — clean and SAVE all scenes")]
+        [MenuItem("Tools/AvatarBridge Dev/Scenes: clean and SAVE all scenes")]
         public static void CleanAndSave()
         {
             if (!EditorUtility.DisplayDialog(
@@ -72,10 +72,10 @@ namespace AvatarBridge.Regression
                 {
                     string path = scenes[i];
                     if (EditorUtility.DisplayCancelableProgressBar(
-                            (save ? "Cleaning scenes" : "Scanning scenes") + $" — {i + 1}/{scenes.Count}",
+                            (save ? "Cleaning scenes" : "Scanning scenes") + $": {i + 1}/{scenes.Count}",
                             Path.GetFileNameWithoutExtension(path), (float)i / scenes.Count))
                     {
-                        log.AppendLine("  CANCELLED — scenes already saved stay saved.");
+                        log.AppendLine("  CANCELLED: scenes already saved stay saved.");
                         break;
                     }
 
@@ -108,7 +108,7 @@ namespace AvatarBridge.Regression
                         // Only re-activate where a conversion is demonstrably why it was switched
                         // off; i.e. this scene HAD a leftover. Turning every descriptor on
                         // unconditionally would override deliberate choices in scenes holding
-                        // several avatars, and that is the user's call, not ours.
+                        // several avatars, and that is the user's call.
                         foreach (var root in scene.GetRootGameObjects())
                         {
                             foreach (var d in root.GetComponentsInChildren<VRCAvatarDescriptor>(true))
@@ -142,7 +142,7 @@ namespace AvatarBridge.Regression
             string head = save
                 ? $"[SceneCleanup] cleaned and SAVED {touchedScenes} scene(s): " +
                   $"{removed} leftover conversion(s) removed, {reactivated} object(s) re-activated."
-                : $"[SceneCleanup] DRY RUN — {touchedScenes} scene(s) would change, " +
+                : $"[SceneCleanup] DRY RUN: {touchedScenes} scene(s) would change, " +
                   $"{removed} leftover conversion(s) would be removed. Nothing was written.";
             Debug.Log(head + (log.Length > 0 ? "\n" + log : "\n  (nothing to do)"));
         }

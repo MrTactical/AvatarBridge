@@ -20,7 +20,7 @@ namespace AvatarBridge.Regression
     // precisely because a substring test would look like it worked.
     public static class GogoLayerStripTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test — GoGo layer strip")]
+        [MenuItem("Tools/AvatarBridge Dev/Test: GoGo layer strip")]
         public static void Run()
         {
             int fail = 0;
@@ -89,8 +89,8 @@ namespace AvatarBridge.Regression
             }
 
             Debug.Log(fail == 0
-                ? "[GogoLayerStripTest] PASS — Fury-spelt GoGo layers go, lookalikes stay."
-                : $"[GogoLayerStripTest] FAIL — {fail} case(s) wrong.");
+                ? "[GogoLayerStripTest] PASS: Fury-spelt GoGo layers go, lookalikes stay."
+                : $"[GogoLayerStripTest] FAIL: {fail} case(s) wrong.");
             if (Application.isBatchMode) EditorApplication.Exit(fail == 0 ? 0 : 1);
         }
     }

@@ -98,7 +98,7 @@ namespace AvatarBridge
                 $"{custom.Count} contact tag(s) only this avatar can trigger",
                 $"\"{string.Join("\", \"", custom.Take(8))}\"" + (custom.Count > 8 ? ", …" : "") +
                 ". A contact fires when something sends a matching tag, and these aren't body parts " +
-                "— nothing any other player carries sends them. Between two copies of this avatar " +
+                ": nothing any other player carries sends them. Between two copies of this avatar " +
                 "they work exactly as they did in VRChat; to anyone else those receivers do " +
                 "nothing. That's usually deliberate (an avatar's own private system), so nothing " +
                 "was changed. If you wanted strangers to set one off, add a body-part tag to it: " +
@@ -317,7 +317,7 @@ namespace AvatarBridge
             GrowStatically(zone, growth);
             ctx.Report.Converted(Category, reportPath,
                 $"Zone grown ×{growth:0.00} ({push * 100f:0.#} cm of surface travel) for the largest " +
-                "the sliders make the body — an animated blendshape can push the mesh past the " +
+                "the sliders make the body: an animated blendshape can push the mesh past the " +
                 "authored size, and a zone inside the body cannot be touched. The growth here is " +
                 $"spread across shapes ({contributors}), so the zone holds the grown size instead " +
                 "of following one slider.");
@@ -479,11 +479,11 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category, $"{repointed + mirrored} contact animation(s) rewired",
                     "Curves that switched a VRChat contact on and off now toggle the converted " +
                     "contact's own object, and curves that MOVED one (a receiver riding a scaled " +
-                    "body part) now drive the converted contact's offset — the forms ChilloutVR " +
+                    "body part) now drive the converted contact's offset: the forms ChilloutVR " +
                     "honours. " +
                     (mirrored > 0
                         ? $"{mirrored} of them switched the contact's parent object rather than " +
-                          "the component — in VRChat the contact died with its container, and " +
+                          "the component: in VRChat the contact died with its container, and " +
                           "the converted zone lives at the shape's anchor instead, so those " +
                           "curves now reach it too. "
                         : "") +
@@ -494,7 +494,7 @@ namespace AvatarBridge
             {
                 ctx.Report.Warning(Category, $"{dropped.Count} contact-animating curve(s) could not be carried",
                     string.Join("; ", dropped.Take(6)) + (dropped.Count > 6 ? ", …" : "") +
-                    " — each animated something with no equivalent on the converted contact " +
+                    ": each animated something with no equivalent on the converted contact " +
                     "(a shape radius, or a filter on the pointer/trigger path, which bakes its " +
                     "filters once at load), or a contact that was not converted. The curve was " +
                     "removed rather than left silently addressing a deleted component.");
@@ -879,7 +879,7 @@ namespace AvatarBridge
                     wired.Add(entry.zonePath);
                     string shape = entry.shapeKey.Substring(entry.shapeKey.LastIndexOf('|') + 1);
                     ctx.Report.Converted(Category, entry.reportPath,
-                        $"Zone follows the \"{shape}\" slider — authored size at rest, " +
+                        $"Zone follows the \"{shape}\" slider: authored size at rest, " +
                         $"×{entry.growth:0.00} at full reach, scaled between. Grown statically it " +
                         "covered the body's largest shape while the body was small; instead the " +
                         "zone's scale is animated in the slider's own clips, and the contact " +
@@ -906,7 +906,7 @@ namespace AvatarBridge
             }
             GrowStatically(zone.gameObject, entry.growth);
             ctx.Report.Converted(Category, entry.reportPath,
-                $"Zone grown ×{entry.growth:0.00} for the largest the sliders make the body — " +
+                $"Zone grown ×{entry.growth:0.00} for the largest the sliders make the body: " +
                 "the slider's clips were not found in the converted animator, so the zone " +
                 "holds the grown size instead of following the slider.");
         }

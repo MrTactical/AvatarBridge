@@ -20,7 +20,7 @@ namespace AvatarBridge.Regression
     // it is still root motion, that angle stays flat.
     public static class BakeOrientationProbe
     {
-        [MenuItem("Tools/AvatarBridge Dev/Probe — bake orientation into pose")]
+        [MenuItem("Tools/AvatarBridge Dev/Probe: bake orientation into pose")]
         public static void Run()
         {
             string prefabPath = System.Environment.GetEnvironmentVariable("AVATARBRIDGE_PREFAB");

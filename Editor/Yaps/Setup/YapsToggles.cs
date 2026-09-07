@@ -65,10 +65,9 @@ namespace AvatarBridge
             { "YAPS Hole", "YAPS Ring", "Hole", "Ring", "YAPS Socket", "BakedSpsSocket" };
 
         // The bone a socket or plug hangs from: its parent, through a YAPS
-        // folder and through VRCFury's wrappers, and nothing when that is
-        // the avatar itself. A converted socket sits in
-        // "[VF80] Blowjob/Original Object/BakedSpsSocket", and a label
-        // built from a wrapper told the wearer nothing about which hole
+        // folder and through VRCFury's wrappers, and nothing when that is the
+        // avatar itself. A converted socket sits several wrappers deep, and a
+        // label built from a wrapper told the wearer nothing about which socket
         // their menu was pointing at.
         public static string BoneOf(Transform t, CVRAvatar avatar)
         {
@@ -179,12 +178,19 @@ namespace AvatarBridge
             return null;
         }
 
-        // Every clip any of the avatar's controllers plays: the animator's,
-        // the CCK's base controller and its override, once each.
+        // Every clip any of the avatar's controllers plays, once each.
+        //
+        // avatar.overrides FIRST, because that is the one ChilloutVR uploads:
+        // it was missing here, so a deform already animated from the shipped
+        // controller read as not animated at all and YAPS built a toggle
+        // against it. The Animator's own slot holds a generated override that
+        // is not what ships, and avatarSettings holds the fallback. All of them
+        // are read anyway: a clip only has to be reachable to fire.
         static IEnumerable<AnimationClip> ClipsOfAvatar(CVRAvatar avatar, Animator animator)
         {
             var seen = new HashSet<AnimationClip>();
             var controllers = new List<RuntimeAnimatorController>();
+            if (avatar != null) controllers.Add(avatar.overrides);
             if (animator != null) controllers.Add(animator.runtimeAnimatorController);
             if (avatar != null && avatar.avatarSettings != null)
             {
@@ -246,7 +252,7 @@ namespace AvatarBridge
         {
             if (target == null || avatar == null) return null;
             var settings = avatar.avatarSettings != null ? avatar.avatarSettings.settings : null;
-            // Ours by what it SWITCHES, never by what it is called: the
+            // The toolkit's by what it SWITCHES, never by what it is called: the
             // label follows the bone, so renaming the bone or moving the
             // socket renames the entry, and matching on the name would add
             // a second one instead of renaming the first.
@@ -306,24 +312,24 @@ namespace AvatarBridge
 
         // Does the AVATAR already drive the deform itself?
         //
-        // ToggledBy answers "is the plug's mesh hidden by something", which
-        // is a different question and misses the one that matters: an author
-        // whose own animation already writes material._YAPS_Enabled. Joe's
-        // horse rig drives it from an erection slider past 0.52 — the enable
-        // mirror had wired it correctly — and YAPS then added a menu toggle
-        // writing the SAME property from its own layer. Two drivers, one
-        // property, and the toggle defaults OFF, so it won and the plug
-        // never deformed in play mode or in game no matter where the slider
-        // sat. In edit mode no animator ran and the baked 1 stood, which is
+        // ToggledBy answers "is the plug's mesh hidden by something", which is
+        // a different question and misses the one that matters: an author whose
+        // own animation already writes material._YAPS_Enabled from a slider of
+        // their own. YAPS then added a menu toggle writing the SAME property
+        // from its own layer. Two drivers, one property, and the toggle
+        // defaults OFF, so it won and the plug never deformed in play mode or
+        // in game. In edit mode no animator ran and the baked 1 stood, which is
         // why it looked like the deform itself had broken.
         //
-        // Ours are skipped: a generated clip is this toggle's own, and
-        // finding it would make the toggle stand down for itself.
+        // Generated clips are skipped: one is this toggle's own, and finding
+        // it would make the toggle stand down for itself.
         static string DrivenByOwnClip(CVRAvatar avatar, string plugPath)
         {
-            var animator = avatar.GetComponent<Animator>();
-            if (animator == null || animator.runtimeAnimatorController == null) return null;
-            foreach (var clip in YapsCurveMirror.ClipsOf(animator.runtimeAnimatorController))
+            // Through ClipsOfAvatar, not the Animator's own slot alone. An avatar
+            // whose deform is already animated from the shipped controller read as
+            // having no controller at all: this returned null, and the toggle was
+            // built anyway, straight into the two-drivers-one-property fight above.
+            foreach (var clip in ClipsOfAvatar(avatar, avatar.GetComponent<Animator>()))
             {
                 if (clip == null || Generated(clip) || !YapsCurveMirror.UserOwned(clip)) continue;
                 foreach (var b in AnimationUtility.GetCurveBindings(clip))
@@ -345,7 +351,7 @@ namespace AvatarBridge
         {
             if (plug == null || avatar == null || material == null || plug.Target == null) return null;
             var settings = avatar.avatarSettings != null ? avatar.avatarSettings.settings : null;
-            // Ours by the clip it plays, not by its name: the label follows
+            // The toolkit's by the clip it plays, not by its name: the label follows
             // the bone and may have moved since the last build.
             string plugPath = AnimationUtility.CalculateTransformPath(plug.Target.transform, avatar.transform);
             var ours = settings?.FirstOrDefault(e => e != null

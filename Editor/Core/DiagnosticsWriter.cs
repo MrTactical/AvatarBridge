@@ -39,7 +39,7 @@ namespace AvatarBridge
             text.AppendLine($"*AvatarBridge v{BridgeDefines.Version} · Unity {Application.unityVersion} · " +
                             $"{DateTime.Now:yyyy-MM-dd HH:mm}*");
             text.AppendLine();
-            text.AppendLine("Facts about this conversion, for attaching to a bug report. No advice here — ");
+            text.AppendLine("Facts about this conversion, for attaching to a bug report. No advice here: ");
             text.AppendLine("that's in ConversionReport.md. Nothing in this file leaves your machine unless ");
             text.AppendLine("you send it.");
             text.AppendLine();
@@ -207,7 +207,7 @@ namespace AvatarBridge
                     $"({(mapped.Count == 0 ? 0f : 100f * deformingMapped / mapped.Count):0}%)"),
                 Row("Bones deforming mesh (whole avatar)", deforming.Count.ToString()),
                 Row("Negatively scaled transforms", negative.Count.ToString() +
-                    (negative.Count > 0 ? $" — e.g. `{negative[0].name}`" : "")),
+                    (negative.Count > 0 ? $": e.g. `{negative[0].name}`" : "")),
             }));
             return text.ToString();
         }
@@ -292,7 +292,7 @@ namespace AvatarBridge
                     float above = Vector3.Dot(jaw.position - eyes, root.up);
                     if (above > 0f)
                     {
-                        jawNote = $"<br>**{above:0.##} m ABOVE the eyes — not a jaw**";
+                        jawNote = $"<br>**{above:0.##} m ABOVE the eyes, not a jaw**";
                     }
                 }
                 rows.Add(Row("Humanoid Jaw", Bone(ctx, root, jaw) + jawNote));

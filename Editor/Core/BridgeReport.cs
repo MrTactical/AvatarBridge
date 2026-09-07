@@ -133,10 +133,10 @@ namespace AvatarBridge
                 sb.AppendLine();
                 foreach (var entry in group)
                 {
-                    sb.Append($"- **{entry.Status}** — {entry.Subject}");
+                    sb.Append($"- **{entry.Status}**: {entry.Subject}");
                     if (!string.IsNullOrEmpty(entry.Detail))
                     {
-                        sb.Append($" — {entry.Detail}");
+                        sb.Append($". {entry.Detail}");
                     }
                     sb.AppendLine();
                 }
@@ -162,7 +162,7 @@ namespace AvatarBridge
             if (!string.IsNullOrEmpty(Appendix))
             {
                 sb.AppendLine("<details>");
-                sb.AppendLine("<summary><b>Diagnostics</b> — what the converted avatar actually " +
+                sb.AppendLine("<summary><b>Diagnostics</b>: what the converted avatar actually " +
                               "contains. Please leave this in when reporting a bug.</summary>");
                 sb.AppendLine();
                 sb.Append(Appendix);

@@ -43,16 +43,16 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                ctx.Report.Converted(Category, $"\"{display}\" — ChilloutVR drives \"{candidate.Parameter}\" itself",
+                ctx.Report.Converted(Category, $"\"{display}\": ChilloutVR drives \"{candidate.Parameter}\" itself",
                     $"Converted as a normal menu toggle, which is what it was. Worth knowing: ChilloutVR " +
                     $"feeds every avatar a \"{candidate.Parameter}\" parameter and sets it whenever " +
-                    $"{candidate.When} — the same way it drives Grounded and the movement velocities. " +
+                    $"{candidate.When}, the same way it drives Grounded and the movement velocities. " +
                     $"Point this layer's transitions at \"{candidate.Parameter}\" instead of the menu " +
                     "parameter and the pose follows what you're really doing, with no menu needed. " +
                     "The parameter is already declared and needs no parameter stream. Keep the menu " +
                     "toggle alongside it if you like: the client only sets these when the WORLD allows " +
                     "it, so in a world with flight disabled the automatic version never fires. Nothing " +
-                    "was rewired here — which layer meant what is your call.");
+                    "was rewired here, which layer meant what is your call.");
                 return;
             }
         }
@@ -125,7 +125,7 @@ namespace AvatarBridge
                     ctx.Report.Converted(Category,
                         $"{resynced.Count} menu parameter(s) synced although VRChat marked them local",
                         string.Join(", ", resynced.Take(12)) + (resynced.Count > 12 ? ", …" : "") +
-                        " — every one of these is driven by a menu control, and a control whose " +
+                        ": every one of these is driven by a menu control, and a control whose " +
                         "effect other players cannot see is a broken feature. VRChat's tight sync " +
                         "budget made de-syncing menu parameters a common trick, usually with " +
                         "VRCFury syncing them through machinery that does not survive conversion. " +
@@ -210,7 +210,7 @@ namespace AvatarBridge
             if (ftSkipped > 0)
             {
                 ctx.Report.Converted(Category, $"{ftSkipped} face-tracking parameter(s) left as-is",
-                    "Not exposed as menu toggles — the FT animator layers drive them.");
+                    "Not exposed as menu toggles: the FT animator layers drive them.");
             }
 
             ctx.CvrAvatar.avatarSettings.settings = entries;
@@ -311,11 +311,11 @@ namespace AvatarBridge
                 return;
             }
             ctx.Report.Warning(Category, $"{packed.Count} packed sync slot(s) must stay in the menu",
-                $"{string.Join(", ", packed.Take(4))}{(packed.Count > 4 ? ", …" : "")} — these belong to a " +
+                $"{string.Join(", ", packed.Take(4))}{(packed.Count > 4 ? ", …" : "")}: these belong to a " +
                 "parameter-packing optimiser. The avatar's real toggles are local, and these slots are what " +
                 "actually carries them to other players; animator drivers unpack them on arrival. They look " +
                 "like meaningless menu entries because ChilloutVR can't sync a parameter without one. Leave " +
-                "them alone — deleting them gives you an avatar whose toggles work on your screen and never " +
+                "them alone: deleting them gives you an avatar whose toggles work on your screen and never " +
                 "change on anyone else's.");
         }
 
@@ -332,7 +332,7 @@ namespace AvatarBridge
             if (CvrParameterNames.IsGameDriven(p.name))
             {
                 ctx.Report.Skipped(Category, p.name,
-                    "No menu control created — ChilloutVR drives this parameter itself, so the avatar's " +
+                    "No menu control created: ChilloutVR drives this parameter itself, so the avatar's " +
                     "animator still reads it, but a menu entry would only fight the game for the value.");
                 return null;
             }

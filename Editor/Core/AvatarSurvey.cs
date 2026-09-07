@@ -313,6 +313,11 @@ namespace AvatarBridge
                 string path = AnimationUtility.CalculateTransformPath(r.transform, root);
                 var mesh = MeshOf(r);
 
+                // This tool's own atlas objects. Not rejected with a reason,
+                // because there is no question to answer: they are not the
+                // user's to lift out.
+                if (r.sharedMaterials != null && r.sharedMaterials.Any(YapsMarks.IsAtlasMaterial)) continue;
+
                 // One bone, or none. More than one is clothing.
                 string bone = null;
                 if (r is SkinnedMeshRenderer skin)
@@ -697,7 +702,7 @@ namespace AvatarBridge
             var worth = model.Findings.Where(WorthTelling).ToList();
             foreach (var group in worth.GroupBy(f => f.Kind).OrderBy(g => Rank(g.Key)))
             {
-                sb.Append("- **").Append(Headline(group.Key, group.Count())).Append("** — ")
+                sb.Append("- **").Append(Headline(group.Key, group.Count())).Append("**: ")
                   .Append(string.Join(", ", group.Take(4).Select(f => f.Subject)));
                 if (group.Count() > 4) sb.Append(", and ").Append(group.Count() - 4).Append(" more");
                 sb.Append('\n');
@@ -705,7 +710,7 @@ namespace AvatarBridge
             int quiet = model.Findings.Count - worth.Count;
             if (quiet > 0)
             {
-                sb.Append("- ").Append(quiet).Append(" more finding(s) about names nobody chose — GoGo Loco's ")
+                sb.Append("- ").Append(quiet).Append(" more finding(s) about names nobody chose: GoGo Loco's ")
                   .Append("parameters, this tool's own scaffolding, what ChilloutVR writes and nothing reads, ")
                   .Append("the grab and stretch parameters a PhysBone used to write. Listed in full below.\n");
             }
@@ -713,7 +718,7 @@ namespace AvatarBridge
             if (model.Props.Count > 0)
             {
                 sb.Append("- **").Append(model.Props.Count)
-                  .Append(" object(s) could come off as props** — ")
+                  .Append(" object(s) could come off as props**: ")
                   .Append(string.Join(", ", model.Props.Select(p => $"\"{p.Control}\"")))
                   .Append(". Each rides one bone chain, is switched by one control, and carries its own " +
                           "mesh and textures, so ChilloutVR could hold it as a prop instead of the avatar " +

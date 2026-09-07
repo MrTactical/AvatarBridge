@@ -38,7 +38,7 @@ namespace AvatarBridge
                 File.WriteAllText(Path.GetFullPath(relative), text);
                 UnityEditor.AssetDatabase.ImportAsset(relative);
                 ctx.Report.Converted(Category, ctx.Target.name,
-                    $"Wrote a ready-made store description to {FileName} — \"Copy description\" in the " +
+                    $"Wrote a ready-made store description to {FileName}: \"Copy description\" in the " +
                     "AvatarBridge window puts it on your clipboard for the CCK's Description box. It " +
                     "starts with a blank line or two for your own words, so it reads as the footer of " +
                     "your description rather than all of it. Everything below that is counted from " +
@@ -47,7 +47,7 @@ namespace AvatarBridge
             catch (System.Exception e)
             {
                 ctx.Report.Warning(Category, ctx.Target.name,
-                    $"Could not produce the store description — {e.Message}. Nothing else about the " +
+                    $"Could not produce the store description: {e.Message}. Nothing else about the " +
                     "conversion is affected; this only writes listing text you were free to write " +
                     "yourself. Worth reporting, since it should not happen.");
             }
@@ -81,7 +81,7 @@ namespace AvatarBridge
                 int cost = feature.Length + (kept.Count > 0 ? 3 : 0);
                 if (cost > budget)
                 {
-                    continue;   // skip, don't stop — a later entry may still fit
+                    continue;   // skip, don't stop: a later entry may still fit
                 }
                 budget -= cost;
                 kept.Add(feature);

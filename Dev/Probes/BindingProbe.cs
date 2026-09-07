@@ -84,7 +84,7 @@ namespace AvatarBridge.Regression
                 Walk(layer.stateMachine, "", writers, writes, silent);
                 if (writes.Count == 0) continue;
 
-                Debug.Log($"[Binding] ===== layer {i} \"{layer.name}\" — {writes.Count} state(s) write it, " +
+                Debug.Log($"[Binding] ===== layer {i} \"{layer.name}\": {writes.Count} state(s) write it, " +
                           $"{silent.Count} say nothing =====");
                 foreach (string s in writes.OrderBy(s => s, System.StringComparer.Ordinal))
                 {
@@ -123,8 +123,8 @@ namespace AvatarBridge.Regression
                         : state.motion is BlendTree ? "blend tree"
                         : "clip writes nothing here";
                     silent.Add($"{name}  [{why}; {t.Length} exit(s)" +
-                               $"{(unconditional ? ", UNCONDITIONAL — assert pass skips this" : "")}" +
-                               $"{(t.Length == 0 ? ", NO EXIT — the layer lives here" : "")}]");
+                               $"{(unconditional ? ", UNCONDITIONAL: assert pass skips this" : "")}" +
+                               $"{(t.Length == 0 ? ", NO EXIT: the layer lives here" : "")}]");
                 }
             }
             foreach (var sub in machine.stateMachines)

@@ -80,8 +80,8 @@ namespace AvatarBridge
                     if (!sources.Any(s => s.sourceTransform != null && rig.Contains(s.sourceTransform))) continue;
 
                     // The bone the rig was driving, which is where a cloth
-                    // goes. It is often not weighted itself — the relay
-                    // writes a holder and the mesh hangs below it — so the
+                    // goes. It is often not weighted itself, since the relay
+                    // writes a holder and the mesh hangs below it, so the
                     // test is whether a cloth there would move any mesh at
                     // all, not whether this exact bone deforms. Climbing to
                     // a skinned ancestor instead lands on Hips, which would
@@ -140,11 +140,11 @@ namespace AvatarBridge
             string where = made > 0
                 ? $"A cloth was put on {string.Join(" and ", suggest.Take(4))} instead, tuned from the " +
                   "rig's own numbers. That is one chain where the source had a cascade, so it will not " +
-                  "feel identical — tune it, or delete it and build your own."
+                  "feel identical: tune it, or delete it and build your own."
                 : suggest.Count > 0
                 ? $"Put a MagicaCloth or DynamicBone on {string.Join(" and ", suggest.Take(4))}" +
                   (suggest.Count > 4 ? $" (and {suggest.Count - 4} more)" : "") +
-                  " to get the movement back — that is what this rig was driving, and a cloth there moves " +
+                  " to get the movement back: that is what this rig was driving, and a cloth there moves " +
                   "the mesh hanging below it. A guess worth checking, not a measurement."
                 : "Nothing it drove is weighted to a mesh, so there is no obvious bone to put a cloth on.";
 
@@ -269,7 +269,7 @@ namespace AvatarBridge
         static void Report(BridgeContext ctx, int dropped, int bones, int curves, string where)
         {
             ctx.Report.Warning(Category, $"A physics addon did not survive conversion ({ctx.HelperRigChains.Count} chains)",
-                "This avatar carries a staged physics rig — a cascade of helper bones, each doing one job and " +
+                "This avatar carries a staged physics rig: a cascade of helper bones, each doing one job and " +
                 "feeding the next, with constraints copying the result onto the bones your mesh actually uses. " +
                 "No mesh is skinned to any of it. VRChat composes that cascade; MagicaCloth2 and DynamicBone " +
                 "simulate each chain independently, which does not compose and lands on the body as " +

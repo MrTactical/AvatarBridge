@@ -92,7 +92,7 @@ namespace AvatarBridge
                     ctx.Report.Approximated(Category, data.Root.name,
                         $"Auto-assigned {added.Count} nearby collider(s): {string.Join(", ", added)}. " +
                         "The original PhysBone didn't list these, so this is a deliberate improvement on the " +
-                        "source rather than a faithful copy — remove any that make the chain behave oddly.");
+                        "source rather than a faithful copy: remove any that make the chain behave oddly.");
                 }
             }
 

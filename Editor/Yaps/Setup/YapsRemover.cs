@@ -206,26 +206,23 @@ namespace AvatarBridge
                     foreach (int slot in slots)
                     {
                         var m = mats[slot];
-                        // Each slot's OWN original first. A plug whose vertices
-                        // span several materials replaced several, and putting
-                        // the primary's back into all of them would paint the
-                        // whole mesh with one of its parts.
-                        // Keyed on the renderer too: a plug spanning meshes
-                        // has a slot 0 on each of them, and matching on the
-                        // number alone hands one mesh's material to another.
+                        // Each slot's OWN original first. A plug whose vertices span
+                        // several materials replaced several, and putting the primary's
+                        // back into all of them would paint the whole mesh with one of
+                        // its parts. Keyed on the renderer too: a plug spanning meshes
+                        // has a slot 0 on each, and matching on the number alone hands
+                        // one mesh's material to another.
                         var recorded = plug.bakedSlots
                             .FirstOrDefault(b => b != null && b.slot == slot && b.was != null
                                                  && YapsNativeBuilder.Same(b.renderer, renderer, plug))?.was;
-                        // `back` is the PRIMARY slot's original, so falling
-                        // back to it for a slot we have no record of paints
-                        // one part of the mesh over another — a fur slot
-                        // wearing the head's material, and the fur gone from
-                        // the renderer entirely. Only safe when there is one
-                        // baked slot and therefore only one original it can
-                        // belong to.
-                        // Then this slot's own clone traced home by name, and
-                        // only then the primary's original when it can only
-                        // belong to this slot.
+                        // `back` is the PRIMARY slot's original, so falling back to it
+                        // for a slot with no record paints one part of the mesh over
+                        // another, and the part it took the material from is gone from
+                        // the renderer entirely. Only safe when there is one baked slot
+                        // and therefore only one original it can belong to.
+                        //
+                        // Then this slot's own clone traced home by name, and only then
+                        // the primary's original when it can only belong to this slot.
                         var mine = recorded ?? OriginalOfSlot(m) ?? (slots.Count == 1 ? back : null);
                         if (mine != null)
                         {
@@ -282,11 +279,10 @@ namespace AvatarBridge
                 done.Add($"the component on \"{name}\" and its markers");
             }
 
-            // The contact channel, when this was the last baked plug. It
-            // exists to carry plugs, so leaving it behind means the objects,
-            // layers and parameters sit there until someone happens to run
-            // Clean up leftovers — which is where this lived and nowhere
-            // else, so Remove alone never cleared it.
+            // The contact channel, when this was the last baked plug. It exists to
+            // carry plugs, so leaving it behind means the objects, layers and
+            // parameters sit there until someone happens to run Clean up leftovers,
+            // which is where this lived and nowhere else.
             if (avatar != null && !avatar.GetComponentsInChildren<YapsPlug>(true)
                     .Any(p2 => p2 != null && p2 != plug && p2.Target != null && BakedSlots(p2.Target).Any()))
             {
@@ -546,15 +542,13 @@ namespace AvatarBridge
                     yield return i;
         }
 
-        // The material a plug's bake replaced: recorded by the bake, or
-        // found by name from the clone's, or nothing.
-        // The original one SLOT's material was cloned from, by name.
+        // The original a plug's clone was made from, traced by name.
         //
-        // Two suffixes exist in the wild: YapsBaker.Apply writes "X_YAPS_"
-        // and the mirror path writes "X (YAPS)". Knowing only the second
-        // meant the commonest clone of all could never find its way home,
-        // and Remove fell back to reverting the shader on a generated
-        // material and leaving it in the slot still called _YAPS_.
+        // Two suffixes exist in the wild: YapsBaker.Apply writes "X_YAPS_" and
+        // the mirror path writes "X (YAPS)". Knowing only the second meant the
+        // commonest clone of all could never find its way home, and Remove fell
+        // back to reverting the shader on a generated material and leaving it
+        // in the slot still called _YAPS_.
         static Material OriginalOfSlot(Material clone)
         {
             if (clone == null) return null;

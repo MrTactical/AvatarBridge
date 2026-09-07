@@ -29,7 +29,7 @@ namespace AvatarBridge.Regression
     // and every parameter goes local.
     public static class CompressorSlotTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test — parameter compressor slots")]
+        [MenuItem("Tools/AvatarBridge Dev/Test: parameter compressor slots")]
         public static void Run()
         {
             int fail = 0;
@@ -96,8 +96,8 @@ namespace AvatarBridge.Regression
             }
 
             Debug.Log(fail == 0
-                ? "[CompressorSlotTest] PASS — slots alone are enough to catch the compressor."
-                : $"[CompressorSlotTest] FAIL — {fail} case(s) wrong.");
+                ? "[CompressorSlotTest] PASS: slots alone are enough to catch the compressor."
+                : $"[CompressorSlotTest] FAIL: {fail} case(s) wrong.");
             if (Application.isBatchMode) EditorApplication.Exit(fail == 0 ? 0 : 1);
         }
     }

@@ -1,5 +1,5 @@
 // The rebuild: a converted socket stops being VRCFury's rig retuned and
-// becomes the thing the YAPS tool builds. Read what Fury placed, strip
+// becomes what the YAPS tool builds. Read what Fury placed, strip
 // Fury's machinery, let the native builder emit a fresh rig, and point
 // the author's depth reactions at the rebuilt channel. Every socket bug
 // that reached a user lived in the difference between the two rigs.
@@ -92,13 +92,12 @@ namespace AvatarBridge
             return specs;
         }
 
-        // VRCFury bakes every socket branch inactive and relies on SPS's
-        // enable service, which does not survive conversion. Wake the
-        // socket, everything under it, and every STUCK ancestor up to the
-        // avatar root. An object some clip can switch stays as found: the
-        // menu owns it, and only what NOTHING can switch is woken. This
-        // used to key off the marker lights; the strip removes those, so
-        // it keys off the socket itself.
+        // VRCFury bakes every socket branch inactive and relies on SPS's enable
+        // service, which does not survive conversion. Wake the socket,
+        // everything under it, and every STUCK ancestor up to the avatar root.
+        // An object some clip can switch stays as found: the menu owns it, and
+        // only what NOTHING can switch is woken. This keyed off the marker
+        // lights, which the strip removes, so it keys off the socket itself.
         public static void Wake(BridgeContext ctx, List<Transform> socketRoots)
         {
             var switchable = Switchable(ctx);
@@ -134,12 +133,12 @@ namespace AvatarBridge
             }
         }
 
-        // Every object path a clip can switch — counting only layers that
-        // can actually assert. Fury merges its socket exclusivity at
-        // weight zero, and a path animated ONLY by a dead layer is not
-        // controllable by anything; treating it as menu-owned left sockets
-        // dark, which is the exact bug the rebuild exists to end. The
-        // first layer always runs regardless of its stated weight.
+        // Every object path a clip can switch, counting only layers that can
+        // actually assert. Fury merges its socket exclusivity at weight zero,
+        // and a path animated ONLY by a dead layer is not controllable by
+        // anything; treating it as menu-owned left sockets dark, the exact bug
+        // the rebuild exists to end. The first layer always runs regardless of
+        // its stated weight.
         public static HashSet<string> Switchable(BridgeContext ctx)
         {
             var paths = new HashSet<string>(StringComparer.Ordinal);
@@ -191,11 +190,11 @@ namespace AvatarBridge
                 && t.allowedTypes.Any(a => TipTypes.Contains(a));
         }
 
-        // OGB and its kin read plug tips too, so a haptics receiver the
-        // user chose to keep looks exactly like a depth trigger to the
-        // tip filter. Its parameters say what it is. Kept in step with
-        // SystemStripper.HapticsParamPrefixes, which cannot be referenced
-        // here: the stripper only exists when the VRChat SDK does.
+        // OGB and its kin read plug tips too, so a haptics receiver the user
+        // chose to keep looks exactly like a depth trigger to the tip filter.
+        // Its parameters say what it is. Kept in step with
+        // SystemStripper.HapticsParamPrefixes, which cannot be referenced here:
+        // the stripper only exists when the VRChat SDK does.
         static readonly string[] HapticsPrefixes = { "OGB", "pcs/", "WH_" };
 
         static bool IsHaptics(CVRAdvancedAvatarSettingsTrigger t)
@@ -240,9 +239,9 @@ namespace AvatarBridge
                     RemoveHost(t.transform, root, t);
                 }
             }
-            // Fury's WorldSpace plumbing: constraints that pinned the
-            // stripped lights. Below the root only — a constraint ON the
-            // root is what places the socket itself and stays.
+            // Fury's WorldSpace plumbing: constraints that pinned the stripped
+            // lights. Below the root only, since a constraint ON the root is what
+            // places the socket itself and stays.
             foreach (var c in root.GetComponentsInChildren<UnityEngine.Animations.IConstraint>(true).ToList())
             {
                 var component = c as Component;
@@ -327,6 +326,12 @@ namespace AvatarBridge
                 if (socket == null) socket = pair.Key.gameObject.AddComponent<YapsSocket>();
                 socket.kind = pair.Value.IsHole ? YapsSocket.SocketKind.Hole : YapsSocket.SocketKind.Ring;
                 socket.emitLights = pair.Value.EmitLights;
+                // Stamped like the native and prop builders do. The stale card is
+                // guarded on this being non-empty, so leaving it blank meant a
+                // CONVERTED socket could never report itself out of date, and converted
+                // avatars are the ones most likely to be: a socket built before 4.4.0
+                // carries half-size trigger volumes and a hole flag that reads wrong.
+                socket.builtBy = BridgeDefines.Version;
             }
 
             int rebuilt = 0, repointed = 0;
@@ -356,11 +361,10 @@ namespace AvatarBridge
                         .Replace("/Depth", n.ToString() + "/Depth");
                 }
                 taken.Add(wanted);
-                // The sync choice is the wearer's setting, same as before
-                // the rebuild: local and free by default, synced at 32
-                // bits a socket when they ask the room to see the shapes.
-                // The setting worked by matching Fury's names, which the
-                // repoint erases, so it is honored here by the prefix.
+                // The sync choice is the wearer's setting, same as before the rebuild:
+                // local and free by default, synced at 32 bits a socket when they ask
+                // the room to see the shapes. The setting worked by matching Fury's
+                // names, which the repoint erases, so it is honored here by the prefix.
                 if (!ctx.Settings.syncSocketDepthForOthers) wanted = "#" + wanted;
                 string parameter = YapsSocketReactions.EnsureDepthChannel(socket, ctx.MergedController, wanted);
                 // Trigger-written, so nothing in the controller reads it unless
@@ -386,7 +390,7 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category,
                     $"Rebuilt {rebuilt} socket(s) through the native builder",
                     "Marker lights within the light budget, pointers with their self twins, and " +
-                    "a depth trigger writing a synced parameter — the exact rig the YAPS window " +
+                    "a depth trigger writing a synced parameter: the exact rig the YAPS window " +
                     "builds, because it is the same code. " +
                     (repointed > 0
                         ? $"{repointed} socket(s) had their depth reactions repointed onto the " +
@@ -397,18 +401,17 @@ namespace AvatarBridge
         }
 
         // LAST of everything that writes a socket's active state. The
-        // lighthouse asserts the chosen socket ON as well as lit, and a
-        // layer wins by coming later, so it has to follow the wired
-        // toggles. A user on a converted avatar switched the mouth on
-        // from Fury's toggle, saw it in the hierarchy, and held a DPS
-        // prop to a dark pair the dropdown still had at the anus.
+        // lighthouse asserts the chosen socket ON as well as lit, and a layer
+        // wins by coming later, so it has to follow the wired toggles. Without
+        // it a converted avatar could switch a socket on from Fury's toggle,
+        // show it in the hierarchy, and still present a dark socket to a prop.
         public static void Lighthouse(BridgeContext ctx)
         {
             string lighthouse = YapsLighthouse.Build(ctx.CvrAvatar, ctx.MergedController);
             if (lighthouse == null) return;
             ctx.Report.Converted(Category, "The lighthouse: one lit socket, wearer's choice",
                 "Every lit-capable socket carries its marker pair and the \"Marker lights\" " +
-                "dropdown lights exactly one — and switches that socket on, so choosing it " +
+                "dropdown lights exactly one, and switches that socket on, so choosing it " +
                 "is the whole job for a DPS or TPS toy. It starts on Off: nothing is lit " +
                 "until the wearer says so. A disabled light never competes for Unity's four " +
                 "vertex-light slots, which is what makes several DPS-findable sockets on one " +
@@ -440,14 +443,14 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category,
                     $"{removed} dead exclusivity layer(s) removed",
                     "VRCFury's socket exclusivity merges at weight zero and ChilloutVR has no " +
-                    "runtime layer-weight control, so these could never assert — but their clips " +
+                    "runtime layer-weight control, so these could never assert, but their clips " +
                     "made the sockets they switch off look menu-owned to every check that walks " +
                     "the controller. The rebuilt sockets have their own toggles.");
             }
         }
 
-        // The one rename the repoint needs: every place a controller reads
-        // a parameter by name. Clips are deliberately untouched — they
+        // The one rename the repoint needs: every place a controller reads a
+        // parameter by name. Clips are deliberately untouched, since they
         // animate blendshapes and never name the parameter.
         public static bool RenameParameterEverywhere(AnimatorController controller, string from, string to)
         {

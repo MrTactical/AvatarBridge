@@ -109,7 +109,7 @@ namespace AvatarBridge.Yaps
 
         [Tooltip("Preview the way the game does it: the socket's offset from the plug, normalised " +
                  "across the channel's box, rather than a world position. The world route is simpler " +
-                 "and is what the preview always used — and it is NOT what the game runs, which is how " +
+                 "and is what the preview always used, and it is NOT what the game runs, which is how " +
                  "a contact channel that had never worked once looked perfect in the editor.")]
         public bool previewAsChannel = true;
 
@@ -201,7 +201,7 @@ namespace AvatarBridge.Yaps
             // measured frame the markers sit at. There is no object-space
             // route: Unity skins into world space, unity_ObjectToWorld is
             // identity for a skinned mesh at draw time, so a frame published
-            // in renderer space decodes unrotated — on a Blender-imported
+            // in renderer space decodes unrotated. On a Blender-imported
             // body carrying -90 on X, "up" arrived pointing forward and the
             // avatar bent toward a socket behind it.
             PlugFrame(r, out Vector3 origin, out var rotation);
@@ -266,14 +266,14 @@ namespace AvatarBridge.Yaps
         // at the avatar root, so a plug on the hips measured its distance
         // to a socket from between the avatar's feet. That reads as far too
         // far, the simulated channel never engages, and a marker light
-        // quietly carries the preview instead — so the editor showed the
+        // quietly carries the preview instead, so the editor showed the
         // light path while appearing to show the channel.
         //
         // The bake leaves "YAPS Markers" on the plug at the frame origin it
         // measured, which is exactly the point the shader bends from.
         // The plug this renderer belongs to: its own, or the one CARRYING
         // it. A collar swept in by an armature plug has no plug of its own,
-        // and falling back to its own bounds centre gave it its own gate —
+        // and falling back to its own bounds centre gave it its own gate,
         // measured from the waist while the body's measured from the feet,
         // so the collar engaged first and visibly bent before everything
         // around it, in both preview routes. One plug, one origin, one gate.

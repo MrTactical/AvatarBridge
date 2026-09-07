@@ -42,7 +42,7 @@ namespace AvatarBridge
 
             if (!AnyVolatile(skinned, filters, renderers))
             {
-                return; // everything is a permanent project asset — nothing to rescue
+                return; // everything is a permanent project asset: nothing to rescue
             }
 
             string dir = ctx.OutputDir.TrimEnd('/') + "/RehomedAssets";
@@ -75,7 +75,7 @@ namespace AvatarBridge
             ctx.Report.Converted(Category,
                 $"Re-homed {meshMap.Count} mesh(es), {matMap.Count} material(s), {shaderMap.Count} shader(s), " +
                 $"{textureMap.Count} texture(s) out of temp",
-                "VRCFury generated these into Packages/com.vrcfury.temp, which it deletes on its next build — " +
+                "VRCFury generated these into Packages/com.vrcfury.temp, which it deletes on its next build: " +
                 "without saved copies the avatar goes invisible (null mesh), pink (null material/shader) or " +
                 "loses the pictures off its materials while everything else still looks right (null texture, " +
                 "which is why particles came back as plain white squares). Saved to " + dir + ".");
@@ -140,7 +140,7 @@ namespace AvatarBridge
         {
             if (mat == null || !IsVolatile(mat))
             {
-                return mat; // permanent (or null) — leave it alone
+                return mat; // permanent (or null): leave it alone
             }
             if (matMap.TryGetValue(mat, out var existing))
             {

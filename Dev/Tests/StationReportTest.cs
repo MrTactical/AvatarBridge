@@ -11,7 +11,7 @@ namespace AvatarBridge.Regression
     // anyone (that half is verified in the wild on a GoGo corpus avatar).
     public static class StationReportTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test — seat report")]
+        [MenuItem("Tools/AvatarBridge Dev/Test: seat report")]
         public static void Run()
         {
             int fail = 0;
@@ -54,8 +54,8 @@ namespace AvatarBridge.Regression
             }
 
             Debug.Log(fail == 0
-                ? "[StationReportTest] PASS — seats leave loudly."
-                : $"[StationReportTest] FAIL — {fail} case(s) wrong.");
+                ? "[StationReportTest] PASS: seats leave loudly."
+                : $"[StationReportTest] FAIL: {fail} case(s) wrong.");
             if (Application.isBatchMode) EditorApplication.Exit(fail == 0 ? 0 : 1);
         }
     }

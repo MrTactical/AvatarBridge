@@ -143,27 +143,27 @@ namespace AvatarBridge
                 case "DPS": return "From Raliv's Dynamic Penetration System";
                 case "TPS": return "From Thry's Penetration System";
                 case "SPS": return "From VRCFury's Super Plug Shader";
-                default: return "YAPS's own — none of the others had it";
+                default: return "YAPS's own: none of the others had it";
             }
         }
 
         // The material properties an animation may drive, by the name the
         // Animation window wants after "Material.".
+        //
         // Why this component has no enable checkbox, and what to animate
-        // instead. Reported by a user who animated the component's own
-        // enabled field off a slider and got nothing, which is exactly what
-        // that does: the field is serialised on every Behaviour whether or
-        // not it means anything, and this one does not.
+        // instead. The enabled field is serialised on every Behaviour whether
+        // or not it means anything, and this one does not, so animating it off
+        // a slider does nothing at all.
         public const string InertComponentNote =
             "This component is setup data, not something running in game. It has no on/off checkbox " +
             "because there is nothing to switch off: ChilloutVR strips it at upload, and everything it " +
             "describes is baked into the material. Animating its \"Enabled\" field in the Animation " +
-            "window does nothing at all — the field is there because Unity puts one on every component.";
+            "window does nothing at all: the field is there because Unity puts one on every component.";
 
         public const string PlugSwitchNote =
             "To turn the deform on and off, animate the MATERIAL property _YAPS_Enabled on this plug's " +
             "renderer: 0 is off, 1 is on, and anything between fades it, so a slider drives it directly. " +
-            "It stops the bending, it does not hide the mesh — toggle the object for that. The animated " +
+            "It stops the bending, it does not hide the mesh: toggle the object for that. The animated " +
             "value lives in the renderer's property block, so the material inspector keeps showing what " +
             "was baked.";
 
@@ -231,10 +231,9 @@ namespace AvatarBridge
         // watches it bend in. A plug had nothing to bend TOWARD, so its own
         // inspector could only ever show it straight, which reads as broken.
         //
-        // The socket is built by the same code the universal prefabs are, so
-        // there is one definition of what a socket is, and it is placed one
-        // plug length along the plug's own measured forward — the position
-        // the plug is actually reaching for.
+        // The socket is built by the same code the universal prefabs are, and
+        // is placed one plug length along the plug's own measured forward, the
+        // position the plug is actually reaching for.
         public static void DropTestSocket(YapsPlug plug, YapsSocket.SocketKind kind = YapsSocket.SocketKind.Hole)
         {
             if (plug == null) return;
@@ -246,31 +245,24 @@ namespace AvatarBridge
                     "Tools ▸ YAPS ▸ Setup, then preview.", "OK");
                 return;
             }
-            // NO LIGHTS on a preview socket. It exists to drive the preview,
-            // and the preview writes the contact channel — so a light on it
-            // is a second, uncontrolled path answering the same question.
-            // That is precisely how a channel which had never worked once in
-            // game passed every editor test anyone ran: the light was always
-            // there to catch it.
-            // WITH lights, like a real socket. It used to be built without
-            // them so that a light could not answer in place of the contact
-            // channel while the channel was being debugged. That made the
-            // preview show the fallback route instead of the one a user
-            // actually gets, so a plug looked worse in the editor than it
-            // does in game and every reading taken from it was of the wrong
-            // path. Turn its lights off by hand to isolate the channel.
+            // WITH lights, like a real socket. It was built without them so a light
+            // could not answer in place of the contact channel while the channel
+            // was being debugged. That made the preview show the fallback route
+            // instead of the one a user gets, so a plug looked worse in the editor
+            // than it does in game. Turn its lights off by hand to isolate the
+            // channel.
             var go = YapsSocketBuilder.BuildPreviewSocket(SocketName, kind);
             if (go == null) return;
             go.transform.SetPositionAndRotation(origin + forward * length, Quaternion.LookRotation(-forward, up));
             Undo.RegisterCreatedObjectUndo(go, "YAPS preview socket");
             EditorGUIUtility.PingObject(go);
-            // Switching preview ON is what makes it do anything: the socket's
-            // own PreviewTick writes _YAPS_SocketPos/Forward/Up into every
-            // plug material near it, and Tick only calls it for a socket whose
-            // preview is set. Placing the socket and leaving that off gives a
-            // socket that sits there while the plug stays straight.
+            // Switching preview ON is what makes it do anything: the socket's own
+            // PreviewTick writes _YAPS_SocketPos/Forward/Up into every plug
+            // material near it, and Tick only calls it for a socket whose preview
+            // is set. Placing the socket and leaving that off gives a socket that
+            // sits there while the plug stays straight.
             //
-            // spawnPlugIfNone: false — the plug being looked at IS the plug.
+            // spawnPlugIfNone: false, the plug being looked at IS the plug.
             var socket = go.GetComponent<YapsSocket>();
             if (socket != null) Set(socket, true, spawnPlugIfNone: false);
             SceneView.RepaintAll();
@@ -289,11 +281,10 @@ namespace AvatarBridge
                 // socket that is no longer there.
                 var socket = existing.GetComponent<YapsSocket>();
                 if (socket != null) Set(socket, false, spawnPlugIfNone: false);
-                // Set destroys OUR preview socket itself, so by here it is
-                // usually gone. Handing Unity a destroyed object throws
-                // ArgumentNullException on objectToUndo; the null check is
-                // Unity's overloaded ==, which reports a destroyed object as
-                // null and is exactly what is wanted.
+                // Set destroys the preview socket itself, so by here it is usually
+                // gone. Handing Unity a destroyed object throws ArgumentNullException
+                // on objectToUndo. The null check is Unity's overloaded ==, which
+                // reports a destroyed object as null, which is what is wanted.
                 if (existing != null) Undo.DestroyObjectImmediate(existing);
             }
             SceneView.RepaintAll();
@@ -317,7 +308,7 @@ namespace AvatarBridge
             if (!on) { Remove(); YapsShapeSim.Release(socket); }
             socket.PreviewTick();
             Animate(on);
-            // A socket WE dropped exists only to be previewed against, so
+            // A socket the toolkit dropped exists only to be previewed against, so
             // switching its preview off is asking for it to go rather than
             // to sit there inert. Last, because PreviewTick above still
             // needs it alive to write the cleared flags back.
@@ -448,7 +439,7 @@ namespace AvatarBridge
             {
                 EditorUtility.DisplayDialog("YAPS preview",
                     "The test plug was placed but did not bake, so it will not bend. The Console has the " +
-                    "reason on a [YAPS] line — usually the shader could not be patched.", "OK");
+                    "reason on a [YAPS] line: usually the shader could not be patched.", "OK");
             }
         }
 
@@ -690,7 +681,7 @@ namespace AvatarBridge
             bool built = IsBuilt(socket.transform);
 
             _root.Add(BridgeElements.Banner((hole ? "Hole" : "Ring") + "  ·  " + YapsToggles.LabelFor(socket),
-                built ? "readable by DPS, TPS, SPS and YAPS plugs" : "not built — no plug can find it yet",
+                built ? "readable by DPS, TPS, SPS and YAPS plugs" : "not built: no plug can find it yet",
                 built ? "YAPS" : "not built"));
             _root.Add(BridgeElements.Hint(YapsInspectorStyle.InertComponentNote + " " + YapsInspectorStyle.SocketSwitchNote));
 
@@ -700,12 +691,11 @@ namespace AvatarBridge
 
             // BUILT BY AN OLDER TOOLKIT?
             //
-            // A prop is built once and never revisited, so every fix ships
-            // to new ones and reaches no existing one, and the two look
-            // identical from the outside. A socket carrying half-size
-            // trigger boxes, or a channel that configured one material out
-            // of three, gives no sign of it. The stamp is written when the
-            // socket is baked or its prop is built.
+            // A prop is built once and never revisited, so every fix ships to new
+            // ones and reaches no existing one, and the two look identical from the
+            // outside. A socket carrying half-size trigger boxes, or a channel that
+            // configured one material out of three, gives no sign of it. The stamp
+            // is written when the socket is baked or its prop is built.
             if (!string.IsNullOrEmpty(socket.builtBy) && socket.builtBy != BridgeDefines.Version)
             {
                 var behind = new BridgeElements.Card("This socket is behind the toolkit");
@@ -736,8 +726,8 @@ namespace AvatarBridge
                     RebuildLater();
                 }));
             what.Body.Add(BridgeElements.Hint(hole
-                ? "A hole closes around the plug and stops it — a mouth, a pussy, an anus."
-                : "A ring lets the plug pass straight through — a hand, thighs, a foot."));
+                ? "A hole closes around the plug and stops it: a mouth, a pussy, an anus."
+                : "A ring lets the plug pass straight through: a hand, thighs, a foot."));
             body.Add(what);
 
             // Shapes.
@@ -757,7 +747,7 @@ namespace AvatarBridge
             // draw made "None" impossible and dirtied a socket on selection.
             var current = rendererProp.objectReferenceValue as SkinnedMeshRenderer;
             if (current != null && !renderers.Contains(current)) renderers.Insert(0, current);
-            var rNames = new List<string> { "None — bend plugs, play no shape" };
+            var rNames = new List<string> { "None: bend plugs, play no shape" };
             rNames.AddRange(renderers.Select(r => $"{r.name}   ·   {r.sharedMesh.blendShapeCount} shapes"));
             int rIndex = current != null ? renderers.IndexOf(current) : -1;
             var meshPopup = new PopupField<string>("Mesh", rNames, rIndex + 1);
@@ -794,7 +784,7 @@ namespace AvatarBridge
                     "a depth trigger on the socket reads a plug's tip pointer and a layer in your animator plays the " +
                     "stages from it. Works with TPS, SPS and YAPS plugs; a DPS light-only plug has no pointer. " +
                     "ChilloutVR computes this contact on the wearer's machine only, so the depth is a synced " +
-                    "parameter — 32 of the avatar's 3200 sync bits — and without it nobody but the wearer would " +
+                    "parameter, 32 of the avatar's 3200 sync bits, and without it nobody but the wearer would " +
                     $"see the shapes move. A contact cannot know a plug's length, so depth 1 " +
                     $"is {reach:0.00} m in ({reachFrom}); the depths below are fractions of that.", HelpBoxMessageType.Info));
             }
@@ -804,7 +794,7 @@ namespace AvatarBridge
             {
                 var mesh = current.sharedMesh;
                 var shapeNames = Enumerable.Range(0, mesh.blendShapeCount).Select(mesh.GetBlendShapeName).ToList();
-                var options = new List<string> { "— pick a shape —" };
+                var options = new List<string> { "pick a shape" };
                 options.AddRange(shapeNames);
                 // Rows are named by their depth; several rows may share one.
                 string StageName(int i, float at) => i == 0 && at <= 0.001f ? "Entry" : $"At {at:0.00}";
@@ -954,7 +944,7 @@ namespace AvatarBridge
             {
                 opens.Body.Add(new HelpBox(avatarRoot == null
                     ? "Put this socket under an avatar or prop and its meshes will appear here."
-                    : "No skinned mesh with blendshapes under this avatar — the socket bends plugs and plays no shape.",
+                    : "No skinned mesh with blendshapes under this avatar: the socket bends plugs and plays no shape.",
                     HelpBoxMessageType.Info));
             }
             body.Add(opens);
@@ -973,7 +963,7 @@ namespace AvatarBridge
                     : "Nothing baked is near this socket, so it drops a test plug in front of it.") +
                 (contactRoute && shapesProp.arraySize > 0 ? " A test plug is one full depth long, so all the way in reads 1." : "") + shapesToo));
             var previewButton = new BridgeElements.PrimaryButton(
-                socket.preview ? "Previewing — click to stop" : (bakedPlugs > 0 ? "Preview" : "Preview with a test plug"),
+                socket.preview ? "Previewing, click to stop" : (bakedPlugs > 0 ? "Preview" : "Preview with a test plug"),
                 () => { YapsPreview.Set(socket, !socket.preview); RebuildLater(); });
             see.Body.Add(previewButton);
             // Asked for outright, since guessing whether the avatar's own
@@ -989,15 +979,15 @@ namespace AvatarBridge
                     RebuildLater();
                 })));
 
-            // WHICH ROUTE the preview speaks. Off is the old shortcut, a
-            // world position and a true forward, which is close to what a
-            // marker light gives. On is what the game actually sends: an
-            // offset normalised across the channel's box, and no rotation
-            // at all, with the facing derived from a second point.
+            // WHICH ROUTE the preview speaks. Off is the old shortcut, a world
+            // position and a true forward, close to what a marker light gives. On
+            // is what the game actually sends: an offset normalised across the
+            // channel's box, no rotation at all, and the facing derived from a
+            // second point.
             //
-            // Worth a switch rather than a constant, because "it works one
-            // way and not the other" is the fastest question there is to
-            // ask about a socket, and answering it used to take an upload.
+            // A switch rather than a constant, because "it works one way and not
+            // the other" is the fastest question there is to ask about a socket,
+            // and answering it used to take an upload.
             var route = new Toggle("Preview through the contact channel") { value = socket.previewAsChannel };
             route.AddToClassList("ab-toggle");
             route.RegisterValueChangedCallback(e =>
@@ -1016,11 +1006,10 @@ namespace AvatarBridge
                 "the position outright, so switch this socket's lights off in Advanced if you want " +
                 "to see the contact channel on its own."));
 
-            // The plug mesh on most avatars only exists in Play Mode: it
-            // ships switched off and a toggle brings it in. So the one
-            // state where you can SEE a plug was the one state the preview
-            // refused to run in, and every editor bend anyone ever saw came
-            // from a marker light instead.
+            // The plug mesh on most avatars only exists in Play Mode: it ships
+            // switched off and a toggle brings it in. So the one state where you
+            // can SEE a plug was the one state the preview refused to run in, and
+            // every editor bend came from a marker light instead.
             var inPlay = new Toggle("Keep previewing in Play Mode") { value = socket.previewInPlayMode };
             inPlay.AddToClassList("ab-toggle");
             inPlay.RegisterValueChangedCallback(e =>
@@ -1200,10 +1189,9 @@ namespace AvatarBridge
             colour.a = selected ? 1f : 0.7f;
 
             Vector3 c = t.position, f = t.forward, u = t.up;
-            // Five centimetres, the size of the thing it marks, and never
-            // smaller than the view can show. A bone's lossyScale is the
-            // mesh's unit conversion, not the avatar's size, so it plays
-            // no part here.
+            // Five centimetres, the size of the thing it marks, and never smaller
+            // than the view can show. A bone's lossyScale is the mesh's unit
+            // conversion, not the avatar's size, so it plays no part here.
             float r = Mathf.Max(0.05f, HandleUtility.GetHandleSize(c) * 0.06f);
             float thick = selected ? 4f : 3f;
 
@@ -1228,7 +1216,7 @@ namespace AvatarBridge
             if (selected || !built)
             {
                 var label = new GUIStyle(EditorStyles.whiteMiniLabel) { fontSize = 11 };
-                Handles.Label(c + u * (r * 1.4f), (hole ? "hole" : "ring") + (built ? "" : "  — not built"), label);
+                Handles.Label(c + u * (r * 1.4f), (hole ? "hole" : "ring") + (built ? "" : ", not built"), label);
             }
         }
     }
@@ -1292,8 +1280,8 @@ namespace AvatarBridge
             float len = isBaked ? baked[0].GetFloat("_YAPS_Length") : 0f;
 
             _root.Add(BridgeElements.Banner("Plug  ·  " + plug.name,
-                renderer == null ? "no renderer — pick the mesh that bends"
-                : isBaked ? $"baked  ·  {len:0.###} m  ·  {baked[0].name}" : "not baked yet — set it up, then Bake",
+                renderer == null ? "no renderer: pick the mesh that bends"
+                : isBaked ? $"baked  ·  {len:0.###} m  ·  {baked[0].name}" : "not baked yet: set it up, then Bake",
                 isBaked ? "YAPS" : "not baked"));
             _root.Add(BridgeElements.Hint(YapsInspectorStyle.InertComponentNote + " " + YapsInspectorStyle.PlugSwitchNote));
 
@@ -1311,7 +1299,7 @@ namespace AvatarBridge
             // nothing to bend toward, so its inspector could only ever show
             // it straight, which reads as a plug that does not work.
             see.Body.Add(BridgeElements.Hint(
-                "Drops a socket one plug length ahead, pointing back, and bends this plug into it — " +
+                "Drops a socket one plug length ahead, pointing back, and bends this plug into it: " +
                 "here in the editor, so you can watch before uploading. Writes nothing that ships. " +
                 "The bend needs the plug baked, and needs its deform switched on: if an animator " +
                 "gates it (an erection slider, say), set the material's _YAPS_Enabled to 1 while you " +
@@ -1402,7 +1390,7 @@ namespace AvatarBridge
 
             var bake = new BridgeElements.Card("Bake");
             bake.Body.Add(BridgeElements.Hint(isBaked
-                ? "The knobs above write straight to the plug's material, and the material's YAPS panel writes back here — same values, two doors. Mesh, bone and measurement changes need a re-bake."
+                ? "The knobs above write straight to the plug's material, and the material's YAPS panel writes back here: same values, two doors. Mesh, bone and measurement changes need a re-bake."
                 : "Set the mesh up, then Bake: it measures the mesh, patches the material's own shader (or falls back to YAPS Simple Lit), writes the knobs and announces the plug to every socket family."));
             bake.Body.Add(new BridgeElements.PrimaryButton(isBaked ? "Re-bake" : "Bake", () =>
             {
@@ -1512,7 +1500,7 @@ namespace AvatarBridge
                 float stub = HandleUtility.GetHandleSize(b) * 0.3f;
                 Handles.DrawDottedLine(b, b + f * stub, 5f);
                 var label = new GUIStyle(EditorStyles.whiteMiniLabel) { fontSize = 11 };
-                Handles.Label(b + f * stub, "plug — not baked", label);
+                Handles.Label(b + f * stub, "plug, not baked", label);
                 return;
             }
             Vector3 tip = b + f * length;

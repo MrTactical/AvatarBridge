@@ -14,7 +14,7 @@ namespace AvatarBridge.Regression
     // descent. Curves and flags describe intent; this measures the outcome.
     public static class PoseHeightSampler
     {
-        [MenuItem("Tools/AvatarBridge Dev/Inspect — pose height through a clip")]
+        [MenuItem("Tools/AvatarBridge Dev/Inspect: pose height through a clip")]
         public static void Run()
         {
             string prefabPath = System.Environment.GetEnvironmentVariable("AVATARBRIDGE_PREFAB");

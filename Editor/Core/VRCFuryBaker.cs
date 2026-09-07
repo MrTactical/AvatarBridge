@@ -114,7 +114,7 @@ namespace AvatarBridge
             catch (Exception e)
             {
                 var inner = e.InnerException ?? e;
-                report.Error(Category, "VRCFury bake failed", inner.Message + " — " + ManualInstruction);
+                report.Error(Category, "VRCFury bake failed", inner.Message + ". " + ManualInstruction);
                 return null;
             }
             finally
@@ -129,14 +129,14 @@ namespace AvatarBridge
                     .Select(m => "\"" + Truncate(Flatten(m), 400) + "\""));
                 if (furyMessages.Count > 4)
                 {
-                    quoted += $" | (+{furyMessages.Count - 4} more — see the Console)";
+                    quoted += $" | (+{furyMessages.Count - 4} more: see the Console)";
                 }
                 report.Error(Category, $"VRCFury reported {furyErrors} error(s) during its own build",
-                    quoted + " — this is VRCFury's OWN message, which means Fury ran: the fault is in " +
+                    quoted + ": this is VRCFury's OWN message, which means Fury ran; the fault is in " +
                     "what it was asked to build, not in Fury being absent. When it names files under a " +
-                    "folder you don't have, that package isn't installed in this project — install it, " +
+                    "folder you don't have, that package isn't installed in this project: install it, " +
                     "or delete the VRCFury component asking for it. Fury catches each failing feature, " +
-                    "shows a dialog and continues, so the bake \"completed\" — but the features that " +
+                    "shows a dialog and continues, so the bake \"completed\", but the features that " +
                     "failed are missing or half-built, and everything derived from them will misbehave. " +
                     "Run VRCFury > Build a Test Copy on the original avatar, fix or remove what errors " +
                     "there, then convert again. This conversion continued so you can inspect it, but do " +
@@ -197,12 +197,12 @@ namespace AvatarBridge
             {
                 report.Warning(Category,
                     $"{broken.Count} VRCFury component(s) reference assets that aren't in this project",
-                    string.Join("; ", broken) + " — each points at a file this project doesn't have, " +
+                    string.Join("; ", broken) + ": each points at a file this project doesn't have, " +
                     "which is what makes Fury's own build fail with \"you're missing some files needed " +
                     "for this VRCFury asset\". That error means Fury RAN and could not find what the " +
                     "component asked for; it does not mean VRCFury is missing. Install the package the " +
                     "component came from (Fury's message names the files, so the folder tells you which " +
-                    "package), or delete that component if you don't want the feature — then convert " +
+                    "package), or delete that component if you don't want the feature: then convert " +
                     "again. Converting past this loses whatever the component would have built, and " +
                     "anything animating paths it would have created stays dead.");
             }

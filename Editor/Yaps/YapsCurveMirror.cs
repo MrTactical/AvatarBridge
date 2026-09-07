@@ -88,22 +88,21 @@ namespace AvatarBridge
             return ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
         }
 
-        // The chain root's scale curves become the bake scale (its length
-        // axis) and the bake girth (a radial axis) on the material. One
-        // bone per clip, the first that has a scale curve. Bones are given
-        // as their path from the animator root together with the transform
-        // itself, because what the shader wants is a RATIO to the pose the
-        // bake measured, not the bone's raw scale.
+        // The chain root's scale curves become the bake scale (its length axis)
+        // and the bake girth (a radial axis) on the material. One bone per
+        // clip, the first that has a scale curve. Bones are given as their path
+        // from the animator root together with the transform itself, because
+        // what the shader wants is a RATIO to the pose the bake measured, not
+        // the bone's raw scale.
         //
         // The material carries 1 for "the size it was baked at". A bone's
-        // m_LocalScale curve carries an absolute number, so copying it
-        // straight across told the truth only for a bone sitting at exactly
-        // 1 when it was baked. Every other rig had its bone scale applied a
-        // second time, on top of the skinning that had already applied it:
-        // a bone baked at 0.4 drew a plug squashed to 40 percent in game,
-        // while the editor, where no animator runs, kept the baked size and
-        // looked correct. Dividing by the bake pose makes the two agree by
-        // construction, and keeps them agreeing wherever a size slider goes.
+        // m_LocalScale curve carries an absolute number, so copying it straight
+        // across told the truth only for a bone sitting at exactly 1 when it
+        // was baked. Every other rig had its bone scale applied a second time,
+        // on top of the skinning that had already applied it: a bone baked at
+        // 0.4 drew a plug squashed to 40 percent in game, while the editor,
+        // where no animator runs, kept the baked size. Dividing by the bake
+        // pose makes the two agree by construction.
         public static int MirrorBoneScale(IEnumerable<AnimationClip> clips,
             IDictionary<string, Transform> bones, string rendererPath, Type rendererType,
             Quaternion bakeRotation)
@@ -121,7 +120,7 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                // The bone this clip scales, if any of ours.
+                // The bone this clip scales, if it is one of the plug's.
                 Transform bone = null;
                 string bonePath = null;
                 var bindings = AnimationUtility.GetCurveBindings(clip);
@@ -208,31 +207,19 @@ namespace AvatarBridge
             return new AnimationCurve(keys);
         }
 
-        // A curve on the COMPONENT's own Enabled field, mirrored onto the
-        // material property that actually does the work.
-        //
-        // Animating the component is the obvious thing to reach for and it
-        // can never work: ChilloutVR strips the component at upload, and the
-        // deform lives in the material. Rather than let that fail silently,
-        // the bake writes the curve people meant to write. The original is
-        // left where it is: it is the user's clip, and a field bound to a
-        // component that is not there costs nothing.
         // WHOSE "enabled" this is, on the plug's own object.
         //
         // Matching the toolkit's own component alone missed the case that
         // matters most: a vendor's clip animating the ORIGINAL system's plug
-        // component, which conversion replaced. Joe's horse rig ships
-        // HRS_COCK_ERECT driving an SPS plug's m_Enabled from an erection
-        // slider; YAPS swapped the component underneath it, the binding kept
-        // pointing at a script guid no longer in the project, and the mirror
-        // ignored it. The slider then switched a plug on that had no way to
-        // hear it — nothing in game, on either transport, since the material
-        // gate never moved.
+        // component, which conversion replaced. The binding keeps pointing at a
+        // script guid no longer in the project, so the mirror ignored it and
+        // the author's own slider switched a plug on that had no way to hear
+        // it, on either transport, since the material gate never moved.
         //
-        // A curve on the PLUG'S OWN transform saying "enabled" means the
-        // plug, whoever wrote it. A missing type (null) is the strongest
-        // signal of all: the component it named is gone, which is exactly
-        // what conversion does to the system this replaces.
+        // A curve on the PLUG'S OWN transform saying "enabled" means the plug,
+        // whoever wrote it. A missing type (null) is the strongest signal of
+        // all: the component it named is gone, which is exactly what conversion
+        // does to the system this replaces.
         static bool MeansThePlug(Type type, Type ours)
         {
             if (type == ours || type == null) return true;
@@ -241,6 +228,12 @@ namespace AvatarBridge
                 || n.IndexOf("Penetrator", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
+        // A curve on the COMPONENT's own Enabled field, mirrored onto the
+        // material property that does the work. Animating the component is
+        // the obvious thing to reach for and can never work: ChilloutVR
+        // strips the component at upload, and the deform lives in the
+        // material. The original curve is left where it is, since a field
+        // bound to a component that is not there costs nothing.
         public static int MirrorEnabled(IEnumerable<AnimationClip> clips, string componentPath, Type componentType,
             string rendererPath, Type rendererType, string property)
         {

@@ -1,26 +1,25 @@
 // Make a material-swap animation follow the bake.
 //
-// Baking repoints a renderer's material slot at a patched copy carrying the
-// deform and the baked mesh data. That holds exactly until the animator runs.
-// An avatar that assigns a material to that same slot in an animation — a
-// skin picker, a body variant, an NSFW toggle — hands the slot straight back
-// to the material it was baked FROM, which has neither.
+// Baking repoints a renderer's material slot at a patched copy carrying
+// the deform and the baked mesh data. That holds exactly until the
+// animator runs. An avatar that assigns a material to that same slot in
+// an animation, a skin picker, a body variant, a toggle, hands the slot
+// straight back to the material it was baked FROM, which has neither.
 //
 // The plug then straightens the instant play mode starts, and the tool
 // reports it as never baked, because from the material's side there is
-// genuinely nothing left to find. Reported from a converted avatar whose plug
-// read "Dick HD 1 _YAPS_" in edit mode and "Dick HD 1" in play mode, the
-// shader reverting to the author's Poiyomi alongside it.
+// nothing left to find. In edit mode the patched copy is still in the
+// slot, so the two states disagree and it reads as the bake coming
+// undone.
 //
 // Scoped to the renderer AND the slot that was actually repointed. The
-// original material is usually worn by other meshes as well, and those have
-// no bake of their own: handing them a plug's deform would bend the wrong
-// mesh.
+// original material is usually worn by other meshes as well, and those
+// have no bake of their own: handing them a plug's deform would bend
+// the wrong mesh.
 //
-// Shared because the bug is not the converter's. The native toolkit replaces
-// the same slot on the same kind of renderer, and an avatar somebody sets up
-// natively is MORE likely to have its toggles already built than one being
-// rebuilt from scratch.
+// Shared because the bug is not the converter's. The native toolkit
+// replaces the same slot on the same kind of renderer, and an avatar
+// set up natively is MORE likely to have its toggles already built.
 using System.Collections.Generic;
 using System.Linq;
 using ABI.CCK.Components;
@@ -50,9 +49,9 @@ namespace AvatarBridge.Yaps
         }
 
         // The one that does the work. Everything else here just decides which
-        // clips to hand it.
-        // skipped: clips that matched but are not ours to edit, named so the
-        // caller can say so rather than leaving a plug that half works.
+        // clips to hand it. `skipped` names clips that matched but are not this tool's
+        // to edit, so the caller can say so rather than leaving a plug that
+        // half works.
         public static int RepointInClips(IEnumerable<AnimationClip> clips, string path,
                                          int slot, Material from, Material to,
                                          ICollection<string> skipped = null)
@@ -70,12 +69,11 @@ namespace AvatarBridge.Yaps
                 {
                     continue;
                 }
-                // NEVER a clip we do not own. A clip under Packages, or the
-                // CCK's, or one of ours, is shared with every project that
-                // has it: editing in place reaches the package file itself.
-                // The native path walks the user's LIVE controllers, so this
-                // is not hypothetical the way it was for the converter, whose
-                // clips are already its own clones.
+                // NEVER a clip this tool does not own. A clip under Packages, or the CCK's,
+                // is shared with every project that has it: editing in place
+                // reaches the package file itself. The native path walks the
+                // user's LIVE controllers, so this is not hypothetical the way it
+                // was for the converter, whose clips are already its own clones.
                 bool ours = YapsCurveMirror.UserOwned(clip);
                 foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
                 {
@@ -135,14 +133,13 @@ namespace AvatarBridge.Yaps
         //
         // ChilloutVR uploads what avatar.overrides points at and falls back to
         // avatarSettings.baseController; the Animator's own slot holds a
-        // generated override that is not what ships, and on an avatar that has
-        // never been built it is often empty. Reading only that slot means
-        // finding nothing at all on a perfectly ordinary avatar, and doing
-        // nothing quietly.
+        // generated override that is not what ships, and on an avatar never
+        // built it is often empty. Reading only that slot means finding nothing
+        // at all on an ordinary avatar, and doing nothing quietly.
         //
         // All three are read, because a clip only has to be REACHABLE to fire.
-        // Unfiltered: the caller decides what it is allowed to write to, and
-        // one caller wants to report the ones it must leave alone.
+        // Unfiltered: the caller decides what it may write to, and one caller
+        // wants to report the ones it must leave alone.
         public static List<AnimationClip> RunnableClips(Transform any)
         {
             var root = AnimationRootOf(any);
@@ -170,14 +167,9 @@ namespace AvatarBridge.Yaps
         }
 
         // The native path: no merged controller to read, so the clips come off
-        // whatever the avatar or prop actually runs.
-        //
-        // ChilloutVR uploads what avatar.overrides points at and falls back to
-        // avatarSettings.baseController; the Animator's own slot holds a
-        // generated override that is not what ships. Every one of them is read
-        // here anyway, because a clip only has to be reachable to fire, and a
-        // swap that fires from the wrong controller breaks the plug just the
-        // same.
+        // whatever the avatar or prop actually runs. All three sources, for the
+        // reason given above RunnableClips: a swap that fires from the wrong
+        // controller breaks the plug just the same.
         public static int Follow(Renderer renderer, int slot, Material from, Material to,
                                  BridgeReport report = null)
         {
@@ -201,7 +193,7 @@ namespace AvatarBridge.Yaps
                 report.Warning("YAPS",
                     $"{skipped.Count} material swap(s) could not be repointed",
                     "These animations assign a material to the mesh slot the bake replaced, and " +
-                    "they live outside your Assets folder — in a package, or in the CCK — so " +
+                    "they live outside your Assets folder, in a package, or in the CCK, so " +
                     "editing them would change them for every project that has them. Playing one " +
                     "will put the unbaked material back and the plug will stop bending. Copy the " +
                     "clip into your own project and point it at the baked material: "

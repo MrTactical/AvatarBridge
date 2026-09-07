@@ -1,0 +1,31 @@
+# LF in the index and LF on disk. The tree is already LF throughout and
+# Windows tools here read it fine, so checking out CRLF would only make
+# every add a conversion, which is what warned per file on every commit.
+* text=auto eol=lf
+
+# Unity YAML and shader sources are text and diff usefully.
+*.cs        text diff=csharp
+*.shader    text
+*.cginc     text
+*.hlsl      text
+*.md        text
+*.sh        text
+*.asset     text
+*.anim      text
+*.controller text
+*.mat       text
+*.prefab    text
+*.unity     text
+*.meta      text
+
+# Binary: never normalised, never diffed as text.
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.gif           binary
+*.psd           binary
+*.fbx           binary
+*.unitypackage  binary
+*.dll           binary
+*.ttf           binary
+*.otf           binary

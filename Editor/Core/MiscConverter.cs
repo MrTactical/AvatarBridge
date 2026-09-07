@@ -85,17 +85,17 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted("Particles",
                     $"{enabled.Count} particle emitter(s) switched on so remote players can see them",
-                    $"{string.Join(", ", enabled.Take(6))}{(enabled.Count > 6 ? ", …" : "")} — these " +
+                    $"{string.Join(", ", enabled.Take(6))}{(enabled.Count > 6 ? ", …" : "")}: these " +
                     "effects were authored with the emitter OFF and turned on by animating the particle " +
                     "system's emission module. Switching a GameObject on is something every client does; " +
                     "animating a particle MODULE is not the same kind of write, and where it doesn't land " +
-                    "the object turns on and emits nothing — the effect is invisible to everyone but you. " +
+                    "the object turns on and emits nothing; the effect is invisible to everyone but you. " +
                     "The emitter is now on permanently and the object's own on/off animation gates the " +
                     "effect instead, which is how the effects that already worked were built. Nothing " +
                     "plays at rest, because the same clip switches the object off." +
                     (stripped > 0
                         ? $" The {stripped} module curve(s) that switched it off again are removed " +
-                          "from the converted clips — left in, they undo this every time the off " +
+                          "from the converted clips; left in, they undo this every time the off " +
                           "state plays, which is at rest, always."
                         : ""));
             }
@@ -104,7 +104,7 @@ namespace AvatarBridge
             {
                 ctx.Report.Skipped("Particles",
                     $"{otherModules.Count} animated particle module(s) left as they are",
-                    $"{string.Join(", ", otherModules.Take(6))}{(otherModules.Count > 6 ? ", …" : "")} — " +
+                    $"{string.Join(", ", otherModules.Take(6))}{(otherModules.Count > 6 ? ", …" : "")}: " +
                     "these animate a particle system module other than emission. If the effect looks " +
                     "wrong to other players but right to you, this is the first thing to suspect: " +
                     "rebuild it so the object's own on/off state drives the effect instead.");
@@ -150,11 +150,11 @@ namespace AvatarBridge
             }
             ctx.Report.Warning("Particles",
                 $"{plain.Count} particle system(s) are using Unity's default material",
-                $"{string.Join(", ", plain.Take(6))}{(plain.Count > 6 ? ", …" : "")} — they draw as " +
+                $"{string.Join(", ", plain.Take(6))}{(plain.Count > 6 ? ", …" : "")}: they draw as " +
                 "plain untinted squares rather than whatever the effect is supposed to look like. " +
                 "This is how the avatar was already built: conversion copies the material across " +
                 "unchanged, and one on Unity's default was on Unity's default in VRChat too. It is " +
-                "worth checking because the editor gives no hint — the effect only looks wrong once " +
+                "worth checking because the editor gives no hint; the effect only looks wrong once " +
                 "somebody sees it in game. If a system is only there to spawn another one and is " +
                 "never meant to be visible, turn its Renderer off rather than leaving it drawing.");
         }
@@ -226,12 +226,12 @@ namespace AvatarBridge
             if (grounded.Count > 0)
             {
                 ctx.Report.Converted("PhysBones -> MagicaCloth2",
-                    $"{grounded.Count} cloth chain(s) settled back to their built pose — nothing animates them",
-                    string.Join(", ", grounded) + " — their source PhysBone had \"Is Animated\" ticked, which " +
+                    $"{grounded.Count} cloth chain(s) settled back to their built pose, nothing animates them",
+                    string.Join(", ", grounded) + ": their source PhysBone had \"Is Animated\" ticked, which " +
                     "makes the cloth restore toward the ANIMATED pose instead of the pose the avatar was built " +
                     "in. That is right when something drives those bones; here nothing in the converted " +
                     "animator does, so the \"animated pose\" would just be wherever the cloth itself last put " +
-                    "them — a target chasing its own output, which leaves the chain free to rotate forever " +
+                    "them, a target chasing its own output, which leaves the chain free to rotate forever " +
                     "with nothing pulling it back. The tell is that playing any animation stops it dead. If a " +
                     "slider is supposed to move these bones and no longer does, that animation did not survive " +
                     "conversion, and this line names the chain to check.");
@@ -350,7 +350,7 @@ namespace AvatarBridge
             ctx.Report.Converted("Head chop", $"Rewired {cloned} head-chop toggle animation(s) to FPRExclusion",
                 "The toggles now drive each FPRExclusion's IsShown instead of the removed VRC Head Chop." +
                 (orphans > 0
-                    ? $" {orphans} superseded cop(ies) of those clips were removed from the controller — " +
+                    ? $" {orphans} superseded cop(ies) of those clips were removed from the controller: " +
                       "rewiring works on a copy, and the original was being left in the file still " +
                       "animating the deleted VRChat component, where it looked like a live bug."
                     : ""));
@@ -493,7 +493,7 @@ namespace AvatarBridge
                     // Dead either way; say so.
                     ctx.Report.Warning("Head chop",
                         $"\"{clip.name}\" animated a head chop that was not converted",
-                        $"{b.path} ({b.propertyName}) — the head chop there was skipped, so this " +
+                        $"{b.path} ({b.propertyName}): the head chop there was skipped, so this " +
                         "animation has nothing to drive and was removed.");
                     continue;
                 }
@@ -570,9 +570,9 @@ namespace AvatarBridge
             {
                 var paths = stations.Take(4).Select(s => ctx.PathInTarget(s.transform));
                 ctx.Report.Skipped(category,
-                    $"{stations.Length} seat(s) removed — ChilloutVR avatars cannot host seats",
+                    $"{stations.Length} seat(s) removed: ChilloutVR avatars cannot host seats",
                     string.Join("; ", paths) + (stations.Length > 4 ? "; …" : "") +
-                    " — VRChat's VRCStation lets other players sit on an avatar. ChilloutVR has " +
+                    ": VRChat's VRCStation lets other players sit on an avatar. ChilloutVR has " +
                     "no seat type on its avatar component whitelist (verified against the " +
                     "client), so there is nothing to convert these into: anyone used to sitting " +
                     "on this avatar can't here. Everything else about the object stays.");
@@ -629,7 +629,7 @@ namespace AvatarBridge
                 // renders into a RenderTexture is KEPT and depth-clamped,
                 // and the filter hands it a per-instance copy of the
                 // texture. Stripping those took a supported feature off
-                // people's avatars — a mirror, a screen, or the camera an
+                // people's avatars: a mirror, a screen, or the camera an
                 // effect blits through to reach a texture parser.
                 if (cam.targetTexture != null)
                 {
@@ -656,7 +656,7 @@ namespace AvatarBridge
                     "destroys it on load; an audio listener on an avatar hijacks where the game " +
                     "thinks your ears are. The GameObjects were kept." +
                     (kept > 0
-                        ? $" {kept} camera(s) rendering into a RenderTexture were KEPT — ChilloutVR " +
+                        ? $" {kept} camera(s) rendering into a RenderTexture were KEPT: ChilloutVR " +
                           "supports those and gives each one its own copy of the texture, so a " +
                           "screen, a mirror or an effect reading a texture still works."
                         : ""));
@@ -680,7 +680,7 @@ namespace AvatarBridge
             if (removed > 0)
             {
                 ctx.Report.Converted(category, $"Removed {removed} missing-script component(s)",
-                    "Empty/missing MonoBehaviour slots left over from VRChat components — CVR flags these on load.");
+                    "Empty/missing MonoBehaviour slots left over from VRChat components; CVR flags these on load.");
             }
         }
     }

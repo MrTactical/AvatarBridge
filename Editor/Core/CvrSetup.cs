@@ -134,18 +134,18 @@ namespace AvatarBridge
                     "at are a hidden stand-in skeleton, and constraints relay them onto the body " +
                     "you can actually see. ChilloutVR parents both markers to the humanoid Head " +
                     $"bone, so the CCK's Auto placement lands {Vector3.Distance(humanoidView, decoyView):0.##} m " +
-                    "from this avatar's face — usually inside its head, where looking down fills " +
+                    "from this avatar's face: usually inside its head, where looking down fills " +
                     $"the screen with the inside of its own mouth. Measured on the relayed bones " +
-                    $"instead — {decoyDetail}. Check both with the CVRAvatar gizmo before uploading.");
+                    $"instead: {decoyDetail}. Check both with the CVRAvatar gizmo before uploading.");
             }
             else
             {
                 ctx.Report.Converted(Category, "Viewpoint",
                     $"Viewpoint at {cvrAvatar.viewPosition.y:0.00} m " +
                     (autoView
-                        ? "— the CCK's own Auto placement (between the eye bones)"
+                        ? ": the CCK's own Auto placement (between the eye bones)"
                         : (humanoid ? "estimated from the eye/head bones" : "estimated from the mesh bounds")) +
-                    " — check it in the scene view and nudge if the first-person camera sits wrong.");
+                    ": check it in the scene view and nudge if the first-person camera sits wrong.");
             }
 
             // --- face mesh -----------------------------------------------------------
@@ -158,7 +158,7 @@ namespace AvatarBridge
             else
             {
                 ctx.Report.Warning(Category, "No face mesh found",
-                    "No skinned mesh with blendshapes — visemes, blink and face tracking are skipped.");
+                    "No skinned mesh with blendshapes: visemes, blink and face tracking are skipped.");
             }
 
             // --- visemes -------------------------------------------------------------
@@ -189,7 +189,7 @@ namespace AvatarBridge
             {
                 cvrAvatar.voicePosition = voiceAuto;
                 ctx.Report.Converted(Category, "Voice position",
-                    "The CCK's own Auto placement — the jaw bone, or just ahead of the head bone when " +
+                    "The CCK's own Auto placement: the jaw bone, or just ahead of the head bone when " +
                     "there is no jaw.");
             }
             else
@@ -333,7 +333,7 @@ namespace AvatarBridge
             master.parameters = source.parameters.Select(AnimatorDeepCopier.CloneParameter).ToArray();
             master.layers = source.layers.Select(copier.CloneLayer).ToArray();
             ctx.Report.Converted(Category, "CCK base animator",
-                $"Copied {master.layers.Length} layer(s) — locomotion, hand poses and emotes stay CVR-native.");
+                $"Copied {master.layers.Length} layer(s): locomotion, hand poses and emotes stay CVR-native.");
             return master;
         }
 

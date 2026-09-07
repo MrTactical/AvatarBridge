@@ -20,7 +20,7 @@ namespace AvatarBridge.Regression
     // silently drop one and the report would under-count.
     public static class StableSampleOrderTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test — stable report sample order")]
+        [MenuItem("Tools/AvatarBridge Dev/Test: stable report sample order")]
         public static void Run()
         {
             int fail = 0;
@@ -68,8 +68,8 @@ namespace AvatarBridge.Regression
                 plain.Count == 3 && string.Join(",", plain) == "a,b,c");
 
             Debug.Log(fail == 0
-                ? "[StableSampleOrderTest] PASS — samples survive a Fury renumber, nothing is lost."
-                : $"[StableSampleOrderTest] FAIL — {fail} case(s) wrong.");
+                ? "[StableSampleOrderTest] PASS: samples survive a Fury renumber, nothing is lost."
+                : $"[StableSampleOrderTest] FAIL: {fail} case(s) wrong.");
             if (Application.isBatchMode) EditorApplication.Exit(fail == 0 ? 0 : 1);
         }
     }

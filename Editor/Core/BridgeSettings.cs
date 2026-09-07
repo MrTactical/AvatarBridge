@@ -90,11 +90,6 @@ namespace AvatarBridge
         // Only the host bone's own vertices are read.
         public bool fitCollidersToMesh = true;
 
-        // Take the humanoid Jaw mapping off a bone that is not a jaw.
-        // CVR puts the Auto voice position on the jaw bone and jaw
-        // visemes animate it, so a misassigned Jaw misplaces the voice
-        // and waggles the object.
-        public bool unmapMisplacedJaw = true;
 
         // Measure the mesh again with every animated blendshape at
         // full reach and keep the larger reading. MagicaCloth2's

@@ -6,14 +6,16 @@
 // grouped by that owner.
 //
 // How each system announces itself:
+//
 //   DPS plug     material with _EntranceStiffness and _ReCurvature; a
-//                black ForceVertex tip light at range 0.49, intensity =
-//                length, in a nested prefab.
-//   DPS orifice  lights at 0.41 (hole) or 0.42 (ring) and 0.45 (normal).
+//                black ForceVertex tip light at range 0.49, intensity
+//                = length, in a nested prefab.
+//   DPS orifice  lights at 0.41 (hole) or 0.42 (ring) and 0.45 (front).
 //   TPS          Poiyomi material with _TPS_PenetratorEnabled; pointers
 //                TPS_Orf_Root and TPS_Orf_Norm. No lights.
-//   SPS          BakedSpsPlug and BakedSpsSocket objects, _SPS_Bake on the
-//                material, lights 0.4106, 0.4206, 0.4506, pointers SPSLL_*.
+//   SPS          BakedSpsPlug and BakedSpsSocket objects, _SPS_Bake on
+//                the material, lights 0.4106, 0.4206, 0.4506, pointers
+//                SPSLL_*.
 //   YAPS         _YAPS_Bake on the material; YapsPlug and YapsSocket.
 //
 // A protocol light is near black with a range under 0.5; the second
@@ -59,14 +61,13 @@ namespace AvatarBridge
             public List<string> Expected = new List<string>();
 
             // The plug this mesh is PART OF, when it has no plug of its own.
-            // A plug rooted high enough carries every mesh its bones move, and
-            // each of those ends up wearing a patched material — which reads
-            // as a plug in its own right and lists as a peer. It is not one:
-            // it has no frame, no length and no settings of its own, it wears
-            // the carrier's. Listing it as a peer invited exactly the mistake
-            // that produced this field, a second plug component added to a
-            // mesh already carried, which then re-baked it with its own frame
-            // and broke the two apart.
+            //
+            // A plug rooted high enough carries every mesh its bones move, and each
+            // of those ends up wearing a patched material, which reads as a plug in
+            // its own right and lists as a peer. It is not one: it has no frame, no
+            // length and no settings, it wears the carrier's. Listing it as a peer
+            // invited a second plug component on a mesh already carried, which then
+            // re-baked it with its own frame and broke the two apart.
             public Yaps.YapsPlug CarriedBy;
 
             public string ReadableList()
@@ -97,7 +98,7 @@ namespace AvatarBridge
                 var s = new List<string>();
                 if (Plugs.Count > 0) s.Add($"{Plugs.Count} plug{(Plugs.Count == 1 ? "" : "s")}");
                 if (Sockets.Count > 0) s.Add($"{Sockets.Count} socket{(Sockets.Count == 1 ? "" : "s")} ({holes} hole{(holes == 1 ? "" : "s")}, {Sockets.Count - holes} ring{(Sockets.Count - holes == 1 ? "" : "s")})");
-                string already = yaps == Total ? " — all already YAPS" : yaps > 0 ? $" — {yaps} already YAPS" : "";
+                string already = yaps == Total ? ", all already YAPS" : yaps > 0 ? $", {yaps} already YAPS" : "";
                 return "Found " + string.Join(" and ", s) + already + ".";
             }
         }
@@ -279,11 +280,11 @@ namespace AvatarBridge
             // Inclusive of the root; the scan target may be the socket.
             for (var at = marker; at != null; at = at.parent)
             {
-                // VRCFury stamps its own objects "[VF564] BakedSpsSocket",
-                // so a StartsWith check misses every baked socket and the
-                // heuristic below answers instead — a different ancestor for
-                // the lights than for the pointers, which reads as two
-                // sockets on one spot and invites deleting a working half.
+                // VRCFury stamps its own objects "[VF564] BakedSpsSocket", so a
+                // StartsWith check misses every baked socket and the heuristic
+                // below answers instead: a different ancestor for the lights than
+                // for the pointers, which reads as two sockets on one spot and
+                // invites deleting a working half.
                 string n = StripFuryId(at.name);
                 if (n == "YAPS Socket" || n.StartsWith("BakedSpsSocket")) return at;
                 if (at.GetComponent<Yaps.YapsSocket>() != null) return at;
@@ -356,22 +357,21 @@ namespace AvatarBridge
             if (f.IsYapsAlready) f.ReadableBy |= Speaks.YAPS;
 
             if (f.Material != null && !f.IsYapsAlready)
-                f.Notes.Add($"{f.Origin} deform — upgrade carries its settings onto YAPS");
+                f.Notes.Add($"{f.Origin} deform, upgrade carries its settings onto YAPS");
             if ((f.ReadableBy & Speaks.DPS) == 0) f.Notes.Add("no tip light: DPS sockets cannot see it");
             if ((f.ReadableBy & (Speaks.TPS | Speaks.SPS)) == 0) f.Notes.Add("no plug pointers: contact sockets cannot see it");
             // Behind the toolkit: the row goes amber and Build is the fix,
             // which is the whole point of saying it here rather than only
             // on the material.
             if (f.Material != null && f.IsYapsAlready && YapsShaderPatcher.IsStale(f.Material))
-                f.Notes.Add("its shader is older than the toolkit — Build refreshes it");
-            // A debug view REPLACES the deform, and it is a material value,
-            // so it uploads. On an ordinary plug that is a curiosity; on a
+                f.Notes.Add("its shader is older than the toolkit; Build refreshes it");
+            // A debug view REPLACES the deform, and it is a material value, so
+            // it uploads. On an ordinary plug that is a curiosity; on a
             // whole-avatar plug it flattens the avatar for everyone, and it
-            // survives the upload looking like a broken bake. Cost an hour
-            // of hunting a sync bug that was not there, 2026-08-26.
+            // survives the upload looking like a broken bake.
             if (f.Material != null && f.Material.HasProperty("_YAPS_Debug")
                 && f.Material.GetFloat("_YAPS_Debug") > 0.5f)
-                f.Notes.Add("a DEBUG VIEW is on — it replaces the deform and will upload with the avatar");
+                f.Notes.Add("a DEBUG VIEW is on, it replaces the deform and will upload with the avatar");
         }
 
         static void Classify(Found f)
@@ -401,29 +401,28 @@ namespace AvatarBridge
             else f.Origin = YapsLegacyMap.Origin.SPS;
             if (f.Root != null && f.Root.name == "YAPS Socket") f.IsYapsAlready = true;
 
-            if (!f.HasAxis) f.Notes.Add("no axis — plugs will aim at it rather than thread it");
-            if (rootLight == null && !f.IsYapsAlready) f.Notes.Add("no marker lights — DPS plugs and light-only plugs cannot see it");
+            if (!f.HasAxis) f.Notes.Add("no axis, plugs will aim at it rather than thread it");
+            if (rootLight == null && !f.IsYapsAlready) f.Notes.Add("no marker lights, DPS plugs and light-only plugs cannot see it");
 
-            // Switched off is the difference between the preview and the
-            // game. The preview reads transforms and bends a plug whatever
-            // state anything is in; the game needs these components live.
-            // A socket that previews perfectly and does nothing in game is
-            // this, and it cost two people three evenings to find.
+            // Switched off is the difference between the preview and the game.
+            // The preview reads transforms and bends a plug whatever state
+            // anything is in; the game needs these components live. A socket
+            // that previews perfectly and does nothing in game is this.
+            //
             // A socket switched off at its own root is the wearer using the
-            // toggle, not a fault. Saying "nothing can find it" about a
-            // socket somebody turned off on purpose sends them hunting a
-            // bug they made themselves.
+            // toggle, not a fault. Saying "nothing can find it" about that
+            // sends them hunting a bug they made themselves.
             bool socketItselfOff = f.Root != null && !f.Root.gameObject.activeInHierarchy;
             int darkPointers = f.Pointers.Count(p => p != null
                 && (!p.enabled || !p.gameObject.activeInHierarchy));
             if (socketItselfOff)
             {
-                f.Notes.Add("switched off — everything under it is dark until it is switched back on, " +
+                f.Notes.Add("switched off, everything under it is dark until it is switched back on, " +
                             "which is what its menu toggle does in game");
             }
             else if (darkPointers > 0)
             {
-                f.Notes.Add($"{darkPointers} of its pointers are switched off — nothing can find it in " +
+                f.Notes.Add($"{darkPointers} of its pointers are switched off, nothing can find it in " +
                             "game, however well it previews");
             }
             int darkLights = f.Lights.Count(l => l != null
@@ -445,7 +444,7 @@ namespace AvatarBridge
                 }
                 else
                 {
-                    f.Notes.Add($"{darkLights} of its marker lights are switched off — DPS plugs cannot see it");
+                    f.Notes.Add($"{darkLights} of its marker lights are switched off, DPS plugs cannot see it");
                 }
             }
             if (f.Root != null)
@@ -454,7 +453,7 @@ namespace AvatarBridge
                     .Count(t => t != null && (!t.enabled || !t.gameObject.activeInHierarchy));
                 if (deaf > 0 && !socketItselfOff)
                 {
-                    f.Notes.Add($"{deaf} of its receivers are switched off — it says where it is and " +
+                    f.Notes.Add($"{deaf} of its receivers are switched off, it says where it is and " +
                                 "never notices a plug arrive, which previews fine and does nothing in game");
                 }
             }

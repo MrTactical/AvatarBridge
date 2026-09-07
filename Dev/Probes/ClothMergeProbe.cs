@@ -1,6 +1,6 @@
 // How many cloth solvers could actually merge.
 //
-// The weight card says several solvers under one parent "could merge —
+// The weight card says several solvers under one parent "could merge",
 // unless a toggle switches them apart". That is one gate and there are two,
 // because a MagicaCloth holds ONE set of simulation settings for every root
 // bone it carries:

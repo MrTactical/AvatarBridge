@@ -173,8 +173,8 @@ namespace AvatarBridge.Regression
             }
 
             Debug.Log($"[Sweep] \"{root.name}\": {parameters.Length} parameter(s) over {watch.Count} watched " +
-                      "propert(ies) — object activity, renderer enable, blendshape weights and material " +
-                      "slots. This moves things in the open scene and does not put them back — reload it " +
+                      "propert(ies): object activity, renderer enable, blendshape weights and material " +
+                      "slots. This moves things in the open scene and does not put them back: reload it " +
                       "afterwards.");
 
             var stuck = new List<string>();
@@ -276,7 +276,7 @@ namespace AvatarBridge.Regression
             }
             else if (stuck.Count == 0 && notApplied.Count == 0)
             {
-                Debug.Log($"[Sweep] found nothing — all {parameters.Length} toggle(s) came back to where " +
+                Debug.Log($"[Sweep] found nothing: all {parameters.Length} toggle(s) came back to where " +
                           $"they started, every claim the playing clips made held on the scene, and " +
                           $"{responded} of them demonstrably moved something while on, so the sweep was " +
                           "really driving the avatar. Still not the same as \"nothing is wrong\": " +

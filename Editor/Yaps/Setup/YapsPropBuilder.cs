@@ -115,7 +115,7 @@ namespace AvatarBridge
                     RemoveChannel(root);
                     BuildChannel(root, plug, material, spawnable);
                     o.Notes.Add("Its contact channel was rebuilt: 8 synced values, one trigger per value. That channel is " +
-                                "why a socket can take the prop out of someone's hand — remove it with Drop the contact " +
+                                "why a socket can take the prop out of someone's hand: remove it with Drop the contact " +
                                 "channel if that bites.");
                 }
             }
@@ -152,7 +152,7 @@ namespace AvatarBridge
             var spawnable = root != null ? root.GetComponent<CVRSpawnable>() : null;
             if (plug == null || spawnable == null)
             {
-                o.Message = "Select a plug prop first — one with a YAPS Plug under it and a CVR Spawnable on it.";
+                o.Message = "Select a plug prop first: one with a YAPS Plug under it and a CVR Spawnable on it.";
                 return o;
             }
             var material = BakedMaterial(plug);
@@ -162,7 +162,7 @@ namespace AvatarBridge
             BuildChannel(root, plug, material, spawnable);
             o.Ok = true;
             o.Message = $"\"{root.name}\" has the contact channel: 8 synced values, one trigger per value.";
-            o.Notes.Add("While a socket touches this prop, the socket's owner writes its values and takes it over — " +
+            o.Notes.Add("While a socket touches this prop, the socket's owner writes its values and takes it over: " +
                         "that is the channel, not a fault, and it is why a prop can leave someone's hand. Run Verify " +
                         "prop before uploading.");
             return o;
@@ -368,13 +368,12 @@ namespace AvatarBridge
             }
 
             var engage = Host("E").AddComponent<CVRSpawnableTrigger>();
-            // FULL size. Halved here on the same belief the avatar side
-            // carried, that a distance-only trigger becomes a sphere whose
-            // radius is areaSize.x. The client has no sphere case: it takes
-            // boxSize from areaSize whole. Fixed for avatars in 53e293c and
-            // this path was never revisited, so a prop's engagement volume
-            // was half what it should be while its axis triggers below were
-            // always full, exactly the mismatch avatars had.
+            // FULL size. Halved here on the same belief the avatar side carried,
+            // that a distance-only trigger becomes a sphere whose radius is
+            // areaSize.x. The client has no sphere case: it takes boxSize from
+            // areaSize whole. Fixed for avatars first, and this path was never
+            // revisited, so a prop's engagement volume was half what it should be
+            // while its axis triggers below were always full.
             engage.areaSize = box;
             engage.useAdvancedTrigger = true;
             engage.allowedTypes = SocketTypes;
@@ -427,12 +426,11 @@ namespace AvatarBridge
                     updateMethod = CVRSpawnableTriggerTaskStay.UpdateMethod.SetFromPosition,
                     minValue = 0f, maxValue = 1f,
                 });
-                // Let go on the way out, to the FAR edge. A stay task with no
-                // exit keeps its last reading, taken at the edge of the box,
-                // and the next socket to arrive snaps the plug toward
-                // wherever the previous one left. One is a whole extent out,
-                // past where engagement fades; the middle would be the plug's
-                // own base, which is the strongest bend there is.
+                // Let go on the way out, to the FAR edge. A stay task with no exit
+                // keeps its last reading, taken at the edge of the box, and the next
+                // socket to arrive snaps the plug toward wherever the previous one
+                // left. One is a whole extent out, past where engagement fades; the
+                // middle would be the plug's own base, the strongest bend there is.
                 axis.exitTasks.Add(new CVRSpawnableTriggerTask
                 {
                     settingIndex = slot[name], settingValue = 1f,

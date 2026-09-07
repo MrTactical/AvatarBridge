@@ -280,7 +280,7 @@ namespace AvatarBridge
         VisualElement Tidy() => Tool("Free wins",
             "Removes only what is provably inert: layers with no states, and parameters no clip writes, no " +
             "transition reads, no driver, menu control or contact names. Decided by reading the controller, " +
-            "never by flipping something and watching — an individual toggle a preset overrides looks dead " +
+            "never by flipping something and watching: an individual toggle a preset overrides looks dead " +
             "and is not. Written to a copy of the controller; your original is not edited.",
             "Tidy it", () =>
             {

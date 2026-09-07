@@ -10,6 +10,10 @@ namespace AvatarBridge
     // rebuilds the rig. Unity's Auto-Map assigns one to whatever is
     // nearest when it cannot read a face, and the avatar then talks out
     // of it. The baked skeleton passes through as recorded.
+    //
+    // Always on, no setting: CVR puts the Auto voice position on the jaw
+    // bone and jaw visemes animate it, so a misassigned Jaw misplaces the
+    // voice and waggles whatever the bone is. Nobody wants that kept.
     public static class JawUnmapper
     {
         const string Category = "Humanoid rig";
@@ -18,10 +22,6 @@ namespace AvatarBridge
 
         public static void Run(BridgeContext ctx)
         {
-            if (!ctx.Settings.unmapMisplacedJaw)
-            {
-                return;
-            }
             var animator = ctx.Target.GetComponentInChildren<Animator>(true);
             if (animator == null || animator.avatar == null || !animator.avatar.isHuman)
             {
@@ -35,7 +35,7 @@ namespace AvatarBridge
             if (LooksLikeAJaw(jaw.name))
             {
                 ctx.Report.Converted(Category, "Humanoid Jaw kept",
-                    $"Mapped to \"{jaw.name}\", which reads as a real jaw — so jaw-bone lip sync has " +
+                    $"Mapped to \"{jaw.name}\", which reads as a real jaw: so jaw-bone lip sync has " +
                     "something to drive if this avatar uses it.");
                 return;
             }
@@ -50,7 +50,7 @@ namespace AvatarBridge
                   "speak. Switch it to blendshape visemes on the CVRAvatar, or fix the Jaw mapping."
                 : $" This avatar does not use jaw-bone lip sync, so nothing drives \"{jaw.name}\" " +
                   "today and the voice position is measured from the mouth mesh rather than the " +
-                  "jaw — the mapping is wrong but currently harmless. It would start to matter if " +
+                  "jaw: the mapping is wrong but currently harmless. It would start to matter if " +
                   "you switched this avatar to jaw-bone lip sync.";
 
             var description = animator.avatar.humanDescription;
@@ -78,7 +78,7 @@ namespace AvatarBridge
             if (ambiguous != null)
             {
                 ctx.Report.Skipped(Category,
-                    $"Humanoid Jaw is mapped to \"{jaw.name}\", which is not a jaw — and cannot be unmapped",
+                    $"Humanoid Jaw is mapped to \"{jaw.name}\", which is not a jaw, and cannot be unmapped",
                     $"Rebuilding the rig needs every mapped bone name to be unique in the hierarchy, " +
                     $"and \"{ambiguous}\" appears more than once. Unity matches humanoid bones BY NAME, " +
                     "so it cannot tell which one the rig means. Rename the duplicate (the copy that " +
@@ -126,14 +126,14 @@ namespace AvatarBridge
                     Object.DestroyImmediate(rebuilt);
                 }
                 ctx.Report.Skipped(Category,
-                    $"Humanoid Jaw is mapped to \"{jaw.name}\", which is not a jaw — and could not be unmapped",
+                    $"Humanoid Jaw is mapped to \"{jaw.name}\", which is not a jaw, and could not be unmapped",
                     "Rebuilding the humanoid rig without the Jaw was refused by Unity, so the avatar " +
                     "keeps the mapping it had. Clear the Jaw slot yourself in the model's " +
                     "Rig > Configure if you want it gone." + cost +
                     $" (Tried against root \"{root.name}\" with the rig's own skeleton " +
                     $"({skeleton.Length} entries, root \"{(skeleton.Length > 0 ? skeleton[0].name : "(none)")}\") " +
                     $"and again with one read off the live hierarchy, {human.Length} human entries " +
-                    "either way — Unity's own message in the console says which check failed.)");
+                    "either way: Unity's own message in the console says which check failed.)");
                 return;
             }
 
@@ -155,7 +155,7 @@ namespace AvatarBridge
             EditorUtility.SetDirty(animator);
 
             ctx.Report.Converted(Category,
-                $"Humanoid Jaw unmapped — it pointed at \"{jaw.name}\", which is not a jaw",
+                $"Humanoid Jaw unmapped: it pointed at \"{jaw.name}\", which is not a jaw",
                 "The rig is rebuilt without a Jaw. ChilloutVR uses the jaw bone for the Auto voice " +
                 "position and for jaw-bone visemes, so a Jaw mapped to hair or a mask puts your voice " +
                 "in the wrong place and waggles that object while you speak. With no Jaw at all, the " +
@@ -164,7 +164,7 @@ namespace AvatarBridge
                 (usedLiveSkeleton
                     ? " The rig's own skeleton was refused, so this was rebuilt from the avatar's " +
                       "live hierarchy instead. That reads the bones where they stand NOW rather " +
-                      "than the T-pose the rig was configured in — identical if the avatar is at " +
+                      "than the T-pose the rig was configured in: identical if the avatar is at " +
                       "its bind pose, and a slightly different rest pose if it is not."
                     : "") +
                 (orphans > 0

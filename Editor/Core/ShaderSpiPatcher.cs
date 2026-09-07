@@ -70,14 +70,14 @@ namespace AvatarBridge
             {
                 ctx.Report.Approximated(Category,
                     $"{repointed.Distinct().Count()} shader(s) patched for VR stereo, found only in animated swaps",
-                    $"{string.Join(", ", repointed.Distinct())} — never on a renderer at rest, assigned by a " +
+                    $"{string.Join(", ", repointed.Distinct())}: never on a renderer at rest, assigned by a " +
                     "toggle. Copied into RehomedAssets with the stereo macros added and the swap repointed.");
             }
             if (refused.Count > 0)
             {
                 ctx.Report.Warning(Category,
                     $"{refused.Count} shader(s) in animated swaps could not be patched for VR stereo",
-                    $"{string.Join(", ", refused)} — these still draw into one eye when the toggle assigns them.");
+                    $"{string.Join(", ", refused)}: these still draw into one eye when the toggle assigns them.");
             }
         }
 
@@ -131,7 +131,7 @@ namespace AvatarBridge
                             if (grabbed) { grabLimited.Add(shader.name); }
                             if (recipe != null)
                             {
-                                recipesUsed.Add($"{shader.name} — {recipe.Note}" +
+                                recipesUsed.Add($"{shader.name}: {recipe.Note}" +
                                     (exact ? "" : " (your copy differs from the revision the recipe was written against, but every line it edits matched)"));
                             }
                         }
@@ -153,7 +153,7 @@ namespace AvatarBridge
             {
                 report.Converted(Category,
                     $"{swapsRepointed} material-swap curve(s) repointed at a patched shader",
-                    "These materials are never assigned to a renderer — an animation swaps them in, " +
+                    "These materials are never assigned to a renderer: an animation swaps them in, " +
                     "which is how hypno overlays, transformation skins and costume recolours are " +
                     "built. Patching the shader alone would have changed nothing, because the " +
                     "toggle would still have assigned the original, so the swap itself now points " +
@@ -224,7 +224,7 @@ namespace AvatarBridge
                     }
                     if (appliedRecipe != null)
                     {
-                        recipesUsed.Add($"{shader.name} — {appliedRecipe.Note}" +
+                        recipesUsed.Add($"{shader.name}: {appliedRecipe.Note}" +
                             (recipeWasExact ? "" : " (your copy differs from the revision the recipe was written against, but every line it edits matched)"));
                     }
                     changed = true;
@@ -253,22 +253,22 @@ namespace AvatarBridge
             if (repointed.Count > 0)
             {
                 report.Approximated(Category, $"{repointed.Distinct().Count()} shader(s) patched for VR stereo",
-                    $"{string.Join(", ", repointed.Distinct())} — copied into RehomedAssets with the single-pass " +
+                    $"{string.Join(", ", repointed.Distinct())}: copied into RehomedAssets with the single-pass " +
                     "instanced macros added, and this avatar's materials repointed at the copies. The originals " +
                     "are untouched. Each copy was checked for compile errors, though whether it *looks* right " +
                     "can only be judged in VR, so check the effect in both eyes. " +
                     "This is a ChilloutVR problem specifically: ChilloutVR renders single-pass instanced " +
                     "while VRChat renders double-wide single-pass, and under double-wide a shader gets both " +
-                    "eyes without asking — which is why it looked fine before converting. Nothing here needs " +
+                    "eyes without asking, which is why it looked fine before converting. Nothing here needs " +
                     "undoing, though: the macros are the mode-agnostic ones, so the patched copy stays " +
                     "correct under VRChat's mode and on desktop as well.");
             }
             if (grabLimited.Count > 0)
             {
                 report.Warning(Category,
-                    $"{grabLimited.Distinct().Count()} patched shader(s) grab the screen — the background they " +
+                    $"{grabLimited.Distinct().Count()} patched shader(s) grab the screen: the background they " +
                     "refract comes from one eye",
-                    $"{string.Join(", ", grabLimited.Distinct())} — these now DRAW in both eyes, but they read " +
+                    $"{string.Join(", ", grabLimited.Distinct())}: these now DRAW in both eyes, but they read " +
                     "the screen through a GrabPass, and ChilloutVR's rendering mode doesn't give a GrabPass " +
                     "per-eye content. So the glass, refraction or heat-haze shows one eye's view to both. " +
                     "Nothing here can fix that: rewriting the reads to the per-eye macros renders GREY in VR " +
@@ -280,7 +280,7 @@ namespace AvatarBridge
                 report.Approximated(Category,
                     $"{recipesUsed.Count} shader(s) fixed by a hand-written stereo recipe",
                     string.Join("; ", recipesUsed) + ". These need more than the standard macros, so the " +
-                    "edit was written by hand once and pinned to that exact version of the file — a shader " +
+                    "edit was written by hand once and pinned to that exact version of the file: a shader " +
                     "that has been updated or edited will not match, and is refused rather than guessed at. " +
                     "Only your copy in RehomedAssets is changed; the original shader is untouched. Worth a " +
                     "look in VR with both eyes open.");
@@ -288,7 +288,7 @@ namespace AvatarBridge
             if (refused.Count > 0)
             {
                 report.Warning(Category, $"{refused.Count} shader(s) could not be patched for VR stereo",
-                    $"{string.Join(", ", refused)} — these still won't draw correctly in both eyes. Patching is " +
+                    $"{string.Join(", ", refused)}: these still won't draw correctly in both eyes. Patching is " +
                     "only attempted on plainly written vertex/fragment shaders; anything else needs doing by " +
                     "hand or replacing with a different shader.");
             }
@@ -297,8 +297,8 @@ namespace AvatarBridge
             if (alreadyCorrect.Count > 0)
             {
                 report.Converted(Category,
-                    $"{alreadyCorrect.Distinct().Count()} shader(s) already speak single-pass instanced — left untouched",
-                    $"{string.Join(", ", alreadyCorrect.Distinct())} — the source declares the full " +
+                    $"{alreadyCorrect.Distinct().Count()} shader(s) already speak single-pass instanced: left untouched",
+                    $"{string.Join(", ", alreadyCorrect.Distinct())}: the source declares the full " +
                     "stereo-instancing macro set, so ChilloutVR's rendering mode is already handled and " +
                     "patching would change nothing. Locked and generated shaders (Hidden/Locked/…) are " +
                     "checked like any other. If one of these looks wrong in game, the cause is something " +
@@ -427,7 +427,7 @@ namespace AvatarBridge
 
             if (Regex.IsMatch(text, @"#pragma\s+surface"))
             {
-                reason = "surface shader — Unity generates the vertex stage, nothing to patch";
+                reason = "surface shader: Unity generates the vertex stage, nothing to patch";
                 return null;
             }
             // A GrabPass is patched like anything else; the macros make
@@ -639,7 +639,7 @@ namespace AvatarBridge
                             string platform = m.platform != UnityEditor.Rendering.ShaderCompilerPlatform.None
                                 ? $" on {m.platform}" : "";
                             string detail = string.IsNullOrEmpty(m.messageDetails)
-                                ? "" : $" — {m.messageDetails.Trim()}";
+                                ? "" : $": {m.messageDetails.Trim()}";
                             return $"{m.message}{where}{platform}{detail}";
                         }))
                     : "copy failed to import";
@@ -662,7 +662,7 @@ namespace AvatarBridge
                 }
                 reason = "patched copy did not compile: " + errors +
                          (kept != null
-                             ? $". The attempted source was kept at {kept} — attach that to a bug report, " +
+                             ? $". The attempted source was kept at {kept}: attach that to a bug report, " +
                                "the failing line is in it"
                              : "");
                 return null;
@@ -705,7 +705,7 @@ namespace AvatarBridge
                     continue;
                 }
                 string path = AssetDatabase.GetAssetPath(clip);
-                // In-memory clips (no path) are ours by construction; on-disk ones must sit inside
+                // In-memory clips (no path) are generated by construction; on-disk ones must sit inside
                 // this conversion's own folder.
                 if (!string.IsNullOrEmpty(path)
                     && (folder == null || !path.Replace('\\', '/').StartsWith(folder, StringComparison.Ordinal)))

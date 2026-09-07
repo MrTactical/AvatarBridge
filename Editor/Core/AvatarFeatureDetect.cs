@@ -399,7 +399,7 @@ namespace AvatarBridge
                 float above = Vector3.Dot(jaw.position - eyes, up);
                 if (above > 0f)
                 {
-                    why = $"{above:0.##} m above the eyes — a jaw hinges below them";
+                    why = $"{above:0.##} m above the eyes: a jaw hinges below them";
                     return false;
                 }
             }
@@ -657,7 +657,7 @@ namespace AvatarBridge
             float currentOff = NearestDeforming(CckGizmoWorldPoint(root, storedView));
             if (currentOff <= tolerance)
             {
-                return false;   // already on the body — nothing to rescue, and nothing to disturb
+                return false;   // already on the body: nothing to rescue, and nothing to disturb
             }
 
             var candidates = new List<Transform>();
@@ -1054,7 +1054,7 @@ namespace AvatarBridge
                     "under a PARENT with a scale on it: ChilloutVR stores these positions against " +
                     "the avatar's own localScale, so a scaled ancestor moves them. Put the avatar at " +
                     "the top of the scene hierarchy (or clear the parent's scale) and convert again. " +
-                    "Either way, check it before uploading — the CVRAvatar inspector's own Auto " +
+                    "Either way, check it before uploading; the CVRAvatar inspector's own Auto " +
                     "buttons place them exactly where this conversion aims to.");
             }
 

@@ -4,7 +4,7 @@
 // Fury builds "vrcfAlwaysVisibleHead" as a copy of the head so a VRChat
 // player can see their own, because VRChat hides the real one in first
 // person. ChilloutVR hides yours by itself, so the copy solves a problem
-// this platform does not have — and it arrives switched OFF, waiting for a
+// this platform does not have, and it arrives switched OFF, waiting for a
 // Fury service that gets deleted here.
 //
 // Anything baked onto it comes off worst. A mouth socket parked there is
@@ -56,7 +56,7 @@ namespace AvatarBridge
                 if (copy == null || copy == head || head.IsChildOf(copy)) continue;
 
                 // Only while the real head still has a mesh of its own. The
-                // copy is redundant because ChilloutVR hides yours natively —
+                // copy is redundant because ChilloutVR hides yours natively,
                 // but if a setup MOVED the head mesh here instead of copying
                 // it, deleting this takes the avatar's face with it.
                 if (!HeadStillHasAMesh(ctx, head, copy))
@@ -88,12 +88,12 @@ namespace AvatarBridge
 
             ctx.Report.Converted(Category, $"{deleted} always-visible head(s) removed",
                 (moved > 0
-                    ? $"{moved} object(s) moved onto the Head bone — " + string.Join(", ", names) +
+                    ? $"{moved} object(s) moved onto the Head bone: " + string.Join(", ", names) +
                       (moved > names.Count ? ", …" : "") + ". "
                     : "") +
                 "VRCFury adds a second head so a VRChat player can see their own; ChilloutVR hides " +
                 "yours natively, so the copy has no job here and arrives switched off waiting for a " +
-                "service this tool deletes. Anything baked onto it — a mouth socket, most often — " +
+                "service this tool deletes. Anything baked onto it, a mouth socket, most often, " +
                 "was off with it and stayed off. It now sits on the head bone it belonged on, at " +
                 $"the same place in the world, with {repointed} animation curve(s) repointed to " +
                 "follow.");

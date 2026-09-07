@@ -21,10 +21,20 @@
 # in Regression/. Both baselines are real and both have to hold.
 set -u
 
-REPO="D:/AvatarBridge"
-PROJECT="D:/UnityVRCCrap/Attempt Conversion"
-UNITY="/c/Program Files/Unity/Hub/Editor/2022.3.22f1/Editor/Unity.exe"
-CORES_TO_LEAVE=4
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+# Machine-specific paths live in Dev/local.cfg, which is gitignored: the
+# corpus project and the Unity install are wherever this machine put them.
+# shellcheck source=/dev/null
+[ -f "$REPO/Dev/local.cfg" ] && . "$REPO/Dev/local.cfg"
+PROJECT="${AVATARBRIDGE_PROJECT:-}"
+UNITY="${AVATARBRIDGE_UNITY:-/c/Program Files/Unity/Hub/Editor/2022.3.22f1/Editor/Unity.exe}"
+CORES_TO_LEAVE="${AVATARBRIDGE_CORES_TO_LEAVE:-4}"
+
+[ -n "$PROJECT" ] || {
+    echo "set AVATARBRIDGE_PROJECT to the corpus project, in Dev/local.cfg or the environment" >&2
+    exit 1
+}
 
 yaps=1
 label=""
@@ -52,7 +62,7 @@ if [ -f "$deployed" ] && ! cmp -s "$REPO/Editor/Yaps/YapsBaker.cs" "$deployed"; 
     echo "         or this measures whatever is installed over there." >&2
 fi
 
-export AVATARBRIDGE_REPO="D:\\AvatarBridge"
+export AVATARBRIDGE_REPO="$(cygpath -w "$REPO" 2>/dev/null || echo "$REPO")"
 if [ "$yaps" = "1" ]; then export AVATARBRIDGE_YAPS=1; else unset AVATARBRIDGE_YAPS; fi
 
 echo "corpus: $suffix -> $log"

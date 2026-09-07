@@ -85,7 +85,7 @@ namespace AvatarBridge
             catch (Exception e)
             {
                 var inner = e.InnerException ?? e;
-                report.Error(Category, "Modular Avatar bake failed", inner.Message + " — " + ManualInstruction);
+                report.Error(Category, "Modular Avatar bake failed", inner.Message + ". " + ManualInstruction);
                 return null;
             }
 

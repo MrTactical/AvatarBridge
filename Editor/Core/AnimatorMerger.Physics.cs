@@ -201,7 +201,7 @@ namespace AvatarBridge
                       "to synthesize a MagicaCloth here.";
                 ctx.Report.Skipped(Category, container.name,
                     "This toggled object carries its own bone rig and skinned mesh, but NOTHING " +
-                    "simulated those bones in the source — no PhysBone, so no physics existed in " +
+                    "simulated those bones in the source: no PhysBone, so no physics existed in " +
                     "VRChat either, and none was converted." + hint);
             }
 
@@ -671,7 +671,7 @@ namespace AvatarBridge
                     $"{curvesAdded} toggle curve(s) re-wired to generated physics in {clipsTouched} clip(s)",
                     "Animations that activated a converted PhysBone's object or component (hair swaps, " +
                     "outfit toggles) now activate the generated physics too. Without this, a chain " +
-                    "belonging to a style that was inactive at conversion time could never wake up — " +
+                    "belonging to a style that was inactive at conversion time could never wake up: " +
                     "its cloth lives on its own object at the avatar root, on a path the original " +
                     "animations never animated. " +
                     (deactivationsMirrored > 0
@@ -682,7 +682,7 @@ namespace AvatarBridge
                         : "No style here switches its physics back off.") +
                     (offsAsserted > 0
                         ? $" A further {offsAsserted} resting state(s) were given an explicit stop " +
-                          "for physics they leave alone. Those states were empty of it — VRChat " +
+                          "for physics they leave alone. Those states were empty of it: VRChat " +
                           "relied on Write Defaults to undo the switch, and ChilloutVR has no such " +
                           "rule, so the cloth latched on the first time the toggle was used and " +
                           "never stopped. Chains that something outside the toggled object rides " +
@@ -694,7 +694,7 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category,
                     $"{sharedChains.Count} chain(s) keep simulating while their style is hidden",
-                    string.Join(", ", sharedChains) + " — each of these is switched ON with the " +
+                    string.Join(", ", sharedChains) + ": each of these is switched ON with the " +
                     "object it belongs to but never switched off, because a mesh OUTSIDE that " +
                     "object is skinned to the same bones. Add-on hair grafted onto a base " +
                     "hairstyle's rig is the usual shape. Stopping the chain with the base style's " +
@@ -709,13 +709,13 @@ namespace AvatarBridge
                     .Select(entry => $"\"{entry.Key}\" (in {string.Join(", ", entry.Value)})")
                     .ToList();
                 ctx.Report.Warning(Category,
-                    $"{strandedToggles.Count} animation(s) switch a PhysBone that wasn't converted — " +
+                    $"{strandedToggles.Count} animation(s) switch a PhysBone that wasn't converted: " +
                     "those controls will do nothing",
-                    string.Join("; ", lines) + " — these clips turn a VRChat PhysBone on or off, " +
+                    string.Join("; ", lines) + ": these clips turn a VRChat PhysBone on or off, " +
                     "which is how avatars pause a chain while a body part is resized. The chain " +
                     "they name produced no physics here, so there is no cloth component to switch " +
                     "instead, and the curve dies with the VRC components. Everything else about " +
-                    "the control converts — menu entry, parameter, animator layer — so it looks " +
+                    "the control converts, menu entry, parameter, animator layer, so it looks " +
                     "correct and does nothing, which is the worst way for this to present. " +
                     "The PhysBones -> MagicaCloth2 section above has a Skipped entry for each of " +
                     "these paths saying WHY it wasn't converted (a constraint driving a bone in " +

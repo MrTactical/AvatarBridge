@@ -53,7 +53,7 @@ namespace AvatarBridge
                 ctx.Report.Warning(Category, "Could not re-anchor constraint offsets to the scale",
                     $"{e.GetType().Name}: {e.Message}. This pass walks the constraints in order, so " +
                     "a failure part way through leaves the ones before it re-anchored and the rest " +
-                    "as they were — the avatar is otherwise fine, but hats and held items may drift " +
+                    "as they were; the avatar is otherwise fine, but hats and held items may drift " +
                     "when the height slider moves away from its default, and they may not all drift " +
                     "the same way. Converting again after fixing the cause re-anchors the lot.");
                 Debug.LogException(e);
@@ -156,7 +156,7 @@ namespace AvatarBridge
 
             string note =
                 "A parent constraint holds its target a fixed number of METRES from its source, and " +
-                "Unity never scales that gap — so with the height slider the body moved and the props " +
+                "Unity never scales that gap, so with the height slider the body moved and the props " +
                 "didn't. Each offset is now carried by a small empty parented to the source bone " +
                 $"(\"{RelayPrefix}_…\"), which inherits the avatar's scale, so the gap grows and shrinks " +
                 "with you. Nothing moves at the default size: the relays are placed exactly where the " +
@@ -195,7 +195,7 @@ namespace AvatarBridge
                 note += $"\n\nWorth knowing: the largest gap between where a constraint had actually " +
                         $"put its target and where the offset says it should be was {worstDisagreement:0.###} m " +
                         $"(at {worstAt}). Those two normally agree exactly. They were placed by measurement, " +
-                        "so the avatar is right either way — but if props sit wrong after this, that number " +
+                        "so the avatar is right either way, but if props sit wrong after this, that number " +
                         "is the thing to report.";
             }
             if (constraintsFixed > 0)

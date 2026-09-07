@@ -142,12 +142,11 @@ namespace AvatarBridge
             return removed;
         }
 
-        // State 0 is Off: every pair dark, no socket touched. State i
-        // enables socket i's pair, disables every other pair, and switches
-        // socket i itself ON — the one thing a DPS toy needs is then one
-        // choice. Other sockets' active state is left to their own
-        // toggles; only the chosen one is asserted. Any-state transitions
-        // on the selector, so the order the wearer clicks in never matters.
+        // State 0 is Off: every pair dark, no socket touched. State i enables
+        // socket i's pair, disables every other pair, and switches socket i
+        // itself ON, so one choice is all a DPS toy needs. Other sockets' active
+        // state is left to their own toggles. Any-state transitions on the
+        // selector, so the order the wearer clicks in never matters.
         static void AddLayer(CVRAvatar avatar, AnimatorController controller, List<YapsSocket> sockets)
         {
             var pairPaths = sockets

@@ -20,7 +20,7 @@ namespace AvatarBridge.Regression
     // component.
     public static class HeadChopCurveTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test — head-chop curve polarity")]
+        [MenuItem("Tools/AvatarBridge Dev/Test: head-chop curve polarity")]
         public static void Run()
         {
             int fail = 0;
@@ -109,8 +109,8 @@ namespace AvatarBridge.Regression
             }
 
             Debug.Log(fail == 0
-                ? "[HeadChopCurveTest] PASS — polarity per exclusion type, skipped chops loud."
-                : $"[HeadChopCurveTest] FAIL — {fail} case(s) wrong.");
+                ? "[HeadChopCurveTest] PASS: polarity per exclusion type, skipped chops loud."
+                : $"[HeadChopCurveTest] FAIL: {fail} case(s) wrong.");
             if (Application.isBatchMode) EditorApplication.Exit(fail == 0 ? 0 : 1);
         }
     }

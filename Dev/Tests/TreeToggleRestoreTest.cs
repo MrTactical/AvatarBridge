@@ -25,7 +25,7 @@ namespace AvatarBridge.Regression
     //     and pinning one would freeze a value the math exists to compute.
     public static class TreeToggleRestoreTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test — blend-tree toggle restore")]
+        [MenuItem("Tools/AvatarBridge Dev/Test: blend-tree toggle restore")]
         public static void Run()
         {
             int fail = 0;
@@ -160,8 +160,8 @@ namespace AvatarBridge.Regression
             }
 
             Debug.Log(fail == 0
-                ? "[TreeToggleRestoreTest] PASS — tree toggles restore, shared and AAP trees left alone."
-                : $"[TreeToggleRestoreTest] FAIL — {fail} case(s) wrong.");
+                ? "[TreeToggleRestoreTest] PASS: tree toggles restore, shared and AAP trees left alone."
+                : $"[TreeToggleRestoreTest] FAIL: {fail} case(s) wrong.");
             if (Application.isBatchMode) EditorApplication.Exit(fail == 0 ? 0 : 1);
         }
     }

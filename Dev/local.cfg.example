@@ -1,0 +1,6 @@
+# Copy to Dev/local.cfg and edit. The dev scripts source it for the
+# paths that differ per machine; local.cfg itself is gitignored.
+AVATARBRIDGE_PROJECT="/d/Unity/Corpus Project"
+AVATARBRIDGE_UNITY="/c/Program Files/Unity/Hub/Editor/2022.3.22f1/Editor/Unity.exe"
+AVATARBRIDGE_PROJECT_ROOTS="/d/Unity:/e/Unity Projects"
+AVATARBRIDGE_CORES_TO_LEAVE=4

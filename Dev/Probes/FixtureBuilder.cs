@@ -25,7 +25,10 @@ namespace AvatarBridge.Dev
     public static class FixtureBuilder
     {
         const string SourceScene = "Sootie Scene";
-        static readonly string Log = "D:/AvatarBridge/Regression/fixture-builder.log";
+        // Beside the digests, so the log survives a reimport. Same variable
+        // the regression runner reads.
+        static readonly string Log =
+            (Environment.GetEnvironmentVariable("AVATARBRIDGE_REPO") ?? ".") + "/Regression/fixture-builder.log";
         static StringBuilder _log = new StringBuilder();
 
         public static void Run()
@@ -55,7 +58,7 @@ namespace AvatarBridge.Dev
 
         // Only the new one. Run() rebuilds all three from the source
         // scene, which would overwrite two fixtures the corpus already has
-        // a baseline for — and the source scene has been edited by hand
+        // a baseline for, and the source scene has been edited by hand
         // since they were made, so they would not come back the same.
         //
         //   Unity.exe -batchmode -quit -executeMethod AvatarBridge.Dev.FixtureBuilder.RunStrafeOnly

@@ -105,7 +105,7 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category, $"{repointed} collider on/off animation(s) rewired",
                     "Curves that enabled or disabled a VRChat PhysBone collider now toggle the " +
-                    "converted collider's own object instead — the form both MagicaCloth2 and " +
+                    "converted collider's own object instead: the form both MagicaCloth2 and " +
                     "DynamicBone honour. The usual author intent is clothing switching its own " +
                     "collision, a dress disabling the colliders that would clip it.");
             }
@@ -113,7 +113,7 @@ namespace AvatarBridge
             {
                 ctx.Report.Warning(Category, $"{dropped.Count} collider-animating curve(s) could not be carried",
                     string.Join("; ", dropped.Take(6)) + (dropped.Count > 6 ? ", …" : "") +
-                    " — each animated something on a VRC collider that has no equivalent on the " +
+                    ": each animated something on a VRC collider that has no equivalent on the " +
                     "converted one, or a collider that was not converted (skipped, or its chain " +
                     "was). The curve was removed rather than left silently addressing a deleted " +
                     "component.");
@@ -168,11 +168,11 @@ namespace AvatarBridge
                 ctx.Report.Skipped(Category,
                     $"{lost.Count} animated PhysBone parameter(s) have no converted equivalent",
                     string.Join("; ", lost.Select(kv => $"{kv.Key} (e.g. {string.Join(", ", kv.Value)})")) +
-                    " — these animated LIVE physics values (a size slider growing a chain's radius, " +
+                    ": these animated LIVE physics values (a size slider growing a chain's radius, " +
                     "gravity or stiffness changing with an outfit). MagicaCloth2's parameters cannot " +
                     "be driven by animation, so the chain keeps the converted values it was built " +
                     "with; the rest of each animation still plays. If one of these mattered, say so " +
-                    "in an issue — a DynamicBone-target conversion could support some of them.");
+                    "in an issue: a DynamicBone-target conversion could support some of them.");
             }
         }
 
@@ -219,7 +219,7 @@ namespace AvatarBridge
                     ctx.Report.Warning(Category, $"{group.Count()} PhysBones share root \"{group.Key.name}\"",
                         $"{enabled.Count} were enabled at once, which would give this chain {enabled.Count} " +
                         "MagicaCloth components fighting over the same bones. The extras were switched off " +
-                        $"(not deleted), so only \"{DescribeVariant(enabled[0])}\" drives it — VRChat toggles " +
+                        $"(not deleted), so only \"{DescribeVariant(enabled[0])}\" drives it: VRChat toggles " +
                         "between these at runtime, so pick the variant you want and re-enable it instead if " +
                         "this isn't the right one.");
                 }
@@ -331,7 +331,7 @@ namespace AvatarBridge
                 string.Join(", ", grabbable.Take(8)) + (grabbable.Count > 8 ? ", …" : "") +
                 ". VRChat lets you take hold of a PhysBone and pull it; MagicaCloth2 has no " +
                 "equivalent, so these hang and swing but can't be held. The GrabbyBones mod adds " +
-                "grabbing back, and this conversion names its cloths to match so it works — but it " +
+                "grabbing back, and this conversion names its cloths to match so it works, but it " +
                 "is a client mod, so only people who have installed it can grab anything here. " +
                 "Any chain marked \"carries a contact\" is worth a closer look: if the feature works " +
                 "by someone pulling that chain so its contact reaches a receiver, then without the " +
@@ -355,7 +355,7 @@ namespace AvatarBridge
         }
 
         // A chain that moves nothing on its own: no mesh is weighted to any
-        // bone in it. Rigs like cake PB are built this way — a cascade of
+        // bone in it. Some rigs are built this way: a cascade of
         // helper bones, each stage doing one job and feeding the next, with
         // constraints copying the composed result onto the avatar's real
         // bones.
@@ -374,7 +374,7 @@ namespace AvatarBridge
             }
 
             ctx.Report.Skipped(Category, ctx.PathInTarget(chain.Root),
-                "No mesh is skinned to any bone in this chain, so it moves nothing itself — it is one " +
+                "No mesh is skinned to any bone in this chain, so it moves nothing itself: it is one " +
                 "stage of a helper rig that drives the avatar's real bones through constraints. Stages " +
                 "like these compose in VRChat and cannot be reproduced by simulating each separately. " +
                 "A later pass puts one chain on the bone this was driving.");
@@ -448,7 +448,7 @@ namespace AvatarBridge
                         $"Not simulated: \"{t.name}\" in this chain is driven by a " +
                         $"{component.GetType().Name}. A constraint writes that bone every frame " +
                         "and a cloth solver integrates it from its own last state, so together " +
-                        "they feed each other until the transform goes NaN — the chain then hangs " +
+                        "they feed each other until the transform goes NaN: the chain then hangs " +
                         "broken at rest, in play mode and in game, with nothing to see in the " +
                         "animator. VRChat gets away with it because PhysBones re-read the " +
                         "constraint result each frame; MagicaCloth2 and DynamicBone don't, and the " +
@@ -487,7 +487,7 @@ namespace AvatarBridge
             if (isToe)
             {
                 ctx.Report.Skipped(Category, chain.Root.name,
-                    "Toe chain not converted — simulated toes wiggle with every step in ChilloutVR, " +
+                    "Toe chain not converted: simulated toes wiggle with every step in ChilloutVR, " +
                     "which reads as broken rather than expressive. Turn on \"Convert toe PhysBones\" " +
                     "in the physics options if this avatar's toe physics are deliberate.");
             }

@@ -1,9 +1,10 @@
-// YAPS: the pipeline pass. Turns VRCFury's baked SPS rig into
-// something ChilloutVR can run. Inspired by VRCFury's SPS; no SPS
-// code is used, see docs/YAPS-CLEAN-ROOM.md.
-// VRCFury leaves a "BakedSpsPlug" per plug and a "BakedSpsSocket"
-// per socket, with contact senders and two protocol lights. Its
-// screen-space atlas transport is VRChat-only and is deleted.
+// YAPS: the pipeline pass. Turns VRCFury's baked SPS rig into something
+// ChilloutVR can run. Inspired by VRCFury's SPS, no SPS code is used.
+// See docs/YAPS-CLEAN-ROOM.md.
+//
+// VRCFury leaves a "BakedSpsPlug" per plug and a "BakedSpsSocket" per
+// socket, with contact senders and two protocol lights. Its screen-space
+// atlas transport is VRChat-only and is deleted.
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System;
@@ -50,7 +51,18 @@ namespace AvatarBridge
             }
             foreach (var plug in ctx.YapsPlugs)
             {
-                plug.Material.SetFloat("_YAPS_SelfTag", selfFlag);
+                // Every material of the plug, never just the recorded one. A plug
+                // spanning two materials with the flag on one reads the atlas across
+                // half its mesh and the lights across the other, which looks right
+                // until the lights go out.
+                foreach (var material in plug.Materials)
+                {
+                    if (material == null) { continue; }
+                    material.SetFloat("_YAPS_SelfTag", selfFlag);
+                    // The atlas is a material flag so a plug can be built
+                    // without it, and one switch decides for the whole system.
+                    material.SetFloat("_YAPS_UseAtlas", YapsAtlas.Enabled ? 1f : 0f);
+                }
             }
 
             ConvertSockets(ctx, socketRoots);
@@ -58,12 +70,25 @@ namespace AvatarBridge
             WireSocketToggles(ctx, socketRoots);
             YapsSocketRebuilder.Lighthouse(ctx);
 
+            // One switch for the whole atlas, so the writers and the grab
+            // cannot disagree about whether it is on.
+            if (YapsAtlas.Enabled && YapsAtlas.AddClear(ctx.Target.transform) != null
+                && YapsAtlas.AddGrab(ctx.Target.transform) != null)
+            {
+                ctx.Report.Converted(Category, "Added the screen surface plugs read each other through",
+                    "A plug has to know where a socket is, and the socket usually belongs to " +
+                    "somebody else. This object lets the shader see what the rest of the room " +
+                    "drew, which is how the position crosses without costing a light slot, a " +
+                    "contact pair or a single sync bit. It draws nothing you can see, and one " +
+                    "of them in an instance serves everybody: a second costs nothing.");
+            }
+
             if (socketRoots.Count > 0)
             {
                 ctx.Report.Converted(Category,
                     $"Kept the depth reactions on {socketRoots.Count} socket(s)",
-                    "The animations a socket plays as a plug arrives — bulges, winces, whatever " +
-                    "its author built — are kept and pointed at the rebuilt socket's own depth " +
+                    "The animations a socket plays as a plug arrives, bulges, winces, whatever " +
+                    "its author built, are kept and pointed at the rebuilt socket's own depth " +
                     "trigger. ChilloutVR runs that trigger on the wearer's machine alone, so by " +
                     "default the parameter is local: free against the sync budget, and the " +
                     "shapes play for you. \"Show the avatar's OWN depth animations to other " +
@@ -75,7 +100,7 @@ namespace AvatarBridge
             if (plugRoots.Count > 0 && ctx.YapsPlugs.Count == 0)
             {
                 ctx.Report.Warning(Category, "No plug could be converted",
-                    "The objects are here but nothing usable came out of them — the entries above " +
+                    "The objects are here but nothing usable came out of them; the entries above " +
                     "say why for each. The avatar is otherwise unaffected.");
             }
         }
@@ -96,11 +121,10 @@ namespace AvatarBridge
                 return;
             }
 
-            // The plug's chain must be its own. When the first bones found
-            // above the plug object are the wearer's, Hips or Spine or a
-            // leg, "the plug" is the body: nothing beneath the plug object
-            // told its vertices apart. Length says nothing here; a hyper
-            // plug is longer than its wearer and has a chain of its own.
+            // The plug's chain must be its own. When the first bones found above
+            // the plug object are the wearer's, Hips or Spine or a leg, "the plug"
+            // is the body. Length says nothing here: a hyper plug is longer than
+            // its wearer and still has a chain of its own.
             string bodyBone = HumanoidBoneName(ctx, chainLevel);
             if (bodyBone != null)
             {
@@ -121,26 +145,108 @@ namespace AvatarBridge
                 return;
             }
 
-            // The plug's material is the slot its triangles use, not a name.
-            int slot = MaterialSlotOf(renderer, plugRoot);
+            // Every material slot the plug's triangles use, never just the biggest.
+            // A tip modelled on its own material is a second slot, and leaving it
+            // unpatched leaves it hanging in the air while the rest bends away.
+            //
+            // result.Root, not plugRoot: the bake may have descended to the shaft,
+            // and asking a wider root patches materials the bake left out.
+            var slots = MaterialSlotsOf(renderer, result.Root);
+            var patchedSlots = new List<string>();
+            var patchedMaterials = new List<Material>();
+            var patchedSlotIndices = new List<int>();
+            int primarySlot = -1;
+            Material primaryMaterial = null;
+            int skippedShadowPasses = 0;
+            foreach (int slot in slots)
+            {
+                var slotMaterial = PatchPlugSlot(ctx, where, renderer, result.Root, slot, result,
+                    out int skipped);
+                if (slotMaterial == null)
+                {
+                    continue;
+                }
+                patchedSlots.Add($"{slot} (\"{slotMaterial.name}\")");
+                patchedMaterials.Add(slotMaterial);
+                patchedSlotIndices.Add(slot);
+                if (primarySlot < 0)
+                {
+                    primarySlot = slot;
+                    primaryMaterial = slotMaterial;
+                    skippedShadowPasses = skipped;
+                }
+            }
+            if (primarySlot < 0)
+            {
+                return;
+            }
+
+            ctx.YapsPlugs.Add(new BridgeContext.YapsPlug
+            {
+                Root = result.Root,
+                Renderer = renderer,
+                Material = primaryMaterial,
+                MaterialSlot = primarySlot,
+                Materials = patchedMaterials,
+                MaterialSlots = patchedSlotIndices,
+                Length = result.Length,
+                Radius = result.Radius,
+                Shapes = result.Shapes,
+                MovingShapes = result.MovingShapes,
+                ChainRoot = ChainRootOf(renderer as SkinnedMeshRenderer, chainLevel, result.Root),
+                Origin = result.Origin,
+                Rotation = result.Rotation,
+            });
+
+            // The same markers the toolkit builds for a native plug, on the measured
+            // frame: DPS tracker light, TPS and SPS pointers. Fury's own rig goes
+            // first, or its tracker doubles the fresh one and its pointers win the
+            // announce's dedupe.
+            YapsSocketRebuilder.StripPlugRig(plugRoot);
+            YapsNativeBuilder.AnnouncePlug(plugRoot, result.Origin, result.Rotation,
+                result.Length, result.Radius, tipLight: true, pointers: true);
+
+            // The authoring component, read back off the patched material,
+            // so a re-bake writes the same thing.
+            YapsNativeBuilder.AdoptPlug(plugRoot, renderer, primarySlot, primaryMaterial, null);
+
+            ctx.Report.Converted(Category, $"Plug converted at {where}",
+                $"\"{renderer.name}\" material{(patchedSlots.Count > 1 ? "s" : "")} " +
+                $"{string.Join(" and ", patchedSlots)}, " +
+                $"{plugVertices} vertices on the plug's bones, {result.Length:0.###} m long. " +
+                "The mesh data it bends by is baked into a texture, and the deform is patched into " +
+                "a private copy of the shader, so nothing else on the avatar is affected." +
+                (skippedShadowPasses > 0
+                    ? $" {skippedShadowPasses} shadow pass(es) were left undeformed: Unity's own " +
+                      "shadow vertex function lives inside the engine and cannot be patched, and an " +
+                      "unbent shadow is a far smaller loss than no deform at all."
+                    : ""));
+        }
+
+        // One material slot of the plug's renderer: patch its shader,
+        // apply the bake, carry the old system's settings. Null means the
+        // slot could not take the deform, and it has said why.
+        static Material PatchPlugSlot(BridgeContext ctx, string where, Renderer renderer,
+            Transform plugRoot, int slot, YapsBaker.Result result, out int skippedShadowPasses)
+        {
+            skippedShadowPasses = 0;
             var materials = renderer.sharedMaterials;
             if (slot < 0 || slot >= materials.Length || materials[slot] == null)
             {
                 ctx.Report.Warning(Category, $"No material to patch for the plug at {where}",
                     "The renderer's material list does not cover the plug's triangles.");
-                return;
+                return null;
             }
 
-            // What the material already is. The old deform must not run
-            // beside YAPS: TPS and SPS keep their shader with theirs
-            // switched off, DPS moves to Simple Lit because Raliv's has no
-            // switch. The same rule the toolkit applies to a native plug.
+            // What the material already is. The old deform must not run beside
+            // YAPS: TPS and SPS keep their shader with theirs switched off, DPS
+            // moves to Simple Lit because Raliv's has no switch. Same rule the
+            // toolkit applies to a native plug.
             var source = materials[slot];
             var legacy = YapsLegacyMap.Detect(source, out _);
             var patchSource = source;
             Shader shader = null;
             string refusal = null;
-            int skippedShadowPasses = 0;
             if (legacy == YapsLegacyMap.Origin.DPS)
             {
                 var plain = YapsNativeBuilder.OnSimpleLit(source, out string why);
@@ -203,7 +309,7 @@ namespace AvatarBridge
                 ctx.Report.Warning(Category, $"Could not add the deform to \"{source.name}\"",
                     $"{refusal}. The plug converts as an ordinary mesh: it will look right and " +
                     "simply will not bend.");
-                return;
+                return null;
             }
 
             // Read the author's values off the original material before the
@@ -238,44 +344,7 @@ namespace AvatarBridge
             ctx.YapsMaterialSwaps[(renderer, slot)] = (materials[slot], patched);
             materials[slot] = patched;
             renderer.sharedMaterials = materials;
-
-            ctx.YapsPlugs.Add(new BridgeContext.YapsPlug
-            {
-                Root = plugRoot,
-                Renderer = renderer,
-                Material = patched,
-                MaterialSlot = slot,
-                Length = result.Length,
-                Radius = result.Radius,
-                Shapes = result.Shapes,
-                MovingShapes = result.MovingShapes,
-                ChainRoot = ChainRootOf(renderer as SkinnedMeshRenderer, chainLevel, plugRoot),
-                Origin = result.Origin,
-                Rotation = result.Rotation,
-            });
-
-            // The same markers the toolkit builds for a native plug, on the
-            // measured frame: DPS tracker light, TPS and SPS pointers.
-            // Fury's own rig goes first, or its tracker doubles the fresh
-            // one and its pointers win the announce's dedupe.
-            YapsSocketRebuilder.StripPlugRig(plugRoot);
-            YapsNativeBuilder.AnnouncePlug(plugRoot, result.Origin, result.Rotation,
-                result.Length, result.Radius, tipLight: true, pointers: true);
-
-            // The authoring component, read back off the patched material,
-            // so a re-bake writes the same thing.
-            YapsNativeBuilder.AdoptPlug(plugRoot, renderer, slot, patched, null);
-
-            ctx.Report.Converted(Category, $"Plug converted at {where}",
-                $"\"{renderer.name}\" material {slot} (\"{materials[slot].name}\"), " +
-                $"{plugVertices} vertices on the plug's bones, {result.Length:0.###} m long. " +
-                "The mesh data it bends by is baked into a texture, and the deform is patched into " +
-                "a private copy of the shader, so nothing else on the avatar is affected." +
-                (skippedShadowPasses > 0
-                    ? $" {skippedShadowPasses} shadow pass(es) were left undeformed — Unity's own " +
-                      "shadow vertex function lives inside the engine and cannot be patched, and an " +
-                      "unbent shadow is a far smaller loss than no deform at all."
-                    : ""));
+            return patched;
         }
 
         static Renderer FindPlugRenderer(BridgeContext ctx, Transform plugRoot, out int plugVertices,
@@ -285,10 +354,10 @@ namespace AvatarBridge
             plugVertices = 0;
             chainLevel = null;
 
-            // VRCFury's own first rule: a renderer sitting on the plug's
-            // object is the plug. A dedicated mesh object carrying the
-            // component has no bones beneath it, and scoring by bone
-            // weight from there climbs to the hips and elects the body.
+            // VRCFury's own first rule: a renderer sitting on the plug's object is
+            // the plug. A dedicated mesh object carrying the component has no bones
+            // beneath it, and scoring by bone weight from there climbs to the hips
+            // and elects the body.
             var owner = plugRoot.parent;
             if (owner != null && owner != ctx.Target.transform)
             {
@@ -300,12 +369,11 @@ namespace AvatarBridge
                 }
             }
 
-            // VRCFury's second rule, and the one that matters: climb ONCE
-            // from the plug object, and at the first level where any mesh
-            // has vertices on that level's bones, take the mesh with most.
-            // Letting every mesh climb on its own let the body climb to the
-            // hips and win by sheer count over a plug with its own armature;
-            // ten corpus avatars were baking their whole body as the plug.
+            // VRCFury's second rule, and the one that matters: climb ONCE from the
+            // plug object, and at the first level where any mesh has vertices on
+            // that level's bones, take the mesh with most. Letting every mesh climb
+            // on its own let the body reach the hips and win by sheer count over a
+            // plug with its own armature. Ten avatars baked their whole body.
             var renderers = ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true);
             for (var level = plugRoot; level != null && level != ctx.Target.transform.parent; level = level.parent)
             {
@@ -403,23 +471,23 @@ namespace AvatarBridge
 
         // A submesh belongs to the plug if its triangles use plug vertices.
         // Names are the author's business and are routinely "Body".
-        static int MaterialSlotOf(Renderer renderer, Transform plugRoot)
+        //
+        // Every such submesh, biggest first: a tip modelled on its own material
+        // is a second slot, and an unpatched slot stays rigid while the rest of
+        // the plug bends around it.
+        static List<int> MaterialSlotsOf(Renderer renderer, Transform plugRoot)
         {
+            var found = new List<int>();
             var skin = renderer as SkinnedMeshRenderer;
             var mesh = skin != null ? skin.sharedMesh : null;
-            if (mesh == null)
-            {
-                return 0;
-            }
-
-            var plugVertex = PlugVertexMask(skin, plugRoot);
+            var plugVertex = mesh != null ? PlugVertexMask(skin, plugRoot) : null;
             if (plugVertex == null)
             {
-                return 0;
+                found.Add(0);
+                return found;
             }
 
-            int bestSlot = 0;
-            int bestHits = 0;
+            var hitsBySlot = new List<KeyValuePair<int, int>>();
             for (int sub = 0; sub < mesh.subMeshCount; sub++)
             {
                 var indices = mesh.GetTriangles(sub);
@@ -431,14 +499,25 @@ namespace AvatarBridge
                         hits++;
                     }
                 }
-                if (hits > bestHits)
+                if (hits > 0)
                 {
-                    bestHits = hits;
-                    bestSlot = sub;
+                    hitsBySlot.Add(new KeyValuePair<int, int>(sub, hits));
                 }
             }
-            return bestSlot;
+            hitsBySlot.Sort((a, b) => b.Value.CompareTo(a.Value));
+            foreach (var pair in hitsBySlot)
+            {
+                found.Add(pair.Key);
+            }
+            if (found.Count == 0)
+            {
+                found.Add(0);
+            }
+            return found;
         }
+
+        static int MaterialSlotOf(Renderer renderer, Transform plugRoot) =>
+            MaterialSlotsOf(renderer, plugRoot)[0];
 
         static bool[] PlugVertexMask(SkinnedMeshRenderer skin, Transform plugRoot)
         {
@@ -491,11 +570,10 @@ namespace AvatarBridge
 
         // --- the sockets -----------------------------------------------
 
-        // The author's menu entry, wired to the rebuilt socket. Fury's
-        // toggle drove the deleted atlas; pointing it at the socket object
-        // makes the menu mean what it says without adding a second entry.
-        // A socket some clip already switches is the author's to control
-        // and is left alone.
+        // The author's menu entry, wired to the rebuilt socket. Fury's toggle
+        // drove the deleted atlas, so pointing it at the socket object makes the
+        // menu mean what it says without adding a second entry. A socket some
+        // clip already switches is the author's to control and is left alone.
         static void WireSocketToggles(BridgeContext ctx, List<Transform> socketRoots)
         {
             // Only layers that can assert count as owning a path; Fury's
@@ -523,8 +601,8 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category, $"{wired} socket menu toggle(s) wired to their sockets",
                     "VRCFury's socket toggles drove its deleted atlas, so the menu looked right and " +
-                    "did nothing. Each is now wired to its whole socket — lights, pointers and depth " +
-                    "trigger together — so \"one socket at a time\" is the wearer's choice again.");
+                    "did nothing. Each is now wired to its whole socket, lights, pointers and depth " +
+                    "trigger together, so \"one socket at a time\" is the wearer's choice again.");
             }
             if (unwired.Count > 0)
             {
@@ -616,16 +694,14 @@ namespace AvatarBridge
                 AssetDatabase.AddObjectToAsset(off, controller);
             }
 
-            // Default On only while there is room. A mesh gets four vertex
-            // light slots and a socket takes two, so an avatar that lights
-            // every socket at once hands the plug four FRONT lights (range
-            // 0.453, the largest it can see) and no roots, which is not a
-            // socket anything can enter. Eleven sockets defaulting to lit is
-            // twenty-two lights fighting over four places.
+            // Default On only while there is room. A mesh gets four vertex light
+            // slots and a socket takes two, so an avatar that lights every socket
+            // at once hands the plug four FRONT lights (range 0.453, the largest it
+            // can see) and no roots, which is not a socket anything can enter.
             //
-            // Past the cap they start dark and their own menu entry lights
-            // them, which is what the entry is for. An avatar with one socket
-            // behaves exactly as before.
+            // Past the cap they start dark and their own menu entry lights them,
+            // which is what the entry is for. An avatar with one socket behaves
+            // exactly as before.
             var onState = machine.AddState("On");
             onState.writeDefaultValues = false;
             onState.motion = on;
@@ -680,8 +756,9 @@ namespace AvatarBridge
 
         // A socket nothing can find: no pointer carrying a socket tag and no
         // marker light. One with either is finished as far as a plug cares.
+        //
         // Socket deform. A shape driven by both animator and shader applies
-        // twice, so with no published depth (-1) the shader reads a tracker light.
+        // twice, so with no published depth (-1) the shader reads a light.
         static void ConvertSockets(BridgeContext ctx, List<Transform> socketRoots)
         {
             if (socketRoots.Count == 0)
@@ -777,10 +854,10 @@ namespace AvatarBridge
                 // -1, never 0. Zero is "a plug is here, not yet in"; -1 is
                 // "nothing told me", which lets the shader fall back to lights.
                 material.SetFloat("_YAPS_SocketDepth", -1f);
-                // Self-exclusion earns its place only where a plug of this
-                // avatar's rests on the socket, which is the crotch case it
-                // was written for. Out on a hand it decides ownership by the
-                // nearest hip, and the nearest hip can be somebody else's.
+                // Self-exclusion earns its place only where a plug of this avatar's
+                // rests on the socket, which is the crotch case it was written for. Out
+                // on a hand it decides ownership by the nearest hip, and the nearest
+                // hip can be somebody else's.
                 bool ownPlugRests = ctx.YapsPlugs.Any(
                     p => Vector3.Distance(p.Origin, socketRoot.position) <= p.Length + 0.1f);
                 material.SetFloat("_YAPS_SocketNoSelfExclude", ownPlugRests ? 0f : 1f);
@@ -803,7 +880,7 @@ namespace AvatarBridge
                     "so they open around what arrives rather than sitting rigid. " +
                     (alreadyAnimated > 0
                         ? $"{alreadyAnimated} of them already play those shapes from a contact, and " +
-                          "that is left exactly as it was — the shader only acts when nothing has " +
+                          "that is left exactly as it was; the shader only acts when nothing has " +
                           "told it a depth, which is precisely when the contact route is inert. "
                         : "") +
                     "What that buys is DPS content: Raliv's system is marker lights with no " +
@@ -825,14 +902,14 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category,
                     $"{noShapes} socket(s) have no blendshapes to deform",
                     "Nothing was changed for these. A socket deform reshapes the author's own " +
-                    "blendshapes, so a socket built without any has nothing to open with — its " +
+                    "blendshapes, so a socket built without any has nothing to open with; its " +
                     "contacts and marker lights work exactly as before.");
             }
             if (failures.Count > 0)
             {
                 ctx.Report.Warning(Category,
                     $"{failures.Count} socket(s) could not be given a deform",
-                    "Everything else about them is untouched and they still work as sockets — " +
+                    "Everything else about them is untouched and they still work as sockets: " +
                     "they simply will not reshape around a plug. " + string.Join("; ", failures));
             }
         }
@@ -927,7 +1004,7 @@ namespace AvatarBridge
                     "This avatar's penetrator could not be converted, but its sockets work",
                     $"Found {found}, and no VRChat SPS setup. YAPS builds a plug from the objects " +
                     "VRChat's SPS bake leaves behind, and DPS and TPS predate all of that, so there " +
-                    "is nothing here to build one from — the plug keeps a shader whose deform " +
+                    "is nothing here to build one from; the plug keeps a shader whose deform " +
                     "system does not exist in ChilloutVR, and it will not bend. Its SOCKETS are " +
                     "fine: their marker lights and contacts come through untouched, so other " +
                     "people's plugs can use them normally. To convert the plug too, set the avatar " +
@@ -938,7 +1015,7 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category,
                     "Kept this avatar's existing penetration sockets",
                     $"Found {found} belonging to DPS or TPS rather than VRChat's SPS, so there was " +
-                    "nothing for YAPS to build — but nothing was taken away either. The marker " +
+                    "nothing for YAPS to build, but nothing was taken away either. The marker " +
                     "lights and contacts come through as they were, so plugs belonging to other " +
                     "players can use these sockets exactly as they did before. Leaving the YAPS " +
                     "setting ON is what keeps the contacts and the depth reactions that go with " +
@@ -997,20 +1074,16 @@ namespace AvatarBridge
         //
         // The bake repoints a renderer's slot at the patched copy, and that
         // holds until the animator runs. An avatar that swaps that slot in an
-        // animation — a skin picker, a variant toggle, an NSFW switch — hands
-        // the slot back to the material the author baked from, which carries
-        // no deform and no bake. The plug straightens the instant play mode
-        // starts and the tool reports it as never baked, because from the
-        // material there is nothing to find.
+        // animation, a skin picker or a variant toggle, hands the slot back to
+        // the material the author baked from, which carries no deform and no
+        // bake. The plug straightens the instant play mode starts, and the tool
+        // reports it as never baked, because from the material there is nothing
+        // to find.
         //
-        // Reported from a converted avatar whose plug went from
-        // "Dick HD 1 _YAPS_" to "Dick HD 1" between edit and play mode, with
-        // the shader going back to the author's Poiyomi with it.
-        //
-        // Scoped to the renderer AND slot we actually repointed. The original
-        // material is usually worn by other meshes as well, and they have no
-        // bake of their own: handing them a plug's deform would bend the
-        // wrong mesh.
+        // Scoped to the renderer AND slot that were actually repointed. The
+        // original material is usually worn by other meshes as well, and they
+        // have no bake of their own: handing them a plug's deform would bend
+        // the wrong mesh.
         public static void RepointSwappedMaterials(BridgeContext ctx)
         {
             if (ctx.MergedController == null || ctx.YapsMaterialSwaps.Count == 0)
@@ -1018,7 +1091,17 @@ namespace AvatarBridge
                 return;
             }
 
-            var byPath = new Dictionary<string, Dictionary<int, (Material from, Material to)>>();
+            // Keyed by the ORIGINAL material, never by the slot it sat in. A swap
+            // clip is free to move a material between slots, and a mesh with two
+            // baked materials has clips that do: one puts material B where the bake
+            // found A. Matching on the slot alone left those keys pointing at the
+            // unbaked original, so the part came back rigid the moment the toggle
+            // played.
+            //
+            // Still scoped to this RENDERER. Every patched copy here was baked for
+            // this mesh, so moving one between its own slots is safe.
+            var bySlot = new Dictionary<string, Dictionary<int, (Material from, Material to)>>();
+            var byMaterial = new Dictionary<string, Dictionary<Material, Material>>();
             foreach (var pair in ctx.YapsMaterialSwaps)
             {
                 var renderer = pair.Key.renderer;
@@ -1028,11 +1111,22 @@ namespace AvatarBridge
                 }
                 string path = AnimationUtility.CalculateTransformPath(
                     renderer.transform, ctx.Target.transform);
-                if (!byPath.TryGetValue(path, out var slots))
+                if (!bySlot.TryGetValue(path, out var slots))
                 {
-                    byPath[path] = slots = new Dictionary<int, (Material, Material)>();
+                    bySlot[path] = slots = new Dictionary<int, (Material, Material)>();
+                    byMaterial[path] = new Dictionary<Material, Material>();
                 }
                 slots[pair.Key.slot] = pair.Value;
+
+                // One original material baked twice on one mesh is ambiguous: two plug
+                // regions sharing a material get a bake each, and a clip's key cannot
+                // say which one it meant. Null marks it unanswerable, and the slot
+                // route below stays the one that can answer.
+                var mats = byMaterial[path];
+                mats[pair.Value.from] = mats.TryGetValue(pair.Value.from, out var had)
+                                        && had != pair.Value.to
+                    ? null
+                    : pair.Value.to;
             }
 
             int repointed = 0;
@@ -1045,15 +1139,16 @@ namespace AvatarBridge
                 }
                 foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
                 {
-                    if (!byPath.TryGetValue(binding.path, out var slots))
+                    if (!bySlot.TryGetValue(binding.path, out var slots))
                     {
                         continue;
                     }
                     int slot = Yaps.YapsSwapFollow.SlotIndex(binding.propertyName);
-                    if (slot < 0 || !slots.TryGetValue(slot, out var swap))
+                    if (slot < 0)
                     {
                         continue;
                     }
+                    var swaps = byMaterial[binding.path];
                     var keys = AnimationUtility.GetObjectReferenceCurve(clip, binding);
                     if (keys == null)
                     {
@@ -1062,11 +1157,28 @@ namespace AvatarBridge
                     bool touched = false;
                     for (int i = 0; i < keys.Length; i++)
                     {
-                        if (keys[i].value != swap.from)
+                        var was = keys[i].value as Material;
+                        if (was == null)
                         {
                             continue;
                         }
-                        keys[i].value = swap.to;
+                        // The slot the bake touched answers first and exactly. The material map
+                        // covers a clip that moves a material to another slot of the same mesh,
+                        // and stands down where one original was baked more than once here.
+                        Material to = null;
+                        if (slots.TryGetValue(slot, out var swap) && swap.from == was)
+                        {
+                            to = swap.to;
+                        }
+                        else if (swaps.TryGetValue(was, out var wide))
+                        {
+                            to = wide;
+                        }
+                        if (to == null)
+                        {
+                            continue;
+                        }
+                        keys[i].value = to;
                         touched = true;
                         repointed++;
                     }
@@ -1082,12 +1194,13 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category,
                     $"Pointed {repointed} material swap(s) at the baked material",
                     "An animation on this avatar assigns a material to the same mesh slot the " +
-                    "bake replaced — a skin picker, a variant toggle, whatever it is. Left alone " +
+                    "bake replaced: a skin picker, a variant toggle, whatever it is. Left alone " +
                     "it hands the slot back to the material you baked FROM, which carries no " +
                     "deform, so the plug straightens the moment you press Play and reads as " +
-                    "never baked. Those swaps now point at the baked material instead. Only the " +
-                    "exact mesh and slot the bake touched was changed; anything else wearing " +
-                    "that material keeps it.");
+                    "never baked. Those swaps now point at the baked material instead, including " +
+                    "the ones that move a material to a different slot of the same mesh. Only " +
+                    "meshes the bake touched were changed; anything else wearing that material " +
+                    "keeps it.");
             }
         }
 
@@ -1269,11 +1382,11 @@ namespace AvatarBridge
             {
                 ctx.Report.Warning(Category,
                     $"{missed.Count} animated plug blendshape(s) are not in the bake",
-                    $"{string.Join(", ", missed.Take(8))}{(missed.Count > 8 ? ", …" : "")} — the bake " +
+                    $"{string.Join(", ", missed.Take(8))}{(missed.Count > 8 ? ", …" : "")}: the bake " +
                     $"holds the {YapsBaker.MaxShapes} shapes that move the plug most, and these did " +
                     "not make the cut. They still change the mesh; the deform simply measures " +
                     "against the plug without them, so the bend is slightly off while they are " +
-                    "raised. Bulge shapes on a SOCKET are unaffected by this — those are ordinary " +
+                    "raised. Bulge shapes on a SOCKET are unaffected by this; those are ordinary " +
                     "animation and have no limit.");
             }
         }
@@ -1301,9 +1414,9 @@ namespace AvatarBridge
             }
             ctx.Report.Converted(Category, $"Removed {removed} screen-atlas object(s)",
                 "VRChat's version passes socket positions between avatars by drawing them into a " +
-                "corner of the screen and reading them back. ChilloutVR publishes player positions " +
-                "to shaders directly, so none of that machinery is needed here, and left in place " +
-                "it would render marker quads into the view.");
+                "corner of the screen and reading them back. These objects speak VRChat's protocol, " +
+                "which nothing in ChilloutVR reads, and left in place they draw marker quads into " +
+                "the view. YAPS finds sockets its own way and builds whatever it needs itself.");
         }
 
         static int Depth(Transform t)
@@ -1317,11 +1430,12 @@ namespace AvatarBridge
             return depth;
         }
 
-        // StartsWith, not Contains: the first-person exclusion object is
+        // StartsWith, never Contains: the first-person exclusion object is
         // named "FPRExclusion_BakedSpsSocket" and is not a socket.
-        // Through Fury's ID prefix: ArmatureLink moves a socket to the head
-        // and renames it "[VF724] BakedSpsSocket", and one of those stayed
-        // Fury's for a whole day because this matched the raw name.
+        //
+        // Through Fury's ID prefix: ArmatureLink moves a socket to the head and
+        // renames it "[VF724] BakedSpsSocket", and matching the raw name left
+        // one of those looking like Fury's for a whole day.
         static List<Transform> Named(BridgeContext ctx, string needle) =>
             ctx.Target.GetComponentsInChildren<Transform>(true)
                 .Where(t => t != null && YapsScanner.StripFuryId(t.name).StartsWith(needle, System.StringComparison.Ordinal))

@@ -163,7 +163,7 @@ namespace AvatarBridge
             AddTrackingToggles(ctx);
 
             ctx.Report.Converted(Category,
-                $"Injected CVR-VRCFT face tracking — {injectedLayers.Count} layer(s), {addedParams} parameter(s)",
+                $"Injected CVR-VRCFT face tracking: {injectedLayers.Count} layer(s), {addedParams} parameter(s)",
                 $"DragonSkyRunner's rig, rebuilt onto this avatar ({rewritten} clip(s) rebound). Added \"Eye Tracking\" " +
                 "and \"Face Tracking\" menu toggles. Eye gaze magnitude may want tuning per the package readme; " +
                 "verify the eye RotationConstraints in play mode.");
@@ -244,7 +244,7 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category,
                     $"Reconciled {redirected + collapsed + expanded} FT blendshape(s) to \"{meshName}\"",
-                    $"Mapped the rig's Unified-Expressions shapes onto what the mesh actually has — " +
+                    $"Mapped the rig's Unified-Expressions shapes onto what the mesh actually has: " +
                     $"{redirected} name remap(s) (ARKit / casing), {collapsed} split→combined (scaled to avoid " +
                     $"over-driving), {expanded} combined→split. Combined/split is an approximation; asymmetric " +
                     "expressions on combined-only meshes land at partial strength.");
@@ -255,7 +255,7 @@ namespace AvatarBridge
                 if (unmapped.Count > 12) list += $", +{unmapped.Count - 12} more";
                 ctx.Report.Approximated(Category,
                     $"{unmapped.Count} FT shape(s) have no equivalent on \"{meshName}\"",
-                    $"These won't move — the mesh has neither the shape nor a combined/split match: {list}.");
+                    $"These won't move: the mesh has neither the shape nor a combined/split match: {list}.");
             }
         }
 
@@ -266,7 +266,7 @@ namespace AvatarBridge
             FindEyeBones(ctx, out var head, out var leftEye, out var rightEye);
             if (leftEye == null || rightEye == null || head == null)
             {
-                ctx.Report.Warning(Category, "Eye bones not found — eye gaze left unwired",
+                ctx.Report.Warning(Category, "Eye bones not found: eye gaze left unwired",
                     "The avatar has no mapped Left/Right Eye humanoid bones (and none named Eye.L/Eye.R). " +
                     "Face shapes still work; CVR's native eye look stays on.");
                 return;

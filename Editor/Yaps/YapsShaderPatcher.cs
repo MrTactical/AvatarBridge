@@ -1,14 +1,13 @@
 // Puts the YAPS deform into an avatar's own body shader.
 //
-// Inspired by VRCFury's SPS, which invented this technique for VRChat.
-// The deform injected here is clean room: no SPS code is read or
-// emitted. See docs/YAPS-CLEAN-ROOM.md.
+// Inspired by VRCFury's SPS. No SPS code is read or emitted here.
+// See docs/YAPS-CLEAN-ROOM.md.
 //
-// Clones the source unit, adds the properties, edits the vertex stage of
-// every pass, compiles, and only then repoints the material. Every pass,
-// or a bent mesh casts a straight shadow. Includes are inlined so the
-// copy survives in a bundle. Struct members are found by semantic: the
-// same field is called vertex, pos and positionOS in the wild.
+// Clones the source unit, adds the properties, edits the vertex stage
+// of EVERY pass, compiles, and only then repoints the material. Every
+// pass, or a bent mesh casts a straight shadow. Includes are inlined so
+// the copy survives in a bundle. Struct members are found by semantic:
+// the same field is called vertex, pos and positionOS in the wild.
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
@@ -25,15 +24,11 @@ namespace AvatarBridge
     {
         const string Category = "YAPS";
 
-        // What the emitted code IS, rather than a number somebody has to
-        // remember to change when it moves. A constant like that was here
-        // and was forgotten twice in one day: a property was added to the
-        // block below and every already-patched shader went on without it,
-        // silently, because the name it hashes to had not moved.
-        //
-        // Hashing the source itself means the shader's name changes exactly
-        // when its contents do, which is the only rule that cannot be
-        // forgotten.
+        // What the emitted code IS, never a number somebody has to change when
+        // it moves. A constant like that was forgotten twice in one day: a
+        // property was added to the block below and every already-patched
+        // shader went on without it, silently, because the name it hashes to
+        // had not moved.
         static string EmittedVersion(string yapsSource) => Hash(yapsSource + PropertyBlock);
 
         // What Properties{} needs. Distinct from the HLSL declarations in
@@ -60,7 +55,8 @@ namespace AvatarBridge
         _YAPS_ChannelUp (""YAPS channel up"", Vector) = (0,0,0,0)
         _YAPS_ChannelExtents (""YAPS channel extents"", Vector) = (1,1,1,0)
         _YAPS_SelfTag (""YAPS self tag"", Float) = -1
-        [Enum(Off,0,Resolved by,1,Gap to socket,2,Engagement,3,Socket facing,4)] _YAPS_Debug (""YAPS view"", Float) = 0
+        _YAPS_UseAtlas (""YAPS read the screen atlas"", Range(0,1)) = 0
+        [Enum(Off,0,Resolved by,1,Gap to socket,2,Engagement,3,Socket facing,4,Atlas taps,5,Atlas target,6)] _YAPS_Debug (""YAPS view"", Float) = 0
         _YAPS_TaperStart (""YAPS hole taper start"", Range(0,1)) = 0.10
         _YAPS_TaperEnd (""YAPS hole taper end"", Range(0,1)) = 0.30
         _YAPS_IdleLength (""YAPS idle length"", Range(0.1,1)) = 1
@@ -107,13 +103,12 @@ namespace AvatarBridge
 ";
 
         // The name the patch of `original` would carry if it were made now.
-        // Null when the question cannot be answered, which callers must read
-        // as "leave it alone" rather than "it is stale".
+        // Null when the question cannot be answered, which callers must read as
+        // "leave it alone" rather than "it is stale".
         //
-        // This is what lets a rebuild notice that the tool has moved on
-        // since a material was patched. Without it a shader fix reaches
-        // nobody who already converted: their bake refreshes, their shader
-        // does not, and the two disagree in silence.
+        // This is what lets a rebuild notice the tool has moved on. Without it
+        // a shader fix reaches nobody who already converted: their bake
+        // refreshes, their shader does not, and the two disagree in silence.
         public static string CurrentNameFor(Material patchedOrOriginal)
         {
             if (patchedOrOriginal == null || patchedOrOriginal.shader == null) return null;
@@ -129,15 +124,14 @@ namespace AvatarBridge
             return PatchedName(unit[0].Text, Hash(sourcePath + EmittedVersion(yaps) + unit.Count));
         }
 
-        // Whether a patched material is carrying code this version no
-        // longer emits. False whenever it cannot be told.
+        // Whether a patched material is carrying code this version no longer
+        // emits. False whenever it cannot be told.
         //
-        // The original is recovered from the patch itself rather than from
-        // the component: a CONVERTED avatar adopts its components and never
-        // records what it was baked from, which is most avatars, and a check
-        // that needs that field would quietly do nothing for all of them.
-        // The patch carries its source shader's name in a hidden property's
-        // description, which is the one place a string can ride.
+        // The original is recovered from the patch itself, never from the
+        // component: a CONVERTED avatar adopts its components and never records
+        // what it was baked from, so a check needing that field would quietly
+        // do nothing for most avatars. The patch carries its source shader's
+        // name in a hidden property's description, the one place a string rides.
         public static bool IsStale(Material patched)
         {
             return patched != null && patched.shader != null
@@ -172,46 +166,38 @@ namespace AvatarBridge
         // What the patched shader is called, and it is not cosmetic.
         //
         // Poiyomi strips a shader from the BUILD when it carries Thry's two
-        // marker properties and is not named "Hidden/Locked/...", reading
-        // that as an unlocked uber-shader. Our patch of a Poiyomi material
-        // inherits both markers, so under any other name it is excluded from
-        // the bundle and the avatar uploads PINK — correct in the editor,
-        // missing in game, which is the worst failure this tool can produce.
+        // marker properties and is not named "Hidden/Locked/...", reading that
+        // as an unlocked uber-shader. A patch of a Poiyomi material inherits
+        // both markers, so under any other name it is excluded from the bundle
+        // and the avatar uploads PINK: correct in the editor, missing in game,
+        // which is the worst failure this tool can produce.
         //
-        // A patch of a locked Poiyomi IS locked: its features are already
-        // resolved to constants, and only the deform was added. So the name
-        // is honest as well as necessary. Shaders with no Thry markers keep
-        // the plain name; there is nothing to strip them.
+        // A patch of a locked Poiyomi IS locked, so the name is honest as well
+        // as necessary. Shaders with no Thry markers keep the plain name.
         //
-        // The name does a second job, found by reading Thry's own sweep
-        // (ShaderOptimizer.SetLockedForAllMaterials). Auto-lock-on-upload
-        // takes every material whose shader uses the optimizer and is not
-        // already locked, and its test for "already locked" is this exact
-        // prefix. Under any other name our patch is swept into a lock, which
-        // resolves properties to constants — and OUR properties are the ones
-        // animation drives, so the deform would freeze at whatever the
-        // material happened to hold. The prefix keeps the sweep off it.
+        // The name does a second job. Auto-lock-on-upload takes every material
+        // whose shader uses the optimizer and is not already locked, and its
+        // test for "already locked" is this exact prefix. Swept into a lock,
+        // THESE properties resolve to constants, and those are the ones animation
+        // drives, so the deform would freeze at whatever the material held.
         //
         // Hence BOTH markers, not just the editor's: the sweep keys on
-        // ThryShaderOptimizerLockButton, and a shader carrying that without
-        // the editor marker would have been named plainly and swept.
-        // An ALREADY LOCKED source is the third signal, and it is the one
-        // that matters most. Locking strips both marker properties, so a
-        // locked Poiyomi looks like no Thry shader at all, and the copy was
-        // named plainly and swept into a lock of its own. That resolves OUR
-        // properties to constants, and a constant where a declaration should
-        // be is not a frozen deform but a shader that will not compile:
+        // ThryShaderOptimizerLockButton, and a shader carrying that without the
+        // editor marker would have been named plainly and swept.
         //
-        //   float4 _YAPS_SocketPos;   ->   float4 0.5;
-        //   'float4' already defined as a type / unexpected integer constant
+        // An ALREADY LOCKED source is the third signal, and the one that
+        // matters most. Locking strips both markers, so a locked Poiyomi looks
+        // like no Thry shader at all, was named plainly, and was swept into a
+        // lock of its own. That turns a declaration into a constant:
         //
-        // The editor never shows it, because nothing there forces the shadow
-        // caster pass to compile. Entering play mode does, the pass fails,
-        // and the plug loses its deform in front of the user, who reasonably
-        // reports that the bake came undone.
+        //     float4 _YAPS_SocketPos;   ->   float4 0.5;
         //
-        // So the shaders that most need the protective name were the only
-        // ones that could not get it.
+        // which does not compile at all. The editor never shows it, because
+        // nothing there forces the shadow caster pass to compile. Play mode
+        // does, the pass fails, and it reads as the bake coming undone.
+        //
+        // So the shaders that most need the protective name were the only ones
+        // that could not get it.
         static string PatchedName(string sourceText, string hash)
         {
             bool thry = sourceText != null
@@ -236,7 +222,7 @@ namespace AvatarBridge
             if (string.IsNullOrEmpty(sourcePath))
             {
                 refusal = $"\"{material.shader.name}\" has no source file on disk, so there is " +
-                          "nothing to patch — it is one of Unity's built-ins or lives inside a " +
+                          "nothing to patch: it is one of Unity's built-ins or lives inside a " +
                           "compiled package";
                 return null;
             }
@@ -256,13 +242,11 @@ namespace AvatarBridge
             }
             if (shaderFile.Text.Contains("_SPS_Bake") && !allowSps)
             {
-                // Two deform systems moving the same vertices would fight,
-                // and the result would be neither. The converter suppresses
-                // SPS at bake time so the plug's material arrives carrying
-                // its plain shader; a shader that still has SPS in it means
-                // that step did not happen.
+                // Two deform systems moving the same vertices would fight, and the
+                // result would be neither. The converter suppresses SPS at bake time,
+                // so a shader that still has SPS in it means that step did not happen.
                 refusal = "it already carries VRChat's SPS, and two deform systems on the same " +
-                          "vertices would fight — suppress SPS at bake time so the plain shader " +
+                          "vertices would fight: suppress SPS at bake time so the plain shader " +
                           "comes through instead";
                 return null;
             }
@@ -300,10 +284,8 @@ namespace AvatarBridge
             }
             if (blockRefusal != null)
             {
-                // Half a patched shader is worse than none: the passes that
-                // took the deform would disagree with the passes that did
-                // not, and the mesh would be bent in some and straight in
-                // others.
+                // Half a patched shader is worse than none: the passes that took the
+                // deform would bend a mesh the others left straight.
                 refusal = blockRefusal;
                 return null;
             }
@@ -318,7 +300,7 @@ namespace AvatarBridge
             var patched = WriteAndVerify(unit, sourcePath, outputDir, hash, out string compileError);
             if (patched == null)
             {
-                refusal = "the patched shader did not compile — " + compileError;
+                refusal = "the patched shader did not compile: " + compileError;
                 return null;
             }
 
@@ -329,7 +311,7 @@ namespace AvatarBridge
                 + (skippedShadowPasses > 0
                     ? $" {skippedShadowPasses} shadow pass(es) use Unity's own shadow-caster " +
                       "function, which lives in Unity's includes rather than in this shader, so " +
-                      "there is nothing of the avatar's to edit there — the shadow will not " +
+                      "there is nothing of the avatar's to edit there: the shadow will not " +
                       "follow the bend. Cosmetic, and the alternative was no deform at all."
                     : ""));
             return patched;
@@ -362,7 +344,7 @@ namespace AvatarBridge
                 shaderFile.Text = shaderFile.Text.Remove(existing.Index, existing.Length);
             }
 
-            // The marker properties, into the Properties block beside ours.
+            // The marker properties, into the Properties block beside the YAPS ones.
             var properties = Regex.Match(shaderFile.Text, @"Properties\s*\{");
             if (properties.Success)
             {
@@ -385,10 +367,9 @@ namespace AvatarBridge
 
         // --- the vertex wrapper ---------------------------------------
 
-        // The vertex function is edited in place, not wrapped. Poiyomi
-        // declares its signature across a preprocessor conditional, which
-        // no wrapper can reproduce. The parameter is a local copy, so
-        // deforming it at the top is the same thing.
+        // The vertex function is edited in place, never wrapped. Poiyomi
+        // declares its signature across a preprocessor conditional, which no
+        // wrapper can reproduce. The parameter is a local copy anyway.
         static int PatchProgramBlocks(List<ShaderSpiPatcher.SourceFile> unit, string yaps,
             out string refusal, out int skippedShadowPasses)
         {
@@ -417,9 +398,8 @@ namespace AvatarBridge
                     continue;   // fragment-only, or a pass we need not touch
                 }
 
-                // Lightmap baking runs its own geometry and never shows the
-                // player anything; deforming there is pointless and can
-                // upset the bake.
+                // Lightmap baking runs its own geometry and shows the player nothing.
+                // Deforming there is pointless and can upset the bake.
                 if (LooksLikeMetaPass(shaderFile.Text, block.Index))
                 {
                     continue;
@@ -429,12 +409,10 @@ namespace AvatarBridge
                 if (!PatchOneVertexFunction(unit, yaps, vertName,
                         start, start + end.Index, alreadyInjected, out string why))
                 {
-                    // A shadow caster is allowed to be out of reach. Unity's
-                    // own vertShadowCaster lives in its CGIncludes, not in
-                    // the shader's source unit, so there is nothing of ours
-                    // to edit. Losing the whole deform to avoid a shadow
-                    // that does not follow the bend is the wrong trade, the
-                    // shadow is cosmetic, the deform is the feature.
+                    // A shadow caster is allowed to be out of reach. Unity's own
+                    // vertShadowCaster lives in its CGIncludes, not in the shader's source
+                    // unit, so there is nothing here to edit. The shadow is cosmetic,
+                    // the deform is the feature.
                     if (IsShadowCasterPass(shaderFile.Text, block.Index))
                     {
                         skippedShadowPasses++;
@@ -456,12 +434,11 @@ namespace AvatarBridge
             refusal = null;
             var pattern = new Regex($@"(\w+)\s+{Regex.Escape(vertName)}\s*\(");
 
-            // Look inside THIS program block first. A flattened shader
-            // repeats its whole vertex function per pass, and searching the
-            // file from the start would hand every pass the same first copy
-            //, patching it once per pass, at offsets computed before the
-            // previous edits, which shreds the preprocessor and reports as
-            // an undeclared 'endif'.
+            // Look inside THIS program block first. A flattened shader repeats its
+            // whole vertex function per pass, and searching the file from the start
+            // handed every pass the same first copy, patching it once per pass at
+            // offsets computed before the previous edits. It shreds the
+            // preprocessor and reports as an undeclared 'endif'.
             ShaderSpiPatcher.SourceFile file = unit[0];
             Match head = Match.Empty;
             if (blockStart >= 0 && blockEnd <= file.Text.Length)
@@ -475,9 +452,8 @@ namespace AvatarBridge
 
             if (!head.Success)
             {
-                // Not in the block, so it lives in an include. Those are
-                // textually shared by every pass that includes them, so
-                // patch such a function exactly once.
+                // Not in the block, so it lives in an include. Those are shared
+                // textually by every pass, so patch such a function exactly once.
                 file = ShaderSpiPatcher.FindIn(unit.Skip(1).ToList(), pattern.ToString(), out head);
                 if (file == null)
                 {
@@ -509,10 +485,8 @@ namespace AvatarBridge
             string parameters = file.Text.Substring(parenOpen + 1, parenClose - parenOpen - 1);
 
             // Strip preprocessor lines before reading identifiers. Poiyomi's
-            // parameter list ENDS with "#endif", and taking the last
-            // identifier from the raw text duly named the parameter "endif",
-            // emitting `endif.vertex.xyz`, which the compiler reported, with
-            // some justification, as an undeclared identifier 'endif'.
+            // parameter list ENDS with "#endif", so the last identifier of the raw
+            // text named the parameter "endif" and emitted `endif.vertex.xyz`.
             string cleaned = Regex.Replace(parameters, @"^[ \t]*#.*$", "", RegexOptions.Multiline);
 
             var identifiers = Regex.Matches(cleaned, @"[A-Za-z_]\w*")
@@ -573,17 +547,15 @@ namespace AvatarBridge
                 : "    float3 yapsTangent = float3(1,0,0);");
             // BOTH ends, unconditionally, and this is deliberate.
             //
-            // Each guards itself on its own enable, a plug has
-            // _YAPS_Enabled and a socket has _YAPS_SocketPower, and both
-            // default to a value that returns immediately. So a material is
-            // whichever end its properties say it is, decided at conversion
-            // time by what the converter sets rather than baked into which
-            // variant of the patcher happened to run.
+            // Each guards itself on its own enable, _YAPS_Enabled for a plug and
+            // _YAPS_SocketPower for a socket, both defaulting to an immediate
+            // return. So a material is whichever end its properties say it is,
+            // decided at conversion time rather than by which variant of the
+            // patcher happened to run.
             //
-            // The alternative was a socket-mode patcher, which means two
-            // emitted bodies to keep in step. Every expensive bug on this
-            // feature has come from two things that had to agree and
-            // quietly stopped agreeing.
+            // The alternative was a socket-mode patcher, which means two emitted
+            // bodies to keep in step. Every expensive bug on this feature has come
+            // from two things that had to agree and quietly stopped agreeing.
             body.AppendLine($"    YapsDeform(yapsPosition, yapsNormal, yapsTangent, {idExpression});");
             body.AppendLine(
                 $"    YapsSocketDeform(yapsPosition, yapsNormal, yapsTangent, {idExpression});");
@@ -598,11 +570,10 @@ namespace AvatarBridge
             }
             body.AppendLine("    // --- end YAPS ---");
 
-            // Body first, then the includes above the function, so the
-            // insertion offsets stay valid. The YAPS source goes
-            // immediately before the function rather than at the top of the
-            // block: by here the shader's own includes have run, so
-            // UnityCG's matrices and light arrays exist.
+            // Body first, then the includes above the function, so the insertion
+            // offsets stay valid. The YAPS source goes immediately before the
+            // function rather than at the top of the block: by there the shader's
+            // own includes have run, so UnityCG's matrices and light arrays exist.
             file.Text = file.Text.Insert(braceOpen + 1, body.ToString());
             file.Text = file.Text.Insert(head.Index, "\n" + yaps + "\n");
             return true;
@@ -680,12 +651,12 @@ namespace AvatarBridge
 
         // Read this pass's LightMode tag.
         //
-        // Scoped by the END of the previous program block rather than by
-        // looking back for the word "Pass". A flattened shader has its
-        // includes inlined, and names like CGI_PoiPassShadow contain "Pass"
-        //, so the backward search landed inside the previous pass's code
-        // and read the wrong tag, or none. Whatever sits between one
-        // ENDCG and the next CGPROGRAM is exactly this pass's declaration.
+        // Scoped by the END of the previous program block, never by looking
+        // back for the word "Pass". A flattened shader inlines its includes,
+        // and names like CGI_PoiPassShadow contain "Pass", so the backward
+        // search landed inside the previous pass and read the wrong tag.
+        // Whatever sits between one ENDCG and the next CGPROGRAM is exactly
+        // this pass's declaration.
         static bool PassTagIs(string text, int programIndex, string lightMode)
         {
             int from = 0;
@@ -715,17 +686,17 @@ namespace AvatarBridge
                 return null;
             }
 
-            // Dependency order, since inlining removes the include guards'
-            // ability to reorder anything.
+            // Dependency order, since inlining removes the include guards' ability
+            // to reorder anything.
             //
-            // The socket include comes along on every patch, plug or
-            // socket. It costs a few unused functions in a shader that will
-            // not call them, and it means one emitted body serves both ends
-            //, against keeping two divergent inline lists in step, which
-            // is the drift that has cost the most time on this feature.
+            // The socket include comes along on every patch, plug or socket. It
+            // costs a few unused functions in a shader that will not call them, and
+            // it means one emitted body serves both ends rather than two divergent
+            // inline lists to keep in step.
             string[] names =
             {
-                "yaps_props.cginc", "yaps_resolve.cginc", "yaps_deform.cginc", "yaps_socket.cginc",
+                "yaps_props.cginc", "yaps_atlas.cginc", "yaps_resolve.cginc", "yaps_deform.cginc",
+                "yaps_socket.cginc",
             };
             var sb = new StringBuilder();
             foreach (string name in names)
@@ -767,10 +738,9 @@ namespace AvatarBridge
             error = null;
             Directory.CreateDirectory(dir);
 
-            // The hash names the file as well as the shader. Two locked
-            // Poiyomi materials both come from a "Poiyomi Toon.shader" of
-            // their own, and one output name would have the second write
-            // over the first.
+            // The hash names the file as well as the shader. Two locked Poiyomi
+            // materials both come from a "Poiyomi Toon.shader" of their own, and
+            // one output name would have the second write over the first.
             var shaderFile = unit[0];
             string tag = "_YAPS_" + hash.Substring(0, Math.Min(8, hash.Length));
             shaderFile.OutputName = Path.GetFileNameWithoutExtension(sourcePath) + tag + ".shader";
@@ -788,9 +758,9 @@ namespace AvatarBridge
                 file.OutputName = name;
             }
 
-            // Resolve each include against the file it appears in, not
-            // against the spelling it was first seen under, the same file
-            // is often referred to two different ways.
+            // Resolve each include against the file it appears in, never the
+            // spelling it was first seen under: one file is often referred to two
+            // different ways.
             var byPath = new Dictionary<string, ShaderSpiPatcher.SourceFile>(StringComparer.OrdinalIgnoreCase);
             foreach (var file in unit)
             {
@@ -811,9 +781,9 @@ namespace AvatarBridge
                     }
                     return m.Value;
                 });
-                // One line ending throughout, whichever the source used:
-                // the inlined YAPS source may not match, and Unity warns
-                // about a file that mixes them on every import.
+                // One line ending throughout, whichever the source used. The inlined
+                // YAPS source may not match, and Unity warns about a mixed file on
+                // every import.
                 file.Text = file.Text.Replace("\r\n", "\n");
                 if (file.Crlf)
                 {
@@ -872,7 +842,7 @@ namespace AvatarBridge
             }
         }
 
-        static string Hash(string input)
+        internal static string Hash(string input)
         {
             using (var sha = System.Security.Cryptography.SHA256.Create())
             {

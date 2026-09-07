@@ -33,7 +33,7 @@ namespace AvatarBridge.Regression
         const float Padding = 5f;
         const float RowWidthLimit = 60f;
 
-        [MenuItem("Tools/AvatarBridge Dev/Scenes — build \"all converted\" test scene")]
+        [MenuItem("Tools/AvatarBridge Dev/Scenes: build \"all converted\" test scene")]
         public static void Build()
         {
             var prefabs = AssetDatabase.FindAssets("t:Prefab", new[] { OutputFolder })
@@ -52,7 +52,7 @@ namespace AvatarBridge.Regression
                     "Build test scene?",
                     $"Instantiates {prefabs.Count} converted avatars into one scene and saves it as\n" +
                     $"{ScenePath}\n\n" +
-                    "That is a lot of geometry in one place — expect it to be heavy to open, and " +
+                    "That is a lot of geometry in one place: expect it to be heavy to open, and " +
                     "do not press Play in it expecting anything sensible.",
                     "Build it", "Cancel"))
             {
@@ -71,7 +71,7 @@ namespace AvatarBridge.Regression
                 {
                     string path = prefabs[i];
                     string name = Path.GetFileNameWithoutExtension(path);
-                    EditorUtility.DisplayProgressBar($"Building test scene — {i + 1}/{prefabs.Count}",
+                    EditorUtility.DisplayProgressBar($"Building test scene: {i + 1}/{prefabs.Count}",
                         name, (float)i / prefabs.Count);
 
                     var asset = AssetDatabase.LoadAssetAtPath<GameObject>(path);

@@ -25,7 +25,7 @@ namespace AvatarBridge
         }
 
         // Which system authored this material, if any. Decided from the
-        // properties the material actually HAS, not the shader's name , 
+        // properties the material actually HAS, not the shader's name ,
         // Poiyomi hosts TPS inside its own shader, and a locked Poiyomi
         // renames the shader per material.
         public static Origin Detect(Material material, out Part part)
@@ -137,7 +137,7 @@ namespace AvatarBridge
 
         static void CarryDpsSocket(Material s, Material t, List<Carried> carried, List<string> unmapped)
         {
-            // DPS depths are metres past the socket, ours fractions of a
+            // DPS depths are metres past the socket, YAPS fractions of a
             // plug a socket cannot know. Carried against a 0.3 m
             // reference, which keeps the order and the proportions.
             const float reference = 0.3f;

@@ -20,7 +20,7 @@ namespace AvatarBridge.Regression
     // nothing, which is exactly what the comment did.
     public static class PipelineOrderTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test — pass ordering invariant")]
+        [MenuItem("Tools/AvatarBridge Dev/Test: pass ordering invariant")]
         public static void Run()
         {
             int fail = 0;
@@ -54,7 +54,7 @@ namespace AvatarBridge.Regression
             };
             fail += Check("correct ordering is accepted", BridgePipeline.Validate(good) == null);
 
-            // An editor with nothing to make the clips ours is just as wrong.
+            // An editor with nothing to take the clips over is just as wrong.
             var orphan = new List<BridgePass> { P("Constraints", PassTraits.EditsClips) };
             fail += Check("clip editor with no self-containment at all is REJECTED",
                 BridgePipeline.Validate(orphan) != null);
@@ -70,8 +70,8 @@ namespace AvatarBridge.Regression
             fail += Check($"the SHIPPING pipeline validates ({live ?? "sound"})", live == null);
 
             Debug.Log(fail == 0
-                ? "[PipelineOrderTest] PASS — bad orders are caught, the shipping order is sound."
-                : $"[PipelineOrderTest] FAIL — {fail} case(s) wrong.");
+                ? "[PipelineOrderTest] PASS: bad orders are caught, the shipping order is sound."
+                : $"[PipelineOrderTest] FAIL: {fail} case(s) wrong.");
             if (Application.isBatchMode) EditorApplication.Exit(fail == 0 ? 0 : 1);
         }
     }

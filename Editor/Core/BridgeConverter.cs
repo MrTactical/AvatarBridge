@@ -27,6 +27,14 @@ namespace AvatarBridge
             {
                 settings.stripSpsSystems = true;
             }
+#if !AVATARBRIDGE_YAPS
+            // No add-on installed, so there is nothing to rebuild the
+            // penetration into and the choice collapses to removing it.
+            // Saved settings from a project that had the add-on say convert;
+            // honouring that would strip the system and build no replacement.
+            settings.convertYapsSystems = false;
+            settings.stripSpsSystems = true;
+#endif
             var report = new BridgeReport();
             var ctx = new BridgeContext
             {
@@ -142,6 +150,10 @@ namespace AvatarBridge
                     // dead helper rig do not exist until now.
                     Pass("Helper rig cleanup", HelperRigCleanup.Run),
                     Pass("Shader SPI patch", ShaderSpiPatcher.Run),
+#if !AVATARBRIDGE_YAPS
+                    // Where the YAPS pass would have run.
+                    Pass("Penetration add-on", SystemStripper.NotePenetrationAddOn),
+#else
                     // After the SPI patch, so the deform lands on the stereo-fixed copy.
                     Pass("YAPS penetration system", YapsConverter.Run),
                     // Straight after, and not before: it wires the plugs
@@ -149,6 +161,7 @@ namespace AvatarBridge
                     // already produced. Registered earlier it ran on an
                     // empty list and reported nothing at all.
                     Pass("YAPS socket channel", YapsChannel.Run),
+#endif
 
                     // Last content pass before anything edits a clip.
                     // The controller is final; every referenced clip is
@@ -185,11 +198,13 @@ namespace AvatarBridge
                     // After ownership settles: it writes into the clips that
                     // drive the plug's own blendshapes, and editing a shared
                     // clip would reach the package it came from.
+#if AVATARBRIDGE_YAPS
                     Pass("Mirror YAPS blendshape curves", YapsConverter.MirrorShapeCurves,
                          PassTraits.EditsClips),
                     // Transition thresholds on the merged controller only;
                     // touches no clip.
                     Pass("Steady auto socket mode", YapsConverter.SteadyAutoMode),
+#endif
                     // Reads the final clip list, writes to particle components.
                     Pass("Enable animated particle emitters", MiscConverter.EnableAnimatedParticleEmitters),
                     // Animated PhysBone parameters have no retarget on
@@ -197,8 +212,9 @@ namespace AvatarBridge
                     Pass("Report animated PhysBone properties",
                          PhysBoneConverter.ReportAnimatedPhysBoneProperties, PassTraits.EditsClips),
                     // The atlas objects went early; their curves go here,
-                    // once the clips are ours. Before the rename so its
+                    // once the clips are the conversion's own. Before the rename so its
                     // dead-path sweep judges a clean set.
+#if AVATARBRIDGE_YAPS
                     Pass("Strip screen-atlas curves", YapsConverter.StripAtlasCurves,
                          PassTraits.EditsClips),
                     // Also before the rename, and after every bake: a swap
@@ -211,6 +227,7 @@ namespace AvatarBridge
                     // so anything running after it that wrote a path would
                     // write the old one and address nothing.
                     Pass("Rename YAPS objects", YapsRename.Run, PassTraits.EditsClips),
+#endif
                     // Last thing that touches the animator: the masks that
                     // list every transform by name must match the final
                     // hierarchy, or a renamed object's transform curves are
@@ -236,20 +253,20 @@ namespace AvatarBridge
                 if (success && prefab != null)
                 {
                     ctx.Report.Converted("Conversion", "Converted avatar saved as a prefab",
-                        $"{path} — a crash or an unsaved scene can no longer lose the conversion; " +
+                        $"{path}: a crash or an unsaved scene can no longer lose the conversion; " +
                         "drag the prefab back into the scene to continue where you left off.");
                 }
                 else
                 {
                     ctx.Report.Warning("Conversion", "Could not save the converted avatar as a prefab",
-                        "The scene object is still fine — save the scene to keep it. The usual cause " +
+                        "The scene object is still fine, save the scene to keep it. The usual cause " +
                         "is a component Unity refuses to persist; the console names it.");
                 }
             }
             catch (Exception e)
             {
                 ctx.Report.Warning("Conversion", "Could not save the converted avatar as a prefab",
-                    $"{e.Message} — the scene object is still fine; save the scene to keep it.");
+                    $"{e.Message}; the scene object is still fine; save the scene to keep it.");
             }
         }
 
@@ -292,10 +309,10 @@ namespace AvatarBridge
                 : noDomain ? "Reload Domain is off"
                 : "it is on";
 
-            ctx.Report.Warning("Conversion", "Unity's \"Enter Play Mode Options\" is on — turn it off before testing",
+            ctx.Report.Warning("Conversion", "Unity's \"Enter Play Mode Options\" is on, turn it off before testing",
                 $"Edit → Project Settings → Editor → Enter Play Mode Settings ({which}). It skips the scene " +
                 "and/or domain reload, so pressing Play rebinds every Animator against state left over from " +
-                "edit mode — and the controller this conversion just wrote is the newest thing in the project. " +
+                "edit mode, and the controller this conversion just wrote is the newest thing in the project. " +
                 "Two things that get blamed on conversion come from this and nothing else: Unity dying on Play " +
                 "with \"Assertion failed on expression: 'MecanimDataWasBuilt()'\" and a SIGSEGV inside " +
                 "GenerateGraph, and an avatar that looks right in the scene but renders with the wrong " +
@@ -313,7 +330,7 @@ namespace AvatarBridge
                 int used = usage.Item2; // base controller + menu entries = actual sync
                 ctx.Report.Converted("Sync", $"{used} of 3200 sync bits used",
                     "In the CCK inspector this is the SECOND number of \"(0, N) of 3200\". The first is the " +
-                    "override controller, which AvatarBridge doesn't use — so \"0\" there is expected, not a problem.");
+                    "override controller, which AvatarBridge doesn't use, so \"0\" there is expected, not a problem.");
             }
             catch (Exception e)
             {
@@ -384,7 +401,7 @@ namespace AvatarBridge
             {
                 ctx.Report.Warning("Avatar",
                     $"{missingPrefabs.Count} missing prefab(s) in the avatar's hierarchy",
-                    $"{string.Join("; ", missingPrefabs)} — the prefab asset these were instances of " +
+                    $"{string.Join("; ", missingPrefabs)}: the prefab asset these were instances of " +
                     "isn't in this project, so each is an empty shell where a feature used to be. The " +
                     "avatar converts fine without them; if the feature matters, import the package it " +
                     "came from and convert again.");
@@ -394,12 +411,12 @@ namespace AvatarBridge
                 return;
             }
             ctx.Report.Warning("Avatar",
-                $"{missing} missing script(s) on the avatar — a package it was built with is not installed",
+                $"{missing} missing script(s) on the avatar, a package it was built with is not installed",
                 $"On: {string.Join(", ", examples)}{(missing > examples.Count ? ", …" : "")}. If this " +
                 "avatar uses VRCFury or Modular Avatar, INSTALL THEM BEFORE CONVERTING: both do their " +
                 "real work at build time (toggles, armature merges, animation path rewriting), and " +
                 "without them everything they would have baked is silently missing from the conversion " +
-                "— features can look converted and still do nothing in game.");
+                "; features can look converted and still do nothing in game.");
         }
 
         static void PrepareTarget(BridgeContext ctx)
@@ -411,8 +428,10 @@ namespace AvatarBridge
             // Fury's bake also runs NDMF internally, so it covers avatars that use both
             // VRCFury and Modular Avatar.
             {
+#if AVATARBRIDGE_YAPS
                 // Flips the plugs' SPS flag off for the bake, so the plain shader comes back.
                 var yaps = YapsBakePrep.Begin(ctx, source);
+#endif
                 GameObject baked;
                 try
                 {
@@ -420,7 +439,9 @@ namespace AvatarBridge
                 }
                 finally
                 {
+#if AVATARBRIDGE_YAPS
                     yaps.Restore();
+#endif
                 }
                 if (baked != null)
                 {
@@ -489,16 +510,16 @@ namespace AvatarBridge
             }
             animator.runtimeAnimatorController = null;
             ctx.Report.Error("Animator",
-                "Controller unlinked from the Animator — it CRASHES Unity",
+                "Controller unlinked from the Animator, it CRASHES Unity",
                 "This avatar's controller references assets that resolve to nothing, and Unity " +
-                "builds a Mecanim playable graph from a controller whenever the Animator awakens — " +
+                "builds a Mecanim playable graph from a controller whenever the Animator awakens; " +
                 "which merely SELECTING the object in the Inspector is enough to do. That walks " +
                 "into the missing references and takes the editor down with no error, losing " +
                 "unsaved work. The reference has been removed so the editor can't do it. " +
                 "ChilloutVR is unaffected by the removal itself: the CVRAvatar still carries the " +
                 "base controller and the overrides, which is what the client reads on load. But " +
                 "the broken references are still in that controller, so fix them and convert " +
-                "again before uploading — see the unresolvable-asset error for where they came " +
+                "again before uploading; see the unresolvable-asset error for where they came " +
                 "from, usually a VRCFury or Modular Avatar bake that errored partway.");
         }
     }

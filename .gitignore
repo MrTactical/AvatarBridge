@@ -17,6 +17,7 @@ desktop.ini
 
 # Internal development notes; local only.
 /CLAUDE.md
+/AGENTS.md
 
 # Development spike and probes; local only.
 /Dev/Spikes/
@@ -29,3 +30,14 @@ slim.md
 dead.md
 strip.md
 cloth.md
+
+# Local agent tooling config, same class as CLAUDE.md and AGENTS.md
+.codex/
+
+# Machine-specific paths for the dev scripts. Dev/local.cfg.example is the
+# tracked template; the real one names this machine's directories.
+/Dev/local.cfg
+
+# Working notes between the agents on this repo. Local only: they name
+# people and describe internal process, and this repo is public.
+/Dev/dialogue.md
