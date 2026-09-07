@@ -141,19 +141,11 @@ namespace AvatarBridge
             return Controllers(socket).Any(c => c.layers.Any(l => l.name == layerName || (!string.IsNullOrEmpty(socket.builtLayer) && l.name == socket.builtLayer)));
         }
 
-        // Strength lives in the clips, so changing it rewrites them. The
-        // layer stays at full weight: a partial one creeps to full in game,
-        // blending against its own last frame where nothing else writes
-        // these shapes. Returns whether a built layer took the new value.
-        public static bool SetStrength(YapsSocket socket)
-        {
-            if (!Exists(socket)) return false;
-            Build(socket);
-            return true;
-        }
-
         // Builds or rebuilds the reactions for one socket. Returns what
         // happened, or null when the socket has nothing to react with.
+        // Strength lives in the clips, so changing it rebuilds. The layer
+        // stays at full weight: a partial one creeps to full in game,
+        // blending against its own last frame.
         public static string Build(YapsSocket socket)
         {
             if (socket == null) return null;
