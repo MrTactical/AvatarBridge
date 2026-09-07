@@ -837,6 +837,56 @@ namespace AvatarBridge
                 "natively and without the delay.");
         }
 
+#if !AVATARBRIDGE_YAPS
+        // Without the add-on there is nothing to rebuild a penetration
+        // system into, so it is removed. Said out loud only where the avatar
+        // actually had one: silence reads as the converter having handled it,
+        // and the plug mesh still being there makes that easy to believe.
+        //
+        // Fury's components by type name, and the contact tags every system
+        // uses, which are the same prefixes the strip already works from.
+        internal static void NotePenetrationAddOn(BridgeContext ctx)
+        {
+            var source = ctx.SourceDescriptor != null ? ctx.SourceDescriptor.gameObject : ctx.Target;
+            if (source == null || !ctx.Settings.stripSpsSystems)
+            {
+                return;
+            }
+            bool found = false;
+            foreach (var component in source.GetComponentsInChildren<Component>(true))
+            {
+                if (component == null)
+                {
+                    continue;
+                }
+                if (component.GetType().Name.StartsWith("VRCFuryHaptic", StringComparison.Ordinal))
+                {
+                    found = true;
+                    break;
+                }
+                var tags = component.GetType().GetField("collisionTags")?.GetValue(component) as IEnumerable<string>;
+                if (tags != null && tags.Any(t => !string.IsNullOrEmpty(t)
+                        && YapsPointerTypePrefixes.Any(prefix => t.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))))
+                {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+            {
+                return;
+            }
+            ctx.Report.Skipped(Category,
+                "Penetration removed: converting it needs the YAPS add-on",
+                "This avatar carries DPS, TPS or SPS. None of it functions in ChilloutVR, and the " +
+                "part of AvatarBridge that rebuilds it for this platform ships as a separate " +
+                "download, which is not in this project, so the system was taken out instead: " +
+                "plugs, sockets, their lights, contacts, parameters and menu entries. The meshes " +
+                "stay where they are, straight and undeformable. Install the add-on and convert " +
+                "again to keep it, with the author's own tuning: " + BridgeLinks.YapsRepo);
+        }
+#endif
+
         internal static void RemoveStrippedObjects(BridgeContext ctx)
         {
             if (ctx.Settings.stripSpsSystems)

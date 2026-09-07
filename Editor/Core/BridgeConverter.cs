@@ -150,8 +150,11 @@ namespace AvatarBridge
                     // dead helper rig do not exist until now.
                     Pass("Helper rig cleanup", HelperRigCleanup.Run),
                     Pass("Shader SPI patch", ShaderSpiPatcher.Run),
+#if !AVATARBRIDGE_YAPS
+                    // Where the YAPS pass would have run.
+                    Pass("Penetration add-on", SystemStripper.NotePenetrationAddOn),
+#else
                     // After the SPI patch, so the deform lands on the stereo-fixed copy.
-#if AVATARBRIDGE_YAPS
                     Pass("YAPS penetration system", YapsConverter.Run),
                     // Straight after, and not before: it wires the plugs
                     // that pass finds, into the controller the merge has

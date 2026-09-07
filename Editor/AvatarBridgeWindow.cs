@@ -782,6 +782,18 @@ namespace AvatarBridge
                     "poses, and CVR's quick-menu emotes won't animate: GoGo's wheel replaces " +
                     "them. Removing GoGo remains the recommended path."));
             }
+#if !AVATARBRIDGE_YAPS
+            // No add-on in the project, so "Convert to YAPS" is not an answer
+            // this build can give. Offering it and quietly removing instead is
+            // the worst of the three.
+            b.Add(new HelpBox(
+                "Penetration (DPS, TPS, SPS) is removed. Rebuilding it for ChilloutVR is a separate " +
+                "download, the YAPS add-on, and it is not in this project. Install it and the choice " +
+                "appears here.", HelpBoxMessageType.Info));
+            b.Add(Link("Get the YAPS add-on (GitHub)  ↗", () => Application.OpenURL(BridgeLinks.YapsRepo)));
+            settings.stripSpsSystems = true;
+            settings.convertYapsSystems = false;
+#else
             // One question over two settings, three answers; the fourth
             // combination the ticks allowed is not offered. Radio buttons stack
             // like the toggles around them.
@@ -830,22 +842,15 @@ namespace AvatarBridge
                 b.Add(BridgeElements.Hint(
                     "The OGB haptics stay synced for OSC toys: that is on under Manual options ▸ Opt-ins."));
             }
-            // The other door. The YAPS tool builds and tunes penetration on
-            // an avatar already here; this converts. Present, say where it
-            // is; absent, say where to get it.
-            if (BridgeLinks.HasYapsTool)
-            {
-                b.Add(BridgeElements.Hint(
-                    "Already on ChilloutVR? Tools ▸ YAPS ▸ Setup adds, tunes or upgrades penetration on any " +
-                    "avatar or prop: same system, same shader. This converts; that builds."));
-            }
-            else
-            {
-                b.Add(BridgeElements.Hint(
-                    "Already on ChilloutVR? The YAPS tool adds, tunes or upgrades penetration on any avatar " +
-                    "or prop: same system, same shader. This converts; that builds. It is not in this project."));
-                b.Add(Link("Get the YAPS tool (GitHub)  ↗", () => Application.OpenURL(BridgeLinks.YapsRepo)));
-            }
+#endif
+#if AVATARBRIDGE_YAPS
+            // The other door. The add-on builds and tunes penetration on an
+            // avatar already here; this converts. Absent, the card above has
+            // already said so and offered the download.
+            b.Add(BridgeElements.Hint(
+                "Already on ChilloutVR? Tools ▸ YAPS ▸ Setup adds, tunes or upgrades penetration on any " +
+                "avatar or prop: same system, same shader. This converts; that builds."));
+#endif
             b.Add(BridgeElements.Bind("Remove animation that can't do anything (recommended)",
                 "Curves writing to material properties the shader doesn't have: the signature of a " +
                 "locked Poiyomi shader that baked them away. They do nothing here and did nothing in " +
@@ -1016,6 +1021,7 @@ namespace AvatarBridge
                 }
             }
 
+#if AVATARBRIDGE_YAPS
             optIns.Add(BridgeElements.SubHeading("Penetration"));
             optIns.Add(BridgeElements.Bind("Show the avatar's OWN depth animations to other players",
                 "Not the socket deform: a socket with its own mesh opens through its shader, which every " +
@@ -1034,7 +1040,7 @@ namespace AvatarBridge
                     "parameters as authored pays for each of them.",
                     HelpBoxMessageType.Warning));
             }
-
+#endif
 
             b.Add(BridgeElements.SubHeading("Menu & extras"));
             b.Add(EnumPopup<ToggleStyle>("Toggle style",

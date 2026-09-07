@@ -17,16 +17,10 @@ namespace AvatarBridge
         public const string Repo = "https://github.com/MrTactical/AvatarBridge";
         public const string Releases = Repo + "/releases/latest";
 
-        // Where the converter sends someone without the YAPS tool. It ships
-        // inside the AvatarBridge package today, so that is the release
-        // page; point this at its own repo the day it has one.
+        // Where the converter sends someone without the add-on. Both
+        // downloads sit on the same release page; point this at its own repo
+        // the day YAPS has one.
         public const string YapsRepo = Releases;
-
-        // Is the YAPS tool present in this project? By type, not by define:
-        // once it is its own package the converter cannot assume it.
-        public static bool HasYapsTool =>
-            AppDomain.CurrentDomain.GetAssemblies()
-                .Any(a => a.GetType("AvatarBridge.YapsSetupWindow", false) != null);
 
         // And the other way round: is the converter here? The YAPS tool asks
         // before it names a menu that may not exist.
