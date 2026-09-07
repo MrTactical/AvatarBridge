@@ -3,6 +3,13 @@
 **Reconvert to get any of this.** One release, two downloads, a changelog each. Existing avatars
 keep working as they are; nothing below reaches them until they are converted or rebuilt.
 
+**Updating from 4.4.x: delete `Assets/AvatarBridge` first, then import what you want.** Importing
+a package never removes a file, so a 4.4.x install leaves its copy of the penetration system on
+disk whatever you import over it, and you end up running last version's half beside this one's.
+Deleting the folder is safe: your converted avatars live in `Assets/AvatarBridgeOutput`, which is
+a sibling folder and is not touched. Delete, import the converter, then import the add-on as well
+if you want penetration.
+
 ---
 
 ## AvatarBridge `AvatarBridge-4.5.0-public.unitypackage`

@@ -248,6 +248,18 @@ ChilloutVR avatar or prop:
 Both packages install to `Assets/AvatarBridge` and share one codebase, so either order works and
 nothing is duplicated.
 
+### Updating
+
+**Delete `Assets/AvatarBridge` first, then import.** Unity's importer replaces files and never
+removes one, so anything a previous version shipped and this one does not stays on disk and keeps
+compiling. That matters from 4.5.0 onwards, since penetration used to be part of the one package
+and is now a download of its own: import the converter over a 4.4.x install and last version's
+penetration system is still sitting there beside it.
+
+Deleting the folder costs nothing. **Your converted avatars are in `Assets/AvatarBridgeOutput`**,
+a sibling folder, and nothing here writes into them. Delete `Assets/AvatarBridge`, import the
+converter, and import the add-on too if you want penetration.
+
 ## Usage
 
 **Tools → Avatar Bridge → VRChat to ChilloutVR Converter**, then:
