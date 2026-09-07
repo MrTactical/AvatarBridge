@@ -106,6 +106,106 @@ namespace AvatarBridge.Regression
             Selection.activeGameObject = go;
         }
 
+        // TEST 4. Another body's socket alongside the wearer's own, which is
+        // the case the relaxed rule can make worse rather than better.
+        //
+        // The two bodies end up almost inside each other, and that is correct.
+        // The atlas returns nothing past about 1.2 plug lengths, so for a 22 cm
+        // plug somebody else's socket is only ever visible within a quarter of
+        // a metre. In use that is exactly where it is.
+        //
+        // Both sockets sit close to their OWN hip, which the first version got
+        // wrong. Ownership is decided by the nearest hip to the socket, so a
+        // socket floating midway between two bodies belongs to whichever hip
+        // wins by a millimetre and the answer is a coin toss.
+        [MenuItem("Tools/YAPS/Own-body test: add the other body")]
+        static void OtherBody()
+        {
+            var selected = Selection.activeGameObject;
+            var avatar = selected != null ? selected.GetComponentInParent<CVRAvatar>() : null;
+            var plug = avatar != null ? avatar.GetComponentInChildren<YapsPlug>(true) : null;
+            if (plug == null)
+            {
+                Debug.Log("OTHER BODY: select the avatar carrying the test plug first.");
+                return;
+            }
+
+            var root = plug.transform.position;
+            var forward = plug.transform.forward;
+
+            // Near enough to its own hip to own it, far enough from the plug to
+            // be second in the chain.
+            const float OwnAt = 0.06f;
+            const float OtherAt = 0.18f;
+
+            var ownSocket = Nearest(avatar);
+            if (ownSocket == null)
+            {
+                Debug.Log("OTHER BODY: the avatar has no YapsSocket. Build the rig first.");
+                return;
+            }
+            Undo.RecordObject(ownSocket.transform, "Move the wearer's socket");
+            ownSocket.transform.position = root + forward * OwnAt;
+
+            var copy = Object.Instantiate(avatar.gameObject, avatar.transform.parent);
+            copy.name = "OTHER BODY";
+            Undo.RegisterCreatedObjectUndo(copy, "Add the other body");
+
+            // A second plug would answer the atlas as well and there is no way
+            // to tell whose bend is whose.
+            foreach (var extra in copy.GetComponentsInChildren<YapsPlug>(true))
+            {
+                Object.DestroyImmediate(extra.gameObject);
+            }
+
+            var otherAvatar = copy.GetComponent<CVRAvatar>();
+            var otherSocket = Nearest(otherAvatar);
+            if (otherSocket == null)
+            {
+                Debug.Log("OTHER BODY: the copy has no socket, so there is nothing to compete.");
+                return;
+            }
+            // Move the whole body, never the socket alone: the socket has to
+            // stay on its own hip or ownership cannot tell the two apart.
+            copy.transform.position += (root + forward * OtherAt) - otherSocket.transform.position;
+
+            float len = plug.lengthOverride > 0f ? plug.lengthOverride : Length;
+            Debug.Log($"OTHER BODY: the wearer's socket is {OwnAt:0.00} m from the plug and the " +
+                $"other body's is {OtherAt:0.00} m, both inside the roughly {Reach(len):0.00} m " +
+                "the atlas can see.
+" +
+                "View Off: the plug should take the wearer's own, being nearer. Then swap the two " +
+                "distances and it should follow the other body's. Anything else, and admitting " +
+                "own-body sockets has cost somebody the socket they were using.");
+
+            Selection.activeGameObject = copy;
+        }
+
+        // Nearest socket to the avatar's hip, which is the one built as NEAR
+        // unless the rig has been edited by hand.
+        static YapsSocket Nearest(CVRAvatar avatar)
+        {
+            var hip = YapsFakePlayers.HipOf(avatar);
+            var from = hip != null ? hip.position : avatar.transform.position;
+            YapsSocket best = null;
+            float bestD = float.MaxValue;
+            foreach (var socket in avatar.GetComponentsInChildren<YapsSocket>(true))
+            {
+                float d = Vector3.Distance(socket.transform.position, from);
+                if (d < bestD) { bestD = d; best = socket; }
+            }
+            return best;
+        }
+
+        // What the atlas can actually return, which is the three-cell scan and
+        // not the far constant. Mirrors YapsResolveChain.
+        static float Reach(float len)
+        {
+            float want = len * 0.5f;
+            int lvl = Mathf.Clamp(Mathf.RoundToInt(Mathf.Log(want / 0.02f, 2f) * 0.5f), 0, 3);
+            return len * 0.5f + 2f * 0.02f * Mathf.Pow(4f, lvl);
+        }
+
         static void AddSocket(CVRAvatar avatar, string name, float ahead)
         {
             // NO MARKER LIGHTS. A light resolves the socket too, and on the
