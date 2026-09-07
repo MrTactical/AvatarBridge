@@ -106,7 +106,13 @@ namespace AvatarBridge.Regression
 
         static void AddSocket(CVRAvatar avatar, string name, float ahead)
         {
-            var socket = YapsSocketBuilder.BuildPreviewSocket(name, YapsSocket.SocketKind.Hole);
+            // NO MARKER LIGHTS. A light resolves the socket too, and on the
+            // "Resolved by" view its answer is 0.75 against the atlas taps'
+            // 0.66: two centimetres apart on a plug this long, which is not a
+            // reading. With the lights gone the lower tier cannot answer at
+            // all, so anything but a quarter or full is the atlas.
+            var socket = YapsSocketBuilder.BuildPreviewSocket(
+                name, YapsSocket.SocketKind.Hole, false);
             Undo.RegisterCreatedObjectUndo(socket, "Add a test socket");
             socket.transform.SetParent(avatar.transform, false);
             var hip = YapsFakePlayers.HipOf(avatar);
