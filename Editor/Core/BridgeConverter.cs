@@ -27,6 +27,14 @@ namespace AvatarBridge
             {
                 settings.stripSpsSystems = true;
             }
+#if !AVATARBRIDGE_YAPS
+            // No add-on installed, so there is nothing to rebuild the
+            // penetration into and the choice collapses to removing it.
+            // Saved settings from a project that had the add-on say convert;
+            // honouring that would strip the system and build no replacement.
+            settings.convertYapsSystems = false;
+            settings.stripSpsSystems = true;
+#endif
             var report = new BridgeReport();
             var ctx = new BridgeContext
             {
@@ -143,12 +151,14 @@ namespace AvatarBridge
                     Pass("Helper rig cleanup", HelperRigCleanup.Run),
                     Pass("Shader SPI patch", ShaderSpiPatcher.Run),
                     // After the SPI patch, so the deform lands on the stereo-fixed copy.
+#if AVATARBRIDGE_YAPS
                     Pass("YAPS penetration system", YapsConverter.Run),
                     // Straight after, and not before: it wires the plugs
                     // that pass finds, into the controller the merge has
                     // already produced. Registered earlier it ran on an
                     // empty list and reported nothing at all.
                     Pass("YAPS socket channel", YapsChannel.Run),
+#endif
 
                     // Last content pass before anything edits a clip.
                     // The controller is final; every referenced clip is
@@ -185,11 +195,13 @@ namespace AvatarBridge
                     // After ownership settles: it writes into the clips that
                     // drive the plug's own blendshapes, and editing a shared
                     // clip would reach the package it came from.
+#if AVATARBRIDGE_YAPS
                     Pass("Mirror YAPS blendshape curves", YapsConverter.MirrorShapeCurves,
                          PassTraits.EditsClips),
                     // Transition thresholds on the merged controller only;
                     // touches no clip.
                     Pass("Steady auto socket mode", YapsConverter.SteadyAutoMode),
+#endif
                     // Reads the final clip list, writes to particle components.
                     Pass("Enable animated particle emitters", MiscConverter.EnableAnimatedParticleEmitters),
                     // Animated PhysBone parameters have no retarget on
@@ -199,6 +211,7 @@ namespace AvatarBridge
                     // The atlas objects went early; their curves go here,
                     // once the clips are the conversion's own. Before the rename so its
                     // dead-path sweep judges a clean set.
+#if AVATARBRIDGE_YAPS
                     Pass("Strip screen-atlas curves", YapsConverter.StripAtlasCurves,
                          PassTraits.EditsClips),
                     // Also before the rename, and after every bake: a swap
@@ -211,6 +224,7 @@ namespace AvatarBridge
                     // so anything running after it that wrote a path would
                     // write the old one and address nothing.
                     Pass("Rename YAPS objects", YapsRename.Run, PassTraits.EditsClips),
+#endif
                     // Last thing that touches the animator: the masks that
                     // list every transform by name must match the final
                     // hierarchy, or a renamed object's transform curves are
@@ -411,8 +425,10 @@ namespace AvatarBridge
             // Fury's bake also runs NDMF internally, so it covers avatars that use both
             // VRCFury and Modular Avatar.
             {
+#if AVATARBRIDGE_YAPS
                 // Flips the plugs' SPS flag off for the bake, so the plain shader comes back.
                 var yaps = YapsBakePrep.Begin(ctx, source);
+#endif
                 GameObject baked;
                 try
                 {
@@ -420,7 +436,9 @@ namespace AvatarBridge
                 }
                 finally
                 {
+#if AVATARBRIDGE_YAPS
                     yaps.Restore();
+#endif
                 }
                 if (baked != null)
                 {

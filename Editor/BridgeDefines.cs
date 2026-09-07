@@ -14,6 +14,7 @@ namespace AvatarBridge
     // Defines managed here:
     //   AVATARBRIDGE_MAGICA   - MagicaCloth2 is present
     //   AVATARBRIDGE_DYNBONE  - DynamicBone (or the VRLabs stub) is present
+    //   AVATARBRIDGE_YAPS     - the YAPS add-on is installed
     //
     // The VRChat SDK and the CCK manage their own defines (VRC_SDK_VRCSDK3 and
     // CVR_CCK_EXISTS) which the rest of this package is gated behind.
@@ -24,6 +25,7 @@ namespace AvatarBridge
 
         public const string MagicaDefine = "AVATARBRIDGE_MAGICA";
         public const string DynamicBoneDefine = "AVATARBRIDGE_DYNBONE";
+        public const string YapsDefine = "AVATARBRIDGE_YAPS";
 
         // Retired define, still cleared from projects that carry it.
         public const string ContactsDefine = "AVATARBRIDGE_CONTACTS";
@@ -36,6 +38,10 @@ namespace AvatarBridge
 
         public static bool HasMagicaCloth2 => TypeExists("MagicaCloth2.MagicaCloth");
         public static bool HasDynamicBone => TypeExists("DynamicBone");
+        // A RUNTIME type of the add-on. Its editor code compiles into this
+        // same assembly, which is the thing the define gates, so asking for
+        // an editor type would be asking whether this file compiled.
+        public static bool HasYaps => TypeExists("AvatarBridge.Yaps.YapsPlug");
         public static bool HasVrcAvatarSdk => TypeExists("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
         public static bool HasCck => TypeExists("ABI.CCK.Components.CVRAvatar");
 
@@ -61,6 +67,7 @@ namespace AvatarBridge
             bool changed = false;
             changed |= SetDefine(defines, MagicaDefine, HasMagicaCloth2);
             changed |= SetDefine(defines, DynamicBoneDefine, HasDynamicBone);
+            changed |= SetDefine(defines, YapsDefine, HasYaps);
             // Always false. Passing it through SetDefine rather than dropping
             // the line is what clears it out of projects that still have it.
             changed |= SetDefine(defines, ContactsDefine, false);

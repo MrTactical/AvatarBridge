@@ -316,7 +316,7 @@ namespace AvatarBridge
                 // This tool's own atlas objects. Not rejected with a reason,
                 // because there is no question to answer: they are not the
                 // user's to lift out.
-                if (r.sharedMaterials != null && r.sharedMaterials.Any(YapsAtlas.IsPlumbing)) continue;
+                if (r.sharedMaterials != null && r.sharedMaterials.Any(YapsMarks.IsAtlasMaterial)) continue;
 
                 // One bone, or none. More than one is clothing.
                 string bone = null;

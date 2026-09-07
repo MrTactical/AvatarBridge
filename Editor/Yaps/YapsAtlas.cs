@@ -90,9 +90,7 @@ namespace AvatarBridge
         // offers the user something to DO about an object has to skip these.
         // A prop chip or an atlasing suggestion on this tool's own plumbing is
         // advice nobody can act on, and reads as a bug.
-        public static bool IsPlumbing(Material m) =>
-            m != null && m.shader != null
-            && m.shader.name.StartsWith("YAPS/Atlas", System.StringComparison.Ordinal);
+        public static bool IsPlumbing(Material m) => YapsMarks.IsAtlasMaterial(m);
 
         // The clear, without which an empty cell reads as the opaque screen
         // and every cell looks occupied. One per room is enough and a second

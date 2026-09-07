@@ -7,11 +7,14 @@
 # them present in the source, against a DLL a day older than the deploy.
 # Compare Library/ScriptAssemblies/Assembly-CSharp.dll against the files you
 # deployed before believing a failure, or let Unity open the project once.
-# Compiles the editor scripts twice: with the VRChat SDK and without it.
+# Compiles the editor scripts four times: with the VRChat SDK and without,
+# each with and without the YAPS add-on.
 #
-# The second one matters. A ChilloutVR-only user installs AvatarBridge for
-# the toolkit and never has the VRChat SDK, so every #else branch has to
-# stand on its own. Unity in the local projects only ever compiles the first.
+# Everything but the first combination matters. A ChilloutVR-only user
+# installs AvatarBridge for the toolkit and never has the VRChat SDK, and
+# YAPS ships as a separate add-on, so a converter without it compiles with
+# Editor/Yaps absent from the project entirely. Unity in the local projects
+# only ever compiles the one where everything is installed.
 #
 # Mono's csc, not the Roslyn one under lib/mono/msbuild: that one fails to
 # start and prints no error CS lines at all, which reads as a clean pass.
@@ -36,7 +39,7 @@ for tool in "$MONO" "$CSC" "$NETSTANDARD"; do
 done
 
 fail=0
-for defines in "CVR_CCK_EXISTS" "CVR_CCK_EXISTS;VRC_SDK_VRCSDK3"; do
+for defines in "CVR_CCK_EXISTS"                "CVR_CCK_EXISTS;AVATARBRIDGE_YAPS"                "CVR_CCK_EXISTS;VRC_SDK_VRCSDK3"                "CVR_CCK_EXISTS;VRC_SDK_VRCSDK3;AVATARBRIDGE_YAPS"; do
     rsp="$WORK/build.rsp"
     dll="$WORK/out.dll"
     rm -f "$dll"
@@ -68,8 +71,18 @@ for defines in "CVR_CCK_EXISTS" "CVR_CCK_EXISTS;VRC_SDK_VRCSDK3"; do
     # projects that always have the VRChat SDK; only Editor has to stand up
     # without it.
     sources="$REPO/Editor"
-    case "$defines" in *VRC_SDK_VRCSDK3*) sources="$REPO/Editor $REPO/Dev" ;; esac
-    find $sources -name '*.cs' |
+    # Dev tooling assumes a machine with everything installed, so it only
+    # joins the combination that has everything.
+    case "$defines" in
+        *VRC_SDK_VRCSDK3*AVATARBRIDGE_YAPS*) sources="$REPO/Editor $REPO/Dev" ;;
+    esac
+    # Without the add-on those files are not in the project at all, so
+    # compiling them would prove the wrong thing: the point of the run is
+    # that the converter stands up when they are missing.
+    case "$defines" in
+        *AVATARBRIDGE_YAPS*) find $sources -name '*.cs' ;;
+        *)                   find $sources -name '*.cs' -not -path '*/Editor/Yaps/*' ;;
+    esac |
         while read -r f; do echo "\"$(cygpath -w "$f")\"" >> "$rsp"; done
 
     echo "--- $defines"
