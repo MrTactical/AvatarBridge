@@ -756,21 +756,31 @@ exist here and won't bend, while its sockets come through and work for everyone 
 setting on *Convert to YAPS* is what keeps their contacts and depth reactions; *Remove* strips
 both. The report says which case you're in.
 
-**How a plug finds a socket.** Two routes, and which ones an avatar gets depends on how much
-parameter sync it has left:
+**How a plug finds a socket.** Three routes, and an avatar uses whichever ones are available to it:
 
 | | costs | reaches | how good it is |
 |---|---|---|---|
+| **Screen atlas** | nothing | anyone drawing the avatar with custom shaders on, in a view at least 552 by 520 pixels | about a tenth of a millimetre, every frame |
 | **Marker lights** | nothing | anyone whose client draws the plug | exact, and sampled every frame |
 | **Contact channel** | up to 9 synced floats per plug | everyone, including viewers with avatar lights switched off | about a millimetre, arriving ten times a second |
 
 **They work together rather than competing.** The channel finds the socket and decides how engaged
 the plug is; a marker light in range then replaces the position outright, because a light is
-exact and continuous where the channel is quantised and stepped. So a socket carrying both gives
-the smoothest result, a lights-only socket still works for anyone drawing it, and a
-contacts-only socket still works for someone whose content filters have switched avatar lights
-off. On a close socket the channel alone can be seen as a slight tremble, which is the resolution
-of a synced float across the channel's box and not a fault.
+exact and continuous where the channel is quantised and stepped. The atlas, where it is
+available, answers outright instead of blending, since it is the most exact of the three and
+carries a whole path rather than one point. So a socket reachable every way gives the smoothest
+result, a lights-only socket still works for anyone drawing it, and a contacts-only socket still
+works for someone whose content filters have switched avatar lights off. On a close socket the
+channel alone can be seen as a slight tremble, which is the resolution of a synced float across
+the channel's box and not a fault.
+
+**What the atlas is.** Every socket draws its position into a small block of pixels in the corner
+of the frame, ahead of the scene so the scene covers it and nothing is visible, and every plug's
+shader reads that block. It costs no sync bits and no contact pairs, it crosses between avatars,
+and it is what lets a plug pass through several sockets on its way rather than bending at the
+first. It needs the plug's own patched shader, so it arrives with a conversion or a rebuild, and
+it is off in views too small to carry the block: the personal self-portrait camera is one, and a
+plug seen there falls back to whatever the contact channel resolved.
 
 If an avatar is near ChilloutVR's 3200-bit sync cap the converter buys engagement first, the
 socket's position second and which way it faces last, and says so in the report rather than
