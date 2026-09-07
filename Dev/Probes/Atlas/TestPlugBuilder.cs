@@ -86,9 +86,10 @@ namespace AvatarBridge.Regression
         // bend pinches.
         static Mesh Tube()
         {
+            // Rebuilt every time rather than cached. A cached mesh survived a
+            // fix to the winding and went on rendering the old one.
             string path = Dir + "/YapsTestPlugMesh.asset";
-            var have = AssetDatabase.LoadAssetAtPath<Mesh>(path);
-            if (have != null) { return have; }
+            AssetDatabase.DeleteAsset(path);
 
             var verts = new Vector3[(Rings + 1) * (Sides + 1)];
             var uvs = new Vector2[verts.Length];
@@ -112,8 +113,12 @@ namespace AvatarBridge.Regression
                 {
                     int a = r * (Sides + 1) + s;
                     int b = a + Sides + 1;
-                    tris[k++] = a; tris[k++] = b; tris[k++] = a + 1;
-                    tris[k++] = a + 1; tris[k++] = b; tris[k++] = b + 1;
+                    // Wound so the OUTSIDE faces out. The first version had
+                    // these reversed: every triangle's normal pointed into the
+                    // tube, so Unity culled the near side and RecalculateNormals
+                    // lit what was left backwards.
+                    tris[k++] = a; tris[k++] = a + 1; tris[k++] = b;
+                    tris[k++] = a + 1; tris[k++] = b + 1; tris[k++] = b;
                 }
             }
 
