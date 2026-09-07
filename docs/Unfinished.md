@@ -321,6 +321,50 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    colour, so an occupied cell paints a few pixels near the corner of the screen. Count follows
    socket count, not grid, so it does not grow. A user will report it as a rendering bug.
 
+## Two reports from the field, 2026-09-07
+
+### One cloth per PhysBone, 94 of them on one avatar (issue #7)
+
+An avatar built one PhysBone per hair strand converts to one MagicaCloth component per strand:
+94 components, 35 of them a single strand of the same hairstyle. Faithful to the source and the
+wrong shape for MagicaCloth2, which simulates any number of independent roots per component.
+
+**Grouping is written and compiles, on the `physbone-grouping` branch, and is deliberately NOT
+on `dev`.** It is untested against the avatar that reported it, so it must not reach a release
+until it converts that avatar correctly. Chains that would have received identical settings are
+folded into one multi-root cloth: same classified kind, same parent on both the bone and the
+component's object, same colliders, same numbers. Held out are anchored volumes (measured and
+given a collision bone per side), a chain with a PhysBone parameter (the holder name IS the
+GrabbyBones parameter), an ignore list (expressed as a root set), and any per-chain curve
+(sampled by normalised depth, so length changes what it reads).
+
+**Untested against the avatar that reported it.** The variant to hand is the Quest one, 8 chains,
+four of them anchored volumes, none groupable. The reporter has been asked which avatar it is.
+Merge to `dev` only once the PC avatar converts and the result is checked in game.
+
+### Freeze rotation axes, VRChat vs Unity (issue #6)
+
+Reported as the axis flags behaving differently after conversion. **Measured, and they do not.**
+`Dev/Probes/ConstraintParityProbe.cs` builds the same rig twice, once with each component, and
+compares: 2688 configurations across all seven axis masks, rest and offset values, constraint
+weight including 0, source weight, a rotated parent, a non-uniformly scaled parent, and one or
+two sources. Zero disagreements. A three-link chain agrees too, including built leaf first, where
+a solver with no dependency sort would fall behind.
+
+Both solvers keep the driven bone's LIVE local value on a masked axis. The first theory here was
+that Unity substitutes `rotationAtRest` and VRChat keeps the animation; that was wrong, and the
+probe is what said so rather than more reading.
+
+**One real hazard came out of it and is fixed.** The converter reads the axis flags by name and
+its reflection helper falls back to `true`, because a constraint whose flags cannot be read still
+has to drive something. So a renamed field would not fail: every constraint would convert as
+affecting all three axes and a frozen axis would quietly start moving, which is exactly what the
+report describes. Every name resolves on the SDK here, so this is not that reporter's bug unless
+their SDK differs; a name that does not resolve now warns instead of being assumed.
+
+**Still open, and not answerable in the editor:** ChilloutVR's constraint order against its own
+IK. Needs the reporter's SDK version, which bone, and what the wrong result actually looks like.
+
 ## Loose ends, small but real
 
 ### Three found in the 2026-09-07 cleanup pass

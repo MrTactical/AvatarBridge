@@ -40,6 +40,7 @@ namespace AvatarBridge
             var mirrored = new List<string>();
             var disabledLocalSpace = new List<string>();
             animatedRotationPaths = null;   // per conversion, like `relocated` below
+            missingAxisMembers.Clear();
             // MUST run before anything converts: a Unity constraint bakes its rest offsets
             // against the parent the transform has when it is created.
             relocated = new Dictionary<string, string>();   // per conversion, never carried over
@@ -980,8 +981,8 @@ namespace AvatarBridge
             unity.rotationAtRest = parentDriven != vrc.transform
                 ? parentDriven.localEulerAngles
                 : Get(vrc, "RotationAtRest", vrc.transform.localEulerAngles);
-            unity.translationAxis = AxesFrom(vrc, "AffectsPositionX", "AffectsPositionY", "AffectsPositionZ");
-            unity.rotationAxis = AxesFrom(vrc, "AffectsRotationX", "AffectsRotationY", "AffectsRotationZ");
+            unity.translationAxis = AxesFrom(ctx, vrc, "AffectsPositionX", "AffectsPositionY", "AffectsPositionZ");
+            unity.rotationAxis = AxesFrom(ctx, vrc, "AffectsRotationX", "AffectsRotationY", "AffectsRotationZ");
             WarnIfUnsupported(ctx, vrc, vrc);
             ApplyCommon(vrc, unity);
             ctx.Report.Converted(Category, ctx.PathInTarget(vrc.transform), "Parent constraint");
@@ -1005,7 +1006,7 @@ namespace AvatarBridge
             unity.translationAtRest = posDriven != vrc.transform
                 ? posDriven.localPosition
                 : Get(vrc, "PositionAtRest", vrc.transform.localPosition);
-            unity.translationAxis = AxesFrom(vrc, "AffectsPositionX", "AffectsPositionY", "AffectsPositionZ");
+            unity.translationAxis = AxesFrom(ctx, vrc, "AffectsPositionX", "AffectsPositionY", "AffectsPositionZ");
             WarnIfUnsupported(ctx, vrc, vrc);
             ApplyCommon(vrc, unity);
             ctx.Report.Converted(Category, ctx.PathInTarget(vrc.transform), "Position constraint");
@@ -1047,7 +1048,7 @@ namespace AvatarBridge
             unity.rotationAtRest = reparented.Contains(driven) || driven != vrc.transform
                 ? driven.localEulerAngles
                 : Get(vrc, "RotationAtRest", vrc.transform.localEulerAngles);
-            unity.rotationAxis = AxesFrom(vrc, "AffectsRotationX", "AffectsRotationY", "AffectsRotationZ");
+            unity.rotationAxis = AxesFrom(ctx, vrc, "AffectsRotationX", "AffectsRotationY", "AffectsRotationZ");
             WarnIfUnsupported(ctx, vrc, vrc);
             ApplyCommon(vrc, unity);
             ctx.Report.Converted(Category, ctx.PathInTarget(vrc.transform),
@@ -1074,7 +1075,7 @@ namespace AvatarBridge
             unity.scaleAtRest = scaleDriven != vrc.transform
                 ? scaleDriven.localScale
                 : Get(vrc, "ScaleAtRest", vrc.transform.localScale);
-            unity.scalingAxis = AxesFrom(vrc, "AffectsScaleX", "AffectsScaleY", "AffectsScaleZ");
+            unity.scalingAxis = AxesFrom(ctx, vrc, "AffectsScaleX", "AffectsScaleY", "AffectsScaleZ");
             WarnIfUnsupported(ctx, vrc, vrc);
             ApplyCommon(vrc, unity);
             ctx.Report.Converted(Category, ctx.PathInTarget(vrc.transform), "Scale constraint");
@@ -1200,13 +1201,45 @@ namespace AvatarBridge
             return e.StackTrace.Split('\n')[0].Trim();
         }
 
-        static Axis AxesFrom(object vrc, string x, string y, string z)
+        // Read by name, and the fallback for an axis flag has to be true:
+        // a constraint whose flags cannot be read must still drive something.
+        // That makes a renamed field silent in the worst way, though. It does
+        // not fail, it converts every constraint as affecting all three axes,
+        // and a frozen axis quietly starts moving. So a member that does not
+        // resolve is reported rather than assumed.
+        static Axis AxesFrom(BridgeContext ctx, object vrc, string x, string y, string z)
         {
             Axis axes = Axis.None;
             if (Get(vrc, x, true)) axes |= Axis.X;
             if (Get(vrc, y, true)) axes |= Axis.Y;
             if (Get(vrc, z, true)) axes |= Axis.Z;
+            foreach (var name in new[] { x, y, z })
+            {
+                if (Has(vrc, name) || !missingAxisMembers.Add(name))
+                {
+                    continue;
+                }
+                ctx.Report.Warning(Category, $"\"{name}\" is not on this VRChat SDK's constraints",
+                    "Every constraint carrying that axis was converted as affecting it, because a " +
+                    "constraint whose flags cannot be read still has to drive something. An axis " +
+                    "the author froze will move. This means the installed VRChat SDK renamed the " +
+                    "field: update the SDK, or report the version so the name can be followed.");
+            }
             return axes;
+        }
+
+        // Reported once per name, not once per constraint.
+        static readonly HashSet<string> missingAxisMembers = new HashSet<string>();
+
+        static bool Has(object target, string memberName)
+        {
+            if (target == null)
+            {
+                return false;
+            }
+            var type = target.GetType();
+            return type.GetProperty(memberName, BindingFlags.Public | BindingFlags.Instance) != null
+                || type.GetField(memberName, BindingFlags.Public | BindingFlags.Instance) != null;
         }
 
         static T Get<T>(object target, string memberName, T fallback)
