@@ -10,6 +10,10 @@ namespace AvatarBridge
     // rebuilds the rig. Unity's Auto-Map assigns one to whatever is
     // nearest when it cannot read a face, and the avatar then talks out
     // of it. The baked skeleton passes through as recorded.
+    //
+    // Always on, no setting: CVR puts the Auto voice position on the jaw
+    // bone and jaw visemes animate it, so a misassigned Jaw misplaces the
+    // voice and waggles whatever the bone is. Nobody wants that kept.
     public static class JawUnmapper
     {
         const string Category = "Humanoid rig";
@@ -18,10 +22,6 @@ namespace AvatarBridge
 
         public static void Run(BridgeContext ctx)
         {
-            if (!ctx.Settings.unmapMisplacedJaw)
-            {
-                return;
-            }
             var animator = ctx.Target.GetComponentInChildren<Animator>(true);
             if (animator == null || animator.avatar == null || !animator.avatar.isHuman)
             {

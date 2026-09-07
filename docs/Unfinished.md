@@ -320,15 +320,11 @@ Not bugs anyone can hit, but each is a promise the repo half makes.
    the page shows an interface that no longer exists. Only somebody with the editor open can
    retake them.
 
-2. **`unmapMisplacedJaw` has no control and no README row.** The field is read once, in
-   `JawUnmapper`, and nothing writes it, so the behaviour is always on and cannot be turned off
-   by anyone who hits a case where the unmapping is wrong. Either give it a tick beside the other
-   rig settings and a README row, or make it a constant and stop implying it is a choice.
+2. **RESOLVED 2026-09-07.** `unmapMisplacedJaw` is gone as a setting: the unmapping is always
+   on, and `JawUnmapper` carries the reason. Nothing implied a choice that was never offered.
 
-3. **No `.gitattributes`.** Every commit prints a LF-to-CRLF warning per file because the working
-   tree is Windows and the index is not told what to normalise. `* text=auto` with the image and
-   `.unitypackage` types marked binary would settle it. It changes what a checkout writes, so it
-   is a decision rather than a tidy-up.
+3. **RESOLVED 2026-09-07.** `.gitattributes` added: `* text=auto`, Unity YAML and shader sources
+   marked text, images and `.unitypackage` marked binary. The per-file LF warning is gone.
 
 
 ### Four found wearing the avatar, 2026-08-25/26
