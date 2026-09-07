@@ -12,7 +12,11 @@
 // SkinnedMeshRenderer an identity matrix, so a skinned plug cannot work out
 // where its own root is.
 //
-//   Tools/YAPS/Own-body test: add a throwaway plug
+// Sockets come with it. The bake reads SelfTag off whether the avatar carries
+// any YapsSocket, so a plug on a socketless avatar bakes to -1, ownership is
+// never asked, nothing is ever rejected, and the test passes without running.
+//
+//   Tools/YAPS/Own-body test: build the rig
 #if CVR_CCK_EXISTS && UNITY_EDITOR && AVATARBRIDGE_YAPS
 using ABI.CCK.Components;
 using AvatarBridge.Yaps;
@@ -29,8 +33,8 @@ namespace AvatarBridge.Regression
         const int Sides = 16;
         const string Dir = "Assets/YapsSpike";
 
-        [MenuItem("Tools/YAPS/Own-body test: add a throwaway plug")]
-        static void Add()
+        [MenuItem("Tools/YAPS/Own-body test: build the rig")]
+        static void Rig()
         {
             var selected = Selection.activeGameObject;
             var avatar = selected != null ? selected.GetComponentInParent<CVRAvatar>() : null;
@@ -40,7 +44,25 @@ namespace AvatarBridge.Regression
                 return;
             }
 
+            // SOCKETS FIRST. The plug's bake decides SelfTag from whether the
+            // avatar has any, so a plug baked before them is baked at -1.
+            //
+            // Two, at the distances the rule turns on: one inside engagement
+            // onset and one in the band that must be rejected. Both on the
+            // plug's own forward, since that is where a plug looks.
+            int already = avatar.GetComponentsInChildren<YapsSocket>(true).Length;
+            if (already == 0)
+            {
+                AddSocket(avatar, "YAPS Test Socket NEAR", Length * 1.0f);
+                AddSocket(avatar, "YAPS Test Socket BAND", Length * 2.0f);
+            }
             int sockets = avatar.GetComponentsInChildren<YapsSocket>(true).Length;
+
+            // The writer meshes ride each socket, but the rect they draw into
+            // and the read back off it live on the avatar. Without these the
+            // atlas is empty and every tier below it answers instead.
+            YapsAtlas.AddClear(avatar.transform);
+            YapsAtlas.AddGrab(avatar.transform);
 
             var go = new GameObject("YAPS Test Plug");
             Undo.RegisterCreatedObjectUndo(go, "Add a test plug");
@@ -74,11 +96,25 @@ namespace AvatarBridge.Regression
             Debug.Log($"TEST PLUG on {avatar.name}: bake {(outcome.Ok ? "ok" : "FAILED")}" +
                 (string.IsNullOrEmpty(outcome.Message) ? "" : " (" + outcome.Message + ")") +
                 $", SelfTag {self:0.##}, atlas {atlas:0.##}. " +
-                $"The avatar carries {sockets} YapsSocket(s)." + (sockets == 0
-                    ? " NONE, so SelfTag is -1 and ownership is never asked: this avatar cannot be body A."
-                    : " Move the plug so its own sockets are near, then run the own-body report."));
+                $"The avatar carries {sockets} YapsSocket(s)." + (self < 0
+                    ? " SELFTAG IS NEGATIVE: ownership is never asked and nothing will be rejected, " +
+                      "so every result would pass without running."
+                    : " Duplicate the avatar for body B, then run the own-body report."));
 
             Selection.activeGameObject = go;
+        }
+
+        static void AddSocket(CVRAvatar avatar, string name, float ahead)
+        {
+            var socket = YapsSocketBuilder.BuildPreviewSocket(name, YapsSocket.SocketKind.Hole);
+            Undo.RegisterCreatedObjectUndo(socket, "Add a test socket");
+            socket.transform.SetParent(avatar.transform, false);
+            var hip = YapsFakePlayers.HipOf(avatar);
+            var from = hip != null ? hip.position : avatar.transform.position;
+            socket.transform.position = from + avatar.transform.forward * ahead;
+            // Facing back down the shaft: a socket pointing the way the plug
+            // travels is entered through its back.
+            socket.transform.rotation = Quaternion.LookRotation(-avatar.transform.forward);
         }
 
         // A tube from the origin along +Z. No caps: nothing here looks at them
