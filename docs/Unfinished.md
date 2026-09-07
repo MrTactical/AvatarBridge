@@ -305,6 +305,27 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
 
 ## Loose ends, small but real
 
+### Three found in the 2026-09-07 cleanup pass
+
+Not bugs anyone can hit, but each is a promise the repo half makes.
+
+1. **The README screenshots predate the UI rebuild.** `docs/images/window-262.png` is the 2.6.2
+   window and is the first picture anyone sees; `advanced.png` and `report.png` are older still.
+   The window has been rebuilt in UI Toolkit since, with different cards, colours and labels, so
+   the page shows an interface that no longer exists. Only somebody with the editor open can
+   retake them.
+
+2. **`unmapMisplacedJaw` has no control and no README row.** The field is read once, in
+   `JawUnmapper`, and nothing writes it, so the behaviour is always on and cannot be turned off
+   by anyone who hits a case where the unmapping is wrong. Either give it a tick beside the other
+   rig settings and a README row, or make it a constant and stop implying it is a choice.
+
+3. **No `.gitattributes`.** Every commit prints a LF-to-CRLF warning per file because the working
+   tree is Windows and the index is not told what to normalise. `* text=auto` with the image and
+   `.unitypackage` types marked binary would settle it. It changes what a checkout writes, so it
+   is a decision rather than a tidy-up.
+
+
 ### Four found wearing the avatar, 2026-08-25/26
 
 A whole avatar baked as one plug turned up four separate faults. Recorded here
