@@ -1304,10 +1304,10 @@ namespace AvatarBridge
                 tooltip = "The two set-up modes replace any face-tracking rig already on the avatar.\n\n" +
                           "Native CVR Component: ChilloutVR's built-in CVRFaceTracking drives the " +
                           "blendshapes directly. Self-contained, but a bit stiff.\n\n" +
-                          "Unity Animator Blendtrees (DSR): DragonSkyRunner's bundled rig: face shapes " +
+                          "Unity Animator Blendtrees (DSR): DragonSkyRunner's bundled rig, face shapes " +
                           "driven by animator blend trees, eye tracking via generated empties and rotation " +
                           "constraints, rebuilt onto this avatar automatically. Smoother and more expressive.\n\n" +
-                          "Keep the avatar's own rig: nothing is stripped: the existing FT rig " +
+                          "Keep the avatar's own rig, nothing is stripped: the existing FT rig " +
                           "(Jerry's, Pawlygon, OSCmooth setups…) converts with the rest of the animator. " +
                           "Smoothing proxies VRChat never synced automatically become '#' local (zero " +
                           "sync cost), synced FT parameters keep syncing. This used to be labelled " +

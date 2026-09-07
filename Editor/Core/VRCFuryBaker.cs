@@ -132,7 +132,7 @@ namespace AvatarBridge
                     quoted += $" | (+{furyMessages.Count - 4} more: see the Console)";
                 }
                 report.Error(Category, $"VRCFury reported {furyErrors} error(s) during its own build",
-                    quoted + ": this is VRCFury's OWN message, which means Fury ran: the fault is in " +
+                    quoted + ": this is VRCFury's OWN message, which means Fury ran; the fault is in " +
                     "what it was asked to build, not in Fury being absent. When it names files under a " +
                     "folder you don't have, that package isn't installed in this project: install it, " +
                     "or delete the VRCFury component asking for it. Fury catches each failing feature, " +
