@@ -1,6 +1,7 @@
-# Line endings are normalised in the index and written native on checkout.
-# The working tree is Windows; without this every commit warns per file.
-* text=auto
+# LF in the index and LF on disk. The tree is already LF throughout and
+# Windows tools here read it fine, so checking out CRLF would only make
+# every add a conversion, which is what warned per file on every commit.
+* text=auto eol=lf
 
 # Unity YAML and shader sources are text and diff usefully.
 *.cs        text diff=csharp
@@ -8,7 +9,7 @@
 *.cginc     text
 *.hlsl      text
 *.md        text
-*.sh        text eol=lf
+*.sh        text
 *.asset     text
 *.anim      text
 *.controller text
