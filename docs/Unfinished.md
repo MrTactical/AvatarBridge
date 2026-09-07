@@ -434,9 +434,22 @@ draws on a different camera from the one carrying the atlas: the "Atlas target"
 view is the only one that can say so, and it should be the first reading taken,
 not the last.
 
+### Confirmed in game, 2026-09-07
+
+Uploaded with the test rig and read "Resolved by" in the client: full. The
+atlas resolved a socket on the wearer's own body, in ChilloutVR, with the
+exclusion relaxed. That is the claim the spike existed to test, and it holds.
+
+Worth knowing for the next person who tries to check this in the editor: the
+debug view is a material property, so every reading costs an upload, and the
+editor's answers for this transport are the least trustworthy in the codebase
+because the atlas lives on whichever camera drew it. Two readings that looked
+contradictory were the scene view and the game view disagreeing, and one
+"nothing resolved" was the plug's own enable toggled off in the avatar menu,
+which scales the deform to zero while leaving every debug view working.
+
 Still to do in game: whether the chain still holds a second person's socket
-when the wearer's own is nearer, which the editor cannot answer because it
-needs a real second player.
+when the wearer's own is nearer, which needs a real second player.
 
 ## Two reports from the field, 2026-09-07
 
