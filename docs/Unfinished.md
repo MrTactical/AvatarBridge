@@ -314,11 +314,12 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
 
 Not bugs anyone can hit, but each is a promise the repo half makes.
 
-1. **The README screenshots predate the UI rebuild.** `docs/images/window-262.png` is the 2.6.2
-   window and is the first picture anyone sees; `advanced.png` and `report.png` are older still.
-   The window has been rebuilt in UI Toolkit since, with different cards, colours and labels, so
-   the page shows an interface that no longer exists. Only somebody with the editor open can
-   retake them.
+1. **RESOLVED 2026-09-07 by removal.** The three pictures were the 2.6.2 window and two orphans
+   nothing linked. A screenshot of an interface that no longer exists costs more trust than no
+   screenshot, so the header image and all three files are gone. **Owed: one new picture.** Open
+   the converter on an avatar with a generic name, press Analyse, size the window to about 900 px
+   wide, capture it alone, and drop it in as `docs/images/window-450.png`; the README block goes
+   back at the top of the contents list. Only somebody with the editor open can take it.
 
 2. **RESOLVED 2026-09-07.** `unmapMisplacedJaw` is gone as a setting: the unmapping is always
    on, and `JawUnmapper` carries the reason. Nothing implied a choice that was never offered.
