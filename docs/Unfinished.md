@@ -52,8 +52,23 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    sits at the socket, so a hand in somebody's lap resolves ownership to THEIR hip and ignores
    their plug. `_YAPS_SocketOrigin` is the foundation for the fix; it needs an owner anchor
    baked for dedicated meshes and its own test pass.
-4. **The GPU bridge** (`YAPS5.md`, candidate 4): blit or RT camera into a texture parser gives
-   per-client audio for zero sync and zero contacts. Local Play mode first, then an upload.
+4. **The GPU bridge** (`YAPS5.md`, candidate 4): **the transport is PROVEN, in game, 2026-09-07.**
+   A value computed on the GPU reaches C# on a stock client with no contact anywhere, and it does
+   it on every client, remote copies included, for zero sync bits. Nothing is transmitted: the
+   viewers' copies were out of phase with each other, so each computed its own.
+
+   That makes per-client audio real, and it is what this candidate was opened for. Ship the
+   machinery, not the clips.
+
+   **What the proof constrains.** The shader may read only synced avatar state: bone transforms,
+   and blendshapes driven by synced parameters. Local time, `_ScreenParams`, frame count and the
+   viewer's camera each give a different answer per viewer. So a blit cannot be the source for
+   anything other people must agree on, because a blit can see nothing but its own inputs; the
+   source has to be a render of avatar geometry, which is the camera route.
+
+   **Two corrections came out of building it**, both recorded in `YAPS5.md`: every render texture
+   in the chain has to be linear, and animator parameters are reachable through
+   `CVRAnimatorDriver` after all, given a pump clip to make it flush.
 5. **A shipped plug's colour changes in VR on Poiyomi 9, and does not on Poiyomi 8.** A user
    report, so it outranks everything else here. The shape is right and only the colour moves.
    Nothing in the shipped YAPS reads the eye, the camera or the screen; it rewrites position,

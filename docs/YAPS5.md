@@ -172,8 +172,39 @@ receivers, which spend from the instance-wide 512-pair budget AND are forced loc
 sounds are wearer-only on a converted avatar today. Ship the machinery, not the audio: it cannot
 redistribute Noachi's or Dismay's clips.
 
-Untested: whether it survives an upload, and what a per-frame blit or camera actually costs. Steps
-are local Play mode, then upload, then a second client.
+**PROVEN IN GAME 2026-09-07, and it survives an upload.** The rig is
+`Dev/Probes/D1PrefabBuilder.cs`: a shader writes a sawtooth into a RenderTexture, `CVRBlitter`
+copies it, and `CVRTexturePropertyParser` reads that pixel into a cube's height and a light's
+intensity. In a live instance both ramped and reset on the sawtooth's period. Nothing else in the
+prefab could have moved them: no animator, no script, no contact. A Vector3 property with a
+component index and a plain float property were both written, so the reflection reading holds.
+
+**It runs on remote copies too, and that is the whole point.** Everyone present saw the cube
+moving on their own screen. A value every client can derive costs zero sync bits and never touches
+the 3200-bit cap.
+
+**Nothing is transmitted, and this was measured, not assumed.** The viewers' ramps were out of
+phase with each other, offset by when each had loaded, which is `_Time.y` running from their own
+level load. So the rule for anything built on this: **the shader may read only synced avatar
+state**, meaning bone transforms and blendshapes driven by synced parameters. Local time,
+`_ScreenParams`, frame count and the viewer's camera give a different answer per viewer. A blit
+shader has no shared clock available to it at all, which is why a blit can never be the source for
+a value other people must agree on; the source has to be a render of avatar geometry.
+
+**Two things the reading above got wrong, both found building the rig:**
+
+- **Render textures in this chain must be linear.** A default RenderTexture is sRGB, so the gamma
+  curve lands on the value going in and again coming out. The first probe read 0.6431 back from a
+  written 0.3725, which is the sRGB curve exactly, and looked like a broken transport.
+- **Animator parameters are reachable after all.** They are behind `SetFloat`, but
+  `CVRAnimatorDriver` exposes sixteen public float fields and pushes them into parameters itself.
+  The catch is that it only pushes from `OnDidApplyAnimationProperties`, which Unity raises only
+  when a clip animates a property on that same component, so a field written from C# sets the
+  field and stops there. A looping clip animating one unused slot, with that slot's parameter name
+  set to `-none-`, makes the callback fire every frame and flush the other fifteen. Built as
+  `D1Pump.anim`; not yet run in game. Blendshape weights stay unreachable.
+
+Still untested: what a per-frame blit or camera actually costs.
 
 ### 5. The screen-space atlas: postponed, deliberately
 
