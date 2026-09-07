@@ -167,10 +167,9 @@ namespace AvatarBridge
         {
             EnsureStyles();
             // Not ToDictionary: a shader may declare the same property name
-            // twice and Unity hands both back. Poiyomi does, with
-            // m_start_PoiLightData under two different headers, and a
-            // duplicate key threw here on every repaint, which made the
-            // material uninspectable rather than merely noisy.
+            // twice and Unity hands both back. Poiyomi does, and a duplicate
+            // key threw here on every repaint, which made the material
+            // uninspectable rather than merely noisy.
             var byName = new Dictionary<string, MaterialProperty>(properties.Length);
             foreach (var p in properties) byName[p.name] = p;
             var material = editor.target as Material;
@@ -238,12 +237,11 @@ namespace AvatarBridge
             if (original != null)
             {
                 // The FULL list, not the filtered one. A shader's own editor
-                // builds its UI from the properties its shader declares and
-                // looks them up by name and index; handing it a subset makes
-                // it dereference something that is not there. Poiyomi's threw
-                // NullReferenceException in ShaderPart.IsPropertyValueDefault
-                // on every repaint. Ours appearing in its panel as well is
-                // cosmetic; taking its editor down is not.
+                // builds its UI from the properties its shader declares and looks
+                // them up by name and index; handing it a subset makes it
+                // dereference something that is not there, and Poiyomi's threw on
+                // every repaint. Ours appearing in its panel is cosmetic; taking
+                // its editor down is not.
                 original.OnGUI(editor, properties);
             }
             else
@@ -281,10 +279,8 @@ namespace AvatarBridge
             GUILayout.Space(6);
 
             // A material can be running a shader older than the toolkit, and
-            // nothing said so. Three readings were wasted in one afternoon
-            // on values a stale shader had never been asked for, and the
-            // material panel is exactly where somebody reads a value and
-            // believes it, so the warning belongs here as much as anywhere.
+            // nothing said so. The material panel is where somebody reads a
+            // value and believes it, so the warning belongs here.
             if (YapsShaderPatcher.IsStale(material))
             {
                 EditorGUILayout.HelpBox(

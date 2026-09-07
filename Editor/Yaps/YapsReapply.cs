@@ -1,25 +1,24 @@
-// Puts YAPS back onto a material whose shader has been changed since the
+// Puts YAPS back onto a material whose shader has changed since the
 // conversion that first patched it.
 //
-// The case this exists for: a converted avatar's plug wears a Poiyomi
-// shader with the deform patched into it, and Poiyomi's unlock button goes
-// back to the shader it was locked FROM. That is the original, which has no
-// deform. So unlocking to change a colour silently removes the deform, and
-// re-locking does not bring it back, there was no way back at all except
-// converting the whole avatar again.
+// The case this exists for: a converted plug wears a Poiyomi shader
+// with the deform patched into it, and Poiyomi's unlock button goes
+// back to the shader it was locked FROM, which has no deform. So
+// unlocking to change a colour silently removes the deform, re-locking
+// does not bring it back, and there was no way back except converting
+// the whole avatar again.
 //
-// Now there is. Unlock, edit, re-lock, run this. The patch is applied to
-// whatever shader the material is wearing at the time, so every Poiyomi
+// Now there is. Unlock, edit, re-lock, run this. The patch is applied
+// to whatever shader the material wears at the time, so every Poiyomi
 // feature and every property the user set survives it.
 //
-// The awkward part is the VALUES. A material's _YAPS_ properties only exist
-// while its shader declares them, and the unlocked Poiyomi shader does not , 
-// so by the time this runs, material.HasProperty says no and GetTexture
-// returns nothing. They are not gone though: Unity keeps them in the
-// material's serialized property lists, orphaned but intact. So they are
-// read from there rather than through the material API, put back after the
-// patched shader is assigned, and the bake texture survives a round trip it
-// would otherwise not.
+// The awkward part is the VALUES. A material's _YAPS_ properties only
+// exist while its shader declares them, and the unlocked shader does
+// not, so HasProperty says no and GetTexture returns nothing. They are
+// not gone: Unity keeps them in the material's serialized property
+// lists, orphaned but intact. So they are read from there, put back
+// after the patched shader is assigned, and the bake texture survives a
+// round trip it would otherwise not.
 
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System.Collections.Generic;
@@ -119,9 +118,9 @@ namespace AvatarBridge
 
         // Read from the SERIALIZED lists, not through the material. A
         // property whose shader does not declare it is invisible to
-        // HasProperty and GetFloat, which is precisely the state an
-        // unlocked material is in, but Unity still has the values, sitting
-        // in m_SavedProperties with nothing to apply them to.
+        // HasProperty and GetFloat, which is what an unlocked material is
+        // in, but Unity still has the values in m_SavedProperties with
+        // nothing to apply them to.
         static Values Capture(Material material)
         {
             var values = new Values();

@@ -3,11 +3,10 @@
 // touch a shader that already carries it, so a normal bake would leave
 // no clean input to work from.
 //
-// Turning the plug's own SPS flag off before the bake solves it. The bake
-// probe measured exactly what that costs:
-// nothing needed. The plug and socket objects, all 24 protocol lights and
-// all 119 contacts still appear; only VRCFury's own bake texture is lost,
-// which is what YapsBaker replaces.
+// Turning the plug's own SPS flag off before the bake solves it, and
+// costs nothing that is needed: the plug and socket objects, the
+// protocol lights and the contacts all still appear, and only VRCFury's
+// own bake texture is lost, which is what YapsBaker replaces.
 //
 // The flags are flipped on the user's own avatar in their own scene, so
 // they are put back afterwards no matter how the bake ends.
@@ -24,15 +23,14 @@ namespace AvatarBridge
         const string Category = "YAPS";
         readonly List<(Component plug, bool was)> _flipped = new List<(Component, bool)>();
 
-        // The author's own per-plug settings, read off the component while
-        // it still exists. The bake destroys it, so anything not captured
-        // here is lost and quietly replaced by a default, which is what
-        // happened to overrun: VRCFury lets an author say whether the tip
-        // may travel past the socket, and every converted plug was getting
-        // "yes" regardless of what they chose.
+        // The author's own per-plug settings, read off the component while it
+        // still exists. The bake destroys it, so anything not captured here is
+        // lost and quietly replaced by a default, which is what happened to
+        // overrun: VRCFury lets an author say whether the tip may travel past
+        // the socket, and every converted plug was getting "yes" regardless.
         //
-        // Keyed by the object the plug component sits on, which survives
-        // the bake as the parent of BakedSpsPlug.
+        // Keyed by the object the plug component sits on, which survives the
+        // bake as the parent of BakedSpsPlug.
         public static readonly Dictionary<string, bool> AuthoredOverrun =
             new Dictionary<string, bool>();
 

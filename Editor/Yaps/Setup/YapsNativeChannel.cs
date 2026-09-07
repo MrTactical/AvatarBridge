@@ -32,13 +32,11 @@ namespace AvatarBridge
             var animator = avatar.GetComponent<Animator>();
 
             // ChilloutVR uploads what avatar.overrides points at, and falls
-            // back to avatarSettings.baseController. The Animator's own slot
-            // is neither: the CCK puts a GENERATED override controller there,
-            // and on an avatar whose generated folders have drifted apart it
-            // can belong to a different avatar entirely. Building into that
-            // one gives a channel that works in Play Mode and never leaves
-            // the project, which looks the same as no channel at all from
-            // everywhere except in game.
+            // back to avatarSettings.baseController. The Animator's own slot is
+            // neither: the CCK puts a GENERATED override controller there, and
+            // on an avatar whose generated folders have drifted it can belong
+            // to a different avatar entirely. Building into that one gives a
+            // channel that works in Play Mode and never leaves the project.
             var onAnimator = animator != null ? animator.runtimeAnimatorController : null;
             var shipped = avatar.overrides != null ? avatar.overrides.runtimeAnimatorController : null;
             if (shipped == null && avatar.avatarSettings != null) shipped = avatar.avatarSettings.baseController;

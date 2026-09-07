@@ -25,7 +25,7 @@ namespace AvatarBridge
         }
 
         // Which system authored this material, if any. Decided from the
-        // properties the material actually HAS, not the shader's name , 
+        // properties the material actually HAS, not the shader's name ,
         // Poiyomi hosts TPS inside its own shader, and a locked Poiyomi
         // renames the shader per material.
         public static Origin Detect(Material material, out Part part)
