@@ -318,7 +318,7 @@ namespace AvatarBridge
                         restore == null
                             ? "Expanded into a classic On/Off toggle layer (it animates more than object on/off)."
                             : "Expanded into a classic On/Off toggle layer, with an explicit Off clip restoring " +
-                              "the original material(s) — Write Defaults puts numbers back but never object " +
+                              "the original material(s): Write Defaults puts numbers back but never object " +
                               "references, so a material swap would otherwise stick at its On value forever.");
                     continue;
                 }
@@ -350,7 +350,7 @@ namespace AvatarBridge
                     binding.propertyName, @"^m_Materials\.Array\.data\[(\d+)\]$");
                 if (!match.Success)
                 {
-                    continue; // not a material slot — no known safe restore value
+                    continue; // not a material slot: no known safe restore value
                 }
                 Transform target = string.IsNullOrEmpty(binding.path)
                     ? ctx.Target.transform

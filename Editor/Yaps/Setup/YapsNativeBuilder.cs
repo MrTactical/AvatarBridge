@@ -254,7 +254,7 @@ namespace AvatarBridge
                 ? "This plug is on a prop; make it a prop again to rebuild its contact channel for the new bake."
                 : "On an avatar this plug finds sockets two ways: their marker lights, and the contact " +
                   "channel that Build wires for it. Watch for the \"Wired N plug(s) to the socket channel\" " +
-                  "line below — without it, only lights.");
+                  "line below: without it, only lights.");
             if (result.FromSkinnedMesh) o.Notes.Add("Skinned mesh: frame recovered per vertex.");
             return o;
         }

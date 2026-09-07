@@ -109,7 +109,7 @@ namespace AvatarBridge.Yaps
 
         [Tooltip("Preview the way the game does it: the socket's offset from the plug, normalised " +
                  "across the channel's box, rather than a world position. The world route is simpler " +
-                 "and is what the preview always used — and it is NOT what the game runs, which is how " +
+                 "and is what the preview always used, and it is NOT what the game runs, which is how " +
                  "a contact channel that had never worked once looked perfect in the editor.")]
         public bool previewAsChannel = true;
 

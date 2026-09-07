@@ -48,7 +48,7 @@ namespace AvatarBridge
                 int used = usage.Item2;
                 if (used >= 3200)
                     return $"; ⚠ THE AVATAR IS AT THE 3200-BIT SYNC CAP ({used}), so ChilloutVR will not register this " +
-                           "parameter and only the wearer will see the shapes — free some bits and build again";
+                           "parameter and only the wearer will see the shapes: free some bits and build again";
                 if (used > 3100)
                     return $"; ⚠ {used} of 3200 sync bits used, so there is barely room for it";
                 return $"; {used} of 3200 sync bits used";

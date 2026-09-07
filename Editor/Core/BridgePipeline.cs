@@ -68,7 +68,7 @@ namespace AvatarBridge
                 if (makesOurs < 0)
                 {
                     return $"\"{passes[i].Name}\" edits animation clips, but no pass in this " +
-                           "pipeline copies them into the output folder first — so it would be " +
+                           "pipeline copies them into the output folder first, so it would be " +
                            "editing the source avatar's own files.";
                 }
                 if (i < makesOurs)
@@ -76,7 +76,7 @@ namespace AvatarBridge
                     return $"\"{passes[i].Name}\" edits animation clips but runs BEFORE " +
                            $"\"{passes[makesOurs].Name}\", which is what makes those clips ours to " +
                            "edit. In that order it rewrites the avatar author's own animation " +
-                           "files — or a package's — and the damage is invisible on any avatar " +
+                           "files, or a package's, and the damage is invisible on any avatar " +
                            "whose bake regenerates its clips. Move it after.";
                 }
             }

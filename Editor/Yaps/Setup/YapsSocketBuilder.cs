@@ -301,7 +301,7 @@ namespace AvatarBridge
             var kept = Lit(socket).Take(places).Select(s => s.name);
             return "marker lights start dark: " +
                    $"{places} socket(s) start lit ({string.Join(", ", kept)}) and this one waits " +
-                   "on the lighthouse — the \"Marker lights\" menu entry lights any one socket " +
+                   "on the lighthouse: the \"Marker lights\" menu entry lights any one socket " +
                    "and darkens the rest. A mesh gets four vertex light slots, a socket needs " +
                    "two, and the tracker light of whatever enters takes a third, so a second " +
                    "lit socket used to evict the hole's root and break it while rings kept " +

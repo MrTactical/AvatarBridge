@@ -248,7 +248,7 @@ namespace AvatarBridge
             text.style.flexGrow = 1;
             text.style.flexShrink = 1;
 
-            var head = new Label(string.IsNullOrEmpty(subject) ? category : category + " — " + subject);
+            var head = new Label(string.IsNullOrEmpty(subject) ? category : category + ": " + subject);
             head.AddToClassList("ab-report-head");
             text.Add(head);
 
@@ -268,7 +268,7 @@ namespace AvatarBridge
             tag.AddToClassList("ab-beta");
             tag.style.backgroundColor = new Color(BridgeTheme.Warn.r, BridgeTheme.Warn.g, BridgeTheme.Warn.b, 0.18f);
             tag.style.color = BridgeTheme.Warn;
-            tag.tooltip = "Confirmed working in game, but on limited evidence — turn it on deliberately and test.";
+            tag.tooltip = "Confirmed working in game, but on limited evidence: turn it on deliberately and test.";
             return tag;
         }
 

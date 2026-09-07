@@ -51,7 +51,7 @@ namespace AvatarBridge
             var sb = new StringBuilder(160 * 1024);
             sb.Append("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">");
             sb.Append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
-            sb.Append("<title>").Append(H(avatar)).Append(" — AvatarBridge report</title>");
+            sb.Append("<title>").Append(H(avatar)).Append(": AvatarBridge report</title>");
             sb.Append("<style>").Append(Css).Append("</style></head><body>");
 
             // ------------------------------------------------------------------ header ----
@@ -62,7 +62,7 @@ namespace AvatarBridge
               .Append(" · Unity ").Append(H(Application.unityVersion))
               .Append(" · ").Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm")).Append("</div>");
             string verdict = errors > 0
-                ? $"Finished with {errors} error{(errors == 1 ? "" : "s")} — start at the red entries below."
+                ? $"Finished with {errors} error{(errors == 1 ? "" : "s")}: start at the red entries below."
                 : warnings > 0
                     ? $"Done. {warnings} thing{(warnings == 1 ? "" : "s")} may want a look before upload."
                     : "Done. Ready for the CCK's upload checks.";
@@ -150,7 +150,7 @@ namespace AvatarBridge
             // ---------------------------------------------------------------- appendix ----
             if (!string.IsNullOrEmpty(report.Appendix))
             {
-                sb.Append("<section><details class=\"appendix\"><summary>Technical appendix — ")
+                sb.Append("<section><details class=\"appendix\"><summary>Technical appendix: ")
                   .Append("the converted animator, measured</summary><div class=\"appx\">");
                 AppendMiniMarkdown(sb, report.Appendix);
                 sb.Append("</div></details></section>");

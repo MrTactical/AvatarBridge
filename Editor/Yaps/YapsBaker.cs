@@ -104,7 +104,7 @@ namespace AvatarBridge
             catch (Exception e)
             {
                 failure = $"\"{mesh.name}\" would not hand over its vertices ({e.GetType().Name}) " +
-                          "— tick Read/Write Enabled on the model importer";
+                          ": tick Read/Write Enabled on the model importer";
                 return null;
             }
             if (probe == null || probe.Length == 0)
@@ -208,7 +208,7 @@ namespace AvatarBridge
             }
             if (length <= 0.0001f && !objectFrame)
             {
-                failure = "the plug measures no length along its own +Z — its root is probably " +
+                failure = "the plug measures no length along its own +Z: its root is probably " +
                           "pointing the wrong way";
                 return null;
             }

@@ -129,7 +129,7 @@ namespace AvatarBridge
                 "and how engaged it is. Contact triggers on the plug measure it on your own machine " +
                 "every frame, straight into a synced parameter so other people see it too, " +
                 "at ChilloutVR's ten-a-second parameter rate. What crosses the wire is the gap " +
-                "between two bodies already touching, so that rate is generous for it — and the " +
+                "between two bodies already touching, so that rate is generous for it, and the " +
                 "marker lights sharpen the position further for anyone close enough to see them.");
         }
 
@@ -193,14 +193,14 @@ namespace AvatarBridge
                 // Not a failure: the light path resolves position and
                 // engages on its own within about a plug length.
                 site.Report.Warning(Category,
-                    "No sync budget left for the socket channel — marker lights only",
+                    "No sync budget left for the socket channel, marker lights only",
                     $"ChilloutVR gives an avatar {AasBitBudget} bits of parameter sync and this one " +
                     $"has {spare * 32} to spare, so adding even one more float would push it over and " +
                     "turn the CCK's budget bar red. The plug still deforms: it finds sockets by their " +
                     "marker lights at close range, the same way it finds DPS content this tool never " +
                     "converted. What it loses is the exact position at longer range and the certainty " +
-                    "that every viewer agrees. Free some sync bits elsewhere — bools cost 1 bit where " +
-                    "floats cost 32 — and convert again for the full channel.");
+                    "that every viewer agrees. Free some sync bits elsewhere, bools cost 1 bit where " +
+                    "floats cost 32, and convert again for the full channel.");
                 return false;
             }
 
@@ -213,7 +213,7 @@ namespace AvatarBridge
                     "transmits whether it is engaged, and where the socket is comes from that " +
                     "socket's own marker lights at close range and from ChilloutVR's player positions " +
                     "further out. That is the same path used for content this tool never converted, " +
-                    "and it works — it is simply less exact. Freeing sync bits elsewhere on the " +
+                    "and it works: it is simply less exact. Freeing sync bits elsewhere on the " +
                     "avatar and converting again gets you the exact one.");
             }
 

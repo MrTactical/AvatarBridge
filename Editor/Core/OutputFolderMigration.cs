@@ -75,7 +75,7 @@ namespace AvatarBridge
                     return;
                 }
             }
-            Debug.Log("[AvatarBridge] Conversions moved to " + NewFolder + " — outside the tool's folder, " +
+            Debug.Log("[AvatarBridge] Conversions moved to " + NewFolder + ": outside the tool's folder, " +
                       "so deleting/reimporting AvatarBridge to update it can never erase them again. " +
                       "All GUIDs preserved; existing references keep working.");
         }

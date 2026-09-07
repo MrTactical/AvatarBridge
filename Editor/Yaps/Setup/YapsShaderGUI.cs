@@ -65,9 +65,9 @@ namespace AvatarBridge
                 Blurb = "How the shaft sits when nothing is bending it.",
                 Knobs = new[]
                 {
-                    new Knob("_YAPS_Curvature", "Curvature", RowKind.Slider, "DPS", "a resting bend along the whole shaft — positive bends up"),
+                    new Knob("_YAPS_Curvature", "Curvature", RowKind.Slider, "DPS", "a resting bend along the whole shaft: positive bends up"),
                     new Knob("_YAPS_ReCurvature", "Recurvature", RowKind.Slider, "DPS", "a second bend gathered at the tip, opposite in sign: sweep, then hook"),
-                    new Knob("_YAPS_EntranceStiffness", "Entrance stiffness", RowKind.Slider, "DPS", "how much the base resists bending toward a socket — 0 bends evenly from the root"),
+                    new Knob("_YAPS_EntranceStiffness", "Entrance stiffness", RowKind.Slider, "DPS", "how much the base resists bending toward a socket: 0 bends evenly from the root"),
                 }},
             new Section { Title = "Inside a socket", Tint = TintIn,
                 Blurb = "What a socket does to the shaft while the plug is in it: a grip at the opening, a swell just short of it.",
@@ -82,7 +82,7 @@ namespace AvatarBridge
                 Blurb = "What the shaft does when no socket is using it: shrink a little, wriggle. All of it stops as a socket takes over.",
                 Knobs = new[]
                 {
-                    new Knob("_YAPS_IdleLength", "Idle length", RowKind.Slider, "TPS", "how much of its length it keeps — 1 is no change"),
+                    new Knob("_YAPS_IdleLength", "Idle length", RowKind.Slider, "TPS", "how much of its length it keeps: 1 is no change"),
                     new Knob("_YAPS_IdleWidth", "Idle width", RowKind.Slider, "TPS", "how much of its width it keeps"),
                     new Knob("_YAPS_WriggleStrength", "Wriggle", RowKind.Slider, "DPS", "idle motion, tip-heavy"),
                     new Knob("_YAPS_WriggleSpeed", "Wriggle speed", RowKind.Slider, "DPS"),
@@ -93,7 +93,7 @@ namespace AvatarBridge
                 {
                     new Knob("_YAPS_PumpStrength", "Pumping", RowKind.Slider, "TPS", "a stroke along the shaft, only while engaged"),
                     new Knob("_YAPS_PumpSpeed", "Pumping speed", RowKind.Slider, "TPS"),
-                    new Knob("_YAPS_PumpWidth", "Pumping width", RowKind.Slider, "TPS", "how much of the shaft pumps — 1 is the whole length, small values move only the tip"),
+                    new Knob("_YAPS_PumpWidth", "Pumping width", RowKind.Slider, "TPS", "how much of the shaft pumps: 1 is the whole length, small values move only the tip"),
                 }},
             new Section { Title = "The bend toward a socket", Tint = TintCurve,
                 Blurb = "How the shaft arrives at a socket.",
@@ -108,7 +108,7 @@ namespace AvatarBridge
                 Blurb = "Which sockets this plug will bend toward.",
                 Knobs = new[]
                 {
-                    new Knob("_YAPS_SelfTag", "Own-avatar tag", RowKind.Float, help: "which sockets are this plug's wearer's, so it ignores them — -1 on a prop"),
+                    new Knob("_YAPS_SelfTag", "Own-avatar tag", RowKind.Float, help: "which sockets are this plug's wearer's, so it ignores them: -1 on a prop"),
                     new Knob("_YAPS_UseAtlas", "Read the screen atlas", RowKind.Slider, help: "the transport that does not need a light slot or a contact: sockets draw where they are into a corner of the screen and this plug reads it back. The converter sets it; off falls back to the contact channel and the marker lights. Debug's Resolved by says which one answered."),
                 }},
             new Section { Title = "Socket", Tint = TintSocket,
@@ -211,7 +211,7 @@ namespace AvatarBridge
             {
                 string key = material.shader.name + "/Internals";
                 if (!Open.TryGetValue(key, out bool open)) open = false;
-                open = SectionHeader("Internals", new Color(0.4f, 0.4f, 0.4f), open, "written by the bake and the channel — read-only");
+                open = SectionHeader("Internals", new Color(0.4f, 0.4f, 0.4f), open, "written by the bake and the channel: read-only");
                 Open[key] = open;
                 if (open)
                 {
@@ -285,7 +285,7 @@ namespace AvatarBridge
             {
                 EditorGUILayout.HelpBox(
                     "This material is running a shader older than the toolkit, so what you see here " +
-                    "is not what the current version does. Bake it again to refresh it — the knobs " +
+                    "is not what the current version does. Bake it again to refresh it: the knobs " +
                     "and the bake are kept.", MessageType.Warning);
                 GUILayout.Space(4);
             }

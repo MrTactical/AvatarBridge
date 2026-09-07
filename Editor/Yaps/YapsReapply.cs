@@ -82,7 +82,7 @@ namespace AvatarBridge
                     // Worth saying rather than leaving them to find out in
                     // game: the deform is in the shader but the mesh data it
                     // bends by is not on the material, so it will do nothing.
-                    refusals.Add($"{material.name}: patched, but it carries no bake texture — " +
+                    refusals.Add($"{material.name}: patched, but it carries no bake texture: " +
                                  "convert the avatar again to rebuild it");
                 }
             }

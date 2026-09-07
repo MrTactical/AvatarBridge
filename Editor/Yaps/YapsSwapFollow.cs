@@ -193,7 +193,7 @@ namespace AvatarBridge.Yaps
                 report.Warning("YAPS",
                     $"{skipped.Count} material swap(s) could not be repointed",
                     "These animations assign a material to the mesh slot the bake replaced, and " +
-                    "they live outside your Assets folder — in a package, or in the CCK — so " +
+                    "they live outside your Assets folder, in a package, or in the CCK, so " +
                     "editing them would change them for every project that has them. Playing one " +
                     "will put the unbaked material back and the plug will stop bending. Copy the " +
                     "clip into your own project and point it at the baked material: "

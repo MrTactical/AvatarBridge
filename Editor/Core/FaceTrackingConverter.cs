@@ -47,7 +47,7 @@ namespace AvatarBridge
             {
                 ctx.Report.Skipped(Category, "Kept the avatar's own face tracking (chosen)",
                     "Nothing was added or replaced. If the avatar already has a face tracking rig " +
-                    "it is merged like the rest of its animator — see the entry naming the " +
+                    "it is merged like the rest of its animator: see the entry naming the " +
                     "parameters that came through. If it has none, this is where one would go: " +
                     "convert again with \"CVR-VRCFT\" selected.");
                 return;
@@ -85,12 +85,12 @@ namespace AvatarBridge
                 // no way to tell which from the outside.
                 string near = bestMesh != null
                     ? $"The closest was \"{bestMesh.name}\", which matched {bestScore} of the " +
-                      $"tracking shape names — {DetectionThreshold} are needed to be sure. "
+                      $"tracking shape names: {DetectionThreshold} are needed to be sure. "
                     : "No mesh on this avatar carries blendshapes that resemble tracking shapes. ";
                 ctx.Report.Converted(Category, "No face-tracking blendshapes detected",
                     near + "Either the avatar isn't set up for face tracking, or its shapes use " +
                     "names this doesn't recognise. If you know it has them, the shape names on that " +
-                    "mesh are the thing to check — and worth reporting, because a naming scheme " +
+                    "mesh are the thing to check; and worth reporting, because a naming scheme " +
                     "that reads as nothing here is a gap worth closing.");
                 return;
             }
@@ -118,8 +118,8 @@ namespace AvatarBridge
                 $"{mode} mode; {mapped} blendshapes mapped. Review them on the CVRFaceTracking " +
                 "component." +
                 (unsided > 0
-                    ? $" {unsided} of those are shapes this avatar names WITHOUT a side — one " +
-                      "\"EyeLookDown\" standing for the left and right slots both — which " +
+                    ? $" {unsided} of those are shapes this avatar names WITHOUT a side: one " +
+                      "\"EyeLookDown\" standing for the left and right slots both, which " +
                       "ChilloutVR's own matcher leaves empty because it looks for its full sided " +
                       "name. Both slots are given the same shape, which is how a rig like this is " +
                       "meant to be driven; expect symmetric movement on those, since there is only " +

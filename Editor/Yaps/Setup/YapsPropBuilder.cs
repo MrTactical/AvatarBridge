@@ -115,7 +115,7 @@ namespace AvatarBridge
                     RemoveChannel(root);
                     BuildChannel(root, plug, material, spawnable);
                     o.Notes.Add("Its contact channel was rebuilt: 8 synced values, one trigger per value. That channel is " +
-                                "why a socket can take the prop out of someone's hand — remove it with Drop the contact " +
+                                "why a socket can take the prop out of someone's hand: remove it with Drop the contact " +
                                 "channel if that bites.");
                 }
             }
@@ -152,7 +152,7 @@ namespace AvatarBridge
             var spawnable = root != null ? root.GetComponent<CVRSpawnable>() : null;
             if (plug == null || spawnable == null)
             {
-                o.Message = "Select a plug prop first — one with a YAPS Plug under it and a CVR Spawnable on it.";
+                o.Message = "Select a plug prop first: one with a YAPS Plug under it and a CVR Spawnable on it.";
                 return o;
             }
             var material = BakedMaterial(plug);
@@ -162,7 +162,7 @@ namespace AvatarBridge
             BuildChannel(root, plug, material, spawnable);
             o.Ok = true;
             o.Message = $"\"{root.name}\" has the contact channel: 8 synced values, one trigger per value.";
-            o.Notes.Add("While a socket touches this prop, the socket's owner writes its values and takes it over — " +
+            o.Notes.Add("While a socket touches this prop, the socket's owner writes its values and takes it over: " +
                         "that is the channel, not a fault, and it is why a prop can leave someone's hand. Run Verify " +
                         "prop before uploading.");
             return o;

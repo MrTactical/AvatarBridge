@@ -222,7 +222,7 @@ namespace AvatarBridge
             if (string.IsNullOrEmpty(sourcePath))
             {
                 refusal = $"\"{material.shader.name}\" has no source file on disk, so there is " +
-                          "nothing to patch — it is one of Unity's built-ins or lives inside a " +
+                          "nothing to patch: it is one of Unity's built-ins or lives inside a " +
                           "compiled package";
                 return null;
             }
@@ -246,7 +246,7 @@ namespace AvatarBridge
                 // result would be neither. The converter suppresses SPS at bake time,
                 // so a shader that still has SPS in it means that step did not happen.
                 refusal = "it already carries VRChat's SPS, and two deform systems on the same " +
-                          "vertices would fight — suppress SPS at bake time so the plain shader " +
+                          "vertices would fight: suppress SPS at bake time so the plain shader " +
                           "comes through instead";
                 return null;
             }
@@ -300,7 +300,7 @@ namespace AvatarBridge
             var patched = WriteAndVerify(unit, sourcePath, outputDir, hash, out string compileError);
             if (patched == null)
             {
-                refusal = "the patched shader did not compile — " + compileError;
+                refusal = "the patched shader did not compile: " + compileError;
                 return null;
             }
 
@@ -311,7 +311,7 @@ namespace AvatarBridge
                 + (skippedShadowPasses > 0
                     ? $" {skippedShadowPasses} shadow pass(es) use Unity's own shadow-caster " +
                       "function, which lives in Unity's includes rather than in this shader, so " +
-                      "there is nothing of the avatar's to edit there — the shadow will not " +
+                      "there is nothing of the avatar's to edit there: the shadow will not " +
                       "follow the bend. Cosmetic, and the alternative was no deform at all."
                     : ""));
             return patched;

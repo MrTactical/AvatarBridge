@@ -67,7 +67,7 @@ namespace AvatarBridge.Yaps
         [Range(0.1f, 1f), Tooltip("How much of its width it keeps when no socket is using it.")]
         [YapsFrom("TPS")]
         public float idleWidth = 1f;
-        [Range(0f, 0.5f), Tooltip("Idle motion, tip-heavy, only while out of a socket. Animates over time — the scene view shows it while this plug is selected.")]
+        [Range(0f, 0.5f), Tooltip("Idle motion, tip-heavy, only while out of a socket. Animates over time: the scene view shows it while this plug is selected.")]
         [YapsFrom("DPS")]
         public float wriggle;
         [Range(0f, 20f), Tooltip("How fast it wriggles.")]

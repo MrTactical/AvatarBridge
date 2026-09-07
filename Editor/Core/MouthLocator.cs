@@ -92,10 +92,10 @@ namespace AvatarBridge
 
             if (!string.IsNullOrEmpty(rejectedJaw))
             {
-                ctx.Report.Approximated(category, "The rig's \"jaw\" bone isn't on the jaw — ignored",
+                ctx.Report.Approximated(category, "The rig's \"jaw\" bone isn't on the jaw, ignored",
                     $"This avatar's humanoid Jaw slot points at {rejectedJaw}. The slot is optional " +
                     "and nothing checks it, so a rigger can map it to anything, and this one is " +
-                    "somewhere no jaw can be. Left as it is — retargeting it could move geometry — " +
+                    "somewhere no jaw can be. Left as it is, retargeting it could move geometry, " +
                     "but the voice was placed without it, because taking it at face value puts your " +
                     "voice wherever that bone happens to sit. Worth fixing in the model's Rig tab if " +
                     "you also want jaw-flap animation to work.");
@@ -104,7 +104,7 @@ namespace AvatarBridge
             if (method == Method.VisemeShape)
             {
                 ctx.Report.Converted(category, "Voice position",
-                    $"Placed at the mouth ({where}), {detail} — the vertices that shape moves ARE " +
+                    $"Placed at the mouth ({where}), {detail}: the vertices that shape moves ARE " +
                     "the mouth, so this is measured off your avatar rather than guessed. " +
                     "ChilloutVR builds its in-game mouth pointer from this, and draws it in the " +
                     "scene view next to the viewpoint if you want to check it.");
@@ -113,7 +113,7 @@ namespace AvatarBridge
 
             ctx.Report.Approximated(category, "Voice position",
                 $"Placed {detail} ({where}). No open-mouth viseme could be measured, so this is the " +
-                "nearest bone rather than the mouth itself — on a muzzled avatar that can be several " +
+                "nearest bone rather than the mouth itself: on a muzzled avatar that can be several " +
                 "centimetres back. ChilloutVR draws it in the scene view beside the viewpoint; drag " +
                 "it onto the lips if it looks wrong.");
         }

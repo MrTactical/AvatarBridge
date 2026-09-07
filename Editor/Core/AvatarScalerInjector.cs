@@ -109,21 +109,21 @@ namespace AvatarBridge
             AddHeightMenu(ctx);
 
             string note = $"Slider mapped geometrically: left end {height * ScaleAtZero:0.##} m (0.25×), " +
-                          $"centre {height:0.##} m (this avatar's measured height — the default, so it spawns " +
+                          $"centre {height:0.##} m (this avatar's measured height: the default, so it spawns " +
                           $"its original size), right end {height * ScaleAtZero * ScaleRange:0.##} m (4×). " +
                           "Geometric so every doubling gets the same slider travel. Constant-speed smoothing " +
                           "(JustSleightly's ControllerTemplates) so size glides instead of snapping. This " +
                           "replaces the old \"Height (M)\" typed input, which ChilloutVR's quick menu renders " +
                           "as an unclamped keypad nobody could use. The parameter is named \"Height\" (not the " +
                           "template's \"Input\") because ChilloutVR restores saved profile values by parameter " +
-                          "name — a re-upload keeping the old name inherited the metres-era value and spawned " +
+                          "name: a re-upload keeping the old name inherited the metres-era value and spawned " +
                           "at 250%.";
             if (collisions.Count > 0)
             {
                 note += $" NOTE: parameter name(s) already existed and were reused: {string.Join(", ", collisions)}.";
             }
             ctx.Report.Converted(Category,
-                $"Avatar scaler injected — {added} layer(s), \"{HeightMenu}\" slider {height * ScaleAtZero:0.##}–{height * ScaleAtZero * ScaleRange:0.##} m",
+                $"Avatar scaler injected: {added} layer(s), \"{HeightMenu}\" slider {height * ScaleAtZero:0.##}–{height * ScaleAtZero * ScaleRange:0.##} m",
                 note);
         }
 
@@ -152,7 +152,7 @@ namespace AvatarBridge
                 hideFlags = HideFlags.HideInHierarchy
             };
 
-            const int knots = 9;   // 0, 1/8 … 1 — one per ×√2
+            const int knots = 9;   // 0, 1/8 … 1, one per ×√2
             for (int i = 0; i < knots; i++)
             {
                 float slider = i / (float)(knots - 1);

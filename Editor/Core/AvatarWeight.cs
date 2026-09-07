@@ -370,7 +370,7 @@ namespace AvatarBridge
                           ". Named for the count, not as something to fix. Merging them would simulate the " +
                           "same transforms under fewer components, so it buys the solver overhead and " +
                           "nothing else, and one solver holds ONE set of settings for every bone it " +
-                          "carries — chains tuned apart would be retuned to whichever won.", 2);
+                          "carries: chains tuned apart would be retuned to whichever won.", 2);
             }
 
             if (r.Atlas.Count > 0)
@@ -801,7 +801,7 @@ namespace AvatarBridge
                 foreach (var c in r.Callouts)
                 {
                     sb.Append("- ");
-                    if (c.Bytes > 0) sb.Append("**").Append(Mb(c.Bytes)).Append("** — ");
+                    if (c.Bytes > 0) sb.Append("**").Append(Mb(c.Bytes)).Append("**: ");
                     sb.Append(c.Text).Append('\n');
                 }
                 sb.Append('\n');

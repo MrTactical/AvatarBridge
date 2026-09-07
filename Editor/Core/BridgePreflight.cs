@@ -65,7 +65,7 @@ namespace AvatarBridge
                 }
                 if (loaded.Any(n => n.IndexOf(baker.Assembly, StringComparison.OrdinalIgnoreCase) >= 0))
                 {
-                    continue; // installed and compiled — nothing to say
+                    continue; // installed and compiled: nothing to say
                 }
 
                 ok = false;
@@ -80,7 +80,7 @@ namespace AvatarBridge
                     $", but no {baker.Name} assembly is loaded. Converting now would treat every " +
                     $"{baker.Name} component on this avatar as though it were not there: the bake " +
                     "would not run, and the result would be missing everything that package builds " +
-                    "— silently, because an avatar with no baker looks exactly like an avatar with " +
+                    ", silently, because an avatar with no baker looks exactly like an avatar with " +
                     "nothing to bake. This is what an avatar or prop \".unitypackage\" does when it " +
                     "ships its own bundled copy and overwrites yours. Reinstall " +
                     $"{baker.Name} through the VRChat Creator Companion, let Unity finish " +

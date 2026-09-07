@@ -208,7 +208,7 @@ namespace AvatarBridge
                 report.Converted(Category, $"{done} texture(s) changed, {Mb(plan.Bytes)} off the graphics card",
                     string.Join("; ", plan.Textures.Take(8).Select(Describe)) +
                     (plan.Textures.Count > 8 ? $"; and {plan.Textures.Count - 8} more" : "") +
-                    ". Import settings only — no texture file was edited, every one of these is a field in the " +
+                    ". Import settings only: no texture file was edited, every one of these is a field in the " +
                     "inspector to put back, and \"Put the textures back\" here does the same thing." +
                     (refused > 0
                         ? $" {refused} of them would not take the format this platform was asked for and were " +

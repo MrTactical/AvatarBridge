@@ -81,7 +81,7 @@ namespace AvatarBridge
                             $"Left \"{from}\" named as it was",
                             $"Renaming it to \"{to}\" would have given it the same name as a " +
                             "object beside it, and two objects sharing a path means an animation " +
-                            "reaches whichever one Unity happens to find first. Cosmetic only — " +
+                            "reaches whichever one Unity happens to find first. Cosmetic only: " +
                             "nothing about the deform depends on the name.");
                         continue;
                     }
@@ -146,7 +146,7 @@ namespace AvatarBridge
                     "Objects were renamed to read as YAPS and the animations addressing them were " +
                     "rewritten to match, but some now name a path this avatar does not have. " +
                     "Anything they drove will not move. Please report this at the AvatarBridge " +
-                    "repo — it is a bug in the rename, not in your avatar. The first few:\n  " +
+                    "repo: it is a bug in the rename, not in your avatar. The first few:\n  " +
                     string.Join("\n  ", sample) +
                     (unresolved.Count > sample.Count ? $"\n  … and {unresolved.Count - sample.Count} more" : ""));
             }

@@ -70,7 +70,7 @@ namespace AvatarBridge
                 db.enabled = false;
                 ctx.Report.Approximated(Category, data.Root.name,
                     "Style was inactive at conversion; DynamicBone created disabled. Its toggle is " +
-                    "re-wired to switch this chain on — see the Animator section of this report.");
+                    "re-wired to switch this chain on: see the Animator section of this report.");
             }
 
             db.m_Elasticity = Mathf.Clamp01(data.Pull) * ElasticityScale;
@@ -114,7 +114,7 @@ namespace AvatarBridge
                     db.m_Radius *= growth;
                     ctx.Report.Converted(Category, data.Root.name,
                         $"Chain radius grown ×{growth:0.00} ({push * 100f:0.#} cm of surface travel) " +
-                        "for the largest the sliders make the body — measured at rest and with " +
+                        "for the largest the sliders make the body: measured at rest and with " +
                         "every animated shape at full reach.");
                 }
             }
@@ -146,7 +146,7 @@ namespace AvatarBridge
             if (data.HumanoidExclusions.Count > 0)
             {
                 ctx.Report.Approximated(Category, data.Root.name,
-                    $"{data.HumanoidExclusions.Count} humanoid-mapped bone(s) added to the exclusions — " +
+                    $"{data.HumanoidExclusions.Count} humanoid-mapped bone(s) added to the exclusions: " +
                     $"{string.Join(", ", data.HumanoidExclusions.Take(4).Select(t => t.name))}" +
                     $"{(data.HumanoidExclusions.Count > 4 ? ", …" : "")}. The animator and IK drive " +
                     "humanoid bones every frame, so simulating one fights them for the transform.");
@@ -155,7 +155,7 @@ namespace AvatarBridge
             if (data.ToeExclusions.Count > 0)
             {
                 ctx.Report.Approximated(Category, data.Root.name,
-                    $"{data.ToeExclusions.Count} toe branch(es) added to the exclusions — " +
+                    $"{data.ToeExclusions.Count} toe branch(es) added to the exclusions: " +
                     $"{string.Join(", ", data.ToeExclusions.Take(4).Select(t => t.name))}" +
                     $"{(data.ToeExclusions.Count > 4 ? ", …" : "")} (with everything under them). " +
                     "Simulated toes splay and swing while the foot itself is planted by IK, which " +
@@ -251,7 +251,7 @@ namespace AvatarBridge
                         round.m_Height *= growth;
                         ctx.Report.Converted("PhysBone colliders", parent.name,
                             $"Collider grown ×{growth:0.00} ({push * 100f:0.#} cm of surface travel) " +
-                            "for the largest the sliders make the body — measured at rest and with " +
+                            "for the largest the sliders make the body: measured at rest and with " +
                             "every animated shape at full reach.");
                     }
                 }

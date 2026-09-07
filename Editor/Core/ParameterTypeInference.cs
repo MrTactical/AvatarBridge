@@ -112,7 +112,7 @@ namespace AvatarBridge
                 return;
             }
             ctx.Report.Approximated(Category, $"{vetoed.Count} parameter(s) kept as Float",
-                $"{string.Join(", ", vetoed.Take(6))}{(vetoed.Count > 6 ? ", …" : "")} — their menu control " +
+                $"{string.Join(", ", vetoed.Take(6))}{(vetoed.Count > 6 ? ", …" : "")}: their menu control " +
                 "suggests a bool or an int, but a blend tree, motion time or animation clip reads them as a " +
                 "quantity, which needs the values in between. Retyping would have broken that.");
         }
@@ -380,11 +380,11 @@ namespace AvatarBridge
                 ctx.Report.Approximated("Animator",
                     $"{unreachableDropped} transition(s) dropped that could never fire",
                     $"{string.Join(", ", unreachableNotes)}{(unreachableDropped > unreachableNotes.Count ? ", …" : "")} " +
-                    "— each rested on a numeric comparison the parameter's real range cannot satisfy (a " +
+                    ": each rested on a numeric comparison the parameter's real range cannot satisfy (a " +
                     "\"less than zero\" guard on a value that is only ever 0 or 1, and similar), so it never " +
                     "fired in VRChat either. They are removed rather than translated because translating the " +
                     "operator alone would turn a transition that never fired into one that fires half the " +
-                    "time — which makes a layer fight itself.");
+                    "time, which makes a layer fight itself.");
             }
         }
 

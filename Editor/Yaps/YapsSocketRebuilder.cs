@@ -390,7 +390,7 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category,
                     $"Rebuilt {rebuilt} socket(s) through the native builder",
                     "Marker lights within the light budget, pointers with their self twins, and " +
-                    "a depth trigger writing a synced parameter — the exact rig the YAPS window " +
+                    "a depth trigger writing a synced parameter: the exact rig the YAPS window " +
                     "builds, because it is the same code. " +
                     (repointed > 0
                         ? $"{repointed} socket(s) had their depth reactions repointed onto the " +
@@ -411,7 +411,7 @@ namespace AvatarBridge
             if (lighthouse == null) return;
             ctx.Report.Converted(Category, "The lighthouse: one lit socket, wearer's choice",
                 "Every lit-capable socket carries its marker pair and the \"Marker lights\" " +
-                "dropdown lights exactly one — and switches that socket on, so choosing it " +
+                "dropdown lights exactly one, and switches that socket on, so choosing it " +
                 "is the whole job for a DPS or TPS toy. It starts on Off: nothing is lit " +
                 "until the wearer says so. A disabled light never competes for Unity's four " +
                 "vertex-light slots, which is what makes several DPS-findable sockets on one " +
@@ -443,7 +443,7 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category,
                     $"{removed} dead exclusivity layer(s) removed",
                     "VRCFury's socket exclusivity merges at weight zero and ChilloutVR has no " +
-                    "runtime layer-weight control, so these could never assert — but their clips " +
+                    "runtime layer-weight control, so these could never assert, but their clips " +
                     "made the sockets they switch off look menu-owned to every check that walks " +
                     "the controller. The rebuilt sockets have their own toggles.");
             }
