@@ -39,7 +39,10 @@ for tool in "$MONO" "$CSC" "$NETSTANDARD"; do
 done
 
 fail=0
-for defines in "CVR_CCK_EXISTS"                "CVR_CCK_EXISTS;AVATARBRIDGE_YAPS"                "CVR_CCK_EXISTS;VRC_SDK_VRCSDK3"                "CVR_CCK_EXISTS;VRC_SDK_VRCSDK3;AVATARBRIDGE_YAPS"; do
+for defines in "CVR_CCK_EXISTS" \
+               "CVR_CCK_EXISTS;AVATARBRIDGE_YAPS" \
+               "CVR_CCK_EXISTS;VRC_SDK_VRCSDK3" \
+               "CVR_CCK_EXISTS;VRC_SDK_VRCSDK3;AVATARBRIDGE_YAPS"; do
     rsp="$WORK/build.rsp"
     dll="$WORK/out.dll"
     rm -f "$dll"

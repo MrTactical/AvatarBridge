@@ -79,7 +79,7 @@ mid-2026:
 | **VRCFury** (toggles, linked clothing, merged armatures survive) | ✅ baked automatically | manual |
 | VRCFury's sync workarounds removed instead of carried across broken | ✅ | - |
 | Contacts | pointers + triggers with [tags widened](#contacts) so ordinary CVR players' hands fire them, proximity receivers driven from distance, anchors and animated switches carried | emulated with `CVRPointer` + trigger |
-| Penetration (DPS / TPS / SPS) converted to a system that works in ChilloutVR | ✅ [YAPS](#yaps-penetration-that-works-in-chilloutvr), plus a tool to set it up on any avatar | - |
+| Penetration (DPS / TPS / SPS) converted to a system that works in ChilloutVR | ✅ [YAPS](#yaps-penetration-that-works-in-chilloutvr), a separate 18+ add-on, plus a tool to set it up on any avatar | - |
 | Stereo shaders patched so effects stop drawing into one eye | ✅ | - |
 | Gaze limits *measured off your avatar's own poses*; the viewpoint your avatar already shipped with | ✅ | - |
 | Constraints that drive another transform (Avatar Limb Scaling et al.) | ✅ | - |
@@ -139,8 +139,8 @@ actually running.
   sitting animations are grafted into ChilloutVR's locomotion layer, matched by blend-tree
   position; emotes move into the one layer that can both pose the body and hand it back; a flight
   pose rides CVR's **native** flight. The game moves you, with your avatar's art.
-- **Penetration comes across working**: DPS, TPS and SPS become
-  [YAPS](#yaps-penetration-that-works-in-chilloutvr): the plug bends into sockets and sockets
+- **Penetration comes across working**, with the 18+ [YAPS](#yaps-penetration-that-works-in-chilloutvr)
+  add-on installed: DPS, TPS and SPS become YAPS, the plug bends into sockets and sockets
   open, in game, for everyone, with the author's tuning carried over, and it reads and is read by
   every system already on the platform. **Converting carries the sockets over; finish them in the
   YAPS tool** (*Tools ▸ YAPS ▸ Setup*, drop the converted avatar in, Build): that is what gives a
@@ -207,21 +207,7 @@ still converts.
 
 ## Installation
 
-### If you only want YAPS and the Toolkit
-
-Neither needs VRChat, its SDK, or any of the list below. Take **`YAPS-<version>.unitypackage`**
-from [Releases](https://github.com/MrTactical/AvatarBridge/releases) instead of the full one:
-
-1. **Unity 2022.3.22f1**, any project.
-2. **ChilloutVR CCK 4**: the `.unitypackage` from
-   [the ChilloutVR documentation](https://docs.chilloutvr.net/cck/setup/).
-3. **`YAPS-<version>.unitypackage`**, under `Assets`.
-
-It installs to `Assets/AvatarBridge` because these tools share a codebase with the converter, so
-installing the full package later just adds the converter beside them: nothing is duplicated,
-and it works in either order. The converter itself is not in this package.
-
-### The full converter
+### The converter and the Toolkit
 
 **Everything on the VRChat side comes from the [Creator Companion](https://vcc.docs.vrchat.com/),
 including the project itself.** The SDK ships only as a VPM package, and VPM packages install only
@@ -250,6 +236,24 @@ order, which is most of this list already done.
 
 One extra recompile after importing is normal: that's AvatarBridge registering its scripting
 defines.
+
+### The YAPS add-on (18+)
+
+Penetration is an adults-only download of its own: **`YAPS-<version>-adult.unitypackage`**, from
+the same [Releases](https://github.com/MrTactical/AvatarBridge/releases) page. Install it beside
+the converter and a converted avatar keeps its penetration. Convert without it and the penetration
+is removed, and the report says so and links here.
+
+It also stands alone, with no VRChat SDK and no converter, for building penetration on a
+ChilloutVR avatar or prop:
+
+1. **Unity 2022.3.22f1**, any project.
+2. **ChilloutVR CCK 4**: the `.unitypackage` from
+   [the ChilloutVR documentation](https://docs.chilloutvr.net/cck/setup/).
+3. **`YAPS-<version>-adult.unitypackage`**, under `Assets`.
+
+Both packages install to `Assets/AvatarBridge` and share one codebase, so either order works and
+nothing is duplicated.
 
 ## Usage
 
@@ -289,7 +293,7 @@ defines.
 | PhysBones + colliders | **MagicaCloth2** or DynamicBone | see [below](#physbones--magicacloth2) |
 | PhysBone `_IsGrabbed` / `_Angle` | [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod | optional mod, not bundled; see [grabbing](#grabbing-a-chain) |
 | Contacts | `CVRPointer` / trigger | see [below](#contacts) |
-| DPS / TPS / SPS penetration | **YAPS** | plug bends, sockets open, the author's tuning carried; see [YAPS](#yaps-penetration-that-works-in-chilloutvr) |
+| DPS / TPS / SPS penetration | **YAPS**, a separate 18+ add-on | plug bends, sockets open, the author's tuning carried, and removed instead where the add-on is not installed; see [YAPS](#yaps-penetration-that-works-in-chilloutvr) |
 | VRC Constraints | Unity constraints | including *Target Transform*; see [below](#constraints-that-drive-another-object) |
 | VRC Head Chop | `FPRExclusion` | ⚠️ show/hide only |
 | Skinned mesh bounds | resized to the avatar's own volume, plus 0.3 × its height of clearance | stops meshes vanishing at screen edges. Measured from the bones that skin the avatar, so it's shaped like the avatar rather than a cube; boxes that were bigger are brought down to it too |
@@ -672,7 +676,12 @@ VRChat has had three penetration systems (Raliv's **DPS**, Thry's **TPS**, VRCFu
 and every avatar that came to ChilloutVR left its penetration behind, because all three lean on
 things ChilloutVR doesn't have. **YAPS** (Yet Another Penetration System) is the fourth: written
 from scratch for ChilloutVR's own primitives, no VRChat code shipped, and built to speak to the
-other three rather than replace them. It is two things in one package:
+other three rather than replace them.
+
+**It is a separate download, for adults**: `YAPS-<version>-adult.unitypackage`, on the same
+releases page as the converter. Convert an avatar without it and its penetration is removed, the
+same as choosing *Remove*, and the report says which system the avatar had and where to get the
+add-on. Installed, it is two things:
 
 - **A pass in the converter.** With *Penetration* left on *Convert to YAPS* (the default), a
   VRChat avatar's plug bends into sockets and its sockets open around plugs: in game, for
@@ -1233,8 +1242,8 @@ cards in a window of their own.* The converter's own passes, one card each, run 
 button, read the rows. Same look, same report style, same code as the converter, so nothing here
 can drift from what a conversion does.
 
-This and YAPS also ship on their own, as `YAPS-<version>.unitypackage`, for ChilloutVR projects
-with no VRChat SDK and no interest in a converter; see [Installation](#installation).
+The Toolkit ships in the converter's own package and needs no VRChat SDK: install AvatarBridge
+in a ChilloutVR project and these cards work on their own; see [Installation](#installation).
 
 | card | does |
 |---|---|
@@ -1331,7 +1340,7 @@ Analyse sets them to match. Open it to override a measurement deliberately, not 
 | **GrabbyBones mod support** | on | Keeps chains grabbable by the GrabbyBones mod, the closest thing CVR has to VRChat's bone grabbing |
 | **Face tracking** | Native CVR Component | Native drives blendshapes through CVR's own `CVRFaceTracking`: self-contained, a bit stiff. *Unity Animator Blendtrees (DSR)* rebuilds DragonSkyRunner's rig onto the avatar: smoother, more expressive. *Keep the avatar's own rig* strips nothing. Both set-up modes replace any existing FT rig |
 | **Remove GoGo Loco (recommended)** | on | Strips GoGo Loco, whose locomotion VRChat needs and ChilloutVR provides natively |
-| **Penetration** | Convert to YAPS | One choice, three answers. *Convert to YAPS* rebuilds the penetration system for ChilloutVR: a from-scratch deform, the author's own tuning carried across, sockets found by contacts and DPS marker lights, readable by and reading every system on the platform. The OGB, PCS and Wholesome haptics stacks are stripped either way: they cost no sync bits, but each is a contact, and ChilloutVR budgets 512 overlapping pairs a frame for the whole instance: a converted avatar carried over a hundred. *Keep the OGB / PCS haptics contacts* brings them back if you drive a toy from them. *Leave as VRChat built it* touches nothing, and functions nowhere |
+| **Penetration** | Convert to YAPS | One choice, three answers. *Convert to YAPS* rebuilds the penetration system for ChilloutVR: a from-scratch deform, the author's own tuning carried across, sockets found by contacts and DPS marker lights, readable by and reading every system on the platform. The OGB, PCS and Wholesome haptics stacks are stripped either way: they cost no sync bits, but each is a contact, and ChilloutVR budgets 512 overlapping pairs a frame for the whole instance: a converted avatar carried over a hundred. *Keep the OGB / PCS haptics contacts* brings them back if you drive a toy from them. *Leave as VRChat built it* touches nothing, and functions nowhere. The choice needs the 18+ [YAPS add-on](#yaps-penetration-that-works-in-chilloutvr) installed; without it the penetration is removed and the report names the add-on |
 | **Remove animation that can't do anything (recommended)** | on | Drops curves pointing at material properties the shader doesn't have: dead in VRChat too, noisy in CVR |
 | **FX (toggles, expressions)** | on | The layer nearly every toggle lives in |
 | **Gesture (hand poses)** | on | Hand poses, converted to the CCK's own float threshold idiom. A Gesture layer holding **only** VRChat's `proxy_*` placeholders is left behind and ChilloutVR's own hand poses kept; see [fingers snapping](#converted-fingers-snap-to-a-pose-nobody-authored) |

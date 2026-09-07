@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
-# Builds AvatarBridge-<version>.unitypackage from the working tree.
+# Builds the release packages from the working tree.
 # Version comes from BridgeDefines.cs. Package and tool always agree.
+#
+# Two products, one repo. The public package is the converter and the
+# Toolkit; the penetration system is the separate 18+ add-on, and no public
+# build carries a byte of it. Paths and GUIDs are shared, so a project with
+# both ends up with one folder rather than two copies of everything.
 #
 # Usage:
 #   build-package.sh            public build -> AvatarBridge-<version>-public.unitypackage
+#   build-package.sh --yaps     add-on build -> YAPS-<version>-adult.unitypackage
 #   build-package.sh --dev      dev build    -> AvatarBridge-<version>-dev.unitypackage
 #   build-package.sh --test TAG test build   -> AvatarBridge-<version>-test-TAG.unitypackage
 #                               public contents, for select testers; a tag is spent once built
 #
-# Both modes are labelled. Never infer contents from a missing suffix.
+# Every mode is labelled. Never infer contents from a missing suffix.
 # Packages built before 2026-08-01 have no suffix and are all public.
 # They keep those names; GitHub released them under those names.
 #
@@ -35,7 +41,8 @@ if [ -z "$VERSION" ]; then echo "could not read Version from BridgeDefines.cs" >
 if [ "$MODE" = "dev" ]; then
   OUT="$REPO/AvatarBridge-$VERSION-dev.unitypackage"
 elif [ "$MODE" = "yaps" ]; then
-  OUT="$REPO/YAPS-$VERSION.unitypackage"
+  # 18+ in the filename, so it says so before anyone opens it.
+  OUT="$REPO/YAPS-$VERSION-adult.unitypackage"
 elif [ "$MODE" = "test" ]; then
   OUT="$REPO/AvatarBridge-$VERSION-test-$TAG.unitypackage"
 else
@@ -49,7 +56,8 @@ fi
 case "$MODE" in
   public) taken_names=("$REPO/AvatarBridge-$VERSION.unitypackage" \
                        "$REPO/AvatarBridge-$VERSION-public.unitypackage") ;;
-  yaps)   taken_names=("$REPO/YAPS-$VERSION.unitypackage") ;;
+  yaps)   taken_names=("$REPO/YAPS-$VERSION.unitypackage" \
+                       "$REPO/YAPS-$VERSION-adult.unitypackage") ;;
   test)   taken_names=("$REPO/AvatarBridge-$VERSION-test-$TAG.unitypackage") ;;
   dev)    taken_names=() ;;   # a dev build may be rebuilt over itself; it never ships
 esac
@@ -63,22 +71,25 @@ rm -f "$OUT"
 
 guid_of() { sed -n 's/^guid: \([0-9a-f]*\).*/\1/p' "$1" | head -1; }
 
-# What the YAPS package carries: the penetration system, its setup window,
-# the Toolkit, and the support each needs. NOT the converter.
+# What the YAPS package carries: the penetration system whole, its setup
+# window, the Toolkit, and the Core files each needs.
 #
-# The list is not guesswork. Compiling exactly these against the CCK with no
-# VRChat SDK is what settled it, and the four conversion passes below are the
-# only files under Editor/Yaps that fall outside it. Anything added to the
-# tool that YAPS reaches for will fail that compile, not this script, so
-# check the closure before editing this list. Destination paths and GUIDs are
-# the full package's, so installing both overlays rather than duplicates.
+# The conversion passes ride here too, and only here. No public build has
+# Editor/Yaps in it, so keeping a converted avatar's penetration means
+# installing the add-on beside the converter. They compile out where there
+# is no VRChat SDK, which is most projects this package lands in.
+#
+# The Core list is not guesswork. Compiling exactly these against the CCK
+# with no VRChat SDK is what settled it. Anything added to the tool that YAPS
+# reaches for will fail that compile, not this script, so check the closure
+# before editing this list. Destination paths and GUIDs are the public
+# package's, so installing both overlays rather than duplicates.
 YAPS_CORE="BridgeContext BridgeReport BridgeSettings ShaderSpiPatcher ShaderFixRecipes \
 AnimatorAssetSaver AnimatorDeepCopier AvatarScalerInjector OutputAssetPaths AvatarDescription \
 AvatarHygiene BridgeDiagnostics CckDescriptionFiller CvrSetup AvatarFeatureDetect \
 FaceTrackingConverter FaceTrackingInjector MouthLocator UnifiedBlendshapes FaceTrackingPackages \
-CvrParameterNames GestureMap AvatarSurvey AvatarWeight AvatarSlimmer BridgeFinish DiagnosticsWriter HtmlReportWriter"
-# Conversion passes: VRChat-only, and dead weight in a ChilloutVR project.
-YAPS_SKIP="YapsConverter YapsBakePrep YapsRename YapsReapply YapsSocketRebuilder"
+CvrParameterNames GestureMap AvatarSurvey AvatarWeight AvatarSlimmer BridgeFinish DiagnosticsWriter HtmlReportWriter \
+YapsMarks"
 
 yaps_files() {
   {
@@ -88,9 +99,6 @@ yaps_files() {
     printf '%s\n' Editor/BridgeDefines.cs Editor/BridgeLinks.cs LICENSE.md README.md
     for name in $YAPS_CORE; do printf '%s\n' "Editor/Core/$name.cs"; done
   } | while IFS= read -r p; do
-    for skip in $YAPS_SKIP; do
-      case "$p" in */$skip.cs) continue 2 ;; esac
-    done
     case "$p" in *.meta) continue ;; esac
     [ -e "$p" ] || { echo "  !! missing from the YAPS list: $p" >&2; continue; }
     printf '%s\0' "$p"
@@ -208,11 +216,16 @@ while IFS= read -r -d '' path; do
   fi
   count=$((count+1))
 done < <(if [ "$MODE" = "yaps" ]; then cat "$STAGE/yaps.list"; else
+  # Editor/Yaps and Runtime are the add-on, and the add-on is its own 18+
+  # download. YapsMarks stays behind: the survey meets the materials it
+  # names on any avatar converted while the add-on was installed.
   find . -mindepth 1 \
     \( -name '.*' \
        -o -path './docs' \
        -o -path './Dev' \
        -o -path './Regression' \
+       -o -path './Editor/Yaps' \
+       -o -path './Runtime' \
        -o -name 'CLAUDE.md' \) -prune -o -print0
 fi)
 
