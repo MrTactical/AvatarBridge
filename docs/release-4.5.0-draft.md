@@ -1,4 +1,4 @@
-# 4.5.0 - Plugs find sockets off the screen, and penetration becomes its own 18+ download
+# 4.5.0 - Plugs find sockets a new way, seven fixes for shapes that came out wrong, and penetration as its own 18+ download
 
 **Reconvert to get any of this.** One release, two downloads, a changelog each. Existing avatars
 keep working as they are; nothing below reaches them until they are converted or rebuilt.
