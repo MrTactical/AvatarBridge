@@ -476,7 +476,7 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
                 //
                 // Tested here rather than after the sort, so a rejected
                 // entry leaves no hole in the list.
-                if (_YAPS_SelfTag >= 0 && d > len * YAPS_ATLAS_REACH
+                if (_YAPS_SelfTag >= 0 && _YAPS_SelfAllow < 0.5
                     && YapsSameBodyAt(root, at)) continue;
 
                 // Insertion sort, nearest first. THE ORDER IS THE PATH:

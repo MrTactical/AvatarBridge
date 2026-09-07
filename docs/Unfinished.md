@@ -448,6 +448,23 @@ contradictory were the scene view and the game view disagreeing, and one
 "nothing resolved" was the plug's own enable toggled off in the avatar menu,
 which scales the deform to zero while leaving every debug view working.
 
+### Own-body answering is opt-in, decided 2026-09-07
+
+The two-body test showed why it cannot be on by default. A hole ends the chain,
+and a socket on the wearer's own body is nearly always nearer to their plug
+than anybody else's, so a wearer carrying both parts would end the chain at
+home and never reach the person in front of them. That is a regression for a
+common kind of avatar, caused by two correct changes meeting.
+
+So there is a new material switch, "Answer the wearer's own sockets", off by
+default. Off restores the old behaviour exactly. On admits them, with the
+consequence above, which its tooltip says.
+
+What is still missing is the in-game half: the switch is a material property,
+so today it can only be set at build time. It wants a menu toggle, and after
+that the per-socket allow and deny list this started as. That is the next piece
+of work on this branch and it should land before any of it ships.
+
 ### The chain ran past a hole, found 2026-09-07
 
 Setting the two-body case up showed the shaft entering a hole and carrying on

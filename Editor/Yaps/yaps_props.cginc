@@ -73,6 +73,13 @@ float4 _YAPS_ChannelExtents;  // xyz half-extents of that box, in metres
 // decimal survives, so sockets worked or not by luck.
 float _YAPS_SelfTag;
 
+// Whether the wearer's OWN sockets may be answered. Off by default, and that
+// default is the point: a hole ends the chain, and a hole on the wearer's own
+// body is nearly always nearer to the plug than anybody else's socket, so
+// admitting them unasked would end the chain at home and no one else could
+// ever be reached.
+float _YAPS_SelfAllow;
+
 // The screen atlas, off by default. A THIRD transport beside the channel
 // and the lights, not a replacement for either.
 float _YAPS_UseAtlas;
