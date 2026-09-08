@@ -35,6 +35,10 @@ namespace AvatarBridge
             // What the author's reaction layers read, one entry per stay
             // task on a penetrating-filtered trigger.
             public List<string> DepthParams = new List<string>();
+            // What SPS called this socket. Filled by the caller, because
+            // the words live on a component the bake destroys and only the
+            // VRChat side of the tool can read one.
+            public List<string> Tags = new List<string>();
             public int Lights, Pointers, Triggers;
         }
 
@@ -326,6 +330,7 @@ namespace AvatarBridge
                 if (socket == null) socket = pair.Key.gameObject.AddComponent<YapsSocket>();
                 socket.kind = pair.Value.IsHole ? YapsSocket.SocketKind.Hole : YapsSocket.SocketKind.Ring;
                 socket.emitLights = pair.Value.EmitLights;
+                if (pair.Value.Tags.Count > 0) socket.tags = new List<string>(pair.Value.Tags);
                 // Stamped like the native and prop builders do. The stale card is
                 // guarded on this being non-empty, so leaving it blank meant a
                 // CONVERTED socket could never report itself out of date, and converted

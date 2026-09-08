@@ -110,6 +110,18 @@ namespace AvatarBridge.Dev
             float rate = asked == 0 ? 0f : 100f * loose / asked;
             if (rate > 8f) fail.Add($"three-tag false match {rate:0.0}%, was 5.4% when this was written");
 
+            // The plug's side. Four slots, the author's order, and anything
+            // past them counted rather than dropped in silence: a list of
+            // six read as a list of four with nothing on screen saying so.
+            var six = new List<string> { "hips", "HIPS", " head ", "chest", "hand", "foot", "" };
+            var v = YapsTags.Patterns(six);
+            if (v.x != YapsTags.Pattern("hips") || v.y != YapsTags.Pattern("head")
+                || v.z != YapsTags.Pattern("chest") || v.w != YapsTags.Pattern("hand"))
+                fail.Add("Patterns does not fill the four slots in the author's order");
+            if (YapsTags.Dropped(six) != 1) fail.Add($"Dropped says {YapsTags.Dropped(six)}, not 1");
+            if (YapsTags.Dropped(new List<string> { "hips", "hips" }) != 0)
+                fail.Add("Dropped counts a repeat");
+
             if (fail.Count == 0) Debug.Log($"YAPS tags: ok. {Known.Length} names, {YapsTags.Bits} bits, {YapsTags.PerTag} per tag, "
                 + $"{seen.Count}/{space} patterns reachable, {rate:0.0}% false on a three-tag socket.");
             else Debug.LogError("YAPS tags FAILED:\n" + string.Join("\n", fail));

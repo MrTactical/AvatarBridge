@@ -122,7 +122,9 @@ namespace AvatarBridge.Yaps
         [Tooltip("Answer only sockets carrying at least one of these tags. Any words you like, " +
                  "matched case-insensitively, and the same names SPS uses mean the same thing " +
                  "here. Empty means no opinion, which answers anything the refuse list does not " +
-                 "deny.\n\nOnly the screen atlas carries what a socket is, and even then a " +
+                 "deny.\n\nFour is all there is room for, repeats aside; anything past that is " +
+                 "not baked and the build says how many it left out. A socket has no limit, so a " +
+                 "longer list often belongs on the sockets instead.\n\nOnly the screen atlas carries what a socket is, and even then a " +
                  "socket it turned away can still be picked up by that socket's marker light or " +
                  "contact. A preference, not a lock: use Deform for anything that has to be " +
                  "certain.")]
@@ -131,7 +133,7 @@ namespace AvatarBridge.Yaps
         [YapsFrom("SPS")]
         [Tooltip("Never answer a socket carrying any of these tags, whatever the list above " +
                  "says. Refusing beats answering, and reads what the socket published, so it " +
-                 "needs the screen atlas the same way the list above does.")]
+                 "needs the screen atlas the same way the list above does. Four here as well.")]
         public List<string> refuses = new List<string>();
 
         [YapsFrom("TPS · SPS")]

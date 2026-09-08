@@ -1410,11 +1410,38 @@ with nobody choosing anything. `YapsTags.Listed` is the one implementation now.
 pixel: an old untagged socket wrote alpha 1, which the new decoder reads as five bits set rather
 than none, so a pattern living in those bits would match a socket that had no tags at all. Only
 mixed builds of unreleased version-3 work are affected, and the version is what refuses them.
-**Still owed**: the converter does not carry an SPS plug's or socket's tags across, so a converted
-avatar comes through untagged. Both sides are lists of strings now, so it is a copy rather than a
-mapping; the eleven location tags are not derived automatically the way SPS derives
-them; and the four custom slots are by convention only, since a name cannot live in a pixel. And
-the rect, above, which is the one that gates shipping.
+**The converter carries them now, 2026-09-08.** The words are read off the VRCFury components in
+`YapsBakePrep`, beside the overrun flag and for the same reason: SPS writes tags as 32-bit hashes
+into a generated animation clip, so the baked avatar has numbers and a hash cannot be turned back
+into a word. Sockets travel to the rebuild in `Spec.Tags`, because the rebuild compiles without
+the VRChat SDK and must not reference the prep; plugs are written straight into the patched
+material beside the overrun.
+
+The bone-derived names are derived here too, by CLIMBING to the bone a socket hangs off rather
+than measuring to the nearest one: a distance answers wrongly the moment two bones sit close.
+Hips front and back only when there are exactly two hip sockets, which is SPS's own rule; with
+three, naming a front socket "hipsback" would make a plug refuse the wrong one.
+
+**Carrying the shared tag is what makes it safe, and it was nearly missed.** Nearly every SPS
+socket and plug carries the global tag, and a plug that has it answers everything regardless of
+its own list. Carrying a plug's include list WITHOUT carrying that would have made every
+converted plug with a rule refuse every socket on the avatar: a shipped regression out of a
+feature meant to add fidelity. The shared tag is a fixed number in SPS rather than a hashed word;
+it travels here as the word "shared", since a VRChat plug and a ChilloutVR socket never meet and
+only the behaviour has to carry.
+
+What does not survive: the per-tag self and others modifiers, since a plug has one answer for
+both. Reported rather than silent.
+
+**Distinct entries past four are now counted, not dropped in silence** (the residue of H2, which
+a reviewer was right to call out as an overstated "all fixed"). `YapsTags.Dropped` counts them and
+the plug build says how many it left out; the tooltips and the README say four is the room. The
+inspector still accepts a fifth, which is the honest place to stop: a custom list drawer to
+prevent typing one is a UI project, and the bake now tells the truth either way.
+
+**Still owed**: the rect, above, which is the one that gates shipping. No converted avatar has
+been through this yet: the corpus has not run since it landed, and nothing has been tested in
+game.
 
 **2. Not a gap, and worth saying before the rest.**
 

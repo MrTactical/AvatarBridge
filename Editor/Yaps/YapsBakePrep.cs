@@ -12,6 +12,7 @@
 // they are put back afterwards no matter how the bake ends.
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using UnityEditor;
 using UnityEngine;
@@ -34,14 +35,38 @@ namespace AvatarBridge
         public static readonly Dictionary<string, bool> AuthoredOverrun =
             new Dictionary<string, bool>();
 
+        // Tags, same reason and same key. SPS writes them as 32-bit hashes
+        // into a generated animation clip, so the baked avatar has the
+        // numbers and not the words; the components still hold the words,
+        // and a hash cannot be turned back into one.
+        public static readonly Dictionary<string, List<string>> AuthoredSocketTags =
+            new Dictionary<string, List<string>>();
+        public static readonly Dictionary<string, List<string>> AuthoredAnswers =
+            new Dictionary<string, List<string>>();
+        public static readonly Dictionary<string, List<string>> AuthoredRefuses =
+            new Dictionary<string, List<string>>();
+
+        // SPS's "global" tag, which nearly every socket and plug carries by
+        // default. It is a fixed number over there rather than a hashed
+        // word; the number cannot mean anything here, since a VRChat plug
+        // and a ChilloutVR socket never meet, but the BEHAVIOUR has to
+        // carry: a plug with it answers anything, and a plug without it
+        // answers only what it named.
+        const string Shared = "shared";
+
         public static YapsBakePrep Begin(BridgeContext ctx, GameObject source)
         {
             var prep = new YapsBakePrep();
             AuthoredOverrun.Clear();
+            AuthoredSocketTags.Clear();
+            AuthoredAnswers.Clear();
+            AuthoredRefuses.Clear();
             if (ctx == null || !ctx.Settings.convertYapsSystems || source == null)
             {
                 return prep;
             }
+
+            ReadTags(source);
 
             foreach (var component in source.GetComponentsInChildren<Component>(true))
             {
@@ -83,6 +108,160 @@ namespace AvatarBridge
                     "you had them as soon as the bake finishes.");
             }
             return prep;
+        }
+
+        // Everything the bake is about to destroy, in words.
+        //
+        // A plug carrying the shared tag answers anything, so its own list
+        // only narrows when the author turned that off. Reproducing that is
+        // what stops a converted plug refusing every socket on the avatar:
+        // carrying an include list without carrying what the sockets ARE
+        // would do exactly that.
+        static void ReadTags(GameObject source)
+        {
+            var sockets = new List<Component>();
+            foreach (var component in source.GetComponentsInChildren<Component>(true))
+            {
+                if (component == null) continue;
+                string type = component.GetType().Name;
+                if (type == "VRCFuryHapticSocket") { sockets.Add(component); continue; }
+                if (type != "VRCFuryHapticPlug") continue;
+
+                var answers = Rules(component, "includeTags");
+                if (Flag(component, "useSharedTag")) answers.Add(Shared);
+                var refuses = Rules(component, "excludeTags");
+                if (answers.Count > 0) AuthoredAnswers[component.gameObject.name] = answers;
+                if (refuses.Count > 0) AuthoredRefuses[component.gameObject.name] = refuses;
+            }
+
+            var animator = source.GetComponentInChildren<Animator>(true);
+            var bones = BoneMap(animator);
+            var derived = new Dictionary<Component, List<string>>();
+            foreach (var socket in sockets)
+            {
+                derived[socket] = Flag(socket, "useSharedTag")
+                    ? Bones(socket.transform, bones)
+                    : new List<string>();
+            }
+            FrontAndBack(derived, animator);
+
+            foreach (var socket in sockets)
+            {
+                var tags = Strings(socket, "tags");
+                tags.AddRange(derived[socket]);
+                if (Flag(socket, "useSharedTag")) tags.Add(Shared);
+                if (tags.Count > 0) AuthoredSocketTags[socket.gameObject.name] = tags;
+            }
+        }
+
+        // The bones SPS names a socket after. Nothing else is a tag there,
+        // so nothing else is worth mapping.
+        static readonly (HumanBodyBones Bone, string[] Tags)[] Named =
+        {
+            (HumanBodyBones.Hips, new[] { "hips" }),
+            (HumanBodyBones.Head, new[] { "head" }),
+            (HumanBodyBones.Jaw, new[] { "head" }),
+            (HumanBodyBones.Chest, new[] { "chest" }),
+            (HumanBodyBones.UpperChest, new[] { "chest" }),
+            (HumanBodyBones.LeftHand, new[] { "hand", "handleft" }),
+            (HumanBodyBones.RightHand, new[] { "hand", "handright" }),
+            (HumanBodyBones.LeftFoot, new[] { "foot", "footleft" }),
+            (HumanBodyBones.LeftToes, new[] { "foot", "footleft" }),
+            (HumanBodyBones.RightFoot, new[] { "foot", "footright" }),
+            (HumanBodyBones.RightToes, new[] { "foot", "footright" }),
+        };
+
+        static Dictionary<Transform, string[]> BoneMap(Animator animator)
+        {
+            var map = new Dictionary<Transform, string[]>();
+            if (animator == null || !animator.isHuman) return map;
+            foreach (var entry in Named)
+            {
+                var t = animator.GetBoneTransform(entry.Bone);
+                if (t != null && !map.ContainsKey(t)) map[t] = entry.Tags;
+            }
+            return map;
+        }
+
+        // Climb to the bone the socket hangs off rather than measuring to
+        // the nearest one. A socket is parented where it belongs, and a
+        // distance answers wrongly as soon as two bones sit close: a mouth
+        // socket is nearer the chest than the head on a short neck.
+        static List<string> Bones(Transform socket, Dictionary<Transform, string[]> bones)
+        {
+            for (var at = socket; at != null; at = at.parent)
+            {
+                if (bones.TryGetValue(at, out var tags)) return tags.ToList();
+            }
+            return new List<string>();
+        }
+
+        // Two sockets on the hips: the one further forward is the front.
+        //
+        // Only when there are exactly two, which is SPS's own rule as well.
+        // With three the choice is a heuristic, and naming a front socket
+        // "hipsback" is worse than leaving both unnamed, since a plug that
+        // refuses one would then refuse the wrong one.
+        static void FrontAndBack(Dictionary<Component, List<string>> derived, Animator animator)
+        {
+            if (animator == null || !animator.isHuman) return;
+            var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
+            var hand = animator.GetBoneTransform(HumanBodyBones.RightHand);
+            if (hips == null || hand == null) return;
+            var onHips = derived.Where(p => p.Value.Contains("hips")).Select(p => p.Key).ToList();
+            if (onHips.Count != 2) return;
+            var right = hand.position - hips.position;
+            if (right.sqrMagnitude <= 0.000001f) return;
+            var forward = Vector3.Cross(right.normalized, Vector3.up);
+            if (forward.sqrMagnitude <= 0.000001f) return;
+            forward.Normalize();
+            var ordered = onHips
+                .OrderBy(c => Vector3.Dot(c.transform.position - hips.position, forward))
+                .ToList();
+            derived[ordered[0]].Add("hipsback");
+            derived[ordered[1]].Add("hipsfront");
+        }
+
+        static bool Flag(Component component, string name)
+        {
+            var field = component.GetType().GetField(name,
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            return field != null && field.FieldType == typeof(bool) && (bool) field.GetValue(component);
+        }
+
+        static List<string> Strings(Component component, string name)
+        {
+            var found = new List<string>();
+            var field = component.GetType().GetField(name,
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            if (!(field?.GetValue(component) is System.Collections.IEnumerable list)) return found;
+            foreach (var entry in list)
+            {
+                if (entry is string tag && !string.IsNullOrWhiteSpace(tag)) found.Add(tag.Trim());
+            }
+            return found;
+        }
+
+        // A plug rule carries per-tag self and others flags. YAPS has one
+        // answer for both, so the flags go and the tag stays: dropping the
+        // rule instead would lose more than it protects.
+        static List<string> Rules(Component component, string name)
+        {
+            var found = new List<string>();
+            var field = component.GetType().GetField(name,
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            if (!(field?.GetValue(component) is System.Collections.IEnumerable list)) return found;
+            foreach (var entry in list)
+            {
+                if (entry == null) continue;
+                var tag = entry.GetType().GetField("tag",
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (tag?.GetValue(entry) is string text && !string.IsNullOrWhiteSpace(text))
+                {
+                    found.Add(text.Trim());
+                }
+            }
+            return found;
         }
 
         public void Restore()

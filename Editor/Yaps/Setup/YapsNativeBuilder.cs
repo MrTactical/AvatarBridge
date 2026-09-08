@@ -189,10 +189,21 @@ namespace AvatarBridge
                               && ownAvatar.GetComponentsInChildren<YapsSocket>(true).Length > 0;
             patched.SetFloat("_YAPS_SelfTag", ownSockets ? 1f : -1f);
 
-            // The tag sets, as plain floats. Both tiers read them: the atlas
-            // out of a socket's third pixel, the channel out of its flags.
-            patched.SetVector("_YAPS_TagInclude", TagPatterns(plug.answers));
-            patched.SetVector("_YAPS_TagExclude", TagPatterns(plug.refuses));
+            // The tag sets, one pattern per component. Only the atlas reads
+            // them: a contact cannot see what a socket is tagged, so the
+            // channel tier answers without asking.
+            patched.SetVector("_YAPS_TagInclude", YapsTags.Patterns(plug.answers));
+            patched.SetVector("_YAPS_TagExclude", YapsTags.Patterns(plug.refuses));
+            // Past four, entries are dropped. Saying so here because the
+            // inspector list takes as many as anyone types and the bake was
+            // the only thing that knew otherwise.
+            int over = YapsTags.Dropped(plug.answers) + YapsTags.Dropped(plug.refuses);
+            if (over > 0)
+            {
+                o.Notes.Add($"{over} tag(s) past the first {YapsTags.PlugSlots} on each list were "
+                    + "not baked: that is all the plug has room for. Delete the ones you do not "
+                    + "need, or put them on the socket instead, which has no limit.");
+            }
             // Build adds the socket writers and the avatar's clear and grab, so a
             // toolkit avatar published to the atlas and then read none of it: the
             // flag was set on the convert path only, and a plug with it off falls
@@ -829,27 +840,6 @@ namespace AvatarBridge
                 OwnPlugRestsOn(socket) && !undecidable ? 0f : 1f);
             EditorUtility.SetDirty(material);
             return $"✓ {socket.name}: {result.Shapes.Count} shape(s) staged on \"{renderer.name}\"";
-        }
-
-        // Four tag patterns in a vector, one per component, zero for an empty
-        // slot. A pattern rather than the name because a shader has no way to
-        // hash a string.
-        //
-        // Normalised through YapsTags.Listed, the same call the menu makes.
-        // This used to drop blanks and nothing else, so a list written
-        // "hips, HIPS, head, hand, foot" spent a slot on the repeat and lost
-        // "foot", while the menu's default state kept it: entering that state
-        // changed which sockets the plug answered, without the wearer picking
-        // anything.
-        static Vector4 TagPatterns(IList<string> tags)
-        {
-            var v = Vector4.zero;
-            var listed = YapsTags.Listed(tags);
-            for (int i = 0; i < listed.Count && i < YapsTags.PlugSlots; i++)
-            {
-                v[i] = YapsTags.Pattern(listed[i]);
-            }
-            return v;
         }
 
         // Whether this socket hangs off an arm or a leg.

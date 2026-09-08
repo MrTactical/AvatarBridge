@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System;
 using System.Linq;
 using ABI.CCK.Components;
+using AvatarBridge.Yaps;
 using UnityEditor;
 using UnityEngine;
 
@@ -43,6 +44,7 @@ namespace AvatarBridge
             // The rebuild reads kind and channel off Fury's rig, then strips
             // it, so everything after here works on a bare socket.
             var rebuild = YapsSocketRebuilder.ReadAndStrip(ctx, socketRoots);
+            CarryTags(ctx, rebuild);
             YapsSocketRebuilder.Wake(ctx, socketRoots);
 
             foreach (var plugRoot in plugRoots)
@@ -341,10 +343,57 @@ namespace AvatarBridge
                 ? authored
                 : true;
             patched.SetFloat("_YAPS_Overrun", overrun ? 1f : 0f);
+
+            // Which sockets this plug will answer, in the author's own
+            // words. SPS bakes them to hashes and a hash is not a word, so
+            // they come off the component before the bake or not at all.
+            if (plugObject != null && YapsBakePrep.AuthoredAnswers.TryGetValue(plugObject, out var answers))
+            {
+                patched.SetVector("_YAPS_TagInclude", YapsTags.Patterns(answers));
+            }
+            if (plugObject != null && YapsBakePrep.AuthoredRefuses.TryGetValue(plugObject, out var refuses))
+            {
+                patched.SetVector("_YAPS_TagExclude", YapsTags.Patterns(refuses));
+            }
             ctx.YapsMaterialSwaps[(renderer, slot)] = (materials[slot], patched);
             materials[slot] = patched;
             renderer.sharedMaterials = materials;
             return patched;
+        }
+
+        // The socket half of the tag carry. The plug half sits in the
+        // material patch, since that is where the plug's uniforms are
+        // written; this one has to reach the rebuild, which happens later
+        // and on the ChilloutVR side of the defines, so it travels in the
+        // spec rather than by reading the dictionary from there.
+        //
+        // Keyed by the object the socket component sat on, which survives
+        // as the parent of BakedSpsSocket.
+        static void CarryTags(BridgeContext ctx, Dictionary<Transform, YapsSocketRebuilder.Spec> specs)
+        {
+            int tagged = 0;
+            var words = new List<string>();
+            foreach (var pair in specs)
+            {
+                var owner = pair.Key != null ? pair.Key.parent : null;
+                if (owner == null) continue;
+                if (!YapsBakePrep.AuthoredSocketTags.TryGetValue(owner.name, out var tags)) continue;
+                pair.Value.Tags = new List<string>(tags);
+                tagged++;
+                foreach (string tag in tags) if (!words.Contains(tag)) words.Add(tag);
+            }
+            int plugs = YapsBakePrep.AuthoredAnswers.Count + YapsBakePrep.AuthoredRefuses.Count;
+            if (tagged == 0 && plugs == 0) return;
+            ctx.Report.Converted(Category,
+                $"Carried the tags on {tagged} socket(s) and {plugs} plug rule list(s)",
+                "A tag is what a socket IS, and a plug's lists say which of them it will answer. "
+                + "The words come across as written, so a socket tagged the same way in either "
+                + "tool means the same thing: " + (words.Count == 0 ? "none on the sockets here" : string.Join(", ", words))
+                + ". Two things do not survive. A rule that applied to yourself but not to other "
+                + "people, or the other way round, applies to both here. And a tag is matched by "
+                + "a fingerprint rather than by the word, so two unrelated names can occasionally "
+                + "read as one: it is a preference, not a lock, and Deform is the switch for "
+                + "anything that has to be certain.");
         }
 
         static Renderer FindPlugRenderer(BridgeContext ctx, Transform plugRoot, out int plugVertices,

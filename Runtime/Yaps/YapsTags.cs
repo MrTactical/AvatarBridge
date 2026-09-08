@@ -142,6 +142,27 @@ namespace AvatarBridge.Yaps
             return found;
         }
 
+        // The plug's side: one pattern per slot, in the author's order.
+        // Both builders call this, because the converter and the toolkit
+        // each having their own copy of a rule is how the socket ownership
+        // bug got two different answers.
+        public static UnityEngine.Vector4 Patterns(IList<string> tags)
+        {
+            var v = UnityEngine.Vector4.zero;
+            var listed = Listed(tags);
+            for (int i = 0; i < listed.Count && i < PlugSlots; i++) v[i] = Pattern(listed[i]);
+            return v;
+        }
+
+        // Distinct entries past the slots, which are dropped. A caller that
+        // does not say so leaves an author with a list the bake ignores and
+        // nothing on screen admitting it.
+        public static int Dropped(IList<string> tags)
+        {
+            int count = Listed(tags).Count;
+            return count > PlugSlots ? count - PlugSlots : 0;
+        }
+
         // Every tag a socket wears, folded into one word. Uncapped: a socket
         // pays for its tags with the OR rather than a slot each, so a long
         // list costs accuracy and nothing else.

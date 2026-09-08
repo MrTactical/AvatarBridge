@@ -988,9 +988,13 @@ and needs neither.
 
 **Tags: which sockets a plug will answer.** A socket carries a list of **Tags** saying what it is,
 any words you like, case and spacing ignored. A plug carries two lists of its own: **answer only
-sockets tagged** and **never answer a socket tagged**, up to four each. Refusing beats answering.
+sockets tagged** and **never answer a socket tagged**, four each. Refusing beats answering.
 Leave everything empty and nothing changes: a plug with no list answers any socket, and a socket
 with no tags is found by any plug that is not asking for something in particular.
+
+Four is the plug's whole room, and repeats of one word do not count twice. Type more than that and
+the extra names are not baked; the build says how many it left out. A socket has no limit, so a
+list that will not fit on the plug often fits on the sockets instead.
 
 A name means the same thing here as it does in SPS, because it is hashed the same way, so
 `hips`, `hipsfront`, `hipsback`, `head`, `chest`, `hand`, `handleft`, `handright`, `foot`,
@@ -1029,6 +1033,15 @@ which is the same thing SPS does with content older than tags.
 
 The two sets are also not a privacy control and are not offered as one. What decides whether this
 plug ever bends is the plug's own **Deform** toggle and, for your own body, **its own sockets**.
+
+**Converting from SPS keeps them.** A socket's tags and a plug's two lists come across as the
+words you wrote, including the ones SPS works out for you from the bone a socket sits on, and the
+global tag every socket and plug carries unless you turned it off. So a plug that answered
+everything still answers everything, and a plug narrowed to one place stays narrowed to it. Two
+things change. A rule that applied to yourself but not to other people, or the other way round,
+applies to both here, since a plug has one answer for both. And where an avatar has three or more
+sockets on the hips, they come across as `hips` without the front and back split: with two the
+front one is the one further forward, and with three the guess is worth less than the name.
 
 **Choosing at runtime.** A plug listing two or more tags gets a menu dropdown of its own, so the
 wearer can narrow it to one of them, widen it to *Anything*, or leave it on *As built*, which is
