@@ -86,9 +86,13 @@ for defines in "CVR_CCK_EXISTS" \
     # Without the add-on those files are not in the project at all, so
     # compiling them would prove the wrong thing: the point of the run is
     # that the converter stands up when they are missing.
+    # Runtime goes with Editor/Yaps: the public package prunes BOTH, so a
+    # combination that keeps Runtime is not a shape any user has. Compiling
+    # it was the same blind spot the YAPS closure check exists for, in the
+    # other direction: a shipped file reaching a type that stayed behind.
     case "$defines" in
         *AVATARBRIDGE_YAPS*) find $sources -name '*.cs' ;;
-        *)                   find $sources -name '*.cs' -not -path '*/Editor/Yaps/*' ;;
+        *)                   find $sources -name '*.cs'                                   -not -path '*/Editor/Yaps/*' -not -path '*/Runtime/*' ;;
     esac |
         while read -r f; do echo "\"$(cygpath -w "$f")\"" >> "$rsp"; done
 

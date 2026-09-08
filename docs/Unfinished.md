@@ -362,6 +362,23 @@ folder, which is how the button finds it.
 Last pass in the pipeline, because every pass above it can still add a renderer or point a material
 at a different texture.
 
+## The public package's shape was never compiled, 2026-09-08. FIXED
+
+`compile-check.sh` dropped `Editor/Yaps` for the combinations without the add-on and kept
+`Runtime`, which no such user has: the public package prunes both. So the two combinations that
+exist to prove the converter stands up without the add-on were compiling against four files the
+package does not ship, and a reference from `Editor/Core`, `Editor/Toolkit` or `Editor/UI` into
+`AvatarBridge.Yaps` would have passed here and failed on import, which is exactly how 4.1.0 and
+4.1.1 shipped a package that would not compile.
+
+Nothing is wrong today: with `Runtime` excluded all four combinations still pass, so this closes a
+blind spot rather than a bug. It is the same blind spot the YAPS closure check in `build-package.sh`
+exists for, pointing the other way: that one asks whether the add-on can stand without Core, this
+asks whether the public build can stand without the add-on.
+
+Consolidation item 7 is the other half and is still open: the closure check is a reader, not a
+compiler, and the add-on's own file list has never been compiled as a list.
+
 ## Loose ends, small but real
 
 ### The settings are per USER, not per project. FIXED 2026-09-08
