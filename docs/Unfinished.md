@@ -399,7 +399,12 @@ which is the exact thing the ownership test exists to prevent.
 **Then, and only then, the payoff:** rename the channel's parameters to `#` locals and measure
 what the sync tally drops to. That is a separate change and must not ride along with this one.
 
-**Also parked here: allow and deny per socket.** A socket that publishes nothing is unresolvable,
+**DROPPED 2026-09-08: allow and deny per socket.** The toggle above answers the same question
+for one sync bit, where a per-socket list costs a bit per socket and fills somebody's advanced
+settings with rows nobody will ever open. A wearer either wants their plug answering their own
+body or they do not. Kept below for the record only.
+
+**The parked design was:** A socket that publishes nothing is unresolvable,
 which is the cleanest possible deny, and half the machinery exists already as the tag filter
 (`_YAPS_TagInclude` / `_YAPS_TagExclude`, and the atlas reader checks the tag too). The catch is
 that it has to be SYNCED, or a viewer would not know a socket was denied and would resolve it off
