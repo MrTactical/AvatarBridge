@@ -188,6 +188,11 @@ namespace AvatarBridge
             bool ownSockets = ownAvatar != null
                               && ownAvatar.GetComponentsInChildren<YapsSocket>(true).Length > 0;
             patched.SetFloat("_YAPS_SelfTag", ownSockets ? 1f : -1f);
+
+            // The tag sets, as plain floats. Both tiers read them: the atlas
+            // out of a socket's third pixel, the channel out of its flags.
+            patched.SetFloat("_YAPS_TagInclude", (int) plug.answers);
+            patched.SetFloat("_YAPS_TagExclude", (int) plug.refuses);
             // Build adds the socket writers and the avatar's clear and grab, so a
             // toolkit avatar published to the atlas and then read none of it: the
             // flag was set on the convert path only, and a plug with it off falls

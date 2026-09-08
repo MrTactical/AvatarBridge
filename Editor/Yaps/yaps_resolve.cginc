@@ -150,6 +150,16 @@ inline float3 YapsLightPosition(uint slot)
 // kept one costs a plug bent into its wearer, which recovers as soon as
 // anything better resolves. Doubt keeps the light.
 //
+// Does this plug refuse a socket carrying these tags? The one place the
+// rule lives, so the channel and the atlas cannot drift apart.
+inline bool YapsTagsRefuse(int socketTags)
+{
+    int deny = (int) round(_YAPS_TagExclude);
+    int want = (int) round(_YAPS_TagInclude);
+    if ((socketTags & deny) != 0) return true;
+    return want != 0 && (socketTags & want) == 0;
+}
+
 // Takes a WORLD POSITION rather than a slot, so the atlas can ask the same
 // question about a socket it read off the screen.
 bool YapsSameBodyAt(float3 plugOrigin, float3 lightAt)
@@ -422,7 +432,7 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
             bool got1 = false;
             [loop] for (int sub = 0; sub < 8; sub++)
             {
-                int px = cellX + (1 + 2 * sub) * YAPS_ATLAS_SLOTPX;
+                int px = cellX + (1 + 3 * sub) * YAPS_ATLAS_SLOTPX;
                 float4 got = YAPS_ATLAS_LOAD(px, cellY);
                 if (got.a < 0.5) continue;
                 // The header SUMS every cell sharing this slot, so it can
@@ -438,6 +448,18 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
                 float4 f4 = YAPS_ATLAS_LOAD(px + YAPS_ATLAS_SLOTPX, cellY);
                 float3 fwd = normalize(f4.rgb * 2 - 1);
                 float kind = round(f4.a * 16.0) - 1;
+
+                // TAGS, the third pixel. A socket says what it is and the
+                // plug says what it will answer, and the whole test is two
+                // bitwise ands.
+                //
+                // An untagged socket has to pass a plug with no include
+                // list, or every legacy socket in the room goes dark: the
+                // light tier cannot carry tags at all, a marker light's
+                // range IS its message and the digits are Raliv's. Untagged
+                // is the honest reading of content that predates this.
+                if (YapsTagsRefuse(YapsTagsDecode(
+                        YAPS_ATLAS_LOAD(px + 2 * YAPS_ATLAS_SLOTPX, cellY).rgb))) continue;
 
                 // No facing test. There used to be one, rejecting a hole
                 // whose forward pointed the way the plug was going. The
@@ -570,15 +592,16 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     socket.engaged = saturate(_YAPS_SocketFlags.x);
     socket.isHole = _YAPS_SocketFlags.y;
 
-    // TAG FILTER, from SPS. The channel may carry the socket's tag in the
-    // flags' z. Zero on either knob means no filter, and an untagged
-    // socket is refused only by a REQUIRE. Marker lights carry no tag, so
-    // this sits on the channel's answer alone.
-    float socketTag = round(_YAPS_SocketFlags.z);
-    float wantTag = round(_YAPS_TagInclude);
-    float banTag = round(_YAPS_TagExclude);
-    if ((banTag > 0.5 && socketTag > 0.5 && abs(socketTag - banTag) < 0.5)
-        || (wantTag > 0.5 && abs(socketTag - wantTag) > 0.5))
+    // TAG FILTER, from SPS. The channel carries the socket's tag SET in the
+    // flags' z, and the atlas branch below reads the same sets out of its
+    // third pixel and tests them identically. One rule, two transports:
+    // anything else and a socket answers or refuses depending on which tier
+    // happened to find it.
+    //
+    // Marker lights carry no tag, so a light-only socket arrives untagged
+    // and an untagged socket is refused only by a REQUIRE.
+    int socketTags = (int) round(_YAPS_SocketFlags.z);
+    if (YapsTagsRefuse(socketTags))
     {
         socket.engaged = 0;
     }

@@ -28,6 +28,12 @@ Shader "YAPS/Atlas Socket"
         // face; a hole has a front and a back. Sixteen kinds fit in the
         // facing pixel's alpha.
         [Enum(Ring,0,Hole,1)] _YAPS_Kind ("Socket kind", Float) = 0
+
+        // The socket's tag set, 15 bits in a float. Zero is untagged, which
+        // is what every socket built before version 3 and every legacy
+        // socket found by light is, and what a plug with no include list
+        // answers.
+        _YAPS_SocketTags ("Socket tags", Float) = 0
     }
     SubShader
     {
@@ -46,6 +52,7 @@ Shader "YAPS/Atlas Socket"
         struct appdata { float4 vertex : POSITION; float3 corner : TEXCOORD0; UNITY_VERTEX_INPUT_INSTANCE_ID };
 
         float _YAPS_Kind;
+        float _YAPS_SocketTags;
 
         // Everything a quad needs to know about where it belongs.
         void Place(float3 corner, out int cellPx, out int cellPy,
@@ -130,6 +137,7 @@ Shader "YAPS/Atlas Socket"
                 float4 pos : SV_POSITION;
                 float4 payload : TEXCOORD0;
                 float4 other   : TEXCOORD1;
+                float4 tags    : TEXCOORD3;
                 float  u       : TEXCOORD2;
                 UNITY_VERTEX_OUTPUT_STEREO
             };
@@ -145,7 +153,7 @@ Shader "YAPS/Atlas Socket"
 
                 float2 unit = v.corner.xy + 0.5;
                 float2 atPx;
-                atPx.x = cx + (1 + 2 * sub) * YAPS_ATLAS_SLOTPX + unit.x * 2 * YAPS_ATLAS_SLOTPX;
+                atPx.x = cx + (1 + 3 * sub) * YAPS_ATLAS_SLOTPX + unit.x * 3 * YAPS_ATLAS_SLOTPX;
                 atPx.y = cy + unit.y * YAPS_ATLAS_SLOTPX;
                 o.pos = YapsAtlasFits()
                     ? float4(YapsAtlasToClip(atPx), UNITY_NEAR_CLIP_VALUE, 1)
@@ -157,11 +165,15 @@ Shader "YAPS/Atlas Socket"
                 // pixel's tag matched, and the same draw writes both, so it
                 // cannot disagree. It carries the KIND instead.
                 o.other   = float4(fwd, (floor(_YAPS_Kind) + 1) / 16.0);
+                o.tags    = float4(YapsTagsEncode((int) floor(_YAPS_SocketTags + 0.5)), 1);
                 o.u = unit.x;
                 return o;
             }
 
-            fixed4 frag (v2f i) : SV_Target { return i.u < 0.5 ? i.payload : i.other; }
+            fixed4 frag (v2f i) : SV_Target
+            {
+                return i.u < 1.0 / 3.0 ? i.payload : i.u < 2.0 / 3.0 ? i.other : i.tags;
+            }
             ENDCG
         }
     }

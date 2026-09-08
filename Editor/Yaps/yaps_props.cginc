@@ -80,6 +80,7 @@ float _YAPS_SelfTag;
 // ever be reached.
 float _YAPS_SelfAllow;
 
+
 // The screen atlas, off by default. A THIRD transport beside the channel
 // and the lights, not a replacement for either.
 float _YAPS_UseAtlas;
@@ -154,11 +155,22 @@ float _YAPS_MinimumSocketDistance;
 
 // --- which sockets this plug will answer, from SPS ---------------------
 //
-// One tag to require, one to refuse, each a small integer hashed from the
-// tag string. The socket's own arrives in _YAPS_SocketFlags.z.
-// Zero means no filter.
+// A SET to require and a SET to refuse, 15 bits each in a float, matching
+// what a socket publishes to the atlas. The socket's own set arrives in
+// _YAPS_SocketFlags.z on the channel tier and in the atlas's third pixel
+// on the atlas tier, and both are read the same way: refuse on any bit in
+// common with the exclude set, require any bit in common with the include
+// set. Zero include means no opinion.
 //
-// Marker lights carry no tag, so a light-only socket is always answered.
+// These were a single hashed integer per side until version 3, compared
+// for equality, which could say "only hands" but never "hands or hips".
+// Plain floats rather than ints so an animation can drive them, which is
+// the only way a menu row reaches a shader.
+//
+// Marker lights carry no tag and cannot: a light's RANGE is its whole
+// message and the digits belong to Raliv. So a light-only socket reads as
+// untagged, and untagged is refused only by a REQUIRE. That is the honest
+// reading of content older than this, not a hole in the filter.
 float _YAPS_TagInclude;
 float _YAPS_TagExclude;
 

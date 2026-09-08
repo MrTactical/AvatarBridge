@@ -43,7 +43,7 @@ namespace AvatarBridge
         // reading it is somewhere else.
         const float BoundsSize = 1000f;
 
-        public static GameObject AddWriter(Transform parent, bool hole)
+        public static GameObject AddWriter(Transform parent, bool hole, YapsTags tags = YapsTags.None)
         {
             var shader = Shader.Find(SocketShader);
             if (parent == null || shader == null)
@@ -55,7 +55,7 @@ namespace AvatarBridge
             host.AddComponent<MeshFilter>().sharedMesh = LevelQuads();
 
             var renderer = host.AddComponent<MeshRenderer>();
-            renderer.sharedMaterial = Kind(shader, hole);
+            renderer.sharedMaterial = Kind(shader, hole, tags);
             Quiet(renderer);
             return host;
         }
@@ -239,11 +239,17 @@ namespace AvatarBridge
             return mesh;
         }
 
-        static Material Kind(Shader shader, bool hole)
+        // One material per kind and tag set, not per socket. A property block
+        // would be the obvious way to vary one property per renderer and is
+        // the wrong one: it is not serialised, so it survives the editor and
+        // not the upload. Sockets sharing a kind and a set share a material.
+        static Material Kind(Shader shader, bool hole, YapsTags tags)
         {
-            var m = Made(Folder + (hole ? "/YAPS Atlas Socket Hole.mat" : "/YAPS Atlas Socket Ring.mat"),
-                shader);
+            string what = hole ? "Hole" : "Ring";
+            string set = tags == YapsTags.None ? "" : " " + ((int) tags).ToString("X4");
+            var m = Made(Folder + "/YAPS Atlas Socket " + what + set + ".mat", shader);
             m.SetFloat("_YAPS_Kind", hole ? 1f : 0f);
+            m.SetFloat("_YAPS_SocketTags", (int) tags);
             return m;
         }
 

@@ -4,7 +4,7 @@
 #define YAPS_ATLAS_INCLUDED
 
 // Bump on any change below. It rides the tag.
-#define YAPS_ATLAS_VERSION 2
+#define YAPS_ATLAS_VERSION 3
 
 // 4096 cells. Two homes, so a clash needs both.
 #define YAPS_ATLAS_GRID    64
@@ -21,7 +21,34 @@
 #define YAPS_ATLAS_LEVELS  4
 
 // A header, then eight octants.
-#define YAPS_ATLAS_CELLSLOTS 17
+// One header pixel, then THREE per octant: position, facing, tags.
+// Version 3 added the third. A socket's tag set is 15 bits and there was
+// nowhere left to put it: the facing pixel's alpha carries the kind, and
+// the position pixel's carries the owner tag the whole read is gated on.
+#define YAPS_ATLAS_CELLSLOTS 25
+
+// The tag set, 15 bits over rgb at five bits a channel. Five, not eight:
+// the grab is a half float and these are written once rather than summed,
+// so eight would probably survive, but a tag that decodes wrong sends a
+// plug to the wrong socket silently and 32 levels a channel cannot.
+#define YAPS_ATLAS_TAGBITS 5
+#define YAPS_ATLAS_TAGMAX  31
+
+int YapsTagsDecode(float3 rgb)
+{
+    int lo = (int) round(saturate(rgb.r) * YAPS_ATLAS_TAGMAX);
+    int mid = (int) round(saturate(rgb.g) * YAPS_ATLAS_TAGMAX);
+    int hi = (int) round(saturate(rgb.b) * YAPS_ATLAS_TAGMAX);
+    return lo | (mid << YAPS_ATLAS_TAGBITS) | (hi << (2 * YAPS_ATLAS_TAGBITS));
+}
+
+float3 YapsTagsEncode(int tags)
+{
+    return float3(
+        (tags & YAPS_ATLAS_TAGMAX) / (float) YAPS_ATLAS_TAGMAX,
+        ((tags >> YAPS_ATLAS_TAGBITS) & YAPS_ATLAS_TAGMAX) / (float) YAPS_ATLAS_TAGMAX,
+        ((tags >> (2 * YAPS_ATLAS_TAGBITS)) & YAPS_ATLAS_TAGMAX) / (float) YAPS_ATLAS_TAGMAX);
+}
 
 int YapsAtlasHash(int3 c)
 {

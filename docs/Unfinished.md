@@ -1260,7 +1260,7 @@ since the GUI already tags each knob with the system it came from and `YapsLegac
 the converter cannot carry. Nothing here is decided. It is a list to choose from on evidence
 rather than on a memory of what these systems looked like a year ago.
 
-**1. Tags, and this is the hole, not a nice-to-have.**
+**1. Tags, and this is the hole, not a nice-to-have. IN PROGRESS 2026-09-08.**
 
 DPS had channels in its day: `_OrificeChannel`, so a plug only answered orifices on a matching
 channel, and the converter records it as unmapped to this day. SPS2 has tags: up to two custom
@@ -1268,14 +1268,49 @@ tags on a socket plus a location set derived automatically (hips, head, chest, h
 handright, foot, footleft, footright, hipsfront, hipsback), and up to two include and two exclude
 tags on a plug, each side taking `Self` and `Others` modifiers, changeable by an animation.
 
-So every system in this space arrived at a filtering concept independently, six years apart, and
-this one has none. The switch added on 2026-09-08 for whether a plug answers its wearer's own
+**Correction, 2026-09-08.** This entry said flatly that YAPS has none, and that was wrong.
+`_YAPS_TagInclude` and `_YAPS_TagExclude` have been declared and read since before the atlas: one
+hashed integer a side, compared for equality, on the CHANNEL tier only. Nothing in C# ever wrote
+them, so the effect was the same as having none, but the shape was already there and the
+correction matters because the fix was smaller than the entry implied. Read the code before
+writing down what a system lacks. The switch added on 2026-09-08 for whether a plug answers its wearer's own
 sockets is a one-bit stand-in for it, not a small feature that might grow into it later.
 
 It also settles how the per-socket allow list dropped the same morning should have been built. A
 tag lives on the socket and costs nothing to sync, where a per-socket list costs a bit each and
 fills the wearer's menu with rows nobody opens. If that idea is ever reopened, it is reopened as
 tags.
+
+**What is built, 2026-09-08.** Protocol version 3. A socket carries a 15-bit `YapsTags` set and
+publishes it in a THIRD atlas pixel, five bits a channel over rgb: the facing pixel's alpha
+already holds the kind and the position pixel's holds the owner tag the whole read is gated on,
+so there was nowhere else for it. That takes a cell from 17 slots to 25 and the rect from 552 by
+520 to 808 by 520.
+
+**The rect is the risk in this, and it is not yet paid.** A target that cannot hold the rect
+fails `YapsAtlasFits` and drops to the light tier silently, which is the exact failure mode that
+made the mirror look broken for two days. The seven cameras A1 settled grid 64 against have to be
+walked again at the new width: editor, desktop first and third person, desktop mirror, VR both
+eyes, VR mirror, personal mirror. Until that is done the tag work must not ship, and a width that
+fails is a reason to go back to a single tag index in the byte that was already free rather than
+to shrink the grid.
+
+The plug carries an include set and an exclude set, both plain floats so an animation can drive
+them. One rule tests them, `YapsTagsRefuse`, called from the channel branch and the atlas branch
+alike: refuse on any bit shared with the exclude set, require any bit shared with the include set,
+and an empty include set means no opinion. Two tiers cannot drift apart because there is one
+function.
+
+**A marker light can never carry a tag** and that is not a gap to close: a light's RANGE is its
+whole message and the digits are Raliv's. So a socket found by light reads as untagged, and
+untagged is refused only by a REQUIRE. That is the honest reading of content older than tags,
+and it is what SPS does with legacy content too.
+
+**Still owed on this**: the socket and plug inspectors do not show the fields yet; the menu
+dropdown that makes the plug's sets animatable is unbuilt; the converter does not map an SPS
+plug's tag strings onto the set, so a converted avatar comes through untagged; and the eleven
+location tags are not derived automatically the way SPS derives them. The four custom slots are
+by convention only, since a name cannot live in a pixel.
 
 **2. Not a gap, and worth saying before the rest.**
 

@@ -73,11 +73,15 @@ for defines in "CVR_CCK_EXISTS" \
     # Dev tooling only in the SDK build. It never ships, and it runs in
     # projects that always have the VRChat SDK; only Editor has to stand up
     # without it.
-    sources="$REPO/Editor"
+    # Runtime as SOURCE, not as the deployed assembly the references pull
+    # in. Linking the deployed one meant a runtime change was never checked
+    # here at all: a new type read as missing and a broken attribute read as
+    # fine, both until somebody opened Unity.
+    sources="$REPO/Editor $REPO/Runtime"
     # Dev tooling assumes a machine with everything installed, so it only
     # joins the combination that has everything.
     case "$defines" in
-        *VRC_SDK_VRCSDK3*AVATARBRIDGE_YAPS*) sources="$REPO/Editor $REPO/Dev" ;;
+        *VRC_SDK_VRCSDK3*AVATARBRIDGE_YAPS*) sources="$REPO/Editor $REPO/Runtime $REPO/Dev" ;;
     esac
     # Without the add-on those files are not in the project at all, so
     # compiling them would prove the wrong thing: the point of the run is
