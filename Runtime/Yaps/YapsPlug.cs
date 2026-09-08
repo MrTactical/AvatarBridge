@@ -118,7 +118,7 @@ namespace AvatarBridge.Yaps
         public bool emitTipLight = true;
 
         [Header("Which sockets it answers")]
-        [YapsFrom("DPS · SPS")]
+        [YapsFrom("SPS")]
         [Tooltip("Answer only sockets carrying at least one of these tags. Any words you like, " +
                  "matched case-insensitively, and the same names SPS uses mean the same thing " +
                  "here. Empty means no opinion, which answers anything the refuse list does not " +
@@ -128,7 +128,7 @@ namespace AvatarBridge.Yaps
                  "certain.")]
         public List<string> answers = new List<string>();
 
-        [YapsFrom("DPS · SPS")]
+        [YapsFrom("SPS")]
         [Tooltip("Never answer a socket carrying any of these tags, whatever the list above " +
                  "says. Refusing beats answering, and reads what the socket published, so it " +
                  "needs the screen atlas the same way the list above does.")]
