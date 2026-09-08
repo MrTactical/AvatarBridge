@@ -379,6 +379,28 @@ asks whether the public build can stand without the add-on.
 Consolidation item 7 is the other half and is still open: the closure check is a reader, not a
 compiler, and the add-on's own file list has never been compiled as a list.
 
+## The digest could not see a tag, 2026-09-08. FIXED
+
+Run 395 was meant to show what the shared-tag default did to socket and plug
+matching, and showed nothing: `tags=` appeared nowhere in a digest, and the
+word `shared` appeared in zero of them. A wrong tag is silence in game, which
+is exactly the class of failure the digest exists to catch first.
+
+The reason nothing showed is that nothing survives to be shown. The words live
+on the VRChat components; the conversion hashes them into a number on a
+material and into the atlas, and a hash cannot be turned back into a word. The
+digest reads the converted avatar, so by the time it looks there is no word
+left anywhere on it.
+
+`YapsBakePrep` already reads them and keeps them: `AuthoredSocketTags`,
+`AuthoredAnswers` and `AuthoredRefuses`, cleared per conversion and filled from
+the source. The digest now reads those three, and emits a `[yaps tags]` block
+counting each word once per list that carries it, socket words and plug
+`+`/`-` lists separated. Counted by word, not listed per socket, so a rename
+does not churn the whole block.
+
+First run that can see it is 396.
+
 ## Loose ends, small but real
 
 ### The settings are per USER, not per project. FIXED 2026-09-08

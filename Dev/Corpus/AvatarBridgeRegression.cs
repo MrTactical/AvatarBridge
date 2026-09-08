@@ -902,6 +902,61 @@ namespace AvatarBridge.Regression
                 }
                 sb.Append('\n');
             }
+
+            AppendYapsTags(sb);
+        }
+
+        // The tag words, both ends. A socket's word and a plug's answer
+        // and refuse lists decide whether a plug opens a socket at all, and
+        // nothing in the digest said so: the shared-tag default shipped and
+        // run 395 could not see it either way. A wrong word is silence in
+        // game, which is the failure a digest exists to catch before a
+        // person has to.
+        //
+        // Read from the bake prep, not from the target. The words live on
+        // the VRChat components and the conversion hashes them into numbers,
+        // so by the time there is a target the words are gone; the prep
+        // dictionaries are what read them, and they still hold what it read.
+        //
+        // Counted by word rather than listed per socket. Which words the
+        // avatar uses is the signal; a row per socket would churn on every
+        // rename.
+        static void AppendYapsTags(StringBuilder sb)
+        {
+            var sockets = YapsBakePrep.AuthoredSocketTags;
+            var answers = YapsBakePrep.AuthoredAnswers;
+            var refuses = YapsBakePrep.AuthoredRefuses;
+            if (sockets.Count == 0 && answers.Count == 0 && refuses.Count == 0) return;
+
+            var words = new SortedDictionary<string, int>(StringComparer.Ordinal);
+            foreach (var list in sockets.Values) CountTags(words, "socket ", list);
+            foreach (var list in answers.Values) CountTags(words, "plug +", list);
+            foreach (var list in refuses.Values) CountTags(words, "plug -", list);
+
+            sb.Append("[yaps tags]\n");
+            sb.Append("sockets=").Append(sockets.Count)
+              .Append(" answering=").Append(answers.Count)
+              .Append(" refusing=").Append(refuses.Count).Append('\n');
+            foreach (var pair in words)
+            {
+                sb.Append("  ").Append(pair.Value.ToString("D3")).Append("  ")
+                  .Append(pair.Key).Append('\n');
+            }
+            sb.Append('\n');
+        }
+
+        // Blank and case are not the author's meaning, and either would split
+        // one word into two rows.
+        static void CountTags(SortedDictionary<string, int> into, string prefix, List<string> list)
+        {
+            if (list == null) return;
+            foreach (string word in list)
+            {
+                if (string.IsNullOrWhiteSpace(word)) continue;
+                string key = prefix + word.Trim().ToLowerInvariant();
+                into.TryGetValue(key, out int had);
+                into[key] = had + 1;
+            }
         }
 
         // The optimiser strips these, so the digest carries the check rather than a probe I have
