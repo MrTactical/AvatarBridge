@@ -1346,18 +1346,33 @@ Unknown is not untagged. The test is gone from that branch: a tier that cannot s
 prove neither a match nor a refusal, so it claims neither. Nothing was weakened by removing it,
 since an exclude never fired there either, a set of zero matching no exclude.
 
-**And the transport already exists, which the first design missed.** SPS carries a tag as a
-SUFFIX on the pointer type, the same shape as `_SelfNotOnHips`, and `YapsScanner.IsSocketRootTag`
-already matches `SPSLL_Socket_Root_` by prefix. So the channel could filter, by emitting a
-pointer per tag on the socket and listing the answered types in the plug trigger's
-`allowedTypes`, which CVR matches as whole strings. Not built. It is a wire change rather than a
-shader one, it would put new type strings on the platform, and an exclude cannot be said in a
-whitelist and would want a second trigger asserting E to 0 the way the ring trigger asserts H.
-Ask before starting it.
+**A "pointer suffix transport" was proposed here on 2026-09-08 and does not exist.** Read the
+correction before acting on any memory of it. The reasoning was that `YapsScanner.IsSocketRootTag`
+matches `SPSLL_Socket_Root_` by prefix, so SPS must put tags after that underscore. It does not.
+`_SelfNotOnHips` is the only suffix SPS ever emits, `HapticUtils` declares the contact type
+strings as four fixed constants, and nothing in the bake appends a tag to any of them.
+
+**What SPS actually does, read out of `SpsConfigurer.cs` rather than inferred.** A tag is a
+free-form string, lowercased and trimmed, hashed with FNV-1a to 32 bits, and written into MATERIAL
+PROPERTIES: eight socket slots as `_SPS_SocketTag{1..8}Low`/`High`, sixteen bits each half, and
+four plug slots as `_SPS_TagInclude{n}Low`/`High` carrying self and others flags. Two of the eight
+socket slots are the author's, two are derived from the nearest humanoid bone, one is a shared
+tag. The plug reads them through SPS's own shader data channel.
+
+So tags never touch contacts in SPS either. A material property is the same CLASS of channel as
+the YAPS atlas, and the contact tier not filtering is what SPS does too, rather than a shortfall.
+That closes the question above: there is nothing to wire, and the current behaviour is right.
+
+**The real divergence is the encoding, and it is ours.** SPS hashes arbitrary strings; YAPS
+invented a fixed vocabulary of fifteen in a bitfield. The eleven location names in `YapsTags` are
+exactly SPS's derived set (`hips`, `hipsfront`, `hipsback`, `head`, `chest`, `hand`, `handleft`,
+`handright`, `foot`, `footleft`, `footright`), so those round-trip by name, but an author's own
+tag string cannot cross in either direction and the four custom slots are a poor stand-in. Whether
+to adopt the hash instead is open, and is the question worth asking before tags ship. Nothing in
+this paragraph has been acted on.
 
 **Still owed**: the converter does not map an SPS plug's tag strings onto the set, so a converted
-avatar comes through untagged, and that mapping is the same suffix parsing as the paragraph above,
-so the two go together; the eleven location tags are not derived automatically the way SPS derives
+avatar comes through untagged, and the eleven names above are what it should map, by string; the eleven location tags are not derived automatically the way SPS derives
 them; and the four custom slots are by convention only, since a name cannot live in a pixel. And
 the rect, above, which is the one that gates shipping.
 
