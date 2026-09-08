@@ -52,7 +52,7 @@ namespace AvatarBridge
         // VelocityMagnitude is here for the "#" prefix only.
         // FeedVelocityMagnitude recomputes it every frame.
         // The scale family is stream-fed or derived; see FeedScaleParameters.
-        static readonly HashSet<string> KnownUnsupportedVrcParameters = new HashSet<string>
+        internal static readonly HashSet<string> KnownUnsupportedVrcParameters = new HashSet<string>
         {
             "Earmuffs", "AngularY",
             "AvatarVersion", "VelocityMagnitude", "GroundProximity", "InStation",
@@ -64,6 +64,15 @@ namespace AvatarBridge
             // avatar's real sit pose reaches CVR through the grafter instead.
             "Seated"
         };
+
+        // Declared so a merged layer still binds, and never written by
+        // anything. The survey has to know: "nothing can switch it on" is
+        // true of these and is not a finding, it is this tool's own doing,
+        // and telling an author to go and fix it sends them after a
+        // parameter they never made.
+        internal static bool NeverFed(string name)
+            => !string.IsNullOrEmpty(name)
+               && KnownUnsupportedVrcParameters.Contains(name.TrimStart('#'));
 
         public static void Run(BridgeContext ctx)
         {
