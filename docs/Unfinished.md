@@ -1862,3 +1862,54 @@ avatar to write against, so it waits for one.
 One thing it confirms rather than threatens: "The plug mesh must be straight / fully extended in
 the editor" is their constraint too. The bake measures a rest pose because the technique requires
 it, not because this one is weak.
+
+### The feature gap against SPS2, read 2026-09-08
+
+From `docs/60-sps/index.mdx` in the vrcfury.com repository. Nothing here is decided; it is a list
+of what they have that this does not, so the choosing can be done on evidence rather than on
+memory of what SPS looked like a year ago.
+
+**Not a gap, and worth saying first.** Their transport is a grab pass costing two per world rather
+than two per item, which is the same conclusion the screen atlas reached from the other side. Hole
+and ring, the overrun switch, an animated toggle for the deform, and the rest-pose requirement all
+have equivalents here already. Their guided path allows three stops with adjustable tangents; the
+chain holds four links. These are the same feature wearing different names.
+
+**Missing, small, and mostly mechanical:**
+
+- **One-way ring.** A ring that may only be entered from one side. Their socket modes are auto,
+  hole, ring and one-way ring; this has the first three in effect.
+- **Radius offset.** A per-socket nudge so the opening sits on the surface rather than in it,
+  which their notes single out as mattering most for hand sockets.
+- **Auto-rig.** Bones and physbones added to a static plug mesh at build time, so an unrigged mesh
+  can still swing. This tool converts what an avatar already has and has never built that.
+
+**Missing, and a design rather than a task:**
+
+- **Tags.** Sockets carry up to two custom tags plus a location set derived automatically: hips,
+  head, chest, hand, handleft, handright, foot, footleft, footright, hipsfront, hipsback. Plugs
+  carry two include tags and two exclude tags. Each side takes `Self` and `Others` modifiers, and
+  a tag can be changed by an animation.
+
+  The switch added on 2026-09-08 for whether a plug answers its wearer's own sockets is the coarse
+  version of exactly this, and their `Self` and `Others` modifiers are the same question asked per
+  tag. Theirs is more expressive; ours is one bit. Worth knowing before anyone reopens the
+  per-socket list that was dropped the same day: tags are how that idea is done affordably, since
+  a tag is a property of the socket rather than a row in the wearer's menu.
+
+**Missing, and a feature in its own right:**
+
+- **Depth animations.** How far a plug has entered a socket drives an animation. This is the
+  mechanism behind the arousal systems people ask about, where touching yourself changes a
+  blendshape over time; those systems are built by avatar authors on top of it and are not
+  themselves part of SPS. Their depth animations still run on contacts even in SPS2, which their
+  own page says plainly.
+
+  That last sentence is the interesting one. Contacts are exactly what the GPU bridge removes, so
+  a depth animation here could be per client and cost nothing, where theirs cannot. If any item on
+  this list is worth doing for its own sake rather than for parity, it is this one, and it wants
+  the GPU bridge machinery first.
+
+**What is deliberately not on the list.** Their legacy compatibility switch, because this tool's
+whole job is reading the legacy systems, and their material slot budget, because the atlas already
+answers that differently.
