@@ -288,6 +288,33 @@ their SDK differs; a name that does not resolve now warns instead of being assum
 **Still open, and not answerable in the editor:** ChilloutVR's constraint order against its own
 IK. Needs the reporter's SDK version, which bone, and what the wrong result actually looks like.
 
+## A button became a toggle and the animator kept ping-ponging, 2026-09-08. FIXED
+
+An avatar's claw control switched itself several times a second in game, for as long as the box
+was ticked. The layer read correctly in the animator window: two states, one transition each way,
+no AnyState. What made it loop is that BOTH transitions carried the same condition, the same
+parameter with the same mode. That is the pulse idiom: the value is meant to arrive as a one frame
+flick and each flick moves the pair one step. A VRChat menu Button flicked exactly like that. A
+ChilloutVR toggle holds the value instead, so the pair hands over, hands back, and never settles.
+
+`UnlatchImpulsePingPongs` looks only at parameters already recorded as Button-derived
+(`ctx.ImpulseParameters`, populated by the menu pass and until now never read), finds a pair of
+states that point at each other on one shared condition, and sets the transition landing on the
+layer's resting state to the opposite condition. The control then behaves like every other toggle.
+
+Two cases are reported and left alone rather than changed. A parameter a contact also drives still
+gets its flick from the contact, so the pair works from the touch and loops only from the menu, and
+flipping one end would break the other. A pair where neither state is the layer's resting one gives
+no way to tell which side is off. Both name the layer and the parameter so the fix is one click away.
+
+Not the AnyState self-restart pass beside it: there is no AnyState here and no state re-entering
+itself, so nothing that pass looks at matches. Two loop shapes, two detectors.
+
+The same avatar reported a plug that would not appear (an NSFW gate on the wearer's own menu, not
+a fault) and a flaccid control that does nothing (its clip only switches a PhysBone that was left
+unsimulated because a VRCScaleConstraint drives a bone in the chain, which the report already says
+in full). Neither needed a change.
+
 ## Loose ends, small but real
 
 ### The settings are per USER, not per project. FIXED 2026-09-08

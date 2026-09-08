@@ -323,6 +323,7 @@ namespace AvatarBridge
             AssertOwnedBindingsEverywhere(master, ctx);
             // After the filler; its added motions are what can strobe.
             SuppressAnyStateSelfRestarts(master, ctx);
+            UnlatchImpulsePingPongs(master, ctx);
             WarnLocomotionOverrides(vrcLayers, ctx);
             FaceTrackingInjector.Inject(master, ctx);
             AvatarScalerInjector.Inject(master, ctx);
@@ -5330,6 +5331,167 @@ namespace AvatarBridge
                     "so anything this drives would otherwise sit frozen at its default for everyone else.");
             }
             EditorUtility.SetDirty(stream);
+        }
+
+        // Two states pointing at each other on the SAME condition are a
+        // pulse idiom: the parameter arrives as a one frame flick and each
+        // flick moves the pair one step. A VRChat menu Button flicked
+        // exactly like that. ChilloutVR has no button, so the toggle it
+        // becomes holds the condition true and the pair ping-pongs at
+        // transition speed for as long as it is switched on: the animation
+        // restarts several times a second and never settles.
+        //
+        // Not the AnyState self-restart above. There is no AnyState here
+        // and no state re-entering itself, so nothing that pass looks at
+        // matches; the loop is A to B to A, through ordinary transitions
+        // that read correct in the animator window.
+        static void UnlatchImpulsePingPongs(AnimatorController master, BridgeContext ctx)
+        {
+            if (ctx.ImpulseParameters.Count == 0)
+            {
+                return;
+            }
+            var types = new Dictionary<string, AnimatorControllerParameterType>();
+            foreach (var p in master.parameters) types[p.name] = p.type;
+
+            var unlatched = new List<string>();
+            var left = new List<string>();
+
+            foreach (var layer in master.layers)
+            {
+                if (layer == null || layer.stateMachine == null || IsProtectedLayer(layer.name))
+                {
+                    continue;
+                }
+                string layerName = layer.name;
+                WalkMachines(layer.stateMachine, machine =>
+                {
+                    var handled = new HashSet<AnimatorState>();
+                    foreach (var child in machine.states)
+                    {
+                        var a = child.state;
+                        if (a == null || a.transitions == null || !handled.Add(a))
+                        {
+                            continue;
+                        }
+                        foreach (var out_ in a.transitions)
+                        {
+                            var forward = SoleCondition(out_);
+                            if (forward == null)
+                            {
+                                continue;
+                            }
+                            string param = forward.Value.parameter;
+                            var mode = forward.Value.mode;
+                            if (!ctx.ImpulseParameters.Contains(param)
+                                || (mode != AnimatorConditionMode.If && mode != AnimatorConditionMode.IfNot))
+                            {
+                                continue;
+                            }
+                            // A Trigger consumes itself on use, which is what
+                            // the idiom was built around. Nothing to fix.
+                            AnimatorControllerParameterType type;
+                            if (!types.TryGetValue(param, out type)
+                                || type != AnimatorControllerParameterType.Bool)
+                            {
+                                continue;
+                            }
+                            var b = out_.destinationState;
+                            if (b == a || b.transitions == null)
+                            {
+                                continue;
+                            }
+                            AnimatorStateTransition back = null;
+                            foreach (var candidate in b.transitions)
+                            {
+                                var c = SoleCondition(candidate);
+                                if (c != null && candidate.destinationState == a
+                                    && c.Value.parameter == param && c.Value.mode == mode)
+                                {
+                                    back = candidate;
+                                    break;
+                                }
+                            }
+                            if (back == null)
+                            {
+                                continue;
+                            }
+                            handled.Add(b);
+                            string label = $"\"{param}\" ({layerName})";
+
+                            // A contact still pulses it the way the idiom
+                            // wants, so the pair works from the contact and
+                            // loops only from the menu. Changing one end
+                            // would break the other; say so instead.
+                            if (ctx.ContactParameters.Contains(param))
+                            {
+                                left.Add(label + ", also driven by a contact");
+                                break;
+                            }
+                            // The way out is the transition that lands on the
+                            // state the layer rests in. Without one there is
+                            // no telling which side is off.
+                            var exit = machine.defaultState == a ? back
+                                : machine.defaultState == b ? out_ : null;
+                            if (exit == null)
+                            {
+                                left.Add(label + ", neither state is the layer's resting one");
+                                break;
+                            }
+                            exit.RemoveCondition(exit.conditions[0]);
+                            exit.AddCondition(mode == AnimatorConditionMode.If
+                                ? AnimatorConditionMode.IfNot
+                                : AnimatorConditionMode.If, 0f, param);
+                            EditorUtility.SetDirty(exit);
+                            unlatched.Add(label);
+                            break;
+                        }
+                    }
+                });
+            }
+
+            if (unlatched.Count > 0)
+            {
+                EditorUtility.SetDirty(master);
+                ctx.Report.Converted(Category,
+                    $"{unlatched.Count} control(s) that would have looped now switch off instead",
+                    string.Join("; ", unlatched) + ". Each was a momentary Button in VRChat driving a "
+                    + "pair of states that hand over on the SAME condition: a press moved it one step "
+                    + "and the release stopped it there. A ChilloutVR toggle holds the value instead, "
+                    + "so the pair would have swapped back and forth several times a second for as long "
+                    + "as it was on. The way back is now the opposite condition, which makes it an "
+                    + "ordinary toggle: on while the box is ticked, off when it is cleared.");
+            }
+            if (left.Count > 0)
+            {
+                ctx.Report.Warning(Category,
+                    $"{left.Count} control(s) may loop while switched on",
+                    string.Join("; ", left) + ". These drive a pair of states that hand over on the "
+                    + "SAME condition, which needs the value to arrive as a brief flick: a VRChat menu "
+                    + "Button did that and a ChilloutVR toggle cannot. Left alone because changing it "
+                    + "would break the other thing driving it, or because neither state is the one the "
+                    + "layer rests in, so there is no telling which side is off. If it flickers in game, "
+                    + "open that layer and set the transition leading back to the resting state to the "
+                    + "opposite condition.");
+            }
+        }
+
+        // The single condition on a transition, or null for anything else:
+        // the idiom is one parameter deciding both ways, and a transition
+        // carrying more than that is doing something else.
+        static AnimatorCondition? SoleCondition(AnimatorStateTransition transition)
+        {
+            if (transition == null || transition.isExit || transition.mute
+                || transition.destinationState == null)
+            {
+                return null;
+            }
+            var conditions = transition.conditions;
+            if (conditions == null || conditions.Length != 1)
+            {
+                return null;
+            }
+            return conditions[0];
         }
 
         static void SuppressAnyStateSelfRestarts(AnimatorController master, BridgeContext ctx)
