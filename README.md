@@ -901,9 +901,14 @@ ranges, TPS and SPS pointers, and a front so plugs thread rather than aim. Nothi
 **A plug prop prefab**: *Tools ▸ YAPS ▸ Create a plug prop prefab* writes `YAPS Plug Prop` beside
 them: a whole spawnable in one click, built and baked on the current shader with its pickup and
 grab collider wired, finding sockets by their marker lights. Drop it in a scene and upload it
-from the CCK as a prop. **Make it again after updating AvatarBridge**: a prop that is already uploaded carries
-the bake and the patched shader copy it was built with, and nothing in the project reaches it: an
-old one bending oddly next to a current avatar is that, not a fault in the avatar.
+from the CCK as a prop.
+
+**After updating AvatarBridge**: *Tools ▸ YAPS ▸ Update every YAPS shader in this project*. Building
+an avatar updates its shader as a matter of course, and nothing builds a prop, so a prop keeps the
+shader it was made with: an old one bending oddly next to a current avatar is that, not a fault in
+the avatar. This walks every material in the project instead, so it also reaches avatars in scenes
+you have not opened and anything you were sent. Upload the prop again afterwards, since the copy
+already on the platform is the one it went up with.
 
 **A ring-and-socket prop prefab**: *Tools ▸ YAPS ▸ Create a ring-and-socket prop prefab* writes
 `YAPS Ring and Socket Prop` beside them: the plug prop's other half, a spawnable carrying a ring to

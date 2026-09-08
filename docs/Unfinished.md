@@ -433,14 +433,16 @@ but only when something bakes. An avatar gets baked because its scene is open an
 pressed. **A prop is a prefab sitting in the project, and nothing ever opens it**, so every
 shader-level fix reaches everyone except the props, and the only cure today is to make a new one.
 
-The fix is not a prop button. It is one project-wide sweep: walk the materials carrying
-`_YAPS_Bake`, ask `IsStale`, `Refresh` the ones that answer yes. That catches props, avatars in
-scenes nobody has opened, and anything imported from someone else's package: the same blind
-spot in three shapes. `YapsShaderPatcher` already has every piece; what is missing is the caller
-and a line in the window saying it exists.
+**DONE 2026-09-08.** `YapsShaderPatcher.SweepProject` walks every material in the project, keeps
+the ones carrying `_YAPS_Bake`, asks `IsStale` and refreshes what has fallen behind; the Props
+card carries the button and says to upload the prop again afterwards, since the copy on the
+platform is not the copy in the project. The property is the test rather than the shader's name,
+so a material patched by an older version is still found. The new shader is written BESIDE the one
+it replaces, so a prop's shader stays with the prop instead of moving into this tool's output
+folder where a later cleanup would take it. A material whose source shader has left the project
+cannot be rebuilt and is counted out loud rather than skipped quietly.
 
-The question is the right one: it should just work. A user has no way to know a shader moved,
-and "make a new one" is not an answer for a prop somebody has positioned and tuned.
+Not yet run against a project holding a stale prop, which is the only thing that proves it.
 
 - **External audit 2026-08-25, the five deferred findings.** An audit by another agent
   (`AUDIT-external-2026-08-25.md`, kept in the repo). Nine of twenty were verified in source and
@@ -464,14 +466,30 @@ and "make a new one" is not an answer for a prop somebody has positioned and tun
     CCK position asks for its own side. A source with one clip for both sides still fills both,
     by falling back to the opposite side, which is what every symmetric avatar relies on.
     After: `(-1,0)=>Fix_StrafeL (1,0)=>Fix_StrafeR`, both diagonals likewise.
-  - **F11, slider hole-drop degrades to hole-filling.** `kept.Count >= 2` sends a slider tree with
-    one surviving child to the generic filler, which inserts the placeholder clip the report text
-    beside it promises sliders never get.
-  - **F12, gesture-hand promotion by substring.** `layerName.Contains("left")` on a lowercased
-    name: "Copyright pose" contains "right". The tempting fix is wrong: `\bleft\b` cannot match
-    `GestureLeft`, there is no boundary inside one run of word characters, and lowercasing has
-    already flattened the camel hump. The right fix is to promote only layers that actually WRITE
-    a gesture parameter.
+  - **F11, slider hole-drop degrades to hole-filling. FIXED 2026-09-08.** `kept.Count >= 2` sent a
+    slider tree with one surviving child to the generic filler, which inserted the placeholder clip
+    the report text beside it promised sliders never get.
+
+    Dropping every hole instead is not the fix and was the trap here: a 1D tree holding ONE child
+    plays it at full weight wherever the slider sits, so a slider whose other clips had gone
+    missing would have come out with the survivor permanently on. The threshold is what carries a
+    slider's meaning and one child has no other end to travel to. So one placeholder is kept, at
+    the far end from the survivor, and the rest still go: the slider fades the one real clip in
+    across its whole travel instead of standing it on. The report says so rather than describing a
+    rule the code no longer follows.
+  - **F12, gesture-hand promotion by substring. FIXED 2026-09-08.** `layerName.Contains("left")` on
+    a lowercased name: "Copyright pose" contains "right", so the whole layer went into CVR's
+    RightHand slot and whatever it did to the rest of the body went with it.
+
+    What the layer READS decides it now: a gesture layer driven by GestureLeft or GestureRight is
+    that hand, read off blend tree parameters and transition conditions, and a layer reading both
+    or neither is not promoted at all. The mask still wins where there is one. The NAME is last and
+    no longer a substring: the word after something that is not a letter, or the capital in the
+    middle of a name, which is the pair of spellings a boundary alone cannot cover, since there is
+    no boundary inside "GestureRight" and lowercasing flattens the hump that would have shown one.
+    Checked against both failures and the ordinary spellings: "Copyright pose" and "COPYRIGHT POSE"
+    match neither hand, "GestureRight", "Right Hand", "hand_right" and "Gesture (Right)" all match
+    right, "cleft palate" matches neither.
   - **F18, owner-rule shortcut skips the humanoid guard.** `FindPlugRenderer` returns the parent's
     SkinnedMeshRenderer before `chainLevel` is ever set, so `HumanoidBoneName(null)` returns null
     and the "your chain is the body" refusal never runs. Silent bypass, not a crash. A guard here

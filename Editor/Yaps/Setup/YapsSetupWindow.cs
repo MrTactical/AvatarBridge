@@ -302,9 +302,25 @@ namespace AvatarBridge
                 "Writes YAPS Hole and YAPS Ring to Assets/YAPS/Prefabs; drag one under a bone on any " +
                 "avatar and every plug on the platform reads it. The plug prop is a whole spawnable in " +
                 "one click, built, baked on the current shader, pickup and contact channel wired, to " +
-                "drop in the scene and upload. Make it again after updating: a prop already uploaded " +
-                "keeps the bake and the shader copy it was built with, which is why an old one bends oddly."));
+                "drop in the scene and upload."));
+            props.Body.Add(BridgeElements.SubHeading("After an update"));
+            props.Body.Add(BridgeElements.Row(
+                Btn("Update every YAPS shader in this project", RefreshShaders)));
+            props.Body.Add(BridgeElements.Hint(
+                "Building an avatar updates its shader as a matter of course. Nothing builds a prop, " +
+                "so a prop keeps the shader it was made with until this is pressed, which is why an old " +
+                "one bends oddly. This walks every material in the project instead: props, avatars in " +
+                "scenes you have not opened, anything you were sent. Upload the prop again afterwards, " +
+                "since the copy already on the platform is the one it was uploaded with."));
             _pages.Add(props);
+        }
+
+        // Every patched material in the project, not just what a bake reaches.
+        static void RefreshShaders()
+        {
+            string said = YapsShaderPatcher.SweepProject();
+            EditorUtility.DisplayDialog("YAPS", said, "OK");
+            Debug.Log("[AvatarBridge] " + said);
         }
 
         // A test socket in front of the camera, previewing at once: every

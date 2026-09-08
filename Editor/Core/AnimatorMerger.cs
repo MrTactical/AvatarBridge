@@ -587,8 +587,47 @@ namespace AvatarBridge
                         }
                     }
                     int dropped = children.Length - kept.Count;
-                    if (dropped > 0 && kept.Count >= 2)
+                    if (dropped > 0 && kept.Count >= 1)
                     {
+                        // ONE survivor is its own case, and used to fall through
+                        // to the filler below: the slider then got the very
+                        // placeholders this branch exists to keep out of it.
+                        //
+                        // Dropping every hole is no better. A 1D tree holding one
+                        // child plays it at full weight across the whole range, so
+                        // a slider whose clips went missing would come out with
+                        // the survivor permanently on, which nobody asked for and
+                        // nothing switches off.
+                        //
+                        // So keep one placeholder, at the far end from the
+                        // survivor, and drop the rest. The slider then fades the
+                        // one real clip in across its whole travel: off at one
+                        // end, full at the other, no cliff and no stuck effect.
+                        if (kept.Count == 1)
+                        {
+                            float at = kept[0].threshold;
+                            int far = -1;
+                            float furthest = -1f;
+                            for (int i = 0; i < children.Length; i++)
+                            {
+                                if (children[i].motion != null
+                                    && !IsCurveless(children[i].motion, filler)) continue;
+                                float gap = Mathf.Abs(children[i].threshold - at);
+                                if (gap <= furthest) continue;
+                                furthest = gap;
+                                far = i;
+                            }
+                            if (far >= 0)
+                            {
+                                var hold = children[far];
+                                hold.motion = Filler();
+                                filled++;
+                                if (hold.threshold < at) kept.Insert(0, hold);
+                                else kept.Add(hold);
+                                dropped--;
+                            }
+                        }
+
                         foreach (var child in kept)
                         {
                             Walk(child.motion);
@@ -662,7 +701,11 @@ namespace AvatarBridge
                     "smoothly. Filling those slots with a placeholder would make it an eligible neighbour " +
                     "that animates nothing, and the slider would do nothing until its value reached a real " +
                     "clip, reported from an avatar whose size slider did nothing until 0.97 and then " +
-                    "jumped. Every surviving motion keeps the threshold the author gave it. Dropdowns and " +
+                    "jumped. Every surviving motion keeps the threshold the author gave it. Where only " +
+                    "ONE motion survived, a single placeholder is kept at the far end of the slider and " +
+                    "the rest still go: a lone child in a slider plays at full strength wherever the " +
+                    "slider is, so that avatar would have come out with the effect stuck on. With the " +
+                    "placeholder it fades in across the whole travel instead. Dropdowns and " +
                     "toggles are left alone: their empty options are deliberate, and the parameter lands " +
                     "on them rather than between them.");
             }
@@ -9546,16 +9589,88 @@ namespace AvatarBridge
                 return null;
             }
             string maskName = srcLayer.avatarMask != null ? srcLayer.avatarMask.name : "";
-            string layerName = srcLayer.name.ToLowerInvariant();
-            if (maskName == "vrc_Hand Left" || layerName.Contains("left"))
-            {
-                return "LeftHand";
-            }
-            if (maskName == "vrc_Hand Right" || layerName.Contains("right"))
-            {
-                return "RightHand";
-            }
+            if (maskName == "vrc_Hand Left") return "LeftHand";
+            if (maskName == "vrc_Hand Right") return "RightHand";
+
+            // What the layer READS beats what it is called. A gesture layer
+            // is driven by GestureLeft or GestureRight, and a layer that
+            // reads neither is not a hand layer whatever its name says.
+            string drives = GestureSideOf(srcLayer);
+            if (drives != null) return drives;
+
+            // The name, last, and no longer by substring. This was
+            // layerName.Contains("right") on a lowercased name, so
+            // "Copyright pose" was a right-hand layer: the whole layer went
+            // into CVR's RightHand slot and whatever it did to the rest of
+            // the body went with it.
+            //
+            // A word boundary alone does not fix it. There is no boundary
+            // inside "GestureRight", and lowercasing has already flattened
+            // the hump that would have shown one. So both spellings: the
+            // word after something that is not a letter, or the capital in
+            // the middle of a name.
+            if (Side(srcLayer.name, "left")) return "LeftHand";
+            if (Side(srcLayer.name, "right")) return "RightHand";
             return null;
+        }
+
+        static bool Side(string layerName, string word)
+        {
+            if (string.IsNullOrEmpty(layerName)) return false;
+            string capital = char.ToUpperInvariant(word[0]) + word.Substring(1);
+            return Regex.IsMatch(layerName, "(^|[^A-Za-z])" + word, RegexOptions.IgnoreCase)
+                   || Regex.IsMatch(layerName, "[a-z]" + capital);
+        }
+
+        // Which gesture parameter this layer is driven by, or null for
+        // neither and for both. Blend trees and transition conditions are
+        // the two places a layer can name one.
+        static string GestureSideOf(AnimatorControllerLayer srcLayer)
+        {
+            if (srcLayer?.stateMachine == null) return null;
+            bool left = false, right = false;
+            var seen = new HashSet<Motion>();
+
+            void Read(string parameter)
+            {
+                if (string.IsNullOrEmpty(parameter)) return;
+                if (parameter.IndexOf("GestureLeft", StringComparison.OrdinalIgnoreCase) >= 0) left = true;
+                if (parameter.IndexOf("GestureRight", StringComparison.OrdinalIgnoreCase) >= 0) right = true;
+            }
+
+            void Look(Motion motion)
+            {
+                if (!(motion is BlendTree tree) || !seen.Add(tree)) return;
+                Read(tree.blendParameter);
+                Read(tree.blendParameterY);
+                foreach (var child in tree.children) Look(child.motion);
+            }
+
+            void Conditions(AnimatorStateTransition[] transitions)
+            {
+                foreach (var t in transitions)
+                {
+                    if (t == null) continue;
+                    foreach (var c in t.conditions) Read(c.parameter);
+                }
+            }
+
+            WalkMachines(srcLayer.stateMachine, machine =>
+            {
+                Conditions(machine.anyStateTransitions);
+                foreach (var child in machine.states)
+                {
+                    Look(child.state.motion);
+                    Conditions(child.state.transitions);
+                    if (child.state.timeParameterActive) Read(child.state.timeParameter);
+                    if (child.state.speedParameterActive) Read(child.state.speedParameter);
+                }
+            });
+
+            // Both is no answer: a layer reading each hand belongs to
+            // neither of CVR's two, and guessing one halves it.
+            if (left == right) return null;
+            return left ? "LeftHand" : "RightHand";
         }
 
         // A gesture layer playing only proxy_* clips has no poses of its
