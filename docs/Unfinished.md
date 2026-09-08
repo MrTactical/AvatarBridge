@@ -315,6 +315,25 @@ a fault) and a flaccid control that does nothing (its clip only switches a PhysB
 unsimulated because a VRCScaleConstraint drives a bone in the chain, which the report already says
 in full). Neither needed a change.
 
+## A scale constraint is not the loop the guard was built for, 2026-09-08. FIXED
+
+`SkipConstraintDrivenChain` refused any chain carrying a constraint, and the guard's own comment
+says why: the NaN is a feedback loop between something that WRITES a rotation every frame and a
+solver integrating from its own last state. That is Parent, Position, Rotation, Aim and LookAt. A
+scale constraint writes `localScale`, which the solver never touches, so the two share no channel
+and there is no loop to close. 2.91.0 widened the check from `VRC*Constraint` to every `IConstraint`,
+correctly, and took one type too many with it.
+
+The cost was not just a missing swing. The control that switched the chain still converted into a
+menu entry, a parameter and an animator layer, so the avatar came out with a toggle that looks
+correct and does nothing, which is the presentation the warning beside it already calls the worst
+one. A world-scale rig holding a bone at constant size is the common shape of this.
+
+Scale-only chains now simulate and get an Approximated line saying so, pointing at the one thing
+that could still go wrong: MagicaCloth2 measures bone lengths once, at the scale the avatar was
+converted at, so a constraint that moves that scale a long way while the chain swings is worth a
+look in Play mode. Not yet measured against such an avatar, which is the only thing that settles it.
+
 ## Loose ends, small but real
 
 ### The settings are per USER, not per project. FIXED 2026-09-08

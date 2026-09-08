@@ -422,6 +422,7 @@ namespace AvatarBridge
             {
                 return false;
             }
+            string scaleOnly = null;
             foreach (var t in chain.Root.GetComponentsInChildren<Transform>(true))
             {
                 foreach (var component in t.GetComponents<Component>())
@@ -444,6 +445,18 @@ namespace AvatarBridge
                     {
                         continue;
                     }
+                    // Except scale. The loop above is two things writing the
+                    // SAME channel, and a scale constraint writes localScale
+                    // and nothing else: the solver moves and rotates the bone,
+                    // which a scale constraint never touches. Refusing these
+                    // too cost avatars their chain for no reason, and the
+                    // control that switched it kept converting into a menu
+                    // entry with no physics behind it.
+                    if (WritesScaleOnly(component))
+                    {
+                        scaleOnly = t.name;
+                        continue;
+                    }
                     ctx.Report.Skipped(Category, ctx.PathInTarget(chain.Root),
                         $"Not simulated: \"{t.name}\" in this chain is driven by a " +
                         $"{component.GetType().Name}. A constraint writes that bone every frame " +
@@ -458,7 +471,27 @@ namespace AvatarBridge
                     return true;
                 }
             }
+            if (scaleOnly != null)
+            {
+                ctx.Report.Approximated(Category, ctx.PathInTarget(chain.Root),
+                    $"Simulated even though \"{scaleOnly}\" in this chain carries a scale constraint. "
+                    + "A constraint that writes a bone's rotation or position fights the cloth solver "
+                    + "until the transform breaks, so those chains are left alone; scale is a channel "
+                    + "the solver never writes, so there is nothing to fight over and the chain swings "
+                    + "as it did. Worth a look in Play mode if the constraint changes that scale a lot "
+                    + "while the chain moves: the cloth measured its bone lengths once, at the scale it "
+                    + "was converted at.");
+            }
             return false;
+        }
+
+        // Scale is the one channel a cloth solver never writes. Everything
+        // else a constraint can drive, position and rotation, is exactly what
+        // the solver is writing every frame.
+        static bool WritesScaleOnly(Component component)
+        {
+            return component is UnityEngine.Animations.ScaleConstraint
+                   || component.GetType().Name == "VRCScaleConstraint";
         }
 
         static bool SkipToeChain(BridgeContext ctx, PhysBoneChainData chain)

@@ -1544,6 +1544,8 @@ Four things break the rest, and the report names each:
   cleanly.
 - **PhysBones on a relayed bone** feed the constraint their own output until the transform goes NaN.
   Those chains are skipped and listed. Unity's own constraints count too: the loop is engine-level.
+  A **scale** constraint is the exception and no longer blocks a chain: it writes a channel the cloth
+  solver never touches, so there is nothing for the two to fight over.
 - **Both markers, and first-person head hiding, aimed at the decoy.** ChilloutVR hangs the viewpoint,
   voice position and `FPRExclusion` off the humanoid Head bone, which here skins nothing. All three
   are measured on the relayed bones you can actually see instead.
@@ -1712,6 +1714,11 @@ A constraint writes the bone every frame; a cloth solver integrates it from its 
 both and each is fed the other's output until the transform goes **NaN**, which never recovers.
 VRChat tolerates it because PhysBones re-read the constraint each frame; MagicaCloth2 and DynamicBone
 don't. Remove the constraint if you want the chain simulated.
+
+This is about position and rotation, the two things a solver writes. A **scale** constraint shares
+nothing with it, so those chains simulate normally and the report says the chain kept its physics
+alongside one. If such a chain looks wrong, the thing to check is the scale itself: the cloth
+measured its bone lengths once, at the scale the avatar was converted at.
 
 ### I move slower (or faster) than I expect, and nothing in the avatar does that
 
