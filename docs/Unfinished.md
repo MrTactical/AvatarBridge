@@ -71,6 +71,12 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    a `YapsSocket`, which is all it ever read, so both builders call it. Two builders diverge: the
    fix is not done until the other path is grepped.
 4. **The GPU bridge** (`YAPS5.md`, candidate 4): **the transport is PROVEN, in game, 2026-09-07.**
+   **D2 is built and waiting on a run, 2026-09-08**: whether a named `GrabPass` reaches a
+   `CVRBlitter`, which is what decides whether the value can be computed by geometry on the avatar
+   (cheap, one blit) or needs a camera rendering into a render texture (a lot more). Nothing else on
+   this candidate is worth building until that answer is in: it picks the shape of everything after.
+   `Dev/Probes/D2PrefabBuilder.cs`, staged into `Non Corpus Zone` and on the menu.
+
    A value computed on the GPU reaches C# on a stock client with no contact anywhere, and it does
    it on every client, remote copies included, for zero sync bits. Nothing is transmitted: the
    viewers' copies were out of phase with each other, so each computed its own.

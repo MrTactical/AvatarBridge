@@ -205,6 +205,27 @@ a value other people must agree on; the source has to be a render of avatar geom
   set to `-none-`, makes the callback fire every frame and flush the other fifteen. Built as
   `D1Pump.anim`; not yet run in game. Blendshape weights stay unreachable.
 
+**Where the value comes from is the open half, and D2 asks it (built 2026-09-08).** A blit shader
+has no object transforms, so it cannot know where anything on the avatar is; it can only copy. The
+value therefore has to be computed by GEOMETRY, which has a matrix, exactly as the atlas writers do,
+and handed to the blit through a named `GrabPass`, which is a global texture any shader can sample.
+If that link holds, the socket resolve itself becomes readable in C# for the price of one blit,
+because a quad on the plug can `#include yaps_resolve.cginc` and publish what it finds.
+
+The rule from the proof still holds and is not bent by this: the blit is only a COPIER here. The
+source is a render of avatar geometry reading the atlas, and the atlas is hashed by world position,
+so it is the same for every viewer.
+
+`Dev/Probes/D2PrefabBuilder.cs` builds the rig. A quad writes a sawtooth into two screen blocks at
+`Background-946`, a grab at `Background-945` names it `_YAPS_Probe`, a `CVRBlitter` samples that
+global into a 4x4 linear texture, and the parser drives a cube and a light off it, which is D1's
+proven half unchanged. A ramping cube means the grab reached the blit; a still one means the route
+is dead and the source has to be a camera rendering the avatar into a render texture instead.
+
+Two blocks because a grab's row order is a convention, and the blit reads both ends and takes the
+larger: which way up it lands is not worth an in-game run. Both a batch entry point and a menu item,
+since the editor holding the avatar is usually already open.
+
 Still untested: what a per-frame blit or camera actually costs.
 
 ### 5. The screen-space atlas: postponed, deliberately
