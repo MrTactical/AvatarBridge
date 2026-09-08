@@ -34,6 +34,15 @@ namespace AvatarBridge
                 if (plug == null || plug.Target == null) continue;
                 var tags = Listed(plug.answers);
                 string parameter = Parameter(avatar, plug);
+
+                // Listed caps at what the bake holds. Say so: a row missing
+                // from the menu reads as a tag that was never typed.
+                int over = YapsTags.Dropped(plug.answers);
+                if (over > 0)
+                {
+                    notes.Add(YapsToggles.LabelFor(plug) + ": " + over + " tag(s) past the first "
+                              + YapsTags.PlugSlots + " have no row, and the bake did not keep them either");
+                }
                 if (tags.Count < 2)
                 {
                     if (RemoveEntry(avatar, parameter) | RemoveLayer(controller, parameter))

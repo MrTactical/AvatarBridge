@@ -131,11 +131,12 @@ namespace AvatarBridge
             if (bodyBone != null)
             {
                 ctx.Report.Warning(Category, $"The plug at {where} was left alone",
-                    $"The first bones above the plug object belong to the body ({bodyBone}), so the " +
-                    "bake could not tell the plug's vertices from the rest of the mesh and would have " +
-                    "bent the whole avatar. Put the SPS Plug component on the plug's root bone, or on " +
-                    "an empty under it, and convert again. Until then the plug keeps its mesh and " +
-                    "does not bend.");
+                    $"The chain this plug would bend is the body's own ({bodyBone}), so the bake " +
+                    "could not tell the plug's vertices from the rest of the mesh and would have bent " +
+                    "the whole avatar. That is either a plug component sitting on the object that " +
+                    "carries the body mesh, or one whose first bones above it are the skeleton. Put " +
+                    "the SPS Plug component on the plug's root bone, or on an empty under it, and " +
+                    "convert again. Until then the plug keeps its mesh and does not bend.");
                 return;
             }
 
@@ -384,6 +385,24 @@ namespace AvatarBridge
             }
             int plugs = YapsBakePrep.AuthoredAnswers.Count + YapsBakePrep.AuthoredRefuses.Count;
             if (tagged == 0 && plugs == 0) return;
+
+            // The bake holds four on each list. Dropping the fifth quietly
+            // changes which sockets the plug answers, and the author reads
+            // their own list in the other tool and sees nothing wrong.
+            int over = 0;
+            foreach (var list in YapsBakePrep.AuthoredAnswers.Values) over += YapsTags.Dropped(list);
+            foreach (var list in YapsBakePrep.AuthoredRefuses.Values) over += YapsTags.Dropped(list);
+            if (over > 0)
+            {
+                ctx.Report.Warning(Category,
+                    $"{over} tag(s) past the first {YapsTags.PlugSlots} on a list were not carried",
+                    $"A plug here answers or refuses more than {YapsTags.PlugSlots} different tags, and "
+                    + $"only the first {YapsTags.PlugSlots} of each list fit. The ones past that are gone, "
+                    + "so the plug treats those sockets as unlisted: an answer list it fell off means the "
+                    + "socket is no longer answered, and a refuse list it fell off means the socket is no "
+                    + "longer refused. Shorten the list, or give the sockets you care about one shared "
+                    + "word instead of several.");
+            }
             ctx.Report.Converted(Category,
                 $"Carried the tags on {tagged} socket(s) and {plugs} plug rule list(s)",
                 "A tag is what a socket IS, and a plug's lists say which of them it will answer. "

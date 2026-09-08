@@ -1464,6 +1464,15 @@ than measuring to the nearest one: a distance answers wrongly the moment two bon
 Hips front and back only when there are exactly two hip sockets, which is SPS's own rule; with
 three, naming a front socket "hipsback" would make a plug refuse the wrong one.
 
+**All three paths say when a list was too long, 2026-09-08.** Four on each list is what the bake
+holds, and the fifth used to go without a word on two of the three ways in: the converter named
+the words it carried and never the ones it did not, and the tag menu capped the list in `Listed`
+and built four rows. Only the native builder said so. The same miss in three places is the shape
+this codebase keeps producing: a rule gets a shared helper, and the SPEAKING about it stays local
+to whichever path was open at the time. `YapsTags.Dropped` is now the one counter and each path
+reports it. The inspector still accepts a fifth entry rather than refusing the keystroke, which is
+deliberate: the author may be moving words around, and the build is where the truth is told.
+
 **Carrying the shared tag is what makes it safe, and it was nearly missed.** Nearly every SPS
 socket and plug carries the global tag, and a plug that has it answers everything regardless of
 its own list. Carrying a plug's include list WITHOUT carrying that would have made every
