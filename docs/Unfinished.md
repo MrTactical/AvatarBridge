@@ -290,6 +290,27 @@ IK. Needs the reporter's SDK version, which bone, and what the wrong result actu
 
 ## Loose ends, small but real
 
+### The settings are per USER, not per project. FIXED 2026-09-08
+
+The window persists its settings as JSON in `EditorPrefs`, which Unity keys per user and per
+editor install and NOT per project. The no-add-on branch wrote `convertYapsSystems = false` and
+`stripSpsSystems = true` straight into that object, so opening the window once in a project
+without the add-on set every project on the machine to Remove. The next avatar converted anywhere
+had its penetration stripped and nothing rebuilt, and since the flags were saved rather than
+displayed, the window could come back up reading Convert while the stored answer said otherwise.
+
+Harmless until the 4.5.0 split, which is what made a machine hold both kinds of project at once.
+
+`BridgeConverter` has always collapsed the choice for the run itself, and that is the right place:
+it touches the copy being converted and nothing that outlives it. The window writes nothing now.
+The one thing the write got right was the OSC hint below it, which asks whether penetration is set
+to Convert; without the add-on the answer is no whatever the setting says, so that is a define now
+rather than a value.
+
+Not fixable in reverse: a project already carrying the stored Remove keeps it, because a
+deliberate Remove and a poisoned one are the same two booleans. Anyone whose penetration choice
+reads Remove after updating should set it back.
+
 ### Three found in the 2026-09-07 cleanup pass
 
 Not bugs anyone can hit, but each is a promise the repo half makes.

@@ -791,8 +791,14 @@ namespace AvatarBridge
                 "download, the YAPS add-on, and it is not in this project. Install it and the choice " +
                 "appears here.", HelpBoxMessageType.Info));
             b.Add(Link("Get the YAPS add-on (GitHub)  ↗", () => Application.OpenURL(BridgeLinks.YapsRepo)));
-            settings.stripSpsSystems = true;
-            settings.convertYapsSystems = false;
+            // Nothing written to the settings here. These persist in
+            // EditorPrefs, which are per USER on this machine and not per
+            // project, so forcing them off in a project without the add-on
+            // forced them off in every project WITH it: the next avatar
+            // converted anywhere had its penetration removed and rebuilt
+            // nothing, with the window still reading Convert. BridgeConverter
+            // already collapses the choice for the run itself, which is where
+            // it belongs, since that touches only the copy being converted.
 #else
             // One question over two settings, three answers; the fourth
             // combination the ticks allowed is not offered. Radio buttons stack
@@ -1013,7 +1019,12 @@ namespace AvatarBridge
                     "avatar syncs. The report's sync budget entry says where you landed. Launch " +
                     "ChilloutVR with --osc-query-prefix=VRChat-Client so the app finds it.",
                     HelpBoxMessageType.Warning));
+                // Without the add-on the answer is no whatever the setting
+                // says, which is the one thing the write above used to get
+                // right.
+#if AVATARBRIDGE_YAPS
                 if (!settings.convertYapsSystems)
+#endif
                 {
                     optIns.Add(new HelpBox(
                         "Penetration is not set to Convert to YAPS, so there are no haptics parameters " +
