@@ -94,8 +94,8 @@ struct YapsSocket
 // says what it is. Unity hands back attenuation, so range is recovered as
 // 5/sqrt(atten).
 //
-// WHAT A SOCKET EMITS IS STOCK DPS, BYTE FOR BYTE. 0.4130 for a hole root,
-// 0.4230 for a ring root, 0.4530 for a front, and a light is only ever
+// WHAT A SOCKET EMITS IS STOCK DPS, BYTE FOR BYTE. 0.4106 for a hole root,
+// 0.4206 for a ring root, 0.4506 for a front, and a light is only ever
 // ADDED where one was missing. Change those and every DPS plug in
 // ChilloutVR stops seeing YAPS sockets.
 //

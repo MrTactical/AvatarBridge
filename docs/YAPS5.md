@@ -65,8 +65,9 @@ socket** (fix in `Places()` / `DefaultMaxLightEmittingSockets`, shipped as one).
 **Match the ecosystem byte for byte.** Emit VRCFury's exact ranges, trailing digits included.
 The first decimal is not free (DPS plugs saw roots with no fronts), the fourth does not survive
 (range is reconstructed as `5·rsqrt(atten)`), and a tiny-range variant loses every slot fight in
-company. Raliv's tolerance is 0.005, toy mods 0.001; the +0.003 offset keeps DPS and sheds the
-mods deliberately.
+company. Raliv's tolerance is 0.005, toy mods 0.001, and +0.0006 is inside both. A +0.003 offset
+kept DPS and shed the mods deliberately from 4.5.0; that lifted on 2026-09-08 once the mod stopped
+guessing plug length, and the exact VRCFury ranges came back.
 
 **Contacts: 4096 registrations and 512 overlapping pairs, instance-wide.** Broadphase is brute
 force but Burst: volume count is not the cost. Previous pairs re-add FIRST, so an interaction

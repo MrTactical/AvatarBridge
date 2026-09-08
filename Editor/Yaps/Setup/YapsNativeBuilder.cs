@@ -16,10 +16,11 @@ namespace AvatarBridge
         public const string OutputRoot = "Assets/YAPS/Generated";
         const string MarkersName = "YAPS Markers";
 
-        // DPS's tracker: digit 9, intensity = length, at the base. Offset
-        // the same way the socket ranges are, so a toy mod reading the
-        // protocol in C# does not answer this plug either.
-        public const float TrackerRange = 0.4930f;
+        // DPS's tracker: digit 9, intensity = length, at the base. VRCFury's
+        // trailing digits, so a mod reading the protocol in C# answers this
+        // plug the way it answers any other. See the socket ranges for why the
+        // +0.003 that used to sit here was dropped.
+        public const float TrackerRange = 0.4906f;
 
         public class Outcome
         {
@@ -568,7 +569,9 @@ namespace AvatarBridge
             foreach (var light in top.GetComponentsInChildren<Light>(true))
             {
                 if (light == null || light.type != LightType.Point) continue;
-                if (Mathf.Abs(light.range - TrackerRange) > 0.0005f) continue;
+                // 0.001, the protocol's own window, not an exact match: the
+            // wearer's plug counts here whether YAPS baked it or DPS did.
+            if (Mathf.Abs(light.range - TrackerRange) > 0.001f) continue;
                 float length = Mathf.Max(light.intensity, 0.01f);
                 // Within its own length of the socket, plus a hand's width
                 // of slack for a pose that is not quite the rest one.

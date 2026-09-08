@@ -861,19 +861,20 @@ and "make a new one" is not an answer for a prop somebody has positioned and tun
   would break sockets in the common case to save a resource nobody is spending. If pair
   exhaustion ever appears in the wild, the lever is the overlap, not the socket's description of
   itself.
-- **DPS range offset, ON ICE 2026-08-23**: the +0.003 offset makes YAPS sockets and plugs
+- **DPS range offset, LIFTED 2026-09-08**: the +0.003 offset made YAPS sockets and plugs
   invisible to every mod decoding at 0.001, sound mods included: NAK's PlapPlapForAll needs
   `RoundToInt(Repeat(range*500+500,50)+200)` to hit 205/210/225/245, and the 0.4130/0.4230/0.4530/
-  0.4930 all land on x.5 and read Invalid. No range separates a sound mod from a toy mod, so it is
-  one choice for both. **PR MERGED 2026-08-28 (a13175a), and that is not yet the trigger.** The
-  mod's source now bounds the estimate with the stated length, so it engages at contact rather
-  than across a room, but its latest RELEASE is still 2026-07-05, so nobody running it has the
-  fix. The condition was always "merges AND users update"; only the first half has happened.
-  The trigger is now **a CVRGoesBrrr release containing a13175a, plus a window for people to
-  take it**. When that lands, exact VRCFury ranges (0.4106/0.4206/0.4506/0.4906) restore every
-  mod at once, sound mods included. Old builds stay broken forever, so this is a judgement about
-  how much of the userbase has moved, not a switch that flips itself. The alternative, if it
-  drags: a wearer-facing setting defaulting to today's behaviour.
+  0.4930 all landed on x.5 and read Invalid. No range separates a sound mod from a toy mod, so it
+  was one choice for both. The condition set on 2026-08-28 was "the PR merges AND users can take
+  it"; CVRGoesBrrr's merge is in the latest build, so the ranges are now VRCFury's exact
+  0.4106/0.4206/0.4506/0.4906. The bystander case the offset answered is what the merge closes,
+  by bounding reach with the plug's stated length rather than a guess from the first renderer.
+  `OwnPlugRestsOn` widened from an exact match to the protocol's own 0.001 in the same commit, so
+  a wearer's plain DPS plug counts toward self-exclusion the way a YAPS one does.
+  **NOT YET TESTED IN GAME.** Soba is taking the merged mod build against a rebuilt avatar; until
+  that reads back, this is a change made on source, not on evidence. Anyone on a toy mod build
+  from before mid-2026 keeps the old across-a-room reach, which is a property of the mod and not
+  of the avatar.
 - **Consolidation remainder**: items after 5 in `archive/Consolidation.md`'s order, minus 6,
   which was skipped on purpose.
 
@@ -1349,9 +1350,10 @@ socket is allowed to be.
 **A marker light is the only thing an avatar does that reaches into someone else's.** Its range
 is a message: every decoder reads `range % 0.1` and matches 0.01 hole, 0.02 ring, 0.05 front,
 0.09 plug tip, and anything on the platform may listen. Raliv's shader matches within 0.005; a
-toy mod reading the same protocol in C# matches within 0.001. VRChat authors +0.0006, inside
-both, which is why a stock converted avatar drove a stranger's toy across a room. YAPS authors
-+0.003, which DPS reads and that mod does not.
+toy mod reading the same protocol in C# matches within 0.001. VRCFury authors +0.0006, inside
+both, which is why a stock converted avatar drove a stranger's toy across a room. YAPS authored
++0.003 from 2026-08-23, which DPS read and that mod did not; that lifted on 2026-09-08, see the
+work queue entry.
 
 **Toy integration cannot be made safe from the socket side, and that is not a bug here.** The mod
 computes reach as `1 - distance / giver.Length`, and estimates `Length` from whichever renderer
@@ -1365,9 +1367,11 @@ intensity. A socket is only ever the target of somebody else's number. So:
 - **socket side: never.** Any "let toy mods read my sockets" control hands strangers the right
   to decide how far away they can reach you.
 
-Both are moot if [ddakebono/CVRGoesBrrr#2](https://github.com/ddakebono/CVRGoesBrrr/pull/2)
-merges, since it bounds the estimate with the stated length. Old builds stay broken either way,
-so the quiet offset remains the default long after any merge.
+[ddakebono/CVRGoesBrrr#2](https://github.com/ddakebono/CVRGoesBrrr/pull/2) bounds the estimate
+with the stated length, and it is in the mod's latest build, which is what allowed the offset to
+lift on 2026-09-08. Both notes above still hold for the plug side: declaring length honestly is
+the wearer's own risk, and a "let toy mods read my sockets" control still hands strangers the
+decision, so there is none. Builds of the mod from before the merge stay broken either way.
 
 **A tempting idea that does not work: shrinking the ranges.** Since only `range % 0.1` is read,
 0.0106 decodes exactly like 0.4106 and reaches a fortieth as far. It would ease vertex-slot

@@ -738,8 +738,8 @@ keeps its original triggers and layers exactly as authored, and the report says 
 
 **It speaks the other systems on purpose.** The rebuilt rig emits the same wire other people's
 content reads: the contact tags (`TPS_Orf_Root`, `SPSLL_Socket_Front` and the rest) and the
-marker light ranges, the same protocol digits every decoder reads (at YAPS's own +0.003 offset, see
-the tool section for why). So a converted plug finds DPS,
+marker light ranges, the same protocol digits every decoder reads, at the same trailing digits
+VRCFury emits. So a converted plug finds DPS,
 TPS and SPS sockets; DPS, TPS and SPS plugs find a converted socket; someone wearing an avatar
 built for another platform's system works with yours, both ways, without either side knowing this
 tool exists. Parameter names elsewhere on the avatar are left alone for a second reason:
@@ -955,14 +955,18 @@ always their ceiling; the dropdown just hands the choice to the wearer instead o
 **The ranges sit in the quiet part of the band.** A marker light says what it is through its
 range, and every decoder compares `range % 0.1` against 0.01 hole, 0.02 ring, 0.05 front, 0.09
 plug tip. Raliv's shader accepts anything within 0.005 of those; toy mods reading the same
-protocol from C# accept 0.001. VRCFury authors +0.0006, inside both, which is why an unconverted
-VRChat avatar sets off a bystander's toy and their controllers from across the room. YAPS
-authors **+0.003** instead: DPS content reads the socket exactly as before, and a mod matching
-on 0.001 never sees it. Nothing to configure, but it does have a cost, and it is worth naming.
-Mods read at that tighter tolerance whatever they do with the result, so the ones that add sound
-effects to a detected DPS setup cannot see a YAPS socket either. There is no range that separates
-a mod which plays a noise on your listener's machine from one which drives a stranger's hardware,
-so this is one choice for both.
+protocol from C# accept 0.001. YAPS authors **+0.0006**, the same trailing digits VRCFury does,
+which is inside both: DPS content reads a socket exactly as it reads any other, and a mod reads it
+too. Nothing to configure.
+
+Earlier builds authored +0.003 instead, which DPS still read and no mod could. That was
+answering a report of controllers buzzing whenever a converted avatar came within two metres,
+which happened because the mod of the day guessed a plug's length from the first renderer under
+the avatar root instead of reading the length the protocol states. It guessed high, so it reached
+across a room. The mod now bounds that by the stated length and engages on contact, so the offset
+was costing the wearer their own hardware and the sound mods along with it, and buying a fix that
+had already been made upstream. If you are running a build of a toy mod from before mid-2026, that
+old reach is a property of the mod and every DPS avatar in the room has it.
 
 Holes start lit before rings; every other socket's pair is built dark and the **Marker lights**
 dropdown lights any one of them on demand, switching that socket on as it does. Nothing stops

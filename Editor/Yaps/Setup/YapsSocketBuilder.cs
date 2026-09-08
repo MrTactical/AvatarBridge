@@ -13,21 +13,33 @@ namespace AvatarBridge
 {
     public static class YapsSocketBuilder
     {
-        // DPS's digits, offset into the quiet part of the band.
+        // DPS's digits, at VRCFury's exact trailing 6.
         //
         // A decoder reads range % 0.1 against 0.01 hole, 0.02 ring, 0.05 front,
         // 0.09 plug tip. Raliv's shader accepts anything within 0.005 of those;
-        // toy mods reading the same protocol in C# accept 0.001. VRCFury
-        // authors +0.0006, inside both, so its sockets drive a bystander's toy
-        // from across a room.
+        // toy mods reading the same protocol in C# accept 0.001. +0.0006 is
+        // inside both, so DPS content and a mod each read the socket.
         //
-        // +0.003 is outside the mod's window and half of Raliv's, so DPS
-        // content still reads the socket and a toy mod does not answer it. The
-        // shader reconstructs range from an attenuation uniform and loses about
-        // 0.0005 doing it, which this clears twice over.
-        public const float HoleRange = 0.4130f;
-        public const float RingRange = 0.4230f;
-        public const float FrontRange = 0.4530f;
+        // These were +0.003 from 2026-08-23, inside Raliv's window and outside
+        // the mod's, answering a report of controllers buzzing two metres from
+        // a converted avatar. That bought the room quiet at the price of the
+        // wearer's own hardware, and shed the sound mods with the toy ones,
+        // since no range tells the two apart.
+        //
+        // Restored 2026-09-08: the mod that caused the report now bounds reach
+        // by the length the protocol states instead of guessing it from the
+        // first renderer under the root, so it engages on contact. The merge
+        // closes the bystander case, which is what the offset was standing in
+        // for.
+        //
+        // The trailing 6 is not decoration. It is what VRCFury emits, and a
+        // range that ties loses slot fights by draw order rather than
+        // reliably. The fourth decimal does not survive: the shader
+        // reconstructs range from an attenuation uniform and loses about
+        // 0.0005, inside the 0.001 the mods read at.
+        public const float HoleRange = 0.4106f;
+        public const float RingRange = 0.4206f;
+        public const float FrontRange = 0.4506f;
         public const float FrontOffset = 0.01f;
 
         // The self channel. A socket's own Self trigger listens for this
@@ -267,9 +279,9 @@ namespace AvatarBridge
         // budget always reserves one slot for a tracker it cannot see.
         //
         // Getting this wrong broke holes and left rings working. The tracker
-        // outranks every marker at 0.4930, a front is 0.4530 and a ring root
-        // 0.4230, so with two sockets lit the fifth candidate is always the
-        // hole root at 0.4130 and Unity drops exactly that one.
+        // outranks every marker at 0.4906, a front is 0.4506 and a ring root
+        // 0.4206, so with two sockets lit the fifth candidate is always the
+        // hole root at 0.4106 and Unity drops exactly that one.
         static int Places(YapsSocket socket)
         {
             var avatar = socket.GetComponentInParent<CVRAvatar>(true);
