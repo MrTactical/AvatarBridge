@@ -997,6 +997,19 @@ A name means the same thing here as it does in SPS, because it is hashed the sam
 `footleft` and `footright` are worth using where they fit: those are the eleven SPS works out from
 the bone nearest a socket. Anything else is a private word between you and the plug's author.
 
+**A tag is stored as a fingerprint, not as a word, and fingerprints can agree.** There is room for
+one pixel of tags in the atlas, so a socket does not carry a list: each of its tags lights three
+of twenty bits chosen from the name, and the socket publishes them all together. A plug asks
+whether a name's three bits are lit. That fits any word you like into the space of about one, and
+the price is an occasional wrong yes, where a socket's other tags happen to light the three bits
+some unrelated name wanted. Roughly one time in a thousand for a socket wearing one tag, one in
+seventy at two, one in twenty at three.
+
+It cuts both ways and neither way is dangerous. A wrong yes on the answer list answers a socket
+that was not asking for this plug; a wrong yes on the refuse list turns away a socket it need not
+have. Nothing is ever bent toward a socket that is not there. If it matters, give a socket fewer
+tags: one tag is nearly exact, and four is where it starts to blur.
+
 **Tags need the screen atlas, and only the atlas.** It is the one route that carries what a socket
 IS as well as where it is. A socket found by marker light announces itself with a range, and a
 range has no room in it for anything but hole or ring; a socket found by contact announces itself

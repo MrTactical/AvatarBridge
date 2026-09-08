@@ -56,22 +56,13 @@ namespace AvatarBridge
             return notes.Count > 0 ? string.Join("; ", notes) : null;
         }
 
-        // The tags the author listed, in the order they wrote them, minus
-        // blanks and repeats. The order is the menu's order, so it has to be
-        // theirs rather than sorted: a list they can read top to bottom in
-        // the inspector is the same list they see in game.
+        // The author's list, normalised the way the bake normalises it, then
+        // capped. One call rather than two implementations: they disagreed,
+        // and the disagreement moved which sockets a plug answered.
         static List<string> Listed(IList<string> tags)
         {
-            var found = new List<string>();
-            if (tags == null) return found;
-            foreach (string tag in tags)
-            {
-                if (string.IsNullOrWhiteSpace(tag)) continue;
-                string clean = tag.Trim();
-                if (found.Any(f => string.Equals(f, clean, System.StringComparison.OrdinalIgnoreCase))) continue;
-                found.Add(clean);
-                if (found.Count >= YapsTags.PlugSlots) break;
-            }
+            var found = YapsTags.Listed(tags);
+            if (found.Count > YapsTags.PlugSlots) found.RemoveRange(YapsTags.PlugSlots, found.Count - YapsTags.PlugSlots);
             return found;
         }
 

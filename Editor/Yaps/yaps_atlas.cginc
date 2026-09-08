@@ -4,7 +4,7 @@
 #define YAPS_ATLAS_INCLUDED
 
 // Bump on any change below. It rides the tag.
-#define YAPS_ATLAS_VERSION 3
+#define YAPS_ATLAS_VERSION 4
 
 // 4096 cells. Two homes, so a clash needs both.
 #define YAPS_ATLAS_GRID    64
@@ -22,7 +22,12 @@
 
 // A header, then eight octants.
 // One header pixel, then THREE per octant: position, facing, tags.
-// Version 3 added the third. A socket's tag word needed a pixel of its
+// Version 3 added the third and version 4 changed what is in it, from a
+// fifteen-bit enum over rgb to a twenty-bit folded hash over rgba. Same
+// pixel count and same rect, and still a different protocol: an old
+// untagged socket wrote alpha 1, which the new decoder reads as five bits
+// set rather than none, so a pattern living up there would match a socket
+// that had no tags at all. The version is what refuses that. A socket's tag word needed a pixel of its
 // own: the facing pixel's alpha carries the kind, and the position pixel's
 // carries the owner tag the whole read is gated on. The tag pixel spends
 // all four of its channels, which is why the word is 20 bits and why the

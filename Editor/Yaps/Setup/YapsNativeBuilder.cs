@@ -833,19 +833,21 @@ namespace AvatarBridge
 
         // Four tag patterns in a vector, one per component, zero for an empty
         // slot. A pattern rather than the name because a shader has no way to
-        // hash a string, and four because that is what a Vector4 holds; a
-        // longer list is truncated rather than silently folded together,
-        // which would make two tags read as a third.
+        // hash a string.
+        //
+        // Normalised through YapsTags.Listed, the same call the menu makes.
+        // This used to drop blanks and nothing else, so a list written
+        // "hips, HIPS, head, hand, foot" spent a slot on the repeat and lost
+        // "foot", while the menu's default state kept it: entering that state
+        // changed which sockets the plug answered, without the wearer picking
+        // anything.
         static Vector4 TagPatterns(IList<string> tags)
         {
             var v = Vector4.zero;
-            if (tags == null) return v;
-            int n = 0;
-            foreach (string tag in tags)
+            var listed = YapsTags.Listed(tags);
+            for (int i = 0; i < listed.Count && i < YapsTags.PlugSlots; i++)
             {
-                if (string.IsNullOrWhiteSpace(tag)) continue;
-                if (n >= YapsTags.PlugSlots) break;
-                v[n++] = YapsTags.Pattern(tag);
+                v[i] = YapsTags.Pattern(listed[i]);
             }
             return v;
         }

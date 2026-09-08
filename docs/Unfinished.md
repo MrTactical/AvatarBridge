@@ -1384,11 +1384,32 @@ answer list that answers a socket that was not asking, which is the permissivene
 already documents everywhere but the atlas; on the refuse list it refuses one it need not have,
 which errs toward not touching. Neither invents a socket.
 
-**Distinct bits are load-bearing.** The first version took successive remainders of one hash and
-let a tag repeat a bit. "footleft" lit two bits, both inside "handright", so a hand socket read as
-a foot socket permanently. `Dev/Probes/YapsTagProbe.cs` checks the eleven hashes against values
-read out of VRCFury and checks that no name reads as present on a socket wearing only another.
-Run it after touching `YapsTags`.
+**Two generations of the pattern generator were wrong and a review caught both.** The first took
+successive remainders of one hash, which let a tag repeat a bit and light only two; "footleft" lit
+two, both inside "handright", so a hand socket read as a foot socket. Distinct bits fixed that and
+introduced the second: `h = h * 16777619 + 2166136261` is congruent to `3h + 1` modulo 4, so the
+index alternates between two residue classes and only 200 of the 1140 three-bit patterns exist.
+"tag1" and "tag13" were the same tag outright. A multiply-and-add is not its own avalanche;
+murmur3's finaliser is, and reaches all 1140.
+
+Worth recording the direction: fixing it made the eleven names' three-tag false rate go UP, from
+about 1.5% to 5.4%. The old space was small enough to be lucky on eleven cherry-picked names while
+being catastrophic on arbitrary ones. 5.4% is the honest number for a fold this size.
+
+`Dev/Probes/YapsTagProbe.cs` checks the eleven hashes against values read out of VRCFury, that no
+name reads as present on a socket wearing only another, that all 1140 patterns are reachable over
+ten thousand arbitrary names, and that the three-tag union rate has not moved. Run it after
+touching `YapsTags`.
+
+**One normalisation, shared.** The bake dropped blanks and the menu also deduplicated, so
+"hips, HIPS, head, hand, foot" made the bake spend a slot on the repeat and lose "foot" while the
+menu kept it, and entering the controller's default state changed which sockets the plug answered
+with nobody choosing anything. `YapsTags.Listed` is the one implementation now.
+
+**The atlas protocol is version 4.** Same pixel count, same rect, different meaning in the third
+pixel: an old untagged socket wrote alpha 1, which the new decoder reads as five bits set rather
+than none, so a pattern living in those bits would match a socket that had no tags at all. Only
+mixed builds of unreleased version-3 work are affected, and the version is what refuses them.
 **Still owed**: the converter does not carry an SPS plug's or socket's tags across, so a converted
 avatar comes through untagged. Both sides are lists of strings now, so it is a copy rather than a
 mapping; the eleven location tags are not derived automatically the way SPS derives

@@ -77,7 +77,41 @@ namespace AvatarBridge.Dev
                 if ((wornWord & p) != p) fail.Add($"\"{t}\" lost inside the word its own socket published");
             }
 
-            if (fail.Count == 0) Debug.Log($"YAPS tags: ok, {Known.Length} names, {YapsTags.Bits} bits, {YapsTags.PerTag} per tag.");
+            // Arbitrary names, not just the eleven. The mixer decides how much
+            // of the pattern space exists at all, and a bad one collapses it
+            // without failing any single-name test: the first version reached
+            // 200 of the 1140 three-bit patterns, and "tag1" and "tag13" were
+            // the same tag forever.
+            var seen = new HashSet<int>();
+            for (int i = 0; i < 10000; i++) seen.Add(YapsTags.Pattern("tag" + i));
+            int space = YapsTags.Bits * (YapsTags.Bits - 1) * (YapsTags.Bits - 2) / 6;
+            if (seen.Count < space) fail.Add($"only {seen.Count} of {space} patterns are reachable");
+
+            // And the union, which is what a socket actually publishes. Some
+            // rate is inherent to a fold and the number is recorded rather
+            // than asserted; a jump means the mixer moved.
+            int loose = 0, asked = 0;
+            for (int a = 0; a < Known.Length; a++)
+            {
+                for (int b = a + 1; b < Known.Length; b++)
+                {
+                    for (int c = b + 1; c < Known.Length; c++)
+                    {
+                        int word = pattern[Known[a].Name] | pattern[Known[b].Name] | pattern[Known[c].Name];
+                        foreach (var (name, _) in Known)
+                        {
+                            if (name == Known[a].Name || name == Known[b].Name || name == Known[c].Name) continue;
+                            asked++;
+                            if ((word & pattern[name]) == pattern[name]) loose++;
+                        }
+                    }
+                }
+            }
+            float rate = asked == 0 ? 0f : 100f * loose / asked;
+            if (rate > 8f) fail.Add($"three-tag false match {rate:0.0}%, was 5.4% when this was written");
+
+            if (fail.Count == 0) Debug.Log($"YAPS tags: ok. {Known.Length} names, {YapsTags.Bits} bits, {YapsTags.PerTag} per tag, "
+                + $"{seen.Count}/{space} patterns reachable, {rate:0.0}% false on a three-tag socket.");
             else Debug.LogError("YAPS tags FAILED:\n" + string.Join("\n", fail));
         }
     }

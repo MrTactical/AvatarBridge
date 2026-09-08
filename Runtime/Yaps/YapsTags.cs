@@ -16,9 +16,9 @@
 // So the socket's tags FOLD into one word. Each tag lights three bits of
 // twenty, picked by its own hash, and the socket publishes the OR. A plug
 // asks whether all three of a tag's bits are lit. That answers for any
-// string in one pixel and costs an occasional false yes: a socket wearing
-// three tags lights about eight bits of twenty, so an unrelated tag reads
-// as present about one time in twenty.
+// string in one pixel, and costs a false yes at a rate that depends on how
+// many tags the socket wears: about 0.1% at one, 1.4% at two, 5% at three,
+// 9% at four. Sockets in practice wear one or two.
 //
 // The direction of that error is the point. A false yes on the ANSWER list
 // answers a socket that was not asking, which is the same permissiveness
@@ -64,14 +64,23 @@ namespace AvatarBridge.Yaps
         }
 
         // The bits one tag lights: three DISTINCT ones, each from a fresh
-        // round of the same hash.
+        // round of MIXING, not a fresh round of the hash.
         //
-        // Distinct is not tidiness. Taking successive remainders of one hash
-        // let a tag repeat a bit and light only two, and a two-bit pattern
-        // is very often a subset of some three-bit one: with the eleven
-        // names SPS derives, "footleft" landed inside "handright", so a
-        // socket on a hand read as a socket on a foot. Every pair is clear
-        // once each tag spends its full three.
+        // Distinct is not tidiness. Successive remainders of one hash let a
+        // tag repeat a bit and light only two, and a two-bit pattern is very
+        // often a subset of some three-bit one: among the eleven names SPS
+        // derives, "footleft" landed inside "handright", so a hand socket
+        // read as a foot socket.
+        //
+        // The MIXER is the other half, and the reason it is this one. The
+        // obvious step, h = h * 16777619 + 2166136261, is congruent to
+        // 3h + 1 modulo 4, and that alternates between two residues rather
+        // than visiting all four. Bit indices are taken modulo 20, so the
+        // index inherits the restriction: consecutive picks came out of half
+        // the word and only 200 of the 1140 possible patterns existed at
+        // all. Unrelated names collided outright, "tag1" with "tag13" among
+        // them. A multiply-and-add cannot be its own avalanche; this is
+        // murmur3's finaliser, which is.
         public static int Pattern(string tag)
         {
             uint h = Hash(tag);
@@ -79,12 +88,12 @@ namespace AvatarBridge.Yaps
             int word = 0;
             for (int n = 0; n < PerTag; n++)
             {
-                // Bits attempts, then give up and take the shorter pattern
-                // rather than spin. It cannot happen with three of twenty
-                // and the loop is what says so.
+                // Bits attempts, then take the shorter pattern rather than
+                // spin. Three of twenty cannot exhaust it and the loop is
+                // what says so.
                 for (int t = 0; t < Bits; t++)
                 {
-                    h = h * 16777619 + 2166136261;
+                    h = Mix(h + 0x9E3779B9u);
                     int bit = 1 << (int) (h % Bits);
                     if ((word & bit) != 0) continue;
                     word |= bit;
@@ -94,11 +103,52 @@ namespace AvatarBridge.Yaps
             return word;
         }
 
+        static uint Mix(uint h)
+        {
+            h ^= h >> 16;
+            h *= 2246822507u;
+            h ^= h >> 13;
+            h *= 3266489909u;
+            h ^= h >> 16;
+            return h;
+        }
+
+        // Trimmed, blank-free and without repeats, in the order they were
+        // written. ONE place, because the bake and the menu each had their
+        // own and disagreed: given "hips, HIPS, head, hand, foot" the bake
+        // spent a slot on the repeat and dropped "foot", the menu did not,
+        // and the menu's default state then changed which sockets the plug
+        // answered the moment the controller entered it.
+        //
+        // The order is the author's, so the menu reads top to bottom the
+        // way the inspector does.
+        public static List<string> Listed(IEnumerable<string> tags)
+        {
+            var found = new List<string>();
+            if (tags == null) return found;
+            foreach (string tag in tags)
+            {
+                if (string.IsNullOrWhiteSpace(tag)) continue;
+                string clean = tag.Trim();
+                bool seen = false;
+                foreach (string had in found)
+                {
+                    if (!string.Equals(had, clean, System.StringComparison.OrdinalIgnoreCase)) continue;
+                    seen = true;
+                    break;
+                }
+                if (!seen) found.Add(clean);
+            }
+            return found;
+        }
+
+        // Every tag a socket wears, folded into one word. Uncapped: a socket
+        // pays for its tags with the OR rather than a slot each, so a long
+        // list costs accuracy and nothing else.
         public static int Word(IEnumerable<string> tags)
         {
             int word = 0;
-            if (tags == null) return 0;
-            foreach (string tag in tags) word |= Pattern(tag);
+            foreach (string tag in Listed(tags)) word |= Pattern(tag);
             return word;
         }
 
