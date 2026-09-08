@@ -414,6 +414,18 @@ namespace AvatarBridge
                 if (onObject != null && onObject.sharedMesh != null)
                 {
                     plugVertices = onObject.sharedMesh.vertexCount;
+                    // The level goes out with it, or this shortcut skips the
+                    // body guard below: it returned before anything set one, so
+                    // the guard asked about null, and null is not a bone. A
+                    // component put on the object carrying the BODY's mesh took
+                    // this path and the whole avatar was baked as the plug,
+                    // silently, which is the failure the second rule exists for.
+                    //
+                    // The object the component sits on is the level here, and a
+                    // dedicated plug mesh object is not a humanoid bone, so the
+                    // guard passes it. One that IS a bone is the body's mesh
+                    // sitting on the skeleton, which is the case to refuse.
+                    chainLevel = owner;
                     return onObject;
                 }
             }

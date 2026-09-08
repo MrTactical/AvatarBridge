@@ -490,10 +490,22 @@ Not yet run against a project holding a stale prop, which is the only thing that
     Checked against both failures and the ordinary spellings: "Copyright pose" and "COPYRIGHT POSE"
     match neither hand, "GestureRight", "Right Hand", "hand_right" and "Gesture (Right)" all match
     right, "cleft palate" matches neither.
-  - **F18, owner-rule shortcut skips the humanoid guard.** `FindPlugRenderer` returns the parent's
-    SkinnedMeshRenderer before `chainLevel` is ever set, so `HumanoidBoneName(null)` returns null
-    and the "your chain is the body" refusal never runs. Silent bypass, not a crash. A guard here
-    risks refusing legitimate plugs, so it wants the corpus.
+  - **F18, owner-rule shortcut skips the humanoid guard. FIXED 2026-09-08.** `FindPlugRenderer`
+    returned the parent's SkinnedMeshRenderer before `chainLevel` was ever set, so the refusal
+    below it asked `HumanoidBoneName(null)`, null is not a bone, and the "your chain is the body"
+    check never ran on that path. Silent bypass, not a crash: a component put on the object
+    carrying the body mesh baked the whole avatar as one plug and reported success.
+
+    A new test was the wrong shape here, and bone counts or head-and-foot weights would have
+    refused legitimate plugs, including the avatar deliberately built as a single mesh. The
+    existing guard is right; it was only reached with nothing to judge. So the shortcut sets
+    `chainLevel` to the object the component sits on before returning, and the guard reads it: a
+    dedicated plug mesh object is not a humanoid bone and passes, and a body mesh sitting on the
+    skeleton is exactly what the guard was written to refuse.
+
+    Unchanged for legitimate plugs by construction rather than by measurement, so the corpus is
+    still owed: a plug object is not in `skin.bones` and carries none beneath it, so the climb
+    from `plugRoot` lands where it did before.
   - **F19/F20, the shader surface.** The patcher's regexes are unanchored and comment-blind, and
     the socket decoder admits a coloured light whose alpha is zero (`&& colour.a > 0`), which also
     defeats the self-exclusion test that consumes its verdict. Held back because a shader change
