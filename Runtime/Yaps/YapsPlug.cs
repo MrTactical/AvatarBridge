@@ -117,12 +117,14 @@ namespace AvatarBridge.Yaps
         public bool emitTipLight = true;
 
         [Header("Which sockets it answers")]
+        [YapsFrom("DPS · SPS")]
         [Tooltip("Answer only sockets carrying at least one of these tags. Empty means no " +
                  "opinion, which answers anything the refuse list does not deny. A socket with " +
                  "no tags of its own, which includes every socket found by marker light, is " +
                  "refused by any list here.")]
         public YapsTags answers;
 
+        [YapsFrom("DPS · SPS")]
         [Tooltip("Never answer a socket carrying any of these tags, whatever the list above " +
                  "says. Refusing beats answering.")]
         public YapsTags refuses;

@@ -636,6 +636,8 @@ namespace AvatarBridge
             // After the toggle layers: the lighthouse asserts the chosen
             // socket on, and a layer wins by coming later.
             string lighthouse = YapsLighthouse.Build(avatar, controller);
+            string tagMenu = YapsTagMenu.Build(avatar, controller);
+            if (tagMenu != null) lines.Add($"✓ {tagMenu}");
             if (lighthouse != null) lines.Add($"✓ {lighthouse}");
             return lines;
         }

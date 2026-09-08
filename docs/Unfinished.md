@@ -1306,11 +1306,26 @@ whole message and the digits are Raliv's. So a socket found by light reads as un
 untagged is refused only by a REQUIRE. That is the honest reading of content older than tags,
 and it is what SPS does with legacy content too.
 
-**Still owed on this**: the socket and plug inspectors do not show the fields yet; the menu
-dropdown that makes the plug's sets animatable is unbuilt; the converter does not map an SPS
-plug's tag strings onto the set, so a converted avatar comes through untagged; and the eleven
-location tags are not derived automatically the way SPS derives them. The four custom slots are
-by convention only, since a name cannot live in a pixel.
+**The inspectors and the menu went in the same day.** The socket's set sits in "What it is"
+beside its kind; the plug's two sets open a fold of their own, chipped DPS and SPS since both
+had the idea first. A plug listing two or more tags gets a dropdown and an animator layer, one
+state per tag plus "As built" and "Anything", driving `material._YAPS_TagInclude`. Fifteen
+toggles would have been fifteen rows and fifteen parameters for a question with one answer at a
+time, which is the objection that killed the per-socket allow list.
+
+**A multi-slot plug needed care and turned up a probable bug elsewhere.** A curve on
+`material._X` binds to the FIRST material only, so the tag clips write `material[i]._X` for every
+slot whose material carries the property: a plug with its tip on a second material would
+otherwise answer one set of tags across half its mesh and another across the rest. The deform
+toggle in `YapsToggles.EnsurePlugToggle` writes `material._YAPS_Enabled` with no such loop, which
+looks like the same bug in the feature people actually use: half a two-material plug would stay
+switched on. Not confirmed, and not changed here because it is a different feature; worth an hour
+with a two-material plug.
+
+**Still owed**: the converter does not map an SPS plug's tag strings onto the set, so a converted
+avatar comes through untagged; the eleven location tags are not derived automatically the way SPS
+derives them; and the four custom slots are by convention only, since a name cannot live in a
+pixel. And the rect, above, which is the one that gates shipping.
 
 **2. Not a gap, and worth saying before the rest.**
 

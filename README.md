@@ -986,6 +986,24 @@ along +Z**: pivot at the base, shaft along +Z (in Blender: origin at the base, s
 before export); the bake warns when the mesh disagrees. A skinned mesh is measured from its bones
 and needs neither.
 
+**Tags: which sockets a plug will answer.** A socket carries a **Tags** set saying what it is,
+picked from eleven names SPS uses for the same purpose (hips, head, chest, hand and each hand,
+foot and each foot, hips front and hips back) plus four custom slots. A plug carries two sets of
+its own: **answer only sockets tagged** and **never answer a socket tagged**. Refusing beats
+answering. Leave everything empty and nothing changes: a plug with no list answers any socket, and
+a socket with no tags is found by any plug that is not asking for something in particular.
+
+A tagged plug asking for something *does* pass over an untagged socket, and that includes every
+socket found by marker light rather than by contact or the atlas, since a light's range is its
+whole message and there is no room in it for a tag. That is the same thing SPS does with content
+older than tags.
+
+**Choosing at runtime.** A plug listing two or more tags gets a menu dropdown of its own, so the
+wearer can narrow it to one of them, widen it to *Anything*, or leave it on *As built*, which is
+what the author configured and what it starts on. *Anything* clears the answer list only; a socket
+on the refuse list stays refused. The four custom slots mean whatever you and the other author
+agree they mean: the tag travels as a number, so a name for it can only live in the two of you.
+
 **The components themselves do nothing in game, so don't animate them.** A YAPS Plug or YAPS
 Socket is setup data: the bake writes what it says into the material, and ChilloutVR strips the
 component at upload. That is why neither has an on/off checkbox in the inspector: there is
