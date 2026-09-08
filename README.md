@@ -760,7 +760,7 @@ both. The report says which case you're in.
 
 | | costs | reaches | how good it is |
 |---|---|---|---|
-| **Screen atlas** | nothing | anyone drawing the avatar with custom shaders on, in a view at least 552 by 520 pixels | about a tenth of a millimetre, every frame |
+| **Screen atlas** | nothing | anyone drawing the avatar with custom shaders on, in a view at least 808 by 520 pixels | about a tenth of a millimetre, every frame |
 | **Marker lights** | nothing | anyone whose client draws the plug | exact, and sampled every frame |
 | **Contact channel** | up to 9 synced floats per plug | everyone, including viewers with avatar lights switched off | about a millimetre, arriving ten times a second |
 
@@ -999,8 +999,13 @@ range has no room in it for anything but hole or ring; a socket found by contact
 with a pointer whose type says the same. Neither can say "hips". So on those two routes a plug
 answers as though it had no list at all, because a route that cannot see the set cannot honestly
 refuse on it, and refusing anyway would mean a plug tagged for one place quietly stopping
-everywhere else. In a view too small for the atlas, or against content older than it, tags are not
-in force. Plan the sets as a preference, not as a lock.
+everywhere else.
+
+Nor does having the atlas make the sets binding. A socket the atlas turned away can still be
+picked up by its own marker light or its contact, since those routes answer once nothing else
+has, and they answer without knowing what they found. So a refused socket can be reached in a
+view where the atlas fits perfectly well. Plan the sets as a preference throughout, not as a
+lock, and use the plug's **Deform** toggle for anything that has to be certain.
 
 A tagged plug asking for something also passes over an untagged socket found *through* the atlas,
 which is the same thing SPS does with content older than tags.
@@ -1128,7 +1133,7 @@ alone.
   LENGTH: a quarter means nothing found the socket, a half the contact channel, three quarters
   a marker light, full the screen atlas. Length rather than colour because a patched shader only lets the toolkit edit the vertex
   stage, so there is no fragment of its own to paint. It is the first thing to look at when a plug
-  bends toward the wrong thing, or toward nothing. The screen atlas needs a view at least 552 by
+  bends toward the wrong thing, or toward nothing. The screen atlas needs a view at least 808 by
   520 pixels and stands down below that, so a small window answers three quarters where a full
   screen answers full. *Atlas taps* beside it answers the follow-up
   question when the answer is "nothing", in four steps: a tenth means the screen carried nothing
