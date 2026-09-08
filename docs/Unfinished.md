@@ -1930,6 +1930,40 @@ animation here could be per client and cost nothing, where theirs cannot. If any
 is worth doing for its own sake rather than for parity, it is this one, and it wants the GPU bridge
 machinery first.
 
+**5. Masks: the source is fine, the recovery is missing.**
+
+Read on 2026-09-08. SPS paints a mask texture saying which vertices belong to the shaft, with an
+auto-mask from bone weights and an author override on top. YAPS derives the same number from the
+rig instead: `WeightOnPlug` in `YapsBaker.cs` takes each vertex's skin weight on the plug's bone
+chain and stores it as the bake's `active` channel, which the shader reads as the per-vertex blend.
+That is the better source of the two, and it is not what needs work. A skin weight feathers at the
+base for free, and because it is the same number the skinning itself uses, the mask cannot disagree
+with the deformation the way a painted texture can.
+
+The problem is what happens when that source is not available, and there are two such cases.
+
+- **The climb is unbounded.** When no bone sits under the plug's root, the baker walks up ancestors
+  until it finds a subtree with any weights at all and takes that whole subtree. A plug parented
+  to Hips climbs to Hips, every vertex on the body reads a weight near 1, and the avatar bakes as
+  one enormous shaft. This is not hypothetical: it is what ten avatars did, and the reason the
+  "climb once" rule exists at all. Bounding it is small. The baker already counts what a level
+  captures, through `CountVerticesUnder`, so a climb that swallows most of the mesh can be refused
+  through the failure path that already exists, telling the author to set the plug's root bone.
+  Roughly ten lines, no new UI, and it turns a silently wrong bake into a refusal that names its
+  own fix. This is the piece with a real victim behind it.
+
+- **A plain mesh has no mask at all.** On a non-skinned renderer the baker writes a flat weight of
+  1 for every vertex. Correct when the mesh is only the plug, and wrong the moment it is not,
+  with nothing to say so. The only guard today is that a vertex behind the base is dropped.
+
+Across both, the gap against SPS is not where the mask comes from, it is that there is no override.
+The plug's root bone field is the only lever, it cannot touch a plain mesh, and it cannot trim a
+skinned one: a sheath weighted to the same chain as the shaft bends with it and the author has no
+way to say otherwise. A painted mask is the general answer and it is a real feature, needing UV
+sampling in the bake, import settings and a workflow for producing the texture. Neither the plain
+mesh nor the sheath has a reported case yet, so the honest order is to bound the climb now and
+leave the override until an avatar asks for it.
+
 **What is deliberately not on the list.** SPS2's legacy compatibility switch, because reading the
 legacy systems is this tool's whole job, and their material slot budget, because the atlas answers
 that differently.
