@@ -25,11 +25,18 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # Machine-specific paths live in Dev/local.cfg, which is gitignored: the
 # corpus project and the Unity install are wherever this machine put them.
+#
+# Held first, because local.cfg assigns plainly and is sourced after: a
+# value passed for one run was being overwritten by the file and the run
+# went ahead on the file's number, saying so in a line nobody rereads.
+env_project="${AVATARBRIDGE_PROJECT:-}"
+env_unity="${AVATARBRIDGE_UNITY:-}"
+env_cores="${AVATARBRIDGE_CORES_TO_LEAVE:-}"
 # shellcheck source=/dev/null
 [ -f "$REPO/Dev/local.cfg" ] && . "$REPO/Dev/local.cfg"
-PROJECT="${AVATARBRIDGE_PROJECT:-}"
-UNITY="${AVATARBRIDGE_UNITY:-/c/Program Files/Unity/Hub/Editor/2022.3.22f1/Editor/Unity.exe}"
-CORES_TO_LEAVE="${AVATARBRIDGE_CORES_TO_LEAVE:-4}"
+PROJECT="${env_project:-${AVATARBRIDGE_PROJECT:-}}"
+UNITY="${env_unity:-${AVATARBRIDGE_UNITY:-/c/Program Files/Unity/Hub/Editor/2022.3.22f1/Editor/Unity.exe}}"
+CORES_TO_LEAVE="${env_cores:-${AVATARBRIDGE_CORES_TO_LEAVE:-4}}"
 
 [ -n "$PROJECT" ] || {
     echo "set AVATARBRIDGE_PROJECT to the corpus project, in Dev/local.cfg or the environment" >&2
