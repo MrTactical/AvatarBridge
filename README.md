@@ -997,6 +997,13 @@ sockets tagged** and **never answer a socket tagged**, four each. Refusing beats
 Leave everything empty and nothing changes: a plug with no list answers any socket, and a socket
 with no tags is found by any plug that is not asking for something in particular.
 
+**`shared` is the word that keeps a picky plug working.** Every socket this tool builds carries it,
+and so does nearly every socket SPS ever made, which is what makes a plug's answer list narrow the
+field rather than empty it: a plug asking for `hips` still answers anything wearing `shared`. Take
+it off a socket and you are saying only a plug that names one of its other words, or names nothing
+at all, may have it. That is a real thing to want on a socket meant for one partner's plug, and a
+surprising thing to do by accident, which is why it is there by default and worth leaving.
+
 Four is the plug's whole room, and repeats of one word do not count twice. Type more than that and
 the extra names are not baked; the build says how many it left out. A socket has no limit, so a
 list that will not fit on the plug often fits on the sockets instead.

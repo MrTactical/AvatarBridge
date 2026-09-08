@@ -1494,6 +1494,26 @@ to whichever path was open at the time. `YapsTags.Dropped` is now the one counte
 reports it. The inspector still accepts a fifth entry rather than refusing the keystroke, which is
 deliberate: the author may be moving words around, and the build is where the truth is told.
 
+**The toolkit had no such convention, and that was the hole, 2026-09-08.** Carrying the shared word
+across from SPS keeps a converted plug working on a converted avatar, and says nothing about the
+sockets this tool builds itself. Those defaulted to an empty tag list, which publishes an empty
+word, and a plug with any answer list refuses a word that does not match. So every plug converted
+from SPS, which is every one of them since it always carries the shared word, refused every socket
+the toolkit ever built and every prop, on the atlas tier. The light and contact tiers never ask
+about tags, which is what kept it from being obvious.
+
+The fix is the convention, not the rule: `YapsSocket.tags` starts with the shared word, so a socket
+built here says the same thing an SPS socket says. A CONVERTED socket is still whatever SPS said,
+empty list included, because an author who turned the shared tag off there meant it: the rebuild
+assigns the list always rather than only when it has something in it, or the component default
+would quietly overrule them.
+
+No migration: the tag field has never shipped, so no socket in anyone's project carries the old
+empty default.
+
+Third builder, same lesson. The converter and the native builder were the two that got compared;
+props go through the socket builder and were not in the comparison at all.
+
 **Carrying the shared tag is what makes it safe, and it was nearly missed.** Nearly every SPS
 socket and plug carries the global tag, and a plug that has it answers everything regardless of
 its own list. Carrying a plug's include list WITHOUT carrying that would have made every

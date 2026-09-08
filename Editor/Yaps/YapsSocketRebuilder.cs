@@ -330,7 +330,12 @@ namespace AvatarBridge
                 if (socket == null) socket = pair.Key.gameObject.AddComponent<YapsSocket>();
                 socket.kind = pair.Value.IsHole ? YapsSocket.SocketKind.Hole : YapsSocket.SocketKind.Ring;
                 socket.emitLights = pair.Value.EmitLights;
-                if (pair.Value.Tags.Count > 0) socket.tags = new List<string>(pair.Value.Tags);
+                // Always, never only when there is something to say. The
+                // component defaults to the shared word so a socket built
+                // here is answered by picky plugs; a socket CONVERTED from
+                // SPS gets whatever SPS said instead, and an author who
+                // turned the shared tag off there meant it.
+                socket.tags = new List<string>(pair.Value.Tags);
                 // Stamped like the native and prop builders do. The stale card is
                 // guarded on this being non-empty, so leaving it blank meant a
                 // CONVERTED socket could never report itself out of date, and converted

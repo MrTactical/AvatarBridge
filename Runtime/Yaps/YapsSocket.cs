@@ -63,9 +63,11 @@ namespace AvatarBridge.Yaps
         [Tooltip("What this socket is, published so a plug can decide whether to answer it. Any " +
                  "words you like, matched case-insensitively, and the same names SPS uses mean " +
                  "the same thing here. A plug with no list answers any socket; one with a list " +
-                 "answers only a socket sharing a tag with it. Leave this empty and every plug " +
-                 "without a list still finds this socket.")]
-        public List<string> tags = new List<string>();
+                 "answers only a socket sharing a tag with it. " +
+                 "\"shared\" is the one every plug looks for, so a socket carrying it is answered " +
+                 "by picky plugs as well. Take it off and only a plug that lists one of the other " +
+                 "words here, or lists nothing at all, will find this socket.")]
+        public List<string> tags = new List<string> { YapsTags.Shared };
 
         // WHICH VERSION BUILT THIS, so a prop made months ago can say so.
         //

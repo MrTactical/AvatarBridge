@@ -16,6 +16,7 @@ using System.Linq;
 using System.Reflection;
 using UnityEditor;
 using UnityEngine;
+using AvatarBridge.Yaps;
 
 namespace AvatarBridge
 {
@@ -52,7 +53,7 @@ namespace AvatarBridge
         // and a ChilloutVR socket never meet, but the BEHAVIOUR has to
         // carry: a plug with it answers anything, and a plug without it
         // answers only what it named.
-        const string Shared = "shared";
+        const string Shared = YapsTags.Shared;
 
         public static YapsBakePrep Begin(BridgeContext ctx, GameObject source)
         {

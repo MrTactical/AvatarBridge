@@ -48,6 +48,14 @@ namespace AvatarBridge.Yaps
         // them and the size of a menu nobody wants to scroll.
         public const int PlugSlots = 4;
 
+        // The word SPS spells as a fixed number and this spells as a word.
+        // Nearly every SPS socket carries it, which is what makes a plug's
+        // list NARROW rather than exclude: a plug that lists "hips" still
+        // answers anything wearing this. A socket built here carries it for
+        // the same reason, or a converted plug would refuse every socket
+        // this toolkit ever made.
+        public const string Shared = "shared";
+
         // SPS's own, byte for byte. Changing it would silently stop
         // matching every socket somebody else's tool tagged.
         public static uint Hash(string tag)
