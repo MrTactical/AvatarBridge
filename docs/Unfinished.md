@@ -1313,14 +1313,21 @@ state per tag plus "As built" and "Anything", driving `material._YAPS_TagInclude
 toggles would have been fifteen rows and fifteen parameters for a question with one answer at a
 time, which is the objection that killed the per-socket allow list.
 
-**A multi-slot plug needed care and turned up a probable bug elsewhere.** A curve on
-`material._X` binds to the FIRST material only, so the tag clips write `material[i]._X` for every
-slot whose material carries the property: a plug with its tip on a second material would
-otherwise answer one set of tags across half its mesh and another across the rest. The deform
-toggle in `YapsToggles.EnsurePlugToggle` writes `material._YAPS_Enabled` with no such loop, which
-looks like the same bug in the feature people actually use: half a two-material plug would stay
-switched on. Not confirmed, and not changed here because it is a different feature; worth an hour
-with a two-material plug.
+**A multi-slot plug needed care and turned up a real bug elsewhere, since fixed.** A curve on
+`material._X` binds to the FIRST material only. The tag clips were written that way from the
+start, but the deform toggle and the own-body toggle were not: a plug with its tip on a second
+material had half its mesh switched off and the other half left running, in the row people
+actually use. Fixed by moving the slot walk into `YapsToggles.Clip`, which all three now share,
+so the next property to be animated cannot get it wrong again.
+
+The matching half of the bug was in the reading. `material[1]._X` is a different string from
+`material._X`, and every place hunting for a toggle compared against the second: the toolkit
+could not find a toggle it had built on a second slot, so it built another, and Remove walked
+past the curves and left them behind. `YapsToggles.Bare` strips the index and `Writes` compares
+through it, and `YapsRemover` reads its wired list the same way.
+
+Where no slot declares the property at all, slot 0 is still written, so a plug whose material is
+assigned after the clip behaves as it did before.
 
 **Still owed**: the converter does not map an SPS plug's tag strings onto the set, so a converted
 avatar comes through untagged; the eleven location tags are not derived automatically the way SPS

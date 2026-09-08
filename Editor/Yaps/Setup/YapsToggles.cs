@@ -214,7 +214,7 @@ namespace AvatarBridge
                 if (b.type == typeof(GameObject) && b.propertyName == "m_IsActive" && paths.Contains(b.path)) return true;
                 if (b.path != targetPath) continue;
                 if (b.propertyName == "m_Enabled" && typeof(Renderer).IsAssignableFrom(b.type)) return true;
-                if (b.propertyName == "material._YAPS_Enabled") return true;
+                if (Writes(b, "_YAPS_Enabled")) return true;
             }
             return false;
         }
@@ -334,7 +334,7 @@ namespace AvatarBridge
                 if (clip == null || Generated(clip) || !YapsCurveMirror.UserOwned(clip)) continue;
                 foreach (var b in AnimationUtility.GetCurveBindings(clip))
                 {
-                    if (b.path == plugPath && b.propertyName == "material._YAPS_Enabled")
+                    if (b.path == plugPath && Writes(b, "_YAPS_Enabled"))
                     {
                         return $"\"{clip.name}\", which already animates the deform itself";
                     }
@@ -358,7 +358,7 @@ namespace AvatarBridge
                 && e.type == CVRAdvancedSettingsEntry.SettingsType.Toggle && e.toggleSettings != null
                 && e.toggleSettings.useAnimationClip && Generated(e.toggleSettings.animationClip)
                 && AnimationUtility.GetCurveBindings(e.toggleSettings.animationClip)
-                    .Any(b => b.path == plugPath && b.propertyName == "material._YAPS_Enabled"));
+                    .Any(b => b.path == plugPath && Writes(b, "_YAPS_Enabled")));
             string already = ToggledBy(plug.Target.gameObject, avatar, ignoreEntry: ours != null ? ours.name : label)
                               ?? DrivenByOwnClip(avatar, plugPath);
             if (already != null)
@@ -382,8 +382,8 @@ namespace AvatarBridge
             string dir = YapsNativeBuilder.OutputRoot + "/" + Sanitise(avatar.name);
             YapsNativeBuilder.EnsureFolderPublic(dir);
             string path = AnimationUtility.CalculateTransformPath(plug.Target.transform, avatar.transform);
-            var on = Clip(path, plug.Target.GetType(), "material._YAPS_Enabled", 1f, dir + "/" + Sanitise(label) + " on.anim");
-            var off = Clip(path, plug.Target.GetType(), "material._YAPS_Enabled", 0f, dir + "/" + Sanitise(label) + " off.anim");
+            var on = Clip(path, plug.Target, "_YAPS_Enabled", 1f, dir + "/" + Sanitise(label) + " on.anim");
+            var off = Clip(path, plug.Target, "_YAPS_Enabled", 0f, dir + "/" + Sanitise(label) + " off.anim");
 
             if (avatar.avatarSettings == null)
             {
@@ -439,7 +439,7 @@ namespace AvatarBridge
                 && e.type == CVRAdvancedSettingsEntry.SettingsType.Toggle && e.toggleSettings != null
                 && e.toggleSettings.useAnimationClip && Generated(e.toggleSettings.animationClip)
                 && AnimationUtility.GetCurveBindings(e.toggleSettings.animationClip)
-                    .Any(b => b.path == plugPath && b.propertyName == "material._YAPS_SelfAllow"));
+                    .Any(b => b.path == plugPath && Writes(b, "_YAPS_SelfAllow")));
             if (ours != null)
             {
                 string renamed = Rename(avatar, ours, label);
@@ -451,9 +451,9 @@ namespace AvatarBridge
 
             string dir = YapsNativeBuilder.OutputRoot + "/" + Sanitise(avatar.name);
             YapsNativeBuilder.EnsureFolderPublic(dir);
-            var on = Clip(plugPath, plug.Target.GetType(), "material._YAPS_SelfAllow", 1f,
+            var on = Clip(plugPath, plug.Target, "_YAPS_SelfAllow", 1f,
                 dir + "/" + Sanitise(label) + " on.anim");
-            var off = Clip(plugPath, plug.Target.GetType(), "material._YAPS_SelfAllow", 0f,
+            var off = Clip(plugPath, plug.Target, "_YAPS_SelfAllow", 0f,
                 dir + "/" + Sanitise(label) + " off.anim");
 
             if (avatar.avatarSettings == null)
@@ -483,7 +483,19 @@ namespace AvatarBridge
             return $"{label}: menu toggle \"{label}\" added ({machine}), off by default";
         }
 
-        static AnimationClip Clip(string path, System.Type type, string property, float value, string assetPath)
+        // One constant curve per material slot that declares the property.
+        //
+        // EVERY slot, not slot 0. "material._X" is Unity's spelling for the
+        // FIRST material alone, so a plug modelled with its tip on a second
+        // material had half its mesh switched off and the other half left
+        // running, and the deform toggle is the row people actually use.
+        //
+        // Slots without the property are skipped: a curve on a binding no
+        // material reads shows in the animation window as a missing curve,
+        // on every avatar that has one, and the author cannot act on it.
+        // Where NO slot declares it, slot 0 is written anyway, so a plug
+        // whose material is assigned after the clip behaves as before.
+        public static AnimationClip Clip(string path, Renderer target, string property, float value, string assetPath)
         {
             var clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(assetPath);
             if (clip == null)
@@ -492,9 +504,44 @@ namespace AvatarBridge
                 AssetDatabase.CreateAsset(clip, assetPath);
             }
             clip.ClearCurves();
-            clip.SetCurve(path, type, property, AnimationCurve.Constant(0f, 1f / 60f, value));
+            var curve = AnimationCurve.Constant(0f, 1f / 60f, value);
+            var type = target.GetType();
+            var mats = target.sharedMaterials;
+            bool any = false;
+            for (int i = 0; i < mats.Length; i++)
+            {
+                if (mats[i] == null || !mats[i].HasProperty(property)) continue;
+                clip.SetCurve(path, type, Bound(i, property), curve);
+                any = true;
+            }
+            if (!any) clip.SetCurve(path, type, Bound(0, property), curve);
             EditorUtility.SetDirty(clip);
             return clip;
+        }
+
+        // How Unity spells a material property on a given slot.
+        public static string Bound(int slot, string property)
+        {
+            return slot == 0 ? "material." + property : "material[" + slot + "]." + property;
+        }
+
+        // "material[2]._X" read as "material._X". Slot 0 goes without the
+        // index and every other slot carries one, so anything hunting for a
+        // property has two spellings to match, and until now matched the
+        // first: a toggle on a second slot could be built twice and was
+        // never taken away again.
+        public static string Bare(string propertyName)
+        {
+            if (propertyName == null
+                || !propertyName.StartsWith("material[", System.StringComparison.Ordinal)) return propertyName;
+            int close = propertyName.IndexOf(']');
+            return close < 0 ? propertyName : "material" + propertyName.Substring(close + 1);
+        }
+
+        // Whether a binding writes this shader property, on any slot.
+        public static bool Writes(EditorCurveBinding b, string property)
+        {
+            return Bare(b.propertyName) == "material." + property;
         }
 
         // A parameter name from a label, unique among the entries. `mine`

@@ -354,7 +354,7 @@ namespace AvatarBridge
                         // clip aims at a path with no bake on it any more.
                         if (!Generated(t.animationClip)) continue;
                         string path = AnimationUtility.GetCurveBindings(t.animationClip)
-                            .FirstOrDefault(b => b.propertyName == "material._YAPS_Enabled").path;
+                            .FirstOrDefault(b => YapsToggles.Writes(b, "_YAPS_Enabled")).path;
                         var at = path != null ? avatar.transform.Find(path) : null;
                         var r = at != null ? at.GetComponent<Renderer>() : null;
                         if (r != null && BakedSlots(r).Any()) continue;
@@ -518,7 +518,7 @@ namespace AvatarBridge
                 if (e == null || e.type != ABI.CCK.Scripts.CVRAdvancedSettingsEntry.SettingsType.Toggle || e.toggleSettings == null) continue;
                 var t = e.toggleSettings;
                 if (!t.useAnimationClip || !Generated(t.animationClip)) continue;
-                if (AnimationUtility.GetCurveBindings(t.animationClip).Any(b => b.path == path && b.propertyName == "material._YAPS_Enabled"))
+                if (AnimationUtility.GetCurveBindings(t.animationClip).Any(b => b.path == path && YapsToggles.Writes(b, "_YAPS_Enabled")))
                     yield return e;
             }
         }
@@ -534,6 +534,14 @@ namespace AvatarBridge
         }
 
         // Slots on a renderer holding a baked YAPS material.
+        // A wired curve, on any material slot. The list is spelled slot 0's
+        // way and a curve on a second slot spells itself "material[1]._X",
+        // so Remove used to walk straight past one and leave it behind.
+        static bool Wired(UnityEditor.EditorCurveBinding b)
+        {
+            return WiredProperties.Contains(YapsToggles.Bare(b.propertyName));
+        }
+
         static IEnumerable<int> BakedSlots(Renderer renderer)
         {
             var mats = renderer.sharedMaterials;
@@ -610,7 +618,7 @@ namespace AvatarBridge
             foreach (var clip in ControllersOf(avatar.transform).SelectMany(YapsCurveMirror.ClipsOf).Distinct())
             {
                 if (Generated(clip)) continue;
-                if (AnimationUtility.GetCurveBindings(clip).Any(b => b.path == path && WiredProperties.Contains(b.propertyName)))
+                if (AnimationUtility.GetCurveBindings(clip).Any(b => b.path == path && Wired(b)))
                     yield return clip;
             }
         }
@@ -623,7 +631,7 @@ namespace AvatarBridge
             {
                 Undo.RegisterCompleteObjectUndo(clip, "Remove YAPS plug");
                 foreach (var b in AnimationUtility.GetCurveBindings(clip))
-                    if (b.path == path && WiredProperties.Contains(b.propertyName))
+                    if (b.path == path && Wired(b))
                         AnimationUtility.SetEditorCurve(clip, b, null);
                 EditorUtility.SetDirty(clip);
                 n++;

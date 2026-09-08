@@ -195,15 +195,9 @@ namespace AvatarBridge
             values.AddRange(tags.Select(t => (int) t));
             values.Add(0);
 
-            // EVERY slot the plug wears, not slot 0. "material._X" binds to the
-            // first material alone, so a plug modelled with its tip on a second
-            // material would answer one set of tags across half its mesh and
-            // another across the rest, and the shaft would tear at the seam.
-            var slots = Slots(plug);
-
             for (int i = 0; i < values.Count; i++)
             {
-                var clip = Clip(plugPath, plug.Target.GetType(), slots, values[i],
+                var clip = YapsToggles.Clip(plugPath, plug.Target, "_YAPS_TagInclude", values[i],
                     dir + "/" + Sanitise(YapsToggles.LabelFor(plug)) + " answers " + i + ".anim");
                 var state = machine.AddState("Answers " + i);
                 state.writeDefaultValues = false;
@@ -226,42 +220,6 @@ namespace AvatarBridge
             });
             controller.layers = layers.ToArray();
             EditorUtility.SetDirty(controller);
-        }
-
-        // Which material slots on the plug's renderer carry the property. A
-        // slot without it would animate a binding nothing reads, which Unity
-        // reports as a missing curve on every avatar that has one.
-        static List<int> Slots(YapsPlug plug)
-        {
-            var found = new List<int>();
-            var renderer = plug.Target;
-            var materials = renderer != null ? renderer.sharedMaterials : null;
-            if (materials == null) return found;
-            for (int i = 0; i < materials.Length; i++)
-            {
-                if (materials[i] != null && materials[i].HasProperty("_YAPS_TagInclude")) found.Add(i);
-            }
-            return found;
-        }
-
-        static AnimationClip Clip(string path, System.Type type, List<int> slots, float value, string assetPath)
-        {
-            var clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(assetPath);
-            if (clip == null)
-            {
-                clip = new AnimationClip();
-                AssetDatabase.CreateAsset(clip, assetPath);
-            }
-            clip.ClearCurves();
-            foreach (int slot in slots)
-            {
-                string property = slot == 0
-                    ? "material._YAPS_TagInclude"
-                    : "material[" + slot + "]._YAPS_TagInclude";
-                clip.SetCurve(path, type, property, AnimationCurve.Constant(0f, 1f / 60f, value));
-            }
-            EditorUtility.SetDirty(clip);
-            return clip;
         }
 
         static string Sanitise(string s)
