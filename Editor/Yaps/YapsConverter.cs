@@ -860,7 +860,21 @@ namespace AvatarBridge
                 // hip can be somebody else's.
                 bool ownPlugRests = ctx.YapsPlugs.Any(
                     p => Vector3.Distance(p.Origin, socketRoot.position) <= p.Length + 0.1f);
-                material.SetFloat("_YAPS_SocketNoSelfExclude", ownPlugRests ? 0f : 1f);
+                // And the rest test is taken in the CONVERSION pose, which is one
+                // pose out of all of them. A dedicated socket mesh on a limb that
+                // happens to have the wearer's own plug near it at conversion had
+                // exclusion switched on for the life of the upload, and thereafter
+                // ownership answers with whichever hip is nearest that mesh: rest
+                // the hand in a stranger's lap and the socket decides their plug is
+                // its own wearer's and turns away the one plug it exists for.
+                //
+                // The toolkit bake has refused this case since 4.5.0 and the
+                // converter did not, so the same avatar behaved differently
+                // depending on which door it came through.
+                bool undecidable = YapsNativeBuilder.MeshIsTheSocket(renderer, socketRoot)
+                                   && YapsNativeBuilder.RidesAMovingLimb(socketRoot);
+                material.SetFloat("_YAPS_SocketNoSelfExclude",
+                    ownPlugRests && !undecidable ? 0f : 1f);
 
                 // The authoring component, filled in from what was just built.
                 YapsNativeBuilder.AdoptSocket(socketRoot, renderer, material, bakedShapes);

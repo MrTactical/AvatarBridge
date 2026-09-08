@@ -120,13 +120,16 @@ namespace AvatarBridge.Yaps
         [YapsFrom("DPS · SPS")]
         [Tooltip("Answer only sockets carrying at least one of these tags. Empty means no " +
                  "opinion, which answers anything the refuse list does not deny. A socket with " +
-                 "no tags of its own, which includes every socket found by marker light, is " +
-                 "refused by any list here.")]
+                 "no tags of its own is refused by any list here.\n\nOnly the screen atlas " +
+                 "carries what a socket is. A socket found by marker light or by contact " +
+                 "arrives saying where it is and nothing more, and this plug answers it as " +
+                 "though the list were empty. A preference, not a lock.")]
         public YapsTags answers;
 
         [YapsFrom("DPS · SPS")]
         [Tooltip("Never answer a socket carrying any of these tags, whatever the list above " +
-                 "says. Refusing beats answering.")]
+                 "says. Refusing beats answering. Reads what the socket published, so it needs " +
+                 "the screen atlas the same way the list above does.")]
         public YapsTags refuses;
         [YapsFrom("TPS · SPS")]
         public bool emitPointers = true;

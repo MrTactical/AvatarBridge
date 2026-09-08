@@ -592,19 +592,25 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     socket.engaged = saturate(_YAPS_SocketFlags.x);
     socket.isHole = _YAPS_SocketFlags.y;
 
-    // TAG FILTER, from SPS. The channel carries the socket's tag SET in the
-    // flags' z, and the atlas branch below reads the same sets out of its
-    // third pixel and tests them identically. One rule, two transports:
-    // anything else and a socket answers or refuses depending on which tier
-    // happened to find it.
+    // NO TAG FILTER HERE, and the reason is the wire rather than the shader.
     //
-    // Marker lights carry no tag, so a light-only socket arrives untagged
-    // and an untagged socket is refused only by a REQUIRE.
-    int socketTags = (int) round(_YAPS_SocketFlags.z);
-    if (YapsTagsRefuse(socketTags))
-    {
-        socket.engaged = 0;
-    }
+    // The channel is a CVR trigger matching a pointer TYPE STRING, and the
+    // socket's tag set never travels along it: a plug learns a socket is
+    // there and where, and nothing about what it is. This branch used to
+    // read a set out of the flags' z, which nothing has ever written, so
+    // every channel socket read as untagged and a plug with any include
+    // list refused the entire contact tier. A plug tagged for one place
+    // stopped resolving at all on an avatar without an atlas.
+    //
+    // Unknown is not untagged. A tier that cannot see the set cannot prove
+    // a match and cannot prove a refusal either, so it claims neither and
+    // the atlas does the filtering. Nothing is weakened by saying so: an
+    // exclude never worked here, since a set of zero matches no exclude.
+    //
+    // SPS carries tags as a SUFFIX on the pointer type, which is the same
+    // shape as _SelfNotOnHips, already read as a prefix match by the
+    // scanner. That is the transport if this tier is ever to filter, and it
+    // is a wire change rather than a shader one.
     socket.position = _YAPS_SocketPos.xyz;
     socket.forward = _YAPS_SocketForward.xyz;
     socket.up = _YAPS_SocketUp.xyz;

@@ -993,16 +993,28 @@ its own: **answer only sockets tagged** and **never answer a socket tagged**. Re
 answering. Leave everything empty and nothing changes: a plug with no list answers any socket, and
 a socket with no tags is found by any plug that is not asking for something in particular.
 
-A tagged plug asking for something *does* pass over an untagged socket, and that includes every
-socket found by marker light rather than by contact or the atlas, since a light's range is its
-whole message and there is no room in it for a tag. That is the same thing SPS does with content
-older than tags.
+**Tags need the screen atlas, and only the atlas.** It is the one route that carries what a socket
+IS as well as where it is. A socket found by marker light announces itself with a range, and a
+range has no room in it for anything but hole or ring; a socket found by contact announces itself
+with a pointer whose type says the same. Neither can say "hips". So on those two routes a plug
+answers as though it had no list at all, because a route that cannot see the set cannot honestly
+refuse on it, and refusing anyway would mean a plug tagged for one place quietly stopping
+everywhere else. In a view too small for the atlas, or against content older than it, tags are not
+in force. Plan the sets as a preference, not as a lock.
+
+A tagged plug asking for something also passes over an untagged socket found *through* the atlas,
+which is the same thing SPS does with content older than tags.
+
+The two sets are also not a privacy control and are not offered as one. What decides whether this
+plug ever bends is the plug's own **Deform** toggle and, for your own body, **its own sockets**.
 
 **Choosing at runtime.** A plug listing two or more tags gets a menu dropdown of its own, so the
 wearer can narrow it to one of them, widen it to *Anything*, or leave it on *As built*, which is
 what the author configured and what it starts on. *Anything* clears the answer list only; a socket
 on the refuse list stays refused. The four custom slots mean whatever you and the other author
 agree they mean: the tag travels as a number, so a name for it can only live in the two of you.
+The dropdown narrows what the plug asks for; it cannot make a route carry a set it has no room
+for, so the paragraph above still applies to every setting on it.
 
 **The components themselves do nothing in game, so don't animate them.** A YAPS Plug or YAPS
 Socket is setup data: the bake writes what it says into the material, and ChilloutVR strips the

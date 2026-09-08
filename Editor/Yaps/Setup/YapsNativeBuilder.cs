@@ -823,7 +823,8 @@ namespace AvatarBridge
                 renderer.transform.InverseTransformPoint(socket.transform.position));
             // Self-exclusion, unless the anchor cannot say whose socket this
             // is. See RidesAMovingLimb.
-            bool undecidable = MeshIsTheSocket(renderer, socket.transform) && RidesAMovingLimb(socket);
+            bool undecidable = MeshIsTheSocket(renderer, socket.transform)
+                               && RidesAMovingLimb(socket.transform);
             material.SetFloat("_YAPS_SocketNoSelfExclude",
                 OwnPlugRestsOn(socket) && !undecidable ? 0f : 1f);
             EditorUtility.SetDirty(material);
@@ -848,7 +849,7 @@ namespace AvatarBridge
         // ignored is no effect at all, where the wearer's own plug holding
         // their socket open is a visibly wrong one. On the body, where the
         // origin really is the wearer, nothing changes.
-        static bool RidesAMovingLimb(YapsSocket socket)
+        public static bool RidesAMovingLimb(Transform socket)
         {
             var avatar = socket != null ? socket.GetComponentInParent<CVRAvatar>(true) : null;
             var animator = avatar != null ? avatar.GetComponent<Animator>() : null;
@@ -865,7 +866,7 @@ namespace AvatarBridge
             foreach (var bone in limbs)
             {
                 var t = animator.GetBoneTransform(bone);
-                if (t != null && socket.transform.IsChildOf(t)) return true;
+                if (t != null && socket.IsChildOf(t)) return true;
             }
             return false;
         }

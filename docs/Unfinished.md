@@ -63,6 +63,13 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
 
    Still wants a pass in game: a hand socket should now answer somebody else's plug, and the
    wearer's own may hold it open if it rests there, which is the trade this makes.
+
+   **The converter did not have it until 2026-09-08**, which is the more interesting half. The
+   guard went into the toolkit bake and the converter kept deciding from `ownPlugRests` alone, so
+   the same avatar behaved differently depending on which door it came through, and the door
+   almost everybody uses was the wrong one. `RidesAMovingLimb` takes a `Transform` now instead of
+   a `YapsSocket`, which is all it ever read, so both builders call it. Two builders diverge: the
+   fix is not done until the other path is grepped.
 4. **The GPU bridge** (`YAPS5.md`, candidate 4): **the transport is PROVEN, in game, 2026-09-07.**
    A value computed on the GPU reaches C# on a stock client with no contact anywhere, and it does
    it on every client, remote copies included, for zero sync bits. Nothing is transmitted: the
@@ -1329,10 +1336,30 @@ through it, and `YapsRemover` reads its wired list the same way.
 Where no slot declares the property at all, slot 0 is still written, so a plug whose material is
 assigned after the clip behaves as it did before.
 
+**The channel tier does not filter, and that is now written down rather than broken.** The shader
+read the socket's set out of `_YAPS_SocketFlags.z`, which nothing has ever written: every channel
+socket read as untagged, so a plug with any include list refused the entire contact tier and a
+plug tagged for one place stopped resolving at all on an avatar with no atlas. Fail-closed, from
+a field with a default rather than from a branch.
+
+Unknown is not untagged. The test is gone from that branch: a tier that cannot see the set can
+prove neither a match nor a refusal, so it claims neither. Nothing was weakened by removing it,
+since an exclude never fired there either, a set of zero matching no exclude.
+
+**And the transport already exists, which the first design missed.** SPS carries a tag as a
+SUFFIX on the pointer type, the same shape as `_SelfNotOnHips`, and `YapsScanner.IsSocketRootTag`
+already matches `SPSLL_Socket_Root_` by prefix. So the channel could filter, by emitting a
+pointer per tag on the socket and listing the answered types in the plug trigger's
+`allowedTypes`, which CVR matches as whole strings. Not built. It is a wire change rather than a
+shader one, it would put new type strings on the platform, and an exclude cannot be said in a
+whitelist and would want a second trigger asserting E to 0 the way the ring trigger asserts H.
+Ask before starting it.
+
 **Still owed**: the converter does not map an SPS plug's tag strings onto the set, so a converted
-avatar comes through untagged; the eleven location tags are not derived automatically the way SPS
-derives them; and the four custom slots are by convention only, since a name cannot live in a
-pixel. And the rect, above, which is the one that gates shipping.
+avatar comes through untagged, and that mapping is the same suffix parsing as the paragraph above,
+so the two go together; the eleven location tags are not derived automatically the way SPS derives
+them; and the four custom slots are by convention only, since a name cannot live in a pixel. And
+the rect, above, which is the one that gates shipping.
 
 **2. Not a gap, and worth saying before the rest.**
 
