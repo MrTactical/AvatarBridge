@@ -50,8 +50,19 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    can never compute the depth this was meant to make free. The 32 bits stay. What is left on
    this axis is the **dedicated-mesh ownership bug** the work exposed: a hand socket's own mesh
    sits at the socket, so a hand in somebody's lap resolves ownership to THEIR hip and ignores
-   their plug. `_YAPS_SocketOrigin` is the foundation for the fix; it needs an owner anchor
-   baked for dedicated meshes and its own test pass.
+   their plug.
+
+   **Handled 2026-09-08, though not the way this entry expected.** A baked owner anchor cannot
+   work: an offset from the socket to the wearer's hips is only true in the pose it was baked in,
+   and a hand leaves that pose immediately. A skinned mesh has no usable object matrix at all. So
+   the question is genuinely undecidable for a dedicated socket mesh on a limb, and the bake now
+   drops self-exclusion there rather than answering it wrongly. That is the way the resolver
+   already leans: a stranger's plug ignored is no effect, where the wearer's own plug holding
+   their socket open is a visibly wrong one. Sockets on the body are untouched, and the head is
+   deliberately not counted as a limb so a mouth socket keeps its exclusion.
+
+   Still wants a pass in game: a hand socket should now answer somebody else's plug, and the
+   wearer's own may hold it open if it rests there, which is the trade this makes.
 4. **The GPU bridge** (`YAPS5.md`, candidate 4): **the transport is PROVEN, in game, 2026-09-07.**
    A value computed on the GPU reaches C# on a stock client with no contact anywhere, and it does
    it on every client, remote copies included, for zero sync bits. Nothing is transmitted: the

@@ -811,9 +811,53 @@ namespace AvatarBridge
             // dedicated socket mesh, the socket's real seat on a body.
             material.SetVector("_YAPS_SocketOrigin",
                 renderer.transform.InverseTransformPoint(socket.transform.position));
-            material.SetFloat("_YAPS_SocketNoSelfExclude", OwnPlugRestsOn(socket) ? 0f : 1f);
+            // Self-exclusion, unless the anchor cannot say whose socket this
+            // is. See RidesAMovingLimb.
+            bool undecidable = MeshIsTheSocket(renderer, socket.transform) && RidesAMovingLimb(socket);
+            material.SetFloat("_YAPS_SocketNoSelfExclude",
+                OwnPlugRestsOn(socket) && !undecidable ? 0f : 1f);
             EditorUtility.SetDirty(material);
             return $"✓ {socket.name}: {result.Shapes.Count} shape(s) staged on \"{renderer.name}\"";
+        }
+
+        // Whether this socket hangs off an arm or a leg.
+        //
+        // It matters because ownership is decided by which player's hip is
+        // nearest the mesh's own origin, and on a dedicated socket mesh that
+        // origin IS the socket. A hand resting in somebody's lap answers with
+        // THEIR hip, so the wearer's own plug test passes for a stranger's
+        // plug and the socket ignores the one plug it exists for.
+        //
+        // Nothing the shader can see repairs it. An offset baked from the
+        // socket to the wearer's hips is only true in the pose it was baked
+        // in, and a hand leaves that pose immediately; a skinned mesh has no
+        // usable object matrix at all.
+        //
+        // So the exclusion is dropped where it cannot be decided, which is the
+        // direction the resolver already leans: a stranger's plug wrongly
+        // ignored is no effect at all, where the wearer's own plug holding
+        // their socket open is a visibly wrong one. On the body, where the
+        // origin really is the wearer, nothing changes.
+        static bool RidesAMovingLimb(YapsSocket socket)
+        {
+            var avatar = socket != null ? socket.GetComponentInParent<CVRAvatar>(true) : null;
+            var animator = avatar != null ? avatar.GetComponent<Animator>() : null;
+            if (animator == null || !animator.isHuman) return false;
+
+            // The four roots that carry a socket away from the hips. The head
+            // is deliberately not among them: it turns, but it stays over the
+            // body, and a mouth socket wants its wearer's plug excluded.
+            var limbs = new[]
+            {
+                HumanBodyBones.LeftUpperArm, HumanBodyBones.RightUpperArm,
+                HumanBodyBones.LeftUpperLeg, HumanBodyBones.RightUpperLeg,
+            };
+            foreach (var bone in limbs)
+            {
+                var t = animator.GetBoneTransform(bone);
+                if (t != null && socket.transform.IsChildOf(t)) return true;
+            }
+            return false;
         }
 
         // --- adoption --------------------------------------------------------
