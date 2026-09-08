@@ -732,6 +732,13 @@ namespace AvatarBridge.Regression
             convertActionLayer = true,
             convertFxLayer = true,
 
+            // OFF here, and on for a user. It rewrites import settings on
+            // the corpus's own texture assets and reimports each one, which
+            // mutates the corpus between runs and charges every avatar for
+            // it. What it does is measured by the weight card, which the
+            // digest already records.
+            slimTexturesOnConvert = false,
+
             toggleStyle = ToggleStyle.AnimatorLayers,
             preserveParameterSyncState = true,
             exposeMenulessSyncedParameters = true,
