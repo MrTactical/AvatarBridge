@@ -1,6 +1,7 @@
 // A YAPS plug: authoring data for the mesh that bends.
 // The toolkit bakes from it and writes the knobs to the material.
 // ChilloutVR strips it at upload. No SDK dependency.
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace AvatarBridge.Yaps
@@ -118,19 +119,21 @@ namespace AvatarBridge.Yaps
 
         [Header("Which sockets it answers")]
         [YapsFrom("DPS · SPS")]
-        [Tooltip("Answer only sockets carrying at least one of these tags. Empty means no " +
-                 "opinion, which answers anything the refuse list does not deny. A socket with " +
-                 "no tags of its own is refused by any list here.\n\nOnly the screen atlas " +
-                 "carries what a socket is. A socket found by marker light or by contact " +
-                 "arrives saying where it is and nothing more, and this plug answers it as " +
-                 "though the list were empty. A preference, not a lock.")]
-        public YapsTags answers;
+        [Tooltip("Answer only sockets carrying at least one of these tags. Any words you like, " +
+                 "matched case-insensitively, and the same names SPS uses mean the same thing " +
+                 "here. Empty means no opinion, which answers anything the refuse list does not " +
+                 "deny.\n\nOnly the screen atlas carries what a socket is, and even then a " +
+                 "socket it turned away can still be picked up by that socket's marker light or " +
+                 "contact. A preference, not a lock: use Deform for anything that has to be " +
+                 "certain.")]
+        public List<string> answers = new List<string>();
 
         [YapsFrom("DPS · SPS")]
         [Tooltip("Never answer a socket carrying any of these tags, whatever the list above " +
-                 "says. Refusing beats answering. Reads what the socket published, so it needs " +
-                 "the screen atlas the same way the list above does.")]
-        public YapsTags refuses;
+                 "says. Refusing beats answering, and reads what the socket published, so it " +
+                 "needs the screen atlas the same way the list above does.")]
+        public List<string> refuses = new List<string>();
+
         [YapsFrom("TPS · SPS")]
         public bool emitPointers = true;
 

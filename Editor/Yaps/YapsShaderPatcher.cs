@@ -81,8 +81,8 @@ namespace AvatarBridge
         _YAPS_SmoothStart (""YAPS ease into bend"", Range(0,0.5)) = 0
         _YAPS_MinimumSocketDistance (""YAPS minimum socket distance"", Range(0,1)) = 0
         [Header(YAPS tags)]
-        _YAPS_TagInclude (""YAPS only sockets tagged"", Float) = 0
-        _YAPS_TagExclude (""YAPS never sockets tagged"", Float) = 0
+        _YAPS_TagInclude (""YAPS only sockets tagged"", Vector) = (0,0,0,0)
+        _YAPS_TagExclude (""YAPS never sockets tagged"", Vector) = (0,0,0,0)
         _YAPS_ShapeCount (""YAPS shape count"", Float) = 0
         _YAPS_ShapeWeights (""YAPS shape weights 0-3"", Vector) = (0,0,0,0)
         _YAPS_ShapeWeights2 (""YAPS shape weights 4-7"", Vector) = (0,0,0,0)

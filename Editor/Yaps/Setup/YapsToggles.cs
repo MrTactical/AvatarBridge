@@ -519,6 +519,40 @@ namespace AvatarBridge
             return clip;
         }
 
+        // The same, for a vector property: four curves per slot, one per
+        // component. Unity has no single binding for a Vector4, so ".x" and
+        // its three siblings are the only way an animation reaches one.
+        public static AnimationClip Clip(string path, Renderer target, string property, Vector4 value, string assetPath)
+        {
+            var clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(assetPath);
+            if (clip == null)
+            {
+                clip = new AnimationClip();
+                AssetDatabase.CreateAsset(clip, assetPath);
+            }
+            clip.ClearCurves();
+            var type = target.GetType();
+            var mats = target.sharedMaterials;
+            var slots = new List<int>();
+            for (int i = 0; i < mats.Length; i++)
+            {
+                if (mats[i] != null && mats[i].HasProperty(property)) slots.Add(i);
+            }
+            if (slots.Count == 0) slots.Add(0);
+
+            string[] axes = { ".x", ".y", ".z", ".w" };
+            foreach (int slot in slots)
+            {
+                for (int a = 0; a < axes.Length; a++)
+                {
+                    clip.SetCurve(path, type, Bound(slot, property) + axes[a],
+                        AnimationCurve.Constant(0f, 1f / 60f, value[a]));
+                }
+            }
+            EditorUtility.SetDirty(clip);
+            return clip;
+        }
+
         // How Unity spells a material property on a given slot.
         public static string Bound(int slot, string property)
         {

@@ -33,7 +33,7 @@ Shader "YAPS/Atlas Socket"
         // is what every socket built before version 3 and every legacy
         // socket found by light is, and what a plug with no include list
         // answers.
-        _YAPS_SocketTags ("Socket tags", Float) = 0
+        _YAPS_SocketTags ("Socket tag word", Float) = 0
     }
     SubShader
     {
@@ -165,7 +165,7 @@ Shader "YAPS/Atlas Socket"
                 // pixel's tag matched, and the same draw writes both, so it
                 // cannot disagree. It carries the KIND instead.
                 o.other   = float4(fwd, (floor(_YAPS_Kind) + 1) / 16.0);
-                o.tags    = float4(YapsTagsEncode((int) floor(_YAPS_SocketTags + 0.5)), 1);
+                o.tags    = YapsTagsEncode((int) floor(_YAPS_SocketTags + 0.5));
                 o.u = unit.x;
                 return o;
             }

@@ -150,14 +150,26 @@ inline float3 YapsLightPosition(uint slot)
 // kept one costs a plug bent into its wearer, which recovers as soon as
 // anything better resolves. Doubt keeps the light.
 //
-// Does this plug refuse a socket carrying these tags? The one place the
-// rule lives, so the channel and the atlas cannot drift apart.
-inline bool YapsTagsRefuse(int socketTags)
+// Does this plug refuse a socket publishing this tag word? Only the atlas
+// asks: it is the one route that carries what a socket IS. See the plug's
+// tag uniforms for why the other two cannot.
+inline bool YapsTagsRefuse(int socketWord)
 {
-    int deny = (int) round(_YAPS_TagExclude);
-    int want = (int) round(_YAPS_TagInclude);
-    if ((socketTags & deny) != 0) return true;
-    return want != 0 && (socketTags & want) == 0;
+    // A tag is PRESENT when every bit of its pattern is lit, which is what
+    // makes a fold testable at all: an OR of patterns keeps each one whole.
+    bool wanted = false;
+    bool matched = false;
+    [unroll] for (int i = 0; i < 4; i++)
+    {
+        int deny = (int) round(_YAPS_TagExclude[i]);
+        if (deny != 0 && (socketWord & deny) == deny) return true;
+
+        int want = (int) round(_YAPS_TagInclude[i]);
+        if (want == 0) continue;
+        wanted = true;
+        if ((socketWord & want) == want) matched = true;
+    }
+    return wanted && !matched;
 }
 
 // Takes a WORLD POSITION rather than a slot, so the atlas can ask the same
@@ -459,7 +471,7 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
                 // range IS its message and the digits are Raliv's. Untagged
                 // is the honest reading of content that predates this.
                 if (YapsTagsRefuse(YapsTagsDecode(
-                        YAPS_ATLAS_LOAD(px + 2 * YAPS_ATLAS_SLOTPX, cellY).rgb))) continue;
+                        YAPS_ATLAS_LOAD(px + 2 * YAPS_ATLAS_SLOTPX, cellY)))) continue;
 
                 // No facing test. There used to be one, rejecting a hole
                 // whose forward pointed the way the plug was going. The

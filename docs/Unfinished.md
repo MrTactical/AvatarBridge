@@ -1363,16 +1363,35 @@ So tags never touch contacts in SPS either. A material property is the same CLAS
 the YAPS atlas, and the contact tier not filtering is what SPS does too, rather than a shortfall.
 That closes the question above: there is nothing to wire, and the current behaviour is right.
 
-**The real divergence is the encoding, and it is ours.** SPS hashes arbitrary strings; YAPS
-invented a fixed vocabulary of fifteen in a bitfield. The eleven location names in `YapsTags` are
-exactly SPS's derived set (`hips`, `hipsfront`, `hipsback`, `head`, `chest`, `hand`, `handleft`,
-`handright`, `foot`, `footleft`, `footright`), so those round-trip by name, but an author's own
-tag string cannot cross in either direction and the four custom slots are a poor stand-in. Whether
-to adopt the hash instead is open, and is the question worth asking before tags ship. Nothing in
-this paragraph has been acted on.
+**The encoding is now SPS's, as of 2026-09-08.** A tag is a free-form string, trimmed and
+lowercased, hashed FNV-1a to 32 bits with SPS's constants, so a name means the same thing on both
+tools. The fifteen-value enum is gone and the four custom slots with it.
 
-**Still owed**: the converter does not map an SPS plug's tag strings onto the set, so a converted
-avatar comes through untagged, and the eleven names above are what it should map, by string; the eleven location tags are not derived automatically the way SPS derives
+**What is NOT SPS's is where the hash goes, and that was forced.** SPS gives a socket eight slots
+and writes each 32-bit hash whole into material properties. The atlas has no room: one pixel per
+field per octant, every extra pixel costing 256 pixels of width, so eight slots take the rect from
+808 to 2600 and no mirror resolves at all. Even one extra pixel makes it 1064, and 808 is already
+the number the fit test is meant to settle.
+
+So a socket's tags FOLD into the one pixel already there. Each tag lights three distinct bits of
+twenty, chosen by its hash, and the socket publishes the OR; a plug carries up to four patterns a
+side in two Vector4s and asks whether all three of a tag's bits are lit. The plug's side costs the
+atlas nothing, being its own uniforms.
+
+**The fold has a false-yes rate and the direction was chosen.** A socket wearing three tags lights
+about eight bits of twenty, so an unrelated tag reads as present about one time in twenty. On the
+answer list that answers a socket that was not asking, which is the permissiveness the feature
+already documents everywhere but the atlas; on the refuse list it refuses one it need not have,
+which errs toward not touching. Neither invents a socket.
+
+**Distinct bits are load-bearing.** The first version took successive remainders of one hash and
+let a tag repeat a bit. "footleft" lit two bits, both inside "handright", so a hand socket read as
+a foot socket permanently. `Dev/Probes/YapsTagProbe.cs` checks the eleven hashes against values
+read out of VRCFury and checks that no name reads as present on a socket wearing only another.
+Run it after touching `YapsTags`.
+**Still owed**: the converter does not carry an SPS plug's or socket's tags across, so a converted
+avatar comes through untagged. Both sides are lists of strings now, so it is a copy rather than a
+mapping; the eleven location tags are not derived automatically the way SPS derives
 them; and the four custom slots are by convention only, since a name cannot live in a pixel. And
 the rect, above, which is the one that gates shipping.
 

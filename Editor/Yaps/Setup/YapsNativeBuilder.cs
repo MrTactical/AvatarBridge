@@ -191,8 +191,8 @@ namespace AvatarBridge
 
             // The tag sets, as plain floats. Both tiers read them: the atlas
             // out of a socket's third pixel, the channel out of its flags.
-            patched.SetFloat("_YAPS_TagInclude", (int) plug.answers);
-            patched.SetFloat("_YAPS_TagExclude", (int) plug.refuses);
+            patched.SetVector("_YAPS_TagInclude", TagPatterns(plug.answers));
+            patched.SetVector("_YAPS_TagExclude", TagPatterns(plug.refuses));
             // Build adds the socket writers and the avatar's clear and grab, so a
             // toolkit avatar published to the atlas and then read none of it: the
             // flag was set on the convert path only, and a plug with it off falls
@@ -829,6 +829,25 @@ namespace AvatarBridge
                 OwnPlugRestsOn(socket) && !undecidable ? 0f : 1f);
             EditorUtility.SetDirty(material);
             return $"✓ {socket.name}: {result.Shapes.Count} shape(s) staged on \"{renderer.name}\"";
+        }
+
+        // Four tag patterns in a vector, one per component, zero for an empty
+        // slot. A pattern rather than the name because a shader has no way to
+        // hash a string, and four because that is what a Vector4 holds; a
+        // longer list is truncated rather than silently folded together,
+        // which would make two tags read as a third.
+        static Vector4 TagPatterns(IList<string> tags)
+        {
+            var v = Vector4.zero;
+            if (tags == null) return v;
+            int n = 0;
+            foreach (string tag in tags)
+            {
+                if (string.IsNullOrWhiteSpace(tag)) continue;
+                if (n >= YapsTags.PlugSlots) break;
+                v[n++] = YapsTags.Pattern(tag);
+            }
+            return v;
         }
 
         // Whether this socket hangs off an arm or a leg.

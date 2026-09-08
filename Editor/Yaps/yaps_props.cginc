@@ -155,24 +155,28 @@ float _YAPS_MinimumSocketDistance;
 
 // --- which sockets this plug will answer, from SPS ---------------------
 //
-// A SET to require and a SET to refuse, 15 bits each in a float, matching
-// what a socket publishes to the atlas. The socket's own set arrives in
-// _YAPS_SocketFlags.z on the channel tier and in the atlas's third pixel
-// on the atlas tier, and both are read the same way: refuse on any bit in
-// common with the exclude set, require any bit in common with the include
-// set. Zero include means no opinion.
+// Four tags to require and four to refuse, one PATTERN per component. A
+// tag is a free-form string hashed FNV-1a exactly as SPS hashes it, then
+// folded to three bits of twenty; a socket publishes the OR of its tags in
+// the atlas's third pixel, and the test is whether all three of a tag's
+// bits are lit there. Zero means the slot is empty.
 //
-// These were a single hashed integer per side until version 3, compared
-// for equality, which could say "only hands" but never "hands or hips".
-// Plain floats rather than ints so an animation can drive them, which is
-// the only way a menu row reaches a shader.
+// Patterns rather than the strings themselves because a shader cannot
+// hash a name it never receives, and vectors rather than a set of floats
+// because an animation drives a component the same way it drives a float,
+// which is the only route a menu row has into a shader.
 //
-// Marker lights carry no tag and cannot: a light's RANGE is its whole
-// message and the digits belong to Raliv. So a light-only socket reads as
-// untagged, and untagged is refused only by a REQUIRE. That is the honest
-// reading of content older than this, not a hole in the filter.
-float _YAPS_TagInclude;
-float _YAPS_TagExclude;
+// The fold costs a false yes about one time in twenty on a socket wearing
+// three tags. That is deliberate and the direction matters: a stray yes on
+// the include side answers a socket that was not asking, and on the exclude
+// side refuses one it need not have. See Runtime/Yaps/YapsTags.cs.
+//
+// ONLY THE ATLAS carries a socket's word. A marker light's RANGE is its
+// whole message and the digits belong to Raliv; a contact says a socket is
+// there and not what it is. Both routes answer without knowing, so a plug
+// with a list still resolves through them. A preference, not a lock.
+float4 _YAPS_TagInclude;
+float4 _YAPS_TagExclude;
 
 // --- blendshapes -----------------------------------------------------
 //

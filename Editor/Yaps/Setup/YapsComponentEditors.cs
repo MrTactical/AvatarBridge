@@ -732,13 +732,14 @@ namespace AvatarBridge
             what.Body.Add(YapsInspectorStyle.Field(so.FindProperty("tags"),
                 typeof(YapsSocket).GetField("tags"), "Tags"));
             what.Body.Add(BridgeElements.Hint(
-                "What this socket is, so a plug can decide whether to answer it. Leave it empty and " +
-                "every plug that has no list of its own still finds this socket; tag it, and a plug " +
-                "asking for something else will pass it by. The first eleven are SPS's own location " +
-                "names so a converted avatar keeps its meaning. The four custom slots mean whatever " +
-                "you and the plug's author agree they mean. Only the screen atlas carries this: a " +
-                "plug that found this socket by marker light or by contact knows where it is and " +
-                "not what it is, and answers it either way."));
+                "What this socket is, so a plug can decide whether to answer it. Any words you like, " +
+                "case and spacing ignored. Leave it empty and every plug that has no list of its own " +
+                "still finds this socket; tag it, and a plug asking for something else will pass it " +
+                "by. SPS spells its own as hips, hipsfront, hipsback, head, chest, hand, handleft, " +
+                "handright, foot, footleft and footright, and those mean the same thing here, so a " +
+                "socket tagged one of them keeps its meaning on either tool. Only the screen atlas " +
+                "carries this: a plug that found this socket by marker light or by contact knows " +
+                "where it is and not what it is, and answers it either way."));
             body.Add(what);
 
             // Shapes.

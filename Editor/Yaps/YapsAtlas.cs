@@ -8,6 +8,7 @@ using System.IO;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
+using AvatarBridge.Yaps;
 
 namespace AvatarBridge
 {
@@ -43,7 +44,7 @@ namespace AvatarBridge
         // reading it is somewhere else.
         const float BoundsSize = 1000f;
 
-        public static GameObject AddWriter(Transform parent, bool hole, YapsTags tags = YapsTags.None)
+        public static GameObject AddWriter(Transform parent, bool hole, IList<string> tags = null)
         {
             var shader = Shader.Find(SocketShader);
             if (parent == null || shader == null)
@@ -243,13 +244,14 @@ namespace AvatarBridge
         // would be the obvious way to vary one property per renderer and is
         // the wrong one: it is not serialised, so it survives the editor and
         // not the upload. Sockets sharing a kind and a set share a material.
-        static Material Kind(Shader shader, bool hole, YapsTags tags)
+        static Material Kind(Shader shader, bool hole, IList<string> tags)
         {
+            int word = YapsTags.Word(tags);
             string what = hole ? "Hole" : "Ring";
-            string set = tags == YapsTags.None ? "" : " " + ((int) tags).ToString("X4");
+            string set = word == 0 ? "" : " " + word.ToString("X5");
             var m = Made(Folder + "/YAPS Atlas Socket " + what + set + ".mat", shader);
             m.SetFloat("_YAPS_Kind", hole ? 1f : 0f);
-            m.SetFloat("_YAPS_SocketTags", (int) tags);
+            m.SetFloat("_YAPS_SocketTags", word);
             return m;
         }
 

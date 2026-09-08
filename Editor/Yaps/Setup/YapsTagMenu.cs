@@ -56,30 +56,44 @@ namespace AvatarBridge
             return notes.Count > 0 ? string.Join("; ", notes) : null;
         }
 
-        // The bits actually set, low to high, so the menu order is stable.
-        static List<YapsTags> Listed(YapsTags set)
+        // The tags the author listed, in the order they wrote them, minus
+        // blanks and repeats. The order is the menu's order, so it has to be
+        // theirs rather than sorted: a list they can read top to bottom in
+        // the inspector is the same list they see in game.
+        static List<string> Listed(IList<string> tags)
         {
-            var found = new List<YapsTags>();
-            for (int b = 0; b < 15; b++)
+            var found = new List<string>();
+            if (tags == null) return found;
+            foreach (string tag in tags)
             {
-                var one = (YapsTags) (1 << b);
-                if ((set & one) != 0) found.Add(one);
+                if (string.IsNullOrWhiteSpace(tag)) continue;
+                string clean = tag.Trim();
+                if (found.Any(f => string.Equals(f, clean, System.StringComparison.OrdinalIgnoreCase))) continue;
+                found.Add(clean);
+                if (found.Count >= YapsTags.PlugSlots) break;
             }
             return found;
         }
 
-        // HandLeft reads as "Hand left" in a menu. The enum is the protocol,
+        // "handleft" reads as "Hand left" in a menu, and an author's own
+        // word keeps whatever shape they gave it. The string is the protocol,
         // the label is for a person.
-        static string Pretty(YapsTags one)
+        static string Pretty(string tag)
         {
-            string name = one.ToString();
-            var text = new System.Text.StringBuilder();
-            for (int i = 0; i < name.Length; i++)
+            foreach (string known in YapsTags.Suggested)
             {
-                if (i > 0 && char.IsUpper(name[i])) text.Append(' ').Append(char.ToLowerInvariant(name[i]));
-                else text.Append(name[i]);
+                if (!string.Equals(known, tag, System.StringComparison.OrdinalIgnoreCase)) continue;
+                foreach (string part in new[] { "front", "back", "left", "right" })
+                {
+                    if (known.Length > part.Length && known.EndsWith(part, System.StringComparison.Ordinal))
+                    {
+                        string head = known.Substring(0, known.Length - part.Length);
+                        return char.ToUpperInvariant(head[0]) + head.Substring(1) + " " + part;
+                    }
+                }
+                return char.ToUpperInvariant(known[0]) + known.Substring(1);
             }
-            return text.ToString();
+            return tag;
         }
 
         // Keyed on the plug's path, not its label: a label follows the bone
@@ -169,7 +183,7 @@ namespace AvatarBridge
         // plug's refuse list does not deny: refusing always beats answering,
         // so "Anything" can never reach a socket the author ruled out.
         static void AddLayer(CVRAvatar avatar, AnimatorController controller, YapsPlug plug,
-            string parameter, List<YapsTags> tags)
+            string parameter, List<string> tags)
         {
             if (!controller.parameters.Any(p => p.name == parameter))
             {
@@ -191,9 +205,11 @@ namespace AvatarBridge
                 AssetDatabase.AddObjectToAsset(machine, controller);
             }
 
-            var values = new List<int> { (int) plug.answers };
-            values.AddRange(tags.Select(t => (int) t));
-            values.Add(0);
+            // State 0 is the whole list the author wrote, state i narrows to
+            // one tag in the first slot, and the last clears every slot.
+            var values = new List<Vector4> { Vector(tags) };
+            values.AddRange(tags.Select(t => Vector(new List<string> { t })));
+            values.Add(Vector4.zero);
 
             for (int i = 0; i < values.Count; i++)
             {
@@ -220,6 +236,16 @@ namespace AvatarBridge
             });
             controller.layers = layers.ToArray();
             EditorUtility.SetDirty(controller);
+        }
+
+        // Patterns in a vector, matching what the bake wrote. Kept here rather
+        // than shared with the builder's copy because that one takes the
+        // author's raw list and this one takes a list already cleaned.
+        static Vector4 Vector(List<string> tags)
+        {
+            var v = Vector4.zero;
+            for (int i = 0; i < tags.Count && i < YapsTags.PlugSlots; i++) v[i] = YapsTags.Pattern(tags[i]);
+            return v;
         }
 
         static string Sanitise(string s)

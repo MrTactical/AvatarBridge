@@ -22,32 +22,45 @@
 
 // A header, then eight octants.
 // One header pixel, then THREE per octant: position, facing, tags.
-// Version 3 added the third. A socket's tag set is 15 bits and there was
-// nowhere left to put it: the facing pixel's alpha carries the kind, and
-// the position pixel's carries the owner tag the whole read is gated on.
+// Version 3 added the third. A socket's tag word needed a pixel of its
+// own: the facing pixel's alpha carries the kind, and the position pixel's
+// carries the owner tag the whole read is gated on. The tag pixel spends
+// all four of its channels, which is why the word is 20 bits and why the
+// tags fold into one rather than taking a slot each.
 #define YAPS_ATLAS_CELLSLOTS 25
 
-// The tag set, 15 bits over rgb at five bits a channel. Five, not eight:
-// the grab is a half float and these are written once rather than summed,
-// so eight would probably survive, but a tag that decodes wrong sends a
-// plug to the wrong socket silently and 32 levels a channel cannot.
+// The tag word, 20 bits over rgba at five bits a channel. Five and not
+// eight: the grab is a half float and these are written once rather than
+// summed, so eight would probably survive, but a tag that decodes wrong
+// sends a plug somewhere nobody asked for, silently.
+//
+// It is a FOLD, not a set of slots. Each tag lights three of the twenty
+// bits, picked by its own hash, and the socket publishes the OR of its
+// tags. SPS instead gives a socket eight slots and writes each 32-bit hash
+// whole, which the atlas cannot afford: every extra pixel per octant costs
+// 256 pixels of width, so eight slots would take the rect from 808 wide to
+// 2600 and no mirror would resolve. Alpha joins rgb here for the same
+// reason, four channels being all there is.
 #define YAPS_ATLAS_TAGBITS 5
 #define YAPS_ATLAS_TAGMAX  31
 
-int YapsTagsDecode(float3 rgb)
+int YapsTagsDecode(float4 rgba)
 {
-    int lo = (int) round(saturate(rgb.r) * YAPS_ATLAS_TAGMAX);
-    int mid = (int) round(saturate(rgb.g) * YAPS_ATLAS_TAGMAX);
-    int hi = (int) round(saturate(rgb.b) * YAPS_ATLAS_TAGMAX);
-    return lo | (mid << YAPS_ATLAS_TAGBITS) | (hi << (2 * YAPS_ATLAS_TAGBITS));
+    int a = (int) round(saturate(rgba.r) * YAPS_ATLAS_TAGMAX);
+    int b = (int) round(saturate(rgba.g) * YAPS_ATLAS_TAGMAX);
+    int c = (int) round(saturate(rgba.b) * YAPS_ATLAS_TAGMAX);
+    int d = (int) round(saturate(rgba.a) * YAPS_ATLAS_TAGMAX);
+    return a | (b << YAPS_ATLAS_TAGBITS) | (c << (2 * YAPS_ATLAS_TAGBITS))
+             | (d << (3 * YAPS_ATLAS_TAGBITS));
 }
 
-float3 YapsTagsEncode(int tags)
+float4 YapsTagsEncode(int tags)
 {
-    return float3(
+    return float4(
         (tags & YAPS_ATLAS_TAGMAX) / (float) YAPS_ATLAS_TAGMAX,
         ((tags >> YAPS_ATLAS_TAGBITS) & YAPS_ATLAS_TAGMAX) / (float) YAPS_ATLAS_TAGMAX,
-        ((tags >> (2 * YAPS_ATLAS_TAGBITS)) & YAPS_ATLAS_TAGMAX) / (float) YAPS_ATLAS_TAGMAX);
+        ((tags >> (2 * YAPS_ATLAS_TAGBITS)) & YAPS_ATLAS_TAGMAX) / (float) YAPS_ATLAS_TAGMAX,
+        ((tags >> (3 * YAPS_ATLAS_TAGBITS)) & YAPS_ATLAS_TAGMAX) / (float) YAPS_ATLAS_TAGMAX);
 }
 
 int YapsAtlasHash(int3 c)

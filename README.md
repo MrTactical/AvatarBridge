@@ -986,12 +986,16 @@ along +Z**: pivot at the base, shaft along +Z (in Blender: origin at the base, s
 before export); the bake warns when the mesh disagrees. A skinned mesh is measured from its bones
 and needs neither.
 
-**Tags: which sockets a plug will answer.** A socket carries a **Tags** set saying what it is,
-picked from eleven names SPS uses for the same purpose (hips, head, chest, hand and each hand,
-foot and each foot, hips front and hips back) plus four custom slots. A plug carries two sets of
-its own: **answer only sockets tagged** and **never answer a socket tagged**. Refusing beats
-answering. Leave everything empty and nothing changes: a plug with no list answers any socket, and
-a socket with no tags is found by any plug that is not asking for something in particular.
+**Tags: which sockets a plug will answer.** A socket carries a list of **Tags** saying what it is,
+any words you like, case and spacing ignored. A plug carries two lists of its own: **answer only
+sockets tagged** and **never answer a socket tagged**, up to four each. Refusing beats answering.
+Leave everything empty and nothing changes: a plug with no list answers any socket, and a socket
+with no tags is found by any plug that is not asking for something in particular.
+
+A name means the same thing here as it does in SPS, because it is hashed the same way, so
+`hips`, `hipsfront`, `hipsback`, `head`, `chest`, `hand`, `handleft`, `handright`, `foot`,
+`footleft` and `footright` are worth using where they fit: those are the eleven SPS works out from
+the bone nearest a socket. Anything else is a private word between you and the plug's author.
 
 **Tags need the screen atlas, and only the atlas.** It is the one route that carries what a socket
 IS as well as where it is. A socket found by marker light announces itself with a range, and a
@@ -1016,10 +1020,10 @@ plug ever bends is the plug's own **Deform** toggle and, for your own body, **it
 **Choosing at runtime.** A plug listing two or more tags gets a menu dropdown of its own, so the
 wearer can narrow it to one of them, widen it to *Anything*, or leave it on *As built*, which is
 what the author configured and what it starts on. *Anything* clears the answer list only; a socket
-on the refuse list stays refused. The four custom slots mean whatever you and the other author
-agree they mean: the tag travels as a number, so a name for it can only live in the two of you.
-The dropdown narrows what the plug asks for; it cannot make a route carry a set it has no room
-for, so the paragraph above still applies to every setting on it.
+on the refuse list stays refused. Only a hash of a name travels, never the name, so a private word
+stays private between you and the other author. The dropdown narrows what the plug asks for; it
+cannot make a route carry what it has no room for, so the paragraph above still applies to every
+setting on it.
 
 **The components themselves do nothing in game, so don't animate them.** A YAPS Plug or YAPS
 Socket is setup data: the bake writes what it says into the material, and ChilloutVR strips the
