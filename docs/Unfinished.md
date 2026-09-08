@@ -1942,15 +1942,26 @@ with the deformation the way a painted texture can.
 
 The problem is what happens when that source is not available, and there are two such cases.
 
-- **The climb is unbounded.** When no bone sits under the plug's root, the baker walks up ancestors
-  until it finds a subtree with any weights at all and takes that whole subtree. A plug parented
-  to Hips climbs to Hips, every vertex on the body reads a weight near 1, and the avatar bakes as
-  one enormous shaft. This is not hypothetical: it is what ten avatars did, and the reason the
-  "climb once" rule exists at all. Bounding it is small. The baker already counts what a level
-  captures, through `CountVerticesUnder`, so a climb that swallows most of the mesh can be refused
-  through the failure path that already exists, telling the author to set the plug's root bone.
-  Roughly ten lines, no new UI, and it turns a silently wrong bake into a refusal that names its
-  own fix. This is the piece with a real victim behind it.
+- **The climb was unbounded. Fixed 2026-09-08.** When no bone sits under the plug's root, the baker
+  walks up ancestors until it finds a subtree with any weights at all and takes that whole subtree.
+  A plug parented to Hips climbs to Hips, every vertex on the body reads a weight near 1, and the
+  avatar bakes as one enormous shaft. It is what ten avatars did.
+
+  The conversion has refused this since long before, by asking whether the level it climbed to is
+  itself a humanoid bone. The baker did not, so a plug the converter turned away could still be
+  baked into a whole-body shaft by hand from the toolkit. Another one-path-only divergence between
+  the two builders, found by reading rather than by a report.
+
+  The baker now refuses it too, and asks a narrower question than the converter does: whether the
+  bones it captured include *this renderer's* head or feet. A shaft on its own renderer weighted
+  only to Hips captures neither, so it still bakes, where the converter's rule turns it away.
+  Vertex count cannot decide this on its own, which is what the entry first proposed: a dedicated
+  shaft renderer legitimately captures every vertex it has. Socket bakes are exempt, since they
+  route through the same function and a socket on a body mesh is meant to reach the body's bone.
+  Nothing is claimed on a rig with no humanoid mapping.
+
+  **Not yet exercised.** It is written against the failure and it compiles; no avatar has hit it
+  since. The corpus is where that would show, and it has not been run for it.
 
 - **A plain mesh has no mask at all.** On a non-skinned renderer the baker writes a flat weight of
   1 for every vertex. Correct when the mesh is only the plug, and wrong the moment it is not,

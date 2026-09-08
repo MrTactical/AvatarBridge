@@ -2228,6 +2228,11 @@ under it, and convert or bake again. A plug mesh that is its own object is found
 plug that is part of the body needs the bone. Length is never the reason: a hyper plug longer
 than its wearer converts as long as it has a chain of its own.
 
+Baking a plug by hand refuses the same case from 4.5.0, worded as *the first bone above the plug
+object carries this mesh's head or feet as well*, and the fix is the same one. Before that the
+conversion refused it and the toolkit did not, so a plug the converter turned away could be baked
+into a whole-body shaft by hand.
+
 ### YAPS: a plain-mesh plug jumps or turns the moment a socket engages it
 
 A plain (unskinned) mesh bends around its object's origin along +Z, whatever the vertices say. The

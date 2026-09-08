@@ -116,7 +116,7 @@ namespace AvatarBridge
             var skin = renderer as SkinnedMeshRenderer;
             if (!TryPlaceVertices(mesh, skin,
                     out var worldPositions, out var worldNormals, out var worldTangents,
-                    out var activeWeights, out var placements, plugRoot, out failure))
+                    out var activeWeights, out var placements, plugRoot, objectFrame, out failure))
             {
                 return null;
             }
@@ -514,7 +514,8 @@ namespace AvatarBridge
 
         static bool TryPlaceVertices(Mesh mesh, SkinnedMeshRenderer skin,
             out List<Vector3> positions, out List<Vector3> normals, out List<Vector3> tangents,
-            out List<float> active, out List<Matrix4x4> placements, Transform plugRoot, out string failure)
+            out List<float> active, out List<Matrix4x4> placements, Transform plugRoot,
+            bool socket, out string failure)
         {
             failure = null;
             positions = new List<Vector3>();
@@ -563,10 +564,33 @@ namespace AvatarBridge
                 // The plug object is very often hung off a bone rather than being one.
                 // Climb to the first real bone above it and take that subtree instead
                 // of baking nothing.
+                Transform climbed = null;
                 for (var above = plugRoot.parent; above != null && plugBones.Count == 0;
                      above = above.parent)
                 {
                     plugBones = BonesUnder(bones, above);
+                    climbed = above;
+                }
+
+                // The climb cannot tell when it has gone too far. Where the plug is
+                // part of the body mesh and has no bone, the first level with any
+                // weight is usually Hips, and Hips carries the skeleton: every body
+                // vertex reads as plug and the avatar bakes as one shaft. Ten did.
+                //
+                // A shaft on its own renderer weighted only to Hips climbs to Hips
+                // too and is right to, so the count of captured vertices cannot
+                // separate them. What separates them is what came with it.
+                // Sockets excepted. A socket on a body mesh is MEANT to climb to
+                // the body's bone: it bakes shapes, and its weights only decide
+                // which vertices exist, not which ones are a shaft.
+                if (!socket && plugBones.Count > 0 && TookTheBody(skin, plugBones))
+                {
+                    failure = "the first bone above the plug object (\"" + climbed.name
+                              + "\") carries this mesh's head or feet as well, so the bake could "
+                              + "not tell the plug's vertices from the rest of the mesh and would "
+                              + "have bent the whole avatar. Set the plug's Root Bone to the bone "
+                              + "the shaft grows from, or to an empty under it, and bake again.";
+                    return false;
                 }
             }
 
@@ -772,6 +796,40 @@ namespace AvatarBridge
                 names.Add(mesh.GetBlendShapeName(index));
             }
             return captured;
+        }
+
+        // Whether a climbed level swallowed the body rather than the plug. The
+        // converter refuses the same case earlier and more bluntly, by asking
+        // whether the level IS a humanoid bone; that also turns away a shaft on
+        // its own renderer weighted to Hips, which bakes correctly. This path
+        // is the toolkit's, where the author is looking at the plug, so it asks
+        // the narrower question.
+        //
+        // Humanoid extremities decide it, since no shaft sits above one, and
+        // the question is asked of THIS renderer's captured bones rather than
+        // the hierarchy: a head is under Hips on every avatar, but only a body
+        // mesh is skinned to it. Nothing is claimed on a rig with no humanoid
+        // mapping, where the bake behaves as it did before.
+        static bool TookTheBody(SkinnedMeshRenderer skin, HashSet<int> captured)
+        {
+            var animator = skin.GetComponentInParent<Animator>();
+            if (animator == null || !animator.isHuman) return false;
+
+            var ends = new[]
+            {
+                HumanBodyBones.Head, HumanBodyBones.LeftFoot,
+                HumanBodyBones.RightFoot, HumanBodyBones.LeftHand,
+            };
+            foreach (var end in ends)
+            {
+                var bone = animator.GetBoneTransform(end);
+                if (bone == null) continue;
+                for (int b = 0; b < skin.bones.Length; b++)
+                {
+                    if (skin.bones[b] == bone && captured.Contains(b)) return true;
+                }
+            }
+            return false;
         }
 
         static HashSet<int> BonesUnder(Transform[] bones, Transform root)
