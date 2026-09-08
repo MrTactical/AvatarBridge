@@ -935,6 +935,18 @@ namespace AvatarBridge
             b.Add(BridgeElements.Bind("Convert spatial audio", null,
                 settings.convertSpatialAudio, v => settings.convertSpatialAudio = v));
             AddBlinkToggle(b);
+            b.Add(BridgeElements.Bind("Resize oversized textures",
+                "A texture carried at more resolution than the mesh can show costs graphics " +
+                "memory for pixels nobody sees. Each one the avatar carries is measured against " +
+                "the mesh that wears it and resized to what that mesh can actually show, and a " +
+                "one-channel or fully opaque texture is given a format half the size. Import " +
+                "settings only: no texture file is edited, every change is a field in the " +
+                "inspector, and \"Put the textures back\" on the report undoes the lot. A texture " +
+                "any material outside this avatar uses is left alone and named in the report, " +
+                "because the size lives on the texture and would follow it there. The VRChat " +
+                "copy of this avatar is the exception: it wears the same mesh, so the same size " +
+                "fits it.",
+                settings.slimTexturesOnConvert, v => settings.slimTexturesOnConvert = v));
 
             // Survives a rebuild: the box keeps its text, so the card must
             // come back filtered to match it.
@@ -1461,6 +1473,37 @@ namespace AvatarBridge
             }
             int errors = lastReport.CountOf(ReportStatus.Error);
             int warnings = lastReport.CountOf(ReportStatus.Warning);
+
+            // Above the verdict, because it is good news and the verdict may
+            // not be. The report's own entry lists the textures; this is the
+            // number, which is the part worth reading from across the room.
+            if (lastReport.BytesReclaimed > 0)
+            {
+                parent.Add(new HelpBox(
+                    $"Optimised on the way through: {(lastReport.BytesReclaimed / 1048576f):0.0} MB of "
+                    + "texture nobody was ever going to see, reclaimed. Your graphics card says thank you, "
+                    + "and so does everyone standing near you. The report says which textures and what "
+                    + "each one became; \"Resize oversized textures\" turns it off for next time.",
+                    HelpBoxMessageType.Info));
+
+                // The undo, beside the announcement. This one happens without
+                // being asked now, so the way back cannot live in another
+                // window: the record is a file in the output folder, and the
+                // saved report sits in that same folder.
+                string outputDir = string.IsNullOrEmpty(lastReport.SavedReportPath)
+                    ? null
+                    : System.IO.Path.GetDirectoryName(lastReport.SavedReportPath);
+                if (!string.IsNullOrEmpty(outputDir) && AvatarSlimmer.CanRevert(outputDir))
+                {
+                    parent.Add(new Button(() =>
+                    {
+                        AvatarSlimmer.Revert(outputDir, lastReport);
+                        lastReport.BytesReclaimed = 0;
+                        ScheduleRebuild();
+                    })
+                    { text = "Put the textures back" });
+                }
+            }
 
             parent.Add(new HelpBox(
                 errors > 0 ? $"Finished with {errors} error(s). See below."

@@ -340,6 +340,28 @@ that could still go wrong: MagicaCloth2 measures bone lengths once, at the scale
 converted at, so a constraint that moves that scale a long way while the chain swings is worth a
 look in Play mode. Not yet measured against such an avatar, which is the only thing that settles it.
 
+## The conversion resizes oversized textures now, 2026-09-08. DONE
+
+The measurement existed and nothing ran it: a texture carried at more resolution than its mesh can
+show was named on a card and left alone unless somebody pressed a button. `slimTexturesOnConvert`
+is ON, and a final pass runs the same `AvatarSlimmer.Find` the card does, sizes and formats only.
+
+Why on by default, when the change reaches the source texture's import settings: the slimmer
+already refuses any texture a material OUTSIDE this avatar uses, and names it. The one thing that
+does share it is the VRChat copy of the same avatar, which wears the same mesh at the same texel
+density, so the size that fits one fits the other.
+
+Stripping renderers no clip can switch on, and the animator tidy, stay on the button. Those are
+judgement calls that want the avatar in front of you; a size the mesh's own density proves is not.
+
+The window announces it above the verdict with the megabytes, and carries the undo beside it. That
+pairing is the point: something that happens without being asked cannot have its way back in
+another window. The record is a file in the output folder, and the saved report is in that same
+folder, which is how the button finds it.
+
+Last pass in the pipeline, because every pass above it can still add a renderer or point a material
+at a different texture.
+
 ## Loose ends, small but real
 
 ### The settings are per USER, not per project. FIXED 2026-09-08

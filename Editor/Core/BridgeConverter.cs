@@ -236,6 +236,10 @@ namespace AvatarBridge
                     // Judge the saved file's references only now, after
                     // the self-container fixed what it was going to.
                     Pass("Audit serialized references", AnimatorMerger.AuditSerializedReferences),
+                    // Dead last. It reads the finished avatar's weight, and
+                    // every pass above can still add a renderer or repoint a
+                    // material at a different texture.
+                    Pass("Texture sizes", AvatarSlimmer.SlimOnConvert),
                 };
         }
 

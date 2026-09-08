@@ -202,6 +202,20 @@ namespace AvatarBridge
         // it; growth spread across shapes holds the grown size.
         public bool sizeContactZonesForLargest = true;
 
+        // Resize textures the avatar carries at more resolution than its
+        // mesh can show, at the end of the conversion, and record what
+        // changed so it can be put back.
+        //
+        // ON. A texture nothing else in the project uses is left at the
+        // author's size otherwise, and the one thing that shares it is the
+        // VRChat copy of this same avatar: same mesh, same density, so the
+        // size that fits one fits the other. Anything a material outside
+        // this avatar touches is refused and named instead.
+        //
+        // Sizes only. Stripping renderers and tidying the animator stay on
+        // the button, where the avatar is in front of you.
+        public bool slimTexturesOnConvert = true;
+
         // Copy shaders lacking single-pass instanced support into
         // RehomedAssets with the macros added, and repoint materials.
         // Originals are never modified; a copy that fails to compile

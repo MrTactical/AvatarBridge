@@ -1461,6 +1461,7 @@ Analyse sets them to match. Open it to override a measurement deliberately, not 
 | **Convert VRC Head Chop** | on | `VRCHeadChop` becomes `FPRExclusion`: CVR's first-person hiding |
 | **Convert spatial audio** | on | `VRCSpatialAudioSource` becomes a plain `AudioSource` with equivalent spatial settings |
 | **Auto-wire blink blendshapes** | on | Detects blink shapes on the face mesh (`Blink L`/`Blink R` and similar) and turns on CVR's Eye Blink Settings when the descriptor didn't name any |
+| **Resize oversized textures** | on | Every texture the avatar carries is measured against the mesh that wears it and resized to what that mesh can show; a one-channel or fully opaque texture also gets a format half the size. Import settings only, nothing is written to a texture file, and **Put the textures back** on the report undoes all of it. A texture any material outside this avatar uses is refused and named. The same measurement the Toolkit's **What this avatar costs** card makes, run without being asked |
 
 **Base, Additive and Action switch themselves off when you pick an avatar with no such layer**: the
 slot is empty or holds VRChat's default. These settings persist between avatars, so a tick meant for

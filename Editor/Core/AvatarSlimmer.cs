@@ -155,6 +155,36 @@ namespace AvatarBridge
             return plan;
         }
 
+        // The conversion's own call, at the end of the pipeline. Sizes and
+        // formats only: stripping a renderer no clip switches on and tidying
+        // an animator are judgement calls that want the avatar in front of
+        // you, and they stay on the button. A size the mesh's own texel
+        // density proves is not a judgement call.
+        public static void SlimOnConvert(BridgeContext ctx)
+        {
+            if (ctx == null || !ctx.Settings.slimTexturesOnConvert || ctx.CvrAvatar == null)
+            {
+                return;
+            }
+            GameObject alsoMine = null;
+#if VRC_SDK_VRCSDK3
+            if (ctx.SourceDescriptor != null) alsoMine = ctx.SourceDescriptor.gameObject;
+#endif
+            var survey = AvatarSurvey.Build(ctx.CvrAvatar);
+            var plan = Find(ctx.CvrAvatar, survey, AvatarWeight.Measure(ctx.CvrAvatar, survey),
+                alsoMine, true, false);
+            // Find fills these whether or not anything asked for them.
+            plan.Wins = null;
+            if (plan.Textures.Count == 0)
+            {
+                // Silence, not a line saying nothing happened. An avatar
+                // whose textures already fit is the common case and does
+                // not need a paragraph about it.
+                return;
+            }
+            Apply(ctx.CvrAvatar, plan, ctx.OutputDir, ctx.Report);
+        }
+
         public static void Apply(CVRAvatar avatar, Plan plan, string outputDir, BridgeReport report)
         {
             if (plan == null || !plan.Any)
@@ -205,6 +235,7 @@ namespace AvatarBridge
             if (done > 0)
             {
                 WriteUndo(outputDir, undo);
+                report.BytesReclaimed += plan.Bytes;
                 report.Converted(Category, $"{done} texture(s) changed, {Mb(plan.Bytes)} off the graphics card",
                     string.Join("; ", plan.Textures.Take(8).Select(Describe)) +
                     (plan.Textures.Count > 8 ? $"; and {plan.Textures.Count - 8} more" : "") +
