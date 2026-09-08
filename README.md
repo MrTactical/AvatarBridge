@@ -1022,11 +1022,13 @@ answers as though it had no list at all, because a route that cannot see the set
 refuse on it, and refusing anyway would mean a plug tagged for one place quietly stopping
 everywhere else.
 
-Nor does having the atlas make the sets binding. A socket the atlas turned away can still be
-picked up by its own marker light or its contact, since those routes answer once nothing else
-has, and they answer without knowing what they found. So a refused socket can be reached in a
-view where the atlas fits perfectly well. Plan the sets as a preference throughout, not as a
-lock, and use the plug's **Deform** toggle for anything that has to be certain.
+A socket the atlas READ and turned away stays turned away: its own marker light does not then
+answer it a moment later, which is what used to happen at exactly the range a refuse list is
+written for. What the atlas never saw is a different matter. A socket outside the view, or any
+socket at all in a view too small to hold the atlas, is unknown rather than refused, and an
+unknown socket is answered. So the sets hold where the socket can be read and lapse where it
+cannot: a preference throughout, not a lock. Use the plug's **Deform** toggle for anything that
+has to be certain.
 
 A tagged plug asking for something also passes over an untagged socket found *through* the atlas,
 which is the same thing SPS does with content older than tags.

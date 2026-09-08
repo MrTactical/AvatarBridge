@@ -64,6 +64,11 @@ struct YapsChain
     float  engaged;
     float  headers;   // cells whose header said something was there
     float  hits;      // payloads that then matched the cell's tag
+    // The nearest socket this plug's tags REFUSED, and how far off it was.
+    // Not a result: it exists so the light tier cannot answer a socket the
+    // atlas already read and turned down. 1e9 means nothing was refused.
+    float3 refusedAt;
+    float  refusedD;
 };
 
 struct YapsSocket
@@ -387,6 +392,7 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
     // Zeroed in one go, so the compiler cannot read the early return below
     // as leaving the struct part-written.
     YapsChain chain = (YapsChain)0;
+    chain.refusedD = 1e9;   // zero would read as a refusal at the origin
 
     float len = max(worldLength, 1e-4);
 
@@ -471,7 +477,19 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
                 // range IS its message and the digits are Raliv's. Untagged
                 // is the honest reading of content that predates this.
                 if (YapsTagsRefuse(YapsTagsDecode(
-                        YAPS_ATLAS_LOAD(px + 2 * YAPS_ATLAS_SLOTPX, cellY)))) continue;
+                        YAPS_ATLAS_LOAD(px + 2 * YAPS_ATLAS_SLOTPX, cellY))))
+                {
+                    // Remember it. A socket that was READ and refused is
+                    // not an unknown socket, and the light tier answers
+                    // unknown sockets a moment later. Within reach only:
+                    // a refusal across the room is nothing to protect.
+                    if (d <= far && d < chain.refusedD)
+                    {
+                        chain.refusedD = d;
+                        chain.refusedAt = at;
+                    }
+                    continue;
+                }
 
                 // No facing test. There used to be one, rejecting a hole
                 // whose forward pointed the way the plug was going. The
@@ -864,6 +882,31 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
             socket.isHole = chain.kind[0];
             socket.engaged = chain.engaged;
             socket.tier = 3;
+        }
+
+        // A REFUSED SOCKET IS NOT AN UNKNOWN ONE.
+        //
+        // The light fallback above engages on distance alone, because a
+        // marker light cannot say what a socket is and a plug must still
+        // answer content older than tags. That is right where nothing was
+        // known. It is wrong here: the atlas READ this socket's tags a few
+        // lines ago and this plug turned it down, and then its own marker
+        // light answered it anyway, at contact range, which is exactly
+        // where somebody writing a refuse list wants it to hold.
+        //
+        // Only the light tier is undone. The channel never engaged on a
+        // tag it could not see either, but a contact is a socket reaching
+        // out to this plug rather than this plug finding it.
+        //
+        // A tenth of a length, so it takes the SAME socket and not its
+        // neighbour: two sockets a hand apart must stay two sockets.
+        // Deliberately tight. Too tight leaves the old behaviour, too
+        // loose refuses something the author never named.
+        if (socket.tier == 2 && chain.refusedD < 1e8
+            && distance(socket.position, chain.refusedAt) < worldLength * 0.1)
+        {
+            socket.engaged = 0;
+            socket.tier = 0;
         }
     }
 

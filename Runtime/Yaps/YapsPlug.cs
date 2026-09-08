@@ -124,10 +124,11 @@ namespace AvatarBridge.Yaps
                  "here. Empty means no opinion, which answers anything the refuse list does not " +
                  "deny.\n\nFour is all there is room for, repeats aside; anything past that is " +
                  "not baked and the build says how many it left out. A socket has no limit, so a " +
-                 "longer list often belongs on the sockets instead.\n\nOnly the screen atlas carries what a socket is, and even then a " +
-                 "socket it turned away can still be picked up by that socket's marker light or " +
-                 "contact. A preference, not a lock: use Deform for anything that has to be " +
-                 "certain.")]
+                 "longer list often belongs on the sockets instead.\n\nOnly the screen atlas " +
+                 "carries what a socket is. One it read and turned away stays turned away, but a " +
+                 "socket it never saw, or any socket in a view too small to hold it, is unknown " +
+                 "rather than refused, and unknown is answered. A preference, not a lock: use " +
+                 "Deform for anything that has to be certain.")]
         public List<string> answers = new List<string>();
 
         [YapsFrom("SPS")]

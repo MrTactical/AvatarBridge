@@ -1313,6 +1313,18 @@ whole message and the digits are Raliv's. So a socket found by light reads as un
 untagged is refused only by a REQUIRE. That is the honest reading of content older than tags,
 and it is what SPS does with legacy content too.
 
+**But a REFUSED socket is not an unknown one, and that half is fixed, 2026-09-08.** The light
+fallback engages on distance once nothing else has, so a socket the atlas had just read and
+turned down was picked straight back up by its own marker light, at contact range, which is the
+one range a refuse list is written for. `YapsResolveChain` now carries the nearest refused socket
+out with it, and a light answer within a tenth of a length of that position is undone: engagement
+back to zero, tier back to nobody. Only the light tier, and only where the atlas actually read
+the socket. A tenth of a length so it takes the same socket and not its neighbour; deliberately
+tight, since too loose refuses something nobody named.
+
+Untested in game. The failure mode if the distance is wrong in either direction is quiet: too
+tight is the old behaviour, too loose is a neighbouring socket going dark.
+
 **The inspectors and the menu went in the same day.** The socket's set sits in "What it is"
 beside its kind; the plug's two sets open a fold of their own, chipped DPS and SPS since both
 had the idea first. A plug listing two or more tags gets a dropdown and an animator layer, one
