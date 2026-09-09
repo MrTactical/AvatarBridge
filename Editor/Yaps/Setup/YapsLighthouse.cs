@@ -65,7 +65,8 @@ namespace AvatarBridge
             RemoveLayer(controller);
             AddLayer(avatar, controller, sockets);
             return $"lighthouse: {sockets.Count} sockets on one menu, Off until chosen " +
-                   "(choosing one lights it and switches it on; the selector syncs, 32 bits)";
+                   "(choosing one lights it, and switches it on unless the avatar's own menu " +
+                   "already switches that socket; the selector syncs, 32 bits)";
         }
 
         const string OffLabel = "Off";
@@ -147,8 +148,16 @@ namespace AvatarBridge
         // itself ON, so one choice is all a DPS toy needs. Other sockets' active
         // state is left to their own toggles. Any-state transitions on the
         // selector, so the order the wearer clicks in never matters.
+        //
+        // A SOCKET ITS OWN MENU CAN SWITCH IS NEVER FORCED ON HERE. This layer
+        // is added last and so outranks the toggle that owns the socket: the
+        // toggle's off clip writes 0, this writes 1, and the socket can never
+        // be switched off again while the selector points at it. The socket
+        // carries the atlas writer, so it keeps resolving plugs long after the
+        // wearer has turned it off. Light it and leave the switch alone.
         static void AddLayer(CVRAvatar avatar, AnimatorController controller, List<YapsSocket> sockets)
         {
+            var owned = YapsSocketRebuilder.Switchable(controller);
             var pairPaths = sockets
                 .Select(s => AnimationUtility.CalculateTransformPath(
                     s.transform.Find(YapsSocketBuilder.LightsName), avatar.transform))
@@ -177,7 +186,7 @@ namespace AvatarBridge
                     clip.SetCurve(pairPaths[p], typeof(GameObject), "m_IsActive",
                         AnimationCurve.Constant(0f, 1f / 60f, p == chosen ? 1f : 0f));
                 }
-                if (chosen >= 0)
+                if (chosen >= 0 && !owned.Contains(socketPaths[chosen]))
                 {
                     clip.SetCurve(socketPaths[chosen], typeof(GameObject), "m_IsActive",
                         AnimationCurve.Constant(0f, 1f / 60f, 1f));

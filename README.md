@@ -953,7 +953,9 @@ as "holes broken, rings fine".
 **The lighthouse.** With two or more lit-capable sockets, every one carries its pair and a
 **Marker lights** dropdown in the menu decides which single pair is on. It starts on **Off**:
 nothing is lit until the wearer chooses. Choosing a socket lights it *and switches it on*, so
-for a DPS or TPS toy the dropdown is the whole job: no second toggle to remember. Modern
+for a DPS or TPS toy the dropdown is the whole job: no second toggle to remember. A socket the
+avatar's own menu already switches is only lit, never switched on, so that toggle keeps working
+and still turns the socket off for everyone. Modern
 content never needs it: YAPS plugs and props find every socket through contacts, which have no
 four-slot limit. Old toys are the only readers of the lights, and one socket at a time was
 always their ceiling; the dropdown just hands the choice to the wearer instead of to Unity.
@@ -974,7 +976,8 @@ had already been made upstream. If you are running a build of a toy mod from bef
 old reach is a property of the mod and every DPS avatar in the room has it.
 
 Holes start lit before rings; every other socket's pair is built dark and the **Marker lights**
-dropdown lights any one of them on demand, switching that socket on as it does. Nothing stops
+dropdown lights any one of them on demand, switching that socket on as it does unless the
+avatar's own menu owns that switch. Nothing stops
 engaging: a plug decides *which* socket has it from the contact channel, never from a light, and
 the lights only sharpen its position at contact range. What a dark socket loses is old DPS plugs,
 which carry lights and nothing else, until the dropdown points at it. Untick **Emit marker

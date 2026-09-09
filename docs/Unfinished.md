@@ -294,6 +294,44 @@ their SDK differs; a name that does not resolve now warns instead of being assum
 **Still open, and not answerable in the editor:** ChilloutVR's constraint order against its own
 IK. Needs the reporter's SDK version, which bone, and what the wrong result actually looks like.
 
+## The lighthouse outranked the socket's own toggle, 2026-09-09. FIXED
+
+Reported as "turning the socket off no longer straightens the plug, have we regressed".
+It is a real regression and 4.5.0 introduced it, but not where it looked.
+
+The evidence, from the converted controller rather than from reasoning about it. The toggle
+is correct end to end: layer `Toggle Titjob` has both states, the On clip writes
+`Original Object/YAPS Socket` active 1, and the generated `Toggle Titjob restore.anim`
+writes the same path 0, along with all fifteen senders and haptic triggers under it. The
+empty-off-state repair did its job. What beats it is `YAPS lighthouse`, layer 73 against the
+toggle's 67, Write Defaults off, any-state, always running: `YAPS lighthouse 4` writes that
+same path to 1. Unity's higher layer wins, so while the selector points at a socket, that
+socket cannot be switched off by anything.
+
+That behaviour predates 4.5.0 and was deliberate, documented, and until 4.5.0 nearly
+harmless: a socket forced on offered its marker lights and its contacts, and a plug still
+chose its socket from the contact channel, so the wearer's toggle only failed to stop the
+lights. From 4.5.0 the socket carries the atlas writer, and the atlas resolves plugs on its
+own. A socket held on by the lighthouse now keeps answering every plug in the room, with no
+light and no contact needed, which is exactly the "switched it off and it still works"
+report. Not a hole in the atlas; the atlas turned an old cosmetic conflict into a real one.
+
+The fix reuses the rule this codebase already had. `YapsSocketRebuilder.Switchable` collects
+every `m_IsActive` path some clip can drive, and the rebuild already treats such a path as
+menu-owned and leaves it alone. The lighthouse now asks the same question before writing the
+socket curve: light it always, switch it on only when nothing else can. Split `Switchable`
+into a controller overload so the lighthouse can call it without a `BridgeContext`.
+
+`YapsLighthouse.Build` is shared, so the converter and the native toolkit both get it from
+one edit. Verified: the native path calls it at `YapsNativeBuilder.cs:649` and `YapsRemover.cs:172`,
+the converter at `YapsSocketRebuilder.cs:420`. All four define combinations compile.
+
+Left open, and it is a different question: there is still no user-facing control for whether
+a socket accepts the wearer's own plug. `_YAPS_SocketNoSelfExclude` is decided at conversion
+time from whether the wearer's own plug rests within `Length + 0.1` of the socket, which is a
+guess made once and never revisitable. A chest socket is out of a crotch plug's reach, so it
+allows self and there is no way to say otherwise.
+
 ## The contact guard was the wrong trade, 2026-09-09. FIXED
 
 Valkyr reconverted with the detector in and the claws still flickered. The

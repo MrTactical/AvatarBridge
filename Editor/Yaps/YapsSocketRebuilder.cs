@@ -145,9 +145,14 @@ namespace AvatarBridge
         // its stated weight.
         public static HashSet<string> Switchable(BridgeContext ctx)
         {
+            return Switchable(ctx.MergedController);
+        }
+
+        public static HashSet<string> Switchable(AnimatorController controller)
+        {
             var paths = new HashSet<string>(StringComparer.Ordinal);
-            if (ctx.MergedController == null) return paths;
-            var layers = ctx.MergedController.layers;
+            if (controller == null) return paths;
+            var layers = controller.layers;
             for (int i = 0; i < layers.Length; i++)
             {
                 if (i > 0 && layers[i].defaultWeight <= 0f) continue;
