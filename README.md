@@ -2285,6 +2285,12 @@ Work down the list; the first that fits is usually it.
   the atlas at all. Black or grey is nothing, red is a fault, green is working. **Everyone who
   can see the plug can see the overlay**, and the toolkit refuses an upload while it is on.
   Untick it when you are done.
+- **Does a toggle change how the plug LOOKS?** A toggle that swaps the plug's material, a second
+  skin, a glow version, an alternate colour, used to hand the mesh a material carrying no deform:
+  the plug went rigid for as long as that toggle was on, looked perfectly normal, and the tool
+  still reported it baked, because the slot it checks holds the baked copy. Every material an
+  animation can put in that slot is now baked alongside the one the mesh wears, and the clip is
+  pointed at the copy. A plug baked before 4.5.0 needs baking again to pick this up.
 - **Is it a DPS or TPS toy? Then pick the socket in "Marker lights".** Old toys read sockets by
   their marker lights, and only **one** socket's pair is ever lit: Unity gives a mesh four
   vertex-light slots, a socket takes two, and the tracker of whatever enters takes a third, so

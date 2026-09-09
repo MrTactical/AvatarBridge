@@ -166,6 +166,102 @@ namespace AvatarBridge.Yaps
             return clips.Distinct().ToList();
         }
 
+
+        // Every OTHER material an animation can put in this slot, baked as well.
+        //
+        // Follow above repairs the swap that hands the slot back to what the bake
+        // replaced. It cannot help a second look: a skin variant, a glow version,
+        // an alternate the author toggles in was never the bake source, so nothing
+        // repoints it and the mesh wears a material with no deform for as long as
+        // that toggle is on. Nothing reports it either, because the slot the tool
+        // checks still holds the baked copy.
+        //
+        // The bake belongs to the MESH, not the material, so the same result goes
+        // into each variant and only the look differs.
+        public static int FollowVariants(Renderer renderer, int slot, YapsBaker.Result result,
+                                         string dir, IEnumerable<AnimationClip> clips,
+                                         BridgeReport report, params Material[] known)
+        {
+            if (renderer == null || result == null || clips == null) return 0;
+            Transform root = AnimationRootOf(renderer.transform);
+            if (root == null) return 0;
+            var runnable = clips.Where(c => c != null).Distinct().ToList();
+            if (runnable.Count == 0) return 0;
+
+            string path = AnimationUtility.CalculateTransformPath(renderer.transform, root);
+            var seen = new HashSet<Material>(known.Where(m => m != null));
+            var variants = new List<Material>();
+            foreach (var clip in runnable)
+            {
+                foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                {
+                    if (binding.path != path || SlotIndex(binding.propertyName) != slot) continue;
+                    var keys = AnimationUtility.GetObjectReferenceCurve(clip, binding);
+                    if (keys == null) continue;
+                    foreach (var key in keys)
+                    {
+                        var m = key.value as Material;
+                        // A material already carrying a bake is one of ours from an
+                        // earlier run. Baking a baked material buries the original.
+                        if (m == null || m.HasProperty("_YAPS_Bake") || !seen.Add(m)) continue;
+                        variants.Add(m);
+                    }
+                }
+            }
+            if (variants.Count == 0) return 0;
+
+            int repointed = 0;
+            var refused = new SortedSet<string>();
+            foreach (var variant in variants)
+            {
+                var source = variant;
+                var legacy = YapsLegacyMap.Detect(source, out _);
+                // DPS has no switch for its own deform, so its shader is never
+                // patched; Simple Lit carries the look instead. Same rule the plug's
+                // own material follows.
+                var shader = legacy == YapsLegacyMap.Origin.DPS ? null
+                    : YapsShaderPatcher.Patch(source, dir, report, out _, out _,
+                                              allowSps: legacy == YapsLegacyMap.Origin.SPS);
+                if (shader == null)
+                {
+                    var plain = YapsNativeBuilder.OnSimpleLit(source, out _);
+                    shader = plain != null
+                        ? YapsShaderPatcher.Patch(plain, dir, report, out _, out _)
+                        : null;
+                    if (shader != null) source = plain;
+                }
+                if (shader == null) { refused.Add(variant.name); continue; }
+
+                var baked = YapsBaker.Apply(result, source, shader, dir, result.FromSkinnedMesh);
+                if (legacy != YapsLegacyMap.Origin.None && legacy != YapsLegacyMap.Origin.YAPS)
+                {
+                    YapsNativeBuilder.SwitchOffLegacyDeform(baked, legacy);
+                }
+                repointed += RepointInClips(runnable, path, slot, variant, baked);
+            }
+
+            if (refused.Count > 0 && report != null)
+            {
+                report.Warning("YAPS",
+                    $"{refused.Count} swapped-in material(s) could not take the deform",
+                    "An animation puts these materials on the same mesh slot the bake went into, " +
+                    "and their shaders refused the deform. Whenever one of those toggles is on, " +
+                    "the mesh looks right and simply will not bend. Put a shader with source on " +
+                    "them (Poiyomi, for one) and bake again: " + string.Join(", ", refused));
+            }
+            if (repointed > 0 && report != null)
+            {
+                report.Converted("YAPS",
+                    $"Baked {variants.Count - refused.Count} alternate material(s) the animator swaps in",
+                    "An animation assigns other materials to the mesh slot the bake went into, a " +
+                    "second skin or an alternate look. Only the material worn at bake time used to " +
+                    "get the deform, so every other one left the mesh rigid while its toggle was on, " +
+                    "with nothing to see wrong anywhere. Each now carries the same bake, and only " +
+                    "this mesh's own animation keys were changed.");
+            }
+            return repointed;
+        }
+
         // The native path: no merged controller to read, so the clips come off
         // whatever the avatar or prop actually runs. All three sources, for the
         // reason given above RunnableClips: a swap that fires from the wrong

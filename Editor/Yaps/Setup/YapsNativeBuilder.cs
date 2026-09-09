@@ -226,6 +226,14 @@ namespace AvatarBridge
                 o.Notes.Add($"Upgraded from {legacy}: {carried.Count} setting(s) carried" +
                             (unmapped.Count > 0 ? $"; no YAPS counterpart for {string.Join(", ", unmapped)}" : "") + ".");
             }
+            // And every OTHER material a toggle can put in that slot. Follow only
+            // repairs the swap that puts the bake source back; an alternate look
+            // was never the source, so nothing above reaches it and the plug goes
+            // rigid for as long as that toggle is on.
+            YapsSwapFollow.FollowVariants(renderer, slot, result, dir,
+                YapsSwapFollow.RunnableClips(renderer.transform), report,
+                original, source, patched);
+
             WriteKnobs(plug, patched);
             EditorUtility.SetDirty(patched);
             o.Material = patched;

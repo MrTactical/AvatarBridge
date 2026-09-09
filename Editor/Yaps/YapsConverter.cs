@@ -339,6 +339,16 @@ namespace AvatarBridge
             {
                 YapsNativeBuilder.SwitchOffLegacyDeform(patched, legacy);
             }
+            // Every OTHER material the animator can put in this slot gets the same
+            // bake. RepointSwappedMaterials below only knows the material the bake
+            // replaced; an alternate look was never that, so it stayed deformless
+            // and left the plug rigid whenever its toggle was on.
+            if (ctx.MergedController != null)
+            {
+                Yaps.YapsSwapFollow.FollowVariants(renderer, slot, result,
+                    ctx.OutputDir + "/YAPS", ctx.MergedController.animationClips, ctx.Report,
+                    source, patchSource, patched);
+            }
             if (carried.Count > 0)
             {
                 var system = legacy;

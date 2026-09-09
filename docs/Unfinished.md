@@ -617,6 +617,33 @@ Not fixable in reverse: a project already carrying the stored Remove keeps it, b
 deliberate Remove and a poisoned one are the same two booleans. Anyone whose penetration choice
 reads Remove after updating should set it back.
 
+### A look-swap toggle left the plug rigid, 2026-09-09. FIXED
+
+`YapsSwapFollow.Follow` repairs one swap: the clip that assigns the material the bake was taken
+FROM back into the slot the patched copy went into. Everything else an animation can put in that
+slot was left alone, so a second skin, a glow version, an alternate colour, anything the author
+toggles for looks, arrived carrying no deform. The plug went rigid for as long as that toggle was
+on, and nothing said so anywhere: the editor slot still holds the baked copy, so the window, the
+scanner and the report all read baked.
+
+Found wearing an avatar whose look toggle swaps the plug between its own material and a locked
+Poiyomi copy out of an `OptimizedShaders` folder. The readout on the plug said nobody and not
+engaged while the plug sat bent, which is what sent the search past the deform in the first place.
+
+`FollowVariants` reads every runnable clip for object-reference keys on the same renderer and
+slot, takes the distinct materials that are not already ours, patches each the way the worn one
+was patched (Simple Lit fallback, DPS straight to Simple Lit, legacy deform switched off), applies
+the SAME bake result to it, and repoints the clip keys at the copy. The bake belongs to the mesh,
+not the material, so every variant carries identical vertex data.
+
+Wired into both builders, the toolkit off `RunnableClips` and the converter off the merged
+controller's own clones. A variant whose shader refuses is named in a warning rather than skipped
+quietly.
+
+Not done: the scanner does not warn about this on an avatar baked before 4.5.0. The material is
+only reachable through a clip, so a scan of the avatar as it stands cannot see the gap; re-baking
+is what fixes those and the README says so.
+
 ### Three found in the 2026-09-07 cleanup pass
 
 Not bugs anyone can hit, but each is a promise the repo half makes.
