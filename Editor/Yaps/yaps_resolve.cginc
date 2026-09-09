@@ -874,9 +874,14 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         YapsChain chain = YapsResolveChain(plugOrigin, plugForward, worldLength);
         socket.atlasHeaders = chain.headers;
         socket.atlasHits = chain.hits;
+        // The chain comes out whether or not anything was ACCEPTED. Its
+        // count still gates every consumer, so a scan that took nothing
+        // behaves as it always did; what it stops doing is throwing away
+        // refusedD in the one case a refusal matters most, which is a plug
+        // reporting nobody with a socket right in front of it.
+        socket.chain = chain;
         if (chain.count > 0)
         {
-            socket.chain = chain;
             socket.position = chain.position[0];
             socket.forward = chain.forward[0];
             socket.isHole = chain.kind[0];

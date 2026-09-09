@@ -257,9 +257,14 @@ Shader "YAPS/Debug Overlay"
                     // 0 nothing refused, 1 refused, 2 refused and nearer than
                     // whatever answered, which is the shape of "there is a
                     // socket right there and it does nothing".
+                    // Zero is not a refusal at the origin, it is a chain
+                    // that never ran: the atlas is off, or too small to read.
+                    // Left ungated this cell was red on every plug that
+                    // resolved nothing, which is exactly when it is read.
                     float refusedD = socket.chain.refusedD;
                     float taken = socket.tier < 0.5 ? 1e9 : length(socket.position - rootWorld);
-                    refused = refusedD > 1e8 ? 0.0 : (refusedD < taken ? 2.0 : 1.0);
+                    refused = (refusedD > 1e8 || refusedD <= 0.0)
+                        ? 0.0 : (refusedD < taken ? 2.0 : 1.0);
                 }
 
                 o.read = float4(socket.tier, socket.engaged, gap, socket.atlasHeaders);

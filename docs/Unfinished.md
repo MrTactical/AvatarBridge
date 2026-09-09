@@ -617,6 +617,23 @@ Not fixable in reverse: a project already carrying the stored Remove keeps it, b
 deliberate Remove and a poisoned one are the same two booleans. Anyone whose penetration choice
 reads Remove after updating should set it back.
 
+### The refusal cell read red on every plug that resolved nothing, 2026-09-09. FIXED same day
+
+Shipped and caught in the first screenshot. `YapsResolveSocket` only copied the chain onto the
+socket when `chain.count > 0`, so a scan that accepted nothing left `socket.chain` zeroed, and
+`refusedD` of zero is a refusal at the origin: the cell went red exactly when it was being read,
+which is when a plug resolves nobody.
+
+The chain is carried out of the atlas block unconditionally now. `count` still gates every
+consumer (`yaps_deform.cginc:746` is the only one), so a scan that took nothing behaves as before.
+The cell also treats a non-positive `refusedD` as nothing refused, for the case where the atlas
+block never runs at all.
+
+Worth remembering as a class rather than a fix: the comment at `yaps_resolve.cginc:395` already
+said "zero would read as a refusal at the origin". The sentinel was documented and the diagnostic
+still walked into it, because it read the field from a struct that had never been through the
+initialiser.
+
 ### The readout could not see the bones, 2026-09-09. BUILT
 
 Six cells all reported the RESOLVE. Faced with a plug sitting bent while the strip read nobody and
