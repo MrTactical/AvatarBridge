@@ -2277,14 +2277,27 @@ Work down the list; the first that fits is usually it.
   and the reason for the bend can never be seen together. The overlay is a small strip of
   colours the plug draws on itself instead, and it leaves the plug bending normally. It is the
   plug's own answer, not a second reading taken beside it: it shares the plug's renderer, so it
-  sees the same contact channel, the same toggle and the same frame the deform does. Six cells,
-  left to right: who resolved the socket (grey nobody, cyan the contact channel, amber a marker
-  light, green the screen atlas), whether it is bending (red not engaged, amber engaged but its
-  toggle holds it off, green bending), how far away the socket is as a bar, what the atlas
-  read, whether the atlas is on the camera drawing this view, and whether this plug asks for
-  the atlas at all. Black or grey is nothing, red is a fault, green is working. **Everyone who
-  can see the plug can see the overlay**, and the toolkit refuses an upload while it is on.
-  Untick it when you are done.
+  sees the same contact channel, the same toggle and the same frame the deform does. Twelve cells
+  in two rows. Top row, left to right: who resolved the socket (grey nobody, cyan the contact
+  channel, amber a marker light, green the screen atlas), whether it is bending (red not engaged,
+  amber engaged but its toggle holds it off, green bending), how far away the socket is as a bar,
+  what the atlas read, whether the atlas is on the camera drawing this view, and whether this plug
+  asks for the atlas at all. Bottom row, the plug's own state: whether it recovered its frame from
+  its vertices (grey a plain-mesh plug, which is normal, red the recovery refused and the bend is
+  around the wrong axis), whether the readout's vertex is inside the bake, whether the bake read
+  anything, whether the plug will take its own wearer's sockets (amber refusing, which is the
+  quietest reason a plug finds nothing), how many sockets are in the atlas chain, and whether a
+  socket was refused by this plug's tags (red: refused, and nearer than whatever did answer).
+  Black or grey is nothing, red is a fault, green is working. **Everyone who can see the plug can
+  see the overlay**, and the toolkit refuses an upload while it is on. Untick it when you are done.
+- **Then read the two markers, and ONLY as a pair.** They sit out on the plug rather than in the
+  strip. The white one is drawn where the tip would be if nothing had moved the plug's bones; the
+  magenta one is drawn where the tip actually is. Sitting together means the bones are where the
+  bake left them, so any bend you can see is the shader's and the strip explains it. Apart means
+  something else is moving the bones, cloth or an animation or a constraint, and nothing in the
+  strip can tell you that: every number a shader can take from a single point is in world space,
+  where an avatar simply turning round changes all of them. Two points a shaft apart cannot be
+  fooled that way, which is the entire reason there are two.
 - **Does a toggle change how the plug LOOKS?** A toggle that swaps the plug's material, a second
   skin, a glow version, an alternate colour, used to hand the mesh a material carrying no deform:
   the plug went rigid for as long as that toggle was on, looked perfectly normal, and the tool

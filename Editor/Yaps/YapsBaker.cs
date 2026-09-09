@@ -55,6 +55,11 @@ namespace AvatarBridge
             // it, so they land where it lands and its shader recovers the
             // same frame the deform does.
             public int AnchorVertex = -1;
+            // The far end of the same shaft, for the readout's live marker.
+            // Two points is the whole reason it exists: one vertex can only
+            // be measured in world space, where the avatar turning round
+            // moves every number.
+            public int TipVertex = -1;
         }
 
         // wantedShapes: a socket names its stages; a plug takes the shapes
@@ -191,6 +196,8 @@ namespace AvatarBridge
             var boneWeights = staticMesh ? null : mesh.boneWeights;
             int anchor = -1;
             float anchorScore = -1f;
+            int tip = -1;
+            float tipScore = -1f;
 
             for (int i = 0; i < count; i++)
             {
@@ -213,6 +220,16 @@ namespace AvatarBridge
                         {
                             anchorScore = score;
                             anchor = i;
+                        }
+                        // The same test the other way up. On a shaft that is
+                        // one bone this lands on that bone too, and the two
+                        // markers then sit together forever, which is the
+                        // truth: bones that cannot bend did not bend.
+                        float far = solid ? 1000f + positions[i].z : activeWeights[i] * single;
+                        if (far > tipScore)
+                        {
+                            tipScore = far;
+                            tip = i;
                         }
                     }
                 }
@@ -310,6 +327,7 @@ namespace AvatarBridge
                 Origin = origin,
                 Rotation = rotation,
                 AnchorVertex = anchor,
+                TipVertex = tip,
             };
         }
 

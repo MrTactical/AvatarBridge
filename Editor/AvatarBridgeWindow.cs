@@ -1064,15 +1064,21 @@ namespace AvatarBridge
                     HelpBoxMessageType.Warning));
             }
             optIns.Add(BridgeElements.Bind("Draw a debug readout on each plug",
-                "For working out why a plug will not behave. A small strip of colours drawn by the " +
-                "plug itself saying, left to right: who resolved its socket (grey nobody, cyan the " +
+                "For working out why a plug will not behave. Twelve cells of colour in two rows, " +
+                "drawn by the plug itself. Top row: who resolved its socket (grey nobody, cyan the " +
                 "contact channel, amber a marker light, green the screen atlas), whether it is bending " +
                 "(amber: it found a socket but its toggle holds it off), how far away the socket is, " +
                 "what the screen atlas read, whether the atlas is on the camera drawing this view, and " +
-                "whether this plug asks for the atlas at all. Unlike the plug's own debug view it " +
-                "leaves the plug bending normally, so the bend and the reason for it can be read " +
-                "together. EVERYONE WHO CAN SEE THE PLUG CAN SEE IT, and the toolkit refuses an " +
-                "upload while it is on. Needs Penetration on Convert to YAPS.",
+                "whether this plug asks for the atlas at all. Bottom row, the plug itself: whether it " +
+                "recovered its frame, whether the readout's vertex is inside the bake, whether the bake " +
+                "read anything, whether it will take its own wearer's sockets, how many sockets are in " +
+                "the chain, and whether one was refused by this plug's tags. Two markers sit out on the " +
+                "plug as well: white where the tip would be with the bones at bake pose, magenta where " +
+                "the tip actually is. Apart means something is moving the BONES, which is cloth or an " +
+                "animation, not the deform. Unlike the plug's own debug view it leaves the plug bending " +
+                "normally, so the bend and the reason for it can be read together. EVERYONE WHO CAN SEE " +
+                "THE PLUG CAN SEE IT, and the toolkit refuses an upload while it is on. Needs " +
+                "Penetration on Convert to YAPS.",
                 settings.yapsDebugOverlay, v => { settings.yapsDebugOverlay = v; ScheduleRebuild(); }));
             if (settings.yapsDebugOverlay)
             {

@@ -617,6 +617,39 @@ Not fixable in reverse: a project already carrying the stored Remove keeps it, b
 deliberate Remove and a poisoned one are the same two booleans. Anyone whose penetration choice
 reads Remove after updating should set it back.
 
+### The readout could not see the bones, 2026-09-09. BUILT
+
+Six cells all reported the RESOLVE. Faced with a plug sitting bent while the strip read nobody and
+not engaged, the readout could say the deform was not doing it and nothing more, and the search
+then went to the animator and the cloth by hand.
+
+The cell that was asked for cannot exist on its own. Every quantity a vertex shader can take from
+ONE point is in world space, because Unity skins into world space and no C#-readable matrix admits
+it, so the anchor's live frame against its baked frame moves when the avatar turns round. There is
+no reference to subtract it against.
+
+Two points a shaft apart do not have that problem, so the readout grew a pair of markers instead.
+The mesh now carries three quads rather than one: the strip and a white marker weighted to the base
+anchor, drawn where the tip WOULD be from the recovered frame, and a magenta marker weighted to a
+tip vertex, drawn where it actually arrives. Together means the bones are at bake pose whatever
+else is happening; apart means cloth, an animation or a constraint is moving them. `TipVertex` is
+picked by the baker with the anchor's own test run the other way up, and falls back to the anchor
+on a one-bone shaft, where the markers then correctly never separate.
+
+The strip went to twelve cells in two rows at the same time, the top row unchanged so old
+screenshots still read. The new six are frame recovery (a plain-mesh plug is grey and fine, red is
+a skinned plug whose recovery refused and whose bend is around the wrong axis), the anchor vertex
+being inside the bake, whether the bake row read anything, the own-body rule, the atlas chain
+length, and a socket refused by tags while nearer than whatever answered.
+
+Only the strip resolves; the markers skip `YapsResolveSocket` entirely, because 27 atlas cells per
+vertex for a result that is thrown away is a frame rate bug wearing a diagnostic's clothes. One
+submesh for all three quads, so the readout still costs one material slot.
+
+`_YAPS_SocketDepth` was going to be a cell and is not: it lives in `yaps_socket.cginc`, which a
+plug's include chain does not carry, and the shader would not compile. The own-body rule took the
+slot.
+
 ### A look-swap toggle left the plug rigid, 2026-09-09. FIXED
 
 `YapsSwapFollow.Follow` repairs one swap: the clip that assigns the material the bake was taken

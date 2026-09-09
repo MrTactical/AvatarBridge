@@ -143,10 +143,13 @@ namespace AvatarBridge.Yaps
         // The material the bake replaced, so Remove can put it back. Set
         // by the first bake; the toolkit's own, not a knob.
         [Header("Diagnostics")]
-        [Tooltip("Draws a small readout on the plug in game, saying who resolved its socket, " +
-                 "whether it is bending and what the screen atlas saw. Everyone who can see the " +
-                 "plug can see it, and the toolkit refuses an upload while it is on. For working " +
-                 "out why a plug will not behave; untick it when you are done.")]
+        [Tooltip("Draws a readout on the plug in game: twelve cells saying who resolved its " +
+                 "socket, whether it is bending, what the screen atlas saw and what state its own " +
+                 "bake and frame are in, plus two markers, white where the tip would be with the " +
+                 "bones at bake pose and magenta where the tip actually is. Apart means something " +
+                 "is moving the bones rather than the deform. Everyone who can see the plug can " +
+                 "see it, and the toolkit refuses an upload while it is on. For working out why a " +
+                 "plug will not behave; untick it when you are done.")]
         public bool debugOverlay;
 
         // The mesh the readout replaced and the renderer it sits on, so a
