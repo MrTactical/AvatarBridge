@@ -294,6 +294,38 @@ their SDK differs; a name that does not resolve now warns instead of being assum
 **Still open, and not answerable in the editor:** ChilloutVR's constraint order against its own
 IK. Needs the reporter's SDK version, which bone, and what the wrong result actually looks like.
 
+## The contact guard was the wrong trade, 2026-09-09. FIXED
+
+Valkyr reconverted with the detector in and the claws still flickered. The
+detector was right and did fire, naming the parameter and the layer, and then
+declined to act:
+
+    Warning: 1 control(s) may loop while switched on. "ClawT" ([FX] ClawT),
+    also driven by a contact.
+
+The reasoning behind that guard was that a contact still pulses the parameter
+the way the pulse idiom wants, so the pair works from the contact and loops
+only from the menu, and rewiring one end would break the other. Both halves
+were true and the conclusion was still wrong: the menu is the driver that is
+actually broken, and a control that switches itself several times a second is
+worse than a contact that has to be rewired too.
+
+So the merger rewires regardless, records what it rewired in
+`ctx.UnlatchedParameters`, and a new pass rewires the contacts to match.
+`HoldUnlatchedContacts` runs after the merge, because only the merger knows
+which pairs it touched, and contacts convert a pass earlier. It finds the
+enter-1 / enter-0-next-frame pulse the OnEnter branch wrote and turns it into
+enter-1 / exit-0: the touch holds the control on and releases it, rather than
+tapping it.
+
+Not what VRChat did. It is the closest behaviour that survives the rewire the
+menu needed, and it is reported as an approximation rather than a conversion.
+
+**The lesson is the one already in CLAUDE.md.** The guard shipped on reasoning
+about what a contact would do, without an avatar wearing one. Two passes now
+disagree about a parameter unless something joins them, and nothing local
+would have shown it.
+
 ## A button became a toggle and the animator kept ping-ponging, 2026-09-08. FIXED
 
 An avatar's claw control switched itself several times a second in game, for as long as the box

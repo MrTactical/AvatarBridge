@@ -5419,15 +5419,14 @@ namespace AvatarBridge
                             handled.Add(b);
                             string label = $"\"{param}\" ({layerName})";
 
-                            // A contact still pulses it the way the idiom
-                            // wants, so the pair works from the contact and
-                            // loops only from the menu. Changing one end
-                            // would break the other; say so instead.
-                            if (ctx.ContactParameters.Contains(param))
-                            {
-                                left.Add(label + ", also driven by a contact");
-                                break;
-                            }
+                            // A contact used to be a reason to leave the pair
+                            // alone: it still pulses the parameter the way the
+                            // idiom wants, so the pair works from the contact
+                            // and loops only from the menu, and changing one
+                            // end looked like breaking the other. Wrong trade.
+                            // The menu is the driver that is actually broken,
+                            // and a loop is worse than a contact that has to
+                            // be rewired. HoldUnlatchedContacts rewires it.
                             // The way out is the transition that lands on the
                             // state the layer rests in. Without one there is
                             // no telling which side is off.
@@ -5438,6 +5437,7 @@ namespace AvatarBridge
                                 left.Add(label + ", neither state is the layer's resting one");
                                 break;
                             }
+                            ctx.UnlatchedParameters.Add(param);
                             exit.RemoveCondition(exit.conditions[0]);
                             exit.AddCondition(mode == AnimatorConditionMode.If
                                 ? AnimatorConditionMode.IfNot

@@ -75,6 +75,13 @@ namespace AvatarBridge
         public HashSet<string> PreserveParameters = new HashSet<string>();
         public HashSet<string> ImpulseParameters = new HashSet<string>();
         public HashSet<string> ContactParameters = new HashSet<string>();
+
+        // Parameters whose ping-pong pair the merger rewired into a plain
+        // toggle. A contact still drives some of them, and its emulated
+        // pulse advanced the pair one step, which the rewired pair reads as
+        // on for a frame and off again. HoldUnlatchedContacts reads this and
+        // turns those pulses into hold-while-touching.
+        public HashSet<string> UnlatchedParameters = new HashSet<string>();
         public List<string> ParameterOrder = new List<string>();
 
         public Dictionary<(string path, bool sender), List<string>> ContactHosts =

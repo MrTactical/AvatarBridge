@@ -369,6 +369,58 @@ namespace AvatarBridge
             hosts.Add(hostPath);
         }
 
+        // A pulse means one thing to a pair of states that hand over on the
+        // same condition, and the opposite thing to the toggle the merger
+        // rewired that pair into. Enter 1, leave 0 a frame later advanced
+        // the pair one step; against a rewired pair it is on for a frame and
+        // off again, so the contact stops doing anything visible.
+        //
+        // Hold instead: 1 while something is inside, 0 when it leaves. Not
+        // what VRChat did, and it is the closest behaviour that survives the
+        // rewire, which the menu needed to stop the loop. Runs after the
+        // merger because only the merger knows which pairs it rewired.
+        internal static void HoldUnlatchedContacts(BridgeContext ctx)
+        {
+            if (ctx.UnlatchedParameters.Count == 0 || ctx.Target == null) return;
+
+            var held = new List<string>();
+            foreach (var trigger in ctx.Target.GetComponentsInChildren<CVRAdvancedAvatarSettingsTrigger>(true))
+            {
+                if (trigger == null || trigger.enterTasks == null) continue;
+                foreach (string param in ctx.UnlatchedParameters)
+                {
+                    // The pulse is the pair the OnEnter branch wrote: set 1
+                    // now, set 0 a frame later, same parameter. Anything else
+                    // on this parameter was authored differently and is left
+                    // as it is.
+                    var release = trigger.enterTasks.FirstOrDefault(
+                        t => t != null && t.settingName == param && t.settingValue == 0f && t.delay > 0f);
+                    bool sets = trigger.enterTasks.Any(
+                        t => t != null && t.settingName == param && t.settingValue == 1f && t.delay == 0f);
+                    if (release == null || !sets) continue;
+
+                    trigger.enterTasks.Remove(release);
+                    if (trigger.exitTasks == null) trigger.exitTasks = new List<CVRAdvancedAvatarSettingsTriggerTask>();
+                    if (!trigger.exitTasks.Any(t => t != null && t.settingName == param))
+                    {
+                        trigger.exitTasks.Add(MakeTask(param, 0f, 0f));
+                    }
+                    held.Add($"\"{param}\" ({trigger.gameObject.name})");
+                }
+            }
+
+            if (held.Count == 0) return;
+            ctx.Report.Approximated(Category,
+                $"{held.Count} contact(s) now hold their control on instead of tapping it",
+                string.Join("; ", held) + ". In VRChat a touch flicked the value for one frame and "
+                + "that flick advanced a pair of states one step, which is how the control worked "
+                + "from a menu button too. ChilloutVR has no momentary button, so the menu holds the "
+                + "value instead and the pair had to be rewired into an ordinary toggle to stop it "
+                + "switching back and forth several times a second. A flick means nothing to that "
+                + "rewired pair, so the touch holds the value instead: on while something is touching, "
+                + "off when it leaves. The menu switch is unaffected and still latches.");
+        }
+
         internal static void RepointContactEnableCurves(BridgeContext ctx)
         {
             if (ctx.MergedController == null || ctx.ContactHosts.Count == 0)

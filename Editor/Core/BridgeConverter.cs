@@ -139,6 +139,7 @@ namespace AvatarBridge
                     Pass("Animator merge", AnimatorMerger.Run),
                     // After the merge, so the curves it repoints are the
                     // ones the avatar will actually run.
+                    Pass("Hold rewired contacts", ContactsConverter.HoldUnlatchedContacts),
                     Pass("Flatten VRCFury's second head", FuryHeadFlattener.Run),
                     Pass("Misc components", MiscConverter.Run),
                     Pass("Constraints", ConstraintConverter.Run),
