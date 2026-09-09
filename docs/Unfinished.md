@@ -401,6 +401,28 @@ does not churn the whole block.
 
 First run that can see it is 396.
 
+## No plug in the corpus ever refused anything, 2026-09-09. FIXED
+
+The first thing the new `[yaps tags]` block said, on run 396: `refusing=0`,
+27 times out of 27. Every socket in the corpus wears the shared tag and
+nothing else, no plug names a word, and no plug refuses one. So the exclude
+path was walked by `YapsTagProbe` alone, which tests the fold in isolation
+and never runs a conversion. Nothing checked that an authored `excludeTags`
+reaches `_YAPS_TagExclude` on the material the plug ships with.
+
+`Fixture_TaggedPair` closes it: a socket tagged `fixturehole` on the chest
+and a plug on the hips answering `fixturehole` and refusing `fixturebar`,
+with the shared tag off at both ends, since with it on the pair matches
+regardless and the named word proves nothing.
+
+Built by `FixtureBuilder.RunTaggedOnly`, for the reason `RunStrafeOnly`
+exists: the full build re-copies every fixture from a source scene that has
+been hand-edited since, so it would diff avatars this has nothing to do with.
+
+The next YAPS-ON run is the first that can read it. A YAPS-OFF run stops in
+`YapsBakePrep.Begin` before the tags are read, so the block does not appear
+there at all.
+
 ## Loose ends, small but real
 
 ### The settings are per USER, not per project. FIXED 2026-09-08
