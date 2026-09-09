@@ -423,6 +423,34 @@ The next YAPS-ON run is the first that can read it. A YAPS-OFF run stops in
 `YapsBakePrep.Begin` before the tags are read, so the block does not appear
 there at all.
 
+## Every YAPS run converted five avatars the exclusion list drops, 2026-09-09. FIXED
+
+Run 397 wrote 83 digests where run 396 wrote 87, and the five missing ones
+were exactly the five `[excluded]` names in `Regression/corpus.cfg`: Arlo,
+Branwen, Kimmi, Satin Snake, hypsi. All five had fresh timestamps inside
+396's window, so a YAPS run was converting them and a default run was not.
+
+`CorpusConfigPath` was `Root + "/corpus.cfg"`, and `Root` carries the mode
+suffix: `/Regression` by default, `/Regression/Yaps` with the flag on. Only
+one of those has the file. So every YAPS run since the split read no
+exclusion list at all and digested five avatars VRCFury cannot bake, whose
+diffs describe Fury's failure rather than the tool's, which is the whole
+reason the list exists.
+
+It degraded silently because a missing file reads as an empty list.
+`QuickSet()` throws on the same miss and names the path it wanted, so the
+quick set has been failing loudly in YAPS mode the whole time, and nobody
+connected the two halves.
+
+`CorpusConfigPath` reads from the repo now, not from `Root`: which scenes
+are avatars is a fact about the project and does not change with the mode.
+`Repo` is the shared getter both use.
+
+The accepted YAPS baseline holds five digests that should not exist. Harmless
+to leave, since they simply stop being written; the next YAPS run drops to 83
+and those five go stale in place. Delete them from `Regression/Yaps/Baseline`
+and `Current` whenever it is convenient.
+
 ## Loose ends, small but real
 
 ### The settings are per USER, not per project. FIXED 2026-09-08

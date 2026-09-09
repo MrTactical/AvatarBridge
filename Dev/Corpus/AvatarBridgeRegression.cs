@@ -41,7 +41,7 @@ namespace AvatarBridge.Regression
         // Digests live beside the tool, not in the Unity project.
         // They must survive a reimport of Assets/AvatarBridge.
         // Set AVATARBRIDGE_REPO to the checkout path before running.
-        static string Root
+        static string Repo
         {
             get
             {
@@ -49,6 +49,15 @@ namespace AvatarBridge.Regression
                 if (string.IsNullOrEmpty(repo))
                     throw new InvalidOperationException(
                         "Set the AVATARBRIDGE_REPO environment variable to the AvatarBridge checkout path.");
+                return repo.Replace('\\', '/').TrimEnd('/');
+            }
+        }
+
+        static string Root
+        {
+            get
+            {
+                string repo = Repo;
                 // A flag-on run keeps its own Baseline and Current. The two
                 // answer different questions: one asks whether existing
                 // users are unaffected, the other whether the new feature
@@ -61,7 +70,7 @@ namespace AvatarBridge.Regression
                 {
                     suffix += "/DynamicBone";
                 }
-                return repo.Replace('\\', '/').TrimEnd('/') + suffix;
+                return repo + suffix;
             }
         }
         static string BaselineDir => Root + "/Baseline";
@@ -80,7 +89,16 @@ namespace AvatarBridge.Regression
         // Per-project scene lists live in Regression/corpus.cfg beside
         // the digests. Local test data, kept out of the repo like the
         // digests. Sections [excluded] and [quickset], "#" comments.
-        static string CorpusConfigPath => Root + "/corpus.cfg";
+        //
+        // NOT under Root. Root moves per mode, and the lists do not: which
+        // scenes are avatars and which ones VRCFury cannot bake is a fact
+        // about the project, the same in every mode. Reading it from Root
+        // meant only the default mode ever found the file, so a YAPS run
+        // silently kept the five avatars the list exists to drop and
+        // digested VRCFury's failure as if it were the tool's. Silently,
+        // because a missing file reads as an empty list; the quick set
+        // throws on the same miss and was the only half anybody saw.
+        static string CorpusConfigPath => Repo + "/Regression/corpus.cfg";
 
         static string[] ReadCorpusSection(string section)
         {
