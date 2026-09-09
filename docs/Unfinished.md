@@ -339,10 +339,33 @@ serialises to NOTHING. The first build of this appeared in the Scene view and wa
 game, which reads as the shader failing rather than the mesh never arriving. The quad is an
 asset now, the same as the atlas's own two meshes, which had this solved already.
 
-Not done, and deliberate: `_YAPS_Enabled` is animated, so it lives in the renderer's
-MaterialPropertyBlock rather than the material, and the overlay cannot see it. No cell depends
-on it. If a cell for "the toggle killed the deform" is ever wanted, that value has to be
-mirrored onto the overlay's own renderer by an animation pass.
+**Rebuilt the same day, onto the plug's own renderer.** The quad beside the plug was a
+second resolver, not a window onto the first, and the two disagreed exactly when it
+mattered. Reported from the field: socket toggled on then off, plug still bent round where
+the socket had been, readout saying nobody. Two things a separate renderer cannot see. The
+contact channel and `_YAPS_Enabled` arrive as animated material properties, which land in
+the plug renderer's MaterialPropertyBlock and nowhere else. And the plug's frame is recovered
+per vertex from its own skinned normal and tangent, where the quad had only a bone matrix
+fixed at the bake rotation; a plug already bent has its forward pointing somewhere else, so
+its atlas scan reads different cells than the quad's. A readout that can be wrong about
+whether anything is happening is worse than the length view, which at least came from
+inside the plug's own draw.
+
+So the readout is now four vertices appended to the plug's mesh in their own submesh, with
+their own material slot on the same renderer. Same renderer, same block, so the channel and
+the toggle are visible. The four vertices copy one plug vertex's bone weights, normal,
+tangent and every blendshape delta, the anchor `YapsBaker` now picks (the lowest shaft
+vertex wholly on one bone), so they skin to exactly where that vertex skins, and the shader
+runs YapsDeform's own recovery on the bake entry for that vertex. The cell for "engaged but
+the toggle holds it off" fell out of this for free; it is amber in the second cell.
+
+The mesh is a copy saved beside the bake, and the plug component records the mesh it
+replaced and the renderer it sits on. `Restore` runs before every bake in BOTH builders,
+because a bake taken over the readout copy counts its four vertices as the plug's and could
+pick one as the next anchor; and first thing in `RemovePlug`, because the readout's slot
+carries `_YAPS_Bake` and would otherwise be restored as a plug material. The one thing the
+mesh copy has to get right is that Unity wants every vertex channel either absent or exactly
+vertex-count long, so an empty channel stays empty and a present one grows by four.
 
 ## The lighthouse outranked the socket's own toggle, 2026-09-09. FIXED
 

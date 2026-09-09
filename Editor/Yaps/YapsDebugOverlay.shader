@@ -1,4 +1,4 @@
-// A readout for a plug that will not behave, drawn beside it in game.
+// A readout for a plug that will not behave, drawn on the plug itself.
 //
 // The plug's own debug view answers in LENGTH, because the patcher edits
 // a host shader's vertex stage and there is no fragment of ours to paint
@@ -7,9 +7,20 @@
 // seen together. This is our own shader end to end, so it paints, and it
 // leaves the plug alone.
 //
+// IT RUNS ON THE PLUG'S RENDERER, as its own submesh and material slot,
+// and that is not a packaging detail. A separate renderer cannot see the
+// contact channel or the enabled flag, which arrive as animated material
+// properties in this renderer's block alone, and it cannot recover the
+// frame the deform recovers, which comes from this renderer's skinned
+// vertices. The first version was a separate object and reported nobody
+// while the plug was bent round a socket. The four vertices here are
+// skinned exactly like one plug vertex, the anchor, so what arrives is
+// where the anchor is, and the bake says where it was: the same recovery
+// the deform runs, on the same numbers.
+//
 // Six cells, left to right. Each is a colour, never a fraction:
 //   1  who resolved it      grey nobody, cyan channel, amber light, green atlas
-//   2  engaged              red no, green yes
+//   2  bending              red not engaged, amber engaged but switched off, green bending
 //   3  gap to the socket    a bar, full width at a plug length away
 //   4  what the atlas read  black nothing, red not ours, amber thrown out, green socket
 //   5  atlas on this camera black too small, red wrong screen, amber empty, green live
@@ -25,30 +36,74 @@ Shader "YAPS/Debug Overlay"
     {
         _YAPS_OverlaySize ("Overlay size", Float) = 0.12
         _YAPS_OverlayLift ("Overlay lift", Float) = 0.15
+        _YAPS_AnchorVertex ("Anchor vertex", Float) = -1
 
-        // MIRRORS THE PATCHED PLUG'S BLOCK. The builder copies the values
-        // across and reports any name it could not, so a property added to
-        // YapsShaderPatcher.PropertyBlock and forgotten here is a warning
-        // in the report rather than a cell that quietly reads zero.
-        _YAPS_Length ("YAPS length", Float) = 0
+        // MIRRORS THE PATCHED PLUG'S BLOCK, the whole of it. The builder
+        // copies the values across by name and reports any it could not,
+        // so a property added to YapsShaderPatcher.PropertyBlock and
+        // forgotten here is a warning in the report rather than a cell that
+        // quietly reads zero.
+        _YAPS_Bake ("YAPS baked data", 2D) = "black" {}
+        _YAPS_VertexCount ("YAPS vertex count", Float) = 0
+        _YAPS_Enabled ("YAPS enabled", Range(0,1)) = 1
+        _YAPS_Length ("YAPS plug length", Float) = 1
+        _YAPS_Overrun ("YAPS allow overrun", Range(0,1)) = 1
         _YAPS_BakeScale ("YAPS bake scale", Float) = 1
         _YAPS_BakeGirth ("YAPS bake girth", Float) = 1
-        _YAPS_Enabled ("YAPS enabled", Float) = 1
-        _YAPS_SelfTag ("YAPS self tag", Float) = -1
-        _YAPS_SelfAllow ("YAPS self allow", Float) = 0
-        _YAPS_UseAtlas ("YAPS use atlas", Float) = 0
-        _YAPS_TagInclude ("YAPS tag include", Vector) = (0,0,0,0)
-        _YAPS_TagExclude ("YAPS tag exclude", Vector) = (0,0,0,0)
-        _YAPS_SocketPos ("YAPS socket pos", Vector) = (0,0,0,0)
+        _YAPS_FrameFromVertex ("YAPS frame from vertex", Range(0,1)) = 0
+        _YAPS_SocketPos ("YAPS socket position", Vector) = (0,0,0,0)
         _YAPS_SocketForward ("YAPS socket forward", Vector) = (0,0,0,0)
         _YAPS_SocketUp ("YAPS socket up", Vector) = (0,0,0,0)
         _YAPS_SocketFlags ("YAPS socket flags", Vector) = (0,0,0,0)
         _YAPS_SocketFront ("YAPS socket front", Vector) = (0,0,0,0)
+        _YAPS_ChannelSpace ("YAPS channel space", Range(0,1)) = 0
         _YAPS_ChannelOrigin ("YAPS channel origin", Vector) = (0,0,0,0)
         _YAPS_ChannelForward ("YAPS channel forward", Vector) = (0,0,0,0)
         _YAPS_ChannelUp ("YAPS channel up", Vector) = (0,0,0,0)
-        _YAPS_ChannelSpace ("YAPS channel space", Float) = 0
-        _YAPS_ChannelExtents ("YAPS channel extents", Vector) = (0,0,0,0)
+        _YAPS_ChannelExtents ("YAPS channel extents", Vector) = (1,1,1,0)
+        _YAPS_SelfTag ("YAPS self tag", Float) = -1
+        _YAPS_SelfAllow ("YAPS own body allowed", Range(0,1)) = 0
+        _YAPS_UseAtlas ("YAPS read the screen atlas", Range(0,1)) = 0
+        _YAPS_Debug ("YAPS view", Float) = 0
+        _YAPS_TaperStart ("YAPS hole taper start", Range(0,1)) = 0.10
+        _YAPS_TaperEnd ("YAPS hole taper end", Range(0,1)) = 0.30
+        _YAPS_IdleLength ("YAPS idle length", Range(0.1,1)) = 1
+        _YAPS_IdleWidth ("YAPS idle width", Range(0.1,1)) = 1
+        _YAPS_Squeeze ("YAPS squeeze", Range(0,1)) = 0
+        _YAPS_SqueezeDistance ("YAPS squeeze reach", Range(0.01,1)) = 0.15
+        _YAPS_Bulge ("YAPS bulge", Range(0,1)) = 0
+        _YAPS_BulgeDistance ("YAPS bulge reach", Range(0.01,1)) = 0.2
+        _YAPS_PumpStrength ("YAPS pumping", Range(0,0.5)) = 0
+        _YAPS_PumpSpeed ("YAPS pumping speed", Range(0,20)) = 6
+        _YAPS_PumpWidth ("YAPS pumping width", Range(0.05,1)) = 1
+        _YAPS_WriggleStrength ("YAPS wriggle", Range(0,0.5)) = 0
+        _YAPS_WriggleSpeed ("YAPS wriggle speed", Range(0,20)) = 2
+        _YAPS_Curvature ("YAPS curvature", Range(-1.5,1.5)) = 0
+        _YAPS_ReCurvature ("YAPS recurvature", Range(-1.5,1.5)) = 0
+        _YAPS_EntranceStiffness ("YAPS entrance stiffness", Range(0,1)) = 0
+        _YAPS_BezierSmoothness ("YAPS bezier smoothness", Range(0.2,3)) = 1
+        _YAPS_BezierStart ("YAPS straight before bend", Range(0,0.8)) = 0
+        _YAPS_SmoothStart ("YAPS ease into bend", Range(0,0.5)) = 0
+        _YAPS_MinimumSocketDistance ("YAPS minimum socket distance", Range(0,1)) = 0
+        _YAPS_TagInclude ("YAPS only sockets tagged", Vector) = (0,0,0,0)
+        _YAPS_TagExclude ("YAPS never sockets tagged", Vector) = (0,0,0,0)
+        _YAPS_ShapeCount ("YAPS shape count", Float) = 0
+        _YAPS_ShapeWeights ("YAPS shape weights 0-3", Vector) = (0,0,0,0)
+        _YAPS_ShapeWeights2 ("YAPS shape weights 4-7", Vector) = (0,0,0,0)
+        _YAPS_ShapeWeights3 ("YAPS shape weights 8-11", Vector) = (0,0,0,0)
+        _YAPS_ShapeWeights4 ("YAPS shape weights 12-15", Vector) = (0,0,0,0)
+        _YAPS_SocketPower ("YAPS socket power", Range(0,1)) = 0
+        _YAPS_SocketDepth ("YAPS socket depth (-1 none)", Range(-1,1)) = -1
+        _YAPS_SocketOrigin ("YAPS socket origin, mesh local", Vector) = (0,0,0,0)
+        _YAPS_SocketNoSelfExclude ("YAPS socket takes the wearer's own plug", Range(0,1)) = 0
+        _YAPS_SocketShapeStart ("YAPS socket shape starts 0-3", Vector) = (0, 0.25, 0.5, 0.75)
+        _YAPS_SocketShapeStart2 ("YAPS socket shape starts 4-7", Vector) = (0, 0, 0, 0)
+        _YAPS_SocketShapeStart3 ("YAPS socket shape starts 8-11", Vector) = (0, 0, 0, 0)
+        _YAPS_SocketShapeStart4 ("YAPS socket shape starts 12-15", Vector) = (0, 0, 0, 0)
+        _YAPS_SocketShapeFade ("YAPS socket shape fades 0-3", Vector) = (0.3, 0.3, 0.3, 0.3)
+        _YAPS_SocketShapeFade2 ("YAPS socket shape fades 4-7", Vector) = (0.3, 0.3, 0.3, 0.3)
+        _YAPS_SocketShapeFade3 ("YAPS socket shape fades 8-11", Vector) = (0.3, 0.3, 0.3, 0.3)
+        _YAPS_SocketShapeFade4 ("YAPS socket shape fades 12-15", Vector) = (0.3, 0.3, 0.3, 0.3)
     }
 
     SubShader
@@ -78,10 +133,13 @@ Shader "YAPS/Debug Overlay"
 
             float _YAPS_OverlaySize;
             float _YAPS_OverlayLift;
+            float _YAPS_AnchorVertex;
 
             struct appdata
             {
                 float4 vertex : POSITION;
+                float3 normal : NORMAL;
+                float4 tangent : TANGENT;
                 float2 uv : TEXCOORD0;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
             };
@@ -90,10 +148,10 @@ Shader "YAPS/Debug Overlay"
             {
                 float4 pos : SV_POSITION;
                 float2 uv : TEXCOORD0;
-                // The whole answer, resolved ONCE. Every vertex would
-                // resolve the same thing: the origin is the object's, not
-                // the vertex's, and 27 atlas cells per pixel is not a
-                // diagnostic, it is a frame rate bug.
+                // The whole answer, resolved ONCE per vertex. All four
+                // vertices are the anchor, so all four resolve the same
+                // thing; 27 atlas cells per pixel is not a diagnostic, it
+                // is a frame rate bug.
                 float4 read : TEXCOORD1;   // tier, engaged, gap fraction, headers
                 float2 read2 : TEXCOORD2;  // hits, atlas-on-this-camera step
                 UNITY_VERTEX_OUTPUT_STEREO
@@ -106,15 +164,35 @@ Shader "YAPS/Debug Overlay"
                 UNITY_INITIALIZE_OUTPUT(v2f, o);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
 
-                // The plug's frame, from this object's transform. The
-                // builder parents this quad to the bone the bake measured
-                // from and orients it to the bake's own rotation, so the
-                // matrix here IS the frame the deform recovers per vertex.
-                float3 rootWorld = mul(unity_ObjectToWorld, float4(0, 0, 0, 1)).xyz;
+                // THE DEFORM'S OWN FRAME RECOVERY, step for step. This
+                // vertex is skinned like the anchor, so it arrives where
+                // the anchor arrives; the bake holds where the anchor was.
+                // The steps and their order are YapsDeform's, and a change
+                // there that is not made here is a readout that lies.
+                YapsVertex baked = YapsReadBaked((uint) max(_YAPS_AnchorVertex, 0));
+                baked.position *= float3(max(_YAPS_BakeGirth, 0.0001), max(_YAPS_BakeGirth, 0.0001),
+                                         max(_YAPS_BakeScale, 0.0001));
+
+                float3 rootLocal = float3(0, 0, 0);
+                float3 forwardLocal = float3(0, 0, 1);
+                float3 upLocal = float3(0, 1, 0);
+                if (_YAPS_FrameFromVertex > 0.5)
+                {
+                    YapsBasis basis = YapsBuildBasis(baked.normal, baked.tangent,
+                                                     v.normal, v.tangent.xyz);
+                    if (basis.valid)
+                    {
+                        rootLocal = v.vertex.xyz - YapsRotate(basis, baked.position);
+                        forwardLocal = YapsRotate(basis, float3(0, 0, 1));
+                        upLocal = YapsRotate(basis, float3(0, 1, 0));
+                    }
+                }
+
+                float3 rootWorld = mul(unity_ObjectToWorld, float4(rootLocal, 1)).xyz;
                 float3 rootForward = YapsSafeNormalize(
-                    mul((float3x3) unity_ObjectToWorld, float3(0, 0, 1)), float3(0, 0, 1));
+                    mul((float3x3) unity_ObjectToWorld, forwardLocal), float3(0, 0, 1));
                 float3 rootUp = YapsPerpendicular(rootForward,
-                    mul((float3x3) unity_ObjectToWorld, float3(0, 1, 0)));
+                    mul((float3x3) unity_ObjectToWorld, upLocal));
 
                 float yapsScale = length(mul((float3x3) unity_ObjectToWorld, float3(0, 0, 1)));
                 float worldLength = _YAPS_Length * _YAPS_BakeScale * yapsScale;
@@ -137,11 +215,12 @@ Shader "YAPS/Debug Overlay"
                 o.read = float4(socket.tier, socket.engaged, gap, socket.atlasHeaders);
                 o.read2 = float2(socket.atlasHits, target);
 
-                // A VIEW-SPACE BILLBOARD, so it faces every eye, every
-                // mirror and the portrait camera without a script. The
-                // view matrix is per-eye, so single-pass instanced gets
-                // this right for free; a world-space facing would not.
-                float3 originView = UnityObjectToViewPos(float3(0, 0, 0));
+                // A VIEW-SPACE BILLBOARD off the recovered root, so it
+                // faces every eye, every mirror and the portrait camera
+                // without a script. The view matrix is per-eye, so
+                // single-pass instanced gets this right for free; a
+                // world-space facing would not.
+                float3 originView = mul(UNITY_MATRIX_V, float4(rootWorld, 1)).xyz;
                 float2 off = (v.uv - 0.5) * float2(_YAPS_OverlaySize * 6.0, _YAPS_OverlaySize);
                 originView.y += _YAPS_OverlayLift;
                 o.pos = mul(UNITY_MATRIX_P, float4(originView + float3(off, 0), 1));
@@ -197,7 +276,13 @@ Shader "YAPS/Debug Overlay"
                 }
                 else if (cell == 1)
                 {
-                    c = engaged < 0.5 ? YAPS_BAD : YAPS_GOOD;
+                    // Engaged is the resolver's verdict; bending needs the
+                    // enabled flag as well, and that flag only exists in
+                    // this renderer's block. Amber is a plug that found its
+                    // socket while its toggle holds it off, which from the
+                    // outside looks exactly like nobody resolving it.
+                    c = engaged < 0.5 ? YAPS_BAD
+                      : (_YAPS_Enabled < 0.5 ? YAPS_HALF : YAPS_GOOD);
                 }
                 else if (cell == 2)
                 {

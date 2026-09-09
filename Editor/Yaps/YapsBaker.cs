@@ -49,6 +49,12 @@ namespace AvatarBridge
             // the plug object's transform; anything measuring the plug uses this.
             public Vector3 Origin;
             public Quaternion Rotation;
+
+            // The lowest plug vertex weighted wholly to one bone, -1 when
+            // there is none. The readout skins four vertices exactly like
+            // it, so they land where it lands and its shader recovers the
+            // same frame the deform does.
+            public int AnchorVertex = -1;
         }
 
         // wantedShapes: a socket names its stages; a plug takes the shapes
@@ -179,6 +185,13 @@ namespace AvatarBridge
             float length = 0f, radius = 0f;
             int active = 0;
 
+            // The readout's anchor. A vertex blended across bones recovers a
+            // blended frame, so prefer one wholly on a single bone and take
+            // the lowest of those; failing that, the most wholly owned one.
+            var boneWeights = staticMesh ? null : mesh.boneWeights;
+            int anchor = -1;
+            float anchorScore = -1f;
+
             for (int i = 0; i < count; i++)
             {
                 positions[i] = toPlug.MultiplyPoint3x4(worldPositions[i]);
@@ -189,6 +202,19 @@ namespace AvatarBridge
                     active++;
                     length = Mathf.Max(length, positions[i].z);
                     radius = Mathf.Max(radius, positions[i].x * positions[i].x + positions[i].y * positions[i].y);
+
+                    // Behind the base is not the shaft; the shader reads it inactive.
+                    if (positions[i].z >= 0f)
+                    {
+                        float single = boneWeights != null && boneWeights.Length > i ? boneWeights[i].weight0 : 1f;
+                        bool solid = activeWeights[i] > 0.999f && single > 0.999f;
+                        float score = solid ? 1000f - positions[i].z : activeWeights[i] * single;
+                        if (score > anchorScore)
+                        {
+                            anchorScore = score;
+                            anchor = i;
+                        }
+                    }
                 }
             }
 
@@ -283,6 +309,7 @@ namespace AvatarBridge
                 MovingShapes = movingShapes,
                 Origin = origin,
                 Rotation = rotation,
+                AnchorVertex = anchor,
             };
         }
 

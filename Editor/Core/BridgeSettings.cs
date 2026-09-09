@@ -180,9 +180,10 @@ namespace AvatarBridge
         [Range(0.01f, 0.5f)]
         public float yapsSocketFollow = DefaultSocketFollow;
         internal const float DefaultSocketFollow = 0.02f;
-        // A readout beside each plug saying who resolved its socket. For
-        // working out why a plug will not behave, and off by default because
-        // everyone who can see the plug can see it.
+        // A readout each plug draws on itself saying who resolved its socket
+        // and whether it is bending. For working out why a plug will not
+        // behave, and off by default because everyone who can see the plug
+        // can see it.
         public bool yapsDebugOverlay = false;
         // Comma-separated. Matched as parameter prefixes and
         // layer-name substrings.

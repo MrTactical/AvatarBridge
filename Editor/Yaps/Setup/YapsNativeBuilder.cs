@@ -46,6 +46,9 @@ namespace AvatarBridge
             var report = new BridgeReport();
             // The named root bone is the chain, else the plug object.
             var chainRoot = plug.rootBone != null ? plug.rootBone : plug.transform;
+            // The last readout's mesh back first, or its four vertices bake
+            // as the plug's.
+            YapsDebugOverlayBuilder.Restore(plug);
             var result = YapsBaker.Bake(renderer, chainRoot, dir, report, out string failure, flipAxis: plug.flipAxis);
             if (result == null) { o.Message = "could not bake: " + failure; return o; }
             // A plain mesh bakes in its own units; the markers and the

@@ -140,6 +140,9 @@ namespace AvatarBridge
                 return;
             }
 
+            // A source built by the toolkit with its readout on wears the
+            // readout's mesh; the bake wants the one underneath.
+            YapsDebugOverlayBuilder.Restore(plugRoot.GetComponent<YapsPlug>());
             var result = YapsBaker.Bake(renderer, plugRoot, ctx.OutputDir + "/YAPS", ctx.Report,
                 out string bakeFailure);
             if (result == null)

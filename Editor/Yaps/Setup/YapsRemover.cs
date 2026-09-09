@@ -194,6 +194,16 @@ namespace AvatarBridge
 
             if (renderer != null)
             {
+                // The readout first: its slot carries the bake texture too,
+                // and left in place it would be restored as a plug material.
+                if (plug.readoutRenderer != null)
+                {
+                    Undo.RecordObject(plug.readoutRenderer, "Remove YAPS plug");
+                    Undo.RecordObject(plug, "Remove YAPS plug");
+                    YapsDebugOverlayBuilder.Restore(plug);
+                    done.Add("the debug readout off its mesh");
+                }
+
                 // The bake: the material it replaced back in its slot; when
                 // that cannot be found, the deform off and the source shader
                 // back where it is known.

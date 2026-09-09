@@ -1063,14 +1063,15 @@ namespace AvatarBridge
                     "parameters as authored pays for each of them.",
                     HelpBoxMessageType.Warning));
             }
-            optIns.Add(BridgeElements.Bind("Build a debug readout beside each plug",
-                "For working out why a plug will not behave. A small strip of colours beside the plug " +
-                "saying, left to right: who resolved its socket (grey nobody, cyan the contact channel, " +
-                "amber a marker light, green the screen atlas), whether it engaged, how far away the " +
-                "socket is, what the screen atlas read, whether the atlas is on the camera drawing this " +
-                "view, and whether this plug asks for the atlas at all. Unlike the plug's own debug " +
-                "view it leaves the plug bending normally, so the bend and the reason for it can be " +
-                "read together. EVERYONE WHO CAN SEE THE PLUG CAN SEE IT, and the toolkit refuses an " +
+            optIns.Add(BridgeElements.Bind("Draw a debug readout on each plug",
+                "For working out why a plug will not behave. A small strip of colours drawn by the " +
+                "plug itself saying, left to right: who resolved its socket (grey nobody, cyan the " +
+                "contact channel, amber a marker light, green the screen atlas), whether it is bending " +
+                "(amber: it found a socket but its toggle holds it off), how far away the socket is, " +
+                "what the screen atlas read, whether the atlas is on the camera drawing this view, and " +
+                "whether this plug asks for the atlas at all. Unlike the plug's own debug view it " +
+                "leaves the plug bending normally, so the bend and the reason for it can be read " +
+                "together. EVERYONE WHO CAN SEE THE PLUG CAN SEE IT, and the toolkit refuses an " +
                 "upload while it is on. Needs Penetration on Convert to YAPS.",
                 settings.yapsDebugOverlay, v => { settings.yapsDebugOverlay = v; ScheduleRebuild(); }));
             if (settings.yapsDebugOverlay)
