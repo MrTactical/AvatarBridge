@@ -334,6 +334,11 @@ the overlay, and anything the overlay's shader cannot hold is reported as a warn
 hand-written list rots the first time a property is added to the patcher's block, and the cell
 it feeds then reads zero without saying so, which is the one failure a diagnostic must not have.
 
+A mesh built in memory and handed to a MeshFilter draws perfectly in the editor and
+serialises to NOTHING. The first build of this appeared in the Scene view and was absent in
+game, which reads as the shader failing rather than the mesh never arriving. The quad is an
+asset now, the same as the atlas's own two meshes, which had this solved already.
+
 Not done, and deliberate: `_YAPS_Enabled` is animated, so it lives in the renderer's
 MaterialPropertyBlock rather than the material, and the overlay cannot see it. No cell depends
 on it. If a cell for "the toggle killed the deform" is ever wanted, that value has to be

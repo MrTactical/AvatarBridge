@@ -193,8 +193,21 @@ namespace AvatarBridge
 
         // A unit quad. Its vertices are never seen where they are put: the
         // shader billboards them in view space, so only the UVs matter.
+        //
+        // SAVED AS AN ASSET, and that is the whole reason this is not two
+        // lines. A mesh built in memory and handed to a MeshFilter draws
+        // perfectly in the editor and serialises to nothing, so the readout
+        // appeared in the Scene view and was absent in game, which reads as
+        // the shader failing rather than the mesh never arriving.
         static Mesh Quad()
         {
+            string path = Folder + "/YAPS Debug Overlay Quad.asset";
+            var have = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+            if (have != null && have.vertexCount == 4)
+            {
+                return have;
+            }
+
             var mesh = new Mesh { name = "YAPS Debug Overlay Quad" };
             mesh.vertices = new[]
             {
@@ -210,6 +223,12 @@ namespace AvatarBridge
             // Never culled by distance or by facing: the quad is drawn where
             // the view matrix puts it, not where these bounds say it is.
             mesh.bounds = new Bounds(Vector3.zero, Vector3.one * 1000f);
+            Directory.CreateDirectory(Folder);
+            if (have != null)
+            {
+                AssetDatabase.DeleteAsset(path);
+            }
+            AssetDatabase.CreateAsset(mesh, path);
             return mesh;
         }
 
