@@ -372,6 +372,12 @@ namespace AvatarBridge
             if (f.Material != null && f.Material.HasProperty("_YAPS_Debug")
                 && f.Material.GetFloat("_YAPS_Debug") > 0.5f)
                 f.Notes.Add("a DEBUG VIEW is on, it replaces the deform and will upload with the avatar");
+            // The readout is a real object with a real renderer, so unlike the
+            // view above it survives regardless of what the material says.
+            // Everyone who can see the plug can read it.
+            var owner = f.Root != null ? f.Root.GetComponentInParent<Yaps.YapsPlug>() : null;
+            if (owner != null && owner.debugOverlay)
+                f.Notes.Add("a DEBUG READOUT is built beside this plug, everyone can see it and it will upload with the avatar");
         }
 
         static void Classify(Found f)

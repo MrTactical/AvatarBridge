@@ -294,6 +294,51 @@ their SDK differs; a name that does not resolve now warns instead of being assum
 **Still open, and not answerable in the editor:** ChilloutVR's constraint order against its own
 IK. Needs the reporter's SDK version, which bone, and what the wrong result actually looks like.
 
+## A readout that does not suppress what it is reporting on, 2026-09-09. BUILT
+
+The plug's `_YAPS_Debug` view answers in LENGTH, because `YapsShaderPatcher` edits a host
+shader's vertex stage and nothing else, so there is no fragment of ours to paint in. Two
+faults, and the second is the serious one. It says one thing at a time, and it STRAIGHTENS
+THE PLUG to say it, so the bend and the reason for the bend can never be observed together:
+a reading of "nobody resolved it" can only be compared against a memory of the plug bending.
+That is exactly the compare-against-memory step that has produced every wrong call here.
+Reported from the field as "this is hard to tell, we need a full debug mode".
+
+`YAPS/Debug Overlay`: our own shader end to end, so it paints. A quad beside the plug, six
+cells, each a colour rather than a fraction: who resolved the socket, whether it engaged, the
+gap as a bar, what the atlas read, whether the atlas is on the camera drawing this view, and
+whether the plug asks for the atlas at all. The plug keeps bending normally throughout.
+
+Three things it had to get right, each of which would have made it lie:
+
+**The queue.** Anything drawn into the screen can land in the atlas grab and corrupt the
+transport it is reporting on. The whole atlas transaction runs in Background: clear at -946,
+writers at -945, grab at -944. The overlay sits at Queue Overlay, thousands of levels later,
+so it cannot reach the grab. Do not move it forward.
+
+**The frame.** The deform takes its FRAME from the bone, recovered per vertex, and its SCALE
+from the renderer's matrix, and those are two different transforms. The quad hangs off the
+bone at the bake's own origin and rotation, and its local scale is corrected back to the
+renderer's, or every distance in the readout is wrong by the ratio between them.
+
+**Both builders.** The first version hooked `YapsNativeBuilder.Bake` and would have shipped
+covering the toolkit alone: the converter bakes straight from `YapsBaker.Bake` at
+`YapsConverter.cs:143` and never calls the native path. Converted avatars are most of them
+and are the ones being debugged. `Apply` now takes a root and a flag rather than a `YapsPlug`,
+the toolkit passes the component's tickbox and the converter passes a setting, and the
+converter seeds the tickbox onto the component `AdoptPlug` writes so a later Build keeps it.
+Five of six audit findings last time were one-path-only; this makes six of seven.
+
+Property values are copied by NAME off the patched material rather than from a list kept in
+the overlay, and anything the overlay's shader cannot hold is reported as a warning. A
+hand-written list rots the first time a property is added to the patcher's block, and the cell
+it feeds then reads zero without saying so, which is the one failure a diagnostic must not have.
+
+Not done, and deliberate: `_YAPS_Enabled` is animated, so it lives in the renderer's
+MaterialPropertyBlock rather than the material, and the overlay cannot see it. No cell depends
+on it. If a cell for "the toggle killed the deform" is ever wanted, that value has to be
+mirrored onto the overlay's own renderer by an animation pass.
+
 ## The lighthouse outranked the socket's own toggle, 2026-09-09. FIXED
 
 Reported as "turning the socket off no longer straightens the plug, have we regressed".

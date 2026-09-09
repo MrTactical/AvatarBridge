@@ -213,6 +213,17 @@ namespace AvatarBridge
             // so a re-bake writes the same thing.
             YapsNativeBuilder.AdoptPlug(plugRoot, renderer, primarySlot, primaryMaterial, null);
 
+            // The readout, if this conversion asked for one. Seeded onto the
+            // component AdoptPlug just wrote, so a later Build in the toolkit
+            // keeps it rather than silently taking it away again.
+            var adopted = plugRoot.GetComponent<YapsPlug>();
+            if (adopted != null)
+            {
+                adopted.debugOverlay = ctx.Settings.yapsDebugOverlay;
+            }
+            YapsDebugOverlayBuilder.Apply(plugRoot, renderer.name, ctx.Settings.yapsDebugOverlay,
+                result, primaryMaterial, ctx.Report);
+
             ctx.Report.Converted(Category, $"Plug converted at {where}",
                 $"\"{renderer.name}\" material{(patchedSlots.Count > 1 ? "s" : "")} " +
                 $"{string.Join(" and ", patchedSlots)}, " +

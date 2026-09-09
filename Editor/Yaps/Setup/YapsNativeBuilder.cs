@@ -227,6 +227,10 @@ namespace AvatarBridge
             EditorUtility.SetDirty(patched);
             o.Material = patched;
 
+            // After the knobs, so the readout copies the values the plug
+            // actually ended up with rather than the ones it started from.
+            YapsDebugOverlayBuilder.Apply(plug, result, patched, report);
+
             // The rest of the slots the plug's vertices reach. They carry the SAME
             // deform: the bake is indexed by a mesh-global vertex id, so one bake
             // serves every submesh, and every _YAPS_ value is copied from the

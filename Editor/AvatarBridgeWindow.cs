@@ -1063,6 +1063,23 @@ namespace AvatarBridge
                     "parameters as authored pays for each of them.",
                     HelpBoxMessageType.Warning));
             }
+            optIns.Add(BridgeElements.Bind("Build a debug readout beside each plug",
+                "For working out why a plug will not behave. A small strip of colours beside the plug " +
+                "saying, left to right: who resolved its socket (grey nobody, red the contact channel, " +
+                "amber a marker light, green the screen atlas), whether it engaged, how far away the " +
+                "socket is, what the screen atlas read, whether the atlas is on the camera drawing this " +
+                "view, and whether this plug asks for the atlas at all. Unlike the plug's own debug " +
+                "view it leaves the plug bending normally, so the bend and the reason for it can be " +
+                "read together. EVERYONE WHO CAN SEE THE PLUG CAN SEE IT, and the toolkit refuses an " +
+                "upload while it is on. Needs Penetration on Convert to YAPS.",
+                settings.yapsDebugOverlay, v => { settings.yapsDebugOverlay = v; ScheduleRebuild(); }));
+            if (settings.yapsDebugOverlay)
+            {
+                optIns.Add(new HelpBox(
+                    "The readout is a real object on the avatar, not a material setting, so it uploads " +
+                    "with it and every other player sees it. Turn it off and convert again before you " +
+                    "publish.", HelpBoxMessageType.Warning));
+            }
 #endif
 
             b.Add(BridgeElements.SubHeading("Menu & extras"));

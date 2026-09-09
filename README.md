@@ -1423,6 +1423,7 @@ settle. Leaving all of them alone converts fine.
 |---|---|---|
 | **Opt-ins ▸ Keep OGB haptics synced** | off | Its own sub-section under Manual options, since an opt-in nobody can find is one nobody turns on. Off, the OGB haptics parameters are local (free); OSCGoesBrrr's automatic detection skips ChilloutVR's `#` names, but its manual avatar-parameter links read them, and the report lists the names. On, they stay synced and automatic detection works with no setup, at 32 sync bits each, about nine per plug and per socket; the report's sync budget entry says where the avatar landed. Needs *Penetration* on *Convert to YAPS*. See [OSC toys](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
 | **Opt-ins ▸ Show the avatar's OWN depth animations to other players** | off | Not YAPS's socket shapes, which already play for everyone on a synced parameter. This is the bulges and winces the avatar's author animated in VRChat, which are contact-driven, and ChilloutVR runs an avatar's triggers on the wearer's machine alone. Off, each socket's depth parameter is local: free, and only the wearer sees the reaction. On, it syncs and the room sees it, at 32 bits per socket: one depth parameter each, six sockets is about 192 of 3200; a socket that kept several depth parameters as authored pays for each. Needs *Penetration* on *Convert to YAPS* |
+| **Opt-ins ▸ Build a debug readout beside each plug** | off | A strip of colours beside each plug, for working out why one will not behave. Left to right: who resolved its socket (grey nobody, red the contact channel, amber a marker light, green the screen atlas), whether it engaged, how far the socket is, what the screen atlas read, whether the atlas is on the camera drawing this view, and whether the plug asks for the atlas at all. Unlike the plug material's own debug view it leaves the plug bending normally, so the bend and the reason for it can be read together. It is a real object, so everyone who can see the plug sees it and it uploads with the avatar; the toolkit refuses an upload while it is on. Needs *Penetration* on *Convert to YAPS* |
 | **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder: you must press **Create Controller** yourself |
 | **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of this avatar's measured height, centred on its original size. Parent-constrained props are re-anchored so they scale with you |
@@ -2271,11 +2272,22 @@ Work down the list; the first that fits is usually it.
   by*. It straightens the plug and puts the answer in its LENGTH: a quarter means nothing found
   the socket, a half the contact channel did, three quarters a marker light did, full the screen
   atlas did. A quarter with a socket right there means no transport reached the plug.
+- **Or read all of it at once: tick *Debug overlay* on the YAPS Plug component and Build.** The
+  view above answers one question at a time and straightens the plug to answer it, so the bend
+  and the reason for the bend can never be seen together. The overlay is a small strip of
+  colours drawn beside the plug instead, and it leaves the plug bending normally. Six cells,
+  left to right: who resolved the socket (grey nobody, red the contact channel, amber a marker
+  light, green the screen atlas), whether it engaged, how far away it is as a bar, what the
+  atlas read, whether the atlas is on the camera drawing this view, and whether this plug asks
+  for the atlas at all. Black or grey is nothing, red is a fault, amber is halfway, green is
+  working. **Everyone who can see the plug can see the overlay**, and the toolkit refuses an
+  upload while it is on. Untick it when you are done.
 - **Is it a DPS or TPS toy? Then pick the socket in "Marker lights".** Old toys read sockets by
   their marker lights, and only **one** socket's pair is ever lit: Unity gives a mesh four
   vertex-light slots, a socket takes two, and the tracker of whatever enters takes a third, so
   a second lit socket is what used to break holes while rings kept working. The dropdown starts
-  on **Off**; choosing a socket lights it and switches it on, whatever its own toggle says. A
+  on **Off**; choosing a socket lights it, and switches it on too unless the avatar's own menu
+  already switches that socket, in which case that toggle stays in charge of it. A
   socket you have switched on but not chosen here is visible in the hierarchy and dark to every
   old toy: that exact picture has been reported as "it does nothing".
 - **A contact-only socket** (no lights: TPS orifices, some props) is found by the contact channel

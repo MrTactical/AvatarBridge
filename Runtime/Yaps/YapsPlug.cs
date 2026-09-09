@@ -142,6 +142,13 @@ namespace AvatarBridge.Yaps
 
         // The material the bake replaced, so Remove can put it back. Set
         // by the first bake; the toolkit's own, not a knob.
+        [Header("Diagnostics")]
+        [Tooltip("Builds a small readout beside the plug in game, saying who resolved its socket " +
+                 "and what the screen atlas saw. Everyone who can see the plug can see it, and " +
+                 "the toolkit refuses an upload while it is on. For working out why a plug will " +
+                 "not behave; untick it when you are done.")]
+        public bool debugOverlay;
+
         [HideInInspector]
         public Material bakedFrom;
 
