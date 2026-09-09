@@ -98,7 +98,8 @@ namespace AvatarBridge
                 "resolved the socket, whether it engaged, how far away it is, what the screen " +
                 "atlas read, whether the atlas is on the camera drawing this view, and whether " +
                 "this plug asks for the atlas at all. Grey or black is nothing, red is a fault, " +
-                "amber is halfway, green is working. It is visible to everyone who can see the " +
+                "and cyan, amber or green in the first cell is the contact channel, a marker " +
+                "light or the screen atlas answering. It is visible to everyone who can see the " +
                 "plug, and an upload is refused while it exists: untick it when you are done.");
         }
 

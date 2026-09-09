@@ -8,7 +8,7 @@
 // leaves the plug alone.
 //
 // Six cells, left to right. Each is a colour, never a fraction:
-//   1  who resolved it      grey nobody, red channel, amber light, green atlas
+//   1  who resolved it      grey nobody, cyan channel, amber light, green atlas
 //   2  engaged              red no, green yes
 //   3  gap to the socket    a bar, full width at a plug length away
 //   4  what the atlas read  black nothing, red not ours, amber thrown out, green socket
@@ -158,6 +158,12 @@ Shader "YAPS/Debug Overlay"
             static const fixed3 YAPS_HALF  = fixed3(0.95, 0.70, 0.10);
             static const fixed3 YAPS_GOOD  = fixed3(0.15, 0.80, 0.25);
 
+            // The contact channel answering is a WORKING state, and it was
+            // painted in this readout's own fault colour. Every healthy
+            // channel read as a failure, which is worse than no readout at
+            // all. Red belongs to faults only.
+            static const fixed3 YAPS_CHAN  = fixed3(0.20, 0.75, 0.85);
+
             fixed4 frag(v2f i) : SV_Target
             {
                 float cellF = i.uv.x * 6.0;
@@ -182,8 +188,11 @@ Shader "YAPS/Debug Overlay"
 
                 if (cell == 0)
                 {
+                    // Three working transports, three tellable colours.
+                    // Grey is the only nothing here: a plug with no socket
+                    // in reach is not broken.
                     c = tier < 0.5 ? YAPS_NONE
-                      : (tier < 1.5 ? YAPS_BAD
+                      : (tier < 1.5 ? YAPS_CHAN
                       : (tier < 2.5 ? YAPS_HALF : YAPS_GOOD));
                 }
                 else if (cell == 1)

@@ -1065,7 +1065,7 @@ namespace AvatarBridge
             }
             optIns.Add(BridgeElements.Bind("Build a debug readout beside each plug",
                 "For working out why a plug will not behave. A small strip of colours beside the plug " +
-                "saying, left to right: who resolved its socket (grey nobody, red the contact channel, " +
+                "saying, left to right: who resolved its socket (grey nobody, cyan the contact channel, " +
                 "amber a marker light, green the screen atlas), whether it engaged, how far away the " +
                 "socket is, what the screen atlas read, whether the atlas is on the camera drawing this " +
                 "view, and whether this plug asks for the atlas at all. Unlike the plug's own debug " +
