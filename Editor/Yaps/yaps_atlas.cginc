@@ -4,14 +4,17 @@
 #define YAPS_ATLAS_INCLUDED
 
 // Bump on any change below. It rides the tag.
-#define YAPS_ATLAS_VERSION 4
+#define YAPS_ATLAS_VERSION 5
 
 // 4096 cells. Two homes, so a clash needs both.
 #define YAPS_ATLAS_GRID    64
 
 // Columns, not the grid. A rect wider than
 // the view clips slots, and they read as opaque.
-#define YAPS_ATLAS_COLS    32
+// 28 keeps the rect inside 1024 square, which is
+// what a mirror capped at 1024 renders into. 32
+// was 1064 wide once the owner pixel arrived.
+#define YAPS_ATLAS_COLS    28
 
 #define YAPS_ATLAS_SLOTPX  1
 #define YAPS_ATLAS_ORIGIN  8
@@ -21,8 +24,8 @@
 #define YAPS_ATLAS_LEVELS  4
 
 // A header, then eight octants.
-// One header pixel, then THREE per octant: position, facing, tags.
-// Version 3 added the third and version 4 changed what is in it, from a
+// One header pixel, then FOUR per octant: position, facing, tags, owner.
+// Version 5 added the owner. Version 3 added the tags and version 4 changed what is in them, from a
 // fifteen-bit enum over rgb to a twenty-bit folded hash over rgba. Same
 // pixel count and same rect, and still a different protocol: an old
 // untagged socket wrote alpha 1, which the new decoder reads as five bits
@@ -32,7 +35,44 @@
 // carries the owner tag the whole read is gated on. The tag pixel spends
 // all four of its channels, which is why the word is 20 bits and why the
 // tags fold into one rather than taking a slot each.
-#define YAPS_ATLAS_CELLSLOTS 25
+#define YAPS_ATLAS_OCTPX     4
+#define YAPS_ATLAS_CELLSLOTS (1 + 8 * YAPS_ATLAS_OCTPX)
+
+// The owner, 24 bits over rgba at six a channel: the low 24 bits of
+// the wearer's user id, which a plug compares with its own to tell its
+// avatar's sockets from anybody else's at any distance. Six bits for
+// the same reason tags take five; a wrong owner is silent too.
+//
+// Zero is UNKNOWN, never a match: a prop, a world socket, a remote
+// copy whose id has not synced yet. The reader falls back to geometry.
+#define YAPS_ATLAS_OWNERBITS 6
+#define YAPS_ATLAS_OWNERMAX  63
+
+int YapsOwnerDecode(float4 rgba)
+{
+    int a = (int) round(saturate(rgba.r) * YAPS_ATLAS_OWNERMAX);
+    int b = (int) round(saturate(rgba.g) * YAPS_ATLAS_OWNERMAX);
+    int c = (int) round(saturate(rgba.b) * YAPS_ATLAS_OWNERMAX);
+    int d = (int) round(saturate(rgba.a) * YAPS_ATLAS_OWNERMAX);
+    return a | (b << YAPS_ATLAS_OWNERBITS) | (c << (2 * YAPS_ATLAS_OWNERBITS))
+             | (d << (3 * YAPS_ATLAS_OWNERBITS));
+}
+
+float4 YapsOwnerEncode(int owner)
+{
+    return float4(
+        (owner & YAPS_ATLAS_OWNERMAX) / (float) YAPS_ATLAS_OWNERMAX,
+        ((owner >> YAPS_ATLAS_OWNERBITS) & YAPS_ATLAS_OWNERMAX) / (float) YAPS_ATLAS_OWNERMAX,
+        ((owner >> (2 * YAPS_ATLAS_OWNERBITS)) & YAPS_ATLAS_OWNERMAX) / (float) YAPS_ATLAS_OWNERMAX,
+        ((owner >> (3 * YAPS_ATLAS_OWNERBITS)) & YAPS_ATLAS_OWNERMAX) / (float) YAPS_ATLAS_OWNERMAX);
+}
+
+// A material float holds every integer below 2^24 exactly, which is why
+// the id is cut to 24 bits before it is ever a float.
+int YapsOwnerOf(float animated)
+{
+    return (int) round(animated) & 0xFFFFFF;
+}
 
 // The tag word, 20 bits over rgba at five bits a channel. Five and not
 // eight: the grab is a half float and these are written once rather than
@@ -43,8 +83,8 @@
 // bits, picked by its own hash, and the socket publishes the OR of its
 // tags. SPS instead gives a socket eight slots and writes each 32-bit hash
 // whole, which the atlas cannot afford: every extra pixel per octant costs
-// 256 pixels of width, so eight slots would take the rect from 808 wide to
-// 2600 and no mirror would resolve. Alpha joins rgb here for the same
+// eight per column of width, so eight slots would take the rect past 2600
+// wide and no mirror would resolve. Alpha joins rgb here for the same
 // reason, four channels being all there is.
 #define YAPS_ATLAS_TAGBITS 5
 #define YAPS_ATLAS_TAGMAX  31
@@ -96,10 +136,17 @@ float YapsAtlasTag(int3 c)
     return (h % 256) / 255.0;
 }
 
+// Rounded UP. Columns need not divide the grid, and a floor here
+// put a level's last row on top of the next level's first.
+int YapsAtlasRowsPerLevel()
+{
+    return max((YAPS_ATLAS_GRID * YAPS_ATLAS_GRID + YAPS_ATLAS_COLS - 1) / YAPS_ATLAS_COLS, 1);
+}
+
 // Where a cell's slots start.
 void YapsAtlasCellPixels(int idx, int level, out int cellPx, out int cellPy)
 {
-    int rowsPerLevel = max(YAPS_ATLAS_GRID * YAPS_ATLAS_GRID / YAPS_ATLAS_COLS, 1);
+    int rowsPerLevel = YapsAtlasRowsPerLevel();
     int gx = idx % YAPS_ATLAS_COLS;
     int gy = idx / YAPS_ATLAS_COLS;
     cellPx = YAPS_ATLAS_ORIGIN + gx * YAPS_ATLAS_CELLSLOTS * YAPS_ATLAS_SLOTPX;
@@ -144,8 +191,7 @@ int YapsAtlasWidthPx()
 
 int YapsAtlasHeightPx()
 {
-    int rowsPerLevel = max(YAPS_ATLAS_GRID * YAPS_ATLAS_GRID / YAPS_ATLAS_COLS, 1);
-    return YAPS_ATLAS_ORIGIN + YAPS_ATLAS_LEVELS * rowsPerLevel * YAPS_ATLAS_SLOTPX;
+    return YAPS_ATLAS_ORIGIN + YAPS_ATLAS_LEVELS * YapsAtlasRowsPerLevel() * YAPS_ATLAS_SLOTPX;
 }
 
 // Can this target hold the rect at all?

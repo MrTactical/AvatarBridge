@@ -81,6 +81,7 @@ Shader "YAPS/Debug Overlay"
         _YAPS_ChannelExtents ("YAPS channel extents", Vector) = (1,1,1,0)
         _YAPS_SelfTag ("YAPS self tag", Float) = -1
         _YAPS_SelfAllow ("YAPS own body allowed", Range(0,1)) = 0
+        _YAPS_Owner ("YAPS owner id", Float) = 0
         _YAPS_UseAtlas ("YAPS read the screen atlas", Range(0,1)) = 0
         _YAPS_Debug ("YAPS view", Float) = 0
         _YAPS_TaperStart ("YAPS hole taper start", Range(0,1)) = 0.10

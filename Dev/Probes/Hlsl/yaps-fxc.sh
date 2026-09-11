@@ -50,8 +50,20 @@ float4 main(uint id : SV_VertexID) : SV_POSITION
 }
 BODY
 
+# The socket writer's side of the protocol, which no plug include reaches.
+emit writer <<'BODY'
+float4 main(uint id : SV_VertexID) : SV_POSITION
+{
+    int cx, cy;
+    YapsAtlasCellPixels(id, 3, cx, cy);
+    float4 o = YapsOwnerEncode(YapsOwnerOf(_YAPS_Owner));
+    return float4(o.xyz + YapsTagsEncode(id).xyz, YapsOwnerDecode(o) + cx + cy
+                  + YapsAtlasWidthPx() + YapsAtlasHeightPx());
+}
+BODY
+
 fail=0
-for t in plug; do
+for t in plug writer; do
     # X3556 is a note about integer modulus being slow, and X4008 a division
     # the stubs fold to zero. Neither is a defect in the shader.
     out="$("$FXC" -nologo -T vs_5_0 -E main -I "$YAPS" -I "$TMP" \

@@ -250,6 +250,57 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
      than on evidence, and the ranges are baked into real lights, so an existing avatar has to be
      rebuilt before it proves anything.
 
+## The atlas knows whose socket it is, 2026-09-11. BUILT, untested in game
+
+Protocol version 5. Every socket writes its wearer's owner id into a FOURTH atlas pixel per
+octant, and a plug compares it with its own. Where both ids are known, whose socket it is is a
+fact; the nearest-hip vote runs only where either is zero. The vote was what failed when two
+bodies overlap: a partner's socket pressed against the wearer's hips voted as the wearer's and
+was refused mid-insertion.
+
+**Where the id comes from.** `CVRParameterStream` type `SeedOwner` (90000) is a CRC32 of the
+wearer's user id. The stream's `Mod` with 16777216 keeps its low 24 bits as an exact integer,
+because the client's Mod works on the integer when the source is one, and a float holds every
+integer below 2^24. It lands in `YAPS/Owner`, a synced float, and a direct blend tree weighted by
+that parameter over a clip setting `material._YAPS_Owner` to 1 carries it onto every renderer
+whose material has the property: plugs, atlas writers, the readout. `YapsOwner.Wire` does all of
+it and is idempotent. The converter calls it after the lighthouse; the toolkit calls it from the
+channel build, the socket build and both removers, and it takes itself out when nothing carries
+the property any more.
+
+**Two traps, both handled in `Wire`.** The stream is a local component, destroyed on remote
+copies, so the parameter has to sync; a remote copy reads 0 until its first sync, and 0 means
+unknown. And a stream added from code serialises `referenceType: World`, because only the CCK
+inspector switches it to Avatar, and only when it is opened. The client computes SeedOwner for an
+Avatar reference alone, so without the explicit set the id would be 0 everywhere, silently.
+
+**The self rule.** Known and different: never refused as own. Known and the same: refused only
+when INBOARD, nearer the wearer's hip than the plug root is, so own hip sockets stay out and own
+hands and mouth answer, which is what the geometric test already did for those. Unknown: the old
+vote, unchanged. `_YAPS_SelfAllow` still opens everything.
+
+**The rect.** A fourth pixel at 32 columns is 1064 wide, which a mirror capped at 1024 cannot
+hold. Columns went to 28 with the rows per level rounded up, which the old floor division got
+wrong for any column count not dividing 4096: 932 by 596. It loses targets under 596 tall that
+808 by 520 fitted, 960 by 540 among them, and no layout keeps those, since the slots alone
+outnumber 960 by 540's pixels.
+
+**Unverified, in the order to check:**
+1. Own avatar in game: a temporary slider on `YAPS/Owner` reads non-zero. Zero means the stream
+   is not running: the reference type, the CCK version, or a type only the beta client has.
+2. A second client: the remote copy's `YAPS/Owner` equals the wearer's, and its plug still leaves
+   the wearer's own hip socket alone.
+3. Overlap: a partner's socket pressed into the wearer's hips is answered.
+4. A mirror capped at 1024 and a 1280 by 720 window both carry the atlas at 932 by 596.
+
+**Follow-ups, not started.**
+- Per-rule Self and Others halves on the tag lists, SPS2's documented mechanism, now that "self"
+  is a fact a rule can key on. The inboard test stands in for its "exclude own hips" until then.
+- Props and world sockets carry no id and fall back to the vote. `SeedInstance` would give a
+  spawnable its own; nothing needs it while nothing refuses a prop as own.
+- Stripping contacts from the transport, which is planned, removes the channel latch further
+  down this file, and leaves the owner id as the one self guard that does not rest on geometry.
+
 ## Two reports from the field, 2026-09-07
 
 ### One cloth per PhysBone, 94 of them on one avatar (issue #7)
@@ -1521,6 +1572,13 @@ but not rare either, and there is no way back short of finding another socket.
 either an exit task or the same decay. Anything that can only be written while a sender is
 present, and never cleared when it leaves, will latch.
 
+**Seen again 2026-09-11, the everyday way.** A socket deleted while the plug was inside it left
+the plug bent; moving away from a live socket straightened it. A deleted or disabled socket
+fires no exit, which is this latch. The atlas cannot latch, since it is cleared every frame and a
+disabled writer draws nothing. The plug's own *Resolved by* view settles it: half length is the
+channel. Stripping contacts from the transport removes the mechanism outright; if the channel
+stays, the decay above is still the fix.
+
 ## The channel's drift is quantisation, and the smoother cannot filter it
 
 Fully characterised 2026-08-27 in the editor, no uploads. The channel's values never settle while
@@ -1735,6 +1793,9 @@ walked again at the new width: editor, desktop first and third person, desktop m
 eyes, VR mirror, personal mirror. Until that is done the tag work must not ship, and a width that
 fails is a reason to go back to a single tag index in the byte that was already free rather than
 to shrink the grid.
+
+*Protocol 5, 2026-09-11, moved the target again: an owner pixel per octant, 28 columns, 932 by
+596. The walk above now has to be done at that size.*
 
 The plug carries an include set and an exclude set, both plain floats so an animation can drive
 them. One rule tests them, `YapsTagsRefuse`, called from the channel branch and the atlas branch

@@ -178,9 +178,18 @@ inline bool YapsTagsRefuse(int socketWord)
 }
 
 // Takes a WORLD POSITION rather than a slot, so the atlas can ask the same
-// question about a socket it read off the screen.
-bool YapsSameBodyAt(float3 plugOrigin, float3 lightAt)
+// question about a socket it read off the screen. The owner is the one the
+// atlas carried for it, zero when there is none, as for every light.
+bool YapsSameBodyOwned(float3 plugOrigin, float3 lightAt, int owner)
 {
+    // Both ids known: whose socket it is is a FACT, and only the nearest-hip
+    // vote below was ever a guess. The guess is what fails when two bodies
+    // overlap: somebody else's socket pressed against this wearer votes as
+    // the wearer's and is refused mid-insertion.
+    int mine = YapsOwnerOf(_YAPS_Owner);
+    bool known = mine != 0 && owner != 0;
+    if (known && owner != mine) return false;
+
     // No early-out for a lone player. Alone, the wearer IS the only body,
     // and the inboard test below is what separates their own socket from a
     // prop they hold. Bailing here blanks every socket for a lone tester.
@@ -208,7 +217,7 @@ bool YapsSameBodyAt(float3 plugOrigin, float3 lightAt)
     {
         return false;
     }
-    if (nearPlug != nearLight)
+    if (!known && nearPlug != nearLight)
     {
         return false;   // somebody else's body; plainly not ours
     }
@@ -218,9 +227,19 @@ bool YapsSameBodyAt(float3 plugOrigin, float3 lightAt)
     // A real socket on this body sits INBOARD of the plug, nearer the hip
     // than the plug growing out of it. Something pushed at the plug from
     // outside is not. Nearest the same person is necessary, not sufficient.
-    float plugToHip = dot(_CVR_PlayerHipPositions[nearPlug].xyz - plugOrigin,
-                          _CVR_PlayerHipPositions[nearPlug].xyz - plugOrigin);
-    return bestLight < plugToHip;
+    //
+    // With the owner known this is the whole question: the wearer's own
+    // sockets ON THE HIPS are refused, their hands and mouth are not,
+    // which is how SPS content behaves out of the box. Measured against the hip
+    // nearest the plug, the best guess at the wearer's; the socket's own
+    // nearest hip can be a partner's.
+    float3 hip = _CVR_PlayerHipPositions[nearPlug].xyz;
+    return dot(hip - lightAt, hip - lightAt) < dot(hip - plugOrigin, hip - plugOrigin);
+}
+
+bool YapsSameBodyAt(float3 plugOrigin, float3 lightAt)
+{
+    return YapsSameBodyOwned(plugOrigin, lightAt, 0);
 }
 
 inline bool YapsSameBodyAs(float3 plugOrigin, uint slot)
@@ -450,7 +469,7 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
             bool got1 = false;
             [loop] for (int sub = 0; sub < 8; sub++)
             {
-                int px = cellX + (1 + 3 * sub) * YAPS_ATLAS_SLOTPX;
+                int px = cellX + (1 + YAPS_ATLAS_OCTPX * sub) * YAPS_ATLAS_SLOTPX;
                 float4 got = YAPS_ATLAS_LOAD(px, cellY);
                 if (got.a < 0.5) continue;
                 // The header SUMS every cell sharing this slot, so it can
@@ -498,38 +517,20 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
                 // before the deform ever saw it. Range is what rejects.
                 if (d > far) continue;
 
-                // OWN BODY, the same question the lights ask, but asked
-                // only of a socket too far away to be engaged.
+                // OWN BODY, the same question the lights ask, at any
+                // distance. A wearer's own hip socket is permanently in
+                // reach and permanently nearest, so admitting it takes
+                // link 0 for ever and nobody else is ever seen.
                 //
-                // A wearer's own socket is permanently in reach and
-                // permanently nearest, so admitting it unconditionally
-                // takes link 0 for ever and nobody else is ever seen. The
-                // range test is what stops that: past engagement onset a
-                // socket on this body is not one the shaft is entering, it
-                // is just the body the shaft grows from, and it is dropped.
-                // Inside that range it is admitted, and being nearest is
-                // then correct rather than a monopoly.
-                //
-                // The distance test comes first for its own sake as well:
-                // the ownership scan walks up to 255 players, and this way
-                // it runs only for a socket far enough away to be in doubt.
-                //
-                // MEASURED 2026-09-07: it almost never runs. The scan above
-                // reads three cells about len/2 wide around the midpoint, so
-                // nothing past roughly len * 1.2 is ever returned to be
-                // tested, and the gate sits at len * 1.6. At 0.22, 0.30,
-                // 0.80 and 1.20 m there is no distance that is both visible
-                // and past the gate; only near 0.50 m, where the level
-                // rounds up, does a band exist at all. So this reads as a
-                // range rule and behaves as "own-body sockets are admitted".
-                // Kept because the day a level rounds the other way it is
-                // the only thing standing between a plug and a socket on its
-                // own hip, and it costs one comparison.
+                // The FOURTH pixel is the socket's owner id. Where both
+                // ids are known, ownership is a fact rather than the
+                // nearest-hip vote; where either is zero it is the vote.
                 //
                 // Tested here rather than after the sort, so a rejected
                 // entry leaves no hole in the list.
                 if (_YAPS_SelfTag >= 0 && _YAPS_SelfAllow < 0.5
-                    && YapsSameBodyAt(root, at)) continue;
+                    && YapsSameBodyOwned(root, at, YapsOwnerDecode(
+                           YAPS_ATLAS_LOAD(px + 3 * YAPS_ATLAS_SLOTPX, cellY)))) continue;
 
                 // Insertion sort, nearest first. THE ORDER IS THE PATH:
                 // socket one is the one the shaft meets first.

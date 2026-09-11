@@ -72,6 +72,21 @@ namespace AvatarBridge
             WireSocketToggles(ctx, socketRoots);
             YapsSocketRebuilder.Lighthouse(ctx);
 
+            // After every plug material and socket writer exists: it wires
+            // whatever renderer can hold the id.
+            string owner = YapsOwner.Wire(ctx.Target, ctx.MergedController);
+            if (owner != null)
+            {
+                ctx.Report.Converted(Category, "Plugs and sockets carry the wearer's owner id",
+                    "A plug can now tell this avatar's own sockets from anybody else's at any " +
+                    "distance, so a partner's socket pressed right up against the wearer is no " +
+                    "longer taken for one of the wearer's own. The wearer's own sockets on the hips " +
+                    "are still left alone unless the plug is set to answer its own sockets; hands " +
+                    "and mouth answer as before. It costs one synced parameter, 32 bits. Other " +
+                    "players' copies learn it with the first sync and use the old distance guess " +
+                    "until then. (" + owner + ")");
+            }
+
             // One switch for the whole atlas, so the writers and the grab
             // cannot disagree about whether it is on.
             if (YapsAtlas.Enabled && YapsAtlas.AddClear(ctx.Target.transform) != null

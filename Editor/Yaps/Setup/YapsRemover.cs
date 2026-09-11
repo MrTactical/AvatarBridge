@@ -171,6 +171,8 @@ namespace AvatarBridge
                 var controller = controllers.FirstOrDefault();
                 string lighthouse = controller != null ? YapsLighthouse.Build(avatar, controller) : null;
                 if (lighthouse != null) done.Add(lighthouse);
+                string owner = YapsOwner.Wire(avatar);
+                if (owner != null) done.Add(owner);
             }
 
             Undo.CollapseUndoOperations(group);
@@ -302,6 +304,9 @@ namespace AvatarBridge
                     done.Add($"the contact channel ({cleared} object(s), layer(s) and parameter(s)): no baked plug left to carry it");
                 }
             }
+
+            string owner = YapsOwner.Wire(avatar);
+            if (owner != null) done.Add(owner);
 
             Undo.CollapseUndoOperations(group);
             return $"Removed plug \"{name}\": " + string.Join(", ", done) + ". Undo brings it all back.";

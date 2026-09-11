@@ -1514,3 +1514,18 @@ wanted: the transport is invisible to somebody who has opted out of the shader t
 
 Nothing local could have produced this evidence. The editor renders with the real shader, so the
 failure only ever existed on a machine that had refused it.
+
+## The owner pixel, protocol 5 (2026-09-11)
+
+Each octant is four pixels now: position, facing, tags, owner. The owner is the low 24 bits of
+the wearer's ChilloutVR user id, six bits a channel over rgba, written once like the tags and read
+only after the position pixel's cell tag has matched. Zero is unknown and never a match. A cell is
+33 slots, the columns went from 32 to 28 so a mirror capped at 1024 still holds the rect, and
+the rows per level round up: 932 by 596.
+
+The id reaches the materials without a transport of its own. A `CVRParameterStream` entry of type
+`SeedOwner` feeds a synced float on the wearer's copy, and an animator layer carries it onto
+every renderer that declares `_YAPS_Owner`. Remote copies get it by sync and read zero until
+then, which the reader answers with the nearest-hip vote it always used. `YapsSameBodyOwned`
+takes the socket's id: known and different is never own; known and the same is own, and refused
+only when inboard; unknown is the vote. Work queue entry: "The atlas knows whose socket it is".

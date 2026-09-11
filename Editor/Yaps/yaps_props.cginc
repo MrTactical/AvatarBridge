@@ -80,6 +80,11 @@ float _YAPS_SelfTag;
 // ever be reached.
 float _YAPS_SelfAllow;
 
+// The wearer's owner id, animated from a synced parameter onto every plug
+// and socket material the avatar carries. Zero is unknown. See
+// YapsOwnerDecode in the atlas protocol.
+float _YAPS_Owner;
+
 
 // The screen atlas, off by default. A THIRD transport beside the channel
 // and the lights, not a replacement for either.

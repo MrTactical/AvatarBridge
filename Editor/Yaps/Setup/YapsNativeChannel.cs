@@ -59,6 +59,12 @@ namespace AvatarBridge
             var skipped = new List<string>();
             var plugs = Plugs(avatar, skipped);
             Clear(avatar, controller);
+
+            // Before the plug check: a socket-only avatar carries the id too,
+            // so a plug elsewhere knows as a fact the socket is not its own.
+            string owner = YapsOwner.Wire(avatar.gameObject, controller);
+            if (owner != null) lines.Add("✓ " + owner);
+
             if (plugs.Count == 0)
             {
                 // Silence here reads as success. A bake that builds no

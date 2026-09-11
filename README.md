@@ -760,7 +760,7 @@ both. The report says which case you're in.
 
 | | costs | reaches | how good it is |
 |---|---|---|---|
-| **Screen atlas** | nothing | anyone drawing the avatar with custom shaders on, in a view at least 808 by 520 pixels | about a tenth of a millimetre, every frame |
+| **Screen atlas** | one synced parameter per avatar, for ownership | anyone drawing the avatar with custom shaders on, in a view at least 932 by 596 pixels | about a tenth of a millimetre, every frame |
 | **Marker lights** | nothing | anyone whose client draws the plug | exact, and sampled every frame |
 | **Contact channel** | up to 9 synced floats per plug | everyone, including viewers with avatar lights switched off | about a millimetre, arriving ten times a second |
 
@@ -776,11 +776,20 @@ the channel's box and not a fault.
 
 **What the atlas is.** Every socket draws its position into a small block of pixels in the corner
 of the frame, ahead of the scene so the scene covers it and nothing is visible, and every plug's
-shader reads that block. It costs no sync bits and no contact pairs, it crosses between avatars,
-and it is what lets a plug pass through several sockets on its way rather than bending at the
-first. It needs the plug's own patched shader, so it arrives with a conversion or a rebuild, and
-it is off in views too small to carry the block: the personal self-portrait camera is one, and a
-plug seen there falls back to whatever the contact channel resolved.
+shader reads that block. Positions cost no sync bits and no contact pairs, it crosses between
+avatars, and it is what lets a plug pass through several sockets on its way rather than bending
+at the first. It needs the plug's own patched shader, so it arrives with a conversion or a
+rebuild, and it is off in views too small to carry the block: the personal self-portrait camera
+is one, and a plug seen there falls back to whatever the contact channel resolved.
+
+**Which sockets are your own.** Every socket also writes its wearer's owner id into the atlas: a
+24-bit piece of the ChilloutVR user id, fed in by the game and synced as one parameter, 32 bits.
+A plug compares it with its own, so it knows as a fact which sockets are its wearer's, at any
+distance and however closely two bodies are pressed together. Your own sockets on the hips are
+left alone unless the plug's **own sockets** toggle is on; your hands and mouth answer as they
+always did. Other players' copies learn the id with the first parameter sync. Until then, and
+for props and world sockets, which carry none, ownership is judged by distance to the nearest
+hips, as before.
 
 If an avatar is near ChilloutVR's 3200-bit sync cap the converter buys engagement first, the
 socket's position second and which way it faces last, and says so in the report rather than
@@ -1180,8 +1189,8 @@ alone.
   LENGTH: a quarter means nothing found the socket, a half the contact channel, three quarters
   a marker light, full the screen atlas. Length rather than colour because a patched shader only lets the toolkit edit the vertex
   stage, so there is no fragment of its own to paint. It is the first thing to look at when a plug
-  bends toward the wrong thing, or toward nothing. The screen atlas needs a view at least 808 by
-  520 pixels and stands down below that, so a small window answers three quarters where a full
+  bends toward the wrong thing, or toward nothing. The screen atlas needs a view at least 932 by
+  596 pixels and stands down below that, so a small window answers three quarters where a full
   screen answers full. *Atlas taps* beside it answers the follow-up
   question when the answer is "nothing", in four steps: a tenth means the screen carried nothing
   to read, a third that something was there but did not belong to this plug, two thirds that it

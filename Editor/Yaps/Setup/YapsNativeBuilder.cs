@@ -665,6 +665,8 @@ namespace AvatarBridge
             string tagMenu = YapsTagMenu.Build(avatar, controller);
             if (tagMenu != null) lines.Add($"✓ {tagMenu}");
             if (lighthouse != null) lines.Add($"✓ {lighthouse}");
+            string owner = YapsOwner.Wire(avatar);
+            if (owner != null) lines.Add($"✓ {owner}");
             return lines;
         }
 
