@@ -170,8 +170,8 @@ namespace AvatarBridge
             }
         }
 
-        // Into the controller ChilloutVR uploads, picked as the native
-        // channel picks it: the overrides, else the base, else the Animator's.
+        // Into the controller ChilloutVR uploads: the overrides, else the
+        // base, else the Animator's.
         public static string Wire(CVRAvatar avatar)
         {
             if (avatar == null) return null;

@@ -170,7 +170,7 @@ namespace AvatarBridge
         public const string SocketSwitchNote =
             "_YAPS_SocketPower on this socket's renderer animates how much its own mesh reshapes around " +
             "a plug, and 0 stops that. It does NOT stop plugs finding the socket: they find it through " +
-            "the contact channel and the marker light, so switching the socket off means switching off " +
+            "the screen atlas and the marker light, so switching the socket off means switching off " +
             "the object those sit under, the way any other toggle does.";
 
         public const string AnimatablePlugProperties =
@@ -991,33 +991,6 @@ namespace AvatarBridge
                     RebuildLater();
                 })));
 
-            // WHICH ROUTE the preview speaks. Off is the old shortcut, a world
-            // position and a true forward, close to what a marker light gives. On
-            // is what the game actually sends: an offset normalised across the
-            // channel's box, no rotation at all, and the facing derived from a
-            // second point.
-            //
-            // A switch rather than a constant, because "it works one way and not
-            // the other" is the fastest question there is to ask about a socket,
-            // and answering it used to take an upload.
-            var route = new Toggle("Preview through the contact channel") { value = socket.previewAsChannel };
-            route.AddToClassList("ab-toggle");
-            route.RegisterValueChangedCallback(e =>
-            {
-                Undo.RecordObject(socket, "YAPS preview route");
-                socket.previewAsChannel = e.newValue;
-                EditorUtility.SetDirty(socket);
-            });
-            see.Body.Add(route);
-            see.Body.Add(BridgeElements.Hint(
-                "Leave this on. The socket then arrives the way the game sends it, so what you see " +
-                "here is what you will get after an upload. Off is a simpler route the editor can " +
-                "take that the game never does, and it is only worth a look if you are trying to " +
-                "tell whether a fault belongs to how the socket is found or to how the plug bends. " +
-                "Either way, a socket with marker lights answers first: a light in range replaces " +
-                "the position outright, so switch this socket's lights off in Advanced if you want " +
-                "to see the contact channel on its own."));
-
             // The plug mesh on most avatars only exists in Play Mode: it ships
             // switched off and a toggle brings it in. So the one state where you
             // can SEE a plug was the one state the preview refused to run in, and
@@ -1033,7 +1006,7 @@ namespace AvatarBridge
             see.Body.Add(inPlay);
             see.Body.Add(BridgeElements.Hint(
                 "Turn this on when the plug only appears after you press Play, which is the usual " +
-                "case. It is also the only way to watch the channel on a POSED avatar: edit mode " +
+                "case. It is also the only way to watch the bend on a POSED avatar: edit mode " +
                 "holds the rest pose, where every part of the plug agrees about which way it faces. " +
                 "Off by default so the preview cannot race anything else writing to the material."));
 
@@ -1076,7 +1049,7 @@ namespace AvatarBridge
                 opensHow.Body.Add(BridgeElements.Hint(
                     "Read by the shader on this socket's mesh. Strength above scales all the shapes; each " +
                     "stage opens from its start to start + fade, as fractions of the plug's length. Depth " +
-                    "comes from the plug's tracker light, or from the contact channel where there is one."));
+                    "comes from the plug's tracker light."));
                 // One range per baked shape, named after the shape when the
                 // component knows it, else by its slot.
                 int baked = bakedMat.HasProperty("_YAPS_ShapeCount") ? Mathf.RoundToInt(bakedMat.GetFloat("_YAPS_ShapeCount")) : 0;

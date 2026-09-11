@@ -9,7 +9,7 @@
 //
 // IT RUNS ON THE PLUG'S RENDERER, as its own submesh and material slot,
 // and that is not a packaging detail. A separate renderer cannot see the
-// contact channel or the enabled flag, which arrive as animated material
+// editor's preview or the enabled flag, which arrive as animated material
 // properties in this renderer's block alone, and it cannot recover the
 // frame the deform recovers, which comes from this renderer's skinned
 // vertices. The first version was a separate object and reported nobody
@@ -20,7 +20,7 @@
 //
 // Twelve cells in two rows. The top row is the resolve, the bottom row is
 // the plug's own body. Each is a colour, never a fraction:
-//   top 1  who resolved it      grey nobody, cyan channel, amber light, green atlas
+//   top 1  who resolved it      grey nobody, cyan preview, amber light, green atlas
 //   top 2  bending              red not engaged, amber engaged but switched off, green bending
 //   top 3  gap to the socket    a bar, full width at a plug length away
 //   top 4  what the atlas read  black nothing, red not ours, amber thrown out, green socket
@@ -308,10 +308,10 @@ Shader "YAPS/Debug Overlay"
             static const fixed3 YAPS_HALF  = fixed3(0.95, 0.70, 0.10);
             static const fixed3 YAPS_GOOD  = fixed3(0.15, 0.80, 0.25);
 
-            // The contact channel answering is a WORKING state, and it was
-            // painted in this readout's own fault colour. Every healthy
-            // channel read as a failure, which is worse than no readout at
-            // all. Red belongs to faults only.
+            // Tier 1 answering is a WORKING state, and it was painted in
+            // this readout's own fault colour. Every healthy answer read as
+            // a failure, which is worse than no readout at all. Red belongs
+            // to faults only. Tier 1 is the editor's preview from 4.5.1.
             static const fixed3 YAPS_CHAN  = fixed3(0.20, 0.75, 0.85);
 
             // For the cells whose value is genuinely continuous.

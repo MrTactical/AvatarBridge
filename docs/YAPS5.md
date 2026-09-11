@@ -17,6 +17,11 @@ Status words used below: **shipped** (in the package), **built** (in the code, u
 conversion strips VRCFury's rig and re-emits it through the native builder. Everything below
 describes both at once, which is the point.*
 
+*From 4.5.1 (2026-09-11) the order is the screen atlas first and marker lights where it found
+nothing. The contact channel below is no longer read by the shader nor built, because a trigger
+that never sees its sender leave holds the plug bent. The rest of this section is the record of
+how it ran up to 4.5.0.*
+
 Two channels, and which one answers is not the same question as which one is better. The channel
 FINDS the socket and decides engagement; a marker light in range then replaces the position
 outright, because a light is exact and sampled every frame where the channel is quantised to about

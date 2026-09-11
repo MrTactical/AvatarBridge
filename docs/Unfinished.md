@@ -11,6 +11,21 @@ what SPS code may be looked at in `YAPS-CLEAN-ROOM.md`. Finished records are in 
 
 ## Next up
 
+*4.5.1, a hotfix off 4.5.0, 2026-09-11: users reported YAPS failing, cause not yet known (system or
+user). The plug now reads the screen atlas first and marker lights only where the atlas found
+nothing; the contact channel no longer bends a plug and is no longer built, and converting takes an
+old one out. It was the one route that could latch (below), and it spent up to nine synced floats a
+plug. Cost: a contact-only socket (an older TPS orifice with no lights and no atlas writer) is no
+longer found. Left behind on purpose, for dev to delete once the hotfix is merged back:
+`YapsChannel`, `YapsPropBuilder.AddChannel`, `YapsNativeChannel.Plugs`, `BridgeSettings.yapsSocketFollow`
+and `YapsSocket.previewAsChannel`, all unused. Ask reporters for the "Resolved by" debug view: a
+quarter-length plug means nothing found the socket.*
+
+*Follow-up from the same day: the atlas cell already scales with plug length (four levels, 2 cm
+times 4 per level); the pixel rect does not. A compact layout keyed on `_ScreenParams` for small
+targets (low mirror resolution, small camera) is backward compatible, since an old writer draws
+nothing in a target it does not fit. Not started.*
+
 *4.3.0 shipped 2026-08-23: the rebuild, the lighthouse and the light budget, after corpus runs 385,
 386 and 387 passed and a tester confirmed a rebuilt mouth socket with a DPS prop in game. The
 hold on 4.2.0 ended there; that number was spent on a tester build and never released.*
@@ -1561,6 +1576,8 @@ applies the networked echo of its own parameter, and what value it alternates to
 implicate an exit task or a default, a stale position would implicate the echo).
 
 ## The channel latches: no socket, and the plug still thinks it is in one
+
+*RESOLVED BY REMOVAL in 4.5.1: the shader no longer reads the channel, so nothing it holds can bend a plug.*
 
 Measured in game 2026-08-27 by giving the channel parameters temporary menu sliders, which is
 the only way to read their live values. With no socket anywhere near:

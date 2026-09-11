@@ -101,29 +101,19 @@ namespace AvatarBridge
             // On the root: the pickup cannot see a child's collider.
             if (root.GetComponent<Collider>() == null) AddCollider(root, plug, o);
 
-            // The channel is opt in. A socket's owner writes its values and
-            // takes the prop over, so lights are the quiet default.
+            // No channel. The plug's shader stopped reading it, so one an
+            // older build added only spends synced values and ownership.
             if (plug != null && HasChannel(root))
             {
-                var material = BakedMaterial(plug);
-                if (material == null)
-                {
-                    o.Notes.Add("The plug is not baked, so its contact channel could not be rebuilt. Bake it, then make it a prop again.");
-                }
-                else
-                {
-                    RemoveChannel(root);
-                    BuildChannel(root, plug, material, spawnable);
-                    o.Notes.Add("Its contact channel was rebuilt: 8 synced values, one trigger per value. That channel is " +
-                                "why a socket can take the prop out of someone's hand: remove it with Drop the contact " +
-                                "channel if that bites.");
-                }
+                RemoveChannel(root);
+                o.Notes.Add("Its old contact channel was taken out: plugs find sockets through the screen atlas " +
+                            "and marker lights now, and the channel only spent synced values and handed the prop " +
+                            "to whoever's socket touched it.");
             }
             else if (plug != null)
             {
-                o.Notes.Add("No contact channel: the prop finds sockets by their marker lights, which every client " +
-                            "works out for itself, so nobody fights over who owns it. Add the synced channel only if " +
-                            "you need the exact route (a viewer with lights off, or more than four lit sockets nearby).");
+                o.Notes.Add("The prop finds sockets through the screen atlas, with marker lights where the atlas " +
+                            "cannot answer. Every client works those out for itself, so nobody fights over who owns it.");
             }
             if (socket != null && plug == null)
             {

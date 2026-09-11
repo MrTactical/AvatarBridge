@@ -226,7 +226,7 @@ done < <(if [ "$MODE" = "yaps" ]; then cat "$STAGE/yaps.list"; else
        -o -path './Regression' \
        -o -path './Editor/Yaps' \
        -o -path './Runtime' \
-       -o -name 'CLAUDE.md' \) -prune -o -print0
+       -o -name 'CLAUDE.md' -o -name 'AGENTS.md' -o -name 'Review.md' \) -prune -o -print0
 fi)
 
 if [ "$missing" -gt 0 ]; then

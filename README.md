@@ -331,13 +331,11 @@ room's budget and stop every contact in it, including the ones YAPS needs and ot
 Tick **Keep the OGB / PCS haptics contacts** if you drive a toy from those parameters and would
 rather pay that price.
 
-**What YAPS itself spends, for comparison.** A plug's contact channel builds up to nine receivers:
-engagement, is-it-a-hole, is-it-a-ring, three for where the socket is and three more for which way
-it faces. It buys them in tiers against the sync budget, so a plug with little budget left carries
-three rather than nine, and the report says which it got. A socket emits pointers rather than
-receivers. That is a real share of the instance's 512 overlapping pairs and worth knowing when a
-crowded room stops responding, but it is what the bending is made of, where a haptics stack's
-hundred-odd contacts drive a toy the wearer may not own.
+**What YAPS itself spends, for comparison.** No receivers for the bend, and one synced
+parameter, 32 bits, for the owner id: a plug finds sockets through the screen atlas and marker
+lights, which every client works out for itself. A socket emits pointers rather than receivers, so older plugs and toys can still find it.
+Up to 4.5.0 each plug also built a contact channel of up to nine receivers and as many synced
+floats; it is gone, for the reason given under *How a plug finds a socket*.
 
 **The penetration itself is converted, not stripped**: the *Penetration* choice defaults to
 *Convert to YAPS*, and the plug bends, the sockets open, and the author's tuning comes across.
@@ -756,23 +754,23 @@ exist here and won't bend, while its sockets come through and work for everyone 
 setting on *Convert to YAPS* is what keeps their contacts and depth reactions; *Remove* strips
 both. The report says which case you're in.
 
-**How a plug finds a socket.** Three routes, and an avatar uses whichever ones are available to it:
+**How a plug finds a socket.** Two routes, and an avatar uses whichever ones are available to it:
 
 | | costs | reaches | how good it is |
 |---|---|---|---|
 | **Screen atlas** | one synced parameter per avatar, for ownership | anyone drawing the avatar with custom shaders on, in a view at least 932 by 596 pixels | about a tenth of a millimetre, every frame |
 | **Marker lights** | nothing | anyone whose client draws the plug | exact, and sampled every frame |
-| **Contact channel** | up to 9 synced floats per plug | everyone, including viewers with avatar lights switched off | about a millimetre, arriving ten times a second |
 
-**They work together rather than competing.** The channel finds the socket and decides how engaged
-the plug is; a marker light in range then replaces the position outright, because a light is
-exact and continuous where the channel is quantised and stepped. The atlas, where it is
-available, answers outright instead of blending, since it is the most exact of the three and
-carries a whole path rather than one point. So a socket reachable every way gives the smoothest
-result, a lights-only socket still works for anyone drawing it, and a contacts-only socket still
-works for someone whose content filters have switched avatar lights off. On a close socket the
-channel alone can be seen as a slight tremble, which is the resolution of a synced float across
-the channel's box and not a fault.
+**The atlas answers first, and marker lights stand in where it cannot**: a view too small to
+hold the atlas, or content that only has lights. The atlas is the more exact of the two and
+carries a whole path rather than one point, so it takes the answer outright.
+
+**There used to be a third route, a contact channel, and from 4.5.1 it no longer bends a plug.**
+A contact only lets go when the socket leaves it, and a socket deleted or switched off while a plug
+was inside never leaves: the plug stayed bent toward nothing until another socket came along. The
+atlas is redrawn every frame and a light that goes out is gone, so neither can hold on to a socket
+that is not there. The cost is sockets that announce themselves by contacts alone, older TPS
+orifices among them: a YAPS plug no longer bends toward those.
 
 **What the atlas is.** Every socket draws its position into a small block of pixels in the corner
 of the frame, ahead of the scene so the scene covers it and nothing is visible, and every plug's
@@ -780,7 +778,7 @@ shader reads that block. Positions cost no sync bits and no contact pairs, it cr
 avatars, and it is what lets a plug pass through several sockets on its way rather than bending
 at the first. It needs the plug's own patched shader, so it arrives with a conversion or a
 rebuild, and it is off in views too small to carry the block: the personal self-portrait camera
-is one, and a plug seen there falls back to whatever the contact channel resolved.
+is one, and a plug seen there falls back to the marker lights.
 
 **Which sockets are your own.** Every socket also writes its wearer's owner id into the atlas: a
 24-bit piece of the ChilloutVR user id, fed in by the game and synced as one parameter, 32 bits.
@@ -797,11 +795,9 @@ to be entered, and the plug's **own sockets** toggle in game opens every one of 
 lives on the plug and never crosses the network: each socket carries only its number on its
 avatar, 1 to 15, and a socket past the fifteenth is judged by whether it sits on the hips.
 
-If an avatar is near ChilloutVR's 3200-bit sync cap the converter buys engagement first, the
-socket's position second and which way it faces last, and says so in the report rather than
-silently going over. An avatar with no budget at all still works through the lights. **A plug
-bends only toward a socket it can resolve**: a contact its author placed, a light its wearer
-switched on from their menu; with neither in range it stays exactly as it is.
+The bend costs no sync bits beyond the owner id's 32. **A plug bends only toward a socket it can resolve**: one the
+atlas carries, or a light its wearer switched on from their menu; with neither in range it stays
+exactly as it is.
 
 **Your own plug into your own socket** goes through a separate channel. Every socket tag has a
 `_SelfNotOnHips` twin beside it, and a socket's own self trigger listens for the twin ALONE: the
@@ -811,11 +807,10 @@ other people and does nothing for the person wearing it. Sockets built with the 
 written in, along with current marker light ranges if the socket came from an older prefab. A
 conversion rebuilds every socket from scratch, so converted avatars get the twins by default.
 
-**What other people see.** The contact triggers run on the wearer's machine and write the
-socket's position straight into synced parameters, so every client rebuilds the same bend from the
-same numbers. Marker lights are read independently by each viewer and need no sync at all. Both paths degrade quietly if a viewer has lights or custom
-shaders turned off in their content filters: the deform gets less exact, or stops, and nothing
-breaks.
+**What other people see.** Every viewer's client works the bend out for itself, from the atlas
+and the marker lights it draws, so nothing is synced and nothing arrives late. Both paths degrade
+quietly if a viewer has lights or custom shaders turned off in their content filters: the deform
+gets less exact, or stops, and nothing breaks.
 
 **A socket's own reactions cost no sync, and only the wearer sees them.** Bulges, winces and depth
 animations the author built are driven by contacts, and the converter makes those contact-driven
@@ -884,29 +879,18 @@ skinned mesh before you Build. TPS upgrades are tested in game, on both props an
 and press **Make selected object a prop**: it gains a CVR Spawnable, a pickup anyone can take, a
 trigger collider to grab by: sized from the bake, on the prop's own object because that is where
 the game looks for it, and a trigger so the prop passes through people instead of shoving them,
-and nothing else. It finds sockets through
-their marker lights, which every client works out for itself, so no one owns the answer and no
-one takes the prop off anyone. Run it again after a re-bake; it replaces its own work, not yours.
+and nothing else. It finds sockets through the screen atlas, and by their marker lights where
+the atlas cannot answer, which every client works out for itself, so no one owns the answer and
+no one takes the prop off anyone. Run it again after a re-bake; it replaces its own work, not yours.
 
-**The synced contact channel is a separate button**, *Add the synced channel*, and *Drop the
-contact channel* takes it off again. It is the exact route: eight values, one trigger each,
-reaching viewers whose client never draws the marker lights, and it costs the prop's ownership,
-so it is worth adding only when you need it. A prop with an animator controller of its own keeps
-it and gains the channel's layers; one without gets a channel controller. **Verify prop** before
-each upload; the CCK's own inspector can blank a channel value's parameter name if the Spawnable
-is left open, and Verify puts it back, and it also says when a prop from an early build has its
-grab collider in the wrong place.
+**Drop the contact channel** takes off a channel an earlier build added to a prop. Plugs no longer
+read it, so all it does is spend the prop's synced values and hand the prop to whoever's socket
+touches it; making the prop again takes it off too. **Verify prop** before each upload; it says
+when a prop from an early build has its grab collider in the wrong place.
 
-**Who owns a prop in a socket** is why the channel is not the default. A channel value is written
-by whoever's *socket* the prop met, not by whoever is holding it, and the client grants that write
-to your own avatar's contact whoever is carrying the thing; the write re-sends the prop's position
-and marks it no longer remotely synced, which pulls it out of their hand. No pickup setting
-reaches that. *Disallow Theft* only changes which way it fails: **off** (what you get) the prop
-can be tugged away but everyone can always pick it up again; **on**, that tug is closed and the
-prop belongs to whoever last had it in a socket: `GrabbedBy` only clears when updates stop
-arriving, and a socket still touching the prop keeps them coming, so nobody else can pick it up
-until the prop is respawned. The tick is on the CVR Pickup Object if you want
-the other one.
+**Who owns a prop in a socket** was the channel's other problem. A channel value was written by
+whoever's *socket* the prop met, not by whoever was holding it, and that write pulled the prop out
+of their hand. Without the channel nothing writes, and nobody takes the prop off anyone.
 
 **Universal socket prefabs**: *Tools ▸ YAPS ▸ Create universal socket prefabs* writes `YAPS Hole`
 and `YAPS Ring` to `Assets/YAPS/Prefabs`. Drag one under a bone, point its +Z the way a plug
@@ -992,10 +976,9 @@ old reach is a property of the mod and every DPS avatar in the room has it.
 
 Holes start lit before rings; every other socket's pair is built dark and the **Marker lights**
 dropdown lights any one of them on demand, switching that socket on as it does unless the
-avatar's own menu owns that switch. Nothing stops
-engaging: a plug decides *which* socket has it from the contact channel, never from a light, and
-the lights only sharpen its position at contact range. What a dark socket loses is old DPS plugs,
-which carry lights and nothing else, until the dropdown points at it. Untick **Emit marker
+avatar's own menu owns that switch. Nothing stops engaging: a YAPS plug still finds a dark socket
+through the screen atlas. What a dark socket loses is old DPS plugs, which carry lights and nothing
+else, and a YAPS plug in a view too small for the atlas, until the dropdown points at it. Untick **Emit marker
 lights** on a socket to keep it out of the dropdown entirely.
 
 **YAPS Plug**: the mesh (and for a skinned mesh, the bone the shaft grows from), measurement
@@ -1102,7 +1085,7 @@ or bake again.
 
 Sockets have no equivalent, on purpose. There is no single switch for one: `_YAPS_SocketPower`
 only changes how much the socket's own mesh reshapes, while what makes a socket *findable* is its
-contact channel and marker light. Mirroring a socket's checkbox onto `SocketPower` would look
+atlas writer and marker light. Mirroring a socket's checkbox onto `SocketPower` would look
 like it worked while plugs kept homing in on it. Switch the object off instead.
 
 **Every knob is animatable.** The knobs are material properties on the plug's (or socket's) mesh,
@@ -1165,14 +1148,9 @@ arrives with Preview on: every baked plug in the scene bends toward it while you
 plug** drops one of those too. **Make the selected test object a prop** does the rest; upload each
 from the CCK and try them with a second person.
 
-**The contact channel is built either way.** Build wires it onto the avatar's own controller for
-every baked plug, the same builder a conversion runs, so a socket you placed by hand is found the
-way a converted one is: contacts first, marker lights second. That matters because the lights are
-a shared resource: four vertex light slots, refilled every frame, shared with every avatar near
-you, so an avatar that turns its lights off keeps working, and one that keeps them on is
-sharpening a position it already knows rather than depending on them. Build replaces its own
-wiring each time rather than stacking, and leaves any driver of yours that isn't the channel's
-alone.
+**No contact channel is built.** A plug finds a socket you placed by hand the way it finds a
+converted one: through the screen atlas, with marker lights where the atlas cannot answer. Build
+takes out a channel an earlier version wired onto the avatar, which frees its synced parameters.
 
 ### Testing it
 
@@ -1192,8 +1170,8 @@ alone.
   work, or test it in game.
 - **In game, with a second person**: contacts and sync only exist there. The plug's *Resolved by*
   debug view (on the material's YAPS panel) straightens the plug and puts the answer in its
-  LENGTH: a quarter means nothing found the socket, a half the contact channel, three quarters
-  a marker light, full the screen atlas. Length rather than colour because a patched shader only lets the toolkit edit the vertex
+  LENGTH: a quarter means nothing found the socket, three quarters a marker light, full the
+  screen atlas. Length rather than colour because a patched shader only lets the toolkit edit the vertex
   stage, so there is no fragment of its own to paint. It is the first thing to look at when a plug
   bends toward the wrong thing, or toward nothing. The screen atlas needs a view at least 932 by
   596 pixels and stands down below that, so a small window answers three quarters where a full
@@ -1438,7 +1416,7 @@ settle. Leaving all of them alone converts fine.
 |---|---|---|
 | **Opt-ins ▸ Keep OGB haptics synced** | off | Its own sub-section under Manual options, since an opt-in nobody can find is one nobody turns on. Off, the OGB haptics parameters are local (free); OSCGoesBrrr's automatic detection skips ChilloutVR's `#` names, but its manual avatar-parameter links read them, and the report lists the names. On, they stay synced and automatic detection works with no setup, at 32 sync bits each, about nine per plug and per socket; the report's sync budget entry says where the avatar landed. Needs *Penetration* on *Convert to YAPS*. See [OSC toys](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
 | **Opt-ins ▸ Show the avatar's OWN depth animations to other players** | off | Not YAPS's socket shapes, which already play for everyone on a synced parameter. This is the bulges and winces the avatar's author animated in VRChat, which are contact-driven, and ChilloutVR runs an avatar's triggers on the wearer's machine alone. Off, each socket's depth parameter is local: free, and only the wearer sees the reaction. On, it syncs and the room sees it, at 32 bits per socket: one depth parameter each, six sockets is about 192 of 3200; a socket that kept several depth parameters as authored pays for each. Needs *Penetration* on *Convert to YAPS* |
-| **Opt-ins ▸ Draw a debug readout on each plug** | off | A strip of colours drawn by each plug itself, for working out why one will not behave. Left to right: who resolved its socket (grey nobody, cyan the contact channel, amber a marker light, green the screen atlas), whether it is bending (amber: it found a socket but its toggle holds it off), how far the socket is, what the screen atlas read, whether the atlas is on the camera drawing this view, and whether the plug asks for the atlas at all. Unlike the plug material's own debug view it leaves the plug bending normally, so the bend and the reason for it can be read together. It is part of the plug's own mesh, so everyone who can see the plug sees it and it uploads with the avatar; the toolkit refuses an upload while it is on. Needs *Penetration* on *Convert to YAPS* |
+| **Opt-ins ▸ Draw a debug readout on each plug** | off | A strip of colours drawn by each plug itself, for working out why one will not behave. Left to right: who resolved its socket (grey nobody, cyan the editor's preview, amber a marker light, green the screen atlas), whether it is bending (amber: it found a socket but its toggle holds it off), how far the socket is, what the screen atlas read, whether the atlas is on the camera drawing this view, and whether the plug asks for the atlas at all. Unlike the plug material's own debug view it leaves the plug bending normally, so the bend and the reason for it can be read together. It is part of the plug's own mesh, so everyone who can see the plug sees it and it uploads with the avatar; the toolkit refuses an upload while it is on. Needs *Penetration* on *Convert to YAPS* |
 | **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder: you must press **Create Controller** yourself |
 | **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of this avatar's measured height, centred on its original size. Parent-constrained props are re-anchored so they scale with you |
@@ -1464,7 +1442,7 @@ Analyse sets them to match. Open it to override a measurement deliberately, not 
 | **GrabbyBones mod support** | on | Keeps chains grabbable by the GrabbyBones mod, the closest thing CVR has to VRChat's bone grabbing |
 | **Face tracking** | Native CVR Component | Native drives blendshapes through CVR's own `CVRFaceTracking`: self-contained, a bit stiff. *Unity Animator Blendtrees (DSR)* rebuilds DragonSkyRunner's rig onto the avatar: smoother, more expressive. *Keep the avatar's own rig* strips nothing. Both set-up modes replace any existing FT rig |
 | **Remove GoGo Loco (recommended)** | on | Strips GoGo Loco, whose locomotion VRChat needs and ChilloutVR provides natively |
-| **Penetration** | Convert to YAPS | One choice, three answers. *Convert to YAPS* rebuilds the penetration system for ChilloutVR: a from-scratch deform, the author's own tuning carried across, sockets found by contacts and DPS marker lights, readable by and reading every system on the platform. The OGB, PCS and Wholesome haptics stacks are stripped either way: they cost no sync bits, but each is a contact, and ChilloutVR budgets 512 overlapping pairs a frame for the whole instance: a converted avatar carried over a hundred. *Keep the OGB / PCS haptics contacts* brings them back if you drive a toy from them. *Leave as VRChat built it* touches nothing, and functions nowhere. The choice needs the 18+ [YAPS add-on](#yaps-penetration-that-works-in-chilloutvr) installed; without it the penetration is removed and the report names the add-on |
+| **Penetration** | Convert to YAPS | One choice, three answers. *Convert to YAPS* rebuilds the penetration system for ChilloutVR: a from-scratch deform, the author's own tuning carried across, sockets found through the screen atlas and DPS marker lights, readable by and reading every system on the platform. The OGB, PCS and Wholesome haptics stacks are stripped either way: they cost no sync bits, but each is a contact, and ChilloutVR budgets 512 overlapping pairs a frame for the whole instance: a converted avatar carried over a hundred. *Keep the OGB / PCS haptics contacts* brings them back if you drive a toy from them. *Leave as VRChat built it* touches nothing, and functions nowhere. The choice needs the 18+ [YAPS add-on](#yaps-penetration-that-works-in-chilloutvr) installed; without it the penetration is removed and the report names the add-on |
 | **Remove animation that can't do anything (recommended)** | on | Drops curves pointing at material properties the shader doesn't have: dead in VRChat too, noisy in CVR |
 | **FX (toggles, expressions)** | on | The layer nearly every toggle lives in |
 | **Gesture (hand poses)** | on | Hand poses, converted to the CCK's own float threshold idiom. A Gesture layer holding **only** VRChat's `proxy_*` placeholders is left behind and ChilloutVR's own hand poses kept; see [fingers snapping](#converted-fingers-snap-to-a-pose-nobody-authored) |
@@ -2285,16 +2263,16 @@ Work down the list; the first that fits is usually it.
 
 - **Which tier found it?** On the plug's material, the YAPS panel's *Debug ▸ View* has *Resolved
   by*. It straightens the plug and puts the answer in its LENGTH: a quarter means nothing found
-  the socket, a half the contact channel did, three quarters a marker light did, full the screen
-  atlas did. A quarter with a socket right there means no transport reached the plug.
+  the socket, three quarters a marker light did, full the screen atlas did. A quarter with a
+  socket right there means no transport reached the plug.
 - **Or read all of it at once: tick *Debug overlay* on the YAPS Plug component and Build.** The
   view above answers one question at a time and straightens the plug to answer it, so the bend
   and the reason for the bend can never be seen together. The overlay is a small strip of
   colours the plug draws on itself instead, and it leaves the plug bending normally. It is the
   plug's own answer, not a second reading taken beside it: it shares the plug's renderer, so it
-  sees the same contact channel, the same toggle and the same frame the deform does. Twelve cells
-  in two rows. Top row, left to right: who resolved the socket (grey nobody, cyan the contact
-  channel, amber a marker light, green the screen atlas), whether it is bending (red not engaged,
+  sees the same atlas, the same lights, the same toggle and the same frame the deform does. Twelve cells
+  in two rows. Top row, left to right: who resolved the socket (grey nobody, cyan the editor's
+  preview, amber a marker light, green the screen atlas), whether it is bending (red not engaged,
   amber engaged but its toggle holds it off, green bending), how far away the socket is as a bar,
   what the atlas read, whether the atlas is on the camera drawing this view, and whether this plug
   asks for the atlas at all. Bottom row, the plug's own state: whether it recovered its frame from
@@ -2327,12 +2305,10 @@ Work down the list; the first that fits is usually it.
   already switches that socket, in which case that toggle stays in charge of it. A
   socket you have switched on but not chosen here is visible in the hierarchy and dark to every
   old toy: that exact picture has been reported as "it does nothing".
-- **A contact-only socket** (no lights: TPS orifices, some props) is found by the contact channel
-  alone. Every plug has that channel now: a converted avatar always did, and **since 4.4.0 a plug
-  built with the YAPS tool does too**. It was being built into a controller ChilloutVR never
-  uploads, so it looked correct in the editor and did nothing in game, for anybody. If a plug made
-  before 4.4.0 does nothing against a lightless socket, bake it again. The report and the tool both
-  say what a plug has.
+- **A contact-only socket** (no lights and no atlas: older TPS orifices, some props) is not found
+  from 4.5.1. A contact could hold a plug bent toward a socket that had been switched off, so
+  contacts no longer bend a plug. A socket with marker lights, or one built or converted with
+  YAPS, is found.
 - **Is the socket behind the plug?** Anything from dead ahead to square beside the base engages in
   full, and only a socket clearly behind it is refused, fading out by about a hundred and twenty
   degrees. That gate is what stops a plug folding back on itself to reach its own root, and it

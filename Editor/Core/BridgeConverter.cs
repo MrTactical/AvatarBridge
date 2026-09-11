@@ -157,11 +157,10 @@ namespace AvatarBridge
 #else
                     // After the SPI patch, so the deform lands on the stereo-fixed copy.
                     Pass("YAPS penetration system", YapsConverter.Run),
-                    // Straight after, and not before: it wires the plugs
-                    // that pass finds, into the controller the merge has
-                    // already produced. Registered earlier it ran on an
-                    // empty list and reported nothing at all.
-                    Pass("YAPS socket channel", YapsChannel.Run),
+                    // No socket channel pass. The shader stopped reading the
+                    // channel, which latched a plug bent toward a socket that
+                    // had gone, and building it would spend up to nine synced
+                    // floats a plug on nothing.
 #endif
 
                     // Last content pass before anything edits a clip.

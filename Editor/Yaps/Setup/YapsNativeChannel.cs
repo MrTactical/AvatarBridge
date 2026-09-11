@@ -1,8 +1,7 @@
-// The contact channel on an avatar the toolkit built, rather than one a
-// conversion produced. A plug finds a socket by the channel first and by
-// marker lights second, so without this a native socket has only its
-// lights, and an avatar that turns them off has nothing at all.
-// Same builder as the conversion: this fills in the site it works from.
+// The contact channel on an avatar the toolkit built. No longer built:
+// Build only takes out what an older version left. A plug finds a socket
+// through the screen atlas, with marker lights where the atlas cannot
+// answer.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
@@ -22,79 +21,26 @@ namespace AvatarBridge
         // "YAPS0E publish", they write "YAPS <label> reactions".
         static readonly Regex Mine = new Regex(@"^#?YAPS\d");
 
-        // Builds the channel for every baked plug on the avatar, replacing
-        // what a previous run left. Returns the lines for the build log.
+        // Takes out any channel an earlier build left, and builds none. The
+        // plug's shader stopped reading it: a contact only clears on exit, and
+        // a socket deleted or switched off inside one never exits, so the plug
+        // stayed bent toward nothing. Returns the lines for the build log.
         public static List<string> Build(CVRAvatar avatar)
         {
             var lines = new List<string>();
             if (avatar == null) return lines;
-
-            var animator = avatar.GetComponent<Animator>();
-
-            // ChilloutVR uploads what avatar.overrides points at, and falls
-            // back to avatarSettings.baseController. The Animator's own slot is
-            // neither: the CCK puts a GENERATED override controller there, and
-            // on an avatar whose generated folders have drifted it can belong
-            // to a different avatar entirely. Building into that one gives a
-            // channel that works in Play Mode and never leaves the project.
-            var onAnimator = animator != null ? animator.runtimeAnimatorController : null;
-            var shipped = avatar.overrides != null ? avatar.overrides.runtimeAnimatorController : null;
-            if (shipped == null && avatar.avatarSettings != null) shipped = avatar.avatarSettings.baseController;
-            var controller = BridgeContext.Underlying(shipped != null ? shipped : onAnimator);
-
-            var running = BridgeContext.Underlying(onAnimator);
-            if (controller != null && running != null && controller != running)
+            int cleared = Clear(avatar);
+            if (cleared > 0)
             {
-                lines.Add("! the Animator runs " + AssetDatabase.GetAssetPath(running)
-                          + " but ChilloutVR uploads " + AssetDatabase.GetAssetPath(controller)
-                          + ". The channel went into the uploaded one, so the editor preview will not"
-                          + " show it. Point the Animator at the same controller to test it here.");
-            }
-            if (animator == null || controller == null)
-            {
-                lines.Add("✗ the channel needs an Animator with a controller on the avatar");
-                return lines;
+                lines.Add($"✓ the old contact channel taken out ({cleared} object(s), layer(s) and parameter(s)): "
+                          + "plugs find sockets through the screen atlas and marker lights, and its synced "
+                          + "parameters are free again");
             }
 
-            var skipped = new List<string>();
-            var plugs = Plugs(avatar, skipped);
-            Clear(avatar, controller);
-
-            // Before the plug check: a socket-only avatar carries the id too,
-            // so a plug elsewhere knows as a fact the socket is not its own.
-            string owner = YapsOwner.Wire(avatar.gameObject, controller);
+            // A socket-only avatar carries the id too, so a plug elsewhere
+            // knows as a fact the socket is not its own.
+            string owner = YapsOwner.Wire(avatar);
             if (owner != null) lines.Add("✓ " + owner);
-
-            if (plugs.Count == 0)
-            {
-                // Silence here reads as success. A bake that builds no
-                // channel at all still writes the materials, so the marker
-                // lights keep working and the only symptom is that contacts
-                // do nothing, with nothing in the log to say why.
-                lines.Add("✗ no plug could carry the contact channel, so none was built");
-                if (skipped.Count == 0) lines.Add("  no YapsPlug on this avatar at all");
-                else lines.AddRange(skipped);
-                return lines;
-            }
-
-            var report = new BridgeReport();
-            YapsChannel.Run(new YapsChannel.Site
-            {
-                Target = avatar.gameObject,
-                Animator = animator,
-                Controller = controller,
-                Report = report,
-                Plugs = plugs,
-                Follow = BridgeSettings.DefaultSocketFollow,
-                PathIn = t => AnimationUtility.CalculateTransformPath(t, avatar.transform),
-            });
-            EditorUtility.SetDirty(avatar.gameObject);
-            AssetDatabase.SaveAssets();
-
-            foreach (var entry in report.Entries)
-            {
-                lines.Add((entry.Status == ReportStatus.Converted ? "✓ " : "! ") + entry.Subject);
-            }
             return lines;
         }
 

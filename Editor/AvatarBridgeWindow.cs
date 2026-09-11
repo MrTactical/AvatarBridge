@@ -1066,7 +1066,7 @@ namespace AvatarBridge
             optIns.Add(BridgeElements.Bind("Draw a debug readout on each plug",
                 "For working out why a plug will not behave. Twelve cells of colour in two rows, " +
                 "drawn by the plug itself. Top row: who resolved its socket (grey nobody, cyan the " +
-                "contact channel, amber a marker light, green the screen atlas), whether it is bending " +
+                "editor's preview, amber a marker light, green the screen atlas), whether it is bending " +
                 "(amber: it found a socket but its toggle holds it off), how far away the socket is, " +
                 "what the screen atlas read, whether the atlas is on the camera drawing this view, and " +
                 "whether this plug asks for the atlas at all. Bottom row, the plug itself: whether it " +
