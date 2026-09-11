@@ -21,7 +21,7 @@ namespace AvatarBridge
     [InitializeOnLoad]
     public static class BridgeDefines
     {
-        public const string Version = "4.5.0";
+        public const string Version = "4.5.1";
 
         public const string MagicaDefine = "AVATARBRIDGE_MAGICA";
         public const string DynamicBoneDefine = "AVATARBRIDGE_DYNBONE";

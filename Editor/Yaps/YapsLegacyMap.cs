@@ -191,15 +191,9 @@ namespace AvatarBridge
             Direct(s, t, "_TPS_BezierStart", "_YAPS_BezierStart", carried);
             Direct(s, t, "_TPS_SmoothStart", "_YAPS_SmoothStart", carried);
             Direct(s, t, "_TPS_MinimumOrificeDistance", "_YAPS_MinimumSocketDistance", carried);
-            // Buffered depth lives on the channel's smoothing layer, not the
-            // material. Reported as carried-elsewhere so the builder can set
-            // yapsSocketFollow from it.
-            if (s.HasProperty("_TPS_BufferedStrength") && s.GetFloat("_TPS_BufferedStrength") > 0)
-            {
-                carried.Add(new Carried { From = "_TPS_BufferedDepth/Strength", To = "socket follow (channel smoothing)",
-                    Value = s.HasProperty("_TPS_BufferedDepth") ? s.GetFloat("_TPS_BufferedDepth") : 0f,
-                    Note = "not a material value: it becomes the channel's per-frame step" });
-            }
+            // Buffered depth smoothed the contact channel, which no longer
+            // bends a plug.
+            Note(s, "_TPS_BufferedStrength", unmapped);
             Note(s, "_TPS_IdleGravity", unmapped);
             Note(s, "_TPS_BuldgeFalloffDistance", unmapped);
             Note(s, "_TPS_TwoSidedRings", unmapped);

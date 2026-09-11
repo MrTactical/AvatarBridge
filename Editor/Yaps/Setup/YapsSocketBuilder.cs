@@ -149,11 +149,9 @@ namespace AvatarBridge
         // plug against. Same construction as the universal prefabs, so there is
         // one definition of what a socket is.
         //
-        // withLights false builds one that can ONLY be found by contacts. A
-        // socket normally announces itself both ways, and the light path is so
-        // much more forgiving that it covered for a contact channel which had
-        // never once worked in game, through every editor test. A preview that
-        // emits lights cannot tell you anything about the channel.
+        // withLights false builds one that only the atlas can find. The light
+        // path is so forgiving that it covers for whatever else is broken, so
+        // a preview that emits lights says nothing about the atlas.
         public static GameObject BuildPreviewSocket(string name, YapsSocket.SocketKind kind,
             bool withLights = true)
         {
