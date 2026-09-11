@@ -915,10 +915,26 @@ the "IT BROKE, my fur!!!" failure of 2026-08-25 exactly, one level up.
    per slot. `PlugMaterials` also stopped sweeping the renderer for anything with a bake, which
    put one plug's channel extents into another plug's material when two shared a mesh.
 
-   Still open: **one renderer**. A plug split across two meshes gets one of them. The mirroring
-   takes a `YapsPlug` and the converter holds a VRCFury plug, so closing it is a refactor to pass
-   values rather than the component. Low impact in practice, and it changes conversion output, so
-   it wants a corpus run to land.
+   ~~Still open: **one renderer**.~~ **DONE 2026-09-11 on dev, wants a corpus run to land.** A
+   plug split across two meshes got one of them. No refactor was needed after all: the converter
+   adopts a `YapsPlug` before the end of `ConvertPlug`, so the extra meshes go through the
+   converter's own `PatchPlugSlot` (legacy deform off, Simple Lit fallback, tags, swaps) on a bake
+   sharing the primary's frame and length, then take the adopted component's knobs through
+   `WriteKnobs` and are recorded in its `bakedSlots`, which is how the own-socket ticks and Remove
+   reach them. Their materials join the plug record's `Materials`, so they read the atlas too, and
+   `MirrorShapeCurves` mirrors shapes and bone scale onto each.
+
+   **Deliberately narrower than the toolkit:** a mesh joins only when MOST of its vertices ride
+   the plug's bones. The toolkit takes any weight, which suits its case, a plug rooted at the
+   Armature being the whole avatar. The converter refuses a chain that is the body's, so its extra
+   meshes are plug parts, and the one that has a few vertices there anyway is the body touching
+   the base, whose materials must not be patched.
+
+   **Two gaps the toolkit has that the converter does not, found doing it:** `WireSize` mirrors
+   size curves onto the PRIMARY renderer only, so a toolkit plug's extra meshes do not follow a
+   size slider; and `EnsurePlugToggle` writes `_YAPS_Enabled` on `plug.Target` alone, so turning
+   the deform off leaves the extra meshes bending. Both tear at the seam under the condition
+   named. Not fixed: the toggle one also needs Remove to find curves on the extra paths.
 
 4. **Parallel paths that disagree.** Two doors to the same job diverged on the same day: the
    window's Build wired the contact channel and the inspector's Bake did not, and Remove cleared

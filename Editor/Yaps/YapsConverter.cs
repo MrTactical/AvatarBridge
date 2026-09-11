@@ -184,14 +184,49 @@ namespace AvatarBridge
                 return;
             }
 
+            // Every OTHER mesh built as part of the plug, a tip or a second half
+            // on a renderer of its own, baked on this frame and length so the
+            // two bend as one piece, as the toolkit does. Only a mesh MOST of
+            // which rides the plug's bones: the body touching the base has a few
+            // vertices there too, and its materials are not the plug's.
+            var extras = new List<BridgeContext.YapsPlugMesh>();
+            var extraMaterials = new List<Material>();
+            var others = result.FromSkinnedMesh
+                ? ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true)
+                : new SkinnedMeshRenderer[0];
+            foreach (var skin in others)
+            {
+                if (skin == renderer || skin.sharedMesh == null) continue;
+                if (YapsBaker.CountVerticesUnder(skin, result.Root) * 2 <= skin.sharedMesh.vertexCount) continue;
+                if (ctx.YapsPlugs.Any(p => p.Renderer == skin || p.Extras.Any(e => e.Renderer == skin))) continue;
+                var extra = YapsBaker.Bake(skin, result.Root, ctx.OutputDir + "/YAPS", ctx.Report,
+                    out string extraFailure, shareFrameWith: result);
+                if (extra == null)
+                {
+                    ctx.Report.Warning(Category, $"\"{skin.name}\" could not join the plug at {where}",
+                        $"Most of it rides the plug's bones, but it could not be baked ({extraFailure}), so it stays rigid.");
+                    continue;
+                }
+                var mesh = new BridgeContext.YapsPlugMesh { Renderer = skin, Shapes = extra.Shapes, MovingShapes = extra.MovingShapes };
+                foreach (int slot in MaterialSlotsOf(skin, result.Root))
+                {
+                    var slotMaterial = PatchPlugSlot(ctx, where, skin, result.Root, slot, extra, out _);
+                    if (slotMaterial == null) continue;
+                    mesh.Slots.Add(slot);
+                    extraMaterials.Add(slotMaterial);
+                }
+                if (mesh.Slots.Count > 0) extras.Add(mesh);
+            }
+
             ctx.YapsPlugs.Add(new BridgeContext.YapsPlug
             {
                 Root = result.Root,
                 Renderer = renderer,
                 Material = primaryMaterial,
                 MaterialSlot = primarySlot,
-                Materials = patchedMaterials,
+                Materials = patchedMaterials.Concat(extraMaterials).ToList(),
                 MaterialSlots = patchedSlotIndices,
+                Extras = extras,
                 Length = result.Length,
                 Radius = result.Radius,
                 Shapes = result.Shapes,
@@ -220,6 +255,21 @@ namespace AvatarBridge
             if (adopted != null)
             {
                 adopted.debugOverlay = ctx.Settings.yapsDebugOverlay;
+                // The other meshes take the primary's knobs, which the component
+                // just read, or each bends on its own settings and the seam
+                // opens. Recorded as baked slots so the own-socket ticks and
+                // Remove reach them too.
+                foreach (var mesh in extras)
+                {
+                    var mats = mesh.Renderer.sharedMaterials;
+                    foreach (int slot in mesh.Slots)
+                    {
+                        YapsNativeBuilder.WriteKnobs(adopted, mats[slot]);
+                        if (adopted.bakedSlots.Any(b => b != null && b.slot == slot && b.renderer == mesh.Renderer)) continue;
+                        ctx.YapsMaterialSwaps.TryGetValue((mesh.Renderer, slot), out var swap);
+                        adopted.bakedSlots.Add(new YapsPlug.BakedSlot { slot = slot, was = swap.from, renderer = mesh.Renderer });
+                    }
+                }
             }
             YapsDebugOverlayBuilder.Apply(plugRoot, renderer.name, ctx.Settings.yapsDebugOverlay,
                 result, primaryMaterial, ctx.Report);
@@ -228,6 +278,9 @@ namespace AvatarBridge
                 $"\"{renderer.name}\" material{(patchedSlots.Count > 1 ? "s" : "")} " +
                 $"{string.Join(" and ", patchedSlots)}, " +
                 $"{plugVertices} vertices on the plug's bones, {result.Length:0.###} m long, on a private shader copy." +
+                (extras.Count > 0
+                    ? $" Also {string.Join(", ", extras.Select(e => $"\"{e.Renderer.name}\""))}, on the same frame."
+                    : "") +
                 (skippedShadowPasses > 0 ? $" {skippedShadowPasses} shadow pass(es) cannot be patched and stay straight." : ""));
         }
 
@@ -1409,28 +1462,41 @@ namespace AvatarBridge
             var clips = YapsCurveMirror.ClipsOf(ctx.MergedController).ToList();
             foreach (var plug in ctx.YapsPlugs)
             {
-                string path = ctx.PathInTarget(plug.Renderer.transform);
-                if (plug.Shapes.Count > 0)
-                {
-                    written += YapsCurveMirror.MirrorShapes(clips, path, plug.Renderer.GetType(),
-                        plug.Shapes, plug.MovingShapes, missed);
-                }
                 // The chain root and its bone children: a size slider scales
                 // one of them, and the shader takes that as the plug's scale.
+                var bones = new Dictionary<string, Transform>();
+                void Bone(Transform t)
+                {
+                    string bonePath = ctx.PathInTarget(t);
+                    if (bonePath != null) bones[bonePath] = t;
+                }
                 if (plug.ChainRoot != null)
                 {
-                    var bones = new Dictionary<string, Transform>();
-                    void Bone(Transform t)
-                    {
-                        string bonePath = ctx.PathInTarget(t);
-                        if (bonePath != null) bones[bonePath] = t;
-                    }
                     Bone(plug.ChainRoot);
                     for (int i = 0; i < plug.ChainRoot.childCount; i++)
                     {
                         Bone(plug.ChainRoot.GetChild(i));
                     }
-                    scaled += YapsCurveMirror.MirrorBoneScale(clips, bones, path, plug.Renderer.GetType(), plug.Rotation);
+                }
+
+                // Every mesh of the plug, or a resized plug tears where one
+                // mesh's deform took the new size and the other's did not.
+                void Mirror(Renderer renderer, List<string> shapes, List<string> moving)
+                {
+                    string path = ctx.PathInTarget(renderer.transform);
+                    if (shapes.Count > 0)
+                    {
+                        written += YapsCurveMirror.MirrorShapes(clips, path, renderer.GetType(), shapes, moving, missed);
+                    }
+                    if (bones.Count > 0)
+                    {
+                        scaled += YapsCurveMirror.MirrorBoneScale(clips, bones, path, renderer.GetType(), plug.Rotation);
+                    }
+                }
+                Mirror(plug.Renderer, plug.Shapes, plug.MovingShapes);
+                foreach (var mesh in plug.Extras)
+                {
+                    Mirror(mesh.Renderer, mesh.Shapes, mesh.MovingShapes);
                 }
             }
 

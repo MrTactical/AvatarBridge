@@ -707,7 +707,10 @@ with which of them it came from, so a feature you know from one of them is under
 ### What a conversion does
 
 **A converted plug bends into a socket and threads it along its axis**: arriving straight rather
-than aiming at a point, easing in as it approaches, relaxing when pulled away. **A converted
+than aiming at a point, easing in as it approaches, relaxing when pulled away. A plug modelled as
+more than one mesh, a tip or a second half on a renderer of its own, bends as one piece: every
+mesh most of which rides the plug's bones is baked on the same frame, with the same settings, and
+follows the same size animations. **A converted
 socket with a mesh of its own opens around a plug**: the entry and up to fifteen further depths,
 staged, several allowed at one depth, driven straight from the shader: the socket-side deform DPS
 had and SPS dropped, so it reacts to a DPS plug that has never heard of this tool. (The socket
