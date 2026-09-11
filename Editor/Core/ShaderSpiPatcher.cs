@@ -153,11 +153,7 @@ namespace AvatarBridge
             {
                 report.Converted(Category,
                     $"{swapsRepointed} material-swap curve(s) repointed at a patched shader",
-                    "These materials are never assigned to a renderer: an animation swaps them in, " +
-                    "which is how hypno overlays, transformation skins and costume recolours are " +
-                    "built. Patching the shader alone would have changed nothing, because the " +
-                    "toggle would still have assigned the original, so the swap itself now points " +
-                    "at the patched copy.");
+                    "Materials an animation swaps in now swap in the patched copy.");
             }
         }
 
@@ -254,36 +250,22 @@ namespace AvatarBridge
             {
                 report.Approximated(Category, $"{repointed.Distinct().Count()} shader(s) patched for VR stereo",
                     $"{string.Join(", ", repointed.Distinct())}: copied into RehomedAssets with the single-pass " +
-                    "instanced macros added, and this avatar's materials repointed at the copies. The originals " +
-                    "are untouched. Each copy was checked for compile errors, though whether it *looks* right " +
-                    "can only be judged in VR, so check the effect in both eyes. " +
-                    "This is a ChilloutVR problem specifically: ChilloutVR renders single-pass instanced " +
-                    "while VRChat renders double-wide single-pass, and under double-wide a shader gets both " +
-                    "eyes without asking, which is why it looked fine before converting. Nothing here needs " +
-                    "undoing, though: the macros are the mode-agnostic ones, so the patched copy stays " +
-                    "correct under VRChat's mode and on desktop as well.");
+                    "instanced macros added; originals untouched. They compile; check both eyes in VR.");
             }
             if (grabLimited.Count > 0)
             {
                 report.Warning(Category,
                     $"{grabLimited.Distinct().Count()} patched shader(s) grab the screen: the background they " +
                     "refract comes from one eye",
-                    $"{string.Join(", ", grabLimited.Distinct())}: these now DRAW in both eyes, but they read " +
-                    "the screen through a GrabPass, and ChilloutVR's rendering mode doesn't give a GrabPass " +
-                    "per-eye content. So the glass, refraction or heat-haze shows one eye's view to both. " +
-                    "Nothing here can fix that: rewriting the reads to the per-eye macros renders GREY in VR " +
-                    "(tried, twice, once by hand). If it looks wrong in VR, use a shader that doesn't grab the " +
-                    "screen. On desktop it is unaffected.");
+                    $"{string.Join(", ", grabLimited.Distinct())}: they draw in both eyes, but refraction shows one " +
+                    "eye's view. Unfixable here; use a shader that doesn't grab the screen if it bothers you.");
             }
             if (recipesUsed.Count > 0)
             {
                 report.Approximated(Category,
                     $"{recipesUsed.Count} shader(s) fixed by a hand-written stereo recipe",
-                    string.Join("; ", recipesUsed) + ". These need more than the standard macros, so the " +
-                    "edit was written by hand once and pinned to that exact version of the file: a shader " +
-                    "that has been updated or edited will not match, and is refused rather than guessed at. " +
-                    "Only your copy in RehomedAssets is changed; the original shader is untouched. Worth a " +
-                    "look in VR with both eyes open.");
+                    string.Join("; ", recipesUsed) + ". Pinned to that exact file version; originals untouched. Check " +
+                    "both eyes in VR.");
             }
             if (refused.Count > 0)
             {
@@ -298,11 +280,7 @@ namespace AvatarBridge
             {
                 report.Converted(Category,
                     $"{alreadyCorrect.Distinct().Count()} shader(s) already speak single-pass instanced: left untouched",
-                    $"{string.Join(", ", alreadyCorrect.Distinct())}: the source declares the full " +
-                    "stereo-instancing macro set, so ChilloutVR's rendering mode is already handled and " +
-                    "patching would change nothing. Locked and generated shaders (Hidden/Locked/…) are " +
-                    "checked like any other. If one of these looks wrong in game, the cause is something " +
-                    "other than the macros this option adds.");
+                    $"{string.Join(", ", alreadyCorrect.Distinct())}.");
             }
         }
 

@@ -63,14 +63,8 @@ namespace AvatarBridge
             {
                 cloth.enabled = false;
                 ctx.Report.Approximated(Category, data.Root.name, data.Synthesized
-                    ? "Style was inactive at conversion; cloth created disabled (the component is " +
-                      "off, its object stays active so a toggle can switch it on). Its toggle is " +
-                      "re-wired to activate this cloth. See the Animator section of this report."
-                    : "Source PhysBone was disabled; cloth created disabled (the component is off, " +
-                      "its object stays active so a toggle can switch it on: a component enabled " +
-                      "on an inactive object never runs). Animator toggles that activated the " +
-                      "original object are re-wired to activate this cloth too. See the Animator " +
-                      "section of this report.");
+                    ? "Style was inactive, so the cloth starts off; its toggle switches it on."
+                    : "Source PhysBone was off, so the cloth starts off; toggles that enabled it switch it on.");
             }
             ctx.ConvertedPhysicsChains.Add(new BridgeContext.ConvertedPhysicsChain
             {
@@ -138,23 +132,16 @@ namespace AvatarBridge
 
             ctx.Report.Converted(Category, data.Root.name,
                 data.RootHasMultipleChildren && data.MultiChildTypeName == "Ignore"
-                    ? "Root held still (rotation 0): the source's Multi Child Type is Ignore, which pins a "
-                      + "branching root in VRChat and simulates only the branches below it."
-                    : "Root turns with the chain (rotation 1): VRChat simulates a PhysBone's root bone, "
-                      + "rotating it to follow the children it integrates, so the chain bends at its FIRST "
-                      + "joint. MagicaCloth2 holds root bones still and would give this one half the "
-                      + "rotation its children ask for, leaving the chain a joint stiffer at the base than "
-                      + "the original. Lower Root Rotation on the cloth if the base moves more than you want.");
+                    ? "Root held still (rotation 0), as Multi Child Type Ignore does."
+                    : "Root turns with the chain (rotation 1), as in VRChat. Lower Root Rotation if the base moves too much.");
 
             if (data.HumanoidExclusions.Count > 0)
             {
                 ctx.Report.Approximated(Category, data.Root.name,
                     $"{data.HumanoidExclusions.Count} humanoid-mapped bone(s) excluded from simulation: " +
                     $"{string.Join(", ", data.HumanoidExclusions.Take(4).Select(t => t.name))}" +
-                    $"{(data.HumanoidExclusions.Count > 4 ? ", …" : "")}. The animator and IK drive " +
-                    "humanoid bones every frame (locomotion curls toes, IK plants feet), so simulating " +
-                    "one fights them for the transform. The cloth roots around these; their non-humanoid " +
-                    "children still simulate.");
+                    $"{(data.HumanoidExclusions.Count > 4 ? ", …" : "")}. The animator and IK own them; their " +
+                    "other children still simulate.");
             }
 
             if (data.ToeExclusions.Count > 0)
@@ -162,10 +149,8 @@ namespace AvatarBridge
                 ctx.Report.Approximated(Category, data.Root.name,
                     $"{data.ToeExclusions.Count} toe branch(es) excluded from simulation: " +
                     $"{string.Join(", ", data.ToeExclusions.Take(4).Select(t => t.name))}" +
-                    $"{(data.ToeExclusions.Count > 4 ? ", …" : "")} (with everything under them). " +
-                    "A rig maps \"Toes\" but not the individual digits, so the humanoid rule alone " +
-                    "left them simulating whenever the chain started higher up the leg. Turn on " +
-                    "\"Convert toe PhysBones\" in the physics options if the toe physics are deliberate.");
+                    $"{(data.ToeExclusions.Count > 4 ? ", …" : "")} and below. Turn on \"Convert toe PhysBones\" " +
+                    "if they are deliberate.");
             }
 
             if (data.Ignores.Count == 0)
@@ -189,10 +174,7 @@ namespace AvatarBridge
                 {
                     ctx.Report.Approximated(Category, data.Root.name,
                         $"Endpoint Position ({data.EndpointPosition.x:0.###}, {data.EndpointPosition.y:0.###}, " +
-                        $"{data.EndpointPosition.z:0.###}) realised as {tips} \"_End\" bone(s): VRChat " +
-                        "simulates a virtual tip at that offset; MagicaCloth2 only simulates transforms " +
-                        "that exist, so without these a single-bone chain would be one fixed particle " +
-                        "that never moves.");
+                        $"{data.EndpointPosition.z:0.###}) realised as {tips} \"_End\" bone(s), so the tip can move.");
                 }
             }
 
@@ -222,17 +204,8 @@ namespace AvatarBridge
                     sdata.radius.value = measured;   // direct, so any depth curve on it survives
                     ctx.Report.Converted(Category, data.Root.name,
                         $"Particle radius {before:0.###} → {measured:0.###}, measured from the mesh these " +
-                        $"bones move ({samples} vertex sample(s)). MagicaCloth2's radius is the collision " +
-                        "body of a simulated bone; left at the preset's value it is the same size on a " +
-                        "breast as on a hair strand, and collision in game covers a fraction of what you " +
-                        "can see. The source PhysBone's radius is not used for this: in VRChat it only " +
-                        "governs contact with PhysBone colliders, so it is routinely near zero." +
-                        (grownForReach
-                            ? " This chain is measured at the LARGEST an animated blendshape makes it, " +
-                              "not at the size it is saved: the radius cannot follow a slider in game, " +
-                              "so it is set to cover the body when the slider is up rather than to fit " +
-                              "it when down."
-                            : ""));
+                        $"bones move ({samples} vertex sample(s))." +
+                        (grownForReach ? " Measured with its sliders at full." : ""));
                 }
                 else
                 {
@@ -480,22 +453,13 @@ namespace AvatarBridge
                 ctx.Report.Approximated(Category, data.Root.name,
                     $"{data.Ignores.Count} Ignore Transform(s) honoured by rooting the cloth at " +
                     $"{sdata.rootBones.Count} branch(es) instead: {string.Join(", ", names)}" +
-                    $"{(sdata.rootBones.Count > names.Count ? ", …" : "")}. MagicaCloth2 has no ignore list: " +
-                    "every root simulates its whole subtree, so the excluded bones are left out by not " +
-                    "rooting anything above them. MagicaCloth2 holds a root bone still, so each of these " +
-                    "branches now bends from its second joint rather than its first; if one feels stiff at " +
-                    "the base, that is why." +
-                    (deadRoots.Count > 0
-                        ? $" {deadRoots.Count} childless branch(es) were dropped rather than rooted " +
-                          "(a root with nothing below it is a single pinned particle that can never move)."
-                        : "") +
+                    $"{(sdata.rootBones.Count > names.Count ? ", …" : "")}. Each branch bends from its second " +
+                    "joint, so it may feel stiff at the base." +
+                    (deadRoots.Count > 0 ? $" {deadRoots.Count} childless branch(es) dropped." : "") +
                     (unhonouredBranches.Count > 0
-                        ? $" {unhonouredBranches.Count} branch(es) kept their excluded bones instead of " +
-                          $"being lost: {string.Join(", ", unhonouredBranches.Select(b => b.name).Take(4))}" +
-                          $"{(unhonouredBranches.Count > 4 ? ", …" : "")}. Everything below those is " +
-                          "ignored by the source PhysBone, so honouring it would have left nothing of " +
-                          "the branch to root at all: the excluded bones now simulate, which is the " +
-                          "smaller error than the branch not being in the cloth."
+                        ? $" {unhonouredBranches.Count} branch(es) simulate their excluded bones, or nothing of " +
+                          $"them would move: {string.Join(", ", unhonouredBranches.Select(b => b.name).Take(4))}" +
+                          $"{(unhonouredBranches.Count > 4 ? ", …" : "")}."
                         : ""));
                 return;
             }
@@ -511,9 +475,8 @@ namespace AvatarBridge
                 // stay so the cloth remains valid and inspectable.
                 ctx.Report.Warning(Category, data.Root.name,
                     $"This cloth CANNOT move: honouring the {data.Ignores.Count} excluded transform(s) " +
-                    $"(including {data.HumanoidExclusions.Count} humanoid-mapped bone(s), which must never " +
-                    "simulate) leaves only pinned root particles. It was kept for inspection; delete it, " +
-                    "or restructure the source PhysBone if this chain is meant to move.");
+                    $"(including {data.HumanoidExclusions.Count} humanoid bone(s)) leaves nothing to move. Kept " +
+                    "for inspection; delete it or fix the source PhysBone.");
                 return;
             }
 
@@ -521,16 +484,11 @@ namespace AvatarBridge
             sdata.rootBones.Add(data.Root);
             ctx.Report.Warning(Category, data.Root.name,
                 $"{data.Ignores.Count} Ignore Transform(s) NOT honoured: MagicaCloth2 can only exclude " +
-                "a bone by rooting the cloth below it, and here that costs more than it saves: " +
+                "a bone by rooting below it, and " +
                 (costsTooMuch
-                    ? $"honouring them would have simulated {kept} of this chain's {wholeChain} bone(s), " +
-                      "leaving the joints nearest the body, the ones that carry the motion, pinned. "
-                    : "the exclusions sit at the chain's tips, or cover everything under the root, so " +
-                      "nothing that can move is left. ") +
-                $"The cloth is rooted at \"{data.Root.name}\" with the full tree simulating instead, so " +
-                "the excluded bones (usually squish/deform helpers) now jiggle where VRChat held them " +
-                "rigid: the far smaller error than the chain barely moving. Delete those bones from " +
-                "the cloth by hand if it matters.");
+                    ? $"that would simulate only {kept} of {wholeChain} bone(s). "
+                    : "that would leave nothing to move. ") +
+                $"The whole tree simulates from \"{data.Root.name}\", so those bones jiggle where VRChat held them.");
         }
 
         static void ReportSourceSettings(BridgeContext ctx, PhysBoneChainData data, string preset,
@@ -575,21 +533,14 @@ namespace AvatarBridge
                 // The report entry for the animationPoseRatio decision
                 // taken above. The source flag answers it; nothing to ask.
                 ctx.Report.Converted(Category, data.Root.name,
-                    "Source PhysBone had 'Is Animated' on, so this cloth settles to the ANIMATED pose " +
-                    "(Animation Pose Ratio 1) rather than the pose the avatar was built in. Without it the " +
-                    "cloth holds these bones where they started and quietly overrides any animation that " +
-                    "moves them: a chest or ear slider that scales its bones is the usual casualty. Set " +
-                    "Animation Pose Ratio back to 0 on the cloth if you want it to ignore the animation.");
+                    "'Is Animated' was on, so the cloth follows the animated pose (Animation Pose Ratio 1).");
             }
 
             if (data.RootHasMultipleChildren && !string.IsNullOrEmpty(data.MultiChildTypeName))
             {
                 ctx.Report.Approximated(Category, data.Root.name, data.MultiChildTypeName == "Ignore"
-                    ? "Multi Child Type 'Ignore' pins a branching root in VRChat, so Root Rotation is set to 0 " +
-                      "here: MagicaCloth2 defaults it to 0.5, which would let a root VRChat held still rotate " +
-                      "halfway with its children. Raise it on the cloth if you want this root to follow them."
-                    : $"Multi Child Type '{data.MultiChildTypeName}' has no MagicaCloth2 equivalent: every " +
-                      "branch off this root simulates independently, where VRChat blended them.");
+                    ? "Multi Child Type 'Ignore': Root Rotation 0, so the root stays still as in VRChat."
+                    : $"Multi Child Type '{data.MultiChildTypeName}' has no equivalent: branches simulate apart.");
             }
 
             if (!string.IsNullOrEmpty(data.Parameter))
@@ -648,17 +599,12 @@ namespace AvatarBridge
             bool restFloored = restValue > restDerived + 0.0001f;
             ctx.Report.Approximated(Category, data.Root.name,
                 $"Physics derived from the PhysBone ({(advanced ? "Advanced" : "Simplified")} integration): " +
-                $"damping {dampValue:0.###}, angle restoration {restValue:0.###}. Both solvers integrate " +
-                "positions per step at a fixed rate, so PhysBone's 60 Hz coefficients were re-expressed at " +
-                "MagicaCloth2's 90 Hz. This replaces the preset's feel; if the chain moves wrong, turning " +
-                "\"Derive physics from PhysBone\" off restores it." +
-                $" Baseline it started from: damping {dampFloor:0.###}, restoration {restFloor:0.###}." +
+                $"damping {dampValue:0.###}, angle restoration {restValue:0.###}, from 60 Hz to 90 Hz. " +
+                $"Preset baseline: damping {dampFloor:0.###}, restoration {restFloor:0.###}." +
                 (dampFloored || restFloored
-                    ? $" Held to the preset's baseline where the source asked for less" +
+                    ? " Held at the baseline, below which a chain turns to mush" +
                       (dampFloored ? $" (damping would have been {dampDerived:0.###})" : "") +
-                      (restFloored ? $" (restoration would have been {restDerived:0.###})" : "") +
-                      ": MagicaCloth2's own presets treat these as the floor of a spring that still reads " +
-                      "as one, and below it a chain converts to mush rather than to a loose chain."
+                      (restFloored ? $" (restoration would have been {restDerived:0.###})" : "") + "."
                     : ""));
 
             if (satRoot || satTip)
@@ -689,11 +635,7 @@ namespace AvatarBridge
             {
                 sdata.wind.influence = 0f;
                 ctx.Report.Approximated(Category, data.Root.name,
-                    "Wind influence set to 0: VRChat has no wind, so this chain was tuned without it. " +
-                    "ChilloutVR worlds can carry wind zones that drive MagicaCloth2, which would move " +
-                    "the chain in game in a way it never moved in VRChat (and in a way a Unity scene " +
-                    "with no wind zone can't preview). Raise it on the cloth if you want the world's " +
-                    "wind to reach this chain.");
+                    "Wind influence 0: VRChat has no wind, so the chain was tuned without it.");
             }
 
             // VRChat clamps nothing; the author tuned against full
@@ -755,12 +697,7 @@ namespace AvatarBridge
                     {
                         TrySetMember(sdata.inertiaConstraint, "anchorInertia", influence);
                         ctx.Report.Approximated(Category, data.Root.name,
-                            $"Inertia anchored to \"{anchor.name}\" at {influence:0.##}: Immobile Type was " +
-                            "\"All Motion\", which in VRChat cancels motion from the parent bone too, not " +
-                            "just the avatar walking. MagicaCloth2 measures inertia at the cloth object, " +
-                            "which never moves when the head turns, so the anchor is what carries that " +
-                            "half across. Clear Inertia > Anchor on this cloth if you would rather it " +
-                            "reacted to that bone.");
+                            $"Inertia anchored to \"{anchor.name}\" at {influence:0.##}, for Immobile Type \"All Motion\".");
                     }
                 }
             }
@@ -799,12 +736,7 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category, data.Root.name,
                     $"Swing bounded to {chord:0.###} from rest, converted from the source's {limitAngle:0}° " +
-                    $"{data.LimitTypeName} limit over a {length:0.###} chain, easing to nothing at the root. " +
-                    "That limit is what kept this " +
-                    "chain presentable in VRChat, and without it a loose chain converts loose and unbounded. " +
-                    "It is applied as a distance bound rather than MagicaCloth2's angle limit because a " +
-                    "distance bound removes motion instead of adding a restoring force, so it cannot set the " +
-                    "chain vibrating. Clear Movement Limit > Use Max Distance on the cloth to undo it.");
+                    $"{data.LimitTypeName} limit over a {length:0.###} chain, as a distance bound that cannot vibrate.");
             }
             else
             {
@@ -831,11 +763,8 @@ namespace AvatarBridge
             valueField.SetValue(holder, floor);
             field.SetValue(inertia, holder);   // struct-safe: write the modified copy back
             ctx.Report.Approximated(Category, data.Root.name,
-                $"{label} speed limit raised {current:0.##} → {floor:0.##}: VRChat has no such clamp, so this " +
-                "chain was tuned receiving the avatar's movement in full. Past the limit MagicaCloth2 stops " +
-                "passing movement to the chain and it rides rigidly with the body, and the preset's value sat " +
-                "below walking pace. This is MagicaCloth2's own default rather than no limit at all, so a " +
-                "teleport still cannot fling the chain.");
+                $"{label} speed limit raised {current:0.##} → {floor:0.##}, MagicaCloth2's default: the preset's " +
+                "sat below walking pace.");
         }
 
         static float MeasureChainLength(Transform root)
@@ -1527,19 +1456,14 @@ namespace AvatarBridge
                 : null;
 
             ctx.Report.Converted(Category, data.Root.name,
-                $"Built as a MagicaCloth2 SOFT BODY (\"{chainClass}\"), not as a chain of bones. A breast, " +
-                "belly or thigh is a volume anchored to a bone rather than something that hangs, so it is " +
-                "held near its rest position by a spring" +
+                $"Built as a SOFT BODY (\"{chainClass}\"), held near rest by a spring" +
                 (spring ? $" (power {power:0.###})" : " (spring settings unavailable on this MagicaCloth2 version)") +
                 (collision
                     ? $", and only \"{collisionBone}\" ({collisionBones.Count} of {data.Root.childCount} " +
                       $"branch(es)) is offered for collision, sized {collisionRadius:0.###} " +
-                      "from the mesh, so other people touch the part that is actually there instead of every " +
-                      "bone in the chain"
+                      "from the mesh"
                     : ", though its collision bone could not be set on this MagicaCloth2 version") +
-                ". Its inertia is also left at the preset's value rather than converted from Immobile: an " +
-                "anchored body cannot be thrown off the avatar, so holding inertia down only stops it " +
-                "answering the body's movement.");
+                ". Inertia stays at the preset's value.");
         }
 
         static List<Transform> ChooseCollisionBones(BridgeContext ctx, PhysBoneChainData data, out float radius)

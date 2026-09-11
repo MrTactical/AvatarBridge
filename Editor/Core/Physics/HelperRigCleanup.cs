@@ -151,9 +151,7 @@ namespace AvatarBridge
             if (kept > 0)
             {
                 ctx.Report.Approximated(Category, kept + " helper rig(s) left in place",
-                    "Either a cloth that survived borrows a collider from inside them, or they carry contacts an " +
-                    "avatar still needs. Deleting would have left a chain with no collision, or a trigger " +
-                    "nobody can touch any more. The rig is inert either way; the transforms are the price.");
+                    "A surviving cloth borrows their colliders, or they carry contacts still needed. They are inert.");
             }
             Report(ctx, dropped, removedBones, removedCurves, where);
         }
@@ -269,14 +267,9 @@ namespace AvatarBridge
         static void Report(BridgeContext ctx, int dropped, int bones, int curves, string where)
         {
             ctx.Report.Warning(Category, $"A physics addon did not survive conversion ({ctx.HelperRigChains.Count} chains)",
-                "This avatar carries a staged physics rig: a cascade of helper bones, each doing one job and " +
-                "feeding the next, with constraints copying the result onto the bones your mesh actually uses. " +
-                "No mesh is skinned to any of it. VRChat composes that cascade; MagicaCloth2 and DynamicBone " +
-                "simulate each chain independently, which does not compose and lands on the body as " +
-                $"deformation, so none of it was converted. {dropped} constraint(s) reading from it were removed " +
-                "as well, since they would copy a pose nothing moves any more, and a position or scale relay " +
-                $"also overrides animation. The rig itself was deleted with it: {bones} transform(s) that " +
-                $"nothing simulated any more, and {curves} curve(s) that addressed them. {where}");
+                "Helper bones feeding each other through constraints, with no mesh on them. Cloth simulates each " +
+                "chain alone and would deform the body, so none was converted. " +
+                $"Removed with it: {dropped} constraint(s), {bones} transform(s), {curves} curve(s). {where}");
         }
     }
 }

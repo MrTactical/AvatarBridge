@@ -134,10 +134,8 @@ namespace AvatarBridge
                 if (Mathf.Clamp01(data.GravityFalloff) > 0.01f)
                 {
                     ctx.Report.Approximated(Category, data.Root.name,
-                        $"Gravity falloff {data.GravityFalloff:0.##} is not preserved. ChilloutVR's " +
-                        "rest-pose gravity cancellation is scale-dependent and misbehaves on scaled " +
-                        "avatars, so the whole pull is applied as a constant force instead. This chain " +
-                        "will hang lower at rest than it did in VRChat; lower its Gravity to compensate.");
+                        $"Gravity falloff {data.GravityFalloff:0.##} is not kept, so it hangs lower. Lower its " +
+                        "Gravity to compensate.");
                 }
             }
 
@@ -157,10 +155,8 @@ namespace AvatarBridge
                 ctx.Report.Approximated(Category, data.Root.name,
                     $"{data.ToeExclusions.Count} toe branch(es) added to the exclusions: " +
                     $"{string.Join(", ", data.ToeExclusions.Take(4).Select(t => t.name))}" +
-                    $"{(data.ToeExclusions.Count > 4 ? ", …" : "")} (with everything under them). " +
-                    "Simulated toes splay and swing while the foot itself is planted by IK, which " +
-                    "reads as broken feet rather than as physics. Turn on \"Convert toe PhysBones\" " +
-                    "in the physics options if this avatar's toe physics are deliberate.");
+                    $"{(data.ToeExclusions.Count > 4 ? ", …" : "")} and below. Turn on \"Convert toe PhysBones\" " +
+                    "if they are deliberate.");
             }
 
             if (data.Colliders.Count > 0)

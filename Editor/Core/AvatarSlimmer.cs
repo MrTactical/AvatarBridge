@@ -239,12 +239,8 @@ namespace AvatarBridge
                 report.Converted(Category, $"{done} texture(s) changed, {Mb(plan.Bytes)} off the graphics card",
                     string.Join("; ", plan.Textures.Take(8).Select(Describe)) +
                     (plan.Textures.Count > 8 ? $"; and {plan.Textures.Count - 8} more" : "") +
-                    ". Import settings only: no texture file was edited, every one of these is a field in the " +
-                    "inspector to put back, and \"Put the textures back\" here does the same thing." +
-                    (refused > 0
-                        ? $" {refused} of them would not take the format this platform was asked for and were " +
-                          "put back to what they had, so only their size changed."
-                        : ""));
+                    ". Import settings only; \"Put the textures back\" undoes it." +
+                    (refused > 0 ? $" {refused} refused the format, so only their size changed." : ""));
             }
 
             StripDead(avatar, plan, report);
@@ -393,9 +389,7 @@ namespace AvatarBridge
 
             report.Converted(Category, $"{gone.Count} hidden renderer(s) stripped, {Mb(plan.StripBytes)} off the card",
                 string.Join("; ", gone.Take(6)) + (gone.Count > 6 ? $"; and {gone.Count - 6} more" : "") +
-                ". Every one was switched off with nothing in any clip able to switch it on, so none of them " +
-                "could ever be seen. The objects are still there, only the renderer is gone, so anything " +
-                "parented to them still works. Ctrl+Z puts them back.");
+                ". No clip could switch them on. The objects stay; Ctrl+Z puts the renderers back.");
             return gone.Count;
         }
 

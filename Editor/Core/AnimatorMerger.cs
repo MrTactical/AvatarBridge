@@ -151,14 +151,8 @@ namespace AvatarBridge
                     {
                         ctx.Report.Converted(Category,
                             $"Gesture layer \"{srcLayer.name}\" left to ChilloutVR's own hand poses",
-                            "Every clip in it is one of VRChat's \"proxy_\" placeholders, which means " +
-                            "this avatar never authored hand poses of its own; those files are " +
-                            "stand-ins that the VRChat CLIENT swaps its real animations into at " +
-                            "runtime, so what ships in the project is not the pose you see in " +
-                            "VRChat. Merging them would play the stand-in literally and, because " +
-                            "the layer takes ChilloutVR's hand slot, would replace working finger " +
-                            "poses with one nobody authored. ChilloutVR's own hand set is this " +
-                            "platform's version of those animations and is kept instead.");
+                            "Every clip in it is a VRChat \"proxy_\" placeholder, so the avatar has no hand " +
+                            "poses of its own. ChilloutVR's hand set is kept instead.");
                         continue;
                     }
 
@@ -172,11 +166,7 @@ namespace AvatarBridge
                         // Reported so finger-pose issues stay diagnosable.
                         ctx.Report.Converted(Category,
                             $"Gesture hand layer \"{srcLayer.name}\" -> \"{clone.name}\"",
-                            "Takes over ChilloutVR's hand-pose slot: the CCK's own layer was " +
-                            "dropped and this one, the avatar's actual finger animations, " +
-                            "drives the fingers. Its VRChat hand mask is replaced with an " +
-                            "equivalent generated copy (same humanoid bits, verified against " +
-                            "VRChat's own vrc_Hand masks).");
+                            "Replaces the CCK's hand-pose layer, with an equivalent copy of its VRChat hand mask.");
                     }
                     MergedLayerNames[$"{id}:{srcIndex}"] = clone.name;
                     if (firstLayerOfController)
@@ -220,44 +210,24 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category,
                     $"{actionMoved.Count} Action-layer feature(s) moved into ChilloutVR's locomotion layer",
-                    $"{string.Join("; ", actionMoved)}. VRChat plays these full-body sequences from its " +
-                    "Action playable, raising its weight at runtime: weight control ChilloutVR doesn't " +
-                    "have, and a separate layer can neither yield when idle nor assert without freezing. " +
-                    "ChilloutVR's own home for full-body poses is its Locomotion/Emotes layer, so the " +
-                    "pose states were rebuilt THERE: they take over from locomotion exactly while their " +
-                    "driving conditions hold, and hand back to it on the same conditions the original " +
-                    "used to fade its layer out. The original layer stays merged at weight 0 so its " +
-                    "parameter drivers keep firing on schedule. Not carried over: VRChat's tracking " +
-                    "control (IK cut-off during the sequence) and its half-second weight fades, so " +
-                    "entering and leaving the pose blends over a fixed quarter second instead.");
+                    $"{string.Join("; ", actionMoved)}. The poses take over locomotion while their conditions " +
+                    "hold; the original layer stays at weight 0 so its drivers still fire. Not carried: the IK " +
+                    "cut-off, and VRChat's half-second fades become a quarter second.");
             }
             if (actionFeatures.Count > 0)
             {
                 ctx.Report.Approximated(Category,
                     $"{actionFeatures.Count} Action layer(s) carry a feature this platform cannot pose",
-                    $"{string.Join("; ", actionFeatures)}. VRChat's Action playable sits at weight 0 and " +
-                    "is raised at runtime by behaviours while a sequence plays: that runtime weight " +
-                    "control is the one piece ChilloutVR does not have, and without it there is no safe " +
-                    "weight for such a layer: at 0 its full-body poses never show, at 1 Unity offers no " +
-                    "way for the layer to yield between sequences, so the avatar freezes in its last pose " +
-                    "(tried, at length; it is a wall, not a bug). The layer is merged at weight 0, so " +
-                    "everything OUTSIDE it still works: mesh swaps, materials and toggles live in FX " +
-                    "layers and carry the visible part of the feature. What is lost is the full-body pose " +
-                    "while the sequence plays. Raising the layer's weight by hand in the Animator window " +
-                    "shows the poses but WILL freeze the body on the pose it last played.");
+                    $"{string.Join("; ", actionFeatures)}. ChilloutVR cannot raise a layer's weight at runtime, " +
+                    "so it is merged at 0: the FX side still works, the full-body pose does not show. Weight 1 " +
+                    "freezes the body in its last pose.");
             }
             if (actionLayersRested > 0)
             {
                 ctx.Report.Converted(Category,
                     $"Action layer merged at weight 0, the weight VRChat gives it",
-                    "VRChat keeps the Action playable layer at weight 0 and raises it only while an " +
-                    "emote plays, which is why its idle state can hold a full-body clip with Write " +
-                    "Defaults on and harm nothing. ChilloutVR has no playable layers, so carrying " +
-                    "weight 1 across would let that idle state hold your whole body in its rest pose " +
-                    "above locomotion: walking, crouching and the movement sliders would all do " +
-                    "nothing. Emotes are unaffected: they play from ChilloutVR's own " +
-                    "Locomotion/Emotes layer, driven by the Emote parameter. If you deliberately want " +
-                    "this layer live, raise its weight in the Animator window.");
+                    "At weight 1 its idle state would hold the body over locomotion. Emotes still play from " +
+                    "ChilloutVR's own layer.");
             }
 
             master.layers = masterLayers.ToArray();
@@ -269,16 +239,9 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category,
                     $"{_gestureConditionsRedirected} gesture condition(s) rebuilt as ChilloutVR float threshold bands",
-                    "Discrete VRChat gesture checks (GestureLeft == 4) become the CCK's own float windows " +
-                    "(GestureLeft > 3.9 and < 4.1): the exact idiom the stock avatar animator uses, so the " +
-                    "conversion rides the same client path as every avatar that ships with the game. The " +
-                    "fist band starts at 0.1: the float carries the analog grip there, and a light squeeze " +
-                    "counts as fist, like VRChat. EDITOR TESTING: drive the GestureLeft/GestureRight FLOAT " +
-                    "(-1 open, 0.1..1 fist, 2 thumbs up, 3 gun, 4 point, 5 peace, 6 rock'n'roll): the CCK " +
-                    "Animator Tester's pose buttons do exactly that. IN GAME on Index-type controllers, " +
-                    "gestures only register while \"Skeletal Input\" or \"Infer Gestures from Finger " +
-                    "Tracking\" is enabled in ChilloutVR's settings; with both off, NO avatar gestures, " +
-                    "stock or converted.");
+                    "GestureLeft == 4 becomes > 3.9 and < 4.1, as the stock animator does; fist starts at 0.1. " +
+                    "On Index controllers gestures need \"Skeletal Input\" or \"Infer Gestures from Finger " +
+                    "Tracking\" on in ChilloutVR's settings.");
             }
             RebuildAnalogFist(master, ctx);
             BehaviourPass(master, vrcLayers, ctx);
@@ -384,11 +347,8 @@ namespace AvatarBridge
             {
                 ctx.Report.Error(Category,
                     $"{motionsBeforeSave - motionsAfterSave} animation reference(s) failed to persist",
-                    $"The controller referenced {motionsBeforeSave} motions in memory but only " +
-                    $"{motionsAfterSave} survived saving to disk. The usual cause is a VRCFury bake " +
-                    "that errored partway, leaving generated clips unsaveable; check this report for " +
-                    "a VRCFury error above, fix the source avatar's Fury setup, and convert again. " +
-                    "Do not upload this conversion: every missing motion is a dead toggle or animation.");
+                    $"{motionsBeforeSave} motions in memory, {motionsAfterSave} saved. Usually a VRCFury bake that " +
+                    "errored partway: look for its error above, fix it and convert again. Do not upload this.");
             }
             ctx.MergedController = master;
 
@@ -410,12 +370,8 @@ namespace AvatarBridge
                 // Reported, never silent. Cloned avatars can inherit an
                 // Animator whose controller reference is already dead.
                 ctx.Report.Error(Category, "No Animator found to assign the controller to",
-                    "The converted avatar has no Animator component on its root, so the merged " +
-                    "controller could not be linked to one. ChilloutVR still loads the avatar; it " +
-                    "reads CVRAvatar's own controller fields, which are set, but nothing will " +
-                    "animate in the editor, and any Animator left on the object keeps whatever it " +
-                    "inherited, which is usually a build-time asset that no longer exists. Add an " +
-                    "Animator to the avatar root and convert again.");
+                    "The root has no Animator. ChilloutVR still loads it, but nothing animates in the editor. " +
+                    "Add an Animator to the root and convert again.");
             }
             else
             {
@@ -425,16 +381,9 @@ namespace AvatarBridge
                 if (ControllerWouldCrashUnity(overrides))
                 {
                     ctx.Report.Error(Category, "Controller NOT assigned to the Animator: it crashes Unity",
-                        "This controller references assets that resolve to nothing. Handing such a " +
-                        "controller to an Animator makes Unity build a playable graph from it on the " +
-                        "spot, even with the component switched off, and that walks into the " +
-                        "missing references and kills the editor with no error, losing unsaved work. " +
-                        "It has been left unassigned so that cannot happen. ChilloutVR is unaffected " +
-                        "by that on its own: the CVRAvatar still carries the base controller and the " +
-                        "overrides, which is what the client reads on load. The broken references are " +
-                        "still in the controller though, so fix them and convert again before " +
-                        "uploading; see the unresolvable-asset error for where they came from, " +
-                        "usually a VRCFury or Modular Avatar bake that errored partway.");
+                        "It references missing assets, and assigning it would crash Unity, so it is left " +
+                        "unassigned. The CVRAvatar still carries it. Fix the references (see the unresolvable-asset " +
+                        "error) and convert again before uploading.");
                 }
                 else
                 {
@@ -478,11 +427,7 @@ namespace AvatarBridge
                         animator.Rebind();
                         ctx.Report.Approximated(Category,
                             "Controller linked through the serialized property",
-                            "Unity's Animator API refused this assignment (it stores null, " +
-                            "silently, for reasons it does not report), so the reference was " +
-                            "written the way the Inspector writes it instead, and the Animator " +
-                            "rebound to pick it up. The saved prefab carries the correct " +
-                            "controller either way.");
+                            "Unity's API refused the assignment, so it was written the way the Inspector does.");
                     }
 
                     // Judged on the serialized value, not the getter.
@@ -510,14 +455,8 @@ namespace AvatarBridge
                         verify.ApplyModifiedPropertiesWithoutUndo();
                         ctx.Report.Error(Category, "Controller would not stay assigned to the Animator",
                             evidence +
-                            "The merged controller was assigned and did not stick; the Animator kept " +
-                            "a reference of its own instead, usually one inherited from the source " +
-                            "avatar that already pointed at a deleted asset. The slot has been cleared " +
-                            "rather than left holding a dead reference, which reads as empty to scripts " +
-                            "while still being serialized into the prefab. ChilloutVR is unaffected: it " +
-                            "reads CVRAvatar's controller fields on load, and those are set correctly. " +
-                            "Check the SOURCE avatar's Animator: if its controller shows as Missing " +
-                            "there, fix it there and convert again.");
+                            "The Animator kept a dead reference of its own, so the slot was cleared. ChilloutVR is " +
+                            "unaffected. If the source avatar's controller shows Missing, fix it and convert again.");
                     }
                 }
             }
@@ -705,19 +644,8 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category,
                     $"{emptied} empty slot(s) removed from {sliders.Count} slider tree(s) instead of filled",
-                    $"{string.Join(", ", sliders)}: a slider blends between the two children either side " +
-                    "of its value, and an empty slot is not one of them: the weight passes across the gap " +
-                    "to the real motions, which is how a few clips spread over many slots still travel " +
-                    "smoothly. Filling those slots with a placeholder would make it an eligible neighbour " +
-                    "that animates nothing, and the slider would do nothing until its value reached a real " +
-                    "clip, reported from an avatar whose size slider did nothing until 0.97 and then " +
-                    "jumped. Every surviving motion keeps the threshold the author gave it. Where only " +
-                    "ONE motion survived, a single placeholder is kept at the far end of the slider and " +
-                    "the rest still go: a lone child in a slider plays at full strength wherever the " +
-                    "slider is, so that avatar would have come out with the effect stuck on. With the " +
-                    "placeholder it fades in across the whole travel instead. Dropdowns and " +
-                    "toggles are left alone: their empty options are deliberate, and the parameter lands " +
-                    "on them rather than between them.");
+                    $"{string.Join(", ", sliders)}: a placeholder would stall the slider until it reached a real " +
+                    "clip. Thresholds are kept; a slider left with one motion keeps one placeholder so it still fades.");
             }
 
             if (filled > 0)
@@ -727,21 +655,9 @@ namespace AvatarBridge
                     (states == 0 ? " (all blend tree slots)"
                         : states == filled ? " (all animator states)"
                         : $" ({states} animator states, {filled - states} blend tree slots)"),
-                    "These slots had no motion, or held a clip with no curves in it: an asset " +
-                    "that's gone, one the avatar's own build step never produced, or a state left " +
-                    "empty. Unity CRASHES when it builds a playable graph containing an empty slot, " +
-                    "which happens when the controller is assigned to an Animator, when you select " +
-                    "the avatar, and when the CCK builds it to upload, so this had to be repaired " +
-                    "rather than reported. A CURVE-LESS clip is just as bad in a quieter way: Mecanim " +
-                    "sizes its binding array from the curve count, and a clip with none misaligns it, " +
-                    "so bindings land on each other's slots: the symptom is menu controls that have " +
-                    "swapped places and materials selecting the wrong option, with " +
-                    "\"Assertion failed on expression: 'mem->m_ConstantClipValueCount ...'\" in the " +
-                    "console. Each slot now holds a placeholder that animates one inert value on the " +
-                    "avatar's \"AvatarBridge_EmptySlot\" object, so it changes nothing and Mecanim " +
-                    "still has a curve to count. Every threshold stays where the author put it. " +
-                    "Whatever those motions were supposed to be is still missing, so find out why " +
-                    "they didn't arrive before you rely on the feature that used them.");
+                    "Empty or curve-less motions crash Unity or swap menu controls around, so each now holds an " +
+                    "inert placeholder. What they should have been is still missing: find out why before relying " +
+                    "on the feature.");
             }
         }
 
@@ -883,14 +799,9 @@ namespace AvatarBridge
                     $"The avatar's own {layer.type} layer is NOT being converted",
                     $"\"{controller.name}\", {controller.layers.Length} layer(s), {states} state(s)" +
                     (drivers > 0 ? $" and {drivers} parameter driver(s)" : "") +
-                    ". This is the avatar's own animator content, and it is being left behind " +
-                    "entirely: not merged, not carried at zero weight, absent. Anything it drove " +
-                    "is gone with it" +
+                    ". Left out entirely, with anything it drove" +
                     (drivers > 0
-                        ? ", and those parameter drivers are how a sequence sets its own state, so " +
-                          "a feature whose menu toggle and mesh swaps live in FX can still switch ON " +
-                          "and then have nothing left to switch it back off. An avatar that " +
-                          "transforms is the usual shape of this."
+                        ? ": a feature its drivers switch back off, like a transformation, will turn on and stay on."
                         : ".") +
                     $" Tick \"{option}\" and convert again if this layer matters.");
             }
@@ -999,12 +910,8 @@ namespace AvatarBridge
                 allowed.Remove("Locomotion/Emotes");
                 ctx.Report.Warning(Category,
                     "GoGo Loco kept: ChilloutVR's own Locomotion/Emotes layer removed",
-                    "GoGo's Base/Poses/Action layers replace it, driven by the game-fed velocity " +
-                    "and upright parameters. EXPERIMENTAL, with known limits ChilloutVR cannot " +
-                    "express: poses don't lock movement (walking mid-pose slides), the viewpoint " +
-                    "stays at standing height in floor poses, and CVR's quick-menu emotes won't " +
-                    "animate; use GoGo's own wheel. Merge the Base, Additive and Action layers " +
-                    "or this avatar has NO locomotion at all.");
+                    "EXPERIMENTAL. Poses don't lock movement, floor poses keep a standing viewpoint, and the " +
+                    "quick-menu emotes stop. Merge Base, Additive and Action or there is no locomotion.");
             }
             string[] allowedLayers = allowed.ToArray();
 
@@ -1432,12 +1339,7 @@ namespace AvatarBridge
                     $"{ConvertedPlayAudio.Count} animator-played audio player(s) wired to ChilloutVR",
                     string.Join("; ", ConvertedPlayAudio.Take(6)) +
                     (ConvertedPlayAudio.Count > 6 ? "; …" : "") +
-                    ". VRChat plays these from a state behaviour ChilloutVR does not have. " +
-                    "Looping sounds get a Play On Awake source whose enabled flag the state " +
-                    "animates: entering switches the sound on, every other state in the layer " +
-                    "switches it back off. One-shots play through ChilloutVR's own " +
-                    "CVRAudioDriver instead: entering the state pulses the clip index, and the " +
-                    "sound plays to completion however quickly the state exits.");
+                    ". Loops switch on with their state; one-shots play through CVRAudioDriver.");
             }
             if (ApproximatedPlayAudio.Count > 0)
             {
@@ -1454,11 +1356,7 @@ namespace AvatarBridge
                 ctx.Report.Skipped(Category,
                     $"{DroppedPlayAudioCount} animator-driven audio player(s) removed",
                     string.Join("; ", DroppedPlayAudio) + (DroppedPlayAudioCount > DroppedPlayAudio.Count ? "; …" : "") +
-                    ": these could not be wired to a state window, for the reason named on each. " +
-                    "The AudioSource is still on the avatar, so the sound can be wired by hand: " +
-                    "a toggle animating the AudioSource's enabled flag with Play On Awake set " +
-                    "plays and stops it, and ChilloutVR's own CVRAudioDriver can switch between " +
-                    "clips from an animated index.");
+                    ". The AudioSources are still there to wire by hand.");
             }
             if (DroppedPoseSpaceCount > 0)
             {
@@ -1819,11 +1717,7 @@ namespace AvatarBridge
                 }
                 ctx.Report.Converted(Category,
                     $"{Components} tracking/locomotion behaviour(s) converted to ChilloutVR Body Control",
-                    $"{Tasks} body-mask task(s) written. \"Animation\" becomes weight 0, which switches that " +
-                    "limb's FinalIK solver off so the animation drives it; \"Tracking\" becomes weight 1, which " +
-                    "hands it back to IK. Dropping these left every limb at weight 1, so IK overrode the " +
-                    "avatar's own animation: the usual symptom is a body locked in its rest pose while the " +
-                    "head still tracks.");
+                    $"{Tasks} body-mask task(s): \"Animation\" hands a limb to the animation, \"Tracking\" back to IK.");
 
                 int unmapped = DroppedEyes + DroppedMouth + DroppedFingers;
                 if (unmapped > 0)
@@ -1833,22 +1727,10 @@ namespace AvatarBridge
                     if (DroppedMouth > 0) parts.Add($"mouth/jaw ({DroppedMouth})");
                     if (DroppedFingers > 0) parts.Add($"fingers ({DroppedFingers})");
                     ctx.Report.Approximated(Category, "Some tracking targets have no ChilloutVR body mask",
-                        $"{string.Join(", ", parts)}: ChilloutVR's Body Control covers head, pelvis, arms, legs " +
-                        "and locomotion only, and that is the platform's own limit rather than a gap in this " +
-                        "conversion: the CCK declares the mask list with the comment \"TODO: Add FingerTracking " +
-                        "masks when GS is ready\". There is nothing to map these onto yet." +
+                        $"{string.Join(", ", parts)}: Body Control covers head, pelvis, arms, legs and locomotion only." +
                         (DroppedFingers > 0
-                            ? " FINGERS ARE THE ONE TO WATCH. In VRChat an emote sets them to \"Animation\" so the " +
-                              "emote's own hand pose plays instead of the gesture you are holding, and VRChat's " +
-                              "Action layer sits ABOVE its Gesture layer, so it wins twice over. ChilloutVR's " +
-                              "layer order is the other way round: emotes are grafted into Locomotion/Emotes, " +
-                              "which sits BELOW the hand-pose layers, so expect an emote's hand pose to be " +
-                              "overridden by whatever gesture your controller is reporting. If a dance looks " +
-                              "right except that the hands hold a fist or a point, this is why. The workaround " +
-                              "today is to hold an open/neutral gesture while the emote plays."
-                            : "") +
-                        " Eyes and mouth keep whatever the avatar's own animation and face tracking do with them, " +
-                        "which is usually what you want; face tracking wants those channels anyway.");
+                            ? " An emote's hand pose loses to your current gesture here; hold an open hand while it plays."
+                            : ""));
                 }
             }
         }
@@ -2391,14 +2273,8 @@ namespace AvatarBridge
             EditorUtility.SetDirty(master);
             ctx.Report.Converted(Category,
                 $"Removed {dropped.Count} animator layer(s) with no state machine",
-                string.Join(", ", dropped) + ": these layers had nothing behind them. Unity keeps " +
-                "a layer's state machine as a reference to an asset, which can point at a DIFFERENT " +
-                "controller when the layer was copied between avatars; if that controller is " +
-                "stripped or missing, the layer is left empty. An empty layer can never play " +
-                "anything, and Unity logs \"Statemachine for layer is missing\" every time it " +
-                "evaluates one, hundreds of lines per second in play mode. Nothing is lost by " +
-                "removing them, but if a feature you expected is gone, this names the layer it " +
-                "would have been in.");
+                string.Join(", ", dropped) + ": empty, usually copied from another controller. They could play " +
+                "nothing and flooded the console.");
         }
 
         static void RestorePartialOffStates(AnimatorController master, BridgeContext ctx,
@@ -2553,14 +2429,8 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category,
                     $"{topped.Count} \"off\" state(s) topped up to restore everything their layer animates",
-                    string.Join(", ", topped) + $": {curvesAdded} propert(ies) in total. These states " +
-                    "already switched something off, but their clip left out properties the layer's OTHER " +
-                    "state animates. With Write Defaults off nothing puts those back, so each trigger left " +
-                    "them wherever the animation stopped and the next one stacked on top: a bone that " +
-                    "drifts further from rest every time the control is used. Each off state now also holds " +
-                    "the value the property has on this avatar right now, so it returns properly. If one of " +
-                    "these should rest somewhere else, set that up before converting: whatever is true at " +
-                    "conversion time is what \"off\" now means.");
+                    string.Join(", ", topped) + $": {curvesAdded} propert(ies). Each now returns to its value at " +
+                    "conversion time instead of drifting. Set the avatar at rest before converting.");
             }
         }
 
@@ -2729,13 +2599,8 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category,
                     $"{touched.Count} layer(s) now assert everything they own, from every state",
                     $"{string.Join(", ", touched.Take(8))}{(touched.Count > 8 ? ", …" : "")}: " +
-                    $"{curvesAddedTotal} propert(ies) in total. VRChat quietly puts a property back " +
-                    "to its default when no animation is writing it (Write Defaults); ChilloutVR " +
-                    "does not, so anything left to that rule switches off and never back on in " +
-                    "game. Each layer that owns a property now states its value from every state " +
-                    "it can rest in, so nothing is ever left to the runtime's discretion. Whatever " +
-                    "is true at conversion time is what those values are. Set the avatar up the " +
-                    "way it should rest before converting.");
+                    $"{curvesAddedTotal} propert(ies). ChilloutVR does not restore defaults, so each is written " +
+                    "from every state, at its value at conversion time.");
             }
 
             ReportNoWdCoverage(master, ctx);
@@ -2820,11 +2685,8 @@ namespace AvatarBridge
                 ctx.Report.Warning(Category,
                     $"{violationCount} propert(ies) can still fall back to the runtime",
                     $"{string.Join("; ", violations.Take(6))}{(violations.Count > 6 ? "; …" : "")}: " +
-                    "each is owned by a layer that stays silent about it in the named state. " +
-                    "VRChat's runtime fills that silence with the property's default; ChilloutVR's " +
-                    "does not, so if a toggle over one of these switches off and never back on in " +
-                    "game, this is why. Please report the avatar: the passes that close these " +
-                    "gaps believed they had.");
+                    "ChilloutVR will not restore these, so a toggle over one may stick off in game. Please " +
+                    "report the avatar.");
             }
             if (deadCount > 0)
             {
@@ -2953,12 +2815,8 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category,
                     $"{corrected} parameter-driver task(s) retyped to match their parameter",
-                    $"{string.Join(", ", names)}{(corrected > names.Count ? ", …" : "")}: the drivers were " +
-                    "built before the parameters were retyped from VRCFury's floats into real bools and ints, " +
-                    "so they carried the old type. ChilloutVR ignores the type on your own avatar (it coerces " +
-                    "to the declared type) but obeys it everywhere else, and Unity ignores a float write to a " +
-                    "bool parameter entirely, which is why a mistyped driver could look dead in the editor " +
-                    "while firing in game.");
+                    $"{string.Join(", ", names)}{(corrected > names.Count ? ", …" : "")}: they still carried " +
+                    "VRCFury's float type.");
             }
         }
 
@@ -3032,14 +2890,9 @@ namespace AvatarBridge
             {
                 ctx.Report.Approximated(Category,
                     $"{removed} always-true transition(s) into parameter-driving state(s) removed",
-                    $"{string.Join("; ", notes)}{(removed > notes.Count ? "; …" : "")}: each of these states " +
-                    "was entered both when its parameter was true AND when it was false, which together means " +
-                    "\"always\". Because Unity skips an AnyState transition that points at the state it is " +
-                    "already in, the layer stepped to the NEXT such state every frame and ran ITS driver, and " +
-                    "those drivers switch the sibling toggles off, so a toggle pressed in the menu flipped " +
-                    "straight back off (a flicker, with the parameter really changing). The \"is false\" half " +
-                    "is dropped, leaving what an exclusive-clothing layer means: enter this toggle's state " +
-                    "when this toggle is on. Check that switching between these options behaves.");
+                    $"{string.Join("; ", notes)}{(removed > notes.Count ? "; …" : "")}: entered on true and on " +
+                    "false alike, so toggles flipped straight back off. Now entered on true only. Check switching " +
+                    "between these options.");
             }
         }
 
@@ -3206,18 +3059,9 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category,
                     $"Reconciled {fixedCount} transition condition(s) to their parameter's type"
                     + (deadDropped > 0 ? $", and removed {deadDropped} transition(s) that could never fire" : ""),
-                    $"A merge/inject left conditions using a comparison the parameter type can't express " +
-                    $"(e.g. a bool-style If on a Float): {string.Join(", ", touched.OrderBy(n => n))}. " +
-                    "ChilloutVR rejects those transitions outright, so the states never switch: this is " +
-                    "what leaves face-tracking's RemoteModeActive local/remote gate dead. Comparisons are " +
-                    "read against their THRESHOLD: on a parameter that only ever reads 0 or 1, \"greater " +
-                    "than -0.001\" constrains nothing and is removed rather than turned into \"is true\". " +
-                    "VRCFury writes its remote branches as exactly that band, and reading it the other way " +
-                    "made every one of them unreachable, so the local branch played for other players, " +
-                    "which is what those branches exist to prevent. A comparison that is unsatisfiable " +
-                    "instead (\"< -0.001\" on the same parameter) takes its transition with it: Fury " +
-                    "spells \"is not 0\" as two transitions, one per side of the range, and only the " +
-                    "positive one can ever fire here. Its twin still does the work.");
+                    $"{string.Join(", ", touched.OrderBy(n => n))}: ChilloutVR rejects a comparison its " +
+                    "parameter type can't express, so those states never switched. Always-true comparisons are " +
+                    "removed; a transition that could never fire goes with its condition.");
             }
         }
 
@@ -3751,16 +3595,8 @@ namespace AvatarBridge
 
             ctx.Report.Warning(Category,
                 $"{repointed.Count} blend tree parameter(s) named something the controller never declared",
-                $"{string.Join(", ", repointed)}: Unity binds EVERY blend tree parameter field when it " +
-                "builds a playable graph, including the ones a Direct tree never reads and the Y axis a " +
-                "1D tree ignores. One of these was BLANK, and a blank one takes the editor down with a " +
-                "SIGSEGV inside DoBlendTreeEvaluation rather than an error, on Play, on selecting the " +
-                "avatar, and in the CCK's uploader. \"Blend\", \"Value\" and \"Smooth Amount\" are Unity's " +
-                "own defaults left behind on trees that stopped using them, so they arrive on plenty of " +
-                "avatars through no fault of yours. Each field is now renamed to a single \"#\"-prefixed " +
-                "name so none is blank. They are deliberately NOT declared as parameters: declaring them " +
-                "was tried and brought the crash back, twice measured. Nothing changes about how the " +
-                "avatar behaves: these fields were being read as garbage or not at all.");
+                $"{string.Join(", ", repointed)}: a blank one crashes Unity. Each now has a \"#\" name, left " +
+                "undeclared on purpose. Nothing about the avatar's behaviour changes.");
         }
 
         static void WithdrawSelfDrivenExposures(AnimatorController master, BridgeContext ctx)
@@ -3829,12 +3665,8 @@ namespace AvatarBridge
             EditorUtility.SetDirty(ctx.CvrAvatar);
             ctx.Report.Converted(Category,
                 $"{withdrawn.Count} menu control(s) withdrawn: the avatar sets these itself",
-                $"{string.Join(", ", withdrawn)}. These had no control in the VRChat menu, so one was " +
-                "created for them to keep them reachable; the merged animator then showed a parameter " +
-                "driver writing each one. A control for a parameter the avatar drives does nothing except " +
-                "fight the animator and sit next to the control that really works: the usual sighting is " +
-                "two near-identically named entries where only one responds. The parameter itself is " +
-                "untouched and still syncs.");
+                $"{string.Join(", ", withdrawn)}. A driver writes each, so a menu control would only fight it. " +
+                "The parameters still sync.");
         }
 
         static void ReplaceAnimatorBlink(AnimatorController master, BridgeContext ctx)
@@ -3940,19 +3772,11 @@ namespace AvatarBridge
                 }
 
                 ctx.Report.Approximated(Category, "Blink left to the avatar's own animation",
-                    "This avatar blinks from its own animator, but no layer could be safely identified " +
-                    "as ONLY blinking, so nothing was removed and ChilloutVR's native blink stays off. " +
-                    "If the eyes stick closed in game, this is where to look: the animator blink relies " +
-                    "on empty-state Write Defaults behaviour that does not survive conversion. " +
+                    "No layer is only blinking, so nothing was removed and native blink stays off. If the eyes " +
+                    "stick closed in game, " +
                     (prefilled != null
-                        ? $"The blink shapes are already filled in on the CVRAvatar ({prefilled}), so the " +
-                          "fix is one tick: turn ON \"Use Blink Blendshapes\". Only do that if the eyes " +
-                          "DON'T blink in game: with both systems running, the client's blink overwrites " +
-                          "that shape every frame in LateUpdate and any expression using it stops closing " +
-                          "the eyes."
-                        : "No blink-ish blendshape could be found on the body mesh either, so the shape " +
-                          "slots are empty; naming one on the CVRAvatar and ticking \"Use Blink " +
-                          "Blendshapes\" is the manual fix."));
+                        ? $"tick \"Use Blink Blendshapes\" on the CVRAvatar; the shapes are filled in ({prefilled})."
+                        : "name a blink shape on the CVRAvatar and tick \"Use Blink Blendshapes\"."));
                 return;
             }
 
@@ -4032,30 +3856,22 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category,
                     $"Blink converted to ChilloutVR's native blink: {movedTo}, {stripped.Count} layer(s) removed",
-                    $"{string.Join(", ", stripped)} blinked \"{blinkShape}\". {why} \"{blinkShape}\" is also " +
-                    "used by this avatar's expressions, and ChilloutVR writes its blink shape onto the mesh " +
-                    "every frame AFTER the animator, so aiming the native blink there would have flattened " +
-                    $"them, and the eyes would have stopped closing on those gestures. Wired to {movedTo} " +
-                    "instead, which nothing else animates, so both work.");
+                    $"{string.Join(", ", stripped)} blinked \"{blinkShape}\". {why} Expressions use that shape " +
+                    $"too, so blink went to {movedTo}, which nothing else animates.");
             }
             else if (contested.Contains(blinkShape))
             {
                 ctx.Report.Warning(Category,
                     $"Blink and expressions share \"{blinkShape}\"",
                     $"{string.Join(", ", stripped)} blinked \"{blinkShape}\", and ChilloutVR's native blink " +
-                    $"now drives it. {why} The catch: expressions on this avatar animate \"{blinkShape}\" " +
-                    "too, and ChilloutVR writes the blink shape onto the mesh every frame AFTER the " +
-                    "animator, so the blink wins and those expressions will not close the eyes. No other " +
-                    "blink shape on the mesh was free to move to. If you have a spare eyelid shape, point " +
-                    "Eye Blink Settings at it on the CVRAvatar.");
+                    $"now drives it. {why} Expressions using it will not close the eyes. A spare eyelid shape " +
+                    "can take the blink in the CVRAvatar's Eye Blink Settings.");
             }
             else
             {
                 ctx.Report.Converted(Category,
                     $"Blink converted to ChilloutVR's native blink: \"{blinkShape}\", {stripped.Count} layer(s) removed",
-                    $"{string.Join(", ", stripped)} blinked \"{blinkShape}\". {why} ChilloutVR's native Eye " +
-                    "Blink now drives the exact shape the removed layer drove, and nothing else animates it. " +
-                    "Expressions that close the eyes through a different shape are untouched.");
+                    $"{string.Join(", ", stripped)} blinked \"{blinkShape}\". {why} Native blink drives it now.");
             }
         }
 
@@ -4694,10 +4510,8 @@ namespace AvatarBridge
             }
             master.parameters = parameters;
             ctx.Report.Converted(Category, $"{changed.Count} VRChat built-in(s) given a resting value",
-                $"{string.Join(", ", changed)}: 0 isn't a neutral starting value for these: TrackingType 0 " +
-                "means tracking never initialised and Upright 0 means lying flat, and either can hold a whole " +
-                "rig in its rest pose. These are the values VRChat would be reporting. Whatever a parameter " +
-                "stream or ChilloutVR itself drives takes over from here; this only decides the first frame.");
+                $"{string.Join(", ", changed)}: 0 means untracked or lying flat. These are VRChat's values, for " +
+                "the first frame only.");
         }
 
         static bool ApplyRestingValue(AnimatorController master, AnimatorControllerParameter param, float value)
@@ -4795,17 +4609,12 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category,
                     $"Took {mirrored.Count} missing parameter default(s) from the parameter each mirrors",
                     $"{string.Join(", ", mirrored.Take(10))}{(mirrored.Count > 10 ? ", …" : "")}: " +
-                    "declaring these as 0 with the rest was actively wrong. A slider whose neutral " +
-                    "is 0.5 sits at one end of its own range at 0, which is why limb and body " +
-                    "sliders came out deformed rather than merely inert.");
+                    "at 0, a slider centred on 0.5 comes out deformed.");
             }
 
             ctx.Report.Warning(Category, $"Declared {missing.Count} referenced parameter(s) that were missing",
-                $"{string.Join(", ", missing.Take(12))}{(missing.Count > 12 ? ", …" : "")}: transitions, blend " +
-                "trees or drivers name these but nothing declared them. ChilloutVR drops a transition whose " +
-                "condition names an unknown parameter, so they were added as Float 0 to keep those transitions " +
-                "alive. Whatever drove them in VRChat still won't, so treat this as a repair, not a fix. If a " +
-                "feature on this avatar is dead, start here.");
+                $"{string.Join(", ", missing.Take(12))}{(missing.Count > 12 ? ", …" : "")}: added as Float 0 so " +
+                "their transitions survive. Nothing drives them; if a feature is dead, start here.");
         }
 
         static float MirroredDefault(string name, AnimatorController master, BridgeContext ctx)
@@ -4940,9 +4749,7 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category, $"Repointed {repaired.Count} reference name(s) at their local parameter",
                     $"{string.Join(", ", repaired.OrderBy(r => r).Take(12))}{(repaired.Count > 12 ? ", …" : "")}: " +
-                    "conditions, blend trees or drivers still named these without the \"#\" that marks a " +
-                    "ChilloutVR local parameter, while only the prefixed version was declared. Unity reads an " +
-                    "unknown parameter as 0, so those would have silently done nothing.");
+                    "they were named without their \"#\", so they read 0.");
             }
         }
 
@@ -4970,10 +4777,8 @@ namespace AvatarBridge
             var names = parameters.Select(p => p.name).Except(kept.Select(p => p.name)).ToList();
             master.parameters = kept;
             ctx.Report.Converted(Category, $"Removed {removed} orphaned animator parameter(s)",
-                $"{string.Join(", ", names.Take(12))}{(names.Count > 12 ? ", …" : "")}: nothing in the " +
-                "animator reads them and their menu entries were removed as dead, so they were declared and " +
-                "doing nothing. Every declared parameter without a \"#\" costs sync bits in ChilloutVR, so " +
-                "removing them also gives the budget back.");
+                $"{string.Join(", ", names.Take(12))}{(names.Count > 12 ? ", …" : "")}: nothing reads them, and " +
+                "removing them gives their sync bits back.");
         }
 
         static HashSet<string> CollectReferencedParameters(AnimatorController master)
@@ -5327,8 +5132,7 @@ namespace AvatarBridge
                     (w.app == "Remap"
                         ? $"Behaves like the VRChat built-in parameter, remapped to {w.lo:0.##}–{w.hi:0.##}. "
                         : "Behaves like the VRChat built-in parameter. ") +
-                    "Kept synced rather than local: the stream runs only on the wearer's copy of the avatar, " +
-                    "so anything this drives would otherwise sit frozen at its default for everyone else.");
+                    "Synced, since the stream runs on the wearer's machine only.");
             }
             EditorUtility.SetDirty(stream);
         }
@@ -5455,24 +5259,15 @@ namespace AvatarBridge
                 EditorUtility.SetDirty(master);
                 ctx.Report.Converted(Category,
                     $"{unlatched.Count} control(s) that would have looped now switch off instead",
-                    string.Join("; ", unlatched) + ". Each was a momentary Button in VRChat driving a "
-                    + "pair of states that hand over on the SAME condition: a press moved it one step "
-                    + "and the release stopped it there. A ChilloutVR toggle holds the value instead, "
-                    + "so the pair would have swapped back and forth several times a second for as long "
-                    + "as it was on. The way back is now the opposite condition, which makes it an "
-                    + "ordinary toggle: on while the box is ticked, off when it is cleared.");
+                    string.Join("; ", unlatched) + ". VRChat Buttons whose states swapped on one condition; " +
+                    "as held toggles they would loop. Each is now a plain on/off toggle.");
             }
             if (left.Count > 0)
             {
                 ctx.Report.Warning(Category,
                     $"{left.Count} control(s) may loop while switched on",
-                    string.Join("; ", left) + ". These drive a pair of states that hand over on the "
-                    + "SAME condition, which needs the value to arrive as a brief flick: a VRChat menu "
-                    + "Button did that and a ChilloutVR toggle cannot. Left alone because changing it "
-                    + "would break the other thing driving it, or because neither state is the one the "
-                    + "layer rests in, so there is no telling which side is off. If it flickers in game, "
-                    + "open that layer and set the transition leading back to the resting state to the "
-                    + "opposite condition.");
+                    string.Join("; ", left) + ". Their states swap on one condition, which a held toggle loops. " +
+                    "If one flickers in game, give its way back the opposite condition.");
             }
         }
 
@@ -5548,16 +5343,8 @@ namespace AvatarBridge
             EditorUtility.SetDirty(master);
             ctx.Report.Converted(Category,
                 $"{flipped} AnyState transition(s) stopped restarting their own state every frame",
-                "These carried Unity's default \"Can Transition To Self\", which with ordinary " +
-                "conditions means the destination re-enters EVERY FRAME the conditions hold, " +
-                "restarting its animation each time. VRChat hid it: the states involved were " +
-                "empty there, but conversion must fill empty states, and a filled state restarted " +
-                "every frame strobes: animations rapidly flicker, often only on OTHER players' " +
-                "screens, because remote copies hold \"#\" local parameters at defaults that can " +
-                "keep such a condition permanently true. Only still-holding states change: a " +
-                "state with a real animated clip keeps the flag AND the held-at-first-frame look " +
-                "its author shipped with. Transitions conditioned on a Trigger keep the flag too; " +
-                "pulse-retriggering is the one thing it is for.");
+                "\"Can Transition To Self\" made them strobe, often only for other players. Animated states " +
+                "and Trigger transitions keep it.");
         }
 
         static bool MotionHoldsStill(Motion motion)
@@ -5753,11 +5540,8 @@ namespace AvatarBridge
                 else
                 {
                     ctx.Report.Warning(Category, $"Scale feed for \"{modified.name}\" is incomplete",
-                        "This ChilloutVR CCK spells its animator-driver comparison operators in a " +
-                        "way AvatarBridge does not recognise, so the step that decides whether the " +
-                        "avatar has been resized could not be built. The parameter still exists and " +
-                        "everything else converts; it simply will not update itself when you scale. " +
-                        "Please report the CCK version: this needs one more spelling added.");
+                        "This CCK spells its driver operators in a way AvatarBridge does not know, so it will not " +
+                        "update when you scale. Please report the CCK version.");
                 }
             }
 
@@ -5772,12 +5556,8 @@ namespace AvatarBridge
 
             ctx.Report.Converted(Category,
                 $"VRChat's avatar-scale parameters are live: {string.Join(", ", present.Keys)}",
-                $"Derived from EyeHeightAsMeters, which a parameter stream feeds from ChilloutVR's " +
-                $"calibrated avatar height, against this avatar's converted viewpoint height of " +
-                $"{baseline:0.00} m as scale 1.0. A generated driver layer recomputes them each cycle, " +
-                "locally on every client: the input syncs, the arithmetic is deterministic, so remote " +
-                "viewers see the same values at no extra sync cost. ScaleModified flips at 1% off " +
-                "baseline. Scale-reactive gimmicks (VRCFury scale detectors and similar) run on these.");
+                $"From EyeHeightAsMeters against {baseline:0.00} m as scale 1, computed on every client at no " +
+                "sync cost. ScaleModified flips at 1% off.");
         }
 
         static AnimatorControllerParameter[] AppendScratch(AnimatorControllerParameter[] parameters, string name)
@@ -5901,12 +5681,7 @@ namespace AvatarBridge
             master.layers = layers.ToArray();
 
             ctx.Report.Converted(Category, $"\"{target.name}\" computed from the native velocity",
-                "VRChat's VelocityMagnitude has no ChilloutVR source, but VelocityX/Y/Z are client " +
-                "core parameters, fed for the local player and for every remote copy alike, so a " +
-                "generated driver layer recomputes sqrt(x²+y²+z²) each cycle. Kept local (\"#\"): " +
-                "every client computes it for every copy, which is how the VRChat built-in behaved, " +
-                "at zero sync cost. Locomotion systems like GoGo Loco gate on this; frozen at 0 it " +
-                "read as never-moving.");
+                "From VelocityX/Y/Z on every client, local and free.");
         }
 
         internal static string SanitizeParameterName(string source)
@@ -6330,12 +6105,8 @@ namespace AvatarBridge
             }
             ctx.Report.Approximated(Category,
                 $"{suspects.Count} merged layer(s) can write humanoid muscles with no mask",
-                $"{string.Join(", ", suspects.Take(6))}{(suspects.Count > 6 ? ", …" : "")}: VRChat keeps " +
-                "FX on its own playable layer, which stops this happening there; ChilloutVR runs one " +
-                "controller, so nothing stops it here. If the avatar stands in a bent rest pose in game " +
-                "with only the head and hands following you, turn on \"Mask merged layers off the " +
-                "humanoid rig\" in Advanced and convert again. Layers that animate the body deliberately " +
-                "are left alone by that option, so it is safe to try.");
+                $"{string.Join(", ", suspects.Take(6))}{(suspects.Count > 6 ? ", …" : "")}: if the body holds a " +
+                "rest pose in game, turn on \"Mask merged layers off the humanoid rig\" and convert again.");
         }
 
         static void MaskMergedLayers(AnimatorController master, List<AnimatorControllerLayer> vrcLayers, BridgeContext ctx)
@@ -6385,30 +6156,16 @@ namespace AvatarBridge
             }
             master.layers = layers;
             ctx.Report.Converted(Category, $"{masked} merged layer(s) masked off the humanoid rig",
-                "VRChat's FX layer cannot drive humanoid muscles; merged into one ChilloutVR controller it " +
-                "could, and any state with Write Defaults on would then re-assert the rest pose over " +
-                "locomotion every frame. Object toggles, blendshapes and material animation are unaffected." +
-                (handed > 0
-                    ? $" {handed} of them carried finger curves, which are blocked too: they could not move a " +
-                      "finger in VRChat either, and letting them through here would overwrite your hand " +
-                      "gestures, since merged layers sit above the hand-pose layers."
-                    : ""));
+                "FX could not move the body in VRChat. Toggles, blendshapes and materials are unaffected." +
+                (handed > 0 ? $" {handed} had finger curves, blocked so gestures still work." : ""));
 
             if (maskedBaseBody.Count > 0)
             {
                 ctx.Report.Approximated(Category,
                     $"{maskedBaseBody.Count} \"Base / locomotion\" layer(s) blocked from driving the body",
-                    $"{string.Join(", ", maskedBaseBody)}: these animate humanoid muscles, and merged into one " +
-                    "ChilloutVR controller they land ABOVE the client's own Locomotion/Emotes layer on Override " +
-                    "at full weight. They cannot add to CVR's locomotion from there, only replace it, and CVR's " +
-                    "layer is where the movement sliders and the Airborne / Flying / Sitting / Swimming stances " +
-                    "are answered, so letting them through costs you all of it. What VRChat put in Base is " +
-                    "usually not locomotion anyway (one avatar's was a calibration utility that simply held the " +
-                    "body still), and true locomotion REPLACEMENTS depend on runtime layer-weight control that " +
-                    "ChilloutVR has no equivalent for, so they cannot run here regardless. Everything else in " +
-                    "these layers is untouched: object toggles, blendshapes, materials, parameters and additive " +
-                    "motion all still convert. If you specifically want one driving your body, clear its Mask in " +
-                    "the Animator window, and expect the stances to stop responding.");
+                    $"{string.Join(", ", maskedBaseBody)}: above ChilloutVR's locomotion they would replace it. " +
+                    "Everything else in them still converts. Clearing a layer's mask lets it drive the body and " +
+                    "stops the stances.");
             }
         }
 
@@ -6468,11 +6225,8 @@ namespace AvatarBridge
             {
                 ctx.Report.Warning(Category,
                     $"{conflicted.Count} layer(s) both swap materials and animate the rig",
-                    $"{string.Join(", ", conflicted)}: these keep their mask, because without it their " +
-                    "body or finger curves would fight the client's locomotion and hand poses. The cost " +
-                    "is that only the first material slot of a swap in those layers applies in game. If " +
-                    "one of them misses slots, move its material swap into a layer of its own, one that " +
-                    "animates nothing else, and reconvert.");
+                    $"{string.Join(", ", conflicted)}: masked, so only a swap's first material slot applies. " +
+                    "Move a swap that misses slots into a layer of its own.");
             }
         }
 
@@ -6595,26 +6349,15 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category,
                     $"{repaired.Count} layer(s) above the hand-pose layers stopped from overwriting gestures",
-                    $"{string.Join(", ", repaired.Take(6))}{(repaired.Count > 6 ? ", …" : "")}: each sat " +
-                    "above the LeftHand/RightHand layers and could write finger muscles, which on " +
-                    "Override at full weight replaces whatever pose the gesture just played. Fingers " +
-                    "are now masked off them; everything else those layers animate is untouched. " +
-                    "This is what makes a gesture look \"dead\" in game while the CCK Debugger shows " +
-                    "the right clip playing at weight 1, and when the offender is a COPY of the " +
-                    "avatar's own hand layers that VRChat kept in its FX playable, the symptom is " +
-                    "stranger still: gestures that work but land on the wrong pose, or a hand stuck " +
-                    "in a fist at rest, because the copy that won was never the one driving fingers " +
-                    "in VRChat. FX cannot touch humanoid muscles there; merged into one ChilloutVR " +
-                    "controller it can.");
+                    $"{string.Join(", ", repaired.Take(6))}{(repaired.Count > 6 ? ", …" : "")}: fingers masked " +
+                    "off, so gestures are not overwritten. Nothing else changed.");
             }
             if (warned.Count > 0)
             {
                 ctx.Report.Warning(Category,
                     $"{warned.Count} body layer(s) above the hand-pose layers can write finger muscles",
-                    $"{string.Join(", ", warned.Take(6))}{(warned.Count > 6 ? ", …" : "")}: they animate " +
-                    "the body deliberately, so nothing was changed. If hand gestures do not move your " +
-                    "fingers in game, these are the layers to look at first: turn off fingers in their " +
-                    "avatar mask, or lower their weight.");
+                    $"{string.Join(", ", warned.Take(6))}{(warned.Count > 6 ? ", …" : "")}: left alone. If gestures " +
+                    "don't move your fingers, mask fingers off these.");
             }
         }
 
@@ -6742,11 +6485,7 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category,
                     $"{hoisted.Count} toggle(s) that share parts moved into their own layers",
                     $"{string.Join(", ", hoisted.Take(8))}{(hoisted.Count > 8 ? ", …" : "")}: " +
-                    "blended into one tree, toggles that animate the same thing add up and fight " +
-                    "over it, so neither could safely restore it and both stuck in game. As " +
-                    "separate layers the top one wins while it acts and each restores on its own. " +
-                    "If two are switched on at once, the one higher in the list decides the " +
-                    "shared part: VRChat showed a mix of both, which ChilloutVR cannot express.");
+                    "in one tree they fought and stuck. With two on, the higher one decides the shared part.");
             }
         }
 
@@ -7012,42 +6751,14 @@ namespace AvatarBridge
                     ? $": {reused} of them reuse an animation the avatar ALREADY had, which is " +
                       "preferred wherever one matches; the rest were generated. "
                     : ": ") +
-                "VRChat's toggle " +
-                "idiom leaves the off state EMPTY and lets Write Defaults put the property back. That " +
-                "makes the off direction depend on an implicit rule rather than on animation, and a " +
-                "toggle built that way can switch on and never off again. Each off state now plays a " +
-                "clip holding the value the property has on this avatar right now: object active, " +
-                "blendshape at rest, material as authored, so it restores by animating, the same on " +
-                "any platform. Only properties its own layer animates are touched. If a toggle should " +
-                "rest in its OTHER position, set that up on the avatar before converting: whatever is " +
-                "true at conversion time is what \"off\" now means." +
-                (sharedSkipped > 0
-                    ? $" {sharedSkipped} propert(ies) were left to a lower layer: where several layers " +
-                      "animate one thing, only the lowest restores it. A dress toggle and a shirt " +
-                      "toggle that both move the shirt is the usual case; if the dress layer restored " +
-                      "the shirt it would assert it from above and the shirt could never be taken off, " +
-                      "and if neither did it could never be put back on. The lower layer owns it, the " +
-                      "higher one stays silent, and both toggles work."
-                    : "") +
-                (routers > 0
-                    ? $" {routers} empty state(s) were left empty because the layer only passes " +
-                      "THROUGH them: their transitions cover every value of a parameter, so the layer " +
-                      "can never come to rest there. The local/remote gate VRChat avatars use is the " +
-                      "usual one, and it is empty deliberately: giving it values to hold would make " +
-                      "it assert them for as long as the layer sat there."
-                    : "") +
-                (stale > 0
-                    ? $" {stale} restore clip(s) from a previous conversion of this avatar were deleted; " +
-                      "they are regenerated every time and used to pile up beside each other."
-                    : "") +
+                "ChilloutVR does not restore defaults, so each off state now holds the value at conversion " +
+                "time. Set the avatar at rest before converting." +
+                (sharedSkipped > 0 ? $" {sharedSkipped} propert(ies) shared by several layers are restored by the lowest only." : "") +
+                (routers > 0 ? $" {routers} pass-through state(s), such as a local/remote gate, stay empty." : "") +
+                (stale > 0 ? $" {stale} restore clip(s) from a previous conversion deleted." : "") +
                 (notToggles.Count > 0
-                    ? $"\n\nLeft alone, not a two-state toggle ({notToggles.Count}): " +
-                      $"{string.Join(", ", notToggles.Take(6))}{(notToggles.Count > 6 ? ", …" : "")}. " +
-                      "VRChat's idiom is exactly one empty \"off\" state and one holding the clip, and " +
-                      "that is the only shape where a snapshot of the avatar belongs in the empty half. " +
-                      "Bigger layers are machines whose empty states are structural: a slider's " +
-                      "reset/pause, a local/remote gate, and filling those changes how the avatar looks. " +
-                      "They behave exactly as they did in VRChat."
+                    ? $"\n\nNot a two-state toggle, left alone ({notToggles.Count}): " +
+                      $"{string.Join(", ", notToggles.Take(6))}{(notToggles.Count > 6 ? ", …" : "")}."
                     : ""));
         }
 
@@ -7378,11 +7089,8 @@ namespace AvatarBridge
                 {
                     ctx.Report.Warning(Category,
                         $"{candidateCount} blend-tree toggle(s) were left without a restore animation",
-                        "Each is a toggle VRCFury turned into a blend tree whose \"off\" half animates " +
-                        "nothing, so its off direction depends on Write Defaults putting the property " +
-                        "back. If any of these switch on and never off again, that is why. Nothing was " +
-                        "filled because every property they animate is claimed by something else: " +
-                        "another toggle in the same tree, or a lower layer that restores it instead.");
+                        "Their \"off\" halves are empty and every property is claimed elsewhere. If one sticks on " +
+                        "in game, this is why.");
                 }
                 return;
             }
@@ -7394,23 +7102,10 @@ namespace AvatarBridge
                 (reused > 0
                     ? $": {reused} of them reuse an animation the avatar ALREADY had; the rest were generated. "
                     : ": ") +
-                "VRCFury rewrites toggle layers into blend trees, and the \"off\" half of each one is " +
-                "an empty slot that asserts nothing, the same idiom as VRChat's empty off STATE, one " +
-                "level down where the off-state repair could not see it. A toggle built that way can " +
-                "switch on and never off again. Each off half now plays a clip holding the value the " +
-                "property has on this avatar right now, so it restores by animating. If a toggle " +
-                "should rest in its OTHER position, set that up on the avatar before converting: " +
-                "whatever is true at conversion time is what \"off\" now means." +
+                "Each empty off half now holds the value at conversion time." +
                 (contested.Count > 0
-                    ? $"\n\nToggles with at least one property left to nobody ({contested.Count}): " +
-                      $"{string.Join(", ", contested.Take(6))}{(contested.Count > 6 ? ", …" : "")}. " +
-                      "Something else in the same layer animates those properties too: an \"all " +
-                      "clothing off\" preset overlapping the individual garments is the usual case. " +
-                      "Unlike separate layers, toggles blended into one tree ADD UP instead of the " +
-                      "top one winning, so restoring there would fight the preset rather than defer " +
-                      "to it: the garment switched ON would read as on again. Those properties keep " +
-                      "the behaviour they had in VRChat, and a toggle listed here may still have had " +
-                      "its other properties restored."
+                    ? $"\n\nShared with another toggle in the tree, left as in VRChat ({contested.Count}): " +
+                      $"{string.Join(", ", contested.Take(6))}{(contested.Count > 6 ? ", …" : "")}."
                     : ""));
         }
 
@@ -7703,17 +7398,8 @@ namespace AvatarBridge
                         bool baseLayer = layer.name.StartsWith("[Base]", StringComparison.Ordinal);
                         ctx.Report.Warning(Category, $"Layer \"{layer.name}\" animates body muscles or root motion",
                             baseLayer
-                                ? "It sits ABOVE ChilloutVR's own Locomotion/Emotes layer and drives the same " +
-                                  "muscles, so it does not add to CVR's locomotion: it REPLACES it. That is " +
-                                  "what \"Base / locomotion\" means, and it is the right choice only if this " +
-                                  "avatar's own locomotion system runs correctly here. If it does not, the " +
-                                  "symptoms are unmistakable: the movement sliders animate nothing, and the " +
-                                  "Airborne / Flying / Sitting / Swimming stances do nothing, because the layer " +
-                                  "that answers them has been overridden. VRChat locomotion replacements often " +
-                                  "depend on runtime layer-weight control and on parameters ChilloutVR feeds " +
-                                  "differently, neither of which converts. THE FIX IS ONE CLICK: turn OFF " +
-                                  "\"Base / locomotion\" in Animator layers to convert and convert again: " +
-                                  "ChilloutVR's own locomotion is complete and needs nothing from VRChat."
+                                ? "It replaces ChilloutVR's locomotion. If movement or stances stop working, turn off " +
+                                  "\"Base / locomotion\" and convert again."
                                 : "It can override CVR's locomotion/pose. Review it; lower its weight or delete " +
                                   "it if movement breaks.");
                     }
@@ -7934,15 +7620,8 @@ namespace AvatarBridge
             ctx.Report.Approximated("PhysBones -> MagicaCloth2",
                 $"{driven.Count} chain(s) are resized by a blendshape, so their collision size " +
                 "cannot follow the slider",
-                string.Join("; ", lines) + ": each of these chains has its collision sized from " +
-                "the mesh as this avatar is saved, which is the right size at the slider position " +
-                "it was saved at and too small or too large everywhere else. Sliders that work by " +
-                "SCALING BONES do not have this problem: the cloth simulates those bones, so it " +
-                "follows for free. A pure blendshape moves no bones, and MagicaCloth2 will not " +
-                "accept a radius driven by animation: of its parameters only pose ratio, gravity, " +
-                "damping, inertia, wind and blend weight can be animated at all. If one of these " +
-                "sliders is the one people will actually use, set it where you want it to be " +
-                "correct BEFORE converting, and convert again.");
+                string.Join("; ", lines) + ": sized at the saved slider position. Set the slider where it " +
+                "matters most before converting.");
         }
 
         // VRChat raises reaction layers by weight; ChilloutVR cannot change a
@@ -8253,27 +7932,12 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category,
                     $"{revived.Count} weight-gated reaction layer(s) rebuilt without the weight",
-                    string.Join(", ", revived) + $": {curvesAdded} rest value(s) asserted. VRChat " +
-                    "held these layers at weight 0 and raised them from a state behaviour when " +
-                    "their contact or control fired; ChilloutVR cannot change layer weights, so " +
-                    "converted as-is the reaction played invisibly: a booped nose that detected " +
-                    "the touch and showed nothing. Each layer now runs at full weight; its " +
-                    "resting states play the avatar's resting values instead of the reaction " +
-                    "their raised weight used to reveal, and properties another layer genuinely " +
-                    "animates are left to it: the reaction still overrides those while it " +
-                    "plays, exactly as the raised weight did. Fade-in durations from the " +
-                    "removed behaviours have no equivalent and become instant." +
-                    (handedBack > 0
-                        ? $" {handedBack} shared propert(ies), eyes a reaction closes, mouths it " +
-                          "moves, are asserted at rest by the normal layer that also animates " +
-                          "them, so a finished reaction hands them back instead of leaving them " +
-                          "where it stopped."
-                        : "") +
+                    string.Join(", ", revived) + $": {curvesAdded} rest value(s). ChilloutVR cannot raise a " +
+                    "layer's weight, so they run at full weight and rest at the avatar's values. Fade-ins are " +
+                    "instant." +
+                    (handedBack > 0 ? $" {handedBack} shared propert(ies) are handed back after a reaction." : "") +
                     (unrevivable.Count > 0
-                        ? " NOT rebuilt, still invisible: " + string.Join(", ", unrevivable) +
-                          ": each rests inside its own reaction with no state to return to, " +
-                          "so at full weight it would show constantly. The gating that " +
-                          "revealed it lived outside the layer and did not survive conversion."
+                        ? " Not rebuilt, still invisible (no rest state): " + string.Join(", ", unrevivable) + "."
                         : ""));
             }
         }
@@ -8436,12 +8100,7 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category,
                     $"{added} object switch(es) balanced across {balanced.Count} menu tree(s)",
-                    string.Join(", ", balanced) + ": one side of each control switches an object " +
-                    "and the other side never mentioned it. An active flag in a blend tree does " +
-                    "not fall back to anything: it stays wherever the last write left it, so the " +
-                    "object latched after the first use: VRChat's Write Defaults put it back, " +
-                    "and ChilloutVR restores nothing a state does not write. Every side of these " +
-                    "controls now writes the flag, missing sides at the avatar's resting value.");
+                    string.Join(", ", balanced) + ": the object latched after first use. Every side now writes it.");
             }
         }
 
@@ -8655,12 +8314,8 @@ namespace AvatarBridge
             {
                 ctx.Report.Approximated(Category,
                     $"{rows.Count} clip(s) had broken curve paths repaired",
-                    string.Join("; ", rows.Take(8)) + (rows.Count > 8 ? "; …" : "") + ". These " +
-                    "bindings pointed at object names that don't exist on the avatar, usually a " +
-                    "bone renamed after the animation was authored, and played as silence in " +
-                    "VRChat too. Each was rewritten only because exactly ONE transform at the same " +
-                    "depth matches every other segment of the path; anything ambiguous was left " +
-                    "alone and appears in the broken-paths warning instead.");
+                    string.Join("; ", rows.Take(8)) + (rows.Count > 8 ? "; …" : "") + ". Each matched exactly " +
+                    "one object; ambiguous ones are in the broken-paths warning.");
             }
         }
 
@@ -8726,11 +8381,8 @@ namespace AvatarBridge
                 ctx.Report.Warning(Category,
                     $"Game-fed parameter \"{offender.Key}\" is animated by a clip: the game will NEVER write it",
                     $"Clip(s): {string.Join(", ", offender.Value.Take(5))}" +
-                    (offender.Value.Count > 5 ? ", …" : "") + ". ChilloutVR marks curve-controlled " +
-                    "parameters read-only and refuses to feed them (decompiled: " +
-                    "IsParameterControlledByCurve → IsReadOnly), so this parameter sits frozen in " +
-                    "game while editor testing works perfectly. Remove the curve from those clips, " +
-                    "or rename the animated parameter apart from the game-fed one.");
+                    (offender.Value.Count > 5 ? ", …" : "") + ". It will sit frozen in game. Remove the curve, " +
+                    "or rename the animated parameter.");
             }
         }
 
@@ -8851,12 +8503,8 @@ namespace AvatarBridge
                     .Select(b => $"\"{b.clip}\" ({b.dead} of {b.total}, e.g. \"{b.example}\")");
                 ctx.Report.Warning(Category,
                     $"{lostClips.Count} clip(s) LOST paths that existed before conversion",
-                    string.Join("; ", lostLines) + (lostClips.Count > 8 ? "; …" : "") + ". These " +
-                    "objects were on the avatar when it arrived and are not on it now, so these " +
-                    "curves worked in VRChat and play as silence here. Something in this conversion " +
-                    "moved or removed them: a stripped system (GoGo, SPS) taking objects a clip " +
-                    "still references is the usual innocent explanation, and turning that strip off " +
-                    "and converting again will tell you. Anything else is a bug worth reporting.");
+                    string.Join("; ", lostLines) + (lostClips.Count > 8 ? "; …" : "") + ". Usually a removed " +
+                    "system (GoGo, SPS) took them; if not, please report it.");
             }
 
             if (broken.Count == 0)
@@ -8870,14 +8518,8 @@ namespace AvatarBridge
             // source avatar, so the curves were silent in VRChat too.
             ctx.Report.Converted(Category,
                 $"{broken.Count} clip(s) animate paths that were ALREADY missing in VRChat",
-                string.Join("; ", lines) + (broken.Count > 8 ? "; …" : "") + ". Checked against the " +
-                "avatar as it arrived: these objects weren't there either, so Unity played the " +
-                "curves as silence in VRChat exactly as it will here. Nothing was lost in " +
-                "conversion and there is usually nothing to do. Two cases are worth a look: a " +
-                "build-time tool (VRCFury path rewriting, Modular Avatar) may have been fixing the " +
-                "paths at upload: if so, install that package here and convert again so its bake " +
-                "runs first, or the clip belongs to a feature this avatar variant isn't configured " +
-                "for, which is normal and harmless.");
+                string.Join("; ", lines) + (broken.Count > 8 ? "; …" : "") + ". Nothing lost in conversion. " +
+                "If a build tool fixed these at upload, install it here and convert again.");
         }
 
         static void AuditMaterialProperties(AnimatorController master, BridgeContext ctx)
@@ -8997,33 +8639,17 @@ namespace AvatarBridge
                 $"{dead.Count} animated material property(ies) don't exist on the shader they target",
                 string.Join("; ", worst) + (dead.Count > 6 ? "; …" : "") + ". " +
                 (anyLocked
-                    ? "These materials use a LOCKED (optimised) Poiyomi/Thry shader, which bakes any " +
-                      "property that wasn't flagged animated into a fixed value and deletes it, so " +
-                      "writing to it does nothing.\n\n" +
+                    ? "A locked Poiyomi shader baked them away.\n\n" +
                       (fixable.Count > 0
-                          ? $"WORTH FIXING ({fixable.Count}): {List(fixable)}. Nothing has flagged these " +
-                            "yet. In Poiyomi's material inspector: unlock, right-click the property, mark " +
-                            "it animated, lock again. Marking it there also switches on the shader " +
-                            "SECTION it belongs to, which is why it has to be done in Poiyomi's UI and " +
-                            "not by editing the material file.\n\n"
+                          ? $"FIXABLE ({fixable.Count}): {List(fixable)}. In Poiyomi's inspector: unlock, mark " +
+                            "animated, lock again.\n\n"
                           : "") +
                       (stubborn.Count > 0
-                          ? $"PROBABLY NOT FIXABLE ({stubborn.Count}): {List(stubborn)}. These are " +
-                            "ALREADY flagged animated on the material, and the property still isn't in " +
-                            "the shader. Someone has done the unlock-flag-relock already and it did not " +
-                            "take. That happens when the property's shader section is switched off (a " +
-                            "disabled section is compiled out entirely, and no flag brings it back), or " +
-                            "when the animation was authored against a different Poiyomi version than " +
-                            "the one installed. Re-locking again will not change it. Enabling the right " +
-                            "section on the material might, if you know which one it is; otherwise treat " +
-                            "these as lost with the avatar as it stands.\n\n"
+                          ? $"PROBABLY NOT ({stubborn.Count}): {List(stubborn)}. Already marked animated: their " +
+                            "shader section is off, or the Poiyomi version differs.\n\n"
                           : "")
-                    : "Whatever drives them will appear to work: parameter synced, layer playing, clip at " +
-                      "full weight, and change nothing on screen. Check the property name against the " +
-                      "shader, or assign the material the animation was authored for. ") +
-                "This is not caused by conversion: the same animation is equally dead in VRChat, so a " +
-                "toggle that visibly worked there points at a build-time step (Poiyomi's auto-lock on " +
-                "upload) that this project isn't running.");
+                    : "They change nothing on screen. Check the names against the shader. ") +
+                "Equally dead in VRChat; conversion did not cause it.");
         }
 
         static void ReportKeptFaceTracking(AnimatorController master, BridgeContext ctx)
@@ -9043,12 +8669,8 @@ namespace AvatarBridge
             var shown = kept.Take(6).Select(AvatarFeatureDetect.FaceTrackingShortName);
             ctx.Report.Converted(Category,
                 $"Kept the avatar's own face tracking rig: {kept.Count} parameter(s) came through",
-                $"{string.Join(", ", shown)}{(kept.Count > 6 ? ", …" : "")}. Its layers, clips and " +
-                "parameters were merged like any others and nothing was replaced, because face " +
-                "tracking is set to \"Keep the avatar's own rig\". Drive these in the CCK Animator " +
-                "Tester's Face tracking section to confirm the shapes still move. Whether a headset " +
-                "feeds them in game depends on the rig's own OSC setup, which is unchanged by " +
-                "conversion and outside what this tool touches.");
+                $"{string.Join(", ", shown)}{(kept.Count > 6 ? ", …" : "")}. Merged unchanged; try them in the " +
+                "CCK Animator Tester.");
         }
 
         // Serialized guid sets of the source controllers, captured before any merging.
@@ -9141,13 +8763,8 @@ namespace AvatarBridge
             }
             ctx.Report.Converted(Category,
                 $"{renamed.Count} emote(s) will free your hands while they play",
-                string.Join(", ", renamed) + ": ChilloutVR decides whether something is an emote " +
-                "by reading the playing clip's NAME, and mutes both hand-pose layers while one is " +
-                "on. Converted emotes were named after whatever they were called in VRChat, so the " +
-                "client never recognised them and your controller's gesture kept overriding the " +
-                "pose the emote wanted. Their clips are named so it does. This is the hand half " +
-                "only: ChilloutVR still has no finger mask for tracking control, so an emote " +
-                "cannot pose individual fingers the way VRChat's could.");
+                string.Join(", ", renamed) + ": ChilloutVR knows an emote by its clip name, so these are " +
+                "renamed. It still cannot pose single fingers.");
         }
 
         internal static void StripDeadMaterialCurves(BridgeContext ctx)
@@ -9263,18 +8880,9 @@ namespace AvatarBridge
                 $"{string.Join(", ", worst)}{(byProperty.Count > 6 ? ", …" : "")}: across " +
                 $"{clipsTouched} clip(s), of which {clipsEmptied} were left animating nothing" +
                 (layersRemoved > 0 ? $", and {layersRemoved} layer(s) removed with them" : "") +
-                ". These wrote to material properties the shader on those renderers does not have, " +
-                "so they did nothing here and did nothing in VRChat either. Removing them takes the " +
-                "dead sliders and toggles out of your menu instead of leaving controls that move and " +
-                "change nothing.\n\nGETTING THEM BACK IS MANUAL, AND MAY NOT BE POSSIBLE. The warning " +
-                "above splits them: the ones nothing has flagged yet usually come back after an " +
-                "unlock, flag and re-lock in Poiyomi's material inspector, and converting again picks " +
-                "them up. The ones already flagged and still missing have had that done to them " +
-                "once and it did not take: their shader section is switched off, or the animation " +
-                "predates the installed Poiyomi, and no amount of re-locking will change it. If you " +
-                "would rather ship the controls anyway, dead or not, turn off \"Remove animation that " +
-                "can't do anything\" in Advanced.\n\nNothing on the source avatar was changed; only " +
-                "the conversion's own copies of the clips were edited.");
+                ". Their shader lacks those properties, so they did nothing in VRChat either. The warning " +
+                "above says which can come back. Turn off \"Remove animation that can't do anything\" to keep " +
+                "them. Only the conversion's copies were edited.");
         }
 
         static int RemoveEmptyToggleLayers(AnimatorController master, BridgeContext ctx)
@@ -9409,35 +9017,25 @@ namespace AvatarBridge
             {
                 ctx.Report.Error(Category,
                     $"The saved controller references {intoTemp} bake-temp (VRCFury/NDMF) and {introduced} unresolvable asset(s)",
-                    $"e.g. {badSample}. VRCFury deletes its temp folder on its next build, which entering " +
-                    "play mode triggers if the original avatar is still in the scene, and an " +
-                    "unresolvable reference is already dead. Either way those animations will stop " +
-                    "working after the next play or Fury build. Do not upload this conversion." +
+                    $"e.g. {badSample}. They stop working after the next play or VRCFury build. Do not upload " +
+                    "this conversion." +
                     (introduced > 0
                         // Blaming the conversion outright sent someone hunting a bug on this side
                         // when the real cause was a VRCFury bake failing partway: the controller
                         // referenced assets Fury never finished writing, and the same avatar showed
                         // hundreds of Fury exceptions in the editor log. Check that first, because a
                         // half-built bake produces exactly this and nothing here can repair it.
-                        ? " CHECK YOUR BAKE FIRST: if VRCFury or Modular Avatar errored while baking " +
-                          "this avatar, the assets it was still writing never arrived and the references " +
-                          "point at nothing. Build a test copy of the SOURCE avatar on its own (Tools > " +
-                          "VRCFury > Build a Test Copy) and see whether it completes cleanly: a version " +
-                          "mismatch between the avatar's package and your installed VRCFury is the usual " +
-                          "cause. If that bake is clean and this still happens, it is a conversion bug: " +
-                          "please report it with this file attached."
+                        ? " Check the bake first: build a test copy of the SOURCE avatar (Tools > VRCFury > " +
+                          "Build a Test Copy). A version mismatch is the usual cause. If that is clean, please " +
+                          "report it with this file."
                         : ""));
             }
             if (inherited > 0)
             {
                 ctx.Report.Warning(Category,
                     $"{inherited} dead asset reference(s) inherited from the source avatar",
-                    $"e.g. {inheritedSample}. The source controllers already reference an asset that " +
-                    "doesn't exist in this project, so the same motion was None in VRChat too: usually " +
-                    "a package or animation the avatar shipped with that was never imported here. " +
-                    "Nothing broke in conversion and uploading is safe; those animations play as " +
-                    "stillness on both platforms. To revive them, import the missing package and " +
-                    "convert again.");
+                    $"e.g. {inheritedSample}. Missing from this project, so dead in VRChat too. Safe to upload; " +
+                    "import the missing package to revive them.");
             }
         }
 

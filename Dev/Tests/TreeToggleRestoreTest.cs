@@ -145,9 +145,9 @@ namespace AvatarBridge.Regression
                     ctx.Report.Entries.Any(e => e.Status == ReportStatus.Converted
                         && e.Subject != null && e.Subject.Contains("blend-tree toggle")
                         && e.Detail != null && e.Detail.Contains("Hat")));
-                fail += Check("report names the toggles whose shared properties were left to nobody",
+                fail += Check("report names the toggles whose shared properties were left alone",
                     ctx.Report.Entries.Any(e => e.Detail != null
-                        && e.Detail.Contains("left to nobody")
+                        && e.Detail.Contains("Shared with another toggle")
                         && e.Detail.Contains("Shirt")));
             }
             finally

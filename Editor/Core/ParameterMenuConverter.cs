@@ -44,15 +44,8 @@ namespace AvatarBridge
                     continue;
                 }
                 ctx.Report.Converted(Category, $"\"{display}\": ChilloutVR drives \"{candidate.Parameter}\" itself",
-                    $"Converted as a normal menu toggle, which is what it was. Worth knowing: ChilloutVR " +
-                    $"feeds every avatar a \"{candidate.Parameter}\" parameter and sets it whenever " +
-                    $"{candidate.When}, the same way it drives Grounded and the movement velocities. " +
-                    $"Point this layer's transitions at \"{candidate.Parameter}\" instead of the menu " +
-                    "parameter and the pose follows what you're really doing, with no menu needed. " +
-                    "The parameter is already declared and needs no parameter stream. Keep the menu " +
-                    "toggle alongside it if you like: the client only sets these when the WORLD allows " +
-                    "it, so in a world with flight disabled the automatic version never fires. Nothing " +
-                    "was rewired here, which layer meant what is your call.");
+                    $"Kept as a menu toggle. ChilloutVR sets \"{candidate.Parameter}\" whenever {candidate.When}; " +
+                    "point the layer at it to follow automatically, where the world allows.");
                 return;
             }
         }
@@ -125,12 +118,7 @@ namespace AvatarBridge
                     ctx.Report.Converted(Category,
                         $"{resynced.Count} menu parameter(s) synced although VRChat marked them local",
                         string.Join(", ", resynced.Take(12)) + (resynced.Count > 12 ? ", …" : "") +
-                        ": every one of these is driven by a menu control, and a control whose " +
-                        "effect other players cannot see is a broken feature. VRChat's tight sync " +
-                        "budget made de-syncing menu parameters a common trick, usually with " +
-                        "VRCFury syncing them through machinery that does not survive conversion. " +
-                        "ChilloutVR's budget is 3200 bits, so they simply sync. Parameters no menu " +
-                        "drives keep their imported local/synced state.");
+                        ": a menu drives each, so others should see what it does.");
                 }
             }
 
@@ -311,12 +299,8 @@ namespace AvatarBridge
                 return;
             }
             ctx.Report.Warning(Category, $"{packed.Count} packed sync slot(s) must stay in the menu",
-                $"{string.Join(", ", packed.Take(4))}{(packed.Count > 4 ? ", …" : "")}: these belong to a " +
-                "parameter-packing optimiser. The avatar's real toggles are local, and these slots are what " +
-                "actually carries them to other players; animator drivers unpack them on arrival. They look " +
-                "like meaningless menu entries because ChilloutVR can't sync a parameter without one. Leave " +
-                "them alone: deleting them gives you an avatar whose toggles work on your screen and never " +
-                "change on anyone else's.");
+                $"{string.Join(", ", packed.Take(4))}{(packed.Count > 4 ? ", …" : "")}: they carry the real " +
+                "toggles to other players. Deleting them breaks that.");
         }
 
         static CVRAdvancedSettingsEntry BuildEntry(BridgeContext ctx, VRCExpressionParameters.Parameter p,

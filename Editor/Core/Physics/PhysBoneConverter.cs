@@ -104,19 +104,13 @@ namespace AvatarBridge
             if (repointed > 0)
             {
                 ctx.Report.Converted(Category, $"{repointed} collider on/off animation(s) rewired",
-                    "Curves that enabled or disabled a VRChat PhysBone collider now toggle the " +
-                    "converted collider's own object instead: the form both MagicaCloth2 and " +
-                    "DynamicBone honour. The usual author intent is clothing switching its own " +
-                    "collision, a dress disabling the colliders that would clip it.");
+                    "They now toggle the converted collider's object.");
             }
             if (dropped.Count > 0)
             {
                 ctx.Report.Warning(Category, $"{dropped.Count} collider-animating curve(s) could not be carried",
                     string.Join("; ", dropped.Take(6)) + (dropped.Count > 6 ? ", …" : "") +
-                    ": each animated something on a VRC collider that has no equivalent on the " +
-                    "converted one, or a collider that was not converted (skipped, or its chain " +
-                    "was). The curve was removed rather than left silently addressing a deleted " +
-                    "component.");
+                    ": no equivalent on the converted collider, or the collider was not converted. Removed.");
             }
         }
 
@@ -168,11 +162,8 @@ namespace AvatarBridge
                 ctx.Report.Skipped(Category,
                     $"{lost.Count} animated PhysBone parameter(s) have no converted equivalent",
                     string.Join("; ", lost.Select(kv => $"{kv.Key} (e.g. {string.Join(", ", kv.Value)})")) +
-                    ": these animated LIVE physics values (a size slider growing a chain's radius, " +
-                    "gravity or stiffness changing with an outfit). MagicaCloth2's parameters cannot " +
-                    "be driven by animation, so the chain keeps the converted values it was built " +
-                    "with; the rest of each animation still plays. If one of these mattered, say so " +
-                    "in an issue: a DynamicBone-target conversion could support some of them.");
+                    ": MagicaCloth2 cannot animate these, so the chain keeps its converted values. The rest of " +
+                    "each animation plays.");
             }
         }
 
@@ -218,10 +209,8 @@ namespace AvatarBridge
                     }
                     ctx.Report.Warning(Category, $"{group.Count()} PhysBones share root \"{group.Key.name}\"",
                         $"{enabled.Count} were enabled at once, which would give this chain {enabled.Count} " +
-                        "MagicaCloth components fighting over the same bones. The extras were switched off " +
-                        $"(not deleted), so only \"{DescribeVariant(enabled[0])}\" drives it: VRChat toggles " +
-                        "between these at runtime, so pick the variant you want and re-enable it instead if " +
-                        "this isn't the right one.");
+                        $"cloths on the same bones. Only \"{DescribeVariant(enabled[0])}\" is on; the rest are " +
+                        "switched off, not deleted.");
                 }
                 else
                 {
@@ -329,14 +318,8 @@ namespace AvatarBridge
             ctx.Report.Approximated(Category,
                 $"{grabbable.Count} chain(s) could be grabbed in VRChat; MagicaCloth2 can't be",
                 string.Join(", ", grabbable.Take(8)) + (grabbable.Count > 8 ? ", …" : "") +
-                ". VRChat lets you take hold of a PhysBone and pull it; MagicaCloth2 has no " +
-                "equivalent, so these hang and swing but can't be held. The GrabbyBones mod adds " +
-                "grabbing back, and this conversion names its cloths to match so it works, but it " +
-                "is a client mod, so only people who have installed it can grab anything here. " +
-                "Any chain marked \"carries a contact\" is worth a closer look: if the feature works " +
-                "by someone pulling that chain so its contact reaches a receiver, then without the " +
-                "mod the contact never fires and the whole feature is inert, with nothing visibly " +
-                "wrong anywhere.");
+                ". Only players with the GrabbyBones mod can grab them. A chain that \"carries a contact\" " +
+                "may need grabbing to work at all.");
         }
 
         // Every bone any skinned mesh actually uses. Built once per run.
@@ -374,10 +357,7 @@ namespace AvatarBridge
             }
 
             ctx.Report.Skipped(Category, ctx.PathInTarget(chain.Root),
-                "No mesh is skinned to any bone in this chain, so it moves nothing itself: it is one " +
-                "stage of a helper rig that drives the avatar's real bones through constraints. Stages " +
-                "like these compose in VRChat and cannot be reproduced by simulating each separately. " +
-                "A later pass puts one chain on the bone this was driving.");
+                "A helper stage that skins no mesh. A later pass puts one chain on the bone it drove.");
             ctx.HelperRigChains.Add(new BridgeContext.HelperRigChain
             {
                 Root = chain.Root,
@@ -409,10 +389,8 @@ namespace AvatarBridge
 
             ctx.Report.Skipped(Category, chain.Root.name,
                 $"Stretch and squish were all this chain did (max stretch {chain.MaxStretch:0.##}, max squish " +
-                $"{chain.MaxSquish:0.##}, spring {chain.Spring:0.##}, stiffness {chain.Stiffness:0.##}), and " +
-                "neither solver can lengthen a bone. Converting it would give these bones a swing the author " +
-                "never asked for, on top of whatever drives the scale. No cloth was made for it, so the " +
-                "animator keeps driving it exactly as before.");
+                $"{chain.MaxSquish:0.##}, spring {chain.Spring:0.##}, stiffness {chain.Stiffness:0.##}), which " +
+                "neither solver can do. No cloth made.");
             return true;
         }
 
@@ -459,15 +437,8 @@ namespace AvatarBridge
                     }
                     ctx.Report.Skipped(Category, ctx.PathInTarget(chain.Root),
                         $"Not simulated: \"{t.name}\" in this chain is driven by a " +
-                        $"{component.GetType().Name}. A constraint writes that bone every frame " +
-                        "and a cloth solver integrates it from its own last state, so together " +
-                        "they feed each other until the transform goes NaN: the chain then hangs " +
-                        "broken at rest, in play mode and in game, with nothing to see in the " +
-                        "animator. VRChat gets away with it because PhysBones re-read the " +
-                        "constraint result each frame; MagicaCloth2 and DynamicBone don't, and the " +
-                        "order can't be changed here. The constraint fully determines that bone's " +
-                        "rotation anyway, so the physics had nothing to add. Remove the constraint " +
-                        "if you want the chain simulated instead.");
+                        $"{component.GetType().Name}, and the two would break the bone. Remove the constraint to " +
+                        "simulate the chain.");
                     return true;
                 }
             }
@@ -475,12 +446,7 @@ namespace AvatarBridge
             {
                 ctx.Report.Approximated(Category, ctx.PathInTarget(chain.Root),
                     $"Simulated even though \"{scaleOnly}\" in this chain carries a scale constraint. "
-                    + "A constraint that writes a bone's rotation or position fights the cloth solver "
-                    + "until the transform breaks, so those chains are left alone; scale is a channel "
-                    + "the solver never writes, so there is nothing to fight over and the chain swings "
-                    + "as it did. Worth a look in Play mode if the constraint changes that scale a lot "
-                    + "while the chain moves: the cloth measured its bone lengths once, at the scale it "
-                    + "was converted at.");
+                    + "Scale does not fight the solver, but bone lengths are measured once, at this scale.");
             }
             return false;
         }

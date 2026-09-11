@@ -317,9 +317,8 @@ namespace AvatarBridge
                     ctx.Report.Converted(Category, entry.name,
                         restore == null
                             ? "Expanded into a classic On/Off toggle layer (it animates more than object on/off)."
-                            : "Expanded into a classic On/Off toggle layer, with an explicit Off clip restoring " +
-                              "the original material(s): Write Defaults puts numbers back but never object " +
-                              "references, so a material swap would otherwise stick at its On value forever.");
+                            : "Expanded into a classic On/Off toggle layer, with an Off clip restoring the " +
+                              "original material(s), which Write Defaults never puts back.");
                     continue;
                 }
                 var keptChild = child;

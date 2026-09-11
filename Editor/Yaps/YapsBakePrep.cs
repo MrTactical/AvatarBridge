@@ -116,11 +116,8 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category,
                     $"Asked VRCFury not to patch {prep._flipped.Count} plug shader(s) before baking",
-                    "Its deform is a VRChat shader, and one already carrying it cannot take ours. " +
-                    "Everything else the bake produces, the plug and socket objects, the protocol " +
-                    "lights, the contacts, is untouched by this; only VRCFury's own bake texture " +
-                    "goes, and AvatarBridge writes its own. Your avatar's plugs are set back to how " +
-                    "you had them as soon as the bake finishes.");
+                    "A shader carrying Fury's deform can't take ours. The rest of the bake is kept, and the " +
+                    "plugs are set back once it finishes.");
             }
             return prep;
         }

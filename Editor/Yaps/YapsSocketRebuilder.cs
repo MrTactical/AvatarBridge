@@ -86,12 +86,7 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category,
                     $"Stripped VRCFury's socket rig from {specs.Count} socket(s)",
                     $"{lights} marker light(s), {pointers} pointer(s) and {triggers} depth " +
-                    "trigger(s) removed. Each socket keeps its place, its mesh and its menu " +
-                    "entry; the rig itself is rebuilt from scratch by the same code the YAPS " +
-                    "window uses, so a converted socket and a tool-built socket are the same " +
-                    "thing from here on. Fury's rig arrives baked half-off and every switch " +
-                    "the enable service would have flipped is somewhere a bug can live; a " +
-                    "fresh rig has no switches to miss.");
+                    "trigger(s) removed. Each is rebuilt by the YAPS toolkit's own code.");
             }
             return specs;
         }
@@ -404,13 +399,8 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category,
                     $"Rebuilt {rebuilt} socket(s) through the native builder",
-                    "Marker lights within the light budget, pointers with their self twins, and " +
-                    "a depth trigger writing a synced parameter: the exact rig the YAPS window " +
-                    "builds, because it is the same code. " +
-                    (repointed > 0
-                        ? $"{repointed} socket(s) had their depth reactions repointed onto the " +
-                          "rebuilt channel, so the author's animations play from the new trigger. "
-                        : "") +
+                    "The same rig the YAPS toolkit builds. " +
+                    (repointed > 0 ? $"{repointed} socket(s) had their depth reactions repointed. " : "") +
                     (left.Count > 0 ? string.Join("; ", left) + ". " : ""));
             }
         }
@@ -425,14 +415,8 @@ namespace AvatarBridge
             string lighthouse = YapsLighthouse.Build(ctx.CvrAvatar, ctx.MergedController);
             if (lighthouse == null) return;
             ctx.Report.Converted(Category, "The lighthouse: one lit socket, wearer's choice",
-                "Every lit-capable socket carries its marker pair and the \"Marker lights\" " +
-                "dropdown lights exactly one, and switches that socket on, so choosing it " +
-                "is the whole job for a DPS or TPS toy. It starts on Off: nothing is lit " +
-                "until the wearer says so. A disabled light never competes for Unity's four " +
-                "vertex-light slots, which is what makes several DPS-findable sockets on one " +
-                "avatar work at all; before this, a second lit socket evicted the hole's root " +
-                "light and holes broke while rings kept working. The selector syncs (32 bits) " +
-                "so everyone sees the same socket lit.");
+                "The \"Marker lights\" menu lights one socket for DPS and TPS plugs, starting Off. It syncs " +
+                "(32 bits).");
         }
 
         // Fury's socket exclusivity merges at weight zero, and ChilloutVR
@@ -457,10 +441,7 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category,
                     $"{removed} dead exclusivity layer(s) removed",
-                    "VRCFury's socket exclusivity merges at weight zero and ChilloutVR has no " +
-                    "runtime layer-weight control, so these could never assert, but their clips " +
-                    "made the sockets they switch off look menu-owned to every check that walks " +
-                    "the controller. The rebuilt sockets have their own toggles.");
+                    "VRCFury's socket exclusivity could never run here. The sockets have their own toggles.");
             }
         }
 

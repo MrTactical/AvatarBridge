@@ -316,11 +316,8 @@ namespace AvatarBridge
                     .Select(p => $"\"{p.Key.Substring(p.Key.LastIndexOf('|') + 1)}\" {p.Value * 100f:0.#} cm"));
             GrowStatically(zone, growth);
             ctx.Report.Converted(Category, reportPath,
-                $"Zone grown ×{growth:0.00} ({push * 100f:0.#} cm of surface travel) for the largest " +
-                "the sliders make the body: an animated blendshape can push the mesh past the " +
-                "authored size, and a zone inside the body cannot be touched. The growth here is " +
-                $"spread across shapes ({contributors}), so the zone holds the grown size instead " +
-                "of following one slider.");
+                $"Zone grown ×{growth:0.00} ({push * 100f:0.#} cm) for the body at its largest, from several " +
+                $"shapes ({contributors}).");
         }
 
         internal static void GrowStatically(GameObject zone, float growth)
@@ -412,13 +409,7 @@ namespace AvatarBridge
             if (held.Count == 0) return;
             ctx.Report.Approximated(Category,
                 $"{held.Count} contact(s) now hold their control on instead of tapping it",
-                string.Join("; ", held) + ". In VRChat a touch flicked the value for one frame and "
-                + "that flick advanced a pair of states one step, which is how the control worked "
-                + "from a menu button too. ChilloutVR has no momentary button, so the menu holds the "
-                + "value instead and the pair had to be rewired into an ordinary toggle to stop it "
-                + "switching back and forth several times a second. A flick means nothing to that "
-                + "rewired pair, so the touch holds the value instead: on while something is touching, "
-                + "off when it leaves. The menu switch is unaffected and still latches.");
+                string.Join("; ", held) + ". On while touched, off when it leaves. The menu switch still latches.");
         }
 
         internal static void RepointContactEnableCurves(BridgeContext ctx)
@@ -529,27 +520,14 @@ namespace AvatarBridge
             if (repointed > 0 || mirrored > 0)
             {
                 ctx.Report.Converted(Category, $"{repointed + mirrored} contact animation(s) rewired",
-                    "Curves that switched a VRChat contact on and off now toggle the converted " +
-                    "contact's own object, and curves that MOVED one (a receiver riding a scaled " +
-                    "body part) now drive the converted contact's offset: the forms ChilloutVR " +
-                    "honours. " +
-                    (mirrored > 0
-                        ? $"{mirrored} of them switched the contact's parent object rather than " +
-                          "the component: in VRChat the contact died with its container, and " +
-                          "the converted zone lives at the shape's anchor instead, so those " +
-                          "curves now reach it too. "
-                        : "") +
-                    "Without this the toggle's menu entry, parameter and " +
-                    "layer all convert and the contact just never switches or moves.");
+                    "They now toggle or move the converted contact." +
+                    (mirrored > 0 ? $" {mirrored} switched its parent object and now reach it too." : ""));
             }
             if (dropped.Count > 0)
             {
                 ctx.Report.Warning(Category, $"{dropped.Count} contact-animating curve(s) could not be carried",
                     string.Join("; ", dropped.Take(6)) + (dropped.Count > 6 ? ", …" : "") +
-                    ": each animated something with no equivalent on the converted contact " +
-                    "(a shape radius, or a filter on the pointer/trigger path, which bakes its " +
-                    "filters once at load), or a contact that was not converted. The curve was " +
-                    "removed rather than left silently addressing a deleted component.");
+                    ": no equivalent on the converted contact, or it was not converted. Removed.");
             }
         }
 
@@ -858,13 +836,8 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category,
                     $"Contact zone ownership settled across {layersTouched} layer(s)",
                     $"{stripped} curve(s) that only asserted a zone's resting state were removed and " +
-                    $"{balanced} restore(s) were written in. VRChat let several layers write a " +
-                    "contact's enabled flags and reconciled them through Write Defaults; " +
-                    "ChilloutVR restores nothing a state does not write, so those same curves " +
-                    "here either held every zone off from the moment the avatar loaded (VRCFury " +
-                    "disables all receivers for the first frames after load) or held them on " +
-                    "over the menu toggle that should switch them off. A layer that switches a " +
-                    "zone both off and on is a real toggle and now owns it outright.");
+                    $"{balanced} restore(s) written in, so zones are neither stuck off after load nor held on over " +
+                    "their toggle.");
             }
         }
 
@@ -932,10 +905,7 @@ namespace AvatarBridge
                     string shape = entry.shapeKey.Substring(entry.shapeKey.LastIndexOf('|') + 1);
                     ctx.Report.Converted(Category, entry.reportPath,
                         $"Zone follows the \"{shape}\" slider: authored size at rest, " +
-                        $"×{entry.growth:0.00} at full reach, scaled between. Grown statically it " +
-                        "covered the body's largest shape while the body was small; instead the " +
-                        "zone's scale is animated in the slider's own clips, and the contact " +
-                        "reads its transform every frame.");
+                        $"×{entry.growth:0.00} at full reach.");
                 }
                 else
                 {

@@ -162,10 +162,8 @@ namespace AvatarBridge
                 && (!ctx.Settings.convertBaseLayer || !ctx.Settings.convertActionLayer))
             {
                 ctx.Report.Warning("System stripping", "GoGo Loco kept, but its home layers aren't merged",
-                    "Stripping is off and this avatar carries GoGo Loco, but the Base/Action layers " +
-                    ", where GoGo's poses and dances actually live, aren't ticked under \"Animator " +
-                    "layers to merge\". The pose wheel will convert and drive nothing. Tick Base and " +
-                    "Action and convert again to bring GoGo across whole.");
+                    "Its poses live in Base and Action, which aren't ticked, so the wheel drives nothing. Tick " +
+                    "them and convert again.");
             }
 
             // First, and unconditionally: this one isn't a preference about which VRChat add-ons
@@ -215,24 +213,15 @@ namespace AvatarBridge
                     {
                         ctx.Report.Warning(Category,
                             "Socket depth reactions kept synced so other players see them",
-                            "You asked for it: each socket's depth parameter stays synced, so the " +
-                            "bulges and winces its author animated play for everyone rather than the " +
-                            "wearer alone. ChilloutVR runs an avatar's triggers on the wearer's machine " +
-                            "only, which is why the choice exists. One parameter per rebuilt socket at " +
-                            "32 bits against a cap of 3200: six sockets is about 192. The sync budget " +
-                            "entry below says where this avatar landed; over the cap, nothing on it syncs.");
+                            "As asked: 32 bits per socket, so everyone sees them. Over 3200, nothing syncs; the sync " +
+                            "budget entry says where this landed.");
                     }
                     if (ctx.Settings.syncHapticsForOsc)
                     {
                         ctx.Report.Warning(Category,
                             "OGB haptics parameters kept synced for OSC toys",
-                            "You asked for it: every OGB/… parameter stays synced so OSCGoesBrrr's " +
-                            "automatic detection sees it under its VRChat name. Each costs 32 sync " +
-                            "bits, about nine per plug and per socket, and ChilloutVR's cap is 3200. The " +
-                            "sync budget entry below says where this avatar landed; over the cap, " +
-                            "nothing on it syncs. Off, they are local and free, and OGB still reads them " +
-                            "through its manual avatar-parameter links; the Diagnostics entry lists the " +
-                            "names to paste.");
+                            "As asked: 32 bits each, about nine per plug and socket. Over 3200, nothing syncs; the sync " +
+                            "budget entry says where this landed.");
                     }
                 }
                 else
@@ -360,10 +349,8 @@ namespace AvatarBridge
                 {
                     ctx.Report.Converted(Category, $"Kept shared layer \"{layer.name}\" and pruned it instead",
                         $"{strippedRefs} of its {refs.Count} parameter references belong to stripped systems, " +
-                        "but this layer is a shared blend tree: VRChat tooling packs unrelated toggles into " +
-                        "one of these for performance. Removing it would take the other " +
-                        $"{refs.Count - strippedRefs} along with it (that is how an avatar loses its whole " +
-                        "wardrobe to an SPS strip). The stripped branches are pruned out individually below.");
+                        $"but it is a shared blend tree, so the other {refs.Count - strippedRefs} are kept and those " +
+                        "branches pruned.");
                     referenceHit = false;
                 }
 
@@ -392,10 +379,7 @@ namespace AvatarBridge
                     ctx.Report.Converted(Category, $"Removed animator layer \"{layer.name}\"",
                         nameHit ? "Matched a stripped system by name."
                         : referenceHit ? $"{strippedRefs}/{refs.Count} parameter references belong to a stripped system."
-                        : "A Base/Additive/Action layer referencing GoGo parameters: locomotion " +
-                          "replacements are all-or-nothing, and left in place with its parameters " +
-                          "stripped this layer overrides ChilloutVR's own locomotion with half-dead " +
-                          "animation.");
+                        : "A locomotion layer using GoGo parameters; left in, it would half-override ChilloutVR's.");
                 }
             }
 
@@ -829,12 +813,8 @@ namespace AvatarBridge
             ctx.Report.Converted(Category,
                 $"Removed VRCFury's parameter compressor: {doomed.Count} layer(s), " +
                 $"{mirrors.Count} mirrored and {slotNames.Count} slot parameter(s)",
-                "It works around VRChat's 256-parameter limit by de-syncing your parameters and " +
-                "rotating copies of them through a couple of slots twice a second. ChilloutVR has " +
-                "3200 bits and syncs straight from the animator, so this cost a per-frame blend " +
-                "tree and, because the originals were left marked not-synced, stopped the values " +
-                $"reaching anyone at all. {mirrors.Values.Distinct().Count()} parameter(s) now sync " +
-                "natively and without the delay.");
+                $"It worked around VRChat's limit and stopped values reaching anyone here. " +
+                $"{mirrors.Values.Distinct().Count()} parameter(s) now sync directly.");
         }
 
 #if !AVATARBRIDGE_YAPS
@@ -878,12 +858,7 @@ namespace AvatarBridge
             }
             ctx.Report.Skipped(Category,
                 "Penetration removed: converting it needs the YAPS add-on",
-                "This avatar carries DPS, TPS or SPS. None of it functions in ChilloutVR, and the " +
-                "part of AvatarBridge that rebuilds it for this platform ships as a separate " +
-                "download, which is not in this project, so the system was taken out instead: " +
-                "plugs, sockets, their lights, contacts, parameters and menu entries. The meshes " +
-                "stay where they are, straight and undeformable. Install the add-on and convert " +
-                "again to keep it, with the author's own tuning: " + BridgeLinks.YapsRepo);
+                "The meshes stay, straight. Install the YAPS add-on and convert again to keep it: " + BridgeLinks.YapsRepo);
         }
 #endif
 
@@ -995,15 +970,8 @@ namespace AvatarBridge
             if (contacts == 0) return;
             ctx.Report.Converted(Category,
                 $"Removed {contacts} haptics contact(s): OGB, PCS and Wholesome",
-                "The touch, frot and penetration stacks VRChat avatars carry for OSC toy apps. " +
-                "They cost no sync bits in ChilloutVR, which is why they used to be kept, but they " +
-                "are CONTACTS, and contacts are budgeted for the whole instance rather than per " +
-                "avatar: 512 overlapping pairs per frame, and everything past that is dropped " +
-                "silently. One converted avatar can carry over a hundred, so two people close " +
-                "together spend the room's budget and every contact in it starts failing: sockets " +
-                "stop engaging and plugs stop bending, for bystanders too. YAPS needs two of these " +
-                "per plug and keeps them. Tick \"Keep the OGB/PCS haptics contacts\" if you drive a " +
-                "toy from them and would rather pay that price.");
+                "They spend the instance's 512 contact pairs. YAPS keeps its own two per plug. Tick \"Keep the " +
+                "OGB/PCS haptics contacts\" to drive a toy from them.");
         }
 
         static void RemoveOrphanedCvrComponents(BridgeContext ctx, Func<string, bool> isStripped)

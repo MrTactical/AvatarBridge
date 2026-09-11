@@ -77,13 +77,9 @@ namespace AvatarBridge
             else
             {
                 ctx.Report.Converted(Category, $"{names.Count} OGB haptics parameter(s), local and free",
-                    "A local parameter costs no sync, and a toy is driven from the wearer's own machine, " +
-                    "which is where these are computed. OSCGoesBrrr's automatic detection skips a name " +
-                    "starting with \"#\", but its manual links do not: in OGB, add an avatar-parameter link " +
-                    "per name below, pasted exactly as printed, and it drives the toy from these. Launch " +
-                    "ChilloutVR with --osc-query-prefix=VRChat-Client so it finds the game, and turn OSC " +
-                    "on in its settings. \"Keep OGB haptics synced\", under Manual options and Opt-ins, " +
-                    $"makes the automatic detection work instead, at 32 sync bits each.\n  {list}");
+                    "In OGB, add an avatar-parameter link per name below. Launch ChilloutVR with " +
+                    "--osc-query-prefix=VRChat-Client and turn OSC on. \"Keep OGB haptics synced\" makes detection " +
+                    $"automatic, at 32 bits each.\n  {list}");
             }
         }
 
@@ -692,17 +688,9 @@ namespace AvatarBridge
                 ctx.Report.Warning(Category,
                     $"{looping.Count} layer(s) may thrash on OTHER players' screens right after the " +
                     "avatar loads",
-                    string.Join("; ", looping) + ": with every parameter at its default, these layers " +
-                    "re-enter a state on the same frame instead of settling, so anything they drive " +
-                    "(colours, blendshapes, toggles, outlines) flickers or cycles. YOU WILL NOT SEE " +
-                    "THIS: on your own copy your live parameter values park the layer, and it is your " +
-                    "copy the Unity editor previews. Remote copies start at the serialized defaults " +
-                    "and stay there until your values replicate, seconds after load, longer for a " +
-                    "value you never touch, which is why this looks like a rare bug that fixes " +
-                    "itself. Set the DEFAULT of the parameters these layers read to a value that " +
-                    "parks them (usually the resting position of whatever they drive), or give the " +
-                    "looping transition an exit time so it cannot fire twice in a frame. The CCK " +
-                    "Animator Tester's Remote view card reproduces this locally.");
+                    string.Join("; ", looping) + ": at default parameter values they never settle. You won't see " +
+                    "it yourself. Give those parameters defaults that park them, or the loop an exit time. The CCK " +
+                    "Animator Tester's Remote view reproduces it.");
             }
         }
 
@@ -826,13 +814,8 @@ namespace AvatarBridge
             ctx.Report.Warning("Animator",
                 $"{stuck.Count} state(s) can be entered but never left",
                 string.Join("; ", stuck.Take(8)) + (stuck.Count > 8 ? ", …" : "") +
-                ": each of these has a transition out that can never fire, so whatever the state " +
-                "switches on stays on for the rest of the session. The usual way to meet this is a " +
-                "gesture or toggle that turns something on and won't turn it back off. Entering " +
-                "works, which is why it looks fine in the editor: only the way out is broken. " +
-                "Check the conditions on that state's outgoing transitions against the ones that " +
-                "let it in: a band that lets you in on \"greater than\" and asks for \"greater " +
-                "than\" again to leave is the common shape.");
+                ": no way out can fire, so what they switch on stays on. Check each exit's conditions against " +
+                "the entry's.");
         }
 
         static bool CanEverFire(AnimatorStateTransition transition,
@@ -943,11 +926,7 @@ namespace AvatarBridge
             }
             var listed = doomed.OrderByDescending(p => p.Value).ThenBy(p => p.Key, StringComparer.Ordinal).Select(p => $"{p.Key} ×{p.Value}");
             ctx.Report.Error(Category, $"{doomed.Values.Sum()} component(s) ChilloutVR will delete on load",
-                $"{Join(listed)}: ChilloutVR filters every component on an avatar against a fixed list and " +
-                "destroys anything not on it. There is no warning in game and nothing looks wrong in the " +
-                "editor; the component is simply gone once the avatar loads, along with whatever it did. " +
-                "Worlds are allowed far more than avatars, so a component working in a ChilloutVR world says " +
-                "nothing about whether it survives on one.");
+                $"{Join(listed)}: not on ChilloutVR's avatar whitelist, so silently gone once loaded.");
 
             // The grounders deserve their own note. They are the FinalIK components most likely to
             // be on a converted avatar, the split between allowed and forbidden looks arbitrary,
@@ -956,14 +935,8 @@ namespace AvatarBridge
             if (grounders.Count > 0)
             {
                 ctx.Report.Warning(Category, $"FinalIK grounding is lost ({Join(grounders)})",
-                    "ChilloutVR permits VRIK, LookAtIK and TwistRelaxer on an avatar, and GrounderIK and " +
-                    "GrounderBipedIK, but not GrounderVRIK, GrounderQuadruped, GrounderFBBIK or the Grounder " +
-                    "base class. GrounderIK is NOT a drop-in replacement: GrounderVRIK works by adding " +
-                    "position offsets into VRIK's own solver from inside its update callbacks, while " +
-                    "GrounderIK drives separate per-leg IK components and never touches VRIK. Swapping them " +
-                    "produces no grounding at all rather than different grounding. ChilloutVR has no native " +
-                    "foot placement to fall back on either: its IK system only tracks whether the character " +
-                    "controller is grounded. Feet will not adapt to terrain; VRIK's own locomotion still runs.");
+                    "Not on ChilloutVR's whitelist, and GrounderIK is no substitute. Feet will not adapt to terrain; " +
+                    "VRIK still runs.");
             }
         }
 
@@ -1023,9 +996,7 @@ namespace AvatarBridge
             ctx.Report.Warning(Category, $"{offenders.Count} shader(s) may not render correctly in VR",
                 // Short on purpose. The hand-edit lives in the README;
                 // the report says what breaks and what to press.
-                $"{Join(listed, 6)}: these draw into ONE EYE ONLY under ChilloutVR's rendering mode. " +
-                "It looked fine in VRChat because VRChat's mode hands a shader both eyes without it asking, " +
-                "so expect this to be new. " +
+                $"{Join(listed, 6)}: these draw into one eye only here, though they looked fine in VRChat. " +
                 (ctx.Standalone ? "The Toolkit's \"Patch shaders for VR stereo\" patches a copy and checks it compiles." : ctx.Settings.patchNonSpiShaders
                     ? "AvatarBridge tried to fix them and the entry above says why it couldn't."
                     : "Turn on \"Patch non-SPI shaders for VR\" in Advanced and convert again: it patches a " +
@@ -1115,11 +1086,9 @@ namespace AvatarBridge
             {
                 ctx.Report.Error(Category, $"{dropped.Count} parameter(s) past ChilloutVR's sync limit",
                     $"{Join(dropped)}: the avatar needs more than ChilloutVR's {AasBitBudget} sync bits " +
-                    $"({floats} floats and {ints} ints at 32 bits each, {bools} bools at 1). Slots are handed " +
-                    "out in the order the animator declares its parameters, and these came too late to get " +
-                    "one. They will work for the wearer and never replicate to anyone else, with no warning " +
-                    "in game. Make the ones that don't need to replicate local by prefixing them with \"#\", " +
-                    "or convert floats you only use as on/off into bools: a bool costs 1 bit instead of 32.");
+                    $"({floats} floats and {ints} ints at 32 bits each, {bools} bools at 1). These came last, so " +
+                    "they work for the wearer and never reach anyone else, with no warning " +
+                    "in game. Prefix the ones others needn't see with \"#\", or make on/off floats bools (1 bit, not 32).");
             }
             else if (used > AasBitBudget * 3 / 4)
             {

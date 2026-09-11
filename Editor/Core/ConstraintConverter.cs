@@ -183,13 +183,8 @@ namespace AvatarBridge
             }
             ctx.Report.Converted(Category,
                 $"{disabled.Count} unfollowable local-space constraint(s) disabled: their animation takes over",
-                $"{string.Join(", ", disabled)}: each solved in LOCAL space in VRChat, could not be " +
-                "re-parented to make Unity's world-space solving equivalent, AND is posed by an " +
-                "animation in the controller. A wrong constraint overrides a right animation " +
-                "(constraints evaluate after animators), so the constraint is disabled and the " +
-                "animation keeps the bone where the author keyed it. What is lost is only the live " +
-                "follow: on the avatar that forced this, windshield pupils that mirrored the eye " +
-                "bones stay posed by the car animation instead of tracking eye movement.");
+                $"{string.Join(", ", disabled)}: local-space constraints Unity cannot match, also posed by an " +
+                "animation. The animation holds the bone; the live follow is lost.");
         }
 
         public static void RepointCurvesOnOurCopies(BridgeContext ctx) => RepointConstraintCurves(ctx);
@@ -346,30 +341,15 @@ namespace AvatarBridge
                 ctx.Report.Warning(Category,
                     $"{protectedSources.Count} clip(s) left untouched to protect your original files",
                     $"{string.Join(", ", System.Linq.Enumerable.Take(protectedSources, 6))}" +
-                    $"{(protectedSources.Count > 6 ? ", …" : "")}: these animate a VRChat constraint " +
-                    "and live OUTSIDE this conversion's output folder, so they are the avatar's own " +
-                    "assets rather than copies. Rewriting them would have repaired the conversion by " +
-                    "damaging the VRChat original, which is never the right trade. The cost is that " +
-                    "whatever those curves switched, limb lock, sit, lay-down, flight toggles are the " +
-                    "usual ones, will not work here. Avatars built with VRCFury or Modular Avatar are " +
-                    "unaffected, because their bake already hands us copies; if you see this, the fix " +
-                    "is to let the converter work from a baked copy of the avatar.");
+                    $"{(protectedSources.Count > 6 ? ", …" : "")}: the avatar's own files, not copies. What they " +
+                    "switch (limb lock, sit, flight) will not work. Convert from a baked copy to fix it.");
             }
             if (repointed > 0)
             {
                 ctx.Report.Converted(Category,
                     $"{repointed} animation curve(s) repointed at the Unity constraints",
-                    "Clips that switch a constraint on and off carry the component TYPE and its " +
-                    "serialized property name, and both change during conversion: a curve left " +
-                    "saying \"VRCParentConstraint.IsActive\" plays as silence, with nothing to see " +
-                    "in the animator. This is how limb-lock, sit, lay-down and flight toggles work " +
-                    "on constraint-driven avatars, so they now work again." +
-                    (followed > 0
-                        ? $" {followed} of them also had to follow their constraint to a new object: " +
-                          "a VRC constraint using 'Target Transform' is rebuilt ON the thing it drives, " +
-                          "because Unity's constraints only affect the object they sit on, and the clips " +
-                          "still named the old one."
-                        : ""));
+                    "So limb-lock, sit and flight toggles still work." +
+                    (followed > 0 ? $" {followed} followed their constraint to a new object." : ""));
             }
             if (dropped.Count > 0)
             {
@@ -384,37 +364,23 @@ namespace AvatarBridge
             {
                 ctx.Report.Warning(Category,
                     $"{lost.Count} curve(s) drove a constraint on an object that is now GONE",
-                    "The clip animates a constraint on an object this conversion no longer has. A " +
-                    "stripped system (GoGo, SPS) taking an object a clip still references is the " +
-                    "usual innocent cause: turn that strip off and convert again to check. " +
-                    "Anything else is worth reporting as a bug: " + string.Join("; ", lost) + ".");
+                    "Usually a removed system (GoGo, SPS) took it; if not, please report it: " +
+                    string.Join("; ", lost) + ".");
             }
             if (movedByBake.Count > 0)
             {
                 ctx.Report.Warning(Category,
                     $"{movedByBake.Count} curve(s) name a path the avatar's own build step didn't produce",
-                    "The object the clip is looking for EXISTS on this avatar: under a different " +
-                    "parent. VRCFury and Modular Avatar move their generated objects into place " +
-                    "during the upload build, and the clips are authored against where they end up; " +
-                    "a bake that stops short leaves them where they started, so every path misses " +
-                    "by a parent. This is not something the conversion did, and repointing them here " +
-                    "would not help: an object left at the wrong path is usually missing the " +
-                    "constraint the curve wanted as well. Get the SOURCE avatar building cleanly " +
-                    "and convert again. Found: " + string.Join("; ", movedByBake) + ".");
+                    "The object is under a different parent: a VRCFury or Modular Avatar bake stopped short. " +
+                    "Get the source avatar building cleanly and convert again. Found: " +
+                    string.Join("; ", movedByBake) + ".");
             }
             if (neverBuilt.Count > 0)
             {
                 ctx.Report.Warning(Category,
                     $"{neverBuilt.Count} curve(s) drove a constraint that was never built",
-                    "The object is right there on the avatar, but it has no constraint and never " +
-                    "did, so there was nothing for this conversion to convert, and nothing it " +
-                    "could have moved. That normally means the avatar's own build step didn't " +
-                    "finish: VRCFury and Modular Avatar generate constraints during the bake, and " +
-                    "a bake that errors partway generates some sets and not others. Build a test " +
-                    "copy of the SOURCE avatar on its own and check it completes without errors: " +
-                    "on the avatar this was found on, the ear, tongue, wrist and toe constraints " +
-                    "were generated and the finger set never was. These curves were dead before " +
-                    "conversion started: " + string.Join("; ", neverBuilt) + ".");
+                    "Usually a VRCFury or Modular Avatar bake that errored partway. Build a test copy of the " +
+                    "source avatar and check it completes: " + string.Join("; ", neverBuilt) + ".");
             }
         }
 
@@ -550,16 +516,8 @@ namespace AvatarBridge
             }
             ctx.Report.Warning(Category,
                 $"{mirrored.Count} constraint(s) sit under a mirrored parent and will be reflected",
-                "Un-mirror those bones in your 3D package and re-rig, or drive them some other " +
-                "way: there is no setting here that changes it.\n\n" +
-                "VRChat's solver corrects a constraint result when the parent's scale has one axis " +
-                "negative, flipping the quaternion components that axis inverts. Unity's " +
-                "constraints have no such step and ChilloutVR ships no type that does, so these " +
-                "land mirrored along that axis.\n\n" +
-                "A negative scale on a bone usually means a limb was duplicated and mirrored " +
-                "rather than rigged twice. On a quadruped built from a hidden humanoid rig, the " +
-                "hind legs are typically the front legs mirrored, which is also why their relays " +
-                "cross left to right.\n\n" +
+                "Unity's constraints do not correct for a negatively scaled parent. Un-mirror those bones " +
+                "and re-rig; no setting changes it.\n\n" +
                 string.Join("\n", mirrored));
         }
 
@@ -858,20 +816,8 @@ namespace AvatarBridge
             }
             ctx.Report.Warning(Category,
                 $"{crossChain.Count} constraint(s) relayed a bone from another chain in local space",
-                "These will not follow their source correctly, and there is no option to change: " +
-                "it is a gap in the conversion, so the avatar is worth reporting.\n\n" +
-                "VRChat solved them against the source's **local** value. Unity's constraints only " +
-                "ever solve in world space, and ChilloutVR ships no local-space equivalent, so a " +
-                "rotation relay now inherits its source's world orientation instead of its pose, " +
-                "and a position or scale relay reads a world value where a local one was meant.\n\n" +
-                "Two cases are provably identical and are NOT listed: a constraint whose source " +
-                "shares its own parent (the parent rotation cancels on both sides), and a SCALE " +
-                "constraint every one of whose source's ancestors is unit-scaled (lossyScale then " +
-                "equals localScale). A limb-scaling rig is normally the second case and converts " +
-                "exactly.\n\n" +
-                "An avatar that drives a real skeleton from a hidden humanoid one (how most " +
-                "quadrupeds are built) is made entirely of these, which is why such avatars arrive " +
-                "stuck in their rest pose with only the tracked parts moving.\n\n" +
+                "Unity solves constraints in world space only, so these will not follow their source. A gap " +
+                "in the conversion: please report the avatar.\n\n" +
                 string.Join("\n", crossChain));
         }
 
@@ -1220,10 +1166,7 @@ namespace AvatarBridge
                     continue;
                 }
                 ctx.Report.Warning(Category, $"\"{name}\" is not on this VRChat SDK's constraints",
-                    "Every constraint carrying that axis was converted as affecting it, because a " +
-                    "constraint whose flags cannot be read still has to drive something. An axis " +
-                    "the author froze will move. This means the installed VRChat SDK renamed the " +
-                    "field: update the SDK, or report the version so the name can be followed.");
+                    "The SDK renamed the field, so a frozen axis will move. Update the SDK, or report the version.");
             }
             return axes;
         }

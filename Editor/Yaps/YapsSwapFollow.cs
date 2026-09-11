@@ -244,20 +244,14 @@ namespace AvatarBridge.Yaps
             {
                 report.Warning("YAPS",
                     $"{refused.Count} swapped-in material(s) could not take the deform",
-                    "An animation puts these materials on the same mesh slot the bake went into, " +
-                    "and their shaders refused the deform. Whenever one of those toggles is on, " +
-                    "the mesh looks right and simply will not bend. Put a shader with source on " +
-                    "them (Poiyomi, for one) and bake again: " + string.Join(", ", refused));
+                    "Their shaders refused the deform, so the plug won't bend while they're on. Give them a " +
+                    "shader with source and bake again: " + string.Join(", ", refused));
             }
             if (repointed > 0 && report != null)
             {
                 report.Converted("YAPS",
                     $"Baked {variants.Count - refused.Count} alternate material(s) the animator swaps in",
-                    "An animation assigns other materials to the mesh slot the bake went into, a " +
-                    "second skin or an alternate look. Only the material worn at bake time used to " +
-                    "get the deform, so every other one left the mesh rigid while its toggle was on, " +
-                    "with nothing to see wrong anywhere. Each now carries the same bake, and only " +
-                    "this mesh's own animation keys were changed.");
+                    "So the plug still bends while an alternate skin is on.");
             }
             return repointed;
         }
@@ -288,22 +282,14 @@ namespace AvatarBridge.Yaps
             {
                 report.Warning("YAPS",
                     $"{skipped.Count} material swap(s) could not be repointed",
-                    "These animations assign a material to the mesh slot the bake replaced, and " +
-                    "they live outside your Assets folder, in a package, or in the CCK, so " +
-                    "editing them would change them for every project that has them. Playing one " +
-                    "will put the unbaked material back and the plug will stop bending. Copy the " +
-                    "clip into your own project and point it at the baked material: "
-                    + string.Join(", ", skipped));
+                    "They live in a package, so they were not edited, and playing one straightens the plug. Copy " +
+                    "the clip into your project: " + string.Join(", ", skipped));
             }
             if (repointed > 0 && report != null)
             {
                 report.Converted("YAPS",
                     $"Pointed {repointed} material swap(s) at the baked material",
-                    "An animation on this avatar assigns a material to the same mesh slot the " +
-                    "bake replaced. Left alone it hands the slot back to the material you baked " +
-                    "FROM, which carries no deform, so the plug straightens the moment you press " +
-                    "Play and reads as never baked. Only the exact mesh and slot the bake touched " +
-                    "was changed; anything else wearing that material keeps it.");
+                    "Otherwise they would swap the unbaked material back in and the plug would straighten.");
             }
             return repointed;
         }

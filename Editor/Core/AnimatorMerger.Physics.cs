@@ -457,10 +457,7 @@ namespace AvatarBridge
                 && ctx.Settings.physicsTarget != PhysicsTarget.MagicaCloth2)
             {
                 ctx.Report.Skipped("Physics", "\"Add physics to toggled rigs that have none\" did nothing",
-                    "It synthesizes a MagicaCloth, and this avatar was converted to " +
-                    $"{ctx.Settings.physicsTarget}. Toggled styles carrying a rig but no PhysBone stay " +
-                    "rigid here, exactly as they were in VRChat. Convert to MagicaCloth2 if you want " +
-                    "them to move.");
+                    $"It needs MagicaCloth2, and this converted to {ctx.Settings.physicsTarget}.");
             }
 
             if (ctx.Settings.addPhysicsToRiggedStyles
@@ -669,38 +666,19 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category,
                     $"{curvesAdded} toggle curve(s) re-wired to generated physics in {clipsTouched} clip(s)",
-                    "Animations that activated a converted PhysBone's object or component (hair swaps, " +
-                    "outfit toggles) now activate the generated physics too. Without this, a chain " +
-                    "belonging to a style that was inactive at conversion time could never wake up: " +
-                    "its cloth lives on its own object at the avatar root, on a path the original " +
-                    "animations never animated. " +
+                    "Hair and outfit toggles now switch their physics too. " +
                     (deactivationsMirrored > 0
-                        ? $"{deactivationsMirrored} of those curve(s) switch the physics back OFF " +
-                          "again when the style hides, which matters here because ChilloutVR does " +
-                          "not restore a binding nothing writes: without the off curve the cloth " +
-                          "would stay running from the first time it appeared."
+                        ? $"{deactivationsMirrored} switch it back off when the style hides."
                         : "No style here switches its physics back off.") +
-                    (offsAsserted > 0
-                        ? $" A further {offsAsserted} resting state(s) were given an explicit stop " +
-                          "for physics they leave alone. Those states were empty of it: VRChat " +
-                          "relied on Write Defaults to undo the switch, and ChilloutVR has no such " +
-                          "rule, so the cloth latched on the first time the toggle was used and " +
-                          "never stopped. Chains that something outside the toggled object rides " +
-                          "are excluded and listed separately."
-                        : ""));
+                    (offsAsserted > 0 ? $" {offsAsserted} resting state(s) now stop it explicitly." : ""));
             }
 
             if (sharedChains.Count > 0)
             {
                 ctx.Report.Converted(Category,
                     $"{sharedChains.Count} chain(s) keep simulating while their style is hidden",
-                    string.Join(", ", sharedChains) + ": each of these is switched ON with the " +
-                    "object it belongs to but never switched off, because a mesh OUTSIDE that " +
-                    "object is skinned to the same bones. Add-on hair grafted onto a base " +
-                    "hairstyle's rig is the usual shape. Stopping the chain with the base style's " +
-                    "mesh would leave the add-on rigid, so it is left running instead: it " +
-                    "simulates bones nobody can see, which costs a little performance and looks " +
-                    "like nothing at all.");
+                    string.Join(", ", sharedChains) + ": another mesh shares their bones, so they keep running. " +
+                    "Costs a little performance, shows nothing.");
             }
 
             if (strandedToggles.Count > 0)
@@ -711,16 +689,8 @@ namespace AvatarBridge
                 ctx.Report.Warning(Category,
                     $"{strandedToggles.Count} animation(s) switch a PhysBone that wasn't converted: " +
                     "those controls will do nothing",
-                    string.Join("; ", lines) + ": these clips turn a VRChat PhysBone on or off, " +
-                    "which is how avatars pause a chain while a body part is resized. The chain " +
-                    "they name produced no physics here, so there is no cloth component to switch " +
-                    "instead, and the curve dies with the VRC components. Everything else about " +
-                    "the control converts, menu entry, parameter, animator layer, so it looks " +
-                    "correct and does nothing, which is the worst way for this to present. " +
-                    "The PhysBones -> MagicaCloth2 section above has a Skipped entry for each of " +
-                    "these paths saying WHY it wasn't converted (a constraint driving a bone in " +
-                    "the chain is the usual reason); fix that and the toggle starts working. If " +
-                    "the chain was never meant to be simulated, remove the control instead.");
+                    string.Join("; ", lines) + ": the chain made no physics here. The PhysBones section says why " +
+                    "for each; fix that and the toggle works.");
             }
         }
 
