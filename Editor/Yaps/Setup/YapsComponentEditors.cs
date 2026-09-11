@@ -863,7 +863,7 @@ namespace AvatarBridge
 
                     // Depth as one range bar.
                     float s0 = start.floatValue, e0 = Mathf.Min(1f, start.floatValue + fade.floatValue);
-                    var range = new MinMaxSlider("Opens from → fully open by", s0, e0, 0f, 1f);
+                    var range = new MinMaxSlider("Depth", s0, e0, 0f, 1f);
                     range.AddToClassList("ab-field");
                     var readout = BridgeElements.Hint($"{s0:0.00}  →  {e0:0.00}  of the plug's length");
                     range.RegisterValueChangedCallback(e =>
@@ -1001,7 +1001,7 @@ namespace AvatarBridge
                 plays.Body.Add(head);
 
                 float s0 = start.floatValue, e0 = Mathf.Min(1f, start.floatValue + fade.floatValue);
-                var range = new MinMaxSlider("Starts at → fully on by", s0, e0, 0f, 1f);
+                var range = new MinMaxSlider("Depth", s0, e0, 0f, 1f);
                 range.AddToClassList("ab-field");
                 var readout = BridgeElements.Hint($"{s0:0.00}  →  {e0:0.00}  of full depth");
                 range.RegisterValueChangedCallback(e =>

@@ -86,10 +86,9 @@ namespace AvatarBridge
             // would be a link to where you already are.
             var more = new BridgeElements.Card("Also in this package", null, false, null, 1f);
             more.Body.Add(BridgeElements.Hint(_embedded
-                ? "YAPS adds, tunes or upgrades penetration on any avatar or prop. CCK Animator Tester drives " +
-                  "an avatar the way the game does, in Play mode."
-                : "AvatarBridge converts a VRChat avatar to ChilloutVR. YAPS adds, tunes or upgrades penetration " +
-                  "on any avatar or prop. CCK Animator Tester drives an avatar the way the game does, in Play mode."));
+                ? "YAPS adds penetration to any avatar or prop. CCK Animator Tester plays an avatar as the game does."
+                : "AvatarBridge converts VRChat avatars. YAPS adds penetration to any avatar or prop. CCK Animator " +
+                  "Tester plays an avatar as the game does."));
             var links = new List<VisualElement>();
             if (!_embedded)
             {
@@ -169,9 +168,8 @@ namespace AvatarBridge
         }
 
         VisualElement Check() => Tool("Check this avatar",
-            "What will break silently in ChilloutVR: components the game deletes on load, the 3200-bit sync " +
-            "budget, parameters used but never declared or declared but never read, menu entries whose type " +
-            "disagrees with the animator's, shaders that draw into one eye, cloth with no root bones. Reads only.",
+            "What ChilloutVR will break without saying: stripped components, the sync budget, unwired " +
+            "parameters, one-eyed shaders, rootless cloth. Reads only.",
             "Check", () =>
             {
                 var report = new BridgeReport();
@@ -187,11 +185,8 @@ namespace AvatarBridge
             }, "Nothing to report. That is the good outcome.");
 
         VisualElement Survey() => Tool("What this avatar does",
-            "Reads the animator, the menu and the components into one model and names what the avatar can " +
-            "and cannot do: features its author built and never wired to anything, things two layers both " +
-            "animate where the higher one quietly wins, menu controls nothing reads, and objects that " +
-            "could come off as ChilloutVR props. It answers by reading, so a toggle a preset overrides is " +
-            "never mistaken for a dead one. Reads only.",
+            "Names features never wired up, layers fighting over the same thing, menu controls nothing " +
+            "reads, and objects that could be props. Reads only.",
             "Survey it", () =>
             {
                 var report = new BridgeReport();
@@ -206,10 +201,8 @@ namespace AvatarBridge
             }, "Nothing worth naming: everything it has is reachable and nothing collides.");
 
         VisualElement Weigh() => Tool("What this avatar costs",
-            "Texture memory measured against the surface each map actually covers, so a 2K texture on a " +
-            "fingernail is named as one. Also contacts against the 512 overlapping pairs ChilloutVR gives the " +
-            "whole instance, triangles, cloth solvers, blendshapes nothing animates, and materials each " +
-            "carrying their own locked shader. Reads only, and says what to change rather than changing it.",
+            "Texture memory against the surface each map covers, contacts, triangles, cloth, unused " +
+            "blendshapes and locked shaders. Weigh reads; Fix changes.",
             "Weigh it", () =>
             {
                 var report = new BridgeReport();
@@ -272,16 +265,12 @@ namespace AvatarBridge
             var wrap = new VisualElement();
             wrap.Add(toggle);
             wrap.Add(BridgeElements.Hint(
-                "A renderer switched off with nothing in any clip able to switch it on is downloaded and never " +
-                "seen. Untick this to leave them alone and change textures only."));
+                "A mesh that starts off and nothing turns on is downloaded and never seen."));
             return wrap;
         }
 
         VisualElement Tidy() => Tool("Free wins",
-            "Removes only what is provably inert: layers with no states, and parameters no clip writes, no " +
-            "transition reads, no driver, menu control or contact names. Decided by reading the controller, " +
-            "never by flipping something and watching: an individual toggle a preset overrides looks dead " +
-            "and is not. Written to a copy of the controller; your original is not edited.",
+            "Removes empty layers and parameters nothing reads or writes, into a copy of the controller.",
             "Tidy it", () =>
             {
                 var report = new BridgeReport();
@@ -304,10 +293,8 @@ namespace AvatarBridge
             }, "Nothing on it is provably inert. That is the good outcome.");
 
         VisualElement Stereo() => Tool("Stereo shaders",
-            "ChilloutVR renders single-pass instanced; a shader that never opted in draws into one eye in VR. " +
-            "Copies such shaders with the stereo macros added and points this object's materials at the copies. " +
-            "Originals untouched; a copy that fails to compile is thrown away. Materials an animation swaps in " +
-            "are not followed here, because that would mean editing your animation clips.",
+            "A shader without stereo support draws into one eye in VR. Patches copies and points the materials " +
+            "at them; materials an animation swaps in are left alone.",
             "Patch shaders for VR stereo", () =>
             {
                 var report = new BridgeReport();
@@ -320,14 +307,12 @@ namespace AvatarBridge
             }, "Every shader on it already declares stereo support, or has no source to patch.");
 
         VisualElement Face() => Tool("Face: visemes and blink",
-            "Finds the face mesh, wires the standard viseme blendshapes and the blink shapes onto the CVRAvatar. " +
-            "Needs a CVRAvatar on the root; touches nothing else on it.",
+            "Wires the face mesh's viseme and blink shapes onto the CVRAvatar.",
             "Wire face", () => CvrSetup.WireFace(_target, new BridgeSettings()),
             "Nothing found to wire.");
 
         VisualElement Audio() => Tool("Audio limits",
-            "Clamps every audio source on it to spatial settings ChilloutVR handles: doppler off, distance floors " +
-            "and caps, fully 3D. One source with a zero minimum distance on a wearer can mute the whole game.",
+            "Clamps every audio source to safe spatial settings. One with a zero minimum distance can mute the game.",
             "Clamp audio sources", () =>
             {
                 var report = new BridgeReport();
@@ -337,8 +322,7 @@ namespace AvatarBridge
             }, "No audio source needed clamping.");
 
         VisualElement Bounds() => Tool("Mesh bounds",
-            "Resizes every skinned mesh's bounds to the avatar's own volume plus clearance, so meshes stop " +
-            "vanishing at the screen's edge and oversized boxes come down.",
+            "Fits every skinned mesh's bounds to the avatar, so meshes stop vanishing at the screen's edge.",
             "Fix mesh bounds", () =>
             {
                 var report = new BridgeReport();
@@ -348,9 +332,7 @@ namespace AvatarBridge
             }, "Bounds were already right.");
 
         VisualElement Height() => Tool("Height slider",
-            "Adds a quick-menu Height slider, 0.25x to 4x of the avatar's measured height and centred on its " +
-            "original size, into the root's animator controller and the CVRAvatar's advanced settings. Edits " +
-            "the controller asset the avatar uses.",
+            "Adds a Height slider, 0.25x to 4x, to the menu. Edits the avatar's controller asset.",
             "Add height slider", () =>
             {
                 var report = new BridgeReport();
@@ -382,8 +364,7 @@ namespace AvatarBridge
             }, "Nothing added.");
 
         VisualElement Description() => Tool("Store description",
-            "Writes a description of what the avatar has, sized to the CCK's 256-character box, and types it " +
-            "into the upload page's field when that window is open.",
+            "Writes a 256-character description of the avatar into the upload page, and copies it.",
             "Write description", () =>
             {
                 var report = new BridgeReport();
@@ -401,9 +382,7 @@ namespace AvatarBridge
         {
             var card = new BridgeElements.Card("Merge animators", null, null, null, 1f);
             card.Body.Add(BridgeElements.Hint(
-                "Every layer and parameter of the sources goes into the target, deep-copied, layers after the " +
-                "target's own. Same-named layers are renamed; a parameter present in both with different types " +
-                "is named and the target's type kept. Sources are never edited."));
+                "Copies every layer and parameter of the sources into the target. Sources are never edited."));
             var target = new ObjectField("Target") { objectType = typeof(AnimatorController), value = _mergeTarget };
             target.AddToClassList("ab-field");
             target.RegisterValueChangedCallback(e => _mergeTarget = e.newValue as AnimatorController);
