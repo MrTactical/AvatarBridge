@@ -13,27 +13,21 @@ namespace AvatarBridge.Yaps
         [Tooltip("The mesh that bends. Leave empty to use the renderer on this object.")]
         public Renderer renderer;
 
-        [Tooltip("Which of the renderer's materials is the plug. Leave it at -1 unless you mean " +
-                 "otherwise: -1 bakes EVERY material the bone chain reaches, which is one of them " +
-                 "for an ordinary plug and all of them when a whole avatar is the plug. A number " +
-                 "means that slot alone, so a plug whose vertices span several materials will bend " +
-                 "in one and stay rigid in the rest, tearing along the seam.")]
+        [Tooltip("-1 bakes every material the bone chain reaches. A number bakes that slot alone, " +
+                 "and a plug spanning several tears at the seam.")]
         public int materialSlot = -1;
 
         [Header("Skinned mesh")]
-        [Tooltip("The bone the shaft grows from. On a skinned mesh, only vertices weighted to " +
-                 "this bone and its children are the plug; the rest of the mesh stays put. " +
-                 "Leave empty on a mesh that is only the plug.")]
+        [Tooltip("The bone the shaft grows from; only vertices weighted to it and its children " +
+                 "bend. Empty for a mesh that is only the plug.")]
         public Transform rootBone;
 
         [Header("Measurement")]
-        [Tooltip("The toolkit measures the shaft's axis and length from the mesh itself. If it " +
-                 "picked the wrong end as the base, tick this to flip it. Skinned meshes only; a plain " +
-                 "mesh bends around its own origin along +Z.")]
+        [Tooltip("Tick if the measured base is at the wrong end. Skinned meshes only; a plain mesh " +
+                 "bends from its origin along +Z.")]
         public bool flipAxis;
 
-        [Tooltip("Optional. If the measured length is wrong for your mesh, state it here in " +
-                 "metres. 0 uses the measurement.")]
+        [Tooltip("Length in metres, when the measurement is wrong. 0 uses the measurement.")]
         public float lengthOverride;
 
         [Header("Shape at rest")]
@@ -68,7 +62,7 @@ namespace AvatarBridge.Yaps
         [Range(0.1f, 1f), Tooltip("How much of its width it keeps when no socket is using it.")]
         [YapsFrom("TPS")]
         public float idleWidth = 1f;
-        [Range(0f, 0.5f), Tooltip("Idle motion, tip-heavy, only while out of a socket. Animates over time: the scene view shows it while this plug is selected.")]
+        [Range(0f, 0.5f), Tooltip("Idle motion, tip-heavy, out of a socket only. Plays in the scene view while selected.")]
         [YapsFrom("DPS")]
         public float wriggle;
         [Range(0f, 20f), Tooltip("How fast it wriggles.")]
@@ -112,44 +106,29 @@ namespace AvatarBridge.Yaps
         public bool overrun = true;
 
         [Header("How sockets find it")]
-        [Tooltip("Emit the tip light Raliv DPS orifices read, and the contact pointers TPS and " +
-                 "SPS sockets read. Both on unless you know why not.")]
+        [Tooltip("The tip light DPS sockets read.")]
         [YapsFrom("DPS")]
         public bool emitTipLight = true;
 
-        [Header("Which sockets it answers")]
-        [YapsFrom("SPS")]
-        [Tooltip("Answer only sockets carrying at least one of these tags. Any words you like, " +
-                 "matched case-insensitively, and the same names SPS uses mean the same thing " +
-                 "here. Empty means no opinion, which answers anything the refuse list does not " +
-                 "deny.\n\nFour is all there is room for, repeats aside; anything past that is " +
-                 "not baked and the build says how many it left out. A socket has no limit, so a " +
-                 "longer list often belongs on the sockets instead.\n\nOnly the screen atlas " +
-                 "carries what a socket is. One it read and turned away stays turned away, but a " +
-                 "socket it never saw, or any socket in a view too small to hold it, is unknown " +
-                 "rather than refused, and unknown is answered. A preference, not a lock: use " +
-                 "Deform for anything that has to be certain.")]
-        public List<string> answers = new List<string>();
-
-        [YapsFrom("SPS")]
-        [Tooltip("Never answer a socket carrying any of these tags, whatever the list above " +
-                 "says. Refusing beats answering, and reads what the socket published, so it " +
-                 "needs the screen atlas the same way the list above does. Four here as well.")]
-        public List<string> refuses = new List<string>();
-
+        [Tooltip("The tip pointers TPS and SPS sockets read.")]
         [YapsFrom("TPS · SPS")]
         public bool emitPointers = true;
 
-        // The material the bake replaced, so Remove can put it back. Set
-        // by the first bake; the toolkit's own, not a knob.
+        [Header("Which sockets it answers")]
+        [YapsFrom("SPS")]
+        [Tooltip("Answer only sockets with one of these tags; empty answers anything not refused. " +
+                 "Four at most, so a longer list belongs on the sockets. Screen atlas only: a " +
+                 "socket it cannot read is answered.")]
+        public List<string> answers = new List<string>();
+
+        [YapsFrom("SPS")]
+        [Tooltip("Never answer a socket with any of these tags; beats the list above. Four at most.")]
+        public List<string> refuses = new List<string>();
+
         [Header("Diagnostics")]
-        [Tooltip("Draws a readout on the plug in game: twelve cells saying who resolved its " +
-                 "socket, whether it is bending, what the screen atlas saw and what state its own " +
-                 "bake and frame are in, plus two markers, white where the tip would be with the " +
-                 "bones at bake pose and magenta where the tip actually is. Apart means something " +
-                 "is moving the bones rather than the deform. Everyone who can see the plug can " +
-                 "see it, and the toolkit refuses an upload while it is on. For working out why a " +
-                 "plug will not behave; untick it when you are done.")]
+        [Tooltip("An in-game readout of who found the socket and what the bake is doing. White " +
+                 "marks the bake-pose tip, magenta the real one. Everyone sees it; upload is " +
+                 "refused while it is on.")]
         public bool debugOverlay;
 
         // The mesh the readout replaced and the renderer it sits on, so a

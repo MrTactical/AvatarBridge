@@ -309,15 +309,11 @@ namespace AvatarBridge
             if (socket == null || !socket.emitLights || WithinLightCap(socket)) return null;
             int places = Places(socket);
             var kept = Lit(socket).Take(places).Select(s => s.name);
-            return "marker lights start dark: " +
-                   $"{places} socket(s) start lit ({string.Join(", ", kept)}) and this one waits " +
-                   "on the lighthouse: the \"Marker lights\" menu entry lights any one socket " +
-                   "and darkens the rest. A mesh gets four vertex light slots, a socket needs " +
-                   "two, and the tracker light of whatever enters takes a third, so a second " +
-                   "lit socket used to evict the hole's root and break it while rings kept " +
-                   "working. A dark pair costs nothing: a disabled light never enters Unity's " +
-                   "ranking. Plugs built by this toolkit find sockets through contacts and do " +
-                   "not need the lights; only old DPS plugs do.";
+            // Four vertex light slots per mesh: a socket takes two and the
+            // entering tracker a third, so a second lit socket evicts a hole's root.
+            return $"marker lights start dark: only {string.Join(", ", kept)} start lit. The " +
+                   "\"Marker lights\" menu entry lights one socket at a time. Only DPS plugs need " +
+                   "them; YAPS plugs find this socket through the screen atlas.";
         }
 
         // Lights and pointers as children, replacing what it built before.

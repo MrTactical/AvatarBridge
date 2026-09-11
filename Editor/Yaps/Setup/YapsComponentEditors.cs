@@ -155,23 +155,13 @@ namespace AvatarBridge
         // or not it means anything, and this one does not, so animating it off
         // a slider does nothing at all.
         public const string InertComponentNote =
-            "This component is setup data, not something running in game. It has no on/off checkbox " +
-            "because there is nothing to switch off: ChilloutVR strips it at upload, and everything it " +
-            "describes is baked into the material. Animating its \"Enabled\" field in the Animation " +
-            "window does nothing at all: the field is there because Unity puts one on every component.";
+            "Setup data, stripped at upload: animating its Enabled field does nothing.";
 
         public const string PlugSwitchNote =
-            "To turn the deform on and off, animate the MATERIAL property _YAPS_Enabled on this plug's " +
-            "renderer: 0 is off, 1 is on, and anything between fades it, so a slider drives it directly. " +
-            "It stops the bending, it does not hide the mesh: toggle the object for that. The animated " +
-            "value lives in the renderer's property block, so the material inspector keeps showing what " +
-            "was baked.";
+            "To switch the bend, animate the material's _YAPS_Enabled (0 to 1). To hide the plug, toggle its object.";
 
         public const string SocketSwitchNote =
-            "_YAPS_SocketPower on this socket's renderer animates how much its own mesh reshapes around " +
-            "a plug, and 0 stops that. It does NOT stop plugs finding the socket: they find it through " +
-            "the screen atlas and the marker light, so switching the socket off means switching off " +
-            "the object those sit under, the way any other toggle does.";
+            "To switch the socket off, toggle its object. _YAPS_SocketPower only scales its shapes.";
 
         public const string AnimatablePlugProperties =
             "_YAPS_Enabled  (deform on, 0 or 1)\n" +
@@ -713,10 +703,8 @@ namespace AvatarBridge
             {
                 var behind = new BridgeElements.Card("This socket is behind the toolkit");
                 behind.Body.Add(BridgeElements.Hint(
-                    "Built by " + socket.builtBy + ", and this is " + BridgeDefines.Version + ". "
-                    + "Fixes since then have not reached it: nothing revisits a socket once it is "
-                    + "made. Bake it again to bring it up to date. On a prop, run the prop builder "
-                    + "again; on an avatar, Bake every plug and verify."));
+                    "Built by " + socket.builtBy + ", this is " + BridgeDefines.Version + ". Rebuild for "
+                    + "the fixes since: the prop builder on a prop, Bake every plug and verify on an avatar."));
                 body.Add(behind);
             }
 
@@ -759,25 +747,12 @@ namespace AvatarBridge
 
             what.Body.Add(YapsInspectorStyle.Field(so.FindProperty("tags"),
                 typeof(YapsSocket).GetField("tags"), "Tags"));
-            what.Body.Add(BridgeElements.Hint(
-                "What this socket is, so a plug can decide whether to answer it. Any words you like, " +
-                "case and spacing ignored. Leave it empty and every plug that has no list of its own " +
-                "still finds this socket; tag it, and a plug asking for something else will pass it " +
-                "by. SPS spells its own as hips, hipsfront, hipsback, head, chest, hand, handleft, " +
-                "handright, foot, footleft and footright, and those mean the same thing here, so a " +
-                "socket tagged one of them keeps its meaning on either tool. Only the screen atlas " +
-                "carries this: a plug that found this socket by marker light or by contact knows " +
-                "where it is and not what it is, and answers it either way."));
             body.Add(what);
 
             // Shapes.
             var opens = new BridgeElements.Card("Opens as a plug goes in");
             opens.Body.Add(BridgeElements.Hint(
-                "Pick the mesh whose shapes should open (usually the body), then up to sixteen of its " +
-                "shapes, several per depth if you like. The entry opens as the plug arrives; each later " +
-                "one starts deeper. Depths are fractions of the plug's length, and they stack. Built by " +
-                "\"Bake every plug and verify\": a mesh of the socket's own opens in its shader; any other " +
-                "mesh opens through a contact on the socket and a layer in your animator."));
+                "A mesh, usually the body, and up to sixteen of its shapes, each over its own depth range."));
 
             var renderers = avatarRoot != null
                 ? avatarRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true)
@@ -807,10 +782,8 @@ namespace AvatarBridge
             if (bodyShader)
             {
                 opens.Body.Add(new HelpBox(
-                    $"\"{current.name}\" is not a mesh of the socket's own, but Build can bake these shapes into " +
-                    "its material anyway: depth is measured from the socket's baked position, read from a plug's " +
-                    "tracker light. Every client computes it locally, so it works against DPS plugs and costs no " +
-                    "sync bits. A socket already built onto the animator stays there until its layer is removed.",
+                    $"Opens in \"{current.name}\"'s shader: every client works out the depth itself, no sync bits. " +
+                    "A socket already on the animator stays there until its layer is removed.",
                     HelpBoxMessageType.Info));
             }
             if (contactRoute)
@@ -820,13 +793,9 @@ namespace AvatarBridge
                     : YapsSocketReactions.LongestPlugOn(avatarRoot) > 0f ? "the length of the longest plug on this avatar"
                     : "the default, no plug on this avatar yet";
                 opens.Body.Add(new HelpBox(
-                    $"\"{current.name}\" is not a mesh of the socket's own, so Build drives these shapes through a contact: " +
-                    "a depth trigger on the socket reads a plug's tip pointer and a layer in your animator plays the " +
-                    "stages from it. Works with TPS, SPS and YAPS plugs; a DPS light-only plug has no pointer. " +
-                    "ChilloutVR computes this contact on the wearer's machine only, so the depth is a synced " +
-                    "parameter, 32 of the avatar's 3200 sync bits, and without it nobody but the wearer would " +
-                    $"see the shapes move. A contact cannot know a plug's length, so depth 1 " +
-                    $"is {reach:0.00} m in ({reachFrom}); the depths below are fractions of that.", HelpBoxMessageType.Info));
+                    "Opens through a contact and an animator layer, on a synced depth (32 of 3200 sync bits). " +
+                    $"DPS plugs have no pointer and do not open it. Full depth is {reach:0.00} m in ({reachFrom}).",
+                    HelpBoxMessageType.Info));
             }
             opens.Body.Add(meshPopup);
 
@@ -941,7 +910,7 @@ namespace AvatarBridge
                         adders.Add(YapsInspectorStyle.Button("+ A shape deeper in", () => AddRow(Mathf.Min(1f, lastStart + 0.25f), 0.3f)));
                     }
                     opens.Body.Add(BridgeElements.Row(adders.ToArray()));
-                    opens.Body.Add(BridgeElements.Hint($"{n} of {YapsBaker.MaxShapes} shapes. Several may share a depth; each opens over its own range."));
+                    opens.Body.Add(BridgeElements.Hint($"{n} of {YapsBaker.MaxShapes} shapes."));
                 }
                 if (shapesProp.arraySize > 0)
                 {
@@ -968,9 +937,7 @@ namespace AvatarBridge
                     if (!shapesBuilt)
                     {
                         opens.Body.Add(new HelpBox(
-                            "Not built yet: these shapes do nothing in game until the socket is built. Placing and testing " +
-                            "need no build. Build this one here to try it, but the last step before an upload is still " +
-                            "\"Bake every plug and verify\" in YAPS Setup: it builds every plug and socket at once and checks the lot.",
+                            "Not built: these do nothing in game yet. Before upload, run Bake every plug and verify in YAPS Setup.",
                             HelpBoxMessageType.Warning));
                         opens.Body.Add(new BridgeElements.PrimaryButton("Build this socket", () =>
                         {
@@ -993,11 +960,8 @@ namespace AvatarBridge
             var animsProp = so.FindProperty("depthAnimations");
             var plays = new BridgeElements.Card("Plays as a plug goes in");
             plays.Body.Add(BridgeElements.Hint(
-                "Your own animations, blended in by how far a plug is in: a glow, a sound's volume, a " +
-                "tail that lifts. They play in a layer of their own with write defaults on, so while no " +
-                "plug is in, everything they animate sits at its resting value. Animate only what " +
-                "nothing else on the avatar animates, or the two will fight. Driven by a contact on the " +
-                $"socket and one synced depth, the same one the shapes use; depth 1 is {YapsSocketReactions.ReachOf(socket):0.00} m in."));
+                "Your own clips, each blended in over its own depth range. Write defaults are on, so animate " +
+                $"only what nothing else animates. Full depth is {YapsSocketReactions.ReachOf(socket):0.00} m in."));
             for (int i = 0; i < animsProp.arraySize; i++)
             {
                 int index = i;
@@ -1073,7 +1037,7 @@ namespace AvatarBridge
             if (socket.depthAnimations.Any(a => a != null && a.clip != null) && !YapsSocketReactions.AnimationsExist(socket))
             {
                 plays.Body.Add(new HelpBox(
-                    "Not built yet: these play nothing in game until the socket is built.", HelpBoxMessageType.Warning));
+                    "Not built: these play nothing in game yet.", HelpBoxMessageType.Warning));
                 plays.Body.Add(new BridgeElements.PrimaryButton("Build this socket", () =>
                 {
                     foreach (var line in YapsNativeBuilder.BuildSocket(socket)) Debug.Log("[YAPS] " + line);
@@ -1085,16 +1049,12 @@ namespace AvatarBridge
             // See it work.
             int bakedPlugs = YapsPreview.CountBakedPlugsNear(socket, YapsPreview.NearEnough);
             var see = new BridgeElements.Card("See it work");
-            string shapesToo = contactRoute && shapesProp.arraySize > 0
-                ? $" The shapes follow the plug's tip as the game would: 0 at the socket plane, 1 at {YapsSocketReactions.ReachOf(socket):0.00} m in."
-                : "";
             see.Body.Add(BridgeElements.Hint(
-                "Preview bends every baked YAPS plug in the scene toward this socket, in the editor, so you can " +
-                "place it and watch before uploading. Writes nothing that ships. " +
-                (bakedPlugs > 0
-                    ? $"There {(bakedPlugs == 1 ? "is a plug" : "are plugs")} within reach of this socket already; drop a test one anyway if you want something to move."
-                    : "Nothing baked is near this socket, so it drops a test plug in front of it.") +
-                (contactRoute && shapesProp.arraySize > 0 ? " A test plug is one full depth long, so all the way in reads 1." : "") + shapesToo));
+                "Bends every baked plug in the scene toward this socket, editor only." +
+                (bakedPlugs > 0 ? "" : " With no plug near, it drops a test one.") +
+                (contactRoute && shapesProp.arraySize > 0
+                    ? $" Shapes follow the tip: 0 at the opening, 1 at {YapsSocketReactions.ReachOf(socket):0.00} m in."
+                    : "")));
             var previewButton = new BridgeElements.PrimaryButton(
                 socket.preview ? "Previewing, click to stop" : (bakedPlugs > 0 ? "Preview" : "Preview with a test plug"),
                 () => { YapsPreview.Set(socket, !socket.preview); RebuildLater(); });
@@ -1126,10 +1086,7 @@ namespace AvatarBridge
             });
             see.Body.Add(inPlay);
             see.Body.Add(BridgeElements.Hint(
-                "Turn this on when the plug only appears after you press Play, which is the usual " +
-                "case. It is also the only way to watch the bend on a POSED avatar: edit mode " +
-                "holds the rest pose, where every part of the plug agrees about which way it faces. " +
-                "Off by default so the preview cannot race anything else writing to the material."));
+                "For a plug that only appears in Play Mode, or to see the bend on a posed avatar."));
 
             // The shapes, tried here: a depth slider moves them on the mesh
             // in the editor; while previewing, the plug's tip is the depth.
@@ -1139,9 +1096,8 @@ namespace AvatarBridge
                 var test = new Slider("Test depth", 0f, 1f) { showInputField = true };
                 test.AddToClassList("ab-field"); test.AddToClassList("ab-slider");
                 var testHint = BridgeElements.Hint(socket.preview
-                    ? "The preview plug is driving the shapes: move its tip into the socket and watch them open. Nothing is saved."
-                    : "Moves the shapes on the mesh from a depth, here in the editor, so you can see the stages without a plug. " +
-                      "Nothing is saved; they go back when you click away.");
+                    ? "The preview plug drives the shapes. Nothing is saved."
+                    : "Moves the shapes in the editor. Nothing is saved; they reset when you click away.");
                 if (socket.preview)
                 {
                     test.SetEnabled(false);
@@ -1168,9 +1124,7 @@ namespace AvatarBridge
             {
                 var opensHow = new BridgeElements.Card("How it opens");
                 opensHow.Body.Add(BridgeElements.Hint(
-                    "Read by the shader on this socket's mesh. Strength above scales all the shapes; each " +
-                    "stage opens from its start to start + fade, as fractions of the plug's length. Depth " +
-                    "comes from the plug's tracker light."));
+                    "The ranges baked into the material, as fractions of the plug's length."));
                 // One range per baked shape, named after the shape when the
                 // component knows it, else by its slot.
                 int baked = bakedMat.HasProperty("_YAPS_ShapeCount") ? Mathf.RoundToInt(bakedMat.GetFloat("_YAPS_ShapeCount")) : 0;
@@ -1200,9 +1154,7 @@ namespace AvatarBridge
             {
                 var animate = new BridgeElements.Card("Animate it", null, false, null, 0.9f);
                 animate.Body.Add(BridgeElements.Hint(
-                    "The socket's shape knobs are material properties on its mesh, so an animation can drive " +
-                    "them: in the Animation window pick the mesh, add Skinned Mesh Renderer ▸ Material ▸ a " +
-                    "name below, and key it."));
+                    "Key these in the Animation window under Skinned Mesh Renderer ▸ Material."));
                 animate.Body.Add(new TextField { value = YapsInspectorStyle.AnimatableSocketProperties, multiline = true, isReadOnly = true });
                 body.Add(animate);
             }
@@ -1229,8 +1181,7 @@ namespace AvatarBridge
             removeSocket.style.color = BridgeTheme.Bad;
             advanced.Body.Add(BridgeElements.Row(removeSocket));
             advanced.Body.Add(BridgeElements.Hint(
-                "Takes the socket out entire: its objects, its animator layer and parameter, its menu " +
-                "toggle, and the socket bake on its own mesh. One undo step."));
+                "Removes its objects, animator layers, menu toggle and bake. One undo step."));
             body.Add(advanced);
 
             _root.Bind(so);
@@ -1380,14 +1331,11 @@ namespace AvatarBridge
             card.AddToClassList("ab-fold");
             into.Add(card);
             card.Body.Add(BridgeElements.Hint(
-                "Which of your own sockets this plug may enter. Everything off the hips starts ticked " +
-                "and everything on them starts clear, which is how SPS content behaves out of the box. " +
-                "A socket still has to be switched on to be entered, and the plug's own sockets toggle " +
-                "in game opens every one of them. Needs the screen atlas."));
+                "Which of your own sockets this plug may enter. Hips start clear, the rest ticked, as in SPS. " +
+                "The in-game own sockets toggle opens them all. Needs the screen atlas."));
             if (own.Length > YapsOwner.MaxSelfSockets)
                 card.Body.Add(BridgeElements.Hint(
-                    $"Only {YapsOwner.MaxSelfSockets} sockets can be told apart. The rest are judged by " +
-                    "whether they sit on the hips, whatever is ticked here."));
+                    $"Only {YapsOwner.MaxSelfSockets} can be told apart; the rest follow the hips rule."));
 
             foreach (var s in own)
             {
@@ -1449,11 +1397,8 @@ namespace AvatarBridge
             // nothing to bend toward, so its inspector could only ever show
             // it straight, which reads as a plug that does not work.
             see.Body.Add(BridgeElements.Hint(
-                "Drops a socket one plug length ahead, pointing back, and bends this plug into it: " +
-                "here in the editor, so you can watch before uploading. Writes nothing that ships. " +
-                "The bend needs the plug baked, and needs its deform switched on: if an animator " +
-                "gates it (an erection slider, say), set the material's _YAPS_Enabled to 1 while you " +
-                "look, because preview does not run your animator."));
+                "Drops a test socket ahead and bends this plug into it, editor only. Needs the plug baked " +
+                "and _YAPS_Enabled at 1: preview does not run your animator."));
             if (YapsPreview.TestSocketInScene)
             {
                 see.Body.Add(new BridgeElements.PrimaryButton("Take the test socket away", () =>
@@ -1487,9 +1432,7 @@ namespace AvatarBridge
             filter.AddToClassList("ab-field");
             filter.RegisterValueChangedCallback(e => { _filter = e.newValue; RebuildLater(); });
             move.Body.Add(filter);
-            move.Body.Add(BridgeElements.Hint(
-                "Every knob is tagged with the system it comes from. Know a feature from DPS, TPS or SPS? " +
-                "Pick that system and only its knobs stay. YAPS is what none of them had. Applies to Sockets below too."));
+            move.Body.Add(BridgeElements.Hint("Each knob is tagged with the system it came from. Pick one to show only its knobs."));
 
             // Fields in declaration order; a [Header] opens a section.
             var it = serializedObject.GetIterator();
@@ -1541,8 +1484,8 @@ namespace AvatarBridge
 
             var bake = new BridgeElements.Card("Bake");
             bake.Body.Add(BridgeElements.Hint(isBaked
-                ? "The knobs above write straight to the plug's material, and the material's YAPS panel writes back here: same values, two doors. Mesh, bone and measurement changes need a re-bake."
-                : "Set the mesh up, then Bake: it measures the mesh, patches the material's own shader (or falls back to YAPS Simple Lit), writes the knobs and announces the plug to every socket family."));
+                ? "Knobs write to the material and its YAPS panel writes back. Mesh, bone and measurement changes need a re-bake."
+                : "Set up the mesh, then Bake: it measures the mesh and patches its shader, or uses YAPS Simple Lit."));
             bake.Body.Add(new BridgeElements.PrimaryButton(isBaked ? "Re-bake" : "Bake", () =>
             {
                 var o = YapsNativeBuilder.BakeAndRefreshMenu(plug);
@@ -1560,8 +1503,7 @@ namespace AvatarBridge
             if (isBaked)
             {
                 bake.Body.Add(BridgeElements.Hint(
-                    "Remove takes the plug out entire: the material it replaced goes back in its slot, " +
-                    "the size wiring leaves your animations, the menu toggle and the markers go. One undo step."));
+                    "Remove puts the original material back and takes out the size wiring, menu toggle and markers. One undo step."));
             }
             body.Add(bake);
 
@@ -1569,13 +1511,8 @@ namespace AvatarBridge
             // from the avatar's own animator; the names are what to record.
             var animate = new BridgeElements.Card("Animate it", null, false, null, 0.9f);
             animate.Body.Add(BridgeElements.Hint(
-                "Every knob above is a material property on this plug's mesh, so an animation can drive " +
-                "it: in the Animation window pick the mesh, add Skinned Mesh Renderer (or Mesh Renderer) " +
-                "▸ Material ▸ one of the names below, and key it. The first one is the on/off: " +
-                "_YAPS_Enabled. Animate THAT rather than this component's own Enabled field, which is " +
-                "inert. An erectness slider, say, takes Curvature toward 0 and Entrance stiffness up. " +
-                "Size sliders and hyper toggles that scale the bone or a blendshape are wired for you " +
-                "at Bake."));
+                "Key these in the Animation window under the renderer ▸ Material. Size sliders that scale " +
+                "the bone or a shape are wired at Bake."));
             animate.Body.Add(new TextField { value = YapsInspectorStyle.AnimatablePlugProperties, multiline = true, isReadOnly = true });
             body.Add(animate);
 
