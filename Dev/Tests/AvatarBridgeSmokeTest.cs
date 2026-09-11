@@ -227,9 +227,11 @@ namespace AvatarBridge.Regression
                 Check(smr.sharedMaterials[1].HasProperty("_YAPS_Bake"), "skinned slot baked");
                 Check(YapsNativeBuilder.GuessRootBone(smr, 1) == shaft.transform, "root bone guessed from the mesh");
             });
-            // A converted plug has no YapsPlug; its author's Self rules ride
-            // on the material. Not humanoid, so both sockets count as on the
-            // hips, and path order makes the hole bit 1 and the ring bit 2.
+            // A converted plug's author's Self rules ride on its material, and
+            // the conversion adopts a component onto it, as here: the rules
+            // were once read only for a plug WITHOUT one, which is no real
+            // conversion. Not humanoid, so both sockets count as on the hips,
+            // and path order makes the hole bit 1 and the ring bit 2.
             Step("YAPS > A converted plug's own-socket rules", () =>
             {
                 var baked = avatar.GetComponentInChildren<YapsPlug>(true).Target.sharedMaterials[1];
@@ -237,6 +239,7 @@ namespace AvatarBridge.Regression
                 conv.transform.SetParent(avatar.transform, false);
                 var m = new Material(baked);
                 conv.sharedMaterial = m;
+                Check(YapsNativeBuilder.AdoptPlug(conv.transform, conv, 0, m, null) != null, "component adopted");
                 hole.tags = new List<string> { YapsTags.Shared, "mouth" };
                 ring.tags = new List<string> { YapsTags.Shared, "hand" };
                 int Mask(IEnumerable<string> answers, IEnumerable<string> refuses, bool hips)

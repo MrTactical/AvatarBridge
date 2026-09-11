@@ -105,12 +105,17 @@ namespace AvatarBridge
             var told = new HashSet<Renderer>();
             foreach (var plug in root.GetComponentsInChildren<YapsPlug>(true))
             {
+                // A converted plug has a component too, adopted off its
+                // material, so its author's Self rules are where it starts.
                 // A default tick leaves the tags to judge, so the shader still
-                // applies them; one set by hand is chosen and skips them.
-                int chosen = 0;
+                // applies them; one set by hand, or by tag rules, is chosen and
+                // skips them.
+                int start = byDefault, chosen = 0;
+                var rules = RulesOf(plug.Target);
+                if (rules != null) start = RulesMask(rules, sockets, human, out chosen);
                 foreach (var s in plug.selfEnter)
                     if (s != null && numbers.TryGetValue(s, out int n) && n > 0) chosen |= 1 << (n - 1);
-                int mask = byDefault | chosen;
+                int mask = start | chosen;
                 foreach (var s in plug.selfRefuse)
                     if (s != null && numbers.TryGetValue(s, out int n) && n > 0) mask &= ~(1 << (n - 1));
                 chosen &= mask;
@@ -123,7 +128,7 @@ namespace AvatarBridge
                         foreach (var m in r.sharedMaterials) SetMask(m, mask, chosen);
                 }
             }
-            // A converted plug has no component to choose with: its author's
+            // A plug with no component, its component stripped: its author's
             // rules if the material kept any, else the default.
             foreach (var r in root.GetComponentsInChildren<Renderer>(true))
             {
@@ -131,7 +136,9 @@ namespace AvatarBridge
                 foreach (var m in r.sharedMaterials)
                 {
                     if (m == null) continue;
-                    int mask = RulesMask(m, sockets, human, byDefault, out int chosen);
+                    var rules = RulesOn(m);
+                    int chosen = 0;
+                    int mask = rules != null ? RulesMask(rules, sockets, human, out chosen) : byDefault;
                     SetMask(m, mask, chosen);
                 }
             }
@@ -156,26 +163,41 @@ namespace AvatarBridge
             m.SetOverrideTag(HipsKey, entersHips ? "1" : "");
         }
 
+        sealed class SelfRules
+        {
+            public HashSet<string> Answers, Refuses;
+            public bool EntersHips;
+            public bool Tagged => Answers.Count > 0 || Refuses.Count > 0;
+
+            public bool Allows(YapsSocket s, Dictionary<Transform, HumanBodyBones> human) =>
+                TagsPass(s.tags, Answers, Refuses) && (EntersHips || !OnHips(s.transform, human));
+        }
+
+        static SelfRules RulesOn(Material m)
+        {
+            if (m == null) return null;
+            string answered = m.GetTag(AnswersKey, false), refused = m.GetTag(RefusesKey, false);
+            bool entersHips = m.GetTag(HipsKey, false) == "1";
+            if (answered == "" && refused == "" && !entersHips) return null;
+            return new SelfRules
+            {
+                Answers = Words(answered.Split(',')), Refuses = Words(refused.Split(',')), EntersHips = entersHips,
+            };
+        }
+
+        static SelfRules RulesOf(Renderer r) =>
+            r == null ? null : r.sharedMaterials.Select(RulesOn).FirstOrDefault(x => x != null);
+
         // Self tag rules are the author's whole answer for their own sockets,
         // as SPS reads them, so what they allow is chosen and skips the
         // plug's other tags. Hip avoidance alone chooses nothing.
-        static int RulesMask(Material m, List<YapsSocket> sockets,
-                             Dictionary<Transform, HumanBodyBones> human, int byDefault, out int chosen)
+        static int RulesMask(SelfRules rules, List<YapsSocket> sockets,
+                             Dictionary<Transform, HumanBodyBones> human, out int chosen)
         {
-            chosen = 0;
-            string answered = m.GetTag(AnswersKey, false), refused = m.GetTag(RefusesKey, false);
-            bool entersHips = m.GetTag(HipsKey, false) == "1";
-            if (answered == "" && refused == "" && !entersHips) return byDefault;
-            var answers = Words(answered.Split(','));
-            var refuses = Words(refused.Split(','));
             int mask = 0;
             for (int i = 0; i < sockets.Count && i < MaxSelfSockets; i++)
-            {
-                if (!TagsPass(sockets[i].tags, answers, refuses)) continue;
-                if (!entersHips && OnHips(sockets[i].transform, human)) continue;
-                mask |= 1 << i;
-            }
-            if (answers.Count > 0 || refuses.Count > 0) chosen = mask;
+                if (rules.Allows(sockets[i], human)) mask |= 1 << i;
+            chosen = rules.Tagged ? mask : 0;
             return mask;
         }
 
@@ -196,13 +218,18 @@ namespace AvatarBridge
             Words(YapsTags.Listed(tags).Take(YapsTags.PlugSlots));
 
         // Whether a plug may enter this socket of its wearer's when nobody has
-        // said: yes, unless it hangs off the hips or the plug's tags, as
-        // built, refuse it.
+        // said: what its author's Self tag rules allow, if it kept any; else
+        // yes, unless it hangs off the hips or the plug's tags, as built,
+        // refuse it.
         public static bool EntersByDefault(YapsPlug plug, YapsSocket socket)
         {
             var avatar = socket != null ? socket.GetComponentInParent<CVRAvatar>(true) : null;
-            return avatar != null && plug != null
-                   && !OnHips(socket.transform, HumanBones(avatar.GetComponent<Animator>()))
+            if (avatar == null || plug == null) return false;
+            var human = HumanBones(avatar.GetComponent<Animator>());
+            var rules = RulesOf(plug.Target);
+            if (rules != null && rules.Tagged) return rules.Allows(socket, human);
+            bool hips = rules != null && rules.EntersHips;
+            return (hips || !OnHips(socket.transform, human))
                    && TagsPass(socket.tags, Baked(plug.answers), Baked(plug.refuses));
         }
 

@@ -333,6 +333,11 @@ outnumber 960 by 540's pixels.
 - DONE 2026-09-11: SPS plug rules keep their side on conversion. Others rules go to the tag test
   as before, Self rules and hip avoidance ride on the plug's material as override tags, by name,
   and `YapsOwner.ApplySelf` turns them into ticks on every build, so a renumbering follows.
+  *Corrected the same day: that never ran for a real conversion.* `AdoptPlug` gives every
+  converted plug a `YapsPlug`, and `ApplySelf` read the material's rules only for a renderer
+  with no component, so a converted plug always took the hips default. The smoke test built
+  exactly that component-less shape and passed. A component plug now starts from its material's
+  rules, the checklist's default follows them, and the test adopts a component first.
 - DONE 2026-09-11: an own socket chosen BY NAME skips the tag test. `_YAPS_SelfChosen` holds a
   bit per chosen socket: a tick set by hand on a toolkit plug, or what a converted plug's Self
   tag rules allow (hip avoidance alone chooses nothing). A default tick still answers to the
