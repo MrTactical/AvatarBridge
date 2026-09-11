@@ -36,9 +36,28 @@ body:
         - Avatar won't upload (the CCK complains)
         - Avatar uploads, but loads as the "Error" robot in ChilloutVR
         - Avatar loads, but something misbehaves in-game (toggles, face tracking, physics, gestures)
+        - A YAPS plug does not bend toward a socket in game
         - Something else
     validations:
       required: true
+
+  - type: textarea
+    id: yaps_resolved_by
+    attributes:
+      label: "YAPS only: what does the plug's Resolved by view show?"
+      description: |
+        On the plug's material, open the YAPS panel and set **Debug ▸ View** to **Resolved by**, upload, and look in game
+        with the socket right there. The plug goes straight and its **length** is the answer:
+
+        - **a quarter**: nothing found the socket
+        - **three quarters**: a marker light found it
+        - **full**: the screen atlas found it
+
+        Say which, and whether a mirror shows the same. Everyone sees the straightened plug while the view is on,
+        so try it in a private instance, then set it back to **Off** and upload again.
+      placeholder: e.g. "A quarter in the view, full in a mirror."
+    validations:
+      required: false
 
   - type: textarea
     id: environment
