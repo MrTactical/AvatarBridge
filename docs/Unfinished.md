@@ -16,9 +16,12 @@ user). The plug now reads the screen atlas first and marker lights only where th
 nothing; the contact channel no longer bends a plug and is no longer built, and converting takes an
 old one out. It was the one route that could latch (below), and it spent up to nine synced floats a
 plug. Cost: a contact-only socket (an older TPS orifice with no lights and no atlas writer) is no
-longer found. Left behind on purpose, for dev to delete once the hotfix is merged back:
-`YapsChannel`, `YapsPropBuilder.AddChannel`, `YapsNativeChannel.Plugs`, `BridgeSettings.yapsSocketFollow`
-and `YapsSocket.previewAsChannel`, all unused. Ask reporters for the "Resolved by" debug view: a
+longer found. Deleted on dev the same day, once merged back: `YapsChannel` (left as an empty file,
+like `ContactDiagnostics`, because importing a package never deletes and an orphaned copy would stop
+compiling),
+`YapsPropBuilder.AddChannel` and its builders, `YapsNativeChannel.Plugs`,
+`BridgeSettings.yapsSocketFollow` and `YapsSocket.previewAsChannel`. Taking an old channel OUT
+stays: `YapsNativeChannel.Clear`, `YapsPropBuilder.DropChannel` and the remover. Ask reporters for the "Resolved by" debug view: a
 quarter-length plug means nothing found the socket.*
 
 *Follow-up from the same day: the atlas cell already scales with plug length (four levels, 2 cm
@@ -194,7 +197,7 @@ hold on 4.2.0 ended there; that number was spent on a tester build and never rel
    it.
 
    Phase D, retire the contact channel: D1 prove the texture-parser route to the animator. D2 move
-   socket shapes, depth and haptics onto it. D3 delete `YapsChannel` and its triggers. D4 KEEP the
+   socket shapes, depth and haptics onto it. D3 delete `YapsChannel` and its triggers: DONE 2026-09-11, with 4.5.1. D4 KEEP the
    TPS material import, which is a separate thing from the tag plumbing.
 
    **WHICH LEVER KILLS WHICH COST, 2026-09-06.** These get conflated, so they are written down
@@ -1554,6 +1557,8 @@ it, or have the socket editor re-assert it after a reload.
 
 ## The channel flickers at the sync rate in game
 
+*RESOLVED BY REMOVAL in 4.5.1: the plug no longer reads the contact channel, and `YapsChannel` is emptied on dev.*
+
 Found 2026-08-27, immediately after the channel first worked in game. The deform twitches hard
 and the flicker is at about ten a second, which is ChilloutVR's parameter rate. It happens deep
 inside the socket, not only near the trigger's edge, and the light path on the same prop in the
@@ -1614,6 +1619,8 @@ channel. Stripping contacts from the transport removes the mechanism outright; i
 stays, the decay above is still the fix.
 
 ## The channel's drift is quantisation, and the smoother cannot filter it
+
+*RESOLVED BY REMOVAL in 4.5.1: the plug no longer reads the contact channel, and `YapsChannel` is emptied on dev.*
 
 Fully characterised 2026-08-27 in the editor, no uploads. The channel's values never settle while
 a socket is near: they wander by about one part in a thousand every tick, and the deform is
@@ -1735,6 +1742,8 @@ despawned, an avatar that left, or one they simply walked away from. Those are t
 paths through the same symptom and only the last one is fixed.
 
 ## The prop channel is a second implementation, and fixes land in one of them
+
+*RESOLVED BY REMOVAL in 4.5.1: the plug no longer reads the contact channel, and `YapsChannel` is emptied on dev.*
 
 Found 2026-08-27 while auditing the README. `YapsChannel` builds the contact channel for avatars
 and `YapsPropBuilder.BuildChannel` builds it for props, and they are separate code that does the

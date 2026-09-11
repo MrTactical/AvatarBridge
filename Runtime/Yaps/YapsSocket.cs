@@ -111,11 +111,6 @@ namespace AvatarBridge.Yaps
         // The inspector also ticks this on every scene repaint.
         void Update() => PreviewTick();
 
-        // Unused from 4.5.1, kept so saved scenes still load. It chose the
-        // contact channel's route, which the shader no longer reads.
-        [HideInInspector]
-        public bool previewAsChannel = true;
-
         [Tooltip("Keep previewing after you press Play. The preview normally stands down in Play " +
                  "Mode so it cannot fight whatever drives the material there. Turn this on when the " +
                  "plug only appears in Play Mode, which is the usual case: the mesh ships switched " +

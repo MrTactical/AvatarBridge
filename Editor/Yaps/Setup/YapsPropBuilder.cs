@@ -1,6 +1,6 @@
 // Turns an object carrying a YAPS plug or socket into a ChilloutVR prop:
-// spawnable, pickup with theft disallowed, a collider to grab by, and for
-// a baked plug the synced contact channel that reaches remote viewers.
+// spawnable, pickup and a collider to grab by. Takes out the contact
+// channel an older build added, which plugs no longer read.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
@@ -14,29 +14,10 @@ namespace AvatarBridge
 {
     public static class YapsPropBuilder
     {
-        // The channel's trigger box, in plug lengths each way.
-        const float BoxLengths = 1.75f;
         const string HostPrefix = "YAPS Channel ";
 
-        static readonly string[] SocketTypes =
-        {
-            "TPS_Orf_Root", "TPS_Orf_Root_SelfNotOnHips",
-            "SPSLL_Socket_Root", "SPSLL_Socket_Root_SelfNotOnHips",
-            "SPSLL_Socket_Hole", "SPSLL_Socket_Hole_SelfNotOnHips",
-            "SPSLL_Socket_Ring", "SPSLL_Socket_Ring_SelfNotOnHips",
-        };
-        static readonly string[] HoleTypes = { "SPSLL_Socket_Hole", "SPSLL_Socket_Hole_SelfNotOnHips" };
-
-        // Only the unambiguous ring tags: a hole socket also emits
-        // TPS_Orf_Root, so accepting that would let a hole clear its own flag.
-        static readonly string[] RingTypes = { "SPSLL_Socket_Ring", "SPSLL_Socket_Ring_SelfNotOnHips" };
-        static readonly string[] FrontTypes =
-        {
-            "TPS_Orf_Norm", "TPS_Orf_Norm_SelfNotOnHips",
-            "SPSLL_Socket_Front", "SPSLL_Socket_Front_SelfNotOnHips",
-        };
-
-        // Value name, then the material property it drives.
+        // What an older build's channel named its values, layers and
+        // parameters, and the material property each drove.
         static readonly (string Value, string Property)[] Channel =
         {
             ("E", "material._YAPS_SocketFlags.x"),
@@ -121,7 +102,7 @@ namespace AvatarBridge
             }
 
             o.Ok = true;
-            o.Message = $"\"{root.name}\" is a prop: spawnable, pickup, collider" + (HasChannel(root) ? ", channel" : "") + ".";
+            o.Message = $"\"{root.name}\" is a prop: spawnable, pickup, collider.";
             return o;
         }
 
@@ -132,30 +113,6 @@ namespace AvatarBridge
             for (int i = 0; i < root.transform.childCount; i++)
                 if (root.transform.GetChild(i).name.StartsWith(HostPrefix)) return true;
             return false;
-        }
-
-        // The exact route, on request. It costs the prop's ownership.
-        public static Outcome AddChannel(GameObject root)
-        {
-            var o = new Outcome();
-            var plug = root != null ? root.GetComponentInChildren<YapsPlug>(true) : null;
-            var spawnable = root != null ? root.GetComponent<CVRSpawnable>() : null;
-            if (plug == null || spawnable == null)
-            {
-                o.Message = "Select a plug prop first: one with a YAPS Plug under it and a CVR Spawnable on it.";
-                return o;
-            }
-            var material = BakedMaterial(plug);
-            if (material == null) { o.Message = "The plug is not baked. Bake it, then add the channel."; return o; }
-            Undo.RegisterFullObjectHierarchyUndo(root, "YAPS channel");
-            RemoveChannel(root);
-            BuildChannel(root, plug, material, spawnable);
-            o.Ok = true;
-            o.Message = $"\"{root.name}\" has the contact channel: 8 synced values, one trigger per value.";
-            o.Notes.Add("While a socket touches this prop, the socket's owner writes its values and takes it over: " +
-                        "that is the channel, not a fault, and it is why a prop can leave someone's hand. Run Verify " +
-                        "prop before uploading.");
-            return o;
         }
 
         // And off again, for a prop that fights over ownership in use.
@@ -300,207 +257,6 @@ namespace AvatarBridge
                     controller.parameters.First(p => p.name == value));
             }
             EditorUtility.SetDirty(controller);
-        }
-
-        // Eight synced values, each a layer blending one material property.
-        // The material reads them in a box centred on the plug's base.
-        static void BuildChannel(GameObject root, YapsPlug plug, Material material, CVRSpawnable spawnable)
-        {
-            var renderer = plug.Target;
-            var frame = plug.transform.Find("YAPS Markers") ?? plug.transform;
-            float length = Mathf.Max(material.GetFloat("_YAPS_Length"), 0.01f);
-            float extent = length * BoxLengths;
-            var box = new Vector3(extent * 2f, extent * 2f, extent * 2f);
-            material.SetFloat("_YAPS_ChannelSpace", 1f);
-            material.SetVector("_YAPS_ChannelExtents", new Vector4(extent, extent, extent, 0f));
-            EditorUtility.SetDirty(material);
-
-            string dir = YapsNativeBuilder.OutputRoot + "/" + Sanitise(root.name);
-            if (!AssetDatabase.IsValidFolder(dir)) YapsNativeBuilder.EnsureFolderPublic(dir);
-            string clipPath = AnimationUtility.CalculateTransformPath(renderer.transform, root.transform);
-
-            // A prop's own controller gains the layers; one without gets
-            // the channel controller, the same file each run.
-            var animator = root.GetComponent<Animator>();
-            if (animator == null) animator = Undo.AddComponent<Animator>(root);
-            var existing = animator.runtimeAnimatorController as AnimatorController;
-            bool own = existing != null && !string.IsNullOrEmpty(AssetDatabase.GetAssetPath(existing));
-            var controller = BuildController(dir, clipPath, renderer.GetType(), own ? existing : null);
-            animator.runtimeAnimatorController = controller;
-            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-
-            // The trigger tasks index the value list, so each value's slot
-            // is the one it was given, not its place in the list.
-            spawnable.useAdditionalValues = true;
-            var slot = new Dictionary<string, int>();
-            foreach (var (value, _) in Channel)
-            {
-                slot[value] = spawnable.syncValues.Count;
-                spawnable.syncValues.Add(new CVRSpawnableValue
-                {
-                    name = value,
-                    startValue = 0f,
-                    updatedBy = CVRSpawnableValue.UpdatedBy.None,
-                    updateMethod = CVRSpawnableValue.UpdateMethod.Override,
-                    animator = animator,
-                    animatorParameterName = value,
-                });
-            }
-
-            // One object per trigger: the client puts a receiver on the
-            // trigger's own object and gives it that trigger's shape.
-            GameObject Host(string name)
-            {
-                var host = new GameObject(HostPrefix + name);
-                host.transform.SetParent(root.transform, false);
-                host.transform.SetPositionAndRotation(frame.position, frame.rotation);
-                return host;
-            }
-
-            var engage = Host("E").AddComponent<CVRSpawnableTrigger>();
-            // FULL size. Halved here on the same belief the avatar side carried,
-            // that a distance-only trigger becomes a sphere whose radius is
-            // areaSize.x. The client has no sphere case: it takes boxSize from
-            // areaSize whole. Fixed for avatars first, and this path was never
-            // revisited, so a prop's engagement volume was half what it should be
-            // while its axis triggers below were always full.
-            engage.areaSize = box;
-            engage.useAdvancedTrigger = true;
-            engage.allowedTypes = SocketTypes;
-            engage.stayTasks.Add(new CVRSpawnableTriggerTaskStay
-            {
-                settingIndex = slot["E"],
-                updateMethod = CVRSpawnableTriggerTaskStay.UpdateMethod.SetFromDistance,
-                minValue = 0f, maxValue = 1f,
-            });
-            engage.exitTasks.Add(new CVRSpawnableTriggerTask
-            {
-                settingIndex = slot["E"], settingValue = 0f,
-                updateMethod = CVRSpawnableTriggerTask.UpdateMethod.Override,
-            });
-
-            var hole = Host("H").AddComponent<CVRSpawnableTrigger>();
-            hole.areaSize = box;
-            hole.useAdvancedTrigger = true;
-            hole.allowedTypes = HoleTypes;
-            hole.enterTasks.Add(new CVRSpawnableTriggerTask
-            {
-                settingIndex = slot["H"], settingValue = 1f,
-                updateMethod = CVRSpawnableTriggerTask.UpdateMethod.Override,
-            });
-            hole.exitTasks.Add(new CVRSpawnableTriggerTask
-            {
-                settingIndex = slot["H"], settingValue = 0f,
-                updateMethod = CVRSpawnableTriggerTask.UpdateMethod.Override,
-            });
-
-            var axes = new[]
-            {
-                ("X", SocketTypes, CVRSpawnableTrigger.SampleDirection.XPositive),
-                ("Y", SocketTypes, CVRSpawnableTrigger.SampleDirection.YPositive),
-                ("Z", SocketTypes, CVRSpawnableTrigger.SampleDirection.ZPositive),
-                ("FX", FrontTypes, CVRSpawnableTrigger.SampleDirection.XPositive),
-                ("FY", FrontTypes, CVRSpawnableTrigger.SampleDirection.YPositive),
-                ("FZ", FrontTypes, CVRSpawnableTrigger.SampleDirection.ZPositive),
-            };
-            foreach (var (name, types, direction) in axes)
-            {
-                var axis = Host(name).AddComponent<CVRSpawnableTrigger>();
-                axis.areaSize = box;
-                axis.sampleDirection = direction;
-                axis.useAdvancedTrigger = true;
-                axis.allowedTypes = types;
-                axis.stayTasks.Add(new CVRSpawnableTriggerTaskStay
-                {
-                    settingIndex = slot[name],
-                    updateMethod = CVRSpawnableTriggerTaskStay.UpdateMethod.SetFromPosition,
-                    minValue = 0f, maxValue = 1f,
-                });
-                // Let go on the way out, to the FAR edge. A stay task with no exit
-                // keeps its last reading, taken at the edge of the box, and the next
-                // socket to arrive snaps the plug toward wherever the previous one
-                // left. One is a whole extent out, past where engagement fades; the
-                // middle would be the plug's own base, the strongest bend there is.
-                axis.exitTasks.Add(new CVRSpawnableTriggerTask
-                {
-                    settingIndex = slot[name], settingValue = 1f,
-                    updateMethod = CVRSpawnableTriggerTask.UpdateMethod.Override,
-                });
-            }
-
-            // A ring asserts the hole flag too, or the flag can only ever be
-            // set: only a hole wrote it, so a ring arriving after one was
-            // treated as a hole for as long as the prop lived.
-            var ring = Host("R").AddComponent<CVRSpawnableTrigger>();
-            ring.areaSize = box;
-            ring.useAdvancedTrigger = true;
-            ring.allowedTypes = RingTypes;
-            ring.enterTasks.Add(new CVRSpawnableTriggerTask
-            {
-                settingIndex = slot["H"], settingValue = 0f,
-                updateMethod = CVRSpawnableTriggerTask.UpdateMethod.Override,
-            });
-        }
-
-        // One layer per value: a two-clip blend tree, 0 and 1, on the
-        // parameter. Embedded by walking the layer.
-        static AnimatorController BuildController(string dir, string clipPath, System.Type rendererType,
-            AnimatorController into)
-        {
-            var controller = into;
-            if (controller == null)
-            {
-                string path = dir + "/YAPS Prop Channel.controller";
-                controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(path);
-                if (controller == null)
-                {
-                    controller = AnimatorController.CreateAnimatorControllerAtPath(path);
-                    for (int i = controller.layers.Length - 1; i >= 0; i--) controller.RemoveLayer(i);
-                }
-            }
-            StripChannel(controller);
-
-            foreach (var (value, property) in Channel)
-            {
-                controller.AddParameter(value, AnimatorControllerParameterType.Float);
-                var tree = new BlendTree
-                {
-                    name = value,
-                    blendType = BlendTreeType.Simple1D,
-                    blendParameter = value,
-                    useAutomaticThresholds = false,
-                    hideFlags = HideFlags.HideInHierarchy,
-                };
-                tree.AddChild(PropertyClip(clipPath, rendererType, property, 0f), 0f);
-                tree.AddChild(PropertyClip(clipPath, rendererType, property, 1f), 1f);
-
-                var machine = new AnimatorStateMachine { name = value, hideFlags = HideFlags.HideInHierarchy };
-                var state = machine.AddState("Blend Tree");
-                state.writeDefaultValues = true;
-                state.motion = tree;
-                machine.defaultState = state;
-
-                var layer = new AnimatorControllerLayer { name = value, defaultWeight = 1f, stateMachine = machine };
-                var layers = controller.layers.ToList();
-                layers.Add(layer);
-                controller.layers = layers.ToArray();
-                AnimatorAssetSaver.EmbedLayer(layer, controller);
-            }
-            AssetDatabase.SaveAssets();
-            return controller;
-        }
-
-        static AnimationClip PropertyClip(string path, System.Type rendererType, string property, float value)
-        {
-            var clip = new AnimationClip { name = property + " " + value };
-            clip.SetCurve(path, rendererType, property, AnimationCurve.Constant(0f, 1f / 60f, value));
-            return clip;
-        }
-
-        static string Sanitise(string s)
-        {
-            foreach (char c in System.IO.Path.GetInvalidFileNameChars()) s = s.Replace(c, '_');
-            return s.Trim();
         }
     }
 }

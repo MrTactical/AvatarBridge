@@ -188,34 +188,22 @@ namespace AvatarBridge.Regression
                 // On the ROOT: CVRPickupObject cannot see a child's collider.
                 Check(plugRoot.GetComponent<Collider>() != null, "a collider on the root to grab");
             });
-            Step("YAPS > Add the synced channel", () =>
+            Step("YAPS > Verify prop", () =>
             {
-                var o = YapsPropBuilder.AddChannel(plugRoot);
-                Check(o.Ok, o.Message);
-                var sp = plugRoot.GetComponent<CVRSpawnable>();
-                Check(sp != null && sp.useAdditionalValues && sp.syncValues.Count == 8, "8 synced values");
-                Check(plugRoot.GetComponentsInChildren<CVRSpawnableTrigger>(true).Length == 8, "8 triggers, one per host");
-                var controller = plugRoot.GetComponent<Animator>().runtimeAnimatorController as AnimatorController;
-                Check(controller != null && controller.layers.Length == 8, "8 layers");
-                Check(controller.layers.All(l => l.stateMachine != null && l.stateMachine.states.Length == 1), "each layer has its state");
-                Check(plugRoot.GetComponent<MeshRenderer>().sharedMaterial.GetFloat("_YAPS_ChannelSpace") > 0.5f, "channel space on");
-            });
-            Step("YAPS > Verify prop (repairs a blanked name)", () =>
-            {
-                var sp = plugRoot.GetComponent<CVRSpawnable>();
-                sp.syncValues[0].animatorParameterName = "";
                 var o = YapsPropBuilder.Verify(plugRoot);
                 Check(o.Ok, o.Message);
-                Check(sp.syncValues[0].animatorParameterName == "E", "name restored");
             });
-            Step("YAPS > Drop the contact channel", () =>
+            // Nothing builds a channel any more, so plant what an older
+            // build left: one host and one synced value.
+            Step("YAPS > Drop the contact channel an older build left", () =>
             {
+                var sp = plugRoot.GetComponent<CVRSpawnable>();
+                new GameObject("YAPS Channel E").transform.SetParent(plugRoot.transform, false);
+                sp.syncValues.Add(new CVRSpawnableValue { name = "E" });
                 var o = YapsPropBuilder.DropChannel(plugRoot);
                 Check(o.Ok, o.Message);
-                var sp = plugRoot.GetComponent<CVRSpawnable>();
                 Check(sp.syncValues.Count == 0, "the synced values are gone");
-                Check(plugRoot.GetComponentsInChildren<CVRSpawnableTrigger>(true).Length == 0, "and their triggers");
-                Check(plugRoot.GetComponent<MeshRenderer>().sharedMaterial.GetFloat("_YAPS_ChannelSpace") < 0.5f, "channel space off");
+                Check(!YapsPropBuilder.HasChannel(plugRoot), "and their hosts");
             });
 
             // --- make a plug from a bone (skinned mesh) --------------------------
