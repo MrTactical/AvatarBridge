@@ -77,6 +77,7 @@ namespace AvatarBridge
                     new Knob("_YAPS_SqueezeDistance", "Squeeze reach", RowKind.Slider, "DPS · TPS", "how far either side of the opening it grips, as a fraction of length"),
                     new Knob("_YAPS_Bulge", "Bulge", RowKind.Slider, "DPS · TPS", "the swell just short of the opening, as a fraction of radius"),
                     new Knob("_YAPS_BulgeDistance", "Bulge reach", RowKind.Slider, "DPS · TPS", "how far before the opening the swell begins"),
+                    new Knob("_YAPS_BulgeFalloff", "Bulge falloff", RowKind.Slider, "TPS", "how far short of the opening it peaks; 0 peaks halfway"),
                 }},
             new Section { Title = "Out of a socket", Tint = TintIdle,
                 Blurb = "Shrink and wriggle while no socket has it.",

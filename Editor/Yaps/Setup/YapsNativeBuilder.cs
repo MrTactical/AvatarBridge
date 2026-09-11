@@ -448,6 +448,7 @@ namespace AvatarBridge
             m.SetFloat("_YAPS_SqueezeDistance", p.squeezeReach);
             m.SetFloat("_YAPS_Bulge", p.bulge);
             m.SetFloat("_YAPS_BulgeDistance", p.bulgeReach);
+            m.SetFloat("_YAPS_BulgeFalloff", p.bulgeFalloff);
             m.SetFloat("_YAPS_IdleLength", p.idleLength);
             m.SetFloat("_YAPS_IdleWidth", p.idleWidth);
             m.SetFloat("_YAPS_WriggleStrength", p.wriggle);
@@ -1334,6 +1335,7 @@ namespace AvatarBridge
             p.squeezeReach = F("_YAPS_SqueezeDistance", 0.15f);
             p.bulge = F("_YAPS_Bulge", 0f);
             p.bulgeReach = F("_YAPS_BulgeDistance", 0.2f);
+            p.bulgeFalloff = F("_YAPS_BulgeFalloff", 0f);
             p.idleLength = F("_YAPS_IdleLength", 1f);
             p.idleWidth = F("_YAPS_IdleWidth", 1f);
             p.wriggle = F("_YAPS_WriggleStrength", 0f);

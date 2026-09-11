@@ -166,7 +166,7 @@ namespace AvatarBridge
         public const string AnimatablePlugProperties =
             "_YAPS_Enabled  (deform on, 0 or 1)\n" +
             "_YAPS_Curvature, _YAPS_ReCurvature, _YAPS_EntranceStiffness  (shape at rest)\n" +
-            "_YAPS_Squeeze, _YAPS_SqueezeDistance, _YAPS_Bulge, _YAPS_BulgeDistance  (inside a socket)\n" +
+            "_YAPS_Squeeze, _YAPS_SqueezeDistance, _YAPS_Bulge, _YAPS_BulgeDistance, _YAPS_BulgeFalloff  (inside a socket)\n" +
             "_YAPS_IdleLength, _YAPS_IdleWidth, _YAPS_WriggleStrength, _YAPS_WriggleSpeed  (out of a socket)\n" +
             "_YAPS_PumpStrength, _YAPS_PumpSpeed, _YAPS_PumpWidth  (motion inside a socket)\n" +
             "_YAPS_BezierSmoothness, _YAPS_BezierStart, _YAPS_SmoothStart, _YAPS_MinimumSocketDistance  (the bend)\n" +

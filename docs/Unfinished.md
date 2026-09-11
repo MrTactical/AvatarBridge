@@ -2082,8 +2082,11 @@ bezier bend, smooth start and minimum socket distance came from TPS.
   kind becomes ring, hole or one-way ring, and a plug whose base is behind a one-way ring's front
   passes it by. Lights cannot carry it. Not carried from TPS: `_TPS_TwoSidedRings` sits on the
   PLUG there, and a plug-side rule would be a second control for the same question.
-- **Idle gravity.** `_TPS_IdleGravity`, recorded as unmapped. There is idle shrink and there is
-  wriggle, but nothing that hangs.
+- **Idle gravity. WITHDRAWN 2026-09-11: TPS has no such setting.** Poiyomi declares
+  `_TPS_IdleGravity` as a `[Helpbox]` whose text tells the author to use PhysBone gravity for idle
+  droop, which the converter already carries. All 1524 materials on this machine hold 0. The
+  entry came from the property's name in the unmapped list, and the converter no longer lists it.
+  Was: recorded as unmapped; there is idle shrink and there is wriggle, but nothing that hangs.
 - **Radius offset. DECLINED 2026-09-11.** A YAPS socket is an object the author places, so moving
   it IS the offset; SPS2 needs a field because it snaps sockets to bones. Revisit only if a
   converter needs somewhere to put SPS2's own value. Was: a per-socket nudge so the opening sits
@@ -2091,7 +2094,12 @@ bezier bend, smooth start and minimum socket distance came from TPS.
   which SPS2's notes single out as mattering most for hand sockets.
 - **Auto-rig.** Bones and physbones added to a static plug mesh at build time. This tool converts
   what an avatar already has and has never built that.
-- **Bulge falloff.** `_TPS_BuldgeFalloffDistance`, a second falloff on the bulge. Minor.
+- **Bulge falloff. DONE 2026-09-11 on dev.** TPS's bulge rises over its distance, peaks the
+  falloff short of the opening and is gone at it; YAPS had one even hump over the reach.
+  `_YAPS_BulgeFalloff` (plug **Bulge falloff**, 0 to 0.5 of length) gives the TPS shape, with
+  smooth ramps where TPS has linear ones, and 0 keeps the even hump, so every plug built before
+  it is unchanged. `_TPS_BuldgeFalloffDistance` carries straight across, usually 0.05, so a
+  converted TPS plug's bulge moves nearer the opening. Untested in game.
 
 One unmapped property is deliberately not on this list: `_BlendshapeBadScaleFix` from DPS, because
 scale is read live here and there is nothing to fix.

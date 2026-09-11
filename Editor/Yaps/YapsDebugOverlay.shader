@@ -94,6 +94,7 @@ Shader "YAPS/Debug Overlay"
         _YAPS_SqueezeDistance ("YAPS squeeze reach", Range(0.01,1)) = 0.15
         _YAPS_Bulge ("YAPS bulge", Range(0,1)) = 0
         _YAPS_BulgeDistance ("YAPS bulge reach", Range(0.01,1)) = 0.2
+        _YAPS_BulgeFalloff ("YAPS bulge falloff", Range(0,0.5)) = 0
         _YAPS_PumpStrength ("YAPS pumping", Range(0,0.5)) = 0
         _YAPS_PumpSpeed ("YAPS pumping speed", Range(0,20)) = 6
         _YAPS_PumpWidth ("YAPS pumping width", Range(0.05,1)) = 1

@@ -886,8 +886,21 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         // Just OUTSIDE the opening: entry < 0. Swelling on the far side
         // is the shaft growing inside what it entered.
         float reach = max(_YAPS_BulgeDistance, 0.001) * worldLength;
-        float before = saturate(-entry / reach);
-        float shape = before * (1 - before) * 4;   // a hump, zero at both ends
+        float shape;
+        if (_YAPS_BulgeFalloff > 0)
+        {
+            // TPS's shape: full a falloff short of the opening, gone at it,
+            // rising over the reach behind the peak.
+            float peak = _YAPS_BulgeFalloff * worldLength;
+            shape = -entry < peak
+                ? smoothstep(0, peak, -entry)
+                : 1 - smoothstep(peak, peak + reach, -entry);
+        }
+        else
+        {
+            float before = saturate(-entry / reach);
+            shape = before * (1 - before) * 4;   // a hump, zero at both ends
+        }
         radius *= 1 + _YAPS_Bulge * shape * grip;
     }
 

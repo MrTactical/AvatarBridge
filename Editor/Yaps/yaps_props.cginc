@@ -125,6 +125,9 @@ float _YAPS_SqueezeDistance;
 // that would be the shaft growing inside what it entered.
 float _YAPS_Bulge;
 float _YAPS_BulgeDistance;
+// Where it peaks, that far short of the opening, rising over the reach
+// behind it: TPS's shape. Zero is the even hump over the reach alone.
+float _YAPS_BulgeFalloff;
 
 // Motion the plug makes alone. Pumping only while engaged,
 // wriggle only while idle, so the two never fight.

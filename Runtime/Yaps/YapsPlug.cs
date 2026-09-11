@@ -54,6 +54,9 @@ namespace AvatarBridge.Yaps
         [Range(0.01f, 1f), Tooltip("How far before the opening the swell begins.")]
         [YapsFrom("DPS · TPS")]
         public float bulgeReach = 0.2f;
+        [Range(0f, 0.5f), Tooltip("How far short of the opening the swell peaks, rising over its reach behind. 0 peaks halfway along the reach.")]
+        [YapsFrom("TPS")]
+        public float bulgeFalloff;
 
         [Header("Out of a socket")]
         [Range(0.1f, 1f), Tooltip("How much of its length it keeps when no socket is using it. 1 is no change.")]
