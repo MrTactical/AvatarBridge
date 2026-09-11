@@ -325,15 +325,22 @@ outnumber 960 by 540's pixels.
 
 5. A ticked own hand socket, switched on, is entered; an unticked one, switched on, is not; the
    plug's own sockets toggle opens the unticked one.
+6. An own socket the plug's tags refuse, ticked by hand, is entered. With the tag chooser on one
+   tag, a default-ticked own socket that tag does not name is not.
 
 **Follow-ups, not started.**
 - DONE 2026-09-11: SPS plug rules keep their side on conversion. Others rules go to the tag test
   as before, Self rules and hip avoidance ride on the plug's material as override tags, by name,
-  and `YapsOwner.ApplySelf` turns them into ticks on every build, so a renumbering follows. Not
-  done: the tag test still runs on own sockets, so an own socket the Self rules allow and the
-  Others rules refuse stays refused. Letting the ticks replace the tag test for own sockets is a
-  shader change, and it would move native plugs' defaults too. Untested in game, and no avatar
-  on this machine has an SPS rule with its sides set; the smoke test covers the tick maths.
+  and `YapsOwner.ApplySelf` turns them into ticks on every build, so a renumbering follows.
+- DONE 2026-09-11: an own socket chosen BY NAME skips the tag test. `_YAPS_SelfChosen` holds a
+  bit per chosen socket: a tick set by hand on a toolkit plug, or what a converted plug's Self
+  tag rules allow (hip avoidance alone chooses nothing). A default tick still answers to the
+  tags. A second mask rather than the ticks replacing the tags, because the tag chooser animates
+  `_YAPS_TagInclude` in game, and ticks that skipped the tags would have put the wearer's own
+  sockets out of its reach. The checklist's default also starts clear on a socket the plug's
+  baked tags refuse, so what it shows is what the plug does. Untested in game, and no avatar on
+  this machine has an SPS rule with its sides set; the smoke test covers the tick maths and fxc
+  the shader.
 - A per-plug menu choice. `_YAPS_SelfSockets` is a plain float, so a dropdown could animate it
   between a few sets, at the cost of one synced parameter a plug so every viewer bends alike.
 - Props and world sockets carry no id and fall back to the vote. `SeedInstance` would give a

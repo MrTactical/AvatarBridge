@@ -89,6 +89,11 @@ float _YAPS_Owner;
 // number (bit 0 is socket 1). Chosen in the editor, set at build.
 float _YAPS_SelfSockets;
 
+// The ones among them chosen by name, a tick set by hand or an SPS Self
+// rule. Those skip the tag test; a default tick does not, so the tag
+// chooser still narrows the wearer's own sockets.
+float _YAPS_SelfChosen;
+
 
 // The screen atlas, off by default. A THIRD transport beside the channel
 // and the lights, not a replacement for either.

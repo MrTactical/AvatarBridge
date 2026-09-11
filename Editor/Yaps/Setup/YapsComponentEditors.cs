@@ -1331,7 +1331,8 @@ namespace AvatarBridge
             card.AddToClassList("ab-fold");
             into.Add(card);
             card.Body.Add(BridgeElements.Hint(
-                "Which of your own sockets this plug may enter. Hips start clear, the rest ticked, as in SPS. " +
+                "Which of your own sockets this plug may enter. Hips and sockets its tags refuse start clear; " +
+                "a tick you set beats its tags. " +
                 "The in-game own sockets toggle opens them all. Needs the screen atlas."));
             if (own.Length > YapsOwner.MaxSelfSockets)
                 card.Body.Add(BridgeElements.Hint(
@@ -1340,7 +1341,7 @@ namespace AvatarBridge
             foreach (var s in own)
             {
                 var socket = s;
-                bool byDefault = YapsOwner.EntersByDefault(socket);
+                bool byDefault = YapsOwner.EntersByDefault(plug, socket);
                 bool now = !plug.selfRefuse.Contains(socket) && (byDefault || plug.selfEnter.Contains(socket));
                 var tick = new Toggle(YapsToggles.LabelFor(socket)) { value = now };
                 tick.AddToClassList("ab-toggle");

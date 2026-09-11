@@ -248,6 +248,16 @@ bool YapsSelfRefuses(float3 root, float3 at, int owner, int index)
     return YapsSameBodyOwned(root, at, owner);
 }
 
+// One of the wearer's own that the plug was told by name it may enter.
+// That answer is the whole question for it, so the tag test is skipped:
+// a plug's tags are what it answers on other people.
+bool YapsSelfChosen(int owner, int index)
+{
+    int mine = YapsOwnerOf(_YAPS_Owner);
+    return mine != 0 && owner == mine && index > 0
+        && (((int) round(_YAPS_SelfChosen) >> (index - 1)) & 1) != 0;
+}
+
 inline bool YapsSameBodyAs(float3 plugOrigin, uint slot)
 {
     return YapsSameBodyAt(plugOrigin, YapsLightPosition(slot));
@@ -499,6 +509,8 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
                 int ownIndex;
                 bool oneWay;
                 YapsFacingDecode(f4.a, kind, ownIndex, oneWay);
+                int owner = YapsOwnerDecode(
+                    YAPS_ATLAS_LOAD(px + 3 * YAPS_ATLAS_SLOTPX, cellY));
 
                 // TAGS, the third pixel. A socket says what it is and the
                 // plug says what it will answer, and the whole test is two
@@ -509,7 +521,10 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
                 // light tier cannot carry tags at all, a marker light's
                 // range IS its message and the digits are Raliv's. Untagged
                 // is the honest reading of content that predates this.
-                if (YapsTagsRefuse(YapsTagsDecode(
+                //
+                // An own socket chosen by name skips them, as SPS judges its
+                // own sockets by the Self rules alone.
+                if (!YapsSelfChosen(owner, ownIndex) && YapsTagsRefuse(YapsTagsDecode(
                         YAPS_ATLAS_LOAD(px + 2 * YAPS_ATLAS_SLOTPX, cellY))))
                 {
                     // Remember it. A socket that was READ and refused is
@@ -550,8 +565,7 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
                 //
                 // Tested here rather than after the sort, so a rejected
                 // entry leaves no hole in the list.
-                if (YapsSelfRefuses(root, at, YapsOwnerDecode(
-                        YAPS_ATLAS_LOAD(px + 3 * YAPS_ATLAS_SLOTPX, cellY)), ownIndex)) continue;
+                if (YapsSelfRefuses(root, at, owner, ownIndex)) continue;
 
                 // Insertion sort, nearest first. THE ORDER IS THE PATH:
                 // socket one is the one the shaft meets first.

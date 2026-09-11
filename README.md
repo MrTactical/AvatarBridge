@@ -793,12 +793,13 @@ ownership is judged by distance to the nearest hips, as before.
 **Which of your own sockets a plug may enter** is yours to choose, per plug: the plug's
 inspector has a **Your own sockets** list with a tick for each socket on the avatar. Everything off
 the hips starts ticked and everything on them starts clear, which is how SPS content behaves out
-of the box. A converted SPS plug keeps its author's own choices: tag rules ticked **Self** decide
-which of the wearer's sockets it may enter, rules ticked **Others** decide everybody else's, and
-hip avoidance switched off lets it into the wearer's hip sockets. YAPS has one tag test for both
-sides, so an own socket also has to pass the Others rules; where the two disagree the plug takes
-the narrower answer. A ticked socket still has to be switched on
-to be entered, and the plug's **own sockets** toggle in game opens every one of them. The choice
+of the box, and so does a socket the plug's tags refuse. A tick you set yourself beats the plug's
+tags; one left as it started still answers to them, so the tag dropdown in game narrows your own
+sockets too. A converted SPS plug keeps its author's own choices: tag rules ticked **Self** alone
+decide which of the wearer's sockets it may enter, rules ticked **Others** decide everybody
+else's, and hip avoidance switched off lets it into the wearer's hip sockets. A ticked socket
+still has to be switched on to be entered, and the plug's **own sockets** toggle in game opens
+every one its tags allow. The choice
 lives on the plug and never crosses the network: each socket carries only its number on its
 avatar, 1 to 15, and a socket past the fifteenth is judged by whether it sits on the hips.
 
@@ -1066,17 +1067,18 @@ plug ever bends is the plug's own **Deform** toggle and, for your own body, **it
 **Converting from SPS keeps them.** A socket's tags and a plug's two lists come across as the
 words you wrote, including the ones SPS works out for you from the bone a socket sits on, and the
 global tag every socket and plug carries unless you turned it off. So a plug that answered
-everything still answers everything, and a plug narrowed to one place stays narrowed to it. Two
-things change. A rule that applied to yourself but not to other people, or the other way round,
-applies to both here, since a plug has one answer for both. And where an avatar has three or more
-sockets on the hips, they come across as `hips` without the front and back split: with two the
+everything still answers everything, and a plug narrowed to one place stays narrowed to it. A
+rule that applied to yourself but not to other people, or the other way round, keeps its side:
+see **Which of your own sockets a plug may enter** above. One thing changes: where an avatar has
+three or more sockets on the hips, they come across as `hips` without the front and back split: with two the
 front one is the one further forward, and with three the guess is worth less than the name.
 
 **Choosing at runtime.** A plug listing two or more tags gets a menu dropdown of its own, so the
 wearer can narrow it to one of them, widen it to *Anything*, or leave it on *As built*, which is
 what the author configured and what it starts on. *Anything* clears the answer list only; a socket
 on the refuse list stays refused. Only a hash of a name travels, never the name, so a private word
-stays private between you and the other author. The dropdown narrows what the plug asks for; it
+stays private between you and the other author. On your own sockets it narrows the ticks left as
+they started; one you ticked yourself stays open. The dropdown narrows what the plug asks for; it
 cannot make a route carry what it has no room for, so the paragraph above still applies to every
 setting on it.
 

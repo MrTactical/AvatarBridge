@@ -245,9 +245,24 @@ namespace AvatarBridge.Regression
                     YapsOwner.ApplySelf(avatar);
                     return Mathf.RoundToInt(m.GetFloat("_YAPS_SelfSockets"));
                 }
-                Check(Mask(new[] { "hand" }, null, true) == 2, "answers hand: the ring alone");
+                int Chosen() => Mathf.RoundToInt(m.GetFloat("_YAPS_SelfChosen"));
+                Check(Mask(new[] { "hand" }, null, true) == 2 && Chosen() == 2, "answers hand: the ring alone, past the plug's tags");
                 Check(Mask(null, new[] { "HAND" }, true) == 1, "refuses hand, any case: the hole alone");
-                Check(Mask(null, null, false) == 0, "no rules: the default, and both sit on the hips");
+                Check(Mask(null, null, true) == 3 && Chosen() == 0, "hip avoidance alone chooses nothing");
+                Check(Mask(null, null, false) == 0 && Chosen() == 0, "no rules: the default, and both sit on the hips");
+            });
+            // A tick set by hand skips the plug's tags; a default tick does not.
+            Step("YAPS > A hand-set own-socket tick", () =>
+            {
+                var plug = avatar.GetComponentInChildren<YapsPlug>(true);
+                var mat = plug.Target.sharedMaterials[1];
+                int Chosen() => Mathf.RoundToInt(mat.GetFloat("_YAPS_SelfChosen"));
+                plug.selfEnter.Add(hole);
+                YapsOwner.ApplySelf(avatar);
+                Check(Chosen() == 1, "the hole is chosen (got " + Chosen() + ")");
+                plug.selfEnter.Clear();
+                YapsOwner.ApplySelf(avatar);
+                Check(Chosen() == 0, "and unchosen once cleared");
             });
 
             // --- scan and quiet -----------------------------------------------

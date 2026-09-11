@@ -58,6 +58,7 @@ namespace AvatarBridge
         _YAPS_SelfAllow (""YAPS own body allowed"", Range(0,1)) = 0
         _YAPS_Owner (""YAPS owner id"", Float) = 0
         _YAPS_SelfSockets (""YAPS own sockets it may enter"", Float) = 0
+        _YAPS_SelfChosen (""YAPS own sockets past its tags"", Float) = 0
         _YAPS_UseAtlas (""YAPS read the screen atlas"", Range(0,1)) = 0
         [Enum(Off,0,Resolved by,1,Gap to socket,2,Engagement,3,Socket facing,4,Atlas taps,5,Atlas target,6)] _YAPS_Debug (""YAPS view"", Float) = 0
         _YAPS_TaperStart (""YAPS hole taper start"", Range(0,1)) = 0.10

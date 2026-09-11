@@ -1542,6 +1542,9 @@ as `1 + kind + 2 * number` over 63; zero still reads as no kind. A plug holds a 
 `_YAPS_SelfSockets` for which of its wearer's sockets it may enter, so the choice itself never
 crosses the screen: once the owner ids match, the number picks the bit. Unnumbered own sockets
 keep the inboard rule. The choice is a checklist on the plug's inspector; see the work queue.
+`_YAPS_SelfChosen` marks the bits chosen by name, a tick set by hand or a converted plug's Self
+tag rules, and those skip the tag test: a plug's tags answer for other people. A default tick
+still takes the test, so the tag chooser narrows it.
 
 ## The layout follows the target (2026-09-11)
 

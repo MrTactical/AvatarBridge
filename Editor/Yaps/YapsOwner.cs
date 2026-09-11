@@ -105,17 +105,22 @@ namespace AvatarBridge
             var told = new HashSet<Renderer>();
             foreach (var plug in root.GetComponentsInChildren<YapsPlug>(true))
             {
-                int mask = byDefault;
+                // A default tick leaves the tags to judge, so the shader still
+                // applies them; one set by hand is chosen and skips them.
+                int chosen = 0;
                 foreach (var s in plug.selfEnter)
-                    if (s != null && numbers.TryGetValue(s, out int n) && n > 0) mask |= 1 << (n - 1);
+                    if (s != null && numbers.TryGetValue(s, out int n) && n > 0) chosen |= 1 << (n - 1);
+                int mask = byDefault | chosen;
                 foreach (var s in plug.selfRefuse)
                     if (s != null && numbers.TryGetValue(s, out int n) && n > 0) mask &= ~(1 << (n - 1));
+                chosen &= mask;
                 // Every mesh the bake reached, not only the named one.
                 var meshes = plug.bakedSlots.Where(b => b != null && b.renderer != null)
                     .Select(b => b.renderer).Append(plug.Target).Where(r => r != null);
                 foreach (var r in meshes)
                 {
-                    if (told.Add(r)) SetMask(r, mask);
+                    if (told.Add(r))
+                        foreach (var m in r.sharedMaterials) SetMask(m, mask, chosen);
                 }
             }
             // A converted plug has no component to choose with: its author's
@@ -124,7 +129,11 @@ namespace AvatarBridge
             {
                 if (told.Contains(r)) continue;
                 foreach (var m in r.sharedMaterials)
-                    if (m != null) SetMask(m, RulesMask(m, sockets, human, byDefault));
+                {
+                    if (m == null) continue;
+                    int mask = RulesMask(m, sockets, human, byDefault, out int chosen);
+                    SetMask(m, mask, chosen);
+                }
             }
             return Math.Max(sockets.Count - MaxSelfSockets, 0);
         }
@@ -147,36 +156,54 @@ namespace AvatarBridge
             m.SetOverrideTag(HipsKey, entersHips ? "1" : "");
         }
 
-        // The same test the shader runs on the tag word, on the words: a
-        // refused tag refuses, and a non-empty answer list must name one.
+        // Self tag rules are the author's whole answer for their own sockets,
+        // as SPS reads them, so what they allow is chosen and skips the
+        // plug's other tags. Hip avoidance alone chooses nothing.
         static int RulesMask(Material m, List<YapsSocket> sockets,
-                             Dictionary<Transform, HumanBodyBones> human, int byDefault)
+                             Dictionary<Transform, HumanBodyBones> human, int byDefault, out int chosen)
         {
+            chosen = 0;
             string answered = m.GetTag(AnswersKey, false), refused = m.GetTag(RefusesKey, false);
             bool entersHips = m.GetTag(HipsKey, false) == "1";
             if (answered == "" && refused == "" && !entersHips) return byDefault;
-            var answers = new HashSet<string>(answered.Split(','), StringComparer.OrdinalIgnoreCase);
-            var refuses = new HashSet<string>(refused.Split(','), StringComparer.OrdinalIgnoreCase);
-            answers.Remove("");
-            refuses.Remove("");
+            var answers = Words(answered.Split(','));
+            var refuses = Words(refused.Split(','));
             int mask = 0;
             for (int i = 0; i < sockets.Count && i < MaxSelfSockets; i++)
             {
-                var tags = sockets[i].tags ?? new List<string>();
-                if (answers.Count > 0 && !tags.Any(answers.Contains)) continue;
-                if (tags.Any(refuses.Contains)) continue;
+                if (!TagsPass(sockets[i].tags, answers, refuses)) continue;
                 if (!entersHips && OnHips(sockets[i].transform, human)) continue;
                 mask |= 1 << i;
             }
+            if (answers.Count > 0 || refuses.Count > 0) chosen = mask;
             return mask;
         }
 
+        // The same test the shader runs on the tag word, on the words: a
+        // refused tag refuses, and a non-empty answer list must name one.
+        static bool TagsPass(IEnumerable<string> socketTags, HashSet<string> answers, HashSet<string> refuses)
+        {
+            var tags = socketTags ?? Enumerable.Empty<string>();
+            if (answers.Count > 0 && !tags.Any(answers.Contains)) return false;
+            return !tags.Any(refuses.Contains);
+        }
+
+        static HashSet<string> Words(IEnumerable<string> tags) =>
+            new HashSet<string>(YapsTags.Listed(tags), StringComparer.OrdinalIgnoreCase);
+
+        // What the bake keeps of a plug's list: the first four.
+        static HashSet<string> Baked(IList<string> tags) =>
+            Words(YapsTags.Listed(tags).Take(YapsTags.PlugSlots));
+
         // Whether a plug may enter this socket of its wearer's when nobody has
-        // said: yes, unless it hangs off the hips.
-        public static bool EntersByDefault(YapsSocket socket)
+        // said: yes, unless it hangs off the hips or the plug's tags, as
+        // built, refuse it.
+        public static bool EntersByDefault(YapsPlug plug, YapsSocket socket)
         {
             var avatar = socket != null ? socket.GetComponentInParent<CVRAvatar>(true) : null;
-            return avatar != null && !OnHips(socket.transform, HumanBones(avatar.GetComponent<Animator>()));
+            return avatar != null && plug != null
+                   && !OnHips(socket.transform, HumanBones(avatar.GetComponent<Animator>()))
+                   && TagsPass(socket.tags, Baked(plug.answers), Baked(plug.refuses));
         }
 
         // The first humanoid bone above the socket, climbed rather than
@@ -203,17 +230,18 @@ namespace AvatarBridge
             return map;
         }
 
-        static void SetMask(Renderer r, int mask)
+        static void SetMask(Material m, int mask, int chosen)
         {
-            foreach (var m in r.sharedMaterials) SetMask(m, mask);
+            SetBits(m, "_YAPS_SelfSockets", mask);
+            SetBits(m, "_YAPS_SelfChosen", chosen);
         }
 
-        static void SetMask(Material m, int mask)
+        static void SetBits(Material m, string property, int bits)
         {
-            if (m == null || !m.HasProperty("_YAPS_SelfSockets")) return;
-            if (Mathf.RoundToInt(m.GetFloat("_YAPS_SelfSockets")) == mask) return;
+            if (m == null || !m.HasProperty(property)) return;
+            if (Mathf.RoundToInt(m.GetFloat(property)) == bits) return;
             Undo.RecordObject(m, "YAPS own sockets");
-            m.SetFloat("_YAPS_SelfSockets", mask);
+            m.SetFloat(property, bits);
             EditorUtility.SetDirty(m);
         }
 
