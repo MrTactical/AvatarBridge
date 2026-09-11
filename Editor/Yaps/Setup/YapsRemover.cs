@@ -14,7 +14,7 @@ namespace AvatarBridge
     public static class YapsRemover
     {
         // Objects the toolkit puts under a plug or a socket, by name.
-        static readonly string[] OwnChildren = { "YAPS Markers", "YAPS Depth", "YAPS Lights", "YAPS Pointers" };
+        static readonly string[] OwnChildren = { "YAPS Markers", "YAPS Depth", "YAPS Lights", "YAPS Pointers", "YAPS Atlas" };
 
         // The material curves Bake writes into the avatar's own clips.
         static readonly string[] WiredProperties =
@@ -184,6 +184,7 @@ namespace AvatarBridge
                 string owner = YapsOwner.Wire(avatar);
                 if (owner != null) done.Add(owner);
             }
+            DropAtlasIfUnused(top, done);
 
             Undo.CollapseUndoOperations(group);
             return $"Removed socket \"{name}\": " + string.Join(", ", done) + ". Undo brings it all back.";
@@ -317,6 +318,7 @@ namespace AvatarBridge
 
             string owner = YapsOwner.Wire(avatar);
             if (owner != null) done.Add(owner);
+            DropAtlasIfUnused(top, done);
 
             Undo.CollapseUndoOperations(group);
             return $"Removed plug \"{name}\": " + string.Join(", ", done) + ". Undo brings it all back.";
@@ -421,11 +423,42 @@ namespace AvatarBridge
                 if (t == null || t == top || !OwnChildren.Contains(t.name) || t.parent == null) continue;
                 if (t.parent.GetComponent<YapsSocket>() != null || t.parent.GetComponent<YapsPlug>() != null) continue;
                 done.Add($"\"{t.name}\" under \"{t.parent.name}\": no socket or plug there any more");
+                var shell = t.parent;
                 Undo.DestroyObjectImmediate(t.gameObject);
+                // A socket object the toolkit made, emptied by a remove that
+                // left its atlas behind.
+                if (shell != top && shell.name.StartsWith("YAPS ") && shell.childCount == 0
+                    && shell.GetComponents<Component>().Length == 1)
+                {
+                    done.Add($"the empty \"{shell.name}\"");
+                    Undo.DestroyObjectImmediate(shell.gameObject);
+                }
             }
+            DropAtlasIfUnused(top, done);
 
             Undo.CollapseUndoOperations(group);
             return done;
+        }
+
+        // The atlas grab and clear at the root serve every socket and plug on
+        // it, so they go with the last of them. A converted avatar keeps its
+        // bakes without components, so a baked material still counts.
+        static void DropAtlasIfUnused(Transform top, List<string> done)
+        {
+            if (top == null) return;
+            if (top.GetComponentsInChildren<YapsSocket>(true).Length > 0
+                || top.GetComponentsInChildren<YapsPlug>(true).Length > 0
+                || top.GetComponentsInChildren<Transform>(true).Any(t => t.name == "YAPS Atlas")
+                || top.GetComponentsInChildren<Renderer>(true).Any(r => r.sharedMaterials
+                    .Any(m => m != null && m.HasProperty("_YAPS_Bake"))))
+                return;
+            foreach (string name in new[] { YapsAtlas.GrabName, YapsAtlas.ClearName })
+            {
+                var t = top.Find(name);
+                if (t == null) continue;
+                done.Add($"\"{name}\": nothing on the avatar reads the atlas any more");
+                Undo.DestroyObjectImmediate(t.gameObject);
+            }
         }
 
         // --- pieces ----------------------------------------------------------
