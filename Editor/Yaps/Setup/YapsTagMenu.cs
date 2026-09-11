@@ -190,7 +190,6 @@ namespace AvatarBridge
                 controller.AddParameter(parameter, AnimatorControllerParameterType.Int);
             }
 
-            string plugPath = AnimationUtility.CalculateTransformPath(plug.Target.transform, avatar.transform);
             string dir = YapsNativeBuilder.OutputRoot + "/" + Sanitise(avatar.name);
             YapsNativeBuilder.EnsureFolderPublic(dir);
 
@@ -211,9 +210,12 @@ namespace AvatarBridge
             values.AddRange(tags.Select(t => Vector(new List<string> { t })));
             values.Add(Vector4.zero);
 
+            // Every mesh of the plug, or the others keep answering as built
+            // and bend toward a socket the rest of it was told to leave.
+            var targets = YapsToggles.Targets(plug, avatar.transform);
             for (int i = 0; i < values.Count; i++)
             {
-                var clip = YapsToggles.Clip(plugPath, plug.Target, "_YAPS_TagInclude", values[i],
+                var clip = YapsToggles.Clip(targets, "_YAPS_TagInclude", values[i],
                     dir + "/" + Sanitise(YapsToggles.LabelFor(plug)) + " answers " + i + ".anim");
                 var state = machine.AddState("Answers " + i);
                 state.writeDefaultValues = false;

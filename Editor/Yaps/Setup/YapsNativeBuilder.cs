@@ -257,7 +257,8 @@ namespace AvatarBridge
 
             // And every OTHER mesh the same bones move. One plug, one frame,
             // a bake each.
-            int alsoMats = MirrorToRenderers(plug, renderer, result, dir, report, out int alsoMeshes);
+            var meshes = new List<(Renderer, YapsBaker.Result)> { (renderer, result) };
+            int alsoMats = MirrorToRenderers(plug, renderer, result, dir, report, out int alsoMeshes, meshes);
             if (alsoMeshes > 0)
             {
                 o.Notes.Add($"{alsoMeshes} other mesh(es) on this avatar are weighted to the plug's bone " +
@@ -270,7 +271,7 @@ namespace AvatarBridge
 
             // The avatar's own animations that change the plug's size, shape
             // sliders and bone scale, now tell the material too.
-            WireSize(plug, renderer, result, o);
+            WireSize(plug, meshes, o);
 
             // A switch for the deform, unless the avatar already has one.
             var avatarForToggle = plug.GetComponentInParent<CVRAvatar>(true);
@@ -301,7 +302,7 @@ namespace AvatarBridge
         // shape curves onto the shape weights, the root bone's scale onto
         // the bake scale. Edits the user's clips, adding a curve beside each
         // it mirrors, and says so. Idempotent: the same curve every time.
-        static void WireSize(YapsPlug plug, Renderer renderer, YapsBaker.Result result, Outcome o)
+        static void WireSize(YapsPlug plug, List<(Renderer renderer, YapsBaker.Result result)> meshes, Outcome o)
         {
             var top = TopOf(plug.transform);
             // NOT the Animator's own slot. ChilloutVR uploads what avatar.overrides
@@ -315,34 +316,14 @@ namespace AvatarBridge
             var clips = YapsSwapFollow.RunnableClips(top)
                 .Where(YapsCurveMirror.UserOwned).ToList();
             if (clips.Count == 0) return;
-            string rendererPath = AnimationUtility.CalculateTransformPath(renderer.transform, animRoot);
+            string plugPath = AnimationUtility.CalculateTransformPath(plug.transform, animRoot);
 
-            var missed = new HashSet<string>();
-            int shapes = result.Shapes.Count > 0
-                ? YapsCurveMirror.MirrorShapes(clips, rendererPath, renderer.GetType(), result.Shapes,
-                    result.MovingShapes, missed)
-                : 0;
-
-            // Somebody animating the component's own checkbox meant the
-            // deform, so give them the deform.
-            int switched = YapsCurveMirror.MirrorEnabled(clips,
-                AnimationUtility.CalculateTransformPath(plug.transform, animRoot), typeof(YapsPlug),
-                rendererPath, renderer.GetType(), "_YAPS_Enabled");
-            if (switched > 0)
-            {
-                o.Notes.Add($"{switched} clip(s) animate this component's own Enabled field, which does " +
-                            "nothing in game: ChilloutVR strips the component. A matching curve on the " +
-                            "material's _YAPS_Enabled was written beside each, so the animation now " +
-                            "switches the deform the way it was meant to.");
-            }
-
-            int scaled = 0;
+            // Each bone with its path: the mirror reads the scale it is
+            // sitting at now, which is the pose the bake just measured.
+            var bones = new Dictionary<string, Transform>();
             var chainRoot = plug.rootBone;
             if (chainRoot != null)
             {
-                // Each bone with its path: the mirror reads the scale it is
-                // sitting at now, which is the pose the bake just measured.
-                var bones = new Dictionary<string, Transform>();
                 void Bone(Transform t)
                 {
                     string p = AnimationUtility.CalculateTransformPath(t, animRoot);
@@ -350,7 +331,32 @@ namespace AvatarBridge
                 }
                 Bone(chainRoot);
                 for (int i = 0; i < chainRoot.childCount; i++) Bone(chainRoot.GetChild(i));
-                scaled = YapsCurveMirror.MirrorBoneScale(clips, bones, rendererPath, renderer.GetType(), result.Rotation);
+            }
+
+            // Every mesh the bake reached, or a resized or switched plug tears
+            // where one mesh heard the animation and the other did not.
+            var missed = new HashSet<string>();
+            int shapes = 0, switched = 0, scaled = 0;
+            foreach (var (renderer, result) in meshes)
+            {
+                string rendererPath = AnimationUtility.CalculateTransformPath(renderer.transform, animRoot);
+                if (result.Shapes.Count > 0)
+                {
+                    shapes += YapsCurveMirror.MirrorShapes(clips, rendererPath, renderer, result.Shapes,
+                        result.MovingShapes, missed);
+                }
+                // Somebody animating the component's own checkbox meant the
+                // deform, so give them the deform.
+                switched += YapsCurveMirror.MirrorEnabled(clips, plugPath, typeof(YapsPlug),
+                    rendererPath, renderer, "_YAPS_Enabled");
+                scaled += YapsCurveMirror.MirrorBoneScale(clips, bones, rendererPath, renderer, result.Rotation);
+            }
+            if (switched > 0)
+            {
+                o.Notes.Add($"{switched} clip(s) animate this component's own Enabled field, which does " +
+                            "nothing in game: ChilloutVR strips the component. A matching curve on the " +
+                            "material's _YAPS_Enabled was written beside each, so the animation now " +
+                            "switches the deform the way it was meant to.");
             }
 
             if (shapes + scaled + switched > 0)
@@ -1143,7 +1149,7 @@ namespace AvatarBridge
         // "this mesh, this slot", and reaching onto other renderers would be
         // answering a question nobody asked.
         static int MirrorToRenderers(YapsPlug plug, Renderer primaryRenderer, YapsBaker.Result primary,
-            string dir, BridgeReport report, out int meshes)
+            string dir, BridgeReport report, out int meshes, List<(Renderer, YapsBaker.Result)> joined)
         {
             meshes = 0;
             if (plug == null || plug.rootBone == null || plug.materialSlot >= 0) return 0;
@@ -1184,7 +1190,7 @@ namespace AvatarBridge
                     continue;
                 }
                 int patched = PatchExtra(plug, skin, result, slots, dir, report);
-                if (patched > 0) { done += patched; meshes++; }
+                if (patched > 0) { done += patched; meshes++; joined.Add((skin, result)); }
             }
             return done;
         }

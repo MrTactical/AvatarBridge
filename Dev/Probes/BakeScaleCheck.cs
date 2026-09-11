@@ -139,7 +139,7 @@ namespace AvatarBridge.Dev
         static int Mirror(AnimationClip clip, Rig rig)
         {
             return YapsCurveMirror.MirrorBoneScale(new[] { clip }, rig.Bones,
-                rig.RendererPath, typeof(SkinnedMeshRenderer), Quaternion.identity);
+                rig.RendererPath, rig.Renderer.GetComponent<SkinnedMeshRenderer>(), Quaternion.identity);
         }
 
         static void Curve(AnimationClip clip, Rig rig, Transform bone, string axis, float from, float to)

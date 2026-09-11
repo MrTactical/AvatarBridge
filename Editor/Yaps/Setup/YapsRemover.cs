@@ -65,6 +65,9 @@ namespace AvatarBridge
                     ? $"the bake on \"{renderer.name}\": its material goes back to \"{back.name}\" ({how})"
                     : $"the bake on \"{renderer.name}\": the deform is switched off ({how})");
             }
+            var others = YapsToggles.MeshesOf(plug).Where(m => m != renderer).Select(m => $"\"{m.name}\"").ToList();
+            if (others.Count > 0)
+                lines.Add($"the bake on {string.Join(", ", others)}: each back on its own material");
             if (avatar != null && renderer != null && WiredClips(avatar, renderer).Any())
                 lines.Add("the size wiring Bake added to your own animations");
             if (avatar != null && ToggleEntriesFor(avatar, plug).Any())
@@ -277,6 +280,31 @@ namespace AvatarBridge
                 {
                     int stripped = StripWiring(avatar, renderer);
                     if (stripped > 0) done.Add($"size wiring out of {stripped} clip(s)");
+                }
+            }
+
+            // The other meshes the bake reached, which kept their baked
+            // materials and went on bending with the plug gone. Only the slots
+            // it recorded there, each back on its own original: nothing else on
+            // them is the plug's, and the primary's original is none of theirs.
+            foreach (var mesh in YapsToggles.MeshesOf(plug).Where(m => m != renderer))
+            {
+                var mats = mesh.sharedMaterials;
+                int back = 0;
+                Undo.RecordObject(mesh, "Remove YAPS plug");
+                foreach (var b in plug.bakedSlots)
+                {
+                    if (b == null || b.renderer != mesh || b.was == null || b.slot >= mats.Length) continue;
+                    if (mats[b.slot] == null || !mats[b.slot].HasProperty("_YAPS_Bake")) continue;
+                    mats[b.slot] = b.was;
+                    back++;
+                }
+                mesh.sharedMaterials = mats;
+                if (back > 0) done.Add($"\"{mesh.name}\" back on its own {back} material(s)");
+                if (avatar != null)
+                {
+                    int stripped = StripWiring(avatar, mesh);
+                    if (stripped > 0) done.Add($"size wiring out of {stripped} clip(s) on \"{mesh.name}\"");
                 }
             }
 

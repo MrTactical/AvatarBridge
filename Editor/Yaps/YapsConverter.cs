@@ -1486,11 +1486,11 @@ namespace AvatarBridge
                     string path = ctx.PathInTarget(renderer.transform);
                     if (shapes.Count > 0)
                     {
-                        written += YapsCurveMirror.MirrorShapes(clips, path, renderer.GetType(), shapes, moving, missed);
+                        written += YapsCurveMirror.MirrorShapes(clips, path, renderer, shapes, moving, missed);
                     }
                     if (bones.Count > 0)
                     {
-                        scaled += YapsCurveMirror.MirrorBoneScale(clips, bones, path, renderer.GetType(), plug.Rotation);
+                        scaled += YapsCurveMirror.MirrorBoneScale(clips, bones, path, renderer, plug.Rotation);
                     }
                 }
                 Mirror(plug.Renderer, plug.Shapes, plug.MovingShapes);

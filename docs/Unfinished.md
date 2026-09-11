@@ -934,7 +934,22 @@ the "IT BROKE, my fur!!!" failure of 2026-08-25 exactly, one level up.
    size curves onto the PRIMARY renderer only, so a toolkit plug's extra meshes do not follow a
    size slider; and `EnsurePlugToggle` writes `_YAPS_Enabled` on `plug.Target` alone, so turning
    the deform off leaves the extra meshes bending. Both tear at the seam under the condition
-   named. Not fixed: the toggle one also needs Remove to find curves on the extra paths.
+   named. **FIXED the same day, with three more of the same shape found on the way:**
+
+   - The own-sockets toggle and the tag chooser wrote the primary alone too, so the extra meshes
+     kept answering sockets as built while the rest of the plug was told otherwise.
+   - Remove handled `plug.Target` alone: the extra meshes kept their baked materials and went on
+     bending after the plug was gone. They now go back on the originals recorded for their own
+     slots, never the primary's, and lose their size wiring.
+   - `YapsCurveMirror` wrote every size curve as `material._X`, which is slot 0's spelling alone,
+     so a plug material in any other slot never heard a size slider, on either builder. It now
+     writes each slot that declares the property, through the same `SlotsWith` the toggle clips
+     use, and clears the old slot-0 curve where slot 0 is not the plug's.
+
+   One rule behind all of it: `YapsToggles.MeshesOf(plug)` is the plug's renderer plus every
+   renderer in `bakedSlots`, and everything that writes a plug's material properties walks it.
+   An existing toggle's clips are rewritten in place on the next build, so a plug built before
+   this picks the extra meshes up without its menu row changing. Untested in Unity and in game.
 
 4. **Parallel paths that disagree.** Two doors to the same job diverged on the same day: the
    window's Build wired the contact channel and the inspector's Bake did not, and Remove cleared

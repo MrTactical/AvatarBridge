@@ -370,9 +370,13 @@ namespace AvatarBridge
                 EditorUtility.SetDirty(avatar);
                 return $"{label}: menu toggle removed, the plug is already switched by {already}";
             }
+            var targets = Targets(plug, avatar.transform);
             if (ours != null)
             {
                 string renamed = Rename(avatar, ours, label);
+                // Rewritten in place, so a plug that has since reached more
+                // meshes switches all of them.
+                Rewrite(ours, targets, "_YAPS_Enabled");
                 // The entry is there; its layer may not be, if the animator
                 // was never regenerated. Written now, in place.
                 string wired = YapsAasAnimator.Wire(avatar, ours);
@@ -381,9 +385,8 @@ namespace AvatarBridge
 
             string dir = YapsNativeBuilder.OutputRoot + "/" + Sanitise(avatar.name);
             YapsNativeBuilder.EnsureFolderPublic(dir);
-            string path = AnimationUtility.CalculateTransformPath(plug.Target.transform, avatar.transform);
-            var on = Clip(path, plug.Target, "_YAPS_Enabled", 1f, dir + "/" + Sanitise(label) + " on.anim");
-            var off = Clip(path, plug.Target, "_YAPS_Enabled", 0f, dir + "/" + Sanitise(label) + " off.anim");
+            var on = Clip(targets, "_YAPS_Enabled", 1f, dir + "/" + Sanitise(label) + " on.anim");
+            var off = Clip(targets, "_YAPS_Enabled", 0f, dir + "/" + Sanitise(label) + " off.anim");
 
             if (avatar.avatarSettings == null)
             {
@@ -440,9 +443,11 @@ namespace AvatarBridge
                 && e.toggleSettings.useAnimationClip && Generated(e.toggleSettings.animationClip)
                 && AnimationUtility.GetCurveBindings(e.toggleSettings.animationClip)
                     .Any(b => b.path == plugPath && Writes(b, "_YAPS_SelfAllow")));
+            var targets = Targets(plug, avatar.transform);
             if (ours != null)
             {
                 string renamed = Rename(avatar, ours, label);
+                Rewrite(ours, targets, "_YAPS_SelfAllow");
                 // The entry can outlive its layer, if the animator was never
                 // regenerated. Written now, in place.
                 string wired = YapsAasAnimator.Wire(avatar, ours);
@@ -451,10 +456,8 @@ namespace AvatarBridge
 
             string dir = YapsNativeBuilder.OutputRoot + "/" + Sanitise(avatar.name);
             YapsNativeBuilder.EnsureFolderPublic(dir);
-            var on = Clip(plugPath, plug.Target, "_YAPS_SelfAllow", 1f,
-                dir + "/" + Sanitise(label) + " on.anim");
-            var off = Clip(plugPath, plug.Target, "_YAPS_SelfAllow", 0f,
-                dir + "/" + Sanitise(label) + " off.anim");
+            var on = Clip(targets, "_YAPS_SelfAllow", 1f, dir + "/" + Sanitise(label) + " on.anim");
+            var off = Clip(targets, "_YAPS_SelfAllow", 0f, dir + "/" + Sanitise(label) + " off.anim");
 
             if (avatar.avatarSettings == null)
             {
@@ -483,6 +486,18 @@ namespace AvatarBridge
             return $"{label}: menu toggle \"{label}\" added ({machine}), off by default";
         }
 
+        // A generated on/off pair written again, on every target. Only the
+        // toolkit's own clips: an author's are theirs.
+        static void Rewrite(CVRAdvancedSettingsEntry entry, List<(string path, Renderer target)> targets, string property)
+        {
+            var t = entry.toggleSettings;
+            if (t == null) return;
+            if (Generated(t.animationClip))
+                Clip(targets, property, 1f, AssetDatabase.GetAssetPath(t.animationClip));
+            if (Generated(t.offAnimationClip))
+                Clip(targets, property, 0f, AssetDatabase.GetAssetPath(t.offAnimationClip));
+        }
+
         // One constant curve per material slot that declares the property.
         //
         // EVERY slot, not slot 0. "material._X" is Unity's spelling for the
@@ -495,34 +510,28 @@ namespace AvatarBridge
         // on every avatar that has one, and the author cannot act on it.
         // Where NO slot declares it, slot 0 is written anyway, so a plug
         // whose material is assigned after the clip behaves as before.
-        public static AnimationClip Clip(string path, Renderer target, string property, float value, string assetPath)
-        {
-            var clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(assetPath);
-            if (clip == null)
-            {
-                clip = new AnimationClip();
-                AssetDatabase.CreateAsset(clip, assetPath);
-            }
-            clip.ClearCurves();
-            var curve = AnimationCurve.Constant(0f, 1f / 60f, value);
-            var type = target.GetType();
-            var mats = target.sharedMaterials;
-            bool any = false;
-            for (int i = 0; i < mats.Length; i++)
-            {
-                if (mats[i] == null || !mats[i].HasProperty(property)) continue;
-                clip.SetCurve(path, type, Bound(i, property), curve);
-                any = true;
-            }
-            if (!any) clip.SetCurve(path, type, Bound(0, property), curve);
-            EditorUtility.SetDirty(clip);
-            return clip;
-        }
+        //
+        // Every mesh of a plug, too: one spanning several renderers kept the
+        // others bending with the deform switched off, and answering sockets
+        // the rest of it had been told to leave. Slot 0 is the fallback on
+        // the plug's own renderer only, never on a mesh it merely reached.
+        public static AnimationClip Clip(string path, Renderer target, string property, float value, string assetPath) =>
+            Clip(new List<(string, Renderer)> { (path, target) }, property, new Vector4(value, 0, 0, 0), 1, assetPath);
 
         // The same, for a vector property: four curves per slot, one per
         // component. Unity has no single binding for a Vector4, so ".x" and
         // its three siblings are the only way an animation reaches one.
-        public static AnimationClip Clip(string path, Renderer target, string property, Vector4 value, string assetPath)
+        public static AnimationClip Clip(string path, Renderer target, string property, Vector4 value, string assetPath) =>
+            Clip(new List<(string, Renderer)> { (path, target) }, property, value, 4, assetPath);
+
+        public static AnimationClip Clip(List<(string path, Renderer target)> targets, string property, float value,
+            string assetPath) => Clip(targets, property, new Vector4(value, 0, 0, 0), 1, assetPath);
+
+        public static AnimationClip Clip(List<(string path, Renderer target)> targets, string property, Vector4 value,
+            string assetPath) => Clip(targets, property, value, 4, assetPath);
+
+        static AnimationClip Clip(List<(string path, Renderer target)> targets, string property, Vector4 value,
+            int components, string assetPath)
         {
             var clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(assetPath);
             if (clip == null)
@@ -531,27 +540,54 @@ namespace AvatarBridge
                 AssetDatabase.CreateAsset(clip, assetPath);
             }
             clip.ClearCurves();
-            var type = target.GetType();
-            var mats = target.sharedMaterials;
-            var slots = new List<int>();
-            for (int i = 0; i < mats.Length; i++)
-            {
-                if (mats[i] != null && mats[i].HasProperty(property)) slots.Add(i);
-            }
-            if (slots.Count == 0) slots.Add(0);
-
             string[] axes = { ".x", ".y", ".z", ".w" };
-            foreach (int slot in slots)
+            for (int t = 0; t < targets.Count; t++)
             {
-                for (int a = 0; a < axes.Length; a++)
+                var (path, target) = targets[t];
+                if (target == null) continue;
+                foreach (int slot in SlotsWith(target, property, fallback: t == 0))
                 {
-                    clip.SetCurve(path, type, Bound(slot, property) + axes[a],
-                        AnimationCurve.Constant(0f, 1f / 60f, value[a]));
+                    for (int a = 0; a < components; a++)
+                    {
+                        clip.SetCurve(path, target.GetType(), Bound(slot, property) + (components > 1 ? axes[a] : ""),
+                            AnimationCurve.Constant(0f, 1f / 60f, value[a]));
+                    }
                 }
             }
             EditorUtility.SetDirty(clip);
             return clip;
         }
+
+        // The slots of a renderer whose material declares a property; slot 0
+        // alone when none does and a fallback is wanted.
+        public static List<int> SlotsWith(Renderer target, string property, bool fallback = true)
+        {
+            var slots = new List<int>();
+            var mats = target != null ? target.sharedMaterials : new Material[0];
+            for (int i = 0; i < mats.Length; i++)
+            {
+                if (mats[i] != null && mats[i].HasProperty(property)) slots.Add(i);
+            }
+            if (slots.Count == 0 && fallback) slots.Add(0);
+            return slots;
+        }
+
+        // Every renderer a plug's bake reached, its own first.
+        public static List<Renderer> MeshesOf(YapsPlug plug)
+        {
+            var meshes = new List<Renderer>();
+            if (plug == null) return meshes;
+            if (plug.Target != null) meshes.Add(plug.Target);
+            foreach (var b in plug.bakedSlots)
+            {
+                if (b != null && b.renderer != null && !meshes.Contains(b.renderer)) meshes.Add(b.renderer);
+            }
+            return meshes;
+        }
+
+        // The same with each one's path, for a clip to write on all of them.
+        public static List<(string path, Renderer target)> Targets(YapsPlug plug, Transform root) =>
+            MeshesOf(plug).Select(r => (AnimationUtility.CalculateTransformPath(r.transform, root), r)).ToList();
 
         // How Unity spells a material property on a given slot.
         public static string Bound(int slot, string property)
