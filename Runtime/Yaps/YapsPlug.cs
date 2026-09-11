@@ -186,6 +186,15 @@ namespace AvatarBridge.Yaps
         public System.Collections.Generic.List<BakedSlot> bakedSlots =
             new System.Collections.Generic.List<BakedSlot>();
 
+        // The wearer's own sockets, as changes against the default: every one
+        // may be entered except those on the hips. Changes rather than a full
+        // list, so a socket added later starts at its default rather than off.
+        // The inspector draws these as one checklist.
+        [HideInInspector]
+        public List<YapsSocket> selfEnter = new List<YapsSocket>();
+        [HideInInspector]
+        public List<YapsSocket> selfRefuse = new List<YapsSocket>();
+
         public Renderer Target => renderer != null ? renderer : GetComponent<Renderer>();
     }
 }

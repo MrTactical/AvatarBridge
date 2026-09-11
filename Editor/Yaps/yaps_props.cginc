@@ -85,6 +85,10 @@ float _YAPS_SelfAllow;
 // YapsOwnerDecode in the atlas protocol.
 float _YAPS_Owner;
 
+// Which of the wearer's own sockets this plug may enter, a bit per socket
+// number (bit 0 is socket 1). Chosen in the editor, set at build.
+float _YAPS_SelfSockets;
+
 
 // The screen atlas, off by default. A THIRD transport beside the channel
 // and the lights, not a replacement for either.

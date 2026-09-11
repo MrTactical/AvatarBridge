@@ -1271,6 +1271,50 @@ namespace AvatarBridge
         // A selected plug animates in the scene view.
         void OnEnable() => YapsPreview.Animate(true);
 
+        // Which of the wearer's own sockets this plug may enter, one tick
+        // each. Applied on the click, to the materials alone, so there is
+        // nothing to rebuild.
+        static void OwnSockets(YapsPlug plug, VisualElement into)
+        {
+            var avatar = plug.GetComponentInParent<ABI.CCK.Components.CVRAvatar>(true);
+            var own = avatar != null ? avatar.GetComponentsInChildren<YapsSocket>(true) : new YapsSocket[0];
+            if (own.Length == 0) return;
+
+            const string title = "Your own sockets";
+            if (!_open.TryGetValue(title, out bool open)) open = true;
+            var card = new BridgeElements.Card(title, "from YAPS", open, null, 0f, o => _open[title] = o);
+            card.AddToClassList("ab-fold");
+            into.Add(card);
+            card.Body.Add(BridgeElements.Hint(
+                "Which of your own sockets this plug may enter. Everything off the hips starts ticked " +
+                "and everything on them starts clear, which is how SPS content behaves out of the box. " +
+                "A socket still has to be switched on to be entered, and the plug's own sockets toggle " +
+                "in game opens every one of them. Needs the screen atlas."));
+            if (own.Length > YapsOwner.MaxSelfSockets)
+                card.Body.Add(BridgeElements.Hint(
+                    $"Only {YapsOwner.MaxSelfSockets} sockets can be told apart. The rest are judged by " +
+                    "whether they sit on the hips, whatever is ticked here."));
+
+            foreach (var s in own)
+            {
+                var socket = s;
+                bool byDefault = YapsOwner.EntersByDefault(socket);
+                bool now = !plug.selfRefuse.Contains(socket) && (byDefault || plug.selfEnter.Contains(socket));
+                var tick = new Toggle(YapsToggles.LabelFor(socket)) { value = now };
+                tick.AddToClassList("ab-toggle");
+                tick.RegisterValueChangedCallback(e =>
+                {
+                    Undo.RecordObject(plug, "YAPS own sockets");
+                    plug.selfEnter.Remove(socket);
+                    plug.selfRefuse.Remove(socket);
+                    if (e.newValue != byDefault) (e.newValue ? plug.selfEnter : plug.selfRefuse).Add(socket);
+                    EditorUtility.SetDirty(plug);
+                    YapsOwner.ApplySelf(avatar.gameObject);
+                });
+                card.Body.Add(tick);
+            }
+        }
+
         public override VisualElement CreateInspectorGUI()
         {
             _root = YapsInspectorStyle.Root();
@@ -1399,6 +1443,7 @@ namespace AvatarBridge
                 into.Add(YapsInspectorStyle.Field(it.Copy(), field, null, from));
             }
             FinishFold(fold, foldSystems);
+            if (Passes("YAPS")) OwnSockets(plug, sockets.Body);
 
             var bake = new BridgeElements.Card("Bake");
             bake.Body.Add(BridgeElements.Hint(isBaked

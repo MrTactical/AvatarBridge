@@ -240,18 +240,35 @@ namespace AvatarBridge
             return mesh;
         }
 
-        // One material per kind and tag set, not per socket. A property block
-        // would be the obvious way to vary one property per renderer and is
-        // the wrong one: it is not serialised, so it survives the editor and
-        // not the upload. Sockets sharing a kind and a set share a material.
+        // One material per kind, tag set and socket number, not per socket. A
+        // property block would be the obvious way to vary one property per
+        // renderer and is the wrong one: it is not serialised, so it survives
+        // the editor and not the upload. Sockets sharing all three share a
+        // material, across avatars too.
         static Material Kind(Shader shader, bool hole, IList<string> tags)
         {
-            int word = YapsTags.Word(tags);
+            return Writer(shader, hole, YapsTags.Word(tags), 0);
+        }
+
+        // The same writer numbered among its wearer's own sockets, 1 to 15,
+        // 0 for none. Null for anything that is not a writer material.
+        public static Material Indexed(Material writer, int index)
+        {
+            if (writer == null || writer.shader == null || writer.shader.name != SocketShader) return null;
+            return Writer(writer.shader, writer.GetFloat("_YAPS_Kind") > 0.5f,
+                Mathf.RoundToInt(writer.GetFloat("_YAPS_SocketTags")), index);
+        }
+
+        static Material Writer(Shader shader, bool hole, int word, int index)
+        {
             string what = hole ? "Hole" : "Ring";
             string set = word == 0 ? "" : " " + word.ToString("X5");
-            var m = Made(Folder + "/YAPS Atlas Socket " + what + set + ".mat", shader);
+            string number = index > 0 ? " #" + index : "";
+            var m = Made(Folder + "/YAPS Atlas Socket " + what + set + number + ".mat", shader);
             m.SetFloat("_YAPS_Kind", hole ? 1f : 0f);
             m.SetFloat("_YAPS_SocketTags", word);
+            m.SetFloat("_YAPS_SocketIndex", index);
+            EditorUtility.SetDirty(m);
             return m;
         }
 

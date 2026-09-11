@@ -1529,3 +1529,11 @@ every renderer that declares `_YAPS_Owner`. Remote copies get it by sync and rea
 then, which the reader answers with the nearest-hip vote it always used. `YapsSameBodyOwned`
 takes the socket's id: known and different is never own; known and the same is own, and refused
 only when inboard; unknown is the vote. Work queue entry: "The atlas knows whose socket it is".
+
+## Numbered own sockets, protocol 6 (2026-09-11)
+
+The facing pixel's alpha holds the kind and the socket's number among its wearer's own, 1 to 15,
+as `1 + kind + 2 * number` over 63; zero still reads as no kind. A plug holds a bit per number in
+`_YAPS_SelfSockets` for which of its wearer's sockets it may enter, so the choice itself never
+crosses the screen: once the owner ids match, the number picks the bit. Unnumbered own sockets
+keep the inboard rule. The choice is a checklist on the plug's inspector; see the work queue.

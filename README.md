@@ -785,11 +785,17 @@ is one, and a plug seen there falls back to whatever the contact channel resolve
 **Which sockets are your own.** Every socket also writes its wearer's owner id into the atlas: a
 24-bit piece of the ChilloutVR user id, fed in by the game and synced as one parameter, 32 bits.
 A plug compares it with its own, so it knows as a fact which sockets are its wearer's, at any
-distance and however closely two bodies are pressed together. Your own sockets on the hips are
-left alone unless the plug's **own sockets** toggle is on; your hands and mouth answer as they
-always did. Other players' copies learn the id with the first parameter sync. Until then, and
-for props and world sockets, which carry none, ownership is judged by distance to the nearest
-hips, as before.
+distance and however closely two bodies are pressed together. Other players' copies learn the id
+with the first parameter sync. Until then, and for props and world sockets, which carry none,
+ownership is judged by distance to the nearest hips, as before.
+
+**Which of your own sockets a plug may enter** is yours to choose, per plug: the plug's
+inspector has a **Your own sockets** list with a tick for each socket on the avatar. Everything off
+the hips starts ticked and everything on them starts clear, which is how SPS content behaves out
+of the box, so a converted avatar gets exactly that. A ticked socket still has to be switched on
+to be entered, and the plug's **own sockets** toggle in game opens every one of them. The choice
+lives on the plug and never crosses the network: each socket carries only its number on its
+avatar, 1 to 15, and a socket past the fifteenth is judged by whether it sits on the hips.
 
 If an avatar is near ChilloutVR's 3200-bit sync cap the converter buys engagement first, the
 socket's position second and which way it faces last, and says so in the report rather than

@@ -242,6 +242,18 @@ bool YapsSameBodyAt(float3 plugOrigin, float3 lightAt)
     return YapsSameBodyOwned(plugOrigin, lightAt, 0);
 }
 
+// Does ownership keep this plug out of a socket it read off the atlas? One
+// of the wearer's own that carries a number: the plug's own list says, a
+// bit per socket, chosen in the editor. Anything else: the body test.
+bool YapsSelfRefuses(float3 root, float3 at, int owner, int index)
+{
+    if (_YAPS_SelfTag < 0 || _YAPS_SelfAllow >= 0.5) return false;
+    int mine = YapsOwnerOf(_YAPS_Owner);
+    if (mine != 0 && owner == mine && index > 0)
+        return (((int) round(_YAPS_SelfSockets) >> (index - 1)) & 1) == 0;
+    return YapsSameBodyOwned(root, at, owner);
+}
+
 inline bool YapsSameBodyAs(float3 plugOrigin, uint slot)
 {
     return YapsSameBodyAt(plugOrigin, YapsLightPosition(slot));
@@ -484,7 +496,9 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
 
                 float4 f4 = YAPS_ATLAS_LOAD(px + YAPS_ATLAS_SLOTPX, cellY);
                 float3 fwd = normalize(f4.rgb * 2 - 1);
-                float kind = round(f4.a * 16.0) - 1;
+                float kind;
+                int ownIndex;
+                YapsFacingDecode(f4.a, kind, ownIndex);
 
                 // TAGS, the third pixel. A socket says what it is and the
                 // plug says what it will answer, and the whole test is two
@@ -524,13 +538,13 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
                 //
                 // The FOURTH pixel is the socket's owner id. Where both
                 // ids are known, ownership is a fact rather than the
-                // nearest-hip vote; where either is zero it is the vote.
+                // nearest-hip vote, and the socket's number picks the
+                // plug's own answer; where either is zero it is the vote.
                 //
                 // Tested here rather than after the sort, so a rejected
                 // entry leaves no hole in the list.
-                if (_YAPS_SelfTag >= 0 && _YAPS_SelfAllow < 0.5
-                    && YapsSameBodyOwned(root, at, YapsOwnerDecode(
-                           YAPS_ATLAS_LOAD(px + 3 * YAPS_ATLAS_SLOTPX, cellY)))) continue;
+                if (YapsSelfRefuses(root, at, YapsOwnerDecode(
+                        YAPS_ATLAS_LOAD(px + 3 * YAPS_ATLAS_SLOTPX, cellY)), ownIndex)) continue;
 
                 // Insertion sort, nearest first. THE ORDER IS THE PATH:
                 // socket one is the one the shaft meets first.

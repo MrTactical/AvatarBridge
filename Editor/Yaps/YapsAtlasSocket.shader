@@ -25,8 +25,8 @@ Shader "YAPS/Atlas Socket"
     Properties
     {
         // 0 ring, 1 hole. A ring is a loop and can be entered from either
-        // face; a hole has a front and a back. Sixteen kinds fit in the
-        // facing pixel's alpha.
+        // face; a hole has a front and a back. One bit of the facing
+        // pixel's alpha; the socket's number takes the rest.
         [Enum(Ring,0,Hole,1)] _YAPS_Kind ("Socket kind", Float) = 0
 
         // The socket's tag set, 15 bits in a float. Zero is untagged, which
@@ -39,6 +39,10 @@ Shader "YAPS/Atlas Socket"
         // parameter. Zero on the shared material, and zero is "unknown",
         // which is right for a prop or a world socket.
         _YAPS_Owner ("Owner id", Float) = 0
+
+        // This socket's number among its wearer's own, 1 to 15, 0 for
+        // none. Set per socket at build, on a material of its own.
+        _YAPS_SocketIndex ("Own socket number", Float) = 0
     }
     SubShader
     {
@@ -59,6 +63,7 @@ Shader "YAPS/Atlas Socket"
         float _YAPS_Kind;
         float _YAPS_SocketTags;
         float _YAPS_Owner;
+        float _YAPS_SocketIndex;
 
         // Everything a quad needs to know about where it belongs.
         void Place(float3 corner, out int cellPx, out int cellPy,
@@ -171,8 +176,10 @@ Shader "YAPS/Atlas Socket"
                 // The facing pixel's alpha carried a second copy of the tag,
                 // which nothing read: it is only reached once the position
                 // pixel's tag matched, and the same draw writes both, so it
-                // cannot disagree. It carries the KIND instead.
-                o.other   = float4(fwd, (floor(_YAPS_Kind) + 1) / 16.0);
+                // cannot disagree. It carries the KIND instead, and the
+                // socket's number among its wearer's own.
+                o.other   = float4(fwd, YapsFacingEncode((int) floor(_YAPS_Kind),
+                                                         (int) round(_YAPS_SocketIndex)));
                 o.tags    = YapsTagsEncode((int) floor(_YAPS_SocketTags + 0.5));
                 o.owner   = YapsOwnerEncode(YapsOwnerOf(_YAPS_Owner));
                 o.u = unit.x;

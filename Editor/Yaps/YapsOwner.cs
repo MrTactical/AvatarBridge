@@ -1,6 +1,8 @@
 // The wearer's owner id, onto every renderer whose material can hold it, so
 // a plug can tell its own avatar's sockets from anybody else's at any
 // distance. The atlas carries the socket's copy; see yaps_atlas.cginc.
+// Then which of those own sockets each plug may enter: a number per socket
+// on its writer, a bit per number on the plug.
 //
 // ChilloutVR's parameter stream hands over a CRC32 of the wearer's user id,
 // but only on the wearer's own copy: the stream is a local component and is
@@ -14,6 +16,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using ABI.CCK.Components;
+using AvatarBridge.Yaps;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
@@ -39,6 +42,7 @@ namespace AvatarBridge
         public static string Wire(GameObject root, AnimatorController controller)
         {
             if (root == null || controller == null) return null;
+            int unnumbered = ApplySelf(root);
             var targets = root.GetComponentsInChildren<Renderer>(true)
                 .Where(r => r.sharedMaterials.Any(m => m != null && m.HasProperty(Property)))
                 .ToList();
@@ -58,7 +62,112 @@ namespace AvatarBridge
                 controller.AddParameter(Parameter, AnimatorControllerParameterType.Float);
             }
             AddLayer(root.transform, controller, targets);
-            return $"owner id on {targets.Count} renderer(s), from the parameter stream, synced (32 bits)";
+            return $"owner id on {targets.Count} renderer(s), from the parameter stream, synced (32 bits)"
+                   + (unnumbered > 0
+                       ? $"; {unnumbered} socket(s) past the first {MaxSelfSockets} carry no number, so the plugs judge them by the hips alone"
+                       : "");
+        }
+
+        // Numbers the atlas carries, 1 to 15. Must match YAPS_ATLAS_SOCKETMAX.
+        public const int MaxSelfSockets = 15;
+
+        // Every socket of the avatar numbered on its atlas writer, and every
+        // plug told which of them it may enter, a bit per number. Materials
+        // only, nothing in the animator, so the inspector can run it on every
+        // click. Returns how many sockets were past the numbers.
+        //
+        // Numbered by hierarchy path, so the order holds from build to build;
+        // a plug's choices name sockets, not numbers, so a socket added in the
+        // middle renumbers the rest and every answer follows.
+        public static int ApplySelf(GameObject root)
+        {
+            if (root == null) return 0;
+            var human = HumanBones(root.GetComponent<Animator>());
+            var sockets = root.GetComponentsInChildren<YapsSocket>(true)
+                .OrderBy(s => AnimationUtility.CalculateTransformPath(s.transform, root.transform), StringComparer.Ordinal)
+                .ToList();
+            var numbers = new Dictionary<YapsSocket, int>();
+            int byDefault = 0;
+            for (int i = 0; i < sockets.Count; i++)
+            {
+                int n = i < MaxSelfSockets ? i + 1 : 0;
+                numbers[sockets[i]] = n;
+                if (n > 0 && !OnHips(sockets[i].transform, human)) byDefault |= 1 << (n - 1);
+                foreach (var r in sockets[i].GetComponentsInChildren<Renderer>(true))
+                {
+                    var numbered = YapsAtlas.Indexed(r.sharedMaterial, n);
+                    if (numbered == null || numbered == r.sharedMaterial) continue;
+                    Undo.RecordObject(r, "YAPS own sockets");
+                    r.sharedMaterial = numbered;
+                }
+            }
+
+            var told = new HashSet<Renderer>();
+            foreach (var plug in root.GetComponentsInChildren<YapsPlug>(true))
+            {
+                int mask = byDefault;
+                foreach (var s in plug.selfEnter)
+                    if (s != null && numbers.TryGetValue(s, out int n) && n > 0) mask |= 1 << (n - 1);
+                foreach (var s in plug.selfRefuse)
+                    if (s != null && numbers.TryGetValue(s, out int n) && n > 0) mask &= ~(1 << (n - 1));
+                // Every mesh the bake reached, not only the named one.
+                var meshes = plug.bakedSlots.Where(b => b != null && b.renderer != null)
+                    .Select(b => b.renderer).Append(plug.Target).Where(r => r != null);
+                foreach (var r in meshes)
+                {
+                    if (told.Add(r)) SetMask(r, mask);
+                }
+            }
+            // A converted plug has no component to choose with, so the default.
+            foreach (var r in root.GetComponentsInChildren<Renderer>(true))
+            {
+                if (!told.Contains(r)) SetMask(r, byDefault);
+            }
+            return Math.Max(sockets.Count - MaxSelfSockets, 0);
+        }
+
+        // Whether a plug may enter this socket of its wearer's when nobody has
+        // said: yes, unless it hangs off the hips.
+        public static bool EntersByDefault(YapsSocket socket)
+        {
+            var avatar = socket != null ? socket.GetComponentInParent<CVRAvatar>(true) : null;
+            return avatar != null && !OnHips(socket.transform, HumanBones(avatar.GetComponent<Animator>()));
+        }
+
+        // The first humanoid bone above the socket, climbed rather than
+        // measured. A thigh socket is the thigh's, though the hips are its
+        // grandparent. Nothing to go by counts as the hips: the safe side.
+        static bool OnHips(Transform socket, Dictionary<Transform, HumanBodyBones> human)
+        {
+            for (var at = socket; at != null; at = at.parent)
+            {
+                if (human.TryGetValue(at, out var bone)) return bone == HumanBodyBones.Hips;
+            }
+            return true;
+        }
+
+        static Dictionary<Transform, HumanBodyBones> HumanBones(Animator animator)
+        {
+            var map = new Dictionary<Transform, HumanBodyBones>();
+            if (animator == null || !animator.isHuman) return map;
+            for (var b = HumanBodyBones.Hips; b < HumanBodyBones.LastBone; b++)
+            {
+                var t = animator.GetBoneTransform(b);
+                if (t != null && !map.ContainsKey(t)) map[t] = b;
+            }
+            return map;
+        }
+
+        static void SetMask(Renderer r, int mask)
+        {
+            foreach (var m in r.sharedMaterials)
+            {
+                if (m == null || !m.HasProperty("_YAPS_SelfSockets")) continue;
+                if (Mathf.RoundToInt(m.GetFloat("_YAPS_SelfSockets")) == mask) continue;
+                Undo.RecordObject(m, "YAPS own sockets");
+                m.SetFloat("_YAPS_SelfSockets", mask);
+                EditorUtility.SetDirty(m);
+            }
         }
 
         // Into the controller ChilloutVR uploads, picked as the native

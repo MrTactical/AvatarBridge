@@ -57,7 +57,9 @@ float4 main(uint id : SV_VertexID) : SV_POSITION
     int cx, cy;
     YapsAtlasCellPixels(id, 3, cx, cy);
     float4 o = YapsOwnerEncode(YapsOwnerOf(_YAPS_Owner));
-    return float4(o.xyz + YapsTagsEncode(id).xyz, YapsOwnerDecode(o) + cx + cy
+    float kind; int index;
+    YapsFacingDecode(YapsFacingEncode(id & 1, id >> 1), kind, index);
+    return float4(o.xyz + YapsTagsEncode(id).xyz, YapsOwnerDecode(o) + cx + cy + kind + index
                   + YapsAtlasWidthPx() + YapsAtlasHeightPx());
 }
 BODY

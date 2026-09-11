@@ -406,6 +406,11 @@ namespace AvatarBridge
                         new Vector3(0, 0, FrontOffset));
                 }
             });
+
+            // The writer comes back unnumbered. Its avatar numbers it again,
+            // with every plug's answer, whichever door built the socket.
+            var avatar = socket.GetComponentInParent<CVRAvatar>(true);
+            if (avatar != null) YapsOwner.ApplySelf(avatar.gameObject);
         }
 
         // Inside one of the toolkit's own folders under the socket.

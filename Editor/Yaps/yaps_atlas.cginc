@@ -4,7 +4,7 @@
 #define YAPS_ATLAS_INCLUDED
 
 // Bump on any change below. It rides the tag.
-#define YAPS_ATLAS_VERSION 5
+#define YAPS_ATLAS_VERSION 6
 
 // 4096 cells. Two homes, so a clash needs both.
 #define YAPS_ATLAS_GRID    64
@@ -72,6 +72,25 @@ float4 YapsOwnerEncode(int owner)
 int YapsOwnerOf(float animated)
 {
     return (int) round(animated) & 0xFFFFFF;
+}
+
+// The facing pixel's alpha: the socket's kind, and its number among its
+// wearer's own sockets, 1 to 15, 0 for none. Version 6. A plug keeps a bit
+// per number for which of its wearer's sockets it may enter, so the choice
+// itself never crosses the screen, only which socket this is. Offset by
+// one so an unwritten pixel still reads as no kind at all.
+#define YAPS_ATLAS_SOCKETMAX 15
+
+float YapsFacingEncode(int kind, int index)
+{
+    return (1 + (kind & 1) + 2 * clamp(index, 0, YAPS_ATLAS_SOCKETMAX)) / (float) YAPS_ATLAS_OWNERMAX;
+}
+
+void YapsFacingDecode(float a, out float kind, out int index)
+{
+    int code = (int) round(saturate(a) * YAPS_ATLAS_OWNERMAX) - 1;
+    kind = code < 0 ? -1 : (code & 1);
+    index = code < 0 ? 0 : (code >> 1);
 }
 
 // The tag word, 20 bits over rgba at five bits a channel. Five and not

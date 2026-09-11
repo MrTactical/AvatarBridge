@@ -274,10 +274,21 @@ unknown. And a stream added from code serialises `referenceType: World`, because
 inspector switches it to Avatar, and only when it is opened. The client computes SeedOwner for an
 Avatar reference alone, so without the explicit set the id would be 0 everywhere, silently.
 
-**The self rule.** Known and different: never refused as own. Known and the same: refused only
-when INBOARD, nearer the wearer's hip than the plug root is, so own hip sockets stay out and own
-hands and mouth answer, which is what the geometric test already did for those. Unknown: the old
-vote, unchanged. `_YAPS_SelfAllow` still opens everything.
+**The self rule.** Known and different: never refused as own. Known and the same, and the
+socket numbered: the plug's own list decides (below). Known and the same, unnumbered: refused
+only when INBOARD, nearer the wearer's hip than the plug root is. Unknown: the old vote,
+unchanged. `_YAPS_SelfAllow` still opens everything.
+
+**Choosing per plug, protocol 6, same day.** The plug inspector has a **Your own sockets**
+checklist. A self choice only ever involves one avatar's own plug and sockets, and the build sees
+both, so the choice never crosses the screen: each writer publishes its socket's number on its
+avatar, 1 to 15, in the facing pixel's alpha beside the kind, and the plug holds a bit per number
+in `_YAPS_SelfSockets`. No new pixel, no sync, no menu rows. `YapsPlug.selfEnter`/`selfRefuse`
+store changes against the default (off the hips ticked, on the hips clear, bone found by climbing
+to the first humanoid bone), so a socket added later starts at its default. `YapsOwner.ApplySelf`
+numbers by hierarchy path and sets every mask; it runs from `YapsSocketBuilder.Build`, `Wire`
+and every tick, materials only. Converted plugs have no component and take the default. Writer
+materials are now one per kind, tag set and number.
 
 **The rect.** A fourth pixel at 32 columns is 1064 wide, which a mirror capped at 1024 cannot
 hold. Columns went to 28 with the rows per level rounded up, which the old floor division got
@@ -293,9 +304,15 @@ outnumber 960 by 540's pixels.
 3. Overlap: a partner's socket pressed into the wearer's hips is answered.
 4. A mirror capped at 1024 and a 1280 by 720 window both carry the atlas at 932 by 596.
 
+5. A ticked own hand socket, switched on, is entered; an unticked one, switched on, is not; the
+   plug's own sockets toggle opens the unticked one.
+
 **Follow-ups, not started.**
-- Per-rule Self and Others halves on the tag lists, SPS2's documented mechanism, now that "self"
-  is a fact a rule can key on. The inboard test stands in for its "exclude own hips" until then.
+- SPS plug rules with a Self modifier still lose it on conversion (`YapsBakePrep.Rules`). The
+  converter could now turn them into ticks, since it sees the wearer's own sockets and their tags
+  at build. Converted plugs would need a `YapsPlug` to carry them, or the mask written directly.
+- A per-plug menu choice. `_YAPS_SelfSockets` is a plain float, so a dropdown could animate it
+  between a few sets, at the cost of one synced parameter a plug so every viewer bends alike.
 - Props and world sockets carry no id and fall back to the vote. `SeedInstance` would give a
   spawnable its own; nothing needs it while nothing refuses a prop as own.
 - Stripping contacts from the transport, which is planned, removes the channel latch further
