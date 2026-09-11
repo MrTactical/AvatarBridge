@@ -430,7 +430,10 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
     float wantCell = len / max(2.0 * YAPS_ATLAS_RADIUS, 1.0);
     int lvl = clamp(int(round(log2(wantCell / YAPS_ATLAS_CELL) * 0.5)), 0, YAPS_ATLAS_LEVELS - 1);
     float size = max(YAPS_ATLAS_CELL * pow(4.0, lvl), 1e-6);
-    int total = YAPS_ATLAS_GRID * YAPS_ATLAS_GRID;
+    // The same layout the writers drew, worked out from the same target.
+    // The caller has already asked YapsAtlasFits, so the cells are there.
+    YapsAtlasLayout layout = YapsAtlasLayoutNow();
+    int total = max(layout.cells, 1);
 
     // Where engagement reaches zero, and the inclusion test for the list.
     // It also rejects a hash collision from across the world, which decodes
@@ -463,7 +466,7 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
         {
             int use = home == 0 ? idx : idxB;
             int cellX, fromTop;
-            YapsAtlasCellPixels(use, lvl, cellX, fromTop);
+            YapsAtlasCellPixels(use, lvl, layout, cellX, fromTop);
             int cellY = YapsAtlasRow(fromTop);
 
             // ONE tap for the header, whose alpha COUNTS the sockets in

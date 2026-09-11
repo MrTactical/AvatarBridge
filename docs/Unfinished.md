@@ -24,10 +24,11 @@ compiling),
 stays: `YapsNativeChannel.Clear`, `YapsPropBuilder.DropChannel` and the remover. Ask reporters for the "Resolved by" debug view: a
 quarter-length plug means nothing found the socket.*
 
-*Follow-up from the same day: the atlas cell already scales with plug length (four levels, 2 cm
-times 4 per level); the pixel rect does not. A compact layout keyed on `_ScreenParams` for small
-targets (low mirror resolution, small camera) is backward compatible, since an old writer draws
-nothing in a target it does not fit. Not started.*
+*Follow-up from the same day, DONE the same day on dev: the atlas layout follows the target. A
+view too small for the full 932 by 596 rect gets fewer cells instead of none, down to about 240
+pixels square. See YAPS5.md, "The layout follows the target". Untested in game. FIRST CHECK:
+open the self portrait wearing a socket and look at its corner for coloured specks; the size gate
+used to keep writers off it, and the fix if they show is written up there.*
 
 *4.3.0 shipped 2026-08-23: the rebuild, the lighthouse and the light budget, after corpus runs 385,
 386 and 387 passed and a tester confirmed a rebuilt mouth socket with a DPS prop in game. The

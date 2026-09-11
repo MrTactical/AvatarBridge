@@ -155,21 +155,49 @@ float YapsAtlasTag(int3 c)
     return (h % 256) / 255.0;
 }
 
-// Rounded UP. Columns need not divide the grid, and a floor here
-// put a level's last row on top of the next level's first.
-int YapsAtlasRowsPerLevel()
+// THE LAYOUT FOLLOWS THE TARGET. The full rect is 932 by 596, and a view
+// smaller than that (a small mirror, a camera at a low resolution, the
+// self portrait) used to draw nothing, which left every plug in it to the
+// marker lights. A target that cannot hold the full rect now gets as many
+// cells as it can hold. Writers and readers draw into and read from the
+// same target, so both work out the same layout from _ScreenParams and
+// nothing has to travel. Where the full rect fits, the layout is exactly
+// the full one.
+//
+// No version bump. A version 6 writer draws nothing and a version 6 reader
+// reads nothing in a target too small for the full rect, which is the only
+// place the layout differs.
+//
+// Fewer cells cost what the grid size table in YAPS5.md says they cost:
+// more sockets clash on both homes and vanish, and more strangers share the
+// slots a plug opens, each passing the cell tag one time in 256. Still
+// better than no atlas at all. The floor stops it at about a tenth of the
+// full grid; a 256 square target holds 434 cells and clears it.
+#define YAPS_ATLAS_MINCELLS 384
+
+struct YapsAtlasLayout { int cols; int cells; int rows; };
+
+YapsAtlasLayout YapsAtlasLayoutNow()
 {
-    return max((YAPS_ATLAS_GRID * YAPS_ATLAS_GRID + YAPS_ATLAS_COLS - 1) / YAPS_ATLAS_COLS, 1);
+    YapsAtlasLayout l;
+    int w = (int) _ScreenParams.x;
+    int h = (int) _ScreenParams.y;
+    l.cols = clamp((w - YAPS_ATLAS_ORIGIN) / (YAPS_ATLAS_CELLSLOTS * YAPS_ATLAS_SLOTPX), 0, YAPS_ATLAS_COLS);
+    int rowsFree = max((h - YAPS_ATLAS_ORIGIN) / (YAPS_ATLAS_LEVELS * YAPS_ATLAS_SLOTPX), 0);
+    l.cells = min(YAPS_ATLAS_GRID * YAPS_ATLAS_GRID, l.cols * rowsFree);
+    // Rounded UP. Columns need not divide the cells, and a floor here
+    // put a level's last row on top of the next level's first.
+    l.rows = max((l.cells + l.cols - 1) / max(l.cols, 1), 1);
+    return l;
 }
 
 // Where a cell's slots start.
-void YapsAtlasCellPixels(int idx, int level, out int cellPx, out int cellPy)
+void YapsAtlasCellPixels(int idx, int level, YapsAtlasLayout l, out int cellPx, out int cellPy)
 {
-    int rowsPerLevel = YapsAtlasRowsPerLevel();
-    int gx = idx % YAPS_ATLAS_COLS;
-    int gy = idx / YAPS_ATLAS_COLS;
+    int gx = idx % max(l.cols, 1);
+    int gy = idx / max(l.cols, 1);
     cellPx = YAPS_ATLAS_ORIGIN + gx * YAPS_ATLAS_CELLSLOTS * YAPS_ATLAS_SLOTPX;
-    cellPy = YAPS_ATLAS_ORIGIN + (level * rowsPerLevel + gy) * YAPS_ATLAS_SLOTPX;
+    cellPy = YAPS_ATLAS_ORIGIN + (level * l.rows + gy) * YAPS_ATLAS_SLOTPX;
 }
 
 
@@ -205,19 +233,19 @@ int YapsAtlasRow(int fromTop)
 // The rect. The clear must cover it exactly.
 int YapsAtlasWidthPx()
 {
-    return YAPS_ATLAS_ORIGIN + YAPS_ATLAS_COLS * YAPS_ATLAS_CELLSLOTS * YAPS_ATLAS_SLOTPX;
+    return YAPS_ATLAS_ORIGIN + YapsAtlasLayoutNow().cols * YAPS_ATLAS_CELLSLOTS * YAPS_ATLAS_SLOTPX;
 }
 
 int YapsAtlasHeightPx()
 {
-    return YAPS_ATLAS_ORIGIN + YAPS_ATLAS_LEVELS * YapsAtlasRowsPerLevel() * YAPS_ATLAS_SLOTPX;
+    return YAPS_ATLAS_ORIGIN + YAPS_ATLAS_LEVELS * YapsAtlasLayoutNow().rows * YAPS_ATLAS_SLOTPX;
 }
 
-// Can this target hold the rect at all?
-// Painting a smaller one erased the self portrait.
+// Can this target hold a layout worth reading? Painting a rect bigger
+// than the target erased the self portrait; the layout never is.
 bool YapsAtlasFits()
 {
-    return _ScreenParams.x >= YapsAtlasWidthPx() && _ScreenParams.y >= YapsAtlasHeightPx();
+    return YapsAtlasLayoutNow().cells >= YAPS_ATLAS_MINCELLS;
 }
 
 // Outside the cube, so the clipper drops it.

@@ -1542,3 +1542,26 @@ as `1 + kind + 2 * number` over 63; zero still reads as no kind. A plug holds a 
 `_YAPS_SelfSockets` for which of its wearer's sockets it may enter, so the choice itself never
 crosses the screen: once the owner ids match, the number picks the bit. Unnumbered own sockets
 keep the inboard rule. The choice is a checklist on the plug's inspector; see the work queue.
+
+## The layout follows the target (2026-09-11)
+
+A target smaller than the full 932 by 596 rect used to get no atlas at all, so a small mirror, a
+low-resolution camera or the self portrait left every plug in it to the marker lights. Writers
+and readers draw into and read from the same target, so both now work out the layout from
+`_ScreenParams`: as many columns as fit, up to 28, and as many cells as the rows allow, up to
+4096. Where the full rect fits it is exactly the full layout, which is why there is no version
+bump: a version 6 side draws and reads nothing anywhere the layout differs.
+
+The cost is the grid size table above, read backwards. A 256 square target holds 434 cells, a
+512 square one 1890, and fewer cells means more both-homes clashes and more strangers in the
+slots a plug opens. The floor is 384 cells, about 240 pixels square; below it the atlas is off.
+`Dev/Probes/Hlsl/atlas-layout.py` checks the arithmetic across target sizes: identical where the
+full rect fits, never past the target, and no level running into the next.
+
+**The gate had a second job, and it is now narrower.** "The size gate stays" above also kept the
+writers off small targets where there may be nothing to cover them. A camera clearing to a
+transparent background, which the self portrait may well be, keeps whatever the payload pass wrote
+wherever the avatar does not cover it: coloured specks in the corner, about five pixels per socket
+per level per home. Below the 384-cell floor nothing changed; above it this is unmeasured. If the
+portrait shows specks, the fix is a second alpha-only clear AFTER the grab (-943), which leaves the
+plugs' copy alone and makes the corner transparent again before the scene draws.

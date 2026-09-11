@@ -79,7 +79,9 @@ Shader "YAPS/Atlas Socket"
             int3 cell = int3(floor(scaled));
             float3 f = frac(scaled);
 
-            int total = YAPS_ATLAS_GRID * YAPS_ATLAS_GRID;
+            // Off target the quad goes nowhere, but the maths still runs.
+            YapsAtlasLayout layout = YapsAtlasLayoutNow();
+            int total = max(layout.cells, 1);
             int idx = YapsAtlasHash(cell) % total;
             if (idx < 0) idx += total;
             if (home == 1)
@@ -88,7 +90,7 @@ Shader "YAPS/Atlas Socket"
                 if (step < 0) step += max(total - 1, 1);
                 idx = (idx + step + 1) % total;
             }
-            YapsAtlasCellPixels(idx, level, cellPx, cellPy);
+            YapsAtlasCellPixels(idx, level, layout, cellPx, cellPy);
 
             sub = (f.x > 0.5 ? 4 : 0) + (f.y > 0.5 ? 2 : 0) + (f.z > 0.5 ? 1 : 0);
             payload = f;
