@@ -63,6 +63,10 @@ struct YapsChain
     // atlas already read and turned down. 1e9 means nothing was refused.
     float3 refusedAt;
     float  refusedD;
+    // Set when the light tier's answer is one of the wearer's own sockets
+    // this plug is not ticked for. Kept apart from refusedD: the hip socket
+    // is always the nearest own one and would crowd a tag refusal out.
+    float  lightUnticked;
 };
 
 struct YapsSocket
@@ -239,11 +243,17 @@ bool YapsSameBodyAt(float3 plugOrigin, float3 lightAt)
 // Does ownership keep this plug out of a socket it read off the atlas? One
 // of the wearer's own that carries a number: the plug's own list says, a
 // bit per socket, chosen in the editor. Anything else: the body test.
+// One of the wearer's own, known by id, that carries a number.
+bool YapsOwnNumbered(int owner, int index)
+{
+    int mine = YapsOwnerOf(_YAPS_Owner);
+    return mine != 0 && owner == mine && index > 0;
+}
+
 bool YapsSelfRefuses(float3 root, float3 at, int owner, int index)
 {
     if (_YAPS_SelfTag < 0 || _YAPS_SelfAllow >= 0.5) return false;
-    int mine = YapsOwnerOf(_YAPS_Owner);
-    if (mine != 0 && owner == mine && index > 0)
+    if (YapsOwnNumbered(owner, index))
         return (((int) round(_YAPS_SelfSockets) >> (index - 1)) & 1) == 0;
     return YapsSameBodyOwned(root, at, owner);
 }
@@ -253,8 +263,7 @@ bool YapsSelfRefuses(float3 root, float3 at, int owner, int index)
 // a plug's tags are what it answers on other people.
 bool YapsSelfChosen(int owner, int index)
 {
-    int mine = YapsOwnerOf(_YAPS_Owner);
-    return mine != 0 && owner == mine && index > 0
+    return YapsOwnNumbered(owner, index)
         && (((int) round(_YAPS_SelfChosen) >> (index - 1)) & 1) != 0;
 }
 
@@ -423,8 +432,9 @@ bool YapsFindLightSocket(float3 plugOrigin, float3 preferNear, float reach,
 #define YAPS_CH_PUT(a) sockD[a] = d; sockP[a] = at; sockF[a] = fwd; sockK[a] = kind;
 
 // Reads the neighbourhood of the shaft's MIDPOINT, not its root, so a
-// radius-1 read covers the whole plug. No extra taps.
-YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
+// radius-1 read covers the whole plug. No extra taps. lightAt is the light
+// tier's answer, far away when it had none.
+YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength, float3 lightAt)
 {
     // Zeroed in one go, so the compiler cannot read the early return below
     // as leaving the struct part-written.
@@ -565,7 +575,15 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
                 //
                 // Tested here rather than after the sort, so a rejected
                 // entry leaves no hole in the list.
-                if (YapsSelfRefuses(root, at, owner, ownIndex)) continue;
+                if (YapsSelfRefuses(root, at, owner, ownIndex))
+                {
+                    // Its marker lights are still up, and the light tier's
+                    // hip vote only turns down the hip sockets. The same tenth
+                    // of a length as a tag refusal, so a neighbour survives.
+                    if (YapsOwnNumbered(owner, ownIndex) && distance(at, lightAt) < len * 0.1)
+                        chain.lightUnticked = 1;
+                    continue;
+                }
 
                 // Insertion sort, nearest first. THE ORDER IS THE PATH:
                 // socket one is the one the shaft meets first.
@@ -740,7 +758,8 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     // never read. Decoding it anyway hands back whatever the scene drew.
     if (_YAPS_UseAtlas > 0.5 && YapsAtlasFits())
     {
-        YapsChain chain = YapsResolveChain(plugOrigin, plugForward, worldLength);
+        YapsChain chain = YapsResolveChain(plugOrigin, plugForward, worldLength,
+            socket.tier == 2 ? socket.position : float3(1e9, 1e9, 1e9));
         socket.atlasHeaders = chain.headers;
         socket.atlasHits = chain.hits;
         // The chain comes out whether or not anything was ACCEPTED. Its
@@ -776,8 +795,10 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         // neighbour: two sockets a hand apart must stay two sockets.
         // Deliberately tight. Too tight leaves the old behaviour, too
         // loose refuses something the author never named.
-        if (socket.tier == 2 && chain.refusedD < 1e8
-            && distance(socket.position, chain.refusedAt) < worldLength * 0.1)
+        //
+        // An own socket the plug is not ticked for is undone the same way.
+        if (socket.tier == 2 && (chain.lightUnticked > 0.5 || (chain.refusedD < 1e8
+            && distance(socket.position, chain.refusedAt) < worldLength * 0.1)))
         {
             socket.engaged = 0;
             socket.tier = 0;

@@ -327,6 +327,7 @@ outnumber 960 by 540's pixels.
    plug's own sockets toggle opens the unticked one.
 6. An own socket the plug's tags refuse, ticked by hand, is entered. With the tag chooser on one
    tag, a default-ticked own socket that tag does not name is not.
+7. An unticked own hand or mouth socket with its marker lights lit is not entered either.
 
 **Follow-ups, not started.**
 - DONE 2026-09-11: SPS plug rules keep their side on conversion. Others rules go to the tag test
@@ -341,6 +342,14 @@ outnumber 960 by 540's pixels.
   baked tags refuse, so what it shows is what the plug does. Untested in game, and no avatar on
   this machine has an SPS rule with its sides set; the smoke test covers the tick maths and fxc
   the shader.
+- DONE 2026-09-11: an unticked own socket was only turned down by the atlas. With its marker
+  lights lit, the light tier answered it anyway, since its own-body test is the hip vote and
+  refuses only inboard sockets. The chain now flags an own numbered socket refused by its tick
+  when it sits within a tenth of a length of the light tier's answer, and that answer is undone
+  as a tag refusal's is. A separate flag, not `refusedD`: the hip socket is always the nearest
+  own socket, so it would have crowded the tag refusal out of the one slot, and lit the debug
+  view's refusal cell on every avatar with one. The trade: a legacy partner socket, with no
+  atlas writer, pressed within that tenth of your own unticked socket is ignored too.
 - A per-plug menu choice. `_YAPS_SelfSockets` is a plain float, so a dropdown could animate it
   between a few sets, at the cost of one synced parameter a plug so every viewer bends alike.
 - Props and world sockets carry no id and fall back to the vote. `SeedInstance` would give a

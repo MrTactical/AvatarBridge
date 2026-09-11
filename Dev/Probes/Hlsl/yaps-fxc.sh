@@ -44,7 +44,7 @@ emit plug <<'BODY'
 float4 main(uint id : SV_VertexID) : SV_POSITION
 {
     YapsSocket s = YapsResolveSocket(float3(0,0,0), float3(0,0,1), float3(0,1,0), 0.2);
-    YapsChain c = YapsResolveChain(float3(0,0,0), float3(0,0,1), 0.2);
+    YapsChain c = YapsResolveChain(float3(0,0,0), float3(0,0,1), 0.2, float3(1e9,1e9,1e9));
     return float4(s.position + s.forward + c.position[0],
                   s.engaged + s.tier + c.arc[1] + c.count);
 }
