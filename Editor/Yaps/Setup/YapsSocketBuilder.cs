@@ -366,7 +366,7 @@ namespace AvatarBridge
             Replace(t, AtlasName, atlas =>
             {
                 if (!YapsAtlas.Enabled) return;
-                YapsAtlas.AddWriter(atlas, hole, socket.tags);
+                YapsAtlas.AddWriter(atlas, YapsAtlas.KindOf(socket), socket.tags);
             });
 
             Replace(t, PointersName, pointers =>

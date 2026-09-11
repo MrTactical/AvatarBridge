@@ -44,19 +44,25 @@ namespace AvatarBridge
         // reading it is somewhere else.
         const float BoundsSize = 1000f;
 
-        public static GameObject AddWriter(Transform parent, bool hole, IList<string> tags = null)
+        // Must match YAPS_KIND_* in yaps_atlas.cginc.
+        public const int Ring = 0, Hole = 1, OneWayRing = 2;
+
+        public static int KindOf(YapsSocket socket) =>
+            socket.kind == YapsSocket.SocketKind.Hole ? Hole : socket.oneWay ? OneWayRing : Ring;
+
+        public static GameObject AddWriter(Transform parent, int kind, IList<string> tags = null)
         {
             var shader = Shader.Find(SocketShader);
             if (parent == null || shader == null)
             {
                 return null;
             }
-            var host = new GameObject(hole ? "Atlas Writer (hole)" : "Atlas Writer (ring)");
+            var host = new GameObject("Atlas Writer (" + KindName(kind).ToLowerInvariant() + ")");
             host.transform.SetParent(parent, false);
             host.AddComponent<MeshFilter>().sharedMesh = LevelQuads();
 
             var renderer = host.AddComponent<MeshRenderer>();
-            renderer.sharedMaterial = Kind(shader, hole, tags);
+            renderer.sharedMaterial = Kind(shader, kind, tags);
             Quiet(renderer);
             return host;
         }
@@ -245,27 +251,29 @@ namespace AvatarBridge
         // renderer and is the wrong one: it is not serialised, so it survives
         // the editor and not the upload. Sockets sharing all three share a
         // material, across avatars too.
-        static Material Kind(Shader shader, bool hole, IList<string> tags)
+        static Material Kind(Shader shader, int kind, IList<string> tags)
         {
-            return Writer(shader, hole, YapsTags.Word(tags), 0);
+            return Writer(shader, kind, YapsTags.Word(tags), 0);
         }
+
+        static string KindName(int kind) => kind == Hole ? "Hole" : kind == OneWayRing ? "One-way Ring" : "Ring";
 
         // The same writer numbered among its wearer's own sockets, 1 to 15,
         // 0 for none. Null for anything that is not a writer material.
         public static Material Indexed(Material writer, int index)
         {
             if (writer == null || writer.shader == null || writer.shader.name != SocketShader) return null;
-            return Writer(writer.shader, writer.GetFloat("_YAPS_Kind") > 0.5f,
+            return Writer(writer.shader, Mathf.RoundToInt(writer.GetFloat("_YAPS_Kind")),
                 Mathf.RoundToInt(writer.GetFloat("_YAPS_SocketTags")), index);
         }
 
-        static Material Writer(Shader shader, bool hole, int word, int index)
+        static Material Writer(Shader shader, int kind, int word, int index)
         {
-            string what = hole ? "Hole" : "Ring";
+            string what = KindName(kind);
             string set = word == 0 ? "" : " " + word.ToString("X5");
             string number = index > 0 ? " #" + index : "";
             var m = Made(Folder + "/YAPS Atlas Socket " + what + set + number + ".mat", shader);
-            m.SetFloat("_YAPS_Kind", hole ? 1f : 0f);
+            m.SetFloat("_YAPS_Kind", kind);
             m.SetFloat("_YAPS_SocketTags", word);
             m.SetFloat("_YAPS_SocketIndex", index);
             EditorUtility.SetDirty(m);

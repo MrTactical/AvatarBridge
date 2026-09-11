@@ -4,7 +4,7 @@
 #define YAPS_ATLAS_INCLUDED
 
 // Bump on any change below. It rides the tag.
-#define YAPS_ATLAS_VERSION 6
+#define YAPS_ATLAS_VERSION 7
 
 // 4096 cells. Two homes, so a clash needs both.
 #define YAPS_ATLAS_GRID    64
@@ -75,22 +75,34 @@ int YapsOwnerOf(float animated)
 }
 
 // The facing pixel's alpha: the socket's kind, and its number among its
-// wearer's own sockets, 1 to 15, 0 for none. Version 6. A plug keeps a bit
-// per number for which of its wearer's sockets it may enter, so the choice
-// itself never crosses the screen, only which socket this is. Offset by
-// one so an unwritten pixel still reads as no kind at all.
+// wearer's own sockets, 1 to 15, 0 for none. A plug keeps a bit per number
+// for which of its wearer's sockets it may enter, so the choice itself
+// never crosses the screen, only which socket this is. Offset by one so an
+// unwritten pixel still reads as no kind at all.
+//
+// Version 7: three kinds, not two. 0 ring, 1 hole, 2 a ring entered from
+// its front alone. A third kind costs a factor of three rather than a bit,
+// which is what fits: 1 + 2 + 3 * 15 is 48, and six bits hold 63, where a
+// separate one-way bit would have needed 64.
 #define YAPS_ATLAS_SOCKETMAX 15
+#define YAPS_KIND_RING    0
+#define YAPS_KIND_HOLE    1
+#define YAPS_KIND_ONEWAY  2
 
 float YapsFacingEncode(int kind, int index)
 {
-    return (1 + (kind & 1) + 2 * clamp(index, 0, YAPS_ATLAS_SOCKETMAX)) / (float) YAPS_ATLAS_OWNERMAX;
+    return (1 + clamp(kind, 0, 2) + 3 * clamp(index, 0, YAPS_ATLAS_SOCKETMAX)) / (float) YAPS_ATLAS_OWNERMAX;
 }
 
-void YapsFacingDecode(float a, out float kind, out int index)
+// kind comes back as 1 for a hole and 0 for either ring, -1 for nothing;
+// oneWay says which ring.
+void YapsFacingDecode(float a, out float kind, out int index, out bool oneWay)
 {
     int code = (int) round(saturate(a) * YAPS_ATLAS_OWNERMAX) - 1;
-    kind = code < 0 ? -1 : (code & 1);
-    index = code < 0 ? 0 : (code >> 1);
+    int k = code < 0 ? -1 : code % 3;
+    kind = k < 0 ? -1 : (k == YAPS_KIND_HOLE ? 1 : 0);
+    oneWay = k == YAPS_KIND_ONEWAY;
+    index = code < 0 ? 0 : code / 3;
 }
 
 // The tag word, 20 bits over rgba at five bits a channel. Five and not

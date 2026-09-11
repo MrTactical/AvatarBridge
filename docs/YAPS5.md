@@ -1565,3 +1565,12 @@ wherever the avatar does not cover it: coloured specks in the corner, about five
 per level per home. Below the 384-cell floor nothing changed; above it this is unmeasured. If the
 portrait shows specks, the fix is a second alpha-only clear AFTER the grab (-943), which leaves the
 plugs' copy alone and makes the corner transparent again before the scene draws.
+
+## One-way rings, protocol 7 (2026-09-11)
+
+The facing pixel's alpha carried `1 + kind + 2 * number` over 63 with a kind bit. A one-way ring
+needed a third kind, and a separate bit would have made the largest code 64, one past six bits.
+So the kind is now a factor of three: `1 + kind + 3 * number`, kind 0 ring, 1 hole, 2 one-way ring,
+largest 48. The reader decodes a one-way ring as a ring and skips it when the plug's base is
+behind its facing, `dot(forward, base - socket) < 0`; the base because the shaft goes through a
+ring and the base never does. Marker lights cannot say it, so a ring found by light is two-way.

@@ -2041,11 +2041,16 @@ bezier bend, smooth start and minimum socket distance came from TPS.
 
 **3. Small and mechanical.**
 
-- **Ring sidedness.** TPS has `_TPS_TwoSidedRings` and SPS2 has a one-way ring mode. Both other
-  systems let an author say which way a ring may be entered, and this has no such control.
+- **Ring sidedness. DONE 2026-09-11 on dev, protocol 7.** A socket's **One way** tick: the atlas
+  kind becomes ring, hole or one-way ring, and a plug whose base is behind a one-way ring's front
+  passes it by. Lights cannot carry it. Not carried from TPS: `_TPS_TwoSidedRings` sits on the
+  PLUG there, and a plug-side rule would be a second control for the same question.
 - **Idle gravity.** `_TPS_IdleGravity`, recorded as unmapped. There is idle shrink and there is
   wriggle, but nothing that hangs.
-- **Radius offset.** A per-socket nudge so the opening sits on the surface rather than in it,
+- **Radius offset. DECLINED 2026-09-11.** A YAPS socket is an object the author places, so moving
+  it IS the offset; SPS2 needs a field because it snaps sockets to bones. Revisit only if a
+  converter needs somewhere to put SPS2's own value. Was: a per-socket nudge so the opening sits
+  on the surface rather than in it,
   which SPS2's notes single out as mattering most for hand sockets.
 - **Auto-rig.** Bones and physbones added to a static plug mesh at build time. This tool converts
   what an avatar already has and has never built that.

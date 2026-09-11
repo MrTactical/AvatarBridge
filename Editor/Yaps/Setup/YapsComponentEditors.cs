@@ -680,7 +680,7 @@ namespace AvatarBridge
             bool hole = kindProp.enumValueIndex == (int) YapsSocket.SocketKind.Hole;
             bool built = IsBuilt(socket.transform);
 
-            _root.Add(BridgeElements.Banner((hole ? "Hole" : "Ring") + "  ·  " + YapsToggles.LabelFor(socket),
+            _root.Add(BridgeElements.Banner((hole ? "Hole" : socket.oneWay ? "One-way ring" : "Ring") + "  ·  " + YapsToggles.LabelFor(socket),
                 built ? "readable by DPS, TPS, SPS and YAPS plugs" : "not built: no plug can find it yet",
                 built ? "YAPS" : "not built"));
             _root.Add(BridgeElements.Hint(YapsInspectorStyle.InertComponentNote + " " + YapsInspectorStyle.SocketSwitchNote));
@@ -728,6 +728,21 @@ namespace AvatarBridge
             what.Body.Add(BridgeElements.Hint(hole
                 ? "A hole closes around the plug and stops it: a mouth, a pussy, an anus."
                 : "A ring lets the plug pass straight through: a hand, thighs, a foot."));
+            if (!hole)
+            {
+                // The kind rides the atlas writer's material, so the writer
+                // is rebuilt when it changes, as it is for hole and ring.
+                var oneWayProp = so.FindProperty("oneWay");
+                var oneWay = YapsInspectorStyle.Field(oneWayProp, type.GetField("oneWay"), "One way");
+                oneWay.TrackPropertyValue(oneWayProp, p =>
+                {
+                    if (!built) return;
+                    Undo.RegisterFullObjectHierarchyUndo(socket.gameObject, "YAPS one-way ring");
+                    YapsSocketBuilder.Build(socket);
+                    RebuildLater();
+                });
+                what.Body.Add(oneWay);
+            }
 
             what.Body.Add(YapsInspectorStyle.Field(so.FindProperty("tags"),
                 typeof(YapsSocket).GetField("tags"), "Tags"));

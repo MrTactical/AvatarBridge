@@ -24,10 +24,10 @@ Shader "YAPS/Atlas Socket"
 {
     Properties
     {
-        // 0 ring, 1 hole. A ring is a loop and can be entered from either
-        // face; a hole has a front and a back. One bit of the facing
-        // pixel's alpha; the socket's number takes the rest.
-        [Enum(Ring,0,Hole,1)] _YAPS_Kind ("Socket kind", Float) = 0
+        // 0 ring, 1 hole, 2 one-way ring. A ring is a loop and can be
+        // entered from either face unless it is one-way; a hole has a front
+        // and a back. Shares the facing pixel's alpha with the number.
+        [Enum(Ring,0,Hole,1,OneWayRing,2)] _YAPS_Kind ("Socket kind", Float) = 0
 
         // The socket's tag set, 15 bits in a float. Zero is untagged, which
         // is what every socket built before version 3 and every legacy
@@ -180,7 +180,7 @@ Shader "YAPS/Atlas Socket"
                 // pixel's tag matched, and the same draw writes both, so it
                 // cannot disagree. It carries the KIND instead, and the
                 // socket's number among its wearer's own.
-                o.other   = float4(fwd, YapsFacingEncode((int) floor(_YAPS_Kind),
+                o.other   = float4(fwd, YapsFacingEncode((int) round(_YAPS_Kind),
                                                          (int) round(_YAPS_SocketIndex)));
                 o.tags    = YapsTagsEncode((int) floor(_YAPS_SocketTags + 0.5));
                 o.owner   = YapsOwnerEncode(YapsOwnerOf(_YAPS_Owner));

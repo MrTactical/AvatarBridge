@@ -924,7 +924,10 @@ four vertex light slots, so an old DPS toy sees one at a time; anything modern f
 contact. **Not yet confirmed in game**: it is built and it behaves in the editor, and nobody has
 uploaded one and used it with another person yet.
 
-**YAPS Socket** (the component the prefabs carry): hole or ring; the mesh whose shapes should
+**YAPS Socket** (the component the prefabs carry): hole or ring, and a ring can be **One way**, so
+a plug enters it from its front only (the side its markers sit on) and passes it by from behind.
+Only the screen atlas carries that; a plug that finds the ring by marker light, an old DPS one
+included, still enters from either side. Then the mesh whose shapes should
 open and up to sixteen of them picked from a dropdown, several per depth if you like, staged by
 depth on a range slider, built by Build. A mesh of the socket's own (origin at the entrance) opens
 in its shader; any other mesh, the body as a rule, opens through a contact: the card says which,

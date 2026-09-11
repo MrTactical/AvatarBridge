@@ -497,7 +497,8 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
                 float3 fwd = normalize(f4.rgb * 2 - 1);
                 float kind;
                 int ownIndex;
-                YapsFacingDecode(f4.a, kind, ownIndex);
+                bool oneWay;
+                YapsFacingDecode(f4.a, kind, ownIndex, oneWay);
 
                 // TAGS, the third pixel. A socket says what it is and the
                 // plug says what it will answer, and the whole test is two
@@ -529,6 +530,12 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength)
                 // approach, so a correctly aimed hole was thrown away
                 // before the deform ever saw it. Range is what rejects.
                 if (d > far) continue;
+
+                // A ONE-WAY RING is entered from its front alone, the side
+                // its facing points to. A plug whose base is behind it passes
+                // it by. The base, because the shaft goes through a ring and
+                // the base never does, so the answer holds all the way in.
+                if (oneWay && dot(fwd, root - at) < 0) continue;
 
                 // OWN BODY, the same question the lights ask, at any
                 // distance. A wearer's own hip socket is permanently in

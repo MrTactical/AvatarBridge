@@ -16,6 +16,11 @@ namespace AvatarBridge.Yaps
         [Tooltip("A hole closes around the plug and stops it. A ring lets it pass straight through.")]
         public SocketKind kind = SocketKind.Hole;
 
+        [Tooltip("A ring a plug may only enter from its front, the side its markers sit on. A plug " +
+                 "whose base is behind it passes it by. Only the screen atlas carries this; a plug " +
+                 "that finds the ring by marker light enters it from either side.")]
+        public bool oneWay;
+
         [Header("Shapes that open as a plug goes in")]
         [Tooltip("The mesh whose blendshapes should react. Usually the body this socket sits on. " +
                  "Leave empty for a socket that only bends plugs and plays no shape.")]
@@ -156,6 +161,9 @@ namespace AvatarBridge.Yaps
                     float length = m.HasProperty("_YAPS_Length") ? m.GetFloat("_YAPS_Length") : 0.25f;
                     float gap = Vector3.Distance(PlugOrigin(r), transform.position);
                     float engaged = 1f - Mathf.Clamp01((gap - length * 1.2f) / Mathf.Max(length * 0.4f, 0.001f));
+                    // What the atlas does with a one-way ring and a plug behind it.
+                    if (kind == SocketKind.Ring && oneWay
+                        && Vector3.Dot(transform.forward, PlugOrigin(r) - transform.position) < 0f) engaged = 0f;
                     r.GetPropertyBlock(Block, slot);
                     // World space: the one route the shader still reads. The
                     // contact channel's own route, which this used to imitate,
