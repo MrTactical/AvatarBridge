@@ -251,10 +251,9 @@ namespace AvatarBridge
             o.Message = $"Baked \"{renderer.name}\": {o.Length:0.###} m, {result.VertexCount} vertices, " +
                         $"{result.Shapes.Count} shape(s), material \"{patched.name}\".";
             o.Notes.Add(YapsPropBuilder.IsProp(TopOf(plug.transform).gameObject)
-                ? "This plug is on a prop; make it a prop again to rebuild its contact channel for the new bake."
-                : "On an avatar this plug finds sockets two ways: their marker lights, and the contact " +
-                  "channel that Build wires for it. Watch for the \"Wired N plug(s) to the socket channel\" " +
-                  "line below: without it, only lights.");
+                ? "This plug is on a prop; make it a prop again so the prop carries the new bake."
+                : "This plug finds sockets through the screen atlas, and by their marker lights where the " +
+                  "atlas cannot answer: a view too small to hold it, or content that only has lights.");
             if (result.FromSkinnedMesh) o.Notes.Add("Skinned mesh: frame recovered per vertex.");
             return o;
         }

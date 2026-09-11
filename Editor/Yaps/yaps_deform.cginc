@@ -354,12 +354,12 @@ float4 YapsDebug(uint vertexId)
 }
 
 // WHO resolved the socket, for the "Resolved by" view. x is the tier
-// (0 nobody, 1 the channel, 2 a marker light, 3 the screen atlas), y the
+// (0 nobody, 1 the editor's preview, 2 a marker light, 3 the screen atlas), y the
 // engagement, so the view can dim an answer that resolved but did not
 // engage.
 //
 // A plug bending near a socket does not say who bent it, and a stray
-// marker light reads exactly like a working channel.
+// marker light reads exactly like a working atlas.
 //
 // Uses the renderer's transform, like YapsDebug. For a skinned plug the
 // tier does not depend on the frame, only the ranges do.
@@ -443,14 +443,13 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     // Everything platform-specific happens in here. A plug only ever
     // bends toward a SOCKET, never toward a body.
     //
-    // The recovered frame, never the renderer's: a bone carries the plug,
-    // and the channel reports the socket in the PLUG's frame.
+    // The recovered frame, never the renderer's: a bone carries the plug.
     YapsSocket socket = YapsResolveSocket(rootWorld, rootForward, rootUp, worldLength);
 
     // THE "RESOLVED BY" VIEW.
     //
     // A plug bending near a socket does not say WHO bent it, and a stray
-    // marker light reads exactly like a working contact channel.
+    // marker light reads exactly like a working atlas.
     //
     // It cannot be a colour. The patcher edits a host shader's VERTEX
     // stage and nothing else, so there is no fragment left to paint in.
@@ -458,7 +457,7 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     // given as LENGTH:
     //
     //     a quarter    nobody resolved it
-    //     a half       the contact channel
+    //     a half       the editor's preview
     //     three parts  a marker light
     //     full         the screen atlas
     //
@@ -520,9 +519,7 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         {
             // THE SOCKET'S FACING, against the plug's own forward. Full
             // means it faces the way the plug points, half is square
-            // across, nothing is straight back. The channel sends no
-            // rotation, only a second point, so this value exists on the
-            // channel route alone.
+            // across, nothing is straight back.
             //
             // Measured against the CHANNEL'S frame, never the vertex's.
             // The first version used rootForward, which is recovered per

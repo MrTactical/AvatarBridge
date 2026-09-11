@@ -177,6 +177,9 @@ namespace AvatarBridge
         // light is in range, because a light replaces the channel's position
         // outright and is sampled every frame; a viewer with avatar lights
         // switched off is the case this serves.
+        //
+        // Unused from 4.5.1: plugs no longer read the channel it smoothed.
+        // Kept so stored settings still load.
         [Range(0.01f, 0.5f)]
         public float yapsSocketFollow = DefaultSocketFollow;
         internal const float DefaultSocketFollow = 0.02f;

@@ -154,31 +154,22 @@ namespace AvatarBridge
                 _summary.text = o.Message + (o.Notes.Count > 0 ? "  " + string.Join(" ", o.Notes) : "");
             });
             have.Body.Add(BridgeElements.Row(_makeProp, _verifyProp));
-            // The exact route is a choice, because it costs the prop's ownership.
-            var channelOn = Btn("Add the synced channel", () =>
-            {
-                var o = YapsPropBuilder.AddChannel(Selection.activeGameObject);
-                _summary.text = o.Message + (o.Notes.Count > 0 ? "  " + string.Join(" ", o.Notes) : "");
-            });
-            channelOn.tooltip = "Eight synced values a socket writes, for a plug prop that must reach a viewer with " +
-                                "lights off or work among more than four lit sockets. It costs the prop's ownership: " +
-                                "while a socket touches it, that socket's owner takes it over, which is what pulls a " +
-                                "prop out of someone's hand.";
+            // No button to add the channel any more: the plug's shader no
+            // longer reads it. Dropping one an older build added stays.
             var channelOff = Btn("Drop the contact channel", () =>
             {
                 var o = YapsPropBuilder.DropChannel(Selection.activeGameObject);
                 _summary.text = o.Message + (o.Notes.Count > 0 ? "  " + string.Join(" ", o.Notes) : "");
             });
-            channelOff.tooltip = "Takes the channel off a prop that keeps changing hands. It then reads sockets by " +
-                                 "their marker lights, which every client works out for itself.";
-            have.Body.Add(BridgeElements.Row(channelOn, channelOff));
+            channelOff.tooltip = "Takes an old contact channel off a prop. Plugs no longer read it, so all it does " +
+                                 "is spend the prop's synced values and hand it to whoever's socket touches it.";
+            have.Body.Add(channelOff);
             have.Body.Add(BridgeElements.Hint(
                 "Select the top object of a plug or socket meant to be spawned in ChilloutVR. It gets a CVR " +
                 "Spawnable, a pickup anyone can take and a collider to grab by, and it finds sockets through " +
-                "their marker lights: every client works those out for itself, so nobody owns the answer and " +
-                "nobody takes the prop off anyone. The synced channel is the exact route and a separate choice; " +
-                "it hands the prop to whoever's socket touches it. Verify before each upload: the CCK inspector " +
-                "can blank a channel value's parameter name."));
+                "the screen atlas, with marker lights where the atlas cannot answer: every client works those " +
+                "out for itself, so nobody owns the answer and nobody takes the prop off anyone. Verify before " +
+                "each upload."));
 
             // One switch hides the CCK's icons while sockets are placed.
             have.Body.Add(BridgeElements.SubHeading("Scene view"));
@@ -290,9 +281,8 @@ namespace AvatarBridge
             props.Body.Add(BridgeElements.Row(Btn("Make the selected test object a prop", () => MakeProp(Selection.activeGameObject))));
             props.Body.Add(BridgeElements.Hint(
                 "Select the test plug or socket at its top object first. It gets a CVR Spawnable, a " +
-                "pickup with theft off, a collider and, for a plug, the synced contact channel; upload " +
-                "it from the CCK and try it with a second person. As props they find each other by " +
-                "marker lights and, plug to socket, by the channel."));
+                "pickup with theft off and a collider; upload it from the CCK and try it with a second " +
+                "person. As props, plugs find sockets through the screen atlas and marker lights."));
             props.Body.Add(BridgeElements.SubHeading("Prefabs"));
             props.Body.Add(BridgeElements.Row(
                 Btn("Create universal socket prefabs", YapsSocketBuilder.CreatePrefabs),
@@ -301,7 +291,7 @@ namespace AvatarBridge
             props.Body.Add(BridgeElements.Hint(
                 "Writes YAPS Hole and YAPS Ring to Assets/YAPS/Prefabs; drag one under a bone on any " +
                 "avatar and every plug on the platform reads it. The plug prop is a whole spawnable in " +
-                "one click, built, baked on the current shader, pickup and contact channel wired, to " +
+                "one click, built, baked on the current shader, pickup wired, to " +
                 "drop in the scene and upload. Make it again after updating: a prop already uploaded " +
                 "keeps the bake and the shader copy it was built with, which is why an old one bends oddly."));
             _pages.Add(props);
