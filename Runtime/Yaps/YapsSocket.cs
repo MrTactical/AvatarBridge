@@ -42,6 +42,21 @@ namespace AvatarBridge.Yaps
             public float fadeOver = 0.3f;
         }
 
+        [Header("Animations that play as a plug goes in")]
+        [Tooltip("Your own clips, blended in by how far a plug is in: none of a clip at its start, " +
+                 "all of it by start + fade, as fractions of full depth. They play in a layer of " +
+                 "their own, driven by the same synced depth as the shapes. Animate things nothing " +
+                 "else animates: while no plug is in, the layer holds them at their resting value.")]
+        public List<DepthAnimation> depthAnimations = new List<DepthAnimation>();
+
+        [Serializable]
+        public class DepthAnimation
+        {
+            public AnimationClip clip;
+            [Range(0f, 1f)] public float startsAt = 0f;
+            [Range(0.01f, 1f)] public float fadeOver = 0.3f;
+        }
+
         [Header("Advanced")]
         [Range(0f, 1f), Tooltip("Overall strength of the shapes. 1 is as authored.")]
         public float shapePower = 1f;
@@ -92,6 +107,9 @@ namespace AvatarBridge.Yaps
         public string builtLayer;
         [HideInInspector]
         public string builtParameter;
+        // The same for the depth animations layer.
+        [HideInInspector]
+        public string builtAnimations;
 
         // Editor state, never saved: while on, every YAPS plug in the scene
         // bends toward this socket. Only one socket previews at a time.

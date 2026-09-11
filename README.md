@@ -933,7 +933,11 @@ depth on a range slider, built by Build. A mesh of the socket's own (origin at t
 in its shader; any other mesh, the body as a rule, opens through a contact: the card says which,
 and for the contact route a **Full depth (m)** field says how far in counts as fully open, since a
 contact cannot know a visiting plug's length (left at 0 it takes the longest baked plug on the
-avatar). **Test depth** moves those shapes on the mesh in the editor so you can see the stages
+avatar). **Plays as a plug goes in** takes your own animation clips the same way, each blended in
+over its own depth range, in a layer of their own driven by that contact and its synced depth
+(32 of the 3200 sync bits, shared with the shapes), whichever route the shapes take. Write
+defaults are on in that layer, so animate only what nothing else on the avatar animates.
+**Test depth** moves those shapes on the mesh in the editor so you can see the stages
 without a plug; nothing is saved, and they go back when you click away. **Preview** bends every
 baked plug in the scene toward the socket, and drops one in front of it when nothing baked is
 within a couple of metres: the plug prop prefab if the project has one, since that is baked on

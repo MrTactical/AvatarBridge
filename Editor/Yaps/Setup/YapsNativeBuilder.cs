@@ -648,6 +648,8 @@ namespace AvatarBridge
             if (capped != null) lines.Add($"✓ {YapsToggles.LabelFor(socket)}: {capped}");
             string shapes = BakeSocket(socket);
             if (shapes != null) lines.Add(shapes);
+            string played = YapsSocketReactions.BuildAnimations(socket);
+            if (played != null) lines.Add(played);
             var avatar = socket.GetComponentInParent<CVRAvatar>(true);
             int before = YapsToggles.Edits;
             string toggled = YapsToggles.EnsureObjectToggle(socket.gameObject, avatar, YapsToggles.LabelFor(socket));

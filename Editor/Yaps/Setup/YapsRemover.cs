@@ -40,6 +40,8 @@ namespace AvatarBridge
                 : $"the YAPS Socket component on \"{socket.name}\" and the markers, lights and pointers under it (the object stays: it has other things on it)");
             if (YapsSocketReactions.Exists(socket))
                 lines.Add($"the animator layer \"{YapsSocketReactions.LayerName(socket)}\" and its parameter");
+            if (YapsSocketReactions.AnimationsExist(socket))
+                lines.Add($"the animator layer \"{YapsSocketReactions.AnimationsLayerName(socket)}\"");
             if (avatar != null && ToggleEntriesFor(avatar, socket.gameObject).Any())
                 lines.Add($"the menu toggle \"{socket.name}\"");
             if (socket.renderer != null && socket.bakedFrom != null)
@@ -126,6 +128,14 @@ namespace AvatarBridge
                 if (old > 0) done.Add($"the layer it was built as, \"{socket.builtLayer}\"");
             }
             RemoveLayer(controllers, layer, YapsSocketReactions.LegacyParameter(socket));
+            // The depth animations, after the reactions: the depth parameter
+            // goes with whichever of the two layers is the last to read it.
+            string played = YapsSocketReactions.AnimationsLayerName(socket);
+            int playedOut = RemoveLayer(controllers, played, parameter);
+            if (playedOut > 0) done.Add($"layer \"{played}\" out of {playedOut} controller(s)");
+            if (!string.IsNullOrEmpty(socket.builtAnimations) && socket.builtAnimations != played)
+                RemoveLayer(controllers, socket.builtAnimations, parameter);
+            RemoveIfUnused(controllers, YapsSocketReactions.One);
 
             // The socket's toggle, and the menu animator without it.
             if (avatar != null)
@@ -325,7 +335,8 @@ namespace AvatarBridge
             var avatar = top.GetComponentInChildren<CVRAvatar>();
             var sockets = top.GetComponentsInChildren<YapsSocket>(true);
             var plugs = top.GetComponentsInChildren<YapsPlug>(true);
-            var liveLayers = new HashSet<string>(sockets.Select(YapsSocketReactions.LayerName));
+            var liveLayers = new HashSet<string>(sockets.Select(YapsSocketReactions.LayerName)
+                .Concat(sockets.Select(YapsSocketReactions.AnimationsLayerName)));
 
             Undo.IncrementCurrentGroup();
             int group = Undo.GetCurrentGroup();
@@ -336,8 +347,10 @@ namespace AvatarBridge
                 // Layers named for a socket that is gone.
                 foreach (var layer in controller.layers.ToList())
                 {
-                    if (!layer.name.StartsWith("YAPS ") || !layer.name.EndsWith(" reactions") || liveLayers.Contains(layer.name)) continue;
-                    string socketName = layer.name.Substring(5, layer.name.Length - 5 - 10);
+                    string suffix = layer.name.EndsWith(" reactions") ? " reactions"
+                        : layer.name.EndsWith(" animations") ? " animations" : null;
+                    if (!layer.name.StartsWith("YAPS ") || suffix == null || liveLayers.Contains(layer.name)) continue;
+                    string socketName = layer.name.Substring(5, layer.name.Length - 5 - suffix.Length);
                     var one = new List<AnimatorController> { controller };
                     // The synced name this build writes, and the local one older builds did.
                     RemoveLayer(one, layer.name, "YAPS/" + Machine(socketName) + "/Depth");
@@ -347,7 +360,7 @@ namespace AvatarBridge
                 // Depth parameters no layer reads.
                 foreach (var p in controller.parameters.ToList())
                 {
-                    if (!YapsSocketReactions.IsDepthName(p.name)) continue;
+                    if (!YapsSocketReactions.IsDepthName(p.name) && p.name != YapsSocketReactions.One) continue;
                     if (ParameterUsed(controller, p.name)) continue;
                     Undo.RegisterCompleteObjectUndo(controller, "Clean up YAPS leftovers");
                     controller.RemoveParameter(p);
@@ -436,6 +449,18 @@ namespace AvatarBridge
             }
             foreach (var animator in top.GetComponentsInChildren<Animator>(true)) Add(animator.runtimeAnimatorController);
             return list;
+        }
+
+        static void RemoveIfUnused(List<AnimatorController> controllers, string parameter)
+        {
+            foreach (var controller in controllers)
+            {
+                var p = controller.parameters.FirstOrDefault(x => x.name == parameter);
+                if (p == null || ParameterUsed(controller, parameter)) continue;
+                Undo.RegisterCompleteObjectUndo(controller, "Remove YAPS parameter");
+                controller.RemoveParameter(p);
+                EditorUtility.SetDirty(controller);
+            }
         }
 
         static int RemoveLayer(List<AnimatorController> controllers, string layerName, string parameter)

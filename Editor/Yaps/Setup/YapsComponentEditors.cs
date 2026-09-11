@@ -604,6 +604,7 @@ namespace AvatarBridge
     {
         VisualElement _root;
         IVisualElementScheduledItem _reactionRefresh;
+        IVisualElementScheduledItem _animationRefresh;
 
         // Ticks the preview on every scene repaint while selected.
         void OnSceneGUI()
@@ -629,6 +630,18 @@ namespace AvatarBridge
             _reactionRefresh = _root.schedule.Execute(() =>
             {
                 if (socket != null) YapsSocketReactions.Build(socket);
+            }).StartingIn(700);
+        }
+
+        // The same for the animations layer. A cleared list after a build
+        // still rebuilds, which takes the layer out.
+        void AnimationsChanged(YapsSocket socket)
+        {
+            _animationRefresh?.Pause();
+            if (!YapsSocketReactions.AnimationsExist(socket)) return;
+            _animationRefresh = _root.schedule.Execute(() =>
+            {
+                if (socket != null) YapsSocketReactions.BuildAnimations(socket);
             }).StartingIn(700);
         }
 
@@ -975,6 +988,99 @@ namespace AvatarBridge
                     HelpBoxMessageType.Info));
             }
             body.Add(opens);
+
+            // The author's clips, played by the same depth as the shapes.
+            var animsProp = so.FindProperty("depthAnimations");
+            var plays = new BridgeElements.Card("Plays as a plug goes in");
+            plays.Body.Add(BridgeElements.Hint(
+                "Your own animations, blended in by how far a plug is in: a glow, a sound's volume, a " +
+                "tail that lifts. They play in a layer of their own with write defaults on, so while no " +
+                "plug is in, everything they animate sits at its resting value. Animate only what " +
+                "nothing else on the avatar animates, or the two will fight. Driven by a contact on the " +
+                $"socket and one synced depth, the same one the shapes use; depth 1 is {YapsSocketReactions.ReachOf(socket):0.00} m in."));
+            for (int i = 0; i < animsProp.arraySize; i++)
+            {
+                int index = i;
+                var row = animsProp.GetArrayElementAtIndex(i);
+                var clipProp = row.FindPropertyRelative("clip");
+                var start = row.FindPropertyRelative("startsAt");
+                var fade = row.FindPropertyRelative("fadeOver");
+
+                var head = new VisualElement();
+                head.AddToClassList("ab-row");
+                head.style.alignItems = Align.Center;
+                var clipField = new ObjectField("Animation")
+                    { objectType = typeof(AnimationClip), allowSceneObjects = false, value = clipProp.objectReferenceValue };
+                clipField.AddToClassList("ab-field");
+                clipField.style.flexGrow = 1;
+                clipField.style.flexShrink = 1;
+                clipField.style.minWidth = 0;
+                clipField.RegisterValueChangedCallback(e =>
+                {
+                    clipProp.objectReferenceValue = e.newValue;
+                    so.ApplyModifiedProperties();
+                    AnimationsChanged(socket);
+                    // Shows or clears the not-built note.
+                    RebuildLater();
+                });
+                head.Add(clipField);
+                var remove = YapsInspectorStyle.Button("Remove", () =>
+                {
+                    animsProp.DeleteArrayElementAtIndex(index);
+                    so.ApplyModifiedProperties();
+                    AnimationsChanged(socket);
+                    RebuildLater();
+                });
+                remove.style.flexShrink = 0;
+                remove.style.marginLeft = 4;
+                head.Add(remove);
+                plays.Body.Add(head);
+
+                float s0 = start.floatValue, e0 = Mathf.Min(1f, start.floatValue + fade.floatValue);
+                var range = new MinMaxSlider("Starts at → fully on by", s0, e0, 0f, 1f);
+                range.AddToClassList("ab-field");
+                var readout = BridgeElements.Hint($"{s0:0.00}  →  {e0:0.00}  of full depth");
+                range.RegisterValueChangedCallback(e =>
+                {
+                    start.floatValue = e.newValue.x;
+                    fade.floatValue = Mathf.Max(0.01f, e.newValue.y - e.newValue.x);
+                    so.ApplyModifiedProperties();
+                    readout.text = $"{e.newValue.x:0.00}  →  {e.newValue.y:0.00}  of full depth";
+                    AnimationsChanged(socket);
+                });
+                plays.Body.Add(range);
+                plays.Body.Add(readout);
+            }
+            // The shapes card shows this only for the contact route, and
+            // animations always take it.
+            if (animsProp.arraySize > 0 && !(contactRoute && shapesProp.arraySize > 0))
+            {
+                var reachProp = so.FindProperty("depthReach");
+                var reachField = YapsInspectorStyle.Field(reachProp, type.GetField("depthReach"), "Full depth (m)");
+                reachField.TrackPropertyValue(reachProp, p => { AnimationsChanged(socket); RebuildLater(); });
+                plays.Body.Add(reachField);
+            }
+            plays.Body.Add(YapsInspectorStyle.Button("+ Add an animation", () =>
+            {
+                animsProp.arraySize++;
+                var row = animsProp.GetArrayElementAtIndex(animsProp.arraySize - 1);
+                row.FindPropertyRelative("clip").objectReferenceValue = null;
+                row.FindPropertyRelative("startsAt").floatValue = 0f;
+                row.FindPropertyRelative("fadeOver").floatValue = 0.3f;
+                so.ApplyModifiedProperties();
+                RebuildLater();
+            }));
+            if (socket.depthAnimations.Any(a => a != null && a.clip != null) && !YapsSocketReactions.AnimationsExist(socket))
+            {
+                plays.Body.Add(new HelpBox(
+                    "Not built yet: these play nothing in game until the socket is built.", HelpBoxMessageType.Warning));
+                plays.Body.Add(new BridgeElements.PrimaryButton("Build this socket", () =>
+                {
+                    foreach (var line in YapsNativeBuilder.BuildSocket(socket)) Debug.Log("[YAPS] " + line);
+                    RebuildLater();
+                }));
+            }
+            body.Add(plays);
 
             // See it work.
             int bakedPlugs = YapsPreview.CountBakedPlugsNear(socket, YapsPreview.NearEnough);

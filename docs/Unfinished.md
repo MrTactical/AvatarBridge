@@ -2059,7 +2059,12 @@ bezier bend, smooth start and minimum socket distance came from TPS.
 One unmapped property is deliberately not on this list: `_BlendshapeBadScaleFix` from DPS, because
 scale is read live here and there is nothing to fix.
 
-**4. A feature in its own right: depth animations.**
+**4. A feature in its own right: depth animations. BUILT 2026-09-11 on dev, on the contact.**
+
+A socket's **Plays as a plug goes in** list: clips, each with its own depth range, in a layer
+"YAPS <label> animations" (a direct tree of one 1D tree per clip, write defaults on), driven by the
+same trigger and synced depth as the reactions layer. Remove takes it out. Untested in game. The
+per-client GPU route below is still open, and still waits on the bridge.
 
 How far a plug has entered a socket drives an animation. This is the mechanism behind the arousal
 systems people ask about, where touching yourself changes a blendshape over time; those are built
