@@ -227,6 +227,28 @@ namespace AvatarBridge.Regression
                 Check(smr.sharedMaterials[1].HasProperty("_YAPS_Bake"), "skinned slot baked");
                 Check(YapsNativeBuilder.GuessRootBone(smr, 1) == shaft.transform, "root bone guessed from the mesh");
             });
+            // A converted plug has no YapsPlug; its author's Self rules ride
+            // on the material. Not humanoid, so both sockets count as on the
+            // hips, and path order makes the hole bit 1 and the ring bit 2.
+            Step("YAPS > A converted plug's own-socket rules", () =>
+            {
+                var baked = avatar.GetComponentInChildren<YapsPlug>(true).Target.sharedMaterials[1];
+                var conv = new GameObject("Converted Plug").AddComponent<MeshRenderer>();
+                conv.transform.SetParent(avatar.transform, false);
+                var m = new Material(baked);
+                conv.sharedMaterial = m;
+                hole.tags = new List<string> { YapsTags.Shared, "mouth" };
+                ring.tags = new List<string> { YapsTags.Shared, "hand" };
+                int Mask(IEnumerable<string> answers, IEnumerable<string> refuses, bool hips)
+                {
+                    YapsOwner.KeepSelfRules(m, answers, refuses, hips);
+                    YapsOwner.ApplySelf(avatar);
+                    return Mathf.RoundToInt(m.GetFloat("_YAPS_SelfSockets"));
+                }
+                Check(Mask(new[] { "hand" }, null, true) == 2, "answers hand: the ring alone");
+                Check(Mask(null, new[] { "HAND" }, true) == 1, "refuses hand, any case: the hole alone");
+                Check(Mask(null, null, false) == 0, "no rules: the default, and both sit on the hips");
+            });
 
             // --- scan and quiet -----------------------------------------------
             Step("YAPS > Scan", () =>

@@ -47,6 +47,17 @@ namespace AvatarBridge
         public static readonly Dictionary<string, List<string>> AuthoredRefuses =
             new Dictionary<string, List<string>>();
 
+        // The same two lists for the wearer's OWN sockets. SPS asks each rule
+        // which side it governs, and YAPS answers the two sides in different
+        // places: the lists above become the plug's tag test, these become its
+        // own-socket ticks. Plugs whose author turned hip avoidance off may
+        // enter the wearer's own hip sockets.
+        public static readonly Dictionary<string, List<string>> AuthoredSelfAnswers =
+            new Dictionary<string, List<string>>();
+        public static readonly Dictionary<string, List<string>> AuthoredSelfRefuses =
+            new Dictionary<string, List<string>>();
+        public static readonly HashSet<string> AuthoredEntersOwnHips = new HashSet<string>();
+
         // SPS's "global" tag, which nearly every socket and plug carries by
         // default. It is a fixed number over there rather than a hashed
         // word; the number cannot mean anything here, since a VRChat plug
@@ -62,6 +73,9 @@ namespace AvatarBridge
             AuthoredSocketTags.Clear();
             AuthoredAnswers.Clear();
             AuthoredRefuses.Clear();
+            AuthoredSelfAnswers.Clear();
+            AuthoredSelfRefuses.Clear();
+            AuthoredEntersOwnHips.Clear();
             if (ctx == null || !ctx.Settings.convertYapsSystems || source == null)
             {
                 return prep;
@@ -128,11 +142,20 @@ namespace AvatarBridge
                 if (type == "VRCFuryHapticSocket") { sockets.Add(component); continue; }
                 if (type != "VRCFuryHapticPlug") continue;
 
-                var answers = Rules(component, "includeTags");
-                if (Flag(component, "useSharedTag")) answers.Add(Shared);
-                var refuses = Rules(component, "excludeTags");
-                if (answers.Count > 0) AuthoredAnswers[component.gameObject.name] = answers;
-                if (refuses.Count > 0) AuthoredRefuses[component.gameObject.name] = refuses;
+                string plug = component.gameObject.name;
+                var answers = Rules(component, "includeTags", self: false);
+                var selfAnswers = Rules(component, "includeTags", self: true);
+                if (Flag(component, "useSharedTag")) { answers.Add(Shared); selfAnswers.Add(Shared); }
+                var refuses = Rules(component, "excludeTags", self: false);
+                var selfRefuses = Rules(component, "excludeTags", self: true);
+                if (answers.Count > 0) AuthoredAnswers[plug] = answers;
+                if (refuses.Count > 0) AuthoredRefuses[plug] = refuses;
+                if (selfAnswers.Count > 0) AuthoredSelfAnswers[plug] = selfAnswers;
+                if (selfRefuses.Count > 0) AuthoredSelfRefuses[plug] = selfRefuses;
+                // Missing reads as on: the safe side, and what YAPS does anyway.
+                var hips = component.GetType().GetField("useHipAvoidance",
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (hips != null && !Flag(component, "useHipAvoidance")) AuthoredEntersOwnHips.Add(plug);
             }
 
             var animator = source.GetComponentInChildren<Animator>(true);
@@ -243,10 +266,11 @@ namespace AvatarBridge
             return found;
         }
 
-        // A plug rule carries per-tag self and others flags. YAPS has one
-        // answer for both, so the flags go and the tag stays: dropping the
-        // rule instead would lose more than it protects.
-        static List<string> Rules(Component component, string name)
+        // A plug rule says which side it governs: the wearer's own sockets,
+        // everybody else's, or both. Neither ticked, or a rule from a version
+        // without the fields, reads as both, so no rule the author wrote is
+        // dropped.
+        static List<string> Rules(Component component, string name, bool self)
         {
             var found = new List<string>();
             var field = component.GetType().GetField(name,
@@ -257,12 +281,19 @@ namespace AvatarBridge
                 if (entry == null) continue;
                 var tag = entry.GetType().GetField("tag",
                     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                if (tag?.GetValue(entry) is string text && !string.IsNullOrWhiteSpace(text))
-                {
-                    found.Add(text.Trim());
-                }
+                if (!(tag?.GetValue(entry) is string text) || string.IsNullOrWhiteSpace(text)) continue;
+                bool onSelf = Side(entry, "allowSelf"), onOthers = Side(entry, "allowOthers");
+                if (!onSelf && !onOthers) onSelf = onOthers = true;
+                if (self ? onSelf : onOthers) found.Add(text.Trim());
             }
             return found;
+        }
+
+        static bool Side(object entry, string name)
+        {
+            var field = entry.GetType().GetField(name,
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            return field != null && field.FieldType == typeof(bool) && (bool) field.GetValue(entry);
         }
 
         public void Restore()

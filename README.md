@@ -793,7 +793,11 @@ ownership is judged by distance to the nearest hips, as before.
 **Which of your own sockets a plug may enter** is yours to choose, per plug: the plug's
 inspector has a **Your own sockets** list with a tick for each socket on the avatar. Everything off
 the hips starts ticked and everything on them starts clear, which is how SPS content behaves out
-of the box, so a converted avatar gets exactly that. A ticked socket still has to be switched on
+of the box. A converted SPS plug keeps its author's own choices: tag rules ticked **Self** decide
+which of the wearer's sockets it may enter, rules ticked **Others** decide everybody else's, and
+hip avoidance switched off lets it into the wearer's hip sockets. YAPS has one tag test for both
+sides, so an own socket also has to pass the Others rules; where the two disagree the plug takes
+the narrower answer. A ticked socket still has to be switched on
 to be entered, and the plug's **own sockets** toggle in game opens every one of them. The choice
 lives on the plug and never crosses the network: each socket carries only its number on its
 avatar, 1 to 15, and a socket past the fifteenth is judged by whether it sits on the hips.

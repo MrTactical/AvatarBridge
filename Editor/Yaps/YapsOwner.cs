@@ -118,12 +118,57 @@ namespace AvatarBridge
                     if (told.Add(r)) SetMask(r, mask);
                 }
             }
-            // A converted plug has no component to choose with, so the default.
+            // A converted plug has no component to choose with: its author's
+            // rules if the material kept any, else the default.
             foreach (var r in root.GetComponentsInChildren<Renderer>(true))
             {
-                if (!told.Contains(r)) SetMask(r, byDefault);
+                if (told.Contains(r)) continue;
+                foreach (var m in r.sharedMaterials)
+                    if (m != null) SetMask(m, RulesMask(m, sockets, human, byDefault));
             }
             return Math.Max(sockets.Count - MaxSelfSockets, 0);
+        }
+
+        // A converted SPS plug's rules for its wearer's own sockets, kept on
+        // its material BY TAG NAME, so the ticks follow a renumbering: every
+        // later build works them out again from the sockets as they are.
+        // Override tags rather than properties because the shader never
+        // reads them, so nothing has to be declared or can go stale.
+        const string AnswersKey = "YapsSelfAnswers";
+        const string RefusesKey = "YapsSelfRefuses";
+        const string HipsKey = "YapsSelfEntersHips";
+
+        public static void KeepSelfRules(Material m, IEnumerable<string> answers, IEnumerable<string> refuses,
+                                         bool entersHips)
+        {
+            if (m == null) return;
+            m.SetOverrideTag(AnswersKey, string.Join(",", YapsTags.Listed(answers)));
+            m.SetOverrideTag(RefusesKey, string.Join(",", YapsTags.Listed(refuses)));
+            m.SetOverrideTag(HipsKey, entersHips ? "1" : "");
+        }
+
+        // The same test the shader runs on the tag word, on the words: a
+        // refused tag refuses, and a non-empty answer list must name one.
+        static int RulesMask(Material m, List<YapsSocket> sockets,
+                             Dictionary<Transform, HumanBodyBones> human, int byDefault)
+        {
+            string answered = m.GetTag(AnswersKey, false), refused = m.GetTag(RefusesKey, false);
+            bool entersHips = m.GetTag(HipsKey, false) == "1";
+            if (answered == "" && refused == "" && !entersHips) return byDefault;
+            var answers = new HashSet<string>(answered.Split(','), StringComparer.OrdinalIgnoreCase);
+            var refuses = new HashSet<string>(refused.Split(','), StringComparer.OrdinalIgnoreCase);
+            answers.Remove("");
+            refuses.Remove("");
+            int mask = 0;
+            for (int i = 0; i < sockets.Count && i < MaxSelfSockets; i++)
+            {
+                var tags = sockets[i].tags ?? new List<string>();
+                if (answers.Count > 0 && !tags.Any(answers.Contains)) continue;
+                if (tags.Any(refuses.Contains)) continue;
+                if (!entersHips && OnHips(sockets[i].transform, human)) continue;
+                mask |= 1 << i;
+            }
+            return mask;
         }
 
         // Whether a plug may enter this socket of its wearer's when nobody has
@@ -160,14 +205,16 @@ namespace AvatarBridge
 
         static void SetMask(Renderer r, int mask)
         {
-            foreach (var m in r.sharedMaterials)
-            {
-                if (m == null || !m.HasProperty("_YAPS_SelfSockets")) continue;
-                if (Mathf.RoundToInt(m.GetFloat("_YAPS_SelfSockets")) == mask) continue;
-                Undo.RecordObject(m, "YAPS own sockets");
-                m.SetFloat("_YAPS_SelfSockets", mask);
-                EditorUtility.SetDirty(m);
-            }
+            foreach (var m in r.sharedMaterials) SetMask(m, mask);
+        }
+
+        static void SetMask(Material m, int mask)
+        {
+            if (m == null || !m.HasProperty("_YAPS_SelfSockets")) return;
+            if (Mathf.RoundToInt(m.GetFloat("_YAPS_SelfSockets")) == mask) return;
+            Undo.RecordObject(m, "YAPS own sockets");
+            m.SetFloat("_YAPS_SelfSockets", mask);
+            EditorUtility.SetDirty(m);
         }
 
         // Into the controller ChilloutVR uploads: the overrides, else the

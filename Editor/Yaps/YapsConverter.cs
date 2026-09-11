@@ -395,6 +395,15 @@ namespace AvatarBridge
             {
                 patched.SetVector("_YAPS_TagExclude", YapsTags.Patterns(refuses));
             }
+            // The rules the author aimed at their OWN sockets, kept by name for
+            // the own-socket ticks, which are worked out once sockets exist.
+            if (plugObject != null)
+            {
+                YapsBakePrep.AuthoredSelfAnswers.TryGetValue(plugObject, out var selfAnswers);
+                YapsBakePrep.AuthoredSelfRefuses.TryGetValue(plugObject, out var selfRefuses);
+                YapsOwner.KeepSelfRules(patched, selfAnswers, selfRefuses,
+                    YapsBakePrep.AuthoredEntersOwnHips.Contains(plugObject));
+            }
             ctx.YapsMaterialSwaps[(renderer, slot)] = (materials[slot], patched);
             materials[slot] = patched;
             renderer.sharedMaterials = materials;

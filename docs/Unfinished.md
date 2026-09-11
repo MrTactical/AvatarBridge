@@ -327,9 +327,13 @@ outnumber 960 by 540's pixels.
    plug's own sockets toggle opens the unticked one.
 
 **Follow-ups, not started.**
-- SPS plug rules with a Self modifier still lose it on conversion (`YapsBakePrep.Rules`). The
-  converter could now turn them into ticks, since it sees the wearer's own sockets and their tags
-  at build. Converted plugs would need a `YapsPlug` to carry them, or the mask written directly.
+- DONE 2026-09-11: SPS plug rules keep their side on conversion. Others rules go to the tag test
+  as before, Self rules and hip avoidance ride on the plug's material as override tags, by name,
+  and `YapsOwner.ApplySelf` turns them into ticks on every build, so a renumbering follows. Not
+  done: the tag test still runs on own sockets, so an own socket the Self rules allow and the
+  Others rules refuse stays refused. Letting the ticks replace the tag test for own sockets is a
+  shader change, and it would move native plugs' defaults too. Untested in game, and no avatar
+  on this machine has an SPS rule with its sides set; the smoke test covers the tick maths.
 - A per-plug menu choice. `_YAPS_SelfSockets` is a plain float, so a dropdown could animate it
   between a few sets, at the cost of one synced parameter a plug so every viewer bends alike.
 - Props and world sockets carry no id and fall back to the vote. `SeedInstance` would give a
