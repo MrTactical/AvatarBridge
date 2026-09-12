@@ -130,9 +130,17 @@ namespace AvatarBridge
                     // beside it already refuses the same clips. Dropping the
                     // layer loses nothing: a proxy-only layer has no authored
                     // clip in it by definition, which is what the test asks.
+                    // Base carries the extra test: a layer can hold nothing
+                    // but placeholders and still DO something, through a
+                    // parameter driver on one of its states, and dropping it
+                    // would take that with it in silence. Gesture is left
+                    // exactly as it has shipped since 3.5: widening it there
+                    // would start merging proxy hand layers again, trading a
+                    // silent loss for snapped fingers.
                     if (IsProxyOnlyLayer(srcLayer)
                         && (id == VRCAvatarDescriptor.AnimLayerType.Gesture
-                            || id == VRCAvatarDescriptor.AnimLayerType.Base))
+                            || (id == VRCAvatarDescriptor.AnimLayerType.Base
+                                && !HasAnyBehaviour(srcLayer))))
                     {
                         bool hands = id == VRCAvatarDescriptor.AnimLayerType.Gesture;
                         ctx.Report.Converted(Category,
@@ -9484,6 +9492,33 @@ namespace AvatarBridge
                 }
             });
             return clips > 0 && !authored;
+        }
+
+        // Anything on a state or a machine that acts rather than animates:
+        // a parameter driver, an audio player, a layer control. A layer
+        // holding one is never only placeholders, whatever its clips say.
+        static bool HasAnyBehaviour(AnimatorControllerLayer srcLayer)
+        {
+            if (srcLayer?.stateMachine == null)
+            {
+                return false;
+            }
+            bool found = false;
+            WalkMachines(srcLayer.stateMachine, machine =>
+            {
+                if (machine.behaviours != null && machine.behaviours.Length > 0)
+                {
+                    found = true;
+                }
+                foreach (var child in machine.states)
+                {
+                    if (child.state?.behaviours != null && child.state.behaviours.Length > 0)
+                    {
+                        found = true;
+                    }
+                }
+            });
+            return found;
         }
 
         internal static bool IsVrchatProxyClip(AnimationClip clip)
