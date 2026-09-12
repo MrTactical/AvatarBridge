@@ -631,19 +631,7 @@ namespace AvatarBridge
         static bool Internal(string name) =>
             !string.IsNullOrEmpty(name)
             && (Scaffolding.IsMatch(name) || CvrParameterNames.IsGameDriven(name)
-                || NeverFed(name));
-
-        // The merger's list of VRChat parameters it declares and never
-        // writes, which only exists where the VRChat SDK does. Without it
-        // there is no VRChat avatar to carry one, so the answer is no.
-        static bool NeverFed(string name)
-        {
-#if VRC_SDK_VRCSDK3
-            return AnimatorMerger.NeverFed(name);
-#else
-            return false;
-#endif
-        }
+                || CvrParameterNames.NeverFed(name));
 
         // Findings a person can act on: something of theirs is broken or
         // unreachable, and the name is one they would recognise.
