@@ -753,6 +753,15 @@ and `Current` whenever it is convenient.
 
 ## Loose ends, small but real
 
+### A descriptor with no layer array crashed the contact pass, 2026-09-12. FIXED
+
+`GetSelectedVrcControllers` read `ctx.SourceDescriptor.baseAnimationLayers` without asking whether
+it was there. `MeshGrowth.Reach` calls it just to find what animates a zone, so a descriptor whose
+array the SDK had never filled took a null reference all the way out through `ContactsConverter`
+and read as a converter crash. It returns an empty list now. Found by `ContactAnchorTest`, which
+had been failing unseen because the harness copy in the corpus project was stale; all fifteen dev
+tests pass against the current code as of this entry.
+
 ### A stale dev harness stops the corpus dead, 2026-09-12. FIXED
 
 Run 399 aborted on "Scripts have compiler errors": `Editor/DevTools/BakeScaleCheck.cs` in the

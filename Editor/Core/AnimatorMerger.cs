@@ -786,6 +786,14 @@ namespace AvatarBridge
         internal static List<(VRCAvatarDescriptor.AnimLayerType id, AnimatorController controller)> GetSelectedVrcControllers(BridgeContext ctx)
         {
             var result = new List<(VRCAvatarDescriptor.AnimLayerType, AnimatorController)>();
+            // A descriptor whose layer array was never filled. The SDK fills it
+            // from its own setup, which AddComponent in batch mode never runs,
+            // and a caller that only wants to know what animates something gets
+            // a null reference reading as a converter crash instead of "none".
+            if (ctx.SourceDescriptor == null || ctx.SourceDescriptor.baseAnimationLayers == null)
+            {
+                return result;
+            }
             foreach (var layer in ctx.SourceDescriptor.baseAnimationLayers)
             {
                 bool wanted;
