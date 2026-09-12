@@ -335,9 +335,12 @@ version and still cross. Every tester has to be on the same build for the atlas.
    the wearer's own hip socket alone. *The cross-avatar half is proven, 2026-09-12: an owner id
    that refused everything would have shown as nobody resolving.*
 3. Overlap: a partner's socket pressed into the wearer's hips is answered.
-4. A mirror capped at 1024 and a 1280 by 720 window both carry the atlas at 932 by 596. *The
-   window is done, 2026-09-12. The mirror, the portrait, VR both eyes and the personal mirror
-   are not.*
+4. **DONE, in game 2026-09-12.** Every view carries the atlas at 932 by 596: the desktop window,
+   VR both eyes under a simulated headset, a world mirror, the personal mirror, the self portrait
+   and the third-person camera. The atlas cell read green in all of them, including the readout
+   drawn INSIDE a mirror and inside the portrait, which is the case that says the grab followed
+   the camera rather than the main view. Nothing to shrink the rect for, and the fallback layout
+   at 240 square stays unexercised.
 
 5. **DONE, in game 2026-09-12.** All four states on one avatar, read off the overlay rather than
    off the bend. Own hand ring switched on, "own sockets" ON: atlas, engaged, bending. Same
