@@ -340,7 +340,14 @@ version and still cross. Every tester has to be on the same build for the atlas.
    are not.*
 
 5. A ticked own hand socket, switched on, is entered; an unticked one, switched on, is not; the
-   plug's own sockets toggle opens the unticked one.
+   plug's own sockets toggle opens the unticked one. *2026-09-12 in game: the toggle half is
+   proven both ways. Own hand ring switched on with "own sockets" ON, the plug bends into it and
+   the overlay reads atlas, engaged, own body allowed. With "own sockets" OFF the same socket is
+   refused (nobody resolved, not engaged, own-body cell amber), and with the socket itself
+   switched off nothing is in the atlas at all. What that leaves open is the TICK: the ring was
+   only entered through the blanket toggle, so its checklist tick must be clear. Read the plug's
+   "Your own sockets" list: if the ring is unticked, the plug's carried tags are refusing it, and
+   ticking it by hand should beat them, which is the untested half.*
 6. An own socket the plug's tags refuse, ticked by hand, is entered. With the tag chooser on one
    tag, a default-ticked own socket that tag does not name is not.
 7. An unticked own hand or mouth socket with its marker lights lit is not entered either.
