@@ -339,17 +339,18 @@ version and still cross. Every tester has to be on the same build for the atlas.
    window is done, 2026-09-12. The mirror, the portrait, VR both eyes and the personal mirror
    are not.*
 
-5. A ticked own hand socket, switched on, is entered; an unticked one, switched on, is not; the
-   plug's own sockets toggle opens the unticked one. *2026-09-12 in game: the toggle half is
-   proven both ways. Own hand ring switched on with "own sockets" ON, the plug bends into it and
-   the overlay reads atlas, engaged, own body allowed. With "own sockets" OFF the same socket is
-   refused (nobody resolved, not engaged, own-body cell amber), and with the socket itself
-   switched off nothing is in the atlas at all. What that leaves open is the TICK: the ring was
-   only entered through the blanket toggle, so its checklist tick must be clear. Read the plug's
-   "Your own sockets" list: if the ring is unticked, the plug's carried tags are refusing it, and
-   ticking it by hand should beat them, which is the untested half.*
-6. An own socket the plug's tags refuse, ticked by hand, is entered. With the tag chooser on one
-   tag, a default-ticked own socket that tag does not name is not.
+5. **DONE, in game 2026-09-12.** All four states on one avatar, read off the overlay rather than
+   off the bend. Own hand ring switched on, "own sockets" ON: atlas, engaged, bending. Same
+   socket with "own sockets" OFF and the tick clear: nobody resolved, not engaged. The socket
+   itself switched off: nothing in the atlas at all, which is what says the other two were not
+   luck. Then the tick set by hand, re-baked, with "own sockets" OFF: bending again.
+6. **The first half is DONE, in game 2026-09-12**, and it is the whole of `_YAPS_SelfChosen`: the
+   checklist started that ring CLEAR because the plug's carried tags refuse it, and a tick set by
+   hand entered it anyway with the blanket toggle off. The bottom row's own-body cell stays AMBER
+   throughout, which is right and will read as a contradiction to somebody one day: that cell
+   shows `_YAPS_SelfAllow`, the blanket flag, and a chosen socket is entered past it. Still open:
+   with the tag chooser on one tag, a default-ticked own socket that tag does not name is not
+   entered.
 7. An unticked own hand or mouth socket with its marker lights lit is not entered either.
 
 **Follow-ups, not started.**
