@@ -75,11 +75,8 @@ namespace AvatarBridge
                 copiedClips.Sort(StringComparer.Ordinal);
                 ctx.Report.Converted(Category,
                     $"Controller made self-contained: {copiedClips.Count} clip(s), {copiedMasks} mask(s) copied into RehomedAssets",
-                    "Every animation the avatar plays now ships inside the output folder. The controller used to " +
-                    "reference clips wherever the source avatar kept them; in a project without those folders each " +
-                    "missing clip silently plays as stillness, frozen fingers, dead emotes, with no error anywhere. " +
-                    "The CCK's own clips are the one exclusion: uploading requires the CCK installed, so those are " +
-                    "always present. Copied: " + string.Join(", ", copiedClips) + ".");
+                    "A missing clip plays as stillness with no error, so all but the CCK's own now ship in the " +
+                    "output folder. Copied: " + string.Join(", ", copiedClips) + ".");
             }
             else
             {

@@ -44,14 +44,28 @@ emit plug <<'BODY'
 float4 main(uint id : SV_VertexID) : SV_POSITION
 {
     YapsSocket s = YapsResolveSocket(float3(0,0,0), float3(0,0,1), float3(0,1,0), 0.2);
-    YapsChain c = YapsResolveChain(float3(0,0,0), float3(0,0,1), 0.2);
+    YapsChain c = YapsResolveChain(float3(0,0,0), float3(0,0,1), 0.2, float3(1e9,1e9,1e9));
     return float4(s.position + s.forward + c.position[0],
                   s.engaged + s.tier + c.arc[1] + c.count);
 }
 BODY
 
+# The socket writer's side of the protocol, which no plug include reaches.
+emit writer <<'BODY'
+float4 main(uint id : SV_VertexID) : SV_POSITION
+{
+    int cx, cy;
+    YapsAtlasCellPixels(id, 3, YapsAtlasLayoutNow(), cx, cy);
+    float4 o = YapsOwnerEncode(YapsOwnerOf(_YAPS_Owner));
+    float kind; int index; bool oneWay;
+    YapsFacingDecode(YapsFacingEncode(id % 3, id >> 2), kind, index, oneWay);
+    return float4(o.xyz + YapsTagsEncode(id).xyz, YapsOwnerDecode(o) + cx + cy + kind + index
+                  + YapsAtlasWidthPx() + YapsAtlasHeightPx());
+}
+BODY
+
 fail=0
-for t in plug; do
+for t in plug writer; do
     # X3556 is a note about integer modulus being slow, and X4008 a division
     # the stubs fold to zero. Neither is a defect in the shader.
     out="$("$FXC" -nologo -T vs_5_0 -E main -I "$YAPS" -I "$TMP" \

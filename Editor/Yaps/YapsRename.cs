@@ -143,22 +143,16 @@ namespace AvatarBridge
                 var sample = unresolved.Take(12).ToList();
                 ctx.Report.Warning(Category,
                     $"{unresolved.Count} animation path(s) no longer point at anything",
-                    "Objects were renamed to read as YAPS and the animations addressing them were " +
-                    "rewritten to match, but some now name a path this avatar does not have. " +
-                    "Anything they drove will not move. Please report this at the AvatarBridge " +
-                    "repo: it is a bug in the rename, not in your avatar. The first few:\n  " +
+                    "Some rewritten paths name nothing on this avatar, so what they drove won't move. " +
+                    "Please report it at the AvatarBridge repo; it is a bug in the rename. The first few:\n  " +
                     string.Join("\n  ", sample) +
                     (unresolved.Count > sample.Count ? $"\n  … and {unresolved.Count - sample.Count} more" : ""));
             }
 
             ctx.Report.Converted(Category,
                 $"Renamed {doomed.Count} object(s) to YAPS",
-                $"The objects VRChat's bake leaves behind are named after ITS system, so a " +
-                $"converted avatar read as someone else's plumbing with a deform attached. They " +
-                $"are now named for the one actually driving them. {rewritten} animation " +
-                "path(s) were rewritten to follow. Nothing that another player's content reads " +
-                "was touched: the contact tags and the marker light ranges are how DPS, TPS and " +
-                "SPS plugs find these sockets, so they stay exactly as they were.");
+                $"Named for what drives them now, with {rewritten} animation path(s) rewritten. Contact " +
+                "tags and marker light ranges are unchanged, so DPS, TPS and SPS plugs still find them.");
         }
 
         static string ParentPath(BridgeContext ctx, Transform transform)

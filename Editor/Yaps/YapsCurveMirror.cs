@@ -17,19 +17,45 @@ namespace AvatarBridge
     public static class YapsCurveMirror
     {
         // Four float4s, sixteen shapes, matching SPS.
-        public static string WeightProperty(int slot)
+        static string WeightPack(int shape)
         {
-            string pack = slot < 4 ? "_YAPS_ShapeWeights"
-                        : slot < 8 ? "_YAPS_ShapeWeights2"
-                        : slot < 12 ? "_YAPS_ShapeWeights3"
-                        : "_YAPS_ShapeWeights4";
-            return pack + "." + "xyzw"[slot & 3];
+            return shape < 4 ? "_YAPS_ShapeWeights"
+                 : shape < 8 ? "_YAPS_ShapeWeights2"
+                 : shape < 12 ? "_YAPS_ShapeWeights3"
+                 : "_YAPS_ShapeWeights4";
+        }
+
+        // One curve onto every slot of the renderer whose material declares
+        // the property. "material._X" is the FIRST material alone, so a plug
+        // material in any other slot never heard a size curve written that way.
+        static void SetOnSlots(AnimationClip clip, string rendererPath, Renderer renderer, string property,
+            string component, AnimationCurve curve)
+        {
+            var type = renderer != null ? renderer.GetType() : typeof(SkinnedMeshRenderer);
+            var slots = YapsToggles.SlotsWith(renderer, property);
+            foreach (int slot in slots)
+            {
+                AnimationUtility.SetEditorCurve(clip, new EditorCurveBinding
+                {
+                    path = rendererPath, type = type, propertyName = YapsToggles.Bound(slot, property) + component,
+                }, curve);
+            }
+            // An earlier build wrote slot 0's spelling here, which no material
+            // reads when slot 0 is not the plug's.
+            if (!slots.Contains(0))
+            {
+                var stale = new EditorCurveBinding
+                {
+                    path = rendererPath, type = type, propertyName = YapsToggles.Bound(0, property) + component,
+                };
+                if (AnimationUtility.GetEditorCurve(clip, stale) != null) AnimationUtility.SetEditorCurve(clip, stale, null);
+            }
         }
 
         // Shape curves on the renderer become weight curves on its material.
         // Returns how many were written; `missed` names animated shapes that
         // move the plug but are not in the bake.
-        public static int MirrorShapes(IEnumerable<AnimationClip> clips, string rendererPath, Type rendererType,
+        public static int MirrorShapes(IEnumerable<AnimationClip> clips, string rendererPath, Renderer renderer,
             IList<string> bakedShapes, ICollection<string> movingShapes, ISet<string> missed)
         {
             int written = 0;
@@ -47,8 +73,8 @@ namespace AvatarBridge
                         continue;
                     }
                     string shape = binding.propertyName.Substring("blendShape.".Length);
-                    int slot = bakedShapes.IndexOf(shape);
-                    if (slot < 0)
+                    int index = bakedShapes.IndexOf(shape);
+                    if (index < 0)
                     {
                         if (movingShapes != null && movingShapes.Contains(shape))
                         {
@@ -65,12 +91,7 @@ namespace AvatarBridge
                         scaled.AddKey(new Keyframe(key.time, key.value * 0.01f,
                             key.inTangent * 0.01f, key.outTangent * 0.01f));
                     }
-                    AnimationUtility.SetEditorCurve(clip, new EditorCurveBinding
-                    {
-                        path = rendererPath,
-                        type = rendererType,
-                        propertyName = "material." + WeightProperty(slot),
-                    }, scaled);
+                    SetOnSlots(clip, rendererPath, renderer, WeightPack(index), "." + "xyzw"[index & 3], scaled);
                     written++;
                 }
             }
@@ -104,7 +125,7 @@ namespace AvatarBridge
         // where no animator runs, kept the baked size. Dividing by the bake
         // pose makes the two agree by construction.
         public static int MirrorBoneScale(IEnumerable<AnimationClip> clips,
-            IDictionary<string, Transform> bones, string rendererPath, Type rendererType,
+            IDictionary<string, Transform> bones, string rendererPath, Renderer renderer,
             Quaternion bakeRotation)
         {
             if (bones == null || bones.Count == 0)
@@ -166,18 +187,12 @@ namespace AvatarBridge
                 bool any = false;
                 if (length != null)
                 {
-                    AnimationUtility.SetEditorCurve(clip, new EditorCurveBinding
-                    {
-                        path = rendererPath, type = rendererType, propertyName = "material._YAPS_BakeScale",
-                    }, AsRatio(length, bone.localScale[along]));
+                    SetOnSlots(clip, rendererPath, renderer, "_YAPS_BakeScale", "", AsRatio(length, bone.localScale[along]));
                     any = true;
                 }
                 if (girth != null)
                 {
-                    AnimationUtility.SetEditorCurve(clip, new EditorCurveBinding
-                    {
-                        path = rendererPath, type = rendererType, propertyName = "material._YAPS_BakeGirth",
-                    }, AsRatio(girth, bone.localScale[girthAxis]));
+                    SetOnSlots(clip, rendererPath, renderer, "_YAPS_BakeGirth", "", AsRatio(girth, bone.localScale[girthAxis]));
                     any = true;
                 }
                 if (any)
@@ -235,9 +250,8 @@ namespace AvatarBridge
         // material. The original curve is left where it is, since a field
         // bound to a component that is not there costs nothing.
         public static int MirrorEnabled(IEnumerable<AnimationClip> clips, string componentPath, Type componentType,
-            string rendererPath, Type rendererType, string property)
+            string rendererPath, Renderer renderer, string property)
         {
-            string target = "material." + property;
             int written = 0;
             foreach (var clip in clips)
             {
@@ -255,7 +269,7 @@ namespace AvatarBridge
                     {
                         source = AnimationUtility.GetEditorCurve(clip, b);
                     }
-                    else if (b.path == rendererPath && b.propertyName == target)
+                    else if (b.path == rendererPath && YapsToggles.Writes(b, property))
                     {
                         alreadyDriven = true;
                     }
@@ -266,10 +280,7 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                AnimationUtility.SetEditorCurve(clip, new EditorCurveBinding
-                {
-                    path = rendererPath, type = rendererType, propertyName = target,
-                }, new AnimationCurve(source.keys));
+                SetOnSlots(clip, rendererPath, renderer, property, "", new AnimationCurve(source.keys));
                 written++;
             }
             return written;

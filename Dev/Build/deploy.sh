@@ -54,6 +54,19 @@ for proj in "${projects[@]}"; do
         cp -r "$REPO/$d" "$dest/"
         [ -f "$REPO/$d.meta" ] && cp "$REPO/$d.meta" "$dest/"
     done
+    # The dev harness under Editor/DevTools is the package build's to
+    # install, but a copy of it that stops compiling stops the whole
+    # project, and a corpus run died on a probe an older build left there.
+    # Refresh by name what is already present; add nothing, delete nothing.
+    if [ -d "$dest/Editor/DevTools" ]; then
+        stale=0
+        while IFS= read -r have; do
+            src=$(find "$REPO/Dev" -name "$(basename "$have")" -type f -print -quit)
+            [ -n "$src" ] || continue
+            cmp -s "$src" "$have" || { cp "$src" "$have"; stale=$((stale + 1)); }
+        done < <(find "$dest/Editor/DevTools" -maxdepth 1 -name '*.cs')
+        if [ "$stale" -gt 0 ]; then echo "  refreshed $stale dev harness file(s)"; fi
+    fi
     for f in "${FILES[@]}"; do
         [ -f "$REPO/$f" ] && cp "$REPO/$f" "$dest/"
         [ -f "$REPO/$f.meta" ] && cp "$REPO/$f.meta" "$dest/"

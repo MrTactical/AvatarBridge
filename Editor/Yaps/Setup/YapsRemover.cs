@@ -14,7 +14,7 @@ namespace AvatarBridge
     public static class YapsRemover
     {
         // Objects the toolkit puts under a plug or a socket, by name.
-        static readonly string[] OwnChildren = { "YAPS Markers", "YAPS Depth", "YAPS Lights", "YAPS Pointers" };
+        static readonly string[] OwnChildren = { "YAPS Markers", "YAPS Depth", "YAPS Lights", "YAPS Pointers", "YAPS Atlas" };
 
         // The material curves Bake writes into the avatar's own clips.
         static readonly string[] WiredProperties =
@@ -40,6 +40,8 @@ namespace AvatarBridge
                 : $"the YAPS Socket component on \"{socket.name}\" and the markers, lights and pointers under it (the object stays: it has other things on it)");
             if (YapsSocketReactions.Exists(socket))
                 lines.Add($"the animator layer \"{YapsSocketReactions.LayerName(socket)}\" and its parameter");
+            if (YapsSocketReactions.AnimationsExist(socket))
+                lines.Add($"the animator layer \"{YapsSocketReactions.AnimationsLayerName(socket)}\"");
             if (avatar != null && ToggleEntriesFor(avatar, socket.gameObject).Any())
                 lines.Add($"the menu toggle \"{socket.name}\"");
             if (socket.renderer != null && socket.bakedFrom != null)
@@ -63,6 +65,9 @@ namespace AvatarBridge
                     ? $"the bake on \"{renderer.name}\": its material goes back to \"{back.name}\" ({how})"
                     : $"the bake on \"{renderer.name}\": the deform is switched off ({how})");
             }
+            var others = YapsToggles.MeshesOf(plug).Where(m => m != renderer).Select(m => $"\"{m.name}\"").ToList();
+            if (others.Count > 0)
+                lines.Add($"the bake on {string.Join(", ", others)}: each back on its own material");
             if (avatar != null && renderer != null && WiredClips(avatar, renderer).Any())
                 lines.Add("the size wiring Bake added to your own animations");
             if (avatar != null && ToggleEntriesFor(avatar, plug).Any())
@@ -126,6 +131,14 @@ namespace AvatarBridge
                 if (old > 0) done.Add($"the layer it was built as, \"{socket.builtLayer}\"");
             }
             RemoveLayer(controllers, layer, YapsSocketReactions.LegacyParameter(socket));
+            // The depth animations, after the reactions: the depth parameter
+            // goes with whichever of the two layers is the last to read it.
+            string played = YapsSocketReactions.AnimationsLayerName(socket);
+            int playedOut = RemoveLayer(controllers, played, parameter);
+            if (playedOut > 0) done.Add($"layer \"{played}\" out of {playedOut} controller(s)");
+            if (!string.IsNullOrEmpty(socket.builtAnimations) && socket.builtAnimations != played)
+                RemoveLayer(controllers, socket.builtAnimations, parameter);
+            RemoveIfUnused(controllers, YapsSocketReactions.One);
 
             // The socket's toggle, and the menu animator without it.
             if (avatar != null)
@@ -137,16 +150,22 @@ namespace AvatarBridge
                 if (menu != null) done.Add(menu.TrimEnd('.'));
             }
 
-            // The bake on its own mesh: the material it replaced goes back.
-            if (socket.renderer != null && socket.bakedFrom != null)
+            // The bake on its own mesh: the material it replaced goes back, on
+            // the slot the bake recorded. Slot 0 was an assumption, and on a
+            // socket baked into any other slot it painted the socket's original
+            // over slot 0 and left the bake where it was.
+            var baked = socket.bakedRenderer != null ? socket.bakedRenderer : socket.renderer;
+            int bakedSlot = socket.bakedSlot >= 0 ? socket.bakedSlot : 0;
+            if (baked != null && socket.bakedFrom != null)
             {
-                var mats = socket.renderer.sharedMaterials;
-                if (mats.Length > 0 && mats[0] != null && mats[0].HasProperty("_YAPS_Bake") && mats[0] != socket.bakedFrom)
+                var mats = baked.sharedMaterials;
+                if (bakedSlot < mats.Length && mats[bakedSlot] != null
+                    && mats[bakedSlot].HasProperty("_YAPS_Bake") && mats[bakedSlot] != socket.bakedFrom)
                 {
-                    Undo.RecordObject(socket.renderer, "Remove YAPS socket");
-                    mats[0] = socket.bakedFrom;
-                    socket.renderer.sharedMaterials = mats;
-                    done.Add($"\"{socket.renderer.name}\" back on \"{socket.bakedFrom.name}\"");
+                    Undo.RecordObject(baked, "Remove YAPS socket");
+                    mats[bakedSlot] = socket.bakedFrom;
+                    baked.sharedMaterials = mats;
+                    done.Add($"\"{baked.name}\" back on \"{socket.bakedFrom.name}\"");
                 }
             }
 
@@ -171,7 +190,10 @@ namespace AvatarBridge
                 var controller = controllers.FirstOrDefault();
                 string lighthouse = controller != null ? YapsLighthouse.Build(avatar, controller) : null;
                 if (lighthouse != null) done.Add(lighthouse);
+                string owner = YapsOwner.Wire(avatar);
+                if (owner != null) done.Add(owner);
             }
+            DropAtlasIfUnused(top, done);
 
             Undo.CollapseUndoOperations(group);
             return $"Removed socket \"{name}\": " + string.Join(", ", done) + ". Undo brings it all back.";
@@ -194,6 +216,16 @@ namespace AvatarBridge
 
             if (renderer != null)
             {
+                // The readout first: its slot carries the bake texture too,
+                // and left in place it would be restored as a plug material.
+                if (plug.readoutRenderer != null)
+                {
+                    Undo.RecordObject(plug.readoutRenderer, "Remove YAPS plug");
+                    Undo.RecordObject(plug, "Remove YAPS plug");
+                    YapsDebugOverlayBuilder.Restore(plug);
+                    done.Add("the debug readout off its mesh");
+                }
+
                 // The bake: the material it replaced back in its slot; when
                 // that cannot be found, the deform off and the source shader
                 // back where it is known.
@@ -257,6 +289,31 @@ namespace AvatarBridge
                 }
             }
 
+            // The other meshes the bake reached, which kept their baked
+            // materials and went on bending with the plug gone. Only the slots
+            // it recorded there, each back on its own original: nothing else on
+            // them is the plug's, and the primary's original is none of theirs.
+            foreach (var mesh in YapsToggles.MeshesOf(plug).Where(m => m != renderer))
+            {
+                var mats = mesh.sharedMaterials;
+                int back = 0;
+                Undo.RecordObject(mesh, "Remove YAPS plug");
+                foreach (var b in plug.bakedSlots)
+                {
+                    if (b == null || b.renderer != mesh || b.was == null || b.slot >= mats.Length) continue;
+                    if (mats[b.slot] == null || !mats[b.slot].HasProperty("_YAPS_Bake")) continue;
+                    mats[b.slot] = b.was;
+                    back++;
+                }
+                mesh.sharedMaterials = mats;
+                if (back > 0) done.Add($"\"{mesh.name}\" back on its own {back} material(s)");
+                if (avatar != null)
+                {
+                    int stripped = StripWiring(avatar, mesh);
+                    if (stripped > 0) done.Add($"size wiring out of {stripped} clip(s) on \"{mesh.name}\"");
+                }
+            }
+
             if (avatar != null)
             {
                 int before = YapsToggles.Edits;
@@ -293,6 +350,10 @@ namespace AvatarBridge
                 }
             }
 
+            string owner = YapsOwner.Wire(avatar);
+            if (owner != null) done.Add(owner);
+            DropAtlasIfUnused(top, done);
+
             Undo.CollapseUndoOperations(group);
             return $"Removed plug \"{name}\": " + string.Join(", ", done) + ". Undo brings it all back.";
         }
@@ -310,7 +371,8 @@ namespace AvatarBridge
             var avatar = top.GetComponentInChildren<CVRAvatar>();
             var sockets = top.GetComponentsInChildren<YapsSocket>(true);
             var plugs = top.GetComponentsInChildren<YapsPlug>(true);
-            var liveLayers = new HashSet<string>(sockets.Select(YapsSocketReactions.LayerName));
+            var liveLayers = new HashSet<string>(sockets.Select(YapsSocketReactions.LayerName)
+                .Concat(sockets.Select(YapsSocketReactions.AnimationsLayerName)));
 
             Undo.IncrementCurrentGroup();
             int group = Undo.GetCurrentGroup();
@@ -321,8 +383,10 @@ namespace AvatarBridge
                 // Layers named for a socket that is gone.
                 foreach (var layer in controller.layers.ToList())
                 {
-                    if (!layer.name.StartsWith("YAPS ") || !layer.name.EndsWith(" reactions") || liveLayers.Contains(layer.name)) continue;
-                    string socketName = layer.name.Substring(5, layer.name.Length - 5 - 10);
+                    string suffix = layer.name.EndsWith(" reactions") ? " reactions"
+                        : layer.name.EndsWith(" animations") ? " animations" : null;
+                    if (!layer.name.StartsWith("YAPS ") || suffix == null || liveLayers.Contains(layer.name)) continue;
+                    string socketName = layer.name.Substring(5, layer.name.Length - 5 - suffix.Length);
                     var one = new List<AnimatorController> { controller };
                     // The synced name this build writes, and the local one older builds did.
                     RemoveLayer(one, layer.name, "YAPS/" + Machine(socketName) + "/Depth");
@@ -332,7 +396,7 @@ namespace AvatarBridge
                 // Depth parameters no layer reads.
                 foreach (var p in controller.parameters.ToList())
                 {
-                    if (!YapsSocketReactions.IsDepthName(p.name)) continue;
+                    if (!YapsSocketReactions.IsDepthName(p.name) && p.name != YapsSocketReactions.One) continue;
                     if (ParameterUsed(controller, p.name)) continue;
                     Undo.RegisterCompleteObjectUndo(controller, "Clean up YAPS leftovers");
                     controller.RemoveParameter(p);
@@ -354,7 +418,7 @@ namespace AvatarBridge
                         // clip aims at a path with no bake on it any more.
                         if (!Generated(t.animationClip)) continue;
                         string path = AnimationUtility.GetCurveBindings(t.animationClip)
-                            .FirstOrDefault(b => b.propertyName == "material._YAPS_Enabled").path;
+                            .FirstOrDefault(b => YapsToggles.Writes(b, "_YAPS_Enabled")).path;
                         var at = path != null ? avatar.transform.Find(path) : null;
                         var r = at != null ? at.GetComponent<Renderer>() : null;
                         if (r != null && BakedSlots(r).Any()) continue;
@@ -393,11 +457,42 @@ namespace AvatarBridge
                 if (t == null || t == top || !OwnChildren.Contains(t.name) || t.parent == null) continue;
                 if (t.parent.GetComponent<YapsSocket>() != null || t.parent.GetComponent<YapsPlug>() != null) continue;
                 done.Add($"\"{t.name}\" under \"{t.parent.name}\": no socket or plug there any more");
+                var shell = t.parent;
                 Undo.DestroyObjectImmediate(t.gameObject);
+                // A socket object the toolkit made, emptied by a remove that
+                // left its atlas behind.
+                if (shell != top && shell.name.StartsWith("YAPS ") && shell.childCount == 0
+                    && shell.GetComponents<Component>().Length == 1)
+                {
+                    done.Add($"the empty \"{shell.name}\"");
+                    Undo.DestroyObjectImmediate(shell.gameObject);
+                }
             }
+            DropAtlasIfUnused(top, done);
 
             Undo.CollapseUndoOperations(group);
             return done;
+        }
+
+        // The atlas grab and clear at the root serve every socket and plug on
+        // it, so they go with the last of them. A converted avatar keeps its
+        // bakes without components, so a baked material still counts.
+        static void DropAtlasIfUnused(Transform top, List<string> done)
+        {
+            if (top == null) return;
+            if (top.GetComponentsInChildren<YapsSocket>(true).Length > 0
+                || top.GetComponentsInChildren<YapsPlug>(true).Length > 0
+                || top.GetComponentsInChildren<Transform>(true).Any(t => t.name == "YAPS Atlas")
+                || top.GetComponentsInChildren<Renderer>(true).Any(r => r.sharedMaterials
+                    .Any(m => m != null && m.HasProperty("_YAPS_Bake"))))
+                return;
+            foreach (string name in new[] { YapsAtlas.GrabName, YapsAtlas.ClearName })
+            {
+                var t = top.Find(name);
+                if (t == null) continue;
+                done.Add($"\"{name}\": nothing on the avatar reads the atlas any more");
+                Undo.DestroyObjectImmediate(t.gameObject);
+            }
         }
 
         // --- pieces ----------------------------------------------------------
@@ -421,6 +516,18 @@ namespace AvatarBridge
             }
             foreach (var animator in top.GetComponentsInChildren<Animator>(true)) Add(animator.runtimeAnimatorController);
             return list;
+        }
+
+        static void RemoveIfUnused(List<AnimatorController> controllers, string parameter)
+        {
+            foreach (var controller in controllers)
+            {
+                var p = controller.parameters.FirstOrDefault(x => x.name == parameter);
+                if (p == null || ParameterUsed(controller, parameter)) continue;
+                Undo.RegisterCompleteObjectUndo(controller, "Remove YAPS parameter");
+                controller.RemoveParameter(p);
+                EditorUtility.SetDirty(controller);
+            }
         }
 
         static int RemoveLayer(List<AnimatorController> controllers, string layerName, string parameter)
@@ -518,7 +625,7 @@ namespace AvatarBridge
                 if (e == null || e.type != ABI.CCK.Scripts.CVRAdvancedSettingsEntry.SettingsType.Toggle || e.toggleSettings == null) continue;
                 var t = e.toggleSettings;
                 if (!t.useAnimationClip || !Generated(t.animationClip)) continue;
-                if (AnimationUtility.GetCurveBindings(t.animationClip).Any(b => b.path == path && b.propertyName == "material._YAPS_Enabled"))
+                if (AnimationUtility.GetCurveBindings(t.animationClip).Any(b => b.path == path && YapsToggles.Writes(b, "_YAPS_Enabled")))
                     yield return e;
             }
         }
@@ -534,6 +641,14 @@ namespace AvatarBridge
         }
 
         // Slots on a renderer holding a baked YAPS material.
+        // A wired curve, on any material slot. The list is spelled slot 0's
+        // way and a curve on a second slot spells itself "material[1]._X",
+        // so Remove used to walk straight past one and leave it behind.
+        static bool Wired(UnityEditor.EditorCurveBinding b)
+        {
+            return WiredProperties.Contains(YapsToggles.Bare(b.propertyName));
+        }
+
         static IEnumerable<int> BakedSlots(Renderer renderer)
         {
             var mats = renderer.sharedMaterials;
@@ -610,7 +725,7 @@ namespace AvatarBridge
             foreach (var clip in ControllersOf(avatar.transform).SelectMany(YapsCurveMirror.ClipsOf).Distinct())
             {
                 if (Generated(clip)) continue;
-                if (AnimationUtility.GetCurveBindings(clip).Any(b => b.path == path && WiredProperties.Contains(b.propertyName)))
+                if (AnimationUtility.GetCurveBindings(clip).Any(b => b.path == path && Wired(b)))
                     yield return clip;
             }
         }
@@ -623,7 +738,7 @@ namespace AvatarBridge
             {
                 Undo.RegisterCompleteObjectUndo(clip, "Remove YAPS plug");
                 foreach (var b in AnimationUtility.GetCurveBindings(clip))
-                    if (b.path == path && WiredProperties.Contains(b.propertyName))
+                    if (b.path == path && Wired(b))
                         AnimationUtility.SetEditorCurve(clip, b, null);
                 EditorUtility.SetDirty(clip);
                 n++;

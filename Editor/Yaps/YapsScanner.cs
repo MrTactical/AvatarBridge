@@ -91,7 +91,7 @@ namespace AvatarBridge
             {
                 if (Total == 0)
                 {
-                    return "No penetration system on it yet: no DPS, TPS, SPS or YAPS plug or socket under this object. Its meshes and bones are what the buttons below turn into one.";
+                    return "No DPS, TPS, SPS or YAPS plug or socket on it yet.";
                 }
                 int yaps = Plugs.Count(p => p.IsYapsAlready) + Sockets.Count(s => s.IsYapsAlready);
                 int holes = Sockets.Count(s => s.IsHole);
@@ -372,6 +372,13 @@ namespace AvatarBridge
             if (f.Material != null && f.Material.HasProperty("_YAPS_Debug")
                 && f.Material.GetFloat("_YAPS_Debug") > 0.5f)
                 f.Notes.Add("a DEBUG VIEW is on, it replaces the deform and will upload with the avatar");
+            // The readout is a submesh on the plug's own renderer with its
+            // own material, so unlike the view above it survives regardless
+            // of what the plug's material says. Everyone who can see the plug
+            // can read it.
+            var owner = f.Root != null ? f.Root.GetComponentInParent<Yaps.YapsPlug>() : null;
+            if (owner != null && (owner.debugOverlay || owner.readoutRenderer != null))
+                f.Notes.Add("a DEBUG READOUT is drawn on this plug, everyone can see it and it will upload with the avatar");
         }
 
         static void Classify(Found f)
@@ -417,8 +424,7 @@ namespace AvatarBridge
                 && (!p.enabled || !p.gameObject.activeInHierarchy));
             if (socketItselfOff)
             {
-                f.Notes.Add("switched off, everything under it is dark until it is switched back on, " +
-                            "which is what its menu toggle does in game");
+                f.Notes.Add("switched off; its menu toggle turns it on in game");
             }
             else if (darkPointers > 0)
             {
@@ -438,9 +444,7 @@ namespace AvatarBridge
                     && avatar.avatarSettings.settings.Any(e => e != null && e.machineName == "YAPS/Lighthouse");
                 if (lighthouse)
                 {
-                    f.Expected.Add("expected: its marker lights wait on the lighthouse, which lights one " +
-                                   "socket at a time because a mesh has only four light slots. Old DPS toys " +
-                                   "use the \"Marker lights\" menu to pick; everything else finds it by contact");
+                    f.Expected.Add("expected: marker lights dark until the \"Marker lights\" menu picks it, which only DPS plugs need");
                 }
                 else
                 {
@@ -453,8 +457,7 @@ namespace AvatarBridge
                     .Count(t => t != null && (!t.enabled || !t.gameObject.activeInHierarchy));
                 if (deaf > 0 && !socketItselfOff)
                 {
-                    f.Notes.Add($"{deaf} of its receivers are switched off, it says where it is and " +
-                                "never notices a plug arrive, which previews fine and does nothing in game");
+                    f.Notes.Add($"{deaf} of its receivers are switched off: it previews fine and never notices a plug in game");
                 }
             }
         }

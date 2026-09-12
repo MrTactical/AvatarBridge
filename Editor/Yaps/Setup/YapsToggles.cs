@@ -214,7 +214,7 @@ namespace AvatarBridge
                 if (b.type == typeof(GameObject) && b.propertyName == "m_IsActive" && paths.Contains(b.path)) return true;
                 if (b.path != targetPath) continue;
                 if (b.propertyName == "m_Enabled" && typeof(Renderer).IsAssignableFrom(b.type)) return true;
-                if (b.propertyName == "material._YAPS_Enabled") return true;
+                if (Writes(b, "_YAPS_Enabled")) return true;
             }
             return false;
         }
@@ -334,7 +334,7 @@ namespace AvatarBridge
                 if (clip == null || Generated(clip) || !YapsCurveMirror.UserOwned(clip)) continue;
                 foreach (var b in AnimationUtility.GetCurveBindings(clip))
                 {
-                    if (b.path == plugPath && b.propertyName == "material._YAPS_Enabled")
+                    if (b.path == plugPath && Writes(b, "_YAPS_Enabled"))
                     {
                         return $"\"{clip.name}\", which already animates the deform itself";
                     }
@@ -358,7 +358,7 @@ namespace AvatarBridge
                 && e.type == CVRAdvancedSettingsEntry.SettingsType.Toggle && e.toggleSettings != null
                 && e.toggleSettings.useAnimationClip && Generated(e.toggleSettings.animationClip)
                 && AnimationUtility.GetCurveBindings(e.toggleSettings.animationClip)
-                    .Any(b => b.path == plugPath && b.propertyName == "material._YAPS_Enabled"));
+                    .Any(b => b.path == plugPath && Writes(b, "_YAPS_Enabled")));
             string already = ToggledBy(plug.Target.gameObject, avatar, ignoreEntry: ours != null ? ours.name : label)
                               ?? DrivenByOwnClip(avatar, plugPath);
             if (already != null)
@@ -370,9 +370,13 @@ namespace AvatarBridge
                 EditorUtility.SetDirty(avatar);
                 return $"{label}: menu toggle removed, the plug is already switched by {already}";
             }
+            var targets = Targets(plug, avatar.transform);
             if (ours != null)
             {
                 string renamed = Rename(avatar, ours, label);
+                // Rewritten in place, so a plug that has since reached more
+                // meshes switches all of them.
+                Rewrite(ours, targets, "_YAPS_Enabled");
                 // The entry is there; its layer may not be, if the animator
                 // was never regenerated. Written now, in place.
                 string wired = YapsAasAnimator.Wire(avatar, ours);
@@ -381,9 +385,8 @@ namespace AvatarBridge
 
             string dir = YapsNativeBuilder.OutputRoot + "/" + Sanitise(avatar.name);
             YapsNativeBuilder.EnsureFolderPublic(dir);
-            string path = AnimationUtility.CalculateTransformPath(plug.Target.transform, avatar.transform);
-            var on = Clip(path, plug.Target.GetType(), 1f, dir + "/" + Sanitise(label) + " on.anim");
-            var off = Clip(path, plug.Target.GetType(), 0f, dir + "/" + Sanitise(label) + " off.anim");
+            var on = Clip(targets, "_YAPS_Enabled", 1f, dir + "/" + Sanitise(label) + " on.anim");
+            var off = Clip(targets, "_YAPS_Enabled", 0f, dir + "/" + Sanitise(label) + " off.anim");
 
             if (avatar.avatarSettings == null)
             {
@@ -412,7 +415,123 @@ namespace AvatarBridge
             return $"{label}: menu toggle \"{label}\" added ({machine}), on and off clips beside the bake";
         }
 
-        static AnimationClip Clip(string path, System.Type type, float value, string assetPath)
+        // Whether this plug will answer sockets on its own wearer. A separate
+        // row from the deform toggle because it answers a different question:
+        // not whether the plug bends, but whose sockets it bends toward.
+        //
+        // OFF by default, and that is the whole reason it exists. A hole ends
+        // the shaft, and a socket the wearer is wearing is nearly always
+        // nearer to their own plug than anybody else's, so on by default would
+        // end the chain at home and never reach the person in front of them.
+        //
+        // Only written where it can do something. Without the atlas, or on an
+        // avatar with no sockets of its own, it would sit in the menu changing
+        // nothing, and a dead menu row is worse than no row.
+        public static string EnsureSelfToggle(YapsPlug plug, CVRAvatar avatar, Material material, string label)
+        {
+            if (plug == null || avatar == null || material == null || plug.Target == null) return null;
+            if (!material.HasProperty("_YAPS_SelfAllow")) return null;
+            if (!material.HasProperty("_YAPS_SelfTag") || material.GetFloat("_YAPS_SelfTag") < 0f) return null;
+            if (!material.HasProperty("_YAPS_UseAtlas") || material.GetFloat("_YAPS_UseAtlas") <= 0.5f) return null;
+
+            var settings = avatar.avatarSettings != null ? avatar.avatarSettings.settings : null;
+            string plugPath = AnimationUtility.CalculateTransformPath(plug.Target.transform, avatar.transform);
+            // Found by the curve it writes, not by its name, the same way the
+            // deform toggle is: the label follows the bone and may have moved.
+            var ours = settings?.FirstOrDefault(e => e != null
+                && e.type == CVRAdvancedSettingsEntry.SettingsType.Toggle && e.toggleSettings != null
+                && e.toggleSettings.useAnimationClip && Generated(e.toggleSettings.animationClip)
+                && AnimationUtility.GetCurveBindings(e.toggleSettings.animationClip)
+                    .Any(b => b.path == plugPath && Writes(b, "_YAPS_SelfAllow")));
+            var targets = Targets(plug, avatar.transform);
+            if (ours != null)
+            {
+                string renamed = Rename(avatar, ours, label);
+                Rewrite(ours, targets, "_YAPS_SelfAllow");
+                // The entry can outlive its layer, if the animator was never
+                // regenerated. Written now, in place.
+                string wired = YapsAasAnimator.Wire(avatar, ours);
+                return (renamed ?? $"{label}: menu toggle already there") + (wired != null ? "; " + wired : "");
+            }
+
+            string dir = YapsNativeBuilder.OutputRoot + "/" + Sanitise(avatar.name);
+            YapsNativeBuilder.EnsureFolderPublic(dir);
+            var on = Clip(targets, "_YAPS_SelfAllow", 1f, dir + "/" + Sanitise(label) + " on.anim");
+            var off = Clip(targets, "_YAPS_SelfAllow", 0f, dir + "/" + Sanitise(label) + " off.anim");
+
+            if (avatar.avatarSettings == null)
+            {
+                avatar.avatarSettings = new CVRAdvancedAvatarSettings { settings = new List<CVRAdvancedSettingsEntry>(), initialized = true };
+            }
+            avatar.avatarUsesAdvancedSettings = true;
+            settings = avatar.avatarSettings.settings;
+            string machine = MachineName(settings, label);
+            Undo.RecordObject(avatar, "YAPS toggle");
+            NoteAdded(machine);
+            settings.Add(new CVRAdvancedSettingsEntry
+            {
+                name = label,
+                machineName = machine,
+                type = CVRAdvancedSettingsEntry.SettingsType.Toggle,
+                toggleSettings = new CVRAdvancesAvatarSettingGameObjectToggle
+                {
+                    defaultValue = false,
+                    usedType = CVRAdvancesAvatarSettingBase.ParameterType.Bool,
+                    useAnimationClip = true,
+                    animationClip = on,
+                    offAnimationClip = off,
+                },
+            });
+            EditorUtility.SetDirty(avatar);
+            return $"{label}: menu toggle \"{label}\" added ({machine}), off by default";
+        }
+
+        // A generated on/off pair written again, on every target. Only the
+        // toolkit's own clips: an author's are theirs.
+        static void Rewrite(CVRAdvancedSettingsEntry entry, List<(string path, Renderer target)> targets, string property)
+        {
+            var t = entry.toggleSettings;
+            if (t == null) return;
+            if (Generated(t.animationClip))
+                Clip(targets, property, 1f, AssetDatabase.GetAssetPath(t.animationClip));
+            if (Generated(t.offAnimationClip))
+                Clip(targets, property, 0f, AssetDatabase.GetAssetPath(t.offAnimationClip));
+        }
+
+        // One constant curve per material slot that declares the property.
+        //
+        // EVERY slot, not slot 0. "material._X" is Unity's spelling for the
+        // FIRST material alone, so a plug modelled with its tip on a second
+        // material had half its mesh switched off and the other half left
+        // running, and the deform toggle is the row people actually use.
+        //
+        // Slots without the property are skipped: a curve on a binding no
+        // material reads shows in the animation window as a missing curve,
+        // on every avatar that has one, and the author cannot act on it.
+        // Where NO slot declares it, slot 0 is written anyway, so a plug
+        // whose material is assigned after the clip behaves as before.
+        //
+        // Every mesh of a plug, too: one spanning several renderers kept the
+        // others bending with the deform switched off, and answering sockets
+        // the rest of it had been told to leave. Slot 0 is the fallback on
+        // the plug's own renderer only, never on a mesh it merely reached.
+        public static AnimationClip Clip(string path, Renderer target, string property, float value, string assetPath) =>
+            Clip(new List<(string, Renderer)> { (path, target) }, property, new Vector4(value, 0, 0, 0), 1, assetPath);
+
+        // The same, for a vector property: four curves per slot, one per
+        // component. Unity has no single binding for a Vector4, so ".x" and
+        // its three siblings are the only way an animation reaches one.
+        public static AnimationClip Clip(string path, Renderer target, string property, Vector4 value, string assetPath) =>
+            Clip(new List<(string, Renderer)> { (path, target) }, property, value, 4, assetPath);
+
+        public static AnimationClip Clip(List<(string path, Renderer target)> targets, string property, float value,
+            string assetPath) => Clip(targets, property, new Vector4(value, 0, 0, 0), 1, assetPath);
+
+        public static AnimationClip Clip(List<(string path, Renderer target)> targets, string property, Vector4 value,
+            string assetPath) => Clip(targets, property, value, 4, assetPath);
+
+        static AnimationClip Clip(List<(string path, Renderer target)> targets, string property, Vector4 value,
+            int components, string assetPath)
         {
             var clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(assetPath);
             if (clip == null)
@@ -421,9 +540,78 @@ namespace AvatarBridge
                 AssetDatabase.CreateAsset(clip, assetPath);
             }
             clip.ClearCurves();
-            clip.SetCurve(path, type, "material._YAPS_Enabled", AnimationCurve.Constant(0f, 1f / 60f, value));
+            string[] axes = { ".x", ".y", ".z", ".w" };
+            for (int t = 0; t < targets.Count; t++)
+            {
+                var (path, target) = targets[t];
+                if (target == null) continue;
+                foreach (int slot in SlotsWith(target, property, fallback: t == 0))
+                {
+                    for (int a = 0; a < components; a++)
+                    {
+                        clip.SetCurve(path, target.GetType(), Bound(slot, property) + (components > 1 ? axes[a] : ""),
+                            AnimationCurve.Constant(0f, 1f / 60f, value[a]));
+                    }
+                }
+            }
             EditorUtility.SetDirty(clip);
             return clip;
+        }
+
+        // The slots of a renderer whose material declares a property; slot 0
+        // alone when none does and a fallback is wanted.
+        public static List<int> SlotsWith(Renderer target, string property, bool fallback = true)
+        {
+            var slots = new List<int>();
+            var mats = target != null ? target.sharedMaterials : new Material[0];
+            for (int i = 0; i < mats.Length; i++)
+            {
+                if (mats[i] != null && mats[i].HasProperty(property)) slots.Add(i);
+            }
+            if (slots.Count == 0 && fallback) slots.Add(0);
+            return slots;
+        }
+
+        // Every renderer a plug's bake reached, its own first.
+        public static List<Renderer> MeshesOf(YapsPlug plug)
+        {
+            var meshes = new List<Renderer>();
+            if (plug == null) return meshes;
+            if (plug.Target != null) meshes.Add(plug.Target);
+            foreach (var b in plug.bakedSlots)
+            {
+                if (b != null && b.renderer != null && !meshes.Contains(b.renderer)) meshes.Add(b.renderer);
+            }
+            return meshes;
+        }
+
+        // The same with each one's path, for a clip to write on all of them.
+        public static List<(string path, Renderer target)> Targets(YapsPlug plug, Transform root) =>
+            MeshesOf(plug).Select(r => (AnimationUtility.CalculateTransformPath(r.transform, root), r)).ToList();
+
+        // How Unity spells a material property on a given slot.
+        public static string Bound(int slot, string property)
+        {
+            return slot == 0 ? "material." + property : "material[" + slot + "]." + property;
+        }
+
+        // "material[2]._X" read as "material._X". Slot 0 goes without the
+        // index and every other slot carries one, so anything hunting for a
+        // property has two spellings to match, and until now matched the
+        // first: a toggle on a second slot could be built twice and was
+        // never taken away again.
+        public static string Bare(string propertyName)
+        {
+            if (propertyName == null
+                || !propertyName.StartsWith("material[", System.StringComparison.Ordinal)) return propertyName;
+            int close = propertyName.IndexOf(']');
+            return close < 0 ? propertyName : "material" + propertyName.Substring(close + 1);
+        }
+
+        // Whether a binding writes this shader property, on any slot.
+        public static bool Writes(EditorCurveBinding b, string property)
+        {
+            return Bare(b.propertyName) == "material." + property;
         }
 
         // A parameter name from a label, unique among the entries. `mine`

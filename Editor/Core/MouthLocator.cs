@@ -93,12 +93,8 @@ namespace AvatarBridge
             if (!string.IsNullOrEmpty(rejectedJaw))
             {
                 ctx.Report.Approximated(category, "The rig's \"jaw\" bone isn't on the jaw, ignored",
-                    $"This avatar's humanoid Jaw slot points at {rejectedJaw}. The slot is optional " +
-                    "and nothing checks it, so a rigger can map it to anything, and this one is " +
-                    "somewhere no jaw can be. Left as it is, retargeting it could move geometry, " +
-                    "but the voice was placed without it, because taking it at face value puts your " +
-                    "voice wherever that bone happens to sit. Worth fixing in the model's Rig tab if " +
-                    "you also want jaw-flap animation to work.");
+                    $"The Jaw slot points at {rejectedJaw}, so the voice was placed without it. Fix it in " +
+                    "the model's Rig tab if you want jaw-flap animation.");
             }
 
             if (method == Method.VisemeShape)

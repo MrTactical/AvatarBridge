@@ -75,10 +75,8 @@ namespace AvatarBridge
             ctx.Report.Converted(Category,
                 $"Re-homed {meshMap.Count} mesh(es), {matMap.Count} material(s), {shaderMap.Count} shader(s), " +
                 $"{textureMap.Count} texture(s) out of temp",
-                "VRCFury generated these into Packages/com.vrcfury.temp, which it deletes on its next build: " +
-                "without saved copies the avatar goes invisible (null mesh), pink (null material/shader) or " +
-                "loses the pictures off its materials while everything else still looks right (null texture, " +
-                "which is why particles came back as plain white squares). Saved to " + dir + ".");
+                "VRCFury deletes Packages/com.vrcfury.temp on its next build, leaving the avatar invisible, " +
+                "pink or missing textures. Saved to " + dir + ".");
         }
 
         static bool AnyVolatile(SkinnedMeshRenderer[] skinned, MeshFilter[] filters, Renderer[] renderers)

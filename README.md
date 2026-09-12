@@ -292,7 +292,7 @@ converter, and import the add-on too if you want penetration.
 |---|---|---|
 | Avatar descriptor | `CVRAvatar` | visemes, blink, eye look (gaze limits measured from the poses); the **viewpoint your author already placed in VRChat**, copied across unchanged, with the CCK's Auto placement (eye-bone midpoint) as the fallback; voice at the jaw bone, else measured. On a [quadruped decoy rig](#the-viewpoint-or-voice-position-is-nowhere-near-the-head) both are re-measured on the bones you can actually see |
 | Expression parameters + menus | Advanced Avatar Settings | named after the menu control's label |
-| Menu **Button** controls | ordinary toggles | ⚠️ CVR has no momentary control |
+| Menu **Button** controls | ordinary toggles | ⚠️ CVR has no momentary control. A button driving two states that hand over on the same condition would loop while switched on; the way back is set to the opposite condition so it behaves like any other toggle. If a contact drives the same control, the touch holds it on rather than tapping it, since a tap means nothing to the rewired pair |
 | Parameter types | real `bool` / `int` / `float` | see [below](#parameter-types), including why menu-driven parameters always sync |
 | Gestures | float threshold bands, the CCK's own idiom | analog fist blends in by trigger pressure, like VRChat |
 | Clothing / prop toggles | one `Toggle <name>` layer each | pulled out of VRCFury's merged blend trees; the "off" direction becomes [real animation](#a-toggle-switches-on-but-never-back-off) instead of relying on Write Defaults |
@@ -331,9 +331,9 @@ room's budget and stop every contact in it, including the ones YAPS needs and ot
 Tick **Keep the OGB / PCS haptics contacts** if you drive a toy from those parameters and would
 rather pay that price.
 
-**What YAPS itself spends, for comparison.** No receivers and no sync bits for the bend: a plug
-finds sockets through the screen atlas and marker lights, which every client works out for
-itself. A socket emits pointers rather than receivers, so older plugs and toys can still find it.
+**What YAPS itself spends, for comparison.** No receivers for the bend, and one synced
+parameter, 32 bits, for the owner id: a plug finds sockets through the screen atlas and marker
+lights, which every client works out for itself. A socket emits pointers rather than receivers, so older plugs and toys can still find it.
 Up to 4.5.0 each plug also built a contact channel of up to nine receivers and as many synced
 floats; it is gone, for the reason given under *How a plug finds a socket*.
 
@@ -707,7 +707,10 @@ with which of them it came from, so a feature you know from one of them is under
 ### What a conversion does
 
 **A converted plug bends into a socket and threads it along its axis**: arriving straight rather
-than aiming at a point, easing in as it approaches, relaxing when pulled away. **A converted
+than aiming at a point, easing in as it approaches, relaxing when pulled away. A plug modelled as
+more than one mesh, a tip or a second half on a renderer of its own, bends as one piece: every
+mesh most of which rides the plug's bones is baked on the same frame, with the same settings, and
+follows the same size animations. **A converted
 socket with a mesh of its own opens around a plug**: the entry and up to fifteen further depths,
 staged, several allowed at one depth, driven straight from the shader: the socket-side deform DPS
 had and SPS dropped, so it reacts to a DPS plug that has never heard of this tool. (The socket
@@ -736,8 +739,8 @@ keeps its original triggers and layers exactly as authored, and the report says 
 
 **It speaks the other systems on purpose.** The rebuilt rig emits the same wire other people's
 content reads: the contact tags (`TPS_Orf_Root`, `SPSLL_Socket_Front` and the rest) and the
-marker light ranges, the same protocol digits every decoder reads (at YAPS's own +0.003 offset, see
-the tool section for why). So a converted plug finds DPS,
+marker light ranges, the same protocol digits every decoder reads, at the same trailing digits
+VRCFury emits. So a converted plug finds DPS,
 TPS and SPS sockets; DPS, TPS and SPS plugs find a converted socket; someone wearing an avatar
 built for another platform's system works with yours, both ways, without either side knowing this
 tool exists. Parameter names elsewhere on the avatar are left alone for a second reason:
@@ -758,12 +761,22 @@ both. The report says which case you're in.
 
 | | costs | reaches | how good it is |
 |---|---|---|---|
-| **Screen atlas** | nothing | anyone drawing the avatar with custom shaders on, in a view at least 552 by 520 pixels | about a tenth of a millimetre, every frame |
+| **Screen atlas** | one synced parameter per avatar, for ownership | anyone drawing the avatar with custom shaders on, in a view at least about 240 pixels square, whose own avatar was built by the same version | about a tenth of a millimetre, every frame |
 | **Marker lights** | nothing | anyone whose client draws the plug | exact, and sampled every frame |
 
 **The atlas answers first, and marker lights stand in where it cannot**: a view too small to
 hold the atlas, or content that only has lights. The atlas is the more exact of the two and
 carries a whole path rather than one point, so it takes the answer outright.
+
+**Both avatars have to be built by the same version of this tool for the atlas to work between
+them.** What a socket writes into the screen carries a version number and a plug refuses anything
+else, in both directions, because the pixels mean different things from one version to the next
+and reading them wrongly is worse than not reading them. Two people on different versions fall
+back to the marker lights, which have no version and always cross. That is a quiet difference
+rather than a broken one, and it is worth knowing what it looks like from the inside: everything
+still bends, and only the things the lights cannot carry go missing, which is tags, one-way rings
+and a wearer's own sockets. If a plug behaves for one person and not another, compare versions
+before anything else.
 
 **There used to be a third route, a contact channel, and from 4.5.1 it no longer bends a plug.**
 A contact only lets go when the socket leaves it, and a socket deleted or switched off while a plug
@@ -774,13 +787,36 @@ orifices among them: a YAPS plug no longer bends toward those.
 
 **What the atlas is.** Every socket draws its position into a small block of pixels in the corner
 of the frame, ahead of the scene so the scene covers it and nothing is visible, and every plug's
-shader reads that block. It costs no sync bits and no contact pairs, it crosses between avatars,
-and it is what lets a plug pass through several sockets on its way rather than bending at the
-first. It needs the plug's own patched shader, so it arrives with a conversion or a rebuild, and
-it is off in views too small to carry the block: the personal self-portrait camera is one, and a
-plug seen there falls back to the marker lights.
+shader reads that block. Positions cost no sync bits and no contact pairs, it crosses between
+avatars, and it is what lets a plug pass through several sockets on its way rather than bending
+at the first. It needs the plug's own patched shader, so it arrives with a conversion or a
+rebuild. The full block is 932 by 596 pixels; a smaller view (a small mirror, a camera at a low
+resolution, the self portrait) gets a smaller block with fewer cells, worked out from the view's
+own size by the sockets and the plugs alike. Fewer cells means a crowded instance loses the odd
+socket in that view. Below about 240 pixels square the atlas is off and a plug seen there falls
+back to the marker lights.
 
-The bend costs no sync bits at all. **A plug bends only toward a socket it can resolve**: one the
+**Which sockets are your own.** Every socket also writes its wearer's owner id into the atlas: a
+24-bit piece of the ChilloutVR user id, fed in by the game and synced as one parameter, 32 bits.
+A plug compares it with its own, so it knows as a fact which sockets are its wearer's, at any
+distance and however closely two bodies are pressed together. Other players' copies learn the id
+with the first parameter sync. Until then, and for props and world sockets, which carry none,
+ownership is judged by distance to the nearest hips, as before.
+
+**Which of your own sockets a plug may enter** is yours to choose, per plug: the plug's
+inspector has a **Your own sockets** list with a tick for each socket on the avatar. Everything off
+the hips starts ticked and everything on them starts clear, which is how SPS content behaves out
+of the box, and so does a socket the plug's tags refuse. A tick you set yourself beats the plug's
+tags; one left as it started still answers to them, so the tag dropdown in game narrows your own
+sockets too. A converted SPS plug keeps its author's own choices: tag rules ticked **Self** alone
+decide which of the wearer's sockets it may enter, rules ticked **Others** decide everybody
+else's, and hip avoidance switched off lets it into the wearer's hip sockets. A ticked socket
+still has to be switched on to be entered, and the plug's **own sockets** toggle in game opens
+every one its tags allow. The choice
+lives on the plug and never crosses the network: each socket carries only its number on its
+avatar, 1 to 15, and a socket past the fifteenth is judged by whether it sits on the hips.
+
+The bend costs no sync bits beyond the owner id's 32. **A plug bends only toward a socket it can resolve**: one the
 atlas carries, or a light its wearer switched on from their menu; with neither in range it stays
 exactly as it is.
 
@@ -885,9 +921,14 @@ ranges, TPS and SPS pointers, and a front so plugs thread rather than aim. Nothi
 **A plug prop prefab**: *Tools ▸ YAPS ▸ Create a plug prop prefab* writes `YAPS Plug Prop` beside
 them: a whole spawnable in one click, built and baked on the current shader with its pickup and
 grab collider wired, finding sockets by their marker lights. Drop it in a scene and upload it
-from the CCK as a prop. **Make it again after updating AvatarBridge**: a prop that is already uploaded carries
-the bake and the patched shader copy it was built with, and nothing in the project reaches it: an
-old one bending oddly next to a current avatar is that, not a fault in the avatar.
+from the CCK as a prop.
+
+**After updating AvatarBridge**: *Tools ▸ YAPS ▸ Update every YAPS shader in this project*. Building
+an avatar updates its shader as a matter of course, and nothing builds a prop, so a prop keeps the
+shader it was made with: an old one bending oddly next to a current avatar is that, not a fault in
+the avatar. This walks every material in the project instead, so it also reaches avatars in scenes
+you have not opened and anything you were sent. Upload the prop again afterwards, since the copy
+already on the platform is the one it went up with.
 
 **A ring-and-socket prop prefab**: *Tools ▸ YAPS ▸ Create a ring-and-socket prop prefab* writes
 `YAPS Ring and Socket Prop` beside them: the plug prop's other half, a spawnable carrying a ring to
@@ -897,13 +938,22 @@ four vertex light slots, so an old DPS toy sees one at a time; anything modern f
 contact. **Not yet confirmed in game**: it is built and it behaves in the editor, and nobody has
 uploaded one and used it with another person yet.
 
-**YAPS Socket** (the component the prefabs carry): hole or ring; the mesh whose shapes should
+**YAPS Socket** (the component the prefabs carry): hole or ring, and a ring can be **One way**, so
+a plug enters it from its front only (the side its markers sit on) and passes it by from behind.
+Only the screen atlas carries that; a plug that finds the ring by marker light, an old DPS one
+included, still enters from either side. Then the mesh whose shapes should
 open and up to sixteen of them picked from a dropdown, several per depth if you like, staged by
 depth on a range slider, built by Build. A mesh of the socket's own (origin at the entrance) opens
 in its shader; any other mesh, the body as a rule, opens through a contact: the card says which,
 and for the contact route a **Full depth (m)** field says how far in counts as fully open, since a
 contact cannot know a visiting plug's length (left at 0 it takes the longest baked plug on the
-avatar). **Test depth** moves those shapes on the mesh in the editor so you can see the stages
+avatar). **Plays as a plug goes in** takes your own animation clips the same way, each blended in
+over its own depth range, in a layer of their own driven by that contact and its synced depth
+(32 of the 3200 sync bits, shared with the shapes), whichever route the shapes take. Write
+defaults are on in that layer, so animate only what nothing else on the avatar animates.
+Setting the mesh back to **None** and building again takes all of that out: the layer, its
+parameter, the contact and the mesh's own material, unless your own animations still read the
+depth. **Test depth** moves those shapes on the mesh in the editor so you can see the stages
 without a plug; nothing is saved, and they go back when you click away. **Preview** bends every
 baked plug in the scene toward the socket, and drops one in front of it when nothing baked is
 within a couple of metres: the plug prop prefab if the project has one, since that is baked on
@@ -932,27 +982,33 @@ as "holes broken, rings fine".
 **The lighthouse.** With two or more lit-capable sockets, every one carries its pair and a
 **Marker lights** dropdown in the menu decides which single pair is on. It starts on **Off**:
 nothing is lit until the wearer chooses. Choosing a socket lights it *and switches it on*, so
-for a DPS or TPS toy the dropdown is the whole job: no second toggle to remember. Modern
+for a DPS or TPS toy the dropdown is the whole job: no second toggle to remember. A socket the
+avatar's own menu already switches is only lit, never switched on, so that toggle keeps working
+and still turns the socket off for everyone. Modern
 content never needs it: YAPS plugs and props find every socket through contacts, which have no
 four-slot limit. Old toys are the only readers of the lights, and one socket at a time was
 always their ceiling; the dropdown just hands the choice to the wearer instead of to Unity.
 **The ranges sit in the quiet part of the band.** A marker light says what it is through its
 range, and every decoder compares `range % 0.1` against 0.01 hole, 0.02 ring, 0.05 front, 0.09
 plug tip. Raliv's shader accepts anything within 0.005 of those; toy mods reading the same
-protocol from C# accept 0.001. VRCFury authors +0.0006, inside both, which is why an unconverted
-VRChat avatar sets off a bystander's toy and their controllers from across the room. YAPS
-authors **+0.003** instead: DPS content reads the socket exactly as before, and a mod matching
-on 0.001 never sees it. Nothing to configure, but it does have a cost, and it is worth naming.
-Mods read at that tighter tolerance whatever they do with the result, so the ones that add sound
-effects to a detected DPS setup cannot see a YAPS socket either. There is no range that separates
-a mod which plays a noise on your listener's machine from one which drives a stranger's hardware,
-so this is one choice for both.
+protocol from C# accept 0.001. YAPS authors **+0.0006**, the same trailing digits VRCFury does,
+which is inside both: DPS content reads a socket exactly as it reads any other, and a mod reads it
+too. Nothing to configure.
+
+Earlier builds authored +0.003 instead, which DPS still read and no mod could. That was
+answering a report of controllers buzzing whenever a converted avatar came within two metres,
+which happened because the mod of the day guessed a plug's length from the first renderer under
+the avatar root instead of reading the length the protocol states. It guessed high, so it reached
+across a room. The mod now bounds that by the stated length and engages on contact, so the offset
+was costing the wearer their own hardware and the sound mods along with it, and buying a fix that
+had already been made upstream. If you are running a build of a toy mod from before mid-2026, that
+old reach is a property of the mod and every DPS avatar in the room has it.
 
 Holes start lit before rings; every other socket's pair is built dark and the **Marker lights**
-dropdown lights any one of them on demand, switching that socket on as it does. Nothing stops
-engaging: a YAPS plug still finds a dark socket through the screen atlas. What a dark socket loses
-is old DPS plugs, which carry lights and nothing else, and a YAPS plug in a view too small for the
-atlas, until the dropdown points at it. Untick **Emit marker
+dropdown lights any one of them on demand, switching that socket on as it does unless the
+avatar's own menu owns that switch. Nothing stops engaging: a YAPS plug still finds a dark socket
+through the screen atlas. What a dark socket loses is old DPS plugs, which carry lights and nothing
+else, and a YAPS plug in a view too small for the atlas, until the dropdown points at it. Untick **Emit marker
 lights** on a socket to keep it out of the dropdown entirely.
 
 **YAPS Plug**: the mesh (and for a skinned mesh, the bone the shaft grows from), measurement
@@ -965,6 +1021,82 @@ two doors. **Bake** and **Remove this plug** are at the bottom. **A plain (unski
 along +Z**: pivot at the base, shaft along +Z (in Blender: origin at the base, shaft along +Y
 before export); the bake warns when the mesh disagrees. A skinned mesh is measured from its bones
 and needs neither.
+
+**Tags: which sockets a plug will answer.** A socket carries a list of **Tags** saying what it is,
+any words you like, case and spacing ignored. A plug carries two lists of its own: **answer only
+sockets tagged** and **never answer a socket tagged**, four each. Refusing beats answering.
+Leave everything empty and nothing changes: a plug with no list answers any socket, and a socket
+with no tags is found by any plug that is not asking for something in particular.
+
+**`shared` is the word that keeps a picky plug working.** Every socket this tool builds carries it,
+and so does nearly every socket SPS ever made, which is what makes a plug's answer list narrow the
+field rather than empty it: a plug asking for `hips` still answers anything wearing `shared`. Take
+it off a socket and you are saying only a plug that names one of its other words, or names nothing
+at all, may have it. That is a real thing to want on a socket meant for one partner's plug, and a
+surprising thing to do by accident, which is why it is there by default and worth leaving.
+
+Four is the plug's whole room, and repeats of one word do not count twice. Type more than that and
+the extra names are not baked; the build says how many it left out. A socket has no limit, so a
+list that will not fit on the plug often fits on the sockets instead.
+
+A name means the same thing here as it does in SPS, because it is hashed the same way, so
+`hips`, `hipsfront`, `hipsback`, `head`, `chest`, `hand`, `handleft`, `handright`, `foot`,
+`footleft` and `footright` are worth using where they fit: those are the eleven SPS works out from
+the bone nearest a socket. Anything else is a private word between you and the plug's author.
+
+**A tag is stored as a fingerprint, not as a word, and fingerprints can agree.** There is room for
+one pixel of tags in the atlas, so a socket does not carry a list: each of its tags lights three
+of twenty bits chosen from the name, and the socket publishes them all together. A plug asks
+whether a name's three bits are lit. That fits any word you like into the space of about one, and
+the price is an occasional wrong yes, where a socket's other tags happen to light the three bits
+some unrelated name wanted. Roughly one time in a thousand for a socket wearing one tag, one in
+seventy at two, one in twenty at three.
+
+It cuts both ways and neither way is dangerous. A wrong yes on the answer list answers a socket
+that was not asking for this plug; a wrong yes on the refuse list turns away a socket it need not
+have. Nothing is ever bent toward a socket that is not there. If it matters, give a socket fewer
+tags: one tag is nearly exact, and four is where it starts to blur.
+
+**Tags need the screen atlas, and only the atlas.** It is the one route that carries what a socket
+IS as well as where it is. A socket found by marker light announces itself with a range, and a
+range has no room in it for anything but hole or ring; a socket found by contact announces itself
+with a pointer whose type says the same. Neither can say "hips". So on those two routes a plug
+answers as though it had no list at all, because a route that cannot see the set cannot honestly
+refuse on it, and refusing anyway would mean a plug tagged for one place quietly stopping
+everywhere else.
+
+A socket the atlas READ and turned away stays turned away: its own marker light does not then
+answer it a moment later, which is what used to happen at exactly the range a refuse list is
+written for. What the atlas never saw is a different matter. A socket outside the view, or any
+socket at all in a view too small to hold the atlas, is unknown rather than refused, and an
+unknown socket is answered. So the sets hold where the socket can be read and lapse where it
+cannot: a preference throughout, not a lock. Use the plug's **Deform** toggle for anything that
+has to be certain.
+
+A tagged plug asking for something also passes over an untagged socket found *through* the atlas,
+which is the same thing SPS does with content older than tags.
+
+The two sets are also not a privacy control and are not offered as one. What decides whether this
+plug ever bends is the plug's own **Deform** toggle and, for your own body, **its own sockets**.
+
+**Converting from SPS keeps them.** A socket's tags and a plug's two lists come across as the
+words you wrote, including the ones SPS works out for you from the bone a socket sits on, and the
+global tag every socket and plug carries unless you turned it off. So a plug that answered
+everything still answers everything, and a plug narrowed to one place stays narrowed to it. A
+rule that applied to yourself but not to other people, or the other way round, keeps its side:
+see **Which of your own sockets a plug may enter** above. The two lists land on the plug itself,
+so you can read them, change them and re-bake without losing them. One thing changes: where an avatar has
+three or more sockets on the hips, they come across as `hips` without the front and back split: with two the
+front one is the one further forward, and with three the guess is worth less than the name.
+
+**Choosing at runtime.** A plug listing two or more tags gets a menu dropdown of its own, so the
+wearer can narrow it to one of them, widen it to *Anything*, or leave it on *As built*, which is
+what the author configured and what it starts on. *Anything* clears the answer list only; a socket
+on the refuse list stays refused. Only a hash of a name travels, never the name, so a private word
+stays private between you and the other author. On your own sockets it narrows the ticks left as
+they started; one you ticked yourself stays open. The dropdown narrows what the plug asks for; it
+cannot make a route carry what it has no room for, so the paragraph above still applies to every
+setting on it.
 
 **The components themselves do nothing in game, so don't animate them.** A YAPS Plug or YAPS
 Socket is setup data: the bake writes what it says into the material, and ChilloutVR strips the
@@ -1073,9 +1205,9 @@ takes out a channel an earlier version wired onto the avatar, which frees its sy
   LENGTH: a quarter means nothing found the socket, three quarters a marker light, full the
   screen atlas. Length rather than colour because a patched shader only lets the toolkit edit the vertex
   stage, so there is no fragment of its own to paint. It is the first thing to look at when a plug
-  bends toward the wrong thing, or toward nothing. The screen atlas needs a view at least 552 by
-  520 pixels and stands down below that, so a small window answers three quarters where a full
-  screen answers full. *Atlas taps* beside it answers the follow-up
+  bends toward the wrong thing, or toward nothing. The screen atlas shrinks to fit a small view
+  and stands down below about 240 pixels square, so a tiny window answers three quarters where a
+  full screen answers full. *Atlas taps* beside it answers the follow-up
   question when the answer is "nothing", in four steps: a tenth means the screen carried nothing
   to read, a third that something was there but did not belong to this plug, two thirds that it
   did and was either out of reach or on your own body, and full that a socket came back.
@@ -1316,6 +1448,7 @@ settle. Leaving all of them alone converts fine.
 |---|---|---|
 | **Opt-ins ▸ Keep OGB haptics synced** | off | Its own sub-section under Manual options, since an opt-in nobody can find is one nobody turns on. Off, the OGB haptics parameters are local (free); OSCGoesBrrr's automatic detection skips ChilloutVR's `#` names, but its manual avatar-parameter links read them, and the report lists the names. On, they stay synced and automatic detection works with no setup, at 32 sync bits each, about nine per plug and per socket; the report's sync budget entry says where the avatar landed. Needs *Penetration* on *Convert to YAPS*. See [OSC toys](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
 | **Opt-ins ▸ Show the avatar's OWN depth animations to other players** | off | Not YAPS's socket shapes, which already play for everyone on a synced parameter. This is the bulges and winces the avatar's author animated in VRChat, which are contact-driven, and ChilloutVR runs an avatar's triggers on the wearer's machine alone. Off, each socket's depth parameter is local: free, and only the wearer sees the reaction. On, it syncs and the room sees it, at 32 bits per socket: one depth parameter each, six sockets is about 192 of 3200; a socket that kept several depth parameters as authored pays for each. Needs *Penetration* on *Convert to YAPS* |
+| **Opt-ins ▸ Draw a debug readout on each plug** | off | A strip of colours drawn by each plug itself, for working out why one will not behave. Left to right: who resolved its socket (grey nobody, cyan the editor's preview, amber a marker light, green the screen atlas), whether it is bending (amber: it found a socket but its toggle holds it off), how far the socket is, what the screen atlas read, whether the atlas is on the camera drawing this view, and whether the plug asks for the atlas at all. Unlike the plug material's own debug view it leaves the plug bending normally, so the bend and the reason for it can be read together. It is part of the plug's own mesh, so everyone who can see the plug sees it and it uploads with the avatar; the report flags it while it is on. Needs *Penetration* on *Convert to YAPS* |
 | **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder: you must press **Create Controller** yourself |
 | **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of this avatar's measured height, centred on its original size. Parent-constrained props are re-anchored so they scale with you |
@@ -1357,6 +1490,7 @@ Analyse sets them to match. Open it to override a measurement deliberately, not 
 | **Convert VRC Head Chop** | on | `VRCHeadChop` becomes `FPRExclusion`: CVR's first-person hiding |
 | **Convert spatial audio** | on | `VRCSpatialAudioSource` becomes a plain `AudioSource` with equivalent spatial settings |
 | **Auto-wire blink blendshapes** | on | Detects blink shapes on the face mesh (`Blink L`/`Blink R` and similar) and turns on CVR's Eye Blink Settings when the descriptor didn't name any |
+| **Resize oversized textures** | on | Every texture the avatar carries is measured against the mesh that wears it and resized to what that mesh can show; a one-channel or fully opaque texture also gets a format half the size. Import settings only, nothing is written to a texture file, and **Put the textures back** on the report undoes all of it. A texture any material outside this avatar uses is refused and named. The same measurement the Toolkit's **What this avatar costs** card makes, run without being asked |
 
 **Base, Additive and Action switch themselves off when you pick an avatar with no such layer**: the
 slot is empty or holds VRChat's default. These settings persist between avatars, so a tick meant for
@@ -1440,6 +1574,8 @@ Four things break the rest, and the report names each:
   cleanly.
 - **PhysBones on a relayed bone** feed the constraint their own output until the transform goes NaN.
   Those chains are skipped and listed. Unity's own constraints count too: the loop is engine-level.
+  A **scale** constraint is the exception and no longer blocks a chain: it writes a channel the cloth
+  solver never touches, so there is nothing for the two to fight over.
 - **Both markers, and first-person head hiding, aimed at the decoy.** ChilloutVR hangs the viewpoint,
   voice position and `FPRExclusion` off the humanoid Head bone, which here skins nothing. All three
   are measured on the relayed bones you can actually see instead.
@@ -1608,6 +1744,11 @@ A constraint writes the bone every frame; a cloth solver integrates it from its 
 both and each is fed the other's output until the transform goes **NaN**, which never recovers.
 VRChat tolerates it because PhysBones re-read the constraint each frame; MagicaCloth2 and DynamicBone
 don't. Remove the constraint if you want the chain simulated.
+
+This is about position and rotation, the two things a solver writes. A **scale** constraint shares
+nothing with it, so those chains simulate normally and the report says the chain kept its physics
+alongside one. If such a chain looks wrong, the thing to check is the scale itself: the cloth
+measured its bone lengths once, at the scale the avatar was converted at.
 
 ### I move slower (or faster) than I expect, and nothing in the avatar does that
 
@@ -2152,14 +2293,54 @@ Normal. That's AvatarBridge registering its scripting defines.
 
 Work down the list; the first that fits is usually it.
 
+- **Does it work with some people and not others? Compare versions first.** The screen atlas only
+  works between two avatars built by the same version; anything else falls back to the marker
+  lights, which cannot carry tags, one-way rings or a wearer's own sockets. Nothing reports this,
+  because from the inside it looks exactly like a socket that decided not to answer. See
+  [how a plug finds a socket](#yaps-penetration-that-works-in-chilloutvr).
 - **Which tier found it?** On the plug's material, the YAPS panel's *Debug ▸ View* has *Resolved
   by*. It straightens the plug and puts the answer in its LENGTH: a quarter means nothing found
-  the socket, three quarters a marker light did, full the screen atlas did. A quarter with a socket right there means no transport reached the plug.
+  the socket, three quarters a marker light did, full the screen atlas did. A quarter with a
+  socket right there means no transport reached the plug.
+- **Or read all of it at once: tick *Debug overlay* on the YAPS Plug component and Build.** The
+  view above answers one question at a time and straightens the plug to answer it, so the bend
+  and the reason for the bend can never be seen together. The overlay is a small strip of
+  colours the plug draws on itself instead, and it leaves the plug bending normally. It is the
+  plug's own answer, not a second reading taken beside it: it shares the plug's renderer, so it
+  sees the same atlas, the same lights, the same toggle and the same frame the deform does. Twelve cells
+  in two rows. Top row, left to right: who resolved the socket (grey nobody, cyan the editor's
+  preview, amber a marker light, green the screen atlas), whether it is bending (red not engaged,
+  amber engaged but its toggle holds it off, green bending), how far away the socket is as a bar,
+  what the atlas read, whether the atlas is on the camera drawing this view, and whether this plug
+  asks for the atlas at all. Bottom row, the plug's own state: whether it recovered its frame from
+  its vertices (grey a plain-mesh plug, which is normal, red the recovery refused and the bend is
+  around the wrong axis), whether the readout's vertex is inside the bake, whether the bake read
+  anything, whether the plug will take its own wearer's sockets (amber refusing, which is the
+  quietest reason a plug finds nothing), how many sockets are in the atlas chain, and whether a
+  socket was refused by this plug's tags (red: refused, and nearer than whatever did answer).
+  Black or grey is nothing, red is a fault, green is working. **Everyone who can see the plug can
+  see the overlay**, and it uploads with the avatar; the report flags it while it is on. Nothing
+  stops the upload, so untick it when you are done.
+- **Then read the two markers, and ONLY as a pair.** They sit out on the plug rather than in the
+  strip. The white one is drawn where the tip would be if nothing had moved the plug's bones; the
+  magenta one is drawn where the tip actually is. Sitting together means the bones are where the
+  bake left them, so any bend you can see is the shader's and the strip explains it. Apart means
+  something else is moving the bones, cloth or an animation or a constraint, and nothing in the
+  strip can tell you that: every number a shader can take from a single point is in world space,
+  where an avatar simply turning round changes all of them. Two points a shaft apart cannot be
+  fooled that way, which is the entire reason there are two.
+- **Does a toggle change how the plug LOOKS?** A toggle that swaps the plug's material, a second
+  skin, a glow version, an alternate colour, used to hand the mesh a material carrying no deform:
+  the plug went rigid for as long as that toggle was on, looked perfectly normal, and the tool
+  still reported it baked, because the slot it checks holds the baked copy. Every material an
+  animation can put in that slot is now baked alongside the one the mesh wears, and the clip is
+  pointed at the copy. A plug baked before 4.5.0 needs baking again to pick this up.
 - **Is it a DPS or TPS toy? Then pick the socket in "Marker lights".** Old toys read sockets by
   their marker lights, and only **one** socket's pair is ever lit: Unity gives a mesh four
   vertex-light slots, a socket takes two, and the tracker of whatever enters takes a third, so
   a second lit socket is what used to break holes while rings kept working. The dropdown starts
-  on **Off**; choosing a socket lights it and switches it on, whatever its own toggle says. A
+  on **Off**; choosing a socket lights it, and switches it on too unless the avatar's own menu
+  already switches that socket, in which case that toggle stays in charge of it. A
   socket you have switched on but not chosen here is visible in the hierarchy and dark to every
   old toy: that exact picture has been reported as "it does nothing".
 - **A contact-only socket** (no lights and no atlas: older TPS orifices, some props) is not found
@@ -2199,6 +2380,11 @@ Put the SPS Plug component (or the YAPS Plug's *Root Bone*) on the plug's root b
 under it, and convert or bake again. A plug mesh that is its own object is found by that object; a
 plug that is part of the body needs the bone. Length is never the reason: a hyper plug longer
 than its wearer converts as long as it has a chain of its own.
+
+Baking a plug by hand refuses the same case from 4.5.0, worded as *the first bone above the plug
+object carries this mesh's head or feet as well*, and the fix is the same one. Before that the
+conversion refused it and the toolkit did not, so a plug the converter turned away could be baked
+into a whole-body shaft by hand.
 
 ### YAPS: a plain-mesh plug jumps or turns the moment a socket engages it
 

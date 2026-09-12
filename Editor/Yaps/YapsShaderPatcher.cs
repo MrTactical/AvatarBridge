@@ -55,6 +55,10 @@ namespace AvatarBridge
         _YAPS_ChannelUp (""YAPS channel up"", Vector) = (0,0,0,0)
         _YAPS_ChannelExtents (""YAPS channel extents"", Vector) = (1,1,1,0)
         _YAPS_SelfTag (""YAPS self tag"", Float) = -1
+        _YAPS_SelfAllow (""YAPS own body allowed"", Range(0,1)) = 0
+        _YAPS_Owner (""YAPS owner id"", Float) = 0
+        _YAPS_SelfSockets (""YAPS own sockets it may enter"", Float) = 0
+        _YAPS_SelfChosen (""YAPS own sockets past its tags"", Float) = 0
         _YAPS_UseAtlas (""YAPS read the screen atlas"", Range(0,1)) = 0
         [Enum(Off,0,Resolved by,1,Gap to socket,2,Engagement,3,Socket facing,4,Atlas taps,5,Atlas target,6)] _YAPS_Debug (""YAPS view"", Float) = 0
         _YAPS_TaperStart (""YAPS hole taper start"", Range(0,1)) = 0.10
@@ -65,6 +69,7 @@ namespace AvatarBridge
         _YAPS_SqueezeDistance (""YAPS squeeze reach"", Range(0.01,1)) = 0.15
         _YAPS_Bulge (""YAPS bulge"", Range(0,1)) = 0
         _YAPS_BulgeDistance (""YAPS bulge reach"", Range(0.01,1)) = 0.2
+        _YAPS_BulgeFalloff (""YAPS bulge falloff"", Range(0,0.5)) = 0
         _YAPS_PumpStrength (""YAPS pumping"", Range(0,0.5)) = 0
         _YAPS_PumpSpeed (""YAPS pumping speed"", Range(0,20)) = 6
         _YAPS_PumpWidth (""YAPS pumping width"", Range(0.05,1)) = 1
@@ -80,8 +85,8 @@ namespace AvatarBridge
         _YAPS_SmoothStart (""YAPS ease into bend"", Range(0,0.5)) = 0
         _YAPS_MinimumSocketDistance (""YAPS minimum socket distance"", Range(0,1)) = 0
         [Header(YAPS tags)]
-        _YAPS_TagInclude (""YAPS only sockets tagged"", Float) = 0
-        _YAPS_TagExclude (""YAPS never sockets tagged"", Float) = 0
+        _YAPS_TagInclude (""YAPS only sockets tagged"", Vector) = (0,0,0,0)
+        _YAPS_TagExclude (""YAPS never sockets tagged"", Vector) = (0,0,0,0)
         _YAPS_ShapeCount (""YAPS shape count"", Float) = 0
         _YAPS_ShapeWeights (""YAPS shape weights 0-3"", Vector) = (0,0,0,0)
         _YAPS_ShapeWeights2 (""YAPS shape weights 4-7"", Vector) = (0,0,0,0)
@@ -161,6 +166,70 @@ namespace AvatarBridge
                 return true;
             }
             finally { UnityEngine.Object.DestroyImmediate(stand); }
+        }
+
+        // Every patched material in the PROJECT, not only the ones something
+        // bakes.
+        //
+        // Both bake paths re-patch what has fallen behind, which reaches an
+        // avatar because its scene is open and Build was pressed. A PROP is a
+        // prefab sitting in the project and nothing ever opens it, so a
+        // shader-level fix reached everybody except props, and the only cure
+        // was to build a new one: no answer for a prop somebody has already
+        // positioned and tuned. Avatars in scenes nobody opened and anything
+        // imported from someone else's package are the same blind spot in two
+        // more shapes.
+        //
+        // The new shader is written BESIDE the one it replaces, so a prop's
+        // shader stays with the prop rather than moving into this tool's own
+        // output folder, where a later cleanup would take it.
+        public static string SweepProject()
+        {
+            var guids = AssetDatabase.FindAssets("t:Material");
+            int found = 0, refreshed = 0, failed = 0;
+            try
+            {
+                for (int i = 0; i < guids.Length; i++)
+                {
+                    if (EditorUtility.DisplayCancelableProgressBar("YAPS",
+                            $"Checking materials ({i + 1} of {guids.Length})",
+                            (i + 1) / (float) Mathf.Max(guids.Length, 1))) break;
+                    string path = AssetDatabase.GUIDToAssetPath(guids[i]);
+                    var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+                    // The property is the test rather than the shader's name:
+                    // a material patched by an older version answers this and
+                    // may not have been named the way this one names them.
+                    if (material == null || !material.HasProperty("_YAPS_Bake")) continue;
+                    found++;
+                    if (!IsStale(material)) continue;
+                    if (Refresh(material, Beside(material), null))
+                    {
+                        refreshed++;
+                        EditorUtility.SetDirty(material);
+                    }
+                    else failed++;
+                }
+            }
+            finally { EditorUtility.ClearProgressBar(); }
+
+            if (refreshed > 0) AssetDatabase.SaveAssets();
+            if (found == 0) return "No YAPS materials in this project.";
+            if (refreshed == 0 && failed == 0) return $"{found} YAPS material(s), all current.";
+            string said = $"Refreshed {refreshed} of {found} YAPS material(s).";
+            // A failure is a material whose source shader is gone from the
+            // project. Nothing can be rebuilt from a shader that is not
+            // there, and saying so beats a count that quietly does not add up.
+            return failed == 0 ? said
+                : said + $" {failed} could not be: their original shader is no longer in the project.";
+        }
+
+        // The folder the patched shader already lives in, or this tool's
+        // output root when it has none.
+        static string Beside(Material patched)
+        {
+            string at = patched.shader == null ? null : AssetDatabase.GetAssetPath(patched.shader);
+            string dir = string.IsNullOrEmpty(at) ? null : Path.GetDirectoryName(at);
+            return string.IsNullOrEmpty(dir) ? "Assets/YAPS/Generated" : dir.Replace('\\', '/');
         }
 
         // What the patched shader is called, and it is not cosmetic.

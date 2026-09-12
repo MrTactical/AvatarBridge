@@ -155,6 +155,36 @@ namespace AvatarBridge
             return plan;
         }
 
+        // The conversion's own call, at the end of the pipeline. Sizes and
+        // formats only: stripping a renderer no clip switches on and tidying
+        // an animator are judgement calls that want the avatar in front of
+        // you, and they stay on the button. A size the mesh's own texel
+        // density proves is not a judgement call.
+        public static void SlimOnConvert(BridgeContext ctx)
+        {
+            if (ctx == null || !ctx.Settings.slimTexturesOnConvert || ctx.CvrAvatar == null)
+            {
+                return;
+            }
+            GameObject alsoMine = null;
+#if VRC_SDK_VRCSDK3
+            if (ctx.SourceDescriptor != null) alsoMine = ctx.SourceDescriptor.gameObject;
+#endif
+            var survey = AvatarSurvey.Build(ctx.CvrAvatar);
+            var plan = Find(ctx.CvrAvatar, survey, AvatarWeight.Measure(ctx.CvrAvatar, survey),
+                alsoMine, true, false);
+            // Find fills these whether or not anything asked for them.
+            plan.Wins = null;
+            if (plan.Textures.Count == 0)
+            {
+                // Silence, not a line saying nothing happened. An avatar
+                // whose textures already fit is the common case and does
+                // not need a paragraph about it.
+                return;
+            }
+            Apply(ctx.CvrAvatar, plan, ctx.OutputDir, ctx.Report);
+        }
+
         public static void Apply(CVRAvatar avatar, Plan plan, string outputDir, BridgeReport report)
         {
             if (plan == null || !plan.Any)
@@ -205,15 +235,12 @@ namespace AvatarBridge
             if (done > 0)
             {
                 WriteUndo(outputDir, undo);
+                report.BytesReclaimed += plan.Bytes;
                 report.Converted(Category, $"{done} texture(s) changed, {Mb(plan.Bytes)} off the graphics card",
                     string.Join("; ", plan.Textures.Take(8).Select(Describe)) +
                     (plan.Textures.Count > 8 ? $"; and {plan.Textures.Count - 8} more" : "") +
-                    ". Import settings only: no texture file was edited, every one of these is a field in the " +
-                    "inspector to put back, and \"Put the textures back\" here does the same thing." +
-                    (refused > 0
-                        ? $" {refused} of them would not take the format this platform was asked for and were " +
-                          "put back to what they had, so only their size changed."
-                        : ""));
+                    ". Import settings only; \"Put the textures back\" undoes it." +
+                    (refused > 0 ? $" {refused} refused the format, so only their size changed." : ""));
             }
 
             StripDead(avatar, plan, report);
@@ -362,9 +389,7 @@ namespace AvatarBridge
 
             report.Converted(Category, $"{gone.Count} hidden renderer(s) stripped, {Mb(plan.StripBytes)} off the card",
                 string.Join("; ", gone.Take(6)) + (gone.Count > 6 ? $"; and {gone.Count - 6} more" : "") +
-                ". Every one was switched off with nothing in any clip able to switch it on, so none of them " +
-                "could ever be seen. The objects are still there, only the renderer is gone, so anything " +
-                "parented to them still works. Ctrl+Z puts them back.");
+                ". No clip could switch them on. The objects stay; Ctrl+Z puts the renderers back.");
             return gone.Count;
         }
 

@@ -79,11 +79,8 @@ namespace AvatarBridge
             {
                 ctx.Report.Skipped(Category,
                     $"Humanoid Jaw is mapped to \"{jaw.name}\", which is not a jaw, and cannot be unmapped",
-                    $"Rebuilding the rig needs every mapped bone name to be unique in the hierarchy, " +
-                    $"and \"{ambiguous}\" appears more than once. Unity matches humanoid bones BY NAME, " +
-                    "so it cannot tell which one the rig means. Rename the duplicate (the copy that " +
-                    "is not part of the real armature) and convert again, or clear the Jaw slot " +
-                    "yourself in the model's Rig > Configure." + cost);
+                    $"\"{ambiguous}\" appears more than once. Rename the duplicate and convert again, or clear the " +
+                    "Jaw in the model's Rig > Configure." + cost);
                 return;
             }
 
@@ -127,13 +124,11 @@ namespace AvatarBridge
                 }
                 ctx.Report.Skipped(Category,
                     $"Humanoid Jaw is mapped to \"{jaw.name}\", which is not a jaw, and could not be unmapped",
-                    "Rebuilding the humanoid rig without the Jaw was refused by Unity, so the avatar " +
-                    "keeps the mapping it had. Clear the Jaw slot yourself in the model's " +
-                    "Rig > Configure if you want it gone." + cost +
-                    $" (Tried against root \"{root.name}\" with the rig's own skeleton " +
-                    $"({skeleton.Length} entries, root \"{(skeleton.Length > 0 ? skeleton[0].name : "(none)")}\") " +
-                    $"and again with one read off the live hierarchy, {human.Length} human entries " +
-                    "either way: Unity's own message in the console says which check failed.)");
+                    "Unity refused the rebuild. Clear the Jaw in the model's Rig > Configure if you want it " +
+                    "gone." + cost +
+                    $" (Root \"{root.name}\", rig skeleton " +
+                    $"{skeleton.Length} entries from \"{(skeleton.Length > 0 ? skeleton[0].name : "(none)")}\", " +
+                    $"then the live hierarchy, {human.Length} human entries. The console says which check failed.)");
                 return;
             }
 
@@ -156,21 +151,9 @@ namespace AvatarBridge
 
             ctx.Report.Converted(Category,
                 $"Humanoid Jaw unmapped: it pointed at \"{jaw.name}\", which is not a jaw",
-                "The rig is rebuilt without a Jaw. ChilloutVR uses the jaw bone for the Auto voice " +
-                "position and for jaw-bone visemes, so a Jaw mapped to hair or a mask puts your voice " +
-                "in the wrong place and waggles that object while you speak. With no Jaw at all, the " +
-                "voice position falls back to a measured mouth and visemes stay on blendshapes, both " +
-                "of which are right." +
-                (usedLiveSkeleton
-                    ? " The rig's own skeleton was refused, so this was rebuilt from the avatar's " +
-                      "live hierarchy instead. That reads the bones where they stand NOW rather " +
-                      "than the T-pose the rig was configured in: identical if the avatar is at " +
-                      "its bind pose, and a slightly different rest pose if it is not."
-                    : "") +
-                (orphans > 0
-                    ? $" {orphans} rig(s) left in the output folder by earlier conversions were " +
-                      "removed; nothing referenced them."
-                    : ""));
+                "Rebuilt without a Jaw, so your voice and visemes don't follow that object." +
+                (usedLiveSkeleton ? " Rebuilt from the current pose, since the rig's own was refused." : "") +
+                (orphans > 0 ? $" {orphans} old rig(s) removed." : ""));
         }
 
         static int DeleteStaleRigs(string dir, string keep)

@@ -189,11 +189,8 @@ namespace AvatarBridge
             if (plan.PlaceholderStates > 0)
             {
                 report.Warning(Category, $"{plan.PlaceholderStates} slot(s) still hold a placeholder clip",
-                    "These are NOT waste and are not removed. Unity crashes when it builds a playable " +
-                    "graph containing an empty motion slot, so each of these holds a clip that animates " +
-                    "one inert value instead. What they mean is that a motion the author intended never " +
-                    "arrived: usually an asset that went missing or a build step that did not run. " +
-                    "Find out why before you rely on whatever used them.");
+                    "Not waste: an empty slot crashes Unity. Each means a motion never arrived, usually a " +
+                    "missing asset or a skipped build step. Find out why before relying on it.");
             }
             if (into != null)
             {

@@ -75,6 +75,13 @@ namespace AvatarBridge
         public HashSet<string> PreserveParameters = new HashSet<string>();
         public HashSet<string> ImpulseParameters = new HashSet<string>();
         public HashSet<string> ContactParameters = new HashSet<string>();
+
+        // Parameters whose ping-pong pair the merger rewired into a plain
+        // toggle. A contact still drives some of them, and its emulated
+        // pulse advanced the pair one step, which the rewired pair reads as
+        // on for a frame and off again. HoldUnlatchedContacts reads this and
+        // turns those pulses into hold-while-touching.
+        public HashSet<string> UnlatchedParameters = new HashSet<string>();
         public List<string> ParameterOrder = new List<string>();
 
         public Dictionary<(string path, bool sender), List<string>> ContactHosts =
@@ -93,16 +100,17 @@ namespace AvatarBridge
             public Renderer Renderer;
             public Material Material;
             public int MaterialSlot;
-            // EVERY material the plug's triangles use, Material included. The
-            // channel wires to one, but a knob that decides how the plug
-            // resolves has to reach all of them or half the mesh answers a
-            // different way.
+            // EVERY material the plug's triangles use, Material included, on
+            // every mesh. A knob that decides how the plug resolves has to
+            // reach all of them or half the plug answers a different way.
             public System.Collections.Generic.List<Material> Materials =
                 new System.Collections.Generic.List<Material>();
-            // The renderer slots those materials sit in, same order, so the
-            // channel can drive every one of them and not only the first.
+            // Renderer's slots, the first of Materials in the same order.
             public System.Collections.Generic.List<int> MaterialSlots =
                 new System.Collections.Generic.List<int>();
+            // The other meshes baked on this plug's frame.
+            public System.Collections.Generic.List<YapsPlugMesh> Extras =
+                new System.Collections.Generic.List<YapsPlugMesh>();
             public float Length;
             public System.Collections.Generic.List<string> Shapes = new System.Collections.Generic.List<string>();
             public System.Collections.Generic.List<string> MovingShapes = new System.Collections.Generic.List<string>();
@@ -115,6 +123,16 @@ namespace AvatarBridge
             public UnityEngine.Vector3 Origin;
             public UnityEngine.Quaternion Rotation;
             public float Radius;
+        }
+
+        // One more mesh of a plug, with the shapes its own bake measured, so
+        // size curves reach it as well as the primary.
+        public class YapsPlugMesh
+        {
+            public Renderer Renderer;
+            public List<int> Slots = new List<int>();
+            public List<string> Shapes = new List<string>();
+            public List<string> MovingShapes = new List<string>();
         }
 
         public List<YapsPlug> YapsPlugs = new List<YapsPlug>();

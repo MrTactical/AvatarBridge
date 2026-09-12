@@ -16,14 +16,16 @@ namespace AvatarBridge.Yaps
         [Tooltip("A hole closes around the plug and stops it. A ring lets it pass straight through.")]
         public SocketKind kind = SocketKind.Hole;
 
+        [Tooltip("Entered from the front only, the side its markers sit on. Screen atlas only: " +
+                 "by marker light, either side.")]
+        public bool oneWay;
+
         [Header("Shapes that open as a plug goes in")]
-        [Tooltip("The mesh whose blendshapes should react. Usually the body this socket sits on. " +
-                 "Leave empty for a socket that only bends plugs and plays no shape.")]
+        [Tooltip("The mesh whose shapes open, usually the body. Empty for a socket that only bends plugs.")]
         public SkinnedMeshRenderer renderer;
 
-        [Tooltip("Up to sixteen, each with its own depth: it starts opening at its start depth and is fully " +
-                 "open by start + fade, both as fractions of the plug's length. Several may share a depth. " +
-                 "They accumulate: once a shape has arrived it stays.")]
+        [Tooltip("Up to sixteen, each opening over its own depth range, as fractions of the plug's " +
+                 "length. Once open, a shape stays open.")]
         public List<ShapeStage> shapes = new List<ShapeStage>();
 
         [Serializable]
@@ -37,23 +39,36 @@ namespace AvatarBridge.Yaps
             public float fadeOver = 0.3f;
         }
 
+        [Header("Animations that play as a plug goes in")]
+        [Tooltip("Your own clips, blended in by depth. Write defaults are on, so animate only " +
+                 "what nothing else animates.")]
+        public List<DepthAnimation> depthAnimations = new List<DepthAnimation>();
+
+        [Serializable]
+        public class DepthAnimation
+        {
+            public AnimationClip clip;
+            [Range(0f, 1f)] public float startsAt = 0f;
+            [Range(0.01f, 1f)] public float fadeOver = 0.3f;
+        }
+
         [Header("Advanced")]
         [Range(0f, 1f), Tooltip("Overall strength of the shapes. 1 is as authored.")]
         public float shapePower = 1f;
 
-        [Tooltip("For shapes on a mesh that is not the socket's own (the body): how far in, in metres, " +
-                 "counts as depth 1. The contact that drives them cannot know a plug's length, so this " +
-                 "stands for it. 0 = the longest baked plug on this avatar when built, else 0.25 m.")]
+        [Tooltip("How far in, in metres, counts as full depth, since a contact cannot know a " +
+                 "plug's length. 0 takes the longest plug on the avatar, else 0.25 m.")]
         [Min(0f)]
         public float depthReach = 0f;
 
-        [Tooltip("Emit the marker lights that let Raliv DPS plugs find this socket, and YAPS " +
-                 "plugs too wherever the screen atlas cannot answer. Leave this on unless the " +
-                 "slots are needed elsewhere. A mesh gets four vertex light slots, a socket needs " +
-                 "two and a plug's tracker takes one, so only the first socket or two carry " +
-                 "lights; past that a plug sees roots without fronts and cannot enter any of them " +
-                 "by light. A YAPS plug finds the rest through the screen atlas, which has no limit.")]
+        [Tooltip("Marker lights for DPS plugs, and for YAPS plugs the screen atlas misses. A mesh " +
+                 "has four light slots, so only the first socket or two get them.")]
         public bool emitLights = true;
+
+        [Tooltip("What this socket is, for plugs that choose. Any words, case ignored; SPS names " +
+                 "like hips or hand mean the same here. Every plug answers \"shared\". Screen " +
+                 "atlas only: by marker light, every plug answers.")]
+        public List<string> tags = new List<string> { YapsTags.Shared };
 
         // WHICH VERSION BUILT THIS, so a prop made months ago can say so.
         //
@@ -70,6 +85,14 @@ namespace AvatarBridge.Yaps
         [HideInInspector]
         public Material bakedFrom;
 
+        // Where that material came off. Remove put it back on slot 0, which
+        // is the wrong slot on any socket baked into another one, and a mesh
+        // set back to None left nothing pointing at the renderer at all.
+        [HideInInspector]
+        public Renderer bakedRenderer;
+        [HideInInspector]
+        public int bakedSlot = -1;
+
         // What the last build called this socket's reactions layer and its
         // depth parameter. Names follow the bone, so they move when the
         // socket does; without a record of the old ones a rebuild would
@@ -78,6 +101,9 @@ namespace AvatarBridge.Yaps
         public string builtLayer;
         [HideInInspector]
         public string builtParameter;
+        // The same for the depth animations layer.
+        [HideInInspector]
+        public string builtAnimations;
 
         // Editor state, never saved: while on, every YAPS plug in the scene
         // bends toward this socket. Only one socket previews at a time.
@@ -102,16 +128,7 @@ namespace AvatarBridge.Yaps
         // The inspector also ticks this on every scene repaint.
         void Update() => PreviewTick();
 
-        // Unused from 4.5.1, kept so saved scenes still load. It chose the
-        // contact channel's route, which the shader no longer reads.
-        [HideInInspector]
-        public bool previewAsChannel = true;
-
-        [Tooltip("Keep previewing after you press Play. The preview normally stands down in Play " +
-                 "Mode so it cannot fight whatever drives the material there. Turn this on when the " +
-                 "plug only appears in Play Mode, which is the usual case: the mesh ships switched " +
-                 "off and a toggle brings it in. It is also the only way to see the bend on a " +
-                 "POSED avatar, since edit mode holds the rest pose.")]
+        [Tooltip("For a plug that only appears in Play Mode, or to see the bend on a posed avatar.")]
         public bool previewInPlayMode;
 
         public void PreviewTick()
@@ -152,6 +169,9 @@ namespace AvatarBridge.Yaps
                     float length = m.HasProperty("_YAPS_Length") ? m.GetFloat("_YAPS_Length") : 0.25f;
                     float gap = Vector3.Distance(PlugOrigin(r), transform.position);
                     float engaged = 1f - Mathf.Clamp01((gap - length * 1.2f) / Mathf.Max(length * 0.4f, 0.001f));
+                    // What the atlas does with a one-way ring and a plug behind it.
+                    if (kind == SocketKind.Ring && oneWay
+                        && Vector3.Dot(transform.forward, PlugOrigin(r) - transform.position) < 0f) engaged = 0f;
                     r.GetPropertyBlock(Block, slot);
                     // World space: the one route the shader still reads. The
                     // contact channel's own route, which this used to imitate,

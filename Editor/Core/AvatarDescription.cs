@@ -38,11 +38,8 @@ namespace AvatarBridge
                 File.WriteAllText(Path.GetFullPath(relative), text);
                 UnityEditor.AssetDatabase.ImportAsset(relative);
                 ctx.Report.Converted(Category, ctx.Target.name,
-                    $"Wrote a ready-made store description to {FileName}: \"Copy description\" in the " +
-                    "AvatarBridge window puts it on your clipboard for the CCK's Description box. It " +
-                    "starts with a blank line or two for your own words, so it reads as the footer of " +
-                    "your description rather than all of it. Everything below that is counted from " +
-                    "this avatar; edit any of it before uploading.");
+                    $"Wrote a store description to {FileName}. \"Copy description\" in the AvatarBridge " +
+                    "window copies it for the CCK's Description box. Edit it before uploading.");
             }
             catch (System.Exception e)
             {

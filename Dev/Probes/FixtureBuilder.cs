@@ -84,6 +84,32 @@ namespace AvatarBridge.Dev
             if (Application.isBatchMode) EditorApplication.Exit(code);
         }
 
+        // The tagged pair alone, for the same reason RunStrafeOnly exists:
+        // the other fixtures have baselines and the source scene has moved
+        // under them, so rebuilding the set would diff avatars this has
+        // nothing to do with.
+        //
+        //   Unity.exe -batchmode -quit -executeMethod AvatarBridge.Dev.FixtureBuilder.RunTaggedOnly
+        public static void RunTaggedOnly()
+        {
+            int code = 0;
+            try
+            {
+                string source = FindScene(SourceScene);
+                if (source == null) throw new Exception($"no scene matching \"{SourceScene}\"");
+                string dir = Path.GetDirectoryName(source).Replace('\\', '/');
+                BuildOne(source, dir + "/Fixture_TaggedPair.unity", AddTaggedPair);
+                AssetDatabase.SaveAssets();
+            }
+            catch (Exception e)
+            {
+                _log.AppendLine("FAILED: " + e);
+                code = 1;
+            }
+            File.WriteAllText(Log, _log.ToString());
+            if (Application.isBatchMode) EditorApplication.Exit(code);
+        }
+
         static void BuildFixtures()
         {
             string source = FindScene(SourceScene);
@@ -93,6 +119,7 @@ namespace AvatarBridge.Dev
             BuildOne(source, dir + "/Fixture_DeformSocket.unity", AddDeformSocket);
             BuildOne(source, dir + "/Fixture_HeadTransplant.unity", AddTransplantSocket);
             BuildOne(source, dir + "/Fixture_AsymmetricStrafe.unity", AddAsymmetricStrafe);
+            BuildOne(source, dir + "/Fixture_TaggedPair.unity", AddTaggedPair);
             AssetDatabase.SaveAssets();
         }
 
@@ -157,6 +184,96 @@ namespace AvatarBridge.Dev
 
             AddFurySocket(socket, "Fixture Hole");
             _log.AppendLine("  deform socket on Hips, 2 blendshapes, YAPS Simple Lit");
+        }
+
+        // A named tag on both ends, and the only refuse list in the corpus.
+        //
+        // Every socket in the corpus wears the shared tag and nothing else,
+        // and no plug anywhere names a word or refuses one, so run 396 read
+        // "refusing=0" 27 times out of 27. That leaves the whole exclude
+        // path walked only by YapsTagProbe, which tests the fold in
+        // isolation and never runs a conversion: nothing checks that an
+        // authored excludeTags reaches the material the plug ships with.
+        //
+        // Shared is off on purpose at both ends. With it on the pair matches
+        // regardless and the named word proves nothing.
+        static void AddTaggedPair(VRCAvatarDescriptor d)
+        {
+            var socket = new GameObject("Fixture Tagged Socket");
+            socket.transform.SetParent(Bone(d, HumanBodyBones.Chest), false);
+            socket.transform.localPosition = new Vector3(0f, 0.05f, 0.08f);
+            TagSocket(AddFurySocket(socket, "Fixture Tagged Hole"), "fixturehole");
+
+            var plug = new GameObject("Fixture Tagged Plug");
+            plug.transform.SetParent(Bone(d, HumanBodyBones.Hips), false);
+            plug.transform.localPosition = new Vector3(0f, -0.05f, 0.1f);
+            PlugMesh(plug);
+            TagPlug(AddFuryPlug(plug), "fixturehole", "fixturebar");
+
+            _log.AppendLine("  tagged pair: socket \"fixturehole\", plug +fixturehole -fixturebar");
+        }
+
+        static Component AddFuryPlug(GameObject host)
+        {
+            var type = AppDomain.CurrentDomain.GetAssemblies()
+                .Select(a => a.GetType("VF.Component.VRCFuryHapticPlug"))
+                .FirstOrDefault(t => t != null);
+            if (type == null) throw new Exception("VRCFuryHapticPlug type not found");
+            var comp = host.AddComponent(type);
+            var so = new SerializedObject(comp);
+            so.FindProperty("name").stringValue = "Fixture Tagged Plug";
+            so.FindProperty("enableSps").boolValue = true;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            return comp;
+        }
+
+        // Through SerializedObject rather than reflection: a rule entry is
+        // a Fury type this has no reference to, and the serialiser makes one
+        // without naming it.
+        static void TagSocket(Component socket, string tag)
+        {
+            var so = new SerializedObject(socket);
+            so.FindProperty("useSharedTag").boolValue = false;
+            var tags = so.FindProperty("tags");
+            tags.arraySize = 1;
+            tags.GetArrayElementAtIndex(0).stringValue = tag;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        static void TagPlug(Component plug, string answers, string refuses)
+        {
+            var so = new SerializedObject(plug);
+            so.FindProperty("useSharedTag").boolValue = false;
+            Rule(so, "includeTags", answers);
+            Rule(so, "excludeTags", refuses);
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        static void Rule(SerializedObject so, string list, string tag)
+        {
+            var rules = so.FindProperty(list);
+            rules.arraySize = 1;
+            var entry = rules.GetArrayElementAtIndex(0).FindPropertyRelative("tag");
+            if (entry == null) throw new Exception($"{list} entry has no \"tag\" field");
+            entry.stringValue = tag;
+        }
+
+        // Fury climbs for a renderer, and a plug with none is not a plug a
+        // user would have. A primitive is enough: nothing here reads the
+        // shape, only that one exists.
+        static void PlugMesh(GameObject host)
+        {
+            var primitive = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            var mesh = primitive.GetComponent<MeshFilter>().sharedMesh;
+            UnityEngine.Object.DestroyImmediate(primitive);
+
+            var go = new GameObject("Fixture Tagged Plug Mesh");
+            go.transform.SetParent(host.transform, false);
+            go.transform.localScale = new Vector3(0.03f, 0.06f, 0.03f);
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var shader = Shader.Find("YAPS/Simple Lit");
+            go.AddComponent<MeshRenderer>().sharedMaterial =
+                new Material(shader != null ? shader : Shader.Find("Standard"));
         }
 
         // The user's class, built by hand exactly as Fury's bake leaves

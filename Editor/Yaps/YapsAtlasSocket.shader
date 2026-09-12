@@ -24,10 +24,25 @@ Shader "YAPS/Atlas Socket"
 {
     Properties
     {
-        // 0 ring, 1 hole. A ring is a loop and can be entered from either
-        // face; a hole has a front and a back. Sixteen kinds fit in the
-        // facing pixel's alpha.
-        [Enum(Ring,0,Hole,1)] _YAPS_Kind ("Socket kind", Float) = 0
+        // 0 ring, 1 hole, 2 one-way ring. A ring is a loop and can be
+        // entered from either face unless it is one-way; a hole has a front
+        // and a back. Shares the facing pixel's alpha with the number.
+        [Enum(Ring,0,Hole,1,OneWayRing,2)] _YAPS_Kind ("Socket kind", Float) = 0
+
+        // The socket's tag set, 15 bits in a float. Zero is untagged, which
+        // is what every socket built before version 3 and every legacy
+        // socket found by light is, and what a plug with no include list
+        // answers.
+        _YAPS_SocketTags ("Socket tag word", Float) = 0
+
+        // The wearer's owner id, animated per renderer from a synced
+        // parameter. Zero on the shared material, and zero is "unknown",
+        // which is right for a prop or a world socket.
+        _YAPS_Owner ("Owner id", Float) = 0
+
+        // This socket's number among its wearer's own, 1 to 15, 0 for
+        // none. Set per socket at build, on a material of its own.
+        _YAPS_SocketIndex ("Own socket number", Float) = 0
     }
     SubShader
     {
@@ -46,6 +61,9 @@ Shader "YAPS/Atlas Socket"
         struct appdata { float4 vertex : POSITION; float3 corner : TEXCOORD0; UNITY_VERTEX_INPUT_INSTANCE_ID };
 
         float _YAPS_Kind;
+        float _YAPS_SocketTags;
+        float _YAPS_Owner;
+        float _YAPS_SocketIndex;
 
         // Everything a quad needs to know about where it belongs.
         void Place(float3 corner, out int cellPx, out int cellPy,
@@ -61,7 +79,9 @@ Shader "YAPS/Atlas Socket"
             int3 cell = int3(floor(scaled));
             float3 f = frac(scaled);
 
-            int total = YAPS_ATLAS_GRID * YAPS_ATLAS_GRID;
+            // Off target the quad goes nowhere, but the maths still runs.
+            YapsAtlasLayout layout = YapsAtlasLayoutNow();
+            int total = max(layout.cells, 1);
             int idx = YapsAtlasHash(cell) % total;
             if (idx < 0) idx += total;
             if (home == 1)
@@ -70,7 +90,7 @@ Shader "YAPS/Atlas Socket"
                 if (step < 0) step += max(total - 1, 1);
                 idx = (idx + step + 1) % total;
             }
-            YapsAtlasCellPixels(idx, level, cellPx, cellPy);
+            YapsAtlasCellPixels(idx, level, layout, cellPx, cellPy);
 
             sub = (f.x > 0.5 ? 4 : 0) + (f.y > 0.5 ? 2 : 0) + (f.z > 0.5 ? 1 : 0);
             payload = f;
@@ -130,6 +150,8 @@ Shader "YAPS/Atlas Socket"
                 float4 pos : SV_POSITION;
                 float4 payload : TEXCOORD0;
                 float4 other   : TEXCOORD1;
+                float4 tags    : TEXCOORD3;
+                float4 owner   : TEXCOORD4;
                 float  u       : TEXCOORD2;
                 UNITY_VERTEX_OUTPUT_STEREO
             };
@@ -145,7 +167,8 @@ Shader "YAPS/Atlas Socket"
 
                 float2 unit = v.corner.xy + 0.5;
                 float2 atPx;
-                atPx.x = cx + (1 + 2 * sub) * YAPS_ATLAS_SLOTPX + unit.x * 2 * YAPS_ATLAS_SLOTPX;
+                atPx.x = cx + (1 + YAPS_ATLAS_OCTPX * sub) * YAPS_ATLAS_SLOTPX
+                       + unit.x * YAPS_ATLAS_OCTPX * YAPS_ATLAS_SLOTPX;
                 atPx.y = cy + unit.y * YAPS_ATLAS_SLOTPX;
                 o.pos = YapsAtlasFits()
                     ? float4(YapsAtlasToClip(atPx), UNITY_NEAR_CLIP_VALUE, 1)
@@ -155,13 +178,21 @@ Shader "YAPS/Atlas Socket"
                 // The facing pixel's alpha carried a second copy of the tag,
                 // which nothing read: it is only reached once the position
                 // pixel's tag matched, and the same draw writes both, so it
-                // cannot disagree. It carries the KIND instead.
-                o.other   = float4(fwd, (floor(_YAPS_Kind) + 1) / 16.0);
+                // cannot disagree. It carries the KIND instead, and the
+                // socket's number among its wearer's own.
+                o.other   = float4(fwd, YapsFacingEncode((int) round(_YAPS_Kind),
+                                                         (int) round(_YAPS_SocketIndex)));
+                o.tags    = YapsTagsEncode((int) floor(_YAPS_SocketTags + 0.5));
+                o.owner   = YapsOwnerEncode(YapsOwnerOf(_YAPS_Owner));
                 o.u = unit.x;
                 return o;
             }
 
-            fixed4 frag (v2f i) : SV_Target { return i.u < 0.5 ? i.payload : i.other; }
+            fixed4 frag (v2f i) : SV_Target
+            {
+                float q = i.u * YAPS_ATLAS_OCTPX;
+                return q < 1 ? i.payload : q < 2 ? i.other : q < 3 ? i.tags : i.owner;
+            }
             ENDCG
         }
     }

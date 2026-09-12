@@ -280,42 +280,22 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted(Category,
                     $"{grafts.Count} of the avatar's own locomotion animation(s) grafted into ChilloutVR's locomotion",
-                    $"{string.Join("; ", grafts)}. These played from VRChat's Base/Action/Sitting playable " +
-                    "layers, which cannot run as separate layers here: merged above ChilloutVR's " +
-                    "Locomotion/Emotes they could only replace it, killing movement and stances. Instead the " +
-                    "clips were moved into the matching states and blend-tree positions of ChilloutVR's OWN " +
-                    "locomotion layer, matched by their velocity-space position rather than by name, and " +
-                    "each grafted clip's loop setting is made to match the slot it fills: a cycle authored " +
-                    "without looping would otherwise play once and freeze. The game still decides when to " +
-                    "walk, fall, fly or sit; it now does so with this avatar's animations. A flight pose on " +
-                    "LocFlying plays whenever ChilloutVR's own flight mode is active (keybind or double-jump, " +
-                    "where the world allows it); speed and movement are the client's, so a VRChat flight " +
-                    "system's own speed logic is not needed and not converted.");
+                    $"{string.Join("; ", grafts)}. Matched to ChilloutVR's locomotion by velocity, loops matched " +
+                    "to their slot. A flight pose plays in ChilloutVR's own flight mode.");
             }
             else if (proxiesSkipped > 0 && ctx.Settings.convertBaseLayer)
             {
                 ctx.Report.Skipped(Category,
                     "Base locomotion is VRChat's built-in placeholder animations, nothing to carry over",
-                    $"All {proxiesSkipped} animation(s) in the Base/Sitting locomotion trees are VRChat " +
-                    "\"proxy\" clips (proxy_walk_forward and family). Proxies are stand-ins the VRChat " +
-                    "client replaces with its internal animations at runtime; the real walk was never part " +
-                    "of this avatar. ChilloutVR's equivalent is its own locomotion animation set, which the " +
-                    "converted avatar already runs, so nothing is missing.");
+                    $"All {proxiesSkipped} are VRChat proxy clips. ChilloutVR's own set is used.");
             }
 
             if (StrippedNames.Count > 0)
             {
                 ctx.Report.Converted(Category,
                     $"Movement baked into {StrippedNames.Count} animation(s) flattened, ChilloutVR moves you itself",
-                    $"{string.Join(", ", StrippedNames.Distinct())}. VRChat systems bake movement into their " +
-                    "animations because a VRChat avatar cannot move the player any other way: a copter " +
-                    "takeoff climbs by animating the body upward. Here the client owns all movement (flight, " +
-                    "jumps, seats), and the first-person camera rides the head bone, so a clip that also " +
-                    "displaces the body shoves the wearer around with no input. Each root-movement curve in " +
-                    "the converted copies is flattened to its STARTING value, held, not deleted, because the " +
-                    "same curve also carries the body's baseline height, and deleting it sank the wearer into " +
-                    "the floor. The pose stays where the author put it; the game supplies the motion. Root " +
-                    "motion that returns home (a backflip's flip, a dance's sway) is untouched.");
+                    $"{string.Join(", ", StrippedNames.Distinct())}. Root movement is held at its starting value, " +
+                    "so the game moves you. Motion that returns home is untouched.");
             }
         }
 

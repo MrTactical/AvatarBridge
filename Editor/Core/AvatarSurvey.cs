@@ -630,7 +630,8 @@ namespace AvatarBridge
 
         static bool Internal(string name) =>
             !string.IsNullOrEmpty(name)
-            && (Scaffolding.IsMatch(name) || CvrParameterNames.IsGameDriven(name));
+            && (Scaffolding.IsMatch(name) || CvrParameterNames.IsGameDriven(name)
+                || CvrParameterNames.NeverFed(name));
 
         // Findings a person can act on: something of theirs is broken or
         // unreachable, and the name is one they would recognise.

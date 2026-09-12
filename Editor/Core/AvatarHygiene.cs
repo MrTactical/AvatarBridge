@@ -79,35 +79,23 @@ namespace AvatarBridge
             {
                 ctx.Report.Converted("Audio",
                     $"{flattened} flat (2D) audio source(s) made positional",
-                    $"On: {string.Join(", ", flat)}{(flattened > flat.Count ? ", …" : "")}: these were " +
-                    "authored with Spatial Blend below fully 3D. ChilloutVR decides whether to " +
-                    "spatialize a source from that blend alone, and one that does not reach fully 3D " +
-                    "is never handed to the spatializer, so it plays for the wearer and can be " +
-                    "silent for everyone else, which reads as a broken sound rather than a flat one. " +
-                    "An avatar's sound belongs to a body in a room, so the blend is set to 3D.");
+                    $"On: {string.Join(", ", flat)}{(flattened > flat.Count ? ", …" : "")}: below fully 3D they can " +
+                    "be silent for everyone else.");
             }
 
             if (nearby.Count > 0)
             {
                 ctx.Report.Approximated("Audio",
                     $"{nearby.Count} audio source(s) stop carrying within a few metres",
-                    $"{string.Join(", ", nearby)}, left exactly as the author set them, because how " +
-                    "far a sound should carry is a decision rather than a defect. Worth knowing all " +
-                    "the same: past that distance the sound is silent, so a listener standing a normal " +
-                    "conversational distance away hears nothing while you hear it perfectly. If one of " +
-                    "these is meant to be noticed by the person setting it off, raise its Max Distance " +
-                    "on the AudioSource.");
+                    $"{string.Join(", ", nearby)}: left as set. Raise Max Distance on any others should hear.");
             }
             if (clamped > 0)
             {
                 ctx.Report.Approximated("Audio",
                     $"{clamped} audio source(s) clamped to VRChat's avatar audio limits",
                     $"On: {string.Join(", ", notes)}{(clamped > notes.Count ? ", …" : "")}: doppler 0, " +
-                    "min distance at least 0.3 m, max distance at most 40 m. VRChat silently enforces " +
-                    "these on every avatar, so this is how the avatar actually sounded there. ChilloutVR " +
-                    "feeds avatar sources to its spatializer unclamped, and a source with min distance 0 " +
-                    "mounted on the wearer's own body can silence the ENTIRE game's audio (voice, video, " +
-                    "props) while the avatar is worn; the mix recovers when it unloads.");
+                    "min distance at least 0.3 m, max at most 40 m, as VRChat enforced. Unclamped, min distance 0 " +
+                    "can mute the whole game.");
             }
         }
 
@@ -154,12 +142,8 @@ namespace AvatarBridge
                 ctx.Report.Converted("Meshes",
                     $"{changed} skinned mesh bounding box(es) resized to the avatar: " +
                     $"{envelope.size.x:0.##} × {envelope.size.y:0.##} × {envelope.size.z:0.##} m",
-                    "Unity culls a skinned mesh by its authored bind-pose box, not by where animation, physics " +
-                    "or cloth actually put the vertices, so a mesh can vanish at screen edges while plainly on " +
-                    "camera. Each box is now the avatar's own measured volume with " +
-                    $"{height * BoundsPaddingFraction:0.##} m of clearance around it for hair, skirts and tails " +
-                    "to swing into, placed where the avatar actually is rather than centred on each mesh's root " +
-                    "bone. Boxes that were larger than this are brought down to it as well.");
+                    $"The avatar's volume plus {height * BoundsPaddingFraction:0.##} m, so meshes stop " +
+                    "vanishing at the screen's edge.");
             }
         }
 

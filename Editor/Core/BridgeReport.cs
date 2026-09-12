@@ -68,6 +68,11 @@ namespace AvatarBridge
 
         public string WeightCard;
 
+        // Texture memory the conversion gave back, for the line the window
+        // puts above the report. The report's own entry says which textures;
+        // this is the number, and nobody reads a number out of a paragraph.
+        public long BytesReclaimed;
+
         public string SurveyCard;
 
         [System.NonSerialized] public GameObject ConvertedRoot;

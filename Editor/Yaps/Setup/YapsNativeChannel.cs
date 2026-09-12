@@ -36,58 +36,12 @@ namespace AvatarBridge
                           + "plugs find sockets through the screen atlas and marker lights, and its synced "
                           + "parameters are free again");
             }
+
+            // A socket-only avatar carries the id too, so a plug elsewhere
+            // knows as a fact the socket is not its own.
+            string owner = YapsOwner.Wire(avatar);
+            if (owner != null) lines.Add("✓ " + owner);
             return lines;
-        }
-
-        // Every plug the channel can carry: baked, with a material of its
-        // own. The frame comes from the markers the bake left, so a trigger
-        // box sits on the shaft rather than on the object.
-        static List<BridgeContext.YapsPlug> Plugs(CVRAvatar avatar, List<string> skipped)
-        {
-            var found = new List<BridgeContext.YapsPlug>();
-            foreach (var plug in avatar.GetComponentsInChildren<YapsPlug>(true))
-            {
-                var renderer = plug != null ? plug.Target : null;
-                if (renderer == null)
-                {
-                    skipped.Add($"  {(plug == null ? "a plug" : plug.name)}: no mesh assigned");
-                    continue;
-                }
-                var mats = renderer.sharedMaterials;
-                int slot = -1;
-                for (int i = 0; i < mats.Length; i++)
-                {
-                    if (plug.materialSlot >= 0 && i != plug.materialSlot) continue;
-                    if (mats[i] != null && mats[i].HasProperty("_YAPS_Bake")
-                        && mats[i].GetTexture("_YAPS_Bake") != null) { slot = i; break; }
-                }
-                if (slot < 0)
-                {
-                    skipped.Add($"  {plug.name}: {renderer.name} carries no baked YAPS material"
-                                + (plug.materialSlot >= 0 ? $" in slot {plug.materialSlot}" : "")
-                                + ". Bake the plug before the channel can find it.");
-                    continue;
-                }
-
-                if (!YapsPreview.PlugFrame(plug, out var origin, out var forward,
-                        out var up, out float length))
-                {
-                    skipped.Add($"  {plug.name}: no measured frame, so there is nowhere to put the triggers");
-                    continue;
-                }
-                found.Add(new BridgeContext.YapsPlug
-                {
-                    Root = plug.transform,
-                    Renderer = renderer,
-                    Material = mats[slot],
-                    MaterialSlot = slot,
-                    Length = length,
-                    Origin = origin,
-                    Rotation = Quaternion.LookRotation(forward, up),
-                    Radius = length * 0.12f,
-                });
-            }
-            return found;
         }
 
         // Clean up leftovers asks for this when a plug has gone by hand:

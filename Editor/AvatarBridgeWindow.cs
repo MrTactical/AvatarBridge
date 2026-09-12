@@ -189,9 +189,7 @@ namespace AvatarBridge
             }
 #else
             body.Add(new HelpBox(
-                "AvatarBridge's main job is converting VRChat avatars, which needs the VRChat SDK; it isn't " +
-                "installed, so that's unavailable here (a VRChat avatar's components can't be read without it).\n\n" +
-                "Setup mode below still works: it does the ChilloutVR-side setup on any humanoid.",
+                "Converting needs the VRChat SDK, which isn't installed. Setup below still works on any humanoid.",
                 HelpBoxMessageType.Info));
             tabs.Clear();
             tabs.Add(BridgeElements.Tabs(
@@ -209,9 +207,7 @@ namespace AvatarBridge
         void BuildToolsFlow()
         {
             body.Add(BridgeElements.Hint(
-                "Everything here reads or edits an avatar that is already set up for ChilloutVR, " +
-                "converted or not. The same cards are in Tools ▸ Avatar Bridge ▸ ChilloutVR Toolkit " +
-                "if you would rather have them in their own window."));
+                "For an avatar already set up for ChilloutVR. Also its own window: Tools ▸ Avatar Bridge ▸ ChilloutVR Toolkit."));
             toolkit = new ToolkitPanel(toolsTarget, true, toolsSource);
             toolkit.Mount(body);
         }
@@ -277,15 +273,13 @@ namespace AvatarBridge
             if (VRCFuryBaker.HasFuryComponents(avatar.gameObject))
             {
                 parent.Add(new HelpBox(
-                    "VRCFury detected: it will be baked with VRCFury's own builder first, so all Fury " +
-                    "features (toggles, clothing, menus) carry over.",
+                    "VRCFury detected: baked with its own builder first, so its features carry over.",
                     HelpBoxMessageType.Info));
             }
             if (ModularAvatarBaker.HasModularAvatarComponents(avatar.gameObject))
             {
                 parent.Add(new HelpBox(
-                    "Modular Avatar detected: it will be baked via NDMF first, so MA features " +
-                    "(merged armature, menus, outfits) carry over.",
+                    "Modular Avatar detected: baked through NDMF first, so its features carry over.",
                     HelpBoxMessageType.Info));
             }
         }
@@ -295,13 +289,10 @@ namespace AvatarBridge
         void BuildAnalyseSection(VisualElement parent)
         {
             parent.Add(BridgeElements.Hint(
-                "The defaults suit most avatars; you can convert without changing anything here. " +
-                "Analysing reads this avatar and offers the settings its own contents decide."));
+                "The defaults suit most avatars. Analyse offers the settings this one's contents decide."));
 
             var button = ReportButton("Analyse this avatar",
-                "Reads the avatar as it sits in the scene: PhysBones, blendshapes, shaders, " +
-                "parameters and layers, and offers the settings those decide. Nothing changes " +
-                "until you apply it.",
+                "Reads PhysBones, blendshapes, shaders, parameters and layers. Nothing changes until you apply it.",
                 () => { Reanalyse(); ScheduleRebuild(); });
             button.SetEnabled(avatar != null);
             parent.Add(button);
@@ -384,8 +375,7 @@ namespace AvatarBridge
             if (recommendations > 1)
             {
                 parent.Add(ReportButton($"Apply all {recommendations} recommendations",
-                    "Applies the measured ones only. The \"your call\" rows are never included: " +
-                    "nothing in the avatar says which way those should go.",
+                    "Applies the measured ones only, never the \"your call\" rows.",
                     () =>
                     {
                         foreach (var a in ordered)
@@ -605,21 +595,15 @@ namespace AvatarBridge
                 settings.deleteConvertedPhysBones, v => settings.deleteConvertedPhysBones = v));
             // Both writers skip toe chains, so the choice is shown for both.
             b.Add(BridgeElements.Bind("Convert toe PhysBones",
-                "Off by default: simulated toes wiggle with every step in ChilloutVR, which " +
-                "reads as broken rather than expressive. Chains on or under the humanoid Toes " +
-                "bones (or named like toes) are skipped and listed in the report. Turn on if " +
-                "this avatar's toe physics are deliberate.",
+                "Off by default: simulated toes wiggle with every step in ChilloutVR. Skipped chains are listed in the report.",
                 settings.convertToePhysBones, v => settings.convertToePhysBones = v));
 
             if (settings.physicsTarget == PhysicsTarget.MagicaCloth2)
             {
                 b.Add(BridgeElements.SubHeading("MagicaCloth2 feel"));
                 b.Add(BridgeElements.Hint(
-                    "Every one of these is on, and on is what you want: each is either a measurement " +
-                    "of your own avatar or a conversion of the PhysBone's numbers, and turning one off " +
-                    "gives that part of the chain back to MagicaCloth2's generic defaults. They are here " +
-                    "to be turned off when a specific chain converts wrong, not to be chosen between. " +
-                    "Whatever they do is named in the report."));
+                    "Leave these on. Turn one off only when a chain converts wrong; it falls back to " +
+                    "MagicaCloth2's defaults."));
 
                 // Closed by default. These are escape hatches for a
                 // chain that came out wrong, not decisions to make.
@@ -635,93 +619,40 @@ namespace AvatarBridge
                 b = feel.contentContainer;
 
                 b.Add(BridgeElements.Bind("Match a preset to each chain",
-                    "Start each chain from the MagicaCloth2 preset that fits it: hair, tail, skirt, " +
-                    "cape or accessory by name, otherwise a soft/middle/hard spring chosen by how " +
-                    "firmly the PhysBone held its rest pose. Turn off to give every chain " +
-                    "MagicaCloth2's global defaults instead.",
+                    "Starts each chain from the preset that fits it: hair, tail, skirt, cape, accessory, or a spring by stiffness.",
                     settings.useMagicaPresets, v => settings.useMagicaPresets = v));
                 b.Add(BridgeElements.Bind("Fit the preset to the PhysBone",
-                    "After the preset loads, apply the few PhysBone facts that mean the same " +
-                    "thing in MagicaCloth2: a chain with no gravity keeps none, negative gravity " +
-                    "points up, immobile becomes world influence (MagicaCloth2 measures the " +
-                    "same thing the other way round), and wind influence goes to zero because " +
-                    "VRChat has no wind; ChilloutVR worlds do, and it would move the chain in a " +
-                    "way it never moved before. Each adjustment is named in the report.",
+                    "Carries gravity and immobile across, and zeroes wind, which VRChat never had.",
                     settings.fitToPhysBone, v => settings.fitToPhysBone = v));
                 b.Add(BridgeElements.Bind("Derive physics from the PhysBone",
-                    "Convert each chain's pull, spring and stiffness into MagicaCloth2's damping and " +
-                    "angle restoration, replacing the preset's feel. Both systems turned out to move " +
-                    "positions with per-step values at a fixed rate, 60 Hz against 90 Hz, so the " +
-                    "conversion is derived from both solvers rather than guessed, and confirmed " +
-                    "against a full avatar in ChilloutVR. Turn it off to get the preset's feel back.",
+                    "Converts pull, spring and stiffness into damping and angle restoration, derived from both solvers.",
                     settings.derivePhysicsFromPhysBone, v => settings.derivePhysicsFromPhysBone = v));
                 b.Add(BridgeElements.Bind("Size particles from the mesh",
-                    "MagicaCloth2's radius is the collision body of a simulated bone. Left alone it " +
-                    "is whatever the matched preset shipped: the same size on a breast as on a hair " +
-                    "strand, so collision in game covers a fraction of what you can see. This measures " +
-                    "the mesh those bones actually move and sizes each chain to it. The source " +
-                    "PhysBone's own radius is not used: in VRChat it only governs contact with PhysBone " +
-                    "colliders, so it is routinely near zero.",
+                    "Sizes each chain's collision to the mesh it moves, not the preset's one size for all.",
                     settings.fitRadiusToMesh, v => settings.fitRadiusToMesh = v));
                 b.Add(BridgeElements.Bind("Size for the largest a slider makes the body",
-                    "A body slider grows the mesh, but MagicaCloth2's radius is fixed: of its " +
-                    "parameters only pose ratio, gravity, damping, inertia, wind and blend weight " +
-                    "can be animated at all, so collision is right at one slider position and " +
-                    "wrong at the rest. This measures the mesh again with every animated " +
-                    "blendshape pushed as far as the animator can take it and keeps the larger " +
-                    "reading, so collision covers the body when the slider is up and is a little " +
-                    "generous when it is down. Shapes that SHRINK the body cost nothing: the " +
-                    "saved reading simply wins. Turn it off to size for the avatar as saved.",
+                    "Collision radius cannot be animated, so it is sized for body sliders at full.",
                     settings.sizePhysicsForLargest, v => settings.sizePhysicsForLargest = v));
                 b.Add(BridgeElements.Bind("Fit colliders to the mesh",
-                    "A PhysBone collider is one radius from end to end, so an author covering a " +
-                    "thigh has to choose between fitting the hip and fitting the knee. " +
-                    "MagicaCloth2's capsule takes a start and an end radius separately, so the " +
-                    "converted one can taper the way the limb does. This measures the body part " +
-                    "the collider sits on and fits the capsule to it. The measurement replaces " +
-                    "the source's numbers, because a PhysBone collider's size is invisible in " +
-                    "VRChat unless something collides with it and is routinely one default " +
-                    "stamped onto every collider on the avatar. Only the bone's own vertices are " +
-                    "read, so a leg collider can only come out leg-sized. The report gives the " +
-                    "before and after for each; turn this off to keep the source's dimensions.",
+                    "Measures the limb each collider sits on and tapers the capsule to it. Off keeps the source's sizes.",
                     settings.fitCollidersToMesh, v => settings.fitCollidersToMesh = v));
                 b.Add(BridgeElements.Bind("Bound swing to the source's limit",
-                    "A PhysBone's angle limit is often the only thing keeping a deliberately loose " +
-                    "chain presentable; convert the looseness without it and the chain swings much " +
-                    "further here than it ever did in VRChat. This bounds how far each bone may " +
-                    "travel from rest, worked out from that limit and the chain's length. It is a " +
-                    "distance bound rather than an angle limit, so it removes motion instead of " +
-                    "adding a restoring force and cannot set the chain vibrating.",
+                    "Keeps a loose chain within the PhysBone's angle limit, as a distance bound that cannot vibrate.",
                     settings.boundSwingToSourceLimit, v => settings.boundSwingToSourceLimit = v));
                 b.Add(BridgeElements.Bind("Cap particle radius to bone spacing",
-                    "Bounds each particle to half the gap between its bones. Off by default now " +
-                    "that the radius above is measured from the mesh rather than guessed: on a " +
-                    "soft-body chain, where two or three bones carry a large volume, this throws " +
-                    "away most of that measurement. The overlap it guards against only bites with " +
-                    "self-collision, which MagicaCloth2 leaves off. Turn it on if a long chain of " +
-                    "closely-spaced bones misbehaves.",
+                    "Bounds each particle to half the gap between its bones. Try it on a long chain of close bones that misbehaves.",
                     settings.capParticleRadius, v => settings.capParticleRadius = v));
 
                 b = outer;   // out of the fold, "Your call" is not advanced, it is a choice
                 b.Add(BridgeElements.SubHeading("Your call"));
                 b.Add(BridgeElements.Hint(
-                    "The avatar doesn't answer these: each either departs from the source or turns on " +
-                    "intent only you know. Leaving them alone converts fine."));
+                    "The avatar can't answer these. Leaving them alone converts fine."));
                 b.Add(BridgeElements.Bind("Add physics to toggled rigs that have none",
-                    "Some avatars ship a toggled style (usually an add-on hairstyle) whose " +
-                    "container carries its own bone rig and mesh but NO PhysBone: rigid in " +
-                    "VRChat, whether by intent or oversight. This synthesizes a MagicaCloth for " +
-                    "such rigs, preset chosen by the chain classifier, wired to the style's " +
-                    "toggle, so it needs the MagicaCloth2 target and does nothing under DynamicBone. " +
-                    "Off by default because it invents physics the author never made, " +
-                    "and some rigged props are rigid on purpose. The report names every rig " +
-                    "this would apply to either way.",
+                    "Gives physics to a toggled rig the author left without a PhysBone, like an add-on hairstyle. " +
+                    "Off by default: some are rigid on purpose. The report names them either way.",
                     settings.addPhysicsToRiggedStyles, v => settings.addPhysicsToRiggedStyles = v));
                 b.Add(BridgeElements.Bind("Auto-assign nearby colliders",
-                    "Also give each cloth the avatar's own colliders that it starts clear of and " +
-                    "could swing into, so a tail that passed through the leg in VRChat collides " +
-                    "with it here. This improves on the original avatar rather than copying it, so " +
-                    "check the result before uploading. Every assignment is listed in the report.",
+                    "Lets each cloth collide with body colliders it could swing into, which VRChat did not. Check before uploading.",
                     settings.autoAssignNearbyColliders, v => settings.autoAssignNearbyColliders = v));
             }
         }
@@ -746,9 +677,7 @@ namespace AvatarBridge
             b.Add(find);
 
             b.Add(new HelpBox(
-                "These are decided by the avatar itself, and \"Analyse this avatar\" sets them to " +
-                "match it. You don't need to touch anything in here; changing one means overriding " +
-                "what was measured, so only do it if you know why this avatar is the exception.",
+                "The avatar decides these, and \"Analyse this avatar\" sets them. Change one only if you know why.",
                 HelpBoxMessageType.Warning));
 
             b.Add(BridgeElements.SubHeading("General"));
@@ -763,10 +692,7 @@ namespace AvatarBridge
 
             b.Add(BridgeElements.SubHeading("Remove VRChat-only systems"));
             b.Add(BridgeElements.Bind("Remove GoGo Loco (recommended)",
-                "CVR has its own locomotion, flight and emotes. GoGo's layers fight them and " +
-                "waste ~15 synced parameters. Untick to KEEP GoGo's poses and dances: they " +
-                "live in the Base and Action layers, which must then be merged too (the hint " +
-                "below appears until they are).",
+                "ChilloutVR has its own locomotion, flight and emotes, which GoGo fights. Untick to keep GoGo's poses.",
                 settings.stripGogoLoco, v => { settings.stripGogoLoco = v; ScheduleRebuild(); }));
             if (!settings.stripGogoLoco)
             {
@@ -774,41 +700,35 @@ namespace AvatarBridge
                 // VRChat-only animator primitives. Say so where the
                 // decision is made.
                 b.Add(BridgeElements.Hint(
-                    "⚠ Keeping GoGo Loco is EXPERIMENTAL: GoGo fully replaces ChilloutVR's own " +
-                    "locomotion (that layer is removed), so Base, Additive and Action must be " +
-                    "ticked under \"Animator layers to convert\" below, or the avatar has no " +
-                    "locomotion at all. Known limits ChilloutVR cannot express: poses don't lock movement " +
-                    "(walking mid-pose slides), the viewpoint stays at standing height in floor " +
-                    "poses, and CVR's quick-menu emotes won't animate: GoGo's wheel replaces " +
-                    "them. Removing GoGo remains the recommended path."));
+                    "⚠ EXPERIMENTAL: GoGo replaces ChilloutVR's locomotion, so tick Base, Additive and Action " +
+                    "below or there is none. Poses don't lock movement, floor poses keep a standing viewpoint, " +
+                    "and the quick-menu emotes stop."));
             }
 #if !AVATARBRIDGE_YAPS
             // No add-on in the project, so "Convert to YAPS" is not an answer
             // this build can give. Offering it and quietly removing instead is
             // the worst of the three.
             b.Add(new HelpBox(
-                "Penetration (DPS, TPS, SPS) is removed. Rebuilding it for ChilloutVR is a separate " +
-                "download, the YAPS add-on, and it is not in this project. Install it and the choice " +
-                "appears here.", HelpBoxMessageType.Info));
+                "Penetration (DPS, TPS, SPS) is removed. The YAPS add-on rebuilds it; install it and the " +
+                "choice appears here.", HelpBoxMessageType.Info));
             b.Add(Link("Get the YAPS add-on (GitHub)  ↗", () => Application.OpenURL(BridgeLinks.YapsRepo)));
-            settings.stripSpsSystems = true;
-            settings.convertYapsSystems = false;
+            // Nothing written to the settings here. These persist in
+            // EditorPrefs, which are per USER on this machine and not per
+            // project, so forcing them off in a project without the add-on
+            // forced them off in every project WITH it: the next avatar
+            // converted anywhere had its penetration removed and rebuilt
+            // nothing, with the window still reading Convert. BridgeConverter
+            // already collapses the choice for the run itself, which is where
+            // it belongs, since that touches only the copy being converted.
 #else
             // One question over two settings, three answers; the fourth
             // combination the ticks allowed is not offered. Radio buttons stack
             // like the toggles around them.
             var penetration = BridgeElements.Choice("Penetration",
-                "What happens to the avatar's penetration system: Raliv DPS, Thry TPS, VRCFury SPS, " +
-                "and OGB, PCS and Wholesome that ride with them.\n\n" +
-                "Convert to YAPS: keeps it and rebuilds it for ChilloutVR, plugs bend, sockets open, " +
-                "and the author's own tuning (curvature, squeeze, idle shrink, the lot) carries across. " +
-                "YAPS is written from scratch, no VRChat code shipped, and it reads and is read by " +
-                "everything already on the platform: your plug finds DPS, TPS and SPS sockets, and " +
-                "their plugs find your sockets.\n\n" +
-                "Remove: takes the whole system out. Its shaders, contacts and parameters do not work " +
-                "in ChilloutVR and cost most of the sync budget.\n\n" +
-                "Leave as VRChat built it: converts nothing and removes nothing. It will not function " +
-                "in ChilloutVR; only for looking at what was there.",
+                "Convert to YAPS: rebuilt for ChilloutVR with the author's tuning, and works with DPS, TPS " +
+                "and SPS already on the platform.\n" +
+                "Remove: takes it all out.\n" +
+                "Leave as VRChat built it: nothing works; only for looking at what was there.",
                 new[] { "Convert to YAPS (recommended)", "Remove", "Leave as VRChat built it (won't work)" },
                 settings.stripSpsSystems ? (settings.convertYapsSystems ? 0 : 1) : 2,
                 choice =>
@@ -818,24 +738,19 @@ namespace AvatarBridge
                     ScheduleRebuild();
                 });
             b.Add(penetration);
-            b.Add(BridgeElements.Hint("DPS, TPS and SPS, and the OGB, PCS and Wholesome haptics and sound stacks that ride with them; under Convert those come across as local contact-driven parameters, free in ChilloutVR."));
+            b.Add(BridgeElements.Hint("DPS, TPS and SPS, with the OGB, PCS and Wholesome stacks that ride with them."));
             // What the other two answers cost, where the choice is made.
             if (settings.stripSpsSystems && !settings.convertYapsSystems)
             {
                 b.Add(new HelpBox(
-                    "Remove: every plug and socket goes, with its lights, contacts, parameters and " +
-                    "menu entries: the plug mesh stays, straight and undeformable. Nothing on this " +
-                    "avatar will penetrate or be penetrated in ChilloutVR. Reversible only by converting " +
-                    "again.", HelpBoxMessageType.Warning));
+                    "Every plug and socket goes; the plug mesh stays, straight. Only converting again undoes it.",
+                    HelpBoxMessageType.Warning));
             }
             else if (!settings.stripSpsSystems)
             {
                 b.Add(new HelpBox(
-                    "Leave as VRChat built it: the DPS/TPS/SPS shaders, contacts and parameters come " +
-                    "across untouched and do not function in ChilloutVR: the plug will not bend, sockets " +
-                    "will not open, and the haptics parameters keep most of the 3200-bit sync budget " +
-                    "for nothing. On a full avatar that alone can push it over the cap. Choose this only " +
-                    "to inspect what was there.", HelpBoxMessageType.Warning));
+                    "Nothing will bend or open, and the haptics parameters can push the avatar over the sync cap.",
+                    HelpBoxMessageType.Warning));
             }
             else if (settings.convertYapsSystems && settings.syncHapticsForOsc)
             {
@@ -848,16 +763,10 @@ namespace AvatarBridge
             // avatar already here; this converts. Absent, the card above has
             // already said so and offered the download.
             b.Add(BridgeElements.Hint(
-                "Already on ChilloutVR? Tools ▸ YAPS ▸ Setup adds, tunes or upgrades penetration on any " +
-                "avatar or prop: same system, same shader. This converts; that builds."));
+                "Already on ChilloutVR? Tools ▸ YAPS ▸ Setup adds penetration to any avatar or prop."));
 #endif
             b.Add(BridgeElements.Bind("Remove animation that can't do anything (recommended)",
-                "Curves writing to material properties the shader doesn't have: the signature of a " +
-                "locked Poiyomi shader that baked them away. They do nothing here and did nothing in " +
-                "VRChat either, so removing them keeps dead sliders and toggles out of your menu " +
-                "instead of leaving controls that move and change nothing. Renderers whose materials " +
-                "an animation swaps are never touched, and only the conversion's own copies of the " +
-                "clips are edited. The report names everything removed.",
+                "Curves for material properties a locked shader baked away. They did nothing in VRChat either.",
                 settings.stripDeadMaterialAnimation, v => settings.stripDeadMaterialAnimation = v));
             b.Add(BridgeElements.SubHeading("Animator layers to convert"));
             b.Add(BridgeElements.Bind("FX (toggles, expressions)", null,
@@ -865,16 +774,8 @@ namespace AvatarBridge
             b.Add(BridgeElements.Bind("Gesture (hand poses)", null,
                 settings.convertGestureLayer, v => settings.convertGestureLayer = v));
             b.Add(BridgeElements.Bind("Base / locomotion",
-                "Brings across what VRChat kept in its Base layer: object toggles, blendshapes, materials, " +
-                "parameters, additive motion, and GRAFTS the avatar's own walking, crouching, crawling, " +
-                "falling and stance animations into ChilloutVR's locomotion layer, matched by their position " +
-                "in the movement blend trees. The layer itself is masked off the body: merged in it would sit " +
-                "above ChilloutVR's locomotion and replace it rather than add to it, killing the movement " +
-                "sliders and stance buttons, so the structure stays ChilloutVR's while the animations become " +
-                "the avatar's, loop settings matched to each slot. A flight pose lands on ChilloutVR's own " +
-                "flight mode, which answers speed and movement itself. VRChat's proxy_* placeholder clips " +
-                "are skipped; those live in the VRChat client, and ChilloutVR's own animation set is this " +
-                "platform's version of them.",
+                "Toggles and parameters from the Base layer, and the avatar's own walk, crouch, crawl and fall " +
+                "animations grafted into ChilloutVR's locomotion.",
                 settings.convertBaseLayer, v => { settings.convertBaseLayer = v; ScheduleRebuild(); }));
             b.Add(BridgeElements.Bind("Additive", null,
                 settings.convertAdditiveLayer, v => settings.convertAdditiveLayer = v));
@@ -884,24 +785,16 @@ namespace AvatarBridge
             if (autoOffLayers.Count > 0)
             {
                 b.Add(BridgeElements.Hint(
-                    $"{string.Join(" and ", autoOffLayers)} switched off: this avatar has no layer " +
-                    "of its own in " + (autoOffLayers.Count == 1 ? "that slot" : "those slots") +
-                    ". These settings persist between avatars, so the tick came from another one. " +
-                    "Nothing converts differently either way; tick it back if you want it on."));
+                    $"{string.Join(" and ", autoOffLayers)} switched off: this avatar has nothing in " +
+                    (autoOffLayers.Count == 1 ? "that slot." : "those slots.")));
             }
 
             b.Add(BridgeElements.SubHeading("Parameters & toggles"));
             b.Add(BridgeElements.Bind("Preserve parameter sync state",
-                "Non-synced VRC parameters get CVR's '#' local-only prefix, except ones a menu " +
-                "control drives, which sync regardless. VRChat's tight budget made de-syncing " +
-                "menu parameters a common trick (VRCFury carries them through machinery that " +
-                "doesn't survive conversion), and a control others can't see the effect of is a " +
-                "broken feature. CVR's 3200-bit budget can afford them.",
+                "Unsynced parameters become local, except ones a menu control drives: others should see what it does.",
                 settings.preserveParameterSyncState, v => settings.preserveParameterSyncState = v));
             b.Add(BridgeElements.Bind("Expose menu-less synced parameters",
-                "Synced parameters without a menu control still get an Advanced Avatar Settings " +
-                "entry. They would sync either way, CVR takes that from the animator, but " +
-                "without an entry the value isn't saved to your avatar profile between loads.",
+                "Gives them a settings entry so their values are saved between loads.",
                 settings.exposeMenulessSyncedParameters, v => settings.exposeMenulessSyncedParameters = v));
 
             b.Add(BridgeElements.SubHeading("Components"));
@@ -911,14 +804,7 @@ namespace AvatarBridge
                 "Head/hands/fingers pointers so converted receivers keep reacting to other players.",
                 settings.createDefaultColliderPointers, v => settings.createDefaultColliderPointers = v));
             b.Add(BridgeElements.Bind("Grow contact zones with the body's sliders",
-                "A zone authored on a body part a blendshape slider can grow keeps its authored " +
-                "size while the mesh grows past it, so the touch lands inside the body, short of " +
-                "the zone, and the contact reads as broken at high slider values. Each zone is " +
-                "measured like the physics sizes are: the mesh around it at rest and with every " +
-                "animated shape at full reach. A zone one slider grows follows that slider live: " +
-                "authored size at rest, the measured growth at full reach; only growth spread " +
-                "across several shapes holds the grown size instead. The report names each zone " +
-                "and what was done.",
+                "A contact on a part a slider grows follows the slider, so touches still land at full size.",
                 settings.sizeContactZonesForLargest, v => settings.sizeContactZonesForLargest = v));
 
             b.Add(BridgeElements.Bind("Convert VRC constraints", null,
@@ -929,6 +815,10 @@ namespace AvatarBridge
             b.Add(BridgeElements.Bind("Convert spatial audio", null,
                 settings.convertSpatialAudio, v => settings.convertSpatialAudio = v));
             AddBlinkToggle(b);
+            b.Add(BridgeElements.Bind("Resize oversized textures",
+                "Shrinks textures to what their mesh can show, in import settings only. \"Put the textures " +
+                "back\" undoes it; textures shared outside the avatar are left alone.",
+                settings.slimTexturesOnConvert, v => settings.slimTexturesOnConvert = v));
 
             // Survives a rebuild: the box keeps its text, so the card must
             // come back filtered to match it.
@@ -944,20 +834,13 @@ namespace AvatarBridge
             var b = card.Body;
 
             b.Add(BridgeElements.Hint(
-                "These are yours: the avatar doesn't say which way they should go, so nothing " +
-                "sets them for you. Leaving them all alone converts fine."));
+                "The avatar can't answer these. Leaving them alone converts fine."));
 
             b.Add(BridgeElements.SubHeading("Shaders"));
             b.Add(BridgeElements.Row(
                 BridgeElements.Bind("Patch non-SPI shaders for VR",
-                    "Shaders that don't support single-pass instanced stereo draw into one eye only in " +
-                    "VR. This copies them into RehomedAssets with the required macros added and points " +
-                    "this avatar's materials at the copies: the originals are never modified, and a " +
-                    "copy that fails to compile is thrown away. Only plainly written vertex/fragment " +
-                    "shaders can be patched; anything else is reported instead. ChilloutVR renders " +
-                    "single-pass instanced where VRChat renders double-wide, so a shader can look fine " +
-                    "in VRChat and lose an eye here; the patched copy stays valid under both. Check it " +
-                    "in both eyes: compilation is verified, appearance isn't.",
+                    "A shader without stereo support draws into one eye in VR. Patches copies; originals " +
+                    "untouched. Check both eyes in game.",
                     settings.patchNonSpiShaders, v => settings.patchNonSpiShaders = v),
                 BridgeElements.BetaTag()));
 
@@ -975,28 +858,19 @@ namespace AvatarBridge
 
             optIns.Add(BridgeElements.SubHeading("OSC toys"));
             optIns.Add(BridgeElements.Bind("Keep the OGB / PCS haptics contacts",
-                "The touch, frot and penetration contacts a VRChat avatar carries for toy apps. Off, " +
-                "they are removed with their triggers; YAPS keeps its own two per plug either way, so " +
-                "plugs and sockets work exactly the same. On, they are kept and cost nothing in sync " +
-                "bits, but each one is a CONTACT, and ChilloutVR budgets 512 overlapping pairs per " +
-                "frame for the whole instance, not per avatar. A converted avatar can carry over a " +
-                "hundred, so two people close together can spend the room's budget, and everything " +
-                "past it is dropped: sockets stop engaging and plugs stop bending, for bystanders " +
-                "too. Worth it only if you drive a toy from these parameters.",
+                "Toy-app contacts. Plugs and sockets work either way, but these can spend the instance's " +
+                "512 contact pairs. Only for driving a toy.",
                 settings.keepHapticsContacts,
                 v => { settings.keepHapticsContacts = v; ScheduleRebuild(); }));
             if (settings.keepHapticsContacts)
             {
                 optIns.Add(new HelpBox(
-                    "This is the setting to blame if contacts get unreliable in a busy or intimate " +
-                    "instance. The report says how many this avatar carries.",
+                    "Blame this if contacts get unreliable in a busy instance.",
                     HelpBoxMessageType.Warning));
             }
             optIns.Add(BridgeElements.Bind("Keep OGB haptics synced (OSCGoesBrrr, Lovense)",
-                "Off, the OGB haptics parameters are local and free; OSCGoesBrrr's automatic detection " +
-                "skips ChilloutVR's \"#\" names, but its manual avatar-parameter links read them, and the " +
-                "report lists the names to paste. On, they stay synced and automatic detection works " +
-                "with no setup, at 32 sync bits each. Needs Penetration on Convert to YAPS.",
+                "On, OSCGoesBrrr finds them automatically, at 32 sync bits each. Off, link them by hand; " +
+                "the report lists the names.",
                 settings.syncHapticsForOsc, v => { settings.syncHapticsForOsc = v; ScheduleRebuild(); }));
             if (settings.syncHapticsForOsc && !settings.keepHapticsContacts)
             {
@@ -1007,59 +881,57 @@ namespace AvatarBridge
             if (settings.syncHapticsForOsc)
             {
                 optIns.Add(new HelpBox(
-                    "Each haptics parameter costs 32 of ChilloutVR's 3200 sync bits, and a plug or a " +
-                    "socket carries about nine. One plug and three sockets is roughly 1,150 bits; a " +
-                    "socket-heavy avatar goes over the cap on its own, and over the cap nothing on the " +
-                    "avatar syncs. The report's sync budget entry says where you landed. Launch " +
-                    "ChilloutVR with --osc-query-prefix=VRChat-Client so the app finds it.",
+                    "About 290 bits per plug or socket, and over 3200 nothing syncs. Launch ChilloutVR " +
+                    "with --osc-query-prefix=VRChat-Client.",
                     HelpBoxMessageType.Warning));
+                // Without the add-on the answer is no whatever the setting
+                // says, which is the one thing the write above used to get
+                // right.
+#if AVATARBRIDGE_YAPS
                 if (!settings.convertYapsSystems)
+#endif
                 {
                     optIns.Add(new HelpBox(
-                        "Penetration is not set to Convert to YAPS, so there are no haptics parameters " +
-                        "for this to keep. It does nothing as things stand.", HelpBoxMessageType.Info));
+                        "Does nothing unless Penetration is Convert to YAPS.", HelpBoxMessageType.Info));
                 }
             }
 
 #if AVATARBRIDGE_YAPS
             optIns.Add(BridgeElements.SubHeading("Penetration"));
             optIns.Add(BridgeElements.Bind("Show the avatar's OWN depth animations to other players",
-                "Not the socket deform: a socket with its own mesh opens through its shader, which every " +
-                "client runs itself, visible to the room for free. This is the bulges and winces the " +
-                "author animated on the body mesh, which play from each rebuilt socket's depth parameter. " +
-                "ChilloutVR runs an avatar's triggers on the wearer's machine alone, so off, that " +
-                "parameter is local: free, and only you see the shapes. On, it syncs and the room sees " +
-                "them too, at 32 bits a socket. Needs Penetration on Convert to YAPS.",
+                "The bulges the author animated on the body. Off, only you see them; on, everyone, at 32 " +
+                "bits per socket.",
                 settings.syncSocketDepthForOthers, v => { settings.syncSocketDepthForOthers = v; ScheduleRebuild(); }));
             if (settings.syncSocketDepthForOthers)
             {
                 optIns.Add(new HelpBox(
-                    "One depth parameter per socket at 32 of ChilloutVR's 3200 sync bits: six sockets " +
-                    "is about 192 bits. The report's sync budget entry says where this avatar landed, " +
-                    "and over the cap nothing on it syncs at all. A socket that kept several depth " +
-                    "parameters as authored pays for each of them.",
+                    "32 bits per depth parameter, and over 3200 nothing syncs. The report's sync budget says where it landed.",
                     HelpBoxMessageType.Warning));
+            }
+            optIns.Add(BridgeElements.Bind("Draw a debug readout on each plug",
+                "An in-game readout on each plug of who found its socket and what its bake is doing. " +
+                "EVERYONE SEES IT, and it uploads with the avatar; the report flags it while it is on.",
+                settings.yapsDebugOverlay, v => { settings.yapsDebugOverlay = v; ScheduleRebuild(); }));
+            if (settings.yapsDebugOverlay)
+            {
+                optIns.Add(new HelpBox(
+                    "Turn it off and convert again before you publish.", HelpBoxMessageType.Warning));
             }
 #endif
 
             b.Add(BridgeElements.SubHeading("Menu & extras"));
             b.Add(EnumPopup<ToggleStyle>("Toggle style",
-                "Animator Layers: every toggle gets its own Off/On layer and works immediately.\n" +
-                "CVR Native Targets: object toggles are left to the CCK's own builder " +
-                "(you must press \"Create Controller\" on the avatar).",
+                "Animator Layers: each toggle gets its own layer.\n" +
+                "CVR Native Targets: left to the CCK; press \"Create Controller\" on the avatar.",
                 settings.toggleStyle, v => settings.toggleStyle = v));
             b.Add(BridgeElements.Bind("Add height scaler  (\"Height\" slider)",
-                "A smooth avatar scaler: a quick-menu slider covering 0.25×–4× of this avatar's " +
-                "measured height geometrically, with dead centre = exactly its original size (the default, so " +
-                "it spawns unchanged). Props held by a parent constraint, hats, held items, are re-anchored " +
-                "so they scale with you instead of drifting off; the report lists any it had to leave alone.",
+                "A menu slider from 0.25x to 4x the avatar's height, centred on its own size. Held props scale with you.",
                 settings.addAvatarScaler, v => settings.addAvatarScaler = v));
 
             var extra = new TextField("Extra strip keywords")
             {
                 value = settings.extraStripKeywords,
-                tooltip = "Comma separated. Each is used as a parameter prefix and a layer-name match " +
-                          "for additional VRC-only systems to remove.",
+                tooltip = "Comma separated parameter prefixes and layer names of other VRChat-only systems to remove.",
             };
             extra.AddToClassList("ab-field");
             extra.RegisterValueChangedCallback(e => settings.extraStripKeywords = e.newValue);
@@ -1068,9 +940,7 @@ namespace AvatarBridge
             var output = new TextField("Output folder")
             {
                 value = settings.outputFolder,
-                tooltip = "Where generated assets and the report go. Must be inside Assets. " +
-                          "The default is deliberately OUTSIDE the tool's folder, so deleting " +
-                          "Assets/AvatarBridge to update it can never erase conversions.",
+                tooltip = "Where assets and the report go, inside Assets. Kept outside the tool's folder so updating never erases them.",
             };
             output.AddToClassList("ab-field");
             output.RegisterValueChangedCallback(e => settings.outputFolder = e.newValue);
@@ -1159,15 +1029,14 @@ namespace AvatarBridge
                 if (animator == null || !animator.isHuman)
                 {
                     pick.Body.Add(new HelpBox(
-                        "This isn't a Humanoid rig. Setup still runs, but the viewpoint is estimated from the " +
-                        "mesh bounds and eye tracking can't be wired. Set the rig to Humanoid in the model's " +
-                        "import settings for a proper result.", HelpBoxMessageType.Warning));
+                        "Not a Humanoid rig: the viewpoint is guessed and eye tracking can't be wired. Set " +
+                        "Humanoid in the model's import settings.", HelpBoxMessageType.Warning));
                 }
                 if (setupAvatar.GetComponent<ABI.CCK.Components.CVRAvatar>() != null)
                 {
                     pick.Body.Add(new HelpBox(
-                        "This avatar already has a CVRAvatar component. Setup will reconfigure it: its " +
-                        "Advanced Avatar Settings are rebuilt from scratch.", HelpBoxMessageType.Warning));
+                        "It already has a CVRAvatar: its Advanced Avatar Settings are rebuilt from scratch.",
+                        HelpBoxMessageType.Warning));
                 }
             }
             body.Add(pick);
@@ -1232,16 +1101,10 @@ namespace AvatarBridge
         void AddReadingOptions(VisualElement parent)
         {
             parent.Add(BridgeElements.Bind("Say what this avatar costs (recommended)",
-                "Adds a section to the report: texture memory measured against the surface it " +
-                "actually covers, contacts against the 512 pairs ChilloutVR gives the whole " +
-                "instance, triangles, cloth solvers, shader copies. It reads and reports, and " +
-                "changes nothing on the avatar.",
+                "Adds texture memory, contacts, triangles and cloth to the report. Reads only.",
                 settings.weighAvatar, v => settings.weighAvatar = v));
             parent.Add(BridgeElements.Bind("Say what this avatar does (recommended)",
-                "Adds a section to the report naming what the avatar can and cannot do: features its " +
-                "author built and never wired to anything, things two layers both animate where the " +
-                "higher one quietly wins, parameters nothing can reach, and objects that could come " +
-                "off as ChilloutVR props. Reads only.",
+                "Adds unwired features, layers fighting over the same thing and possible props to the report. Reads only.",
                 settings.surveyAvatar, v => settings.surveyAvatar = v));
         }
 
@@ -1254,9 +1117,7 @@ namespace AvatarBridge
             var output = new TextField("Output folder")
             {
                 value = settings.outputFolder,
-                tooltip = "Where generated assets and the report go. Must be inside Assets. " +
-                          "The default is deliberately OUTSIDE the tool's folder, so deleting " +
-                          "Assets/AvatarBridge to update it can never erase conversions.",
+                tooltip = "Where assets and the report go, inside Assets. Kept outside the tool's folder so updating never erases them.",
             };
             output.AddToClassList("ab-field");
             output.RegisterValueChangedCallback(e => settings.outputFolder = e.newValue);
@@ -1266,8 +1127,7 @@ namespace AvatarBridge
         void AddBlinkToggle(VisualElement parent)
         {
             parent.Add(BridgeElements.Bind("Auto-wire blink blendshapes",
-                "Detect blink blendshapes on the face mesh (e.g. \"Blink L\"/\"Blink R\") and turn on " +
-                "CVR's Eye Blink Settings.",
+                "Finds blink shapes on the face mesh and turns on ChilloutVR's blinking.",
                 settings.wireBlinkBlendshapes, v => settings.wireBlinkBlendshapes = v));
         }
 
@@ -1276,10 +1136,7 @@ namespace AvatarBridge
         {
             var card = new BridgeElements.Card("Extras");
             card.Body.Add(BridgeElements.Bind("Add height scaler  (\"Height\" slider)",
-                "A smooth avatar scaler: a quick-menu slider covering 0.25×–4× of this avatar's " +
-                "measured height geometrically, with dead centre = exactly its original size (the default, so " +
-                "it spawns unchanged). Props held by a parent constraint, hats, held items, are re-anchored " +
-                "so they scale with you instead of drifting off; the report lists any it had to leave alone.",
+                "A menu slider from 0.25x to 4x the avatar's height, centred on its own size. Held props scale with you.",
                 settings.addAvatarScaler, v => settings.addAvatarScaler = v));
             parent.Add(card);
         }
@@ -1307,17 +1164,10 @@ namespace AvatarBridge
             var popup = new PopupField<string>("Face tracking",
                 new System.Collections.Generic.List<string>(FtLabels), index)
             {
-                tooltip = "The two set-up modes replace any face-tracking rig already on the avatar.\n\n" +
-                          "Native CVR Component: ChilloutVR's built-in CVRFaceTracking drives the " +
-                          "blendshapes directly. Self-contained, but a bit stiff.\n\n" +
-                          "Unity Animator Blendtrees (DSR): DragonSkyRunner's bundled rig, face shapes " +
-                          "driven by animator blend trees, eye tracking via generated empties and rotation " +
-                          "constraints, rebuilt onto this avatar automatically. Smoother and more expressive.\n\n" +
-                          "Keep the avatar's own rig, nothing is stripped: the existing FT rig " +
-                          "(Jerry's, Pawlygon, OSCmooth setups…) converts with the rest of the animator. " +
-                          "Smoothing proxies VRChat never synced automatically become '#' local (zero " +
-                          "sync cost), synced FT parameters keep syncing. This used to be labelled " +
-                          "\"None\", which undersold it.",
+                tooltip = "Native CVR Component: ChilloutVR's own, a bit stiff.\n" +
+                          "Unity Animator Blendtrees (DSR): DragonSkyRunner's rig, smoother.\n" +
+                          "Keep the avatar's own rig: converts the existing one untouched.\n" +
+                          "The first two replace any rig already there.",
             };
             popup.AddToClassList("ab-field");
             popup.RegisterValueChangedCallback(e =>
@@ -1332,16 +1182,14 @@ namespace AvatarBridge
                 if (FaceTrackingPackages.IsInstalled())
                 {
                     b.Add(new HelpBox(
-                        "Injects DragonSkyRunner's CVR Eye & Face Tracking rig (bundled) and rebuilds it onto " +
-                        "this avatar, including an auto-generated eye-tracking rig. Eye gaze strength may want " +
-                        "tuning per the package readme. Credit: DragonSkyRunner.", HelpBoxMessageType.Info));
+                        "Rebuilds DragonSkyRunner's bundled face and eye tracking rig onto this avatar. Gaze " +
+                        "strength may want tuning.", HelpBoxMessageType.Info));
                     b.Add(Link("DragonSkyRunner's package (GitHub)  ↗",
                         () => Application.OpenURL(FaceTrackingPackages.Url)));
                 }
                 else
                 {
-                    b.Add(new HelpBox($"The bundled \"{FaceTrackingPackages.DisplayName}\" assets weren't " +
-                        "found, reimport AvatarBridge (the button is disabled until then).",
+                    b.Add(new HelpBox($"The bundled \"{FaceTrackingPackages.DisplayName}\" assets are missing: reimport AvatarBridge.",
                         HelpBoxMessageType.Warning));
                 }
             }
@@ -1394,11 +1242,8 @@ namespace AvatarBridge
 
             long saved = SavingFor(cvr);
             parent.Add(BridgeElements.Hint(saved > 0
-                ? $"It converted, and it is heavier than it needs to be: about " +
-                  $"{(saved / 1048576f):0.0} MB of texture comes off with nothing visible changing. " +
-                  "The tools can do it in one press, and put it back the same way."
-                : "Nothing here is obviously wasteful. The tools can still show you what it costs and what " +
-                  "it does, on this avatar or any other."));
+                ? $"About {(saved / 1048576f):0.0} MB of texture can come off with nothing visible changing."
+                : "Nothing here is obviously wasteful."));
 
             // The same size as Convert, so it reads as the next step rather
             // than as one option among the row of links below it. Solid CVR
@@ -1451,6 +1296,37 @@ namespace AvatarBridge
             int errors = lastReport.CountOf(ReportStatus.Error);
             int warnings = lastReport.CountOf(ReportStatus.Warning);
 
+            // Above the verdict, because it is good news and the verdict may
+            // not be. The report's own entry lists the textures; this is the
+            // number, which is the part worth reading from across the room.
+            if (lastReport.BytesReclaimed > 0)
+            {
+                parent.Add(new HelpBox(
+                    $"Optimised on the way through: {(lastReport.BytesReclaimed / 1048576f):0.0} MB of "
+                    + "texture nobody was ever going to see, reclaimed. Your graphics card says thank you, "
+                    + "and so does everyone standing near you. The report says which textures and what "
+                    + "each one became; \"Resize oversized textures\" turns it off for next time.",
+                    HelpBoxMessageType.Info));
+
+                // The undo, beside the announcement. This one happens without
+                // being asked now, so the way back cannot live in another
+                // window: the record is a file in the output folder, and the
+                // saved report sits in that same folder.
+                string outputDir = string.IsNullOrEmpty(lastReport.SavedReportPath)
+                    ? null
+                    : System.IO.Path.GetDirectoryName(lastReport.SavedReportPath);
+                if (!string.IsNullOrEmpty(outputDir) && AvatarSlimmer.CanRevert(outputDir))
+                {
+                    parent.Add(new Button(() =>
+                    {
+                        AvatarSlimmer.Revert(outputDir, lastReport);
+                        lastReport.BytesReclaimed = 0;
+                        ScheduleRebuild();
+                    })
+                    { text = "Put the textures back" });
+                }
+            }
+
             parent.Add(new HelpBox(
                 errors > 0 ? $"Finished with {errors} error(s). See below."
                 : warnings > 0 ? $"Done! {warnings} thing(s) may want a look. See below."
@@ -1501,10 +1377,7 @@ namespace AvatarBridge
             if (!string.IsNullOrEmpty(lastReport.StoreDescription))
             {
                 actions.Add(ReportButton("Copy description",
-                    "Puts a ready-made store listing on your clipboard for the CCK's Description " +
-                    "box: what the avatar has, counted from this conversion. It opens with a gap " +
-                    "for your own words, so it reads as the footer of your description rather than " +
-                    "all of it. Also saved beside the report as Description.txt.",
+                    "A store listing of what the avatar has, with room for your own words first. Also saved as Description.txt.",
                     () =>
                     {
                         EditorGUIUtility.systemCopyBuffer = lastReport.StoreDescription;
@@ -1512,9 +1385,7 @@ namespace AvatarBridge
                     }));
 
                 actions.Add(ReportButton("Fill CCK description",
-                    "Types it straight into the Content Manager's Description box. Open the CCK " +
-                    "Control Panel on the Builder tab with this avatar selected first. It won't " +
-                    "touch the box if you've already written something there.",
+                    "Types it into the CCK's Description box, if empty. Open the Builder tab with this avatar first.",
                     () =>
                     {
                         var result = CckDescriptionFiller.Fill(lastReport.StoreDescription);
@@ -1692,8 +1563,7 @@ namespace AvatarBridge
             body.Add(new Label(
                 (BridgeDefines.HasCck ? "✔" : "✘") + "  ChilloutVR CCK (4.x recommended), always required"));
             body.Add(new HelpBox(
-                "Import the missing package(s), let Unity recompile, and reopen this window. " +
-                "With just the CCK you can still use Setup mode to prepare any avatar for ChilloutVR.",
+                "Import what's missing and reopen this window. With the CCK alone, Setup mode still works.",
                 HelpBoxMessageType.Info));
 
             var footer = new VisualElement();

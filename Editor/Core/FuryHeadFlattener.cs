@@ -91,12 +91,8 @@ namespace AvatarBridge
                     ? $"{moved} object(s) moved onto the Head bone: " + string.Join(", ", names) +
                       (moved > names.Count ? ", …" : "") + ". "
                     : "") +
-                "VRCFury adds a second head so a VRChat player can see their own; ChilloutVR hides " +
-                "yours natively, so the copy has no job here and arrives switched off waiting for a " +
-                "service this tool deletes. Anything baked onto it, a mouth socket, most often, " +
-                "was off with it and stayed off. It now sits on the head bone it belonged on, at " +
-                $"the same place in the world, with {repointed} animation curve(s) repointed to " +
-                "follow.");
+                "VRCFury's second head has no job here, and anything on it stayed off. It now sits on the " +
+                $"head bone, same place, with {repointed} animation curve(s) repointed.");
         }
 
         // Is a mesh weighted to the head bone somewhere OUTSIDE this copy?

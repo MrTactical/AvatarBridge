@@ -139,6 +139,7 @@ namespace AvatarBridge
                     Pass("Animator merge", AnimatorMerger.Run),
                     // After the merge, so the curves it repoints are the
                     // ones the avatar will actually run.
+                    Pass("Hold rewired contacts", ContactsConverter.HoldUnlatchedContacts),
                     Pass("Flatten VRCFury's second head", FuryHeadFlattener.Run),
                     Pass("Misc components", MiscConverter.Run),
                     Pass("Constraints", ConstraintConverter.Run),
@@ -235,6 +236,10 @@ namespace AvatarBridge
                     // Judge the saved file's references only now, after
                     // the self-container fixed what it was going to.
                     Pass("Audit serialized references", AnimatorMerger.AuditSerializedReferences),
+                    // Dead last. It reads the finished avatar's weight, and
+                    // every pass above can still add a renderer or repoint a
+                    // material at a different texture.
+                    Pass("Texture sizes", AvatarSlimmer.SlimOnConvert),
                 };
         }
 
@@ -309,16 +314,9 @@ namespace AvatarBridge
                 : "it is on";
 
             ctx.Report.Warning("Conversion", "Unity's \"Enter Play Mode Options\" is on, turn it off before testing",
-                $"Edit → Project Settings → Editor → Enter Play Mode Settings ({which}). It skips the scene " +
-                "and/or domain reload, so pressing Play rebinds every Animator against state left over from " +
-                "edit mode, and the controller this conversion just wrote is the newest thing in the project. " +
-                "Two things that get blamed on conversion come from this and nothing else: Unity dying on Play " +
-                "with \"Assertion failed on expression: 'MecanimDataWasBuilt()'\" and a SIGSEGV inside " +
-                "GenerateGraph, and an avatar that looks right in the scene but renders with the wrong " +
-                "materials the moment you press Play. That crash stack runs through RestoreSceneBackups, which " +
-                "does not execute at all with the option off. Unity says the same in its own console every time " +
-                "you enter play mode this way. Turn it off, reopen the scene, and test again before reporting " +
-                "either symptom.");
+                $"Edit → Project Settings → Editor → Enter Play Mode Settings ({which}). It causes crashes on " +
+                "Play (\"MecanimDataWasBuilt\") and wrong materials in Play mode. Turn it off and reopen the " +
+                "scene before reporting either.");
         }
 
         static void ReportSyncUsage(BridgeContext ctx)
@@ -400,10 +398,8 @@ namespace AvatarBridge
             {
                 ctx.Report.Warning("Avatar",
                     $"{missingPrefabs.Count} missing prefab(s) in the avatar's hierarchy",
-                    $"{string.Join("; ", missingPrefabs)}: the prefab asset these were instances of " +
-                    "isn't in this project, so each is an empty shell where a feature used to be. The " +
-                    "avatar converts fine without them; if the feature matters, import the package it " +
-                    "came from and convert again.");
+                    $"{string.Join("; ", missingPrefabs)}: empty shells. Import their package and convert " +
+                    "again if they matter.");
             }
             if (missing == 0)
             {
@@ -412,10 +408,8 @@ namespace AvatarBridge
             ctx.Report.Warning("Avatar",
                 $"{missing} missing script(s) on the avatar, a package it was built with is not installed",
                 $"On: {string.Join(", ", examples)}{(missing > examples.Count ? ", …" : "")}. If this " +
-                "avatar uses VRCFury or Modular Avatar, INSTALL THEM BEFORE CONVERTING: both do their " +
-                "real work at build time (toggles, armature merges, animation path rewriting), and " +
-                "without them everything they would have baked is silently missing from the conversion " +
-                "; features can look converted and still do nothing in game.");
+                "avatar uses VRCFury or Modular Avatar, install them before converting, or what they build " +
+                "is silently missing.");
         }
 
         static void PrepareTarget(BridgeContext ctx)
@@ -510,16 +504,9 @@ namespace AvatarBridge
             animator.runtimeAnimatorController = null;
             ctx.Report.Error("Animator",
                 "Controller unlinked from the Animator, it CRASHES Unity",
-                "This avatar's controller references assets that resolve to nothing, and Unity " +
-                "builds a Mecanim playable graph from a controller whenever the Animator awakens; " +
-                "which merely SELECTING the object in the Inspector is enough to do. That walks " +
-                "into the missing references and takes the editor down with no error, losing " +
-                "unsaved work. The reference has been removed so the editor can't do it. " +
-                "ChilloutVR is unaffected by the removal itself: the CVRAvatar still carries the " +
-                "base controller and the overrides, which is what the client reads on load. But " +
-                "the broken references are still in that controller, so fix them and convert " +
-                "again before uploading; see the unresolvable-asset error for where they came " +
-                "from, usually a VRCFury or Modular Avatar bake that errored partway.");
+                "It references missing assets, and selecting the object would crash Unity, so it is " +
+                "unlinked. The CVRAvatar still carries it. Fix the references (see the unresolvable-asset " +
+                "error) and convert again before uploading.");
         }
     }
 }

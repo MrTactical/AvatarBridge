@@ -98,10 +98,8 @@ namespace AvatarBridge
                 parts.Add($"{ints} to Int");
             }
             ctx.Report.Converted(Category, $"{changed.Count} parameter(s) retyped from Float ({string.Join(", ", parts)})",
-                "VRCFury bakes every menu parameter as a float; ChilloutVR writes menu values using the " +
-                "entry's own type, so a bool written into a float parameter does nothing and the control " +
-                "looks dead in game. Each one was retyped to what its menu control and animator conditions " +
-                "actually use, and its transitions were rewritten to match.");
+                "VRCFury bakes menu parameters as floats, and a bool written into one does nothing. Each now " +
+                "matches its menu control and conditions.");
             ReportVetoes(ctx, vetoed);
         }
 
@@ -112,9 +110,8 @@ namespace AvatarBridge
                 return;
             }
             ctx.Report.Approximated(Category, $"{vetoed.Count} parameter(s) kept as Float",
-                $"{string.Join(", ", vetoed.Take(6))}{(vetoed.Count > 6 ? ", …" : "")}: their menu control " +
-                "suggests a bool or an int, but a blend tree, motion time or animation clip reads them as a " +
-                "quantity, which needs the values in between. Retyping would have broken that.");
+                $"{string.Join(", ", vetoed.Take(6))}{(vetoed.Count > 6 ? ", …" : "")}: a blend tree, motion " +
+                "time or clip needs the values in between.");
         }
 
         static Dictionary<string, AnimatorControllerParameterType> WantedTypes(
@@ -379,12 +376,8 @@ namespace AvatarBridge
             {
                 ctx.Report.Approximated("Animator",
                     $"{unreachableDropped} transition(s) dropped that could never fire",
-                    $"{string.Join(", ", unreachableNotes)}{(unreachableDropped > unreachableNotes.Count ? ", …" : "")} " +
-                    ": each rested on a numeric comparison the parameter's real range cannot satisfy (a " +
-                    "\"less than zero\" guard on a value that is only ever 0 or 1, and similar), so it never " +
-                    "fired in VRChat either. They are removed rather than translated because translating the " +
-                    "operator alone would turn a transition that never fired into one that fires half the " +
-                    "time, which makes a layer fight itself.");
+                    $"{string.Join(", ", unreachableNotes)}{(unreachableDropped > unreachableNotes.Count ? ", …" : "")}" +
+                    ": the parameter's range can never satisfy them, so they never fired in VRChat either.");
             }
         }
 

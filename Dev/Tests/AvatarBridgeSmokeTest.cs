@@ -27,6 +27,17 @@ namespace AvatarBridge.Regression
         {
             Results.Clear();
             var created = new List<GameObject>();
+            // A batch run inherits whatever scene was open last, and a corpus
+            // avatar left sitting in it has baked plugs near everything: the
+            // preview then finds one already close and spawns none, and the
+            // scan counts plugs this test never made. The editor keeps the
+            // scene the person is looking at.
+            if (Application.isBatchMode)
+            {
+                UnityEditor.SceneManagement.EditorSceneManager.NewScene(
+                    UnityEditor.SceneManagement.NewSceneSetup.EmptyScene,
+                    UnityEditor.SceneManagement.NewSceneMode.Single);
+            }
             try
             {
                 RunAll(created);
@@ -78,7 +89,10 @@ namespace AvatarBridge.Regression
                     Check(prefab != null, name + ".prefab written");
                     Check(prefab.GetComponent<YapsSocket>() != null, name + " carries YapsSocket");
                     Check(prefab.GetComponentsInChildren<Light>(true).Count(YapsScanner.IsProtocolLight) == 2, name + " has 2 marker lights");
-                    Check(prefab.GetComponentsInChildren<CVRPointer>(true).Length == 4, name + " has 4 pointers");
+                    // Four tags, each with its _SelfNotOnHips twin: the twin is
+                    // the self channel, listened for on its own, and a socket
+                    // carrying only the bare tag is dead to its own wearer.
+                    Check(prefab.GetComponentsInChildren<CVRPointer>(true).Length == 8, name + " has 8 pointers");
                 }
             });
 
@@ -128,10 +142,42 @@ namespace AvatarBridge.Regression
                 Check(hole.GetComponentsInChildren<CVRPointer>(true).Length == before, "no duplicate markers");
             });
 
+            // The bake goes back on the slot it came off, not slot 0, and the
+            // socket stops claiming a mesh it no longer opens.
+            Step("YAPS Socket > Mesh set back to None puts the mesh back", () =>
+            {
+                var plug = YapsNativeBuilder.BuildTestPlug(avatar.transform, false);
+                created.Add(plug);
+                var baked = plug.GetComponentInChildren<Renderer>().sharedMaterial;
+                var mesh = new GameObject("Socket Mesh").AddComponent<SkinnedMeshRenderer>();
+                mesh.transform.SetParent(avatar.transform, false);
+                var slotZero = new Material(Shader.Find("Standard"));
+                var was = new Material(Shader.Find("Standard"));
+                mesh.sharedMaterials = new[] { slotZero, baked };
+                hole.bakedRenderer = mesh;
+                hole.bakedSlot = 1;
+                hole.bakedFrom = was;
+                hole.renderer = null;
+                hole.shapes.Clear();
+                YapsNativeBuilder.BakeSocket(hole);
+                Check(mesh.sharedMaterials[1] == was, "the baked slot went back to its own material");
+                Check(mesh.sharedMaterials[0] == slotZero, "slot 0 was left alone");
+                Check(hole.bakedRenderer == null && hole.bakedSlot == -1 && hole.bakedFrom == null, "the record is cleared");
+            });
+
             // --- preview with a test plug (spawns and removes its own) --------
             Step("YAPS Socket > Preview with a test plug", () =>
             {
-                YapsPreview.Set(hole, true);
+                // On a socket with nothing baked near it. The preview spawns a
+                // test plug only when it finds none close, and by this point the
+                // avatar carries three, so previewing its own hole spawns
+                // nothing and proves nothing.
+                var lone = new GameObject("Preview Socket");
+                lone.transform.position = new Vector3(0f, 0f, 40f);
+                created.Add(lone);
+                var far = lone.AddComponent<YapsSocket>();
+                far.kind = YapsSocket.SocketKind.Hole;
+                YapsPreview.Set(far, true);
                 var spawned = GameObject.Find(YapsPreview.PlugName);
                 Check(spawned != null, "a preview plug spawned");
                 var mr = spawned.GetComponent<MeshRenderer>();
@@ -139,9 +185,9 @@ namespace AvatarBridge.Regression
                 var block = new MaterialPropertyBlock();
                 mr.GetPropertyBlock(block, 0);
                 Check(block.GetVector("_YAPS_SocketFlags").x > 0.5f, "socket written into the plug's property block");
-                YapsPreview.Set(hole, false);
+                YapsPreview.Set(far, false);
                 Check(GameObject.Find(YapsPreview.PlugName) == null, "preview plug removed");
-                Check(!hole.preview, "preview off");
+                Check(!far.preview, "preview off");
             });
 
             // --- test plug, make it a prop, verify -----------------------------
@@ -188,34 +234,22 @@ namespace AvatarBridge.Regression
                 // On the ROOT: CVRPickupObject cannot see a child's collider.
                 Check(plugRoot.GetComponent<Collider>() != null, "a collider on the root to grab");
             });
-            Step("YAPS > Add the synced channel", () =>
+            Step("YAPS > Verify prop", () =>
             {
-                var o = YapsPropBuilder.AddChannel(plugRoot);
-                Check(o.Ok, o.Message);
-                var sp = plugRoot.GetComponent<CVRSpawnable>();
-                Check(sp != null && sp.useAdditionalValues && sp.syncValues.Count == 8, "8 synced values");
-                Check(plugRoot.GetComponentsInChildren<CVRSpawnableTrigger>(true).Length == 8, "8 triggers, one per host");
-                var controller = plugRoot.GetComponent<Animator>().runtimeAnimatorController as AnimatorController;
-                Check(controller != null && controller.layers.Length == 8, "8 layers");
-                Check(controller.layers.All(l => l.stateMachine != null && l.stateMachine.states.Length == 1), "each layer has its state");
-                Check(plugRoot.GetComponent<MeshRenderer>().sharedMaterial.GetFloat("_YAPS_ChannelSpace") > 0.5f, "channel space on");
-            });
-            Step("YAPS > Verify prop (repairs a blanked name)", () =>
-            {
-                var sp = plugRoot.GetComponent<CVRSpawnable>();
-                sp.syncValues[0].animatorParameterName = "";
                 var o = YapsPropBuilder.Verify(plugRoot);
                 Check(o.Ok, o.Message);
-                Check(sp.syncValues[0].animatorParameterName == "E", "name restored");
             });
-            Step("YAPS > Drop the contact channel", () =>
+            // Nothing builds a channel any more, so plant what an older
+            // build left: one host and one synced value.
+            Step("YAPS > Drop the contact channel an older build left", () =>
             {
+                var sp = plugRoot.GetComponent<CVRSpawnable>();
+                new GameObject("YAPS Channel E").transform.SetParent(plugRoot.transform, false);
+                sp.syncValues.Add(new CVRSpawnableValue { name = "E" });
                 var o = YapsPropBuilder.DropChannel(plugRoot);
                 Check(o.Ok, o.Message);
-                var sp = plugRoot.GetComponent<CVRSpawnable>();
                 Check(sp.syncValues.Count == 0, "the synced values are gone");
-                Check(plugRoot.GetComponentsInChildren<CVRSpawnableTrigger>(true).Length == 0, "and their triggers");
-                Check(plugRoot.GetComponent<MeshRenderer>().sharedMaterial.GetFloat("_YAPS_ChannelSpace") < 0.5f, "channel space off");
+                Check(!YapsPropBuilder.HasChannel(plugRoot), "and their hosts");
             });
 
             // --- make a plug from a bone (skinned mesh) --------------------------
@@ -239,13 +273,59 @@ namespace AvatarBridge.Regression
                 Check(smr.sharedMaterials[1].HasProperty("_YAPS_Bake"), "skinned slot baked");
                 Check(YapsNativeBuilder.GuessRootBone(smr, 1) == shaft.transform, "root bone guessed from the mesh");
             });
+            // A converted plug's author's Self rules ride on its material, and
+            // the conversion adopts a component onto it, as here: the rules
+            // were once read only for a plug WITHOUT one, which is no real
+            // conversion. Not humanoid, so both sockets count as on the hips,
+            // and path order makes the hole bit 1 and the ring bit 2.
+            Step("YAPS > A converted plug's own-socket rules", () =>
+            {
+                var baked = avatar.GetComponentInChildren<YapsPlug>(true).Target.sharedMaterials[1];
+                var conv = new GameObject("Converted Plug").AddComponent<MeshRenderer>();
+                conv.transform.SetParent(avatar.transform, false);
+                var m = new Material(baked);
+                conv.sharedMaterial = m;
+                Check(YapsNativeBuilder.AdoptPlug(conv.transform, conv, 0, m, null) != null, "component adopted");
+                hole.tags = new List<string> { YapsTags.Shared, "mouth" };
+                ring.tags = new List<string> { YapsTags.Shared, "hand" };
+                int Mask(IEnumerable<string> answers, IEnumerable<string> refuses, bool hips)
+                {
+                    YapsOwner.KeepSelfRules(m, answers, refuses, hips);
+                    YapsOwner.ApplySelf(avatar);
+                    return Mathf.RoundToInt(m.GetFloat("_YAPS_SelfSockets"));
+                }
+                int Chosen() => Mathf.RoundToInt(m.GetFloat("_YAPS_SelfChosen"));
+                Check(Mask(new[] { "hand" }, null, true) == 2 && Chosen() == 2, "answers hand: the ring alone, past the plug's tags");
+                Check(Mask(null, new[] { "HAND" }, true) == 1, "refuses hand, any case: the hole alone");
+                Check(Mask(null, null, true) == 3 && Chosen() == 0, "hip avoidance alone chooses nothing");
+                Check(Mask(null, null, false) == 0 && Chosen() == 0, "no rules: the default, and both sit on the hips");
+            });
+            // A tick set by hand skips the plug's tags; a default tick does not.
+            Step("YAPS > A hand-set own-socket tick", () =>
+            {
+                var plug = avatar.GetComponentInChildren<YapsPlug>(true);
+                var mat = plug.Target.sharedMaterials[1];
+                int Chosen() => Mathf.RoundToInt(mat.GetFloat("_YAPS_SelfChosen"));
+                plug.selfEnter.Add(hole);
+                YapsOwner.ApplySelf(avatar);
+                Check(Chosen() == 1, "the hole is chosen (got " + Chosen() + ")");
+                plug.selfEnter.Clear();
+                YapsOwner.ApplySelf(avatar);
+                Check(Chosen() == 0, "and unchosen once cleared");
+            });
 
             // --- scan and quiet -----------------------------------------------
             Step("YAPS > Scan", () =>
             {
                 var scan = YapsScanner.Scan(avatar);
-                Check(scan.Sockets.Count == 2, "2 sockets found (got " + scan.Sockets.Count + ")");
-                Check(scan.Plugs.Count == 1, "1 plug found (got " + scan.Plugs.Count + ")");
+                // Counted from the scene rather than written down: steps added
+                // later put more plugs on this avatar, and a number in here goes
+                // stale silently the moment they do.
+                int sockets = avatar.GetComponentsInChildren<YapsSocket>(true).Length;
+                int plugs = avatar.GetComponentsInChildren<YapsPlug>(true).Length;
+                Check(scan.Sockets.Count == sockets, sockets + " socket(s) found (got " + scan.Sockets.Count + ")");
+                Check(scan.Plugs.Count >= plugs && plugs > 0,
+                    plugs + " plug(s) or more found (got " + scan.Plugs.Count + ")");
             });
             Step("YAPS > Quiet the scene view (on and off)", () =>
             {
@@ -288,6 +368,54 @@ namespace AvatarBridge.Regression
                 ctx.MergedController = controller;
                 AvatarScalerInjector.Inject(controller, ctx);
                 Check(controller.layers.Length > 0, "a layer added");
+            });
+            // Emptying the shape list has to undo the build, or an avatar that
+            // opens nothing keeps a layer, a synced parameter, a contact and a
+            // baked material. Needs the controller the step above made.
+            Step("YAPS Socket > Shapes removed take their layer and contact with them", () =>
+            {
+                var mesh = new Mesh { name = "Smoke Socket Mesh" };
+                mesh.vertices = new[]
+                {
+                    new Vector3(-0.05f, 0f, 0f), new Vector3(0.05f, 0f, 0f),
+                    new Vector3(-0.05f, 0.05f, 0f), new Vector3(0.05f, 0.05f, 0f),
+                };
+                mesh.triangles = new[] { 0, 2, 1, 1, 2, 3 };
+                mesh.normals = Enumerable.Repeat(-Vector3.forward, 4).ToArray();
+                mesh.boneWeights = Enumerable.Repeat(new BoneWeight { boneIndex0 = 0, weight0 = 1f }, 4).ToArray();
+                mesh.bindposes = new[] { Matrix4x4.identity };
+                mesh.AddBlendShapeFrame("Open", 100f, Enumerable.Repeat(Vector3.up * 0.01f, 4).ToArray(), null, null);
+
+                var meshGo = new GameObject("Smoke Socket Mesh");
+                meshGo.transform.SetParent(avatar.transform, false);
+                var smr = meshGo.AddComponent<SkinnedMeshRenderer>();
+                smr.sharedMesh = mesh;
+                smr.bones = new[] { meshGo.transform };
+                smr.rootBone = meshGo.transform;
+                var own = new Material(Shader.Find("Standard"));
+                smr.sharedMaterial = own;
+
+                var go = new GameObject("YAPS Shaped Socket");
+                go.transform.SetParent(avatar.transform, false);
+                var socket = go.AddComponent<YapsSocket>();
+                socket.kind = YapsSocket.SocketKind.Hole;
+                socket.renderer = smr;
+                socket.shapes.Add(new YapsSocket.ShapeStage { blendshape = "Open", startsAt = 0f, fadeOver = 0.5f });
+
+                YapsNativeBuilder.BakeSocket(socket);
+                Check(smr.sharedMaterials[0] != own, "the mesh took a baked material");
+                YapsSocketReactions.Build(socket);
+                string layer = socket.builtLayer;
+                Check(go.transform.Find("YAPS Depth") != null, "a depth contact was built");
+                Check(!string.IsNullOrEmpty(layer), "a reactions layer was built");
+
+                socket.shapes.Clear();
+                socket.renderer = null;
+                YapsNativeBuilder.BakeSocket(socket);
+                Check(smr.sharedMaterials[0] == own, "the mesh is back on its own material");
+                Check(go.transform.Find("YAPS Depth") == null, "the depth contact went with them");
+                var after = avatar.GetComponent<Animator>().runtimeAnimatorController as AnimatorController;
+                Check(after != null && after.layers.All(l => l.name != layer), "the layer went too");
             });
             Step("Toolkit > Store description", () =>
             {

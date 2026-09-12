@@ -41,7 +41,7 @@ namespace AvatarBridge.Regression
         // Digests live beside the tool, not in the Unity project.
         // They must survive a reimport of Assets/AvatarBridge.
         // Set AVATARBRIDGE_REPO to the checkout path before running.
-        static string Root
+        static string Repo
         {
             get
             {
@@ -49,6 +49,15 @@ namespace AvatarBridge.Regression
                 if (string.IsNullOrEmpty(repo))
                     throw new InvalidOperationException(
                         "Set the AVATARBRIDGE_REPO environment variable to the AvatarBridge checkout path.");
+                return repo.Replace('\\', '/').TrimEnd('/');
+            }
+        }
+
+        static string Root
+        {
+            get
+            {
+                string repo = Repo;
                 // A flag-on run keeps its own Baseline and Current. The two
                 // answer different questions: one asks whether existing
                 // users are unaffected, the other whether the new feature
@@ -61,7 +70,7 @@ namespace AvatarBridge.Regression
                 {
                     suffix += "/DynamicBone";
                 }
-                return repo.Replace('\\', '/').TrimEnd('/') + suffix;
+                return repo + suffix;
             }
         }
         static string BaselineDir => Root + "/Baseline";
@@ -80,7 +89,16 @@ namespace AvatarBridge.Regression
         // Per-project scene lists live in Regression/corpus.cfg beside
         // the digests. Local test data, kept out of the repo like the
         // digests. Sections [excluded] and [quickset], "#" comments.
-        static string CorpusConfigPath => Root + "/corpus.cfg";
+        //
+        // NOT under Root. Root moves per mode, and the lists do not: which
+        // scenes are avatars and which ones VRCFury cannot bake is a fact
+        // about the project, the same in every mode. Reading it from Root
+        // meant only the default mode ever found the file, so a YAPS run
+        // silently kept the five avatars the list exists to drop and
+        // digested VRCFury's failure as if it were the tool's. Silently,
+        // because a missing file reads as an empty list; the quick set
+        // throws on the same miss and was the only half anybody saw.
+        static string CorpusConfigPath => Repo + "/Regression/corpus.cfg";
 
         static string[] ReadCorpusSection(string section)
         {
@@ -732,6 +750,13 @@ namespace AvatarBridge.Regression
             convertActionLayer = true,
             convertFxLayer = true,
 
+            // OFF here, and on for a user. It rewrites import settings on
+            // the corpus's own texture assets and reimports each one, which
+            // mutates the corpus between runs and charges every avatar for
+            // it. What it does is measured by the weight card, which the
+            // digest already records.
+            slimTexturesOnConvert = false,
+
             toggleStyle = ToggleStyle.AnimatorLayers,
             preserveParameterSyncState = true,
             exposeMenulessSyncedParameters = true,
@@ -894,6 +919,61 @@ namespace AvatarBridge.Regression
                     sb.Append("  ").Append(g.Count().ToString("D3")).Append("  range ").Append(g.Key).Append('\n');
                 }
                 sb.Append('\n');
+            }
+
+            AppendYapsTags(sb);
+        }
+
+        // The tag words, both ends. A socket's word and a plug's answer
+        // and refuse lists decide whether a plug opens a socket at all, and
+        // nothing in the digest said so: the shared-tag default shipped and
+        // run 395 could not see it either way. A wrong word is silence in
+        // game, which is the failure a digest exists to catch before a
+        // person has to.
+        //
+        // Read from the bake prep, not from the target. The words live on
+        // the VRChat components and the conversion hashes them into numbers,
+        // so by the time there is a target the words are gone; the prep
+        // dictionaries are what read them, and they still hold what it read.
+        //
+        // Counted by word rather than listed per socket. Which words the
+        // avatar uses is the signal; a row per socket would churn on every
+        // rename.
+        static void AppendYapsTags(StringBuilder sb)
+        {
+            var sockets = YapsBakePrep.AuthoredSocketTags;
+            var answers = YapsBakePrep.AuthoredAnswers;
+            var refuses = YapsBakePrep.AuthoredRefuses;
+            if (sockets.Count == 0 && answers.Count == 0 && refuses.Count == 0) return;
+
+            var words = new SortedDictionary<string, int>(StringComparer.Ordinal);
+            foreach (var list in sockets.Values) CountTags(words, "socket ", list);
+            foreach (var list in answers.Values) CountTags(words, "plug +", list);
+            foreach (var list in refuses.Values) CountTags(words, "plug -", list);
+
+            sb.Append("[yaps tags]\n");
+            sb.Append("sockets=").Append(sockets.Count)
+              .Append(" answering=").Append(answers.Count)
+              .Append(" refusing=").Append(refuses.Count).Append('\n');
+            foreach (var pair in words)
+            {
+                sb.Append("  ").Append(pair.Value.ToString("D3")).Append("  ")
+                  .Append(pair.Key).Append('\n');
+            }
+            sb.Append('\n');
+        }
+
+        // Blank and case are not the author's meaning, and either would split
+        // one word into two rows.
+        static void CountTags(SortedDictionary<string, int> into, string prefix, List<string> list)
+        {
+            if (list == null) return;
+            foreach (string word in list)
+            {
+                if (string.IsNullOrWhiteSpace(word)) continue;
+                string key = prefix + word.Trim().ToLowerInvariant();
+                into.TryGetValue(key, out int had);
+                into[key] = had + 1;
             }
         }
 

@@ -16,10 +16,11 @@ namespace AvatarBridge
         public const string OutputRoot = "Assets/YAPS/Generated";
         const string MarkersName = "YAPS Markers";
 
-        // DPS's tracker: digit 9, intensity = length, at the base. Offset
-        // the same way the socket ranges are, so a toy mod reading the
-        // protocol in C# does not answer this plug either.
-        public const float TrackerRange = 0.4930f;
+        // DPS's tracker: digit 9, intensity = length, at the base. VRCFury's
+        // trailing digits, so a mod reading the protocol in C# answers this
+        // plug the way it answers any other. See the socket ranges for why the
+        // +0.003 that used to sit here was dropped.
+        public const float TrackerRange = 0.4906f;
 
         public class Outcome
         {
@@ -45,6 +46,9 @@ namespace AvatarBridge
             var report = new BridgeReport();
             // The named root bone is the chain, else the plug object.
             var chainRoot = plug.rootBone != null ? plug.rootBone : plug.transform;
+            // The last readout's mesh back first, or its four vertices bake
+            // as the plug's.
+            YapsDebugOverlayBuilder.Restore(plug);
             var result = YapsBaker.Bake(renderer, chainRoot, dir, report, out string failure, flipAxis: plug.flipAxis);
             if (result == null) { o.Message = "could not bake: " + failure; return o; }
             // A plain mesh bakes in its own units; the markers and the
@@ -181,11 +185,28 @@ namespace AvatarBridge
             //
             // The wearer's own sockets are permanently in reach and permanently
             // nearest, so a plug that does not skip them never looks at anybody
-            // else's.
+            // else's. The atlas skips them only past engagement onset now, so
+            // the flag still decides whether ownership is asked about at all.
             var ownAvatar = plug.GetComponentInParent<CVRAvatar>(true);
             bool ownSockets = ownAvatar != null
                               && ownAvatar.GetComponentsInChildren<YapsSocket>(true).Length > 0;
             patched.SetFloat("_YAPS_SelfTag", ownSockets ? 1f : -1f);
+
+            // The tag sets, one pattern per component. Only the atlas reads
+            // them: a contact cannot see what a socket is tagged, so the
+            // channel tier answers without asking.
+            patched.SetVector("_YAPS_TagInclude", YapsTags.Patterns(plug.answers));
+            patched.SetVector("_YAPS_TagExclude", YapsTags.Patterns(plug.refuses));
+            // Past four, entries are dropped. Saying so here because the
+            // inspector list takes as many as anyone types and the bake was
+            // the only thing that knew otherwise.
+            int over = YapsTags.Dropped(plug.answers) + YapsTags.Dropped(plug.refuses);
+            if (over > 0)
+            {
+                o.Notes.Add($"{over} tag(s) past the first {YapsTags.PlugSlots} on each list were "
+                    + "not baked: that is all the plug has room for. Delete the ones you do not "
+                    + "need, or put them on the socket instead, which has no limit.");
+            }
             // Build adds the socket writers and the avatar's clear and grab, so a
             // toolkit avatar published to the atlas and then read none of it: the
             // flag was set on the convert path only, and a plug with it off falls
@@ -205,9 +226,21 @@ namespace AvatarBridge
                 o.Notes.Add($"Upgraded from {legacy}: {carried.Count} setting(s) carried" +
                             (unmapped.Count > 0 ? $"; no YAPS counterpart for {string.Join(", ", unmapped)}" : "") + ".");
             }
+            // And every OTHER material a toggle can put in that slot. Follow only
+            // repairs the swap that puts the bake source back; an alternate look
+            // was never the source, so nothing above reaches it and the plug goes
+            // rigid for as long as that toggle is on.
+            YapsSwapFollow.FollowVariants(renderer, slot, result, dir,
+                YapsSwapFollow.RunnableClips(renderer.transform), report,
+                original, source, patched);
+
             WriteKnobs(plug, patched);
             EditorUtility.SetDirty(patched);
             o.Material = patched;
+
+            // After the knobs, so the readout copies the values the plug
+            // actually ended up with rather than the ones it started from.
+            YapsDebugOverlayBuilder.Apply(plug, result, patched, report);
 
             // The rest of the slots the plug's vertices reach. They carry the SAME
             // deform: the bake is indexed by a mesh-global vertex id, so one bake
@@ -224,7 +257,8 @@ namespace AvatarBridge
 
             // And every OTHER mesh the same bones move. One plug, one frame,
             // a bake each.
-            int alsoMats = MirrorToRenderers(plug, renderer, result, dir, report, out int alsoMeshes);
+            var meshes = new List<(Renderer, YapsBaker.Result)> { (renderer, result) };
+            int alsoMats = MirrorToRenderers(plug, renderer, result, dir, report, out int alsoMeshes, meshes);
             if (alsoMeshes > 0)
             {
                 o.Notes.Add($"{alsoMeshes} other mesh(es) on this avatar are weighted to the plug's bone " +
@@ -237,7 +271,7 @@ namespace AvatarBridge
 
             // The avatar's own animations that change the plug's size, shape
             // sliders and bone scale, now tell the material too.
-            WireSize(plug, renderer, result, o);
+            WireSize(plug, meshes, o);
 
             // A switch for the deform, unless the avatar already has one.
             var avatarForToggle = plug.GetComponentInParent<CVRAvatar>(true);
@@ -245,6 +279,12 @@ namespace AvatarBridge
             {
                 string toggled = YapsToggles.EnsurePlugToggle(plug, avatarForToggle, patched, YapsToggles.LabelFor(plug));
                 if (toggled != null) o.Notes.Add(toggled);
+                // And a second row for whose sockets it answers, where that
+                // can mean anything. Off, so an avatar carrying both parts
+                // behaves as it did before the atlas learned to see its own.
+                string own = YapsToggles.EnsureSelfToggle(plug, avatarForToggle, patched,
+                    YapsToggles.LabelFor(plug) + " own sockets");
+                if (own != null) o.Notes.Add(own);
             }
 
             o.Ok = true;
@@ -262,7 +302,7 @@ namespace AvatarBridge
         // shape curves onto the shape weights, the root bone's scale onto
         // the bake scale. Edits the user's clips, adding a curve beside each
         // it mirrors, and says so. Idempotent: the same curve every time.
-        static void WireSize(YapsPlug plug, Renderer renderer, YapsBaker.Result result, Outcome o)
+        static void WireSize(YapsPlug plug, List<(Renderer renderer, YapsBaker.Result result)> meshes, Outcome o)
         {
             var top = TopOf(plug.transform);
             // NOT the Animator's own slot. ChilloutVR uploads what avatar.overrides
@@ -276,34 +316,14 @@ namespace AvatarBridge
             var clips = YapsSwapFollow.RunnableClips(top)
                 .Where(YapsCurveMirror.UserOwned).ToList();
             if (clips.Count == 0) return;
-            string rendererPath = AnimationUtility.CalculateTransformPath(renderer.transform, animRoot);
+            string plugPath = AnimationUtility.CalculateTransformPath(plug.transform, animRoot);
 
-            var missed = new HashSet<string>();
-            int shapes = result.Shapes.Count > 0
-                ? YapsCurveMirror.MirrorShapes(clips, rendererPath, renderer.GetType(), result.Shapes,
-                    result.MovingShapes, missed)
-                : 0;
-
-            // Somebody animating the component's own checkbox meant the
-            // deform, so give them the deform.
-            int switched = YapsCurveMirror.MirrorEnabled(clips,
-                AnimationUtility.CalculateTransformPath(plug.transform, animRoot), typeof(YapsPlug),
-                rendererPath, renderer.GetType(), "_YAPS_Enabled");
-            if (switched > 0)
-            {
-                o.Notes.Add($"{switched} clip(s) animate this component's own Enabled field, which does " +
-                            "nothing in game: ChilloutVR strips the component. A matching curve on the " +
-                            "material's _YAPS_Enabled was written beside each, so the animation now " +
-                            "switches the deform the way it was meant to.");
-            }
-
-            int scaled = 0;
+            // Each bone with its path: the mirror reads the scale it is
+            // sitting at now, which is the pose the bake just measured.
+            var bones = new Dictionary<string, Transform>();
             var chainRoot = plug.rootBone;
             if (chainRoot != null)
             {
-                // Each bone with its path: the mirror reads the scale it is
-                // sitting at now, which is the pose the bake just measured.
-                var bones = new Dictionary<string, Transform>();
                 void Bone(Transform t)
                 {
                     string p = AnimationUtility.CalculateTransformPath(t, animRoot);
@@ -311,7 +331,32 @@ namespace AvatarBridge
                 }
                 Bone(chainRoot);
                 for (int i = 0; i < chainRoot.childCount; i++) Bone(chainRoot.GetChild(i));
-                scaled = YapsCurveMirror.MirrorBoneScale(clips, bones, rendererPath, renderer.GetType(), result.Rotation);
+            }
+
+            // Every mesh the bake reached, or a resized or switched plug tears
+            // where one mesh heard the animation and the other did not.
+            var missed = new HashSet<string>();
+            int shapes = 0, switched = 0, scaled = 0;
+            foreach (var (renderer, result) in meshes)
+            {
+                string rendererPath = AnimationUtility.CalculateTransformPath(renderer.transform, animRoot);
+                if (result.Shapes.Count > 0)
+                {
+                    shapes += YapsCurveMirror.MirrorShapes(clips, rendererPath, renderer, result.Shapes,
+                        result.MovingShapes, missed);
+                }
+                // Somebody animating the component's own checkbox meant the
+                // deform, so give them the deform.
+                switched += YapsCurveMirror.MirrorEnabled(clips, plugPath, typeof(YapsPlug),
+                    rendererPath, renderer, "_YAPS_Enabled");
+                scaled += YapsCurveMirror.MirrorBoneScale(clips, bones, rendererPath, renderer, result.Rotation);
+            }
+            if (switched > 0)
+            {
+                o.Notes.Add($"{switched} clip(s) animate this component's own Enabled field, which does " +
+                            "nothing in game: ChilloutVR strips the component. A matching curve on the " +
+                            "material's _YAPS_Enabled was written beside each, so the animation now " +
+                            "switches the deform the way it was meant to.");
             }
 
             if (shapes + scaled + switched > 0)
@@ -409,6 +454,7 @@ namespace AvatarBridge
             m.SetFloat("_YAPS_SqueezeDistance", p.squeezeReach);
             m.SetFloat("_YAPS_Bulge", p.bulge);
             m.SetFloat("_YAPS_BulgeDistance", p.bulgeReach);
+            m.SetFloat("_YAPS_BulgeFalloff", p.bulgeFalloff);
             m.SetFloat("_YAPS_IdleLength", p.idleLength);
             m.SetFloat("_YAPS_IdleWidth", p.idleWidth);
             m.SetFloat("_YAPS_WriggleStrength", p.wriggle);
@@ -560,7 +606,9 @@ namespace AvatarBridge
             foreach (var light in top.GetComponentsInChildren<Light>(true))
             {
                 if (light == null || light.type != LightType.Point) continue;
-                if (Mathf.Abs(light.range - TrackerRange) > 0.0005f) continue;
+                // 0.001, the protocol's own window, not an exact match: the
+            // wearer's plug counts here whether YAPS baked it or DPS did.
+            if (Mathf.Abs(light.range - TrackerRange) > 0.001f) continue;
                 float length = Mathf.Max(light.intensity, 0.01f);
                 // Within its own length of the socket, plus a hand's width
                 // of slack for a pose that is not quite the rest one.
@@ -607,6 +655,8 @@ namespace AvatarBridge
             if (capped != null) lines.Add($"✓ {YapsToggles.LabelFor(socket)}: {capped}");
             string shapes = BakeSocket(socket);
             if (shapes != null) lines.Add(shapes);
+            string played = YapsSocketReactions.BuildAnimations(socket);
+            if (played != null) lines.Add(played);
             var avatar = socket.GetComponentInParent<CVRAvatar>(true);
             int before = YapsToggles.Edits;
             string toggled = YapsToggles.EnsureObjectToggle(socket.gameObject, avatar, YapsToggles.LabelFor(socket));
@@ -620,7 +670,11 @@ namespace AvatarBridge
             // After the toggle layers: the lighthouse asserts the chosen
             // socket on, and a layer wins by coming later.
             string lighthouse = YapsLighthouse.Build(avatar, controller);
+            string tagMenu = YapsTagMenu.Build(avatar, controller);
+            if (tagMenu != null) lines.Add($"✓ {tagMenu}");
             if (lighthouse != null) lines.Add($"✓ {lighthouse}");
+            string owner = YapsOwner.Wire(avatar);
+            if (owner != null) lines.Add($"✓ {owner}");
             return lines;
         }
 
@@ -691,13 +745,60 @@ namespace AvatarBridge
 
         // Bakes the socket's chosen shapes into its mesh's material, staged
         // as the component says. Returns what happened, for the window.
+        static void RecordSocketSlot(YapsSocket socket, Renderer renderer, int slot)
+        {
+            if (socket.bakedRenderer == renderer && socket.bakedSlot == slot) return;
+            Undo.RecordObject(socket, "YAPS socket bake");
+            socket.bakedRenderer = renderer;
+            socket.bakedSlot = slot;
+            EditorUtility.SetDirty(socket);
+        }
+
+        // The mesh back on the material the bake took it off. Keyed by the
+        // renderer and slot the bake recorded, because a socket whose mesh is
+        // set back to None no longer names the renderer it baked.
+        static string Unbake(YapsSocket socket)
+        {
+            var renderer = socket.bakedRenderer;
+            string said = null;
+            var mats = renderer != null ? renderer.sharedMaterials : null;
+            if (mats != null && socket.bakedFrom != null && socket.bakedSlot >= 0 && socket.bakedSlot < mats.Length
+                && mats[socket.bakedSlot] != null && mats[socket.bakedSlot] != socket.bakedFrom
+                && mats[socket.bakedSlot].HasProperty("_YAPS_Bake"))
+            {
+                Undo.RecordObject(renderer, "YAPS socket bake");
+                mats[socket.bakedSlot] = socket.bakedFrom;
+                renderer.sharedMaterials = mats;
+                said = $"\"{renderer.name}\" back on \"{socket.bakedFrom.name}\"";
+            }
+            if (socket.bakedFrom == null && socket.bakedRenderer == null) return said;
+            Undo.RecordObject(socket, "YAPS socket bake");
+            socket.bakedFrom = null;
+            socket.bakedRenderer = null;
+            socket.bakedSlot = -1;
+            EditorUtility.SetDirty(socket);
+            return said;
+        }
+
         public static string BakeSocket(YapsSocket socket)
         {
             if (socket == null) return null;
             socket.builtBy = BridgeDefines.Version;
             var renderer = socket.renderer;
             var stages = socket.shapes.Where(s => s != null && !string.IsNullOrEmpty(s.blendshape)).ToList();
-            if (renderer == null || stages.Count == 0) return null;
+            // Nothing to open any more. Emptying the list is an instruction,
+            // not nothing to do: the depth animations have always read it that
+            // way, and this path left a layer, a synced parameter, a contact
+            // and a baked material behind on every socket switched back.
+            if (renderer == null || stages.Count == 0)
+            {
+                var undone = new List<string>();
+                string put = Unbake(socket);
+                if (put != null) undone.Add(put);
+                string cleared = YapsSocketReactions.Clear(socket);
+                if (cleared != null) undone.Add(cleared);
+                return undone.Count > 0 ? $"✓ {socket.name}: nothing opens now, " + string.Join(", ", undone) : null;
+            }
             if (renderer.sharedMesh == null || renderer.sharedMesh.blendShapeCount == 0)
                 return $"✗ {socket.name}: its mesh has no blendshapes";
             // A body mesh can open too, now that depth measures from the baked
@@ -749,6 +850,8 @@ namespace AvatarBridge
             {
                 // Generated here already: a socket's own material, baked before.
                 material = source;
+                // Where it sits, for a socket baked before this was recorded.
+                RecordSocketSlot(socket, renderer, slot);
                 // Refresh the SHADER too when the tool has moved on since this was
                 // patched. A material keeps its values across a shader swap, and a
                 // property the old code never had arrives at its declared default,
@@ -785,6 +888,7 @@ namespace AvatarBridge
                 material = YapsBaker.Apply(result, source, shader, dir, result.FromSkinnedMesh);
                 material.SetFloat("_YAPS_Enabled", 0f);
                 if (socket.bakedFrom == null) { socket.bakedFrom = mats[slot]; EditorUtility.SetDirty(socket); }
+                RecordSocketSlot(socket, renderer, slot);
                 var wasSocket = mats[slot];
                 mats[slot] = material;
                 renderer.sharedMaterials = mats;
@@ -803,9 +907,54 @@ namespace AvatarBridge
             // dedicated socket mesh, the socket's real seat on a body.
             material.SetVector("_YAPS_SocketOrigin",
                 renderer.transform.InverseTransformPoint(socket.transform.position));
-            material.SetFloat("_YAPS_SocketNoSelfExclude", OwnPlugRestsOn(socket) ? 0f : 1f);
+            // Self-exclusion, unless the anchor cannot say whose socket this
+            // is. See RidesAMovingLimb.
+            bool undecidable = MeshIsTheSocket(renderer, socket.transform)
+                               && RidesAMovingLimb(socket.transform);
+            material.SetFloat("_YAPS_SocketNoSelfExclude",
+                OwnPlugRestsOn(socket) && !undecidable ? 0f : 1f);
             EditorUtility.SetDirty(material);
             return $"✓ {socket.name}: {result.Shapes.Count} shape(s) staged on \"{renderer.name}\"";
+        }
+
+        // Whether this socket hangs off an arm or a leg.
+        //
+        // It matters because ownership is decided by which player's hip is
+        // nearest the mesh's own origin, and on a dedicated socket mesh that
+        // origin IS the socket. A hand resting in somebody's lap answers with
+        // THEIR hip, so the wearer's own plug test passes for a stranger's
+        // plug and the socket ignores the one plug it exists for.
+        //
+        // Nothing the shader can see repairs it. An offset baked from the
+        // socket to the wearer's hips is only true in the pose it was baked
+        // in, and a hand leaves that pose immediately; a skinned mesh has no
+        // usable object matrix at all.
+        //
+        // So the exclusion is dropped where it cannot be decided, which is the
+        // direction the resolver already leans: a stranger's plug wrongly
+        // ignored is no effect at all, where the wearer's own plug holding
+        // their socket open is a visibly wrong one. On the body, where the
+        // origin really is the wearer, nothing changes.
+        public static bool RidesAMovingLimb(Transform socket)
+        {
+            var avatar = socket != null ? socket.GetComponentInParent<CVRAvatar>(true) : null;
+            var animator = avatar != null ? avatar.GetComponent<Animator>() : null;
+            if (animator == null || !animator.isHuman) return false;
+
+            // The four roots that carry a socket away from the hips. The head
+            // is deliberately not among them: it turns, but it stays over the
+            // body, and a mouth socket wants its wearer's plug excluded.
+            var limbs = new[]
+            {
+                HumanBodyBones.LeftUpperArm, HumanBodyBones.RightUpperArm,
+                HumanBodyBones.LeftUpperLeg, HumanBodyBones.RightUpperLeg,
+            };
+            foreach (var bone in limbs)
+            {
+                var t = animator.GetBoneTransform(bone);
+                if (t != null && socket.IsChildOf(t)) return true;
+            }
+            return false;
         }
 
         // --- adoption --------------------------------------------------------
@@ -1050,7 +1199,7 @@ namespace AvatarBridge
         // "this mesh, this slot", and reaching onto other renderers would be
         // answering a question nobody asked.
         static int MirrorToRenderers(YapsPlug plug, Renderer primaryRenderer, YapsBaker.Result primary,
-            string dir, BridgeReport report, out int meshes)
+            string dir, BridgeReport report, out int meshes, List<(Renderer, YapsBaker.Result)> joined)
         {
             meshes = 0;
             if (plug == null || plug.rootBone == null || plug.materialSlot >= 0) return 0;
@@ -1091,7 +1240,7 @@ namespace AvatarBridge
                     continue;
                 }
                 int patched = PatchExtra(plug, skin, result, slots, dir, report);
-                if (patched > 0) { done += patched; meshes++; }
+                if (patched > 0) { done += patched; meshes++; joined.Add((skin, result)); }
             }
             return done;
         }
@@ -1242,6 +1391,7 @@ namespace AvatarBridge
             p.squeezeReach = F("_YAPS_SqueezeDistance", 0.15f);
             p.bulge = F("_YAPS_Bulge", 0f);
             p.bulgeReach = F("_YAPS_BulgeDistance", 0.2f);
+            p.bulgeFalloff = F("_YAPS_BulgeFalloff", 0f);
             p.idleLength = F("_YAPS_IdleLength", 1f);
             p.idleWidth = F("_YAPS_IdleWidth", 1f);
             p.wriggle = F("_YAPS_WriggleStrength", 0f);

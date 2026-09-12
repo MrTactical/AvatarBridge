@@ -182,6 +182,7 @@ namespace AvatarBridge
             Direct(s, t, "_TPS_SqueezeDistance", "_YAPS_SqueezeDistance", carried);
             Direct(s, t, "_TPS_Buldge", "_YAPS_Bulge", carried);
             Direct(s, t, "_TPS_BuldgeDistance", "_YAPS_BulgeDistance", carried);
+            Direct(s, t, "_TPS_BuldgeFalloffDistance", "_YAPS_BulgeFalloff", carried);
             Direct(s, t, "_TPS_IdleSkrinkLength", "_YAPS_IdleLength", carried);
             Direct(s, t, "_TPS_IdleSkrinkWidth", "_YAPS_IdleWidth", carried);
             Direct(s, t, "_TPS_PumpingSpeed", "_YAPS_PumpSpeed", carried);
@@ -194,8 +195,8 @@ namespace AvatarBridge
             // Buffered depth smoothed the contact channel, which no longer
             // bends a plug.
             Note(s, "_TPS_BufferedStrength", unmapped);
-            Note(s, "_TPS_IdleGravity", unmapped);
-            Note(s, "_TPS_BuldgeFalloffDistance", unmapped);
+            // _TPS_IdleGravity is not a setting: TPS declares it as a help box
+            // telling the author to use PhysBone gravity, which converts.
             Note(s, "_TPS_TwoSidedRings", unmapped);
         }
 

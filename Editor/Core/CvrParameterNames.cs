@@ -43,6 +43,36 @@ namespace AvatarBridge
             { "IsOnFriendsList", "IsFriend" }
         };
 
+        // VRC built-ins with no CVR equivalent. Frozen "#" locals.
+        // Stream-fed names are live instead; see StreamFedParameters.
+        // AFK is absent on purpose: it syncs natively in CVR.
+        // VelocityMagnitude is here for the "#" prefix only.
+        // FeedVelocityMagnitude recomputes it every frame.
+        // The scale family is stream-fed or derived; see FeedScaleParameters.
+        //
+        // Here rather than in the merger because the survey reads it too, and
+        // the survey ships in the YAPS package where the merger does not.
+        internal static readonly HashSet<string> NeverFedNames = new HashSet<string>
+        {
+            "Earmuffs", "AngularY",
+            "AvatarVersion", "VelocityMagnitude", "GroundProximity", "InStation",
+            "IsAnimatorEnabled",
+            // Seated is deliberately NOT fed, even though ChilloutVR knows
+            // perfectly well when you are sitting. Feeding it re-arms the
+            // VRChat Base layer's seated state, which outranks CVR's own and
+            // takes the body. See the rename table above for the whole story.
+            // The avatar's real sit pose reaches CVR through the grafter.
+            "Seated"
+        };
+
+        // Declared so a merged layer still binds, and never written by
+        // anything. The survey has to know: "nothing can switch it on" is
+        // true of these and is not a finding, it is this tool's own doing,
+        // and telling an author to go and fix it sends them after a
+        // parameter they never made.
+        internal static bool NeverFed(string name)
+            => !string.IsNullOrEmpty(name) && NeverFedNames.Contains(name.TrimStart('#'));
+
         // Parameters ChilloutVR drives itself; these must never be renamed or prefixed.
         internal static readonly HashSet<string> Core = new HashSet<string>
         {

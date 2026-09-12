@@ -130,13 +130,9 @@ namespace AvatarBridge
             if (decoyRig)
             {
                 ctx.Report.Approximated(Category, "Viewpoint & voice measured on the VISIBLE head",
-                    "This avatar's humanoid rig is a decoy: the bones Unity's humanoid map points " +
-                    "at are a hidden stand-in skeleton, and constraints relay them onto the body " +
-                    "you can actually see. ChilloutVR parents both markers to the humanoid Head " +
-                    $"bone, so the CCK's Auto placement lands {Vector3.Distance(humanoidView, decoyView):0.##} m " +
-                    "from this avatar's face: usually inside its head, where looking down fills " +
-                    $"the screen with the inside of its own mouth. Measured on the relayed bones " +
-                    $"instead: {decoyDetail}. Check both with the CVRAvatar gizmo before uploading.");
+                    "The humanoid bones are a hidden skeleton relayed onto the visible body, so Auto placement " +
+                    $"would land {Vector3.Distance(humanoidView, decoyView):0.##} m from the face. Measured on " +
+                    $"the relayed bones: {decoyDetail}. Check both with the CVRAvatar gizmo.");
             }
             else
             {
@@ -220,10 +216,8 @@ namespace AvatarBridge
             if (hadEntries > 0)
             {
                 ctx.Report.Warning(Category, $"Replaced a menu of {hadEntries} entr{(hadEntries == 1 ? "y" : "ies")}",
-                    "Setup mode prepares a plain humanoid: it builds the animator controller and the " +
-                    "advanced settings menu fresh from the CCK base, so what this avatar already had is " +
-                    "gone. Undo restores it. An avatar with its own toggles should be converted, or " +
-                    "have the ChilloutVR Toolkit run its cards one at a time, not set up.");
+                    "Setup builds the controller and menu fresh; Undo restores the old ones. Convert an avatar " +
+                    "with its own toggles, or run the Toolkit's cards one at a time.");
             }
             cvrAvatar.avatarUsesAdvancedSettings = true;
             cvrAvatar.avatarSettings = new CVRAdvancedAvatarSettings

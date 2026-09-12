@@ -1049,13 +1049,8 @@ namespace AvatarBridge
                 }
                 ctx.Report.Warning(category,
                     $"{what} lands {distance:0.##} m from the head bone",
-                    "Drawn where the CCK's own inspector draws it, that is far enough from the head " +
-                    "to be wrong rather than merely unusual. The usual cause is the avatar sitting " +
-                    "under a PARENT with a scale on it: ChilloutVR stores these positions against " +
-                    "the avatar's own localScale, so a scaled ancestor moves them. Put the avatar at " +
-                    "the top of the scene hierarchy (or clear the parent's scale) and convert again. " +
-                    "Either way, check it before uploading; the CVRAvatar inspector's own Auto " +
-                    "buttons place them exactly where this conversion aims to.");
+                    "Usually a scaled parent. Move the avatar to the top of the hierarchy (or clear the parent's " +
+                    "scale) and convert again, and check it before uploading.");
             }
 
             Check("Viewpoint", viewPosition);

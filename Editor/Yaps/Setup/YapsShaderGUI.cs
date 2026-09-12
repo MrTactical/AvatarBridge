@@ -58,28 +58,29 @@ namespace AvatarBridge
                     new Knob("_YAPS_Length", "Length", RowKind.Float, help: "metres, from the bake"),
                     new Knob("_YAPS_Overrun", "Carry on through a ring", RowKind.Toggle, "SPS",
                         "On, the tip keeps going past a ring. Off, the shaft stops at every socket."),
-                    new Knob("_YAPS_TaperStart", "Hole taper begins", RowKind.Slider, help: "how far past a hole before the shaft narrows, as a fraction of length"),
-                    new Knob("_YAPS_TaperEnd", "Hole taper closes by", RowKind.Slider, help: "…and how far before it has closed to a point"),
+                    new Knob("_YAPS_TaperStart", "Hole taper begins", RowKind.Slider, help: "how far past a hole the shaft starts to narrow, as a fraction of length"),
+                    new Knob("_YAPS_TaperEnd", "Hole taper closes by", RowKind.Slider, help: "and where it has closed to a point"),
                 }},
             new Section { Title = "Shape at rest", Tint = TintRest,
                 Blurb = "How the shaft sits when nothing is bending it.",
                 Knobs = new[]
                 {
                     new Knob("_YAPS_Curvature", "Curvature", RowKind.Slider, "DPS", "a resting bend along the whole shaft: positive bends up"),
-                    new Knob("_YAPS_ReCurvature", "Recurvature", RowKind.Slider, "DPS", "a second bend gathered at the tip, opposite in sign: sweep, then hook"),
-                    new Knob("_YAPS_EntranceStiffness", "Entrance stiffness", RowKind.Slider, "DPS", "how much the base resists bending toward a socket: 0 bends evenly from the root"),
+                    new Knob("_YAPS_ReCurvature", "Recurvature", RowKind.Slider, "DPS", "a second bend at the tip, opposite in sign: sweep, then hook"),
+                    new Knob("_YAPS_EntranceStiffness", "Entrance stiffness", RowKind.Slider, "DPS", "how much the base resists bending: 0 bends evenly from the root"),
                 }},
             new Section { Title = "Inside a socket", Tint = TintIn,
-                Blurb = "What a socket does to the shaft while the plug is in it: a grip at the opening, a swell just short of it.",
+                Blurb = "A grip at the opening and a swell just short of it.",
                 Knobs = new[]
                 {
                     new Knob("_YAPS_Squeeze", "Squeeze", RowKind.Slider, "DPS · TPS", "how much the socket narrows the shaft where it grips"),
-                    new Knob("_YAPS_SqueezeDistance", "Squeeze reach", RowKind.Slider, "DPS · TPS", "how far either side of the opening the grip reaches, as a fraction of length"),
+                    new Knob("_YAPS_SqueezeDistance", "Squeeze reach", RowKind.Slider, "DPS · TPS", "how far either side of the opening it grips, as a fraction of length"),
                     new Knob("_YAPS_Bulge", "Bulge", RowKind.Slider, "DPS · TPS", "the swell just short of the opening, as a fraction of radius"),
                     new Knob("_YAPS_BulgeDistance", "Bulge reach", RowKind.Slider, "DPS · TPS", "how far before the opening the swell begins"),
+                    new Knob("_YAPS_BulgeFalloff", "Bulge falloff", RowKind.Slider, "TPS", "how far short of the opening it peaks; 0 peaks halfway"),
                 }},
             new Section { Title = "Out of a socket", Tint = TintIdle,
-                Blurb = "What the shaft does when no socket is using it: shrink a little, wriggle. All of it stops as a socket takes over.",
+                Blurb = "Shrink and wriggle while no socket has it.",
                 Knobs = new[]
                 {
                     new Knob("_YAPS_IdleLength", "Idle length", RowKind.Slider, "TPS", "how much of its length it keeps: 1 is no change"),
@@ -88,39 +89,40 @@ namespace AvatarBridge
                     new Knob("_YAPS_WriggleSpeed", "Wriggle speed", RowKind.Slider, "DPS"),
                 }},
             new Section { Title = "Motion inside a socket", Tint = TintMotion,
-                Blurb = "A stroke along the shaft while a socket has it. Nothing moves when it is out.",
+                Blurb = "A stroke along the shaft while a socket has it.",
                 Knobs = new[]
                 {
                     new Knob("_YAPS_PumpStrength", "Pumping", RowKind.Slider, "TPS", "a stroke along the shaft, only while engaged"),
                     new Knob("_YAPS_PumpSpeed", "Pumping speed", RowKind.Slider, "TPS"),
-                    new Knob("_YAPS_PumpWidth", "Pumping width", RowKind.Slider, "TPS", "how much of the shaft pumps: 1 is the whole length, small values move only the tip"),
+                    new Knob("_YAPS_PumpWidth", "Pumping width", RowKind.Slider, "TPS", "how much of the shaft pumps: 1 is all of it, small values only the tip"),
                 }},
             new Section { Title = "The bend toward a socket", Tint = TintCurve,
                 Blurb = "How the shaft arrives at a socket.",
                 Knobs = new[]
                 {
                     new Knob("_YAPS_BezierSmoothness", "Smoothness", RowKind.Slider, "TPS", "below 1 arrives more directly; above 1 sweeps a wider arc"),
-                    new Knob("_YAPS_BezierStart", "Straight before bend", RowKind.Slider, "TPS", "a fraction of the shaft held perfectly straight before any bend"),
-                    new Knob("_YAPS_SmoothStart", "Ease into bend", RowKind.Slider, "TPS", "ease the join between the straight part and the curve rather than kink"),
-                    new Knob("_YAPS_MinimumSocketDistance", "Minimum socket distance", RowKind.Slider, "TPS", "a socket nearer than this is held off, so a plug pushed hard against one does not fold"),
+                    new Knob("_YAPS_BezierStart", "Straight before bend", RowKind.Slider, "TPS", "a fraction of the shaft held straight before any bend"),
+                    new Knob("_YAPS_SmoothStart", "Ease into bend", RowKind.Slider, "TPS", "eases the join between the straight part and the curve"),
+                    new Knob("_YAPS_MinimumSocketDistance", "Minimum socket distance", RowKind.Slider, "TPS", "a socket nearer than this is held off, so the plug does not fold"),
                 }},
             new Section { Title = "Which sockets it answers", Tint = TintWho,
                 Blurb = "Which sockets this plug will bend toward.",
                 Knobs = new[]
                 {
-                    new Knob("_YAPS_SelfTag", "Own-avatar tag", RowKind.Float, help: "which sockets are this plug's wearer's, so it ignores them: -1 on a prop"),
-                    new Knob("_YAPS_UseAtlas", "Read the screen atlas", RowKind.Slider, help: "the transport that does not need a light slot or a contact: sockets draw where they are into a corner of the screen and this plug reads it back. The converter sets it; off falls back to the marker lights. Debug's Resolved by says which one answered."),
+                    new Knob("_YAPS_SelfTag", "Own-avatar tag", RowKind.Float, help: "marks the wearer's own sockets so it ignores them: -1 on a prop"),
+                    new Knob("_YAPS_SelfAllow", "Answer the wearer's own sockets", RowKind.Toggle, help: "off by default: an own socket is nearer than anyone else's and would take every bend"),
+                    new Knob("_YAPS_UseAtlas", "Read the screen atlas", RowKind.Slider, help: "finds sockets through the screen, with no light slot. Off falls back to marker lights"),
                 }},
             new Section { Title = "Socket", Tint = TintSocket,
                 Blurb = "For a mesh that is a socket: how its shapes open as a plug goes in.",
                 Knobs = new[]
                 {
                     new Knob("_YAPS_SocketPower", "Shape strength", RowKind.Slider, "DPS", "0 is off"),
-                    new Knob("_YAPS_SocketShapeStart", "Starts, shapes 0-3", RowKind.Vector, "DPS", "where each shape begins to open, as a fraction of the plug's length; the component's rows are the friendlier view"),
+                    new Knob("_YAPS_SocketShapeStart", "Starts, shapes 0-3", RowKind.Vector, "DPS", "where each shape starts to open, as a fraction of the plug's length"),
                     new Knob("_YAPS_SocketShapeStart2", "Starts, shapes 4-7", RowKind.Vector, "DPS"),
                     new Knob("_YAPS_SocketShapeStart3", "Starts, shapes 8-11", RowKind.Vector, "DPS"),
                     new Knob("_YAPS_SocketShapeStart4", "Starts, shapes 12-15", RowKind.Vector, "DPS"),
-                    new Knob("_YAPS_SocketShapeFade", "Fades, shapes 0-3", RowKind.Vector, "DPS", "how far past its start each shape takes to arrive"),
+                    new Knob("_YAPS_SocketShapeFade", "Fades, shapes 0-3", RowKind.Vector, "DPS", "how far past its start each shape is fully open"),
                     new Knob("_YAPS_SocketShapeFade2", "Fades, shapes 4-7", RowKind.Vector, "DPS"),
                     new Knob("_YAPS_SocketShapeFade3", "Fades, shapes 8-11", RowKind.Vector, "DPS"),
                     new Knob("_YAPS_SocketShapeFade4", "Fades, shapes 12-15", RowKind.Vector, "DPS"),
@@ -130,7 +132,7 @@ namespace AvatarBridge
                 Blurb = "Views that say why nothing is happening.",
                 Knobs = new[]
                 {
-                    new Knob("_YAPS_Debug", "View", RowKind.Enum, help: "Colours the plug so you can see why it is doing what it is doing. The plug goes straight and its LENGTH carries the answer.  Resolved by: what found the socket. A quarter means nothing found it, a half the editor's preview, three quarters a marker light, full the screen atlas.  Gap to socket: how far away it is, as a fraction of the plug. Shortening smoothly is normal; a jump means it was handed a different socket.  Engagement: the switch that turns the bend on. A tenth at zero, full at one. When this collapses the plug springs straight back to its rest shape.  Socket facing: which way the socket points against the plug. Full is the same way, half is square across, nothing is facing straight back. Nothing is rejected for it; the deform turns a socket to meet the approach.  Atlas taps: what the screen carried, when the answer above is \"nothing\". A tenth means it carried nothing, a third that something was there but was not this plug's, two thirds that it was and was either out of reach or on your own body, full that a socket came back.  Atlas target: whether the atlas could be on THIS camera at all, which is the one thing the views above cannot say. A tenth means the target is too small to hold it, four tenths that the screen it read was a different one from the one being drawn, seven tenths that it read the right screen and found nothing there, full that the transport is on this camera. Read it in the view, then in a mirror.  Turn it back Off before you upload; the toolkit warns you if you forget."),
+                    new Knob("_YAPS_Debug", "View", RowKind.Enum, help: "The plug goes straight and its LENGTH is the answer.\nResolved by: a quarter nothing, half the preview, three quarters a marker light, full the atlas.\nGap to socket: distance as a fraction of the plug; a jump means a different socket.\nEngagement: a tenth at 0, full at 1.\nSocket facing: full same way, half square across, none facing back.\nAtlas taps: a tenth nothing, a third not this plug's, two thirds out of reach or own body, full found.\nAtlas target: a tenth target too small, four tenths wrong screen, seven tenths right screen and empty, full on.\nSet it Off before upload."),
                 }},
         };
 
@@ -284,9 +286,7 @@ namespace AvatarBridge
             if (YapsShaderPatcher.IsStale(material))
             {
                 EditorGUILayout.HelpBox(
-                    "This material is running a shader older than the toolkit, so what you see here " +
-                    "is not what the current version does. Bake it again to refresh it: the knobs " +
-                    "and the bake are kept.", MessageType.Warning);
+                    "This material runs an older shader than the toolkit. Bake again to refresh it; knobs and bake are kept.", MessageType.Warning);
                 GUILayout.Space(4);
             }
         }

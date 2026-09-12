@@ -17,6 +17,11 @@ Status words used below: **shipped** (in the package), **built** (in the code, u
 conversion strips VRCFury's rig and re-emits it through the native builder. Everything below
 describes both at once, which is the point.*
 
+*From 4.5.1 (2026-09-11) the order is the screen atlas first and marker lights where it found
+nothing. The contact channel below is no longer read by the shader nor built, because a trigger
+that never sees its sender leave holds the plug bent. The rest of this section is the record of
+how it ran up to 4.5.0.*
+
 Two channels, and which one answers is not the same question as which one is better. The channel
 FINDS the socket and decides engagement; a marker light in range then replaces the position
 outright, because a light is exact and sampled every frame where the channel is quantised to about
@@ -65,8 +70,9 @@ socket** (fix in `Places()` / `DefaultMaxLightEmittingSockets`, shipped as one).
 **Match the ecosystem byte for byte.** Emit VRCFury's exact ranges, trailing digits included.
 The first decimal is not free (DPS plugs saw roots with no fronts), the fourth does not survive
 (range is reconstructed as `5·rsqrt(atten)`), and a tiny-range variant loses every slot fight in
-company. Raliv's tolerance is 0.005, toy mods 0.001; the +0.003 offset keeps DPS and sheds the
-mods deliberately.
+company. Raliv's tolerance is 0.005, toy mods 0.001, and +0.0006 is inside both. A +0.003 offset
+kept DPS and shed the mods deliberately from 4.5.0; that lifted on 2026-09-08 once the mod stopped
+guessing plug length, and the exact VRCFury ranges came back.
 
 **Contacts: 4096 registrations and 512 overlapping pairs, instance-wide.** Broadphase is brute
 force but Burst: volume count is not the cost. Previous pairs re-add FIRST, so an interaction
@@ -172,8 +178,60 @@ receivers, which spend from the instance-wide 512-pair budget AND are forced loc
 sounds are wearer-only on a converted avatar today. Ship the machinery, not the audio: it cannot
 redistribute Noachi's or Dismay's clips.
 
-Untested: whether it survives an upload, and what a per-frame blit or camera actually costs. Steps
-are local Play mode, then upload, then a second client.
+**PROVEN IN GAME 2026-09-07, and it survives an upload.** The rig is
+`Dev/Probes/D1PrefabBuilder.cs`: a shader writes a sawtooth into a RenderTexture, `CVRBlitter`
+copies it, and `CVRTexturePropertyParser` reads that pixel into a cube's height and a light's
+intensity. In a live instance both ramped and reset on the sawtooth's period. Nothing else in the
+prefab could have moved them: no animator, no script, no contact. A Vector3 property with a
+component index and a plain float property were both written, so the reflection reading holds.
+
+**It runs on remote copies too, and that is the whole point.** Everyone present saw the cube
+moving on their own screen. A value every client can derive costs zero sync bits and never touches
+the 3200-bit cap.
+
+**Nothing is transmitted, and this was measured, not assumed.** The viewers' ramps were out of
+phase with each other, offset by when each had loaded, which is `_Time.y` running from their own
+level load. So the rule for anything built on this: **the shader may read only synced avatar
+state**, meaning bone transforms and blendshapes driven by synced parameters. Local time,
+`_ScreenParams`, frame count and the viewer's camera give a different answer per viewer. A blit
+shader has no shared clock available to it at all, which is why a blit can never be the source for
+a value other people must agree on; the source has to be a render of avatar geometry.
+
+**Two things the reading above got wrong, both found building the rig:**
+
+- **Render textures in this chain must be linear.** A default RenderTexture is sRGB, so the gamma
+  curve lands on the value going in and again coming out. The first probe read 0.6431 back from a
+  written 0.3725, which is the sRGB curve exactly, and looked like a broken transport.
+- **Animator parameters are reachable after all.** They are behind `SetFloat`, but
+  `CVRAnimatorDriver` exposes sixteen public float fields and pushes them into parameters itself.
+  The catch is that it only pushes from `OnDidApplyAnimationProperties`, which Unity raises only
+  when a clip animates a property on that same component, so a field written from C# sets the
+  field and stops there. A looping clip animating one unused slot, with that slot's parameter name
+  set to `-none-`, makes the callback fire every frame and flush the other fifteen. Built as
+  `D1Pump.anim`; not yet run in game. Blendshape weights stay unreachable.
+
+**Where the value comes from is the open half, and D2 asks it (built 2026-09-08).** A blit shader
+has no object transforms, so it cannot know where anything on the avatar is; it can only copy. The
+value therefore has to be computed by GEOMETRY, which has a matrix, exactly as the atlas writers do,
+and handed to the blit through a named `GrabPass`, which is a global texture any shader can sample.
+If that link holds, the socket resolve itself becomes readable in C# for the price of one blit,
+because a quad on the plug can `#include yaps_resolve.cginc` and publish what it finds.
+
+The rule from the proof still holds and is not bent by this: the blit is only a COPIER here. The
+source is a render of avatar geometry reading the atlas, and the atlas is hashed by world position,
+so it is the same for every viewer.
+
+`Dev/Probes/D2PrefabBuilder.cs` builds the rig. A quad writes a sawtooth into two screen blocks at
+`Background-946`, a grab at `Background-945` names it `_YAPS_Probe`, a `CVRBlitter` samples that
+global into a 4x4 linear texture, and the parser drives a cube and a light off it, which is D1's
+proven half unchanged. A ramping cube means the grab reached the blit; a still one means the route
+is dead and the source has to be a camera rendering the avatar into a render texture instead.
+
+Two blocks because a grab's row order is a convention, and the blit reads both ends and takes the
+larger: which way up it lands is not worth an in-game run. Both a batch entry point and a menu item,
+since the editor holding the avatar is usually already open.
+
+Still untested: what a per-frame blit or camera actually costs.
 
 ### 5. The screen-space atlas: postponed, deliberately
 
@@ -1461,3 +1519,61 @@ wanted: the transport is invisible to somebody who has opted out of the shader t
 
 Nothing local could have produced this evidence. The editor renders with the real shader, so the
 failure only ever existed on a machine that had refused it.
+
+## The owner pixel, protocol 5 (2026-09-11)
+
+Each octant is four pixels now: position, facing, tags, owner. The owner is the low 24 bits of
+the wearer's ChilloutVR user id, six bits a channel over rgba, written once like the tags and read
+only after the position pixel's cell tag has matched. Zero is unknown and never a match. A cell is
+33 slots, the columns went from 32 to 28 so a mirror capped at 1024 still holds the rect, and
+the rows per level round up: 932 by 596.
+
+The id reaches the materials without a transport of its own. A `CVRParameterStream` entry of type
+`SeedOwner` feeds a synced float on the wearer's copy, and an animator layer carries it onto
+every renderer that declares `_YAPS_Owner`. Remote copies get it by sync and read zero until
+then, which the reader answers with the nearest-hip vote it always used. `YapsSameBodyOwned`
+takes the socket's id: known and different is never own; known and the same is own, and refused
+only when inboard; unknown is the vote. Work queue entry: "The atlas knows whose socket it is".
+
+## Numbered own sockets, protocol 6 (2026-09-11)
+
+The facing pixel's alpha holds the kind and the socket's number among its wearer's own, 1 to 15,
+as `1 + kind + 2 * number` over 63; zero still reads as no kind. A plug holds a bit per number in
+`_YAPS_SelfSockets` for which of its wearer's sockets it may enter, so the choice itself never
+crosses the screen: once the owner ids match, the number picks the bit. Unnumbered own sockets
+keep the inboard rule. The choice is a checklist on the plug's inspector; see the work queue.
+`_YAPS_SelfChosen` marks the bits chosen by name, a tick set by hand or a converted plug's Self
+tag rules, and those skip the tag test: a plug's tags answer for other people. A default tick
+still takes the test, so the tag chooser narrows it.
+
+## The layout follows the target (2026-09-11)
+
+A target smaller than the full 932 by 596 rect used to get no atlas at all, so a small mirror, a
+low-resolution camera or the self portrait left every plug in it to the marker lights. Writers
+and readers draw into and read from the same target, so both now work out the layout from
+`_ScreenParams`: as many columns as fit, up to 28, and as many cells as the rows allow, up to
+4096. Where the full rect fits it is exactly the full layout, which is why there is no version
+bump: a version 6 side draws and reads nothing anywhere the layout differs.
+
+The cost is the grid size table above, read backwards. A 256 square target holds 434 cells, a
+512 square one 1890, and fewer cells means more both-homes clashes and more strangers in the
+slots a plug opens. The floor is 384 cells, about 240 pixels square; below it the atlas is off.
+`Dev/Probes/Hlsl/atlas-layout.py` checks the arithmetic across target sizes: identical where the
+full rect fits, never past the target, and no level running into the next.
+
+**The gate had a second job, and it is now narrower.** "The size gate stays" above also kept the
+writers off small targets where there may be nothing to cover them. A camera clearing to a
+transparent background, which the self portrait may well be, keeps whatever the payload pass wrote
+wherever the avatar does not cover it: coloured specks in the corner, about five pixels per socket
+per level per home. Below the 384-cell floor nothing changed; above it this is unmeasured. If the
+portrait shows specks, the fix is a second alpha-only clear AFTER the grab (-943), which leaves the
+plugs' copy alone and makes the corner transparent again before the scene draws.
+
+## One-way rings, protocol 7 (2026-09-11)
+
+The facing pixel's alpha carried `1 + kind + 2 * number` over 63 with a kind bit. A one-way ring
+needed a third kind, and a separate bit would have made the largest code 64, one past six bits.
+So the kind is now a factor of three: `1 + kind + 3 * number`, kind 0 ring, 1 hole, 2 one-way ring,
+largest 48. The reader decodes a one-way ring as a ring and skips it when the plug's base is
+behind its facing, `dot(forward, base - socket) < 0`; the base because the shaft goes through a
+ring and the base never does. Marker lights cannot say it, so a ring found by light is two-way.

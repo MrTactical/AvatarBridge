@@ -1,6 +1,7 @@
 // A YAPS plug: authoring data for the mesh that bends.
 // The toolkit bakes from it and writes the knobs to the material.
 // ChilloutVR strips it at upload. No SDK dependency.
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace AvatarBridge.Yaps
@@ -12,27 +13,21 @@ namespace AvatarBridge.Yaps
         [Tooltip("The mesh that bends. Leave empty to use the renderer on this object.")]
         public Renderer renderer;
 
-        [Tooltip("Which of the renderer's materials is the plug. Leave it at -1 unless you mean " +
-                 "otherwise: -1 bakes EVERY material the bone chain reaches, which is one of them " +
-                 "for an ordinary plug and all of them when a whole avatar is the plug. A number " +
-                 "means that slot alone, so a plug whose vertices span several materials will bend " +
-                 "in one and stay rigid in the rest, tearing along the seam.")]
+        [Tooltip("-1 bakes every material the bone chain reaches. A number bakes that slot alone, " +
+                 "and a plug spanning several tears at the seam.")]
         public int materialSlot = -1;
 
         [Header("Skinned mesh")]
-        [Tooltip("The bone the shaft grows from. On a skinned mesh, only vertices weighted to " +
-                 "this bone and its children are the plug; the rest of the mesh stays put. " +
-                 "Leave empty on a mesh that is only the plug.")]
+        [Tooltip("The bone the shaft grows from; only vertices weighted to it and its children " +
+                 "bend. Empty for a mesh that is only the plug.")]
         public Transform rootBone;
 
         [Header("Measurement")]
-        [Tooltip("The toolkit measures the shaft's axis and length from the mesh itself. If it " +
-                 "picked the wrong end as the base, tick this to flip it. Skinned meshes only; a plain " +
-                 "mesh bends around its own origin along +Z.")]
+        [Tooltip("Tick if the measured base is at the wrong end. Skinned meshes only; a plain mesh " +
+                 "bends from its origin along +Z.")]
         public bool flipAxis;
 
-        [Tooltip("Optional. If the measured length is wrong for your mesh, state it here in " +
-                 "metres. 0 uses the measurement.")]
+        [Tooltip("Length in metres, when the measurement is wrong. 0 uses the measurement.")]
         public float lengthOverride;
 
         [Header("Shape at rest")]
@@ -59,6 +54,9 @@ namespace AvatarBridge.Yaps
         [Range(0.01f, 1f), Tooltip("How far before the opening the swell begins.")]
         [YapsFrom("DPS · TPS")]
         public float bulgeReach = 0.2f;
+        [Range(0f, 0.5f), Tooltip("How far short of the opening the swell peaks, rising over its reach behind. 0 peaks halfway along the reach.")]
+        [YapsFrom("TPS")]
+        public float bulgeFalloff;
 
         [Header("Out of a socket")]
         [Range(0.1f, 1f), Tooltip("How much of its length it keeps when no socket is using it. 1 is no change.")]
@@ -67,7 +65,7 @@ namespace AvatarBridge.Yaps
         [Range(0.1f, 1f), Tooltip("How much of its width it keeps when no socket is using it.")]
         [YapsFrom("TPS")]
         public float idleWidth = 1f;
-        [Range(0f, 0.5f), Tooltip("Idle motion, tip-heavy, only while out of a socket. Animates over time: the scene view shows it while this plug is selected.")]
+        [Range(0f, 0.5f), Tooltip("Idle motion, tip-heavy, out of a socket only. Plays in the scene view while selected.")]
         [YapsFrom("DPS")]
         public float wriggle;
         [Range(0f, 20f), Tooltip("How fast it wriggles.")]
@@ -111,15 +109,38 @@ namespace AvatarBridge.Yaps
         public bool overrun = true;
 
         [Header("How sockets find it")]
-        [Tooltip("Emit the tip light Raliv DPS orifices read, and the contact pointers TPS and " +
-                 "SPS sockets read. Both on unless you know why not.")]
+        [Tooltip("The tip light DPS sockets read.")]
         [YapsFrom("DPS")]
         public bool emitTipLight = true;
+
+        [Tooltip("The tip pointers TPS and SPS sockets read.")]
         [YapsFrom("TPS · SPS")]
         public bool emitPointers = true;
 
-        // The material the bake replaced, so Remove can put it back. Set
-        // by the first bake; the toolkit's own, not a knob.
+        [Header("Which sockets it answers")]
+        [YapsFrom("SPS")]
+        [Tooltip("Answer only sockets with one of these tags; empty answers anything not refused. " +
+                 "Four at most, so a longer list belongs on the sockets. Screen atlas only: a " +
+                 "socket it cannot read is answered.")]
+        public List<string> answers = new List<string>();
+
+        [YapsFrom("SPS")]
+        [Tooltip("Never answer a socket with any of these tags; beats the list above. Four at most.")]
+        public List<string> refuses = new List<string>();
+
+        [Header("Diagnostics")]
+        [Tooltip("An in-game readout of who found the socket and what the bake is doing. White " +
+                 "marks the bake-pose tip, magenta the real one. Everyone sees it and it uploads " +
+                 "with the avatar; the report flags it while it is on.")]
+        public bool debugOverlay;
+
+        // The mesh the readout replaced and the renderer it sits on, so a
+        // rebuild or Remove can put it back. Written by the readout builder.
+        [HideInInspector]
+        public Renderer readoutRenderer;
+        [HideInInspector]
+        public Mesh readoutReplaced;
+
         [HideInInspector]
         public Material bakedFrom;
 
@@ -146,6 +167,15 @@ namespace AvatarBridge.Yaps
         [HideInInspector]
         public System.Collections.Generic.List<BakedSlot> bakedSlots =
             new System.Collections.Generic.List<BakedSlot>();
+
+        // The wearer's own sockets, as changes against the default: every one
+        // may be entered except those on the hips. Changes rather than a full
+        // list, so a socket added later starts at its default rather than off.
+        // The inspector draws these as one checklist.
+        [HideInInspector]
+        public List<YapsSocket> selfEnter = new List<YapsSocket>();
+        [HideInInspector]
+        public List<YapsSocket> selfRefuse = new List<YapsSocket>();
 
         public Renderer Target => renderer != null ? renderer : GetComponent<Renderer>();
     }

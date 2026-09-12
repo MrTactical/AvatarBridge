@@ -77,14 +77,9 @@ namespace AvatarBridge
                 ctx.Report.Error(Category, $"{baker.Name} is installed but did not compile",
                     $"\"{folder}\" exists ({files} file(s))" +
                     (hasManifest ? "" : " and has NO package.json, which is why Unity ignored it") +
-                    $", but no {baker.Name} assembly is loaded. Converting now would treat every " +
-                    $"{baker.Name} component on this avatar as though it were not there: the bake " +
-                    "would not run, and the result would be missing everything that package builds " +
-                    ", silently, because an avatar with no baker looks exactly like an avatar with " +
-                    "nothing to bake. This is what an avatar or prop \".unitypackage\" does when it " +
-                    "ships its own bundled copy and overwrites yours. Reinstall " +
-                    $"{baker.Name} through the VRChat Creator Companion, let Unity finish " +
-                    "compiling, and convert again.");
+                    $", but no {baker.Name} assembly is loaded, so its components would be silently ignored. " +
+                    "A package bundling its own copy does this. Reinstall " +
+                    $"{baker.Name} through the VRChat Creator Companion, let Unity compile, and convert again.");
             }
             return ok;
         }

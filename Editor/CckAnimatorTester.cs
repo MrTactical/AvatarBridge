@@ -357,8 +357,7 @@ namespace AvatarBridge
                         ? $"Driving \"{avatar.name}\". Every control writes what ChilloutVR itself writes."
                         : $"Found \"{avatar.name}\": enter PLAY MODE to drive it; animators only evaluate there.")));
             pick.Body.Add(BridgeElements.Hint(
-                "VRChat's Gesture Manager cannot drive a converted avatar: it needs the VRC " +
-                "descriptor, which conversion removes. This window is the ChilloutVR-side equivalent."));
+                "The ChilloutVR side of Gesture Manager, which cannot drive a converted avatar."));
             scroll.Add(pick);
 
             // ---- gestures ----------------------------------------------------------------
@@ -488,9 +487,7 @@ namespace AvatarBridge
             {
                 value = ReadParam(quiet, "Upright") ?? 1f,
                 showInputField = true,
-                tooltip = "Viewpoint height over avatar height, clamped 0..1. In VR the game " +
-                          "derives stance from it: dragging below 0.75 crouches, below 0.40 " +
-                          "goes prone, exactly like the client.",
+                tooltip = "Viewpoint over avatar height. Below 0.75 crouches, below 0.40 goes prone, as in game.",
             };
             upright.RegisterValueChangedCallback(e =>
             {
@@ -559,10 +556,8 @@ namespace AvatarBridge
             }) { text = "Cancel" });
             face.Body.Add(emoteRow);
             face.Body.Add(BridgeElements.Hint(
-                "Visemes and blink are held on the face mesh every frame, after the animator: the " +
-                "same place and order ChilloutVR writes them. So they beat any animation using the " +
-                "same blendshape, here and in game. An expression that stops closing the eyes while " +
-                "this window is open would do the same thing in game."));
+                "Visemes and blink are written after the animator, as in game, so they beat any animation on " +
+                "the same shape."));
             face.SetEnabled(live);
             scroll.Add(face);
 
@@ -615,12 +610,8 @@ namespace AvatarBridge
             // animation rapidly looping that the wearer cannot see at all.
             var remote = new BridgeElements.Card("Remote view");
             remote.Body.Add(BridgeElements.Hint(
-                "Snaps every \"#\" local parameter to its default: the value it holds forever " +
-                "on OTHER players' clients, which never receive local parameters or parameter " +
-                "streams. Watch the Animator layers readout after pressing: any layer that " +
-                "starts cycling or lands in a different state here is doing exactly that in " +
-                "game for everyone but you. Synced parameters are untouched; drive them above " +
-                "to reproduce what others see during a toggle."));
+                "Sets every \"#\" local parameter to its default, as other players see it. A layer that then " +
+                "cycles or changes state does so for everyone but you."));
             remote.Body.Add(new Button(() =>
             {
                 var a = LiveAnimator();
@@ -788,9 +779,7 @@ namespace AvatarBridge
                 card.Body.Add(BridgeElements.Hint(
                     animator == null || asset == null
                         ? "No animator controller to read yet."
-                        : "Enter PLAY MODE: layer weights and playing clips only exist while the " +
-                          "animator evaluates. This is the same readout ChilloutVR's CCK Debugger " +
-                          "shows in game, so what you see here is what a tester would report."));
+                        : "Enter PLAY MODE to see layer weights and playing clips, as the CCK Debugger shows them."));
                 return card;
             }
 
@@ -1093,10 +1082,8 @@ namespace AvatarBridge
             if (faceParams.Count == 0)
             {
                 card.Body.Add(BridgeElements.Hint(
-                    "No face tracking on this avatar: the controller declares no face-tracking " +
-                    "parameters and there is no CVRFaceTracking component with shapes mapped. " +
-                    "Convert with \"Native CVR Component\" or \"CVR-VRCFT\" selected, or bring an " +
-                    "avatar that carries its own Unified Expressions rig."));
+                    "No face tracking on this avatar. Convert with a face tracking mode other than \"Keep the " +
+                    "avatar's own rig\", or bring one with a Unified Expressions rig."));
                 return card;
             }
 
@@ -1111,9 +1098,7 @@ namespace AvatarBridge
 
             card.SetSummary($"{faceParams.Count} parameters");
             card.Body.Add(BridgeElements.Hint(
-                "Drives the same parameters the VRCFaceTracking bridge drives in game. Blendshapes " +
-                "moving here is what proves the rig survived conversion; whether a headset feeds " +
-                "them is only answerable in game."));
+                "The parameters VRCFaceTracking drives in game. Shapes moving here prove the rig survived."));
 
             var sliders = new Dictionary<string, Slider>();
 
@@ -1208,8 +1193,7 @@ namespace AvatarBridge
             })
             {
                 text = "Neutral face  (the rig's own resting values)",
-                tooltip = "Not all zero: eyelids rest at 0.8 and pupils at 0.5. Zeroing everything " +
-                          "shuts the eyes and pins the pupils, which looks like a broken rig.",
+                tooltip = "Eyelids at 0.8 and pupils at 0.5, not zero, which would shut the eyes.",
             };
             restButton.style.marginTop = 6;
             card.Body.Add(restButton);
@@ -1240,18 +1224,13 @@ namespace AvatarBridge
 
             card.SetSummary($"{shapes.Count} blendshapes  (native)");
             card.Body.Add(BridgeElements.Hint(
-                $"This avatar uses ChilloutVR's NATIVE face tracking, so there are no per-expression " +
-                $"animator parameters to drive: CVRFaceTracking writes these {shapes.Count} blendshapes on " +
-                $"\"{native.FaceMesh.name}\" straight from the headset. The sliders below make the same " +
-                "writes, so a shape that moves is mapped to real geometry. Whether a headset feeds it is " +
-                "only answerable in game."));
+                $"Native face tracking writes these {shapes.Count} shapes on \"{native.FaceMesh.name}\" from the " +
+                "headset. A shape that moves here is mapped."));
 
             if (shapes.Count == 0)
             {
                 card.Body.Add(BridgeElements.Hint(
-                    "No slot names a blendshape that exists on this mesh: the mapping is empty. " +
-                    "Assign shapes on the CVRFaceTracking component, or convert again with a face " +
-                    "mesh whose shapes follow Unified Expressions naming."));
+                    "No slot names a shape on this mesh. Assign them on the CVRFaceTracking component."));
                 return;
             }
 
@@ -1314,8 +1293,7 @@ namespace AvatarBridge
             })
             {
                 text = "Clear all shapes  (back to 0)",
-                tooltip = "Native shapes rest at 0: unlike the VRCFT rig, whose eyelids and pupils " +
-                          "rest part-open. These are driven from the headset, so 0 is the true rest.",
+                tooltip = "Native shapes rest at 0.",
             };
             reset.style.marginTop = 6;
             card.Body.Add(reset);
@@ -1457,9 +1435,7 @@ namespace AvatarBridge
                 if (missing)
                 {
                     element.SetEnabled(false);
-                    element.tooltip = $"\"{parameterName}\" is not declared in the current " +
-                        "animator controller: driving it would do nothing, in game or here. " +
-                        "It lights up the moment the controller declares it.";
+                    element.tooltip = $"\"{parameterName}\" is not in the animator controller, so it drives nothing.";
                     missingCount++;
                 }
                 else
@@ -1553,10 +1529,8 @@ namespace AvatarBridge
             if (missingCount > 0)
             {
                 parent.Add(new HelpBox(
-                    $"{missingCount} greyed entr{(missingCount == 1 ? "y is" : "ies are")} in the menu but not in the " +
-                    "animator yet: no parameter of that name. The CCK writes one per entry when you press Create " +
-                    "Animator on the CVRAvatar's Advanced Settings; the YAPS toolkit writes its own entries' layers " +
-                    "straight into the animator the avatar wears. Hover an entry for its parameter name.",
+                    $"{missingCount} greyed entr{(missingCount == 1 ? "y is" : "ies are")} not in the animator yet. " +
+                    "Press Create Animator on the CVRAvatar's Advanced Settings.",
                     HelpBoxMessageType.Info));
             }
         }
