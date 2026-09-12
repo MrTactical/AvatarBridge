@@ -1072,7 +1072,8 @@ words you wrote, including the ones SPS works out for you from the bone a socket
 global tag every socket and plug carries unless you turned it off. So a plug that answered
 everything still answers everything, and a plug narrowed to one place stays narrowed to it. A
 rule that applied to yourself but not to other people, or the other way round, keeps its side:
-see **Which of your own sockets a plug may enter** above. One thing changes: where an avatar has
+see **Which of your own sockets a plug may enter** above. The two lists land on the plug itself,
+so you can read them, change them and re-bake without losing them. One thing changes: where an avatar has
 three or more sockets on the hips, they come across as `hips` without the front and back split: with two the
 front one is the one further forward, and with three the guess is worth less than the name.
 

@@ -355,6 +355,17 @@ outnumber 960 by 540's pixels.
   own socket, so it would have crowded the tag refusal out of the one slot, and lit the debug
   view's refusal cell on every avatar with one. The trade: a legacy partner socket, with no
   atlas writer, pressed within that tenth of your own unticked socket is ignored too.
+- DONE 2026-09-12: a converted plug's tag rules survive a toolkit re-bake, and it gets a chooser.
+  The conversion wrote the author's answers and refuses to the material as hashes and the adopted
+  component kept empty lists, so the inspector showed no rules, `YapsTagMenu` saw nothing to
+  choose between, and `YapsNativeBuilder.Bake` wrote `Patterns(empty)`, a zero vector, over the
+  material the moment anyone pressed Build in the toolkit: every converted plug then answered
+  every socket. Found by asking whether a converted avatar can use the toolkit at all, which it
+  otherwise can. `AdoptPlug`'s caller now copies the words from `YapsBakePrep` onto the
+  component, and the converter calls `YapsTagMenu.Build` beside the lighthouse. Two builders
+  again, and a new shape of it: not a rule that disagreed, but a value only one path could
+  produce and the other overwrote in silence. Worth a sweep for any other property the converter
+  writes to a material that the toolkit writes from a component. Untested in game.
 - A per-plug menu choice. `_YAPS_SelfSockets` is a plain float, so a dropdown could animate it
   between a few sets, at the cost of one synced parameter a plug so every viewer bends alike.
 - Props and world sockets carry no id and fall back to the vote. `SeedInstance` would give a

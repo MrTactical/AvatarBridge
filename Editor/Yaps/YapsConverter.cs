@@ -72,6 +72,17 @@ namespace AvatarBridge
             WireSocketToggles(ctx, socketRoots);
             YapsSocketRebuilder.Lighthouse(ctx);
 
+            // The tag chooser, which the toolkit has built since it existed and
+            // this path never did: the words it reads live on the plug component,
+            // and until now a converted plug had none. Two builders again.
+            string chooser = YapsTagMenu.Build(ctx.CvrAvatar, ctx.MergedController);
+            if (chooser != null)
+            {
+                ctx.Report.Converted(Category, "A plug built for several places gets a dropdown",
+                    "The wearer picks one of the places it answers, or Anything, from its own menu " +
+                    "row. It starts on what you built. (" + chooser + ")");
+            }
+
             // After every plug material and socket writer exists: it wires
             // whatever renderer can hold the id.
             string owner = YapsOwner.Wire(ctx.Target, ctx.MergedController);
@@ -255,6 +266,19 @@ namespace AvatarBridge
             if (adopted != null)
             {
                 adopted.debugOverlay = ctx.Settings.yapsDebugOverlay;
+                // The tag rules in the author's words. The material holds them as
+                // hashes and a hash reads back as nothing, so a toolkit re-bake
+                // wrote the component's empty lists over them and the plug came
+                // out answering every socket. The inspector showed empty lists
+                // the whole time, which is the half nobody would have queried.
+                string authored = AuthoredKey(plugRoot);
+                if (authored != null)
+                {
+                    if (YapsBakePrep.AuthoredAnswers.TryGetValue(authored, out var answers))
+                        adopted.answers = new List<string>(answers);
+                    if (YapsBakePrep.AuthoredRefuses.TryGetValue(authored, out var refuses))
+                        adopted.refuses = new List<string>(refuses);
+                }
                 // The other meshes take the primary's knobs, which the component
                 // just read, or each bends on its own settings and the seam
                 // opens. Recorded as baked slots so the own-socket ticks and
@@ -404,7 +428,7 @@ namespace AvatarBridge
 
             // The plug component's overrun choice wins over the material's,
             // since the component is what SPS's own tools edit.
-            string plugObject = plugRoot.parent != null ? plugRoot.parent.name : null;
+            string plugObject = AuthoredKey(plugRoot);
             bool overrun = plugObject != null
                            && YapsBakePrep.AuthoredOverrun.TryGetValue(plugObject, out bool authored)
                 ? authored
@@ -436,6 +460,11 @@ namespace AvatarBridge
             renderer.sharedMaterials = materials;
             return patched;
         }
+
+        // What YapsBakePrep keyed the author's own values by: the object the
+        // SPS component sat on, which survives as the parent of BakedSpsPlug.
+        static string AuthoredKey(Transform plugRoot) =>
+            plugRoot != null && plugRoot.parent != null ? plugRoot.parent.name : null;
 
         // The socket half of the tag carry. The plug half sits in the
         // material patch, since that is where the plug's uniforms are
