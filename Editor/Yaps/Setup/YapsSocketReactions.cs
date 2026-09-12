@@ -291,12 +291,69 @@ namespace AvatarBridge
         // Strength lives in the clips, so changing it rebuilds. The layer
         // stays at full weight: a partial one creeps to full in game,
         // blending against its own last frame.
+        // No shapes left to drive: the layer it was built as goes, and the
+        // depth parameter and its contact go with it unless something else
+        // still reads them. A converted avatar's own depth animations are
+        // exactly that something, so the contact is not ours to assume.
+        public static string Clear(YapsSocket socket)
+        {
+            if (socket == null) return null;
+            var controller = Target(socket, out _, out _, out _);
+            var host = socket.transform.Find(HostName);
+            if (controller == null) return null;
+
+            string layerName = LayerName(socket);
+            var layers = controller.layers.ToList();
+            int at = layers.FindIndex(l => l.name == layerName);
+            if (at < 0 && !string.IsNullOrEmpty(socket.builtLayer))
+            {
+                layerName = socket.builtLayer;
+                at = layers.FindIndex(l => l.name == layerName);
+            }
+            var done = new List<string>();
+            if (at >= 0)
+            {
+                layers.RemoveAt(at);
+                controller.layers = layers.ToArray();
+                EditorUtility.SetDirty(controller);
+                done.Add($"layer \"{layerName}\" taken out");
+            }
+
+            bool played = socket.depthAnimations.Any(a => a != null && a.clip != null);
+            string parameter = Parameter(socket);
+            if (!played && !YapsRemover.ParameterUsed(controller, parameter))
+            {
+                var p = controller.parameters.FirstOrDefault(x => x.name == parameter);
+                if (p != null)
+                {
+                    controller.RemoveParameter(p);
+                    EditorUtility.SetDirty(controller);
+                    done.Add("its depth parameter");
+                }
+                if (host != null)
+                {
+                    Undo.DestroyObjectImmediate(host.gameObject);
+                    done.Add("the depth contact");
+                }
+            }
+            if (!string.IsNullOrEmpty(socket.builtLayer) || !string.IsNullOrEmpty(socket.builtParameter))
+            {
+                Undo.RecordObject(socket, "YAPS socket reactions");
+                socket.builtLayer = "";
+                socket.builtParameter = "";
+                EditorUtility.SetDirty(socket);
+            }
+            if (done.Count == 0) return null;
+            AssetDatabase.SaveAssets();
+            return string.Join(", ", done);
+        }
+
         public static string Build(YapsSocket socket)
         {
             if (socket == null) return null;
             var renderer = socket.renderer;
             var stages = socket.shapes.Where(s => s != null && !string.IsNullOrEmpty(s.blendshape)).ToList();
-            if (renderer == null || stages.Count == 0 || renderer.sharedMesh == null) return null;
+            if (renderer == null || stages.Count == 0 || renderer.sharedMesh == null) return Clear(socket);
 
             var controller = Target(socket, out var animator, out var avatar, out string failure);
             if (controller == null) return failure;

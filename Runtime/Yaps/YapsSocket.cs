@@ -85,6 +85,14 @@ namespace AvatarBridge.Yaps
         [HideInInspector]
         public Material bakedFrom;
 
+        // Where that material came off. Remove put it back on slot 0, which
+        // is the wrong slot on any socket baked into another one, and a mesh
+        // set back to None left nothing pointing at the renderer at all.
+        [HideInInspector]
+        public Renderer bakedRenderer;
+        [HideInInspector]
+        public int bakedSlot = -1;
+
         // What the last build called this socket's reactions layer and its
         // depth parameter. Names follow the bone, so they move when the
         // socket does; without a record of the old ones a rebuild would

@@ -128,6 +128,29 @@ namespace AvatarBridge.Regression
                 Check(hole.GetComponentsInChildren<CVRPointer>(true).Length == before, "no duplicate markers");
             });
 
+            // The bake goes back on the slot it came off, not slot 0, and the
+            // socket stops claiming a mesh it no longer opens.
+            Step("YAPS Socket > Mesh set back to None puts the mesh back", () =>
+            {
+                var plug = YapsNativeBuilder.BuildTestPlug(avatar.transform, false);
+                created.Add(plug);
+                var baked = plug.GetComponentInChildren<Renderer>().sharedMaterial;
+                var mesh = new GameObject("Socket Mesh").AddComponent<SkinnedMeshRenderer>();
+                mesh.transform.SetParent(avatar.transform, false);
+                var slotZero = new Material(Shader.Find("Standard"));
+                var was = new Material(Shader.Find("Standard"));
+                mesh.sharedMaterials = new[] { slotZero, baked };
+                hole.bakedRenderer = mesh;
+                hole.bakedSlot = 1;
+                hole.bakedFrom = was;
+                hole.renderer = null;
+                hole.shapes.Clear();
+                YapsNativeBuilder.BakeSocket(hole);
+                Check(mesh.sharedMaterials[1] == was, "the baked slot went back to its own material");
+                Check(mesh.sharedMaterials[0] == slotZero, "slot 0 was left alone");
+                Check(hole.bakedRenderer == null && hole.bakedSlot == -1 && hole.bakedFrom == null, "the record is cleared");
+            });
+
             // --- preview with a test plug (spawns and removes its own) --------
             Step("YAPS Socket > Preview with a test plug", () =>
             {

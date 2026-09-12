@@ -941,7 +941,9 @@ avatar). **Plays as a plug goes in** takes your own animation clips the same way
 over its own depth range, in a layer of their own driven by that contact and its synced depth
 (32 of the 3200 sync bits, shared with the shapes), whichever route the shapes take. Write
 defaults are on in that layer, so animate only what nothing else on the avatar animates.
-**Test depth** moves those shapes on the mesh in the editor so you can see the stages
+Setting the mesh back to **None** and building again takes all of that out: the layer, its
+parameter, the contact and the mesh's own material, unless your own animations still read the
+depth. **Test depth** moves those shapes on the mesh in the editor so you can see the stages
 without a plug; nothing is saved, and they go back when you click away. **Preview** bends every
 baked plug in the scene toward the socket, and drops one in front of it when nothing baked is
 within a couple of metres: the plug prop prefab if the project has one, since that is baked on

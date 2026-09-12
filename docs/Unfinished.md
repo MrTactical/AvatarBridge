@@ -366,6 +366,16 @@ outnumber 960 by 540's pixels.
   again, and a new shape of it: not a rule that disagreed, but a value only one path could
   produce and the other overwrote in silence. Worth a sweep for any other property the converter
   writes to a material that the toolkit writes from a component. Untested in game.
+- DONE 2026-09-12: a socket whose mesh goes back to None undoes its own build. `BakeSocket` and
+  `YapsSocketReactions.Build` both returned null on an empty shape list, so the reactions layer,
+  the synced depth parameter, the depth contact and the baked material all stayed on an avatar
+  that no longer opened anything. The depth ANIMATIONS list has always read an empty list as an
+  instruction; the shapes list never did. Both now do. The contact and parameter stay while the
+  depth animations or the author's own layers still read them, which on a converted avatar they
+  usually do. Found alongside it: Remove restored the socket's material to slot 0 by assumption,
+  so a socket baked into any other slot left its bake in place and painted its original over
+  slot 0; the renderer and slot are recorded on the socket now (`bakedRenderer`, `bakedSlot`)
+  and both paths use them. Smoke test covers the restore. Untested in game.
 - A per-plug menu choice. `_YAPS_SelfSockets` is a plain float, so a dropdown could animate it
   between a few sets, at the cost of one synced parameter a plug so every viewer bends alike.
 - Props and world sockets carry no id and fall back to the vote. `SeedInstance` would give a

@@ -745,13 +745,60 @@ namespace AvatarBridge
 
         // Bakes the socket's chosen shapes into its mesh's material, staged
         // as the component says. Returns what happened, for the window.
+        static void RecordSocketSlot(YapsSocket socket, Renderer renderer, int slot)
+        {
+            if (socket.bakedRenderer == renderer && socket.bakedSlot == slot) return;
+            Undo.RecordObject(socket, "YAPS socket bake");
+            socket.bakedRenderer = renderer;
+            socket.bakedSlot = slot;
+            EditorUtility.SetDirty(socket);
+        }
+
+        // The mesh back on the material the bake took it off. Keyed by the
+        // renderer and slot the bake recorded, because a socket whose mesh is
+        // set back to None no longer names the renderer it baked.
+        static string Unbake(YapsSocket socket)
+        {
+            var renderer = socket.bakedRenderer;
+            string said = null;
+            var mats = renderer != null ? renderer.sharedMaterials : null;
+            if (mats != null && socket.bakedFrom != null && socket.bakedSlot >= 0 && socket.bakedSlot < mats.Length
+                && mats[socket.bakedSlot] != null && mats[socket.bakedSlot] != socket.bakedFrom
+                && mats[socket.bakedSlot].HasProperty("_YAPS_Bake"))
+            {
+                Undo.RecordObject(renderer, "YAPS socket bake");
+                mats[socket.bakedSlot] = socket.bakedFrom;
+                renderer.sharedMaterials = mats;
+                said = $"\"{renderer.name}\" back on \"{socket.bakedFrom.name}\"";
+            }
+            if (socket.bakedFrom == null && socket.bakedRenderer == null) return said;
+            Undo.RecordObject(socket, "YAPS socket bake");
+            socket.bakedFrom = null;
+            socket.bakedRenderer = null;
+            socket.bakedSlot = -1;
+            EditorUtility.SetDirty(socket);
+            return said;
+        }
+
         public static string BakeSocket(YapsSocket socket)
         {
             if (socket == null) return null;
             socket.builtBy = BridgeDefines.Version;
             var renderer = socket.renderer;
             var stages = socket.shapes.Where(s => s != null && !string.IsNullOrEmpty(s.blendshape)).ToList();
-            if (renderer == null || stages.Count == 0) return null;
+            // Nothing to open any more. Emptying the list is an instruction,
+            // not nothing to do: the depth animations have always read it that
+            // way, and this path left a layer, a synced parameter, a contact
+            // and a baked material behind on every socket switched back.
+            if (renderer == null || stages.Count == 0)
+            {
+                var undone = new List<string>();
+                string put = Unbake(socket);
+                if (put != null) undone.Add(put);
+                string cleared = YapsSocketReactions.Clear(socket);
+                if (cleared != null) undone.Add(cleared);
+                return undone.Count > 0 ? $"✓ {socket.name}: nothing opens now, " + string.Join(", ", undone) : null;
+            }
             if (renderer.sharedMesh == null || renderer.sharedMesh.blendShapeCount == 0)
                 return $"✗ {socket.name}: its mesh has no blendshapes";
             // A body mesh can open too, now that depth measures from the baked
@@ -803,6 +850,8 @@ namespace AvatarBridge
             {
                 // Generated here already: a socket's own material, baked before.
                 material = source;
+                // Where it sits, for a socket baked before this was recorded.
+                RecordSocketSlot(socket, renderer, slot);
                 // Refresh the SHADER too when the tool has moved on since this was
                 // patched. A material keeps its values across a shader swap, and a
                 // property the old code never had arrives at its declared default,
@@ -839,6 +888,7 @@ namespace AvatarBridge
                 material = YapsBaker.Apply(result, source, shader, dir, result.FromSkinnedMesh);
                 material.SetFloat("_YAPS_Enabled", 0f);
                 if (socket.bakedFrom == null) { socket.bakedFrom = mats[slot]; EditorUtility.SetDirty(socket); }
+                RecordSocketSlot(socket, renderer, slot);
                 var wasSocket = mats[slot];
                 mats[slot] = material;
                 renderer.sharedMaterials = mats;

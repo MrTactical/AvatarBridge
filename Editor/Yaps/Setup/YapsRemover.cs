@@ -150,16 +150,22 @@ namespace AvatarBridge
                 if (menu != null) done.Add(menu.TrimEnd('.'));
             }
 
-            // The bake on its own mesh: the material it replaced goes back.
-            if (socket.renderer != null && socket.bakedFrom != null)
+            // The bake on its own mesh: the material it replaced goes back, on
+            // the slot the bake recorded. Slot 0 was an assumption, and on a
+            // socket baked into any other slot it painted the socket's original
+            // over slot 0 and left the bake where it was.
+            var baked = socket.bakedRenderer != null ? socket.bakedRenderer : socket.renderer;
+            int bakedSlot = socket.bakedSlot >= 0 ? socket.bakedSlot : 0;
+            if (baked != null && socket.bakedFrom != null)
             {
-                var mats = socket.renderer.sharedMaterials;
-                if (mats.Length > 0 && mats[0] != null && mats[0].HasProperty("_YAPS_Bake") && mats[0] != socket.bakedFrom)
+                var mats = baked.sharedMaterials;
+                if (bakedSlot < mats.Length && mats[bakedSlot] != null
+                    && mats[bakedSlot].HasProperty("_YAPS_Bake") && mats[bakedSlot] != socket.bakedFrom)
                 {
-                    Undo.RecordObject(socket.renderer, "Remove YAPS socket");
-                    mats[0] = socket.bakedFrom;
-                    socket.renderer.sharedMaterials = mats;
-                    done.Add($"\"{socket.renderer.name}\" back on \"{socket.bakedFrom.name}\"");
+                    Undo.RecordObject(baked, "Remove YAPS socket");
+                    mats[bakedSlot] = socket.bakedFrom;
+                    baked.sharedMaterials = mats;
+                    done.Add($"\"{baked.name}\" back on \"{socket.bakedFrom.name}\"");
                 }
             }
 
