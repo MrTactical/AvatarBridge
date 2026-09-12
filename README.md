@@ -761,12 +761,22 @@ both. The report says which case you're in.
 
 | | costs | reaches | how good it is |
 |---|---|---|---|
-| **Screen atlas** | one synced parameter per avatar, for ownership | anyone drawing the avatar with custom shaders on, in a view at least about 240 pixels square | about a tenth of a millimetre, every frame |
+| **Screen atlas** | one synced parameter per avatar, for ownership | anyone drawing the avatar with custom shaders on, in a view at least about 240 pixels square, whose own avatar was built by the same version | about a tenth of a millimetre, every frame |
 | **Marker lights** | nothing | anyone whose client draws the plug | exact, and sampled every frame |
 
 **The atlas answers first, and marker lights stand in where it cannot**: a view too small to
 hold the atlas, or content that only has lights. The atlas is the more exact of the two and
 carries a whole path rather than one point, so it takes the answer outright.
+
+**Both avatars have to be built by the same version of this tool for the atlas to work between
+them.** What a socket writes into the screen carries a version number and a plug refuses anything
+else, in both directions, because the pixels mean different things from one version to the next
+and reading them wrongly is worse than not reading them. Two people on different versions fall
+back to the marker lights, which have no version and always cross. That is a quiet difference
+rather than a broken one, and it is worth knowing what it looks like from the inside: everything
+still bends, and only the things the lights cannot carry go missing, which is tags, one-way rings
+and a wearer's own sockets. If a plug behaves for one person and not another, compare versions
+before anything else.
 
 **There used to be a third route, a contact channel, and from 4.5.1 it no longer bends a plug.**
 A contact only lets go when the socket leaves it, and a socket deleted or switched off while a plug
@@ -2283,6 +2293,11 @@ Normal. That's AvatarBridge registering its scripting defines.
 
 Work down the list; the first that fits is usually it.
 
+- **Does it work with some people and not others? Compare versions first.** The screen atlas only
+  works between two avatars built by the same version; anything else falls back to the marker
+  lights, which cannot carry tags, one-way rings or a wearer's own sockets. Nothing reports this,
+  because from the inside it looks exactly like a socket that decided not to answer. See
+  [how a plug finds a socket](#yaps-penetration-that-works-in-chilloutvr).
 - **Which tier found it?** On the plug's material, the YAPS panel's *Debug ▸ View* has *Resolved
   by*. It straightens the plug and puts the answer in its LENGTH: a quarter means nothing found
   the socket, three quarters a marker light did, full the screen atlas did. A quarter with a
