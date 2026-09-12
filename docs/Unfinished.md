@@ -756,6 +756,18 @@ and `Current` whenever it is convenient.
 
 ## Loose ends, small but real
 
+### Five places claimed the readout blocks an upload, 2026-09-12. FIXED
+
+Nothing blocks it. `YapsScanner` adds a note saying the readout is drawn and will upload, the
+report prints it, and the CCK never hears about any of it. The claim was in the plug's tooltip,
+the window option, the builder's own comment, the line the report prints and the README twice,
+which is every surface at once and a good argument for writing the sentence in one place. They
+now all say it uploads with the avatar and the report flags it. The warning under the option,
+"turn it off and convert again before you publish", was always true and stays.
+
+Nobody reported it, which is the interesting part: a user who believed the tool would stop them
+would not find out otherwise until a readout was already in front of strangers.
+
 ### A descriptor with no layer array crashed the contact pass, 2026-09-12. FIXED
 
 `GetSelectedVrcControllers` read `ctx.SourceDescriptor.baseAnimationLayers` without asking whether

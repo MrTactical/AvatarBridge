@@ -29,8 +29,8 @@
 // fooled that way. The plug's own material never draws any of them: they
 // sit past _YAPS_VertexCount, in a submesh it does not own.
 //
-// Built only when the plug asks for it, and the scanner refuses an upload
-// while one exists.
+// Built only when the plug asks for it. Nothing blocks the upload: the
+// scanner notes an avatar carrying one, and that is all it does.
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
@@ -178,8 +178,8 @@ namespace AvatarBridge
                 "actually is. Together means the bones are where the bake left them and any " +
                 "bend you can see is the shader's; apart means something else is moving them, " +
                 "cloth or an animation or a constraint, and no cell above can tell you that. " +
-                "It is visible to everyone who can see the plug, and an upload is refused " +
-                "while it exists: untick it when you are done.");
+                "It is visible to everyone who can see the plug and it uploads with the avatar, " +
+                "which the report says too: untick it when you are done.");
         }
 
         // Put the mesh the last build replaced back, and drop its slot.

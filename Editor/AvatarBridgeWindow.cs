@@ -910,7 +910,7 @@ namespace AvatarBridge
             }
             optIns.Add(BridgeElements.Bind("Draw a debug readout on each plug",
                 "An in-game readout on each plug of who found its socket and what its bake is doing. " +
-                "EVERYONE SEES IT, and upload is refused while it is on.",
+                "EVERYONE SEES IT, and it uploads with the avatar; the report flags it while it is on.",
                 settings.yapsDebugOverlay, v => { settings.yapsDebugOverlay = v; ScheduleRebuild(); }));
             if (settings.yapsDebugOverlay)
             {
