@@ -753,6 +753,16 @@ and `Current` whenever it is convenient.
 
 ## Loose ends, small but real
 
+### A stale dev harness stops the corpus dead, 2026-09-12. FIXED
+
+Run 399 aborted on "Scripts have compiler errors": `Editor/DevTools/BakeScaleCheck.cs` in the
+corpus project was a copy from an older dev package, calling a signature that changed the day
+before. Seventeen more files there were stale too. Two holes, both now closed: `deploy.sh`
+refreshes by name whatever is already in a project's `Editor/DevTools` (adding nothing, deleting
+nothing), and it is worth remembering that `check-projects.sh` cannot see any of this, because it
+deliberately skips everything under `Assets/AvatarBridge` as the repo's own. The same file broke
+a different project the day before, which is what a second occurrence is for.
+
 ### The settings are per USER, not per project. FIXED 2026-09-08
 
 The window persists its settings as JSON in `EditorPrefs`, which Unity keys per user and per
