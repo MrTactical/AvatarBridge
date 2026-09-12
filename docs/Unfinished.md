@@ -315,13 +315,29 @@ wrong for any column count not dividing 4096: 932 by 596. It loses targets under
 808 by 520 fitted, 960 by 540 among them, and no layout keeps those, since the slots alone
 outnumber 960 by 540's pixels.
 
+**VERIFIED IN GAME 2026-09-12, protocol 7, cross avatar.** A tester on the same 4.6.0 test build
+resolved another person's socket through the atlas, read off the debug overlay: who resolved it
+green (atlas, not lights), what the atlas read green (a socket), atlas on this camera green
+(live at 932 by 596 in a desktop window about 1280 by 720). Both plugs in view read the same. So
+the rect, the 28 columns, the owner pixel per octant and the grab all survive a real client with
+two avatars writing into one screen, which is the first end-to-end proof of the protocol since
+the layout moved. Own-body answering was OFF in that test (the own-sockets cell sat amber), so
+nothing below about the wearer's own sockets is covered by it.
+
+*Protocol version is the reason a 4.5.1 avatar and this one cannot see each other's sockets at
+all: 4.5.1 writes version 2 and the header hash refuses anything but 7. Marker lights carry no
+version and still cross. Every tester has to be on the same build for the atlas.*
+
 **Unverified, in the order to check:**
 1. Own avatar in game: a temporary slider on `YAPS/Owner` reads non-zero. Zero means the stream
    is not running: the reference type, the CCK version, or a type only the beta client has.
 2. A second client: the remote copy's `YAPS/Owner` equals the wearer's, and its plug still leaves
-   the wearer's own hip socket alone.
+   the wearer's own hip socket alone. *The cross-avatar half is proven, 2026-09-12: an owner id
+   that refused everything would have shown as nobody resolving.*
 3. Overlap: a partner's socket pressed into the wearer's hips is answered.
-4. A mirror capped at 1024 and a 1280 by 720 window both carry the atlas at 932 by 596.
+4. A mirror capped at 1024 and a 1280 by 720 window both carry the atlas at 932 by 596. *The
+   window is done, 2026-09-12. The mirror, the portrait, VR both eyes and the personal mirror
+   are not.*
 
 5. A ticked own hand socket, switched on, is entered; an unticked one, switched on, is not; the
    plug's own sockets toggle opens the unticked one.
