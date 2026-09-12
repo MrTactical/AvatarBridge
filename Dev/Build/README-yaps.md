@@ -36,6 +36,13 @@ Import the newer package over the top; it replaces what it needs to. A plug or s
 already baked keeps working, but **re-bake anything you want the newest fixes on**: a bake
 carries the shader and the data it was built with, and an uploaded prop carries its own copy.
 
+**One route between plugs and sockets needs both people on the same version.** A socket publishes
+itself into a small block of pixels on the screen, which carries a version number, and a plug
+refuses any other. Two avatars built by different versions fall back to the older marker lights
+instead: everything still bends, and what goes missing is the things the lights cannot carry,
+which is tags, one-way rings and a wearer's own sockets. If a plug behaves with one person and
+not another, compare versions before anything else.
+
 ## Help
 
 The full documentation, including the socket and plug reference and a troubleshooting guide,
