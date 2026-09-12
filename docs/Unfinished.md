@@ -368,6 +368,55 @@ version and still cross. Every tester has to be on the same build for the atlas.
 - Stripping contacts from the transport, which is planned, removes the channel latch further
   down this file, and leaves the owner id as the one self guard that does not rest on geometry.
 
+## An avatar spun on the spot after landing, in VR only. FIXED 2026-09-12, for 4.6.1
+
+Reported wearing a 4.4.3 conversion, reproducible for the user in VR and not on desktop, and not
+reproducible here on desktop or under MockHMD. The video showed a rigid yaw at a roughly constant
+rate, the pose never distorting, starting after the avatar came down from an airborne pose. "Lands
+and then spins" is what named the subsystem: a continuous symptom says almost nothing, a symptom
+with a trigger says a state machine did something.
+
+**The chain, every link out of the user's own artefacts.** `convertBaseLayer` was on, so
+`[Base] Locomotion` merged in at layer 3, weight 1, above ChilloutVR's `Locomotion/Emotes` at
+layer 0. Its ten states play VRChat `proxy_*` clips, `proxy_landing` and `proxy_land_quick` among
+them, which the VRChat client swaps out at runtime and ChilloutVR plays literally. The
+`AvatarBridge_NoMuscles` mask does block the muscles, which is what the report means by "blocked
+from driving the body", but **a mask's body-part bits do not govern root motion at all**, and
+`ListEveryTransform` sets every transform in the list active besides. The avatar's Animator had
+`m_ApplyRootMotion: 1`, inherited from the source, and nothing in this tool had ever touched that
+flag.
+
+**Two fixes, either one sufficient, and they are deliberately both in.** `AvatarHygiene`
+`StopRootMotion` switches Apply Root Motion off on the converted avatar and says so in the report:
+one property, and it neutralises every clip carrying root movement rather than the proxies this
+avatar happened to have. And `IsProxyOnlyLayer` now gates `Base` as well as `Gesture`, so a
+proxy-only Base layer is left to ChilloutVR's locomotion the way a proxy-only hand layer has
+always been left to its hand poses.
+
+**Why it was VR-only, and this part is reasoned rather than measured:** a desktop player's mouse
+writes an absolute facing every frame, painting over the drift as fast as it accumulates. VR only
+ever asks for a relative turn, so it adds up. It also explains MockHMD reproducing nothing, since
+nothing there turns or lands.
+
+**Three things worth keeping.**
+
+1. **The report warned and the warning did not help.** It told them `[Base] Locomotion` overrides
+   CVR's locomotion, in bold, with "THE FIX IS ONE CLICK". But it describes the symptom as the
+   movement sliders and stances doing nothing, which is not what happened, so a careful reader had
+   no way to match it. A warning that names the wrong symptom is a warning nobody can use.
+2. **Proxies were refused in three places and merged in a fourth.** Both hand layers and the
+   locomotion graft all detect an all-proxy layer and hand the slot back. The Base layer *merge*
+   had no such check, and the graft's own report line calls those same clips "nothing to carry
+   over" while the merged layer plays them. Same input, two verdicts, one file apart.
+3. **No gate we own could have found it.** The corpus converts headlessly and never grounds an
+   avatar; MockHMD renders stereo and never lands. Anything whose trigger is a locomotion state
+   transition needs a person falling onto a floor, which makes it the second bug class this month
+   that only a wearer can reach.
+
+*Still to confirm: the user has not yet tested it. The ten-second check offered was to untick
+Apply Root Motion on the converted prefab by hand, which proves or kills the mechanism without a
+reconversion.*
+
 ## Two reports from the field, 2026-09-07
 
 ### One cloth per PhysBone, 94 of them on one avatar (issue #7)

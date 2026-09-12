@@ -119,16 +119,34 @@ namespace AvatarBridge
                         continue;
                     }
 
-                    // A gesture layer holding nothing but VRChat's proxy
-                    // placeholders is dropped rather than merged. Kept, it
-                    // would play the stand-ins over ChilloutVR's own hand
-                    // poses from a later slot and snap the fingers to them.
-                    if (id == VRCAvatarDescriptor.AnimLayerType.Gesture && IsProxyOnlyLayer(srcLayer))
+                    // A layer holding nothing but VRChat's proxy placeholders
+                    // is dropped rather than merged. Kept, it plays the
+                    // stand-ins literally: over ChilloutVR's own hand poses
+                    // from a later slot, snapping the fingers to them, or
+                    // over its locomotion, where a proxy landing clip's root
+                    // curves turned an avatar on the spot.
+                    //
+                    // Base was missed until 2026-09-12 even though the graft
+                    // beside it already refuses the same clips. Dropping the
+                    // layer loses nothing: a proxy-only layer has no authored
+                    // clip in it by definition, which is what the test asks.
+                    if (IsProxyOnlyLayer(srcLayer)
+                        && (id == VRCAvatarDescriptor.AnimLayerType.Gesture
+                            || id == VRCAvatarDescriptor.AnimLayerType.Base))
                     {
+                        bool hands = id == VRCAvatarDescriptor.AnimLayerType.Gesture;
                         ctx.Report.Converted(Category,
-                            $"Gesture layer \"{srcLayer.name}\" left to ChilloutVR's own hand poses",
-                            "Every clip in it is a VRChat \"proxy_\" placeholder, so the avatar has no hand " +
-                            "poses of its own. ChilloutVR's hand set is kept instead.");
+                            hands
+                                ? $"Gesture layer \"{srcLayer.name}\" left to ChilloutVR's own hand poses"
+                                : $"Base layer \"{srcLayer.name}\" left to ChilloutVR's own locomotion",
+                            "Every clip in it is a VRChat \"proxy_\" placeholder: a stand-in the VRChat " +
+                            "client swaps its real animation into at runtime, so what ships in the project " +
+                            "is not what you saw in VRChat. " + (hands
+                                ? "The avatar has no hand poses of its own, and ChilloutVR's hand set is " +
+                                  "kept instead."
+                                : "The avatar has no locomotion of its own, and ChilloutVR's locomotion is " +
+                                  "complete, so nothing is missing. Kept, the placeholders play literally " +
+                                  "and one carrying root movement can turn the avatar on the spot."));
                         continue;
                     }
 

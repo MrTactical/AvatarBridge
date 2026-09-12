@@ -154,6 +154,7 @@ namespace AvatarBridge
             }
             AvatarHygiene.NormalizeSkinnedBounds(ctx);
             AvatarHygiene.SanitizeAudioSources(ctx);
+            AvatarHygiene.StopRootMotion(ctx);
             GroundAnimationPoseRatio(ctx);
         }
 

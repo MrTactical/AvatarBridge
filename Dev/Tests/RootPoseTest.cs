@@ -98,6 +98,30 @@ namespace AvatarBridge.Regression
             var spared = LocomotionGrafter.WithoutRootMotion(homebound, onlyIfTravels: true);
             fail += Check("homebound clip untouched", Varies(spared, "RootQ.y"));
 
+            // 5. The other half of the same problem, and the one that reached a user: the
+            //    stripping above only covers clips the grafter handles. A root curve that
+            //    arrives any other way is answered by the Animator's own flag instead.
+            var rig = new GameObject("RootMotionRig");
+            try
+            {
+                var animator = rig.AddComponent<Animator>();
+                animator.applyRootMotion = true;
+                var ctx = new BridgeContext
+                {
+                    Target = rig,
+                    Report = new BridgeReport(),
+                    Settings = new BridgeSettings(),
+                };
+                AvatarHygiene.StopRootMotion(ctx);
+                fail += Check("Apply Root Motion switched off", !animator.applyRootMotion);
+                fail += Check("and the report says so",
+                    ctx.Report.Entries.Any(e => e.Subject.Contains("Apply Root Motion")));
+            }
+            finally
+            {
+                Object.DestroyImmediate(rig);
+            }
+
             Debug.Log(fail == 0
                 ? "[RootPoseTest] PASS: pose kept and baked for Action poses, travel stripped, sources never mutated."
                 : $"[RootPoseTest] FAIL: {fail} case(s) wrong.");
