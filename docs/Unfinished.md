@@ -74,15 +74,35 @@ falloff, one-way rings, the tag dropdown, multi-mesh plugs, the Mesh-to-None cle
    all ahead of the scene, so the scene paints over them. Joe caught it by knowing the queue
    number. Kept rather than deleted so the same pair of squares is not rediscovered as a bug.
 
-6. **SPS2 detection.** `YapsLegacyMap.Detect` knows DPS, TPS and SPS1 by their material
-   properties. An SPS2 plug carries new ones, so it reads as "no legacy system": the plug still
-   bakes, the material still patches, the deform still works, and nothing switches SPS2's own
-   deform off. Two deforms on one mesh is exactly what the DPS branch exists to prevent, and it
-   arrives silently, on an avatar that looks converted. Their page does not publish the encoding,
-   so a signature needs a real SPS2 avatar and waits for one. **What does NOT wait:** the unknown
-   case is currently silent, and it need not be. A plug carrying penetration-shaped material
-   properties from no system the map recognises can say so in the report instead of being converted
-   as if it had none. Full detail in the SPS2 section below.
+6. **SPS2: the risk was in the wrong place, and the silent part is GUARDED 2026-09-13.** This item
+   said an SPS2 plug's new material properties would read as "no legacy system" and get deformed
+   twice. That was written without an SPS2 avatar and it misses how the converter works: **it never
+   lets VRCFury patch a plug's shader at all.** `YapsBakePrep` sets `enableSps = false` on every
+   `VRCFuryHapticPlug` before Fury bakes, so the plain shader comes through and only YAPS deforms
+   it. The patcher's `_SPS_Bake` refusal is a backstop behind that, not the defence.
+
+   So the real exposure is that switch. If a VRCFury update renames or retypes `enableSps`, the
+   reflection lookup returns null, and the loop used to `continue` in silence: Fury patches its
+   own deform, YAPS patches over it unless the backstop still recognises what Fury wrote, and the
+   report says nothing. **Checked against this machine's VRCFury 1.1408.0, by run 401's own report
+   rather than its source:** the SPS test avatar reads "Asked VRCFury not to patch 1 plug
+   shader(s)", so the switch exists today and nothing is double-deformed. **Now guarded:** a plug
+   component with no such switch is collected and reported as a warning naming the plugs and asking
+   for the VRCFury version. It needs nothing about SPS2 to work, so it covers any later rename too.
+   Smoke test 34 of 34 with no false warning; the next YAPS corpus run is the proof it stays silent
+   on the SPS avatars, since a false positive would show there.
+
+   **Known ceiling:** the lookup is by class name `VRCFuryHapticPlug`. If that is renamed, nothing
+   matches, nothing is suppressed and nothing is warned. Catching it would mean counting the plugs
+   VRCFury baked (`BakedSpsPlug`) against the ones suppressed and warning on a mismatch.
+
+   **A decision for Joe before going further:** a detection signature for SPS2, if one is ever
+   wanted, would come from baking an SPS avatar on a newer VRCFury and reading the property names on
+   the material it writes. That is observing a tool's output on an avatar, the way `_SPS_Bake`,
+   `_TPS_PenetratorEnabled` and `_OrificeData` already entered `Detect`, and not reading VRCFury's
+   source, which `YAPS-CLEAN-ROOM.md` rules out. Whether that sits inside the clean room is his to
+   say. On 2026-09-13 a search for the term turned up VRCFury source files by name; none were
+   opened.
 
 7. **The sweep's carried toggle failures**: triaged as avatar-side, no tool signature. **141 in run
    401, 2026-09-12, across 35 avatars**, up from the 131 this entry was written against. Read the
@@ -1401,15 +1421,15 @@ UTS, Mochie, XSToon, Silent, Standard, `Unity/Color`, a mobile particle shader a
 Graph. The page does not publish the encoding, so there is nothing to read from it about cell
 layout, hashing, or what the second grab pass carries.
 
-**The problem for the converter is detection, not transport.** `YapsLegacyMap.Detect` knows DPS,
-TPS and SPS1 by their material properties. An SPS2 plug will carry new ones, so it reads as "no
-legacy system": the plug still bakes, the material still patches, the deform still works, and
-nothing switches SPS2's own deform off. Two deforms on one mesh is exactly the case the DPS
-branch exists to prevent, and it will arrive silently, on an avatar that looks converted.
+**The problem for the converter is the switch, not detection. CORRECTED 2026-09-13.** This said
+`YapsLegacyMap.Detect` would miss SPS2's new material properties and nothing would switch SPS2's
+deform off. The converter does not rely on detection for that: `YapsBakePrep` turns Fury's plug
+deform off on the component before Fury bakes, so what matters is that the component's switch
+still exists. It does on VRCFury 1.1408.0, and a missing switch now warns. Next up item 6 has the
+evidence, the ceiling, and the clean-room question still open for a property signature.
 
-Wanted, in order: a property signature for SPS2 on `YapsLegacyMap.Origin`, the switch-off in
-`SwitchOffLegacyDeform`, and a carry map for whatever its knobs are called. Needs a real SPS2
-avatar to write against, so it waits for one.
+Still wanted, if SPS2 ever needs carrying rather than just not fighting: a carry map for whatever
+its knobs are called, which does need a real SPS2 bake to read.
 
 One thing it confirms rather than threatens: "The plug mesh must be straight / fully extended in
 the editor" is their constraint too. The bake measures a rest pose because the technique requires

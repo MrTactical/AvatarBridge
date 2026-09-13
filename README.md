@@ -2321,6 +2321,10 @@ Work down the list; the first that fits is usually it.
   lights, which cannot carry tags, one-way rings or a wearer's own sockets. Nothing reports this,
   because from the inside it looks exactly like a socket that decided not to answer. See
   [how a plug finds a socket](#yaps-penetration-that-works-in-chilloutvr).
+- **Does the report say it "could not ask VRCFury to leave" a plug shader alone?** Converting turns
+  VRCFury's own plug deform off before VRCFury bakes, so only one deform moves the plug. That warning
+  means your VRCFury version has no switch this tool recognises, so both may be moving it, which
+  shows as a plug that bends or stretches wrongly. Please report it with your VRCFury version.
 - **Which tier found it?** On the plug's material, the YAPS panel's *Debug ▸ View* has *Resolved
   by*. It straightens the plug and puts the answer in its LENGTH: a quarter means nothing found
   the socket, three quarters a marker light did, full the screen atlas did. A quarter with a

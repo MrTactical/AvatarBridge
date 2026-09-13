@@ -24,6 +24,7 @@ namespace AvatarBridge
     {
         const string Category = "YAPS";
         readonly List<(Component plug, bool was)> _flipped = new List<(Component, bool)>();
+        readonly List<string> _unswitchable = new List<string>();
 
         // The author's own per-plug settings, read off the component while it
         // still exists. The bake destroys it, so anything not captured here is
@@ -100,6 +101,13 @@ namespace AvatarBridge
                     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
                 if (field == null || field.FieldType != typeof(bool))
                 {
+                    // This used to be a silent continue, and it is the one
+                    // place a VRCFury update can put two deforms on a plug:
+                    // with the switch gone Fury patches its own shader, and
+                    // YAPS patches on top unless the patcher still recognises
+                    // what Fury wrote. Nothing about the new system needs to
+                    // be known to notice the switch is missing.
+                    prep._unswitchable.Add(component.gameObject.name);
                     continue;
                 }
                 bool was = (bool) field.GetValue(component);
@@ -118,6 +126,16 @@ namespace AvatarBridge
                     $"Asked VRCFury not to patch {prep._flipped.Count} plug shader(s) before baking",
                     "A shader carrying Fury's deform can't take ours. The rest of the bake is kept, and the " +
                     "plugs are set back once it finishes.");
+            }
+            if (prep._unswitchable.Count > 0)
+            {
+                ctx.Report.Warning(Category,
+                    $"Could not ask VRCFury to leave {prep._unswitchable.Count} plug shader(s) alone",
+                    "This version of VRCFury has no switch this tool knows for turning its own plug deform " +
+                    "off, so VRCFury may deform the plug and YAPS may deform it again, and the two fight. " +
+                    "Check each plug in game before uploading. If one bends or stretches wrongly, this is " +
+                    "why, and it wants reporting with your VRCFury version. Plugs: " +
+                    string.Join(", ", prep._unswitchable));
             }
             return prep;
         }
