@@ -66,7 +66,16 @@ namespace AvatarBridge.Regression
                 string suffix = YapsMode ? "/Regression/Yaps" : "/Regression";
                 // The fallback solver is a different avatar at the end of the
                 // run, so its digests never share a folder with the default.
-                if (Environment.GetEnvironmentVariable("AVATARBRIDGE_PHYSICS") == "DynamicBone")
+                // Settings chosen per avatar by the advisor are a different
+                // question from one fixed profile: a digest there moves when
+                // the ADVICE moves, so the two must never compare. The advisor
+                // picks the physics target itself, so the DynamicBone folder
+                // is never added under it, or the folder name would lie.
+                if (AdvisorMode)
+                {
+                    suffix += "/Advisor";
+                }
+                else if (Environment.GetEnvironmentVariable("AVATARBRIDGE_PHYSICS") == "DynamicBone")
                 {
                     suffix += "/DynamicBone";
                 }
@@ -530,7 +539,11 @@ namespace AvatarBridge.Regression
                 reset.reactivated++;
             }
 
-            var settings = CorpusSettings();
+            // Advice reads the avatar as it sits in the scene, so it is taken
+            // here, on the source, before Convert makes its clone: the same
+            // order the window runs it in.
+            AdvisorTrace advised = null;
+            var settings = AdvisorMode ? AdvisorSettings(descriptor, out advised) : CorpusSettings();
             var report = BridgeConverter.Convert(descriptor, settings);
             reset.avatar = descriptor.gameObject.name;
             var target = Selection.activeGameObject;   // BridgeConverter sets this to ctx.Target
@@ -545,6 +558,7 @@ namespace AvatarBridge.Regression
             sb.Append('\n');
 
             AppendReset(sb, reset);
+            if (advised != null) AppendAdvisor(sb, advised);
             AppendSettings(sb, settings);
             AppendReport(sb, report);
             AppendCvrSide(sb, target);
@@ -736,6 +750,77 @@ namespace AvatarBridge.Regression
         // baselines remain valid.
         static bool YapsMode =>
             Environment.GetEnvironmentVariable("AVATARBRIDGE_YAPS") == "1";
+
+        // AVATARBRIDGE_PROFILE=advisor converts each avatar the way a user who
+        // presses Apply all gets it, instead of the one fixed profile below.
+        // CorpusSettings answers "did the code change"; this answers "does
+        // what we recommend work", which nothing else measures.
+        static bool AdvisorMode =>
+            Environment.GetEnvironmentVariable("AVATARBRIDGE_PROFILE") == "advisor";
+
+        sealed class AdvisorTrace
+        {
+            public List<string> Unticked = new List<string>();
+            public List<string> Applied = new List<string>();
+            public List<string> Blocked = new List<string>();
+            public List<string> LeftToUser = new List<string>();
+        }
+
+        static BridgeSettings AdvisorSettings(VRCAvatarDescriptor descriptor, out AdvisorTrace trace)
+        {
+            trace = new AdvisorTrace();
+            // A new user's defaults, not CorpusSettings. Only what the corpus
+            // cannot survive is overridden, each for the reason CorpusSettings
+            // gives: a clone so the scene is reusable, one output folder, and
+            // no texture resizing, which rewrites the corpus's own imports.
+            var settings = new BridgeSettings
+            {
+                convertYapsSystems = YapsMode,
+                cloneAvatar = true,
+                outputFolder = "Assets/AvatarBridgeOutput",
+                slimTexturesOnConvert = false,
+            };
+
+            // Picking the avatar, then Apply all: the two steps the window
+            // takes, through the same two calls it makes.
+            trace.Unticked.AddRange(AvatarAdvisor.MatchOptionalLayers(descriptor, settings));
+            foreach (var a in AvatarAdvisor.Analyse(descriptor, settings))
+            {
+                if (AvatarAdvisor.IsRecommendation(a))
+                {
+                    a.Apply(settings);
+                    trace.Applied.Add($"{a.Kind}: {a.Setting}");
+                }
+                else if (a.Kind == AdviceKind.Blocked)
+                {
+                    trace.Blocked.Add(a.Setting);
+                }
+                else if (a.Kind == AdviceKind.Manual)
+                {
+                    trace.LeftToUser.Add(a.Setting);
+                }
+            }
+            return settings;
+        }
+
+        // Which settings the advice moved, so a digest change here can be told
+        // apart: advice that changed shows on these lines, code that changed
+        // shows everywhere else. Sorted, since Analyse's order is not a promise.
+        static void AppendAdvisor(StringBuilder sb, AdvisorTrace trace)
+        {
+            void Section(string title, List<string> items)
+            {
+                sb.Append("  ").Append(title).Append(": ");
+                sb.Append(items.Count == 0 ? "none" : string.Join(" | ", items.OrderBy(s => s, StringComparer.Ordinal)));
+                sb.Append('\n');
+            }
+            sb.Append("[advisor]\n");
+            Section("unticked on picking the avatar", trace.Unticked);
+            Section("applied by Apply all", trace.Applied);
+            Section("blocked, no fix applied", trace.Blocked);
+            Section("left to the user", trace.LeftToUser);
+            sb.Append('\n');
+        }
 
         static BridgeSettings CorpusSettings() => new BridgeSettings
         {

@@ -15,6 +15,8 @@
 #   Dev/Corpus/run-corpus.sh                 the default, YAPS on
 #   Dev/Corpus/run-corpus.sh --yaps-off      the opt-out path
 #   Dev/Corpus/run-corpus.sh --label 392     name the log
+#   Dev/Corpus/run-corpus.sh --advisor       each avatar converted the way Apply all
+#                                            would, into its own digest folder
 #
 # AVATARBRIDGE_YAPS=1 is what a user gets and what Regression/Yaps
 # compares against; unset measures convertYapsSystems false, which lands
@@ -44,10 +46,12 @@ CORES_TO_LEAVE="${env_cores:-${AVATARBRIDGE_CORES_TO_LEAVE:-4}}"
 }
 
 yaps=1
+advisor=0
 label=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --yaps-off) yaps=0 ;;
+        --advisor) advisor=1 ;;
         --label) shift; label="${1:-}" ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
@@ -56,6 +60,7 @@ done
 
 [ -n "$label" ] || label=$(date +%Y%m%d-%H%M)
 suffix=$([ "$yaps" = "1" ] && echo "yaps-on" || echo "yaps-off")
+[ "$advisor" = "1" ] && suffix="$suffix-advisor"
 log="$REPO/Regression/corpus-run-$label-$suffix.log"
 
 [ -x "$UNITY" ] || { echo "no Unity at $UNITY" >&2; exit 1; }
@@ -71,6 +76,9 @@ fi
 
 export AVATARBRIDGE_REPO="$(cygpath -w "$REPO" 2>/dev/null || echo "$REPO")"
 if [ "$yaps" = "1" ]; then export AVATARBRIDGE_YAPS=1; else unset AVATARBRIDGE_YAPS; fi
+# Unset unless asked for: a value left in the environment would otherwise
+# turn a normal run into the advisor profile and compare it against nothing.
+if [ "$advisor" = "1" ]; then export AVATARBRIDGE_PROFILE=advisor; else unset AVATARBRIDGE_PROFILE; fi
 
 echo "corpus: $suffix -> $log"
 "$UNITY" -batchmode -quit \

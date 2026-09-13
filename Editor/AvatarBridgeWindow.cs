@@ -420,17 +420,9 @@ namespace AvatarBridge
         void MatchOptionalLayersToAvatar()
         {
             autoOffLayers.Clear();
-            if (avatar == null || AvatarAdvisor.LayersDecidedByBaker(avatar.gameObject))
+            foreach (var setting in AvatarAdvisor.MatchOptionalLayers(avatar, settings))
             {
-                return;
-            }
-            foreach (var (type, setting) in AvatarAdvisor.OptionalLayers)
-            {
-                if (AvatarAdvisor.IsOn(settings, type) && !AvatarAdvisor.SuppliesOwnLayer(avatar, type))
-                {
-                    AvatarAdvisor.SetOn(settings, type, false);
-                    autoOffLayers.Add($"\"{setting}\"");
-                }
+                autoOffLayers.Add($"\"{setting}\"");
             }
         }
 
@@ -468,7 +460,7 @@ namespace AvatarBridge
                 count > 0));
         }
 
-        static bool IsRecommendation(Advice a) => a.Apply != null && a.Kind != AdviceKind.Manual;
+        static bool IsRecommendation(Advice a) => AvatarAdvisor.IsRecommendation(a);
 
         VisualElement AdviceRow(Advice a, bool alternate)
         {

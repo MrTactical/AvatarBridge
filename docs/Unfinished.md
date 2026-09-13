@@ -141,7 +141,29 @@ falloff, one-way rings, the tag dropdown, multi-mesh plugs, the Mesh-to-None cle
    several places, a multi-mesh plug switched and resized, and the Mesh-to-None cleanup. The
    first four want a partner; the last two can be checked alone.
 
-10. **An advisor profile for the corpus.** Asked for 2026-09-13. `CorpusSettings` is one fixed
+10. **An advisor profile for the corpus. BUILT 2026-09-13, never run.**
+    `Dev/Corpus/run-corpus.sh --advisor` sets `AVATARBRIDGE_PROFILE=advisor` (and unsets it
+    otherwise, so a stray value cannot turn a normal run into this one), and digests land under
+    `Regression/Yaps/Advisor` or `Regression/Advisor`. Each avatar starts from `new BridgeSettings()`
+    with only the clone, the output folder and texture resizing overridden, then takes the window's
+    own two steps through the window's own two calls: `AvatarAdvisor.MatchOptionalLayers` (what
+    picking the avatar unticks) and every `Analyse` row `AvatarAdvisor.IsRecommendation` accepts.
+    **Both were private to the window and moved onto `AvatarAdvisor`**, with the window delegating,
+    so there is one definition of what Apply all does rather than a copy in the runner. The digest
+    gains an `[advisor]` section above the settings: what was unticked, what Apply all applied
+    (with its kind, since a Blocked row carrying a fix is applied too), what stayed blocked with no
+    fix, and what was left to the user. Advice is taken on the source before `Convert` clones it,
+    which answers the "clone versus scene" worry below: the window does the same.
+
+    Verified so far: all four define states compile, the runner compiles inside the corpus project,
+    and `AdvisorTest` passes after the move. **Not verified:** a run. The first one has no baseline
+    to compare against, so it will report every avatar as new; what it is for is reading the
+    `[advisor]` sections and the report warnings on avatars converted the way users convert them.
+    Does not compose with `AVATARBRIDGE_PHYSICS=DynamicBone`: the advisor chooses the physics
+    target itself, so under the advisor profile that variable adds no folder, or the folder name
+    would claim a solver the run never used.
+
+    *As queued:* `CorpusSettings` is one fixed
     profile for every avatar: all five layers on, both physics options that invent physics on,
     the BETA shader patcher on. That is deliberate and should stay the default. A digest must only
     move when the code moves, and per-avatar settings would also move it whenever the advice
