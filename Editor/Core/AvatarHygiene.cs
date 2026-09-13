@@ -99,6 +99,31 @@ namespace AvatarBridge
             }
         }
 
+        // VRChat never applies an avatar's root motion, so a source avatar
+        // routinely ships with the flag left on and nothing ever played it.
+        // Here the Animator does apply it, and a clip carrying root curves
+        // turns or shoves the avatar itself, over whatever ChilloutVR's own
+        // locomotion is doing. Reported as a spin on the spot after landing,
+        // out of a VRChat proxy landing clip, and only in VR: a desktop
+        // player's mouse writes an absolute yaw every frame, which hides the
+        // drift, where VR only ever asks for a relative turn.
+        internal static void StopRootMotion(BridgeContext ctx)
+        {
+            var animator = ctx.TargetAnimator;
+            if (animator == null || !animator.applyRootMotion)
+            {
+                return;
+            }
+            animator.applyRootMotion = false;
+            EditorUtility.SetDirty(animator);
+            ctx.Report.Converted("Animator", "Apply Root Motion switched off",
+                "The avatar's Animator had it on. VRChat ignores root motion on an avatar, so it did " +
+                "nothing there and was probably never meant to; ChilloutVR does not ignore it, and an " +
+                "animation that carries root movement can then turn or shove the avatar itself, on top " +
+                "of the platform's own locomotion. ChilloutVR moves you, so nothing on an avatar needs " +
+                "this. Turn it back on in the Animator if you know you want it.");
+        }
+
         const float BoundsPaddingFraction = 0.3f;
 
         internal static void NormalizeSkinnedBounds(BridgeContext ctx)
