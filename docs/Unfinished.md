@@ -115,6 +115,34 @@ falloff, one-way rings, the tag dropdown, multi-mesh plugs, the Mesh-to-None cle
    several places, a multi-mesh plug switched and resized, and the Mesh-to-None cleanup. The
    first four want a partner; the last two can be checked alone.
 
+10. **An advisor profile for the corpus.** Asked for 2026-09-13. `CorpusSettings` is one fixed
+    profile for every avatar: all five layers on, both physics options that invent physics on,
+    the BETA shader patcher on. That is deliberate and should stay the default. A digest must only
+    move when the code moves, and per-avatar settings would also move it whenever the advice
+    changed, with no way to tell which did. Maximal settings also push each avatar through more
+    code than any user would.
+
+    **What it cannot answer is whether what we recommend works.** No run converts an avatar the
+    way a user who presses *Apply all* gets it, so a recommendation that produces a broken avatar
+    is invisible. The spin reported on 2026-09-12 came from a setting the report had flagged, which
+    is the same family of question from the other side.
+
+    **Shape, following what already exists:** `AVATARBRIDGE_PHYSICS=DynamicBone` already runs a
+    second profile into `Regression/Yaps/DynamicBone`, and its comment says why the folders never
+    compare against each other. An `AVATARBRIDGE_PROFILE=advisor` beside it would start from
+    `new BridgeSettings()` (the user's defaults, not `CorpusSettings`), run `AvatarAdvisor` against
+    each avatar, apply exactly what *Apply all* applies (Recommended only, never Your call), and
+    digest into its own folder. Two things it must record per avatar that the fixed profile never
+    needs: which settings the advisor changed, so a digest change can be traced to advice rather
+    than code, and whether *Apply all* left anything Blocked. Settings a user can never reach from
+    the window stay at their defaults, and `slimTexturesOnConvert` stays off for the same reason
+    `CorpusSettings` gives.
+
+    **Before building:** read how `AvatarAdvisor` is driven from the window, since its findings are
+    measured off the avatar in the scene and the runner converts a clone. And it is another full
+    run's worth of wall clock per use, so it is a profile to run before a release that touches
+    advice, not on every run.
+
 ## The atlas: what has never been worn, and what phase D is for
 
 Phases A, B and C closed with 4.5.0; pass 1 passed all four steps on 2026-09-03 (`YAPS5.md`) and
@@ -386,12 +414,29 @@ from driving the body", but **a mask's body-part bits do not govern root motion 
 `m_ApplyRootMotion: 1`, inherited from the source, and nothing in this tool had ever touched that
 flag.
 
-**Two fixes, either one sufficient, and they are deliberately both in.** `AvatarHygiene`
-`StopRootMotion` switches Apply Root Motion off on the converted avatar and says so in the report:
-one property, and it neutralises every clip carrying root movement rather than the proxies this
-avatar happened to have. And `IsProxyOnlyLayer` now gates `Base` as well as `Gesture`, so a
-proxy-only Base layer is left to ChilloutVR's locomotion the way a proxy-only hand layer has
-always been left to its hand poses.
+**The fix.** `AvatarHygiene.StopRootMotion` switches Apply Root Motion off on the converted avatar
+and says so in the report: one property, and it neutralises every clip carrying root movement
+rather than the proxies this avatar happened to have. **Corpus run 401 verified it, 2026-09-12:**
+83 avatars, 80 changed, every one by exactly the report tally `converted=N` to `N+1` and nothing
+else; the three unchanged had nothing to switch off (Filo's scene has all seven Animators at
+`m_ApplyRootMotion: 0`; the other two keep their Animators in prefabs and were not read).
+
+**WITHDRAWN 2026-09-13: a second fix, the proxy-only Base skip.** It shipped on dev in `228d08b`
+and `6ea1830` and was reverted, and the claim is kept here so nobody reopens it from the same
+evidence. It widened `IsProxyOnlyLayer` from `Gesture` to `Base`, then guarded Base with
+`HasAnyBehaviour` so a placeholder layer carrying a parameter driver was not dropped in silence.
+**The guard defeated the fix for the very avatar it was written for.** VRChat's stock
+`vrc_AvatarV3LocomotionLayer` carries thirteen tracking-control behaviours, which is exactly the
+"13 tracking/locomotion behaviours converted to Body Control" in the reporter's own report, so the
+layer was always kept. It fired on zero of 83 corpus avatars, and the corpus converts Base ON, so
+that is a real zero rather than an unexercised path. With root motion off and muscles already
+masked, a merged proxy Base layer can no longer move the body, so the skip's remaining value was
+close to nil. Narrowing the guard to parameter drivers alone would have started dropping those
+tracking behaviours on the stock layer, an untested change, so it was taken out instead.
+
+*This came out of a wrong statement worth recording: the corpus was described as running default
+settings, with Base off, and therefore not exercising the skip. `CorpusSettings` forces all five
+layers on. Reading it is what exposed the guard.*
 
 **Why it was VR-only, and this part is reasoned rather than measured:** a desktop player's mouse
 writes an absolute facing every frame, painting over the drift as fast as it accumulates. VR only
@@ -404,10 +449,11 @@ nothing there turns or lands.
    CVR's locomotion, in bold, with "THE FIX IS ONE CLICK". But it describes the symptom as the
    movement sliders and stances doing nothing, which is not what happened, so a careful reader had
    no way to match it. A warning that names the wrong symptom is a warning nobody can use.
-2. **Proxies were refused in three places and merged in a fourth.** Both hand layers and the
-   locomotion graft all detect an all-proxy layer and hand the slot back. The Base layer *merge*
-   had no such check, and the graft's own report line calls those same clips "nothing to carry
-   over" while the merged layer plays them. Same input, two verdicts, one file apart.
+2. **Proxies are refused in three places and merged in a fourth, and that stays.** Both hand
+   layers and the locomotion graft detect an all-proxy layer and hand the slot back; the Base
+   layer *merge* does not, and the graft's own report line calls those same clips "nothing to
+   carry over" while the merged layer plays them. Closing it was tried and withdrawn (above),
+   because the stock locomotion layer's tracking behaviours make it more than placeholders.
 3. **No gate we own could have found it.** The corpus converts headlessly and never grounds an
    avatar; MockHMD renders stereo and never lands. Anything whose trigger is a locomotion state
    transition needs a person falling onto a floor, which makes it the second bug class this month

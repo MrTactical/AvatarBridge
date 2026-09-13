@@ -2178,19 +2178,18 @@ lean on runtime layer-weight control, which ChilloutVR has no equivalent for, so
 
 ### The avatar spins on the spot, usually after landing, and only in VR
 
-**Reconvert on 4.6.1 or later.** Two things changed and either one is enough on its own.
+**Reconvert on 4.6.1 or later.** **Apply Root Motion is now switched off** on the converted
+avatar's Animator.
 
-**Apply Root Motion is now switched off** on the converted avatar's Animator. VRChat ignores root
-motion on an avatar, so a VRChat avatar routinely ships with the flag on and nothing ever played
-it. ChilloutVR does not ignore it: any animation carrying root movement then turns or shoves the
-avatar itself, on top of the platform's own locomotion. Turn it back on in the Animator if you
-know you want it.
+VRChat ignores root motion on an avatar, so a VRChat avatar routinely ships with the flag on and
+nothing ever played it. ChilloutVR does not ignore it: any animation carrying root movement then
+turns or shoves the avatar itself, on top of the platform's own locomotion. The usual source is
+*Base / locomotion* being converted, which brings VRChat's `proxy_*` placeholder animations along,
+and one of those is a landing animation with root movement in it. Turn the flag back on in the
+Animator if you know you want it.
 
-**And a `[Base]` layer whose clips are all `proxy_*` placeholders is no longer merged at all**, the
-same way a proxy-only hand layer has always been left to ChilloutVR's own poses. Those placeholders
-are stand-ins the VRChat client swaps its real animation into at runtime, so what ships in the
-project is not what you saw in VRChat, and one of them is a landing animation with root movement in
-it. ChilloutVR's locomotion is complete, so nothing is missing.
+**Fixing an avatar you already converted doesn't need a reconversion**: select the avatar's root,
+find the Animator component and untick *Apply Root Motion*.
 
 **Why only in VR**, if you are wondering why it looked fine on desktop: a desktop player's mouse
 writes an absolute facing every frame, which paints over the drift as fast as it accumulates. In VR
