@@ -65,13 +65,14 @@ falloff, one-way rings, the tag dropdown, multi-mesh plugs, the Mesh-to-None cle
    to be linear, and animator parameters are reachable through `CVRAnimatorDriver` after all,
    given a pump clip to make it flush.
 
-5. **The atlas payload is visible in game, and a user will report it as a rendering bug.** Seen in
-   the 2026-09-12 VR captures: small pink and white squares hanging in the view, a few pixels each,
-   which are occupied atlas cells painting where the scene does not cover them. The count follows
-   socket count rather than grid size, so it does not grow with the room, and it was written down
-   as a cosmetic carry-over from the spike. It is no longer hypothetical, and it wants a decision
-   rather than a fix: leave it, move the rect somewhere the scene always covers, or paint the cells
-   in a channel the eye does not read. Related to B8 below, which is now live rather than avoided.
+5. **WITHDRAWN 2026-09-13: "the atlas payload is visible in game".** Added 2026-09-12 from the VR
+   captures, which show small pink and white squares near a plug. **They are the debug readout's
+   own two markers**, `YapsDebugOverlay.shader:327`: white where the tip would be with the bones at
+   bake pose, magenta where the real tip is. The readout was on in every one of those captures,
+   which is what the coloured strips in them were. The payload itself was dealt with long before:
+   the writers draw at `Background-945`, render queue 55, with the clear at 54 and the grab at 56,
+   all ahead of the scene, so the scene paints over them. Joe caught it by knowing the queue
+   number. Kept rather than deleted so the same pair of squares is not rediscovered as a bug.
 
 6. **SPS2 detection.** `YapsLegacyMap.Detect` knows DPS, TPS and SPS1 by their material
    properties. An SPS2 plug carries new ones, so it reads as "no legacy system": the plug still
@@ -83,9 +84,14 @@ falloff, one-way rings, the tag dropdown, multi-mesh plugs, the Mesh-to-None cle
    properties from no system the map recognises can say so in the report instead of being converted
    as if it had none. Full detail in the SPS2 section below.
 
-7. **The sweep's 131 carried toggle failures**: triaged as avatar-side, no tool signature. The
-   prediction that Fury's wired socket toggles flip to "responded" is worth checking in the next
-   digests.
+7. **The sweep's carried toggle failures**: triaged as avatar-side, no tool signature. **141 in run
+   401, 2026-09-12, across 35 avatars**, up from the 131 this entry was written against. Read the
+   sweep line carefully: its "(35)" header counts AVATARS and each bracket beside a name is that
+   avatar's failures, so the total has to be summed. The biggest carriers are "open me" (17),
+   CowBotNSFW (16), CowBotSFW (15) and Umbreon Nsfw (13). The ten extra since the entry was written
+   are unexplained and worth a diff of which avatars moved, before anyone assumes they are still
+   avatar-side. The prediction that Fury's wired socket toggles flip to "responded" is still to
+   check.
 
 8. **Phase D, retiring what the atlas cannot carry.** D1 proves the texture-parser route to the
    animator, D2 moves socket shapes, depth and haptics onto it, D3 deleted `YapsChannel` and its
@@ -198,13 +204,14 @@ real. Revisit only if a divergence turns up between two cameras that both fit.
   is measured off the vertices and only seeded by the authored one, but roll is taken as given. It
   reaches the authored bend direction and the wriggle phase, not the bend toward a socket, so the
   shape to watch for is a plug that curves the wrong way at rest and bends correctly once engaged.
-- **B8, a camera that draws nothing over the atlas rect. NO LONGER AVOIDED, and seen in game
-  2026-09-12.** Moving the writers before the scene means the scene covers them, which is what
-  makes the payload invisible. A camera rendering neither geometry nor sky in that corner leaves
-  them showing. This was written down as safe because the self portrait failed the size gate, and
-  the portrait now passes it: the 2026-09-12 captures show the payload as small pink and white
-  squares in the view. Every ChilloutVR world has a skybox, so the world view and the mirrors are
-  still covered; what is exposed is any camera with a transparent background and no sky.
+- **B8, a camera that draws nothing over the atlas rect. A risk in theory, never seen.** Moving
+  the writers before the scene, render queue 55, means the scene covers them, which is what makes
+  the payload invisible. A camera rendering neither geometry nor sky in that corner would leave
+  them showing. Every ChilloutVR world has a skybox, so the world view and the mirrors are covered.
+  It was once written down as safe only because the self portrait failed the size gate, and the
+  portrait passes it since the rect moved, so a transparent-background camera is the shape still
+  worth a look. *Corrected 2026-09-13: this entry briefly said the payload was SEEN in the
+  2026-09-12 captures. Those squares were the debug readout's markers; see Next up item 5.*
 
 **WHICH LEVER KILLS WHICH COST, 2026-09-06.** These get conflated, so they are written down apart.
 
