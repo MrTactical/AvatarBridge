@@ -141,7 +141,26 @@ falloff, one-way rings, the tag dropdown, multi-mesh plugs, the Mesh-to-None cle
    several places, a multi-mesh plug switched and resized, and the Mesh-to-None cleanup. The
    first four want a partner; the last two can be checked alone.
 
-10. **An advisor profile for the corpus. BUILT 2026-09-13, never run.**
+10. **An advisor profile for the corpus. BUILT 2026-09-13, first run (402) found a bad
+    recommendation, fixed on dev, not yet re-run.**
+
+    **Run 402, 2026-09-13:** 83 of 83 converted in 6644 s, nothing failed. No baseline, so the sweep
+    labels every existing failure "WORSE than baseline (32)"; that is `TallySweep` given a null
+    baseline, not a regression. Exceptions (33 `ArgumentNullException`, 3 VRCFury missing files)
+    are the same kinds as run 401. Apply all turned Face tracking on for 61 avatars and Base /
+    locomotion on for 29; it unticked nothing on picking and left nothing blocked.
+
+    **The finding: of the 29, 8 had nothing in Base but VRChat's stock locomotion** (one layer,
+    21 `proxy_*` clips, none authored), copied into the slot so the descriptor does not mark it
+    default. `CustomLayer` only asks "not default, has layers", so the advisor called it the
+    avatar's own walking and ticked the box: the configuration the spin report came from, with
+    placeholder clips merged at weight 1 over ChilloutVR's locomotion. Three more were 18 proxy
+    plus 4 authored, which is real content and still recommended. **Fixed:** the Base rule now
+    checks `AnimatorMerger.IsProxyOnlyLayer` on every layer; stock with Base off gets no row, stock
+    with Base on gets a Change row switching it off. The merge itself is untouched (that is where
+    fix 2 was withdrawn). `AdvisorTest` gained four checks, 13/13. **Not verified:** a second
+    advisor run showing those 8 drop out. 13 of the 29 produced no `[Base]` layer in the output at
+    all (the VRCFury and GoGo avatars); not looked into.
     `Dev/Corpus/run-corpus.sh --advisor` sets `AVATARBRIDGE_PROFILE=advisor` (and unsets it
     otherwise, so a stray value cannot turn a normal run into this one), and digests land under
     `Regression/Yaps/Advisor` or `Regression/Advisor`. Each avatar starts from `new BridgeSettings()`

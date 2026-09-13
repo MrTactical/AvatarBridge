@@ -1478,7 +1478,7 @@ Analyse sets them to match. Open it to override a measurement deliberately, not 
 | **Remove animation that can't do anything (recommended)** | on | Drops curves pointing at material properties the shader doesn't have: dead in VRChat too, noisy in CVR |
 | **FX (toggles, expressions)** | on | The layer nearly every toggle lives in |
 | **Gesture (hand poses)** | on | Hand poses, converted to the CCK's own float threshold idiom. A Gesture layer holding **only** VRChat's `proxy_*` placeholders is left behind and ChilloutVR's own hand poses kept; see [fingers snapping](#converted-fingers-snap-to-a-pose-nobody-authored) |
-| **Base / locomotion** | off | Brings across what VRChat kept in Base: toggles, blendshapes, materials, additive motion, and grafts the avatar's own walk, crouch and crawl onto CVR's locomotion. Analyse recommends it when the avatar has a Base layer of its own that isn't GoGo |
+| **Base / locomotion** | off | Brings across what VRChat kept in Base: toggles, blendshapes, materials, additive motion, and grafts the avatar's own walk, crouch and crawl onto CVR's locomotion. Analyse recommends it when the avatar has a Base layer of its own that isn't GoGo, and recommends it off when all that layer holds is VRChat's stock locomotion copied in |
 | **Additive** | off | VRChat's additive layer, usually breathing |
 | **Action (emotes, AFK)** | off | Emotes and AFK. Off by default because Action takes full body control and misfires are very visible |
 | **Preserve parameter sync state** | on | Keeps each parameter's local/synced status as VRChat had it, rather than syncing everything: **except parameters a menu control drives, which always sync**. VRChat's tight budget made de-syncing menu parameters a common trick, usually with VRCFury syncing them through machinery that doesn't survive conversion, so "not synced" is untrustworthy on anything with a control; a toggle others can't see the effect of is a broken feature, and ChilloutVR's 3200-bit budget can afford it. The report lists every parameter this re-synced |
@@ -2186,7 +2186,9 @@ nothing ever played it. ChilloutVR does not ignore it: any animation carrying ro
 turns or shoves the avatar itself, on top of the platform's own locomotion. The usual source is
 *Base / locomotion* being converted, which brings VRChat's `proxy_*` placeholder animations along,
 and one of those is a landing animation with root movement in it. Turn the flag back on in the
-Animator if you know you want it.
+Animator if you know you want it. When all an avatar's Base slot holds is VRChat's stock
+locomotion, Analyse recommends *Base / locomotion* off, since there is nothing of the avatar's
+own in it to bring across.
 
 **Fixing an avatar you already converted doesn't need a reconversion**: select the avatar's root,
 find the Animator component and untick *Apply Root Motion*.

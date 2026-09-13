@@ -9429,7 +9429,7 @@ namespace AvatarBridge
         // A gesture layer playing only proxy_* clips has no poses of its
         // own: the VRChat client swaps the real ones in at runtime. Kept
         // here they play literally and fingers snap. CVR's own set wins.
-        static bool IsProxyOnlyLayer(AnimatorControllerLayer srcLayer)
+        internal static bool IsProxyOnlyLayer(AnimatorControllerLayer srcLayer)
         {
             if (srcLayer?.stateMachine == null)
             {

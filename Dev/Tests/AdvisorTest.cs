@@ -39,6 +39,7 @@ namespace AvatarBridge.Regression
             GameObject bare = null;
             GameObject chained = null;
             GameObject toed = null;
+            GameObject stock = null;
             try
             {
                 // ---- an avatar with nothing on it -------------------------------------
@@ -121,13 +122,44 @@ namespace AvatarBridge.Regression
                         convertToePhysBones = true,
                     }), "Convert toe PhysBones") == null);
 
+                // ---- a Base slot holding VRChat's stock locomotion ---------------------
+                // A copied stock controller is not "default" to the descriptor, so the
+                // advisor has to look at the clips to tell it from the avatar's own.
+                stock = new GameObject("__AdvisorTest_Stock");
+                var stockDescriptor = stock.AddComponent<VRCAvatarDescriptor>();
+                var proxyOnly = BaseController("proxy_run_forward");
+                stockDescriptor.baseAnimationLayers = new[]
+                {
+                    new VRCAvatarDescriptor.CustomAnimLayer
+                    {
+                        type = VRCAvatarDescriptor.AnimLayerType.Base,
+                        isDefault = false,
+                        animatorController = proxyOnly,
+                    },
+                };
+
+                var stockOn = new BridgeSettings { convertBaseLayer = true };
+                var stockBase = Find(AvatarAdvisor.Analyse(stockDescriptor, stockOn), "Base / locomotion");
+                fail += Check("stock locomotion with Base on: recommended off",
+                    stockBase != null && stockBase.Kind == AdviceKind.Change && stockBase.Apply != null);
+                stockBase?.Apply?.Invoke(stockOn);
+                fail += Check("...and applying it actually writes the setting",
+                    !stockOn.convertBaseLayer);
+                fail += Check("stock locomotion with Base off: never recommended on",
+                    Find(AvatarAdvisor.Analyse(stockDescriptor, new BridgeSettings()), "Base / locomotion") == null);
+
+                stockDescriptor.baseAnimationLayers[0].animatorController = BaseController("WalkForward");
+                var ownBase = Find(AvatarAdvisor.Analyse(stockDescriptor, new BridgeSettings()), "Base / locomotion");
+                fail += Check("an authored Base layer with Base off: still recommended on",
+                    ownBase != null && ownBase.Kind == AdviceKind.Change && ownBase.Apply != null);
+
                 // ---- and it survives an avatar that is barely an avatar -----------------
                 fail += Check("a null descriptor returns nothing rather than throwing",
                     AvatarAdvisor.Analyse(null, new BridgeSettings()).Count == 0);
             }
             finally
             {
-                foreach (var go in new[] { bare, chained, toed })
+                foreach (var go in new[] { bare, chained, toed, stock })
                 {
                     if (go != null)
                     {
@@ -140,6 +172,18 @@ namespace AvatarBridge.Regression
                 ? "[AdvisorTest] PASS: the advisor decides what it can and declines what it can't."
                 : $"[AdvisorTest] FAIL: {fail} case(s) wrong.");
             if (Application.isBatchMode) EditorApplication.Exit(fail == 0 ? 0 : 1);
+        }
+
+        static UnityEditor.Animations.AnimatorController BaseController(string clipName)
+        {
+            var controller = new UnityEditor.Animations.AnimatorController();
+            controller.AddLayer(new UnityEditor.Animations.AnimatorControllerLayer
+            {
+                name = "Locomotion",
+                stateMachine = new UnityEditor.Animations.AnimatorStateMachine(),
+            });
+            controller.layers[0].stateMachine.AddState("Move").motion = new AnimationClip { name = clipName };
+            return controller;
         }
 
         static Advice Find(System.Collections.Generic.List<Advice> advice, string setting) =>

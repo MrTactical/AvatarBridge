@@ -534,7 +534,35 @@ namespace AvatarBridge
             }
 
             var baseLayer = CustomLayer(descriptor, VRCAvatarDescriptor.AnimLayerType.Base);
-            if (baseLayer == null || settings.convertBaseLayer)
+            if (baseLayer == null)
+            {
+                return;
+            }
+
+            // VRChat's stock controller copied into the slot passes as custom, but
+            // every clip is a proxy_ placeholder the VRChat client swaps at runtime.
+            // Merged, they play literally over ChilloutVR's own locomotion.
+            if (baseLayer.layers.All(AnimatorMerger.IsProxyOnlyLayer))
+            {
+                if (settings.convertBaseLayer)
+                {
+                    advice.Add(new Advice
+                    {
+                        Kind = AdviceKind.Change,
+                        Setting = "Base / locomotion",
+                        Finding = "On, but this avatar's Base layer is VRChat's stock locomotion " +
+                                  "copied into the slot: every animation in it is a placeholder " +
+                                  "that VRChat swaps for its own while you play. Merged, they play " +
+                                  "as they are, on top of ChilloutVR's own locomotion, and add " +
+                                  "nothing it lacks. Switching it off leaves this avatar on " +
+                                  "ChilloutVR's locomotion, the same as an avatar with the slot empty.",
+                        Apply = s => s.convertBaseLayer = false,
+                    });
+                }
+                return;
+            }
+
+            if (settings.convertBaseLayer)
             {
                 return;
             }
