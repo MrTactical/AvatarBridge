@@ -577,6 +577,24 @@ IK. Needs the reporter's SDK version, which bone, and what the wrong result actu
 
 ## Loose ends, small but real
 
+### A slash no longer renames a menu parameter. CHANGED ON DEV 2026-09-14, unreleased
+
+`RenamePass` rebuilt any menu parameter name containing a space, slash, bracket, quote or comma
+from its menu label ("CCK-safe"). The slash was never shown to be unsafe: the name that broke
+Create Controller in `b63c2a5` had spaces too. CCK 4.0.1 source says a slash is legal: the
+inspector derives machine names with `[^a-zA-Z0-9/\-_#]` (`AAS_SettingsList.cs:249`), and
+`CreateAASController` strips everything but `[a-zA-Z0-9_]` before a name reaches a file path, and
+skips entries the base controller already declares. That regex is the same one
+`VerifyMenuParameterNames` already used, so the two rules in the merger disagreed and the stricter
+one ran first. 334 of 1728 distinct parameter names in the corpus project's expression parameter
+assets have a slash as their only unsafe character (menu-bound ones are a subset).
+
+**For the release notes:** reconverting gives those parameters back their VRChat names, so a
+value ChilloutVR saved in a profile under the old label-derived name is lost once. **Not
+verified:** a corpus run (digests will move where names changed), and the client accepting a
+slash in a synced name in game, which rests on the CCK generating such names itself. No unit test:
+the rename lives inside the merge, and the corpus is what covers it.
+
 ### Four found wearing the avatar, 2026-08-25/26
 
 A whole avatar baked as one plug turned up four separate faults. Recorded here

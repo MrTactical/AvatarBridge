@@ -1903,9 +1903,11 @@ namespace AvatarBridge
 
         static void RenamePass(AnimatorController master, List<AnimatorControllerLayer> vrcLayers, BridgeContext ctx)
         {
-            // Slashes and spaces in parameter names break the CCK's
+            // Spaces and the like in parameter names break the CCK's
             // controller autogeneration. Rename from the menu label,
-            // consistently everywhere.
+            // consistently everywhere. A slash is legal: the CCK's own
+            // inspector keeps it when deriving a name, and strips it
+            // before using the name in a file.
             var sanitizedNames = new Dictionary<string, string>();
             var takenNames = new HashSet<string>(master.parameters.Select(p => p.name));
 
@@ -1940,7 +1942,7 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                if (machineName.IndexOfAny(new[] { ' ', '/', '\\', '(', ')', '<', '>', '\'', '"', ',' }) < 0)
+                if (machineName.IndexOfAny(new[] { ' ', '\\', '(', ')', '<', '>', '\'', '"', ',' }) < 0)
                 {
                     continue; // already CCK-safe
                 }
