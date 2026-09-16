@@ -577,6 +577,31 @@ IK. Needs the reporter's SDK version, which bone, and what the wrong result actu
 
 ## Loose ends, small but real
 
+### Cloth stacks when the avatar converted already carries a conversion's cloth. WARNED ON DEV 2026-09-16
+
+Field report (KJoy, 2026-09-16, video in Downloads/Unity_kD7oYj2ziX.mp4): reconverting the same
+avatar "adds more stacks of magica", all inside ONE avatar under `MagicaCloth Phys`, holders running
+up to `... 5`. Their words for why it matters: "people who like changing outfits a lot would be
+under this", i.e. add an outfit, convert again.
+
+`CollectionUnder` finds the collection by name under the target and reuses it, and `UniqueChildName`
+suffixes rather than overwrites, so an inherited collection is adopted silently and every run adds a
+set. Nothing counted or reported pre-existing cloth. `PhysBoneConverter.Run` now warns when the
+target already has `MagicaCloth Phys` or `DynamicBone Phys` with children, naming the count and the
+fix (delete that object, convert again).
+
+**Not established: how the original came to carry it.** Two routes fit, neither confirmed with them:
+converting once with `cloneAvatar` off (which also needs `deleteConvertedPhysBones` off for PhysBone
+chains to convert a second time), or *Overrides -> Apply All* on the converted avatar, which is an
+instance of the same prefab and would write the collection into the prefab. Worth asking for their
+`Diagnostics.md` and `ConversionReport.md`, which carry the settings. A local repro (convert twice,
+copy off) was offered and not run.
+
+**Open question for Joe:** whether to go further than a warning and DELETE an inherited collection
+automatically. It can only be this tool's own output, so nothing authored is lost, but it is a
+silent deletion from the avatar being converted, and with `cloneAvatar` on that avatar is the user's
+VRChat original.
+
 ### A slash no longer renames a menu parameter. CHANGED ON DEV 2026-09-14, unreleased
 
 `RenamePass` rebuilt any menu parameter name containing a space, slash, bracket, quote or comma

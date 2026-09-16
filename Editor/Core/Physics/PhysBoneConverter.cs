@@ -167,8 +167,31 @@ namespace AvatarBridge
             }
         }
 
+        // A collection this tool made can only have arrived with the avatar,
+        // which means the avatar carries an earlier conversion's cloth. New
+        // holders land beside the old ones and both simulate the same bones.
+        static void ReportInheritedCloth(BridgeContext ctx)
+        {
+            foreach (string name in new[] { "MagicaCloth Phys", "DynamicBone Phys" })
+            {
+                var home = ctx.Target.transform.Find(name);
+                if (home == null || home.childCount == 0)
+                {
+                    continue;
+                }
+                ctx.Report.Warning(Category,
+                    $"The avatar already carries {home.childCount} converted cloth object(s)",
+                    $"\"{name}\" was on the avatar before this conversion started, so it came from an " +
+                    "earlier one: either the avatar was converted in place with \"Make a copy\" off, or " +
+                    "the earlier conversion's objects were applied back to its prefab. Anything this run " +
+                    "converts is ADDED beside them, and both sets simulate the same bones, which fight. " +
+                    $"Delete \"{name}\" from the avatar being converted, then convert again.");
+            }
+        }
+
         public static void Run(BridgeContext ctx)
         {
+            ReportInheritedCloth(ctx);
             var physBones = ctx.Target.GetComponentsInChildren<VRCPhysBone>(true);
             if (physBones.Length == 0)
             {
