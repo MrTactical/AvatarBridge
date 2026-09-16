@@ -1690,7 +1690,7 @@ Find your symptom:
 | **Converting** | [Unity crashes on Convert](#unity-crashes-when-you-press-convert) · [VRCFury errored](#the-report-says-vrcfury-errored-or-that-files-are-missing) · [protected clips](#a-limb-lock-sit-or-flight-toggle-does-nothing-and-the-report-mentions-protected-clips) · [conversions broke after updating](#converted-avatars-broke-after-updating-avatarbridge-missing-controllers-pink-particles) |
 | **In the editor afterwards** | [crashes on Play](#unity-crashes-when-you-press-play-or-the-avatar-renders-with-the-wrong-materials-there) · [console floods](#the-console-floods-in-play-mode-statemachine-for-layer-is-missing-or-parameter-type-does-not-match) · [magenta](#something-is-bright-magenta) · [white mesh](#a-mesh-renders-white-washed-out-or-loses-its-eyes) · [fingers snap](#converted-fingers-snap-to-a-pose-nobody-authored) |
 | **Body & animation in game** | [bicycle pose](#the-avatar-stands-in-a-bent-rest-pose-only-the-head-and-hands-follow-me) · [sitting pose](#sitting-in-a-chair-plays-the-wrong-pose-or-the-legs-pedal) · [movement doesn't animate](#movement-doesnt-animate-and-airborne--flying--sitting--swimming-do-nothing) · [spins after landing](#the-avatar-spins-on-the-spot-usually-after-landing-and-only-in-vr) · [gestures freeze](#gestures-freeze-in-game-or-on-another-pc) · [wrong hand pose](#gestures-play-the-wrong-pose-or-a-hand-sits-in-a-fist-at-rest) · [emote hands](#an-emotes-hand-pose-is-wrong-or-follows-your-gesture) · [emote replays](#an-emote-replays-forever-instead-of-playing-once) · [movement speed](#i-move-slower-or-faster-than-i-expect-and-nothing-in-the-avatar-does-that) · [drifting props](#a-hat-or-held-item-drifts-off-when-i-resize-myself) |
-| **Physics in game** | [broken chain](#a-bone-chain-hangs-broken-or-magicacloth-throws-in-the-scene-view) · [floating hair](#hair-or-a-tail-floats-upward-in-game-and-im-using-dynamicbone) · [moves differently than Unity](#a-chain-moves-differently-in-game-than-in-unity) · [chains doubled up](#chains-double-up-after-converting-the-same-avatar-again) |
+| **Physics in game** | [broken chain](#a-bone-chain-hangs-broken-or-magicacloth-throws-in-the-scene-view) · [floating hair](#hair-or-a-tail-floats-upward-in-game-and-im-using-dynamicbone) · [moves differently than Unity](#a-chain-moves-differently-in-game-than-in-unity) · [numbered cloth objects](#numbered-cloth-objects-magicaclothsomething-magicaclothsomething-2) |
 | **Face, eyes, viewpoint** | [face tracking missing](#face-tracking-wasnt-set-up-and-the-avatar-definitely-has-it) · [blink problems](#your-eyes-stay-open-start-closed-or-lose-a-pupil) · [viewpoint off the head](#the-viewpoint-or-voice-position-is-nowhere-near-the-head) |
 | **Toggles, menus, contacts** | [toggle does nothing on screen](#a-toggle-switches-on-the-layer-plays-and-nothing-changes-on-screen) · [toggle never comes back](#a-toggle-switches-on-but-never-back-off) · [partial material swap](#a-material-swap-changes-only-some-parts) · [dead menu control](#a-menu-control-appears-moves-syncs-and-does-nothing) · [duplicate controls](#two-near-identical-menu-controls-and-only-one-works) · [dead contact](#a-contact-does-nothing-at-all-for-anyone-including-you) |
 | **What only others see (or don't)** | [flickering for others](#other-people-see-my-avatar-flickering-cycling-colours-or-thrashing-i-dont) · [rapid flicker](#an-animation-flickers-rapidly-often-only-on-other-players-screens) · [private sound](#a-sound-only-you-can-hear) · [private particles](#a-particle-effect-only-you-can-see) · [particle squares](#a-particle-effect-draws-as-plain-coloured-squares) · [one-eye effects](#an-effect-draws-in-one-eye-only-in-vr) |
@@ -1750,27 +1750,28 @@ nothing with it, so those chains simulate normally and the report says the chain
 alongside one. If such a chain looks wrong, the thing to check is the scale itself: the cloth
 measured its bone lengths once, at the scale the avatar was converted at.
 
-### Chains double up after converting the same avatar again
+### Numbered cloth objects: MagicaCloth_Something, MagicaCloth_Something 2
 
-The converted avatar keeps every cloth object it makes under one object called **MagicaCloth Phys**
-(or *DynamicBone Phys*). If the avatar you convert already has that object, this conversion adds its
-chains beside the old ones, and both sets simulate the same bones and fight. The report says so now;
-on an older release it happened silently.
+Every chain the conversion converts gets its own object under **MagicaCloth Phys**, named after the
+bone it hangs from. Two chains rooted at bones with the same name give `MagicaCloth_Tail` and
+`MagicaCloth_Tail 2`, because two children of one object cannot share a name. **That numbering
+counts chains, not conversions.** It is normal, and it is what an avatar with several outfits looks
+like: four outfits with an ear chain each give `MagicaCloth_L_Ear` through `MagicaCloth_L_Ear 4` in
+a single conversion.
 
-**The fix is to delete that object from the avatar you convert, then convert again.** The converted
-avatar builds a fresh one.
+**Several PhysBones on one bone also give one object each**, again numbered. That is deliberate, so
+nothing is lost, and only one of them is left driving the chain; the report says which.
 
-**How it gets there in the first place**, since a conversion normally leaves your VRChat avatar
-untouched:
+**Converting the same avatar again does not add to an older set.** Each conversion builds a new
+avatar with its own **MagicaCloth Phys**, and your VRChat avatar is never written to. If you convert
+twice without changing anything, both results have the same number of objects. Adding an outfit and
+converting again gives more objects because there are more chains.
 
-- **Converting with *Make a copy* off.** That converts the avatar in place, so the original keeps
-  the cloth objects, and every later conversion inherits them.
-- **Applying the converted avatar's overrides back to its prefab.** The converted avatar is an
-  instance of the same prefab your original came from, so *Overrides -> Apply All* on it writes the
-  cloth objects into the prefab, and every instance of that prefab has them from then on.
-
-This bites hardest if you reconvert after adding an outfit, which is a normal way to work. Deleting
-the one object before each conversion is all it takes.
+**If a count really does grow** between two conversions of an unchanged avatar, that is a bug worth
+reporting, with `ConversionReport.md` and `Diagnostics.md` from both runs. One thing to check first:
+whether the avatar you are converting already has a **MagicaCloth Phys** object of its own, which
+happens if it was once converted with *Make a copy* switched off. The report says so when it does;
+delete that object and convert again.
 
 ### I move slower (or faster) than I expect, and nothing in the avatar does that
 

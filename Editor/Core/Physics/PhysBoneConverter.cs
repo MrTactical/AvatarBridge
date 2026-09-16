@@ -181,9 +181,9 @@ namespace AvatarBridge
                 }
                 ctx.Report.Warning(Category,
                     $"The avatar already carries {home.childCount} converted cloth object(s)",
-                    $"\"{name}\" was on the avatar before this conversion started, so it came from an " +
-                    "earlier one: either the avatar was converted in place with \"Make a copy\" off, or " +
-                    "the earlier conversion's objects were applied back to its prefab. Anything this run " +
+                    $"\"{name}\" was on the avatar before this conversion started, so it arrived with " +
+                    "the avatar: a conversion that copies the avatar never writes one onto the source. " +
+                    "The known way in is converting once with \"Make a copy\" off. Anything this run " +
                     "converts is ADDED beside them, and both sets simulate the same bones, which fight. " +
                     $"Delete \"{name}\" from the avatar being converted, then convert again.");
             }

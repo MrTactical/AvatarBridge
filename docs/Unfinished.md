@@ -577,30 +577,43 @@ IK. Needs the reporter's SDK version, which bone, and what the wrong result actu
 
 ## Loose ends, small but real
 
-### Cloth stacks when the avatar converted already carries a conversion's cloth. WARNED ON DEV 2026-09-16
+### "Reconverting stacks MagicaCloth" was never stacking. MEASURED 2026-09-16
 
-Field report (KJoy, 2026-09-16, video in Downloads/Unity_kD7oYj2ziX.mp4): reconverting the same
-avatar "adds more stacks of magica", all inside ONE avatar under `MagicaCloth Phys`, holders running
-up to `... 5`. Their words for why it matters: "people who like changing outfits a lot would be
-under this", i.e. add an outfit, convert again.
+Field report (KJoy, 2026-09-16, video `Downloads/Unity_kD7oYj2ziX.mp4`): reconverting the same avatar
+"adds more stacks of magica", inside ONE avatar under `MagicaCloth Phys`, holders numbered up to
+`... 5`, default settings. Their reason it matters: "people who like changing outfits a lot would be
+under this".
 
-`CollectionUnder` finds the collection by name under the target and reuses it, and `UniqueChildName`
-suffixes rather than overwrites, so an inherited collection is adopted silently and every run adds a
-set. Nothing counted or reported pre-existing cloth. `PhysBoneConverter.Run` now warns when the
-target already has `MagicaCloth Phys` or `DynamicBone Phys` with children, naming the count and the
-fix (delete that object, convert again).
+**WITHDRAWN, both of my proposed causes.** I claimed the source had been contaminated, by a
+conversion with `cloneAvatar` off or by *Overrides -> Apply All* on the converted avatar, and wrote
+both into the README. `Dev/Tests/ClothStackRepro.cs` (synthetic avatar, seven routes, run in the
+corpus project 2026-09-16) says otherwise:
 
-**Not established: how the original came to carry it.** Two routes fit, neither confirmed with them:
-converting once with `cloneAvatar` off (which also needs `deleteConvertedPhysBones` off for PhysBone
-chains to convert a second time), or *Overrides -> Apply All* on the converted avatar, which is an
-instance of the same prefab and would write the collection into the prefab. Worth asking for their
-`Diagnostics.md` and `ConversionReport.md`, which carry the settings. A local repro (convert twice,
-copy off) was offered and not run.
+- **A** convert the source twice, defaults: 1 holder in each output, source clean. No stacking.
+- **B** convert the output again: impossible, the conversion strips the descriptor.
+- **C** convert in place: the source does keep the collection, but its descriptor is gone with it, so
+  it can never be converted a second time. Contamination cannot compound.
+- **D** *Apply All*: impossible. `Object.Instantiate` on a prefab instance returns a plain
+  GameObject, so the converted avatar has no prefab link back to the source.
+- **E** outfit added between runs: 2 holders, one per chain. Correct.
+- **F** four outfits whose chains share the bone name `L_Ear`, ONE conversion: 5 holders, named
+  `MagicaCloth_Hair_root, MagicaCloth_L_Ear, MagicaCloth_L_Ear 2, MagicaCloth_L_Ear 3,
+  MagicaCloth_L_Ear 4`.
+- **G** three PhysBones on one root, ONE conversion: `MagicaCloth_Hair_root` plus `2` and `3`.
 
-**Open question for Joe:** whether to go further than a warning and DELETE an inherited collection
-automatically. It can only be this tool's own output, so nothing authored is lost, but it is a
-silent deletion from the avatar being converted, and with `cloneAvatar` on that avatar is the user's
-VRChat original.
+F and G reproduce the video's naming exactly with no reconversion. The numbering counts chains, not
+conversions, and their avatar carries many outfits with same-named bones. README rewritten to say
+that, and to give the check that would prove otherwise: convert twice unchanged and compare counts.
+
+**Trap for next time:** the first two repro passes reported "0 holders" for every route. Not a
+result: a chain no mesh is weighted to is classed as a helper rig and skipped
+(`PhysBoneConverter.SkipHelperRigChain`), so nothing had converted at all. Reading those zeroes as
+"no stacking" would have confirmed the answer by accident.
+
+**Kept:** the inherited-collection warning in `PhysBoneConverter.Run`, reworded. Route C is real but
+one-shot, and if KJoy's counts do grow on an unchanged avatar the warning is what will name it.
+**Unanswered:** whether their count actually grows between two conversions of an unchanged avatar.
+Asked; no answer yet.
 
 ### A slash no longer renames a menu parameter. CHANGED ON DEV 2026-09-14, unreleased
 
