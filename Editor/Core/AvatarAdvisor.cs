@@ -568,9 +568,9 @@ namespace AvatarBridge
             }
 
             // Exempt only when what is in Base really is GoGo; VRCFury can merge
-            // its own content in beside it.
-            if (SystemStripper.AvatarUsesGogo(descriptor) && settings.stripGogoLoco
-                && !HasContentGogoDidNotPutThere(baseLayer))
+            // its own content in beside it. The layers say so themselves, so
+            // this does not wait on the expression parameters naming GoGo too.
+            if (settings.stripGogoLoco && !HasContentGogoDidNotPutThere(baseLayer))
             {
                 return;
             }
@@ -599,7 +599,7 @@ namespace AvatarBridge
             }
             foreach (var layer in controller.layers)
             {
-                if (SystemStripper.IsGogoLayerName(layer.name))
+                if (SystemStripper.IsGogoLayer(layer))
                 {
                     continue;
                 }

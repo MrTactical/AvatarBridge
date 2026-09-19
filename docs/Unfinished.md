@@ -159,8 +159,20 @@ falloff, one-way rings, the tag dropdown, multi-mesh plugs, the Mesh-to-None cle
     checks `AnimatorMerger.IsProxyOnlyLayer` on every layer; stock with Base off gets no row, stock
     with Base on gets a Change row switching it off. The merge itself is untouched (that is where
     fix 2 was withdrawn). `AdvisorTest` gained four checks, 13/13. **Not verified:** a second
-    advisor run showing those 8 drop out. 13 of the 29 produced no `[Base]` layer in the output at
-    all (the VRCFury and GoGo avatars); not looked into.
+    advisor run showing those 8 drop out.
+
+    **The other 13 of the 29, looked into 2026-09-19: every one is GoGo.** Their Base slot holds
+    GoGo's own `GoLocoBase` controller (several variants, 900 to 1,200 `Go/` references each), whose
+    layers are named `Locomotion`, `Poses` and `Smooth Float`. The conversion was right: with
+    `stripGogoLoco` on, the stripper removes those layers by their `Go/` references, so nothing
+    merges. The advice was wrong: its GoGo exemption tested layer NAMES only (`IsGogoLayerName`),
+    which never matches GoGo's own controller, and it was also gated on `AvatarUsesGogo`, which reads
+    the expression parameters rather than the layers. So Apply all ticked a box that merged nothing
+    and told the user GoGo's walk was the avatar's own. **Fixed:** `SystemStripper.IsGogoLayer` is
+    now the one test, name or any `Go/` reference, the same rule the stripper's locomotion check
+    applies, and the advisor calls it with no `AvatarUsesGogo` gate. `AdvisorTest` 15/15. Expected in
+    the next advisor run: Base applied on 8 avatars, down from 29 (the 5 Sootie scenes and the 3
+    mixed Chimera/Rotormantid).
     `Dev/Corpus/run-corpus.sh --advisor` sets `AVATARBRIDGE_PROFILE=advisor` (and unsets it
     otherwise, so a stray value cannot turn a normal run into this one), and digests land under
     `Regression/Yaps/Advisor` or `Regression/Advisor`. Each avatar starts from `new BridgeSettings()`

@@ -153,6 +153,17 @@ namespace AvatarBridge.Regression
                 fail += Check("an authored Base layer with Base off: still recommended on",
                     ownBase != null && ownBase.Kind == AdviceKind.Change && ownBase.Apply != null);
 
+                // GoGo's own Base controller names its layers "Locomotion", "Poses" and
+                // "Smooth Float", so only its Go/ parameters give it away. The stripper
+                // removes it on those; recommending the merge would tick a box that merges
+                // nothing and tell the user GoGo's walk is the avatar's own.
+                stockDescriptor.baseAnimationLayers[0].animatorController = BaseController("GoWalk", "Go/Float");
+                fail += Check("GoGo's Base with GoGo stripped: never recommended on",
+                    Find(AvatarAdvisor.Analyse(stockDescriptor, new BridgeSettings()), "Base / locomotion") == null);
+                fail += Check("...and the stripper agrees it is GoGo's",
+                    SystemStripper.IsGogoLayer(((UnityEditor.Animations.AnimatorController)
+                        stockDescriptor.baseAnimationLayers[0].animatorController).layers[0]));
+
                 // ---- and it survives an avatar that is barely an avatar -----------------
                 fail += Check("a null descriptor returns nothing rather than throwing",
                     AvatarAdvisor.Analyse(null, new BridgeSettings()).Count == 0);
@@ -174,7 +185,7 @@ namespace AvatarBridge.Regression
             if (Application.isBatchMode) EditorApplication.Exit(fail == 0 ? 0 : 1);
         }
 
-        static UnityEditor.Animations.AnimatorController BaseController(string clipName)
+        static UnityEditor.Animations.AnimatorController BaseController(string clipName, string blendParameter = null)
         {
             var controller = new UnityEditor.Animations.AnimatorController();
             controller.AddLayer(new UnityEditor.Animations.AnimatorControllerLayer
@@ -182,7 +193,14 @@ namespace AvatarBridge.Regression
                 name = "Locomotion",
                 stateMachine = new UnityEditor.Animations.AnimatorStateMachine(),
             });
-            controller.layers[0].stateMachine.AddState("Move").motion = new AnimationClip { name = clipName };
+            Motion motion = new AnimationClip { name = clipName };
+            if (blendParameter != null)
+            {
+                var tree = new UnityEditor.Animations.BlendTree { blendParameter = blendParameter };
+                tree.AddChild(motion);
+                motion = tree;
+            }
+            controller.layers[0].stateMachine.AddState("Move").motion = motion;
             return controller;
         }
 

@@ -21,9 +21,18 @@ namespace AvatarBridge
         static readonly string[] GogoParamPrefixes = { "Go/" };
         static readonly string[] GogoNameHints = { "gogo", "go loco", "goloco" };
 
-        // Whether GoGo put this animator layer there. Used by the advisor to
-        // tell "the Base layer IS GoGo" apart from "GoGo is in there with
-        // the avatar's own content", which look identical from outside.
+        // Whether GoGo put this animator layer there, by the test RemoveLayers
+        // applies to a merged Base layer: named for GoGo, or referencing any
+        // Go/ parameter. The name alone never matches GoGo's own Base
+        // controller, whose layers are "Locomotion", "Poses" and "Smooth
+        // Float". The advisor asks this before converting, so its answer and
+        // the stripper's must be the same function.
+        internal static bool IsGogoLayer(AnimatorControllerLayer layer) =>
+            layer != null && (IsGogoLayerName(layer.name)
+                || NamesGogoParameterFamily((layer.name ?? "").ToLowerInvariant())
+                || CollectParameterRefs(layer.stateMachine)
+                    .Any(r => r.TrimStart('#').StartsWith("Go/", StringComparison.OrdinalIgnoreCase)));
+
         internal static bool IsGogoLayerName(string name) =>
             !string.IsNullOrEmpty(name)
             && GogoNameHints.Any(h => name.ToLowerInvariant().Contains(h));
