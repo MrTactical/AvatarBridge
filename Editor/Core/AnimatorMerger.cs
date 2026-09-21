@@ -132,6 +132,28 @@ namespace AvatarBridge
                         continue;
                     }
 
+                    // A Base layer holding only proxy_ placeholders has no
+                    // locomotion of its own; the clips are masked out anyway.
+                    // What it does carry is VRChat's tracking controls on the
+                    // landing states, and in VR those spin the avatar: handing
+                    // the head to animation makes the client stop turning the
+                    // root with the headset (IKHandlerHalfBody.HandleRootAngle,
+                    // maxRootAngle 180), handing it back turns it to catch up.
+                    // Confirmed in the field 2026-09-21: Base off, spin gone.
+                    if (id == VRCAvatarDescriptor.AnimLayerType.Base && IsProxyOnlyLayer(srcLayer))
+                    {
+                        int drivers = CountParameterDrivers(srcLayer);
+                        ctx.Report.Converted(Category,
+                            $"Base layer \"{srcLayer.name}\" left to ChilloutVR's own locomotion",
+                            "Every clip in it is a VRChat \"proxy_\" placeholder, so the avatar has no " +
+                            "walking, jumping or landing of its own. Its landing states also told " +
+                            "ChilloutVR to stop steering the body by the headset and then start again, " +
+                            "which in VR set the avatar spinning on the spot. Left out whole; ChilloutVR's " +
+                            "locomotion is used." +
+                            (drivers > 0 ? $" {drivers} parameter driver(s) went with it." : ""));
+                        continue;
+                    }
+
                     var clone = copier.CloneLayer(srcLayer);
                     // Hand-pose layers take over the freed LeftHand/RightHand slots.
                     string cvrHandName = GetCvrHandLayerName(id, srcLayer);
@@ -9468,6 +9490,25 @@ namespace AvatarBridge
                 }
             });
             return clips > 0 && !authored;
+        }
+
+        static int CountParameterDrivers(AnimatorControllerLayer layer)
+        {
+            int drivers = 0;
+            WalkMachines(layer.stateMachine, machine =>
+            {
+                foreach (var child in machine.states)
+                {
+                    foreach (var behaviour in child.state.behaviours)
+                    {
+                        if (behaviour is VRCAvatarParameterDriver)
+                        {
+                            drivers++;
+                        }
+                    }
+                }
+            });
+            return drivers;
         }
 
         internal static bool IsVrchatProxyClip(AnimationClip clip)

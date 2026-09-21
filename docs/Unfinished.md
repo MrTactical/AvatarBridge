@@ -476,7 +476,41 @@ version and still cross. Every tester has to be on the same build for the atlas.
 - Stripping contacts from the transport, which is planned, removes the channel latch further
   down this file, and leaves the owner id as the one self guard that does not rest on geometry.
 
-## An avatar spun on the spot after landing, in VR only. FIXED 2026-09-12, for 4.6.1
+## An avatar spun on the spot after landing, in VR only. FIXED 2026-09-21 on dev, for 4.6.2
+
+**The 4.6.1 fix did not work, and the diagnosis below it is WITHDRAWN.** A second report on
+2026-09-21, wearing a 4.6.1 conversion of the same avatar family: prefab at `m_ApplyRootMotion: 0`,
+so the root-motion change applied, and the spin survived it. The reporter then reconverted with
+*Base / locomotion* unticked, nothing else changed, and the spin was gone. That is the measurement.
+
+**What the merged stock Base layer actually did, read from the client (decompiled 2026-09-21,
+`IKHandlerHalfBody.HandleRootAngle`, `BodySystem.SetHeadWeight`, FinalIK `Spine.Solve`):** its
+placeholder clips were masked out, as the earlier record says. Its JumpAndFall states carry
+VRChat's tracking controls, converted to Body Control: `HardLand` and `QuickLand` hand head, pelvis
+and legs to animation (weight 0), `RestoreTracking` hands them back. `SetHeadWeight(0)` zeroes
+`spine.rotationWeight`; the half-body VR handler then sets `maxRootAngle = 180`, and FinalIK's
+`Spine.Solve` skips its root-follows-head rotation entirely at 180, so the body stops turning with
+the headset. Weight back to 1 sets it to 25 and the root turns to catch up. The desktop handler has
+no such branch. Why that becomes a continuous spin rather than one catch-up turn is not read off
+the code; that it is the trigger is the reporter's test, and it explains VR-only on the first try
+where the mouse-versus-headset story was a guess.
+
+**The fix is the one withdrawn on 2026-09-13, without its guard.** `AnimatorMerger` now drops a
+Base layer whose every clip is a `proxy_` placeholder, tracking controls included, reporting it the
+way the hand-pose layers are reported and counting any parameter drivers that went with it. The
+guard was the mistake: those thirteen behaviours were the cause, not something to protect. The
+root-motion change stays as hygiene. Advisor side already done on 2026-09-13 (stock Base is
+recommended off). **Not yet run:** the corpus, which converts Base on for every avatar, so the
+default profile will show the drop on every stock-Base avatar; and nobody has worn 4.6.2.
+
+**Still open from the same family:** the Action layer's AFK states carry the same hand-offs, and
+Unity runs state behaviours on a weight-0 layer. AFK in ChilloutVR is headset-off detection. Not
+reported, not touched.
+
+*The record below is kept as written on 2026-09-12. Its chain is right up to the mask; its
+conclusion about root motion was wrong, and corpus run 401 verified only that the flag changed.*
+
+### Superseded record, 2026-09-12
 
 Reported wearing a 4.4.3 conversion, reproducible for the user in VR and not on desktop, and not
 reproducible here on desktop or under MockHMD. The video showed a rigid yaw at a roughly constant
