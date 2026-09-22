@@ -696,8 +696,10 @@ half-metre plug, hence big fixed patches. Half-float keeps every tag, so in game
 
 **Fix:** `YapsAtlasTag` returns `(1 + 2 * (h % 128)) / 255`, an exact 8-bit step; protocol 7 to 8.
 Cost: a slot clash passes the tag 1 in 128 instead of 256, and range still rejects it; 4.6.2 and
-4.6.3 are blind to each other through the atlas. **Not verified** in the editor or in game yet;
-the camera's Allow HDR toggle would have proven the cause first and was skipped.
+4.6.3 are blind to each other through the atlas. **Verified in the editor 2026-09-22** (Joe,
+deployed build): a socket beside the plug now resolves by atlas, overlay all green, and the patches
+are "a lot better". **Not verified in game.** The atlas passed there before, which fits an HDR
+camera; any camera in game without HDR would have had the same holes.
 
 ### The atlas scan leaves dead zones near the tip. MEASURED 2026-09-22, not fixed
 
