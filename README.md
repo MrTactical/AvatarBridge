@@ -1480,7 +1480,7 @@ Analyse sets them to match. Open it to override a measurement deliberately, not 
 | **Gesture (hand poses)** | on | Hand poses, converted to the CCK's own float threshold idiom. A Gesture layer holding **only** VRChat's `proxy_*` placeholders is left behind and ChilloutVR's own hand poses kept; see [fingers snapping](#converted-fingers-snap-to-a-pose-nobody-authored) |
 | **Base / locomotion** | off | Brings across what VRChat kept in Base: toggles, blendshapes, materials, additive motion, and grafts the avatar's own walk, crouch and crawl onto CVR's locomotion. Analyse recommends it when the avatar has a Base layer of its own that isn't GoGo, and recommends it off when all that layer holds is VRChat's stock locomotion copied in; a layer like that is left out of the conversion either way |
 | **Additive** | off | VRChat's additive layer, usually breathing |
-| **Action (emotes, AFK)** | off | Emotes and AFK. Off by default because Action takes full body control and misfires are very visible |
+| **Action (emotes, AFK)** | off | Emotes and AFK. Off by default because Action takes full body control and misfires are very visible. An Action layer holding **only** VRChat's `proxy_*` placeholders is left out even when this is on; see [spinning on the spot](#the-avatar-spins-on-the-spot-usually-after-landing-and-only-in-vr) |
 | **Preserve parameter sync state** | on | Keeps each parameter's local/synced status as VRChat had it, rather than syncing everything: **except parameters a menu control drives, which always sync**. VRChat's tight budget made de-syncing menu parameters a common trick, usually with VRCFury syncing them through machinery that doesn't survive conversion, so "not synced" is untrustworthy on anything with a control; a toggle others can't see the effect of is a broken feature, and ChilloutVR's 3200-bit budget can afford it. The report lists every parameter this re-synced |
 | **Expose menu-less synced parameters** | on | Synced parameters with no menu control still [need an entry to exist](#a-menu-control-appears-moves-syncs-and-does-nothing) in CVR |
 | **Convert contact senders/receivers** | on | VRChat contacts become [pointers and triggers](#contacts) |
@@ -2210,6 +2210,10 @@ hand the head to the animation while the landing plays, hand it back after. In C
 first hand-off tells the client to stop turning the body with your headset, and the second turns
 it to catch up, and in VR the avatar came out of it spinning. Desktop never steers the body by a
 headset, which is why it only ever showed in VR.
+
+VRChat's stock Action layer carries the same hand-offs on its AFK and emote states, and ChilloutVR
+sets AFK when you take the headset off. From 4.6.3 an Action layer of nothing but placeholders is
+left out too, so it only ever applies with *Action (emotes, AFK)* ticked.
 
 **Fixing an avatar you already converted doesn't need the update**: untick *Base / locomotion*
 and convert again. Confirmed by the person who reported it. Analyse recommends the box off for an

@@ -500,12 +500,21 @@ Base layer whose every clip is a `proxy_` placeholder, tracking controls include
 way the hand-pose layers are reported and counting any parameter drivers that went with it. The
 guard was the mistake: those thirteen behaviours were the cause, not something to protect. The
 root-motion change stays as hygiene. Advisor side already done on 2026-09-13 (stock Base is
-recommended off). **Not yet run:** the corpus, which converts Base on for every avatar, so the
-default profile will show the drop on every stock-Base avatar; and nobody has worn 4.6.2.
+recommended off). **Corpus run 404 (2026-09-21, accepted as the Yaps baseline):** 20 stock-Base
+avatars lost `[Base]` with the report line, the 8 authored ones kept it, no new exceptions.
+Shipped in 4.6.2. Nobody has worn 4.6.2 yet.
 
-**Still open from the same family:** the Action layer's AFK states carry the same hand-offs, and
-Unity runs state behaviours on a weight-0 layer. AFK in ChilloutVR is headset-off detection. Not
-reported, not touched.
+**Action layer, same family. CHANGED ON DEV 2026-09-22, for 4.6.3, unreleased.** Stock Action
+layers are proxy-only too, and their AFK and emote states carry the same Body Control hand-offs
+(corpus digest of a stock avatar: `Afk Init` one Body Control, `BlendOut` five, every clip
+`proxy_`). Unity runs state behaviours on a weight-0 layer, and the client feeds AFK from the
+headset proximity sensor, so the states fire. A proxy-only Action layer is now dropped whole, the
+same as Base. Only reaches users who tick *Action*, which is off by default and never applied by
+the advisor. **Not measured:** nobody reported a problem here and nothing was tried in game; the
+drop costs nothing visible because the layer has no clip that plays, which is why it went in on
+analysis alone. Emote states differ from AFK: the client already sets `maxRootAngle` 180 during its
+own emotes, so a hand-off there matches native behaviour. Corpus will show it on the next default
+run (it forces Action on).
 
 *The record below is kept as written on 2026-09-12. Its chain is right up to the mask; its
 conclusion about root motion was wrong, and corpus run 401 verified only that the flag changed.*
