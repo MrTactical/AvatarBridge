@@ -1214,6 +1214,17 @@ namespace AvatarBridge
                 if (skin == null || skin == primaryRenderer || skin.sharedMesh == null) continue;
                 var slots = SlotsWeightedTo(skin, plug.rootBone);
                 if (slots.Count == 0) continue;
+                // The converter's line too, from the shaft the bake settled on.
+                // Any weight on the chain would take a body touching the base,
+                // and bake all of it to bend a few vertices at the seam.
+                if (!YapsBaker.RidesPlug(skin, primary.Root != null ? primary.Root : plug.rootBone))
+                {
+                    report?.Skipped("YAPS", $"\"{skin.name}\" left out of the plug",
+                        "It meets the plug only at the plug's root bone, so it is taken for the body " +
+                        "the plug grows from and stays as it is. A part that should bend with the " +
+                        "shaft needs weights on the shaft's own bones.");
+                    continue;
+                }
 
                 // A mesh with a plug of its own is not this plug's to take. Both would bake
                 // the same material and whichever ran last would win, so which frame

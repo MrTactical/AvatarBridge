@@ -195,11 +195,11 @@ namespace AvatarBridge
                 return;
             }
 
-            // Every OTHER mesh built as part of the plug, a tip or a second half
-            // on a renderer of its own, baked on this frame and length so the
-            // two bend as one piece, as the toolkit does. Only a mesh MOST of
-            // which rides the plug's bones: the body touching the base has a few
-            // vertices there too, and its materials are not the plug's.
+            // Every OTHER mesh built as part of the plug, a tip, a second half or
+            // a ring or harness on a renderer of its own, baked on this frame and
+            // length so they bend as one piece, as the toolkit does. Not the body
+            // touching the base: it meets the root bone and goes no further, and
+            // its materials are not the plug's. YapsBaker.RidesPlug draws the line.
             var extras = new List<BridgeContext.YapsPlugMesh>();
             var extraMaterials = new List<Material>();
             var others = result.FromSkinnedMesh
@@ -208,7 +208,15 @@ namespace AvatarBridge
             foreach (var skin in others)
             {
                 if (skin == renderer || skin.sharedMesh == null) continue;
-                if (YapsBaker.CountVerticesUnder(skin, result.Root) * 2 <= skin.sharedMesh.vertexCount) continue;
+                if (!YapsBaker.RidesPlug(skin, result.Root))
+                {
+                    if (YapsBaker.CountVerticesUnder(skin, result.Root) > 0)
+                        ctx.Report.Skipped(Category, $"\"{skin.name}\" left out of the plug at {where}",
+                            "It meets the plug only at the plug's root bone, so it is taken for the body " +
+                            "the plug grows from and stays as it is. A part that should bend with the " +
+                            "shaft needs weights on the shaft's own bones.");
+                    continue;
+                }
                 if (ctx.YapsPlugs.Any(p => p.Renderer == skin || p.Extras.Any(e => e.Renderer == skin))) continue;
                 var extra = YapsBaker.Bake(skin, result.Root, ctx.OutputDir + "/YAPS", ctx.Report,
                     out string extraFailure, shareFrameWith: result);

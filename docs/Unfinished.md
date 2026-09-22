@@ -691,6 +691,19 @@ share the plug's armature and are not baked (sheath, a ring, a harness, fluff), 
 shaft would stay straight while it bends: floating pieces, not tearing. Which of them sit on the
 shaft needs their meshes, not in the output folder.
 
+### An accessory riding the shaft stayed rigid while the plug bent. FIXED ON DEV 2026-09-22, for 4.6.3
+
+Joe, from the reporter: the torn part is one of the accessories. The converter folded another mesh
+into the plug only when MORE than half of it rode the plug's bones, silently, so a harness whose
+straps run elsewhere stayed rigid and the shaft bent through it. The toolkit took any mesh with any
+weight on the chain, which would take a body touching the base and bake all of it.
+
+**Fix, one rule for both builders:** `YapsBaker.RidesPlug`. A mesh joins when more than half of it
+is on the chain, or when any vertex is held more than half by a bone PAST the root. The body meets
+the root and goes no further, so it stays out, and the report now names each mesh left out.
+`YapsRidesPlugTest` 5/5. **Not verified** on the reporter's avatar (no meshes here) or in game.
+A single-bone plug has no "past the root", so an accessory on one still needs to be mostly plug.
+
 ### Half of all atlas cells were dead on a camera without HDR. FIXED ON DEV 2026-09-22, for 4.6.3
 
 The patches beside a plug where a socket never engaged, in the editor. The debug overlay put a

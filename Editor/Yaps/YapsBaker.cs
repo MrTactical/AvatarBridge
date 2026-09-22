@@ -432,6 +432,34 @@ namespace AvatarBridge
             return CountWeighted(skin, BonesUnder(skin.bones, level));
         }
 
+        // A mesh that belongs to the plug, not one that only meets it. The
+        // body meets a plug at its root bone and goes no further; a ring or a
+        // harness rides the shaft, so it joins however little of it is there.
+        // Before, only a mesh MOST of which rode the plug joined, and a harness
+        // whose straps run elsewhere stayed rigid while the shaft bent through
+        // it. Past the root means mostly held there: an auto-weighted body can
+        // carry a trace of the second bone.
+        public static bool RidesPlug(Renderer renderer, Transform root)
+        {
+            var skin = renderer as SkinnedMeshRenderer;
+            if (skin == null || root == null || skin.sharedMesh == null
+                || skin.bones == null || skin.bones.Length == 0)
+            {
+                return false;
+            }
+            var chain = BonesUnder(skin.bones, root);
+            int on = CountWeighted(skin, chain);
+            if (on == 0) return false;
+            if (on * 2 > skin.sharedMesh.vertexCount) return true;
+            chain.RemoveWhere(b => skin.bones[b] == root);
+            if (chain.Count == 0) return false;
+            foreach (var w in skin.sharedMesh.boneWeights)
+            {
+                if (WeightOnPlug(w, chain) > 0.5f) return true;
+            }
+            return false;
+        }
+
         static int CountWeighted(SkinnedMeshRenderer skin, HashSet<int> bones)
         {
             if (bones.Count == 0)
