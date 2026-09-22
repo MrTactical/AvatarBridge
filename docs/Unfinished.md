@@ -683,6 +683,14 @@ seen with no body round the hole. Pending an A/B against a ring, which carries s
 no taper. The white and magenta markers sit slightly apart even at rest, so the bones are a little
 off bake pose; small, unexplained.
 
+**Also measured 2026-09-22, "some parts hidden, some not" (Joe's theory):** the plug is ONE renderer
+with five slots (shaft, condom, an invisible slot, gold, leather), and all 14843 vertices are baked
+fully on the plug: no partial weights, none left out. Its hidden parts are held shapes, baked at
+their held weights, so baking "everything on" would bake the hidden parts IN. Four other renderers
+share the plug's armature and are not baked (sheath, a ring, a harness, fluff), so any of them on the
+shaft would stay straight while it bends: floating pieces, not tearing. Which of them sit on the
+shaft needs their meshes, not in the output folder.
+
 ### Half of all atlas cells were dead on a camera without HDR. FIXED ON DEV 2026-09-22, for 4.6.3
 
 The patches beside a plug where a socket never engaged, in the editor. The debug overlay put a
