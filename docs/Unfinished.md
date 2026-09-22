@@ -640,6 +640,26 @@ IK. Needs the reporter's SDK version, which bone, and what the wrong result actu
 
 ## Loose ends, small but real
 
+### Blendshapes a plug renderer holds came undone mid-bend. FIXED ON DEV 2026-09-22, for 4.6.3
+
+Field report on 4.6.2, with the output folder: near a socket the plug grew torn translucent pieces
+and black shards, and a ring appeared at the tip; at rest it looked right. The plug renderer held
+five blendshapes at 100 with no animation, among them toggles that hide parts of the plug mesh.
+
+**Measured, not reasoned:** the shipped bake decoded clean (no NaN, every vertex inside the length,
+blend weight 1), so the data was not the fault. The deform lerps from the skinned vertex to one
+rebuilt from the bake, and the bake's rest pose is the raw mesh: baked shapes enter only through
+`_YAPS_ShapeWeights`, which started at 0 and are written only by mirrored animation curves, and a
+held shape outside the baked sixteen was nowhere. So whatever a held shape did was undone as the
+bend engaged.
+
+**Fix, in `YapsBaker` so both builders and the swap path get it:** a baked shape's held weight is
+the material's starting weight (`Result.ShapeWeights`, written by `Apply`); an unbaked held shape
+is folded into the rest pose with the same turn as a shape block. Plugs only: sockets bake with
+`objectFrame` and stage their shapes by depth. `YapsHeldShapeTest` 7/7. **Not verified:** on the
+reporter's avatar (no mesh here) or in game. A multi-frame shape is folded as its last frame
+scaled, exact for one frame only. The frame and length are still measured without held shapes.
+
 ### "Reconverting stacks MagicaCloth" was never stacking. MEASURED 2026-09-16
 
 Field report (KJoy, 2026-09-16, video `Downloads/Unity_kD7oYj2ziX.mp4`): reconverting the same avatar

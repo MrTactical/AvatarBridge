@@ -43,6 +43,9 @@ namespace AvatarBridge
             // chain than the one that was baked.
             public Transform Root;
             public List<string> Shapes = new List<string>();
+            // Each baked shape's weight on the renderer at bake time, 0..1.
+            // The material starts there; an animation overrides it.
+            public float[] ShapeWeights;
             public List<string> MovingShapes = new List<string>();   // every shape that moves the plug
 
             // The frame the deform works in, world space at bake time. Not
@@ -261,6 +264,22 @@ namespace AvatarBridge
             var shapes = CaptureShapes(mesh, skin, toPlug, activeWeights, placements, out var shapeNames,
                 out var movingShapes, wantedShapes);
 
+            // A shape the renderer simply holds is part of the mesh as worn, but
+            // the bent path rebuilds each vertex from the bake. Left out, a part
+            // hidden by a shape at 100 reappeared the moment the plug bent.
+            float[] heldWeights = null;
+            if (!objectFrame && skin != null)
+            {
+                int held = HoldShapes(mesh, skin, toPlug, placements, shapeNames,
+                    positions, normals, tangents, out heldWeights);
+                if (held > 0)
+                {
+                    report?.Converted(Category, $"{renderer.name}: kept {held} blendshape(s) it holds",
+                        "They sit at a fixed value on the renderer, so the plug keeps them while it " +
+                        "bends instead of snapping back to the unshaped mesh.");
+                }
+            }
+
             var texture = WriteTexture(positions, normals, tangents, activeWeights, count, shapes);
             Directory.CreateDirectory(outputDir);
             // Named for the plug that wrote it, never numbered. A unique path is
@@ -323,6 +342,7 @@ namespace AvatarBridge
                 Renderer = renderer,
                 Root = plugRoot,
                 Shapes = shapeNames,
+                ShapeWeights = heldWeights,
                 MovingShapes = movingShapes,
                 Origin = origin,
                 Rotation = rotation,
@@ -518,6 +538,15 @@ namespace AvatarBridge
             target.SetFloat("_YAPS_BakeGirth", 1f);
             target.SetFloat("_YAPS_FrameFromVertex", skinned ? 1f : 0f);
             target.SetFloat("_YAPS_ShapeCount", result.Shapes.Count);
+            if (result.ShapeWeights != null)
+            {
+                string[] packs = { "_YAPS_ShapeWeights", "_YAPS_ShapeWeights2", "_YAPS_ShapeWeights3", "_YAPS_ShapeWeights4" };
+                for (int p = 0; p < packs.Length; p++)
+                {
+                    float W(int k) => p * 4 + k < result.ShapeWeights.Length ? result.ShapeWeights[p * 4 + k] : 0f;
+                    target.SetVector(packs[p], new Vector4(W(0), W(1), W(2), W(3)));
+                }
+            }
             EditorUtility.SetDirty(target);
         }
 
@@ -841,6 +870,47 @@ namespace AvatarBridge
                 names.Add(mesh.GetBlendShapeName(index));
             }
             return captured;
+        }
+
+        // Held weights, split by what the shader can see. A baked shape keeps
+        // its weight on the material; any other held shape is folded into the
+        // rest pose, the same turn as a shape block. Returns how many were held.
+        // ponytail: last frame scaled by weight, exact only for one-frame shapes.
+        static int HoldShapes(Mesh mesh, SkinnedMeshRenderer skin, Matrix4x4 toPlug,
+            List<Matrix4x4> placements, List<string> baked,
+            Vector3[] positions, Vector3[] normals, Vector3[] tangents, out float[] bakedWeights)
+        {
+            bakedWeights = new float[baked.Count];
+            int held = 0;
+            int count = positions.Length;
+            Vector3[] dp = null, dn = null, dt = null;
+            for (int s = 0; s < mesh.blendShapeCount; s++)
+            {
+                float w = skin.GetBlendShapeWeight(s) * 0.01f;
+                if (Mathf.Abs(w) < 1e-4f)
+                {
+                    continue;
+                }
+                held++;
+                int slot = baked.IndexOf(mesh.GetBlendShapeName(s));
+                if (slot >= 0)
+                {
+                    bakedWeights[slot] = w;
+                    continue;
+                }
+                dp ??= new Vector3[count];
+                dn ??= new Vector3[count];
+                dt ??= new Vector3[count];
+                mesh.GetBlendShapeFrameVertices(s, mesh.GetBlendShapeFrameCount(s) - 1, dp, dn, dt);
+                for (int i = 0; i < count; i++)
+                {
+                    var place = i < placements.Count ? placements[i] : Matrix4x4.identity;
+                    positions[i] += toPlug.MultiplyVector(place.MultiplyVector(dp[i])) * w;
+                    normals[i] = (normals[i] + toPlug.MultiplyVector(place.MultiplyVector(dn[i])) * w).normalized;
+                    tangents[i] = (tangents[i] + toPlug.MultiplyVector(place.MultiplyVector(dt[i])) * w).normalized;
+                }
+            }
+            return held;
         }
 
         // Whether a climbed level swallowed the body rather than the plug. The
