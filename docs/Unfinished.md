@@ -660,6 +660,30 @@ is folded into the rest pose with the same turn as a shape block. Plugs only: so
 reporter's avatar (no mesh here) or in game. A multi-frame shape is folded as its last frame
 scaled, exact for one frame only. The frame and length are still measured without held shapes.
 
+**2026-09-22, the test build did not fix it.** The report confirms the fix ran (5 held shapes, all
+five in the baked sixteen, every current slot starting them at 1), and the plug still tears near a
+native socket too: fine up to the socket, a cone and brown/gold sheets past it, and stretched
+toward a socket a length and a half away. Measured and ruled out, each on the shipped files:
+- **Physics on the plug's bones. WITHDRAWN as the cause.** Four cloth chains move bones inside
+  the plug (one rooted just above it, gravity 1, no ignores), which WOULD break the per-vertex
+  frame in play. But the screenshots were outside Play mode, and turning the four off changed
+  nothing. Still a real risk in game, unmeasured.
+- **Bake data**, decoded: no NaN, all inside the length, weight 1.
+- **Bones scaled to zero** to hide parts: none in the prefab.
+- **Held shapes collapsing a normal or tangent** into a bad frame: none below 0.2 length.
+- **Length measured without held shapes**: 0.582 m worn against 0.586 m baked.
+Open, and not reproducible here without the plug's mesh, which is not in the output folder.
+
+### The atlas scan leaves dead zones near the tip. MEASURED 2026-09-22, not fixed
+
+Joe found patches beside a plug where a socket never engages. `Dev/Probes/Hlsl/atlas-reach.py`
+mirrors the reader's level choice and 3x3x3 block: the level is `round`ed, so a plug just under a
+level threshold reads cells a quarter of its length, and whether the block even reaches its own
+tip depends on where the plug stands in the world. A socket AT the tip is missed in 31% of
+placements at 0.25 m, 60% at 0.30 m, 59% at 1.2 m. Taking the level by `ceil` instead removes every
+miss at the tip. Reader-only (writers publish every level), so no protocol bump. Cost: coarser
+cells, so close sockets share octants more often. Not yet in game.
+
 ### "Reconverting stacks MagicaCloth" was never stacking. MEASURED 2026-09-16
 
 Field report (KJoy, 2026-09-16, video `Downloads/Unity_kD7oYj2ziX.mp4`): reconverting the same avatar
