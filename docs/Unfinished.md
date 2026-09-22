@@ -173,6 +173,14 @@ falloff, one-way rings, the tag dropdown, multi-mesh plugs, the Mesh-to-None cle
     applies, and the advisor calls it with no `AvatarUsesGogo` gate. `AdvisorTest` 15/15. Expected in
     the next advisor run: Base applied on 8 avatars, down from 29 (the 5 Sootie scenes and the 3
     mixed Chimera/Rotormantid).
+    **Advisor run 405 (2026-09-22, on 4.6.2, accepted as the first advisor baseline):** Base
+    applied on 9, not 8. The ninth was a GoGo demo whose Base controller is GoGo's `Locomotion`
+    (placeholders only) plus an EMPTY add-on layer. Probed in batch: the empty layer fails
+    `IsProxyOnlyLayer` for having no clips, so "every layer is placeholders" never held and the
+    stock layer passed as the avatar's own; the merge then dropped everything, so the tick merged
+    nothing. **Fixed on dev 2026-09-22:** the placeholder test skips stateless layers
+    (`AdvisorTest` 16/16). The next advisor run should differ from the baseline on that one avatar
+    only, Base off. Exceptions (11) and errored avatars (4) same as run 402.
     `Dev/Corpus/run-corpus.sh --advisor` sets `AVATARBRIDGE_PROFILE=advisor` (and unsets it
     otherwise, so a stray value cannot turn a normal run into this one), and digests land under
     `Regression/Yaps/Advisor` or `Regression/Advisor`. Each avatar starts from `new BridgeSettings()`

@@ -148,6 +148,18 @@ namespace AvatarBridge.Regression
                 fail += Check("stock locomotion with Base off: never recommended on",
                     Find(AvatarAdvisor.Analyse(stockDescriptor, new BridgeSettings()), "Base / locomotion") == null);
 
+                // An empty add-on layer beside the stock one has no clips, so it failed
+                // the placeholder test and the stock layer passed as the avatar's own.
+                var withEmpty = BaseController("proxy_run_forward");
+                withEmpty.AddLayer(new UnityEditor.Animations.AnimatorControllerLayer
+                {
+                    name = "HandsInPockets",
+                    stateMachine = new UnityEditor.Animations.AnimatorStateMachine(),
+                });
+                stockDescriptor.baseAnimationLayers[0].animatorController = withEmpty;
+                fail += Check("stock locomotion plus an empty layer: never recommended on",
+                    Find(AvatarAdvisor.Analyse(stockDescriptor, new BridgeSettings()), "Base / locomotion") == null);
+
                 stockDescriptor.baseAnimationLayers[0].animatorController = BaseController("WalkForward");
                 var ownBase = Find(AvatarAdvisor.Analyse(stockDescriptor, new BridgeSettings()), "Base / locomotion");
                 fail += Check("an authored Base layer with Base off: still recommended on",
