@@ -701,8 +701,19 @@ weight on the chain, which would take a body touching the base and bake all of i
 **Fix, one rule for both builders:** `YapsBaker.RidesPlug`. A mesh joins when more than half of it
 is on the chain, or when any vertex is held more than half by a bone PAST the root. The body meets
 the root and goes no further, so it stays out, and the report now names each mesh left out.
-`YapsRidesPlugTest` 5/5. **Not verified** on the reporter's avatar (no meshes here) or in game.
-A single-bone plug has no "past the root", so an accessory on one still needs to be mostly plug.
+`YapsRidesPlugTest` 5/5. **Verified in the editor 2026-09-22** by the reporter on sep22c: "the
+accessories are not broken anymore". Not in game. A single-bone plug has no "past the root", so an
+accessory on one still needs to be mostly plug.
+
+### In the editor a plug enters a socket on its own shaft. SUSPECTED 2026-09-22
+
+Right after sep22c the reporter's tip "bulges and breaks" as a socket nears. Bulge and squeeze are
+0 on every slot, so not a knob. The plug carries its own SPS hole (a fluid target) at the seventh
+of its chain bones, and a socket icon sits on the tip in three of four shots. Own sockets are
+refused by owner id, which comes from the player and is 0 in the editor, so there nothing is
+refused; the tag fix likely just made its atlas cell readable. **Pending:** the same approach with
+that socket switched off. Proposed fix: a stand-in owner id per avatar in edit mode, so the
+editor refuses own sockets the way the game does.
 
 ### Half of all atlas cells were dead on a camera without HDR. FIXED ON DEV 2026-09-22, for 4.6.3
 
