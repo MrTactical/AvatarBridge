@@ -674,6 +674,15 @@ toward a socket a length and a half away. Measured and ruled out, each on the sh
 - **Length measured without held shapes**: 0.582 m worn against 0.586 m baked.
 Open, and not reproducible here without the plug's mesh, which is not in the output folder.
 
+**2026-09-22, the debug overlay on the reporter's plug:** resolve healthy in every shot (atlas
+green, bending, frame recovered, bake read). Socket at the tip or mid-shaft, all green; no socket,
+grey. So the finder is not it, and the 8-bit tag fix does not touch this. The cone past a test hole
+floating in air runs about 0.27 of a length past it (140 of 520 px), against the hole taper's 0.10
+to 0.30 by default: the part a real body hides. **Candidate, not proven:** the "cone" is the taper
+seen with no body round the hole. Pending an A/B against a ring, which carries straight through with
+no taper. The white and magenta markers sit slightly apart even at rest, so the bones are a little
+off bake pose; small, unexplained.
+
 ### Half of all atlas cells were dead on a camera without HDR. FIXED ON DEV 2026-09-22, for 4.6.3
 
 The patches beside a plug where a socket never engaged, in the editor. The debug overlay put a
