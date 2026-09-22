@@ -674,7 +674,26 @@ toward a socket a length and a half away. Measured and ruled out, each on the sh
 - **Length measured without held shapes**: 0.582 m worn against 0.586 m baked.
 Open, and not reproducible here without the plug's mesh, which is not in the output folder.
 
+### Half of all atlas cells were dead on a camera without HDR. FIXED ON DEV 2026-09-22, for 4.6.3
+
+The patches beside a plug where a socket never engaged, in the editor. The debug overlay put a
+socket in one: top 4 red, so the atlas READ the socket's slot and threw it out on the cell tag,
+while the preview found the same socket. Moved to half a length it went green.
+
+The writer stores `0.5 + tag / 2` with `tag = k / 255`, and the reader allows 0.001. On an 8-bit
+target every even k lands half a step off and reads back 1/255 wrong: 128 of 256 tags dead
+(`Dev/Probes/Hlsl/atlas-tag.py`). Which cells die is fixed by the hash, and cells are 32 cm at a
+half-metre plug, hence big fixed patches. Half-float keeps every tag, so in game it passed.
+
+**Fix:** `YapsAtlasTag` returns `(1 + 2 * (h % 128)) / 255`, an exact 8-bit step; protocol 7 to 8.
+Cost: a slot clash passes the tag 1 in 128 instead of 256, and range still rejects it; 4.6.2 and
+4.6.3 are blind to each other through the atlas. **Not verified** in the editor or in game yet;
+the camera's Allow HDR toggle would have proven the cause first and was skipped.
+
 ### The atlas scan leaves dead zones near the tip. MEASURED 2026-09-22, not fixed
+
+**WITHDRAWN as the cause of Joe's dead zones**, which were the tag above: the overlay showed the
+socket's slot read and rejected, not missed. The reach problem below is modelled, not observed.
 
 Joe found patches beside a plug where a socket never engages. `Dev/Probes/Hlsl/atlas-reach.py`
 mirrors the reader's level choice and 3x3x3 block: the level is `round`ed, so a plug just under a

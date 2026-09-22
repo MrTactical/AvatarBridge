@@ -1577,3 +1577,12 @@ So the kind is now a factor of three: `1 + kind + 3 * number`, kind 0 ring, 1 ho
 largest 48. The reader decodes a one-way ring as a ring and skips it when the plug's base is
 behind its facing, `dot(forward, base - socket) < 0`; the base because the shaft goes through a
 ring and the base never does. Marker lights cannot say it, so a ring found by light is two-way.
+
+## An 8-bit cell tag, protocol 8 (2026-09-22)
+
+The position pixel's alpha is `0.5 + tag / 2`, and the tag was `k / 255` over eight bits. Every
+other channel was sized for an 8-bit target (tags five bits, owner six); this one was not. An even
+k lands half a step off, reads back 1/255 wrong against the 0.001 window, and 128 of 256 tags die
+on any camera without HDR, the editor's included. The tag is now `(1 + 2 * (h % 128)) / 255`, which
+stores as `(128 + k) / 255`, exact on 8-bit and inside the window on half-float.
+`Dev/Probes/Hlsl/atlas-tag.py` checks both.

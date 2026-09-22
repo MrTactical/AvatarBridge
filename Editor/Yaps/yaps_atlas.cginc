@@ -4,7 +4,7 @@
 #define YAPS_ATLAS_INCLUDED
 
 // Bump on any change below. It rides the tag.
-#define YAPS_ATLAS_VERSION 7
+#define YAPS_ATLAS_VERSION 8
 
 // 4096 cells. Two homes, so a clash needs both.
 #define YAPS_ATLAS_GRID    64
@@ -157,6 +157,13 @@ int YapsAtlasHash2(int3 c)
 }
 
 // Who owns the payload. An offset alone cannot say.
+//
+// Seven bits, odd numerators. The writer stores 0.5 + tag / 2, which
+// is (128 + k) / 255: an exact step on an 8-bit target. k / 255 over
+// eight bits put every even k half a step off, read back 1/255 wrong
+// against a 0.001 window, and left half of all cells dead on any
+// camera without HDR (protocol 8). A slot clash now passes the tag
+// 1 in 128, not 256; the range test behind it still throws it out.
 float YapsAtlasTag(int3 c)
 {
     int h = c.x * 19349663;
@@ -164,7 +171,7 @@ float YapsAtlasTag(int3 c)
     h ^= c.z * 73856093;
     h ^= YAPS_ATLAS_VERSION * 1566083941;
     h = h & 0x7FFFFF;
-    return (h % 256) / 255.0;
+    return (1 + 2 * (h % 128)) / 255.0;
 }
 
 // THE LAYOUT FOLLOWS THE TARGET. The full rect is 932 by 596, and a view
