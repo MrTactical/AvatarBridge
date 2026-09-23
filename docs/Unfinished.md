@@ -24,6 +24,19 @@ digests the conversion only. Design:
   `u1` written per `SV_VertexID` from the vertex stage, a skinned strip bent by a turned bone, 64 of
   64 vertices back and 0.000 mm from Unity's own `BakeMesh`, in batch with graphics on. So the
   bend can be read as numbers; the float-target fallback is not needed here.
+- **Step two BUILT 2026-09-23:** `Dev/Tester/YapsBendTester` + `YapsBendCapture.shader`. A real
+  converted avatar (Non Corpus Zone, Alexa, 0.649 m plug) with its plug slots on a capture shader
+  making the patcher's two calls on the current includes; tier read through the shipped "Resolved
+  by" view, calibrated per vertex from two known views (gap = full and Resolved by = a quarter with
+  nothing resolved; an extent along the marker axis read a full length as 0.33 and was dropped).
+  Rule 1, no socket no bend: **0.00 mm**, pass. Rule 2, an atlas-only hole at 0.8 and 1.1 lengths
+  on 25 directions: **27 of 50 found, the same on HDR and 8-bit**. The first miss read atlas
+  target 0.70 and taps 0.10: the camera was live and no cell was read, so REACH, not the tag.
+  With the level taken by `ceil` (tried in the test project only): **50 of 50** on both.
+  **Not shipped:** the model says `ceil` leaves a 0.586 m plug on the same level, so it is not the
+  whole fix. A rule that guarantees coverage (scan centred on the root, cell at least 1.2 lengths)
+  wants the tester on several plug lengths AND a neighbour-socket scenario first, because coarser
+  cells put nearby sockets in one octant, where the second to draw hides the first.
 - **Scenarios, seeded, run on their own.** Sockets approaching from a shell of directions, swept
   past the tip, withdrawn; locomotion with physics on; the Animator Tester's toggle flips; HDR,
   8-bit and small views; a second avatar for ownership. A failure saves a repro scene.

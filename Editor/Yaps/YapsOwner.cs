@@ -432,6 +432,12 @@ namespace AvatarBridge
         {
             if (EditorApplication.timeSinceStartup < _next) return;
             _next = EditorApplication.timeSinceStartup + 0.5;
+            Apply();
+        }
+
+        // Also called directly by the runtime tester, where no editor frame ticks.
+        internal static void Apply()
+        {
             if (_block == null) _block = new MaterialPropertyBlock();
             bool changed = false;
             foreach (var avatar in UnityEngine.Object.FindObjectsOfType<CVRAvatar>(true))
