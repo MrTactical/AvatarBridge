@@ -313,10 +313,12 @@ namespace AvatarBridge
                 string path = AnimationUtility.CalculateTransformPath(r.transform, root);
                 var mesh = MeshOf(r);
 
-                // This tool's own atlas objects. Not rejected with a reason,
-                // because there is no question to answer: they are not the
-                // user's to lift out.
-                if (r.sharedMaterials != null && r.sharedMaterials.Any(YapsMarks.IsAtlasMaterial)) continue;
+                // This tool's own atlas and socket readout objects. Not
+                // rejected with a reason, because there is no question to
+                // answer: they are not the user's to lift out. A plug's
+                // readout is one slot of the plug and does not count.
+                if (r.sharedMaterials != null && (r.sharedMaterials.Any(YapsMarks.IsAtlasMaterial)
+                    || r.sharedMaterials.Length > 0 && r.sharedMaterials.All(YapsMarks.IsReadoutMaterial))) continue;
 
                 // One bone, or none. More than one is clothing.
                 string bone = null;

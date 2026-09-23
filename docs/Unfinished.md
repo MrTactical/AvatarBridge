@@ -80,6 +80,18 @@ light, a plug seen.
   it showed at once: the largest level of one socket read red (another socket holds that bucket,
   so a plug whose length picks level 3 misses it there; not chased), and d3d11 refuses
   `levels[lv]` inside a `[loop]`, so the shader masks.
+- **Corpus 407 (2026-09-23), not clean, three fixes on dev.** Deployed before the socket readout,
+  so it covers the plug half only. Expected and seen: 19 proxy-only Action layers dropped (two of
+  them carried VRCFury tracking-control drivers, the same hand-offs), 15 readout layers and rows,
+  the settings stamp without `yapsDebugOverlay`, no new stuck toggle, one avatar back under the
+  sync cap. Not expected: every converted plug warned that its readout "could not carry" two
+  settings, which were the patcher's markers (`_YAPS_OriginalEditor`, `_YAPS_SourceShader`), and
+  every avatar with two or more readouts gained a "materials share a shader" set in the weigh
+  pass, the readouts, which each hold their own plug's values and cannot merge. `Copy` skips the
+  markers; `YapsMarks.IsReadoutMaterial` keeps readouts out of the weigh pass's atlas advice and,
+  for a socket's own renderer, out of the survey's lift-off candidates, as the atlas writers are.
+  The probe checks the first on a real patched plug and passes on three avatars; the survey half
+  is unmeasured (407 had no socket readouts). A clean corpus run is still owed before release.
 
 *4.6.0 shipped 2026-09-12: tag `v4.6.0`, merge `b51296e`, both packages published, 98 commits
 since 4.5.1. The atlas carries tags, one-way rings, the per-plug own-sockets checklist and an

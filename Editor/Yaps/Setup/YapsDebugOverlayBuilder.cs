@@ -241,7 +241,7 @@ namespace AvatarBridge
             {
                 return false;
             }
-            if (m.shader != null && (m.shader.name == ShaderName || m.shader.name == SocketShaderName))
+            if (YapsMarks.IsReadoutMaterial(m))
             {
                 return true;
             }
@@ -491,6 +491,12 @@ namespace AvatarBridge
             {
                 string name = ShaderUtil.GetPropertyName(from.shader, i);
                 if (!name.StartsWith("_YAPS_", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                // The patcher's markers, naming the shader it started from.
+                // Nothing a cell reads.
+                if (name == YapsShaderGUI.OriginalEditorProperty || name == YapsShaderPatcher.SourceShaderProperty)
                 {
                     continue;
                 }

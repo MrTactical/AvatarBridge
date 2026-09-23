@@ -94,6 +94,17 @@ namespace AvatarBridge.Regression
                     int slot = Array.FindIndex(r.sharedMaterials, YapsDebugOverlayBuilder.IsReadout);
                     Check(slot >= 0 && r.sharedMaterials[slot].GetFloat("_YAPS_ReadoutOn") == 0f,
                         $"{plug.name}: readout slot {slot}, hidden on the material");
+                    // The converter reports what the readout could not carry
+                    // off the plug's material. The patcher's markers are not
+                    // settings and must not be counted.
+                    var own = r.sharedMaterials.Where((m, i) => i != slot && m != null && m.HasProperty("_YAPS_Bake")).FirstOrDefault();
+                    var carried = new BridgeReport();
+                    typeof(YapsDebugOverlayBuilder).GetMethod("Copy", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+                        .Invoke(null, new object[] { own, new Material(r.sharedMaterials[slot]), plug.name, carried });
+                    Check(own != null && own.HasProperty(YapsShaderGUI.OriginalEditorProperty) && carried.Entries.Count == 0,
+                        $"{plug.name}: the readout carries every setting of a patched plug ({string.Join("; ", carried.Entries.Select(e => e.Detail))})");
+                    Check(YapsMarks.IsReadoutMaterial(r.sharedMaterials[slot]) && !YapsMarks.IsReadoutMaterial(own),
+                        $"{plug.name}: the readout slot, and only it, reads as a readout to the weigh pass and the survey");
                     string rpath = AnimationUtility.CalculateTransformPath(r.transform, go.transform);
                     Check(shown != null && AnimationUtility.GetCurveBindings(shown).Any(b => b.path == rpath
                             && b.propertyName == YapsToggles.Bound("_YAPS_ReadoutOn")),
@@ -259,7 +270,9 @@ namespace AvatarBridge.Regression
             {
                 YapsSocketBuilder.Build(socket);
                 var t = socket.transform.Find("YAPS Atlas/" + YapsDebugOverlayBuilder.SocketReadoutName);
-                Check(t != null && t.GetComponent<Renderer>() != null, $"{socket.name}: socket readout built");
+                Check(t != null && t.GetComponent<Renderer>() != null
+                      && t.GetComponent<Renderer>().sharedMaterials.All(YapsMarks.IsReadoutMaterial),
+                    $"{socket.name}: socket readout built, read as the toolkit's own");
                 if (t != null) readouts[socket] = t.GetComponent<Renderer>();
             }
             if (readouts.Count == 0) return;
