@@ -192,6 +192,9 @@ namespace AvatarBridge
                 if (lighthouse != null) done.Add(lighthouse);
                 string owner = YapsOwner.Wire(avatar);
                 if (owner != null) done.Add(owner);
+                string readout = null;
+                foreach (var controller in YapsOwner.Targets(avatar)) readout = YapsDebugOverlayBuilder.Menu(avatar, controller) ?? readout;
+                if (readout != null) done.Add(readout);
             }
             DropAtlasIfUnused(top, done);
 
@@ -454,14 +457,6 @@ namespace AvatarBridge
                 }
             }
 
-            // The readout toggle, once no plug carries a readout.
-            if (!plugs.Any(p => p != null && p.readoutRenderer != null))
-            {
-                string readout = null;
-                foreach (var controller in YapsOwner.Targets(avatar)) readout = YapsDebugOverlayBuilder.Menu(avatar, controller) ?? readout;
-                if (readout != null) done.Add(readout);
-            }
-
             // The toolkit's objects with nothing of the toolkit's above them.
             foreach (var t in top.GetComponentsInChildren<Transform>(true).ToList())
             {
@@ -478,6 +473,15 @@ namespace AvatarBridge
                     done.Add($"the empty \"{shell.name}\"");
                     Undo.DestroyObjectImmediate(shell.gameObject);
                 }
+            }
+
+            // The readout toggle, once nothing carries a readout. After the
+            // sweep above, which can take a socket's readout with its atlas.
+            if (!top.GetComponentsInChildren<Renderer>(true).Any(r => r.sharedMaterials.Any(YapsDebugOverlayBuilder.IsReadout)))
+            {
+                string readout = null;
+                foreach (var controller in YapsOwner.Targets(avatar)) readout = YapsDebugOverlayBuilder.Menu(avatar, controller) ?? readout;
+                if (readout != null) done.Add(readout);
             }
             DropAtlasIfUnused(top, done);
 

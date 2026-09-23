@@ -363,6 +363,8 @@ namespace AvatarBridge
             {
                 if (!YapsAtlas.Enabled) return;
                 YapsAtlas.AddWriter(atlas, YapsAtlas.KindOf(socket), socket.tags);
+                // Its readout, where a menu can show it.
+                if (socket.GetComponentInParent<CVRAvatar>(true) != null) YapsDebugOverlayBuilder.AddSocketReadout(atlas);
             });
 
             Replace(t, PointersName, pointers =>

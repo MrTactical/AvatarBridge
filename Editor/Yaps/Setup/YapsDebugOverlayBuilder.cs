@@ -32,6 +32,9 @@
 // Built on every plug of an avatar, hidden. One synced menu toggle shows
 // them all, so a helper sees the plug as the wearer's own client resolves
 // it. A plug on a prop has no menu to show it, and gets none.
+//
+// Every socket of an avatar gets one too, a quad of its own beside its
+// atlas writer (YAPS/Socket Readout), on the same toggle.
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
@@ -66,6 +69,9 @@ namespace AvatarBridge
         const string MenuLabel = "YAPS readout";
         const string LayerName = "YAPS readout";
         const string Property = "_YAPS_ReadoutOn";
+        const string SocketShaderName = "YAPS/Socket Readout";
+        public const string SocketReadoutName = "Socket Readout";
+        const string SharedFolder = "Assets/YAPS";
 
         // The toolkit's entry.
         public static void Apply(YapsPlug plug, YapsBaker.Result result, Material patched,
@@ -235,7 +241,7 @@ namespace AvatarBridge
             {
                 return false;
             }
-            if (m.shader != null && m.shader.name == ShaderName)
+            if (m.shader != null && (m.shader.name == ShaderName || m.shader.name == SocketShaderName))
             {
                 return true;
             }
@@ -535,10 +541,10 @@ namespace AvatarBridge
             {
                 return null;
             }
-            var targets = avatar.GetComponentsInChildren<YapsPlug>(true)
-                .Where(p => p != null && p.readoutRenderer != null)
-                .Select(p => (AnimationUtility.CalculateTransformPath(p.readoutRenderer.transform, avatar.transform),
-                    p.readoutRenderer))
+            // Every renderer drawing a readout, plugs' and sockets' alike.
+            var targets = avatar.GetComponentsInChildren<Renderer>(true)
+                .Where(r => r.sharedMaterials.Any(IsReadout))
+                .Select(r => (AnimationUtility.CalculateTransformPath(r.transform, avatar.transform), r))
                 .ToList();
             bool had = RemoveLayer(controller);
             var settings = avatar.avatarSettings != null ? avatar.avatarSettings.settings : null;
@@ -552,7 +558,7 @@ namespace AvatarBridge
                     EditorUtility.SetDirty(avatar);
                     had = true;
                 }
-                return had ? "readout toggle removed: no plug carries a readout" : null;
+                return had ? "readout toggle removed: nothing carries a readout" : null;
             }
 
             if (avatar.avatarSettings == null)
@@ -614,7 +620,57 @@ namespace AvatarBridge
             layers.Add(new AnimatorControllerLayer { name = LayerName, defaultWeight = 1f, stateMachine = machine });
             controller.layers = layers.ToArray();
             EditorUtility.SetDirty(controller);
-            return $"readout toggle \"{MenuLabel}\" for {targets.Count} plug(s), off by default, synced (1 bit)";
+            return $"readout toggle \"{MenuLabel}\" for {targets.Count} readout(s), off by default, synced (1 bit)";
+        }
+
+        // A socket's readout, beside its atlas writer under the same parent,
+        // so a rebuild or a remove of the socket takes it with the writer.
+        // Positions all zero and the corners in UV0, like the writer: with
+        // custom shaders off the stand-in shader draws nothing.
+        public static GameObject AddSocketReadout(Transform parent)
+        {
+            var shader = Shader.Find(SocketShaderName);
+            if (parent == null || shader == null)
+            {
+                return null;
+            }
+            var host = new GameObject(SocketReadoutName);
+            host.transform.SetParent(parent, false);
+            host.AddComponent<MeshFilter>().sharedMesh = SocketQuad();
+            var renderer = host.AddComponent<MeshRenderer>();
+            string path = SharedFolder + "/YAPS Socket Readout.mat";
+            var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (material == null)
+            {
+                Directory.CreateDirectory(SharedFolder);
+                material = new Material(shader) { name = "YAPS Socket Readout" };
+                AssetDatabase.CreateAsset(material, path);
+            }
+            material.shader = shader;
+            renderer.sharedMaterial = material;
+            YapsAtlas.Quiet(renderer);
+            return host;
+        }
+
+        static Mesh SocketQuad()
+        {
+            string path = SharedFolder + "/YAPS Socket Readout Quad.asset";
+            var have = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+            if (have != null)
+            {
+                return have;
+            }
+            var mesh = new Mesh { name = "YAPS Socket Readout Quad" };
+            mesh.SetVertices(new List<Vector3> { Vector3.zero, Vector3.zero, Vector3.zero, Vector3.zero });
+            mesh.SetUVs(0, new List<Vector2> { new Vector2(0, 0), new Vector2(1, 0), new Vector2(0, 1), new Vector2(1, 1) });
+            mesh.SetTriangles(new[] { 0, 2, 1, 2, 3, 1 }, 0);
+            // Round the socket, not the strip: the vertex lights Unity hands a
+            // renderer are chosen by its bounds, and these should be the
+            // lights a socket there gets.
+            mesh.bounds = new Bounds(Vector3.zero, Vector3.one * 0.5f);
+            Directory.CreateDirectory(SharedFolder);
+            AssetDatabase.CreateAsset(mesh, path);
+            return mesh;
         }
 
         static bool RemoveLayer(AnimatorController controller)

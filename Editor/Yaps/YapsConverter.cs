@@ -86,9 +86,9 @@ namespace AvatarBridge
             string readout = YapsDebugOverlayBuilder.Menu(ctx.CvrAvatar, ctx.MergedController);
             if (readout != null)
             {
-                ctx.Report.Converted(Category, "One menu toggle shows every plug's readout",
-                    "Off by default. It syncs, so someone helping sees the plug as the wearer's own game " +
-                    "resolves it. (" + readout + ")");
+                ctx.Report.Converted(Category, "One menu toggle shows every plug's and socket's readout",
+                    "Off by default. It syncs, so someone helping sees each plug and socket as the wearer's " +
+                    "own game resolves it. (" + readout + ")");
             }
 
             // After every plug material and socket writer exists: it wires

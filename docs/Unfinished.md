@@ -51,7 +51,7 @@ digests the conversion only. Design:
 - **AI on top later** (choosing scenarios, reviewing flagged frames), never the backbone.
 - **Cannot prove** anything the CVR client owns: its HDR, its globals, sync. Still checked in game.
 
-**2. In-game readouts, 4.6.4. PLUG HALF ON DEV 2026-09-23, not in game yet.** The plug readout built
+**2. In-game readouts, 4.6.4. BOTH HALVES ON DEV 2026-09-23, not in game yet.** The plug readout built
 on EVERY plug, hidden, with a SYNCED bool toggle (Joe's call: a helper sees the user's plug as
 their own client resolves it), the shader skipping all work while off; one material slot per plug.
 A socket readout of its own: publishing on this camera, its own atlas cell read back as its own (a
@@ -65,7 +65,20 @@ light, a plug seen.
   gone. `Dev/Probes/ReadoutProbe.cs` bakes through the toolkit door on three avatars: row, layer,
   hidden 0 px against no slot at all, shown 3132 to 4146 px, and the menu parameter through a real
   Animator shows it and hides it again. It found the bug below on its first run.
-- **Next: the socket readout.**
+- **Socket half done.** `YAPS/Socket Readout`, a quad of its own beside each socket's atlas writer
+  (`YapsDebugOverlayBuilder.AddSocketReadout`, from `YapsSocketBuilder.Build`, so both builders),
+  only under an avatar, on the same row. Six cells: atlas on this camera; the socket's own entry at
+  each of the four levels, found by cell tag and position as a plug finds it (black nothing, red
+  others but not this one, green its own); owner id; kind and number; its root light (digit 7 or
+  legacy 1 to 4) within 2 cm; a plug tracker's depth. The menu layer now targets every renderer
+  drawing a readout, so Remove and Clean up take the row out with the last one. The probe rebuilds
+  every socket on three avatars (34 sockets) and reads the cells off a half-float render: atlas,
+  smallest level and kind right on all 34; with the writer and root light off, nothing of its own
+  on all 34; the owner green once the stand-in hands out an id; and the light cell never claims a
+  light that is off, green on exactly the one socket per avatar the lighthouse lights. Two things
+  it showed at once: the largest level of one socket read red (another socket holds that bucket,
+  so a plug whose length picks level 3 misses it there; not chased), and d3d11 refuses
+  `levels[lv]` inside a `[loop]`, so the shader masks.
 
 *4.6.0 shipped 2026-09-12: tag `v4.6.0`, merge `b51296e`, both packages published, 98 commits
 since 4.5.1. The atlas carries tags, one-way rings, the per-plug own-sockets checklist and an

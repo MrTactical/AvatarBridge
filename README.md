@@ -2390,6 +2390,19 @@ Work down the list; the first that fits is usually it.
   Black or grey is nothing, red is a fault, green is working. **The toggle syncs**, so everyone
   who can see the plug sees the readout while it is on, each drawn from what their own game
   resolves: someone helping you reads your plug as their client sees it. Off, it draws nothing.
+- **Every socket carries one too, on the same toggle.** A strip of six cells floats just above the
+  socket, facing you, and reads the socket from the plug's side: what a plug reaching for it would
+  find. Left to right: whether the atlas is on the camera drawing this view (black the view is too
+  small, red a different screen, green live); the socket's own entry at each of the atlas's four
+  sizes, small to large (black nothing there, red that spot holds other sockets but not this one,
+  green read back as this socket); the owner id (grey not known yet, amber known but no entry to
+  compare, red the atlas carries somebody else's, green its own); the kind and number it
+  publishes (left green a hole, cyan a ring, blue a one-way ring, black not found; right a bar
+  for its number); whether its marker light arrives (green) or not (grey); and whether a plug is
+  near (grey none, amber a plug's light arrives but the socket is beyond its length, green a bar,
+  fuller the nearer the plug). A grey marker light is normal on every socket except the one the
+  *Marker lights* dropdown has lit. A plug reads the two sizes its own length picks, so a red
+  stripe on one size matters only to plugs of that length.
 - **Then read the two markers, and ONLY as a pair.** They sit out on the plug rather than in the
   strip. The white one is drawn where the tip would be if nothing had moved the plug's bones; the
   magenta one is drawn where the tip actually is. Sitting together means the bones are where the

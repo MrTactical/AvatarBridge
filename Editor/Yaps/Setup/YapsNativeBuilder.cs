@@ -670,6 +670,9 @@ namespace AvatarBridge
             if (lighthouse != null) lines.Add($"✓ {lighthouse}");
             string owner = YapsOwner.Wire(avatar);
             if (owner != null) lines.Add($"✓ {owner}");
+            string readout = null;
+            foreach (var controller in YapsOwner.Targets(avatar)) readout = YapsDebugOverlayBuilder.Menu(avatar, controller) ?? readout;
+            if (readout != null) lines.Add($"✓ {readout}");
             return lines;
         }
 

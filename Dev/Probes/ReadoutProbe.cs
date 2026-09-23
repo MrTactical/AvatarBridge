@@ -4,6 +4,10 @@
 // slot, the menu row, the layer, and by rendering, that hidden draws
 // nothing and the layer's clips really switch it.
 //
+// Then the socket readout: each socket rebuilt, its readout on the same
+// toggle, and its cells read back off a render and matched to what the
+// socket is, with the atlas writer switched off as the control.
+//
 // Run: -executeMethod AvatarBridge.Regression.ReadoutProbe.Run [-yapsAvatar <prefab path>]
 // Writes to the avatar's controller in the test project (the layer), as a
 // toolkit Build would.
@@ -177,6 +181,8 @@ namespace AvatarBridge.Regression
                 cam.targetTexture = null;
                 UnityEngine.Object.DestroyImmediate(rt);
 
+                SocketReadouts(go, avatar, cam);
+
                 // The check catches the spelling that shipped dead, and only that.
                 var target = plugs[0].Target;
                 string tpath = AnimationUtility.CalculateTransformPath(target.transform, go.transform);
@@ -232,6 +238,154 @@ namespace AvatarBridge.Regression
             }
             Log(fail == 0 ? "PASS" : $"FAIL: {fail} check(s)");
             if (Application.isBatchMode) EditorApplication.Exit(fail == 0 ? 0 : 1);
+        }
+
+        static readonly (string name, Color c)[] Palette =
+        {
+            ("gutter", new Color(0, 0, 0)), ("dead", new Color(0.10f, 0.10f, 0.10f)),
+            ("none", new Color(0.45f, 0.45f, 0.45f)), ("bad", new Color(0.85f, 0.15f, 0.10f)),
+            ("half", new Color(0.95f, 0.70f, 0.10f)), ("good", new Color(0.15f, 0.80f, 0.25f)),
+            ("chan", new Color(0.20f, 0.75f, 0.85f)), ("bar", new Color(0.20f, 0.45f, 0.95f)),
+        };
+
+        // Every socket rebuilt through the builder's own door, so each gets
+        // its readout where the converter and the toolkit put it.
+        static void SocketReadouts(GameObject go, CVRAvatar avatar, Camera cam)
+        {
+            var sockets = go.GetComponentsInChildren<YapsSocket>(true);
+            Log($"{sockets.Length} socket(s)");
+            var readouts = new System.Collections.Generic.Dictionary<YapsSocket, Renderer>();
+            foreach (var socket in sockets)
+            {
+                YapsSocketBuilder.Build(socket);
+                var t = socket.transform.Find("YAPS Atlas/" + YapsDebugOverlayBuilder.SocketReadoutName);
+                Check(t != null && t.GetComponent<Renderer>() != null, $"{socket.name}: socket readout built");
+                if (t != null) readouts[socket] = t.GetComponent<Renderer>();
+            }
+            if (readouts.Count == 0) return;
+            foreach (var c in YapsOwner.Targets(avatar)) YapsDebugOverlayBuilder.Menu(avatar, c);
+            var controller = YapsOwner.Shipped(avatar);
+            var shown = controller.layers.FirstOrDefault(l => l.name == "YAPS readout")?.stateMachine.states
+                .Select(s => s.state).FirstOrDefault(s => s.name == "Shown")?.motion as AnimationClip;
+            var dead = YapsToggles.DeadBindings(go, controller);
+            Check(dead.Count == 0, $"every YAPS curve binds with socket readouts ({dead.Count} dead)");
+
+            var rt = new RenderTexture(512, 512, 24, RenderTextureFormat.ARGBHalf);
+            cam.targetTexture = rt;
+            int litSeen = 0;
+            foreach (var pair in readouts)
+            {
+                var socket = pair.Key;
+                var r = pair.Value;
+                for (var t = r.transform; t != null; t = t.parent) t.gameObject.SetActive(true);
+                string rpath = AnimationUtility.CalculateTransformPath(r.transform, go.transform);
+                Check(shown != null && AnimationUtility.GetCurveBindings(shown).Any(b => b.path == rpath
+                        && b.propertyName == YapsToggles.Bound("_YAPS_ReadoutOn")),
+                    $"{socket.name}: the menu clip shows it");
+
+                var at = socket.transform.position;
+                cam.transform.position = at + go.transform.forward * 0.6f + Vector3.up * 0.1f;
+                cam.transform.LookAt(at);
+                r.enabled = false;
+                var without = GrabF(cam, rt);
+                r.enabled = true;
+                var off = GrabF(cam, rt);
+                Check(DiffF(off, without) == 0, $"{socket.name}: hidden draws nothing ({DiffF(off, without)} px)");
+                void Show()
+                {
+                    var block = new MaterialPropertyBlock();
+                    r.GetPropertyBlock(block);
+                    block.SetFloat("_YAPS_ReadoutOn", 1f);
+                    r.SetPropertyBlock(block);
+                }
+                Show();
+                var on = GrabF(cam, rt);
+                Check(DiffF(on, off) > 200, $"{socket.name}: shown draws ({DiffF(on, off)} px)");
+
+                var cells = Cells(cam, rt, on, r, at);
+                Log($"  {socket.name} ({socket.kind}{(socket.oneWay ? ", one-way" : "")}): " + string.Join(" ", cells));
+                string kind = socket.kind == YapsSocket.SocketKind.Hole ? "good" : socket.oneWay ? "bar" : "chan";
+                Check(cells[0] == "good", $"{socket.name}: atlas live on this camera ({cells[0]})");
+                Check(cells[1] == "good", $"{socket.name}: its own entry read back at the smallest level ({cells[1]})");
+                Check(cells[6] == kind, $"{socket.name}: kind read back as {kind} ({cells[6]})");
+                // Four light slots per renderer and a dozen sockets: whether
+                // this one's root arrives is Unity's pick, not the readout's.
+                // So it must never claim a light that is off, and must lose
+                // it with the light.
+                var roots = socket.GetComponentsInChildren<Light>(true).Where(l => YapsScanner.IsProtocolLight(l)
+                    && (YapsScanner.LightDigit(l) == 7 || YapsScanner.LightDigit(l) is >= 1 and <= 4)
+                    && (l.transform.position - at).magnitude < 0.02f).ToList();
+                bool lit = roots.Any(l => l.enabled && l.gameObject.activeInHierarchy);
+                Log($"  root light(s) {roots.Count}, lit {lit}");
+                Check(cells[8] != "good" || lit, $"{socket.name}: no root light claimed that is off ({cells[8]}, lit {lit})");
+                if (cells[8] == "good") litSeen++;
+
+                // The control: no writer and no root light, nothing of its own.
+                var writers = socket.GetComponentsInChildren<Renderer>(true).Where(w => YapsMarks.IsAtlasMaterial(w.sharedMaterial)).ToList();
+                var wereOn = roots.Where(l => l.enabled).ToList();
+                foreach (var w in writers) w.enabled = false;
+                foreach (var l in wereOn) l.enabled = false;
+                var bare = Cells(cam, rt, GrabF(cam, rt), r, at);
+                foreach (var w in writers) w.enabled = true;
+                foreach (var l in wereOn) l.enabled = true;
+                Check(bare[1] != "good" && bare[6] == "dead" && bare[8] == "none",
+                    $"{socket.name}: writer and light off, nothing of its own read ({bare[1]}, {bare[6]}, {bare[8]})");
+
+                // The owner, once the editor's stand-in hands everyone an id.
+                YapsOwnerStandIn.Apply();
+                Show();
+                var owned = Cells(cam, rt, GrabF(cam, rt), r, at);
+                Check(owned[5] == "good", $"{socket.name}: owner read back as its own ({owned[5]})");
+                r.SetPropertyBlock(null);
+            }
+            cam.targetTexture = null;
+            UnityEngine.Object.DestroyImmediate(rt);
+            Check(litSeen > 0, $"a socket's root light seen by its readout ({litSeen} of {readouts.Count})");
+
+            // Out of the scene and off the layer, so the rebakes after this
+            // leave the test project as it was.
+            foreach (var r in readouts.Values) UnityEngine.Object.DestroyImmediate(r.gameObject);
+            foreach (var c in YapsOwner.Targets(avatar)) YapsDebugOverlayBuilder.Menu(avatar, c);
+        }
+
+        // Atlas, four levels, owner, kind, number, light, plug: the colour at
+        // each cell's centre, placed as the shader places the strip.
+        static string[] Cells(Camera cam, RenderTexture rt, Color[] px, Renderer r, Vector3 at)
+        {
+            var m = r.sharedMaterial;
+            float size = m.GetFloat("_YAPS_OverlaySize"), lift = m.GetFloat("_YAPS_OverlayLift");
+            var us = new System.Collections.Generic.List<float> { 0.5f };
+            for (int lv = 0; lv < 4; lv++) us.Add(1 + (lv + 0.5f) / 4f);
+            us.AddRange(new[] { 2.5f, 3.25f, 3.75f, 4.5f, 5.5f });
+            return us.Select(u =>
+            {
+                var world = at + cam.transform.up * lift + cam.transform.right * ((u / 6f - 0.5f) * size * 6f);
+                var s = cam.WorldToScreenPoint(world);
+                int x = Mathf.Clamp((int) s.x, 0, rt.width - 1), y = Mathf.Clamp((int) s.y, 0, rt.height - 1);
+                var c = px[y * rt.width + x];
+                return Palette.OrderBy(p => Mathf.Abs(p.c.r - c.r) + Mathf.Abs(p.c.g - c.g) + Mathf.Abs(p.c.b - c.b)).First().name;
+            }).ToArray();
+        }
+
+        // Float readback, so the palette is compared as the shader wrote it.
+        static Color[] GrabF(Camera cam, RenderTexture rt)
+        {
+            cam.Render();
+            var tex = new Texture2D(rt.width, rt.height, TextureFormat.RGBAFloat, false, true);
+            RenderTexture.active = rt;
+            tex.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
+            RenderTexture.active = null;
+            var px = tex.GetPixels();
+            UnityEngine.Object.DestroyImmediate(tex);
+            return px;
+        }
+
+        static int DiffF(Color[] a, Color[] b)
+        {
+            int n = 0;
+            for (int i = 0; i < a.Length; i++)
+                if (Mathf.Abs(a[i].r - b[i].r) + Mathf.Abs(a[i].g - b[i].g) + Mathf.Abs(a[i].b - b[i].b) > 0.03f) n++;
+            return n;
         }
 
         static Color32[] Grab(Camera cam, RenderTexture rt)
