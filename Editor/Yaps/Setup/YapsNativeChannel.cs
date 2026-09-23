@@ -41,6 +41,9 @@ namespace AvatarBridge
             // knows as a fact the socket is not its own.
             string owner = YapsOwner.Wire(avatar);
             if (owner != null) lines.Add("✓ " + owner);
+            // After the bakes, like the id: it switches every plug's readout.
+            string readout = YapsDebugOverlayBuilder.Menu(avatar, YapsOwner.Shipped(avatar));
+            if (readout != null) lines.Add("✓ " + readout);
             return lines;
         }
 

@@ -51,11 +51,21 @@ digests the conversion only. Design:
 - **AI on top later** (choosing scenarios, reviewing flagged frames), never the backbone.
 - **Cannot prove** anything the CVR client owns: its HDR, its globals, sync. Still checked in game.
 
-**2. In-game readouts, 4.6.4.** The plug readout built on EVERY plug, hidden, with a SYNCED bool
-toggle (Joe's call: a helper sees the user's plug as their own client resolves it), the shader
-skipping all work while off; one material slot per plug. A socket readout of its own: publishing
-on this camera, its own atlas cell read back as its own (a direct 8-bit-tag detector), owner id
-known, number and kind, whether it holds the avatar's marker light, a plug seen.
+**2. In-game readouts, 4.6.4. PLUG HALF ON DEV 2026-09-23, not in game yet.** The plug readout built
+on EVERY plug, hidden, with a SYNCED bool toggle (Joe's call: a helper sees the user's plug as
+their own client resolves it), the shader skipping all work while off; one material slot per plug.
+A socket readout of its own: publishing on this camera, its own atlas cell read back as its own (a
+direct 8-bit-tag detector), owner id known, number and kind, whether it holds the avatar's marker
+light, a plug seen.
+- **Plug half done.** Every plug under an avatar carries its readout (a plug on a prop has no menu
+  and gets none); one row, **YAPS readout** (`YAPS/Readout`, bool, 1 bit, off), switches them all
+  through a layer of its own, from both builders, and Remove and Clean up take it out with the last
+  readout. `_YAPS_ReadoutOn` off returns before the bake read and the resolve, every corner on one
+  point. The *Draw a debug readout on each plug* option and the plug's *Debug overlay* tickbox are
+  gone. `Dev/Probes/ReadoutProbe.cs` bakes through the toolkit door on three avatars: row, layer,
+  hidden 0 px against no slot at all, shown 3132 to 4146 px, and the menu parameter through a real
+  Animator shows it and hides it again. It found the bug below on its first run.
+- **Next: the socket readout.**
 
 *4.6.0 shipped 2026-09-12: tag `v4.6.0`, merge `b51296e`, both packages published, 98 commits
 since 4.5.1. The atlas carries tags, one-way rings, the per-plug own-sockets checklist and an
@@ -685,6 +695,26 @@ their SDK differs; a name that does not resolve now warns instead of being assum
 IK. Needs the reporter's SDK version, which bone, and what the wrong result actually looks like.
 
 ## Loose ends, small but real
+
+### Menu toggles did nothing on a plug whose material was not its mesh's first. FIXED ON DEV 2026-09-23, for 4.6.4, not verified in game
+
+Found by the readout probe: the readout sits in slot 1 or 2, and through a real Animator it never
+showed. Unity's list of what can be animated on the renderer (`GetAnimatableBindings`) holds
+`material._X` and nothing else, and `material[2]._X` resolves to no type at all: it binds to
+nothing. `material._X` writes the renderer's own property block, which every slot reads; written
+that way the readout showed in slot 1 on two avatars and slot 2 on the third.
+
+So the premise of f76b482 (2026-09-08), that `material._X` reaches the first material alone, was
+wrong, and the fix made things worse. From 4.6.0, on a plug whose YAPS materials sit only in later
+slots, these all wrote curves that bind to nothing: the toolkit's Deform and own-sockets toggles,
+the tag chooser (both builders, indexed since it was written, 01ba6bf) and the size curves
+(afdc29c, 2026-09-11, which also deleted the working slot-0 spelling as stale). A plug with a YAPS
+material in slot 0 was never affected. Now `YapsToggles.Bound` has one spelling, a clip writes one
+curve per renderer, and the size mirror drops the dead indexed curves it finds. The reading half
+of f76b482 (`Bare`, `Writes`, the remover) stays, for clips built by 4.6.0 to 4.6.3.
+
+The claim in the tag-set record further down is marked withdrawn. Whether the half-switched-off
+plug f76b482 describes was ever seen, or reasoned from the same premise, is not recorded.
 
 ### Blendshapes a plug renderer holds came undone mid-bend. FIXED ON DEV 2026-09-22, for 4.6.3
 
@@ -1904,6 +1934,9 @@ state per tag plus "As built" and "Anything", driving `material._YAPS_TagInclude
 toggles would have been fifteen rows and fifteen parameters for a question with one answer at a
 time, which is the objection that killed the per-socket allow list.
 
+*WITHDRAWN 2026-09-23: measured wrong. `material._X` reaches every slot and `material[1]._X`
+binds to nothing, so the fix below broke the toggles it meant to mend; see "Menu toggles did
+nothing on a plug whose material was not its mesh's first" under Loose ends.*
 **A multi-slot plug needed care and turned up a real bug elsewhere, since fixed.** A curve on
 `material._X` binds to the FIRST material only. The tag clips were written that way from the
 start, but the deform toggle and the own-body toggle were not: a plug with its tip on a second

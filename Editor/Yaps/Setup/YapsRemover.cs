@@ -352,6 +352,8 @@ namespace AvatarBridge
 
             string owner = YapsOwner.Wire(avatar);
             if (owner != null) done.Add(owner);
+            string readout = YapsDebugOverlayBuilder.Menu(avatar, YapsOwner.Shipped(avatar));
+            if (readout != null) done.Add(readout);
             DropAtlasIfUnused(top, done);
 
             Undo.CollapseUndoOperations(group);
@@ -449,6 +451,13 @@ namespace AvatarBridge
                 {
                     done.Add($"the contact channel ({cleared} object(s), layer(s) and parameter(s)): no baked plug left to carry it");
                 }
+            }
+
+            // The readout toggle, once no plug carries a readout.
+            if (!plugs.Any(p => p != null && p.readoutRenderer != null))
+            {
+                string readout = YapsDebugOverlayBuilder.Menu(avatar, YapsOwner.Shipped(avatar));
+                if (readout != null) done.Add(readout);
             }
 
             // The toolkit's objects with nothing of the toolkit's above them.

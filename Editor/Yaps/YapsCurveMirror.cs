@@ -25,30 +25,24 @@ namespace AvatarBridge
                  : "_YAPS_ShapeWeights4";
         }
 
-        // One curve onto every slot of the renderer whose material declares
-        // the property. "material._X" is the FIRST material alone, so a plug
-        // material in any other slot never heard a size curve written that way.
+        // One curve on the renderer, which every slot declaring the property
+        // reads. Builds from 4.6.0 wrote "material[1]._X" for a later slot,
+        // which Unity binds to nothing, so a size curve never reached a plug
+        // whose material was not first; those go.
         static void SetOnSlots(AnimationClip clip, string rendererPath, Renderer renderer, string property,
             string component, AnimationCurve curve)
         {
             var type = renderer != null ? renderer.GetType() : typeof(SkinnedMeshRenderer);
-            var slots = YapsToggles.SlotsWith(renderer, property);
-            foreach (int slot in slots)
+            string bound = YapsToggles.Bound(property) + component;
+            AnimationUtility.SetEditorCurve(clip, new EditorCurveBinding
             {
-                AnimationUtility.SetEditorCurve(clip, new EditorCurveBinding
-                {
-                    path = rendererPath, type = type, propertyName = YapsToggles.Bound(slot, property) + component,
-                }, curve);
-            }
-            // An earlier build wrote slot 0's spelling here, which no material
-            // reads when slot 0 is not the plug's.
-            if (!slots.Contains(0))
+                path = rendererPath, type = type, propertyName = bound,
+            }, curve);
+            foreach (var dead in AnimationUtility.GetCurveBindings(clip)
+                         .Where(b => b.path == rendererPath && b.propertyName != bound
+                                     && YapsToggles.Bare(b.propertyName) == bound).ToList())
             {
-                var stale = new EditorCurveBinding
-                {
-                    path = rendererPath, type = type, propertyName = YapsToggles.Bound(0, property) + component,
-                };
-                if (AnimationUtility.GetEditorCurve(clip, stale) != null) AnimationUtility.SetEditorCurve(clip, stale, null);
+                AnimationUtility.SetEditorCurve(clip, dead, null);
             }
         }
 

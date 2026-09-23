@@ -900,15 +900,6 @@ namespace AvatarBridge
                     "32 bits per depth parameter, and over 3200 nothing syncs. The report's sync budget says where it landed.",
                     HelpBoxMessageType.Warning));
             }
-            optIns.Add(BridgeElements.Bind("Draw a debug readout on each plug",
-                "An in-game readout on each plug of who found its socket and what its bake is doing. " +
-                "EVERYONE SEES IT, and it uploads with the avatar; the report flags it while it is on.",
-                settings.yapsDebugOverlay, v => { settings.yapsDebugOverlay = v; ScheduleRebuild(); }));
-            if (settings.yapsDebugOverlay)
-            {
-                optIns.Add(new HelpBox(
-                    "Turn it off and convert again before you publish.", HelpBoxMessageType.Warning));
-            }
 #endif
 
             b.Add(BridgeElements.SubHeading("Menu & extras"));

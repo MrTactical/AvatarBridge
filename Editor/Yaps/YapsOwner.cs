@@ -314,11 +314,18 @@ namespace AvatarBridge
         public static string Wire(CVRAvatar avatar)
         {
             if (avatar == null) return null;
+            return Wire(avatar.gameObject, Shipped(avatar));
+        }
+
+        // The controller ChilloutVR will actually run for this avatar.
+        public static AnimatorController Shipped(CVRAvatar avatar)
+        {
+            if (avatar == null) return null;
             var shipped = avatar.overrides != null ? avatar.overrides.runtimeAnimatorController : null;
             if (shipped == null && avatar.avatarSettings != null) shipped = avatar.avatarSettings.baseController;
             var animator = avatar.GetComponent<Animator>();
             if (shipped == null && animator != null) shipped = animator.runtimeAnimatorController;
-            return Wire(avatar.gameObject, BridgeContext.Underlying(shipped));
+            return BridgeContext.Underlying(shipped);
         }
 
         // A direct blend tree weighted by the parameter itself, over a clip

@@ -83,6 +83,14 @@ namespace AvatarBridge
                     "row. It starts on what you built. (" + chooser + ")");
             }
 
+            string readout = YapsDebugOverlayBuilder.Menu(ctx.CvrAvatar, ctx.MergedController);
+            if (readout != null)
+            {
+                ctx.Report.Converted(Category, "One menu toggle shows every plug's readout",
+                    "Off by default. It syncs, so someone helping sees the plug as the wearer's own game " +
+                    "resolves it. (" + readout + ")");
+            }
+
             // After every plug material and socket writer exists: it wires
             // whatever renderer can hold the id.
             string owner = YapsOwner.Wire(ctx.Target, ctx.MergedController);
@@ -267,13 +275,9 @@ namespace AvatarBridge
             // so a re-bake writes the same thing.
             YapsNativeBuilder.AdoptPlug(plugRoot, renderer, primarySlot, primaryMaterial, null);
 
-            // The readout, if this conversion asked for one. Seeded onto the
-            // component AdoptPlug just wrote, so a later Build in the toolkit
-            // keeps it rather than silently taking it away again.
             var adopted = plugRoot.GetComponent<YapsPlug>();
             if (adopted != null)
             {
-                adopted.debugOverlay = ctx.Settings.yapsDebugOverlay;
                 // The tag rules in the author's words. The material holds them as
                 // hashes and a hash reads back as nothing, so a toolkit re-bake
                 // wrote the component's empty lists over them and the plug came
@@ -303,7 +307,8 @@ namespace AvatarBridge
                     }
                 }
             }
-            YapsDebugOverlayBuilder.Apply(plugRoot, renderer.name, ctx.Settings.yapsDebugOverlay,
+            // Every plug gets one, hidden until the menu shows it.
+            YapsDebugOverlayBuilder.Apply(plugRoot, renderer.name, true,
                 result, primaryMaterial, ctx.Report);
 
             ctx.Report.Converted(Category, $"Plug converted at {where}",

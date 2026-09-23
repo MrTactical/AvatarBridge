@@ -1456,7 +1456,6 @@ settle. Leaving all of them alone converts fine.
 |---|---|---|
 | **Opt-ins ▸ Keep OGB haptics synced** | off | Its own sub-section under Manual options, since an opt-in nobody can find is one nobody turns on. Off, the OGB haptics parameters are local (free); OSCGoesBrrr's automatic detection skips ChilloutVR's `#` names, but its manual avatar-parameter links read them, and the report lists the names. On, they stay synced and automatic detection works with no setup, at 32 sync bits each, about nine per plug and per socket; the report's sync budget entry says where the avatar landed. Needs *Penetration* on *Convert to YAPS*. See [OSC toys](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
 | **Opt-ins ▸ Show the avatar's OWN depth animations to other players** | off | Not YAPS's socket shapes, which already play for everyone on a synced parameter. This is the bulges and winces the avatar's author animated in VRChat, which are contact-driven, and ChilloutVR runs an avatar's triggers on the wearer's machine alone. Off, each socket's depth parameter is local: free, and only the wearer sees the reaction. On, it syncs and the room sees it, at 32 bits per socket: one depth parameter each, six sockets is about 192 of 3200; a socket that kept several depth parameters as authored pays for each. Needs *Penetration* on *Convert to YAPS* |
-| **Opt-ins ▸ Draw a debug readout on each plug** | off | A strip of colours drawn by each plug itself, for working out why one will not behave. Left to right: who resolved its socket (grey nobody, cyan the editor's preview, amber a marker light, green the screen atlas), whether it is bending (amber: it found a socket but its toggle holds it off), how far the socket is, what the screen atlas read, whether the atlas is on the camera drawing this view, and whether the plug asks for the atlas at all. Unlike the plug material's own debug view it leaves the plug bending normally, so the bend and the reason for it can be read together. It is part of the plug's own mesh, so everyone who can see the plug sees it and it uploads with the avatar; the report flags it while it is on. Needs *Penetration* on *Convert to YAPS* |
 | **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder: you must press **Create Controller** yourself |
 | **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of this avatar's measured height, centred on its original size. Parent-constrained props are re-anchored so they scale with you |
@@ -2365,12 +2364,13 @@ Work down the list; the first that fits is usually it.
   by*. It straightens the plug and puts the answer in its LENGTH: a quarter means nothing found
   the socket, three quarters a marker light did, full the screen atlas did. A quarter with a
   socket right there means no transport reached the plug.
-- **Or read all of it at once: tick *Debug overlay* on the YAPS Plug component and Build.** The
-  view above answers one question at a time and straightens the plug to answer it, so the bend
-  and the reason for the bend can never be seen together. The overlay is a small strip of
-  colours the plug draws on itself instead, and it leaves the plug bending normally. It is the
-  plug's own answer, not a second reading taken beside it: it shares the plug's renderer, so it
-  sees the same atlas, the same lights, the same toggle and the same frame the deform does. Twelve cells
+- **Or read all of it at once: turn on *YAPS readout* in the avatar's menu.** Every plug on the
+  avatar carries one, hidden until that toggle shows it. The view above answers one question at a
+  time and straightens the plug to answer it, so the bend and the reason for the bend can never be
+  seen together. The readout is a small strip of colours the plug draws on itself instead, and it
+  leaves the plug bending normally. It is the plug's own answer, not a second reading taken beside
+  it: it shares the plug's renderer, so it sees the same atlas, the same lights, the same toggle and
+  the same frame the deform does. Twelve cells
   in two rows. Top row, left to right: who resolved the socket (grey nobody, cyan the editor's
   preview, amber a marker light, green the screen atlas), whether it is bending (red not engaged,
   amber engaged but its toggle holds it off, green bending), how far away the socket is as a bar,
@@ -2381,9 +2381,9 @@ Work down the list; the first that fits is usually it.
   anything, whether the plug will take its own wearer's sockets (amber refusing, which is the
   quietest reason a plug finds nothing), how many sockets are in the atlas chain, and whether a
   socket was refused by this plug's tags (red: refused, and nearer than whatever did answer).
-  Black or grey is nothing, red is a fault, green is working. **Everyone who can see the plug can
-  see the overlay**, and it uploads with the avatar; the report flags it while it is on. Nothing
-  stops the upload, so untick it when you are done.
+  Black or grey is nothing, red is a fault, green is working. **The toggle syncs**, so everyone
+  who can see the plug sees the readout while it is on, each drawn from what their own game
+  resolves: someone helping you reads your plug as their client sees it. Off, it draws nothing.
 - **Then read the two markers, and ONLY as a pair.** They sit out on the plug rather than in the
   strip. The white one is drawn where the tip would be if nothing had moved the plug's bones; the
   magenta one is drawn where the tip actually is. Sitting together means the bones are where the

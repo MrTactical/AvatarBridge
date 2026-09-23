@@ -29,16 +29,20 @@
 // fooled that way. The plug's own material never draws any of them: they
 // sit past _YAPS_VertexCount, in a submesh it does not own.
 //
-// Built only when the plug asks for it. Nothing blocks the upload: the
-// scanner notes an avatar carrying one, and that is all it does.
+// Built on every plug of an avatar, hidden. One synced menu toggle shows
+// them all, so a helper sees the plug as the wearer's own client resolves
+// it. A plug on a prop has no menu to show it, and gets none.
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using ABI.CCK.Components;
+using ABI.CCK.Scripts;
 using AvatarBridge.Yaps;
 using Unity.Collections;
 using UnityEditor;
+using UnityEditor.Animations;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -57,7 +61,13 @@ namespace AvatarBridge
         // The strip, the rest marker and the live marker.
         const int Quads = 3;
 
-        // The toolkit's entry: the plug component owns the tickbox.
+        // The menu switch that shows every readout on the avatar.
+        public const string Parameter = "YAPS/Readout";
+        const string MenuLabel = "YAPS readout";
+        const string LayerName = "YAPS readout";
+        const string Property = "_YAPS_ReadoutOn";
+
+        // The toolkit's entry.
         public static void Apply(YapsPlug plug, YapsBaker.Result result, Material patched,
             BridgeReport report)
         {
@@ -65,7 +75,8 @@ namespace AvatarBridge
             {
                 return;
             }
-            Apply(plug.transform, plug.name, plug.debugOverlay, result, patched, report, plug);
+            bool onAvatar = plug.GetComponentInParent<CVRAvatar>(true) != null;
+            Apply(plug.transform, plug.name, onAvatar, result, patched, report, plug);
         }
 
         // Build, refresh or remove. Safe to run again: the last build is put
@@ -103,15 +114,15 @@ namespace AvatarBridge
             if (shader == null)
             {
                 report?.Warning(Category, label,
-                    "The debug readout was asked for and its shader could not be found, so none " +
-                    "was built. The plug itself is unaffected.");
+                    "The readout's shader could not be found, so none was built. The plug itself " +
+                    "is unaffected.");
                 return;
             }
             if (result == null || result.Renderer == null || result.AnchorVertex < 0)
             {
                 report?.Warning(Category, label,
-                    "The debug readout was asked for and the bake has no vertex for it to hang " +
-                    "from, so none was built. The plug itself is unaffected.");
+                    "The bake has no vertex for the readout to hang from, so none was built. The " +
+                    "plug itself is unaffected.");
                 return;
             }
             if (record == null)
@@ -120,8 +131,8 @@ namespace AvatarBridge
                 // build could not put it back, and the readout would outlive
                 // the tick that asked for it.
                 report?.Warning(Category, label,
-                    "The debug readout was asked for and there is no plug component to remember " +
-                    "the mesh it replaces, so none was built.");
+                    "There is no plug component to remember the mesh the readout replaces, so none " +
+                    "was built. The plug itself is unaffected.");
                 return;
             }
 
@@ -130,14 +141,14 @@ namespace AvatarBridge
             if (source == null)
             {
                 report?.Warning(Category, label,
-                    "The debug readout was asked for and the plug's renderer has no mesh.");
+                    "The plug's renderer has no mesh, so no readout was built.");
                 return;
             }
             var mesh = WithReadout(source, result.AnchorVertex, result.TipVertex, out string why);
             if (mesh == null)
             {
                 report?.Warning(Category, label,
-                    "The debug readout could not be added to \"" + source.name + "\": " + why +
+                    "The readout could not be added to \"" + source.name + "\": " + why +
                     ". The plug itself is unaffected.");
                 return;
             }
@@ -164,7 +175,8 @@ namespace AvatarBridge
             EditorUtility.SetDirty(renderer);
 
             report?.Converted(Category, label,
-                "A debug readout was drawn on this plug: twelve cells in two rows, and two " +
+                "A readout was added to this plug, hidden until the avatar's \"" + MenuLabel + "\" " +
+                "menu toggle shows it. Twelve cells in two rows, and two " +
                 "markers out on the plug itself. Top row, left to right: who resolved the " +
                 "socket, whether it is bending, how far away the socket is, what the screen " +
                 "atlas read, whether the atlas is on the camera drawing this view, and whether " +
@@ -178,8 +190,8 @@ namespace AvatarBridge
                 "actually is. Together means the bones are where the bake left them and any " +
                 "bend you can see is the shader's; apart means something else is moving them, " +
                 "cloth or an animation or a constraint, and no cell above can tell you that. " +
-                "It is visible to everyone who can see the plug and it uploads with the avatar, " +
-                "which the report says too: untick it when you are done.");
+                "The toggle syncs, so everyone who can see the plug sees the readout while it is " +
+                "on, each drawn from what their own game resolves.");
         }
 
         // Put the mesh the last build replaced back, and drop its slot.
@@ -510,9 +522,114 @@ namespace AvatarBridge
                 return;
             }
             report?.Warning(Category, label,
-                $"The debug readout could not carry {missing.Count} of the plug's setting(s): " +
+                $"The readout could not carry {missing.Count} of the plug's setting(s): " +
                 string.Join(", ", missing) + ". Cells that depend on them read as nothing rather " +
                 "than as their real value. The readout's shader needs the same property added.");
+        }
+
+        // One synced toggle for every readout on the avatar, off by default.
+        // Taken out with the last readout. Safe to run again.
+        public static string Menu(CVRAvatar avatar, AnimatorController controller)
+        {
+            if (avatar == null || controller == null)
+            {
+                return null;
+            }
+            var targets = avatar.GetComponentsInChildren<YapsPlug>(true)
+                .Where(p => p != null && p.readoutRenderer != null)
+                .Select(p => (AnimationUtility.CalculateTransformPath(p.readoutRenderer.transform, avatar.transform),
+                    p.readoutRenderer))
+                .ToList();
+            bool had = RemoveLayer(controller);
+            var settings = avatar.avatarSettings != null ? avatar.avatarSettings.settings : null;
+            var ours = settings?.FirstOrDefault(e => e != null && e.machineName == Parameter);
+            if (targets.Count == 0)
+            {
+                if (ours != null)
+                {
+                    Undo.RecordObject(avatar, "YAPS readout");
+                    settings.Remove(ours);
+                    EditorUtility.SetDirty(avatar);
+                    had = true;
+                }
+                return had ? "readout toggle removed: no plug carries a readout" : null;
+            }
+
+            if (avatar.avatarSettings == null)
+            {
+                avatar.avatarSettings = new CVRAdvancedAvatarSettings
+                {
+                    settings = new List<CVRAdvancedSettingsEntry>(),
+                    initialized = true,
+                };
+            }
+            avatar.avatarUsesAdvancedSettings = true;
+            Undo.RecordObject(avatar, "YAPS readout");
+            if (ours == null)
+            {
+                ours = new CVRAdvancedSettingsEntry { machineName = Parameter };
+                avatar.avatarSettings.settings.Add(ours);
+            }
+            ours.name = MenuLabel;
+            ours.type = CVRAdvancedSettingsEntry.SettingsType.Toggle;
+            // No clips of its own: the layer below plays them, as the tag
+            // chooser's does.
+            ours.toggleSettings = new CVRAdvancesAvatarSettingGameObjectToggle
+            {
+                defaultValue = false,
+                usedType = CVRAdvancesAvatarSettingBase.ParameterType.Bool,
+            };
+            EditorUtility.SetDirty(avatar);
+
+            if (!controller.parameters.Any(p => p.name == Parameter))
+            {
+                controller.AddParameter(Parameter, AnimatorControllerParameterType.Bool);
+            }
+            string dir = YapsNativeBuilder.OutputRoot + "/" + Safe(avatar.name);
+            YapsNativeBuilder.EnsureFolderPublic(dir);
+            var machine = new AnimatorStateMachine { name = LayerName, hideFlags = HideFlags.HideInHierarchy };
+            if (!string.IsNullOrEmpty(AssetDatabase.GetAssetPath(controller)))
+            {
+                AssetDatabase.AddObjectToAsset(machine, controller);
+            }
+            // Both states write the value: ChilloutVR restores nothing when a
+            // state is left, so an Off that wrote nothing would stay on.
+            for (int on = 0; on < 2; on++)
+            {
+                var state = machine.AddState(on == 1 ? "Shown" : "Hidden");
+                state.writeDefaultValues = false;
+                state.motion = YapsToggles.Clip(targets, Property, on,
+                    dir + "/" + MenuLabel + (on == 1 ? " on" : " off") + ".anim");
+                if (on == 0)
+                {
+                    machine.defaultState = state;
+                }
+                var to = machine.AddAnyStateTransition(state);
+                to.hasExitTime = false;
+                to.duration = 0f;
+                to.canTransitionToSelf = false;
+                to.AddCondition(on == 1 ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot, 0f, Parameter);
+            }
+            var layers = controller.layers.ToList();
+            layers.Add(new AnimatorControllerLayer { name = LayerName, defaultWeight = 1f, stateMachine = machine });
+            controller.layers = layers.ToArray();
+            EditorUtility.SetDirty(controller);
+            return $"readout toggle \"{MenuLabel}\" for {targets.Count} plug(s), off by default, synced (1 bit)";
+        }
+
+        static bool RemoveLayer(AnimatorController controller)
+        {
+            bool removed = false;
+            for (int i = controller.layers.Length - 1; i >= 0; i--)
+            {
+                if (controller.layers[i].name != LayerName)
+                {
+                    continue;
+                }
+                controller.RemoveLayer(i);
+                removed = true;
+            }
+            return removed;
         }
 
         static Material MaterialFor(Shader shader, string dir, string label)
