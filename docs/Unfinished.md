@@ -865,7 +865,8 @@ their normal size when the plug is baked. Measured on the output folder:
   a hidden part, 0.010 mm at rest drawn to 68 to 98 mm, zero width and invisible in the shots:
   collapsed vertices a held shape moves behind the base go inactive while their neighbours bend.
   And seams open 290 to 770 mm on this mesh with or without the shapes, so they are its own, not
-  this bug. **Not verified in game.**
+  this bug. **Verified in game 2026-09-23:** the reporter reconverted on test build `sep23`
+  (020e88b) and it functions as expected (Joe).
 - Side finding, report only: the weigh pass advises shrinking the bake texture ("8192x280 ...
   1024x1024 is the same picture"). It is data, not a picture. Nothing acts on it (the texture pass
   and free wins only touch textures with an importer, and the bake has none), but the advice is
