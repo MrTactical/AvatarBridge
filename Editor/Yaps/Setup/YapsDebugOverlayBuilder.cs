@@ -332,6 +332,17 @@ namespace AvatarBridge
             EditorUtility.SetDirty(plug);
         }
 
+        // The mesh under every readout on this renderer, after a plug's
+        // triangles were split out onto a copy of it.
+        public static void Replaced(Renderer renderer, Mesh mesh)
+        {
+            foreach (var plug in Records(renderer))
+            {
+                plug.readoutReplaced = mesh;
+                EditorUtility.SetDirty(plug);
+            }
+        }
+
         // The plugs that recorded a readout on this renderer.
         static List<YapsPlug> Records(Renderer renderer)
         {

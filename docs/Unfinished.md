@@ -122,12 +122,42 @@ light, a plug seen.
     every converted plug. All three now carry `YapsBaker.PlaceKey`, six hex digits of where the
     objects sit by sibling index: unique, and stable across reconverts so a reconvert still
     overwrites its own file.
-  - Found beside it, NOT fixed: on the 3-plug avatar all three plugs bake the same slot, so only
-    the last one's bake reaches the material. If the three are different shafts, two never bend.
-    Pre-existing; needs a look at what the source avatar meant by three plugs on one mesh.
-  - Also beside it, pre-existing, not a 4.6.4 change: the sync check counts a parameter that
-    STARTS under 3200 bits as fitting, so an avatar at 3230/3200 gets a warning, not the error.
-    Whether CVR counts the same way needs the decompiled client.
+  - Found beside it: plugs baking the same slot, so only the last one's bake reaches the material.
+    **FIXED ON DEV 2026-09-23 (Joe: "fix it fully"), not in game.** The 3-plug avatar is one shaft
+    with three plug components (last bake winning is right there); the 2-plug avatar is two ears on
+    one accessory mesh, one slot, so one ear never bent. `YapsSlotSplit`: when a plug's slot already
+    holds a bake from a plug on another shaft (vertex masks overlapping under half), its triangles
+    move to a new submesh on a copy of the mesh (`YAPS <mesh> <key> split.asset`), with a slot of
+    its own on the slot's original material, and it bakes that. The bake is indexed by vertex, so
+    neither bake changes. Both builders: the converter per conversion (`SplitShared`), the toolkit
+    on the bake that finds the other plug's material in its slot. `Dev/Probes/SharedSlotProbe.cs`
+    (synthetic two-shaft mesh, toolkit door) found three bugs in the first cut before it passed:
+    the slots a plug mirrors into were counted before the split, so the second bake mirrored back
+    over the first plug's slot; the new slot first held a copy of the first plug's material, whose
+    bake texture the re-bake path then deleted as "the one it replaces" (it now takes the slot's
+    recorded original, a fresh bake with its own record for Remove); and writing `materialSlot`
+    would have switched off multi-slot and multi-mesh baking on every later re-bake. It also showed
+    Remove un-baking EVERY plug on a mesh (pre-existing, for plugs in different slots too): it took
+    every baked slot, the mesh's toggle and its size wiring. Remove now leaves any slot another plug
+    on the mesh still bends with (handing it the original if the record was the removed plug's),
+    and the toggle and wiring while any plug is left; the plug that split puts back the mesh from
+    before (`YapsPlug.splitFrom`) while its split is still the last one made on it, so removing
+    every plug leaves the avatar on its own mesh, not on a generated copy. Split files are keyed by
+    renderer and plug, so a third plug's split never deletes the mesh the second one goes back to.
+    Probe: split, a bake each, re-bakes split nothing more, a third plug on the first shaft still
+    takes its slot over, Remove one at a time down to the original mesh and material.
+    Still owed: the two-avatar subset and a full corpus against the new baseline.
+  - **Known limit, not fixed:** plugs on one mesh share ONE deform toggle. `material._YAPS_Enabled`
+    reaches every slot of a renderer and `material[n]._X` binds nothing, so there is no per-slot
+    switch without material swaps; the entry is named for whichever plug baked last. Same before
+    the split for plugs in different slots.
+  - ~~Also beside it: the sync check counts a parameter that STARTS under 3200 bits as fitting, so
+    an avatar at 3230/3200 gets a warning, not the error.~~ **WITHDRAWN 2026-09-23: the client does
+    the same.** `AvatarAnimatorManager.CreateParameterDefinition` (decompiled, beta client) adds a
+    synced parameter when `AASBitUsage < 3200`, before adding its 32 bits, in the animator's
+    parameter order, so a float starting at 3199 syncs and 3231 is the real ceiling. The one
+    difference left: `IsSynced` also skips parameters an animation curve controls
+    (`IsParameterControlledByCurve`), which the check still counts, so it can only overcount.
 - **The readout is optional, Joe 2026-09-23.** An *In-game readout* tick on every plug (applies on
   re-bake) and socket (applies at once when built), in the See it work card. With nothing left
   carrying one, `Menu` now also drops the `YAPS/Readout` parameter: a controller parameter syncs

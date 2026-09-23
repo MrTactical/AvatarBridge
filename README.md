@@ -711,7 +711,10 @@ than aiming at a point, easing in as it approaches, relaxing when pulled away. A
 more than one mesh, a tip, a second half or a ring or harness on a renderer of its own, bends as
 one piece: every mesh that rides the shaft is baked on the same frame, with the same settings, and
 follows the same size animations, even when most of it sits elsewhere. The body the plug grows
-from, which meets it only at its root bone, is left as it is, and the report names it. **A converted
+from, which meets it only at its root bone, is left as it is, and the report names it. Two plugs
+on different shafts that share one material each get a material of their own: one material
+carries one plug's bend, so the second plug's part of the mesh moves to a slot of its own on a
+copy of the mesh, and the report says so. **A converted
 socket with a mesh of its own opens around a plug**: the entry and up to fifteen further depths,
 staged, several allowed at one depth, driven straight from the shader: the socket-side deform DPS
 had and SPS dropped, so it reacts to a DPS plug that has never heard of this tool. (The socket
@@ -1025,7 +1028,9 @@ socket · Out of a socket · Motion inside a socket · The bend toward a socket 
 How sockets find it*. Every knob wears the system it came from: DPS purple, TPS teal, SPS
 orange, YAPS green, and a **Show** filter at the top keeps only one system's knobs. Knobs write
 straight to the plug's material; the material's own YAPS panel writes back; one set of values,
-two doors. **Bake** and **Remove this plug** are at the bottom. **A plain (unskinned) mesh bends around its object's origin
+two doors. **Bake** and **Remove this plug** are at the bottom. A plug baked into a material slot
+another plug on a different shaft already bends gets a slot of its own on a copy of the mesh, as
+a converted one does, so both bend. **A plain (unskinned) mesh bends around its object's origin
 along +Z**: pivot at the base, shaft along +Z (in Blender: origin at the base, shaft along +Y
 before export); the bake warns when the mesh disagrees. A skinned mesh is measured from its bones
 and needs neither.
@@ -1114,7 +1119,9 @@ Unity puts one on every component, and animating it does nothing whatsoever. **T
 deform on and off, animate the material property `_YAPS_Enabled` on its renderer instead**: 0 off,
 1 on, anything between fades it, so a slider drives it directly. It stops the bending rather than
 hiding the mesh, toggle the object for that, and because animated material properties live in
-the renderer's property block, the material inspector keeps showing whatever was baked.
+the renderer's property block, the material inspector keeps showing whatever was baked. The
+property reaches every material on the renderer, so plugs sharing one mesh share one switch, and
+their menu toggle is one entry named for whichever plug baked last.
 
 If you animated the component before reading any of that, **Bake fixes it for you**: it finds
 curves on a plug component's `Enabled` field in your own clips and writes the matching
@@ -1165,7 +1172,10 @@ added a toggle that turns out to be unnecessary, the next one removes it.
 **Taking things out again.** Every plug and socket has **Remove**: on its row in the window, and
 in its own inspector. It takes the thing out entire: the objects the tool made, its animator layer
 and parameter, its menu entry, the size wiring in your clips, and the bake, putting the material
-it replaced back in its slot. A dialog lists exactly what will go first, and it is one undo step.
+it replaced back in its slot. With other plugs still on the same mesh, the menu entry, the size
+wiring and their slots stay, since those are theirs too, and a plug that was given a slot of its
+own puts the mesh back as it was before. A dialog lists exactly what will go first, and it is one
+undo step.
 The files it generated stay in `Assets/YAPS/Generated` for the next Bake, so an undo never points
 at a missing asset. If you delete one by hand instead, *Clean up leftovers* in the window finds
 what it left.

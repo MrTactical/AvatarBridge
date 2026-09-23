@@ -89,6 +89,53 @@ namespace AvatarBridge
                 for (int i = 0; i < mats.Length; i++) alsoSlots.Add(i);
             }
             if (slot < 0) slot = 0;
+            // Another plug's bake already in this slot, from another shaft. One
+            // material holds one plug's bend, so rather than take it over and
+            // leave that plug rigid, this one moves to a slot of its own, on a
+            // copy of that material.
+            if (renderer is SkinnedMeshRenderer shared && mats[slot] != null && mats[slot].HasProperty("_YAPS_Bake"))
+            {
+                var owner = OwnerOfSlot(plug, renderer, slot, mats[slot]);
+                var mine = YapsSlotSplit.Mask(shared, result.Root);
+                if (owner != null && !YapsSlotSplit.SameShaft(mine,
+                        YapsSlotSplit.Mask(shared, owner.rootBone != null ? owner.rootBone : owner.transform)))
+                {
+                    // What the slot held before the other plug baked, so this
+                    // bake is a fresh one with its own record for Remove. A
+                    // copy of the other plug's material carried its bake, and
+                    // the re-bake path deleted that as the texture it replaced.
+                    var before = owner.bakedSlots.FirstOrDefault(b => b != null && b.slot == slot
+                                     && Same(b.renderer, renderer, owner))?.was ?? owner.bakedFrom;
+                    string why = "the slot's original material is not recorded";
+                    var unsplit = shared.sharedMesh;
+                    int added = before == null ? -1 : YapsSlotSplit.Split(shared, result.Root, slot, mine, before, dir, out why);
+                    if (added >= 0)
+                    {
+                        plug.splitFrom = unsplit;
+                        EditorUtility.SetDirty(plug);
+                        o.Notes.Add($"It shared slot {slot} with \"{owner.name}\", a plug on another shaft, and one " +
+                                    $"material holds one plug's bend. Its triangles moved to slot {added} on a copy of " +
+                                    "the mesh, so both bend.");
+                        // No materialSlot written: that is the author's
+                        // override and turns off baking into every slot the
+                        // plug reaches. Its triangles now sit in the new
+                        // slot, so the next bake finds it unaided. The slots
+                        // it reaches changed with the mesh, and the one it
+                        // left is the other plug's: mirroring into it would
+                        // take that material over after all.
+                        alsoSlots = SlotsWeightedTo(shared, result.Root);
+                        alsoSlots.Remove(slot);
+                        slot = added;
+                        mats = renderer.sharedMaterials;
+                    }
+                    else
+                    {
+                        o.Notes.Add($"It shares slot {slot} with \"{owner.name}\", a plug on another shaft, and could " +
+                                    $"not be given a slot of its own ({why}), so it takes the material over and that " +
+                                    "plug will not bend.");
+                    }
+                }
+            }
             alsoSlots.Remove(slot);
             var source = mats[slot];
             if (source == null) { o.Message = $"material slot {slot} is empty"; return o; }
@@ -1512,6 +1559,15 @@ namespace AvatarBridge
         }
 
         // --- helpers ------------------------------------------------------------
+
+        // The other plug whose bake this slot's material holds, if any.
+        static YapsPlug OwnerOfSlot(YapsPlug plug, Renderer renderer, int slot, Material material)
+        {
+            var avatar = plug.GetComponentInParent<CVRAvatar>(true);
+            var top = avatar != null ? avatar.transform : TopOf(plug.transform);
+            return top.GetComponentsInChildren<YapsPlug>(true).FirstOrDefault(p => p != plug && p.Target == renderer
+                && (p.readoutSource == material || p.materialSlot == slot));
+        }
 
         static Transform TopOf(Transform t)
         {

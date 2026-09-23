@@ -175,6 +175,11 @@ namespace AvatarBridge.Yaps
         public System.Collections.Generic.List<BakedSlot> bakedSlots =
             new System.Collections.Generic.List<BakedSlot>();
 
+        // The mesh before this plug's triangles moved to a slot of their own,
+        // off a slot another plug's bake held, for Remove to put back.
+        [HideInInspector]
+        public Mesh splitFrom;
+
         // The wearer's own sockets, as changes against the default: every one
         // may be entered except those on the hips. Changes rather than a full
         // list, so a socket added later starts at its default rather than off.
