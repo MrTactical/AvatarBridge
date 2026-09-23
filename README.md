@@ -802,7 +802,9 @@ back to the marker lights.
 A plug compares it with its own, so it knows as a fact which sockets are its wearer's, at any
 distance and however closely two bodies are pressed together. Other players' copies learn the id
 with the first parameter sync. Until then, and for props and world sockets, which carry none,
-ownership is judged by distance to the nearest hips, as before.
+ownership is judged by distance to the nearest hips, as before. The Unity editor has no player
+and so no id; each avatar in the scene is given a stand-in one there, never saved, so your own
+sockets are judged in the editor the way the game judges them.
 
 **Which of your own sockets a plug may enter** is yours to choose, per plug: the plug's
 inspector has a **Your own sockets** list with a tick for each socket on the avatar. Everything off

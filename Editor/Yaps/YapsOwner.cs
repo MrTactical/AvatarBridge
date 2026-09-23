@@ -410,5 +410,67 @@ namespace AvatarBridge
             return true;
         }
     }
+
+    // No player in the editor, so every plug and socket read owner 0, which
+    // the shaders take as unknown: nothing was the wearer's own, and a plug
+    // bent into a socket on its own shaft that the game refuses. A stand-in
+    // per avatar makes the editor judge own sockets as the game does. Property
+    // blocks only, never saved or uploaded. Play Mode sets the parameter
+    // instead, since the owner layer animates the property there.
+    [InitializeOnLoad]
+    static class YapsOwnerStandIn
+    {
+        const string Property = "_YAPS_Owner";
+        static double _next;
+        static MaterialPropertyBlock _block;
+        // HasProperty on a Poiyomi material logs a drawer error each call.
+        static readonly Dictionary<Material, bool> Carries = new Dictionary<Material, bool>();
+
+        static YapsOwnerStandIn() => EditorApplication.update += Tick;
+
+        static void Tick()
+        {
+            if (EditorApplication.timeSinceStartup < _next) return;
+            _next = EditorApplication.timeSinceStartup + 0.5;
+            if (_block == null) _block = new MaterialPropertyBlock();
+            bool changed = false;
+            foreach (var avatar in UnityEngine.Object.FindObjectsOfType<CVRAvatar>(true))
+            {
+                // Never 0, which is unknown, and inside the 24 bits a float holds.
+                float id = 1 + (avatar.GetInstanceID() & 0x7FFFFF);
+                if (Application.isPlaying)
+                {
+                    var animator = avatar.GetComponent<Animator>();
+                    if (animator != null && animator.isActiveAndEnabled && animator.runtimeAnimatorController != null
+                        && animator.parameters.Any(p => p.name == YapsOwner.Parameter))
+                    {
+                        animator.SetFloat(YapsOwner.Parameter, id);
+                        continue;
+                    }
+                }
+                foreach (var r in avatar.GetComponentsInChildren<Renderer>(true))
+                {
+                    var mats = r.sharedMaterials;
+                    for (int slot = 0; slot < mats.Length; slot++)
+                    {
+                        if (!CarriesOwner(mats[slot])) continue;
+                        r.GetPropertyBlock(_block, slot);
+                        if (_block.GetFloat(Property) == id) continue;
+                        _block.SetFloat(Property, id);
+                        r.SetPropertyBlock(_block, slot);
+                        changed = true;
+                    }
+                }
+            }
+            if (changed) SceneView.RepaintAll();
+        }
+
+        static bool CarriesOwner(Material m)
+        {
+            if (m == null) return false;
+            if (!Carries.TryGetValue(m, out bool has)) Carries[m] = has = m.HasProperty(Property);
+            return has;
+        }
+    }
 }
 #endif

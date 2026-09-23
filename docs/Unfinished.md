@@ -705,7 +705,17 @@ the root and goes no further, so it stays out, and the report now names each mes
 accessories are not broken anymore". Not in game. A single-bone plug has no "past the root", so an
 accessory on one still needs to be mostly plug.
 
-### In the editor a plug enters a socket on its own shaft. SUSPECTED 2026-09-22
+### In the editor a plug enters a socket on its own shaft. FIXED ON DEV 2026-09-23, for 4.6.3, not verified
+
+**Fix:** `YapsOwnerStandIn` (in `YapsOwner.cs`) gives each avatar in the scene a stand-in owner id,
+every half second, in property blocks on every renderer whose material declares `_YAPS_Owner`; in
+Play Mode it sets the `YAPS/Owner` parameter instead, since the owner layer animates the property
+there. The editor then refuses own sockets as the game does: the reporter's plug has `SelfTag` 1,
+`SelfAllow` 0 and an empty mask, so its own numbered sockets are all refused. **Correction:** this
+does NOT stop Joe's hand ring. A socket off the hips starts ticked, so the game lets a plug into
+its wearer's hand by default too, as SPS does; that one was behaving as designed.
+
+
 
 Right after sep22c the reporter's tip "bulges and breaks" as a socket nears. Bulge and squeeze are
 0 on every slot, so not a knob. The plug carries its own SPS hole (a fluid target) at the seventh
