@@ -118,7 +118,7 @@ namespace AvatarBridge.Yaps
         static YapsSocket _previewing;
 
         // Property blocks only. They are not saved and not uploaded.
-        struct Touched { public Renderer Renderer; public int Slot; public float ChannelSpace; }
+        struct Touched { public Renderer Renderer; public float ChannelSpace; }
         readonly System.Collections.Generic.List<Touched> _touched = new System.Collections.Generic.List<Touched>();
         // Created on first use: a static initializer runs inside AddComponent,
         // where Unity forbids creating native objects.
@@ -151,38 +151,40 @@ namespace AvatarBridge.Yaps
             // mesh is hidden. Skipping inactive objects here wrote no block
             // at all and the shader read zeros, which decode to the far
             // corner of the channel box and look exactly like a bad encode.
+            //
+            // The renderer's own block, never one slot's. A block on a slot
+            // replaces the renderer's for that slot, and the renderer's is
+            // where the Animator writes, so a per-slot preview hid every menu
+            // toggle on the plug for the rest of the session.
             foreach (var r in FindObjectsOfType<Renderer>(true))
             {
-                var mats = r.sharedMaterials;
-                for (int slot = 0; slot < mats.Length; slot++)
+                var m = System.Array.Find(r.sharedMaterials, x => x != null && IsYapsMaterial(x)
+                    && x.HasProperty("_YAPS_VertexCount") && x.GetFloat("_YAPS_VertexCount") > 0f);
+                if (m == null) continue;
+                if (!_touched.Exists(t => t.Renderer == r))
                 {
-                    var m = mats[slot];
-                    if (m == null || !IsYapsMaterial(m)) continue;
-                    if (!_touched.Exists(t => t.Renderer == r && t.Slot == slot))
+                    _touched.Add(new Touched
                     {
-                        _touched.Add(new Touched
-                        {
-                            Renderer = r, Slot = slot,
-                            ChannelSpace = m.HasProperty("_YAPS_ChannelSpace") ? m.GetFloat("_YAPS_ChannelSpace") : 0f,
-                        });
-                    }
-                    float length = m.HasProperty("_YAPS_Length") ? m.GetFloat("_YAPS_Length") : 0.25f;
-                    float gap = Vector3.Distance(PlugOrigin(r), transform.position);
-                    float engaged = 1f - Mathf.Clamp01((gap - length * 1.2f) / Mathf.Max(length * 0.4f, 0.001f));
-                    // What the atlas does with a one-way ring and a plug behind it.
-                    if (kind == SocketKind.Ring && oneWay
-                        && Vector3.Dot(transform.forward, PlugOrigin(r) - transform.position) < 0f) engaged = 0f;
-                    r.GetPropertyBlock(Block, slot);
-                    // World space: the one route the shader still reads. The
-                    // contact channel's own route, which this used to imitate,
-                    // no longer bends a plug in game.
-                    Block.SetFloat("_YAPS_ChannelSpace", 0f);
-                    Block.SetVector("_YAPS_SocketPos", transform.position);
-                    Block.SetVector("_YAPS_SocketForward", transform.forward);
-                    Block.SetVector("_YAPS_SocketUp", transform.up);
-                    Block.SetVector("_YAPS_SocketFlags", new Vector4(engaged, kind == SocketKind.Hole ? 1f : 0f, 0f, 0f));
-                    r.SetPropertyBlock(Block, slot);
+                        Renderer = r,
+                        ChannelSpace = m.HasProperty("_YAPS_ChannelSpace") ? m.GetFloat("_YAPS_ChannelSpace") : 0f,
+                    });
                 }
+                float length = m.HasProperty("_YAPS_Length") ? m.GetFloat("_YAPS_Length") : 0.25f;
+                float gap = Vector3.Distance(PlugOrigin(r), transform.position);
+                float engaged = 1f - Mathf.Clamp01((gap - length * 1.2f) / Mathf.Max(length * 0.4f, 0.001f));
+                // What the atlas does with a one-way ring and a plug behind it.
+                if (kind == SocketKind.Ring && oneWay
+                    && Vector3.Dot(transform.forward, PlugOrigin(r) - transform.position) < 0f) engaged = 0f;
+                r.GetPropertyBlock(Block);
+                // World space: the one route the shader still reads. The
+                // contact channel's own route, which this used to imitate,
+                // no longer bends a plug in game.
+                Block.SetFloat("_YAPS_ChannelSpace", 0f);
+                Block.SetVector("_YAPS_SocketPos", transform.position);
+                Block.SetVector("_YAPS_SocketForward", transform.forward);
+                Block.SetVector("_YAPS_SocketUp", transform.up);
+                Block.SetVector("_YAPS_SocketFlags", new Vector4(engaged, kind == SocketKind.Hole ? 1f : 0f, 0f, 0f));
+                r.SetPropertyBlock(Block);
             }
         }
 
@@ -239,13 +241,13 @@ namespace AvatarBridge.Yaps
             foreach (var t in _touched)
             {
                 if (t.Renderer == null) continue;
-                t.Renderer.GetPropertyBlock(Block, t.Slot);
+                t.Renderer.GetPropertyBlock(Block);
                 Block.SetFloat("_YAPS_ChannelSpace", t.ChannelSpace);
                 Block.SetVector("_YAPS_SocketFlags", Vector4.zero);
                 Block.SetVector("_YAPS_SocketPos", Vector4.zero);
                 Block.SetVector("_YAPS_SocketForward", Vector4.zero);
                 Block.SetVector("_YAPS_SocketUp", Vector4.zero);
-                t.Renderer.SetPropertyBlock(Block, t.Slot);
+                t.Renderer.SetPropertyBlock(Block);
             }
             _touched.Clear();
             _isYaps.Clear();

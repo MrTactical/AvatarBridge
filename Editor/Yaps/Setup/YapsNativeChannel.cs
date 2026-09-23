@@ -2,6 +2,10 @@
 // Build only takes out what an older version left. A plug finds a socket
 // through the screen atlas, with marker lights where the atlas cannot
 // answer.
+//
+// Build is also where every toolkit door that bakes a plug ends, so the
+// avatar-wide wiring lives here: the owner id, the tag choosers, the
+// readout toggle, and the check that every curve written binds.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
@@ -41,9 +45,18 @@ namespace AvatarBridge
             // knows as a fact the socket is not its own.
             string owner = YapsOwner.Wire(avatar);
             if (owner != null) lines.Add("✓ " + owner);
-            // After the bakes, like the id: it switches every plug's readout.
-            string readout = YapsDebugOverlayBuilder.Menu(avatar, YapsOwner.Shipped(avatar));
+            // After the bakes, like the id. The choosers were built by the
+            // socket step alone, so an avatar with plugs and no sockets never
+            // got one, and neither did a plug baked from its own inspector.
+            var controller = YapsOwner.Shipped(avatar);
+            string tags = YapsTagMenu.Build(avatar, controller);
+            if (tags != null) lines.Add("✓ " + tags);
+            string readout = YapsDebugOverlayBuilder.Menu(avatar, controller);
             if (readout != null) lines.Add("✓ " + readout);
+            foreach (string dead in YapsToggles.DeadBindings(avatar.gameObject, controller))
+            {
+                lines.Add("✗ a curve that changes nothing, Unity cannot attach it: " + dead);
+            }
             return lines;
         }
 

@@ -38,8 +38,13 @@ namespace AvatarBridge.Regression
                 var avatar = go.GetComponent<CVRAvatar>();
                 var plugs = go.GetComponentsInChildren<YapsPlug>(true);
                 Log($"avatar {path}, {plugs.Length} plug(s)");
+                // The bake writes the tags into the converted material and the
+                // chooser into the controller, both assets: put back at the end.
+                var authored = plugs.ToDictionary(p => p, p => new System.Collections.Generic.List<string>(p.answers));
                 foreach (var plug in plugs)
                 {
+                    // Two tags, so the plug's own door has a chooser to build.
+                    if (plug.answers.Count < 2) plug.answers = new System.Collections.Generic.List<string> { "mouth", "handleft" };
                     var o = YapsNativeBuilder.BakeAndRefreshMenu(plug);
                     Check(o.Ok, $"bake {plug.name}: {o.Message}");
                     foreach (var n in o.Notes.Where(n => n.Contains("readout"))) Log("  " + n);
@@ -54,6 +59,11 @@ namespace AvatarBridge.Regression
                 Check(avatar.avatarSettings.settings.Count(e => e != null && e.machineName == YapsDebugOverlayBuilder.Parameter) == 1,
                     "one row, however many plugs");
                 var controller = YapsOwner.Shipped(avatar);
+                Check(controller.layers.Count(l => l.name.StartsWith("YAPS tags ")) == plugs.Length
+                      && avatar.avatarSettings.settings.Count(e => e != null && e.name.EndsWith(" answers")) == plugs.Length,
+                    "a tag chooser per plug, from the plug's own bake");
+                var dead = YapsToggles.DeadBindings(go, controller);
+                Check(dead.Count == 0, $"every YAPS curve binds ({dead.Count} dead{(dead.Count > 0 ? ": " + string.Join("; ", dead.Take(5)) : "")})");
                 var layers = controller.layers.Where(l => l.name == "YAPS readout").ToList();
                 Check(layers.Count == 1, $"layer on {controller.name}: {layers.Count}");
                 Check(controller.parameters.Any(p => p.name == YapsDebugOverlayBuilder.Parameter
@@ -119,6 +129,8 @@ namespace AvatarBridge.Regression
                     var animator = go.GetComponent<Animator>();
                     animator.runtimeAnimatorController = alone;
                     animator.Rebind();
+                    void Drive(string when)
+                    {
                     foreach (bool want in new[] { true, false })
                     {
                         animator.SetBool(YapsDebugOverlayBuilder.Parameter, want);
@@ -140,11 +152,54 @@ namespace AvatarBridge.Regression
                         r.sharedMaterials = full;
                         int d = Diff(driven, bare);
                         Check(want ? d > 200 : d == 0,
-                            $"{plug.name}: the menu parameter {(want ? "on shows" : "off hides")} it ({d} px from no slot)");
+                            $"{plug.name}{when}: the menu parameter {(want ? "on shows" : "off hides")} it ({d} px from no slot)");
                     }
+                    }
+                    Drive("");
+                    // The editor's owner stand-in writes its own block on
+                    // every slot carrying the id, the readout's included.
+                    YapsOwnerStandIn.Apply();
+                    var standIn = new MaterialPropertyBlock();
+                    r.GetPropertyBlock(standIn, slot);
+                    Log($"  stand-in: slot block owner {standIn.GetFloat("_YAPS_Owner")}");
+                    Drive(", owner stand-in on");
+                    // And a socket previewing in reach, which writes the plug's
+                    // block every tick.
+                    var previewing = new GameObject("__Preview socket").AddComponent<YapsSocket>();
+                    previewing.transform.position = plug.transform.position + plug.transform.forward * 0.05f;
+                    previewing.preview = true;
+                    previewing.PreviewTick();
+                    Drive(", socket preview on");
+                    previewing.preview = false;
+                    previewing.PreviewTick();
+                    UnityEngine.Object.DestroyImmediate(previewing.gameObject);
                 }
                 cam.targetTexture = null;
                 UnityEngine.Object.DestroyImmediate(rt);
+
+                // The check catches the spelling that shipped dead, and only that.
+                var target = plugs[0].Target;
+                string tpath = AnimationUtility.CalculateTransformPath(target.transform, go.transform);
+                var planted = new AnimationClip { name = "planted" };
+                planted.SetCurve(tpath, target.GetType(), "material[1]._YAPS_Enabled", AnimationCurve.Constant(0f, 1f, 0f));
+                planted.SetCurve(tpath, target.GetType(), "material._YAPS_TagInclude.x", AnimationCurve.Constant(0f, 1f, 0f));
+                planted.SetCurve(tpath, target.GetType(), "material._YAPS_Enabled", AnimationCurve.Constant(0f, 1f, 0f));
+                var holder = new UnityEditor.Animations.AnimatorController();
+                holder.AddLayer("planted");
+                holder.layers[0].stateMachine.AddState("planted").motion = planted;
+                var caught = YapsToggles.DeadBindings(go, holder);
+                Check(caught.Count == 1 && caught[0].EndsWith("material[1]._YAPS_Enabled"),
+                    $"the check flags material[1] and passes the plain and vector spellings ({string.Join("; ", caught)})");
+
+                foreach (var plug in plugs)
+                {
+                    plug.answers = authored[plug];
+                    YapsNativeBuilder.BakeAndRefreshMenu(plug);
+                }
+                AssetDatabase.SaveAssets();
+                int choosers = controller.layers.Count(l => l.name.StartsWith("YAPS tags "));
+                int wanted = plugs.Count(p => YapsTags.Listed(p.answers).Count >= 2);
+                Check(choosers == wanted, $"the authored tags put back ({choosers} chooser(s), {wanted} authored)");
             }
             catch (Exception e)
             {

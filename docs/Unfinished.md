@@ -716,6 +716,30 @@ of f76b482 (`Bare`, `Writes`, the remover) stays, for clips built by 4.6.0 to 4.
 The claim in the tag-set record further down is marked withdrawn. Whether the half-switched-off
 plug f76b482 describes was ever seen, or reasoned from the same premise, is not recorded.
 
+**Three follow-ups, same day.**
+- **A curve that binds to nothing is now reported.** `YapsToggles.DeadBindings` asks Unity
+  (`GetEditorCurveValueType`) about every `material._YAPS_` curve the avatar can play: the
+  controller's clips and the menu entries' own. The converter runs it as the last pass, "Check YAPS
+  curves bind", after the rename, and warns; the toolkit's build log lists them. The probe plants
+  `material[1]._YAPS_Enabled` beside the plain and vector spellings and only the first is caught.
+- **The editor hid every menu toggle on every plug.** A block set on one slot replaces the
+  renderer's block for that slot, and the renderer's is where the Animator writes. The owner
+  stand-in wrote a block on every slot carrying `_YAPS_Owner`, every half second, and the socket
+  preview on every YAPS slot, so in the editor nothing animated on a plug's materials could show,
+  menu toggles included. Measured: the readout shown by the menu, 4146 px, went to 0 once the
+  stand-in ran. Both write the renderer's block now, as the owner layer does in game, and the
+  stand-in clears the slot blocks an earlier build left. Editor only; the game has neither script.
+- **A toolkit avatar with plugs and no sockets never got a tag chooser.** Only the socket step
+  built it, so neither Build on such an avatar nor Bake on the plug's own inspector did. It moved
+  to `YapsNativeChannel.Build`, where every door that bakes a plug ends, with the readout toggle
+  and the curve check.
+
+`Dev/Probes/ReadoutProbe.cs` covers all three and passes on the three test avatars; the runtime
+tester is still 87 of 87. **Its first version polluted the test project:** the two tags it gives a
+plug for the chooser check were baked into the converted plug materials and the chooser layers
+saved into the controllers, and the tester then failed 10 checks on untagged sockets refused. It
+now puts the authored tags back and bakes again at the end, which removed both.
+
 ### Blendshapes a plug renderer holds came undone mid-bend. FIXED ON DEV 2026-09-22, for 4.6.3
 
 Field report on 4.6.2, with the output folder: near a socket the plug grew torn translucent pieces

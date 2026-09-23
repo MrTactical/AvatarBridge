@@ -594,6 +594,40 @@ namespace AvatarBridge
             return "material." + property;
         }
 
+        // Every YAPS material curve the avatar can play that binds to
+        // nothing, as "clip: path property". Unity resolves a binding against
+        // the hierarchy; one it cannot resolve does nothing in game either,
+        // and nothing else says so: toggles on a later material slot were
+        // dead from 4.6.0 to 4.6.3 behind clean reports.
+        public static List<string> DeadBindings(GameObject root, UnityEditor.Animations.AnimatorController controller)
+        {
+            var dead = new List<string>();
+            if (root == null) return dead;
+            var clips = new List<AnimationClip>();
+            if (controller != null) clips.AddRange(controller.animationClips);
+            var avatar = root.GetComponent<CVRAvatar>();
+            var settings = avatar != null && avatar.avatarSettings != null ? avatar.avatarSettings.settings : null;
+            if (settings != null)
+            {
+                foreach (var e in settings)
+                {
+                    if (e?.toggleSettings == null || !e.toggleSettings.useAnimationClip) continue;
+                    clips.Add(e.toggleSettings.animationClip);
+                    clips.Add(e.toggleSettings.offAnimationClip);
+                }
+            }
+            foreach (var clip in clips.Where(c => c != null).Distinct())
+            {
+                foreach (var b in AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (!Bare(b.propertyName).StartsWith("material._YAPS_", System.StringComparison.Ordinal)) continue;
+                    if (AnimationUtility.GetEditorCurveValueType(root, b) == null)
+                        dead.Add(clip.name + ": " + b.path + " " + b.propertyName);
+                }
+            }
+            return dead;
+        }
+
         // "material[2]._X" read as "material._X". Builds from 4.6.0 wrote the
         // index for later slots, dead as it was, so anything hunting for a
         // property has two spellings to match, and until then matched the

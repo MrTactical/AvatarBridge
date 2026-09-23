@@ -1202,6 +1202,19 @@ namespace AvatarBridge
             }
         }
 
+        // Every curve YAPS wrote, asked of Unity once the paths are final.
+        // One that binds to nothing does nothing in game, and no other check
+        // would say so.
+        public static void CheckCurveBindings(BridgeContext ctx)
+        {
+            var dead = YapsToggles.DeadBindings(ctx.Target, ctx.MergedController);
+            if (dead.Count == 0) return;
+            ctx.Report.Warning(Category, $"{dead.Count} penetration animation curve(s) change nothing",
+                "Unity cannot attach them to anything on the avatar, so the menu rows or size changes they " +
+                "belong to do nothing in game. Please report this with the conversion report. " +
+                string.Join("; ", dead.Take(10)) + (dead.Count > 10 ? $"; and {dead.Count - 10} more" : ""));
+        }
+
         // --- the atlas's animation ----------------------------------------
 
         // RemoveAtlasJunk deletes the atlas objects early, before the merge.

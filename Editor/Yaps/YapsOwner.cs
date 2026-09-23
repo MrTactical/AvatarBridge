@@ -498,18 +498,25 @@ namespace AvatarBridge
                         continue;
                     }
                 }
+                // The renderer's own block, as the owner layer writes in game.
+                // A block on one slot replaces the renderer's for that slot,
+                // and the renderer's is where the Animator writes: per slot,
+                // this hid every menu toggle on every plug in the editor.
                 foreach (var r in avatar.GetComponentsInChildren<Renderer>(true))
                 {
                     var mats = r.sharedMaterials;
+                    if (!mats.Any(CarriesOwner)) continue;
+                    r.GetPropertyBlock(_block);
+                    if (_block.GetFloat(Property) == id) continue;
+                    _block.SetFloat(Property, id);
+                    r.SetPropertyBlock(_block);
+                    // What an earlier build left on each slot, which would
+                    // still hide the renderer's block until the scene reloads.
                     for (int slot = 0; slot < mats.Length; slot++)
                     {
-                        if (!CarriesOwner(mats[slot])) continue;
-                        r.GetPropertyBlock(_block, slot);
-                        if (_block.GetFloat(Property) == id) continue;
-                        _block.SetFloat(Property, id);
-                        r.SetPropertyBlock(_block, slot);
-                        changed = true;
+                        if (CarriesOwner(mats[slot])) r.SetPropertyBlock(null, slot);
                     }
+                    changed = true;
                 }
             }
             if (changed) SceneView.RepaintAll();

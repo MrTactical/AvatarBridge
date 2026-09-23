@@ -2356,6 +2356,10 @@ Work down the list; the first that fits is usually it.
   lights, which cannot carry tags, one-way rings or a wearer's own sockets. Nothing reports this,
   because from the inside it looks exactly like a socket that decided not to answer. See
   [how a plug finds a socket](#yaps-penetration-that-works-in-chilloutvr).
+- **Does the report say some penetration animation curves "change nothing"?** Every curve the
+  conversion writes for a plug is checked against the finished avatar, and those are the ones
+  Unity could not attach to anything, so the menu rows or size changes they belong to do nothing
+  in game. It should never appear. Please report it with the conversion report.
 - **Does the report say it "could not ask VRCFury to leave" a plug shader alone?** Converting turns
   VRCFury's own plug deform off before VRCFury bakes, so only one deform moves the plug. That warning
   means your VRCFury version has no switch this tool recognises, so both may be moving it, which

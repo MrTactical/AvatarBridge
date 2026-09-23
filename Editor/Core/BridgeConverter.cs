@@ -227,6 +227,8 @@ namespace AvatarBridge
                     // so anything running after it that wrote a path would
                     // write the old one and address nothing.
                     Pass("Rename YAPS objects", YapsRename.Run, PassTraits.EditsClips),
+                    // Reads only, once every path is final.
+                    Pass("Check YAPS curves bind", YapsConverter.CheckCurveBindings),
 #endif
                     // Last thing that touches the animator: the masks that
                     // list every transform by name must match the final
