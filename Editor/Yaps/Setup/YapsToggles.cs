@@ -598,7 +598,7 @@ namespace AvatarBridge
         // nothing, as "clip: path property". Unity resolves a binding against
         // the hierarchy; one it cannot resolve does nothing in game either,
         // and nothing else says so: toggles on a later material slot were
-        // dead from 4.6.0 to 4.6.3 behind clean reports.
+        // dead from 4.6.0 to 4.6.2 behind clean reports.
         public static List<string> DeadBindings(GameObject root, UnityEditor.Animations.AnimatorController controller)
         {
             var dead = new List<string>();

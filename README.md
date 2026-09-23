@@ -2221,7 +2221,7 @@ it to catch up, and in VR the avatar came out of it spinning. Desktop never stee
 headset, which is why it only ever showed in VR.
 
 VRChat's stock Action layer carries the same hand-offs on its AFK and emote states, and ChilloutVR
-sets AFK when you take the headset off. From 4.6.3 an Action layer of nothing but placeholders is
+sets AFK when you take the headset off. From 4.6.4 an Action layer of nothing but placeholders is
 left out too, so it only ever applies with *Action (emotes, AFK)* ticked.
 
 **Fixing an avatar you already converted doesn't need the update**: untick *Base / locomotion*

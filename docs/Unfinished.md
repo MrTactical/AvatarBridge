@@ -11,8 +11,9 @@ what SPS code may be looked at in `YAPS-CLEAN-ROOM.md`. Finished records are in 
 
 ## Next up
 
-**Decided 2026-09-23 (Joe):** ship 4.6.3 first (one default corpus run authorised, release on his
-word), then the two items below.
+**Decided 2026-09-23 (Joe):** ship the next release first (one default corpus run authorised,
+release on his word), then the two items below. **It is 4.6.4** (Joe, same day): 4.6.3 is skipped,
+its number spent on test builds, and the socket readout goes in with it.
 
 **1. A runtime tester: the bend as data. PROPOSED, step one is a probe.** Every YAPS bug this week
 (8-bit atlas holes, own socket in the editor, rigid accessories, the torn tip) was found by eye,
@@ -581,7 +582,7 @@ recommended off). **Corpus run 404 (2026-09-21, accepted as the Yaps baseline):*
 avatars lost `[Base]` with the report line, the 8 authored ones kept it, no new exceptions.
 Shipped in 4.6.2. Nobody has worn 4.6.2 yet.
 
-**Action layer, same family. CHANGED ON DEV 2026-09-22, for 4.6.3, unreleased.** Stock Action
+**Action layer, same family. CHANGED ON DEV 2026-09-22, for 4.6.4, unreleased.** Stock Action
 layers are proxy-only too, and their AFK and emote states carry the same Body Control hand-offs
 (corpus digest of a stock avatar: `Afk Init` one Body Control, `BlendOut` five, every clip
 `proxy_`). Unity runs state behaviours on a weight-0 layer, and the client feeds AFK from the
@@ -724,7 +725,7 @@ the tag chooser (both builders, indexed since it was written, 01ba6bf) and the s
 (afdc29c, 2026-09-11, which also deleted the working slot-0 spelling as stale). A plug with a YAPS
 material in slot 0 was never affected. Now `YapsToggles.Bound` has one spelling, a clip writes one
 curve per renderer, and the size mirror drops the dead indexed curves it finds. The reading half
-of f76b482 (`Bare`, `Writes`, the remover) stays, for clips built by 4.6.0 to 4.6.3.
+of f76b482 (`Bare`, `Writes`, the remover) stays, for clips built by 4.6.0 to 4.6.2.
 
 The claim in the tag-set record further down is marked withdrawn. Whether the half-switched-off
 plug f76b482 describes was ever seen, or reasoned from the same premise, is not recorded.
@@ -767,7 +768,7 @@ plug for the chooser check were baked into the converted plug materials and the 
 saved into the controllers, and the tester then failed 10 checks on untagged sockets refused. It
 now puts the authored tags back and bakes again at the end, which removed both.
 
-### Blendshapes a plug renderer holds came undone mid-bend. FIXED ON DEV 2026-09-22, for 4.6.3
+### Blendshapes a plug renderer holds came undone mid-bend. FIXED ON DEV 2026-09-22, for 4.6.4
 
 Field report on 4.6.2, with the output folder: near a socket the plug grew torn translucent pieces
 and black shards, and a ring appeared at the tip; at rest it looked right. The plug renderer held
@@ -818,7 +819,7 @@ share the plug's armature and are not baked (sheath, a ring, a harness, fluff), 
 shaft would stay straight while it bends: floating pieces, not tearing. Which of them sit on the
 shaft needs their meshes, not in the output folder.
 
-### An accessory riding the shaft stayed rigid while the plug bent. FIXED ON DEV 2026-09-22, for 4.6.3
+### An accessory riding the shaft stayed rigid while the plug bent. FIXED ON DEV 2026-09-22, for 4.6.4
 
 Joe, from the reporter: the torn part is one of the accessories. The converter folded another mesh
 into the plug only when MORE than half of it rode the plug's bones, silently, so a harness whose
@@ -832,7 +833,7 @@ the root and goes no further, so it stays out, and the report now names each mes
 accessories are not broken anymore". Not in game. A single-bone plug has no "past the root", so an
 accessory on one still needs to be mostly plug.
 
-### In the editor a plug enters a socket on its own shaft. FIXED ON DEV 2026-09-23, for 4.6.3, not verified
+### In the editor a plug enters a socket on its own shaft. FIXED ON DEV 2026-09-23, for 4.6.4, not verified
 
 **Fix:** `YapsOwnerStandIn` (in `YapsOwner.cs`) gives each avatar in the scene a stand-in owner id,
 every half second, in property blocks on every renderer whose material declares `_YAPS_Owner`; in
@@ -858,7 +859,7 @@ socket. The bake is straight (cross-section centre within 1.4 cm of the axis in 
 length), which rules out a plug baked mid-droop. Joe's own hand ring did the same in the editor. Proposed fix: a stand-in owner id per avatar in edit mode, so the
 editor refuses own sockets the way the game does.
 
-### Half of all atlas cells were dead on a camera without HDR. FIXED ON DEV 2026-09-22, for 4.6.3
+### Half of all atlas cells were dead on a camera without HDR. FIXED ON DEV 2026-09-22, for 4.6.4
 
 The patches beside a plug where a socket never engaged, in the editor. The debug overlay put a
 socket in one: top 4 red, so the atlas READ the socket's slot and threw it out on the cell tag,
@@ -871,7 +872,7 @@ half-metre plug, hence big fixed patches. Half-float keeps every tag, so in game
 
 **Fix:** `YapsAtlasTag` returns `(1 + 2 * (h % 128)) / 255`, an exact 8-bit step; protocol 7 to 8.
 Cost: a slot clash passes the tag 1 in 128 instead of 256, and range still rejects it; 4.6.2 and
-4.6.3 are blind to each other through the atlas. **Verified in the editor 2026-09-22** (Joe,
+4.6.4 are blind to each other through the atlas. **Verified in the editor 2026-09-22** (Joe,
 deployed build): a socket beside the plug now resolves by atlas, overlay all green, and the patches
 are "a lot better". **Not verified in game.** The atlas passed there before, which fits an HDR
 camera; any camera in game without HDR would have had the same holes.
@@ -896,7 +897,7 @@ OBSERVED by the runtime tester on 2026-09-23: 27 of 50 places round a 0.649 m ti
   is one in eight at any distance. Numbered pairs 50 of 50 at 6 and 25 cm on all three plugs.
   Writer only and NOT a protocol change: the reader opens all eight buckets and takes position
   from the payload, so old plugs read new sockets and the other way round. Needs the socket
-  rebuilt, which the 4.6.3 reconvert already asks for.
+  rebuilt, which the 4.6.4 reconvert already asks for.
 - **Props, worlds and past eight, same day.** `YapsSocketBuilder.Build` numbered only sockets under
   an avatar; `YapsOwner.NumberWriters` now numbers every root's sockets, a root with no avatar
   starting from an offset its name picks. With no owner the writer turns the number by the octant,
