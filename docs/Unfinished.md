@@ -19,8 +19,11 @@ word), then the two items below.
 because the bend happens in the vertex shader and nothing on the CPU ever sees it; the corpus
 digests the conversion only. Design:
 - **Readback.** A test-only variant of the patched plug shader writes every bent vertex, and what
-  it resolved, into a buffer the tester reads. First step: probe that a vertex-stage UAV write
-  works on this machine's D3D11. Fallback if not: positions into a float render target, per pixel.
+  it resolved, into a buffer the tester reads. **PROVEN 2026-09-23** by
+  `Dev/Probes/Readback/YapsReadbackProbe`: D3D11 at feature level 11.1, a `RWStructuredBuffer` at
+  `u1` written per `SV_VertexID` from the vertex stage, a skinned strip bent by a turned bone, 64 of
+  64 vertices back and 0.000 mm from Unity's own `BakeMesh`, in batch with graphics on. So the
+  bend can be read as numbers; the float-target fallback is not needed here.
 - **Scenarios, seeded, run on their own.** Sockets approaching from a shell of directions, swept
   past the tip, withdrawn; locomotion with physics on; the Animator Tester's toggle flips; HDR,
   8-bit and small views; a second avatar for ownership. A failure saves a repro scene.
