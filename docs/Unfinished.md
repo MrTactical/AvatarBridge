@@ -712,7 +712,13 @@ Right after sep22c the reporter's tip "bulges and breaks" as a socket nears. Bul
 of its chain bones, and a socket icon sits on the tip in three of four shots. Own sockets are
 refused by owner id, which comes from the player and is 0 in the editor, so there nothing is
 refused; the tag fix likely just made its atlas cell readable. **Pending:** the same approach with
-that socket switched off. Proposed fix: a stand-in owner id per avatar in edit mode, so the
+that socket switched off.
+
+2026-09-23: "still borked", but the socket gizmo is still drawn on the tip, so it is unclear it was
+off. In the worst shot the bent plug climbs, turns back down and ENDS on that socket's icons, which
+sit where the straight tip would be: the bones are not drooping, the bend is going into its own
+socket. The bake is straight (cross-section centre within 1.4 cm of the axis in every tenth of the
+length), which rules out a plug baked mid-droop. Joe's own hand ring did the same in the editor. Proposed fix: a stand-in owner id per avatar in edit mode, so the
 editor refuses own sockets the way the game does.
 
 ### Half of all atlas cells were dead on a camera without HDR. FIXED ON DEV 2026-09-22, for 4.6.3
