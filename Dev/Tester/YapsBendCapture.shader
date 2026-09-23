@@ -33,6 +33,13 @@ Shader "Hidden/YapsBendCapture"
 
             RWStructuredBuffer<float4> _YapsCapture : register(u1);
             float _YapsCaptureOn;
+            // The atlas list itself, for one vertex the tester names, from the
+            // rest root it measured, written past the vertices at _YapsProbeAt.
+            float _YapsProbeVertex;
+            float _YapsProbeAt;
+            float4 _YapsProbeRoot;
+            float4 _YapsProbeForward;
+            float _YapsProbeLength;
 
             struct appdata
             {
@@ -41,7 +48,7 @@ Shader "Hidden/YapsBendCapture"
                 float4 tangent : TANGENT;
                 uint id : SV_VertexID;
             };
-            struct v2f { float4 pos : SV_POSITION; };
+            struct v2f { float4 pos : SV_POSITION; float3 nrm : TEXCOORD0; };
 
             v2f vert(appdata v)
             {
@@ -50,12 +57,28 @@ Shader "Hidden/YapsBendCapture"
                 YapsSocketDeform(p, n, t, v.id);
                 if (_YapsCaptureOn > 0.5)
                     _YapsCapture[v.id] = float4(mul(unity_ObjectToWorld, float4(p, 1)).xyz, 1);
+                if (_YapsCaptureOn > 0.5 && _YapsProbeAt > 0.5 && v.id == (uint) _YapsProbeVertex)
+                {
+                    YapsChain c = YapsResolveChain(_YapsProbeRoot.xyz, _YapsProbeForward.xyz, _YapsProbeLength,
+                                                   float3(1e9, 1e9, 1e9));
+                    uint at = (uint) _YapsProbeAt;
+                    _YapsCapture[at] = float4(c.count, c.engaged, c.headers, c.hits);
+                    [unroll] for (int i = 0; i < YAPS_CHAIN_MAX; i++)
+                        _YapsCapture[at + 1 + i] = float4(c.position[i], c.kind[i]);
+                    _YapsCapture[at + 1 + YAPS_CHAIN_MAX] = float4(c.refusedAt, c.refusedD);
+                }
                 v2f o;
                 o.pos = UnityObjectToClipPos(float4(p, 1));
+                o.nrm = UnityObjectToWorldNormal(n);
                 return o;
             }
 
-            fixed4 frag(v2f i) : SV_Target { return fixed4(0.5, 0.5, 0.5, 1); }
+            // Shaded from the bent normals, for the tester's pictures.
+            fixed4 frag(v2f i) : SV_Target
+            {
+                float lit = 0.3 + 0.7 * saturate(dot(normalize(i.nrm), normalize(float3(0.3, 1, 0.2))));
+                return fixed4(0.85, 0.72, 0.68, 1) * lit;
+            }
             ENDCG
         }
     }

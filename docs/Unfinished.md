@@ -830,13 +830,39 @@ OBSERVED by the runtime tester on 2026-09-23: 27 of 50 places round a 0.649 m ti
 - **The mesh walk** (tester step 4, a socket from 1.8 to 0.2 lengths on four lines): seams never
   open (0.00 mm, all three plugs). Edges crushed to nothing lie behind the socket's opening, the
   socket hiding what went in; a handful outside it at the bend. Stretch reaches 4.5 to 5.8x only
-  with a socket right beside the base at 90 degrees. **Open: a steep swing, not a pop.** Off-axis
-  (45 and 90 degrees) round 1.25 to 1.29 lengths, the tip moves 8 to 18 times as far as the
-  socket; ten times finer the ratio grows only 1.1 to 1.6x, so it is continuous, but a gain of 18
-  means a few centimetres of avatar movement whips the tip. The engagement ramp alone (1.6 to 1.2
-  lengths) predicts about 5x, so something narrower steepens it. Candidate for the reporter's
-  "breaking when nearly in range". The limits in step 4 are first guesses and fail on the crush
-  and stretch; they want setting from these numbers.
+  with a socket right beside the base at 90 degrees. **The steep swing, FIXED ON DEV same day.**
+  Off-axis round 1.25 to 1.29 lengths the tip moved 8 to 18 times as far as the socket. Cause: the
+  root handle was `lerp(5L, gap / 2, engage)`, and a long handle keeps the shaft straight only by
+  pushing the curve's turn past the tip, so the tip whipped round once the handle fell below about
+  1.5L. `Dev/Probes/Hlsl/engage-swing.py` reproduced it and ruled out reshaping the handle
+  (geometric and harmonic still peak at 7 to 13x). **The sweep:** the handle is always gap / 2 and
+  the whole socket path, chain included, is turned about the root toward the plug's forward by
+  `acos(aim . forward) * (1 - engage)`, so the bend grows evenly from 1.6 to 1.2 lengths and full
+  engagement is unchanged. Tester: worst step 2.9 to 5.9x the socket's move (8.4x at a tenth of
+  the stride), was 8 to 18x. Candidate for the reporter's "breaking when nearly in range"; not
+  seen by them yet. Seams open up to 0.17 mm dead ahead (was 0.00): the sweep's axis is per-vertex
+  noise at tiny angles. Under the 0.5 mm bound; watch it.
+- **Phantom sockets mirrored through the world's origin, FIXED ON DEV, protocol 9.** The sweep
+  exposed a jump on the 0.330 m plug at 45 degrees: engagement snapped 0 to 1 in 0.002 lengths.
+  The test shader's probe of the atlas list showed two holes at the same distance, the real one
+  at 45 degrees and one at 134, two fine cells behind it. `Dev/Probes/Hlsl/atlas-phantom.py`
+  replays writer and reader: cell (-1, 2, -1) landed on (1, 2, 1)'s slot in BOTH homes and passed
+  its tag. The hashes multiplied each axis by an odd constant and XORed, and negating an odd
+  product flips every bit but the lowest on both sides, so h(-x, y, -z) == h(x, y, z) for odd x
+  and z, for the slot, the second home and the tag at once. So a socket also answered from its
+  mirror across the vertical axis through the world's origin whenever both fell in one scan: a
+  socket on one side could bend a plug toward empty space on the other, or, as here, sort first
+  and trip the behind-the-base gate. Latent since the atlas shipped, but the old single fine read
+  only saw it within about half a metre of that axis; the coverage read's 1.28 m cells would have
+  spread it over metres round every world's origin. Caught before release, because the tester
+  stands its avatars at the origin. Now one lowbias32-mixed word per cell and salt feeds all
+  three; 3000 random placements within 3 m of the origin: 12 phantoms in reach on protocol 8, 0
+  on 9. Protocol 9, so test builds before this one are blind to it.
+- **Tester steps 5 and 6.** A ring on the plug's own shaft, built under the avatar so it is
+  numbered and the plug told: refused on all three plugs (SelfTag 1, SelfAllow 0, SelfSockets 0),
+  the reporter's case, in the editor. Pictures with `-yapsShots <folder>`: through the capture
+  shader, because the avatar's own materials carry the YAPS code from their conversion and showed
+  the old deform. The step-4 limits are floors from these measurements now.
 - **Tester trap, twice:** a material asset created after the capture materials exist leaves every
   later capture reading nothing. Every numbered writer material is made before them now.
 

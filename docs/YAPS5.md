@@ -1601,3 +1601,20 @@ depended on it: a reader opens all eight buckets and takes position from the pay
 numbered socket now takes bucket `(number - 1 + owner) & 7`, which parts a wearer's first eight
 sockets however close, and is changed by the writer alone, with no protocol bump. Unnumbered
 sockets keep the octant. Later the same day every socket got a number, a prop's and a world's too, and with no owner the writer turns it by the octant instead: `(number - 1 + (owner ? owner : octant)) & 7`.
+
+## A mixed cell hash, protocol 9 (2026-09-23)
+
+The cell hashes were the classic spatial hash, each axis times an odd constant, XORed. That has a
+symmetry: negating an odd product flips every bit except the lowest, on both sides of the XOR, so
+h(-x, y, -z) equals h(x, y, z) whenever x and z are odd. The tag was built the same way from the
+same primes, and so was the second home, so a cell and its mirror across the vertical axis through
+the world's origin shared a slot in both homes AND passed each other's tag. Within a few cells of
+the origin every socket had a phantom twin. The runtime tester found it as a jump, the plug
+engaging and letting go within a fraction of a millimetre, once the sweep made the plug bend
+visibly at that distance; `Dev/Probes/Hlsl/atlas-phantom.py` replays the writer and the reader
+and names the colliding cells.
+
+Now one word per cell and salt, the axes added rather than XORed and then run through lowbias32,
+and the slot, the second home and the tag each cut from their own salt. The tag keeps its form,
+`(1 + 2k) / 255`, with k the word's top seven bits, so the 8-bit exactness of protocol 8 holds.
+
