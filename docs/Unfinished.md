@@ -867,10 +867,13 @@ their normal size when the plug is baked. Measured on the output folder:
   And seams open 290 to 770 mm on this mesh with or without the shapes, so they are its own, not
   this bug. **Verified in game 2026-09-23:** the reporter reconverted on test build `sep23`
   (020e88b) and it functions as expected (Joe).
-- Side finding, report only: the weigh pass advises shrinking the bake texture ("8192x280 ...
-  1024x1024 is the same picture"). It is data, not a picture. Nothing acts on it (the texture pass
-  and free wins only touch textures with an importer, and the bake has none), but the advice is
-  wrong and should skip YAPS bakes.
+- Side finding: the weigh pass advised shrinking the bake texture ("8192x280 ... 1024x1024 is the
+  same picture"). It is data, not a picture. Nothing acted on the bake itself (the texture pass only
+  touches textures with an importer), but the same suggestion drives the texture pass, so an
+  imported data texture (point filtered, no mipmaps) could have been resized on convert.
+  **FIXED ON DEV 2026-09-23:** a data texture gets no density and no suggestion, in the advice and
+  the texture pass alike. `Dev/Probes/WeighDataProbe.cs` on the reporter's avatar. Not in corpus
+  408 (deployed before), and the corpus runs with the texture pass off.
 
 ### An accessory riding the shaft stayed rigid while the plug bent. FIXED ON DEV 2026-09-22, for 4.6.4
 
