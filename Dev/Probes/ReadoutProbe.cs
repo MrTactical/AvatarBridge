@@ -313,7 +313,7 @@ namespace AvatarBridge.Regression
                 // So it must never claim a light that is off, and must lose
                 // it with the light.
                 var roots = socket.GetComponentsInChildren<Light>(true).Where(l => YapsScanner.IsProtocolLight(l)
-                    && (YapsScanner.LightDigit(l) == 7 || YapsScanner.LightDigit(l) is >= 1 and <= 4)
+                    && (YapsScanner.LightDigit(l) == 7 || (YapsScanner.LightDigit(l) >= 1 && YapsScanner.LightDigit(l) <= 4))
                     && (l.transform.position - at).magnitude < 0.02f).ToList();
                 bool lit = roots.Any(l => l.enabled && l.gameObject.activeInHierarchy);
                 Log($"  root light(s) {roots.Count}, lit {lit}");
