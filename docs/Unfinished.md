@@ -134,6 +134,12 @@ light, a plug seen.
   whether the menu names it or not, so before this the bit outlived the toggle. `ReadoutProbe`
   turns every tick off (no readout, layer, parameter or row) and back on.
 
+*4.6.4 shipped 2026-09-23: tag `v4.6.4`, merge `d3f891c`, both packages published and extracted
+(public: no `Editor/Yaps`, `Runtime` or `Dev`; add-on: the 4.6.2 file list plus the socket readout
+shader, no converter). Corpus 408 was not clean and was not rerun in full on Joe's word; the fixes
+it led to were checked on the two avatars it named, the probe, the tester, held shapes, smoke and
+`check-defines.sh`. A full corpus run against the shipped code is still owed, as the new baseline.*
+
 *4.6.0 shipped 2026-09-12: tag `v4.6.0`, merge `b51296e`, both packages published, 98 commits
 since 4.5.1. The atlas carries tags, one-way rings, the per-plug own-sockets checklist and an
 owner id per socket; the conversion resizes oversized textures; four converter bugs went with it.
