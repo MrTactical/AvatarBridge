@@ -734,7 +734,21 @@ plug f76b482 describes was ever seen, or reasoned from the same premise, is not 
   to `YapsNativeChannel.Build`, where every door that bakes a plug ends, with the readout toggle
   and the curve check.
 
-`Dev/Probes/ReadoutProbe.cs` covers all three and passes on the three test avatars; the runtime
+- **Toolkit layers could land in a controller ChilloutVR does not upload.** Once the CCK has
+  generated Advanced Settings and its override is taken as the avatar's `overrides`
+  (`AAS_BaseControllers.cs`), what ships is the generated `_aas.controller` and what survives the
+  next generate is `baseController`: two files. The toolkit split its writes between them: the
+  owner id, the readout toggle and the tag choosers into the uploaded one (lost at the next
+  generate), the marker-lights chooser and the socket reactions into the base alone (not shipped
+  until then, with a note asking for *Create Animator*), and the menu toggles into the base and the
+  Animator's own slot, which da91ae5 showed can belong to another avatar. `YapsOwner.Targets` is
+  now both, once each, and every avatar-wide writer loops over it; removal also reads `overrides`
+  and, for old builds, the Animator's slot. Converted avatars were never split: all three
+  references resolve to the one `_CVR.controller`. The probe copies the base as a generated
+  controller, points `overrides` at it, strips the readout and tag layers from both, bakes, and
+  finds them back in both, on two avatars.
+
+`Dev/Probes/ReadoutProbe.cs` covers all four and passes on the three test avatars; the runtime
 tester is still 87 of 87. **Its first version polluted the test project:** the two tags it gives a
 plug for the chooser check were baked into the converted plug materials and the chooser layers
 saved into the controllers, and the tester then failed 10 checks on untagged sockets refused. It

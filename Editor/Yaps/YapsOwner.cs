@@ -314,7 +314,25 @@ namespace AvatarBridge
         public static string Wire(CVRAvatar avatar)
         {
             if (avatar == null) return null;
-            return Wire(avatar.gameObject, Shipped(avatar));
+            string note = null;
+            foreach (var controller in Targets(avatar)) note = Wire(avatar.gameObject, controller) ?? note;
+            return note;
+        }
+
+        // Every controller an avatar-wide layer goes into: the one ChilloutVR
+        // uploads and the base the CCK rebuilds it from, once each. After the
+        // CCK has generated Advanced Settings they are two files: a layer in
+        // the uploaded one alone is lost at the next generate, and one in the
+        // base alone does not ship until then.
+        public static List<AnimatorController> Targets(CVRAvatar avatar)
+        {
+            var list = new List<AnimatorController>();
+            var shipped = Shipped(avatar);
+            if (shipped != null) list.Add(shipped);
+            var based = avatar != null && avatar.avatarSettings != null
+                ? BridgeContext.Underlying(avatar.avatarSettings.baseController) : null;
+            if (based != null && !list.Contains(based)) list.Add(based);
+            return list;
         }
 
         // The controller ChilloutVR will actually run for this avatar.

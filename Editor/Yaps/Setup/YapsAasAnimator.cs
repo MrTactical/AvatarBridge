@@ -52,7 +52,12 @@ namespace AvatarBridge
         {
             if (avatar == null || string.IsNullOrEmpty(machineName)) return null;
             var from = new List<string>();
-            foreach (var controller in ControllersOf(avatar))
+            // Where older builds wrote too: the Animator's own slot.
+            var animator = avatar.GetComponent<Animator>();
+            var legacy = animator != null ? BridgeContext.Underlying(animator.runtimeAnimatorController) : null;
+            var all = ControllersOf(avatar);
+            if (legacy != null && !all.Contains(legacy)) all.Add(legacy);
+            foreach (var controller in all)
             {
                 var layers = controller.layers;
                 int index = System.Array.FindIndex(layers, l => l.name == machineName);
@@ -69,23 +74,10 @@ namespace AvatarBridge
             return $"layer and parameter \"{machineName}\" taken out of {string.Join(" and ", from.Select(n => "\"" + n + "\""))}";
         }
 
-        // Every animator controller the avatar plays, once each: the
-        // Advanced Settings base controller and the one on the Animator,
-        // an override controller resolved to what it overrides.
-        public static List<AnimatorController> ControllersOf(CVRAvatar avatar)
-        {
-            var list = new List<AnimatorController>();
-            void Add(RuntimeAnimatorController c)
-            {
-                if (c is AnimatorOverrideController o) c = o.runtimeAnimatorController;
-                if (c is AnimatorController a && !list.Contains(a)) list.Add(a);
-            }
-            if (avatar == null) return list;
-            if (avatar.avatarSettings != null) Add(avatar.avatarSettings.baseController);
-            var animator = avatar.GetComponent<Animator>();
-            if (animator != null) Add(animator.runtimeAnimatorController);
-            return list;
-        }
+        // The controller ChilloutVR uploads and the base it is rebuilt from.
+        // Not the Animator's own slot: the CCK puts a generated override
+        // there, which can belong to another avatar's generated folder.
+        public static List<AnimatorController> ControllersOf(CVRAvatar avatar) => YapsOwner.Targets(avatar);
 
         static string Sanitise(string s)
         {

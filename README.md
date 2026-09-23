@@ -1153,9 +1153,11 @@ leaving a second copy behind.
 **A menu toggle for anything that has none.** A socket nobody can switch off holds one of the four
 vertex-light slots forever, and a plug with no switch cannot be put away, so Build gives each an
 Advanced Settings entry, **off by default**, and writes its layer and parameter straight into
-the animator the avatar already wears. It does not press *Create Animator* for you and does not
-copy your base controller or replace your override controller; the CCK's own generator, run later,
-sees the parameter already driven and skips the entry as it is meant to. Anything the avatar
+the controller the avatar uploads, and into your base controller too when the CCK has generated
+one from it, so the layer ships now and survives the next *Create Animator*. It does not press
+*Create Animator* for you and does not copy your base controller or replace your override
+controller; the CCK's own generator, run later, sees the parameter already driven and skips the
+entry as it is meant to. Anything the avatar
 already toggles is left alone: an entry aiming at it or a parent, an entry's own clips, or any
 clip in any of the avatar's controllers that hides the object or its renderer. If an earlier build
 added a toggle that turns out to be unnecessary, the next one removes it.
@@ -2531,8 +2533,8 @@ the wearer again.
 
 The entry is in the Advanced Settings list but the animator has no parameter of that name. The CCK
 writes one per entry only when you press *Create Animator*; the toolkit writes its own entries'
-layers straight into the animator the avatar wears, so this means a build has not run since the
-entry appeared. Press **Bake every plug and verify** once: it reports the layer and parameter it
+layers straight into the controller the avatar uploads and its base controller, so this means a
+build has not run since the entry appeared. Press **Bake every plug and verify** once: it reports the layer and parameter it
 wrote, or *Create Animator* on the CVRAvatar, which does the same for every entry at the cost of
 regenerating the controller.
 

@@ -661,15 +661,12 @@ namespace AvatarBridge
             int before = YapsToggles.Edits;
             string toggled = YapsToggles.EnsureObjectToggle(socket.gameObject, avatar, YapsToggles.LabelFor(socket));
             if (toggled != null) lines.Add(toggled);
-            var animator = socket.GetComponentInParent<Animator>(true);
-            var controller = (avatar != null && avatar.avatarSettings != null
-                    ? BridgeContext.Underlying(avatar.avatarSettings.baseController) : null)
-                ?? (animator != null ? BridgeContext.Underlying(animator.runtimeAnimatorController) : null);
             string menu = YapsToggles.RefreshMenuAnimator(avatar, before);
             if (menu != null) lines.Add(menu);
             // After the toggle layers: the lighthouse asserts the chosen
             // socket on, and a layer wins by coming later.
-            string lighthouse = YapsLighthouse.Build(avatar, controller);
+            string lighthouse = null;
+            foreach (var controller in YapsOwner.Targets(avatar)) lighthouse = YapsLighthouse.Build(avatar, controller) ?? lighthouse;
             if (lighthouse != null) lines.Add($"✓ {lighthouse}");
             string owner = YapsOwner.Wire(avatar);
             if (owner != null) lines.Add($"✓ {owner}");

@@ -187,8 +187,8 @@ namespace AvatarBridge
             // entirely when one socket needs no chooser.
             if (avatar != null)
             {
-                var controller = controllers.FirstOrDefault();
-                string lighthouse = controller != null ? YapsLighthouse.Build(avatar, controller) : null;
+                string lighthouse = null;
+                foreach (var controller in YapsOwner.Targets(avatar)) lighthouse = YapsLighthouse.Build(avatar, controller) ?? lighthouse;
                 if (lighthouse != null) done.Add(lighthouse);
                 string owner = YapsOwner.Wire(avatar);
                 if (owner != null) done.Add(owner);
@@ -352,7 +352,8 @@ namespace AvatarBridge
 
             string owner = YapsOwner.Wire(avatar);
             if (owner != null) done.Add(owner);
-            string readout = YapsDebugOverlayBuilder.Menu(avatar, YapsOwner.Shipped(avatar));
+            string readout = null;
+            foreach (var controller in YapsOwner.Targets(avatar)) readout = YapsDebugOverlayBuilder.Menu(avatar, controller) ?? readout;
             if (readout != null) done.Add(readout);
             DropAtlasIfUnused(top, done);
 
@@ -456,7 +457,8 @@ namespace AvatarBridge
             // The readout toggle, once no plug carries a readout.
             if (!plugs.Any(p => p != null && p.readoutRenderer != null))
             {
-                string readout = YapsDebugOverlayBuilder.Menu(avatar, YapsOwner.Shipped(avatar));
+                string readout = null;
+                foreach (var controller in YapsOwner.Targets(avatar)) readout = YapsDebugOverlayBuilder.Menu(avatar, controller) ?? readout;
                 if (readout != null) done.Add(readout);
             }
 
@@ -506,8 +508,8 @@ namespace AvatarBridge
 
         // --- pieces ----------------------------------------------------------
 
-        // Every animator controller the avatar plays: the CCK's base, its
-        // override's, and the animator's own.
+        // Every animator controller the avatar plays: the uploaded one, the
+        // CCK's base, its override's, and the animator's own.
         static List<AnimatorController> ControllersOf(Transform top)
         {
             var list = new List<AnimatorController>();
@@ -518,6 +520,7 @@ namespace AvatarBridge
             }
             if (top == null) return list;
             var avatar = top.GetComponentInChildren<CVRAvatar>();
+            if (avatar != null) Add(avatar.overrides);
             if (avatar != null && avatar.avatarSettings != null)
             {
                 Add(avatar.avatarSettings.baseController);

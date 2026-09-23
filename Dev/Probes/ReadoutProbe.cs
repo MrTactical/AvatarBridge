@@ -191,6 +191,30 @@ namespace AvatarBridge.Regression
                 Check(caught.Count == 1 && caught[0].EndsWith("material[1]._YAPS_Enabled"),
                     $"the check flags material[1] and passes the plain and vector spellings ({string.Join("; ", caught)})");
 
+                // Once the CCK has generated Advanced Settings, what ships and
+                // what survives the next generate are two controllers.
+                string genDir = "Assets/AvatarBridgeOutput/ReadoutProbe";
+                AssetDatabase.DeleteAsset(genDir);
+                AssetDatabase.CreateFolder("Assets/AvatarBridgeOutput", "ReadoutProbe");
+                AssetDatabase.CopyAsset(AssetDatabase.GetAssetPath(controller), genDir + "/generated_aas.controller");
+                var generated = AssetDatabase.LoadAssetAtPath<UnityEditor.Animations.AnimatorController>(genDir + "/generated_aas.controller");
+                var genOverride = new AnimatorOverrideController(generated);
+                AssetDatabase.CreateAsset(genOverride, genDir + "/generated_aas_overrides.overrideController");
+                foreach (var c in new[] { controller, generated })
+                    for (int i = c.layers.Length - 1; i >= 0; i--)
+                        if (c.layers[i].name == "YAPS readout" || c.layers[i].name.StartsWith("YAPS tags ")) c.RemoveLayer(i);
+                var keptOverrides = avatar.overrides;
+                avatar.overrides = genOverride;
+                Check(YapsOwner.Targets(avatar).Count == 2 && YapsOwner.Shipped(avatar) == generated,
+                    "two controllers once Advanced Settings is generated, the generated one shipping");
+                foreach (var plug in plugs) YapsNativeBuilder.BakeAndRefreshMenu(plug);
+                foreach (var c in new[] { generated, controller })
+                    Check(c.layers.Count(l => l.name == "YAPS readout") == 1
+                          && c.layers.Count(l => l.name.StartsWith("YAPS tags ")) == plugs.Length,
+                        $"readout and tag layers built into the {(c == generated ? "uploaded" : "base")} controller");
+                avatar.overrides = keptOverrides;
+                AssetDatabase.DeleteAsset(genDir);
+
                 foreach (var plug in plugs)
                 {
                     plug.answers = authored[plug];

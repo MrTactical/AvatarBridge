@@ -40,10 +40,11 @@ namespace AvatarBridge
         // direct tree. Local, since every client already agrees on 1.
         public const string One = "#YAPS/One";
 
-        // The controller ChilloutVR uploads for this socket's avatar, or the
-        // line saying why there is none.
-        static AnimatorController Target(YapsSocket socket, out Animator animator, out CVRAvatar avatar,
-                                         out string failure)
+        // The controllers this socket's layers go into, the one ChilloutVR
+        // uploads and the base the CCK rebuilds it from, or the line saying
+        // why there are none.
+        static List<AnimatorController> Targets(YapsSocket socket, out Animator animator, out CVRAvatar avatar,
+                                                out string failure)
         {
             avatar = socket.GetComponentInParent<CVRAvatar>(true);
             animator = socket.GetComponentInParent<Animator>(true);
@@ -53,13 +54,14 @@ namespace AvatarBridge
                 failure = $"✗ {socket.name}: it needs a CVRAvatar and an Animator above the socket";
                 return null;
             }
-            var controller = (avatar.avatarSettings != null ? BridgeContext.Underlying(avatar.avatarSettings.baseController) : null)
-                             ?? BridgeContext.Underlying(animator.runtimeAnimatorController);
-            if (controller == null)
-                failure = $"✗ {socket.name}: the avatar has no animator controller to put the layer in";
-            else if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(controller)))
-                failure = $"✗ {socket.name}: the animator controller is not an asset on disk";
-            return failure == null ? controller : null;
+            var controllers = YapsOwner.Targets(avatar)
+                .Where(c => !string.IsNullOrEmpty(AssetDatabase.GetAssetPath(c))).ToList();
+            if (controllers.Count == 0)
+            {
+                failure = $"✗ {socket.name}: the avatar has no animator controller on disk to put the layer in";
+                return null;
+            }
+            return controllers;
         }
 
         // Has the animations layer been built: it is in a controller.
@@ -88,82 +90,96 @@ namespace AvatarBridge
             if (socket == null) return null;
             var clips = socket.depthAnimations.Where(a => a != null && a.clip != null).ToList();
             if (clips.Count == 0 && !AnimationsExist(socket)) return null;
-            var controller = Target(socket, out var animator, out var avatar, out string failure);
-            if (controller == null) return failure;
+            var controllers = Targets(socket, out _, out var avatar, out string failure);
+            if (controllers == null) return failure;
 
             string layerName = AnimationsLayerName(socket);
-            var layers = controller.layers.ToList();
-            int existing = layers.FindIndex(l => l.name == layerName);
-            if (existing < 0 && !string.IsNullOrEmpty(socket.builtAnimations) && socket.builtAnimations != layerName)
-                existing = layers.FindIndex(l => l.name == socket.builtAnimations);
+            string parameter = Parameter(socket);
+            AnimationClip empty = null;
+            if (clips.Count > 0)
+            {
+                EnsureTrigger(socket, parameter);
+                string dir = YapsNativeBuilder.OutputRoot + "/" + Sanitise(avatar.name);
+                YapsNativeBuilder.EnsureFolderPublic(dir);
+                string emptyPath = dir + "/YAPS Empty.anim";
+                empty = AssetDatabase.LoadAssetAtPath<AnimationClip>(emptyPath);
+                if (empty == null)
+                {
+                    empty = new AnimationClip { name = "YAPS Empty" };
+                    AssetDatabase.CreateAsset(empty, emptyPath);
+                }
+            }
 
-            // Every clip removed: the layer goes, and the parameters with it
-            // once nothing else reads them.
+            // A layer's trees and machine belong to one controller asset, so
+            // each controller gets its own.
+            foreach (var controller in controllers)
+            {
+                var layers = controller.layers.ToList();
+                int existing = layers.FindIndex(l => l.name == layerName);
+                if (existing < 0 && !string.IsNullOrEmpty(socket.builtAnimations) && socket.builtAnimations != layerName)
+                    existing = layers.FindIndex(l => l.name == socket.builtAnimations);
+
+                // Every clip removed: the layer goes, and the parameters with it
+                // once nothing else reads them.
+                if (clips.Count == 0)
+                {
+                    if (existing >= 0) layers.RemoveAt(existing);
+                    controller.layers = layers.ToArray();
+                    foreach (string name in new[] { One, parameter })
+                    {
+                        var p = controller.parameters.FirstOrDefault(x => x.name == name);
+                        if (p != null && !YapsRemover.ParameterUsed(controller, name)) controller.RemoveParameter(p);
+                    }
+                    EditorUtility.SetDirty(controller);
+                    continue;
+                }
+
+                if (!controller.parameters.Any(p => p.name == parameter))
+                    controller.AddParameter(parameter, AnimatorControllerParameterType.Float);
+                if (!controller.parameters.Any(p => p.name == One))
+                    controller.AddParameter(new AnimatorControllerParameter
+                        { name = One, type = AnimatorControllerParameterType.Float, defaultFloat = 1f });
+
+                var direct = new BlendTree
+                {
+                    name = layerName, blendType = BlendTreeType.Direct, hideFlags = HideFlags.HideInHierarchy,
+                };
+                foreach (var a in clips)
+                {
+                    float from = Mathf.Clamp(a.startsAt, 0f, 0.99f);
+                    float to = Mathf.Min(1f, from + Mathf.Max(0.01f, a.fadeOver));
+                    var ramp = new BlendTree
+                    {
+                        name = a.clip.name, blendType = BlendTreeType.Simple1D, blendParameter = parameter,
+                        useAutomaticThresholds = false, hideFlags = HideFlags.HideInHierarchy,
+                    };
+                    ramp.AddChild(empty, from);
+                    ramp.AddChild(a.clip, to);
+                    direct.AddChild(ramp);
+                }
+                var children = direct.children;
+                for (int i = 0; i < children.Length; i++) children[i].directBlendParameter = One;
+                direct.children = children;
+
+                var machine = new AnimatorStateMachine { name = layerName, hideFlags = HideFlags.HideInHierarchy };
+                var state = machine.AddState("Depth");
+                state.writeDefaultValues = true;
+                state.motion = direct;
+                machine.defaultState = state;
+                var layer = new AnimatorControllerLayer { name = layerName, defaultWeight = 1f, stateMachine = machine };
+                if (existing >= 0) layers[existing] = layer; else layers.Add(layer);
+                controller.layers = layers.ToArray();
+                AnimatorAssetSaver.EmbedLayer(layer, controller);
+                EditorUtility.SetDirty(controller);
+            }
+
             if (clips.Count == 0)
             {
-                if (existing >= 0) layers.RemoveAt(existing);
-                controller.layers = layers.ToArray();
-                foreach (string name in new[] { One, Parameter(socket) })
-                {
-                    var p = controller.parameters.FirstOrDefault(x => x.name == name);
-                    if (p != null && !YapsRemover.ParameterUsed(controller, name)) controller.RemoveParameter(p);
-                }
-                EditorUtility.SetDirty(controller);
                 Undo.RecordObject(socket, "YAPS socket animations");
                 socket.builtAnimations = "";
                 AssetDatabase.SaveAssets();
                 return $"✓ {socket.name}: no depth animations left, layer \"{layerName}\" taken out";
             }
-
-            string parameter = Parameter(socket);
-            EnsureTrigger(socket, parameter);
-            if (!controller.parameters.Any(p => p.name == parameter))
-                controller.AddParameter(parameter, AnimatorControllerParameterType.Float);
-            if (!controller.parameters.Any(p => p.name == One))
-                controller.AddParameter(new AnimatorControllerParameter
-                    { name = One, type = AnimatorControllerParameterType.Float, defaultFloat = 1f });
-
-            string dir = YapsNativeBuilder.OutputRoot + "/" + Sanitise(avatar.name);
-            YapsNativeBuilder.EnsureFolderPublic(dir);
-            string emptyPath = dir + "/YAPS Empty.anim";
-            var empty = AssetDatabase.LoadAssetAtPath<AnimationClip>(emptyPath);
-            if (empty == null)
-            {
-                empty = new AnimationClip { name = "YAPS Empty" };
-                AssetDatabase.CreateAsset(empty, emptyPath);
-            }
-
-            var direct = new BlendTree
-            {
-                name = layerName, blendType = BlendTreeType.Direct, hideFlags = HideFlags.HideInHierarchy,
-            };
-            foreach (var a in clips)
-            {
-                float from = Mathf.Clamp(a.startsAt, 0f, 0.99f);
-                float to = Mathf.Min(1f, from + Mathf.Max(0.01f, a.fadeOver));
-                var ramp = new BlendTree
-                {
-                    name = a.clip.name, blendType = BlendTreeType.Simple1D, blendParameter = parameter,
-                    useAutomaticThresholds = false, hideFlags = HideFlags.HideInHierarchy,
-                };
-                ramp.AddChild(empty, from);
-                ramp.AddChild(a.clip, to);
-                direct.AddChild(ramp);
-            }
-            var children = direct.children;
-            for (int i = 0; i < children.Length; i++) children[i].directBlendParameter = One;
-            direct.children = children;
-
-            var machine = new AnimatorStateMachine { name = layerName, hideFlags = HideFlags.HideInHierarchy };
-            var state = machine.AddState("Depth");
-            state.writeDefaultValues = true;
-            state.motion = direct;
-            machine.defaultState = state;
-            var layer = new AnimatorControllerLayer { name = layerName, defaultWeight = 1f, stateMachine = machine };
-            if (existing >= 0) layers[existing] = layer; else layers.Add(layer);
-            controller.layers = layers.ToArray();
-            AnimatorAssetSaver.EmbedLayer(layer, controller);
-            EditorUtility.SetDirty(controller);
             if (socket.builtAnimations != layerName)
             {
                 Undo.RecordObject(socket, "YAPS socket animations");
@@ -171,12 +187,8 @@ namespace AvatarBridge
                 EditorUtility.SetDirty(socket);
             }
             AssetDatabase.SaveAssets();
-
-            string note = $"✓ {socket.name}: {clips.Count} depth animation(s) in layer \"{layerName}\", driven by the " +
-                          $"synced parameter {parameter}, depth 1 at {ReachOf(socket):0.00} m in";
-            if (BridgeContext.Underlying(animator.runtimeAnimatorController) != controller)
-                note += "; the Animator plays a different controller, so press Create Animator on the CVRAvatar for it to pick the layer up";
-            return note;
+            return $"✓ {socket.name}: {clips.Count} depth animation(s) in layer \"{layerName}\", driven by the " +
+                   $"synced parameter {parameter}, depth 1 at {ReachOf(socket):0.00} m in";
         }
 
         // Sync tally for the report. Past the cap the client drops the
@@ -261,18 +273,14 @@ namespace AvatarBridge
             size = new Vector3(wide, wide, reach);
         }
 
-        // The controllers a socket's avatar plays: the CCK's base controller,
-        // which Create Animator copies into the generated one, and the
-        // animator's own, so a change lands without regenerating.
+        // The controllers a socket's avatar plays: the uploaded one and its
+        // base, and the animator's own, where older builds wrote.
         static List<AnimatorController> Controllers(YapsSocket socket)
         {
-            var list = new List<AnimatorController>();
             var avatar = socket.GetComponentInParent<CVRAvatar>(true);
             var animator = socket.GetComponentInParent<Animator>(true);
+            var list = YapsOwner.Targets(avatar);
             // Through any override: it wraps a controller rather than being one.
-            var based = avatar != null && avatar.avatarSettings != null
-                ? BridgeContext.Underlying(avatar.avatarSettings.baseController) : null;
-            if (based != null) list.Add(based);
             var own = animator != null ? BridgeContext.Underlying(animator.runtimeAnimatorController) : null;
             if (own != null && !list.Contains(own)) list.Add(own);
             return list;
@@ -298,43 +306,47 @@ namespace AvatarBridge
         public static string Clear(YapsSocket socket)
         {
             if (socket == null) return null;
-            var controller = Target(socket, out _, out _, out _);
+            var controllers = Targets(socket, out _, out _, out _);
             var host = socket.transform.Find(HostName);
-            if (controller == null) return null;
-
-            string layerName = LayerName(socket);
-            var layers = controller.layers.ToList();
-            int at = layers.FindIndex(l => l.name == layerName);
-            if (at < 0 && !string.IsNullOrEmpty(socket.builtLayer))
-            {
-                layerName = socket.builtLayer;
-                at = layers.FindIndex(l => l.name == layerName);
-            }
-            var done = new List<string>();
-            if (at >= 0)
-            {
-                layers.RemoveAt(at);
-                controller.layers = layers.ToArray();
-                EditorUtility.SetDirty(controller);
-                done.Add($"layer \"{layerName}\" taken out");
-            }
+            if (controllers == null) return null;
 
             bool played = socket.depthAnimations.Any(a => a != null && a.clip != null);
             string parameter = Parameter(socket);
-            if (!played && !YapsRemover.ParameterUsed(controller, parameter))
+            var done = new List<string>();
+            bool read = played;
+            foreach (var controller in controllers)
             {
+                string layerName = LayerName(socket);
+                var layers = controller.layers.ToList();
+                int at = layers.FindIndex(l => l.name == layerName);
+                if (at < 0 && !string.IsNullOrEmpty(socket.builtLayer))
+                {
+                    layerName = socket.builtLayer;
+                    at = layers.FindIndex(l => l.name == layerName);
+                }
+                if (at >= 0)
+                {
+                    layers.RemoveAt(at);
+                    controller.layers = layers.ToArray();
+                    EditorUtility.SetDirty(controller);
+                    string line = $"layer \"{layerName}\" taken out";
+                    if (!done.Contains(line)) done.Add(line);
+                }
+                if (played) continue;
+                if (YapsRemover.ParameterUsed(controller, parameter)) { read = true; continue; }
                 var p = controller.parameters.FirstOrDefault(x => x.name == parameter);
                 if (p != null)
                 {
                     controller.RemoveParameter(p);
                     EditorUtility.SetDirty(controller);
-                    done.Add("its depth parameter");
+                    if (!done.Contains("its depth parameter")) done.Add("its depth parameter");
                 }
-                if (host != null)
-                {
-                    Undo.DestroyObjectImmediate(host.gameObject);
-                    done.Add("the depth contact");
-                }
+            }
+            // The contact only once no controller still reads its parameter.
+            if (!read && host != null)
+            {
+                Undo.DestroyObjectImmediate(host.gameObject);
+                done.Add("the depth contact");
             }
             if (!string.IsNullOrEmpty(socket.builtLayer) || !string.IsNullOrEmpty(socket.builtParameter))
             {
@@ -355,8 +367,8 @@ namespace AvatarBridge
             var stages = socket.shapes.Where(s => s != null && !string.IsNullOrEmpty(s.blendshape)).ToList();
             if (renderer == null || stages.Count == 0 || renderer.sharedMesh == null) return Clear(socket);
 
-            var controller = Target(socket, out var animator, out var avatar, out string failure);
-            if (controller == null) return failure;
+            var controllers = Targets(socket, out var animator, out var avatar, out string failure);
+            if (controllers == null) return failure;
 
             var known = new HashSet<string>(Enumerable.Range(0, renderer.sharedMesh.blendShapeCount)
                 .Select(renderer.sharedMesh.GetBlendShapeName));
@@ -368,12 +380,6 @@ namespace AvatarBridge
             string parameter = Parameter(socket);
             EnsureTrigger(socket, parameter);
 
-            // The parameter, synced, so remote viewers see the shapes move.
-            if (!controller.parameters.Any(p => p.name == parameter))
-            {
-                controller.AddParameter(parameter, AnimatorControllerParameterType.Float);
-            }
-
             // Depth parameters no socket owns and no layer reads go with
             // it, or they pile up one per rename.
             var owned = new HashSet<string>();
@@ -383,14 +389,6 @@ namespace AvatarBridge
                 owned.Add(LegacyParameter(s));
             }
             owned.Remove(LegacyParameter(socket));   // this socket's old one is ours to drop
-            int cleared = 0;
-            foreach (var p in controller.parameters.ToList())
-            {
-                if (!IsDepthName(p.name) || p.name == parameter || owned.Contains(p.name)) continue;
-                if (YapsRemover.ParameterUsed(controller, p.name)) continue;
-                controller.RemoveParameter(p);
-                cleared++;
-            }
 
             // One blend tree over depth, a breakpoint at every stage edge.
             // Strength is the layer's weight, so it moves without a rebuild.
@@ -405,21 +403,6 @@ namespace AvatarBridge
             }
 
             string layerName = LayerName(socket);
-            // What the last build called it, if the bone or the name has
-            // moved since: the layer is replaced where it stands rather
-            // than added a second time under the new name.
-            var layers = controller.layers.ToList();
-            int existing = layers.FindIndex(l => l.name == layerName);
-            if (existing < 0 && !string.IsNullOrEmpty(socket.builtLayer) && socket.builtLayer != layerName)
-                existing = layers.FindIndex(l => l.name == socket.builtLayer);
-            var tree = new BlendTree
-            {
-                name = layerName,
-                blendType = BlendTreeType.Simple1D,
-                blendParameter = parameter,
-                useAutomaticThresholds = false,
-                hideFlags = HideFlags.HideInHierarchy,
-            };
             // Each shape opens from its authored weight, so an avatar with no
             // plug in it looks as its author left it. Read past the editor's
             // test, which may be holding the mesh at a test depth.
@@ -429,6 +412,7 @@ namespace AvatarBridge
                 int shapeIndex = renderer.sharedMesh.GetBlendShapeIndex(s.blendshape);
                 floor[s.blendshape] = shapeIndex >= 0 ? YapsShapeSim.AuthoredWeight(renderer, shapeIndex) : 0f;
             }
+            var points = new List<(AnimationClip clip, float depth)>();
             int index = 0;
             foreach (float depth in depths)
             {
@@ -447,22 +431,58 @@ namespace AvatarBridge
                 var saved = AssetDatabase.LoadAssetAtPath<AnimationClip>(clipPath);
                 if (saved != null) { EditorUtility.CopySerialized(clip, saved); clip = saved; }
                 else AssetDatabase.CreateAsset(clip, clipPath);
-                tree.AddChild(clip, depth);
+                points.Add((clip, depth));
                 index++;
             }
-            var machine = new AnimatorStateMachine { name = layerName, hideFlags = HideFlags.HideInHierarchy };
-            var state = machine.AddState("Depth");
-            state.writeDefaultValues = true;
-            state.motion = tree;
-            machine.defaultState = state;
-            var layer = new AnimatorControllerLayer
+
+            // A layer's tree and machine belong to one controller asset, so
+            // each controller gets its own.
+            int cleared = 0;
+            foreach (var controller in controllers)
             {
-                name = layerName, defaultWeight = 1f, stateMachine = machine,
-            };
-            if (existing >= 0) layers[existing] = layer; else layers.Add(layer);
-            controller.layers = layers.ToArray();
-            AnimatorAssetSaver.EmbedLayer(layer, controller);
-            EditorUtility.SetDirty(controller);
+                // The parameter, synced, so remote viewers see the shapes move.
+                if (!controller.parameters.Any(p => p.name == parameter))
+                {
+                    controller.AddParameter(parameter, AnimatorControllerParameterType.Float);
+                }
+                foreach (var p in controller.parameters.ToList())
+                {
+                    if (!IsDepthName(p.name) || p.name == parameter || owned.Contains(p.name)) continue;
+                    if (YapsRemover.ParameterUsed(controller, p.name)) continue;
+                    controller.RemoveParameter(p);
+                    cleared++;
+                }
+
+                // What the last build called it, if the bone or the name has
+                // moved since: the layer is replaced where it stands rather
+                // than added a second time under the new name.
+                var layers = controller.layers.ToList();
+                int existing = layers.FindIndex(l => l.name == layerName);
+                if (existing < 0 && !string.IsNullOrEmpty(socket.builtLayer) && socket.builtLayer != layerName)
+                    existing = layers.FindIndex(l => l.name == socket.builtLayer);
+                var tree = new BlendTree
+                {
+                    name = layerName,
+                    blendType = BlendTreeType.Simple1D,
+                    blendParameter = parameter,
+                    useAutomaticThresholds = false,
+                    hideFlags = HideFlags.HideInHierarchy,
+                };
+                foreach (var (clip, depth) in points) tree.AddChild(clip, depth);
+                var machine = new AnimatorStateMachine { name = layerName, hideFlags = HideFlags.HideInHierarchy };
+                var state = machine.AddState("Depth");
+                state.writeDefaultValues = true;
+                state.motion = tree;
+                machine.defaultState = state;
+                var layer = new AnimatorControllerLayer
+                {
+                    name = layerName, defaultWeight = 1f, stateMachine = machine,
+                };
+                if (existing >= 0) layers[existing] = layer; else layers.Add(layer);
+                controller.layers = layers.ToArray();
+                AnimatorAssetSaver.EmbedLayer(layer, controller);
+                EditorUtility.SetDirty(controller);
+            }
             // What it is called now, so the next build can find it after a
             // rename and Remove knows what to take out.
             if (socket.builtLayer != layerName || socket.builtParameter != parameter)
@@ -478,11 +498,6 @@ namespace AvatarBridge
                           $"depth 1 at {ReachOf(socket):0.00} m in (layer \"{layerName}\", synced parameter {parameter}, 32 bits{SyncRoom(avatar)})";
             if (cleared > 0) note += $"; cleared {cleared} stale depth parameter(s) no layer read";
             if (missing.Count > 0) note += $"; not on the mesh: {string.Join(", ", missing)}";
-            // An override controller wraps the base, so a layer added to
-            // the base is already playing through it. Only a genuinely
-            // different controller needs saying.
-            if (BridgeContext.Underlying(animator.runtimeAnimatorController) != controller)
-                note += "; the Animator plays a different controller, so press Create Animator on the CVRAvatar for it to pick the layer up";
             return note;
         }
 

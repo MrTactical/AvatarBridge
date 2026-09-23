@@ -48,14 +48,18 @@ namespace AvatarBridge
             // After the bakes, like the id. The choosers were built by the
             // socket step alone, so an avatar with plugs and no sockets never
             // got one, and neither did a plug baked from its own inspector.
-            var controller = YapsOwner.Shipped(avatar);
-            string tags = YapsTagMenu.Build(avatar, controller);
-            if (tags != null) lines.Add("✓ " + tags);
-            string readout = YapsDebugOverlayBuilder.Menu(avatar, controller);
-            if (readout != null) lines.Add("✓ " + readout);
-            foreach (string dead in YapsToggles.DeadBindings(avatar.gameObject, controller))
+            var dead = new List<string>();
+            foreach (var controller in YapsOwner.Targets(avatar))
             {
-                lines.Add("✗ a curve that changes nothing, Unity cannot attach it: " + dead);
+                string tags = YapsTagMenu.Build(avatar, controller);
+                if (tags != null && !lines.Contains("✓ " + tags)) lines.Add("✓ " + tags);
+                string readout = YapsDebugOverlayBuilder.Menu(avatar, controller);
+                if (readout != null && !lines.Contains("✓ " + readout)) lines.Add("✓ " + readout);
+                dead.AddRange(YapsToggles.DeadBindings(avatar.gameObject, controller));
+            }
+            foreach (string d in dead.Distinct())
+            {
+                lines.Add("✗ a curve that changes nothing, Unity cannot attach it: " + d);
             }
             return lines;
         }
