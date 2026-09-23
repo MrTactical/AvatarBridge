@@ -102,6 +102,7 @@ namespace AvatarBridge.Regression
                     cam.backgroundColor = Color.black;
                     cam.fieldOfView = 100f;
                     cam.nearClipPlane = 0.01f;
+                    cam.renderingPath = RenderingPath.Forward;
                     var mid = root + fwd * (0.5f * length);
                     var side = Vector3.Cross(fwd, up).normalized;
                     go.transform.position = mid + side * (2.5f * length) + up * (0.5f * length);
@@ -137,6 +138,11 @@ namespace AvatarBridge.Regression
                     buffer.GetData(got);
                     return got;
                 }
+
+                // The numbered writers made before any capture: the run that
+                // first created them as assets read nothing right after.
+                foreach (int n in new[] { 1, 2 })
+                    UnityEngine.Object.DestroyImmediate(MakeSocket("__Warm", YapsSocket.SocketKind.Hole, false, true, false, n));
 
                 var rest = Capture(hdr, 0f, yapsOff: true);
                 int written = rest.Count(v => v.w > 0.5f);
@@ -193,11 +199,14 @@ namespace AvatarBridge.Regression
                     $"worst vertex {Moved(Capture(hdr, 0f)) * 1000f:0.0} mm");
                 foreach (var s in own) s.gameObject.SetActive(false);
 
-                // 2. A socket found anywhere round the tip. Atlas only: a light
-                // covers for whatever else is broken.
-                var hole = YapsSocketBuilder.BuildPreviewSocket("__TestHole", YapsSocket.SocketKind.Hole, withLights: false);
-                YapsAtlas.AddGrab(hole.transform);
-                YapsAtlas.AddClear(hole.transform);
+                // 2. A socket found anywhere round the tip, for every kind a
+                // plug meets: YAPS sockets by the atlas, with and without the
+                // lights it must answer before, and DPS-style sockets by their
+                // marker lights alone. A contact-only socket (older TPS) has
+                // nothing a shader can read, so there is nothing to find.
+                var plumbing = new GameObject("__Atlas");
+                YapsAtlas.AddGrab(plumbing.transform);
+                YapsAtlas.AddClear(plumbing.transform);
                 var places = new List<(float angle, float turn, float reach)>();
                 foreach (float reach in new[] { 0.8f, 1.1f })
                 {
@@ -205,43 +214,106 @@ namespace AvatarBridge.Regression
                     foreach (float angle in new[] { 30f, 60f, 90f })
                         for (float turn = 0f; turn < 360f; turn += 45f) places.Add((angle, turn, reach));
                 }
-                foreach (var cam in new[] { hdr, ldr })
+                // nearer: metres short of the place, along the same line.
+                void Aim(Transform t, (float angle, float turn, float reach) p, float nearer = 0f)
                 {
-                    var counts = new int[4];
-                    var missed = new List<string>();
-                    var firstMiss = ((float, float, float)?) null;
-                    foreach (var (angle, turn, reach) in places)
-                    {
-                        var dir = Quaternion.AngleAxis(turn, fwd) * (Quaternion.AngleAxis(angle, up) * fwd);
-                        var at = root + dir * (reach * length);
-                        var roll = Mathf.Abs(Vector3.Dot(dir, up)) > 0.99f ? fwd : up;
-                        hole.transform.SetPositionAndRotation(at, Quaternion.LookRotation(root - at, roll));
-                        int tier = TierOf(Capture(cam, 1f));
-                        counts[tier]++;
-                        if (tier != 3 && firstMiss == null) firstMiss = (angle, turn, reach);
-                        if (tier != 3) missed.Add($"{angle:0}°/{turn:0}° at {reach:0.0}L: {Tiers[tier]}");
-                    }
-                    Log($"{cam.name}: {places.Count} places, atlas {counts[3]}, light {counts[2]}, " +
-                        $"preview {counts[1]}, nobody {counts[0]}");
-                    foreach (var m in missed.Take(12)) Log($"  missed {m}");
-                    // The first miss through the shipped atlas views, each a
-                    // length: target 0.1 too small, 0.4 another screen, 0.7 no
-                    // cell, 1 live; taps 0.1 no cell, 0.33 tag refused, 0.66
-                    // thrown out, 1 a socket.
-                    if (missed.Count > 0)
-                    {
-                        var (angle, turn, reach) = firstMiss.Value;
-                        var dir = Quaternion.AngleAxis(turn, fwd) * (Quaternion.AngleAxis(angle, up) * fwd);
-                        var at = root + dir * (reach * length);
-                        hole.transform.SetPositionAndRotation(at, Quaternion.LookRotation(root - at, up));
-                        float ShownIn(float view) => Shown(Capture(cam, view));
-                        Log($"  first miss: atlas target {ShownIn(6f):0.00}, atlas taps {ShownIn(5f):0.00}, " +
-                            $"gap {ShownIn(2f):0.00}, use atlas {capture[0].mat.GetFloat("_YAPS_UseAtlas")}, " +
-                            $"grab {Shader.GetGlobalTexture("_YAPS_Atlas")?.width}x{Shader.GetGlobalTexture("_YAPS_Atlas")?.height}");
-                    }
-                    fail += Check($"{cam.name}: a socket anywhere round the tip is found by the atlas", missed.Count == 0);
+                    var dir = Quaternion.AngleAxis(p.turn, fwd) * (Quaternion.AngleAxis(p.angle, up) * fwd);
+                    var at = root + dir * (p.reach * length - nearer);
+                    var roll = Mathf.Abs(Vector3.Dot(dir, up)) > 0.99f ? fwd : up;
+                    t.SetPositionAndRotation(at, Quaternion.LookRotation(root - at, roll));
                 }
-                UnityEngine.Object.DestroyImmediate(hole);
+                string Where((float angle, float turn, float reach) p) => $"{p.angle:0}°/{p.turn:0}° at {p.reach:0.0}L";
+
+                var kinds = new (string label, YapsSocket.SocketKind kind, bool oneWay, bool atlas, bool lights, int want)[]
+                {
+                    ("YAPS hole, atlas only", YapsSocket.SocketKind.Hole, false, true, false, 3),
+                    ("YAPS ring, atlas only", YapsSocket.SocketKind.Ring, false, true, false, 3),
+                    ("YAPS one-way ring, atlas only", YapsSocket.SocketKind.Ring, true, true, false, 3),
+                    ("YAPS hole, atlas and lights", YapsSocket.SocketKind.Hole, false, true, true, 3),
+                    ("DPS hole, lights only", YapsSocket.SocketKind.Hole, false, false, true, 2),
+                    ("DPS ring, lights only", YapsSocket.SocketKind.Ring, false, false, true, 2),
+                };
+                foreach (var k in kinds)
+                {
+                    var sock = MakeSocket("__Test " + k.label, k.kind, k.oneWay, k.atlas, k.lights);
+                    Log($"{k.label}: {sock.GetComponentsInChildren<Light>(false).Length} marker light(s) on, " +
+                        $"{sock.GetComponentsInChildren<Renderer>(true).Count(r => YapsAtlas.IsPlumbing(r.sharedMaterial))} atlas renderer(s)");
+                    foreach (var cam in new[] { hdr, ldr })
+                    {
+                        var counts = new int[4];
+                        var missed = new List<(float, float, float)>();
+                        int unlit = 0;
+                        foreach (var p in places)
+                        {
+                            Aim(sock.transform, p);
+                            int tier = TierOf(Capture(cam, 1f));
+                            counts[tier]++;
+                            if (tier == k.want) continue;
+                            // A marker light reaches a renderer only when its
+                            // range meets the renderer's bounds, in game too,
+                            // and the DPS range is the message, so past that
+                            // is past the light tier's reach, not a miss.
+                            if (!k.atlas && !RootLightMeets(sock, skin)) unlit++;
+                            else missed.Add(p);
+                        }
+                        Log($"{k.label}, {cam.name}: atlas {counts[3]}, light {counts[2]}, preview {counts[1]}, " +
+                            $"nobody {counts[0]} of {places.Count}");
+                        foreach (var m in missed.Take(6)) Log($"  missed {Where(m)}");
+                        if (unlit > 0) Log($"  {unlit} place(s) past the root light's range from the plug's bounds");
+                        // The first miss through the shipped atlas views: target
+                        // 0.1 too small, 0.4 another screen, 0.7 no cell, 1 live;
+                        // taps 0.1 no cell, 0.33 tag refused, 0.66 thrown out, 1 found.
+                        if (missed.Count > 0 && k.atlas)
+                        {
+                            Aim(sock.transform, missed[0]);
+                            float ShownIn(float view) => Shown(Capture(cam, view));
+                            Log($"  first miss: atlas target {ShownIn(6f):0.00}, taps {ShownIn(5f):0.00}, gap {ShownIn(2f):0.00}");
+                        }
+                        fail += Check($"{k.label}, {cam.name}: found by the {Tiers[k.want]} at all {places.Count} places",
+                            missed.Count == 0);
+                    }
+                    UnityEngine.Object.DestroyImmediate(sock);
+                }
+
+                // 3. A neighbour. Two atlas holes on one line, the second
+                // nearer: the plug must take the nearer. Numbered, as a
+                // wearer's own sockets are, and unnumbered, as a prop's or a
+                // world's are; a bucket shared in one cell lets the later
+                // draw hide the other. The gap view saturates at a length,
+                // so the tier view tells a far answer from none.
+                foreach (bool numbered in new[] { true, false })
+                {
+                    var outer = MakeSocket("__Neighbour far", YapsSocket.SocketKind.Hole, false, true, false, numbered ? 1 : 0);
+                    var near = MakeSocket("__Neighbour near", YapsSocket.SocketKind.Hole, false, true, false, numbered ? 2 : 0);
+                    string what = numbered ? "numbered" : "unnumbered";
+                    foreach (float apart in new[] { 0.06f, 0.25f })
+                    {
+                        int seen = 0, hidden = 0, none = 0, other = 0, tried = 0;
+                        var wrongAt = new List<string>();
+                        foreach (var p in places)
+                        {
+                            // Past the base it is no longer the nearer one on this line.
+                            if (p.reach * length - apart < 0.02f) continue;
+                            tried++;
+                            Aim(outer.transform, p);
+                            Aim(near.transform, p, apart);
+                            float gap = Shown(Capture(hdr, 2f));
+                            float wantNear = (p.reach * length - apart) / length, wantFar = Mathf.Min(p.reach, 1f);
+                            if (Mathf.Abs(gap - wantNear) < 0.02f) { seen++; continue; }
+                            if (TierOf(Capture(hdr, 1f)) == 0) { none++; wrongAt.Add($"{Where(p)}: nobody"); }
+                            else if (Mathf.Abs(gap - wantFar) < 0.02f) { hidden++; wrongAt.Add($"{Where(p)}: the far one"); }
+                            else { other++; wrongAt.Add($"{Where(p)}: reads {gap:0.000}, near {wantNear:0.000}"); }
+                        }
+                        Log($"neighbour {apart * 100f:0} cm nearer, {what}: nearer taken {seen}, far one {hidden}, " +
+                            $"nobody {none}, other {other} of {tried}");
+                        foreach (var w in wrongAt.Take(4)) Log($"  {w}");
+                        // Unnumbered sockets keep the octant bucket, so a clash
+                        // there is the known ceiling, not a regression.
+                        if (numbered) fail += Check($"neighbour {apart * 100f:0} cm nearer, {what}, is always the one taken", seen == tried);
+                    }
+                    UnityEngine.Object.DestroyImmediate(outer);
+                    UnityEngine.Object.DestroyImmediate(near);
+                }
             }
             catch (Exception e)
             {
@@ -255,6 +327,36 @@ namespace AvatarBridge.Regression
 
             Log(fail == 0 ? "PASS" : $"FAIL: {fail} check(s)");
             if (Application.isBatchMode) EditorApplication.Exit(fail == 0 ? 0 : 1);
+        }
+
+        // A socket built the way the toolkit builds one, then cut down to the
+        // transport under test: no lights for atlas only, no writer for a
+        // DPS-style socket that only a light can announce.
+        static bool RootLightMeets(GameObject socket, Renderer plug) =>
+            socket.GetComponentsInChildren<Light>(true)
+                .Where(l => Mathf.Abs(l.range - YapsSocketBuilder.FrontRange) > 1e-4f)
+                .All(l => plug.bounds.SqrDistance(l.transform.position) <= l.range * l.range);
+
+        static GameObject MakeSocket(string name, YapsSocket.SocketKind kind, bool oneWay, bool atlas, bool lights, int number = 0)
+        {
+            var go = new GameObject(name);
+            var socket = go.AddComponent<YapsSocket>();
+            socket.kind = kind;
+            socket.oneWay = oneWay;
+            socket.emitLights = lights;
+            YapsSocketBuilder.Build(socket);
+            if (!atlas)
+                foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+                    if (YapsAtlas.IsPlumbing(r.sharedMaterial))
+                        UnityEngine.Object.DestroyImmediate(r.gameObject);
+            // A number, as YapsOwner.ApplySelf gives a wearer's sockets.
+            if (number > 0)
+                foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+                {
+                    var indexed = YapsAtlas.Indexed(r.sharedMaterial, number);
+                    if (indexed != null) r.sharedMaterial = indexed;
+                }
+            return go;
         }
 
         // A plug's slot, not a socket's: the patcher emits both ends into

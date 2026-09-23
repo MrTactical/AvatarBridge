@@ -13,9 +13,10 @@
 // starts. A count cannot carry.
 //
 // The PAYLOAD is the socket's position within its cell and the direction it
-// faces, in the octant bucket it occupies. Eight to a cell, indexed by which
-// octant of the cell the socket sits in, which needs no negotiation and
-// separates anything more than half a cell apart in any axis.
+// faces, in one of eight buckets to a cell: by its own number where it has
+// one, else by which octant of the cell it sits in. A reader opens every
+// bucket and takes the position from the payload, so the choice is the
+// writer's alone and no reader depends on it.
 //
 // A socket publishes to every level. That costs one small draw each and
 // nothing to read, because a plug reads only the level matching its own
@@ -92,7 +93,17 @@ Shader "YAPS/Atlas Socket"
             }
             YapsAtlasCellPixels(idx, level, layout, cellPx, cellPy);
 
-            sub = (f.x > 0.5 ? 4 : 0) + (f.y > 0.5 ? 2 : 0) + (f.z > 0.5 ? 1 : 0);
+            // A numbered socket takes the bucket its number gives, turned by
+            // its owner, so a wearer's own sockets never share one however
+            // close they sit (up to eight). By octant, two sockets a hand
+            // apart shared a bucket at whatever level a plug read, and the
+            // later draw hid the nearer. Across wearers the turn makes a
+            // clash one in eight at any distance. Unnumbered sockets keep
+            // the octant.
+            int number = (int) round(_YAPS_SocketIndex);
+            sub = number > 0
+                ? (number - 1 + YapsOwnerOf(_YAPS_Owner)) & 7
+                : (f.x > 0.5 ? 4 : 0) + (f.y > 0.5 ? 2 : 0) + (f.z > 0.5 ? 1 : 0);
             payload = f;
             facing = normalize(mul((float3x3)unity_ObjectToWorld, float3(0, 0, 1))) * 0.5 + 0.5;
             tag = 0.5 + 0.5 * YapsAtlasTag(cell);

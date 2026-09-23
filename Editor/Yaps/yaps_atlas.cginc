@@ -248,6 +248,9 @@ int YapsAtlasRow(int fromTop)
 // Three cells, so three sockets. Two costs 125 reads.
 #define YAPS_ATLAS_RADIUS 1
 #define YAPS_ATLAS_REACH  1.6
+// How far from the base, in lengths, the scan is sure to see a socket:
+// the deform's full-engagement distance. Reader only.
+#define YAPS_ATLAS_COVER  1.2
 
 // The rect. The clear must cover it exactly.
 int YapsAtlasWidthPx()

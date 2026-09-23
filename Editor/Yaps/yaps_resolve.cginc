@@ -430,6 +430,7 @@ bool YapsFindLightSocket(float3 plugOrigin, float3 preferNear, float reach,
 // The sort below moves whole entries by literal index.
 #define YAPS_CH_MOVE(a, b) sockD[a] = sockD[b]; sockP[a] = sockP[b]; sockF[a] = sockF[b]; sockK[a] = sockK[b];
 #define YAPS_CH_PUT(a) sockD[a] = d; sockP[a] = at; sockF[a] = fwd; sockK[a] = kind;
+#define YAPS_CH_SAME(a) (sockD[a] < 1e8 && distance(sockP[a], at) < same)
 
 // Reads the neighbourhood of the shaft's MIDPOINT, not its root, so a
 // radius-1 read covers the whole plug. No extra taps. lightAt is the light
@@ -445,11 +446,26 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength, float3 l
 
     // WHICH LEVEL. The atlas carries several cell sizes, each four times
     // the last, because one size cannot serve a 20 cm plug and a 20 m one.
-    // Coverage wants about L/2r, so read the level nearest that. No extra
-    // taps: the socket published to every level and this reads one.
-    float wantCell = len / max(2.0 * YAPS_ATLAS_RADIUS, 1.0);
-    int lvl = clamp(int(round(log2(wantCell / YAPS_ATLAS_CELL) * 0.5)), 0, YAPS_ATLAS_LEVELS - 1);
-    float size = max(YAPS_ATLAS_CELL * pow(4.0, lvl), 1e-6);
+    // No extra taps: the socket published to every level and this reads one.
+    //
+    // COVERAGE, GUARANTEED. A block of cells r either side of the base's
+    // cell holds every point within r cells of the base on each axis,
+    // wherever the grid falls. So the smallest cell of at least
+    // YAPS_ATLAS_COVER lengths / r puts every socket that bends the plug
+    // fully in the scan. The level used to be the NEAREST to L/2, around the
+    // plug's middle, and whether the block reached past the tip depended on
+    // where the plug stood: the runtime tester found 23 of 50 places round a
+    // 0.649 m tip dead, on every camera. Above the top level it is the best
+    // there is.
+    float cover = len * YAPS_ATLAS_COVER / max((float) YAPS_ATLAS_RADIUS, 1.0);
+    int lvl = clamp(int(ceil(log2(cover / YAPS_ATLAS_CELL) * 0.5 - 1e-4)), 0, YAPS_ATLAS_LEVELS - 1);
+    // FINE, THEN COARSE. The coverage level's octants are big enough that
+    // two sockets a hand apart share one, and the later-drawn hides the
+    // other. So the level nearest L/2 is read first, round the shaft's
+    // middle, where the plug meets its sockets and they need telling apart,
+    // and the coverage level then adds only what that read did not hold.
+    // Twice the header taps, once when both are the same level.
+    int fine = clamp(int(round(log2(len * 0.5 / YAPS_ATLAS_CELL) * 0.5)), 0, lvl);
     // The same layout the writers drew, worked out from the same target.
     // The caller has already asked YapsAtlasFits, so the cells are there.
     YapsAtlasLayout layout = YapsAtlasLayoutNow();
@@ -467,150 +483,165 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength, float3 l
     float  sockD[YAPS_CHAIN_MAX] = { 1e9, 1e9, 1e9, 1e9 };
     float  sockK[YAPS_CHAIN_MAX] = { -1, -1, -1, -1 };
 
-    int3 mine = int3(floor((root + axis * (len * 0.5)) / size));
-
-    [loop] for (int dx = -YAPS_ATLAS_RADIUS; dx <= YAPS_ATLAS_RADIUS; dx++)
-    [loop] for (int dy = -YAPS_ATLAS_RADIUS; dy <= YAPS_ATLAS_RADIUS; dy++)
-    [loop] for (int dz = -YAPS_ATLAS_RADIUS; dz <= YAPS_ATLAS_RADIUS; dz++)
+    [loop] for (int scan = 0; scan < 2; scan++)
     {
-        int3 c = mine + int3(dx, dy, dz);
-        float tagWant = YapsAtlasTag(c);
+        int lv = scan == 0 ? fine : lvl;
+        if (scan == 1 && lv == fine) break;
+        float size = max(YAPS_ATLAS_CELL * pow(4.0, lv), 1e-6);
+        // The coverage block round the base, not the middle: engagement is
+        // measured from the base, so a block centred there needs the least
+        // reach to hold every socket in it.
+        int3 mine = int3(floor((scan == 0 ? root + axis * (len * 0.5) : root) / size));
+        // A socket the fine read already holds comes back from the coarse one
+        // within a step or two of the coarse encoding.
+        float same = size / 128.0;
 
-        int idx = YapsAtlasHash(c) % total;
-        if (idx < 0) idx += total;
-        int step = YapsAtlasHash2(c) % max(total - 1, 1);
-        if (step < 0) step += max(total - 1, 1);
-        int idxB = (idx + step + 1) % total;
-
-        [loop] for (int home = 0; home < 2; home++)
+        [loop] for (int dx = -YAPS_ATLAS_RADIUS; dx <= YAPS_ATLAS_RADIUS; dx++)
+        [loop] for (int dy = -YAPS_ATLAS_RADIUS; dy <= YAPS_ATLAS_RADIUS; dy++)
+        [loop] for (int dz = -YAPS_ATLAS_RADIUS; dz <= YAPS_ATLAS_RADIUS; dz++)
         {
-            int use = home == 0 ? idx : idxB;
-            int cellX, fromTop;
-            YapsAtlasCellPixels(use, lvl, layout, cellX, fromTop);
-            int cellY = YapsAtlasRow(fromTop);
+            int3 c = mine + int3(dx, dy, dz);
+            float tagWant = YapsAtlasTag(c);
 
-            // ONE tap for the header, whose alpha COUNTS the sockets in
-            // this slot. Nearly every cell holds nothing and costs only
-            // this, which is what makes eight buckets affordable. A count,
-            // never a bitmask: bits add, so two sockets in one octant
-            // unset the octant that exists and set one that does not.
-            int held = int(round(YAPS_ATLAS_LOAD(cellX, cellY).a * 255.0));
-            if (held > 0) chain.headers += 1;
-            if (held == 0) break;   // home 2 cannot hold what home 1 does not
-            bool got1 = false;
-            [loop] for (int sub = 0; sub < 8; sub++)
+            int idx = YapsAtlasHash(c) % total;
+            if (idx < 0) idx += total;
+            int step = YapsAtlasHash2(c) % max(total - 1, 1);
+            if (step < 0) step += max(total - 1, 1);
+            int idxB = (idx + step + 1) % total;
+
+            [loop] for (int home = 0; home < 2; home++)
             {
-                int px = cellX + (1 + YAPS_ATLAS_OCTPX * sub) * YAPS_ATLAS_SLOTPX;
-                float4 got = YAPS_ATLAS_LOAD(px, cellY);
-                if (got.a < 0.5) continue;
-                // The header SUMS every cell sharing this slot, so it can
-                // advertise somebody else's octants. The tag settles it,
-                // and the protocol version rides in the tag.
-                if (abs((got.a - 0.5) * 2 - tagWant) > 0.001) continue;
-                got1 = true;
-                chain.hits += 1;
+                int use = home == 0 ? idx : idxB;
+                int cellX, fromTop;
+                YapsAtlasCellPixels(use, lv, layout, cellX, fromTop);
+                int cellY = YapsAtlasRow(fromTop);
 
-                float3 at = (float3(c) + got.rgb) * size;
-                float d = distance(at, root);
-
-                float4 f4 = YAPS_ATLAS_LOAD(px + YAPS_ATLAS_SLOTPX, cellY);
-                float3 fwd = normalize(f4.rgb * 2 - 1);
-                float kind;
-                int ownIndex;
-                bool oneWay;
-                YapsFacingDecode(f4.a, kind, ownIndex, oneWay);
-                int owner = YapsOwnerDecode(
-                    YAPS_ATLAS_LOAD(px + 3 * YAPS_ATLAS_SLOTPX, cellY));
-
-                // TAGS, the third pixel. A socket says what it is and the
-                // plug says what it will answer, and the whole test is two
-                // bitwise ands.
-                //
-                // An untagged socket has to pass a plug with no include
-                // list, or every legacy socket in the room goes dark: the
-                // light tier cannot carry tags at all, a marker light's
-                // range IS its message and the digits are Raliv's. Untagged
-                // is the honest reading of content that predates this.
-                //
-                // An own socket chosen by name skips them, as SPS judges its
-                // own sockets by the Self rules alone.
-                if (!YapsSelfChosen(owner, ownIndex) && YapsTagsRefuse(YapsTagsDecode(
-                        YAPS_ATLAS_LOAD(px + 2 * YAPS_ATLAS_SLOTPX, cellY))))
+                // ONE tap for the header, whose alpha COUNTS the sockets in
+                // this slot. Nearly every cell holds nothing and costs only
+                // this, which is what makes eight buckets affordable. A count,
+                // never a bitmask: bits add, so two sockets in one octant
+                // unset the octant that exists and set one that does not.
+                int held = int(round(YAPS_ATLAS_LOAD(cellX, cellY).a * 255.0));
+                if (held > 0) chain.headers += 1;
+                if (held == 0) break;   // home 2 cannot hold what home 1 does not
+                bool got1 = false;
+                [loop] for (int sub = 0; sub < 8; sub++)
                 {
-                    // Remember it. A socket that was READ and refused is
-                    // not an unknown socket, and the light tier answers
-                    // unknown sockets a moment later. Within reach only:
-                    // a refusal across the room is nothing to protect.
-                    if (d <= far && d < chain.refusedD)
+                    int px = cellX + (1 + YAPS_ATLAS_OCTPX * sub) * YAPS_ATLAS_SLOTPX;
+                    float4 got = YAPS_ATLAS_LOAD(px, cellY);
+                    if (got.a < 0.5) continue;
+                    // The header SUMS every cell sharing this slot, so it can
+                    // advertise somebody else's octants. The tag settles it,
+                    // and the protocol version rides in the tag.
+                    if (abs((got.a - 0.5) * 2 - tagWant) > 0.001) continue;
+                    got1 = true;
+                    chain.hits += 1;
+
+                    float3 at = (float3(c) + got.rgb) * size;
+                    float d = distance(at, root);
+
+                    float4 f4 = YAPS_ATLAS_LOAD(px + YAPS_ATLAS_SLOTPX, cellY);
+                    float3 fwd = normalize(f4.rgb * 2 - 1);
+                    float kind;
+                    int ownIndex;
+                    bool oneWay;
+                    YapsFacingDecode(f4.a, kind, ownIndex, oneWay);
+                    int owner = YapsOwnerDecode(
+                        YAPS_ATLAS_LOAD(px + 3 * YAPS_ATLAS_SLOTPX, cellY));
+
+                    // TAGS, the third pixel. A socket says what it is and the
+                    // plug says what it will answer, and the whole test is two
+                    // bitwise ands.
+                    //
+                    // An untagged socket has to pass a plug with no include
+                    // list, or every legacy socket in the room goes dark: the
+                    // light tier cannot carry tags at all, a marker light's
+                    // range IS its message and the digits are Raliv's. Untagged
+                    // is the honest reading of content that predates this.
+                    //
+                    // An own socket chosen by name skips them, as SPS judges its
+                    // own sockets by the Self rules alone.
+                    if (!YapsSelfChosen(owner, ownIndex) && YapsTagsRefuse(YapsTagsDecode(
+                            YAPS_ATLAS_LOAD(px + 2 * YAPS_ATLAS_SLOTPX, cellY))))
                     {
-                        chain.refusedD = d;
-                        chain.refusedAt = at;
+                        // Remember it. A socket that was READ and refused is
+                        // not an unknown socket, and the light tier answers
+                        // unknown sockets a moment later. Within reach only:
+                        // a refusal across the room is nothing to protect.
+                        if (d <= far && d < chain.refusedD)
+                        {
+                            chain.refusedD = d;
+                            chain.refusedAt = at;
+                        }
+                        continue;
                     }
-                    continue;
-                }
 
-                // No facing test. There used to be one, rejecting a hole
-                // whose forward pointed the way the plug was going. The
-                // deform already flips the socket axis to meet the
-                // approach, so a correctly aimed hole was thrown away
-                // before the deform ever saw it. Range is what rejects.
-                if (d > far) continue;
+                    // No facing test. There used to be one, rejecting a hole
+                    // whose forward pointed the way the plug was going. The
+                    // deform already flips the socket axis to meet the
+                    // approach, so a correctly aimed hole was thrown away
+                    // before the deform ever saw it. Range is what rejects.
+                    if (d > far) continue;
 
-                // A ONE-WAY RING is entered from its front alone, the side
-                // its facing points to. A plug whose base is behind it passes
-                // it by. The base, because the shaft goes through a ring and
-                // the base never does, so the answer holds all the way in.
-                if (oneWay && dot(fwd, root - at) < 0) continue;
+                    // A ONE-WAY RING is entered from its front alone, the side
+                    // its facing points to. A plug whose base is behind it passes
+                    // it by. The base, because the shaft goes through a ring and
+                    // the base never does, so the answer holds all the way in.
+                    if (oneWay && dot(fwd, root - at) < 0) continue;
 
-                // OWN BODY, the same question the lights ask, at any
-                // distance. A wearer's own hip socket is permanently in
-                // reach and permanently nearest, so admitting it takes
-                // link 0 for ever and nobody else is ever seen.
-                //
-                // The FOURTH pixel is the socket's owner id. Where both
-                // ids are known, ownership is a fact rather than the
-                // nearest-hip vote, and the socket's number picks the
-                // plug's own answer; where either is zero it is the vote,
-                // which refuses only INBOARD sockets, the ones on the hips.
-                //
-                // Tested here rather than after the sort, so a rejected
-                // entry leaves no hole in the list.
-                if (YapsSelfRefuses(root, at, owner, ownIndex))
-                {
-                    // Its marker lights are still up, and the light tier's
-                    // hip vote only turns down the hip sockets. The same tenth
-                    // of a length as a tag refusal, so a neighbour survives.
-                    if (YapsOwnNumbered(owner, ownIndex) && distance(at, lightAt) < len * 0.1)
-                        chain.lightUnticked = 1;
-                    continue;
-                }
+                    // OWN BODY, the same question the lights ask, at any
+                    // distance. A wearer's own hip socket is permanently in
+                    // reach and permanently nearest, so admitting it takes
+                    // link 0 for ever and nobody else is ever seen.
+                    //
+                    // The FOURTH pixel is the socket's owner id. Where both
+                    // ids are known, ownership is a fact rather than the
+                    // nearest-hip vote, and the socket's number picks the
+                    // plug's own answer; where either is zero it is the vote,
+                    // which refuses only INBOARD sockets, the ones on the hips.
+                    //
+                    // Tested here rather than after the sort, so a rejected
+                    // entry leaves no hole in the list.
+                    if (YapsSelfRefuses(root, at, owner, ownIndex))
+                    {
+                        // Its marker lights are still up, and the light tier's
+                        // hip vote only turns down the hip sockets. The same tenth
+                        // of a length as a tag refusal, so a neighbour survives.
+                        if (YapsOwnNumbered(owner, ownIndex) && distance(at, lightAt) < len * 0.1)
+                            chain.lightUnticked = 1;
+                        continue;
+                    }
 
-                // Insertion sort, nearest first. THE ORDER IS THE PATH:
-                // socket one is the one the shaft meets first.
-                //
-                // Written out, never looped. These arrays only stay in
-                // registers while every index is a compile-time constant,
-                // and a loop breaking on a comparison cannot unroll. That
-                // is the whole reason YAPS_CHAIN_MAX is not a knob.
-                if (d < sockD[0])
-                {
-                    YAPS_CH_MOVE(3, 2) YAPS_CH_MOVE(2, 1) YAPS_CH_MOVE(1, 0) YAPS_CH_PUT(0)
+                    if (scan == 1 && (YAPS_CH_SAME(0) || YAPS_CH_SAME(1) || YAPS_CH_SAME(2) || YAPS_CH_SAME(3)))
+                        continue;
+
+                    // Insertion sort, nearest first. THE ORDER IS THE PATH:
+                    // socket one is the one the shaft meets first.
+                    //
+                    // Written out, never looped. These arrays only stay in
+                    // registers while every index is a compile-time constant,
+                    // and a loop breaking on a comparison cannot unroll. That
+                    // is the whole reason YAPS_CHAIN_MAX is not a knob.
+                    if (d < sockD[0])
+                    {
+                        YAPS_CH_MOVE(3, 2) YAPS_CH_MOVE(2, 1) YAPS_CH_MOVE(1, 0) YAPS_CH_PUT(0)
+                    }
+                    else if (d < sockD[1])
+                    {
+                        YAPS_CH_MOVE(3, 2) YAPS_CH_MOVE(2, 1) YAPS_CH_PUT(1)
+                    }
+                    else if (d < sockD[2])
+                    {
+                        YAPS_CH_MOVE(3, 2) YAPS_CH_PUT(2)
+                    }
+                    else if (d < sockD[3])
+                    {
+                        YAPS_CH_PUT(3)
+                    }
                 }
-                else if (d < sockD[1])
-                {
-                    YAPS_CH_MOVE(3, 2) YAPS_CH_MOVE(2, 1) YAPS_CH_PUT(1)
-                }
-                else if (d < sockD[2])
-                {
-                    YAPS_CH_MOVE(3, 2) YAPS_CH_PUT(2)
-                }
-                else if (d < sockD[3])
-                {
-                    YAPS_CH_PUT(3)
-                }
+                // Found in this home, so the other is not this cell's.
+                if (got1) break;
             }
-            // Found in this home, so the other is not this cell's.
-            if (got1) break;
         }
     }
 

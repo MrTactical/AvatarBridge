@@ -17,11 +17,16 @@ Shader "Hidden/YapsBendCapture"
         Tags { "RenderType" = "Opaque" "Queue" = "Geometry" }
         Pass
         {
+            // ForwardBase with the vertex-light variant, as the hosts are:
+            // marker lights reach a shader only as unity_4Light*, which Unity
+            // fills in this pass alone. Without it no light socket is ever found.
+            Tags { "LightMode" = "ForwardBase" }
             Cull Off
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
             #pragma target 5.0
+            #pragma multi_compile_fwdbase
             #include "UnityCG.cginc"
             #include "../Yaps/yaps_deform.cginc"
             #include "../Yaps/yaps_socket.cginc"

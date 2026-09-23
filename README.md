@@ -795,7 +795,10 @@ rebuild. The full block is 932 by 596 pixels; a smaller view (a small mirror, a 
 resolution, the self portrait) gets a smaller block with fewer cells, worked out from the view's
 own size by the sockets and the plugs alike. Fewer cells means a crowded instance loses the odd
 socket in that view. Below about 240 pixels square the atlas is off and a plug seen there falls
-back to the marker lights.
+back to the marker lights. A plug sees every socket within about 1.2 of its own lengths, wherever
+it stands. An avatar's own sockets never hide one another in the block, however close they sit,
+up to eight of them; a prop's or a world's sockets carry no number, and two of those within a hand
+of each other can, the plug then taking whichever was drawn last.
 
 **Which sockets are your own.** Every socket also writes its wearer's owner id into the atlas: a
 24-bit piece of the ChilloutVR user id, fed in by the game and synced as one parameter, 32 bits.

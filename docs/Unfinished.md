@@ -33,10 +33,15 @@ digests the conversion only. Design:
   on 25 directions: **27 of 50 found, the same on HDR and 8-bit**. The first miss read atlas
   target 0.70 and taps 0.10: the camera was live and no cell was read, so REACH, not the tag.
   With the level taken by `ceil` (tried in the test project only): **50 of 50** on both.
-  **Not shipped:** the model says `ceil` leaves a 0.586 m plug on the same level, so it is not the
-  whole fix. A rule that guarantees coverage (scan centred on the root, cell at least 1.2 lengths)
-  wants the tester on several plug lengths AND a neighbour-socket scenario first, because coarser
-  cells put nearby sockets in one octant, where the second to draw hides the first.
+  **FIXED ON DEV 2026-09-23, editor only**, see "The atlas scan leaves dead zones" below: a
+  two-level read and numbered buckets. The tester now covers every socket kind a shader can see
+  (YAPS hole, ring, one-way ring by atlas, atlas plus lights, DPS hole and ring by light alone;
+  contact-only TPS has nothing a shader reads) on three plug lengths, 0.155, 0.330 and 0.649 m,
+  and a neighbour pair 6 and 25 cm apart, numbered and unnumbered. DPS misses only where the root
+  light's range (the protocol's 0.41) cannot meet the plug's renderer bounds, which Unity culls
+  in game too; the tester counts those apart. **Tester trap:** creating the numbered writer
+  materials as assets mid-run made every later capture read a full length; they are made before
+  the first capture now.
 - **Scenarios, seeded, run on their own.** Sockets approaching from a shell of directions, swept
   past the tip, withdrawn; locomotion with physics on; the Animator Tester's toggle flips; HDR,
   8-bit and small views; a second avatar for ownership. A failure saves a repro scene.
@@ -790,10 +795,30 @@ deployed build): a socket beside the plug now resolves by atlas, overlay all gre
 are "a lot better". **Not verified in game.** The atlas passed there before, which fits an HDR
 camera; any camera in game without HDR would have had the same holes.
 
-### The atlas scan leaves dead zones near the tip. MEASURED 2026-09-22, not fixed
+### The atlas scan leaves dead zones near the tip. MEASURED 2026-09-22, FIXED ON DEV 2026-09-23
 
 **WITHDRAWN as the cause of Joe's dead zones**, which were the tag above: the overlay showed the
-socket's slot read and rejected, not missed. The reach problem below is modelled, not observed.
+socket's slot read and rejected, not missed. The reach problem below was modelled first, then
+OBSERVED by the runtime tester on 2026-09-23: 27 of 50 places round a 0.649 m tip.
+
+**The fix, measured in the editor on 0.155, 0.330 and 0.649 m plugs, not yet in game:**
+- **Two reads.** The level nearest L/2 round the shaft's middle, as before, then the smallest
+  level whose cells are at least 1.2 lengths, round the base, adding only what the first did not
+  hold. The second guarantees every socket within 1.2 lengths is scanned; the first keeps close
+  sockets apart. Every YAPS kind 50 of 50 on HDR and 8-bit, all three plugs. Cover alone (the
+  coarse read only) had pushed a 25 cm neighbour hidden or lost from 5 to 19 of 50 on the 0.649 m
+  plug. Reader only; twice the header taps when the levels differ, not benchmarked.
+- **Numbered buckets.** A socket used to pick its bucket by which octant of the cell it sat in,
+  so two sockets a hand apart shared one at every level and the later draw hid the nearer (11 of
+  50 at 6 cm). A numbered socket (every socket `ApplySelf` numbers, the first fifteen) now takes
+  bucket `(number - 1 + owner) & 7`: a wearer's first eight never clash, and across wearers a clash
+  is one in eight at any distance. Numbered pairs 50 of 50 at 6 and 25 cm on all three plugs.
+  Writer only and NOT a protocol change: the reader opens all eight buckets and takes position
+  from the payload, so old plugs read new sockets and the other way round. Needs the socket
+  rebuilt, which the 4.6.3 reconvert already asks for.
+- **Still open, the known ceiling:** unnumbered sockets (props, world sockets, a wearer's past
+  fifteen) keep the octant: an unnumbered 6 cm pair picks the far one 11 of 50 on the 0.649 m plug,
+  12 on the 0.330 m. Numbers 1 and 9 share a bucket when they share a cell.
 
 Joe found patches beside a plug where a socket never engages. `Dev/Probes/Hlsl/atlas-reach.py`
 mirrors the reader's level choice and 3x3x3 block: the level is `round`ed, so a plug just under a

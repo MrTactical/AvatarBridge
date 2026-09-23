@@ -715,7 +715,7 @@ the thing a later version would negotiate with is the version that predates nego
 
     frozen      the cell hash, the second-home hash, the tag hash and the version in it
     frozen      the payload layout: header alpha counts, slot 0 position, slot 1 facing+kind
-    frozen      the octant bucket rule and the additive alpha header
+    frozen      the additive alpha header (the bucket choice is the writer's, from 2026-09-23)
     frozen      levels step by 4x, each in its own band of rows
     NOT frozen  grid, cell size, level count, slot size
 
@@ -1586,3 +1586,18 @@ k lands half a step off, reads back 1/255 wrong against the 0.001 window, and 12
 on any camera without HDR, the editor's included. The tag is now `(1 + 2 * (h % 128)) / 255`, which
 stores as `(128 + k) / 255`, exact on 8-bit and inside the window on half-float.
 `Dev/Probes/Hlsl/atlas-tag.py` checks both.
+
+## Two reads and numbered buckets (2026-09-23)
+
+The runtime tester (`Dev/Tester/YapsBendTester`, the bend read back from the vertex stage) found
+27 of 50 places round a 0.649 m tip dead: the level nearest L/2, read round the shaft's middle,
+does not always reach the tip. A level that guarantees coverage (cells of at least 1.2 lengths,
+round the base) fixed reach and made neighbours worse, because its octants are big enough that two
+sockets a hand apart always share one. So a plug now reads both: the fine level first, then the
+coverage level for whatever the fine one did not hold.
+
+That left the octant itself. The bucket rule was listed as frozen above, but nothing reading ever
+depended on it: a reader opens all eight buckets and takes position from the payload. So a
+numbered socket now takes bucket `(number - 1 + owner) & 7`, which parts a wearer's first eight
+sockets however close, and is changed by the writer alone, with no protocol bump. Unnumbered
+sockets keep the octant.
