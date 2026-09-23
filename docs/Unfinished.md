@@ -114,6 +114,14 @@ light, a plug seen.
   shader in this project* counted every readout as a failed update, having no source to patch
   from. Probe 3 of 3 (one test mesh exercises two slots: 2 readouts, 4 submeshes), tester 29 of 29
   x3, held shapes, smoke 34 of 34, `check-defines.sh` clean.
+  - **The two-avatar conversion then found a pre-existing one, worse: a plug that never bent.**
+    Umbreon has two meshes of the same name, each with `SPS/BakedSpsPlug`, and the bake file was
+    named for mesh, parent and plug only, so the second bake overwrote the first and the first
+    plug's material was left with no bake at all (408 outputs: only this avatar). Readout files had
+    the same flaw, by mesh name, and the readout materials by plug name, which is `BakedSpsPlug` for
+    every converted plug. All three now carry `YapsBaker.PlaceKey`, six hex digits of where the
+    objects sit by sibling index: unique, and stable across reconverts so a reconvert still
+    overwrites its own file.
   - Found beside it, NOT fixed: on the 3-plug avatar all three plugs bake the same slot, so only
     the last one's bake reaches the material. If the three are different shafts, two never bend.
     Pre-existing; needs a look at what the source avatar meant by three plugs on one mesh.

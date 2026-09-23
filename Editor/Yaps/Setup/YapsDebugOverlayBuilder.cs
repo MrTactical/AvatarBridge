@@ -227,7 +227,10 @@ namespace AvatarBridge
 
             string dir = DirOf(built[0].readoutSource.GetTexture("_YAPS_Bake") as Texture2D) ?? Folder;
             Directory.CreateDirectory(dir);
-            string meshPath = dir + "/YAPS " + Safe(source.name) + MeshSuffix + ".asset";
+            // Named for where the renderer sits as well: two renderers can share
+            // a mesh, or a mesh name, and one would delete the other's.
+            string key = Safe(renderer.name) + " " + YapsBaker.PlaceKey(renderer.transform);
+            string meshPath = dir + "/YAPS " + key + MeshSuffix + ".asset";
             AssetDatabase.DeleteAsset(meshPath);
             AssetDatabase.CreateAsset(mesh, meshPath);
 
@@ -235,11 +238,12 @@ namespace AvatarBridge
             foreach (var plug in built)
             {
                 // A material each, even for plugs of the same name: each
-                // holds its own plug's anchor and bake.
-                string label = plug.name;
+                // holds its own plug's anchor and bake. Every converted plug
+                // is called BakedSpsPlug, so the renderer's key goes first.
+                string label = key + " " + plug.name;
                 for (int n = 2; !labels.Add(label); n++)
                 {
-                    label = plug.name + " " + n;
+                    label = key + " " + plug.name + " " + n;
                 }
                 var material = MaterialFor(shader, dir, label);
                 Copy(plug.readoutSource, material, plug.name, report);

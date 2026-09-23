@@ -289,12 +289,15 @@ namespace AvatarBridge
             // is the point.
             //
             // The parent goes in the name because two plugs on one renderer are
-            // usually called the same thing under different bones.
+            // usually called the same thing under different bones. Names alone
+            // still collide: two meshes of one name, each with SPS/BakedSpsPlug,
+            // wrote one file, and the first plug's material lost its bake and
+            // never bent. Where both sit does not collide.
             string owner = plugRoot != null && plugRoot.parent != null
                 ? plugRoot.parent.name + " " + plugRoot.name
                 : plugRoot != null ? plugRoot.name : "plug";
             string path = outputDir + "/YAPS " + Sanitise(renderer.name) + " "
-                          + Sanitise(owner) + " bake.asset";
+                          + Sanitise(owner) + " " + PlaceKey(renderer.transform, plugRoot) + " bake.asset";
             AssetDatabase.DeleteAsset(path);
             AssetDatabase.CreateAsset(texture, path);
             SettleForUpload(texture);
@@ -1156,6 +1159,20 @@ namespace AvatarBridge
 
         static string Sanitise(string name)
             => new string(name.Select(c => char.IsLetterOrDigit(c) || c == ' ' ? c : '_').ToArray());
+
+        // Six hex digits for where these objects sit in their hierarchy, by
+        // sibling index, so a file named for them is theirs alone and the
+        // same objects find the same file again on the next conversion.
+        public static string PlaceKey(params Transform[] objects)
+        {
+            var at = new System.Text.StringBuilder();
+            foreach (var o in objects)
+            {
+                for (var t = o; t != null && t.parent != null; t = t.parent) at.Append(t.GetSiblingIndex()).Append('/');
+                at.Append('|');
+            }
+            return Hash128.Compute(at.ToString()).ToString().Substring(0, 6);
+        }
     }
 }
 #endif
