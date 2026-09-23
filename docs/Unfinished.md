@@ -11,6 +11,31 @@ what SPS code may be looked at in `YAPS-CLEAN-ROOM.md`. Finished records are in 
 
 ## Next up
 
+**Decided 2026-09-23 (Joe):** ship 4.6.3 first (one default corpus run authorised, release on his
+word), then the two items below.
+
+**1. A runtime tester: the bend as data. PROPOSED, step one is a probe.** Every YAPS bug this week
+(8-bit atlas holes, own socket in the editor, rigid accessories, the torn tip) was found by eye,
+because the bend happens in the vertex shader and nothing on the CPU ever sees it; the corpus
+digests the conversion only. Design:
+- **Readback.** A test-only variant of the patched plug shader writes every bent vertex, and what
+  it resolved, into a buffer the tester reads. First step: probe that a vertex-stage UAV write
+  works on this machine's D3D11. Fallback if not: positions into a float render target, per pixel.
+- **Scenarios, seeded, run on their own.** Sockets approaching from a shell of directions, swept
+  past the tip, withdrawn; locomotion with physics on; the Animator Tester's toggle flips; HDR,
+  8-bit and small views; a second avatar for ownership. A failure saves a repro scene.
+- **Invariants, one per bug met.** No socket in range, no bend. A socket anywhere round the tip
+  resolves. No edge stretches past a bound, across renderers too. Hidden parts stay hidden bent.
+  A small socket move is a small mesh change. Every camera gives the same answer.
+- **AI on top later** (choosing scenarios, reviewing flagged frames), never the backbone.
+- **Cannot prove** anything the CVR client owns: its HDR, its globals, sync. Still checked in game.
+
+**2. In-game readouts, 4.6.4.** The plug readout built on EVERY plug, hidden, with a SYNCED bool
+toggle (Joe's call: a helper sees the user's plug as their own client resolves it), the shader
+skipping all work while off; one material slot per plug. A socket readout of its own: publishing
+on this camera, its own atlas cell read back as its own (a direct 8-bit-tag detector), owner id
+known, number and kind, whether it holds the avatar's marker light, a plug seen.
+
 *4.6.0 shipped 2026-09-12: tag `v4.6.0`, merge `b51296e`, both packages published, 98 commits
 since 4.5.1. The atlas carries tags, one-way rings, the per-plug own-sockets checklist and an
 owner id per socket; the conversion resizes oversized textures; four converter bugs went with it.
