@@ -33,7 +33,16 @@ namespace AvatarBridge
 
         // --- make this a plug ------------------------------------------------
 
+        // Every readout comes off the mesh before the bake, so one that stops
+        // short puts back the ones whose plugs still own their materials.
         public static Outcome Bake(YapsPlug plug)
+        {
+            var o = BakeOnce(plug);
+            if (!o.Ok && plug != null) YapsDebugOverlayBuilder.Build(plug.Target, null);
+            return o;
+        }
+
+        static Outcome BakeOnce(YapsPlug plug)
         {
             var o = new Outcome();
             if (plug == null) { o.Message = "no plug"; return o; }
@@ -46,9 +55,10 @@ namespace AvatarBridge
             var report = new BridgeReport();
             // The named root bone is the chain, else the plug object.
             var chainRoot = plug.rootBone != null ? plug.rootBone : plug.transform;
-            // The last readout's mesh back first, or its four vertices bake
-            // as the plug's.
+            // Every readout on the mesh off first, this plug's and any other's,
+            // or their vertices bake as the plug's.
             YapsDebugOverlayBuilder.Restore(plug);
+            YapsDebugOverlayBuilder.Restore(renderer);
             var result = YapsBaker.Bake(renderer, chainRoot, dir, report, out string failure, flipAxis: plug.flipAxis);
             if (result == null) { o.Message = "could not bake: " + failure; return o; }
             // A plain mesh bakes in its own units; the markers and the

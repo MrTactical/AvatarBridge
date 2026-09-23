@@ -92,6 +92,39 @@ light, a plug seen.
   for a socket's own renderer, out of the survey's lift-off candidates, as the atlas writers are.
   The probe checks the first on a real patched plug and passes on three avatars; the survey half
   is unmeasured (407 had no socket readouts). A clean corpus run is still owed before release.
+- **Corpus 408 (2026-09-23), not clean: plugs sharing a mesh. FIXED ON DEV.** Two avatars carry
+  more than one plug on one renderer (3 and 2). Readouts were built one plug at a time, so the
+  next plug measured the last one's readout quads as part of itself and patched its readout slot
+  into a copy of the plug: the 3-plug avatar drew its plug three times over, one working readout,
+  and the weigh pass flagged the copies as a shared-shader set (that is how it surfaced). Now each
+  plug records what its readout is built from (`readoutSource`, `readoutAnchor`, `readoutTip`) and
+  `YapsDebugOverlayBuilder.Build` builds every readout a mesh carries together, on the mesh from
+  before any of them, one submesh each; `Restore(renderer)` takes all of them off before any bake,
+  whichever plug made them. The converter records during the plug loop and builds after it; the
+  toolkit rebuilds the whole mesh on each bake. A plug whose material a later plug took over (the
+  same slot: only the last bake bends it) gives up its readout rather than showing a bake that no
+  longer drives anything. `ReadoutProbe` adds a second plug on the first plug's mesh, in another
+  slot and in the same material. Its first run caught one more: the mesh under the readouts was
+  kept only on the plug that built the last readout, so deleting that plug left the next bake on
+  the readout mesh; every record on the renderer now keeps it. A review of the callers found three
+  more, all fixed: Remove rebuilt the other plugs' readouts before putting its own materials back,
+  and its baked-slot finder took any material with a bake texture, readouts included, for a plug
+  slot to restore (it now skips readouts, and the rebuild comes last); a toolkit bake that stopped
+  short left every readout on the mesh off (it now builds them back); and *Update every YAPS
+  shader in this project* counted every readout as a failed update, having no source to patch
+  from. Probe 3 of 3 (one test mesh exercises two slots: 2 readouts, 4 submeshes), tester 29 of 29
+  x3, held shapes, smoke 34 of 34, `check-defines.sh` clean.
+  - Found beside it, NOT fixed: on the 3-plug avatar all three plugs bake the same slot, so only
+    the last one's bake reaches the material. If the three are different shafts, two never bend.
+    Pre-existing; needs a look at what the source avatar meant by three plugs on one mesh.
+  - Also beside it, pre-existing, not a 4.6.4 change: the sync check counts a parameter that
+    STARTS under 3200 bits as fitting, so an avatar at 3230/3200 gets a warning, not the error.
+    Whether CVR counts the same way needs the decompiled client.
+- **The readout is optional, Joe 2026-09-23.** An *In-game readout* tick on every plug (applies on
+  re-bake) and socket (applies at once when built), in the See it work card. With nothing left
+  carrying one, `Menu` now also drops the `YAPS/Readout` parameter: a controller parameter syncs
+  whether the menu names it or not, so before this the bit outlived the toggle. `ReadoutProbe`
+  turns every tick off (no readout, layer, parameter or row) and back on.
 
 *4.6.0 shipped 2026-09-12: tag `v4.6.0`, merge `b51296e`, both packages published, 98 commits
 since 4.5.1. The atlas carries tags, one-way rings, the per-plug own-sockets checklist and an

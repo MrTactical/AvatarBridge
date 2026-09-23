@@ -66,6 +66,13 @@ namespace AvatarBridge
                     material.SetFloat("_YAPS_UseAtlas", YapsAtlas.Enabled ? 1f : 0f);
                 }
             }
+            // The readouts, after every plug is measured and its values are
+            // final: a plug measured over another's readout takes it for part
+            // of the plug.
+            foreach (var renderer in ctx.YapsPlugs.Select(p => p.Renderer).Distinct())
+            {
+                YapsDebugOverlayBuilder.Build(renderer, ctx.Report);
+            }
 
             ConvertSockets(ctx, socketRoots);
             YapsSocketRebuilder.Finish(ctx, rebuild);
@@ -156,9 +163,10 @@ namespace AvatarBridge
                 return;
             }
 
-            // A source built by the toolkit with its readout on wears the
-            // readout's mesh; the bake wants the one underneath.
+            // A source built by the toolkit with readouts on wears their mesh;
+            // the bake wants the one underneath, and no readout slot to patch.
             YapsDebugOverlayBuilder.Restore(plugRoot.GetComponent<YapsPlug>());
+            YapsDebugOverlayBuilder.Restore(renderer);
             var result = YapsBaker.Bake(renderer, plugRoot, ctx.OutputDir + "/YAPS", ctx.Report,
                 out string bakeFailure);
             if (result == null)
@@ -307,9 +315,8 @@ namespace AvatarBridge
                     }
                 }
             }
-            // Every plug gets one, hidden until the menu shows it.
-            YapsDebugOverlayBuilder.Apply(plugRoot, renderer.name, true,
-                result, primaryMaterial, ctx.Report);
+            // Built once every plug is measured, hidden until the menu shows it.
+            YapsDebugOverlayBuilder.Record(adopted, result, primaryMaterial, renderer.name, ctx.Report);
 
             ctx.Report.Converted(Category, $"Plug converted at {where}",
                 $"\"{renderer.name}\" material{(patchedSlots.Count > 1 ? "s" : "")} " +

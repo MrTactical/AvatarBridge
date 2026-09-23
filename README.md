@@ -2390,6 +2390,9 @@ Work down the list; the first that fits is usually it.
   Black or grey is nothing, red is a fault, green is working. **The toggle syncs**, so everyone
   who can see the plug sees the readout while it is on, each drawn from what their own game
   resolves: someone helping you reads your plug as their client sees it. Off, it draws nothing.
+  Every plug and socket has an *In-game readout* tick in its *See it work* card: untick it on a
+  plug and re-bake, or on a socket, where it applies at once, to leave that one without. Once
+  nothing on the avatar carries a readout, the menu toggle and its synced bit go too.
 - **Every socket carries one too, on the same toggle.** A strip of six cells floats just above the
   socket, facing you, and reads the socket from the plug's side: what a plug reaching for it would
   find. Left to right: whether the atlas is on the camera drawing this view (black the view is too

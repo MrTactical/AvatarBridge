@@ -8,6 +8,9 @@
 // toggle, and its cells read back off a render and matched to what the
 // socket is, with the atlas writer switched off as the control.
 //
+// Then a second plug on the first plug's mesh, in another slot and in the
+// same material, and every In-game readout tick off and on again.
+//
 // Run: -executeMethod AvatarBridge.Regression.ReadoutProbe.Run [-yapsAvatar <prefab path>]
 // Writes to the avatar's controller in the test project (the layer), as a
 // toolkit Build would.
@@ -232,6 +235,9 @@ namespace AvatarBridge.Regression
                 avatar.overrides = keptOverrides;
                 AssetDatabase.DeleteAsset(genDir);
 
+                SharedMesh(plugs[0]);
+                Ticks(go, avatar, plugs);
+
                 foreach (var plug in plugs)
                 {
                     plug.answers = authored[plug];
@@ -249,6 +255,87 @@ namespace AvatarBridge.Regression
             }
             Log(fail == 0 ? "PASS" : $"FAIL: {fail} check(s)");
             if (Application.isBatchMode) EditorApplication.Exit(fail == 0 ? 0 : 1);
+        }
+
+        // Two plugs on one mesh, through the toolkit's door. Into another
+        // slot, each keeps a readout, a submesh each. Into the same material
+        // the second takes it over, and only its readout is left. Neither
+        // may leave a readout patched into a copy of the plug, which is what
+        // building them one plug at a time did.
+        static void SharedMesh(YapsPlug first)
+        {
+            var r = first.Target;
+            var original = r.sharedMaterials;
+            int other = -1;
+            for (int i = 0; i < original.Length && other < 0; i++)
+                if (original[i] != null && !original[i].HasProperty("_YAPS_Bake") && !YapsDebugOverlayBuilder.IsReadout(original[i])) other = i;
+
+            var second = new GameObject("__Second plug").AddComponent<YapsPlug>();
+            second.transform.SetParent(first.transform.parent, false);
+            second.transform.SetPositionAndRotation(first.transform.position, first.transform.rotation);
+            second.renderer = r;
+            second.rootBone = first.rootBone;
+            second.flipAxis = first.flipAxis;
+            if (other >= 0)
+            {
+                second.materialSlot = other;
+                var o = YapsNativeBuilder.Bake(second);
+                Check(o.Ok, $"a second plug baked into slot {other} of the same mesh: {o.Message}");
+                Shared(r, new[] { first, second }, "two plugs, two slots");
+                YapsDebugOverlayBuilder.Drop(second);
+                YapsDebugOverlayBuilder.Build(r, null);
+                Shared(r, new[] { first }, "the second dropped");
+                var mats = r.sharedMaterials;
+                mats[other] = original[other];
+                r.sharedMaterials = mats;
+            }
+            else Log("  no unbaked slot on this mesh: two plugs in two slots not exercised");
+
+            second.materialSlot = -1;
+            var same = YapsNativeBuilder.Bake(second);
+            Check(same.Ok, $"a second plug baked into the same material: {same.Message}");
+            Shared(r, new[] { second }, "two plugs, one material");
+            Check(first.readoutSource == null, "the plug whose material was taken over gives up its readout");
+            UnityEngine.Object.DestroyImmediate(second.gameObject);
+            var back = YapsNativeBuilder.Bake(first);
+            Check(back.Ok, $"the first plug baked again: {back.Message}");
+            Shared(r, new[] { first }, "one plug again");
+        }
+
+        static void Shared(Renderer r, YapsPlug[] live, string when)
+        {
+            var mats = r.sharedMaterials;
+            var readouts = mats.Where(YapsDebugOverlayBuilder.IsReadout).ToList();
+            int copies = readouts.Count(m => !YapsMarks.IsReadoutMaterial(m));
+            var mesh = r is SkinnedMeshRenderer s ? s.sharedMesh : r.GetComponent<MeshFilter>().sharedMesh;
+            var anchors = readouts.Select(m => (int) m.GetFloat("_YAPS_AnchorVertex")).OrderBy(a => a).ToList();
+            var expected = live.Select(p => p.readoutAnchor).OrderBy(a => a).ToList();
+            Check(readouts.Count == live.Length && copies == 0 && mesh.subMeshCount == mats.Length
+                  && anchors.SequenceEqual(expected),
+                $"{when}: {readouts.Count} readout(s) for {live.Length} plug(s), {copies} patched into a plug copy, " +
+                $"{mesh.subMeshCount} submeshes for {mats.Length} slots, anchors [{string.Join(",", anchors)}] " +
+                $"for [{string.Join(",", expected)}]");
+        }
+
+        // Every tick off: no readout anywhere, and the menu row, the layer
+        // and the synced parameter gone with them. Then every tick back on.
+        static void Ticks(GameObject go, CVRAvatar avatar, YapsPlug[] plugs)
+        {
+            var sockets = go.GetComponentsInChildren<YapsSocket>(true);
+            foreach (bool on in new[] { false, true })
+            {
+                foreach (var p in plugs) { p.readout = on; YapsNativeBuilder.BakeAndRefreshMenu(p); }
+                foreach (var s in sockets) { s.readout = on; YapsNativeBuilder.BuildSocket(s); }
+                int carrying = go.GetComponentsInChildren<Renderer>(true).Count(r => r.sharedMaterials.Any(YapsDebugOverlayBuilder.IsReadout));
+                var targets = YapsOwner.Targets(avatar);
+                bool layer = targets.Any(c => c.layers.Any(l => l.name == "YAPS readout"));
+                bool param = targets.Any(c => c.parameters.Any(p => p.name == YapsDebugOverlayBuilder.Parameter));
+                bool row = avatar.avatarSettings.settings.Any(e => e != null && e.machineName == YapsDebugOverlayBuilder.Parameter);
+                Check(on ? carrying == plugs.Length + sockets.Length && layer && param && row
+                         : carrying == 0 && !layer && !param && !row,
+                    $"every tick {(on ? "on" : "off")}: {carrying} renderer(s) carrying a readout for " +
+                    $"{plugs.Length} plug(s) and {sockets.Length} socket(s), layer {layer}, parameter {param}, menu row {row}");
+            }
         }
 
         static readonly (string name, Color c)[] Palette =
