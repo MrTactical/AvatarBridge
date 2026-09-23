@@ -831,6 +831,24 @@ share the plug's armature and are not baked (sheath, a ring, a harness, fluff), 
 shaft would stay straight while it bends: floating pieces, not tearing. Which of them sit on the
 shaft needs their meshes, not in the output folder.
 
+**2026-09-23, the same reporter on a 4.6.4 build, still torn** (gold and brown sheets past the
+fist, editor screenshot). Joe's theory: the accessories are hidden by blendshapes, so they are not
+their normal size when the plug is baked. Measured on the output folder:
+- Five shapes held at 100 on the plug renderer (a shrink, and hides for a cock ring, the condom, a
+  spiked choker, plates); the materials' starting `_YAPS_ShapeWeights` carry exactly five ones.
+- The toggle clips mirror correctly: `blendShape.Disable dick ring` pairs with
+  `material._YAPS_ShapeWeights2.z`, both 0 in the restore clip.
+- The deform adds each baked shape's delta times its weight to position, normal and tangent
+  BEFORE the per-vertex frame is solved, so a shrunken accessory recovers consistently while the
+  weights agree. So the plain form of the theory is already handled; it needs the reproduction.
+- **New: the output now carries the plug's mesh**, as the readout's copy (`YAPS Cock readout.asset`,
+  shapes included), which the 4.6.2 folder lacked. A reproduction is possible for the first time:
+  import the folder, run the bend tester on the plug, then A/B with the four hides released.
+- Side finding, report only: the weigh pass advises shrinking the bake texture ("8192x280 ...
+  1024x1024 is the same picture"). It is data, not a picture. Nothing acts on it (the texture pass
+  and free wins only touch textures with an importer, and the bake has none), but the advice is
+  wrong and should skip YAPS bakes.
+
 ### An accessory riding the shaft stayed rigid while the plug bent. FIXED ON DEV 2026-09-22, for 4.6.4
 
 Joe, from the reporter: the torn part is one of the accessories. The converter folded another mesh
