@@ -95,15 +95,16 @@ Shader "YAPS/Atlas Socket"
 
             // A numbered socket takes the bucket its number gives, turned by
             // its owner, so a wearer's own sockets never share one however
-            // close they sit (up to eight). By octant, two sockets a hand
-            // apart shared a bucket at whatever level a plug read, and the
-            // later draw hid the nearer. Across wearers the turn makes a
-            // clash one in eight at any distance. Unnumbered sockets keep
-            // the octant.
+            // close they sit (up to eight). By octant alone, two sockets a
+            // hand apart shared a bucket at whatever level a plug read, and
+            // the later draw hid the nearer. Across wearers the turn makes a
+            // clash one in eight at any distance. With no owner (a prop, a
+            // world, a copy not yet synced) the octant turns it instead,
+            // which still parts close sockets of one object.
+            int octant = (f.x > 0.5 ? 4 : 0) + (f.y > 0.5 ? 2 : 0) + (f.z > 0.5 ? 1 : 0);
             int number = (int) round(_YAPS_SocketIndex);
-            sub = number > 0
-                ? (number - 1 + YapsOwnerOf(_YAPS_Owner)) & 7
-                : (f.x > 0.5 ? 4 : 0) + (f.y > 0.5 ? 2 : 0) + (f.z > 0.5 ? 1 : 0);
+            int owner = YapsOwnerOf(_YAPS_Owner);
+            sub = number > 0 ? (number - 1 + (owner != 0 ? owner : octant)) & 7 : octant;
             payload = f;
             facing = normalize(mul((float3x3)unity_ObjectToWorld, float3(0, 0, 1))) * 0.5 + 0.5;
             tag = 0.5 + 0.5 * YapsAtlasTag(cell);

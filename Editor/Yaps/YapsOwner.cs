@@ -83,24 +83,10 @@ namespace AvatarBridge
         {
             if (root == null) return 0;
             var human = HumanBones(root.GetComponent<Animator>());
-            var sockets = root.GetComponentsInChildren<YapsSocket>(true)
-                .OrderBy(s => AnimationUtility.CalculateTransformPath(s.transform, root.transform), StringComparer.Ordinal)
-                .ToList();
-            var numbers = new Dictionary<YapsSocket, int>();
+            var numbers = NumberWriters(root, true);
             int byDefault = 0;
-            for (int i = 0; i < sockets.Count; i++)
-            {
-                int n = i < MaxSelfSockets ? i + 1 : 0;
-                numbers[sockets[i]] = n;
-                if (n > 0 && !OnHips(sockets[i].transform, human)) byDefault |= 1 << (n - 1);
-                foreach (var r in sockets[i].GetComponentsInChildren<Renderer>(true))
-                {
-                    var numbered = YapsAtlas.Indexed(r.sharedMaterial, n);
-                    if (numbered == null || numbered == r.sharedMaterial) continue;
-                    Undo.RecordObject(r, "YAPS own sockets");
-                    r.sharedMaterial = numbered;
-                }
-            }
+            foreach (var kv in numbers)
+                if (kv.Value > 0 && !OnHips(kv.Key.transform, human)) byDefault |= 1 << (kv.Value - 1);
 
             var told = new HashSet<Renderer>();
             foreach (var plug in root.GetComponentsInChildren<YapsPlug>(true))
@@ -112,7 +98,7 @@ namespace AvatarBridge
                 // skips them.
                 int start = byDefault, chosen = 0;
                 var rules = RulesOf(plug.Target);
-                if (rules != null) start = RulesMask(rules, sockets, human, out chosen);
+                if (rules != null) start = RulesMask(rules, numbers, human, out chosen);
                 foreach (var s in plug.selfEnter)
                     if (s != null && numbers.TryGetValue(s, out int n) && n > 0) chosen |= 1 << (n - 1);
                 int mask = start | chosen;
@@ -138,11 +124,62 @@ namespace AvatarBridge
                     if (m == null) continue;
                     var rules = RulesOn(m);
                     int chosen = 0;
-                    int mask = rules != null ? RulesMask(rules, sockets, human, out chosen) : byDefault;
+                    int mask = rules != null ? RulesMask(rules, numbers, human, out chosen) : byDefault;
                     SetMask(m, mask, chosen);
                 }
             }
-            return Math.Max(sockets.Count - MaxSelfSockets, 0);
+            return Math.Max(numbers.Count - MaxSelfSockets, 0);
+        }
+
+        // Every socket under the root numbered on its atlas writer, in path
+        // order so the numbers hold from build to build. The number is also
+        // the socket's atlas bucket, (number - 1) mod 8 turned by its owner,
+        // so 9 to 15 each share a bucket with one of the first eight: each
+        // takes the free partner it sits farthest from at build. Sockets with
+        // no avatar carry no owner to turn them, so a root starts from an
+        // offset its name picks, or every separate object's first socket
+        // would share bucket one.
+        public static Dictionary<YapsSocket, int> NumberWriters(GameObject root, bool avatar)
+        {
+            var sockets = root.GetComponentsInChildren<YapsSocket>(true)
+                .OrderBy(s => AnimationUtility.CalculateTransformPath(s.transform, root.transform), StringComparer.Ordinal)
+                .ToList();
+            int offset = avatar || sockets.Count > 8 ? 0 : (int) (Fnv(root.name) % (uint) (16 - sockets.Count));
+            var numbers = new Dictionary<YapsSocket, int>();
+            var partners = new List<int>();
+            for (int i = 0; i < sockets.Count; i++)
+            {
+                int n = 0;
+                if (i < 8)
+                {
+                    n = i + 1 + offset;
+                    if (i < MaxSelfSockets - 8) partners.Add(i);
+                }
+                else if (partners.Count > 0)
+                {
+                    var here = sockets[i].transform.position;
+                    int j = partners.OrderByDescending(k => (sockets[k].transform.position - here).sqrMagnitude).First();
+                    partners.Remove(j);
+                    n = j + 9;
+                }
+                numbers[sockets[i]] = n;
+                foreach (var r in sockets[i].GetComponentsInChildren<Renderer>(true))
+                {
+                    var numbered = YapsAtlas.Indexed(r.sharedMaterial, n);
+                    if (numbered == null || numbered == r.sharedMaterial) continue;
+                    Undo.RecordObject(r, "YAPS own sockets");
+                    r.sharedMaterial = numbered;
+                }
+            }
+            return numbers;
+        }
+
+        // string.GetHashCode is not promised to hold between runs.
+        static uint Fnv(string text)
+        {
+            uint h = 2166136261;
+            foreach (char c in text) h = (h ^ c) * 16777619;
+            return h;
         }
 
         // A converted SPS plug's rules for its wearer's own sockets, kept on
@@ -191,12 +228,12 @@ namespace AvatarBridge
         // Self tag rules are the author's whole answer for their own sockets,
         // as SPS reads them, so what they allow is chosen and skips the
         // plug's other tags. Hip avoidance alone chooses nothing.
-        static int RulesMask(SelfRules rules, List<YapsSocket> sockets,
+        static int RulesMask(SelfRules rules, Dictionary<YapsSocket, int> numbers,
                              Dictionary<Transform, HumanBodyBones> human, out int chosen)
         {
             int mask = 0;
-            for (int i = 0; i < sockets.Count && i < MaxSelfSockets; i++)
-                if (rules.Allows(sockets[i], human)) mask |= 1 << i;
+            foreach (var kv in numbers)
+                if (kv.Value > 0 && rules.Allows(kv.Key, human)) mask |= 1 << (kv.Value - 1);
             chosen = rules.Tagged ? mask : 0;
             return mask;
         }

@@ -402,9 +402,11 @@ namespace AvatarBridge
             });
 
             // The writer comes back unnumbered. Its avatar numbers it again,
-            // with every plug's answer, whichever door built the socket.
+            // with every plug's answer, whichever door built the socket; a
+            // prop's or a world's still wants the number, for its bucket.
             var avatar = socket.GetComponentInParent<CVRAvatar>(true);
             if (avatar != null) YapsOwner.ApplySelf(avatar.gameObject);
+            else YapsOwner.NumberWriters(socket.transform.root.gameObject, false);
         }
 
         // Inside one of the toolkit's own folders under the socket.

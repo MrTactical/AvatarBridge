@@ -1600,4 +1600,4 @@ That left the octant itself. The bucket rule was listed as frozen above, but not
 depended on it: a reader opens all eight buckets and takes position from the payload. So a
 numbered socket now takes bucket `(number - 1 + owner) & 7`, which parts a wearer's first eight
 sockets however close, and is changed by the writer alone, with no protocol bump. Unnumbered
-sockets keep the octant.
+sockets keep the octant. Later the same day every socket got a number, a prop's and a world's too, and with no owner the writer turns it by the octant instead: `(number - 1 + (owner ? owner : octant)) & 7`.

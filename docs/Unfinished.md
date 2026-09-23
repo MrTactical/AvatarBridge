@@ -816,9 +816,29 @@ OBSERVED by the runtime tester on 2026-09-23: 27 of 50 places round a 0.649 m ti
   Writer only and NOT a protocol change: the reader opens all eight buckets and takes position
   from the payload, so old plugs read new sockets and the other way round. Needs the socket
   rebuilt, which the 4.6.3 reconvert already asks for.
-- **Still open, the known ceiling:** unnumbered sockets (props, world sockets, a wearer's past
-  fifteen) keep the octant: an unnumbered 6 cm pair picks the far one 11 of 50 on the 0.649 m plug,
-  12 on the 0.330 m. Numbers 1 and 9 share a bucket when they share a cell.
+- **Props, worlds and past eight, same day.** `YapsSocketBuilder.Build` numbered only sockets under
+  an avatar; `YapsOwner.NumberWriters` now numbers every root's sockets, a root with no avatar
+  starting from an offset its name picks. With no owner the writer turns the number by the octant,
+  so one object's close sockets still part. Numbers 9 to 15 each take the free partner of 1 to 7
+  they sit farthest from at build (`RulesMask` reads the numbers now, not list positions). Measured
+  on all three plugs: another avatar's pair, one object's pair and two objects' pair, 6 and 25 cm,
+  all 50 of 50. **Still open:** two copies of one prop side by side share names and numbers, so
+  they fall back to the octant.
+- **Cost, measured** (`Dev/Probes/Perf/YapsResolvePerf`, RTX 4080): the second read adds 2.5 us a
+  pass to a 6433-vertex plug over an empty atlas, 21.6 us over a worst-case full one (1.9x and 3.1x
+  the one-read cost). Negligible against an 11 ms frame even times eyes, shadows and mirrors.
+- **The mesh walk** (tester step 4, a socket from 1.8 to 0.2 lengths on four lines): seams never
+  open (0.00 mm, all three plugs). Edges crushed to nothing lie behind the socket's opening, the
+  socket hiding what went in; a handful outside it at the bend. Stretch reaches 4.5 to 5.8x only
+  with a socket right beside the base at 90 degrees. **Open: a steep swing, not a pop.** Off-axis
+  (45 and 90 degrees) round 1.25 to 1.29 lengths, the tip moves 8 to 18 times as far as the
+  socket; ten times finer the ratio grows only 1.1 to 1.6x, so it is continuous, but a gain of 18
+  means a few centimetres of avatar movement whips the tip. The engagement ramp alone (1.6 to 1.2
+  lengths) predicts about 5x, so something narrower steepens it. Candidate for the reporter's
+  "breaking when nearly in range". The limits in step 4 are first guesses and fail on the crush
+  and stretch; they want setting from these numbers.
+- **Tester trap, twice:** a material asset created after the capture materials exist leaves every
+  later capture reading nothing. Every numbered writer material is made before them now.
 
 Joe found patches beside a plug where a socket never engages. `Dev/Probes/Hlsl/atlas-reach.py`
 mirrors the reader's level choice and 3x3x3 block: the level is `round`ed, so a plug just under a

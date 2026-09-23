@@ -14,6 +14,8 @@ namespace AvatarBridge.Regression
     // through Hidden/YapsBendCapture, and the bend read back as numbers.
     //   1. No socket in reach: no vertex moves from where skinning put it.
     //   2. A socket anywhere round the tip is found, on an HDR and an 8-bit camera.
+    //   3. Of two sockets on one line, the nearer is taken.
+    //   4. The mesh holds together while a socket walks in: seams, edges, pops.
     // Which route found it comes from the shipped "Resolved by" view, which
     // straightens the plug to a quarter, half, three quarters or all of its
     // length, so no resolve code is copied here to drift from the shader's.
@@ -53,6 +55,17 @@ namespace AvatarBridge.Regression
                 var marker = avatar.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => t.name == "YAPS Markers")
                              ?? (plug != null ? plug.transform : skin.transform);
                 Vector3 root = marker.position, fwd = marker.forward, up = marker.up;
+
+                // Every numbered writer material made before the capture
+                // materials exist: a material asset created after them left
+                // every later capture reading nothing, twice.
+                foreach (var (kind, oneWay) in new[] { (YapsSocket.SocketKind.Hole, false), (YapsSocket.SocketKind.Ring, false), (YapsSocket.SocketKind.Ring, true) })
+                {
+                    var warm = MakeSocket("__Warm", kind, oneWay, true, false);
+                    foreach (var r in warm.GetComponentsInChildren<Renderer>(true))
+                        for (int number = 1; number <= YapsOwner.MaxSelfSockets; number++) YapsAtlas.Indexed(r.sharedMaterial, number);
+                    UnityEngine.Object.DestroyImmediate(warm);
+                }
 
                 // Every plug slot onto the capture shader, carrying the patched
                 // material's whole YAPS block by name.
@@ -138,11 +151,6 @@ namespace AvatarBridge.Regression
                     buffer.GetData(got);
                     return got;
                 }
-
-                // The numbered writers made before any capture: the run that
-                // first created them as assets read nothing right after.
-                foreach (int n in new[] { 1, 2 })
-                    UnityEngine.Object.DestroyImmediate(MakeSocket("__Warm", YapsSocket.SocketKind.Hole, false, true, false, n));
 
                 var rest = Capture(hdr, 0f, yapsOff: true);
                 int written = rest.Count(v => v.w > 0.5f);
@@ -276,16 +284,35 @@ namespace AvatarBridge.Regression
                 }
 
                 // 3. A neighbour. Two atlas holes on one line, the second
-                // nearer: the plug must take the nearer. Numbered, as a
-                // wearer's own sockets are, and unnumbered, as a prop's or a
-                // world's are; a bucket shared in one cell lets the later
-                // draw hide the other. The gap view saturates at a length,
-                // so the tier view tells a far answer from none.
-                foreach (bool numbered in new[] { true, false })
+                // nearer: the plug must take the nearer. Another avatar's pair
+                // is numbered and owned, as a wearer's sockets are; one object's
+                // is numbered with no owner, as a prop's; two objects are each
+                // numbered by their own root, as world sockets are. A bucket
+                // shared in one cell lets the later draw hide the other. The gap
+                // view saturates at a length, so the tier view tells a far answer
+                // from none.
+                var pairs = new (string what, int farNumber, int nearNumber, int owner, bool strict)[]
                 {
-                    var outer = MakeSocket("__Neighbour far", YapsSocket.SocketKind.Hole, false, true, false, numbered ? 1 : 0);
-                    var near = MakeSocket("__Neighbour near", YapsSocket.SocketKind.Hole, false, true, false, numbered ? 2 : 0);
-                    string what = numbered ? "numbered" : "unnumbered";
+                    ("another avatar's", 1, 2, 4242, true),
+                    ("one object's, no owner", 1, 2, 0, false),
+                    ("two objects, no owner", 0, 0, 0, false),
+                };
+                int NumberOf(GameObject go) => go.GetComponentsInChildren<Renderer>(true)
+                    .Where(r => r.sharedMaterial != null && r.sharedMaterial.HasProperty("_YAPS_SocketIndex"))
+                    .Select(r => Mathf.RoundToInt(r.sharedMaterial.GetFloat("_YAPS_SocketIndex"))).FirstOrDefault();
+                foreach (var pair in pairs)
+                {
+                    var outer = MakeSocket("__Neighbour far", YapsSocket.SocketKind.Hole, false, true, false, pair.farNumber);
+                    var near = MakeSocket("__Neighbour near", YapsSocket.SocketKind.Hole, false, true, false, pair.nearNumber);
+                    // Nothing hands a stray socket an owner, so a block carries it.
+                    if (pair.owner != 0)
+                        foreach (var r in outer.GetComponentsInChildren<Renderer>(true).Concat(near.GetComponentsInChildren<Renderer>(true)))
+                        {
+                            var block = new MaterialPropertyBlock();
+                            r.GetPropertyBlock(block);
+                            block.SetFloat("_YAPS_Owner", pair.owner);
+                            r.SetPropertyBlock(block);
+                        }
                     foreach (float apart in new[] { 0.06f, 0.25f })
                     {
                         int seen = 0, hidden = 0, none = 0, other = 0, tried = 0;
@@ -304,15 +331,134 @@ namespace AvatarBridge.Regression
                             else if (Mathf.Abs(gap - wantFar) < 0.02f) { hidden++; wrongAt.Add($"{Where(p)}: the far one"); }
                             else { other++; wrongAt.Add($"{Where(p)}: reads {gap:0.000}, near {wantNear:0.000}"); }
                         }
-                        Log($"neighbour {apart * 100f:0} cm nearer, {what}: nearer taken {seen}, far one {hidden}, " +
-                            $"nobody {none}, other {other} of {tried}");
+                        string label = $"neighbour {apart * 100f:0} cm nearer, {pair.what} (#{NumberOf(outer)}, #{NumberOf(near)})";
+                        Log($"{label}: nearer taken {seen}, far one {hidden}, nobody {none}, other {other} of {tried}");
                         foreach (var w in wrongAt.Take(4)) Log($"  {w}");
-                        // Unnumbered sockets keep the octant bucket, so a clash
-                        // there is the known ceiling, not a regression.
-                        if (numbered) fail += Check($"neighbour {apart * 100f:0} cm nearer, {what}, is always the one taken", seen == tried);
+                        if (pair.strict) fail += Check($"{label} is always the one taken", seen == tried);
                     }
                     UnityEngine.Object.DestroyImmediate(outer);
                     UnityEngine.Object.DestroyImmediate(near);
+                }
+
+                // 4. The mesh holds together while a socket walks in from 1.8
+                // lengths to 0.2. Vertices sharing a place at rest (UV and
+                // normal seams) must share it bent, or the surface opens; no
+                // edge may stretch or squash past a bound; and a small socket
+                // move is a small mesh move, or the plug pops.
+                var mesh = skin.sharedMesh;
+                var edgeKeys = new HashSet<long>();
+                for (int s = 0; s < mesh.subMeshCount && s < mats.Length; s++)
+                {
+                    if (!capture.Any(c => c.mat == mats[s])) continue;
+                    var t = mesh.GetTriangles(s);
+                    for (int i = 0; i < t.Length; i += 3)
+                        for (int e = 0; e < 3; e++)
+                        {
+                            int va = t[i + e], vb = t[i + (e + 1) % 3];
+                            edgeKeys.Add(((long) Mathf.Min(va, vb) << 32) | (uint) Mathf.Max(va, vb));
+                        }
+                }
+                var edges = new List<(int a, int b, float len)>();
+                foreach (long key in edgeKeys)
+                {
+                    int va = (int) (key >> 32), vb = (int) (key & 0xffffffffL);
+                    float len = Vector3.Distance(rest[va], rest[vb]);
+                    if (rest[va].w > 0.5f && rest[vb].w > 0.5f && len > 1e-5f) edges.Add((va, vb, len));
+                }
+                // ponytail: a 0.01 mm grid can split a coincident pair across a
+                // cell edge and miss it; a neighbour search if that ever matters.
+                var seams = new List<(int a, int b)>();
+                var firstAt = new Dictionary<Vector3Int, int>();
+                for (int i = 0; i < n; i++)
+                {
+                    if (rest[i].w < 0.5f) continue;
+                    var key = Vector3Int.RoundToInt((Vector3) rest[i] * 1e5f);
+                    if (firstAt.TryGetValue(key, out int first)) seams.Add((first, i));
+                    else firstAt[key] = i;
+                }
+                Log($"mesh: {edges.Count} edges, {seams.Count} seam pairs");
+
+                var walks = new (string label, bool atlas, float angle)[]
+                {
+                    ("YAPS hole walking in at 0°", true, 0f),
+                    ("YAPS hole walking in at 45°", true, 45f),
+                    ("YAPS hole walking in at 90°", true, 90f),
+                    ("DPS hole walking in at 0°", false, 0f),
+                };
+                foreach (var w in walks)
+                {
+                    var walker = MakeSocket("__Walk", YapsSocket.SocketKind.Hole, false, w.atlas, true);
+                    float seam = 0f, stretch = 1f, squash = 1f, jump = 0f, seamAt = 0f, stretchAt = 0f, squashAt = 0f, jumpAt = 0f;
+                    int crushedInside = 0, crushedOutside = 0;
+                    float crushedAt = 0f;
+                    const float stride = 0.02f;
+                    Vector4[] before = null;
+                    for (int k = 0; k <= 80; k++)
+                    {
+                        float reach = 1.8f - k * stride;
+                        Aim(walker.transform, (w.angle, 0f, reach));
+                        var bent = Capture(hdr, 0f);
+                        foreach (var (va, vb) in seams)
+                        {
+                            float d = Vector3.Distance(bent[va], bent[vb]);
+                            if (d > seam) { seam = d; seamAt = reach; }
+                        }
+                        var opening = walker.transform.position;
+                        var outward = walker.transform.forward;
+                        int outside = 0;
+                        foreach (var (va, vb, len) in edges)
+                        {
+                            float r = Vector3.Distance(bent[va], bent[vb]) / len;
+                            if (r > stretch) { stretch = r; stretchAt = reach; }
+                            if (r < squash) { squash = r; squashAt = reach; }
+                            if (r >= 0.2f) continue;
+                            // Behind the opening, a millimetre of slack.
+                            bool inside = Vector3.Dot((Vector3) bent[va] - opening, outward) < 1e-3f
+                                          && Vector3.Dot((Vector3) bent[vb] - opening, outward) < 1e-3f;
+                            if (inside) crushedInside++; else outside++;
+                        }
+                        if (outside > crushedOutside) { crushedOutside = outside; crushedAt = reach; }
+                        if (before != null)
+                        {
+                            float d = 0f;
+                            for (int i = 0; i < n; i++)
+                                if (bent[i].w > 0.5f && before[i].w > 0.5f) d = Mathf.Max(d, Vector3.Distance(bent[i], before[i]));
+                            if (d > jump) { jump = d; jumpAt = reach; }
+                        }
+                        before = bent;
+                    }
+                    Log($"{w.label}: seams open {seam * 1000f:0.00} mm at {seamAt:0.00}L; edges {squash:0.00}x at {squashAt:0.00}L " +
+                        $"to {stretch:0.00}x at {stretchAt:0.00}L; biggest step {jump / (stride * length):0.0}x the socket's move at {jumpAt:0.00}L");
+                    Log($"  edges crushed below 0.2x: {crushedInside} edge-steps behind the opening, " +
+                        $"most outside it {crushedOutside} at {crushedAt:0.00}L");
+                    // A pop or a steep ramp: walk the worst step again ten times
+                    // finer. A ramp's biggest step shrinks with the stride; a
+                    // jump keeps its size, so its ratio grows tenfold.
+                    {
+                        const float fine = stride / 10f;
+                        float fineJump = 0f, fineAt = 0f;
+                        Vector4[] last = null;
+                        for (int k = 0; k <= 30; k++)
+                        {
+                            float reach = jumpAt + stride * 1.5f - k * fine;
+                            Aim(walker.transform, (w.angle, 0f, reach));
+                            var bent = Capture(hdr, 0f);
+                            if (last != null)
+                            {
+                                float d = 0f;
+                                for (int i = 0; i < n; i++)
+                                    if (bent[i].w > 0.5f && last[i].w > 0.5f) d = Mathf.Max(d, Vector3.Distance(bent[i], last[i]));
+                                if (d > fineJump) { fineJump = d; fineAt = reach; }
+                            }
+                            last = bent;
+                        }
+                        Log($"  ten times finer round {jumpAt:0.00}L: biggest step {fineJump / (fine * length):0.0}x the socket's move " +
+                            $"({fineJump * 1000f:0.0} mm) at {fineAt:0.000}L; at the coarse stride {jump * 1000f:0.0} mm");
+                    }
+                    fail += Check($"{w.label}: no seam opens past 0.5 mm", seam < 0.5e-3f);
+                    fail += Check($"{w.label}: no edge squashed below 0.2x or stretched past 5x", squash > 0.2f && stretch < 5f);
+                    fail += Check($"{w.label}: no step past ten times the socket's move", jump < 10f * stride * length);
+                    UnityEngine.Object.DestroyImmediate(walker);
                 }
             }
             catch (Exception e)
