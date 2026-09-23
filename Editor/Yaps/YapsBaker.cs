@@ -818,6 +818,8 @@ namespace AvatarBridge
             var deltaP = new Vector3[count];
             var deltaN = new Vector3[count];
             var deltaT = new Vector3[count];
+            var restN = mesh.normals;
+            var restT = mesh.tangents;
             var scored = new List<(float moved, int index)>();
 
             // Named shapes, in the order given: a socket's stages are the author's
@@ -842,8 +844,8 @@ namespace AvatarBridge
                     {
                         var place = i < placements.Count ? placements[i] : Matrix4x4.identity;
                         block[i * 3 + 0] = toPlug.MultiplyVector(place.MultiplyVector(deltaP[i]));
-                        block[i * 3 + 1] = toPlug.MultiplyVector(place.MultiplyVector(deltaN[i]));
-                        block[i * 3 + 2] = toPlug.MultiplyVector(place.MultiplyVector(deltaT[i]));
+                        block[i * 3 + 1] = DirectionDelta(toPlug, place, RestNormal(restN, i), deltaN[i]);
+                        block[i * 3 + 2] = DirectionDelta(toPlug, place, RestTangent(restT, i), deltaT[i]);
                     }
                     captured.Add(block);
                     names.Add(mesh.GetBlendShapeName(index));
@@ -891,14 +893,30 @@ namespace AvatarBridge
                     // vertex, then into the plug frame.
                     var place = i < placements.Count ? placements[i] : Matrix4x4.identity;
                     block[i * 3 + 0] = toPlug.MultiplyVector(place.MultiplyVector(deltaP[i]));
-                    block[i * 3 + 1] = toPlug.MultiplyVector(place.MultiplyVector(deltaN[i]));
-                    block[i * 3 + 2] = toPlug.MultiplyVector(place.MultiplyVector(deltaT[i]));
+                    block[i * 3 + 1] = DirectionDelta(toPlug, place, RestNormal(restN, i), deltaN[i]);
+                    block[i * 3 + 2] = DirectionDelta(toPlug, place, RestTangent(restT, i), deltaT[i]);
                 }
                 captured.Add(block);
                 names.Add(mesh.GetBlendShapeName(index));
             }
             return captured;
         }
+
+        // A normal or tangent delta in the units its rest vector is stored in.
+        // The rest vectors are kept at unit length, but the matrices carry the
+        // mesh's unit conversion, so a delta turned by them alone came out that
+        // many times too short: at 0.07 a shape that turns a normal ninety
+        // degrees turned the baked one four, the frame each vertex recovers
+        // spun, and every vertex a held shape moved tore off the plug.
+        static Vector3 DirectionDelta(Matrix4x4 toPlug, Matrix4x4 place, Vector3 rest, Vector3 delta)
+        {
+            float length = toPlug.MultiplyVector(place.MultiplyVector(rest)).magnitude;
+            return length > 1e-8f ? toPlug.MultiplyVector(place.MultiplyVector(delta)) / length : Vector3.zero;
+        }
+
+        // The rest vectors the capture stored, with the same fallbacks.
+        static Vector3 RestNormal(Vector3[] normals, int i) => i < normals.Length ? normals[i] : Vector3.forward;
+        static Vector3 RestTangent(Vector4[] tangents, int i) => i < tangents.Length ? (Vector3) tangents[i] : Vector3.right;
 
         // Held weights, split by what the shader can see. A baked shape keeps
         // its weight on the material; any other held shape is folded into the
@@ -911,7 +929,8 @@ namespace AvatarBridge
             bakedWeights = new float[baked.Count];
             int held = 0;
             int count = positions.Length;
-            Vector3[] dp = null, dn = null, dt = null;
+            Vector3[] dp = null, dn = null, dt = null, restN = null;
+            Vector4[] restT = null;
             for (int s = 0; s < mesh.blendShapeCount; s++)
             {
                 float w = skin.GetBlendShapeWeight(s) * 0.01f;
@@ -930,12 +949,14 @@ namespace AvatarBridge
                 dn ??= new Vector3[count];
                 dt ??= new Vector3[count];
                 mesh.GetBlendShapeFrameVertices(s, mesh.GetBlendShapeFrameCount(s) - 1, dp, dn, dt);
+                restN ??= mesh.normals;
+                restT ??= mesh.tangents;
                 for (int i = 0; i < count; i++)
                 {
                     var place = i < placements.Count ? placements[i] : Matrix4x4.identity;
                     positions[i] += toPlug.MultiplyVector(place.MultiplyVector(dp[i])) * w;
-                    normals[i] = (normals[i] + toPlug.MultiplyVector(place.MultiplyVector(dn[i])) * w).normalized;
-                    tangents[i] = (tangents[i] + toPlug.MultiplyVector(place.MultiplyVector(dt[i])) * w).normalized;
+                    normals[i] = (normals[i] + DirectionDelta(toPlug, place, RestNormal(restN, i), dn[i]) * w).normalized;
+                    tangents[i] = (tangents[i] + DirectionDelta(toPlug, place, RestTangent(restT, i), dt[i]) * w).normalized;
                 }
             }
             return held;

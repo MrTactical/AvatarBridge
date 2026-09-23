@@ -780,7 +780,7 @@ plug for the chooser check were baked into the converted plug materials and the 
 saved into the controllers, and the tester then failed 10 checks on untagged sockets refused. It
 now puts the authored tags back and bakes again at the end, which removed both.
 
-### Blendshapes a plug renderer holds came undone mid-bend. FIXED ON DEV 2026-09-22, for 4.6.4
+### Blendshapes a plug renderer holds came undone mid-bend. ROOT CAUSE FIXED ON DEV 2026-09-23, for 4.6.4
 
 Field report on 4.6.2, with the output folder: near a socket the plug grew torn translucent pieces
 and black shards, and a ring appeared at the tip; at rest it looked right. The plug renderer held
@@ -844,6 +844,28 @@ their normal size when the plug is baked. Measured on the output folder:
 - **New: the output now carries the plug's mesh**, as the readout's copy (`YAPS Cock readout.asset`,
   shapes included), which the 4.6.2 folder lacked. A reproduction is possible for the first time:
   import the folder, run the bend tester on the plug, then A/B with the four hides released.
+- **ROOT CAUSE, measured on the reporter's own plug (2026-09-23).** Imported the output folder into
+  a test project and ran the bend tester on it: seams 725 mm, edges 70,000x, steps 300x the socket's
+  move, sheets fanning off the shaft exactly as in the screenshot. With every shape released on both
+  sides, edges 5.5x and steps under 6x: the held shapes are the cause (Joe's theory, right class).
+  `Dev/Probes/HeldShapeFrameProbe.cs` repeats the deform's per-vertex frame recovery on the CPU
+  against Unity's own skinning. Released, every vertex recovers the same root to 0.00 mm. As
+  shipped, every vertex a held shape moves recovered a root 85 mm to 1 m off. Position deltas were
+  exact (ratio 1.000); the normals were not: relative to its normal a held shape's delta is 1.40 in
+  the mesh and 0.095 in the bake, the renderer's 0.07 scale. The baker keeps rest normals and
+  tangents at UNIT length (`YapsBaker` line ~208, since the first baker) but turned shape normal and
+  tangent deltas through the same scaled matrices without dividing by that length, so on a mesh
+  imported at a unit conversion a shape that turns a normal 90 degrees turned the baked one 3, and
+  the frame spun. Invisible at scale 1, and invisible until a shape turns normals hard: collapse to
+  hide does. The 22 Sep fix held the weights correctly and so exposed it.
+  **Fix:** `DirectionDelta` divides each normal and tangent delta by its rest vector's pre-normalise
+  length, in both capture paths and `HoldShapes` (sockets too). Rebaked the reporter's plug with it:
+  normals turned exactly as Unity turns them (88.9 against 88.9 degrees), every root 0.0 mm, and the
+  bend tester's steps back under 6x with no sheets in any shot. **Left:** the tester's worst edge is
+  a hidden part, 0.010 mm at rest drawn to 68 to 98 mm, zero width and invisible in the shots:
+  collapsed vertices a held shape moves behind the base go inactive while their neighbours bend.
+  And seams open 290 to 770 mm on this mesh with or without the shapes, so they are its own, not
+  this bug. **Not verified in game.**
 - Side finding, report only: the weigh pass advises shrinking the bake texture ("8192x280 ...
   1024x1024 is the same picture"). It is data, not a picture. Nothing acts on it (the texture pass
   and free wins only touch textures with an importer, and the bake has none), but the advice is

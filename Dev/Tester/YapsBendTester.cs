@@ -426,6 +426,9 @@ namespace AvatarBridge.Regression
                 {
                     var walker = MakeSocket("__Walk", YapsSocket.SocketKind.Hole, false, w.atlas, true);
                     float seam = 0f, stretch = 1f, squash = 1f, jump = 0f, seamAt = 0f, stretchAt = 0f, squashAt = 0f, jumpAt = 0f;
+                    // The worst stretch's own lengths: a part a held shape hides
+                    // is collapsed, and a ratio off a near-zero edge says nothing.
+                    float stretchRest = 0f, stretchBent = 0f;
                     int crushedInside = 0, crushedOutside = 0;
                     float crushedAt = 0f;
                     const float stride = 0.02f;
@@ -446,7 +449,7 @@ namespace AvatarBridge.Regression
                         foreach (var (va, vb, len) in edges)
                         {
                             float r = Vector3.Distance(bent[va], bent[vb]) / len;
-                            if (r > stretch) { stretch = r; stretchAt = reach; }
+                            if (r > stretch) { stretch = r; stretchAt = reach; stretchRest = len; stretchBent = r * len; }
                             if (r < squash) { squash = r; squashAt = reach; }
                             if (r >= 0.2f) continue;
                             // Behind the opening, a millimetre of slack.
@@ -465,7 +468,7 @@ namespace AvatarBridge.Regression
                         before = bent;
                     }
                     Log($"{w.label}: seams open {seam * 1000f:0.00} mm at {seamAt:0.00}L; edges {squash:0.00}x at {squashAt:0.00}L " +
-                        $"to {stretch:0.00}x at {stretchAt:0.00}L; biggest step {jump / (stride * length):0.0}x the socket's move at {jumpAt:0.00}L");
+                        $"to {stretch:0.00}x at {stretchAt:0.00}L ({stretchRest * 1000f:0.000} mm to {stretchBent * 1000f:0.000} mm); biggest step {jump / (stride * length):0.0}x the socket's move at {jumpAt:0.00}L");
                     Log($"  edges crushed below 0.2x: {crushedInside} edge-steps behind the opening, " +
                         $"most outside it {crushedOutside} at {crushedAt:0.00}L");
                     // A pop or a steep ramp: walk the worst step again ten times
