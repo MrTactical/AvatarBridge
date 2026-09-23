@@ -131,7 +131,7 @@ namespace AvatarBridge
 
         public const string ClearName = "YAPS Atlas Clear";
 
-        static void Quiet(MeshRenderer renderer)
+        internal static void Quiet(MeshRenderer renderer)
         {
             renderer.shadowCastingMode = ShadowCastingMode.Off;
             renderer.receiveShadows = false;

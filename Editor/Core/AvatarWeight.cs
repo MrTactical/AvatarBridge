@@ -423,7 +423,11 @@ namespace AvatarBridge
 
                 foreach (var tex in TexturesOf(pair.Key))
                 {
-                    if (!textures.TryGetValue(tex, out var use)) continue;
+                    // A data texture, a bake or a lookup, is read value by
+                    // value and never spread over a surface. It has no density,
+                    // and fewer texels would be fewer numbers, so it is never
+                    // offered smaller, and the texture pass never resizes it.
+                    if (!textures.TryGetValue(tex, out var use) || use.Data) continue;
                     double texels = (double)use.Width * use.Height * uv;
                     float density = (float)System.Math.Sqrt(texels / area.World);
                     if (density <= use.Density) continue;
@@ -605,7 +609,8 @@ namespace AvatarBridge
                 }
             }
 
-            foreach (var group in materials.Where(m => m != null && m.shader != null && !YapsMarks.IsAtlasMaterial(m))
+            foreach (var group in materials.Where(m => m != null && m.shader != null && !YapsMarks.IsAtlasMaterial(m)
+                                                       && !YapsMarks.IsReadoutMaterial(m))
                          .GroupBy(m => m.shader.name)
                          .Where(g => g.Count() > 1))
             {

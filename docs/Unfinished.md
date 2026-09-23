@@ -11,6 +11,129 @@ what SPS code may be looked at in `YAPS-CLEAN-ROOM.md`. Finished records are in 
 
 ## Next up
 
+**Decided 2026-09-23 (Joe):** ship the next release first (one default corpus run authorised,
+release on his word), then the two items below. **It is 4.6.4** (Joe, same day): 4.6.3 is skipped,
+its number spent on test builds, and the socket readout goes in with it.
+
+**1. A runtime tester: the bend as data. PROPOSED, step one is a probe.** Every YAPS bug this week
+(8-bit atlas holes, own socket in the editor, rigid accessories, the torn tip) was found by eye,
+because the bend happens in the vertex shader and nothing on the CPU ever sees it; the corpus
+digests the conversion only. Design:
+- **Readback.** A test-only variant of the patched plug shader writes every bent vertex, and what
+  it resolved, into a buffer the tester reads. **PROVEN 2026-09-23** by
+  `Dev/Probes/Readback/YapsReadbackProbe`: D3D11 at feature level 11.1, a `RWStructuredBuffer` at
+  `u1` written per `SV_VertexID` from the vertex stage, a skinned strip bent by a turned bone, 64 of
+  64 vertices back and 0.000 mm from Unity's own `BakeMesh`, in batch with graphics on. So the
+  bend can be read as numbers; the float-target fallback is not needed here.
+- **Step two BUILT 2026-09-23:** `Dev/Tester/YapsBendTester` + `YapsBendCapture.shader`. A real
+  converted avatar (Non Corpus Zone, Alexa, 0.649 m plug) with its plug slots on a capture shader
+  making the patcher's two calls on the current includes; tier read through the shipped "Resolved
+  by" view, calibrated per vertex from two known views (gap = full and Resolved by = a quarter with
+  nothing resolved; an extent along the marker axis read a full length as 0.33 and was dropped).
+  Rule 1, no socket no bend: **0.00 mm**, pass. Rule 2, an atlas-only hole at 0.8 and 1.1 lengths
+  on 25 directions: **27 of 50 found, the same on HDR and 8-bit**. The first miss read atlas
+  target 0.70 and taps 0.10: the camera was live and no cell was read, so REACH, not the tag.
+  With the level taken by `ceil` (tried in the test project only): **50 of 50** on both.
+  **FIXED ON DEV 2026-09-23, editor only**, see "The atlas scan leaves dead zones" below: a
+  two-level read and numbered buckets. The tester now covers every socket kind a shader can see
+  (YAPS hole, ring, one-way ring by atlas, atlas plus lights, DPS hole and ring by light alone;
+  contact-only TPS has nothing a shader reads) on three plug lengths, 0.155, 0.330 and 0.649 m,
+  and a neighbour pair 6 and 25 cm apart, numbered and unnumbered. DPS misses only where the root
+  light's range (the protocol's 0.41) cannot meet the plug's renderer bounds, which Unity culls
+  in game too; the tester counts those apart. **Tester trap:** creating the numbered writer
+  materials as assets mid-run made every later capture read a full length; they are made before
+  the first capture now.
+- **Scenarios, seeded, run on their own.** Sockets approaching from a shell of directions, swept
+  past the tip, withdrawn; locomotion with physics on; the Animator Tester's toggle flips; HDR,
+  8-bit and small views; a second avatar for ownership. A failure saves a repro scene.
+- **Invariants, one per bug met.** No socket in range, no bend. A socket anywhere round the tip
+  resolves. No edge stretches past a bound, across renderers too. Hidden parts stay hidden bent.
+  A small socket move is a small mesh change. Every camera gives the same answer.
+- **AI on top later** (choosing scenarios, reviewing flagged frames), never the backbone.
+- **Cannot prove** anything the CVR client owns: its HDR, its globals, sync. Still checked in game.
+
+**2. In-game readouts, 4.6.4. BOTH HALVES ON DEV 2026-09-23, not in game yet.** The plug readout built
+on EVERY plug, hidden, with a SYNCED bool toggle (Joe's call: a helper sees the user's plug as
+their own client resolves it), the shader skipping all work while off; one material slot per plug.
+A socket readout of its own: publishing on this camera, its own atlas cell read back as its own (a
+direct 8-bit-tag detector), owner id known, number and kind, whether it holds the avatar's marker
+light, a plug seen.
+- **Plug half done.** Every plug under an avatar carries its readout (a plug on a prop has no menu
+  and gets none); one row, **YAPS readout** (`YAPS/Readout`, bool, 1 bit, off), switches them all
+  through a layer of its own, from both builders, and Remove and Clean up take it out with the last
+  readout. `_YAPS_ReadoutOn` off returns before the bake read and the resolve, every corner on one
+  point. The *Draw a debug readout on each plug* option and the plug's *Debug overlay* tickbox are
+  gone. `Dev/Probes/ReadoutProbe.cs` bakes through the toolkit door on three avatars: row, layer,
+  hidden 0 px against no slot at all, shown 3132 to 4146 px, and the menu parameter through a real
+  Animator shows it and hides it again. It found the bug below on its first run.
+- **Socket half done.** `YAPS/Socket Readout`, a quad of its own beside each socket's atlas writer
+  (`YapsDebugOverlayBuilder.AddSocketReadout`, from `YapsSocketBuilder.Build`, so both builders),
+  only under an avatar, on the same row. Six cells: atlas on this camera; the socket's own entry at
+  each of the four levels, found by cell tag and position as a plug finds it (black nothing, red
+  others but not this one, green its own); owner id; kind and number; its root light (digit 7 or
+  legacy 1 to 4) within 2 cm; a plug tracker's depth. The menu layer now targets every renderer
+  drawing a readout, so Remove and Clean up take the row out with the last one. The probe rebuilds
+  every socket on three avatars (34 sockets) and reads the cells off a half-float render: atlas,
+  smallest level and kind right on all 34; with the writer and root light off, nothing of its own
+  on all 34; the owner green once the stand-in hands out an id; and the light cell never claims a
+  light that is off, green on exactly the one socket per avatar the lighthouse lights. Two things
+  it showed at once: the largest level of one socket read red (another socket holds that bucket,
+  so a plug whose length picks level 3 misses it there; not chased), and d3d11 refuses
+  `levels[lv]` inside a `[loop]`, so the shader masks.
+- **Corpus 407 (2026-09-23), not clean, three fixes on dev.** Deployed before the socket readout,
+  so it covers the plug half only. Expected and seen: 19 proxy-only Action layers dropped (two of
+  them carried VRCFury tracking-control drivers, the same hand-offs), 15 readout layers and rows,
+  the settings stamp without `yapsDebugOverlay`, no new stuck toggle, one avatar back under the
+  sync cap. Not expected: every converted plug warned that its readout "could not carry" two
+  settings, which were the patcher's markers (`_YAPS_OriginalEditor`, `_YAPS_SourceShader`), and
+  every avatar with two or more readouts gained a "materials share a shader" set in the weigh
+  pass, the readouts, which each hold their own plug's values and cannot merge. `Copy` skips the
+  markers; `YapsMarks.IsReadoutMaterial` keeps readouts out of the weigh pass's atlas advice and,
+  for a socket's own renderer, out of the survey's lift-off candidates, as the atlas writers are.
+  The probe checks the first on a real patched plug and passes on three avatars; the survey half
+  is unmeasured (407 had no socket readouts). A clean corpus run is still owed before release.
+- **Corpus 408 (2026-09-23), not clean: plugs sharing a mesh. FIXED ON DEV.** Two avatars carry
+  more than one plug on one renderer (3 and 2). Readouts were built one plug at a time, so the
+  next plug measured the last one's readout quads as part of itself and patched its readout slot
+  into a copy of the plug: the 3-plug avatar drew its plug three times over, one working readout,
+  and the weigh pass flagged the copies as a shared-shader set (that is how it surfaced). Now each
+  plug records what its readout is built from (`readoutSource`, `readoutAnchor`, `readoutTip`) and
+  `YapsDebugOverlayBuilder.Build` builds every readout a mesh carries together, on the mesh from
+  before any of them, one submesh each; `Restore(renderer)` takes all of them off before any bake,
+  whichever plug made them. The converter records during the plug loop and builds after it; the
+  toolkit rebuilds the whole mesh on each bake. A plug whose material a later plug took over (the
+  same slot: only the last bake bends it) gives up its readout rather than showing a bake that no
+  longer drives anything. `ReadoutProbe` adds a second plug on the first plug's mesh, in another
+  slot and in the same material. Its first run caught one more: the mesh under the readouts was
+  kept only on the plug that built the last readout, so deleting that plug left the next bake on
+  the readout mesh; every record on the renderer now keeps it. A review of the callers found three
+  more, all fixed: Remove rebuilt the other plugs' readouts before putting its own materials back,
+  and its baked-slot finder took any material with a bake texture, readouts included, for a plug
+  slot to restore (it now skips readouts, and the rebuild comes last); a toolkit bake that stopped
+  short left every readout on the mesh off (it now builds them back); and *Update every YAPS
+  shader in this project* counted every readout as a failed update, having no source to patch
+  from. Probe 3 of 3 (one test mesh exercises two slots: 2 readouts, 4 submeshes), tester 29 of 29
+  x3, held shapes, smoke 34 of 34, `check-defines.sh` clean.
+  - **The two-avatar conversion then found a pre-existing one, worse: a plug that never bent.**
+    Umbreon has two meshes of the same name, each with `SPS/BakedSpsPlug`, and the bake file was
+    named for mesh, parent and plug only, so the second bake overwrote the first and the first
+    plug's material was left with no bake at all (408 outputs: only this avatar). Readout files had
+    the same flaw, by mesh name, and the readout materials by plug name, which is `BakedSpsPlug` for
+    every converted plug. All three now carry `YapsBaker.PlaceKey`, six hex digits of where the
+    objects sit by sibling index: unique, and stable across reconverts so a reconvert still
+    overwrites its own file.
+  - Found beside it, NOT fixed: on the 3-plug avatar all three plugs bake the same slot, so only
+    the last one's bake reaches the material. If the three are different shafts, two never bend.
+    Pre-existing; needs a look at what the source avatar meant by three plugs on one mesh.
+  - Also beside it, pre-existing, not a 4.6.4 change: the sync check counts a parameter that
+    STARTS under 3200 bits as fitting, so an avatar at 3230/3200 gets a warning, not the error.
+    Whether CVR counts the same way needs the decompiled client.
+- **The readout is optional, Joe 2026-09-23.** An *In-game readout* tick on every plug (applies on
+  re-bake) and socket (applies at once when built), in the See it work card. With nothing left
+  carrying one, `Menu` now also drops the `YAPS/Readout` parameter: a controller parameter syncs
+  whether the menu names it or not, so before this the bit outlived the toggle. `ReadoutProbe`
+  turns every tick off (no readout, layer, parameter or row) and back on.
+
 *4.6.0 shipped 2026-09-12: tag `v4.6.0`, merge `b51296e`, both packages published, 98 commits
 since 4.5.1. The atlas carries tags, one-way rings, the per-plug own-sockets checklist and an
 owner id per socket; the conversion resizes oversized textures; four converter bugs went with it.
@@ -173,6 +296,14 @@ falloff, one-way rings, the tag dropdown, multi-mesh plugs, the Mesh-to-None cle
     applies, and the advisor calls it with no `AvatarUsesGogo` gate. `AdvisorTest` 15/15. Expected in
     the next advisor run: Base applied on 8 avatars, down from 29 (the 5 Sootie scenes and the 3
     mixed Chimera/Rotormantid).
+    **Advisor run 405 (2026-09-22, on 4.6.2, accepted as the first advisor baseline):** Base
+    applied on 9, not 8. The ninth was a GoGo demo whose Base controller is GoGo's `Locomotion`
+    (placeholders only) plus an EMPTY add-on layer. Probed in batch: the empty layer fails
+    `IsProxyOnlyLayer` for having no clips, so "every layer is placeholders" never held and the
+    stock layer passed as the avatar's own; the merge then dropped everything, so the tick merged
+    nothing. **Fixed on dev 2026-09-22:** the placeholder test skips stateless layers
+    (`AdvisorTest` 16/16). The next advisor run should differ from the baseline on that one avatar
+    only, Base off. Exceptions (11) and errored avatars (4) same as run 402.
     `Dev/Corpus/run-corpus.sh --advisor` sets `AVATARBRIDGE_PROFILE=advisor` (and unsets it
     otherwise, so a stray value cannot turn a normal run into this one), and digests land under
     `Regression/Yaps/Advisor` or `Regression/Advisor`. Each avatar starts from `new BridgeSettings()`
@@ -500,12 +631,21 @@ Base layer whose every clip is a `proxy_` placeholder, tracking controls include
 way the hand-pose layers are reported and counting any parameter drivers that went with it. The
 guard was the mistake: those thirteen behaviours were the cause, not something to protect. The
 root-motion change stays as hygiene. Advisor side already done on 2026-09-13 (stock Base is
-recommended off). **Not yet run:** the corpus, which converts Base on for every avatar, so the
-default profile will show the drop on every stock-Base avatar; and nobody has worn 4.6.2.
+recommended off). **Corpus run 404 (2026-09-21, accepted as the Yaps baseline):** 20 stock-Base
+avatars lost `[Base]` with the report line, the 8 authored ones kept it, no new exceptions.
+Shipped in 4.6.2. Nobody has worn 4.6.2 yet.
 
-**Still open from the same family:** the Action layer's AFK states carry the same hand-offs, and
-Unity runs state behaviours on a weight-0 layer. AFK in ChilloutVR is headset-off detection. Not
-reported, not touched.
+**Action layer, same family. CHANGED ON DEV 2026-09-22, for 4.6.4, unreleased.** Stock Action
+layers are proxy-only too, and their AFK and emote states carry the same Body Control hand-offs
+(corpus digest of a stock avatar: `Afk Init` one Body Control, `BlendOut` five, every clip
+`proxy_`). Unity runs state behaviours on a weight-0 layer, and the client feeds AFK from the
+headset proximity sensor, so the states fire. A proxy-only Action layer is now dropped whole, the
+same as Base. Only reaches users who tick *Action*, which is off by default and never applied by
+the advisor. **Not measured:** nobody reported a problem here and nothing was tried in game; the
+drop costs nothing visible because the layer has no clip that plays, which is why it went in on
+analysis alone. Emote states differ from AFK: the client already sets `maxRootAngle` 180 during its
+own emotes, so a hand-off there matches native behaviour. Corpus will show it on the next default
+run (it forces Action on).
 
 *The record below is kept as written on 2026-09-12. Its chain is right up to the mask; its
 conclusion about root motion was wrong, and corpus run 401 verified only that the flag changed.*
@@ -622,6 +762,296 @@ their SDK differs; a name that does not resolve now warns instead of being assum
 IK. Needs the reporter's SDK version, which bone, and what the wrong result actually looks like.
 
 ## Loose ends, small but real
+
+### Menu toggles did nothing on a plug whose material was not its mesh's first. FIXED ON DEV 2026-09-23, for 4.6.4, not verified in game
+
+Found by the readout probe: the readout sits in slot 1 or 2, and through a real Animator it never
+showed. Unity's list of what can be animated on the renderer (`GetAnimatableBindings`) holds
+`material._X` and nothing else, and `material[2]._X` resolves to no type at all: it binds to
+nothing. `material._X` writes the renderer's own property block, which every slot reads; written
+that way the readout showed in slot 1 on two avatars and slot 2 on the third.
+
+So the premise of f76b482 (2026-09-08), that `material._X` reaches the first material alone, was
+wrong, and the fix made things worse. From 4.6.0, on a plug whose YAPS materials sit only in later
+slots, these all wrote curves that bind to nothing: the toolkit's Deform and own-sockets toggles,
+the tag chooser (both builders, indexed since it was written, 01ba6bf) and the size curves
+(afdc29c, 2026-09-11, which also deleted the working slot-0 spelling as stale). A plug with a YAPS
+material in slot 0 was never affected. Now `YapsToggles.Bound` has one spelling, a clip writes one
+curve per renderer, and the size mirror drops the dead indexed curves it finds. The reading half
+of f76b482 (`Bare`, `Writes`, the remover) stays, for clips built by 4.6.0 to 4.6.2.
+
+The claim in the tag-set record further down is marked withdrawn. Whether the half-switched-off
+plug f76b482 describes was ever seen, or reasoned from the same premise, is not recorded.
+
+**Three follow-ups, same day.**
+- **A curve that binds to nothing is now reported.** `YapsToggles.DeadBindings` asks Unity
+  (`GetEditorCurveValueType`) about every `material._YAPS_` curve the avatar can play: the
+  controller's clips and the menu entries' own. The converter runs it as the last pass, "Check YAPS
+  curves bind", after the rename, and warns; the toolkit's build log lists them. The probe plants
+  `material[1]._YAPS_Enabled` beside the plain and vector spellings and only the first is caught.
+- **The editor hid every menu toggle on every plug.** A block set on one slot replaces the
+  renderer's block for that slot, and the renderer's is where the Animator writes. The owner
+  stand-in wrote a block on every slot carrying `_YAPS_Owner`, every half second, and the socket
+  preview on every YAPS slot, so in the editor nothing animated on a plug's materials could show,
+  menu toggles included. Measured: the readout shown by the menu, 4146 px, went to 0 once the
+  stand-in ran. Both write the renderer's block now, as the owner layer does in game, and the
+  stand-in clears the slot blocks an earlier build left. Editor only; the game has neither script.
+- **A toolkit avatar with plugs and no sockets never got a tag chooser.** Only the socket step
+  built it, so neither Build on such an avatar nor Bake on the plug's own inspector did. It moved
+  to `YapsNativeChannel.Build`, where every door that bakes a plug ends, with the readout toggle
+  and the curve check.
+
+- **Toolkit layers could land in a controller ChilloutVR does not upload.** Once the CCK has
+  generated Advanced Settings and its override is taken as the avatar's `overrides`
+  (`AAS_BaseControllers.cs`), what ships is the generated `_aas.controller` and what survives the
+  next generate is `baseController`: two files. The toolkit split its writes between them: the
+  owner id, the readout toggle and the tag choosers into the uploaded one (lost at the next
+  generate), the marker-lights chooser and the socket reactions into the base alone (not shipped
+  until then, with a note asking for *Create Animator*), and the menu toggles into the base and the
+  Animator's own slot, which da91ae5 showed can belong to another avatar. `YapsOwner.Targets` is
+  now both, once each, and every avatar-wide writer loops over it; removal also reads `overrides`
+  and, for old builds, the Animator's slot. Converted avatars were never split: all three
+  references resolve to the one `_CVR.controller`. The probe copies the base as a generated
+  controller, points `overrides` at it, strips the readout and tag layers from both, bakes, and
+  finds them back in both, on two avatars.
+
+`Dev/Probes/ReadoutProbe.cs` covers all four and passes on the three test avatars; the runtime
+tester is still 87 of 87. **Its first version polluted the test project:** the two tags it gives a
+plug for the chooser check were baked into the converted plug materials and the chooser layers
+saved into the controllers, and the tester then failed 10 checks on untagged sockets refused. It
+now puts the authored tags back and bakes again at the end, which removed both.
+
+### Blendshapes a plug renderer holds came undone mid-bend. ROOT CAUSE FIXED ON DEV 2026-09-23, for 4.6.4
+
+Field report on 4.6.2, with the output folder: near a socket the plug grew torn translucent pieces
+and black shards, and a ring appeared at the tip; at rest it looked right. The plug renderer held
+five blendshapes at 100 with no animation, among them toggles that hide parts of the plug mesh.
+
+**Measured, not reasoned:** the shipped bake decoded clean (no NaN, every vertex inside the length,
+blend weight 1), so the data was not the fault. The deform lerps from the skinned vertex to one
+rebuilt from the bake, and the bake's rest pose is the raw mesh: baked shapes enter only through
+`_YAPS_ShapeWeights`, which started at 0 and are written only by mirrored animation curves, and a
+held shape outside the baked sixteen was nowhere. So whatever a held shape did was undone as the
+bend engaged.
+
+**Fix, in `YapsBaker` so both builders and the swap path get it:** a baked shape's held weight is
+the material's starting weight (`Result.ShapeWeights`, written by `Apply`); an unbaked held shape
+is folded into the rest pose with the same turn as a shape block. Plugs only: sockets bake with
+`objectFrame` and stage their shapes by depth. `YapsHeldShapeTest` 7/7. **Not verified:** on the
+reporter's avatar (no mesh here) or in game. A multi-frame shape is folded as its last frame
+scaled, exact for one frame only. The frame and length are still measured without held shapes.
+
+**2026-09-22, the test build did not fix it.** The report confirms the fix ran (5 held shapes, all
+five in the baked sixteen, every current slot starting them at 1), and the plug still tears near a
+native socket too: fine up to the socket, a cone and brown/gold sheets past it, and stretched
+toward a socket a length and a half away. Measured and ruled out, each on the shipped files:
+- **Physics on the plug's bones. WITHDRAWN as the cause.** Four cloth chains move bones inside
+  the plug (one rooted just above it, gravity 1, no ignores), which WOULD break the per-vertex
+  frame in play. But the screenshots were outside Play mode, and turning the four off changed
+  nothing. Still a real risk in game, unmeasured.
+- **Bake data**, decoded: no NaN, all inside the length, weight 1.
+- **Bones scaled to zero** to hide parts: none in the prefab.
+- **Held shapes collapsing a normal or tangent** into a bad frame: none below 0.2 length.
+- **Length measured without held shapes**: 0.582 m worn against 0.586 m baked.
+Open, and not reproducible here without the plug's mesh, which is not in the output folder.
+
+**2026-09-22, the debug overlay on the reporter's plug:** resolve healthy in every shot (atlas
+green, bending, frame recovered, bake read). Socket at the tip or mid-shaft, all green; no socket,
+grey. So the finder is not it, and the 8-bit tag fix does not touch this. The cone past a test hole
+floating in air runs about 0.27 of a length past it (140 of 520 px), against the hole taper's 0.10
+to 0.30 by default: the part a real body hides. **Candidate, not proven:** the "cone" is the taper
+seen with no body round the hole. Pending an A/B against a ring, which carries straight through with
+no taper. The white and magenta markers sit slightly apart even at rest, so the bones are a little
+off bake pose; small, unexplained.
+
+**Also measured 2026-09-22, "some parts hidden, some not" (Joe's theory):** the plug is ONE renderer
+with five slots (shaft, condom, an invisible slot, gold, leather), and all 14843 vertices are baked
+fully on the plug: no partial weights, none left out. Its hidden parts are held shapes, baked at
+their held weights, so baking "everything on" would bake the hidden parts IN. Four other renderers
+share the plug's armature and are not baked (sheath, a ring, a harness, fluff), so any of them on the
+shaft would stay straight while it bends: floating pieces, not tearing. Which of them sit on the
+shaft needs their meshes, not in the output folder.
+
+**2026-09-23, the same reporter on a 4.6.4 build, still torn** (gold and brown sheets past the
+fist, editor screenshot). Joe's theory: the accessories are hidden by blendshapes, so they are not
+their normal size when the plug is baked. Measured on the output folder:
+- Five shapes held at 100 on the plug renderer (a shrink, and hides for a cock ring, the condom, a
+  spiked choker, plates); the materials' starting `_YAPS_ShapeWeights` carry exactly five ones.
+- The toggle clips mirror correctly: `blendShape.Disable dick ring` pairs with
+  `material._YAPS_ShapeWeights2.z`, both 0 in the restore clip.
+- The deform adds each baked shape's delta times its weight to position, normal and tangent
+  BEFORE the per-vertex frame is solved, so a shrunken accessory recovers consistently while the
+  weights agree. So the plain form of the theory is already handled; it needs the reproduction.
+- **New: the output now carries the plug's mesh**, as the readout's copy (`YAPS Cock readout.asset`,
+  shapes included), which the 4.6.2 folder lacked. A reproduction is possible for the first time:
+  import the folder, run the bend tester on the plug, then A/B with the four hides released.
+- **ROOT CAUSE, measured on the reporter's own plug (2026-09-23).** Imported the output folder into
+  a test project and ran the bend tester on it: seams 725 mm, edges 70,000x, steps 300x the socket's
+  move, sheets fanning off the shaft exactly as in the screenshot. With every shape released on both
+  sides, edges 5.5x and steps under 6x: the held shapes are the cause (Joe's theory, right class).
+  `Dev/Probes/HeldShapeFrameProbe.cs` repeats the deform's per-vertex frame recovery on the CPU
+  against Unity's own skinning. Released, every vertex recovers the same root to 0.00 mm. As
+  shipped, every vertex a held shape moves recovered a root 85 mm to 1 m off. Position deltas were
+  exact (ratio 1.000); the normals were not: relative to its normal a held shape's delta is 1.40 in
+  the mesh and 0.095 in the bake, the renderer's 0.07 scale. The baker keeps rest normals and
+  tangents at UNIT length (`YapsBaker` line ~208, since the first baker) but turned shape normal and
+  tangent deltas through the same scaled matrices without dividing by that length, so on a mesh
+  imported at a unit conversion a shape that turns a normal 90 degrees turned the baked one 3, and
+  the frame spun. Invisible at scale 1, and invisible until a shape turns normals hard: collapse to
+  hide does. The 22 Sep fix held the weights correctly and so exposed it.
+  **Fix:** `DirectionDelta` divides each normal and tangent delta by its rest vector's pre-normalise
+  length, in both capture paths and `HoldShapes` (sockets too). Rebaked the reporter's plug with it:
+  normals turned exactly as Unity turns them (88.9 against 88.9 degrees), every root 0.0 mm, and the
+  bend tester's steps back under 6x with no sheets in any shot. **Left:** the tester's worst edge is
+  a hidden part, 0.010 mm at rest drawn to 68 to 98 mm, zero width and invisible in the shots:
+  collapsed vertices a held shape moves behind the base go inactive while their neighbours bend.
+  And seams open 290 to 770 mm on this mesh with or without the shapes, so they are its own, not
+  this bug. **Verified in game 2026-09-23:** the reporter reconverted on test build `sep23`
+  (020e88b) and it functions as expected (Joe).
+- Side finding: the weigh pass advised shrinking the bake texture ("8192x280 ... 1024x1024 is the
+  same picture"). It is data, not a picture. Nothing acted on the bake itself (the texture pass only
+  touches textures with an importer), but the same suggestion drives the texture pass, so an
+  imported data texture (point filtered, no mipmaps) could have been resized on convert.
+  **FIXED ON DEV 2026-09-23:** a data texture gets no density and no suggestion, in the advice and
+  the texture pass alike. `Dev/Probes/WeighDataProbe.cs` on the reporter's avatar. Not in corpus
+  408 (deployed before), and the corpus runs with the texture pass off.
+
+### An accessory riding the shaft stayed rigid while the plug bent. FIXED ON DEV 2026-09-22, for 4.6.4
+
+Joe, from the reporter: the torn part is one of the accessories. The converter folded another mesh
+into the plug only when MORE than half of it rode the plug's bones, silently, so a harness whose
+straps run elsewhere stayed rigid and the shaft bent through it. The toolkit took any mesh with any
+weight on the chain, which would take a body touching the base and bake all of it.
+
+**Fix, one rule for both builders:** `YapsBaker.RidesPlug`. A mesh joins when more than half of it
+is on the chain, or when any vertex is held more than half by a bone PAST the root. The body meets
+the root and goes no further, so it stays out, and the report now names each mesh left out.
+`YapsRidesPlugTest` 5/5. **Verified in the editor 2026-09-22** by the reporter on sep22c: "the
+accessories are not broken anymore". Not in game. A single-bone plug has no "past the root", so an
+accessory on one still needs to be mostly plug.
+
+### In the editor a plug enters a socket on its own shaft. FIXED ON DEV 2026-09-23, for 4.6.4, not verified
+
+**Fix:** `YapsOwnerStandIn` (in `YapsOwner.cs`) gives each avatar in the scene a stand-in owner id,
+every half second, in property blocks on every renderer whose material declares `_YAPS_Owner`; in
+Play Mode it sets the `YAPS/Owner` parameter instead, since the owner layer animates the property
+there. The editor then refuses own sockets as the game does: the reporter's plug has `SelfTag` 1,
+`SelfAllow` 0 and an empty mask, so its own numbered sockets are all refused. **Correction:** this
+does NOT stop Joe's hand ring. A socket off the hips starts ticked, so the game lets a plug into
+its wearer's hand by default too, as SPS does; that one was behaving as designed.
+
+
+
+Right after sep22c the reporter's tip "bulges and breaks" as a socket nears. Bulge and squeeze are
+0 on every slot, so not a knob. The plug carries its own SPS hole (a fluid target) at the seventh
+of its chain bones, and a socket icon sits on the tip in three of four shots. Own sockets are
+refused by owner id, which comes from the player and is 0 in the editor, so there nothing is
+refused; the tag fix likely just made its atlas cell readable. **Pending:** the same approach with
+that socket switched off.
+
+2026-09-23: "still borked", but the socket gizmo is still drawn on the tip, so it is unclear it was
+off. In the worst shot the bent plug climbs, turns back down and ENDS on that socket's icons, which
+sit where the straight tip would be: the bones are not drooping, the bend is going into its own
+socket. The bake is straight (cross-section centre within 1.4 cm of the axis in every tenth of the
+length), which rules out a plug baked mid-droop. Joe's own hand ring did the same in the editor. Proposed fix: a stand-in owner id per avatar in edit mode, so the
+editor refuses own sockets the way the game does.
+
+### Half of all atlas cells were dead on a camera without HDR. FIXED ON DEV 2026-09-22, for 4.6.4
+
+The patches beside a plug where a socket never engaged, in the editor. The debug overlay put a
+socket in one: top 4 red, so the atlas READ the socket's slot and threw it out on the cell tag,
+while the preview found the same socket. Moved to half a length it went green.
+
+The writer stores `0.5 + tag / 2` with `tag = k / 255`, and the reader allows 0.001. On an 8-bit
+target every even k lands half a step off and reads back 1/255 wrong: 128 of 256 tags dead
+(`Dev/Probes/Hlsl/atlas-tag.py`). Which cells die is fixed by the hash, and cells are 32 cm at a
+half-metre plug, hence big fixed patches. Half-float keeps every tag, so in game it passed.
+
+**Fix:** `YapsAtlasTag` returns `(1 + 2 * (h % 128)) / 255`, an exact 8-bit step; protocol 7 to 8.
+Cost: a slot clash passes the tag 1 in 128 instead of 256, and range still rejects it; 4.6.2 and
+4.6.4 are blind to each other through the atlas. **Verified in the editor 2026-09-22** (Joe,
+deployed build): a socket beside the plug now resolves by atlas, overlay all green, and the patches
+are "a lot better". **Not verified in game.** The atlas passed there before, which fits an HDR
+camera; any camera in game without HDR would have had the same holes.
+
+### The atlas scan leaves dead zones near the tip. MEASURED 2026-09-22, FIXED ON DEV 2026-09-23
+
+**WITHDRAWN as the cause of Joe's dead zones**, which were the tag above: the overlay showed the
+socket's slot read and rejected, not missed. The reach problem below was modelled first, then
+OBSERVED by the runtime tester on 2026-09-23: 27 of 50 places round a 0.649 m tip.
+
+**The fix, measured in the editor on 0.155, 0.330 and 0.649 m plugs, not yet in game:**
+- **Two reads.** The level nearest L/2 round the shaft's middle, as before, then the smallest
+  level whose cells are at least 1.2 lengths, round the base, adding only what the first did not
+  hold. The second guarantees every socket within 1.2 lengths is scanned; the first keeps close
+  sockets apart. Every YAPS kind 50 of 50 on HDR and 8-bit, all three plugs. Cover alone (the
+  coarse read only) had pushed a 25 cm neighbour hidden or lost from 5 to 19 of 50 on the 0.649 m
+  plug. Reader only; twice the header taps when the levels differ, not benchmarked.
+- **Numbered buckets.** A socket used to pick its bucket by which octant of the cell it sat in,
+  so two sockets a hand apart shared one at every level and the later draw hid the nearer (11 of
+  50 at 6 cm). A numbered socket (every socket `ApplySelf` numbers, the first fifteen) now takes
+  bucket `(number - 1 + owner) & 7`: a wearer's first eight never clash, and across wearers a clash
+  is one in eight at any distance. Numbered pairs 50 of 50 at 6 and 25 cm on all three plugs.
+  Writer only and NOT a protocol change: the reader opens all eight buckets and takes position
+  from the payload, so old plugs read new sockets and the other way round. Needs the socket
+  rebuilt, which the 4.6.4 reconvert already asks for.
+- **Props, worlds and past eight, same day.** `YapsSocketBuilder.Build` numbered only sockets under
+  an avatar; `YapsOwner.NumberWriters` now numbers every root's sockets, a root with no avatar
+  starting from an offset its name picks. With no owner the writer turns the number by the octant,
+  so one object's close sockets still part. Numbers 9 to 15 each take the free partner of 1 to 7
+  they sit farthest from at build (`RulesMask` reads the numbers now, not list positions). Measured
+  on all three plugs: another avatar's pair, one object's pair and two objects' pair, 6 and 25 cm,
+  all 50 of 50. **Still open:** two copies of one prop side by side share names and numbers, so
+  they fall back to the octant.
+- **Cost, measured** (`Dev/Probes/Perf/YapsResolvePerf`, RTX 4080): the second read adds 2.5 us a
+  pass to a 6433-vertex plug over an empty atlas, 21.6 us over a worst-case full one (1.9x and 3.1x
+  the one-read cost). Negligible against an 11 ms frame even times eyes, shadows and mirrors.
+- **The mesh walk** (tester step 4, a socket from 1.8 to 0.2 lengths on four lines): seams never
+  open (0.00 mm, all three plugs). Edges crushed to nothing lie behind the socket's opening, the
+  socket hiding what went in; a handful outside it at the bend. Stretch reaches 4.5 to 5.8x only
+  with a socket right beside the base at 90 degrees. **The steep swing, FIXED ON DEV same day.**
+  Off-axis round 1.25 to 1.29 lengths the tip moved 8 to 18 times as far as the socket. Cause: the
+  root handle was `lerp(5L, gap / 2, engage)`, and a long handle keeps the shaft straight only by
+  pushing the curve's turn past the tip, so the tip whipped round once the handle fell below about
+  1.5L. `Dev/Probes/Hlsl/engage-swing.py` reproduced it and ruled out reshaping the handle
+  (geometric and harmonic still peak at 7 to 13x). **The sweep:** the handle is always gap / 2 and
+  the whole socket path, chain included, is turned about the root toward the plug's forward by
+  `acos(aim . forward) * (1 - engage)`, so the bend grows evenly from 1.6 to 1.2 lengths and full
+  engagement is unchanged. Tester: worst step 2.9 to 5.9x the socket's move (8.4x at a tenth of
+  the stride), was 8 to 18x. Candidate for the reporter's "breaking when nearly in range"; not
+  seen by them yet. Seams open up to 0.17 mm dead ahead (was 0.00): the sweep's axis is per-vertex
+  noise at tiny angles. Under the 0.5 mm bound; watch it.
+- **Phantom sockets mirrored through the world's origin, FIXED ON DEV, protocol 9.** The sweep
+  exposed a jump on the 0.330 m plug at 45 degrees: engagement snapped 0 to 1 in 0.002 lengths.
+  The test shader's probe of the atlas list showed two holes at the same distance, the real one
+  at 45 degrees and one at 134, two fine cells behind it. `Dev/Probes/Hlsl/atlas-phantom.py`
+  replays writer and reader: cell (-1, 2, -1) landed on (1, 2, 1)'s slot in BOTH homes and passed
+  its tag. The hashes multiplied each axis by an odd constant and XORed, and negating an odd
+  product flips every bit but the lowest on both sides, so h(-x, y, -z) == h(x, y, z) for odd x
+  and z, for the slot, the second home and the tag at once. So a socket also answered from its
+  mirror across the vertical axis through the world's origin whenever both fell in one scan: a
+  socket on one side could bend a plug toward empty space on the other, or, as here, sort first
+  and trip the behind-the-base gate. Latent since the atlas shipped, but the old single fine read
+  only saw it within about half a metre of that axis; the coverage read's 1.28 m cells would have
+  spread it over metres round every world's origin. Caught before release, because the tester
+  stands its avatars at the origin. Now one lowbias32-mixed word per cell and salt feeds all
+  three; 3000 random placements within 3 m of the origin: 12 phantoms in reach on protocol 8, 0
+  on 9. Protocol 9, so test builds before this one are blind to it.
+- **Tester steps 5 and 6.** A ring on the plug's own shaft, built under the avatar so it is
+  numbered and the plug told: refused on all three plugs (SelfTag 1, SelfAllow 0, SelfSockets 0),
+  the reporter's case, in the editor. Pictures with `-yapsShots <folder>`: through the capture
+  shader, because the avatar's own materials carry the YAPS code from their conversion and showed
+  the old deform. The step-4 limits are floors from these measurements now.
+- **Tester trap, twice:** a material asset created after the capture materials exist leaves every
+  later capture reading nothing. Every numbered writer material is made before them now.
+
+Joe found patches beside a plug where a socket never engages. `Dev/Probes/Hlsl/atlas-reach.py`
+mirrors the reader's level choice and 3x3x3 block: the level is `round`ed, so a plug just under a
+level threshold reads cells a quarter of its length, and whether the block even reaches its own
+tip depends on where the plug stands in the world. A socket AT the tip is missed in 31% of
+placements at 0.25 m, 60% at 0.30 m, 59% at 1.2 m. Taking the level by `ceil` instead removes every
+miss at the tip. Reader-only (writers publish every level), so no protocol bump. Cost: coarser
+cells, so close sockets share octants more often. Not yet in game.
 
 ### "Reconverting stacks MagicaCloth" was never stacking. MEASURED 2026-09-16
 
@@ -1653,6 +2083,9 @@ state per tag plus "As built" and "Anything", driving `material._YAPS_TagInclude
 toggles would have been fifteen rows and fifteen parameters for a question with one answer at a
 time, which is the objection that killed the per-socket allow list.
 
+*WITHDRAWN 2026-09-23: measured wrong. `material._X` reaches every slot and `material[1]._X`
+binds to nothing, so the fix below broke the toggles it meant to mend; see "Menu toggles did
+nothing on a plug whose material was not its mesh's first" under Loose ends.*
 **A multi-slot plug needed care and turned up a real bug elsewhere, since fixed.** A curve on
 `material._X` binds to the FIRST material only. The tag clips were written that way from the
 start, but the deform toggle and the own-body toggle were not: a plug with its tip on a second

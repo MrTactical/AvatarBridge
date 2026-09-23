@@ -66,6 +66,13 @@ namespace AvatarBridge
                     material.SetFloat("_YAPS_UseAtlas", YapsAtlas.Enabled ? 1f : 0f);
                 }
             }
+            // The readouts, after every plug is measured and its values are
+            // final: a plug measured over another's readout takes it for part
+            // of the plug.
+            foreach (var renderer in ctx.YapsPlugs.Select(p => p.Renderer).Distinct())
+            {
+                YapsDebugOverlayBuilder.Build(renderer, ctx.Report);
+            }
 
             ConvertSockets(ctx, socketRoots);
             YapsSocketRebuilder.Finish(ctx, rebuild);
@@ -81,6 +88,14 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category, "A plug built for several places gets a dropdown",
                     "The wearer picks one of the places it answers, or Anything, from its own menu " +
                     "row. It starts on what you built. (" + chooser + ")");
+            }
+
+            string readout = YapsDebugOverlayBuilder.Menu(ctx.CvrAvatar, ctx.MergedController);
+            if (readout != null)
+            {
+                ctx.Report.Converted(Category, "One menu toggle shows every plug's and socket's readout",
+                    "Off by default. It syncs, so someone helping sees each plug and socket as the wearer's " +
+                    "own game resolves it. (" + readout + ")");
             }
 
             // After every plug material and socket writer exists: it wires
@@ -148,9 +163,10 @@ namespace AvatarBridge
                 return;
             }
 
-            // A source built by the toolkit with its readout on wears the
-            // readout's mesh; the bake wants the one underneath.
+            // A source built by the toolkit with readouts on wears their mesh;
+            // the bake wants the one underneath, and no readout slot to patch.
             YapsDebugOverlayBuilder.Restore(plugRoot.GetComponent<YapsPlug>());
+            YapsDebugOverlayBuilder.Restore(renderer);
             var result = YapsBaker.Bake(renderer, plugRoot, ctx.OutputDir + "/YAPS", ctx.Report,
                 out string bakeFailure);
             if (result == null)
@@ -195,11 +211,11 @@ namespace AvatarBridge
                 return;
             }
 
-            // Every OTHER mesh built as part of the plug, a tip or a second half
-            // on a renderer of its own, baked on this frame and length so the
-            // two bend as one piece, as the toolkit does. Only a mesh MOST of
-            // which rides the plug's bones: the body touching the base has a few
-            // vertices there too, and its materials are not the plug's.
+            // Every OTHER mesh built as part of the plug, a tip, a second half or
+            // a ring or harness on a renderer of its own, baked on this frame and
+            // length so they bend as one piece, as the toolkit does. Not the body
+            // touching the base: it meets the root bone and goes no further, and
+            // its materials are not the plug's. YapsBaker.RidesPlug draws the line.
             var extras = new List<BridgeContext.YapsPlugMesh>();
             var extraMaterials = new List<Material>();
             var others = result.FromSkinnedMesh
@@ -208,7 +224,15 @@ namespace AvatarBridge
             foreach (var skin in others)
             {
                 if (skin == renderer || skin.sharedMesh == null) continue;
-                if (YapsBaker.CountVerticesUnder(skin, result.Root) * 2 <= skin.sharedMesh.vertexCount) continue;
+                if (!YapsBaker.RidesPlug(skin, result.Root))
+                {
+                    if (YapsBaker.CountVerticesUnder(skin, result.Root) > 0)
+                        ctx.Report.Skipped(Category, $"\"{skin.name}\" left out of the plug at {where}",
+                            "It meets the plug only at the plug's root bone, so it is taken for the body " +
+                            "the plug grows from and stays as it is. A part that should bend with the " +
+                            "shaft needs weights on the shaft's own bones.");
+                    continue;
+                }
                 if (ctx.YapsPlugs.Any(p => p.Renderer == skin || p.Extras.Any(e => e.Renderer == skin))) continue;
                 var extra = YapsBaker.Bake(skin, result.Root, ctx.OutputDir + "/YAPS", ctx.Report,
                     out string extraFailure, shareFrameWith: result);
@@ -259,13 +283,9 @@ namespace AvatarBridge
             // so a re-bake writes the same thing.
             YapsNativeBuilder.AdoptPlug(plugRoot, renderer, primarySlot, primaryMaterial, null);
 
-            // The readout, if this conversion asked for one. Seeded onto the
-            // component AdoptPlug just wrote, so a later Build in the toolkit
-            // keeps it rather than silently taking it away again.
             var adopted = plugRoot.GetComponent<YapsPlug>();
             if (adopted != null)
             {
-                adopted.debugOverlay = ctx.Settings.yapsDebugOverlay;
                 // The tag rules in the author's words. The material holds them as
                 // hashes and a hash reads back as nothing, so a toolkit re-bake
                 // wrote the component's empty lists over them and the plug came
@@ -295,8 +315,8 @@ namespace AvatarBridge
                     }
                 }
             }
-            YapsDebugOverlayBuilder.Apply(plugRoot, renderer.name, ctx.Settings.yapsDebugOverlay,
-                result, primaryMaterial, ctx.Report);
+            // Built once every plug is measured, hidden until the menu shows it.
+            YapsDebugOverlayBuilder.Record(adopted, result, primaryMaterial, renderer.name, ctx.Report);
 
             ctx.Report.Converted(Category, $"Plug converted at {where}",
                 $"\"{renderer.name}\" material{(patchedSlots.Count > 1 ? "s" : "")} " +
@@ -1187,6 +1207,19 @@ namespace AvatarBridge
                     "Kept this avatar's existing penetration sockets",
                     $"Found {found} from DPS or TPS. Their lights and contacts come through as they were.");
             }
+        }
+
+        // Every curve YAPS wrote, asked of Unity once the paths are final.
+        // One that binds to nothing does nothing in game, and no other check
+        // would say so.
+        public static void CheckCurveBindings(BridgeContext ctx)
+        {
+            var dead = YapsToggles.DeadBindings(ctx.Target, ctx.MergedController);
+            if (dead.Count == 0) return;
+            ctx.Report.Warning(Category, $"{dead.Count} penetration animation curve(s) change nothing",
+                "Unity cannot attach them to anything on the avatar, so the menu rows or size changes they " +
+                "belong to do nothing in game. Please report this with the conversion report. " +
+                string.Join("; ", dead.Take(10)) + (dead.Count > 10 ? $"; and {dead.Count - 10} more" : ""));
         }
 
         // --- the atlas's animation ----------------------------------------

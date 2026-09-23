@@ -708,9 +708,10 @@ with which of them it came from, so a feature you know from one of them is under
 
 **A converted plug bends into a socket and threads it along its axis**: arriving straight rather
 than aiming at a point, easing in as it approaches, relaxing when pulled away. A plug modelled as
-more than one mesh, a tip or a second half on a renderer of its own, bends as one piece: every
-mesh most of which rides the plug's bones is baked on the same frame, with the same settings, and
-follows the same size animations. **A converted
+more than one mesh, a tip, a second half or a ring or harness on a renderer of its own, bends as
+one piece: every mesh that rides the shaft is baked on the same frame, with the same settings, and
+follows the same size animations, even when most of it sits elsewhere. The body the plug grows
+from, which meets it only at its root bone, is left as it is, and the report names it. **A converted
 socket with a mesh of its own opens around a plug**: the entry and up to fifteen further depths,
 staged, several allowed at one depth, driven straight from the shader: the socket-side deform DPS
 had and SPS dropped, so it reacts to a DPS plug that has never heard of this tool. (The socket
@@ -794,14 +795,21 @@ rebuild. The full block is 932 by 596 pixels; a smaller view (a small mirror, a 
 resolution, the self portrait) gets a smaller block with fewer cells, worked out from the view's
 own size by the sockets and the plugs alike. Fewer cells means a crowded instance loses the odd
 socket in that view. Below about 240 pixels square the atlas is off and a plug seen there falls
-back to the marker lights.
+back to the marker lights. A plug sees every socket within about 1.2 of its own lengths, wherever
+it stands, starts turning toward one at about 1.6 lengths and is fully bent by 1.2, turning evenly
+in between. Sockets close together are kept apart in the block: an avatar's however close they
+sit (past the eighth, each shares its place with one far from it), and a prop's or a world's nearly
+always. Two copies of one prop side by side can still hide one another, the plug then taking
+whichever was drawn last.
 
 **Which sockets are your own.** Every socket also writes its wearer's owner id into the atlas: a
 24-bit piece of the ChilloutVR user id, fed in by the game and synced as one parameter, 32 bits.
 A plug compares it with its own, so it knows as a fact which sockets are its wearer's, at any
 distance and however closely two bodies are pressed together. Other players' copies learn the id
 with the first parameter sync. Until then, and for props and world sockets, which carry none,
-ownership is judged by distance to the nearest hips, as before.
+ownership is judged by distance to the nearest hips, as before. The Unity editor has no player
+and so no id; each avatar in the scene is given a stand-in one there, never saved, so your own
+sockets are judged in the editor the way the game judges them.
 
 **Which of your own sockets a plug may enter** is yours to choose, per plug: the plug's
 inspector has a **Your own sockets** list with a tick for each socket on the avatar. Everything off
@@ -1145,9 +1153,11 @@ leaving a second copy behind.
 **A menu toggle for anything that has none.** A socket nobody can switch off holds one of the four
 vertex-light slots forever, and a plug with no switch cannot be put away, so Build gives each an
 Advanced Settings entry, **off by default**, and writes its layer and parameter straight into
-the animator the avatar already wears. It does not press *Create Animator* for you and does not
-copy your base controller or replace your override controller; the CCK's own generator, run later,
-sees the parameter already driven and skips the entry as it is meant to. Anything the avatar
+the controller the avatar uploads, and into your base controller too when the CCK has generated
+one from it, so the layer ships now and survives the next *Create Animator*. It does not press
+*Create Animator* for you and does not copy your base controller or replace your override
+controller; the CCK's own generator, run later, sees the parameter already driven and skips the
+entry as it is meant to. Anything the avatar
 already toggles is left alone: an entry aiming at it or a parent, an entry's own clips, or any
 clip in any of the avatar's controllers that hides the object or its renderer. If an earlier build
 added a toggle that turns out to be unnecessary, the next one removes it.
@@ -1448,7 +1458,6 @@ settle. Leaving all of them alone converts fine.
 |---|---|---|
 | **Opt-ins ▸ Keep OGB haptics synced** | off | Its own sub-section under Manual options, since an opt-in nobody can find is one nobody turns on. Off, the OGB haptics parameters are local (free); OSCGoesBrrr's automatic detection skips ChilloutVR's `#` names, but its manual avatar-parameter links read them, and the report lists the names. On, they stay synced and automatic detection works with no setup, at 32 sync bits each, about nine per plug and per socket; the report's sync budget entry says where the avatar landed. Needs *Penetration* on *Convert to YAPS*. See [OSC toys](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
 | **Opt-ins ▸ Show the avatar's OWN depth animations to other players** | off | Not YAPS's socket shapes, which already play for everyone on a synced parameter. This is the bulges and winces the avatar's author animated in VRChat, which are contact-driven, and ChilloutVR runs an avatar's triggers on the wearer's machine alone. Off, each socket's depth parameter is local: free, and only the wearer sees the reaction. On, it syncs and the room sees it, at 32 bits per socket: one depth parameter each, six sockets is about 192 of 3200; a socket that kept several depth parameters as authored pays for each. Needs *Penetration* on *Convert to YAPS* |
-| **Opt-ins ▸ Draw a debug readout on each plug** | off | A strip of colours drawn by each plug itself, for working out why one will not behave. Left to right: who resolved its socket (grey nobody, cyan the editor's preview, amber a marker light, green the screen atlas), whether it is bending (amber: it found a socket but its toggle holds it off), how far the socket is, what the screen atlas read, whether the atlas is on the camera drawing this view, and whether the plug asks for the atlas at all. Unlike the plug material's own debug view it leaves the plug bending normally, so the bend and the reason for it can be read together. It is part of the plug's own mesh, so everyone who can see the plug sees it and it uploads with the avatar; the report flags it while it is on. Needs *Penetration* on *Convert to YAPS* |
 | **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder: you must press **Create Controller** yourself |
 | **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of this avatar's measured height, centred on its original size. Parent-constrained props are re-anchored so they scale with you |
@@ -1480,7 +1489,7 @@ Analyse sets them to match. Open it to override a measurement deliberately, not 
 | **Gesture (hand poses)** | on | Hand poses, converted to the CCK's own float threshold idiom. A Gesture layer holding **only** VRChat's `proxy_*` placeholders is left behind and ChilloutVR's own hand poses kept; see [fingers snapping](#converted-fingers-snap-to-a-pose-nobody-authored) |
 | **Base / locomotion** | off | Brings across what VRChat kept in Base: toggles, blendshapes, materials, additive motion, and grafts the avatar's own walk, crouch and crawl onto CVR's locomotion. Analyse recommends it when the avatar has a Base layer of its own that isn't GoGo, and recommends it off when all that layer holds is VRChat's stock locomotion copied in; a layer like that is left out of the conversion either way |
 | **Additive** | off | VRChat's additive layer, usually breathing |
-| **Action (emotes, AFK)** | off | Emotes and AFK. Off by default because Action takes full body control and misfires are very visible |
+| **Action (emotes, AFK)** | off | Emotes and AFK. Off by default because Action takes full body control and misfires are very visible. An Action layer holding **only** VRChat's `proxy_*` placeholders is left out even when this is on; see [spinning on the spot](#the-avatar-spins-on-the-spot-usually-after-landing-and-only-in-vr) |
 | **Preserve parameter sync state** | on | Keeps each parameter's local/synced status as VRChat had it, rather than syncing everything: **except parameters a menu control drives, which always sync**. VRChat's tight budget made de-syncing menu parameters a common trick, usually with VRCFury syncing them through machinery that doesn't survive conversion, so "not synced" is untrustworthy on anything with a control; a toggle others can't see the effect of is a broken feature, and ChilloutVR's 3200-bit budget can afford it. The report lists every parameter this re-synced |
 | **Expose menu-less synced parameters** | on | Synced parameters with no menu control still [need an entry to exist](#a-menu-control-appears-moves-syncs-and-does-nothing) in CVR |
 | **Convert contact senders/receivers** | on | VRChat contacts become [pointers and triggers](#contacts) |
@@ -1490,7 +1499,7 @@ Analyse sets them to match. Open it to override a measurement deliberately, not 
 | **Convert VRC Head Chop** | on | `VRCHeadChop` becomes `FPRExclusion`: CVR's first-person hiding |
 | **Convert spatial audio** | on | `VRCSpatialAudioSource` becomes a plain `AudioSource` with equivalent spatial settings |
 | **Auto-wire blink blendshapes** | on | Detects blink shapes on the face mesh (`Blink L`/`Blink R` and similar) and turns on CVR's Eye Blink Settings when the descriptor didn't name any |
-| **Resize oversized textures** | on | Every texture the avatar carries is measured against the mesh that wears it and resized to what that mesh can show; a one-channel or fully opaque texture also gets a format half the size. Import settings only, nothing is written to a texture file, and **Put the textures back** on the report undoes all of it. A texture any material outside this avatar uses is refused and named. The same measurement the Toolkit's **What this avatar costs** card makes, run without being asked |
+| **Resize oversized textures** | on | Every texture the avatar carries is measured against the mesh that wears it and resized to what that mesh can show; a one-channel or fully opaque texture also gets a format half the size. A texture a shader reads as exact values (point filtered, no mipmaps) is never resized. Import settings only, nothing is written to a texture file, and **Put the textures back** on the report undoes all of it. A texture any material outside this avatar uses is refused and named. The same measurement the Toolkit's **What this avatar costs** card makes, run without being asked |
 
 **Base, Additive and Action switch themselves off when you pick an avatar with no such layer**: the
 slot is empty or holds VRChat's default. These settings persist between avatars, so a tick meant for
@@ -2211,6 +2220,10 @@ first hand-off tells the client to stop turning the body with your headset, and 
 it to catch up, and in VR the avatar came out of it spinning. Desktop never steers the body by a
 headset, which is why it only ever showed in VR.
 
+VRChat's stock Action layer carries the same hand-offs on its AFK and emote states, and ChilloutVR
+sets AFK when you take the headset off. From 4.6.4 an Action layer of nothing but placeholders is
+left out too, so it only ever applies with *Action (emotes, AFK)* ticked.
+
 **Fixing an avatar you already converted doesn't need the update**: untick *Base / locomotion*
 and convert again. Confirmed by the person who reported it. Analyse recommends the box off for an
 avatar like this from 4.6.2 as well.
@@ -2345,6 +2358,10 @@ Work down the list; the first that fits is usually it.
   lights, which cannot carry tags, one-way rings or a wearer's own sockets. Nothing reports this,
   because from the inside it looks exactly like a socket that decided not to answer. See
   [how a plug finds a socket](#yaps-penetration-that-works-in-chilloutvr).
+- **Does the report say some penetration animation curves "change nothing"?** Every curve the
+  conversion writes for a plug is checked against the finished avatar, and those are the ones
+  Unity could not attach to anything, so the menu rows or size changes they belong to do nothing
+  in game. It should never appear. Please report it with the conversion report.
 - **Does the report say it "could not ask VRCFury to leave" a plug shader alone?** Converting turns
   VRCFury's own plug deform off before VRCFury bakes, so only one deform moves the plug. That warning
   means your VRCFury version has no switch this tool recognises, so both may be moving it, which
@@ -2353,12 +2370,13 @@ Work down the list; the first that fits is usually it.
   by*. It straightens the plug and puts the answer in its LENGTH: a quarter means nothing found
   the socket, three quarters a marker light did, full the screen atlas did. A quarter with a
   socket right there means no transport reached the plug.
-- **Or read all of it at once: tick *Debug overlay* on the YAPS Plug component and Build.** The
-  view above answers one question at a time and straightens the plug to answer it, so the bend
-  and the reason for the bend can never be seen together. The overlay is a small strip of
-  colours the plug draws on itself instead, and it leaves the plug bending normally. It is the
-  plug's own answer, not a second reading taken beside it: it shares the plug's renderer, so it
-  sees the same atlas, the same lights, the same toggle and the same frame the deform does. Twelve cells
+- **Or read all of it at once: turn on *YAPS readout* in the avatar's menu.** Every plug on the
+  avatar carries one, hidden until that toggle shows it. The view above answers one question at a
+  time and straightens the plug to answer it, so the bend and the reason for the bend can never be
+  seen together. The readout is a small strip of colours the plug draws on itself instead, and it
+  leaves the plug bending normally. It is the plug's own answer, not a second reading taken beside
+  it: it shares the plug's renderer, so it sees the same atlas, the same lights, the same toggle and
+  the same frame the deform does. Twelve cells
   in two rows. Top row, left to right: who resolved the socket (grey nobody, cyan the editor's
   preview, amber a marker light, green the screen atlas), whether it is bending (red not engaged,
   amber engaged but its toggle holds it off, green bending), how far away the socket is as a bar,
@@ -2369,9 +2387,25 @@ Work down the list; the first that fits is usually it.
   anything, whether the plug will take its own wearer's sockets (amber refusing, which is the
   quietest reason a plug finds nothing), how many sockets are in the atlas chain, and whether a
   socket was refused by this plug's tags (red: refused, and nearer than whatever did answer).
-  Black or grey is nothing, red is a fault, green is working. **Everyone who can see the plug can
-  see the overlay**, and it uploads with the avatar; the report flags it while it is on. Nothing
-  stops the upload, so untick it when you are done.
+  Black or grey is nothing, red is a fault, green is working. **The toggle syncs**, so everyone
+  who can see the plug sees the readout while it is on, each drawn from what their own game
+  resolves: someone helping you reads your plug as their client sees it. Off, it draws nothing.
+  Every plug and socket has an *In-game readout* tick in its *See it work* card: untick it on a
+  plug and re-bake, or on a socket, where it applies at once, to leave that one without. Once
+  nothing on the avatar carries a readout, the menu toggle and its synced bit go too.
+- **Every socket carries one too, on the same toggle.** A strip of six cells floats just above the
+  socket, facing you, and reads the socket from the plug's side: what a plug reaching for it would
+  find. Left to right: whether the atlas is on the camera drawing this view (black the view is too
+  small, red a different screen, green live); the socket's own entry at each of the atlas's four
+  sizes, small to large (black nothing there, red that spot holds other sockets but not this one,
+  green read back as this socket); the owner id (grey not known yet, amber known but no entry to
+  compare, red the atlas carries somebody else's, green its own); the kind and number it
+  publishes (left green a hole, cyan a ring, blue a one-way ring, black not found; right a bar
+  for its number); whether its marker light arrives (green) or not (grey); and whether a plug is
+  near (grey none, amber a plug's light arrives but the socket is beyond its length, green a bar,
+  fuller the nearer the plug). A grey marker light is normal on every socket except the one the
+  *Marker lights* dropdown has lit. A plug reads the two sizes its own length picks, so a red
+  stripe on one size matters only to plugs of that length.
 - **Then read the two markers, and ONLY as a pair.** They sit out on the plug rather than in the
   strip. The white one is drawn where the tip would be if nothing had moved the plug's bones; the
   magenta one is drawn where the tip actually is. Sitting together means the bones are where the
@@ -2515,8 +2549,8 @@ the wearer again.
 
 The entry is in the Advanced Settings list but the animator has no parameter of that name. The CCK
 writes one per entry only when you press *Create Animator*; the toolkit writes its own entries'
-layers straight into the animator the avatar wears, so this means a build has not run since the
-entry appeared. Press **Bake every plug and verify** once: it reports the layer and parameter it
+layers straight into the controller the avatar uploads and its base controller, so this means a
+build has not run since the entry appeared. Press **Bake every plug and verify** once: it reports the layer and parameter it
 wrote, or *Create Animator* on the CVRAvatar, which does the same for every entry at the cost of
 regenerating the controller.
 

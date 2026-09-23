@@ -33,7 +33,16 @@ namespace AvatarBridge
 
         // --- make this a plug ------------------------------------------------
 
+        // Every readout comes off the mesh before the bake, so one that stops
+        // short puts back the ones whose plugs still own their materials.
         public static Outcome Bake(YapsPlug plug)
+        {
+            var o = BakeOnce(plug);
+            if (!o.Ok && plug != null) YapsDebugOverlayBuilder.Build(plug.Target, null);
+            return o;
+        }
+
+        static Outcome BakeOnce(YapsPlug plug)
         {
             var o = new Outcome();
             if (plug == null) { o.Message = "no plug"; return o; }
@@ -46,9 +55,10 @@ namespace AvatarBridge
             var report = new BridgeReport();
             // The named root bone is the chain, else the plug object.
             var chainRoot = plug.rootBone != null ? plug.rootBone : plug.transform;
-            // The last readout's mesh back first, or its four vertices bake
-            // as the plug's.
+            // Every readout on the mesh off first, this plug's and any other's,
+            // or their vertices bake as the plug's.
             YapsDebugOverlayBuilder.Restore(plug);
+            YapsDebugOverlayBuilder.Restore(renderer);
             var result = YapsBaker.Bake(renderer, chainRoot, dir, report, out string failure, flipAxis: plug.flipAxis);
             if (result == null) { o.Message = "could not bake: " + failure; return o; }
             // A plain mesh bakes in its own units; the markers and the
@@ -661,20 +671,18 @@ namespace AvatarBridge
             int before = YapsToggles.Edits;
             string toggled = YapsToggles.EnsureObjectToggle(socket.gameObject, avatar, YapsToggles.LabelFor(socket));
             if (toggled != null) lines.Add(toggled);
-            var animator = socket.GetComponentInParent<Animator>(true);
-            var controller = (avatar != null && avatar.avatarSettings != null
-                    ? BridgeContext.Underlying(avatar.avatarSettings.baseController) : null)
-                ?? (animator != null ? BridgeContext.Underlying(animator.runtimeAnimatorController) : null);
             string menu = YapsToggles.RefreshMenuAnimator(avatar, before);
             if (menu != null) lines.Add(menu);
             // After the toggle layers: the lighthouse asserts the chosen
             // socket on, and a layer wins by coming later.
-            string lighthouse = YapsLighthouse.Build(avatar, controller);
-            string tagMenu = YapsTagMenu.Build(avatar, controller);
-            if (tagMenu != null) lines.Add($"✓ {tagMenu}");
+            string lighthouse = null;
+            foreach (var controller in YapsOwner.Targets(avatar)) lighthouse = YapsLighthouse.Build(avatar, controller) ?? lighthouse;
             if (lighthouse != null) lines.Add($"✓ {lighthouse}");
             string owner = YapsOwner.Wire(avatar);
             if (owner != null) lines.Add($"✓ {owner}");
+            string readout = null;
+            foreach (var controller in YapsOwner.Targets(avatar)) readout = YapsDebugOverlayBuilder.Menu(avatar, controller) ?? readout;
+            if (readout != null) lines.Add($"✓ {readout}");
             return lines;
         }
 
@@ -1214,6 +1222,17 @@ namespace AvatarBridge
                 if (skin == null || skin == primaryRenderer || skin.sharedMesh == null) continue;
                 var slots = SlotsWeightedTo(skin, plug.rootBone);
                 if (slots.Count == 0) continue;
+                // The converter's line too, from the shaft the bake settled on.
+                // Any weight on the chain would take a body touching the base,
+                // and bake all of it to bend a few vertices at the seam.
+                if (!YapsBaker.RidesPlug(skin, primary.Root != null ? primary.Root : plug.rootBone))
+                {
+                    report?.Skipped("YAPS", $"\"{skin.name}\" left out of the plug",
+                        "It meets the plug only at the plug's root bone, so it is taken for the body " +
+                        "the plug grows from and stays as it is. A part that should bend with the " +
+                        "shaft needs weights on the shaft's own bones.");
+                    continue;
+                }
 
                 // A mesh with a plug of its own is not this plug's to take. Both would bake
                 // the same material and whichever ran last would win, so which frame

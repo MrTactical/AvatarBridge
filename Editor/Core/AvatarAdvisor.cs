@@ -542,7 +542,11 @@ namespace AvatarBridge
             // VRChat's stock controller copied into the slot passes as custom, but
             // every clip is a proxy_ placeholder the VRChat client swaps at runtime.
             // Merged, they play literally over ChilloutVR's own locomotion.
-            if (baseLayer.layers.All(AnimatorMerger.IsProxyOnlyLayer))
+            // Empty layers are skipped: a stateless add-on slot beside GoGo's
+            // Locomotion has no clips, so it failed the test and let the stock
+            // layer through as "the avatar's own".
+            var filled = baseLayer.layers.Where(HasStates).ToArray();
+            if (filled.Length > 0 && filled.All(AnimatorMerger.IsProxyOnlyLayer))
             {
                 if (settings.convertBaseLayer)
                 {
@@ -599,18 +603,19 @@ namespace AvatarBridge
             }
             foreach (var layer in controller.layers)
             {
-                if (SystemStripper.IsGogoLayer(layer))
-                {
-                    continue;
-                }
-                bool any = false;
-                WalkMachines(layer.stateMachine, machine => any |= machine.states.Length > 0);
-                if (any)
+                if (!SystemStripper.IsGogoLayer(layer) && HasStates(layer))
                 {
                     return true;
                 }
             }
             return false;
+        }
+
+        static bool HasStates(AnimatorControllerLayer layer)
+        {
+            bool any = false;
+            WalkMachines(layer.stateMachine, machine => any |= machine.states.Length > 0);
+            return any;
         }
 
         static void WalkMachines(AnimatorStateMachine machine, Action<AnimatorStateMachine> visit)

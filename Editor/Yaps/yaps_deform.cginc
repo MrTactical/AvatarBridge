@@ -99,6 +99,14 @@ inline float YapsRamp(float value, float from, float to)
     return saturate((value - from) / max(to - from, 1e-6));
 }
 
+// v turned about a unit axis by an angle, right-handed (Rodrigues).
+inline float3 YapsTurn(float3 v, float3 axis, float angle)
+{
+    float s, c;
+    sincos(angle, s, c);
+    return v * c + cross(axis, v) * s + axis * dot(axis, v) * (1 - c);
+}
+
 // --- reading the bake ------------------------------------------------
 
 // Each float was four bytes of one RGBA32 pixel, red the least
@@ -616,6 +624,23 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
 
     float engage = 1 - YapsRamp(gap, worldLength * 1.2, worldLength * 1.6);
 
+    // THE SWEEP. Short of full engagement the curve aims at the socket
+    // turned back toward the plug's own forward, about the root, by the part
+    // not yet engaged, so the bend grows evenly as the socket comes in.
+    // Straightness used to come from a root handle five lengths long, which
+    // only pushed the curve's turn out past the tip: when the turn reached
+    // it, the tip whipped round, up to eighteen times as far as the socket
+    // moved, just inside 1.3 lengths. The whole path turns, chain included,
+    // and at full engagement nothing moves.
+    float3 aimAt = YapsSafeNormalize(toSocket, rootForward);
+    float3 sweepAxis = cross(aimAt, rootForward);
+    float sweepSin = length(sweepAxis);
+    sweepAxis = sweepSin > 1e-5 ? sweepAxis / sweepSin : rootUp;
+    float sweep = acos(clamp(dot(aimAt, rootForward), -1, 1)) * (1 - engage);
+    socketWorld = rootWorld + YapsTurn(socketWorld - rootWorld, sweepAxis, sweep);
+    socketForward = YapsTurn(socketForward, sweepAxis, sweep);
+    toSocket = socketWorld - rootWorld;
+
     // IDLE SHRINK, from TPS. A plug nobody is using goes soft. Without it
     // a plug is at full mast the entire time nothing is happening.
     //
@@ -685,14 +710,10 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         baked.position.y += sin(t * 0.7 + 1.3) * _YAPS_WriggleStrength * worldLength * along * idle;
     }
 
-    // Only the PLUG's handle gets the pullout. Stretching it along the
-    // plug's own forward is what holds the shaft straight while the socket
-    // is out of range.
-    //
-    // The socket's handle must NOT be stretched with it. Both ends pulled
-    // out inflate the curve into a loop far longer than the plug, and the
-    // shaft follows its opening arc, nowhere near the socket. A 0.6 m plug
-    // made a 1.8 m curve and aimed off into space.
+    // Neither handle is stretched. The sweep holds the shaft straight out of
+    // range now; both ends pulled out once inflated the curve into a loop
+    // far longer than the plug, and a 0.6 m plug made a 1.8 m curve and
+    // aimed off into space.
     //
     // BEZIER SMOOTHNESS, from TPS. Scales both handles: below 1 sharper,
     // above 1 a wider arc. 1 is the law the deform has always used.
@@ -701,7 +722,7 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     float zAlong = max(baked.position.z, 0);
 
     float approachHandle = gap * 0.5 * smoothness;
-    float rootHandle = lerp(worldLength * 5, approachHandle, engage);
+    float rootHandle = approachHandle;
 
     // ENTRANCE STIFFNESS, from DPS. The root handle is held longer along
     // the plug's own forward, so the base stays put and only the far part
@@ -751,8 +772,8 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         // literal. Same rule that shaped the resolver's sort.
         [unroll] for (int c = 0; c < YAPS_CHAIN_MAX; c++)
         {
-            float3 toWorld = socket.chain.position[c];
-            float3 toForward = socket.chain.forward[c];
+            float3 toWorld = rootWorld + YapsTurn(socket.chain.position[c] - rootWorld, sweepAxis, sweep);
+            float3 toForward = YapsTurn(socket.chain.forward[c], sweepAxis, sweep);
             float approach = length(toWorld - fromWorld) * 0.5 * smoothness;
             float3 q0 = fromWorld;
             float3 q1 = fromWorld + fromForward * (c == 0 ? rootHandle : approach);

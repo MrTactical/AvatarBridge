@@ -200,6 +200,9 @@ namespace AvatarBridge
                     // a material patched by an older version answers this and
                     // may not have been named the way this one names them.
                     if (material == null || !material.HasProperty("_YAPS_Bake")) continue;
+                    // A readout reads the bake and is not patched from anything,
+                    // so it would count as a failure every time.
+                    if (YapsMarks.IsReadoutMaterial(material)) continue;
                     found++;
                     if (!IsStale(material)) continue;
                     if (Refresh(material, Beside(material), null))

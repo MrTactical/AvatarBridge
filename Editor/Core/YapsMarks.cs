@@ -13,6 +13,13 @@ namespace AvatarBridge
         public static bool IsAtlasMaterial(Material m) =>
             m != null && m.shader != null
             && m.shader.name.StartsWith("YAPS/Atlas", StringComparison.Ordinal);
+
+        // The in-game readouts: a plug's is a slot on the plug's own
+        // renderer, a socket's a renderer of its own. Each carries its own
+        // plug's values, so no two are ever one material.
+        public static bool IsReadoutMaterial(Material m) =>
+            m != null && m.shader != null
+            && (m.shader.name == "YAPS/Debug Overlay" || m.shader.name == "YAPS/Socket Readout");
     }
 }
 #endif

@@ -182,8 +182,10 @@ namespace AvatarBridge.Regression
                 Check(spawned != null, "a preview plug spawned");
                 var mr = spawned.GetComponent<MeshRenderer>();
                 Check(mr != null && mr.sharedMaterial != null && mr.sharedMaterial.HasProperty("_YAPS_Bake"), "preview plug baked");
+                // The renderer's block: one on a slot would hide what the
+                // Animator writes there, menu toggles included.
                 var block = new MaterialPropertyBlock();
-                mr.GetPropertyBlock(block, 0);
+                mr.GetPropertyBlock(block);
                 Check(block.GetVector("_YAPS_SocketFlags").x > 0.5f, "socket written into the plug's property block");
                 YapsPreview.Set(far, false);
                 Check(GameObject.Find(YapsPreview.PlugName) == null, "preview plug removed");

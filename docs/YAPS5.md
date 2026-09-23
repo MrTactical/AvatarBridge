@@ -715,7 +715,7 @@ the thing a later version would negotiate with is the version that predates nego
 
     frozen      the cell hash, the second-home hash, the tag hash and the version in it
     frozen      the payload layout: header alpha counts, slot 0 position, slot 1 facing+kind
-    frozen      the octant bucket rule and the additive alpha header
+    frozen      the additive alpha header (the bucket choice is the writer's, from 2026-09-23)
     frozen      levels step by 4x, each in its own band of rows
     NOT frozen  grid, cell size, level count, slot size
 
@@ -1577,3 +1577,44 @@ So the kind is now a factor of three: `1 + kind + 3 * number`, kind 0 ring, 1 ho
 largest 48. The reader decodes a one-way ring as a ring and skips it when the plug's base is
 behind its facing, `dot(forward, base - socket) < 0`; the base because the shaft goes through a
 ring and the base never does. Marker lights cannot say it, so a ring found by light is two-way.
+
+## An 8-bit cell tag, protocol 8 (2026-09-22)
+
+The position pixel's alpha is `0.5 + tag / 2`, and the tag was `k / 255` over eight bits. Every
+other channel was sized for an 8-bit target (tags five bits, owner six); this one was not. An even
+k lands half a step off, reads back 1/255 wrong against the 0.001 window, and 128 of 256 tags die
+on any camera without HDR, the editor's included. The tag is now `(1 + 2 * (h % 128)) / 255`, which
+stores as `(128 + k) / 255`, exact on 8-bit and inside the window on half-float.
+`Dev/Probes/Hlsl/atlas-tag.py` checks both.
+
+## Two reads and numbered buckets (2026-09-23)
+
+The runtime tester (`Dev/Tester/YapsBendTester`, the bend read back from the vertex stage) found
+27 of 50 places round a 0.649 m tip dead: the level nearest L/2, read round the shaft's middle,
+does not always reach the tip. A level that guarantees coverage (cells of at least 1.2 lengths,
+round the base) fixed reach and made neighbours worse, because its octants are big enough that two
+sockets a hand apart always share one. So a plug now reads both: the fine level first, then the
+coverage level for whatever the fine one did not hold.
+
+That left the octant itself. The bucket rule was listed as frozen above, but nothing reading ever
+depended on it: a reader opens all eight buckets and takes position from the payload. So a
+numbered socket now takes bucket `(number - 1 + owner) & 7`, which parts a wearer's first eight
+sockets however close, and is changed by the writer alone, with no protocol bump. Unnumbered
+sockets keep the octant. Later the same day every socket got a number, a prop's and a world's too, and with no owner the writer turns it by the octant instead: `(number - 1 + (owner ? owner : octant)) & 7`.
+
+## A mixed cell hash, protocol 9 (2026-09-23)
+
+The cell hashes were the classic spatial hash, each axis times an odd constant, XORed. That has a
+symmetry: negating an odd product flips every bit except the lowest, on both sides of the XOR, so
+h(-x, y, -z) equals h(x, y, z) whenever x and z are odd. The tag was built the same way from the
+same primes, and so was the second home, so a cell and its mirror across the vertical axis through
+the world's origin shared a slot in both homes AND passed each other's tag. Within a few cells of
+the origin every socket had a phantom twin. The runtime tester found it as a jump, the plug
+engaging and letting go within a fraction of a millimetre, once the sweep made the plug bend
+visibly at that distance; `Dev/Probes/Hlsl/atlas-phantom.py` replays the writer and the reader
+and names the colliding cells.
+
+Now one word per cell and salt, the axes added rather than XORed and then run through lowbias32,
+and the slot, the second home and the tag each cut from their own salt. The tag keeps its form,
+`(1 + 2k) / 255`, with k the word's top seven bits, so the 8-bit exactness of protocol 8 holds.
+

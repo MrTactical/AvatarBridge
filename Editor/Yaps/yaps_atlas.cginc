@@ -4,7 +4,7 @@
 #define YAPS_ATLAS_INCLUDED
 
 // Bump on any change below. It rides the tag.
-#define YAPS_ATLAS_VERSION 7
+#define YAPS_ATLAS_VERSION 9
 
 // 4096 cells. Two homes, so a clash needs both.
 #define YAPS_ATLAS_GRID    64
@@ -139,32 +139,47 @@ float4 YapsTagsEncode(int tags)
         ((tags >> (3 * YAPS_ATLAS_TAGBITS)) & YAPS_ATLAS_TAGMAX) / (float) YAPS_ATLAS_TAGMAX);
 }
 
+// One mixed word per cell and salt, and every field is cut from one: the
+// slot, the second home and the tag. They used to multiply each axis by an
+// odd constant and XOR, and negating an odd product flips every bit but the
+// lowest on both sides, so h(-x, y, -z) was h(x, y, z) whenever x and z were
+// odd. Slot, second home and tag all matched, and a socket near the world's
+// origin also answered from its mirror across the vertical axis through it
+// (protocol 9). Added, then mixed (lowbias32), so no sign pattern survives.
+uint YapsAtlasMix(int3 c, uint salt)
+{
+    uint h = asuint(c.x) * 0x8DA6B343u + asuint(c.y) * 0xD8163841u + asuint(c.z) * 0xCB1AB31Fu + salt;
+    h ^= h >> 16;
+    h *= 0x7FEB352Du;
+    h ^= h >> 15;
+    h *= 0x846CA68Bu;
+    h ^= h >> 16;
+    return h;
+}
+
 int YapsAtlasHash(int3 c)
 {
-    int h = c.x * 73856093;
-    h ^= c.y * 19349663;
-    h ^= c.z * 83492791;
-    return h;
+    return (int) (YapsAtlasMix(c, 0x9E3779B9u) & 0x7FFFFFFFu);
 }
 
 // The second home. Two slots square the odds.
 int YapsAtlasHash2(int3 c)
 {
-    int h = c.x * 12582917;
-    h ^= c.y * 3145739;
-    h ^= c.z * 6291469;
-    return h;
+    return (int) (YapsAtlasMix(c, 0x85EBCA6Bu) & 0x7FFFFFFFu);
 }
 
 // Who owns the payload. An offset alone cannot say.
+//
+// Seven bits, odd numerators. The writer stores 0.5 + tag / 2, which
+// is (128 + k) / 255: an exact step on an 8-bit target. k / 255 over
+// eight bits put every even k half a step off, read back 1/255 wrong
+// against a 0.001 window, and left half of all cells dead on any
+// camera without HDR (protocol 8). A slot clash passes the tag 1 in 128,
+// at random now; the range test behind it throws out most of those.
 float YapsAtlasTag(int3 c)
 {
-    int h = c.x * 19349663;
-    h ^= c.y * 83492791;
-    h ^= c.z * 73856093;
-    h ^= YAPS_ATLAS_VERSION * 1566083941;
-    h = h & 0x7FFFFF;
-    return (h % 256) / 255.0;
+    uint h = YapsAtlasMix(c, 0xC2B2AE35u + YAPS_ATLAS_VERSION * 0x27D4EB2Fu);
+    return (1 + 2 * (h >> 25)) / 255.0;
 }
 
 // THE LAYOUT FOLLOWS THE TARGET. The full rect is 932 by 596, and a view
@@ -241,6 +256,9 @@ int YapsAtlasRow(int fromTop)
 // Three cells, so three sockets. Two costs 125 reads.
 #define YAPS_ATLAS_RADIUS 1
 #define YAPS_ATLAS_REACH  1.6
+// How far from the base, in lengths, the scan is sure to see a socket:
+// the deform's full-engagement distance. Reader only.
+#define YAPS_ATLAS_COVER  1.2
 
 // The rect. The clear must cover it exactly.
 int YapsAtlasWidthPx()

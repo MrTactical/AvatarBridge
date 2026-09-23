@@ -187,11 +187,14 @@ namespace AvatarBridge
             // entirely when one socket needs no chooser.
             if (avatar != null)
             {
-                var controller = controllers.FirstOrDefault();
-                string lighthouse = controller != null ? YapsLighthouse.Build(avatar, controller) : null;
+                string lighthouse = null;
+                foreach (var controller in YapsOwner.Targets(avatar)) lighthouse = YapsLighthouse.Build(avatar, controller) ?? lighthouse;
                 if (lighthouse != null) done.Add(lighthouse);
                 string owner = YapsOwner.Wire(avatar);
                 if (owner != null) done.Add(owner);
+                string readout = null;
+                foreach (var controller in YapsOwner.Targets(avatar)) readout = YapsDebugOverlayBuilder.Menu(avatar, controller) ?? readout;
+                if (readout != null) done.Add(readout);
             }
             DropAtlasIfUnused(top, done);
 
@@ -218,11 +221,12 @@ namespace AvatarBridge
             {
                 // The readout first: its slot carries the bake texture too,
                 // and left in place it would be restored as a plug material.
+                Renderer readoutOn = plug.readoutRenderer;
                 if (plug.readoutRenderer != null)
                 {
                     Undo.RecordObject(plug.readoutRenderer, "Remove YAPS plug");
                     Undo.RecordObject(plug, "Remove YAPS plug");
-                    YapsDebugOverlayBuilder.Restore(plug);
+                    YapsDebugOverlayBuilder.Drop(plug);
                     done.Add("the debug readout off its mesh");
                 }
 
@@ -287,6 +291,10 @@ namespace AvatarBridge
                     int stripped = StripWiring(avatar, renderer);
                     if (stripped > 0) done.Add($"size wiring out of {stripped} clip(s)");
                 }
+
+                // Any other plug's readout on the same mesh, built again over
+                // the materials the bake put back.
+                YapsDebugOverlayBuilder.Build(readoutOn, null);
             }
 
             // The other meshes the bake reached, which kept their baked
@@ -352,6 +360,9 @@ namespace AvatarBridge
 
             string owner = YapsOwner.Wire(avatar);
             if (owner != null) done.Add(owner);
+            string readout = null;
+            foreach (var controller in YapsOwner.Targets(avatar)) readout = YapsDebugOverlayBuilder.Menu(avatar, controller) ?? readout;
+            if (readout != null) done.Add(readout);
             DropAtlasIfUnused(top, done);
 
             Undo.CollapseUndoOperations(group);
@@ -468,6 +479,15 @@ namespace AvatarBridge
                     Undo.DestroyObjectImmediate(shell.gameObject);
                 }
             }
+
+            // The readout toggle, once nothing carries a readout. After the
+            // sweep above, which can take a socket's readout with its atlas.
+            if (!top.GetComponentsInChildren<Renderer>(true).Any(r => r.sharedMaterials.Any(YapsDebugOverlayBuilder.IsReadout)))
+            {
+                string readout = null;
+                foreach (var controller in YapsOwner.Targets(avatar)) readout = YapsDebugOverlayBuilder.Menu(avatar, controller) ?? readout;
+                if (readout != null) done.Add(readout);
+            }
             DropAtlasIfUnused(top, done);
 
             Undo.CollapseUndoOperations(group);
@@ -497,8 +517,8 @@ namespace AvatarBridge
 
         // --- pieces ----------------------------------------------------------
 
-        // Every animator controller the avatar plays: the CCK's base, its
-        // override's, and the animator's own.
+        // Every animator controller the avatar plays: the uploaded one, the
+        // CCK's base, its override's, and the animator's own.
         static List<AnimatorController> ControllersOf(Transform top)
         {
             var list = new List<AnimatorController>();
@@ -509,6 +529,7 @@ namespace AvatarBridge
             }
             if (top == null) return list;
             var avatar = top.GetComponentInChildren<CVRAvatar>();
+            if (avatar != null) Add(avatar.overrides);
             if (avatar != null && avatar.avatarSettings != null)
             {
                 Add(avatar.avatarSettings.baseController);
@@ -653,7 +674,8 @@ namespace AvatarBridge
         {
             var mats = renderer.sharedMaterials;
             for (int i = 0; i < mats.Length; i++)
-                if (mats[i] != null && mats[i].HasProperty("_YAPS_Bake") && mats[i].GetTexture("_YAPS_Bake") != null)
+                if (mats[i] != null && mats[i].HasProperty("_YAPS_Bake") && mats[i].GetTexture("_YAPS_Bake") != null
+                    && !YapsDebugOverlayBuilder.IsReadout(mats[i]))
                     yield return i;
         }
 

@@ -55,6 +55,9 @@ Shader "YAPS/Debug Overlay"
         _YAPS_OverlaySize ("Overlay size", Float) = 0.12
         _YAPS_OverlayLift ("Overlay lift", Float) = 0.15
         _YAPS_AnchorVertex ("Anchor vertex", Float) = -1
+        // Off unless the avatar's menu animates it on. Built on every plug,
+        // so off has to cost nothing but the draw.
+        _YAPS_ReadoutOn ("Readout shown", Range(0,1)) = 0
 
         // MIRRORS THE PATCHED PLUG'S BLOCK, the whole of it. The builder
         // copies the values across by name and reports any it could not,
@@ -156,6 +159,7 @@ Shader "YAPS/Debug Overlay"
             float _YAPS_OverlaySize;
             float _YAPS_OverlayLift;
             float _YAPS_AnchorVertex;
+            float _YAPS_ReadoutOn;
 
             struct appdata
             {
@@ -190,6 +194,13 @@ Shader "YAPS/Debug Overlay"
                 UNITY_SETUP_INSTANCE_ID(v);
                 UNITY_INITIALIZE_OUTPUT(v2f, o);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
+
+                // Hidden: every corner at one point, so no triangle has area
+                // and nothing is read, resolved or shaded.
+                if (_YAPS_ReadoutOn < 0.5)
+                {
+                    return o;
+                }
 
                 float quad = v.uv.z;
 

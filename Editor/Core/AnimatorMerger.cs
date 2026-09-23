@@ -154,6 +154,22 @@ namespace AvatarBridge
                         continue;
                     }
 
+                    // Same shape in Action: the AFK and emote states carry
+                    // the same head hand-offs with nothing to play. AFK is
+                    // fed by the headset sensor in CVR, so they do fire.
+                    if (id == VRCAvatarDescriptor.AnimLayerType.Action && IsProxyOnlyLayer(srcLayer))
+                    {
+                        int drivers = CountParameterDrivers(srcLayer);
+                        ctx.Report.Converted(Category,
+                            $"Action layer \"{srcLayer.name}\" left to ChilloutVR's own emotes and AFK",
+                            "Every clip in it is a VRChat \"proxy_\" placeholder, so the avatar has no " +
+                            "emotes or AFK animation of its own. Its states would only have handed the " +
+                            "head and body to animation and back, which in VR stops the body turning " +
+                            "with the headset. Left out whole." +
+                            (drivers > 0 ? $" {drivers} parameter driver(s) went with it." : ""));
+                        continue;
+                    }
+
                     var clone = copier.CloneLayer(srcLayer);
                     // Hand-pose layers take over the freed LeftHand/RightHand slots.
                     string cvrHandName = GetCvrHandLayerName(id, srcLayer);

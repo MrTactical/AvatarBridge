@@ -1088,6 +1088,25 @@ namespace AvatarBridge
             see.Body.Add(BridgeElements.Hint(
                 "For a plug that only appears in Play Mode, or to see the bend on a posed avatar."));
 
+            // Applied at once on a built socket, menu included, like the kind.
+            var readoutTick = new Toggle("In-game readout") { value = socket.readout };
+            readoutTick.AddToClassList("ab-toggle");
+            readoutTick.RegisterValueChangedCallback(e =>
+            {
+                Undo.RecordObject(socket, "YAPS socket readout");
+                socket.readout = e.newValue;
+                EditorUtility.SetDirty(socket);
+                if (built)
+                {
+                    foreach (var line in YapsNativeBuilder.BuildSocket(socket)) Debug.Log("[YAPS] " + line);
+                }
+                RebuildLater();
+            });
+            see.Body.Add(readoutTick);
+            see.Body.Add(BridgeElements.Hint(
+                "Hidden until the avatar's YAPS readout menu toggle shows it. Once nothing on the avatar " +
+                "carries a readout, the menu toggle and its synced bit go too."));
+
             // The shapes, tried here: a depth slider moves them on the mesh
             // in the editor; while previewing, the plug's tip is the depth.
             if (current != null && shapesProp.arraySize > 0)
@@ -1427,6 +1446,14 @@ namespace AvatarBridge
                 }
                 see.Body.Add(row);
             }
+            // A slot on the mesh and, while anything carries one, a synced bit
+            // and a menu row, so it can be left off.
+            var readoutTick = new Toggle("In-game readout") { bindingPath = nameof(YapsPlug.readout) };
+            readoutTick.AddToClassList("ab-toggle");
+            see.Body.Add(readoutTick);
+            see.Body.Add(BridgeElements.Hint(
+                "Hidden until the avatar's YAPS readout menu toggle shows it. Untick and re-bake to leave it " +
+                "off. Once nothing on the avatar carries a readout, the menu toggle and its synced bit go too."));
 
             // Every knob is tagged with its system, and the filter shows one system.
             var filter = new PopupField<string>("Show", Systems.ToList(), Systems.IndexOf(_filter) < 0 ? 0 : Systems.IndexOf(_filter));

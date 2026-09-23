@@ -43,6 +43,9 @@ namespace AvatarBridge
             // chain than the one that was baked.
             public Transform Root;
             public List<string> Shapes = new List<string>();
+            // Each baked shape's weight on the renderer at bake time, 0..1.
+            // The material starts there; an animation overrides it.
+            public float[] ShapeWeights;
             public List<string> MovingShapes = new List<string>();   // every shape that moves the plug
 
             // The frame the deform works in, world space at bake time. Not
@@ -261,6 +264,22 @@ namespace AvatarBridge
             var shapes = CaptureShapes(mesh, skin, toPlug, activeWeights, placements, out var shapeNames,
                 out var movingShapes, wantedShapes);
 
+            // A shape the renderer simply holds is part of the mesh as worn, but
+            // the bent path rebuilds each vertex from the bake. Left out, a part
+            // hidden by a shape at 100 reappeared the moment the plug bent.
+            float[] heldWeights = null;
+            if (!objectFrame && skin != null)
+            {
+                int held = HoldShapes(mesh, skin, toPlug, placements, shapeNames,
+                    positions, normals, tangents, out heldWeights);
+                if (held > 0)
+                {
+                    report?.Converted(Category, $"{renderer.name}: kept {held} blendshape(s) it holds",
+                        "They sit at a fixed value on the renderer, so the plug keeps them while it " +
+                        "bends instead of snapping back to the unshaped mesh.");
+                }
+            }
+
             var texture = WriteTexture(positions, normals, tangents, activeWeights, count, shapes);
             Directory.CreateDirectory(outputDir);
             // Named for the plug that wrote it, never numbered. A unique path is
@@ -270,12 +289,15 @@ namespace AvatarBridge
             // is the point.
             //
             // The parent goes in the name because two plugs on one renderer are
-            // usually called the same thing under different bones.
+            // usually called the same thing under different bones. Names alone
+            // still collide: two meshes of one name, each with SPS/BakedSpsPlug,
+            // wrote one file, and the first plug's material lost its bake and
+            // never bent. Where both sit does not collide.
             string owner = plugRoot != null && plugRoot.parent != null
                 ? plugRoot.parent.name + " " + plugRoot.name
                 : plugRoot != null ? plugRoot.name : "plug";
             string path = outputDir + "/YAPS " + Sanitise(renderer.name) + " "
-                          + Sanitise(owner) + " bake.asset";
+                          + Sanitise(owner) + " " + PlaceKey(renderer.transform, plugRoot) + " bake.asset";
             AssetDatabase.DeleteAsset(path);
             AssetDatabase.CreateAsset(texture, path);
             SettleForUpload(texture);
@@ -323,6 +345,7 @@ namespace AvatarBridge
                 Renderer = renderer,
                 Root = plugRoot,
                 Shapes = shapeNames,
+                ShapeWeights = heldWeights,
                 MovingShapes = movingShapes,
                 Origin = origin,
                 Rotation = rotation,
@@ -410,6 +433,34 @@ namespace AvatarBridge
                 return 0;
             }
             return CountWeighted(skin, BonesUnder(skin.bones, level));
+        }
+
+        // A mesh that belongs to the plug, not one that only meets it. The
+        // body meets a plug at its root bone and goes no further; a ring or a
+        // harness rides the shaft, so it joins however little of it is there.
+        // Before, only a mesh MOST of which rode the plug joined, and a harness
+        // whose straps run elsewhere stayed rigid while the shaft bent through
+        // it. Past the root means mostly held there: an auto-weighted body can
+        // carry a trace of the second bone.
+        public static bool RidesPlug(Renderer renderer, Transform root)
+        {
+            var skin = renderer as SkinnedMeshRenderer;
+            if (skin == null || root == null || skin.sharedMesh == null
+                || skin.bones == null || skin.bones.Length == 0)
+            {
+                return false;
+            }
+            var chain = BonesUnder(skin.bones, root);
+            int on = CountWeighted(skin, chain);
+            if (on == 0) return false;
+            if (on * 2 > skin.sharedMesh.vertexCount) return true;
+            chain.RemoveWhere(b => skin.bones[b] == root);
+            if (chain.Count == 0) return false;
+            foreach (var w in skin.sharedMesh.boneWeights)
+            {
+                if (WeightOnPlug(w, chain) > 0.5f) return true;
+            }
+            return false;
         }
 
         static int CountWeighted(SkinnedMeshRenderer skin, HashSet<int> bones)
@@ -518,6 +569,15 @@ namespace AvatarBridge
             target.SetFloat("_YAPS_BakeGirth", 1f);
             target.SetFloat("_YAPS_FrameFromVertex", skinned ? 1f : 0f);
             target.SetFloat("_YAPS_ShapeCount", result.Shapes.Count);
+            if (result.ShapeWeights != null)
+            {
+                string[] packs = { "_YAPS_ShapeWeights", "_YAPS_ShapeWeights2", "_YAPS_ShapeWeights3", "_YAPS_ShapeWeights4" };
+                for (int p = 0; p < packs.Length; p++)
+                {
+                    float W(int k) => p * 4 + k < result.ShapeWeights.Length ? result.ShapeWeights[p * 4 + k] : 0f;
+                    target.SetVector(packs[p], new Vector4(W(0), W(1), W(2), W(3)));
+                }
+            }
             EditorUtility.SetDirty(target);
         }
 
@@ -761,6 +821,8 @@ namespace AvatarBridge
             var deltaP = new Vector3[count];
             var deltaN = new Vector3[count];
             var deltaT = new Vector3[count];
+            var restN = mesh.normals;
+            var restT = mesh.tangents;
             var scored = new List<(float moved, int index)>();
 
             // Named shapes, in the order given: a socket's stages are the author's
@@ -785,8 +847,8 @@ namespace AvatarBridge
                     {
                         var place = i < placements.Count ? placements[i] : Matrix4x4.identity;
                         block[i * 3 + 0] = toPlug.MultiplyVector(place.MultiplyVector(deltaP[i]));
-                        block[i * 3 + 1] = toPlug.MultiplyVector(place.MultiplyVector(deltaN[i]));
-                        block[i * 3 + 2] = toPlug.MultiplyVector(place.MultiplyVector(deltaT[i]));
+                        block[i * 3 + 1] = DirectionDelta(toPlug, place, RestNormal(restN, i), deltaN[i]);
+                        block[i * 3 + 2] = DirectionDelta(toPlug, place, RestTangent(restT, i), deltaT[i]);
                     }
                     captured.Add(block);
                     names.Add(mesh.GetBlendShapeName(index));
@@ -834,13 +896,73 @@ namespace AvatarBridge
                     // vertex, then into the plug frame.
                     var place = i < placements.Count ? placements[i] : Matrix4x4.identity;
                     block[i * 3 + 0] = toPlug.MultiplyVector(place.MultiplyVector(deltaP[i]));
-                    block[i * 3 + 1] = toPlug.MultiplyVector(place.MultiplyVector(deltaN[i]));
-                    block[i * 3 + 2] = toPlug.MultiplyVector(place.MultiplyVector(deltaT[i]));
+                    block[i * 3 + 1] = DirectionDelta(toPlug, place, RestNormal(restN, i), deltaN[i]);
+                    block[i * 3 + 2] = DirectionDelta(toPlug, place, RestTangent(restT, i), deltaT[i]);
                 }
                 captured.Add(block);
                 names.Add(mesh.GetBlendShapeName(index));
             }
             return captured;
+        }
+
+        // A normal or tangent delta in the units its rest vector is stored in.
+        // The rest vectors are kept at unit length, but the matrices carry the
+        // mesh's unit conversion, so a delta turned by them alone came out that
+        // many times too short: at 0.07 a shape that turns a normal ninety
+        // degrees turned the baked one four, the frame each vertex recovers
+        // spun, and every vertex a held shape moved tore off the plug.
+        static Vector3 DirectionDelta(Matrix4x4 toPlug, Matrix4x4 place, Vector3 rest, Vector3 delta)
+        {
+            float length = toPlug.MultiplyVector(place.MultiplyVector(rest)).magnitude;
+            return length > 1e-8f ? toPlug.MultiplyVector(place.MultiplyVector(delta)) / length : Vector3.zero;
+        }
+
+        // The rest vectors the capture stored, with the same fallbacks.
+        static Vector3 RestNormal(Vector3[] normals, int i) => i < normals.Length ? normals[i] : Vector3.forward;
+        static Vector3 RestTangent(Vector4[] tangents, int i) => i < tangents.Length ? (Vector3) tangents[i] : Vector3.right;
+
+        // Held weights, split by what the shader can see. A baked shape keeps
+        // its weight on the material; any other held shape is folded into the
+        // rest pose, the same turn as a shape block. Returns how many were held.
+        // ponytail: last frame scaled by weight, exact only for one-frame shapes.
+        static int HoldShapes(Mesh mesh, SkinnedMeshRenderer skin, Matrix4x4 toPlug,
+            List<Matrix4x4> placements, List<string> baked,
+            Vector3[] positions, Vector3[] normals, Vector3[] tangents, out float[] bakedWeights)
+        {
+            bakedWeights = new float[baked.Count];
+            int held = 0;
+            int count = positions.Length;
+            Vector3[] dp = null, dn = null, dt = null, restN = null;
+            Vector4[] restT = null;
+            for (int s = 0; s < mesh.blendShapeCount; s++)
+            {
+                float w = skin.GetBlendShapeWeight(s) * 0.01f;
+                if (Mathf.Abs(w) < 1e-4f)
+                {
+                    continue;
+                }
+                held++;
+                int slot = baked.IndexOf(mesh.GetBlendShapeName(s));
+                if (slot >= 0)
+                {
+                    bakedWeights[slot] = w;
+                    continue;
+                }
+                dp ??= new Vector3[count];
+                dn ??= new Vector3[count];
+                dt ??= new Vector3[count];
+                mesh.GetBlendShapeFrameVertices(s, mesh.GetBlendShapeFrameCount(s) - 1, dp, dn, dt);
+                restN ??= mesh.normals;
+                restT ??= mesh.tangents;
+                for (int i = 0; i < count; i++)
+                {
+                    var place = i < placements.Count ? placements[i] : Matrix4x4.identity;
+                    positions[i] += toPlug.MultiplyVector(place.MultiplyVector(dp[i])) * w;
+                    normals[i] = (normals[i] + DirectionDelta(toPlug, place, RestNormal(restN, i), dn[i]) * w).normalized;
+                    tangents[i] = (tangents[i] + DirectionDelta(toPlug, place, RestTangent(restT, i), dt[i]) * w).normalized;
+                }
+            }
+            return held;
         }
 
         // Whether a climbed level swallowed the body rather than the plug. The
@@ -1037,6 +1159,20 @@ namespace AvatarBridge
 
         static string Sanitise(string name)
             => new string(name.Select(c => char.IsLetterOrDigit(c) || c == ' ' ? c : '_').ToArray());
+
+        // Six hex digits for where these objects sit in their hierarchy, by
+        // sibling index, so a file named for them is theirs alone and the
+        // same objects find the same file again on the next conversion.
+        public static string PlaceKey(params Transform[] objects)
+        {
+            var at = new System.Text.StringBuilder();
+            foreach (var o in objects)
+            {
+                for (var t = o; t != null && t.parent != null; t = t.parent) at.Append(t.GetSiblingIndex()).Append('/');
+                at.Append('|');
+            }
+            return Hash128.Compute(at.ToString()).ToString().Substring(0, 6);
+        }
     }
 }
 #endif

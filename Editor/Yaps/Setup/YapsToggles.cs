@@ -498,18 +498,20 @@ namespace AvatarBridge
                 Clip(targets, property, 0f, AssetDatabase.GetAssetPath(t.offAnimationClip));
         }
 
-        // One constant curve per material slot that declares the property.
+        // One constant curve per renderer whose materials declare the property.
         //
-        // EVERY slot, not slot 0. "material._X" is Unity's spelling for the
-        // FIRST material alone, so a plug modelled with its tip on a second
-        // material had half its mesh switched off and the other half left
-        // running, and the deform toggle is the row people actually use.
+        // "material._X" is the only spelling Unity binds, and it writes the
+        // renderer's own property block, which every slot reads. From 4.6.0 a
+        // later slot was written as "material[1]._X", on the belief that the
+        // plain spelling reached the first material alone. Unity lists no
+        // such property and binds nothing to it, so every toggle on a plug
+        // whose material was not the mesh's first did nothing.
         //
-        // Slots without the property are skipped: a curve on a binding no
+        // A renderer none of whose slots declares it is skipped: a curve no
         // material reads shows in the animation window as a missing curve,
         // on every avatar that has one, and the author cannot act on it.
-        // Where NO slot declares it, slot 0 is written anyway, so a plug
-        // whose material is assigned after the clip behaves as before.
+        // The plug's own renderer is written anyway, so a plug whose material
+        // is assigned after the clip behaves as before.
         //
         // Every mesh of a plug, too: one spanning several renderers kept the
         // others bending with the deform switched off, and answering sockets
@@ -544,14 +546,11 @@ namespace AvatarBridge
             for (int t = 0; t < targets.Count; t++)
             {
                 var (path, target) = targets[t];
-                if (target == null) continue;
-                foreach (int slot in SlotsWith(target, property, fallback: t == 0))
+                if (target == null || SlotsWith(target, property, fallback: t == 0).Count == 0) continue;
+                for (int a = 0; a < components; a++)
                 {
-                    for (int a = 0; a < components; a++)
-                    {
-                        clip.SetCurve(path, target.GetType(), Bound(slot, property) + (components > 1 ? axes[a] : ""),
-                            AnimationCurve.Constant(0f, 1f / 60f, value[a]));
-                    }
+                    clip.SetCurve(path, target.GetType(), Bound(property) + (components > 1 ? axes[a] : ""),
+                        AnimationCurve.Constant(0f, 1f / 60f, value[a]));
                 }
             }
             EditorUtility.SetDirty(clip);
@@ -589,15 +588,49 @@ namespace AvatarBridge
         public static List<(string path, Renderer target)> Targets(YapsPlug plug, Transform root) =>
             MeshesOf(plug).Select(r => (AnimationUtility.CalculateTransformPath(r.transform, root), r)).ToList();
 
-        // How Unity spells a material property on a given slot.
-        public static string Bound(int slot, string property)
+        // How Unity spells a material property, for every slot at once.
+        public static string Bound(string property)
         {
-            return slot == 0 ? "material." + property : "material[" + slot + "]." + property;
+            return "material." + property;
         }
 
-        // "material[2]._X" read as "material._X". Slot 0 goes without the
-        // index and every other slot carries one, so anything hunting for a
-        // property has two spellings to match, and until now matched the
+        // Every YAPS material curve the avatar can play that binds to
+        // nothing, as "clip: path property". Unity resolves a binding against
+        // the hierarchy; one it cannot resolve does nothing in game either,
+        // and nothing else says so: toggles on a later material slot were
+        // dead from 4.6.0 to 4.6.2 behind clean reports.
+        public static List<string> DeadBindings(GameObject root, UnityEditor.Animations.AnimatorController controller)
+        {
+            var dead = new List<string>();
+            if (root == null) return dead;
+            var clips = new List<AnimationClip>();
+            if (controller != null) clips.AddRange(controller.animationClips);
+            var avatar = root.GetComponent<CVRAvatar>();
+            var settings = avatar != null && avatar.avatarSettings != null ? avatar.avatarSettings.settings : null;
+            if (settings != null)
+            {
+                foreach (var e in settings)
+                {
+                    if (e?.toggleSettings == null || !e.toggleSettings.useAnimationClip) continue;
+                    clips.Add(e.toggleSettings.animationClip);
+                    clips.Add(e.toggleSettings.offAnimationClip);
+                }
+            }
+            foreach (var clip in clips.Where(c => c != null).Distinct())
+            {
+                foreach (var b in AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (!Bare(b.propertyName).StartsWith("material._YAPS_", System.StringComparison.Ordinal)) continue;
+                    if (AnimationUtility.GetEditorCurveValueType(root, b) == null)
+                        dead.Add(clip.name + ": " + b.path + " " + b.propertyName);
+                }
+            }
+            return dead;
+        }
+
+        // "material[2]._X" read as "material._X". Builds from 4.6.0 wrote the
+        // index for later slots, dead as it was, so anything hunting for a
+        // property has two spellings to match, and until then matched the
         // first: a toggle on a second slot could be built twice and was
         // never taken away again.
         public static string Bare(string propertyName)

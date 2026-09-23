@@ -128,18 +128,25 @@ namespace AvatarBridge.Yaps
         [Tooltip("Never answer a socket with any of these tags; beats the list above. Four at most.")]
         public List<string> refuses = new List<string>();
 
-        [Header("Diagnostics")]
-        [Tooltip("An in-game readout of who found the socket and what the bake is doing. White " +
-                 "marks the bake-pose tip, magenta the real one. Everyone sees it and it uploads " +
-                 "with the avatar; the report flags it while it is on.")]
-        public bool debugOverlay;
+        // Whether a bake gives this plug an in-game readout. Drawn in the
+        // inspector's See it work card, not with the knobs.
+        [HideInInspector]
+        public bool readout = true;
 
-        // The mesh the readout replaced and the renderer it sits on, so a
-        // rebuild or Remove can put it back. Written by the readout builder.
+        // The renderer the readout sits on and the mesh it replaced, so a
+        // rebuild or Remove can put it back; and what it is built from, so
+        // another plug baked into the same mesh can build it again. Written
+        // by the readout builder.
         [HideInInspector]
         public Renderer readoutRenderer;
         [HideInInspector]
         public Mesh readoutReplaced;
+        [HideInInspector]
+        public Material readoutSource;
+        [HideInInspector]
+        public int readoutAnchor = -1;
+        [HideInInspector]
+        public int readoutTip = -1;
 
         [HideInInspector]
         public Material bakedFrom;

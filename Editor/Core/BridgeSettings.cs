@@ -160,12 +160,6 @@ namespace AvatarBridge
         // is five lights for four slots, and Unity drops the lowest range,
         // which is always the hole root.
         internal const int DefaultMaxLightEmittingSockets = 1;
-        // A readout each plug draws on itself: twelve cells for who resolved
-        // its socket, whether it is bending and what state its bake and frame
-        // are in, and two markers whose gap is the only thing that can see
-        // its BONES move. For working out why a plug will not behave, and off
-        // by default because everyone who can see the plug can see it.
-        public bool yapsDebugOverlay = false;
         // Comma-separated. Matched as parameter prefixes and
         // layer-name substrings.
         public string extraStripKeywords = "";
