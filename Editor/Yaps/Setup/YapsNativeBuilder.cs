@@ -89,6 +89,7 @@ namespace AvatarBridge
                 for (int i = 0; i < mats.Length; i++) alsoSlots.Add(i);
             }
             if (slot < 0) slot = 0;
+            string splitKey = null;
             // Another plug's bake already in this slot, from another shaft. One
             // material holds one plug's bend, so rather than take it over and
             // leave that plug rigid, this one moves to a slot of its own, on a
@@ -106,11 +107,25 @@ namespace AvatarBridge
                     // the re-bake path deleted that as the texture it replaced.
                     var before = owner.bakedSlots.FirstOrDefault(b => b != null && b.slot == slot
                                      && Same(b.renderer, renderer, owner))?.was ?? owner.bakedFrom;
-                    string why = "the slot's original material is not recorded";
+                    string copyPath = null;
+                    if (before == null)
+                    {
+                        // Nothing recorded: the material was on a YAPS shader
+                        // already and the other plug baked it in place. A copy
+                        // with no bake yet, so the re-bake path has no texture
+                        // of the other plug's to delete as the one it replaces.
+                        before = new Material(mats[slot]) { name = mats[slot].name + " " + YapsBaker.PlaceKey(plug.transform) };
+                        before.SetTexture("_YAPS_Bake", null);
+                        copyPath = dir + "/" + Sanitise(before.name) + ".mat";
+                        AssetDatabase.DeleteAsset(copyPath);
+                        AssetDatabase.CreateAsset(before, copyPath);
+                    }
                     var unsplit = shared.sharedMesh;
-                    int added = before == null ? -1 : YapsSlotSplit.Split(shared, result.Root, slot, mine, before, dir, out why);
+                    int added = YapsSlotSplit.Split(shared, result.Root, slot, mine, before, dir, out string why);
+                    if (added < 0 && copyPath != null) AssetDatabase.DeleteAsset(copyPath);
                     if (added >= 0)
                     {
+                        splitKey = YapsBaker.PlaceKey(plug.transform);
                         plug.splitFrom = unsplit;
                         EditorUtility.SetDirty(plug);
                         o.Notes.Add($"It shared slot {slot} with \"{owner.name}\", a plug on another shaft, and one " +
@@ -192,7 +207,7 @@ namespace AvatarBridge
             }
             bool fresh = !source.HasProperty("_YAPS_Bake") && !oursAlready;
             var patched = fresh
-                ? YapsBaker.Apply(result, source, shader, dir, result.FromSkinnedMesh)
+                ? YapsBaker.Apply(result, source, shader, dir, result.FromSkinnedMesh, splitKey)
                 : source;
             if (patched != source)
             {

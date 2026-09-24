@@ -690,16 +690,28 @@ namespace AvatarBridge
         }
 
         // A slot another plug on the mesh still bends with: the material it
-        // last baked, or a slot only it recorded. A record of this plug's for
-        // a slot kept that way goes to the plug keeping it, so its own Remove
-        // can still put the original back.
+        // last baked, a slot drawing its shaft, or a slot only it recorded. A
+        // record of this plug's for a slot kept that way goes to the plug
+        // keeping it, so its own Remove can still put the original back.
+        //
+        // The shaft test is the one that holds for a material baked in place
+        // (already on a YAPS shader): nothing is recorded, and a plug whose
+        // slot a later one took over has no readout source either.
         static bool KeptFor(YapsPlug plug, List<YapsPlug> sharing, Renderer renderer, int slot)
         {
             var material = renderer.sharedMaterials[slot];
             YapsPlug.BakedSlot RecordOf(YapsPlug p) => p.bakedSlots.FirstOrDefault(b => b != null && b.slot == slot
                 && b.was != null && YapsNativeBuilder.Same(b.renderer, renderer, p));
+            bool Draws(YapsPlug p)
+            {
+                var skin = renderer as SkinnedMeshRenderer;
+                if (skin == null || skin.sharedMesh == null || slot >= skin.sharedMesh.subMeshCount) return false;
+                var mask = YapsSlotSplit.Mask(skin, p.rootBone != null ? p.rootBone : p.transform);
+                return mask != null && skin.sharedMesh.GetTriangles(slot).Any(v => v < mask.Length && mask[v]);
+            }
             var mine = RecordOf(plug);
             var keeper = sharing.FirstOrDefault(p => p.readoutSource == material)
+                         ?? sharing.FirstOrDefault(Draws)
                          ?? (mine == null ? sharing.FirstOrDefault(p => RecordOf(p) != null) : null);
             if (keeper == null) return false;
             if (mine != null && RecordOf(keeper) == null)

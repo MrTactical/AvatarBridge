@@ -28,13 +28,62 @@ namespace AvatarBridge.Regression
         public static void Run()
         {
             fail = 0;
+            // A shader the patcher takes, whose bakes land on generated
+            // materials keyed by source and renderer; and a material already on
+            // a YAPS shader, which is baked in place and records no original.
+            // Standard would test neither: the patcher refuses it, and each
+            // bake falls back to a fresh Simple Lit copy of its own.
+            // The project's Poiyomi may be patched in place already, so a plain
+            // shader of the probe's own is the one guaranteed to be foreign.
+            string shaderPath = YapsNativeBuilder.OutputRoot + "/__SharedSlotProbeShader/Probe.shader";
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(shaderPath));
+            System.IO.File.WriteAllText(shaderPath, ProbeShader);
+            AssetDatabase.ImportAsset(shaderPath, ImportAssetOptions.ForceSynchronousImport);
+            foreach (var shader in new[] { "Hidden/SharedSlotProbe", ".poiyomi/Poiyomi Toon", YapsNativeBuilder.SimpleLitName })
+            {
+                Log($"--- {shader}");
+                RunOne(shader);
+            }
+            AssetDatabase.DeleteAsset(System.IO.Path.GetDirectoryName(shaderPath).Replace('\\', '/'));
+            Log(fail == 0 ? "PASS" : $"FAIL: {fail} check(s)");
+            if (Application.isBatchMode) EditorApplication.Exit(fail == 0 ? 0 : 1);
+        }
+
+        const string ProbeShader = @"Shader ""Hidden/SharedSlotProbe""
+{
+    Properties { _Color (""Color"", Color) = (1,1,1,1) }
+    SubShader
+    {
+        Tags { ""RenderType""=""Opaque"" }
+        Pass
+        {
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #include ""UnityCG.cginc""
+            struct appdata { float4 vertex : POSITION; float3 normal : NORMAL; };
+            struct v2f { float4 pos : SV_POSITION; };
+            float4 _Color;
+            v2f vert (appdata v) { v2f o; o.pos = UnityObjectToClipPos(v.vertex); return o; }
+            fixed4 frag (v2f i) : SV_Target { return _Color; }
+            ENDCG
+        }
+    }
+}
+";
+
+        static void RunOne(string shaderName)
+        {
             try
             {
                 EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
                 AssetDatabase.DeleteAsset(YapsNativeBuilder.OutputRoot + "/" + Name);
                 var root = new GameObject(Name);
                 root.AddComponent<CVRAvatar>();
-                var skin = Build(root, out var shaftA, out var shaftB);
+                var shader = Shader.Find(shaderName);
+                Check(shader != null, $"{shaderName} is in the project");
+                if (shader == null) return;
+                var skin = Build(root, shader, out var shaftA, out var shaftB);
                 var original = skin.sharedMaterial;
                 var sourceMesh = skin.sharedMesh;
 
@@ -105,8 +154,6 @@ namespace AvatarBridge.Regression
                 Debug.LogException(e);
                 fail++;
             }
-            Log(fail == 0 ? "PASS" : $"FAIL: {fail} check(s)");
-            if (Application.isBatchMode) EditorApplication.Exit(fail == 0 ? 0 : 1);
         }
 
         static bool Baked(Material m) => m != null && m.HasProperty("_YAPS_Bake") && m.GetTexture("_YAPS_Bake") != null;
@@ -130,7 +177,7 @@ namespace AvatarBridge.Regression
 
         // Two shafts along +Z, 5 cm either side of centre, 15 cm long, four
         // bones each; a plate on the base bone joining them.
-        static SkinnedMeshRenderer Build(GameObject root, out Transform shaftA, out Transform shaftB)
+        static SkinnedMeshRenderer Build(GameObject root, Shader shader, out Transform shaftA, out Transform shaftB)
         {
             var armature = new GameObject("Armature").transform;
             armature.SetParent(root.transform, false);
@@ -211,7 +258,7 @@ namespace AvatarBridge.Regression
             skin.sharedMesh = mesh;
             skin.bones = bones.ToArray();
             skin.rootBone = basis;
-            var material = new Material(Shader.Find("Standard")) { name = "Shared slot probe" };
+            var material = new Material(shader) { name = "Shared slot probe" };
             AssetDatabase.CreateFolder(YapsNativeBuilder.OutputRoot, Name);
             AssetDatabase.CreateAsset(mesh, YapsNativeBuilder.OutputRoot + "/" + Name + "/source mesh.asset");
             AssetDatabase.CreateAsset(material, YapsNativeBuilder.OutputRoot + "/" + Name + "/source material.mat");

@@ -181,7 +181,8 @@ namespace AvatarBridge
             //
             // result.Root, not plugRoot: the bake may have descended to the shaft,
             // and asking a wider root patches materials the bake left out.
-            var slots = SplitShared(ctx, where, renderer, result.Root, MaterialSlotsOf(renderer, result.Root));
+            var split = new HashSet<int>();
+            var slots = SplitShared(ctx, where, renderer, result.Root, MaterialSlotsOf(renderer, result.Root), split);
             var patchedSlots = new List<string>();
             var patchedMaterials = new List<Material>();
             var patchedSlotIndices = new List<int>();
@@ -191,7 +192,7 @@ namespace AvatarBridge
             foreach (int slot in slots)
             {
                 var slotMaterial = PatchPlugSlot(ctx, where, renderer, result.Root, slot, result,
-                    out int skipped);
+                    out int skipped, split.Contains(slot) ? YapsBaker.PlaceKey(result.Root) : null);
                 if (slotMaterial == null)
                 {
                     continue;
@@ -332,7 +333,7 @@ namespace AvatarBridge
         // apply the bake, carry the old system's settings. Null means the
         // slot could not take the deform, and it has said why.
         static Material PatchPlugSlot(BridgeContext ctx, string where, Renderer renderer,
-            Transform plugRoot, int slot, YapsBaker.Result result, out int skippedShadowPasses)
+            Transform plugRoot, int slot, YapsBaker.Result result, out int skippedShadowPasses, string key = null)
         {
             skippedShadowPasses = 0;
             var materials = renderer.sharedMaterials;
@@ -348,6 +349,15 @@ namespace AvatarBridge
             // moves to Simple Lit because Raliv's has no switch. Same rule the
             // toolkit applies to a native plug.
             var source = materials[slot];
+            // A slot another plug on the same shaft already patched in this
+            // conversion is patched again from what it replaced. Patching the
+            // patched copy was refused, fell back to YAPS Simple Lit, and the
+            // shaft lost its own shader's look to the second plug component.
+            if (ctx.YapsMaterialSwaps.TryGetValue((renderer, slot), out var prior)
+                && prior.to == source && prior.from != null)
+            {
+                source = prior.from;
+            }
             var legacy = YapsLegacyMap.Detect(source, out _);
             var patchSource = source;
             Shader shader = null;
@@ -418,7 +428,7 @@ namespace AvatarBridge
             // Read the author's values off the original material before the
             // patch repoints it; a Poiyomi material loses its TPS properties there.
             var patched = YapsBaker.Apply(result, patchSource, shader, ctx.OutputDir + "/YAPS",
-                result.FromSkinnedMesh);
+                result.FromSkinnedMesh, key);
             var unmapped = new List<string>();
             var carried = YapsLegacyMap.Carry(source, patched, unmapped, result.Length, result.Radius);
             if (legacy != YapsLegacyMap.Origin.None && legacy != YapsLegacyMap.Origin.YAPS)
@@ -475,7 +485,8 @@ namespace AvatarBridge
                 YapsOwner.KeepSelfRules(patched, selfAnswers, selfRefuses,
                     YapsBakePrep.AuthoredEntersOwnHips.Contains(plugObject));
             }
-            ctx.YapsMaterialSwaps[(renderer, slot)] = (materials[slot], patched);
+            // Keyed on the original, so a later plug on the slot finds it too.
+            ctx.YapsMaterialSwaps[(renderer, slot)] = (source, patched);
             materials[slot] = patched;
             renderer.sharedMaterials = materials;
             return patched;
@@ -718,7 +729,7 @@ namespace AvatarBridge
         // plug takes the material over and the other never bends. It gets
         // one on the slot's original material, the way the first plug did.
         static List<int> SplitShared(BridgeContext ctx, string where, Renderer renderer, Transform root,
-            List<int> slots)
+            List<int> slots, HashSet<int> split)
         {
             var skin = renderer as SkinnedMeshRenderer;
             if (skin == null || skin.sharedMesh == null)
@@ -752,6 +763,7 @@ namespace AvatarBridge
                     $"It shared \"{renderer.name}\" slot {slot} with a plug on another shaft, and one material " +
                     $"holds one plug's bend. Its triangles moved to slot {added} on a copy of the mesh, so both bend.");
                 result.Add(added);
+                split.Add(added);
             }
             return result;
         }

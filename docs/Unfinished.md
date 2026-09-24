@@ -146,7 +146,28 @@ light, a plug seen.
     renderer and plug, so a third plug's split never deletes the mesh the second one goes back to.
     Probe: split, a bake each, re-bakes split nothing more, a third plug on the first shaft still
     takes its slot over, Remove one at a time down to the original mesh and material.
-    Still owed: the two-avatar subset and a full corpus against the new baseline.
+    - **The subset then found the converter half still broken**: the split slot's generated
+      material is keyed by source material and renderer (`YapsBaker.Tail`), the same for both ears,
+      so the second bake loaded the first one's material by path and took it over again.
+      `YapsBaker.Apply` takes a key now, the plug's `PlaceKey`, for a split slot only. The probe
+      had missed it because Standard cannot be patched and every bake fell back to a Simple Lit
+      copy of its own; it now runs three shaders: a plain one it writes itself (foreign, patched),
+      the project's Poiyomi (already patched in place) and YAPS Simple Lit (native, baked in place).
+      The native case needed a copy with no bake yet, since nothing records an original, and
+      Remove now also keeps a slot whose triangles draw a remaining plug's shaft (a slot taken over
+      in place has neither a record nor a readout source).
+    - **And a pre-existing one, shipped: a shaft with several plug components lost its look.** The
+      second component re-patched the first one's patched material, the patcher refused it, and it
+      fell back to YAPS Simple Lit. On the 3-plug avatar the shaft rendered Simple Lit instead of
+      its Poiyomi material; on the 2-ear avatar the whole accessory mesh did, which is also why four
+      of its toggles (dissolving accessory tiles) were stripped as animating nothing. The converter
+      now patches such a slot from what it replaced, and records that original for the swap
+      repointing. Subset: both ears on their own material and bake (5 submeshes for 5 slots, 2
+      readouts), the four toggles back, the 3-plug shaft back on Poiyomi, two "wears YAPS Simple
+      Lit now" approximations gone.
+    - The weigh pass no longer offers two baked plug materials as a "share a shader" merge
+      (`YapsMarks.IsBakedMaterial`): the split exists because they cannot be one material.
+    Battery and probe green on all of it; corpus 410 is the full check.
   - **Known limit, not fixed:** plugs on one mesh share ONE deform toggle. `material._YAPS_Enabled`
     reaches every slot of a renderer and `material[n]._X` binds nothing, so there is no per-slot
     switch without material swaps; the entry is named for whichever plug baked last. Same before
