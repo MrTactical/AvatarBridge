@@ -167,7 +167,12 @@ light, a plug seen.
       Lit now" approximations gone.
     - The weigh pass no longer offers two baked plug materials as a "share a shader" merge
       (`YapsMarks.IsBakedMaterial`): the split exists because they cannot be one material.
-    Battery and probe green on all of it; corpus 410 is the full check.
+    Battery and probe green on all of it. **Corpus 410 (2026-09-24, full, against the 409
+    baseline): 8 of 84 changed, all explained.** Six avatars lose a "share a shader" set (baked
+    plug materials no longer offered as a merge), the 3-plug avatar loses its two Simple Lit
+    approximations, and the 2-ear avatar shows the split and its four toggles back. Nothing else
+    moved. Digests kept in `Regression/Yaps/Current-410-20260924`; the baseline stays on 409,
+    the shipped 4.6.4, until Joe says otherwise. Still unproven in game: both ears bending at once.
   - **Known limit, not fixed:** plugs on one mesh share ONE deform toggle. `material._YAPS_Enabled`
     reaches every slot of a renderer and `material[n]._X` binds nothing, so there is no per-slot
     switch without material swaps; the entry is named for whichever plug baked last. Same before
@@ -189,7 +194,9 @@ light, a plug seen.
 (public: no `Editor/Yaps`, `Runtime` or `Dev`; add-on: the 4.6.2 file list plus the socket readout
 shader, no converter). Corpus 408 was not clean and was not rerun in full on Joe's word; the fixes
 it led to were checked on the two avatars it named, the probe, the tester, held shapes, smoke and
-`check-defines.sh`. A full corpus run against the shipped code is still owed, as the new baseline.*
+`check-defines.sh`. Corpus 409 (2026-09-23, full, on the shipped code) was the owed run: every
+change against the old baseline was a known 4.6.4 family, warnings and errors only went down, no
+new stuck toggle, so it is the YAPS baseline now (the old one in `Baseline-pre-409-20260924`).*
 
 *4.6.0 shipped 2026-09-12: tag `v4.6.0`, merge `b51296e`, both packages published, 98 commits
 since 4.5.1. The atlas carries tags, one-way rings, the per-plug own-sockets checklist and an
