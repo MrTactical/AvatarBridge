@@ -171,8 +171,9 @@ light, a plug seen.
     baseline): 8 of 84 changed, all explained.** Six avatars lose a "share a shader" set (baked
     plug materials no longer offered as a merge), the 3-plug avatar loses its two Simple Lit
     approximations, and the 2-ear avatar shows the split and its four toggles back. Nothing else
-    moved. Digests kept in `Regression/Yaps/Current-410-20260924`; the baseline stays on 409,
-    the shipped 4.6.4, until Joe says otherwise. Still unproven in game: both ears bending at once.
+    moved. Accepted as the YAPS baseline on Joe's word the same morning (409 kept in
+    `Baseline-pre-410-20260924`); corpus 411, throttled, runs against it. Still unproven in game:
+    both ears bending at once.
   - **Known limit, not fixed:** plugs on one mesh share ONE deform toggle. `material._YAPS_Enabled`
     reaches every slot of a renderer and `material[n]._X` binds nothing, so there is no per-slot
     switch without material swaps; the entry is named for whichever plug baked last. Same before
