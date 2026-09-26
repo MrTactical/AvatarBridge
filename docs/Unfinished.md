@@ -16,6 +16,23 @@ release on his word), then the two items below. **It is 4.6.4** (Joe, same day):
 its number spent on test builds, and the socket readout goes in with it. 4.6.4 shipped that day
 and 4.6.5 on 2026-09-26, so the two items below are next.
 
+**A mesh riding a plug stayed rigid through every rebuild. FIXED ON DEV 2026-09-26, found by Joe on
+his own avatar.** A whole-avatar plug rooted at the armature carries a second skinned mesh, a
+collar, as a rider. The rider's generated copy sat in its slot back on the mesh's own shader, with
+`_YAPS_Enabled` 0 and no `bakedSlots` record. Every Build took `PatchExtra`'s already-ours branch,
+where `IsStale` answered true for an unpatched material (it is its own source, so it names the patch
+it would get) and `Refresh`, with no original in the shader to patch from, did nothing; the `else`
+that assigns the patched shader was never reached. A rider's `_YAPS_Enabled` was never written
+either, where the primary is set to 1 on every bake. So it stayed rigid, and with no `_YAPS_Bake`
+on its shader the setup window stopped listing it as part of the plug. `IsStale` now answers only
+for patched materials (every other caller already filtered to those), and a rider is switched on as
+the primary is. `Dev/Probes/RiderProbe` (armature-rooted plug, body plus collar, the copy reverted
+by hand) failed on the old code and passes. The primary and a mirrored slot already handled the
+same state (`oursAlready`, and `MirrorToSlots`' own branch); the rider path was the third door and
+had none. How the copy got reverted is not known. **Withdrawn, same day:** it was not Remove, which
+leaves a rider slot it has no record of alone; an earlier bake or removal of that mesh as a plug of
+its own is the likelier history.
+
 **1. A runtime tester: the bend as data. PROPOSED, step one is a probe.** Every YAPS bug this week
 (8-bit atlas holes, own socket in the editor, rigid accessories, the torn tip) was found by eye,
 because the bend happens in the vertex shader and nothing on the CPU ever sees it; the corpus

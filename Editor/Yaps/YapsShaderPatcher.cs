@@ -139,7 +139,10 @@ namespace AvatarBridge
         // name in a hidden property's description, the one place a string rides.
         public static bool IsStale(Material patched)
         {
-            return patched != null && patched.shader != null
+            // Patched ones only. An unpatched material is its own source, so it
+            // named the patch it would get and read as stale, and Refresh, with
+            // no original to patch from, left it unpatched on every rebuild.
+            return patched != null && patched.shader != null && SourceShaderOf(patched) != null
                    && CurrentNameFor(patched) is string want && patched.shader.name != want;
         }
 
