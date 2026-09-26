@@ -181,7 +181,8 @@ namespace AvatarBridge
             //
             // result.Root, not plugRoot: the bake may have descended to the shaft,
             // and asking a wider root patches materials the bake left out.
-            var slots = MaterialSlotsOf(renderer, result.Root);
+            var split = new HashSet<int>();
+            var slots = SplitShared(ctx, where, renderer, result.Root, MaterialSlotsOf(renderer, result.Root), split);
             var patchedSlots = new List<string>();
             var patchedMaterials = new List<Material>();
             var patchedSlotIndices = new List<int>();
@@ -191,7 +192,7 @@ namespace AvatarBridge
             foreach (int slot in slots)
             {
                 var slotMaterial = PatchPlugSlot(ctx, where, renderer, result.Root, slot, result,
-                    out int skipped);
+                    out int skipped, split.Contains(slot) ? YapsBaker.PlaceKey(result.Root) : null);
                 if (slotMaterial == null)
                 {
                     continue;
@@ -332,7 +333,7 @@ namespace AvatarBridge
         // apply the bake, carry the old system's settings. Null means the
         // slot could not take the deform, and it has said why.
         static Material PatchPlugSlot(BridgeContext ctx, string where, Renderer renderer,
-            Transform plugRoot, int slot, YapsBaker.Result result, out int skippedShadowPasses)
+            Transform plugRoot, int slot, YapsBaker.Result result, out int skippedShadowPasses, string key = null)
         {
             skippedShadowPasses = 0;
             var materials = renderer.sharedMaterials;
@@ -348,6 +349,15 @@ namespace AvatarBridge
             // moves to Simple Lit because Raliv's has no switch. Same rule the
             // toolkit applies to a native plug.
             var source = materials[slot];
+            // A slot another plug on the same shaft already patched in this
+            // conversion is patched again from what it replaced. Patching the
+            // patched copy was refused, fell back to YAPS Simple Lit, and the
+            // shaft lost its own shader's look to the second plug component.
+            if (ctx.YapsMaterialSwaps.TryGetValue((renderer, slot), out var prior)
+                && prior.to == source && prior.from != null)
+            {
+                source = prior.from;
+            }
             var legacy = YapsLegacyMap.Detect(source, out _);
             var patchSource = source;
             Shader shader = null;
@@ -418,7 +428,7 @@ namespace AvatarBridge
             // Read the author's values off the original material before the
             // patch repoints it; a Poiyomi material loses its TPS properties there.
             var patched = YapsBaker.Apply(result, patchSource, shader, ctx.OutputDir + "/YAPS",
-                result.FromSkinnedMesh);
+                result.FromSkinnedMesh, key);
             var unmapped = new List<string>();
             var carried = YapsLegacyMap.Carry(source, patched, unmapped, result.Length, result.Radius);
             if (legacy != YapsLegacyMap.Origin.None && legacy != YapsLegacyMap.Origin.YAPS)
@@ -475,7 +485,8 @@ namespace AvatarBridge
                 YapsOwner.KeepSelfRules(patched, selfAnswers, selfRefuses,
                     YapsBakePrep.AuthoredEntersOwnHips.Contains(plugObject));
             }
-            ctx.YapsMaterialSwaps[(renderer, slot)] = (materials[slot], patched);
+            // Keyed on the original, so a later plug on the slot finds it too.
+            ctx.YapsMaterialSwaps[(renderer, slot)] = (source, patched);
             materials[slot] = patched;
             renderer.sharedMaterials = materials;
             return patched;
@@ -674,7 +685,7 @@ namespace AvatarBridge
             var found = new List<int>();
             var skin = renderer as SkinnedMeshRenderer;
             var mesh = skin != null ? skin.sharedMesh : null;
-            var plugVertex = mesh != null ? PlugVertexMask(skin, plugRoot) : null;
+            var plugVertex = mesh != null ? YapsSlotSplit.Mask(skin, plugRoot) : null;
             if (plugVertex == null)
             {
                 found.Add(0);
@@ -713,53 +724,48 @@ namespace AvatarBridge
         static int MaterialSlotOf(Renderer renderer, Transform plugRoot) =>
             MaterialSlotsOf(renderer, plugRoot)[0];
 
-        static bool[] PlugVertexMask(SkinnedMeshRenderer skin, Transform plugRoot)
+        // A slot a plug on another shaft already baked in this conversion.
+        // One material holds one plug's bend, so without its own slot this
+        // plug takes the material over and the other never bends. It gets
+        // one on the slot's original material, the way the first plug did.
+        static List<int> SplitShared(BridgeContext ctx, string where, Renderer renderer, Transform root,
+            List<int> slots, HashSet<int> split)
         {
-            var mesh = skin.sharedMesh;
-            var bones = skin.bones;
-            if (mesh == null || bones == null || bones.Length == 0)
+            var skin = renderer as SkinnedMeshRenderer;
+            if (skin == null || skin.sharedMesh == null)
             {
-                return null;
+                return slots;
             }
-
-            var plugBones = new HashSet<int>();
-            for (int b = 0; b < bones.Length; b++)
+            var mine = YapsSlotSplit.Mask(skin, root);
+            var result = new List<int>();
+            foreach (int slot in slots)
             {
-                if (bones[b] != null && bones[b].IsChildOf(plugRoot))
+                bool shared = ctx.YapsPlugs.Any(p => p.Renderer == renderer && p.MaterialSlots.Contains(slot)
+                                                     && !YapsSlotSplit.SameShaft(mine, YapsSlotSplit.Mask(skin, p.Root)));
+                if (!shared)
                 {
-                    plugBones.Add(b);
+                    result.Add(slot);
+                    continue;
                 }
-            }
-            if (plugBones.Count == 0)
-            {
-                for (var above = plugRoot.parent; above != null && plugBones.Count == 0;
-                     above = above.parent)
+                ctx.YapsMaterialSwaps.TryGetValue((renderer, slot), out var swap);
+                var original = swap.from != null ? swap.from : skin.sharedMaterials[slot];
+                int added = YapsSlotSplit.Split(skin, root, slot, mine, original, ctx.OutputDir + "/YAPS", out string why);
+                if (added < 0)
                 {
-                    for (int b = 0; b < bones.Length; b++)
-                    {
-                        if (bones[b] != null && bones[b].IsChildOf(above))
-                        {
-                            plugBones.Add(b);
-                        }
-                    }
+                    ctx.Report.Warning(Category, $"The plug at {where} shares a material with another plug",
+                        $"Both are on \"{renderer.name}\" slot {slot}, on different shafts, and one material holds " +
+                        $"one plug's bend, so this one takes it over and the other will not bend. It could not " +
+                        $"be given a slot of its own: {why}.");
+                    result.Add(slot);
+                    continue;
                 }
+                ctx.Report.Converted(Category, $"The plug at {where} got a material slot of its own",
+                    $"It shared \"{renderer.name}\" slot {slot} with a plug on another shaft, and one material " +
+                    $"holds one plug's bend. Its triangles moved to slot {added} on a copy of the mesh, so both bend.");
+                result.Add(added);
+                split.Add(added);
             }
-            if (plugBones.Count == 0)
-            {
-                return null;
-            }
-
-            var weights = mesh.boneWeights;
-            var mask = new bool[mesh.vertexCount];
-            for (int i = 0; i < mask.Length && i < weights.Length; i++)
-            {
-                var w = weights[i];
-                mask[i] = (plugBones.Contains(w.boneIndex0) && w.weight0 > 0.5f)
-                          || (plugBones.Contains(w.boneIndex1) && w.weight1 > 0.5f)
-                          || (plugBones.Contains(w.boneIndex2) && w.weight2 > 0.5f)
-                          || (plugBones.Contains(w.boneIndex3) && w.weight3 > 0.5f);
-            }
-            return mask;
+            return result;
         }
 
         // --- the sockets -----------------------------------------------

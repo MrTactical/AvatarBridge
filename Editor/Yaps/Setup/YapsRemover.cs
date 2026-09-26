@@ -212,6 +212,12 @@ namespace AvatarBridge
             var top = TopOf(plug.transform);
             var renderer = plug.Target;
             var done = new List<string>();
+            // Other plugs baked on the same mesh. Its menu toggle and size
+            // wiring are theirs too, and so are their slots: removing one plug
+            // used to un-bake every plug on the mesh.
+            var sharing = renderer == null ? new List<YapsPlug>()
+                : (avatar != null ? avatar.transform : top).GetComponentsInChildren<YapsPlug>(true)
+                    .Where(p => p != plug && p.Target == renderer).ToList();
 
             Undo.IncrementCurrentGroup();
             int group = Undo.GetCurrentGroup();
@@ -233,7 +239,7 @@ namespace AvatarBridge
                 // The bake: the material it replaced back in its slot; when
                 // that cannot be found, the deform off and the source shader
                 // back where it is known.
-                var slots = BakedSlots(renderer).ToList();
+                var slots = BakedSlots(renderer).Where(s => !KeptFor(plug, sharing, renderer, s)).ToList();
                 if (slots.Count > 0)
                 {
                     var back = OriginalMaterial(plug, renderer, out string how);
@@ -285,8 +291,21 @@ namespace AvatarBridge
                         : $"deform off on \"{renderer.name}\" ({how})");
                 }
 
+                // The mesh from before this plug's slot split off, while that
+                // split is still the last one made on it. A later one moved
+                // more triangles off the same copy, so it stays.
+                if (plug.splitFrom != null && renderer is SkinnedMeshRenderer skin && skin.sharedMesh != null
+                    && skin.sharedMesh.subMeshCount == plug.splitFrom.subMeshCount + 1)
+                {
+                    Undo.RecordObject(skin, "Remove YAPS plug");
+                    skin.sharedMesh = plug.splitFrom;
+                    skin.sharedMaterials = skin.sharedMaterials.Take(plug.splitFrom.subMeshCount).ToArray();
+                    YapsDebugOverlayBuilder.Replaced(skin, plug.splitFrom);
+                    done.Add($"\"{renderer.name}\" back on the mesh from before its slot split off");
+                }
+
                 // The size wiring in the avatar's own clips.
-                if (avatar != null)
+                if (avatar != null && sharing.Count == 0)
                 {
                     int stripped = StripWiring(avatar, renderer);
                     if (stripped > 0) done.Add($"size wiring out of {stripped} clip(s)");
@@ -325,7 +344,7 @@ namespace AvatarBridge
             if (avatar != null)
             {
                 int before = YapsToggles.Edits;
-                int entries = RemoveEntries(avatar, ToggleEntriesFor(avatar, plug));
+                int entries = sharing.Count > 0 ? 0 : RemoveEntries(avatar, ToggleEntriesFor(avatar, plug));
                 if (entries > 0) done.Add("its menu toggle");
                 string menu = YapsToggles.RefreshMenuAnimator(avatar, before);
                 if (menu != null) done.Add(menu.TrimEnd('.'));
@@ -668,6 +687,40 @@ namespace AvatarBridge
         static bool Wired(UnityEditor.EditorCurveBinding b)
         {
             return WiredProperties.Contains(YapsToggles.Bare(b.propertyName));
+        }
+
+        // A slot another plug on the mesh still bends with: the material it
+        // last baked, a slot drawing its shaft, or a slot only it recorded. A
+        // record of this plug's for a slot kept that way goes to the plug
+        // keeping it, so its own Remove can still put the original back.
+        //
+        // The shaft test is the one that holds for a material baked in place
+        // (already on a YAPS shader): nothing is recorded, and a plug whose
+        // slot a later one took over has no readout source either.
+        static bool KeptFor(YapsPlug plug, List<YapsPlug> sharing, Renderer renderer, int slot)
+        {
+            var material = renderer.sharedMaterials[slot];
+            YapsPlug.BakedSlot RecordOf(YapsPlug p) => p.bakedSlots.FirstOrDefault(b => b != null && b.slot == slot
+                && b.was != null && YapsNativeBuilder.Same(b.renderer, renderer, p));
+            bool Draws(YapsPlug p)
+            {
+                var skin = renderer as SkinnedMeshRenderer;
+                if (skin == null || skin.sharedMesh == null || slot >= skin.sharedMesh.subMeshCount) return false;
+                var mask = YapsSlotSplit.Mask(skin, p.rootBone != null ? p.rootBone : p.transform);
+                return mask != null && skin.sharedMesh.GetTriangles(slot).Any(v => v < mask.Length && mask[v]);
+            }
+            var mine = RecordOf(plug);
+            var keeper = sharing.FirstOrDefault(p => p.readoutSource == material)
+                         ?? sharing.FirstOrDefault(Draws)
+                         ?? (mine == null ? sharing.FirstOrDefault(p => RecordOf(p) != null) : null);
+            if (keeper == null) return false;
+            if (mine != null && RecordOf(keeper) == null)
+            {
+                Undo.RecordObject(keeper, "Remove YAPS plug");
+                keeper.bakedSlots.Add(new YapsPlug.BakedSlot { slot = slot, was = mine.was, renderer = renderer });
+                EditorUtility.SetDirty(keeper);
+            }
+            return true;
         }
 
         static IEnumerable<int> BakedSlots(Renderer renderer)

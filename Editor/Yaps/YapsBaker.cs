@@ -484,12 +484,15 @@ namespace AvatarBridge
         // sharing one material cannot overwrite each other's vertex counts.
         // Not hypothetical: real content ships a clothing material sharing a
         // renderer with a plug, its bake disagreeing with its own count.
+        // key: set for a slot split off another plug's. Both plugs patch the
+        // same source on the same renderer, so without it the second bake
+        // loads the first one's material by path and takes it over again.
         public static Material Apply(Result result, Material source, Shader patchedShader,
-            string outputDir, bool skinned)
+            string outputDir, bool skinned, string key = null)
         {
             var clone = Generated(source, patchedShader,
                 outputDir + "/" + Sanitise(source.name + " (YAPS)")
-                + Tail(source, result.Renderer) + ".mat");
+                + Tail(source, result.Renderer) + (key != null ? " " + key : "") + ".mat");
             Apply(result, clone, skinned);
             return clone;
         }

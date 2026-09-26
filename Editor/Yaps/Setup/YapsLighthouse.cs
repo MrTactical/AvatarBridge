@@ -71,6 +71,21 @@ namespace AvatarBridge
 
         const string OffLabel = "Off";
 
+        // This layer's clips, in every controller it is written to. They
+        // switch a socket on only because nothing else does, so they are not
+        // an owner: read as one, every socket built after the first lighthouse
+        // was left off the menu, and the lighthouse went on switching it
+        // because it had no toggle.
+        public static HashSet<AnimationClip> OwnClips(CVRAvatar avatar)
+        {
+            var clips = new HashSet<AnimationClip>();
+            foreach (var controller in YapsOwner.Targets(avatar))
+                foreach (var layer in controller.layers.Where(l => l.name == LayerName && l.stateMachine != null))
+                    foreach (var child in layer.stateMachine.states)
+                        if (child.state != null && child.state.motion is AnimationClip clip) clips.Add(clip);
+            return clips;
+        }
+
         static void EnsureEntry(CVRAvatar avatar, List<string> labels)
         {
             if (avatar.avatarSettings == null)

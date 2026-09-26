@@ -20,6 +20,12 @@ namespace AvatarBridge
         public static bool IsReadoutMaterial(Material m) =>
             m != null && m.shader != null
             && (m.shader.name == "YAPS/Debug Overlay" || m.shader.name == "YAPS/Socket Readout");
+
+        // A baked plug or socket. The bake, length and frame are one part's,
+        // and two plugs on one mesh are given a material each for exactly
+        // that reason, so merging them would undo it.
+        public static bool IsBakedMaterial(Material m) =>
+            m != null && m.HasProperty("_YAPS_Bake") && m.GetTexture("_YAPS_Bake") != null;
     }
 }
 #endif

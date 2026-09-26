@@ -15,6 +15,18 @@ what SPS code may be looked at in `YAPS-CLEAN-ROOM.md`. Finished records are in 
 release on his word), then the two items below. **It is 4.6.4** (Joe, same day): 4.6.3 is skipped,
 its number spent on test builds, and the socket readout goes in with it.
 
+**Toolkit sockets left off the menu. FIXED ON DEV 2026-09-26, found by Joe on his own avatar.**
+Seven sockets built in the toolkit, and only the first got a menu toggle; the other six sat in
+*Marker lights* alone. His editor log said why, once per socket: "already switched by the animation
+YAPS lighthouse N". The lighthouse switches a chosen socket on when nothing else switches it, and
+its clips live inside the controller rather than in `YAPS/Generated`, so `ToggledBy` read them as
+the avatar's own switch. Sockets whose markers were built before the first full Build (adding a
+socket builds them) were all in the first lighthouse with no toggle, so every later socket was
+"already switched" and could never get one; the same check kept them from being renamed after
+their bone. `YapsLighthouse.OwnClips` is skipped now. `Dev/Probes/SocketToggleProbe` (synthetic
+avatar, markers first, then two full builds) failed 4 of 7 on the old code and passes; an avatar
+built with the bug gets its toggles on the next Build.
+
 **1. A runtime tester: the bend as data. PROPOSED, step one is a probe.** Every YAPS bug this week
 (8-bit atlas holes, own socket in the editor, rigid accessories, the torn tip) was found by eye,
 because the bend happens in the vertex shader and nothing on the CPU ever sees it; the corpus
@@ -122,17 +134,82 @@ light, a plug seen.
     every converted plug. All three now carry `YapsBaker.PlaceKey`, six hex digits of where the
     objects sit by sibling index: unique, and stable across reconverts so a reconvert still
     overwrites its own file.
-  - Found beside it, NOT fixed: on the 3-plug avatar all three plugs bake the same slot, so only
-    the last one's bake reaches the material. If the three are different shafts, two never bend.
-    Pre-existing; needs a look at what the source avatar meant by three plugs on one mesh.
-  - Also beside it, pre-existing, not a 4.6.4 change: the sync check counts a parameter that
-    STARTS under 3200 bits as fitting, so an avatar at 3230/3200 gets a warning, not the error.
-    Whether CVR counts the same way needs the decompiled client.
+  - Found beside it: plugs baking the same slot, so only the last one's bake reaches the material.
+    **FIXED ON DEV 2026-09-23 (Joe: "fix it fully"), not in game.** The 3-plug avatar is one shaft
+    with three plug components (last bake winning is right there); the 2-plug avatar is two ears on
+    one accessory mesh, one slot, so one ear never bent. `YapsSlotSplit`: when a plug's slot already
+    holds a bake from a plug on another shaft (vertex masks overlapping under half), its triangles
+    move to a new submesh on a copy of the mesh (`YAPS <mesh> <key> split.asset`), with a slot of
+    its own on the slot's original material, and it bakes that. The bake is indexed by vertex, so
+    neither bake changes. Both builders: the converter per conversion (`SplitShared`), the toolkit
+    on the bake that finds the other plug's material in its slot. `Dev/Probes/SharedSlotProbe.cs`
+    (synthetic two-shaft mesh, toolkit door) found three bugs in the first cut before it passed:
+    the slots a plug mirrors into were counted before the split, so the second bake mirrored back
+    over the first plug's slot; the new slot first held a copy of the first plug's material, whose
+    bake texture the re-bake path then deleted as "the one it replaces" (it now takes the slot's
+    recorded original, a fresh bake with its own record for Remove); and writing `materialSlot`
+    would have switched off multi-slot and multi-mesh baking on every later re-bake. It also showed
+    Remove un-baking EVERY plug on a mesh (pre-existing, for plugs in different slots too): it took
+    every baked slot, the mesh's toggle and its size wiring. Remove now leaves any slot another plug
+    on the mesh still bends with (handing it the original if the record was the removed plug's),
+    and the toggle and wiring while any plug is left; the plug that split puts back the mesh from
+    before (`YapsPlug.splitFrom`) while its split is still the last one made on it, so removing
+    every plug leaves the avatar on its own mesh, not on a generated copy. Split files are keyed by
+    renderer and plug, so a third plug's split never deletes the mesh the second one goes back to.
+    Probe: split, a bake each, re-bakes split nothing more, a third plug on the first shaft still
+    takes its slot over, Remove one at a time down to the original mesh and material.
+    - **The subset then found the converter half still broken**: the split slot's generated
+      material is keyed by source material and renderer (`YapsBaker.Tail`), the same for both ears,
+      so the second bake loaded the first one's material by path and took it over again.
+      `YapsBaker.Apply` takes a key now, the plug's `PlaceKey`, for a split slot only. The probe
+      had missed it because Standard cannot be patched and every bake fell back to a Simple Lit
+      copy of its own; it now runs three shaders: a plain one it writes itself (foreign, patched),
+      the project's Poiyomi (already patched in place) and YAPS Simple Lit (native, baked in place).
+      The native case needed a copy with no bake yet, since nothing records an original, and
+      Remove now also keeps a slot whose triangles draw a remaining plug's shaft (a slot taken over
+      in place has neither a record nor a readout source).
+    - **And a pre-existing one, shipped: a shaft with several plug components lost its look.** The
+      second component re-patched the first one's patched material, the patcher refused it, and it
+      fell back to YAPS Simple Lit. On the 3-plug avatar the shaft rendered Simple Lit instead of
+      its Poiyomi material; on the 2-ear avatar the whole accessory mesh did, which is also why four
+      of its toggles (dissolving accessory tiles) were stripped as animating nothing. The converter
+      now patches such a slot from what it replaced, and records that original for the swap
+      repointing. Subset: both ears on their own material and bake (5 submeshes for 5 slots, 2
+      readouts), the four toggles back, the 3-plug shaft back on Poiyomi, two "wears YAPS Simple
+      Lit now" approximations gone.
+    - The weigh pass no longer offers two baked plug materials as a "share a shader" merge
+      (`YapsMarks.IsBakedMaterial`): the split exists because they cannot be one material.
+    Battery and probe green on all of it. **Corpus 410 (2026-09-24, full, against the 409
+    baseline): 8 of 84 changed, all explained.** Six avatars lose a "share a shader" set (baked
+    plug materials no longer offered as a merge), the 3-plug avatar loses its two Simple Lit
+    approximations, and the 2-ear avatar shows the split and its four toggles back. Nothing else
+    moved. Accepted as the YAPS baseline on Joe's word the same morning (409 kept in
+    `Baseline-pre-410-20260924`); corpus 411, throttled, runs against it. Still unproven in game:
+    both ears bending at once.
+  - **Known limit, not fixed:** plugs on one mesh share ONE deform toggle. `material._YAPS_Enabled`
+    reaches every slot of a renderer and `material[n]._X` binds nothing, so there is no per-slot
+    switch without material swaps; the entry is named for whichever plug baked last. Same before
+    the split for plugs in different slots.
+  - ~~Also beside it: the sync check counts a parameter that STARTS under 3200 bits as fitting, so
+    an avatar at 3230/3200 gets a warning, not the error.~~ **WITHDRAWN 2026-09-23: the client does
+    the same.** `AvatarAnimatorManager.CreateParameterDefinition` (decompiled, beta client) adds a
+    synced parameter when `AASBitUsage < 3200`, before adding its 32 bits, in the animator's
+    parameter order, so a float starting at 3199 syncs and 3231 is the real ceiling. The one
+    difference left: `IsSynced` also skips parameters an animation curve controls
+    (`IsParameterControlledByCurve`), which the check still counts, so it can only overcount.
 - **The readout is optional, Joe 2026-09-23.** An *In-game readout* tick on every plug (applies on
   re-bake) and socket (applies at once when built), in the See it work card. With nothing left
   carrying one, `Menu` now also drops the `YAPS/Readout` parameter: a controller parameter syncs
   whether the menu names it or not, so before this the bit outlived the toggle. `ReadoutProbe`
   turns every tick off (no readout, layer, parameter or row) and back on.
+
+*4.6.4 shipped 2026-09-23: tag `v4.6.4`, merge `d3f891c`, both packages published and extracted
+(public: no `Editor/Yaps`, `Runtime` or `Dev`; add-on: the 4.6.2 file list plus the socket readout
+shader, no converter). Corpus 408 was not clean and was not rerun in full on Joe's word; the fixes
+it led to were checked on the two avatars it named, the probe, the tester, held shapes, smoke and
+`check-defines.sh`. Corpus 409 (2026-09-23, full, on the shipped code) was the owed run: every
+change against the old baseline was a known 4.6.4 family, warnings and errors only went down, no
+new stuck toggle, so it is the YAPS baseline now (the old one in `Baseline-pre-409-20260924`).*
 
 *4.6.0 shipped 2026-09-12: tag `v4.6.0`, merge `b51296e`, both packages published, 98 commits
 since 4.5.1. The atlas carries tags, one-way rings, the per-plug own-sockets checklist and an
