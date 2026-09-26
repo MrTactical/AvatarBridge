@@ -350,12 +350,10 @@ namespace AvatarBridge
                 foreach (Match m in Regex.Matches(text, @"#include\s+""([^""]+)"""))
                 {
                     string rel = m.Groups[1].Value;
-                    // A leading slash in an include is relative to Unity and rooted
-                    // to Path.Combine.
-                    string candidate = Path.Combine(folder, rel.TrimStart('/', '\\'));
-                    if (File.Exists(candidate))
+                    string candidate = ResolveInclude(folder, rel);
+                    if (candidate != null)
                     {
-                        Walk(candidate.Replace('\\', '/'), rel);
+                        Walk(candidate, rel);
                     }
                 }
             }
@@ -363,6 +361,32 @@ namespace AvatarBridge
             Walk(shaderPath, null);
             return unit;
         }
+
+        // The file an #include names, found the way Unity finds it: beside the
+        // file it appears in, else from the project root, which is how an
+        // "Assets/..." or "Packages/..." include is written. Only the first was
+        // tried, so a shader whose vertex function sat in a root-written include
+        // was refused as unreadable and drew in one eye. Null for Unity's own.
+        internal static string ResolveInclude(string folder, string rel)
+        {
+            string trimmed = Regex.Replace(rel, @"[\\/]+", "/").TrimStart('/');
+            string beside = Path.Combine(folder, trimmed);
+            if (File.Exists(beside)) return beside.Replace('\\', '/');
+            if (trimmed.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase)
+                || trimmed.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase))
+            {
+                string rooted = FileUtil.GetPhysicalPath(trimmed);
+                if (!string.IsNullOrEmpty(rooted) && File.Exists(rooted)) return rooted.Replace('\\', '/');
+            }
+            return null;
+        }
+
+        // The declaration line, space or not: ShaderLab takes Shader"name",
+        // and a copy the old pattern missed kept the original's name beside
+        // it. Anchored to a line start so a display name ending in Shader is safe.
+        internal static string Rename(string text, string newName) =>
+            Regex.Replace(text, @"^([ \t]*)Shader\s*""[^""]+""",
+                m => m.Groups[1].Value + "Shader \"" + newName + "\"", RegexOptions.Multiline);
 
         internal static SourceFile FindIn(List<SourceFile> unit, string pattern, out Match match)
         {
@@ -529,8 +553,7 @@ namespace AvatarBridge
 
             // Rename so it can't collide with the original in the shader list.
             string newName = shaderName + " (SPI)";
-            shaderFile.Text = Regex.Replace(shaderFile.Text, @"Shader\s+""[^""]+""",
-                "Shader \"" + newName + "\"", RegexOptions.None);
+            shaderFile.Text = Rename(shaderFile.Text, newName);
 
             // Name every file, then repoint the #include lines at the copies. Flattened into one
             // folder, so an include written as "sub/foo.cginc" becomes just "foo_SPI.cginc".
@@ -567,9 +590,8 @@ namespace AvatarBridge
                 string folder = Path.GetDirectoryName(file.OriginalPath) ?? ".";
                 file.Text = Regex.Replace(file.Text, @"#include\s+""([^""]+)""", m =>
                 {
-                    string candidate = Path.Combine(folder,
-                        m.Groups[1].Value.TrimStart('/', '\\'));
-                    if (File.Exists(candidate) &&
+                    string candidate = ResolveInclude(folder, m.Groups[1].Value);
+                    if (candidate != null &&
                         byPath.TryGetValue(Path.GetFullPath(candidate), out var target) &&
                         target != file)
                     {

@@ -367,8 +367,7 @@ namespace AvatarBridge
 
             string hash = Hash(sourcePath + EmittedVersion(yaps) + unit.Count);
             string newName = PatchedName(shaderFile.Text, hash);
-            shaderFile.Text = Regex.Replace(shaderFile.Text, @"Shader\s+""[^""]+""",
-                "Shader \"" + newName + "\"");
+            shaderFile.Text = ShaderSpiPatcher.Rename(shaderFile.Text, newName);
 
             InstallShaderGui(shaderFile, material.shader.name);
 
@@ -846,9 +845,8 @@ namespace AvatarBridge
                 string folder = Path.GetDirectoryName(file.OriginalPath) ?? ".";
                 file.Text = Regex.Replace(file.Text, @"#include\s+""([^""]+)""", m =>
                 {
-                    string candidate = Path.Combine(folder,
-                        m.Groups[1].Value.TrimStart('/', '\\'));
-                    if (File.Exists(candidate)
+                    string candidate = ShaderSpiPatcher.ResolveInclude(folder, m.Groups[1].Value);
+                    if (candidate != null
                         && byPath.TryGetValue(Path.GetFullPath(candidate), out var target)
                         && target != file)
                     {

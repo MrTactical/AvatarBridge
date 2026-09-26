@@ -33,6 +33,26 @@ had none. How the copy got reverted is not known. **Withdrawn, same day:** it wa
 leaves a rider slot it has no record of alone; an earlier bake or removal of that mesh as a plug of
 its own is the likelier history.
 
+**A shader drew into one eye with the stereo patch on. FIXED ON DEV 2026-09-26, found by Joe, not
+verified in game.** An eye shader keeps its vertex and fragment functions in an include named from
+the project root, `#include "Assets/<vendor>//Shaders/.../Base.cginc"`, doubled slash and all.
+`ShaderSpiPatcher.ReadUnit` looked for an include only beside the file naming it, never read that
+one, found no vertex function and refused the shader ("vertex function signature not recognised"),
+so it kept drawing into one eye. The same beside-only lookup sat in both patchers' include
+repointing and in a separate reader `BridgeDiagnostics` kept for the one-eye warning. All now go
+through `ShaderSpiPatcher.ResolveInclude` (beside the file, else from the project root through
+`FileUtil.GetPhysicalPath`), and the warning reads through `ReadUnit` itself so the two cannot
+disagree. A consequence: a `Packages/...` include now resolves too, so a shader including a
+package's file gets that file copied into `RehomedAssets` with the rest, where before its include
+was left pointing at the package. Patching it then showed a second fault: the header is
+`Shader"name"`, no space, which ShaderLab accepts and the rename pattern `Shader\s+"` did not, so the
+patched copy came out under the original's name. Both patchers rename through
+`ShaderSpiPatcher.Rename` now, anchored to a line start so a display name ending in "Shader" is never
+taken. `Dev/Probes/SpiIncludeProbe` (a synthetic shader with both traits, and `-spiShader` for a real
+one) passes; the real shader, copied into a test project, came out patched, renamed and compiling,
+where before the rename fix it came out patched under its own name. The YAPS rename shares the
+helper and was not probed separately. Both eyes can only be checked in game.
+
 **1. A runtime tester: the bend as data. PROPOSED, step one is a probe.** Every YAPS bug this week
 (8-bit atlas holes, own socket in the editor, rigid accessories, the torn tip) was found by eye,
 because the bend happens in the vertex shader and nothing on the CPU ever sees it; the corpus
