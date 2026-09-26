@@ -170,9 +170,12 @@ namespace AvatarBridge
                 }
             }
 
+            var lighthouse = YapsLighthouse.OwnClips(avatar);
             foreach (var clip in ClipsOfAvatar(avatar, animator))
             {
-                if (Generated(clip)) continue;
+                // The lighthouse's clips live inside the controller, not in the
+                // generated folder, so Generated alone never caught them.
+                if (Generated(clip) || lighthouse.Contains(clip)) continue;
                 if (Switches(clip, paths, targetPath)) return $"the animation \"{clip.name}\"";
             }
             return null;

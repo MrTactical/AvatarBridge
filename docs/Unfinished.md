@@ -15,6 +15,18 @@ what SPS code may be looked at in `YAPS-CLEAN-ROOM.md`. Finished records are in 
 release on his word), then the two items below. **It is 4.6.4** (Joe, same day): 4.6.3 is skipped,
 its number spent on test builds, and the socket readout goes in with it.
 
+**Toolkit sockets left off the menu. FIXED ON DEV 2026-09-26, found by Joe on his own avatar.**
+Seven sockets built in the toolkit, and only the first got a menu toggle; the other six sat in
+*Marker lights* alone. His editor log said why, once per socket: "already switched by the animation
+YAPS lighthouse N". The lighthouse switches a chosen socket on when nothing else switches it, and
+its clips live inside the controller rather than in `YAPS/Generated`, so `ToggledBy` read them as
+the avatar's own switch. Sockets whose markers were built before the first full Build (adding a
+socket builds them) were all in the first lighthouse with no toggle, so every later socket was
+"already switched" and could never get one; the same check kept them from being renamed after
+their bone. `YapsLighthouse.OwnClips` is skipped now. `Dev/Probes/SocketToggleProbe` (synthetic
+avatar, markers first, then two full builds) failed 4 of 7 on the old code and passes; an avatar
+built with the bug gets its toggles on the next Build.
+
 **1. A runtime tester: the bend as data. PROPOSED, step one is a probe.** Every YAPS bug this week
 (8-bit atlas holes, own socket in the editor, rigid accessories, the torn tip) was found by eye,
 because the bend happens in the vertex shader and nothing on the CPU ever sees it; the corpus
