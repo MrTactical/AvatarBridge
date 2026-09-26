@@ -13,19 +13,8 @@ what SPS code may be looked at in `YAPS-CLEAN-ROOM.md`. Finished records are in 
 
 **Decided 2026-09-23 (Joe):** ship the next release first (one default corpus run authorised,
 release on his word), then the two items below. **It is 4.6.4** (Joe, same day): 4.6.3 is skipped,
-its number spent on test builds, and the socket readout goes in with it.
-
-**Toolkit sockets left off the menu. FIXED ON DEV 2026-09-26, found by Joe on his own avatar.**
-Seven sockets built in the toolkit, and only the first got a menu toggle; the other six sat in
-*Marker lights* alone. His editor log said why, once per socket: "already switched by the animation
-YAPS lighthouse N". The lighthouse switches a chosen socket on when nothing else switches it, and
-its clips live inside the controller rather than in `YAPS/Generated`, so `ToggledBy` read them as
-the avatar's own switch. Sockets whose markers were built before the first full Build (adding a
-socket builds them) were all in the first lighthouse with no toggle, so every later socket was
-"already switched" and could never get one; the same check kept them from being renamed after
-their bone. `YapsLighthouse.OwnClips` is skipped now. `Dev/Probes/SocketToggleProbe` (synthetic
-avatar, markers first, then two full builds) failed 4 of 7 on the old code and passes; an avatar
-built with the bug gets its toggles on the next Build.
+its number spent on test builds, and the socket readout goes in with it. 4.6.4 shipped that day
+and 4.6.5 on 2026-09-26, so the two items below are next.
 
 **1. A runtime tester: the bend as data. PROPOSED, step one is a probe.** Every YAPS bug this week
 (8-bit atlas holes, own socket in the editor, rigid accessories, the torn tip) was found by eye,
@@ -104,7 +93,7 @@ light, a plug seen.
   for a socket's own renderer, out of the survey's lift-off candidates, as the atlas writers are.
   The probe checks the first on a real patched plug and passes on three avatars; the survey half
   is unmeasured (407 had no socket readouts). A clean corpus run is still owed before release.
-- **Corpus 408 (2026-09-23), not clean: plugs sharing a mesh. FIXED ON DEV.** Two avatars carry
+- **Corpus 408 (2026-09-23), not clean: plugs sharing a mesh. FIXED, SHIPPED IN 4.6.5.** Two avatars carry
   more than one plug on one renderer (3 and 2). Readouts were built one plug at a time, so the
   next plug measured the last one's readout quads as part of itself and patched its readout slot
   into a copy of the plug: the 3-plug avatar drew its plug three times over, one working readout,
@@ -135,7 +124,7 @@ light, a plug seen.
     objects sit by sibling index: unique, and stable across reconverts so a reconvert still
     overwrites its own file.
   - Found beside it: plugs baking the same slot, so only the last one's bake reaches the material.
-    **FIXED ON DEV 2026-09-23 (Joe: "fix it fully"), not in game.** The 3-plug avatar is one shaft
+    **FIXED 2026-09-23 (Joe: "fix it fully"), shipped in 4.6.5, not in game.** The 3-plug avatar is one shaft
     with three plug components (last bake winning is right there); the 2-plug avatar is two ears on
     one accessory mesh, one slot, so one ear never bent. `YapsSlotSplit`: when a plug's slot already
     holds a bake from a plug on another shaft (vertex masks overlapping under half), its triangles
@@ -202,6 +191,15 @@ light, a plug seen.
   carrying one, `Menu` now also drops the `YAPS/Readout` parameter: a controller parameter syncs
   whether the menu names it or not, so before this the bit outlived the toggle. `ReadoutProbe`
   turns every tick off (no readout, layer, parameter or row) and back on.
+
+*4.6.5 shipped 2026-09-26: tag `v4.6.5`, merge `a744e6c`, both packages published and extracted
+(public: the 4.6.4 file list; add-on: the 4.6.4 file list plus `YapsSlotSplit.cs`, no converter).
+In it: a slot of its own for each plug sharing a mesh, patching a re-patched slot from its
+original instead of falling back to Simple Lit, Remove leaving the other plugs on a mesh alone,
+the weigh pass leaving baked materials out, and the Toolkit socket toggles, plus a README tidy
+against the window. Corpus 410 is the baseline and 411 (throttled, 2026-09-24) was clean, but
+both predate the toggle fix, which was checked by `SocketToggleProbe`, the battery and Joe's own
+avatar. Not worn in game yet.*
 
 *4.6.4 shipped 2026-09-23: tag `v4.6.4`, merge `d3f891c`, both packages published and extracted
 (public: no `Editor/Yaps`, `Runtime` or `Dev`; add-on: the 4.6.2 file list plus the socket readout
