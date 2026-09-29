@@ -875,6 +875,22 @@ IK. Needs the reporter's SDK version, which bone, and what the wrong result actu
 
 ## Loose ends, small but real
 
+### A chain's tip bone lands 100 times too far on a scale-100 armature. FOUND 2026-09-29, not fixed
+
+Found in a user's report (4.6.4). `MagicaClothWriter` realises a PhysBone's Endpoint Position as a
+`<leaf>_End` child with `localPosition = EndpointPosition`, so the value is read in the leaf's own
+units. On an armature exported from Blender at scale 100 without applied transforms, each tip sat
+100 times too far out: 0.1 became 10 m, 0.06 6 m, 0.05 5 m, 0.02 2 m, measured from the converted
+prefab. `ApplyMotionLeash` measures the chain in world metres through those tips, so the swing bound
+came out at 7.7 m over a 10.075 m chain and never binds; the chains swing further than the source
+allowed and the long tips stiffen them. `DynamicBoneWriter` hands the same value to `m_EndOffset`,
+which DynamicBone applies through `transform.TransformDirection` (rotation only, so metres), so the
+two physics paths already disagree on the same avatar. The authored values only make sense as
+metres. Not yet settled: how VRChat's PhysBone reads Endpoint Position on a scaled bone. Probe that
+before changing anything; if it is metres, the tip's local position is the value over the leaf's
+lossy scale, and the leash follows. The same report's Play-mode collapse, meshes pulled into lines
+while edit mode looked right, was the user's own setup and not this.
+
 ### Menu toggles did nothing on a plug whose material was not its mesh's first. FIXED ON DEV 2026-09-23, for 4.6.4, not verified in game
 
 Found by the readout probe: the readout sits in slot 1 or 2, and through a real Animator it never
