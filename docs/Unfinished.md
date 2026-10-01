@@ -105,6 +105,16 @@ digests the conversion only. Design:
 - **Scenarios, seeded, run on their own.** Sockets approaching from a shell of directions, swept
   past the tip, withdrawn; locomotion with physics on; the Animator Tester's toggle flips; HDR,
   8-bit and small views; a second avatar for ownership. A failure saves a repro scene.
+  **First part BUILT 2026-10-02**, rule 7 of `YapsBendTester`: a hole comes in from a seeded
+  direction (0 to 75 degrees off the shaft, any turn) to a seeded depth (0.2 to 0.8L), sweeps 20 to
+  50 degrees across the tip there, and withdraws to 1.8L, with no bend out of reach, the atlas
+  finding it at its deepest, no seam past 0.5 mm, under 1% of edges crushed outside the opening,
+  no stretch past 6x and no mesh step past ten times the socket's, checked at every step.
+  `-yapsSeed` and `-yapsScenarios` (default 1 and 6) pick them; a failure prints the
+  `-yapsSeed n -yapsScenario i` line that replays it alone, in place of a saved scene, since the
+  capture materials are not assets a scene could keep. First run on Alexa: 6 of 6 hold, 130 to 178
+  steps each, and it has not yet been seen to fail. Still to do: locomotion with physics on, toggle
+  flips, small views, a second avatar.
 - **Invariants, one per bug met.** No socket in range, no bend. A socket anywhere round the tip
   resolves. No edge stretches past a bound, across renderers too. Hidden parts stay hidden bent.
   A small socket move is a small mesh change. Every camera gives the same answer.
