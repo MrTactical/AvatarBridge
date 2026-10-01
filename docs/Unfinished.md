@@ -891,7 +891,19 @@ error(s)" quoted Unity's own message about a transition testing a parameter its 
 declares (the string is in `Unity.exe`), counted as Fury's because Fury was on the stack. It is a
 Warning of its own now and no longer says not to upload; that branch is compile-checked, not probed.
 
-### A chain's tip bone lands 100 times too far on a scale-100 armature. FOUND 2026-09-29, not fixed
+### A chain's tip bone lands 100 times too far on a scale-100 armature. WITHDRAWN 2026-10-01: VRChat does the same
+
+**Withdrawn, measured.** `Dev/Probes/EndpointScaleProbe` asks VRChat's own simulation, in Play mode:
+two chains under a parent at scale 100, Endpoint Position 0.1, one with a sphere collider 5 m out
+that only a tip in scaled units could reach, one with a collider just past the bone. The far collider
+turned its chain 3.03 degrees, the angle a 10 m tip needs to clear it, and the near one 0.89 degrees,
+where a 0.1 m tip would have needed about 11. So PhysBone reads Endpoint Position in the leaf's scaled
+units, as the `_End` bone does, and the 7.7 m leash over a 10 m tip is the same 45 degrees. The
+authored values were simply long in VRChat too. What remains is the other path: `DynamicBoneWriter`
+passes the raw value to `m_EndOffset`, which DynamicBone reads in metres, so on a scale-100
+armature its tips come out 100 times shorter than VRChat's. Nobody has reported it and DynamicBone
+is rarely the target; fix it with a scale, the first time it matters. The original record follows.
+
 
 Found in a user's report (4.6.4). `MagicaClothWriter` realises a PhysBone's Endpoint Position as a
 `<leaf>_End` child with `localPosition = EndpointPosition`, so the value is read in the leaf's own
