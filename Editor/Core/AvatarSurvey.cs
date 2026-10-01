@@ -8,8 +8,10 @@
 //
 // Nothing here writes to the avatar.
 #if CVR_CCK_EXISTS
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using ABI.CCK.Components;
 using ABI.CCK.Scripts;
@@ -227,12 +229,24 @@ namespace AvatarBridge
                 if (e == null) continue;
                 string machine = e.machineName;
                 model.Controls.Add(new Control { Name = e.name, Machine = machine, Kind = e.type.ToString() });
+                bool native = DrivesTargets(e);
                 foreach (var p in model.Parameters.Where(p => Names(machine).Contains(p.Name)))
                 {
                     p.Writers.Add($"the menu control \"{e.name}\"");
                     p.How.Add(Source.Menu);
+                    if (native) p.Readers.Add($"the CCK's own layer for \"{e.name}\"");
                 }
             }
+        }
+
+        // An entry the CCK builds its own layer for at "Create Controller".
+        // Its objects are its own targets, so no layer of ours reads it, and
+        // that read as a dead control: the converter pruned every one.
+        internal static bool DrivesTargets(CVRAdvancedSettingsEntry entry)
+        {
+            var setting = entry?.setting;
+            var field = setting?.GetType().GetField("gameObjectTargets", BindingFlags.Public | BindingFlags.Instance);
+            return field?.GetValue(setting) is IList list && list.Count > 0;
         }
 
         // A control writes its machine name, and the axis suffixes the

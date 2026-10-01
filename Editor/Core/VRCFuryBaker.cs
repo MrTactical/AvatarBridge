@@ -79,10 +79,20 @@ namespace AvatarBridge
             // Fury was asking for was unreadable and the second failure was invisible. Fury names
             // the missing file, and that name IS the fix, so it has to survive into the report.
             var furyMessages = new List<string>();
+            // Unity's own complaint about the avatar's controller, raised while
+            // Fury reads it. Counted as a Fury failure, it told a user not to
+            // upload an avatar Fury had built, and hid the real fault.
+            var unityNotes = new List<string>();
             void OnLog(string condition, string stackTrace, LogType type)
             {
                 if (type != LogType.Exception && type != LogType.Error)
                 {
+                    return;
+                }
+                if (condition != null && condition.StartsWith("Controller '", StringComparison.Ordinal)
+                    && condition.Contains("which does not exist in controller"))
+                {
+                    if (!unityNotes.Contains(condition)) unityNotes.Add(condition);
                     return;
                 }
                 if ((stackTrace != null && (stackTrace.Contains("VF.") || stackTrace.Contains("VRCF")))
@@ -120,6 +130,15 @@ namespace AvatarBridge
             finally
             {
                 Application.logMessageReceived -= OnLog;
+            }
+
+            if (unityNotes.Count > 0)
+            {
+                report.Warning(Category,
+                    $"{unityNotes.Count} transition(s) in the avatar's own controllers test a parameter the controller never declares",
+                    string.Join(" | ", unityNotes.Take(4).Select(m => "\"" + Truncate(Flatten(m), 300) + "\"")) +
+                    ": Unity's message, not a VRCFury failure. Declare that parameter on that controller if the " +
+                    "transition should work.");
             }
 
             if (furyErrors > 0)

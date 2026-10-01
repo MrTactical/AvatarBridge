@@ -1960,6 +1960,11 @@ project"**: Fury's message says which files, this says which component wants the
 feature so a failure shows a dialog and the build *continues*, which is why a bake can "succeed" with
 half the avatar missing, and why this is an Error that says not to upload.
 
+**"N transition(s) in the avatar's own controllers test a parameter the controller never declares"**
+is a Warning, not a Fury failure: Unity names the controller, state and parameter while Fury reads
+it. Declare that parameter on that controller if the transition should work. Older releases counted
+it as a VRCFury error and said not to upload.
+
 ### A toggle switches on, the layer plays, and nothing changes on screen
 
 If the report says **"animated material property(ies) don't exist on the shader they target"**, this

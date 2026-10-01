@@ -875,6 +875,22 @@ IK. Needs the reporter's SDK version, which bone, and what the wrong result actu
 
 ## Loose ends, small but real
 
+### Toggle style "CVR Native Targets" lost its toggles (issue #8). FIXED ON DEV 2026-10-01
+
+Reported on 4.6.1 as every toggle dead in game. `ToggleNativizer` hands a plain object toggle to the
+CCK: the objects go into the menu entry's `gameObjectTargets`, the layer is deleted, the parameter is
+kept. `PruneDeadMenuEntries` then saw a declared parameter no layer read and deleted the entry, so
+every toggle handed over left the menu; the report listed them as "Menu entry ... removed" in the
+Animator section and as "toggled natively by CVR" under Native toggles, and nobody read the two
+together. The survey made the same mistake for the ones a driver kept alive ("control that does
+nothing"). Both now treat an entry with targets as read, through `AvatarSurvey.DrivesTargets`.
+`Dev/Probes/NativeToggleProbe` converts one avatar with the native style: on the old build 8 toggles
+handed over and all 8 pruned; with the fix 25 of 25 checks. The corpus profile uses Animator Layers,
+so the corpus never ran this path. The report's other lead was a red herring: "VRCFury reported 2
+error(s)" quoted Unity's own message about a transition testing a parameter its controller never
+declares (the string is in `Unity.exe`), counted as Fury's because Fury was on the stack. It is a
+Warning of its own now and no longer says not to upload; that branch is compile-checked, not probed.
+
 ### A chain's tip bone lands 100 times too far on a scale-100 armature. FOUND 2026-09-29, not fixed
 
 Found in a user's report (4.6.4). `MagicaClothWriter` realises a PhysBone's Endpoint Position as a
