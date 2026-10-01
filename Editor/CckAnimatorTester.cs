@@ -16,8 +16,14 @@ namespace AvatarBridge
     // Gesture Manager cannot test conversions; it needs the removed
     // VRC descriptor. Every control here writes the parameters the
     // client writes, coerced by declared type like the client.
-    public class CckAnimatorTester : EditorWindow
+    public partial class CckAnimatorTester : EditorWindow
     {
+        // The physics card lives in its own file: it needs MagicaCloth2.
+        partial void EnablePhysics();
+        partial void DisablePhysics();
+        partial void PhysicsPlayModeChanged(PlayModeStateChange change);
+        partial void AddPhysicsCard(VisualElement scroll, CVRAvatar avatar, bool live);
+
         [MenuItem("Tools/Avatar Bridge/CCK Animator Tester")]
         static void Open()
         {
@@ -76,6 +82,7 @@ namespace AvatarBridge
             // writes these weights. An editor-update write lands at an unspecified point around
             // the frame and loses to the animator often enough to look broken.
             Application.onBeforeRender += HoldFaceShapes;
+            EnablePhysics();
         }
 
         void CreateGUI()
@@ -109,9 +116,14 @@ namespace AvatarBridge
             Selection.selectionChanged -= Rebuild;
             EditorApplication.update -= PollForChanges;
             Application.onBeforeRender -= HoldFaceShapes;
+            DisablePhysics();
         }
 
-        void OnPlayModeChanged(PlayModeStateChange _) => Rebuild();
+        void OnPlayModeChanged(PlayModeStateChange change)
+        {
+            PhysicsPlayModeChanged(change);
+            Rebuild();
+        }
 
         void PollForChanges()
         {
@@ -641,6 +653,8 @@ namespace AvatarBridge
             }) { text = "Snap \"#\" locals to their defaults  (how remote clients hold them)" });
             remote.SetEnabled(live);
             scroll.Add(remote);
+
+            AddPhysicsCard(scroll, avatar, live);
 
             // ---- live layer readout ----
             // Pinned below the scroll view, not inside it. The point is

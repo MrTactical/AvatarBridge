@@ -16,6 +16,27 @@ release on his word), then the two items below. **It is 4.6.4** (Joe, same day):
 its number spent on test builds, and the socket readout goes in with it. 4.6.4 shipped that day
 and 4.6.5 on 2026-09-26, so the two items below are next.
 
+**A Physics card in the CCK Animator Tester. BUILT 2026-10-02, unreleased: Joe tries it first.**
+Asked for by Joe (motion presets, grab and fling, overlay; not the side-by-side with VRChat). A
+card of its own, `Editor/CckAnimatorTester.Physics.cs`, behind `AVATARBRIDGE_MAGICA`, wired through
+partial methods so the tester builds without MagicaCloth2. Play mode only. *Walk*, *Run* (circles
+1.5 and 3 m across, so there is never an about-turn the cloth would read as a teleport), *Turn*,
+*Jump* (Grounded off in the air), *Shake*, *Sit*, *Stop*, driving the avatar root from
+`Application.onBeforeRender` with the locomotion parameters alongside. *Grab chains in the Scene
+view* pulls the cloth component nearest the cursor toward the mouse with MagicaCloth's `AddForce`
+and flings it on release, so it moves a whole component, not one bone. *Draw every chain* sets
+MagicaCloth's own `GizmoSerializeData.always` and `clothDebugSettings.enable` on every chain and
+puts them back when switched off; the card adds names and each bone's swing bound, measured from
+the rest pose captured as Play starts. Newer MagicaCloth2 members are reached by name.
+`Dev/Probes/PhysicsTesterProbe` runs it headless in Play mode on a converted avatar: a push moves a
+chain 5 mm, walking moves the avatar 1.43 m and swings chains 16.6 degrees against 0.0 standing,
+Stop puts it back, the overlay goes on and back to how each chain was. Only 2 of that avatar's 12
+cloths were running at rest; why the other 10 were not was not looked into. Not yet seen by eye:
+the Scene view drawing and the mouse grab, which a batch run cannot show. **Compile-check gap found
+on the way:** `compile-check.sh` never defines `AVATARBRIDGE_MAGICA`, and `check-defines.sh`
+compiles the deployed copy in a project, not the repo, so code behind both CCK and MagicaCloth is
+compiled by neither until it is deployed; run `check-defines.sh` against the project holding it.
+
 **A mesh riding a plug stayed rigid through every rebuild. FIXED ON DEV 2026-09-26, found by Joe on
 his own avatar.** A whole-avatar plug rooted at the armature carries a second skinned mesh, a
 collar, as a rider. The rider's generated copy sat in its slot back on the mesh's own shader, with
