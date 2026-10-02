@@ -951,7 +951,11 @@ units, as the `_End` bone does, and the 7.7 m leash over a 10 m tip is the same 
 authored values were simply long in VRChat too. What remains is the other path: `DynamicBoneWriter`
 passes the raw value to `m_EndOffset`, which DynamicBone reads in metres, so on a scale-100
 armature its tips come out 100 times shorter than VRChat's. Nobody has reported it and DynamicBone
-is rarely the target; fix it with a scale, the first time it matters. The original record follows.
+is rarely the target. **FIXED ON WIP 2026-10-02 (Joe's go-ahead overnight):** the value is scaled
+by the chain root's lossy scale, so the tip's length matches; its direction still follows
+DynamicBone's own transform, not each leaf's, which no single offset can match. Compile-checked in
+the corpus project; not run, since DynamicBone's tip is read from its source (line 619,
+`TransformDirection`) rather than measured. The original record follows.
 
 
 Found in a user's report (4.6.4). `MagicaClothWriter` realises a PhysBone's Endpoint Position as a

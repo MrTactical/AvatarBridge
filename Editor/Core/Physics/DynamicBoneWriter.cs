@@ -139,7 +139,16 @@ namespace AvatarBridge
                 }
             }
 
-            db.m_EndOffset = data.EndpointPosition;
+            // PhysBone reads Endpoint Position in the bone's own scaled units
+            // (measured, Dev/Probes/EndpointScaleProbe), DynamicBone reads
+            // m_EndOffset in metres, so on an armature at scale 100 the tip
+            // came out a hundred times short.
+            // ponytail: length only; DynamicBone turns the offset by its own
+            // transform, not each leaf's, which one offset cannot match on a
+            // chain whose leaves face apart.
+            var tipScale = data.Root.lossyScale;
+            db.m_EndOffset = data.EndpointPosition *
+                             ((Mathf.Abs(tipScale.x) + Mathf.Abs(tipScale.y) + Mathf.Abs(tipScale.z)) / 3f);
             db.m_Exclusions = new List<Transform>(data.Ignores);
             if (data.HumanoidExclusions.Count > 0)
             {

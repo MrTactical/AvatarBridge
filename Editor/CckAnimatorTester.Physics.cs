@@ -245,7 +245,7 @@ namespace AvatarBridge
 
         void PhysicsSceneGui(SceneView view)
         {
-            if (!Application.isPlaying) return;
+            if (!Application.isPlaying || (!_overlay && !_grab)) return;
             var avatar = ResolveAvatar();
             if (_overlay) DrawChains(avatar);
             if (!_grab || avatar == null) return;
