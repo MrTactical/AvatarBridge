@@ -13,8 +13,18 @@ what SPS code may be looked at in `YAPS-CLEAN-ROOM.md`. Finished records are in 
 
 **Decided 2026-09-23 (Joe):** ship the next release first (one default corpus run authorised,
 release on his word), then the two items below. **It is 4.6.4** (Joe, same day): 4.6.3 is skipped,
-its number spent on test builds, and the socket readout goes in with it. 4.6.4 shipped that day
-and 4.6.5 on 2026-09-26, so the two items below are next.
+its number spent on test builds, and the socket readout goes in with it. 4.6.4 shipped that day,
+4.6.5 on 2026-09-26 and 4.6.6 on 2026-10-02, so the two items below are next.
+
+**Corpus 412 (2026-10-02, full, throttled, against 410): 6 of 83 changed, all explained.** Five
+lose a false "may not render correctly in VR" warning: locked Poiyomi 7.3 includes its own files as
+`#include "/CGI_..."`, and the old diagnostics reader sent that leading slash to the drive root and
+never saw the stereo macros inside; it reads through `ShaderSpiPatcher.ReadUnit` now. The sixth also
+lost a Weight line because `NativeToggleProbe` had converted it in the corpus project with default
+settings and slimmed six of its textures; put back with `AvatarSlimmer.Revert`. Lesson: a probe that
+converts in the corpus project must not slim, or must revert. Accepted as the YAPS baseline on Joe's
+word for the night (410 kept in `Baseline-pre-412-20261002`). The log is named 411 by mistake: that
+label was already 2026-09-24's run.
 
 **A mesh riding a plug stayed rigid through every rebuild. FIXED ON DEV 2026-09-26, found by Joe on
 his own avatar.** A whole-avatar plug rooted at the armature carries a second skinned mesh, a
