@@ -122,9 +122,11 @@ digests the conversion only. Design:
   no stretch past 6x and no mesh step past ten times the socket's, checked at every step.
   `-yapsSeed` and `-yapsScenarios` (default 1 and 6) pick them; a failure prints the
   `-yapsSeed n -yapsScenario i` line that replays it alone, in place of a saved scene, since the
-  capture materials are not assets a scene could keep. First run on Alexa: 6 of 6 hold, 130 to 178
-  steps each, and it has not yet been seen to fail. Still to do: locomotion with physics on, toggle
-  flips, small views, a second avatar.
+  capture materials are not assets a scene could keep. At its deepest each scenario must also be
+  found from the 8-bit camera and a 256-pixel one, a small view as a mirror gives. One generator is
+  drawn in order: a generator per scenario off neighbouring seeds stepped the directions 3 degrees
+  at a time. On Alexa: 12 of 12 hold on seed 1, 124 to 178 steps each; it has not yet been seen to
+  fail. Still to do: locomotion with physics on, toggle flips, a second avatar.
 - **Invariants, one per bug met.** No socket in range, no bend. A socket anywhere round the tip
   resolves. No edge stretches past a bound, across renderers too. Hidden parts stay hidden bent.
   A small socket move is a small mesh change. Every camera gives the same answer.

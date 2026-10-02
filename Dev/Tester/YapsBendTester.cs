@@ -115,11 +115,11 @@ namespace AvatarBridge.Regression
 
                 // Off to the side at 2.5 lengths, wide, so the plug and every
                 // test place are in frame: a plug culled out never draws.
-                Camera MakeCamera(string name, bool halfFloat)
+                Camera MakeCamera(string name, bool halfFloat, int size = 1024)
                 {
                     var go = new GameObject("__Camera " + name);
                     var cam = go.AddComponent<Camera>();
-                    var rt = new RenderTexture(1024, 1024, 24, halfFloat ? RenderTextureFormat.ARGBHalf : RenderTextureFormat.ARGB32);
+                    var rt = new RenderTexture(size, size, 24, halfFloat ? RenderTextureFormat.ARGBHalf : RenderTextureFormat.ARGB32);
                     cam.targetTexture = rt;
                     cam.allowHDR = halfFloat;
                     cam.allowMSAA = false;
@@ -137,6 +137,8 @@ namespace AvatarBridge.Regression
                 }
                 var hdr = MakeCamera("HDR", true);
                 var ldr = MakeCamera("8-bit", false);
+                // A quarter-size 8-bit view, as a small window or a mirror gives.
+                var small = MakeCamera("small 8-bit", false, 256);
 
                 int n = skin.sharedMesh.vertexCount;
                 // Past the vertices, the atlas list the capture shader probes.
@@ -523,7 +525,8 @@ namespace AvatarBridge.Regression
 
                 // 7. Seeded scenarios: a hole comes in from a shell of
                 // directions, sweeps past the tip at a depth and withdraws,
-                // with rule 1, 2 and 4 held at every step. -yapsSeed and
+                // with rule 1, 2 and 4 held at every step, and found at its
+                // deepest from every camera, a small view included. -yapsSeed and
                 // -yapsScenarios choose them; -yapsScenario runs one alone,
                 // which is the repro line a failure prints.
                 {
@@ -531,14 +534,18 @@ namespace AvatarBridge.Regression
                     int scenarios = int.TryParse(Arg("-yapsScenarios"), out int countArg) ? countArg : 6;
                     int alone = int.TryParse(Arg("-yapsScenario"), out int aloneArg) ? aloneArg : -1;
                     var visitor = MakeSocket("__Scenario", YapsSocket.SocketKind.Hole, false, true, true);
+                    // One generator drawn in order, every scenario's numbers taken
+                    // even when it is skipped: a generator per scenario off nearby
+                    // seeds gave nearly the same first numbers, so the "shell of
+                    // directions" stepped 3 degrees at a time.
+                    var rng = new System.Random(seed);
                     for (int index = 0; index < scenarios; index++)
                     {
-                        if (alone >= 0 && index != alone) continue;
-                        var rng = new System.Random(seed * 7919 + index);
                         float angle = (float) (rng.NextDouble() * 75.0);
                         float turn = (float) (rng.NextDouble() * 360.0);
                         float depth = 0.2f + (float) (rng.NextDouble() * 0.6);
                         float sweep = (rng.NextDouble() < 0.5 ? -1f : 1f) * (20f + (float) (rng.NextDouble() * 30.0));
+                        if (alone >= 0 && index != alone) continue;
                         var route = new List<(float angle, float turn, float reach)>();
                         for (float r = 1.8f; r > depth; r -= 0.02f) route.Add((angle, turn, r));
                         for (int s = 0; s <= 20; s++) route.Add((angle + sweep * s / 20f, turn, depth));
@@ -557,8 +564,10 @@ namespace AvatarBridge.Regression
                             string here = $"step {s}, {route[s].angle:0.0}° at {route[s].reach:0.00}L";
                             if (s == 0 && Moved(bent) >= 0.5e-3f)
                                 faults.Add($"{here}: bent {Moved(bent) * 1000f:0.0} mm with the socket out of reach");
-                            if (s == route.FindIndex(p => p.reach <= depth + 1e-4f) && TierOf(Capture(hdr, 1f)) != 3)
-                                faults.Add($"{here}: not found by the atlas at its deepest");
+                            if (s == route.FindIndex(p => p.reach <= depth + 1e-4f))
+                                foreach (var cam in new[] { hdr, ldr, small })
+                                    if (TierOf(Capture(cam, 1f)) != 3)
+                                        faults.Add($"{here}: not found by the atlas at its deepest, on the {cam.name} camera");
                             float open = seams.Count == 0 ? 0f : seams.Max(pr => Vector3.Distance(bent[pr.a], bent[pr.b]));
                             if (open >= 0.5e-3f) faults.Add($"{here}: a seam opens {open * 1000f:0.00} mm");
                             int outside = 0;
