@@ -33,7 +33,7 @@ namespace AvatarBridge.Regression
                 EditorSceneManager.OpenScene(args[at + 1], OpenSceneMode.Single);
                 var source = UnityEngine.Object.FindObjectsOfType<VRCAvatarDescriptor>(true).First();
                 var report = BridgeConverter.Convert(source,
-                    new BridgeSettings { toggleStyle = ToggleStyle.CvrNativeTargets });
+                    new BridgeSettings { toggleStyle = ToggleStyle.CvrNativeTargets, slimTexturesOnConvert = false });
                 var avatar = report.ConvertedRoot.GetComponent<CVRAvatar>();
 
                 var handed = report.Entries

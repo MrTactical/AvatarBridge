@@ -13,8 +13,18 @@ what SPS code may be looked at in `YAPS-CLEAN-ROOM.md`. Finished records are in 
 
 **Decided 2026-09-23 (Joe):** ship the next release first (one default corpus run authorised,
 release on his word), then the two items below. **It is 4.6.4** (Joe, same day): 4.6.3 is skipped,
-its number spent on test builds, and the socket readout goes in with it. 4.6.4 shipped that day
-and 4.6.5 on 2026-09-26, so the two items below are next.
+its number spent on test builds, and the socket readout goes in with it. 4.6.4 shipped that day,
+4.6.5 on 2026-09-26 and 4.6.6 on 2026-10-02, so the two items below are next.
+
+**Corpus 412 (2026-10-02, full, throttled, against 410): 6 of 83 changed, all explained.** Five
+lose a false "may not render correctly in VR" warning: locked Poiyomi 7.3 includes its own files as
+`#include "/CGI_..."`, and the old diagnostics reader sent that leading slash to the drive root and
+never saw the stereo macros inside; it reads through `ShaderSpiPatcher.ReadUnit` now. The sixth also
+lost a Weight line because `NativeToggleProbe` had converted it in the corpus project with default
+settings and slimmed six of its textures; put back with `AvatarSlimmer.Revert`. Lesson: a probe that
+converts in the corpus project must not slim, or must revert. Accepted as the YAPS baseline on Joe's
+word for the night (410 kept in `Baseline-pre-412-20261002`). The log is named 411 by mistake: that
+label was already 2026-09-24's run.
 
 **A Physics card in the CCK Animator Tester. BUILT 2026-10-02, unreleased: Joe tries it first.**
 Asked for by Joe (motion presets, grab and fling, overlay; not the side-by-side with VRChat). A
@@ -259,6 +269,14 @@ light, a plug seen.
   carrying one, `Menu` now also drops the `YAPS/Readout` parameter: a controller parameter syncs
   whether the menu names it or not, so before this the bit outlived the toggle. `ReadoutProbe`
   turns every tick off (no readout, layer, parameter or row) and back on.
+
+*4.6.6 shipped 2026-10-02, overnight on Joe's word: tag `v4.6.6`, merge `4213ee1`, both packages
+published (not a draft) and extracted (public: no `Editor/Yaps`, `Runtime` or `Dev`; add-on: the
+4.6.5 file list exactly, no converter). In it: native toggles kept in the menu (issue #8, reply
+posted, left open for the reporter), Unity's controller warning no longer counted as a VRCFury
+failure, the stereo patch reading root-written includes and renaming a no-space header, the one-eye
+warning no longer flagging locked Poiyomi 7.3, and the rider re-patch. Corpus 412 clean and
+accepted as the YAPS baseline. Not worn in game yet.*
 
 *4.6.5 shipped 2026-09-26: tag `v4.6.5`, merge `a744e6c`, both packages published and extracted
 (public: the 4.6.4 file list; add-on: the 4.6.4 file list plus `YapsSlotSplit.cs`, no converter).
