@@ -239,6 +239,14 @@ light, a plug seen.
   whether the menu names it or not, so before this the bit outlived the toggle. `ReadoutProbe`
   turns every tick off (no readout, layer, parameter or row) and back on.
 
+*4.6.6 shipped 2026-10-02, overnight on Joe's word: tag `v4.6.6`, merge `4213ee1`, both packages
+published (not a draft) and extracted (public: no `Editor/Yaps`, `Runtime` or `Dev`; add-on: the
+4.6.5 file list exactly, no converter). In it: native toggles kept in the menu (issue #8, reply
+posted, left open for the reporter), Unity's controller warning no longer counted as a VRCFury
+failure, the stereo patch reading root-written includes and renaming a no-space header, the one-eye
+warning no longer flagging locked Poiyomi 7.3, and the rider re-patch. Corpus 412 clean and
+accepted as the YAPS baseline. Not worn in game yet.*
+
 *4.6.5 shipped 2026-09-26: tag `v4.6.5`, merge `a744e6c`, both packages published and extracted
 (public: the 4.6.4 file list; add-on: the 4.6.4 file list plus `YapsSlotSplit.cs`, no converter).
 In it: a slot of its own for each plug sharing a mesh, patching a re-patched slot from its
