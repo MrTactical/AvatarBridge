@@ -1382,6 +1382,9 @@ namespace AvatarBridge
                     YapsSwapFollow.Follow(skin, i, was, target, report);
                 }
                 WriteKnobs(plug, target);
+                // On, as the primary is. A copy switched off by hand stayed off
+                // and rigid through every rebuild.
+                target.SetFloat("_YAPS_Enabled", 1f);
                 // The author's length override, which reached only the PRIMARY
                 // materials. A carried mesh kept the measured length, so with an
                 // override set the body ran one envelope and the collar another, every

@@ -1004,44 +1004,17 @@ namespace AvatarBridge
                 " Otherwise swap the shader, or accept how it looks; the README has the hand-edit.");
         }
 
+        // The patcher's own reader, so the warning and the patch agree on
+        // what a shader includes. A second reader here only looked beside
+        // each file and would flag a shader the patcher calls correct.
         static List<string> MissingStereoMacros(string path)
         {
             var remaining = new HashSet<string>(StereoMacros, StringComparer.Ordinal);
-            Scan(path, remaining, new HashSet<string>(StringComparer.OrdinalIgnoreCase), 0);
+            foreach (var file in ShaderSpiPatcher.ReadUnit(path))
+            {
+                remaining.RemoveWhere(m => file.Text.Contains(m, StringComparison.Ordinal));
+            }
             return StereoMacros.Where(remaining.Contains).ToList();
-        }
-
-        static void Scan(string path, HashSet<string> remaining, HashSet<string> seen, int depth)
-        {
-            if (depth > 8 || remaining.Count == 0 || !seen.Add(path) || !File.Exists(path))
-            {
-                return;
-            }
-            var includes = new List<string>();
-            string dir = Path.GetDirectoryName(path) ?? "";
-            foreach (var line in File.ReadLines(path))
-            {
-                remaining.RemoveWhere(m => line.Contains(m, StringComparison.Ordinal));
-                if (remaining.Count == 0)
-                {
-                    return;
-                }
-                int hash = line.IndexOf("#include", StringComparison.Ordinal);
-                if (hash < 0)
-                {
-                    continue;
-                }
-                int open = line.IndexOf('"', hash);
-                int close = open >= 0 ? line.IndexOf('"', open + 1) : -1;
-                if (close > open)
-                {
-                    includes.Add(Path.GetFullPath(Path.Combine(dir, line.Substring(open + 1, close - open - 1))));
-                }
-            }
-            foreach (var include in includes)
-            {
-                Scan(include, remaining, seen, depth + 1);
-            }
         }
 
         // ChilloutVR's own sync budget, from AvatarAnimatorManager.CreateParameterDefinition.

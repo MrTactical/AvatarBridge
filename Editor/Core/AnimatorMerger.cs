@@ -3243,9 +3243,11 @@ namespace AvatarBridge
             }
 
             // Alive if any axis is declared and actually read. Any, not all: a puppet whose
-            // avatar only animates one axis is still a control worth keeping.
+            // avatar only animates one axis is still a control worth keeping. A native toggle
+            // is read by the layer the CCK builds from it, never by ours.
             var dead = settings
                 .Where(e => e != null && !string.IsNullOrEmpty(e.machineName)
+                            && !AvatarSurvey.DrivesTargets(e)
                             && !AxesOf(e).Any(n => known.Contains(n) && referenced.Contains(n)))
                 .ToList();
             if (dead.Count == 0)

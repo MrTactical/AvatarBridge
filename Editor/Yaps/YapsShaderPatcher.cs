@@ -139,7 +139,10 @@ namespace AvatarBridge
         // name in a hidden property's description, the one place a string rides.
         public static bool IsStale(Material patched)
         {
-            return patched != null && patched.shader != null
+            // Patched ones only. An unpatched material is its own source, so it
+            // named the patch it would get and read as stale, and Refresh, with
+            // no original to patch from, left it unpatched on every rebuild.
+            return patched != null && patched.shader != null && SourceShaderOf(patched) != null
                    && CurrentNameFor(patched) is string want && patched.shader.name != want;
         }
 
@@ -364,8 +367,7 @@ namespace AvatarBridge
 
             string hash = Hash(sourcePath + EmittedVersion(yaps) + unit.Count);
             string newName = PatchedName(shaderFile.Text, hash);
-            shaderFile.Text = Regex.Replace(shaderFile.Text, @"Shader\s+""[^""]+""",
-                "Shader \"" + newName + "\"");
+            shaderFile.Text = ShaderSpiPatcher.Rename(shaderFile.Text, newName);
 
             InstallShaderGui(shaderFile, material.shader.name);
 
@@ -843,9 +845,8 @@ namespace AvatarBridge
                 string folder = Path.GetDirectoryName(file.OriginalPath) ?? ".";
                 file.Text = Regex.Replace(file.Text, @"#include\s+""([^""]+)""", m =>
                 {
-                    string candidate = Path.Combine(folder,
-                        m.Groups[1].Value.TrimStart('/', '\\'));
-                    if (File.Exists(candidate)
+                    string candidate = ShaderSpiPatcher.ResolveInclude(folder, m.Groups[1].Value);
+                    if (candidate != null
                         && byPath.TryGetValue(Path.GetFullPath(candidate), out var target)
                         && target != file)
                     {

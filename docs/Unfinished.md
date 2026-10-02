@@ -13,19 +13,55 @@ what SPS code may be looked at in `YAPS-CLEAN-ROOM.md`. Finished records are in 
 
 **Decided 2026-09-23 (Joe):** ship the next release first (one default corpus run authorised,
 release on his word), then the two items below. **It is 4.6.4** (Joe, same day): 4.6.3 is skipped,
-its number spent on test builds, and the socket readout goes in with it.
+its number spent on test builds, and the socket readout goes in with it. 4.6.4 shipped that day,
+4.6.5 on 2026-09-26 and 4.6.6 on 2026-10-02, so the two items below are next.
 
-**Toolkit sockets left off the menu. FIXED ON DEV 2026-09-26, found by Joe on his own avatar.**
-Seven sockets built in the toolkit, and only the first got a menu toggle; the other six sat in
-*Marker lights* alone. His editor log said why, once per socket: "already switched by the animation
-YAPS lighthouse N". The lighthouse switches a chosen socket on when nothing else switches it, and
-its clips live inside the controller rather than in `YAPS/Generated`, so `ToggledBy` read them as
-the avatar's own switch. Sockets whose markers were built before the first full Build (adding a
-socket builds them) were all in the first lighthouse with no toggle, so every later socket was
-"already switched" and could never get one; the same check kept them from being renamed after
-their bone. `YapsLighthouse.OwnClips` is skipped now. `Dev/Probes/SocketToggleProbe` (synthetic
-avatar, markers first, then two full builds) failed 4 of 7 on the old code and passes; an avatar
-built with the bug gets its toggles on the next Build.
+**Corpus 412 (2026-10-02, full, throttled, against 410): 6 of 83 changed, all explained.** Five
+lose a false "may not render correctly in VR" warning: locked Poiyomi 7.3 includes its own files as
+`#include "/CGI_..."`, and the old diagnostics reader sent that leading slash to the drive root and
+never saw the stereo macros inside; it reads through `ShaderSpiPatcher.ReadUnit` now. The sixth also
+lost a Weight line because `NativeToggleProbe` had converted it in the corpus project with default
+settings and slimmed six of its textures; put back with `AvatarSlimmer.Revert`. Lesson: a probe that
+converts in the corpus project must not slim, or must revert. Accepted as the YAPS baseline on Joe's
+word for the night (410 kept in `Baseline-pre-412-20261002`). The log is named 411 by mistake: that
+label was already 2026-09-24's run.
+
+**A mesh riding a plug stayed rigid through every rebuild. FIXED ON DEV 2026-09-26, found by Joe on
+his own avatar.** A whole-avatar plug rooted at the armature carries a second skinned mesh, a
+collar, as a rider. The rider's generated copy sat in its slot back on the mesh's own shader, with
+`_YAPS_Enabled` 0 and no `bakedSlots` record. Every Build took `PatchExtra`'s already-ours branch,
+where `IsStale` answered true for an unpatched material (it is its own source, so it names the patch
+it would get) and `Refresh`, with no original in the shader to patch from, did nothing; the `else`
+that assigns the patched shader was never reached. A rider's `_YAPS_Enabled` was never written
+either, where the primary is set to 1 on every bake. So it stayed rigid, and with no `_YAPS_Bake`
+on its shader the setup window stopped listing it as part of the plug. `IsStale` now answers only
+for patched materials (every other caller already filtered to those), and a rider is switched on as
+the primary is. `Dev/Probes/RiderProbe` (armature-rooted plug, body plus collar, the copy reverted
+by hand) failed on the old code and passes. The primary and a mirrored slot already handled the
+same state (`oursAlready`, and `MirrorToSlots`' own branch); the rider path was the third door and
+had none. How the copy got reverted is not known. **Withdrawn, same day:** it was not Remove, which
+leaves a rider slot it has no record of alone; an earlier bake or removal of that mesh as a plug of
+its own is the likelier history.
+
+**A shader drew into one eye with the stereo patch on. FIXED ON DEV 2026-09-26, found by Joe, not
+verified in game.** An eye shader keeps its vertex and fragment functions in an include named from
+the project root, `#include "Assets/<vendor>//Shaders/.../Base.cginc"`, doubled slash and all.
+`ShaderSpiPatcher.ReadUnit` looked for an include only beside the file naming it, never read that
+one, found no vertex function and refused the shader ("vertex function signature not recognised"),
+so it kept drawing into one eye. The same beside-only lookup sat in both patchers' include
+repointing and in a separate reader `BridgeDiagnostics` kept for the one-eye warning. All now go
+through `ShaderSpiPatcher.ResolveInclude` (beside the file, else from the project root through
+`FileUtil.GetPhysicalPath`), and the warning reads through `ReadUnit` itself so the two cannot
+disagree. A consequence: a `Packages/...` include now resolves too, so a shader including a
+package's file gets that file copied into `RehomedAssets` with the rest, where before its include
+was left pointing at the package. Patching it then showed a second fault: the header is
+`Shader"name"`, no space, which ShaderLab accepts and the rename pattern `Shader\s+"` did not, so the
+patched copy came out under the original's name. Both patchers rename through
+`ShaderSpiPatcher.Rename` now, anchored to a line start so a display name ending in "Shader" is never
+taken. `Dev/Probes/SpiIncludeProbe` (a synthetic shader with both traits, and `-spiShader` for a real
+one) passes; the real shader, copied into a test project, came out patched, renamed and compiling,
+where before the rename fix it came out patched under its own name. The YAPS rename shares the
+helper and was not probed separately. Both eyes can only be checked in game.
 
 **1. A runtime tester: the bend as data. PROPOSED, step one is a probe.** Every YAPS bug this week
 (8-bit atlas holes, own socket in the editor, rigid accessories, the torn tip) was found by eye,
@@ -104,7 +140,7 @@ light, a plug seen.
   for a socket's own renderer, out of the survey's lift-off candidates, as the atlas writers are.
   The probe checks the first on a real patched plug and passes on three avatars; the survey half
   is unmeasured (407 had no socket readouts). A clean corpus run is still owed before release.
-- **Corpus 408 (2026-09-23), not clean: plugs sharing a mesh. FIXED ON DEV.** Two avatars carry
+- **Corpus 408 (2026-09-23), not clean: plugs sharing a mesh. FIXED, SHIPPED IN 4.6.5.** Two avatars carry
   more than one plug on one renderer (3 and 2). Readouts were built one plug at a time, so the
   next plug measured the last one's readout quads as part of itself and patched its readout slot
   into a copy of the plug: the 3-plug avatar drew its plug three times over, one working readout,
@@ -135,7 +171,7 @@ light, a plug seen.
     objects sit by sibling index: unique, and stable across reconverts so a reconvert still
     overwrites its own file.
   - Found beside it: plugs baking the same slot, so only the last one's bake reaches the material.
-    **FIXED ON DEV 2026-09-23 (Joe: "fix it fully"), not in game.** The 3-plug avatar is one shaft
+    **FIXED 2026-09-23 (Joe: "fix it fully"), shipped in 4.6.5, not in game.** The 3-plug avatar is one shaft
     with three plug components (last bake winning is right there); the 2-plug avatar is two ears on
     one accessory mesh, one slot, so one ear never bent. `YapsSlotSplit`: when a plug's slot already
     holds a bake from a plug on another shaft (vertex masks overlapping under half), its triangles
@@ -202,6 +238,15 @@ light, a plug seen.
   carrying one, `Menu` now also drops the `YAPS/Readout` parameter: a controller parameter syncs
   whether the menu names it or not, so before this the bit outlived the toggle. `ReadoutProbe`
   turns every tick off (no readout, layer, parameter or row) and back on.
+
+*4.6.5 shipped 2026-09-26: tag `v4.6.5`, merge `a744e6c`, both packages published and extracted
+(public: the 4.6.4 file list; add-on: the 4.6.4 file list plus `YapsSlotSplit.cs`, no converter).
+In it: a slot of its own for each plug sharing a mesh, patching a re-patched slot from its
+original instead of falling back to Simple Lit, Remove leaving the other plugs on a mesh alone,
+the weigh pass leaving baked materials out, and the Toolkit socket toggles, plus a README tidy
+against the window. Corpus 410 is the baseline and 411 (throttled, 2026-09-24) was clean, but
+both predate the toggle fix, which was checked by `SocketToggleProbe`, the battery and Joe's own
+avatar. Not worn in game yet.*
 
 *4.6.4 shipped 2026-09-23: tag `v4.6.4`, merge `d3f891c`, both packages published and extracted
 (public: no `Editor/Yaps`, `Runtime` or `Dev`; add-on: the 4.6.2 file list plus the socket readout
@@ -839,6 +884,50 @@ their SDK differs; a name that does not resolve now warns instead of being assum
 IK. Needs the reporter's SDK version, which bone, and what the wrong result actually looks like.
 
 ## Loose ends, small but real
+
+### Toggle style "CVR Native Targets" lost its toggles (issue #8). FIXED ON DEV 2026-10-01
+
+Reported on 4.6.1 as every toggle dead in game. `ToggleNativizer` hands a plain object toggle to the
+CCK: the objects go into the menu entry's `gameObjectTargets`, the layer is deleted, the parameter is
+kept. `PruneDeadMenuEntries` then saw a declared parameter no layer read and deleted the entry, so
+every toggle handed over left the menu; the report listed them as "Menu entry ... removed" in the
+Animator section and as "toggled natively by CVR" under Native toggles, and nobody read the two
+together. The survey made the same mistake for the ones a driver kept alive ("control that does
+nothing"). Both now treat an entry with targets as read, through `AvatarSurvey.DrivesTargets`.
+`Dev/Probes/NativeToggleProbe` converts one avatar with the native style: on the old build 8 toggles
+handed over and all 8 pruned; with the fix 25 of 25 checks. The corpus profile uses Animator Layers,
+so the corpus never ran this path. The report's other lead was a red herring: "VRCFury reported 2
+error(s)" quoted Unity's own message about a transition testing a parameter its controller never
+declares (the string is in `Unity.exe`), counted as Fury's because Fury was on the stack. It is a
+Warning of its own now and no longer says not to upload; that branch is compile-checked, not probed.
+
+### A chain's tip bone lands 100 times too far on a scale-100 armature. WITHDRAWN 2026-10-01: VRChat does the same
+
+**Withdrawn, measured.** `Dev/Probes/EndpointScaleProbe` asks VRChat's own simulation, in Play mode:
+two chains under a parent at scale 100, Endpoint Position 0.1, one with a sphere collider 5 m out
+that only a tip in scaled units could reach, one with a collider just past the bone. The far collider
+turned its chain 3.03 degrees, the angle a 10 m tip needs to clear it, and the near one 0.89 degrees,
+where a 0.1 m tip would have needed about 11. So PhysBone reads Endpoint Position in the leaf's scaled
+units, as the `_End` bone does, and the 7.7 m leash over a 10 m tip is the same 45 degrees. The
+authored values were simply long in VRChat too. What remains is the other path: `DynamicBoneWriter`
+passes the raw value to `m_EndOffset`, which DynamicBone reads in metres, so on a scale-100
+armature its tips come out 100 times shorter than VRChat's. Nobody has reported it and DynamicBone
+is rarely the target; fix it with a scale, the first time it matters. The original record follows.
+
+
+Found in a user's report (4.6.4). `MagicaClothWriter` realises a PhysBone's Endpoint Position as a
+`<leaf>_End` child with `localPosition = EndpointPosition`, so the value is read in the leaf's own
+units. On an armature exported from Blender at scale 100 without applied transforms, each tip sat
+100 times too far out: 0.1 became 10 m, 0.06 6 m, 0.05 5 m, 0.02 2 m, measured from the converted
+prefab. `ApplyMotionLeash` measures the chain in world metres through those tips, so the swing bound
+came out at 7.7 m over a 10.075 m chain and never binds; the chains swing further than the source
+allowed and the long tips stiffen them. `DynamicBoneWriter` hands the same value to `m_EndOffset`,
+which DynamicBone applies through `transform.TransformDirection` (rotation only, so metres), so the
+two physics paths already disagree on the same avatar. The authored values only make sense as
+metres. Not yet settled: how VRChat's PhysBone reads Endpoint Position on a scaled bone. Probe that
+before changing anything; if it is metres, the tip's local position is the value over the leaf's
+lossy scale, and the leash follows. The same report's Play-mode collapse, meshes pulled into lines
+while edit mode looked right, was the user's own setup and not this.
 
 ### Menu toggles did nothing on a plug whose material was not its mesh's first. FIXED ON DEV 2026-09-23, for 4.6.4, not verified in game
 
