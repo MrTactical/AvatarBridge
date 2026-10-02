@@ -24,7 +24,18 @@ lost a Weight line because `NativeToggleProbe` had converted it in the corpus pr
 settings and slimmed six of its textures; put back with `AvatarSlimmer.Revert`. Lesson: a probe that
 converts in the corpus project must not slim, or must revert. Accepted as the YAPS baseline on Joe's
 word for the night (410 kept in `Baseline-pre-412-20261002`). The log is named 411 by mistake: that
-label was already 2026-09-24's run.
+label was already 2026-09-24's run. Snugglin's digest in it carried the slimmed texture; a one-avatar
+YAPS-on subset after the revert brought the Weight line back and nothing else, and that digest
+replaced it in the baseline.
+
+**Corpus 413 (2026-10-02, YAPS off, full, throttled): accepted as the opt-out baseline.** Its
+baseline dated from 4.5.0 (2026-09-09), so all 83 changed against it. Explained by comparing each
+avatar with the accepted YAPS-on run instead: 53 are identical but for the `convertYapsSystems`
+stamp, and all 30 that differ carry a penetration system the two profiles treat differently (SPS
+and TPS layers stripped instead of converted, so layers renumber and pointers and triggers go; DPS
+or TPS marker lights reported as kept, one Converted line, measured on VaponnyPC by converting it
+in both profiles). Every other line matches, so the opt-out run's drift since 4.5.0 is the drift
+each YAPS-on baseline already accepted. 4.5.0's kept in `Baseline-pre-413-20261002`.
 
 **A Physics card in the CCK Animator Tester. BUILT 2026-10-02, unreleased: Joe tries it first.**
 Asked for by Joe (motion presets, grab and fling, overlay; not the side-by-side with VRChat). A
