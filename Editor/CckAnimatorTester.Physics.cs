@@ -261,7 +261,9 @@ namespace AvatarBridge
             if (_held != null && _heldBone != null)
             {
                 var pull = _heldPoint - _heldBone.position;
-                Push(_held, pull, Mathf.Min(pull.magnitude * 10f, 6f));
+                // Tripled after a first try read as limp: the cloth's own damping
+                // eats most of a per-frame velocity add.
+                Push(_held, pull, Mathf.Min(pull.magnitude * 30f, 18f));
             }
         }
 
@@ -314,7 +316,7 @@ namespace AvatarBridge
                 case EventType.MouseUp when GUIUtility.hotControl == id:
                     if (_held != null)
                     {
-                        Push(_held, _flingVelocity, Mathf.Min(_flingVelocity.magnitude, 10f));
+                        Push(_held, _flingVelocity, Mathf.Min(_flingVelocity.magnitude, 25f));
                     }
                     _held = null;
                     GUIUtility.hotControl = 0;
@@ -338,10 +340,16 @@ namespace AvatarBridge
             {
                 bool lit = cloth == hovered;
                 Handles.color = lit ? Color.yellow : new Color(1f, 1f, 1f, 0.4f);
-                foreach (var t in ChainBones(cloth))
+                // Joined to the parent bone, so the dots read as the chains they are.
+                var bones = new HashSet<Transform>(ChainBones(cloth));
+                foreach (var t in bones)
                 {
                     float size = HandleUtility.GetHandleSize(t.position) * (lit ? 0.03f : 0.018f);
                     Handles.DotHandleCap(0, t.position, Quaternion.identity, size, EventType.Repaint);
+                    if (t.parent != null && bones.Contains(t.parent))
+                    {
+                        Handles.DrawLine(t.parent.position, t.position, lit ? 2f : 1f);
+                    }
                 }
             }
             if (hoveredBone == null) return;

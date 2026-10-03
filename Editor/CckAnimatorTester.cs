@@ -1124,19 +1124,24 @@ namespace AvatarBridge
             var declared = ControllerParameterList(avatar);
             var faceParams = declared.Where(AvatarFeatureDetect.IsFaceTrackingParameter).ToList();
 
-            // Native is checked first. A native avatar declares no
-            // per-expression parameters at all; the component reads the
-            // headset and writes the mesh. Zero parameters is what a
-            // correct native conversion looks like.
-            if (!faceParams.Any(p => !AvatarFeatureDetect.IsFaceTrackingGate(p)))
+            // Native first: the component reads the headset and writes the
+            // mesh, with no parameters. It used to show only when the
+            // controller declared none, so one stray TongueOut hid a fully
+            // mapped native face behind a slider nothing reads.
+            var nativeSetup = avatar != null ? avatar.GetComponentInChildren<CVRFaceTracking>(true) : null;
+            bool native = false;
+            if (nativeSetup != null && nativeSetup.FaceMesh != null && nativeSetup.FaceBlendShapes != null
+                && nativeSetup.FaceBlendShapes.Any(s => !string.IsNullOrEmpty(s) && s != "-none-"))
             {
-                var nativeSetup = avatar != null ? avatar.GetComponentInChildren<CVRFaceTracking>(true) : null;
-                if (nativeSetup != null && nativeSetup.FaceMesh != null && nativeSetup.FaceBlendShapes != null
-                    && nativeSetup.FaceBlendShapes.Any(s => !string.IsNullOrEmpty(s) && s != "-none-"))
+                BuildNativeFaceShapeSliders(card, nativeSetup);
+                native = true;
+                if (!faceParams.Any(p => !AvatarFeatureDetect.IsFaceTrackingGate(p)))
                 {
-                    BuildNativeFaceShapeSliders(card, nativeSetup);
                     return card;
                 }
+                var also = BridgeElements.SubHeading("Animator parameters");
+                also.style.marginTop = 8;
+                card.Body.Add(also);
             }
 
             if (faceParams.Count == 0)
@@ -1156,7 +1161,7 @@ namespace AvatarBridge
             var asset = runtime as UnityEditor.Animations.AnimatorController;
             var ranges = ScanParameterRanges(asset);
 
-            card.SetSummary($"{faceParams.Count} parameters");
+            if (!native) card.SetSummary($"{faceParams.Count} parameters");
             card.Body.Add(BridgeElements.Hint(
                 "The parameters VRCFaceTracking drives in game. Shapes moving here prove the rig survived."));
 
