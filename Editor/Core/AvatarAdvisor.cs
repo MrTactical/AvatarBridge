@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
 using VRC.SDK3.Avatars.Components;
@@ -643,25 +644,26 @@ namespace AvatarBridge
             var checkedShaders = new HashSet<Shader>();
             var missing = new List<string>();
             var offenders = new List<UnityEngine.Object>();
-            foreach (var renderer in root.GetComponentsInChildren<Renderer>(true))
+            // The materials a toggle swaps in as well as the ones worn at rest: the
+            // patcher reaches both, and a swap-only one-eyed shader never raised this.
+            var materials = root.GetComponentsInChildren<Renderer>(true).SelectMany(r => r.sharedMaterials)
+                .Concat(SwappedMaterials(root.GetComponent<VRCAvatarDescriptor>()));
+            foreach (var material in materials)
             {
-                foreach (var material in renderer.sharedMaterials)
+                var shader = material != null ? material.shader : null;
+                if (shader == null || !checkedShaders.Add(shader))
                 {
-                    var shader = material != null ? material.shader : null;
-                    if (shader == null || !checkedShaders.Add(shader))
-                    {
-                        continue;
-                    }
-                    // A null source is an engine shader with nothing on disk to read; Unity's own
-                    // ship stereo-correct, so they are not counted against the avatar.
-                    string source = ShaderSpiPatcher.SourcePathOf(shader);
-                    if (source != null && !ShaderSpiPatcher.DeclaresStereo(source))
-                    {
-                        missing.Add(shader.name);
-                        // The shader asset, not the renderer: one shader is usually worn by
-                        // several meshes, and the thing to go and look at is the shader.
-                        offenders.Add(shader);
-                    }
+                    continue;
+                }
+                // A null source is an engine shader with nothing on disk to read; Unity's own
+                // ship stereo-correct, so they are not counted against the avatar.
+                string source = ShaderSpiPatcher.SourcePathOf(shader);
+                if (source != null && !ShaderSpiPatcher.DeclaresStereo(source))
+                {
+                    missing.Add(shader.name);
+                    // The shader asset, not the renderer: one shader is usually worn by
+                    // several meshes, and the thing to go and look at is the shader.
+                    offenders.Add(shader);
                 }
             }
 
@@ -742,6 +744,27 @@ namespace AvatarBridge
         }
 
         // ------------------------------------------------------------------- helpers ----
+
+        static IEnumerable<Material> SwappedMaterials(VRCAvatarDescriptor descriptor)
+        {
+            if (descriptor == null) yield break;
+            var layers = (descriptor.baseAnimationLayers ?? new VRCAvatarDescriptor.CustomAnimLayer[0])
+                .Concat(descriptor.specialAnimationLayers ?? new VRCAvatarDescriptor.CustomAnimLayer[0]);
+            foreach (var layer in layers)
+            {
+                if (!(layer.animatorController is AnimatorController controller)) continue;
+                foreach (var clip in controller.animationClips.Where(c => c != null).Distinct())
+                {
+                    foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                    {
+                        foreach (var key in AnimationUtility.GetObjectReferenceCurve(clip, binding))
+                        {
+                            if (key.value is Material material) yield return material;
+                        }
+                    }
+                }
+            }
+        }
 
         static AnimatorController CustomLayer(VRCAvatarDescriptor descriptor,
             VRCAvatarDescriptor.AnimLayerType type)

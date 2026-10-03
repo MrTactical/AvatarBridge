@@ -1254,7 +1254,8 @@ force their own mode unconditionally.
 
 The check reads the shader's *whole* include chain, the way the compiler does, so a shader that
 keeps its stereo handling in include files (lilToon, most modern toon shaders) is recognised as
-already correct instead of flagged. The CCK's own upload warning still judges the one file and may
+already correct instead of flagged, and it judges every pass, not just the first. A surface shader
+is never flagged: Unity generates its passes with stereo built in. The CCK's own upload warning still judges the one file and may
 keep naming such shaders; that warning is theirs, and safe to ignore for them.
 
 Under double-wide a shader gets both eyes without asking. Under instancing it has to declare that it
@@ -1269,19 +1270,22 @@ Four macros, each with one home: copy the shader first, it's usually someone els
 
 | macro | goes in |
 |---|---|
-| `UNITY_VERTEX_INPUT_INSTANCE_ID` | the vertex **input** struct (`appdata`) |
-| `UNITY_VERTEX_OUTPUT_STEREO` | the **interpolator** struct (`v2f`) |
+| `UNITY_VERTEX_INPUT_INSTANCE_ID` | the vertex **input** struct (`appdata`), as its last member |
+| `UNITY_VERTEX_OUTPUT_STEREO` | the **interpolator** struct (`v2f`), as its last member |
 | `UNITY_SETUP_INSTANCE_ID(v);` | top of the vertex function, after the output struct is declared |
 | `UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);` | same place, right after it |
 
 Add `UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);` at the top of the fragment function too if it
-samples anything screen-space. Only realistic on a plainly written shader: surface shaders have no
-vertex stage to edit, and locked or generated shaders aren't worth attempting.
+samples anything screen-space. Do it in every pass that has its own vertex function, outlines
+included. Put the struct members last: placed first, the stereo member can clash with a fragment's
+own system values (a `VFACE`) and break exactly the variant ChilloutVR draws. Surface shaders need
+nothing; locked or generated shaders aren't worth attempting.
 
 </details>
 
-Turn on **Patch non-SPI shaders for VR** in *Advanced*. For each affected shader it writes a patched
-copy into `RehomedAssets`, adds the stereo macros, and points this avatar's materials at the copy.
+Turn on **Patch non-SPI shaders for VR**, under *Shaders* in *Manual options*. For each affected
+shader it writes a patched copy into `RehomedAssets`, adds the stereo macros to every vertex and
+fragment pass it can read, and points this avatar's materials at the copy.
 
 - **Materials that only arrive through an animation are covered too**: a material a toggle swaps
   in isn't on any renderer when the avatar is sitting still, so scanning the avatar as it stands
@@ -1291,20 +1295,28 @@ copy into `RehomedAssets`, adds the stereo macros, and points this avatar's mate
 - **Your originals are never modified**: shader and material are both copied, so other avatars
   sharing them are unaffected.
 - **A copy that doesn't compile is thrown away**, so the worst case is a report line rather than
-  wrong pixels.
-- **Screen-grab and depth reads are fixed too.** Both are texture *arrays* under instancing: one
-  slice per eye, so lens, refraction and soft-particle shaders take the wrong slice however many
-  macros they have. Those reads are rewritten to the screen-space macros. **This is why passing the
-  CCK's check isn't the same as being correct**: it looks for four macros, and a shader can have all
-  four and still be broken.
+  wrong pixels. That includes the single-pass instanced variant ChilloutVR actually draws, compiled
+  outright: a fault only that variant has never shows up as a Unity error. The attempt is kept as
+  `.failed.txt` files beside the output for a bug report.
+- **Depth reads are fixed too.** The depth texture is a texture *array* under instancing, one slice
+  per eye, so a soft-particle or fog effect reading it as one picture reads the wrong eye. In every
+  shader it patches, depth reads are rewritten to Unity's depth macros. A read used for more than the
+  depth value (decoded from two channels) is left, since the macros would compile and read wrong, and
+  the report says so. A shader that already declares all four macros is trusted with its own depth:
+  locked Poiyomi does, and declares a plain depth texture for optional features.
+- **A screen grab can't be fixed this way.** The effect draws in both eyes, but the background it
+  bends comes from one, and the report says so.
 - **Shaders needing more than the derivable fixes get a recipe**: written by hand once and applied
-  to your copy on later conversions, pinned to a fingerprint of the exact shader version so an
-  edited shader is refused rather than guessed at. Nothing is redistributed; the recipe is the edit,
-  not the shader. Hit one with no recipe? Open an issue.
-- **Not everything can be patched.** Surface shaders have no vertex stage, and structs in a shared
-  include can't always be edited from one file. Those are listed for hand-fixing.
-- **Every shader gets a verdict in the report**: patched, couldn't be, or already correct. Modern
-  Poiyomi declares the full macro set, so locked shaders normally land in the last group.
+  to your copy on later conversions, matched by the shader's name and by every line it edits, so a
+  shader that merely shares a name gets the generic patch instead. Nothing is redistributed; the
+  recipe is the edit, not the shader. Hit one with no recipe? Open an issue.
+- **Not everything can be patched.** A pass whose vertex function isn't plainly written
+  (`Out vert(In v)`), or whose structs are Unity's own, is left as it was: the rest of the shader is
+  patched and the report names that pass. A shader with no pass it can read is listed for
+  hand-fixing.
+- **Every shader gets a verdict in the report**: patched, couldn't be, or already correct, for the
+  materials a toggle swaps in as well. Modern Poiyomi declares the full macro set, so locked shaders
+  normally land in the last group, and so do surface shaders.
 - **There's nothing to undo.** The macros are mode-agnostic: real instancing code under CVR, nothing
   under VRChat or desktop.
 

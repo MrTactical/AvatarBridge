@@ -17,11 +17,11 @@ namespace AvatarBridge
     // is applied to the user's own copy, in their own output folder, and the original file is
     // never touched; a shader's licence is not this tool's to re-grant.
     //
-    // Every recipe is pinned to a FINGERPRINT of the exact source it was written against. A
-    // shader that has been updated, edited, or merely shares a name will not match, and the
-    // conversion falls back to refusing honestly instead of mangling a file nobody verified.
-    // That is the whole reason for the hash: "same name" is not "same shader", and silently
-    // applying edits to a stranger is how a fix becomes a bug.
+    // A recipe is matched by shader name AND by every line it edits being present, so a
+    // shader that merely shares a name gets no recipe and the generic patch carries on. The
+    // FINGERPRINT of the source it was written against only says whether this is that exact
+    // revision, and the report notes when it is not: "same name" is not "same shader", but
+    // a shader holding every line a recipe edits is safe to edit.
     public static class ShaderFixRecipes
     {
         public class Recipe

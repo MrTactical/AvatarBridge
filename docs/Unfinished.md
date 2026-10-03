@@ -937,7 +937,29 @@ IK. Needs the reporter's SDK version, which bone, and what the wrong result actu
 
 ## Loose ends, small but real
 
-### The stereo shader patcher, read end to end on 2026-10-03. BEING FIXED (Joe: "fix it all")
+### The stereo shader patcher, read end to end on 2026-10-03. FIXED ON DEV the same day, not in game
+
+**What changed.** One analysis, `PlanStereo`, finds every vertex and fragment function named by a
+pragma, in every pass and file, and the exact edits each needs; whether a shader needs patching
+(`DeclaresStereo`), the one-eye warning (`StereoProblems`) and the patch itself all read it, so they
+cannot disagree. Edits are planned on the text as read and applied from the end of each file back.
+Two facts it rests on were measured first (`Dev/Probes/SpiFactsProbe`): Unity's generated
+surface-shader code carries all four macros in every pass, and a duplicated instancing member
+compiles in the default variant with `ShaderHasError` false and fails only with
+`STEREO_INSTANCING_ON`. So the copy is now also compiled outright in the single-pass instanced
+variant, every pass, through `ShaderData.Pass.CompileVariant`. That check found a bug old and new
+code shared: the stereo member went FIRST in the struct, and a fragment taking its own system value
+(a `VFACE`) failed in exactly the variant ChilloutVR draws; members now go last, as Unity places
+them. `Dev/Probes/SpiPatcherProbe` builds a shader per fault and passes 32 of 32.
+
+**One item deliberately not done:** a shader naming all four macros is not patched for a plain depth
+read. `Dev/Probes/SpiSweepProbe` puts every shader of the corpus project (1092) through old and new
+builds; counting depth sent nearly every locked Poiyomi Pro material to be copied, for optional
+features that declare a plain depth texture. Depth reads are rewritten only in shaders patched
+anyway, and only when every read takes the depth value alone (`DecodeFloatRG` of two channels would
+compile and read wrong); otherwise they are left and the report says so.
+
+The record as found:
 
 A read of `ShaderSpiPatcher` with every claim checked against the code. From the code, none of it
 measured yet:

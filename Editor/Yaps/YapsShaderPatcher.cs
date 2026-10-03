@@ -843,14 +843,14 @@ namespace AvatarBridge
             foreach (var file in unit)
             {
                 string folder = Path.GetDirectoryName(file.OriginalPath) ?? ".";
-                file.Text = Regex.Replace(file.Text, @"#include\s+""([^""]+)""", m =>
+                file.Text = ShaderSpiPatcher.IncludeDirective.Replace(file.Text, m =>
                 {
-                    string candidate = ShaderSpiPatcher.ResolveInclude(folder, m.Groups[1].Value);
+                    string candidate = ShaderSpiPatcher.ResolveInclude(folder, m.Groups[2].Value);
                     if (candidate != null
                         && byPath.TryGetValue(Path.GetFullPath(candidate), out var target)
                         && target != file)
                     {
-                        return $"#include \"{target.OutputName}\"";
+                        return m.Groups[1].Value + target.OutputName + m.Groups[3].Value;
                     }
                     return m.Value;
                 });

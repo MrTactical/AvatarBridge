@@ -940,14 +940,6 @@ namespace AvatarBridge
             }
         }
 
-        static readonly string[] StereoMacros =
-        {
-            "UNITY_VERTEX_INPUT_INSTANCE_ID",
-            "UNITY_VERTEX_OUTPUT_STEREO",
-            "UNITY_SETUP_INSTANCE_ID",
-            "UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO",
-        };
-
         static bool IsKnownStereoShader(string name) =>
             name == "Standard" || name.StartsWith("Hidden/PostProcessing/", StringComparison.Ordinal);
 
@@ -973,13 +965,13 @@ namespace AvatarBridge
                     }
                     if (!missingCache.TryGetValue(path, out var missing))
                     {
-                        missingCache[path] = missing = MissingStereoMacros(path);
+                        missingCache[path] = missing = StereoProblems(path);
                     }
                     if (missing.Count == 0)
                     {
                         continue;
                     }
-                    string key = $"{shader.name} [missing {string.Join(", ", missing)}]";
+                    string key = $"{shader.name} [{string.Join("; ", missing)}]";
                     if (!offenders.TryGetValue(key, out var users))
                     {
                         offenders[key] = users = new SortedSet<string>(StringComparer.Ordinal);
@@ -999,22 +991,24 @@ namespace AvatarBridge
                 $"{Join(listed, 6)}: these draw into one eye only here, though they looked fine in VRChat. " +
                 (ctx.Standalone ? "The Toolkit's \"Patch shaders for VR stereo\" patches a copy and checks it compiles." : ctx.Settings.patchNonSpiShaders
                     ? "AvatarBridge tried to fix them and the entry above says why it couldn't."
-                    : "Turn on \"Patch non-SPI shaders for VR\" in Advanced and convert again: it patches a " +
+                    : "Turn on \"Patch non-SPI shaders for VR\", under Shaders in Manual options, and convert again: it patches a " +
                       "copy and checks it compiles.") +
                 " Otherwise swap the shader, or accept how it looks; the README has the hand-edit.");
         }
 
-        // The patcher's own reader, so the warning and the patch agree on
-        // what a shader includes. A second reader here only looked beside
-        // each file and would flag a shader the patcher calls correct.
-        static List<string> MissingStereoMacros(string path)
+        // The patcher's own plan, so the warning and the patch agree on
+        // what a shader includes, which passes it has and what each lacks.
+        // A surface shader's passes are generated with stereo and say nothing.
+        static List<string> StereoProblems(string path)
         {
-            var remaining = new HashSet<string>(StereoMacros, StringComparer.Ordinal);
-            foreach (var file in ShaderSpiPatcher.ReadUnit(path))
+            try
             {
-                remaining.RemoveWhere(m => file.Text.Contains(m, StringComparison.Ordinal));
+                return ShaderSpiPatcher.StereoProblems(path);
             }
-            return StereoMacros.Where(remaining.Contains).ToList();
+            catch (System.Exception e)
+            {
+                return new List<string> { "source unreadable: " + e.Message };
+            }
         }
 
         // ChilloutVR's own sync budget, from AvatarAnimatorManager.CreateParameterDefinition.
