@@ -239,7 +239,6 @@ namespace AvatarBridge
             {
                 return "(no message captured)";
             }
-            text = text.Replace('\n', ' ').Replace('\r', ' ');
             return text.Length <= max ? text : text.Substring(0, max) + "…";
         }
 

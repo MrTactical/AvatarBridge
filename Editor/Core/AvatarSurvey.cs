@@ -82,6 +82,12 @@ namespace AvatarBridge
         public class Model
         {
             public string Avatar;
+            // Null when there was none to read. Then no layer is known, and
+            // nothing here proves a renderer is never switched on.
+            public AnimatorController Controller;
+            // Clips the shipped override controller swaps in, by the clip they
+            // replace. What plays is the replacement, so that is what is read.
+            public readonly Dictionary<AnimationClip, AnimationClip> Overrides = new Dictionary<AnimationClip, AnimationClip>();
             public readonly List<Param> Parameters = new List<Param>();
             public readonly List<Layer> Layers = new List<Layer>();
             public readonly List<Control> Controls = new List<Control>();
@@ -97,9 +103,17 @@ namespace AvatarBridge
             if (avatar == null) return model;
             model.Avatar = avatar.name;
 
-            var animator = avatar.GetComponent<Animator>();
-            var controller = BridgeContext.Underlying(animator != null ? animator.runtimeAnimatorController : null);
+            var controller = model.Controller = ShippedController(avatar);
             if (controller == null) return model;
+            if (avatar.overrides != null && BridgeContext.Underlying(avatar.overrides) == controller)
+            {
+                var pairs = new List<KeyValuePair<AnimationClip, AnimationClip>>();
+                avatar.overrides.GetOverrides(pairs);
+                foreach (var pair in pairs)
+                {
+                    if (pair.Key != null && pair.Value != null) model.Overrides[pair.Key] = pair.Value;
+                }
+            }
 
             foreach (var p in controller.parameters)
             {
@@ -124,6 +138,21 @@ namespace AvatarBridge
             FindProps(avatar, model);
             Judge(model);
             return model;
+        }
+
+        // The controller ChilloutVR uploads: the overrides, else the base,
+        // and the Animator's slot last. The CCK reads the first two. The slot
+        // is whatever was left there, and on an avatar never built it is
+        // often empty or stale.
+        internal static AnimatorController ShippedController(CVRAvatar avatar, Animator animator = null)
+        {
+            var controller = avatar != null ? BridgeContext.Underlying(avatar.overrides) : null;
+            if (controller == null && avatar != null && avatar.avatarSettings != null)
+                controller = BridgeContext.Underlying(avatar.avatarSettings.baseController);
+            if (animator == null && avatar != null) animator = avatar.GetComponent<Animator>();
+            if (controller == null && animator != null)
+                controller = BridgeContext.Underlying(animator.runtimeAnimatorController);
+            return controller;
         }
 
         static void ReadLayers(AnimatorController controller, Model model)
@@ -165,19 +194,12 @@ namespace AvatarBridge
                 if (st.mirrorParameterActive) layer.Reads.Add(st.mirrorParameter);
                 if (st.timeParameterActive) layer.Reads.Add(st.timeParameter);
 
-                CollectMotion(st.motion, layer);
+                CollectMotion(st.motion, layer, model);
                 foreach (var t in st.transitions) CollectConditions(t, layer);
-                foreach (var b in st.behaviours)
-                {
-                    foreach (string target in DriverTargets(b))
-                    {
-                        var p = model[target];
-                        if (p == null) continue;
-                        p.Writers.Add($"a driver in layer \"{layer.Name}\"");
-                        p.How.Add(Source.Driver);
-                    }
-                }
+                foreach (var b in st.behaviours) ReadDriver(b, layer, model);
             }
+            // A driver on a state machine runs for every state inside it.
+            foreach (var b in machine.behaviours) ReadDriver(b, layer, model);
             foreach (var t in machine.anyStateTransitions) CollectConditions(t, layer);
             foreach (var t in machine.entryTransitions) CollectConditions(t, layer);
             foreach (var sub in machine.stateMachines)
@@ -195,9 +217,10 @@ namespace AvatarBridge
             }
         }
 
-        static void CollectMotion(Motion motion, Layer layer)
+        static void CollectMotion(Motion motion, Layer layer, Model model)
         {
             if (motion == null) return;
+            if (motion is AnimationClip original && model.Overrides.TryGetValue(original, out var swapped)) motion = swapped;
             if (motion is BlendTree tree)
             {
                 if (!string.IsNullOrEmpty(tree.blendParameter)) layer.Reads.Add(tree.blendParameter);
@@ -205,7 +228,7 @@ namespace AvatarBridge
                 foreach (var child in tree.children)
                 {
                     if (!string.IsNullOrEmpty(child.directBlendParameter)) layer.Reads.Add(child.directBlendParameter);
-                    CollectMotion(child.motion, layer);
+                    CollectMotion(child.motion, layer, model);
                 }
                 return;
             }
@@ -213,6 +236,13 @@ namespace AvatarBridge
             foreach (var b in AnimationUtility.GetCurveBindings(clip))
             {
                 layer.Bindings.Add($"{b.path}::{b.propertyName}");
+                // A curve on the Animator itself writes the parameter of that
+                // name: the usual way to smooth a toggle.
+                if (b.type != typeof(Animator) || !string.IsNullOrEmpty(b.path)) continue;
+                var p = model[b.propertyName];
+                if (p == null) continue;
+                p.Writers.Add($"a clip in layer \"{layer.Name}\"");
+                p.How.Add(Source.Curve);
             }
             foreach (var b in AnimationUtility.GetObjectReferenceCurveBindings(clip))
             {
@@ -242,12 +272,64 @@ namespace AvatarBridge
         // An entry the CCK builds its own layer for at "Create Controller".
         // Its objects are its own targets, so no layer of ours reads it, and
         // that read as a dead control: the converter pruned every one.
+        // A dropdown keeps its targets on each option, not on itself, and a
+        // clip-mode entry builds the same layer from the author's clips.
         internal static bool DrivesTargets(CVRAdvancedSettingsEntry entry)
+            => TargetLists(entry).Any(list => list.Count > 0) || Clips(entry).Any();
+
+        // The paths the CCK's generated layer for this entry switches. It
+        // binds the stored treePath, and skips a target with no object. In
+        // clip mode it switches whatever the clips turn on or off.
+        internal static IEnumerable<string> TargetPaths(CVRAdvancedSettingsEntry entry)
+        {
+            foreach (var list in TargetLists(entry))
+            {
+                foreach (var target in list)
+                {
+                    if (target == null || !(Field(target, "gameObject") is GameObject go) || go == null) continue;
+                    if (Field(target, "treePath") is string path) yield return path;
+                }
+            }
+            foreach (var clip in Clips(entry))
+            {
+                foreach (var b in AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (b.propertyName == "m_IsActive" || b.propertyName == "m_Enabled") yield return b.path;
+                }
+            }
+        }
+
+        // Read by reflection: the field layout differs between CCK versions.
+        // The setting itself, then each dropdown option.
+        static IEnumerable<object> Owners(CVRAdvancedSettingsEntry entry)
         {
             var setting = entry?.setting;
-            var field = setting?.GetType().GetField("gameObjectTargets", BindingFlags.Public | BindingFlags.Instance);
-            return field?.GetValue(setting) is IList list && list.Count > 0;
+            if (setting == null) yield break;
+            yield return setting;
+            if (!(Field(setting, "options") is IList options)) yield break;
+            foreach (var option in options)
+            {
+                if (option != null) yield return option;
+            }
         }
+
+        static IEnumerable<IList> TargetLists(CVRAdvancedSettingsEntry entry)
+            => Owners(entry).Select(o => Field(o, "gameObjectTargets") as IList).Where(l => l != null);
+
+        // The CCK plays these in place of the targets when useAnimationClip
+        // is set. A toggle has an off clip too, an option does not.
+        static IEnumerable<AnimationClip> Clips(CVRAdvancedSettingsEntry entry)
+        {
+            foreach (var owner in Owners(entry))
+            {
+                if (!(Field(owner, "useAnimationClip") is bool on) || !on) continue;
+                if (Field(owner, "animationClip") is AnimationClip clip && clip != null) yield return clip;
+                if (Field(owner, "offAnimationClip") is AnimationClip off && off != null) yield return off;
+            }
+        }
+
+        static object Field(object owner, string name)
+            => owner.GetType().GetField(name, BindingFlags.Public | BindingFlags.Instance)?.GetValue(owner);
 
         // A control writes its machine name, and the axis suffixes the
         // client registers for the multi-value types.
@@ -275,6 +357,22 @@ namespace AvatarBridge
                     if (p == null) continue;
                     p.Writers.Add($"the contact \"{trigger.name}\"");
                     p.How.Add(Source.Contact);
+                }
+            }
+
+            // A clip animates the driver's slots and it sets the parameters
+            // on the animators it lists. Only this avatar's own counts.
+            var animator = avatar.GetComponent<Animator>();
+            foreach (var driver in avatar.GetComponentsInChildren<CVRAnimatorDriver>(true))
+            {
+                if (driver == null || driver.animatorParameters == null || driver.animators == null) continue;
+                for (int i = 0; i < driver.animatorParameters.Count && i < driver.animators.Count; i++)
+                {
+                    if (animator == null || driver.animators[i] != animator) continue;
+                    var p = model[driver.animatorParameters[i]];
+                    if (p == null) continue;
+                    p.Writers.Add($"the animator driver on \"{driver.name}\"");
+                    p.How.Add(Source.Driver);
                 }
             }
 
@@ -308,14 +406,14 @@ namespace AvatarBridge
         {
             var root = avatar.transform;
             var renderers = avatar.GetComponentsInChildren<Renderer>(true)
-                .Where(r => r != null && MeshOf(r) != null)
+                .Where(r => r != null && AvatarWeight.MeshOf(r) != null)
                 .ToList();
 
             // A texture worth moving is one only this renderer uses.
             var users = new Dictionary<Texture, int>();
             foreach (var r in renderers)
             {
-                foreach (var tex in TexturesOf(r).Distinct())
+                foreach (var tex in r.sharedMaterials.SelectMany(AvatarWeight.TexturesOf).Distinct())
                 {
                     users.TryGetValue(tex, out int n);
                     users[tex] = n + 1;
@@ -325,7 +423,7 @@ namespace AvatarBridge
             foreach (var r in renderers)
             {
                 string path = AnimationUtility.CalculateTransformPath(r.transform, root);
-                var mesh = MeshOf(r);
+                var mesh = AvatarWeight.MeshOf(r);
 
                 // This tool's own atlas and socket readout objects. Not
                 // rejected with a reason, because there is no question to
@@ -366,7 +464,7 @@ namespace AvatarBridge
                 var paths = new List<string> { path };
                 for (var at = r.transform.parent; at != null && at != root; at = at.parent)
                 {
-                    if (at.GetComponentsInChildren<Renderer>(true).Count(x => MeshOf(x) != null) != 1) break;
+                    if (at.GetComponentsInChildren<Renderer>(true).Count(x => AvatarWeight.MeshOf(x) != null) != 1) break;
                     paths.Add(AnimationUtility.CalculateTransformPath(at, root));
                 }
 
@@ -406,16 +504,16 @@ namespace AvatarBridge
                     .ToList();
                 if (controls.Count == 0) { Reject(model, "nothing on the menu switches it"); continue; }
 
-                long bytes = TexturesOf(r).Distinct()
+                long bytes = r.sharedMaterials.SelectMany(AvatarWeight.TexturesOf).Distinct()
                     .Where(t => users.TryGetValue(t, out int n) && n == 1)
-                    .Sum(t => UnityEngine.Profiling.Profiler.GetRuntimeMemorySizeLong(t));
+                    .Sum(t => AvatarWeight.GpuBytes(t));
 
                 model.Props.Add(new PropCandidate
                 {
                     Path = path,
                     Bone = bone,
                     Control = string.Join(", ", controls.Select(c => c.Name)),
-                    Triangles = mesh.triangles.Length / 3,
+                    Triangles = AvatarDescription.TriangleCount(mesh),
                     Materials = r.sharedMaterials.Count(m => m != null),
                     TextureBytes = bytes,
                 });
@@ -426,13 +524,6 @@ namespace AvatarBridge
         {
             model.Rejected.TryGetValue(why, out int n);
             model.Rejected[why] = n + 1;
-        }
-
-        static Mesh MeshOf(Renderer r)
-        {
-            if (r is SkinnedMeshRenderer skin) return skin.sharedMesh;
-            var filter = r.GetComponent<MeshFilter>();
-            return filter != null ? filter.sharedMesh : null;
         }
 
         // The one bone every other used bone hangs off, or null when they
@@ -461,21 +552,6 @@ namespace AvatarBridge
                 if (used.Count > 24) break;   // past any prop; the caller rejects on count anyway
             }
             return used;
-        }
-
-        static IEnumerable<Texture> TexturesOf(Renderer r)
-        {
-            foreach (var m in r.sharedMaterials)
-            {
-                if (m == null || m.shader == null) continue;
-                int count = ShaderUtil.GetPropertyCount(m.shader);
-                for (int i = 0; i < count; i++)
-                {
-                    if (ShaderUtil.GetPropertyType(m.shader, i) != ShaderUtil.ShaderPropertyType.TexEnv) continue;
-                    var tex = m.GetTexture(ShaderUtil.GetPropertyName(m.shader, i));
-                    if (tex != null) yield return tex;
-                }
-            }
         }
 
         // The game writes these itself whatever the avatar says.
@@ -616,23 +692,36 @@ namespace AvatarBridge
 
         // Reflection: the CCK's driver task type has changed shape across
         // versions and the harness reads it the same way.
-        static List<string> DriverTargets(StateMachineBehaviour behaviour)
+        static void ReadDriver(StateMachineBehaviour behaviour, Layer layer, Model model)
         {
-            var found = new SortedSet<string>(System.StringComparer.Ordinal);
-            if (behaviour == null) return found.ToList();
+            if (behaviour == null) return;
+            string who = $"a driver in layer \"{layer.Name}\"";
             var type = behaviour.GetType();
-            foreach (string listName in new[] { "EnterTasks", "ExitTasks", "UpdateTasks" })
+            foreach (string listName in new[] { "EnterTasks", "ExitTasks" })
             {
                 var field = type.GetField(listName);
                 if (!(field?.GetValue(behaviour) is System.Collections.IEnumerable tasks)) continue;
                 foreach (var task in tasks)
                 {
                     if (task == null) continue;
-                    var target = task.GetType().GetField("targetName");
-                    if (target?.GetValue(task) is string name && !string.IsNullOrEmpty(name)) found.Add(name);
+                    var taskType = task.GetType();
+                    if (taskType.GetField("targetName")?.GetValue(task) is string name && model[name] is Param target)
+                    {
+                        target.Writers.Add(who);
+                        target.How.Add(Source.Driver);
+                    }
+                    // Its operands can be parameters too. Missing those read a
+                    // copy's source as unused, and FreeWins deletes unused ones.
+                    foreach (string operand in new[] { "a", "b", "c" })
+                    {
+                        if (taskType.GetField(operand + "Type")?.GetValue(task)?.ToString() != "Parameter") continue;
+                        if (taskType.GetField(operand + "Name")?.GetValue(task) is string read && model[read] is Param source)
+                        {
+                            source.Readers.Add(who);
+                        }
+                    }
                 }
             }
-            return found.ToList();
         }
 
         // A name nobody chose and nobody can act on.

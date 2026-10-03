@@ -1,7 +1,6 @@
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Text;
 using UnityEditor;
@@ -105,10 +104,25 @@ namespace AvatarBridge
             // Parameters CVR drives itself are excluded; flagging those
             // fires on every conversion, and a check that always fires
             // is a check people learn to scroll past.
+            //
+            // So are native toggles: the CCK builds the layer that reads them at upload, so
+            // nothing here can, and they are working rather than left over.
+            var nativeToggles = new HashSet<string>();
+            if (ctx.CvrAvatar != null && ctx.CvrAvatar.avatarSettings != null
+                && ctx.CvrAvatar.avatarSettings.settings != null)
+            {
+                foreach (var entry in ctx.CvrAvatar.avatarSettings.settings)
+                {
+                    if (AvatarSurvey.DrivesTargets(entry) && !string.IsNullOrEmpty(entry.machineName))
+                    {
+                        nativeToggles.Add(entry.machineName);
+                    }
+                }
+            }
             var inert = master.parameters
                 .Where(p => !usage.ContainsKey(p.name) || !usage[p.name].Any)
                 .Select(p => p.name)
-                .Where(n => !n.StartsWith("#") && !IsPlatformDriven(n))
+                .Where(n => !n.StartsWith("#") && !CvrParameterNames.IsGameDriven(n) && !nativeToggles.Contains(n))
                 .ToList();
             if (inert.Count > 0)
             {
@@ -130,6 +144,11 @@ namespace AvatarBridge
                     continue;
                 }
                 var sdata = mono.GetType().GetProperty("SerializeData")?.GetValue(mono);
+                // A MeshCloth simulates its source renderers and has no root bones by design.
+                if (sdata?.GetType().GetField("clothType")?.GetValue(sdata)?.ToString() == "MeshCloth")
+                {
+                    continue;
+                }
                 var roots = sdata?.GetType().GetField("rootBones")?.GetValue(sdata) as System.Collections.IList;
                 if (roots != null && roots.Count == 0)
                 {
@@ -410,7 +429,6 @@ namespace AvatarBridge
 
             void NoteDrivers(IEnumerable<StateMachineBehaviour> behaviours)
             {
-#if CVR_CCK_EXISTS
                 foreach (var b in behaviours)
                 {
                     if (b == null || b.GetType().Name != "AnimatorDriver")
@@ -433,7 +451,6 @@ namespace AvatarBridge
                         }
                     }
                 }
-#endif
             }
 
             foreach (var layer in master.layers)
@@ -778,11 +795,14 @@ namespace AvatarBridge
                 var machines = new List<AnimatorStateMachine>();
                 CollectMachines(layer.stateMachine, machines);
 
+                // AnyState is an escape route from every state, except where it only targets the
+                // current one. From every state in the LAYER: Unity applies an AnyState transition
+                // layer-wide, whichever sub-machine stores it.
+                var anyEscapes = machines
+                    .SelectMany(m => m.anyStateTransitions ?? new AnimatorStateTransition[0])
+                    .ToList();
                 foreach (var machine in machines)
                 {
-                    // AnyState is an escape route from every state,
-                    // except where it only targets the current one.
-                    var anyEscapes = machine.anyStateTransitions ?? new AnimatorStateTransition[0];
                     foreach (var child in machine.states)
                     {
                         var state = child.state;
@@ -948,36 +968,36 @@ namespace AvatarBridge
             var missingCache = new Dictionary<string, List<string>>();
             var offenders = new SortedDictionary<string, SortedSet<string>>(StringComparer.Ordinal);
 
-            foreach (var renderer in ctx.Target.GetComponentsInChildren<Renderer>(true))
+            // The materials a toggle swaps in as well as the ones worn at rest, as the advisor
+            // and the patcher both reach them.
+            var materials = ctx.Target.GetComponentsInChildren<Renderer>(true).SelectMany(r => r.sharedMaterials)
+                .Concat(SwappedMaterials(ctx.MergedController));
+            foreach (var material in materials)
             {
-                foreach (var material in renderer.sharedMaterials)
+                var shader = material != null ? material.shader : null;
+                if (shader == null || IsKnownStereoShader(shader.name))
                 {
-                    var shader = material != null ? material.shader : null;
-                    if (shader == null || IsKnownStereoShader(shader.name))
-                    {
-                        continue;
-                    }
-                    string path = AssetDatabase.GetAssetPath(shader);
-                    if (string.IsNullOrEmpty(path) || !path.EndsWith(".shader", StringComparison.OrdinalIgnoreCase)
-                        || !File.Exists(path))
-                    {
-                        continue; // no source to read; the CCK can't judge it either
-                    }
-                    if (!missingCache.TryGetValue(path, out var missing))
-                    {
-                        missingCache[path] = missing = StereoProblems(path);
-                    }
-                    if (missing.Count == 0)
-                    {
-                        continue;
-                    }
-                    string key = $"{shader.name} [{string.Join("; ", missing)}]";
-                    if (!offenders.TryGetValue(key, out var users))
-                    {
-                        offenders[key] = users = new SortedSet<string>(StringComparer.Ordinal);
-                    }
-                    users.Add(material.name);
+                    continue;
                 }
+                string path = ShaderSpiPatcher.SourcePathOf(shader);
+                if (path == null)
+                {
+                    continue; // no source to read; the CCK can't judge it either
+                }
+                if (!missingCache.TryGetValue(path, out var missing))
+                {
+                    missingCache[path] = missing = StereoProblems(path);
+                }
+                if (missing.Count == 0)
+                {
+                    continue;
+                }
+                string key = $"{shader.name} [{string.Join("; ", missing)}]";
+                if (!offenders.TryGetValue(key, out var users))
+                {
+                    offenders[key] = users = new SortedSet<string>(StringComparer.Ordinal);
+                }
+                users.Add(material.name);
             }
 
             if (offenders.Count == 0)
@@ -994,6 +1014,22 @@ namespace AvatarBridge
                     : "Turn on \"Patch non-SPI shaders for VR\", under Shaders in Manual options, and convert again: it patches a " +
                       "copy and checks it compiles.") +
                 " Otherwise swap the shader, or accept how it looks; the README has the hand-edit.");
+        }
+
+        static IEnumerable<Material> SwappedMaterials(AnimatorController controller)
+        {
+            if (controller == null) yield break;
+            foreach (var clip in controller.animationClips.Where(c => c != null).Distinct())
+            {
+                foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                {
+                    var keys = AnimationUtility.GetObjectReferenceCurve(clip, binding);
+                    foreach (var key in keys ?? Array.Empty<ObjectReferenceKeyframe>())
+                    {
+                        if (key.value is Material material) yield return material;
+                    }
+                }
+            }
         }
 
         // The patcher's own plan, so the warning and the patch agree on
@@ -1063,26 +1099,6 @@ namespace AvatarBridge
                     $"{floats} floats and {ints} ints at 32 bits each, {bools} bools at 1. Parameters added " +
                     "beyond the limit stop replicating silently, so there is not much headroom left.");
             }
-        }
-
-        static readonly HashSet<string> CckBaseParameters = new HashSet<string>
-        {
-            "MovementX", "MovementY", "Grounded", "Emote", "CancelEmote",
-            "GestureLeft", "GestureRight", "GestureLeftIdx", "GestureRightIdx",
-            "Toggle", "Sitting", "Crouching", "Prone", "Flying", "Swimming",
-            "IsLocal", "VisemeIdx", "VisemeLoudness"
-        };
-
-        static bool IsPlatformDriven(string name)
-        {
-            string bare = name.TrimStart('#');
-#if VRC_SDK_VRCSDK3
-            if (CvrParameterNames.IsGameDriven(bare))
-            {
-                return true;
-            }
-#endif
-            return CckBaseParameters.Contains(bare);
         }
 
         static string Join(IEnumerable<string> items, int max = 12)

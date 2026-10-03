@@ -35,19 +35,20 @@ namespace AvatarBridge
             if (AssetDatabase.IsValidFolder(NewFolder))
             {
                 // Both exist (a conversion ran on an old version after the new folder was
-                // made). Move the per-avatar subfolders across individually; name clashes
-                // stay put and are reported rather than overwritten.
+                // made). Move what sits directly in it across, subfolders and loose files
+                // alike, since the folder goes afterwards; name clashes stay put and are
+                // reported rather than overwritten.
                 bool anyLeft = false;
                 foreach (var guid in AssetDatabase.FindAssets("", new[] { OldFolder }))
                 {
                     string path = AssetDatabase.GUIDToAssetPath(guid);
-                    if (!AssetDatabase.IsValidFolder(path) ||
+                    if (string.IsNullOrEmpty(path) ||
                         System.IO.Path.GetDirectoryName(path).Replace('\\', '/') != OldFolder)
                     {
                         continue;
                     }
                     string target = NewFolder + "/" + System.IO.Path.GetFileName(path);
-                    if (AssetDatabase.IsValidFolder(target))
+                    if (AssetDatabase.LoadMainAssetAtPath(target) != null)
                     {
                         Debug.LogWarning($"[AvatarBridge] Not migrating {path}: {target} already exists. " +
                                          "Merge or delete one of them by hand.");
@@ -61,10 +62,12 @@ namespace AvatarBridge
                         anyLeft = true;
                     }
                 }
-                if (!anyLeft)
+                if (anyLeft)
                 {
-                    AssetDatabase.DeleteAsset(OldFolder);
+                    return;   // the warnings above said what stayed; claiming success would not
                 }
+                // Trash, not delete: files Unity does not import never reached FindAssets.
+                AssetDatabase.MoveAssetToTrash(OldFolder);
             }
             else
             {

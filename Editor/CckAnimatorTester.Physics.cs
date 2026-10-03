@@ -36,7 +36,8 @@ namespace AvatarBridge
         bool _overlay;
         readonly Dictionary<MagicaCloth, (bool always, bool enable)> _gizmosBefore =
             new Dictionary<MagicaCloth, (bool, bool)>();
-        // Each chain bone's local pose before Play, by path under the avatar.
+        // Each chain bone's local pose before Play, by full scene path and for
+        // every avatar, so one picked mid-Play is measured from its own.
         // The swing bound is measured from where a bone hangs at rest, and
         // Play mode has already moved them by the time anyone looks.
         // Serialized, so the domain reload on entering Play keeps them.
@@ -44,6 +45,11 @@ namespace AvatarBridge
         [SerializeField] List<Vector3> _restPositions = new List<Vector3>();
         [SerializeField] List<Quaternion> _restRotations = new List<Quaternion>();
         Dictionary<string, (Vector3 position, Quaternion rotation)> _rest;
+        // Each drawn bone's entry in Rest, found by path once instead of on
+        // every repaint. Null for a bone with none: that one reads its live
+        // pose each time, so the miss is what gets kept, never the pose.
+        readonly Dictionary<Transform, (Vector3, Quaternion)?> _restByBone =
+            new Dictionary<Transform, (Vector3, Quaternion)?>();
 
         Dictionary<string, (Vector3 position, Quaternion rotation)> Rest
         {
@@ -61,23 +67,30 @@ namespace AvatarBridge
             }
         }
 
+        // onBeforeRender fires only while a game camera renders, so with the
+        // Game view hidden behind a tab nothing moved and no grab pulled. The
+        // editor tick steps too; whichever comes first in a frame does it.
         partial void EnablePhysics()
         {
             Application.onBeforeRender += StepPhysics;
+            EditorApplication.update += StepPhysics;
             SceneView.duringSceneGui += PhysicsSceneGui;
         }
 
         partial void DisablePhysics()
         {
             Application.onBeforeRender -= StepPhysics;
+            EditorApplication.update -= StepPhysics;
             SceneView.duringSceneGui -= PhysicsSceneGui;
         }
+
+        int _steppedFrame = -1;
 
         partial void PhysicsPlayModeChanged(PlayModeStateChange change)
         {
             if (change == PlayModeStateChange.ExitingEditMode)
             {
-                CaptureRest(ResolveAvatar());
+                CaptureRest();
             }
             else if (change == PlayModeStateChange.ExitingPlayMode)
             {
@@ -85,6 +98,7 @@ namespace AvatarBridge
                 _moved = null;
                 _held = null;
                 _gizmosBefore.Clear();
+                _restByBone.Clear();
             }
         }
 
@@ -97,9 +111,9 @@ namespace AvatarBridge
         {
             var card = new BridgeElements.Card("Physics  (MagicaCloth)");
             var cloths = Cloths(avatar);
-            card.Body.Add(BridgeElements.Hint(cloths.Count == 0
+            card.Body.Add(BridgeElements.Hint(cloths.Length == 0
                 ? "No MagicaCloth on this avatar, so nothing here moves."
-                : $"{cloths.Count} cloth component(s). Move the avatar and watch them swing, drag one in the " +
+                : $"{cloths.Length} cloth component(s). Move the avatar and watch them swing, drag one in the " +
                   "Scene view, or draw them all. Play mode only; everything resets when it ends."));
 
             var row = new VisualElement();
@@ -117,7 +131,8 @@ namespace AvatarBridge
             })
             {
                 var captured = motion;
-                var button = new Button(() => StartMotion(avatar, captured)) { text = motion.ToString(), tooltip = tip };
+                // Resolved at the click, as the animator it drives is.
+                var button = new Button(() => StartMotion(ResolveAvatar(), captured)) { text = motion.ToString(), tooltip = tip };
                 button.style.marginBottom = 2;
                 row.Add(button);
             }
@@ -139,21 +154,28 @@ namespace AvatarBridge
                 tooltip = "MagicaCloth's own particles, radius and colliders for every chain at once, with each " +
                           "chain's name and its swing bound: the sphere a bone may not leave, around where it hangs at rest.",
             };
-            overlay.RegisterValueChangedCallback(e => SetOverlay(avatar, e.newValue));
+            overlay.RegisterValueChangedCallback(e => SetOverlay(ResolveAvatar(), e.newValue));
             card.Body.Add(overlay);
+            // The gizmos belong to the avatar ticked for. Another one resolved
+            // since, or a new Play session, needs them to match the box.
+            if (live && _overlay) SetOverlay(avatar, true);
 
-            card.SetEnabled(live && cloths.Count > 0);
+            card.SetEnabled(live && cloths.Length > 0);
             return card;
         }
 
-        static List<MagicaCloth> Cloths(CVRAvatar avatar) =>
-            avatar != null ? avatar.GetComponentsInChildren<MagicaCloth>(true).ToList() : new List<MagicaCloth>();
+        static MagicaCloth[] Cloths(CVRAvatar avatar) =>
+            avatar != null ? avatar.GetComponentsInChildren<MagicaCloth>(true) : new MagicaCloth[0];
 
         // ---- motion ------------------------------------------------------------------
 
         void StartMotion(CVRAvatar avatar, Moves motion)
         {
-            if (avatar == null) return;
+            if (avatar == null)
+            {
+                Debug.LogWarning("[AvatarBridge] No avatar to move: select it, or have one CVRAvatar active in the scene.");
+                return;
+            }
             if (_moved != avatar.transform || _motion == Moves.None)
             {
                 _moved = avatar.transform;
@@ -221,7 +243,8 @@ namespace AvatarBridge
         // write lands somewhere around the frame instead of before it.
         void StepPhysics()
         {
-            if (!Application.isPlaying) return;
+            if (!Application.isPlaying || Time.frameCount == _steppedFrame) return;
+            _steppedFrame = Time.frameCount;
             if (_motion != Moves.None && _motion != Moves.Sit && _moved != null)
             {
                 var (offset, yaw) = MotionPose(_motion, Time.time - _motionStart);
@@ -246,6 +269,9 @@ namespace AvatarBridge
         void PhysicsSceneGui(SceneView view)
         {
             if (!Application.isPlaying || (!_overlay && !_grab)) return;
+            // The overlay draws on Repaint alone, so without grabbing no other
+            // event needs the avatar, and resolving it can search the scene.
+            if (!_grab && Event.current.type != EventType.Repaint) return;
             var avatar = ResolveAvatar();
             if (_overlay) DrawChains(avatar);
             if (!_grab || avatar == null) return;
@@ -352,6 +378,7 @@ namespace AvatarBridge
         void SetOverlay(CVRAvatar avatar, bool on)
         {
             _overlay = on;
+            _restByBone.Clear();
             foreach (var cloth in Cloths(avatar))
             {
                 var gizmos = Member(cloth, "GizmoSerializeData");
@@ -377,22 +404,22 @@ namespace AvatarBridge
                 }
             }
             if (!on) _gizmosBefore.Clear();
-            if (avatar != null && _restPaths.Count == 0) CaptureRest(avatar);
+            if (_restPaths.Count == 0) CaptureRest();
             SceneView.RepaintAll();
         }
 
-        void CaptureRest(CVRAvatar avatar)
+        void CaptureRest()
         {
             _restPaths.Clear();
             _restPositions.Clear();
             _restRotations.Clear();
             _rest = null;
-            if (avatar == null) return;
-            foreach (var cloth in Cloths(avatar))
+            _restByBone.Clear();
+            foreach (var cloth in FindObjectsOfType<CVRAvatar>(true).SelectMany(a => Cloths(a)))
             {
                 foreach (var t in ChainBones(cloth))
                 {
-                    _restPaths.Add(PathUnder(avatar.transform, t));
+                    _restPaths.Add(PathUnder(null, t));
                     _restPositions.Add(t.localPosition);
                     _restRotations.Add(t.localRotation);
                 }
@@ -425,12 +452,12 @@ namespace AvatarBridge
                 foreach (var root in data.rootBones.Where(r => r != null))
                 {
                     int deepest = Mathf.Max(1, Deepest(root));
-                    DrawBounds(avatar.transform, root, root.localToWorldMatrix, 0, deepest, maxDistance);
+                    DrawBounds(root, root.localToWorldMatrix, 0, deepest, maxDistance);
                 }
             }
         }
 
-        void DrawBounds(Transform avatarRoot, Transform bone, Matrix4x4 restMatrix, int depth, int deepest, object maxDistance)
+        void DrawBounds(Transform bone, Matrix4x4 restMatrix, int depth, int deepest, object maxDistance)
         {
             if (depth > 0)
             {
@@ -439,21 +466,42 @@ namespace AvatarBridge
                 float off = Vector3.Distance(rest, bone.position);
                 Handles.color = off > bound * 0.95f ? new Color(1f, 0.55f, 0.1f) : new Color(0.3f, 0.9f, 0.5f, 0.8f);
                 Handles.DrawLine(rest, bone.position);
-                foreach (var axis in new[] { Vector3.up, Vector3.right, Vector3.forward })
+                foreach (var axis in Axes)
                 {
                     Handles.DrawWireDisc(rest, axis, bound);
                 }
             }
-            foreach (Transform child in bone)
+            // Indexed, not foreach: Transform's enumerator allocates, per bone per repaint.
+            for (int i = 0; i < bone.childCount; i++)
             {
-                var restLocal = Rest.TryGetValue(PathUnder(avatarRoot, child), out var r)
-                    ? r : (child.localPosition, child.localRotation);
+                var child = bone.GetChild(i);
+                var restLocal = RestOf(child) ?? (child.localPosition, child.localRotation);
                 var childMatrix = restMatrix * Matrix4x4.TRS(restLocal.Item1, restLocal.Item2, child.localScale);
-                DrawBounds(avatarRoot, child, childMatrix, depth + 1, deepest, maxDistance);
+                DrawBounds(child, childMatrix, depth + 1, deepest, maxDistance);
             }
         }
 
-        static int Deepest(Transform t) => t.childCount == 0 ? 0 : 1 + t.Cast<Transform>().Max(Deepest);
+        static readonly Vector3[] Axes = { Vector3.up, Vector3.right, Vector3.forward };
+
+        (Vector3, Quaternion)? RestOf(Transform bone)
+        {
+            if (!_restByBone.TryGetValue(bone, out var pose))
+            {
+                _restByBone[bone] = pose = Rest.TryGetValue(PathUnder(null, bone), out var r)
+                    ? r : ((Vector3, Quaternion)?)null;
+            }
+            return pose;
+        }
+
+        static int Deepest(Transform t)
+        {
+            int deepest = 0;
+            for (int i = 0; i < t.childCount; i++)
+            {
+                deepest = Mathf.Max(deepest, 1 + Deepest(t.GetChild(i)));
+            }
+            return deepest;
+        }
 
         // A MagicaCloth curve setting: a value, scaled by a curve over depth when it has one.
         static float Curve(object curve, float depth)

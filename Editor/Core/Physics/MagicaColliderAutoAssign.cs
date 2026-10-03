@@ -20,8 +20,9 @@ namespace AvatarBridge
     // only ever collide with it, while a chain that starts inside one would be ejected. So a
     // collider is only offered when every bone of the chain begins outside it.
     //
-    // Everything here is measured against the original PhysBone collider, whose shape
-    // AvatarBridge already understands, and only ever adds to a list; no geometry invented.
+    // Everything here is measured against the converted collider as MagicaCloth2 reads it,
+    // since mesh fitting can grow and slide it away from the PhysBone collider's shape, and
+    // only ever adds to a list; no geometry invented.
     public static class MagicaColliderAutoAssign
     {
         const string Category = "PhysBones -> MagicaCloth2";
@@ -74,7 +75,7 @@ namespace AvatarBridge
                         continue;
                     }
 
-                    if (TryReach(pbCollider, bones, out float clearance))
+                    if (TryReach(magica, bones, out float clearance))
                     {
                         if (sdata.colliderCollisionConstraint.colliderList.Count == 0)
                         {
@@ -105,7 +106,7 @@ namespace AvatarBridge
             }
         }
 
-        static bool TryReach(VRCPhysBoneCollider collider, List<Transform> bones, out float clearance)
+        static bool TryReach(ColliderComponent collider, List<Transform> bones, out float clearance)
         {
             clearance = float.MaxValue;
             bool reachable = false;
@@ -134,34 +135,35 @@ namespace AvatarBridge
             return reachable;
         }
 
-        static float SurfaceDistance(VRCPhysBoneCollider collider, Vector3 point)
+        // MagicaCloth2's own reading of the shape: a sphere scales by X, a capsule by
+        // the scale along its axis, and its length is the full span, each end's sphere
+        // inset by that end's radius.
+        static float SurfaceDistance(ColliderComponent collider, Vector3 point)
         {
-            var owner = collider.rootTransform != null ? collider.rootTransform : collider.transform;
-            Vector3 scale = owner.lossyScale;
-            float uniform = Mathf.Max(Mathf.Abs(scale.x), Mathf.Max(Mathf.Abs(scale.y), Mathf.Abs(scale.z)));
-            Vector3 centre = owner.TransformPoint(collider.position);
-            float radius = collider.radius * uniform;
+            var t = collider.transform;
+            Vector3 size = collider.GetSize();
+            Vector3 centre = t.TransformPoint(collider.center);
 
-            if (collider.shapeType.ToString().Contains("Capsule"))
+            if (collider is MagicaCapsuleCollider capsule)
             {
-                // PhysBone capsules run along the collider's local Y, height being the full span.
-                Vector3 axis = (owner.rotation * collider.rotation) * Vector3.up;
-                float half = Mathf.Max(0f, collider.height * uniform * 0.5f - radius);
-                return DistanceToSegment(point, centre - axis * half, centre + axis * half) - radius;
+                Vector3 local = capsule.GetLocalDir();
+                float scale = Mathf.Abs(Vector3.Dot(t.lossyScale, local));
+                Vector3 axis = t.TransformDirection(local);
+                float startRadius = size.x * scale, endRadius = size.y * scale, half = size.z * scale * 0.5f;
+                Vector3 a = centre + axis * Mathf.Max(half - startRadius, 0f);
+                Vector3 b = centre - axis * Mathf.Max(half - endRadius, 0f);
+                float along = ClosestOnSegment(point, a, b);
+                return Vector3.Distance(point, Vector3.Lerp(a, b, along))
+                       - Mathf.Lerp(startRadius, endRadius, along);
             }
-            return Vector3.Distance(point, centre) - radius;
+            return Vector3.Distance(point, centre) - size.x * Mathf.Abs(t.lossyScale.x);
         }
 
-        static float DistanceToSegment(Vector3 point, Vector3 a, Vector3 b)
+        static float ClosestOnSegment(Vector3 point, Vector3 a, Vector3 b)
         {
             Vector3 ab = b - a;
             float lengthSq = ab.sqrMagnitude;
-            if (lengthSq < 1e-8f)
-            {
-                return Vector3.Distance(point, a);
-            }
-            float t = Mathf.Clamp01(Vector3.Dot(point - a, ab) / lengthSq);
-            return Vector3.Distance(point, a + ab * t);
+            return lengthSq < 1e-8f ? 0f : Mathf.Clamp01(Vector3.Dot(point - a, ab) / lengthSq);
         }
 
         static List<Transform> CollectChainBones(PhysBoneChainData data)

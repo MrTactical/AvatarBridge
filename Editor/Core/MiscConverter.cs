@@ -254,14 +254,12 @@ namespace AvatarBridge
                     ctx.Report.Converted(category, setting.transform.name,
                         isShown ? "Shown in first person" : "Hidden in first person");
 
-                    if (!string.IsNullOrEmpty(headChopPath))
+                    // "" is a real key: it is the binding path of a chop on the avatar root.
+                    if (!pathToExclusions.TryGetValue(headChopPath, out var list))
                     {
-                        if (!pathToExclusions.TryGetValue(headChopPath, out var list))
-                        {
-                            pathToExclusions[headChopPath] = list = new List<(Transform, bool)>();
-                        }
-                        list.Add((go.transform, isShown));
+                        pathToExclusions[headChopPath] = list = new List<(Transform, bool)>();
                     }
+                    list.Add((go.transform, isShown));
                 }
             }
 
@@ -574,8 +572,13 @@ namespace AvatarBridge
                 }
             }
 
-            int remaining = ctx.Target.GetComponentsInChildren(typeof(Component), true)
-                .Count(c => c != null && c.GetType().Name.StartsWith("VRC"));
+            // PhysBones the option kept are counted apart: they are what was asked
+            // for, not a strip that failed.
+            var leftovers = ctx.Target.GetComponentsInChildren(typeof(Component), true)
+                .Where(c => c != null && c.GetType().Name.StartsWith("VRC")).ToList();
+            int kept = ctx.Settings.deleteConvertedPhysBones ? 0
+                : leftovers.Count(c => c.GetType().Name.Contains("PhysBone"));
+            int remaining = leftovers.Count - kept;
             if (remaining > 0)
             {
                 ctx.Report.Warning(category, $"{remaining} VRC component(s) could not be removed",
@@ -583,7 +586,13 @@ namespace AvatarBridge
             }
             else
             {
-                ctx.Report.Converted(category, "All VRC components removed");
+                ctx.Report.Converted(category, kept > 0 ? "Every other VRC component removed" : "All VRC components removed");
+            }
+            if (kept > 0)
+            {
+                ctx.Report.Skipped(category, $"{kept} PhysBone component(s) kept",
+                    "\"Delete PhysBones after converting\" is off, so they stay on the avatar. " +
+                    "ChilloutVR does nothing with them.");
             }
 
             StripCamerasAndListeners(ctx, category);

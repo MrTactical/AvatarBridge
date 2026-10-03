@@ -41,6 +41,14 @@ namespace AvatarBridge
             if (sockets.Count < 2)
             {
                 bool removed = RemoveEntry(avatar) | RemoveLayer(controller);
+                // The parameter too. It syncs whether the menu names it or
+                // not, so it would keep its 32 bits with nothing to choose.
+                int param = System.Array.FindIndex(controller.parameters, p => p.name == Parameter);
+                if (param >= 0 && !YapsRemover.ParameterUsed(controller, Parameter))
+                {
+                    controller.RemoveParameter(param);
+                    removed = true;
+                }
                 return removed ? "lighthouse removed: one socket needs no chooser" : null;
             }
 
@@ -88,6 +96,8 @@ namespace AvatarBridge
 
         static void EnsureEntry(CVRAvatar avatar, List<string> labels)
         {
+            // Recorded first, or undo leaves the two writes below behind.
+            Undo.RecordObject(avatar, "YAPS lighthouse");
             if (avatar.avatarSettings == null)
             {
                 avatar.avatarSettings = new CVRAdvancedAvatarSettings
@@ -101,7 +111,6 @@ namespace AvatarBridge
             var options = labels.Select(l => new CVRAdvancedSettingsDropDownEntry { name = l }).ToList();
 
             var ours = settings.FirstOrDefault(e => e != null && e.machineName == Parameter);
-            Undo.RecordObject(avatar, "YAPS lighthouse");
             if (ours == null)
             {
                 settings.Add(new CVRAdvancedSettingsEntry
@@ -154,6 +163,19 @@ namespace AvatarBridge
                 if (controller.layers[i].name != LayerName) continue;
                 controller.RemoveLayer(i);
                 removed = true;
+            }
+            // RemoveLayer destroys the machine and its states but not the clips
+            // embedded beside them, so every Build left a dead set in the
+            // controller. Swept by name, which takes the sets older builds
+            // left too, and never one something still plays.
+            string path = AssetDatabase.GetAssetPath(controller);
+            if (string.IsNullOrEmpty(path)) return removed;
+            var live = new HashSet<AnimationClip>(controller.animationClips);
+            foreach (var clip in AssetDatabase.LoadAllAssetsAtPath(path).OfType<AnimationClip>())
+            {
+                if (!clip.name.StartsWith(LayerName, System.StringComparison.Ordinal) || live.Contains(clip)) continue;
+                Undo.DestroyObjectImmediate(clip);
+                EditorUtility.SetDirty(controller);
             }
             return removed;
         }

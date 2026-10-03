@@ -137,6 +137,11 @@ Shader "YAPS/Debug Overlay"
 
         Pass
         {
+            // ForwardBase with the vertex-light variant, as the socket
+            // readout: the light tier reads unity_4Light*, which Unity fills
+            // here alone. Untagged, it read whatever the last forward draw
+            // left, and reported a light the plug never saw.
+            Tags { "LightMode" = "ForwardBase" }
             // Always visible: a readout hidden by the body it sits on is
             // no readout. Never written to depth, so nothing downstream
             // sorts against it.
@@ -148,6 +153,7 @@ Shader "YAPS/Debug Overlay"
             #pragma vertex vert
             #pragma fragment frag
             #pragma target 4.0
+            #pragma multi_compile_fwdbase
             #pragma multi_compile_instancing
 
             #include "UnityCG.cginc"
@@ -204,45 +210,22 @@ Shader "YAPS/Debug Overlay"
 
                 float quad = v.uv.z;
 
-                // THE DEFORM'S OWN FRAME RECOVERY, step for step. The strip
-                // and the rest marker are skinned like the anchor, so they
-                // arrive where the anchor arrives; the bake holds where the
-                // anchor was. The steps and their order are YapsDeform's, and
-                // a change there that is not made here is a readout that lies.
+                // THE DEFORM'S OWN FRAME RECOVERY: the same YapsRecoverRoot
+                // call YapsDeform makes, so the readout reports the frame the
+                // plug really bends from. The strip and the rest marker are
+                // skinned like the anchor, so they arrive where the anchor
+                // arrives; the bake holds where the anchor was.
                 YapsVertex baked = YapsReadBaked((uint) max(_YAPS_AnchorVertex, 0));
                 float bakeRead = length(baked.normal) > 0.001 ? 1.0 : 0.0;
-                baked.position *= float3(max(_YAPS_BakeGirth, 0.0001), max(_YAPS_BakeGirth, 0.0001),
-                                         max(_YAPS_BakeScale, 0.0001));
-
-                float3 rootLocal = float3(0, 0, 0);
-                float3 forwardLocal = float3(0, 0, 1);
-                float3 upLocal = float3(0, 1, 0);
+                YapsRoot root = YapsRecoverRoot(baked, v.vertex.xyz, v.normal, v.tangent.xyz);
                 // 0 the object's own axes, 1 the recovery refused, 2 recovered.
                 // A plain-mesh plug is 0 by design and is not a fault; 1 is,
-                // and it is invisible everywhere else, because the deform then
-                // bends around the object's +Z instead of the plug's.
-                float recovered = 0.0;
-                if (_YAPS_FrameFromVertex > 0.5)
-                {
-                    YapsBasis basis = YapsBuildBasis(baked.normal, baked.tangent,
-                                                     v.normal, v.tangent.xyz);
-                    recovered = basis.valid ? 2.0 : 1.0;
-                    if (basis.valid)
-                    {
-                        rootLocal = v.vertex.xyz - YapsRotate(basis, baked.position);
-                        forwardLocal = YapsRotate(basis, float3(0, 0, 1));
-                        upLocal = YapsRotate(basis, float3(0, 1, 0));
-                    }
-                }
-
-                float3 rootWorld = mul(unity_ObjectToWorld, float4(rootLocal, 1)).xyz;
-                float3 rootForward = YapsSafeNormalize(
-                    mul((float3x3) unity_ObjectToWorld, forwardLocal), float3(0, 0, 1));
-                float3 rootUp = YapsPerpendicular(rootForward,
-                    mul((float3x3) unity_ObjectToWorld, upLocal));
-
-                float yapsScale = length(mul((float3x3) unity_ObjectToWorld, float3(0, 0, 1)));
-                float worldLength = _YAPS_Length * _YAPS_BakeScale * yapsScale;
+                // and the deform then leaves the vertex alone.
+                float recovered = root.recovered;
+                float3 rootWorld = root.position;
+                float3 rootForward = root.forward;
+                float3 rootUp = root.up;
+                float worldLength = root.worldLength;
 
                 // ONLY THE STRIP RESOLVES. A marker needs a place to sit, not
                 // an answer, and the atlas scan is 27 cells: running it for

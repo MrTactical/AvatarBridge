@@ -320,7 +320,7 @@ namespace AvatarBridge
             }
         }
 
-        static int TriangleCount(Mesh mesh)
+        internal static int TriangleCount(Mesh mesh)
         {
             int indices = 0;
             for (int i = 0; i < mesh.subMeshCount; i++)

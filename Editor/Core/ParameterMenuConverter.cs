@@ -52,6 +52,10 @@ namespace AvatarBridge
 
         public const string UnusedOption = "(unused)";
 
+        // Joins submenu names into a menu path. Not '/': control names use it themselves
+        // ("Jacket On/Off"), and splitting on it kept only "Off".
+        const char MenuSeparator = '\u001F';
+
         class MenuUse
         {
             public string DisplayName;
@@ -378,10 +382,19 @@ namespace AvatarBridge
                 case VRCExpressionParameters.ValueType.Float:
                     // VRCFury bakes most toggles as float parameters driven by blend
                     // trees. When every menu use is a toggle/button, expose a checkbox
-                    // (writing 0/1 into the float) instead of a slider.
-                    if (hasMenu && paramUses.All(u =>
-                            u.Type == VRCExpressionsMenu.Control.ControlType.Toggle ||
-                            u.Type == VRCExpressionsMenu.Control.ControlType.Button))
+                    // (writing 0/1 into the float) instead of a slider. Only while every toggle
+                    // writes 0 or 1: presets at 0.25/0.5/0.75 would collapse onto one checkbox
+                    // that reaches none of them, so those stay a slider.
+                    bool allToggles = hasMenu && paramUses.All(u =>
+                        u.Type == VRCExpressionsMenu.Control.ControlType.Toggle ||
+                        u.Type == VRCExpressionsMenu.Control.ControlType.Button);
+                    var presets = allToggles
+                        ? paramUses.Where(u => u.Type == VRCExpressionsMenu.Control.ControlType.Toggle &&
+                                               u.Value != 0f && !Mathf.Approximately(u.Value, 1f))
+                            .Select(u => u.Value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture))
+                            .Distinct().ToList()
+                        : null;
+                    if (allToggles && presets.Count == 0)
                     {
                         ctx.Report.Converted(Category, p.name, $"Toggle \"{display}\" (float parameter)");
                         return new CVRAdvancedSettingsEntry
@@ -401,6 +414,12 @@ namespace AvatarBridge
                     {
                         ctx.Report.Approximated(Category, p.name,
                             "Two-axis puppet axis converted to a 0..1 slider; the -1..0 half is unreachable from the CVR menu.");
+                    }
+                    else if (allToggles)
+                    {
+                        ctx.Report.Approximated(Category, p.name,
+                            $"Slider \"{display}\": its VRChat toggles set it to {string.Join(", ", presets)}, and a " +
+                            "ChilloutVR toggle can only write 0 or 1. Drag the slider to those values.");
                     }
                     else
                     {
@@ -451,7 +470,7 @@ namespace AvatarBridge
             }
 
             // What the animator actually reacts to, and the state name behind each value.
-            var animatorValues = ScanIntUsage(ctx.SourceDescriptor, p.name);
+            var animatorValues = ScanIntUsage(ctx, p.name);
 
             var valueNames = new Dictionary<int, string>();
             if (hasMenu)
@@ -563,7 +582,7 @@ namespace AvatarBridge
                         break;
 
                     case VRCExpressionsMenu.Control.ControlType.SubMenu:
-                        WalkMenu(control.subMenu, display + "/", uses, visited, ctx, puppets);
+                        WalkMenu(control.subMenu, display + MenuSeparator, uses, visited, ctx, puppets);
                         break;
                 }
             }
@@ -602,17 +621,16 @@ namespace AvatarBridge
             }
         }
 
-        static Dictionary<int, string> ScanIntUsage(VRCAvatarDescriptor vrc, string parameterName)
+        // The layers the merge will convert, by its own rule: a skipped or default layer's
+        // values never reach the output.
+        static Dictionary<int, string> ScanIntUsage(BridgeContext ctx, string parameterName)
         {
             var values = new Dictionary<int, string> { { 0, null } };
-            foreach (var layer in vrc.baseAnimationLayers)
+            foreach (var (_, controller) in AnimatorMerger.GetSelectedVrcControllers(ctx))
             {
-                if (layer.animatorController is AnimatorController controller)
+                foreach (var animatorLayer in controller.layers)
                 {
-                    foreach (var animatorLayer in controller.layers)
-                    {
-                        ScanMachine(animatorLayer.stateMachine, parameterName, values);
-                    }
+                    ScanMachine(animatorLayer.stateMachine, parameterName, values);
                 }
             }
             return values;
@@ -714,9 +732,9 @@ namespace AvatarBridge
             return string.IsNullOrEmpty(clean) ? "-" : clean;
         }
 
-        static string ShortName(string display)
+        static string ShortName(string display, char separator = MenuSeparator)
         {
-            int slash = display.LastIndexOf('/');
+            int slash = display.LastIndexOf(separator);
             return slash >= 0 && slash < display.Length - 1 ? display.Substring(slash + 1) : display;
         }
 
@@ -725,7 +743,7 @@ namespace AvatarBridge
             string leaf = ShortName(fullPath);
             if (leafCounts.TryGetValue(leaf, out var count) && count > 1)
             {
-                var segments = fullPath.Split('/');
+                var segments = fullPath.Split(MenuSeparator);
                 if (segments.Length >= 2)
                 {
                     return $"{leaf} ({segments[segments.Length - 2]})";
@@ -737,7 +755,7 @@ namespace AvatarBridge
         static string FriendlyParamName(string name)
         {
             string clean = System.Text.RegularExpressions.Regex.Replace(name, @"^VF\d+_", "");
-            return ShortName(clean);
+            return ShortName(clean, '/');
         }
 
         static string MakeUnique(string name, HashSet<string> usedNames)

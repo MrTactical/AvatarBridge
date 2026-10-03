@@ -37,6 +37,7 @@ namespace AvatarBridge
             int layersAdded = 0, parametersAdded = 0;
             var clashes = new List<string>();
             var renamed = new List<string>();
+            var syncedSkipped = new List<string>();
 
             foreach (var source in sources)
             {
@@ -62,13 +63,17 @@ namespace AvatarBridge
                     // every frame. Left behind and named.
                     if (layer.syncedLayerIndex >= 0)
                     {
-                        renamed.Add($"{layer.name}: synced layer, not merged");
+                        syncedSkipped.Add(layer.name);
                         continue;
                     }
                     var clone = copier.CloneLayer(layer);
                     if (names.Contains(clone.name))
                     {
-                        string fresh = clone.name + " (" + source.name + ")";
+                        // Checked again: a second merge of the same source
+                        // already made "X (source)".
+                        string stem = clone.name + " (" + source.name + ")";
+                        string fresh = stem;
+                        for (int n = 2; names.Contains(fresh); n++) fresh = stem + " " + n;
                         renamed.Add($"{clone.name} → {fresh}");
                         clone.name = fresh;
                     }
@@ -90,6 +95,12 @@ namespace AvatarBridge
                 report.Warning(Category, $"{clashes.Count} parameter(s) exist in both with different types",
                     string.Join(", ", clashes) + ". The target's type was kept; transitions from the source that " +
                     "compare the other way will need retyping.");
+            }
+            if (syncedSkipped.Count > 0)
+            {
+                report.Skipped(Category, $"{syncedSkipped.Count} synced layer(s) not merged",
+                    string.Join(", ", syncedSkipped) + ". A synced layer has no state machine of its own, so a " +
+                    "copy would play nothing.");
             }
             return into;
         }

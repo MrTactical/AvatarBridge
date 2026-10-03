@@ -19,20 +19,33 @@ namespace AvatarBridge
     // nobody could navigate; the cards were never the problem.
     public sealed class ToolkitPanel
     {
-        public ToolkitPanel(GameObject target = null, bool embedded = false, GameObject convertedFrom = null)
+        public ToolkitPanel(GameObject target = null, bool embedded = false, GameObject convertedFrom = null,
+            System.Action<GameObject> onTargetChanged = null)
         {
             _target = target;
             _embedded = embedded;
             _convertedFrom = convertedFrom;
+            _onTargetChanged = onTargetChanged;
         }
 
         readonly bool _embedded;
+
+        // The panel is rebuilt from scratch on every reload or tab switch, so
+        // the host keeps the pick or it falls back to whatever was handed over.
+        readonly System.Action<GameObject> _onTargetChanged;
 
         // The avatar this one was converted from, when the window handed it
         // over. Conversion copies the materials it patches, so the source
         // keeps its own set pointing at the same textures; treating those as
         // a stranger's is what kept a converted avatar's eyes at full size.
-        readonly GameObject _convertedFrom;
+        // Cleared once another target is picked: to that one the source IS a
+        // stranger, and its shared textures would shrink along with it.
+        GameObject _convertedFrom;
+
+        // The last rows each card showed. Fix it rebuilds every card, since
+        // sizes changed under them, and without this the rebuild threw away
+        // the very report it had just written.
+        readonly Dictionary<string, BridgeReport> _shown = new Dictionary<string, BridgeReport>();
 
         // Mounts into a container the host owns. The banner belongs to the
         // window, not to the panel: a tab already sits under one.
@@ -62,7 +75,14 @@ namespace AvatarBridge
             // finished until you have merged some animators.
             var pick = new BridgeElements.Card("Pick your avatar or prop", null, null, null, 0f);
             var picker = new ObjectField("Avatar or prop") { objectType = typeof(GameObject), allowSceneObjects = true, value = _target };
-            picker.RegisterValueChangedCallback(e => { _target = e.newValue as GameObject; Build(); });
+            picker.RegisterValueChangedCallback(e =>
+            {
+                _target = e.newValue as GameObject;
+                _convertedFrom = null;
+                _shown.Clear();
+                _onTargetChanged?.Invoke(_target);
+                Build();
+            });
             pick.Body.Add(picker);
             if (_target == null) pick.Body.Add(BridgeElements.Hint("Drag the avatar or prop here from the Hierarchy. Every card below acts on it."));
             _pages.Add(pick);
@@ -83,21 +103,36 @@ namespace AvatarBridge
             _pages.Add(MergeAnimators());
 
             // Mounted as a tab of the converter's own window, "AvatarBridge"
-            // would be a link to where you already are.
+            // would be a link to where you already are. Each link only where
+            // its menu exists: the public package has no YAPS, and the add-on
+            // has neither the converter nor the tester, and a dead menu item
+            // does nothing but log an error.
             var more = new BridgeElements.Card("Also in this package", null, false, null, 1f);
-            more.Body.Add(BridgeElements.Hint(_embedded
-                ? "YAPS adds penetration to any avatar or prop. CCK Animator Tester plays an avatar as the game does."
-                : "AvatarBridge converts VRChat avatars. YAPS adds penetration to any avatar or prop. CCK Animator " +
-                  "Tester plays an avatar as the game does."));
+            var said = new List<string>();
             var links = new List<VisualElement>();
-            if (!_embedded)
+            if (!_embedded && BridgeLinks.HasAvatarBridge)
             {
+                said.Add("AvatarBridge converts VRChat avatars.");
                 links.Add(BridgeElements.Link("AvatarBridge",
                     () => EditorApplication.ExecuteMenuItem("Tools/Avatar Bridge/VRChat to ChilloutVR Converter")));
             }
-            links.Add(BridgeElements.Link("YAPS", () => EditorApplication.ExecuteMenuItem("Tools/YAPS/Setup")));
-            links.Add(BridgeElements.Link("CCK Animator Tester",
-                () => EditorApplication.ExecuteMenuItem("Tools/Avatar Bridge/CCK Animator Tester")));
+            if (BridgeDefines.HasYaps)
+            {
+                said.Add("YAPS adds penetration to any avatar or prop.");
+                links.Add(BridgeElements.Link("YAPS", () => EditorApplication.ExecuteMenuItem("Tools/YAPS/Setup")));
+            }
+            else
+            {
+                said.Add("YAPS, a separate 18+ add-on, adds penetration to any avatar or prop.");
+                links.Add(BridgeElements.Link("Get the YAPS add-on (GitHub)  ↗", () => Application.OpenURL(BridgeLinks.YapsRepo)));
+            }
+            if (typeof(ToolkitPanel).Assembly.GetType("AvatarBridge.CckAnimatorTester", false) != null)
+            {
+                said.Add("CCK Animator Tester plays an avatar as the game does.");
+                links.Add(BridgeElements.Link("CCK Animator Tester",
+                    () => EditorApplication.ExecuteMenuItem("Tools/Avatar Bridge/CCK Animator Tester")));
+            }
+            more.Body.Add(BridgeElements.Hint(string.Join(" ", said)));
             more.Body.Add(BridgeElements.Row(links.ToArray()));
             _pages.Add(more);
 
@@ -114,19 +149,97 @@ namespace AvatarBridge
         BridgeContext Context(BridgeReport report)
         {
             var animator = _target != null ? _target.GetComponent<Animator>() : null;
+            var avatar = _target != null ? _target.GetComponent<CVRAvatar>() : null;
+            // The controller ChilloutVR uploads, as YAPS reads it. The
+            // Animator's slot first skipped every animator check on an avatar
+            // never built, where that slot is often empty.
+            var controller = AvatarSurvey.ShippedController(avatar, animator);
             return new BridgeContext
             {
                 Settings = new BridgeSettings(),
                 Report = report,
                 Target = _target,
-                CvrAvatar = _target != null ? _target.GetComponent<CVRAvatar>() : null,
-                // Underlying, not a cast: an avatar runs an override
-                // controller wrapping the base, so a cast reads null and
-                // every animator check quietly skips itself.
-                MergedController = BridgeContext.Underlying(animator != null ? animator.runtimeAnimatorController : null),
-                OutputDir = _target != null ? OutputRoot + "/" + _target.name : OutputRoot,
+                CvrAvatar = avatar,
+                MergedController = controller,
+                OutputDir = AvatarFolder(),
                 Standalone = true,
             };
+        }
+
+        // The converter's folder for this avatar, so a resize it recorded is
+        // found here. Found, never created: the cards that only read use it.
+        string AvatarFolder()
+        {
+            string root = SavedOutputFolder();
+            if (_target == null) return root;
+            // The converter and Setup save the controller into that folder.
+            // A converted copy is only found this way: the folder is tagged
+            // with the source object, and the copy is another object.
+            var avatar = _target.GetComponent<CVRAvatar>();
+            if (avatar != null)
+            {
+                foreach (var c in new RuntimeAnimatorController[] { avatar.overrides, avatar.avatarSettings?.baseController })
+                {
+                    string path = c != null ? AssetDatabase.GetAssetPath(c) : "";
+                    int cut = path.LastIndexOf('/');
+                    if (cut < 0) continue;
+                    string dir = path.Substring(0, cut);
+                    // Untagged counts only under the default root, where it is
+                    // an older version's output. A chosen root like "Assets"
+                    // has shared folders one level down, and an avatar taking
+                    // one would share its resize record with every avatar there.
+                    bool underRoot = string.Equals(root, OutputRoot, System.StringComparison.OrdinalIgnoreCase)
+                                     && dir.StartsWith(root + "/", System.StringComparison.OrdinalIgnoreCase)
+                                     && dir.IndexOf('/', root.Length + 1) < 0;
+                    if (underRoot || CvrSetup.OwnerOf(dir) != null) return dir;
+                }
+            }
+            return CvrSetup.FindOutputDir(NamedFolder(out var source), source);
+        }
+
+        // The folder the converter names for the source, before any number:
+        // a converted copy is "<source> (ChilloutVR)".
+        string NamedFolder(out GameObject source)
+        {
+            source = _convertedFrom != null ? _convertedFrom : _target;
+            string name = source.name;
+            const string Suffix = " (ChilloutVR)";
+            if (name.EndsWith(Suffix, System.StringComparison.Ordinal)) name = name.Substring(0, name.Length - Suffix.Length);
+            return SavedOutputFolder() + "/" + CvrSetup.SafeFolderName(name);
+        }
+
+        // Where a card writes. A folder the lookup found is used as it is.
+        // A new one is made and tagged the converter's way, or the next
+        // lookup reads it as another avatar's and loses the record in it.
+        // The unnumbered name goes in so a numbered folder says why.
+        string WriteFolder(BridgeReport report)
+        {
+            string folder = AvatarFolder();
+            if (_target == null || AssetDatabase.IsValidFolder(folder)) return folder;
+            return CvrSetup.CreateOutputDir(NamedFolder(out var source), source, report, "Toolkit");
+        }
+
+        // Where a resize record waits. Before the Toolkit followed the
+        // converter it wrote under the raw object name, and a record left there
+        // is still somebody's way back. That one first: Fix it ran after the
+        // conversion, so undoing it first puts sizes back in the order they changed.
+        string RecordFolder()
+        {
+            string folder = AvatarFolder();
+            if (_target == null || _target.name.IndexOfAny(System.IO.Path.GetInvalidFileNameChars()) >= 0) return folder;
+            string legacy = OutputRoot + "/" + _target.name;
+            return AvatarSlimmer.CanRevert(legacy) ? legacy : folder;
+        }
+
+        // The converter window's Output folder, kept in its saved settings
+        // (CvrSetup.SettingsPrefsKey), and refused the way the converter
+        // refuses it. The default where that window never ran.
+        static string SavedOutputFolder()
+        {
+            var saved = new BridgeSettings();
+            try { JsonUtility.FromJsonOverwrite(EditorPrefs.GetString(CvrSetup.SettingsPrefsKey, "{}"), saved); }
+            catch (System.Exception) { return OutputRoot; }
+            return CvrSetup.CheckedOutputFolder(saved.outputFolder) ?? OutputRoot;
         }
 
         VisualElement Tool(string title, string blurb, string button, System.Func<BridgeReport> run, string whenEmpty,
@@ -139,10 +252,11 @@ namespace AvatarBridge
             box.Add(BridgeElements.Hint(blurb));
             if (option != null) box.Add(option);
             var rows = new VisualElement();
+            if (_shown.TryGetValue(title, out var last)) ShowReport(rows, last, whenEmpty);
             var b = new Button(() =>
             {
                 if (_target == null) return;
-                ShowReport(rows, run(), whenEmpty);
+                ShowReport(rows, _shown[title] = run(), whenEmpty);
             }) { text = button };
             b.AddToClassList("ab-btn");
             b.SetEnabled(_target != null);
@@ -155,8 +269,8 @@ namespace AvatarBridge
                 var more = new Button(() =>
                 {
                     if (_target == null) return;
-                    ShowReport(rows, action(), whenEmpty);
-                    Build();   // sizes changed, so the reading behind it did too
+                    _shown[title] = action();
+                    Build();   // sizes changed, so the reading behind it did too; the rebuild shows the rows
                 }) { text = extra.Item1 };
                 more.AddToClassList("ab-btn");
                 more.SetEnabled(_target != null);
@@ -234,20 +348,19 @@ namespace AvatarBridge
                 }
                 var survey = AvatarSurvey.Build(ctx.CvrAvatar);
                 var weight = AvatarWeight.Measure(ctx.CvrAvatar, survey);
-                AvatarSlimmer.Apply(ctx.CvrAvatar,
-                    AvatarSlimmer.Find(ctx.CvrAvatar, survey, weight, _convertedFrom, true, _stripHidden),
-                    ctx.OutputDir, report);
+                var plan = AvatarSlimmer.Find(ctx.CvrAvatar, survey, weight, _convertedFrom, true, _stripHidden);
+                // No folder made for a plan that writes nothing into it.
+                AvatarSlimmer.Apply(ctx.CvrAvatar, plan, plan.Any ? WriteFolder(report) : ctx.OutputDir, report);
                 return report;
             },
             // Its own button, not a mode the other one falls into. Import
             // settings outlive the conversion that changed them, so a record
             // can be waiting from a run days ago.
-            AvatarSlimmer.CanRevert(OutputRoot + "/" + (_target != null ? _target.name : ""))
-                ? "Put the textures back" : null,
+            _target != null && AvatarSlimmer.CanRevert(RecordFolder()) ? "Put the textures back" : null,
             () =>
             {
                 var report = new BridgeReport();
-                AvatarSlimmer.Revert(Context(report).OutputDir, report);
+                AvatarSlimmer.Revert(RecordFolder(), report);
                 return report;
             },
             StripOption());
@@ -287,7 +400,7 @@ namespace AvatarBridge
                     return report;
                 }
                 FreeWins.Apply(ctx.CvrAvatar, plan,
-                    AssetDatabase.GenerateUniqueAssetPath(ctx.OutputDir + "/" + _target.name + " tidied.controller"),
+                    AssetDatabase.GenerateUniqueAssetPath(WriteFolder(report) + "/" + CvrSetup.SafeFolderName(_target.name) + " tidied.controller"),
                     report);
                 return report;
             }, "Nothing on it is provably inert. That is the good outcome.");
@@ -298,11 +411,20 @@ namespace AvatarBridge
             "Patch shaders for VR stereo", () =>
             {
                 var report = new BridgeReport();
-                var ctx = Context(report);
                 Undo.RegisterFullObjectHierarchyUndo(_target, "Patch stereo shaders");
                 // No controller: the clip pass would rewrite the user's own
                 // clips in place. Renderers only.
-                ShaderSpiPatcher.Patch(_target, ctx.OutputDir + "/RehomedAssets", null, report);
+                string folder = AvatarFolder();
+                bool existed = System.IO.Directory.Exists(folder);
+                // No OutputAssetPaths.Reset: Claim deletes whatever sits on a
+                // path unclaimed this run, and this folder is shared with the
+                // conversion, so the avatar may still wear the copy there.
+                // A numbered copy after Undo is the safe cost.
+                ShaderSpiPatcher.Patch(_target, folder + "/RehomedAssets", null, report);
+                // Patch makes the folder only if it writes. Tagged after, so
+                // a run that changed nothing leaves no folder claiming the name.
+                if (!existed && System.IO.Directory.Exists(folder))
+                    CvrSetup.CreateOutputDir(NamedFolder(out var source), source, report, "Toolkit", folder);
                 return report;
             }, "Every shader on it already declares stereo support, or has no source to patch.");
 
@@ -340,6 +462,17 @@ namespace AvatarBridge
                 if (ctx.MergedController == null) { report.Error("Scaler", "No animator controller on the root"); return report; }
                 if (ctx.CvrAvatar == null) { report.Error("Scaler", "No CVRAvatar on the root"); return report; }
                 var controller = ctx.MergedController;
+                // A never-built avatar's overrides usually wrap the CCK's stock
+                // controller, shared by every avatar in the project and replaced
+                // by the next CCK update. Reading it is fine; writing is not.
+                if (CvrSetup.SharedController(controller))
+                {
+                    report.Error("Scaler", "This avatar runs the CCK's own controller",
+                        "Layers added there would reach every avatar in the project, and a CCK update would erase " +
+                        "them. Give the avatar its own controller first (the CVRAvatar's Advanced Avatar Settings " +
+                        "create one), then press again.");
+                    return report;
+                }
                 if (controller.layers.Any(l => l.name == "Size" || l.name.StartsWith("Size ", System.StringComparison.Ordinal)))
                 {
                     report.Approximated("Scaler", "Height slider already there",
@@ -347,6 +480,11 @@ namespace AvatarBridge
                     return report;
                 }
                 Undo.RegisterFullObjectHierarchyUndo(_target, "Height slider");
+                // The layers and parameters go into the controller asset, which
+                // the hierarchy record does not cover. Without this, Ctrl+Z took
+                // the menu entry and left Size layers the check above then
+                // refused to add again.
+                Undo.RegisterCompleteObjectUndo(controller, "Height slider");
                 ctx.Settings.addAvatarScaler = true;
                 int before = controller.layers.Length;
                 AvatarScalerInjector.Inject(controller, ctx);
@@ -364,15 +502,25 @@ namespace AvatarBridge
             }, "Nothing added.");
 
         VisualElement Description() => Tool("Store description",
-            "Writes a 256-character description of the avatar into the upload page, and copies it.",
+            "Writes a 256-character description of the avatar into the upload page when its box is empty, and copies it.",
             "Write description", () =>
             {
                 var report = new BridgeReport();
                 var ctx = Context(report);
                 string text = AvatarDescription.Build(ctx);
-                var result = CckDescriptionFiller.Fill(text, overwrite: true);
+                // Never over the user's own words: an empty box is an
+                // invitation, a full one a decision. The text is still copied.
+                var result = CckDescriptionFiller.Fill(text);
                 report.Converted("Store", "Description", text);
-                report.Converted("Store", "Upload page", CckDescriptionFiller.Explain(result));
+                if (result == CckDescriptionFiller.Result.Filled)
+                    report.Converted("Store", "Upload page", CckDescriptionFiller.Explain(result));
+                else if (result == CckDescriptionFiller.Result.AlreadyWritten)
+                    // Explain names the window's "Copy description" button, which this card has not got.
+                    report.Approximated("Store", "Upload page", "The Description box already has text in it, so " +
+                        "nothing was changed. This description is on the clipboard: clear the box and press again, " +
+                        "or paste it where you want it.");
+                else
+                    report.Approximated("Store", "Upload page", CckDescriptionFiller.Explain(result));
                 EditorGUIUtility.systemCopyBuffer = text;
                 return report;
             }, "");
@@ -450,10 +598,8 @@ namespace AvatarBridge
             bool alt = false;
             foreach (var e in report.Entries)
             {
-                var colour = e.Status == ReportStatus.Error ? BridgeTheme.Bad
-                           : e.Status == ReportStatus.Warning || e.Status == ReportStatus.Approximated ? BridgeTheme.Warn
-                           : e.Status == ReportStatus.Converted ? BridgeTheme.Good : BridgeTheme.Muted;
-                into.Add(BridgeElements.ReportRow(e.Status.ToString(), e.Subject, e.Detail, colour, alt));
+                into.Add(BridgeElements.ReportRow(e.Status.ToString(), e.Subject, e.Detail,
+                    BridgeTheme.StatusColour(e.Status), alt));
                 alt = !alt;
             }
         }
@@ -472,6 +618,10 @@ namespace AvatarBridge
             w.minSize = new Vector2(440, 520);
         }
 
+        // Kept by the window, since the panel is rebuilt with nothing after
+        // every script compile and every entry into Play mode.
+        [SerializeField] GameObject target;
+
         void CreateGUI()
         {
             var root = rootVisualElement;
@@ -479,8 +629,8 @@ namespace AvatarBridge
             if (sheet != null) root.styleSheets.Add(sheet);
             BridgeTheme.ApplySkin(root);
             root.Add(BridgeElements.Banner("ChilloutVR Toolkit", "utilities for any avatar or prop",
-                BridgeDefines.Version));
-            new ToolkitPanel().Mount(root);
+                "v" + BridgeDefines.Version));
+            new ToolkitPanel(target, onTargetChanged: t => target = t).Mount(root);
         }
     }
 }

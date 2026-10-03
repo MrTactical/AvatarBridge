@@ -41,14 +41,6 @@ namespace AvatarBridge
 
         public static Outcome MakeProp(GameObject root)
         {
-            // Stamped so a prop built months ago can say which version
-            // made it. Nothing revisits a prop, so every fix reaches new
-            // ones and no existing one, and the two look identical.
-            foreach (var s in root.GetComponentsInChildren<YapsSocket>(true))
-            {
-                s.builtBy = BridgeDefines.Version;
-                EditorUtility.SetDirty(s);
-            }
             var o = new Outcome();
             if (root == null) { o.Message = "nothing selected"; return o; }
             var plug = root.GetComponentInChildren<YapsPlug>(true);
@@ -60,6 +52,15 @@ namespace AvatarBridge
             }
 
             Undo.RegisterFullObjectHierarchyUndo(root, "YAPS prop");
+
+            // Stamped so a prop built months ago can say which version
+            // made it. Nothing revisits a prop, so every fix reaches new
+            // ones and no existing one, and the two look identical.
+            foreach (var s in root.GetComponentsInChildren<YapsSocket>(true))
+            {
+                s.builtBy = BridgeDefines.Version;
+                EditorUtility.SetDirty(s);
+            }
 
             // Transform move mode: physics only adds drift. Theft stays
             // allowed, or a socket's owner keeps the prop until respawn.
@@ -198,12 +199,15 @@ namespace AvatarBridge
             if (frame != null && material != null
                 && Quaternion.Angle(frame.rotation, root.transform.rotation) < 5f)
             {
-                float length = material.GetFloat("_YAPS_Length");
+                // Metres, then the root's own units. _YAPS_Length is in bake
+                // units, which on a scaled plain mesh is off by its import scale.
+                float length = YapsNativeBuilder.WorldLength(plug.Target, material);
+                var scale = root.transform.lossyScale;
                 var capsule = Undo.AddComponent<CapsuleCollider>(root);
                 capsule.isTrigger = true;
                 capsule.direction = 2;
-                capsule.height = length;
-                capsule.radius = Mathf.Max(0.02f, length * 0.12f);
+                capsule.height = length / Mathf.Max(Mathf.Abs(scale.z), 1e-4f);
+                capsule.radius = Mathf.Max(0.02f, length * 0.12f) / Mathf.Max(Mathf.Abs(scale.x), Mathf.Abs(scale.y), 1e-4f);
                 capsule.center = root.transform.InverseTransformPoint(frame.position + frame.forward * (length * 0.5f));
                 return;
             }
@@ -249,8 +253,11 @@ namespace AvatarBridge
         {
             var layers = controller.layers.ToList();
             int before = layers.Count;
+            var old = YapsOwner.Embedded(controller,
+                layers.Where(l => Channel.Any(c => c.Value == l.name)).Select(l => l.stateMachine));
             layers.RemoveAll(l => Channel.Any(c => c.Value == l.name));
             if (layers.Count != before) controller.layers = layers.ToArray();
+            YapsOwner.DropUnreached(controller, old);
             foreach (var (value, _) in Channel)
             {
                 if (controller.parameters.Any(p => p.name == value)) controller.RemoveParameter(

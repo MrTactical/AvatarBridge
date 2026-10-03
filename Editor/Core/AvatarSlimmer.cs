@@ -3,9 +3,11 @@
 // Only what the weight card proves is free. Only textures this avatar
 // alone uses.
 //
-// Size and format only, through the importer. Compression is left as the
-// author set it. The source file is never edited and old settings are
-// recorded, so Revert restores them.
+// Size and format only, through the importer. A format goes on as a
+// Standalone override, and only on a PNG or JPG of the Default texture
+// type whose own pixels allow it: one channel repeated, an alpha never
+// used, or four bytes a pixel uncompressed. The source file is never
+// edited and old settings are recorded, so Revert restores them.
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
@@ -29,6 +31,8 @@ namespace AvatarBridge
             public int From;
             public int To;
             public long Bytes;
+            // The part of Bytes the format gives, taken back if it is refused.
+            public long FormatBytes;
             // BC4 for one channel repeated, BC1 for alpha that is never used.
             // Both are 4 bits a pixel where BC7 and DXT5 are 8.
             public TextureImporterFormat? Format;
@@ -61,9 +65,9 @@ namespace AvatarBridge
             var plan = new Plan();
             if (avatar == null || weight == null) return plan;
 
-            var mine = OwnMaterials(avatar);
-            if (alsoMine != null) mine.UnionWith(MaterialsOn(alsoMine));
-            var elsewhere = MaterialsUsingTexturesOutside(mine);
+            // Built on first need: it loads every material in the project,
+            // and only a texture worth changing asks. Usually none is.
+            Dictionary<Texture, string> elsewhere = null;
 
             foreach (var t in weight.Textures)
             {
@@ -73,9 +77,12 @@ namespace AvatarBridge
                 if (!(AssetImporter.GetAtPath(path) is TextureImporter importer)) continue;
 
                 int longest = Mathf.Max(t.Width, t.Height);
-                bool resize = t.Suggested > 0 && t.Suggested < longest && importer.maxTextureSize > t.Suggested;
+                // With the Standalone override on, its size is the one Unity reads.
+                var standalone = importer.GetPlatformTextureSettings(Platform);
+                int size = standalone.overridden ? standalone.maxTextureSize : importer.maxTextureSize;
+                bool resize = t.Suggested > 0 && t.Suggested < longest && size > t.Suggested;
 
-                long saved = 0;
+                long saved = 0, formatSaved = 0;
                 long after = t.Bytes;
                 if (resize)
                 {
@@ -87,9 +94,21 @@ namespace AvatarBridge
                 // Half again, where the content does not need eight bits.
                 TextureImporterFormat? format = null;
                 string why = null;
+                // Crunch packs the download, and the formats below are not
+                // crunched: swapping one in halves the card and grows the download.
+                bool crunched = t.Crunched || (t.Texture is Texture2D packed
+                    && (packed.format == TextureFormat.DXT1Crunched || packed.format == TextureFormat.DXT5Crunched));
+                // What a pixel costs now. The mip chain is in it and in what a
+                // format would cost, so it cancels.
+                float bits = t.Bytes * 8f / Mathf.Max(1, t.Width * t.Height);
                 // A data texture is never touched. Its pixels are numbers a
                 // shader reads back exactly, and a lossy format ruins them.
-                if (inspectContent && !t.Data && importer.textureType == TextureImporterType.Default
+                if (inspectContent && !t.Data && !crunched && importer.textureType == TextureImporterType.Default
+                    // Any other source makes an alpha the file does not have.
+                    && importer.alphaSource == TextureImporterAlphaSource.FromInput
+                    // At four bits a pixel or fewer no format below is
+                    // smaller, so decoding the file could not change the answer.
+                    && bits > 4f
                     && Content(path, out bool greyscale, out bool opaque))
                 {
                     // BC4 holds one linear channel. Unity refuses it on an
@@ -115,11 +134,12 @@ namespace AvatarBridge
                     if (format.HasValue && CurrentFormat(importer) == format.Value) format = null;
                     if (format.HasValue)
                     {
-                        // What a pixel costs now against what it would cost.
-                        // The mip chain is in both, so it cancels.
-                        float bits = t.Bytes * 8f / Mathf.Max(1, t.Width * t.Height);
                         float wanted = format == TextureImporterFormat.DXT5 ? 8f : 4f;
-                        if (wanted < bits) saved += (long)(after * (1f - wanted / bits));
+                        if (wanted < bits)
+                        {
+                            formatSaved = (long)(after * (1f - wanted / bits));
+                            saved += formatSaved;
+                        }
                         else format = null;
                     }
                 }
@@ -128,6 +148,12 @@ namespace AvatarBridge
 
                 // The importer setting is global to the texture.
                 // A texture others use is left alone.
+                if (elsewhere == null)
+                {
+                    var mine = OwnMaterials(avatar);
+                    if (alsoMine != null) mine.UnionWith(MaterialsOn(alsoMine));
+                    elsewhere = MaterialsUsingTexturesOutside(mine);
+                }
                 if (elsewhere.TryGetValue(t.Texture, out string user))
                 {
                     plan.Shared[t.Name] = user;
@@ -136,9 +162,9 @@ namespace AvatarBridge
 
                 plan.Textures.Add(new Shrink
                 {
-                    Path = path, Name = t.Name, Bytes = saved,
+                    Path = path, Name = t.Name, Bytes = saved, FormatBytes = formatSaved,
                     Format = format, Why = why,
-                    From = importer.maxTextureSize, To = resize ? t.Suggested : importer.maxTextureSize,
+                    From = size, To = resize ? t.Suggested : size,
                 });
             }
 
@@ -170,11 +196,13 @@ namespace AvatarBridge
 #if VRC_SDK_VRCSDK3
             if (ctx.SourceDescriptor != null) alsoMine = ctx.SourceDescriptor.gameObject;
 #endif
-            var survey = AvatarSurvey.Build(ctx.CvrAvatar);
-            var plan = Find(ctx.CvrAvatar, survey, AvatarWeight.Measure(ctx.CvrAvatar, survey),
-                alsoMine, true, false);
-            // Find fills these whether or not anything asked for them.
-            plan.Wins = null;
+            // No survey: it feeds only the dead-renderer test and the
+            // animator tidy, and this call does neither.
+            var plan = Find(ctx.CvrAvatar, null, AvatarWeight.Measure(ctx.CvrAvatar), alsoMine, true, false);
+            // Before the early return: a shared texture is refused even when
+            // nothing else needs shrinking, and the weight card must not
+            // advise shrinking it.
+            ctx.SlimLeftAlone = plan.Shared;
             if (plan.Textures.Count == 0)
             {
                 // Silence, not a line saying nothing happened. An avatar
@@ -194,7 +222,8 @@ namespace AvatarBridge
             }
 
             var undo = new List<string>();
-            int done = 0, refused = 0;
+            var applied = new List<(Shrink t, TextureImporterFormat before)>();
+            int refused = 0;
             try
             {
                 AssetDatabase.StartAssetEditing();
@@ -205,26 +234,16 @@ namespace AvatarBridge
                     undo.Add($"{importer.maxTextureSize}\t{(int)importer.textureCompression}" +
                              $"\t{(int)CurrentFormat(importer)}\t{platform.maxTextureSize}\t{t.Path}");
                     var before = CurrentFormat(importer);
-                    importer.maxTextureSize = t.To;
+                    // Only a resize touches the default tab, and only down: From
+                    // and To are the override's size while one is on.
+                    if (t.To < t.From) importer.maxTextureSize = Mathf.Min(importer.maxTextureSize, t.To);
                     if (t.Format.HasValue) SetFormat(importer, t.Format.Value, t.To);
                     // An override already on would otherwise keep its own size
                     // and the resize would go nowhere.
                     else if (platform.overridden) SetFormat(importer, before, t.To);
                     EditorUtility.SetDirty(importer);
                     importer.SaveAndReimport();
-
-                    // A format the platform will not take leaves the texture
-                    // broken and the inspector shouting. Put it back rather
-                    // than leave somebody to find out.
-                    if (t.Format.HasValue && !Took(t.Path, t.Format.Value))
-                    {
-                        SetFormat(importer, before, platform.maxTextureSize);
-                        importer.SaveAndReimport();
-                        t.Format = null;
-                        t.Why = null;
-                        refused++;
-                    }
-                    done++;
+                    applied.Add((t, before));
                 }
             }
             finally
@@ -232,13 +251,33 @@ namespace AvatarBridge
                 AssetDatabase.StopAssetEditing();
             }
 
-            if (done > 0)
+            // A format the platform will not take leaves the texture broken
+            // and the inspector shouting. Put it back rather than leave
+            // somebody to find out. Checked only now: inside the batch the
+            // import is queued and the texture still holds its old format.
+            foreach (var (t, before) in applied)
+            {
+                if (!t.Format.HasValue || Took(t.Path, t.Format.Value)) continue;
+                if (!(AssetImporter.GetAtPath(t.Path) is TextureImporter importer)) continue;
+                SetFormat(importer, before, t.To);
+                importer.SaveAndReimport();
+                t.Bytes -= t.FormatBytes;
+                t.FormatBytes = 0;
+                t.Format = null;
+                t.Why = null;
+                if (t.From != t.To) refused++;
+            }
+
+            // A refused format on a texture that kept its size changed nothing.
+            var changed = applied.Select(a => a.t).Where(t => t.From != t.To || t.Format.HasValue).ToList();
+            long bytes = changed.Sum(t => t.Bytes);
+            if (changed.Count > 0)
             {
                 WriteUndo(outputDir, undo);
-                report.BytesReclaimed += plan.Bytes;
-                report.Converted(Category, $"{done} texture(s) changed, {Mb(plan.Bytes)} off the graphics card",
-                    string.Join("; ", plan.Textures.Take(8).Select(Describe)) +
-                    (plan.Textures.Count > 8 ? $"; and {plan.Textures.Count - 8} more" : "") +
+                report.BytesReclaimed += bytes;
+                report.Converted(Category, $"{changed.Count} texture(s) changed, {Mb(bytes)} off the graphics card",
+                    string.Join("; ", changed.Take(8).Select(Describe)) +
+                    (changed.Count > 8 ? $"; and {changed.Count - 8} more" : "") +
                     ". Import settings only; \"Put the textures back\" undoes it." +
                     (refused > 0 ? $" {refused} refused the format, so only their size changed." : ""));
             }
@@ -255,7 +294,7 @@ namespace AvatarBridge
             if (plan.Wins != null && plan.Wins.Any)
             {
                 FreeWins.Apply(avatar, plan.Wins,
-                    AssetDatabase.GenerateUniqueAssetPath(outputDir + "/" + avatar.name + " tidied.controller"), report);
+                    AssetDatabase.GenerateUniqueAssetPath(outputDir + "/" + CvrSetup.SafeFolderName(avatar.name) + " tidied.controller"), report);
             }
         }
 
@@ -326,23 +365,6 @@ namespace AvatarBridge
             File.WriteAllLines(path, all);
         }
 
-        // ---- who else uses it ---------------------------------------------
-
-        // Every material this avatar can wear, animated swaps included.
-        //
-        // A swap lives in a clip as an object-reference curve, not in any
-        // renderer's sharedMaterials. Renderers alone miss outfit variants.
-        // What a texture actually contains, from its own file.
-        //
-        // Automatic picks a format from the CHANNELS a source has, not from
-        // what is in them. A mask whose three colour channels are identical
-        // is one channel stored three times, and an alpha channel that is
-        // white everywhere is a channel stored for nothing. Both are 8 bits
-        // a pixel where 4 would do.
-        //
-        // Read through LoadImage rather than GetPixels: a shipped texture is
-        // not readable, and this needs no reimport to find out. PNG and JPG
-        // only, which is nearly all of them; anything else is left alone.
         // What was done to one texture, and why, in the report's own words.
         static string Describe(Shrink t)
         {
@@ -353,11 +375,6 @@ namespace AvatarBridge
             return $"{t.Name}: {string.Join(", ", parts)}";
         }
 
-        // Did the reimport actually produce the format asked for?
-        //
-        // Unity reports an incompatible choice through the inspector and
-        // carries on with something else, so the importer still claims the
-        // value it was given. What the texture IS is the honest answer.
         // The component only. Taking the object would take whatever hangs
         // off it, and a hidden mesh doubling as a bone parent or a contact
         // anchor is exactly the shape that breaks.
@@ -393,6 +410,11 @@ namespace AvatarBridge
             return gone.Count;
         }
 
+        // Did the reimport actually produce the format asked for?
+        //
+        // Unity reports an incompatible choice through the inspector and
+        // carries on with something else, so the importer still claims the
+        // value it was given. What the texture IS is the honest answer.
         static bool Took(string path, TextureImporterFormat wanted)
         {
             var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
@@ -435,6 +457,17 @@ namespace AvatarBridge
             importer.SetPlatformTextureSettings(settings);
         }
 
+        // What a texture actually contains, from its own file.
+        //
+        // Automatic picks a format from the CHANNELS a source has, not from
+        // what is in them. A mask whose three colour channels are identical
+        // is one channel stored three times, and an alpha channel that is
+        // white everywhere is a channel stored for nothing. Both are 8 bits
+        // a pixel where 4 would do.
+        //
+        // Read through LoadImage rather than GetPixels: a shipped texture is
+        // not readable, and this needs no reimport to find out. PNG and JPG
+        // only, which is nearly all of them; anything else is left alone.
         static bool Content(string path, out bool greyscale, out bool opaque)
         {
             greyscale = opaque = false;
@@ -448,13 +481,12 @@ namespace AvatarBridge
                 var pixels = probe.GetPixels32();
                 if (pixels.Length == 0) return false;
 
-                // Every 97th pixel: a prime stride walks rows and columns
-                // instead of sampling one edge, and 4096 samples is plenty
-                // to find a single coloured pixel.
-                int stride = Mathf.Max(1, pixels.Length / 4096);
+                // Every pixel. LoadImage has decoded them all already, and a
+                // sample that misses one cutout pixel turns it into a solid
+                // quad under DXT1. A stride of length/4096 read one column.
                 greyscale = true;
                 opaque = true;
-                for (int i = 0; i < pixels.Length; i += stride)
+                for (int i = 0; i < pixels.Length; i++)
                 {
                     var p = pixels[i];
                     if (p.a < 250) opaque = false;
@@ -474,6 +506,8 @@ namespace AvatarBridge
             }
         }
 
+        // ---- who else uses it ---------------------------------------------
+
         static HashSet<Material> MaterialsOn(GameObject root)
         {
             var found = new HashSet<Material>();
@@ -489,12 +523,15 @@ namespace AvatarBridge
             return found;
         }
 
+        // Every material this avatar can wear, animated swaps included.
+        //
+        // A swap lives in a clip as an object-reference curve, not in any
+        // renderer's sharedMaterials. Renderers alone miss outfit variants.
         static HashSet<Material> OwnMaterials(CVRAvatar avatar)
         {
             var mine = MaterialsOn(avatar.gameObject);
 
-            var animator = avatar.GetComponent<Animator>();
-            var controller = BridgeContext.Underlying(animator != null ? animator.runtimeAnimatorController : null);
+            var controller = AvatarSurvey.ShippedController(avatar);
             if (controller == null) return mine;
 
             foreach (var clip in controller.animationClips)
@@ -523,16 +560,11 @@ namespace AvatarBridge
                 string assetPath = AssetDatabase.GUIDToAssetPath(guid);
                 var material = AssetDatabase.LoadAssetAtPath<Material>(assetPath);
                 if (material == null || mine.Contains(material)) continue;
-                var shader = material.shader;
-                if (shader == null) continue;
-                int count = ShaderUtil.GetPropertyCount(shader);
-                for (int i = 0; i < count; i++)
+                // The first one found is enough to name. Listing every
+                // material using a common texture is a wall, not an answer.
+                foreach (var tex in AvatarWeight.TexturesOf(material))
                 {
-                    if (ShaderUtil.GetPropertyType(shader, i) != ShaderUtil.ShaderPropertyType.TexEnv) continue;
-                    var tex = material.GetTexture(ShaderUtil.GetPropertyName(shader, i));
-                    // The first one found is enough to name. Listing every
-                    // material using a common texture is a wall, not an answer.
-                    if (tex != null && !outside.ContainsKey(tex)) outside[tex] = assetPath;
+                    if (!outside.ContainsKey(tex)) outside[tex] = assetPath;
                 }
             }
             return outside;

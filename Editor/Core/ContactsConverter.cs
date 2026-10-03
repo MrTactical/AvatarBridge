@@ -77,6 +77,7 @@ namespace AvatarBridge
                 pointer.type = tag;
                 GrowZoneForSliders(ctx, contactObject, PathOf(ctx, sender.transform));
                 RecordHost(ctx, sender, isSender: true, contactObject);
+                MatchRestState(ctx, sender, contactObject);
             }
             ctx.Report.Converted(Category, PathOf(ctx, sender.transform),
                 $"Sender -> CVRPointer ({string.Join(", ", sender.collisionTags)})");
@@ -193,6 +194,7 @@ namespace AvatarBridge
                 receiver.shapeType, receiver.radius, receiver.position, receiver.height, receiver.rotation);
             GrowZoneForSliders(ctx, contactObject, PathOf(ctx, receiver.transform));
             RecordHost(ctx, receiver, isSender: false, contactObject);
+            MatchRestState(ctx, receiver, contactObject);
 
             var trigger = contactObject.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
             trigger.useAdvancedTrigger = true;
@@ -534,11 +536,11 @@ namespace AvatarBridge
         // Runs after both repoint passes: the merge's restores happened
         // before this rewiring existed. Folding two properties into one
         // binding sets layers fighting, so each is settled by what it
-        // says across all its clips:
+        // says across all its clips, against the zone's rest state:
         //   on and off  -> a real toggle, left alone.
-        //   on only     -> Write Defaults residue. Stripped.
-        //   off only    -> nothing takes it back. The curve goes from a
-        //                  tree; plain states get the rest value written.
+        //   rest only   -> Write Defaults residue. Stripped.
+        //   away only   -> nothing takes it back. Plain states get the
+        //                  rest value written; a tree's turn-off goes.
         internal static void BalanceRewiredZoneCurves(BridgeContext ctx)
         {
             if (ctx.MergedController == null)
@@ -676,7 +678,7 @@ namespace AvatarBridge
                 }
 
                 var stripPairs = new List<(AnimationClip clip, UnityEditor.EditorCurveBinding binding)>();
-                var toFill = new List<UnityEditor.EditorCurveBinding>();
+                var toFill = new List<(UnityEditor.EditorCurveBinding binding, float rest)>();
                 foreach (var binding in carriers.Keys)
                 {
                     // Service writes go regardless of value; the toggle
@@ -715,7 +717,11 @@ namespace AvatarBridge
                     {
                         continue;   // a real toggle; it owns the zone
                     }
-                    if (switchesOn)
+                    // A zone whose contact shipped switched off rests off, so
+                    // "on only" is its real switch rather than residue.
+                    var t = BridgeContext.FindByAnimationPath(ctx.Target.transform, binding.path);
+                    bool restsOn = t == null || t.gameObject.activeSelf;
+                    if (switchesOn == restsOn)
                     {
                         // Asserts rest and nothing else: Write Defaults
                         // residue, and it overrides real toggles below it.
@@ -725,25 +731,25 @@ namespace AvatarBridge
                         }
                         continue;
                     }
-                    // Off with no way back.
+                    // Away from rest with no way back.
                     if (owned.Any(c => clipsInTrees.Contains(c)))
                     {
                         // A constant restore in a sibling slot fights the
-                        // blend; drop the suppression instead.
-                        foreach (var clip in owned)
+                        // blend; drop the suppression instead. Never the
+                        // switch-on of a zone resting off, which would
+                        // leave it dead.
+                        if (restsOn)
                         {
-                            stripPairs.Add((clip, binding));
+                            foreach (var clip in owned)
+                            {
+                                stripPairs.Add((clip, binding));
+                            }
                         }
                     }
-                    else
+                    else if (t != null)
                     {
-                        // Restore to what the avatar rests at. A zone
-                        // authored inactive rests off; 0 is already right.
-                        var t = BridgeContext.FindByAnimationPath(ctx.Target.transform, binding.path);
-                        if (t != null && t.gameObject.activeSelf)
-                        {
-                            toFill.Add(binding);
-                        }
+                        // Restore to what the avatar rests at.
+                        toFill.Add((binding, restsOn ? 1f : 0f));
                     }
                 }
                 if (stripPairs.Count == 0 && toFill.Count == 0)
@@ -784,14 +790,14 @@ namespace AvatarBridge
                     }
                     var drives = new HashSet<UnityEditor.EditorCurveBinding>(
                         UnityEditor.AnimationUtility.GetCurveBindings(clip));
-                    foreach (var binding in toFill)
+                    foreach (var (binding, rest) in toFill)
                     {
                         if (drives.Contains(binding))
                         {
                             continue;   // this motion says its own piece already
                         }
                         UnityEditor.AnimationUtility.SetEditorCurve(Owned(clip), binding,
-                            AnimationCurve.Constant(0f, 1f / 60f, 1f));
+                            AnimationCurve.Constant(0f, 1f / 60f, rest));
                         balanced++;
                     }
                 }
@@ -1049,7 +1055,7 @@ namespace AvatarBridge
         static GameObject CreateContactObject(GameObject parent, string name,
             VRC.Dynamics.ContactBase.ShapeType shapeType, float radius, Vector3 position, float height, Quaternion rotation)
         {
-            var go = new GameObject(name);
+            var go = new GameObject(UniqueChildName(parent.transform, name));
             go.transform.SetParent(parent.transform, false);
             go.transform.localPosition = position;
             go.transform.localScale = Vector3.one;
@@ -1071,6 +1077,46 @@ namespace AvatarBridge
                 capsule.direction = 1; // Y, matching VRC capsule contacts
             }
             return go;
+        }
+
+        // Two zones for one parameter on one bone would share an animation path, and every curve
+        // reaches only the first. Compared by name, not Transform.Find: a parameter name's '/'
+        // reads to Find as a path.
+        static string UniqueChildName(Transform parent, string name)
+        {
+            var taken = new HashSet<string>(System.StringComparer.Ordinal);
+            foreach (Transform child in parent)
+            {
+                taken.Add(child.name);
+            }
+            string candidate = name;
+            for (int n = 2; taken.Contains(candidate); n++)
+            {
+                candidate = $"{name} {n}";
+            }
+            return candidate;
+        }
+
+        // A new host is live from load, so a contact that shipped switched off came out always
+        // on. The host takes the off state the hierarchy does not already give it: a disabled
+        // component, or an inactive object the host is not under (a rootTransform elsewhere).
+        // Animated switching reaches it through the repoint passes.
+        static void MatchRestState(BridgeContext ctx, VRC.Dynamics.ContactBase contact, GameObject host)
+        {
+            bool live = contact.enabled;
+            // Native toggles switch objects without a clip, and no repoint pass can carry those
+            // onto a host outside the object, so there it stays live as before.
+            bool nativeToggles = ctx.Settings.toggleStyle == ToggleStyle.CvrNativeTargets;
+            // Judged inside the avatar only: one converted in place may itself be off in the scene.
+            for (var t = contact.transform; live && !nativeToggles && t != null && t != ctx.Target.transform;
+                 t = t.parent)
+            {
+                live = t.gameObject.activeSelf || host.transform.IsChildOf(t);
+            }
+            if (!live)
+            {
+                host.SetActive(false);
+            }
         }
 
         // --- VRChat's built-in avatar colliders --------------------------------------

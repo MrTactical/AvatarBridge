@@ -53,6 +53,16 @@ namespace AvatarBridge
             { "NoseSneer",      new[] { "NoseSneerLeft", "NoseSneerRight" } },
             { "LipFunnel",      new[] { "LipFunnelUpperLeft", "LipFunnelUpperRight",
                                        "LipFunnelLowerLeft", "LipFunnelLowerRight" } },
+            // A level down: shapes the rig drives that are themselves blends
+            // of UE base shapes, for a mesh carrying only the base set.
+            { "BrowDownLeft",     new[] { "BrowLowererLeft", "BrowPinchLeft" } },
+            { "BrowDownRight",    new[] { "BrowLowererRight", "BrowPinchRight" } },
+            { "MouthSmileLeft",   new[] { "MouthCornerPullLeft", "MouthCornerSlantLeft" } },
+            { "MouthSmileRight",  new[] { "MouthCornerPullRight", "MouthCornerSlantRight" } },
+            { "LipPuckerLeft",    new[] { "LipPuckerUpperLeft", "LipPuckerLowerLeft" } },
+            { "LipPuckerRight",   new[] { "LipPuckerUpperRight", "LipPuckerLowerRight" } },
+            { "LipSuckUpper",     new[] { "LipSuckUpperLeft", "LipSuckUpperRight" } },
+            { "LipSuckLower",     new[] { "LipSuckLowerLeft", "LipSuckLowerRight" } },
         };
 
         static readonly Dictionary<string, string> ComponentToCombined = BuildReverse();

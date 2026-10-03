@@ -281,8 +281,8 @@ namespace AvatarBridge
             }
 
             var names = ParameterNames(descriptor);
-            int ftParams = names.Count(n => AvatarFeatureDetect.IsFaceTrackingParameter(n)
-                                            || FaceTrackingParameters.IsFaceTracking(n));
+            // The stripper's rule, so the advice counts exactly what the mode would replace.
+            int ftParams = names.Count(FaceTrackingParameters.IsFaceTracking);
 
             if (ftParams > 0)
             {
@@ -297,8 +297,8 @@ namespace AvatarBridge
                     Finding = $"{ftParams} face-tracking parameters, but no mesh carrying enough " +
                               "recognisable blendshapes for ChilloutVR's native component to drive. " +
                               (installed
-                                  ? "CVR-VRCFT replaces the rig with a parameter-driven one that works here."
-                                  : $"CVR-VRCFT would be the route, but \"{FaceTrackingPackages.DisplayName}\" " +
+                                  ? "\"Unity Animator Blendtrees (DSR)\" replaces the rig with a parameter-driven one that works here."
+                                  : $"\"Unity Animator Blendtrees (DSR)\" would be the route, but \"{FaceTrackingPackages.DisplayName}\" " +
                                     "is missing: reimport AvatarBridge to get it back."),
                     Apply = installed && settings.faceTrackingMode != FaceTrackingMode.DragonSkyRunner
                         ? s => s.faceTrackingMode = FaceTrackingMode.DragonSkyRunner

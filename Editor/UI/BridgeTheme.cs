@@ -49,6 +49,19 @@ namespace AvatarBridge
 
         public static Color Muted => Dark ? new Color(1f, 1f, 1f, 0.50f) : new Color(0f, 0f, 0f, 0.55f);
 
+        // Here rather than in either window, so the converter's report and the Toolkit's agree.
+        public static Color StatusColour(ReportStatus status)
+        {
+            switch (status)
+            {
+                case ReportStatus.Error: return Bad;
+                case ReportStatus.Warning: return Warn;
+                case ReportStatus.Approximated: return Warn;
+                case ReportStatus.Converted: return Good;
+                default: return Muted;
+            }
+        }
+
         // Blue and orange are near-opposites, so interpolating straight between them drags the
         // middle through desaturated grey-brown; the ramp sagged visibly in the banner. Passing
         // through a plum keeps saturation up across the whole span, and it sits at the right

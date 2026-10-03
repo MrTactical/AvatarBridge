@@ -94,6 +94,8 @@ namespace AvatarBridge
             sb.AppendLine($"ChilloutVR CCK:{(BridgeDefines.HasCck ? " yes" : " NOT FOUND")}");
             sb.AppendLine($"MagicaCloth2:  {(BridgeDefines.HasMagicaCloth2 ? "yes" : "no")}");
             sb.AppendLine($"DynamicBone:   {(BridgeDefines.HasDynamicBone ? "yes" : "no")}");
+            // Without the add-on penetration is removed, not converted.
+            sb.AppendLine($"YAPS add-on:   {(BridgeDefines.HasYaps ? "yes" : "no")}");
 
             if (report != null)
             {

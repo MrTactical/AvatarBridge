@@ -278,11 +278,12 @@ converter, and import the add-on too if you want penetration.
 2. **Press "Analyse this avatar"** (greyed out until step 1). It reads the avatar and offers the
    settings its own contents decide, physics target, face tracking mode, which layers to merge,
    each with an **Apply**. Nothing changes until you press one.
-3. **Look at Manual options**: the handful of things the avatar can't tell you. Leaving them all
-   alone converts fine. Everything else lives in **Automated options**, folded away because the
+3. **Look at Physics and Manual options**: which solver to convert into, and the handful of things
+   the avatar can't tell you. Leaving them all alone converts fine. Everything else lives in **Automated options**, folded away because the
    analysis sets it.
-4. **Convert.** Output lands in `Assets/AvatarBridgeOutput/<avatar>/`: a sibling of the tool's
-   folder, so deleting `Assets/AvatarBridge` to update it never touches your conversions. Read
+4. **Convert.** Output lands in `Assets/AvatarBridgeOutput/<avatar>/` (or `<avatar> 2/`, `3` and
+   so on when a different avatar with the same name already owns that folder; the report says when
+   this happens): a sibling of the tool's folder, so deleting `Assets/AvatarBridge` to update it never touches your conversions. Read
    the report, then test in game. The report is also written as a **web page**
    (`ConversionReport.html`, "Open web report" in the window): what happened drawn as charts,
    every entry filterable, and the technical appendix rendered: self-contained, so it opens
@@ -300,23 +301,23 @@ converter, and import the add-on too if you want penetration.
 | Gestures | float threshold bands, the CCK's own idiom | analog fist blends in by trigger pressure, like VRChat |
 | Clothing / prop toggles | one `Toggle <name>` layer each | pulled out of VRCFury's merged blend trees; the "off" direction becomes [real animation](#a-toggle-switches-on-but-never-back-off) instead of relying on Write Defaults |
 | Animation clips + masks | copied into `RehomedAssets`, controller repointed | the output folder alone is the whole conversion |
-| Weight-gated reaction layers (`VRCAnimatorLayerControl`) | rebuilt at full weight, states asserting the layer's resting values | VRChat holds these layers at weight 0 and raises them from a state behaviour when a contact or control fires; headpats and boop reactions are usually built this way. ChilloutVR can't change layer weights, so carried as-is the reaction played invisibly. Fade durations become instant; properties shared with other layers are left to them |
+| Weight-gated reaction layers (`VRCAnimatorLayerControl`) | rebuilt at full weight, states asserting the layer's resting values | VRChat holds these layers at weight 0 and raises them from a state behaviour when a contact or control fires; headpats and boop reactions are usually built this way. ChilloutVR can't change layer weights, so carried as-is the reaction played invisibly. Fade durations become instant; properties shared with other layers are left to them. A layer that rests inside its own reaction can't be rebuilt this way: it stays at weight 0 and the report warns |
 | Base / Action / Sitting locomotion animations | grafted into CVR's own `Locomotion/Emotes` layer | custom walk/crouch/crawl/fall/sit clips, matched by blend-tree position, loop settings matched to the slot; VRChat `proxy_*` placeholders skipped: those live in the VRChat client, and CVR's animation set is their equivalent here |
 | VRChat flight / copter systems | pose grafted onto CVR's `LocFlying` state | ChilloutVR flies natively (keybind or double-jump where the world allows), so the VRChat system's speed logic isn't needed: the avatar's flight pose plays whenever the wearer actually flies |
 | VRC tracking / locomotion control | `BodyControl` | hands a limb from IK over to animation. Head, pelvis, arms, legs and locomotion map exactly; eyes, mouth and **fingers** have no ChilloutVR mask yet; see [emote hand poses](#an-emotes-hand-pose-is-wrong-or-follows-your-gesture) |
-| VRChat's scale parameters | `AvatarHeight` stream + derived arithmetic | `EyeHeightAsMeters` fed live; `ScaleFactor`, `ScaleFactorInverse`, `EyeHeightAsPercent`, `ScaleModified` computed from it each cycle against the converted viewpoint height |
+| VRChat's scale parameters | `AvatarHeight` stream + derived arithmetic | `EyeHeightAsMeters` fed live; `ScaleFactor`, `ScaleFactorInverse`, `EyeHeightAsPercent`, `ScaleModified` computed from it each cycle against the converted viewpoint height. `EyeHeightAsMeters` is added if the avatar lacks it, and then syncs (32 bits) |
 | PhysBones + colliders | **MagicaCloth2** or DynamicBone | see [below](#physbones--magicacloth2) |
 | PhysBone `_IsGrabbed` / `_Angle` | [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) mod | optional mod, not bundled; see [grabbing](#grabbing-a-chain) |
 | Contacts | `CVRPointer` / trigger | see [below](#contacts) |
 | DPS / TPS / SPS penetration | **YAPS**, a separate 18+ add-on | plug bends, sockets open, the author's tuning carried, and removed instead where the add-on is not installed; see [YAPS](#yaps-penetration-that-works-in-chilloutvr) |
 | VRC Constraints | Unity constraints | including *Target Transform*; see [below](#constraints-that-drive-another-object) |
 | VRC Head Chop | `FPRExclusion` | ⚠️ show/hide only |
-| Skinned mesh bounds | resized to the avatar's own volume, plus 0.3 × its height of clearance | stops meshes vanishing at screen edges. Measured from the bones that skin the avatar, so it's shaped like the avatar rather than a cube; boxes that were bigger are brought down to it too |
+| Skinned mesh bounds | resized to the avatar's own volume, plus 0.3 × its eye height of clearance (at least 0.45 m) | stops meshes vanishing at screen edges. Measured from the bones that skin the avatar, so it's shaped like the avatar rather than a cube; boxes that were bigger are brought down to it too |
 | Jaw-flap lip sync | `visemeMode = JawBone` / `SingleBlendshape` | rig-driven, no wiring needed |
-| A humanoid **Jaw** mapped to something that isn't a jaw | rig rebuilt without it | Unity's Auto-Map assigns a Jaw to whatever is nearest when it can't read a face, and ChilloutVR takes that bone literally: it's where the **Auto** voice position goes and what jaw-bone visemes animate, so the voice comes out of that object and the object waggles while you speak. With no Jaw, voice falls back to a measured mouth and visemes stay on blendshapes. Reported when it happens; the source avatar is untouched |
+| A humanoid **Jaw** mapped to something that isn't a jaw | rig rebuilt without it | Unity's Auto-Map assigns a Jaw to whatever is nearest when it can't read a face, and ChilloutVR takes that bone literally: it's where the **Auto** voice position goes and what jaw-bone visemes animate, so the voice comes out of that object and the object waggles while you speak. With no Jaw, voice falls back to a measured mouth and visemes stay on blendshapes. An avatar using jaw-flap lip sync keeps the Jaw its VRChat descriptor moves, whatever it is called (with no jaw bone set there, one placed where a jaw could be), because unmapping it would leave the mouth dead. Reported when it happens; the source avatar is untouched |
 | Face-tracking blendshapes | native `CVRFaceTracking`, bundled rig, or your own rig converted | see [below](#face-tracking) |
 | Avatar audio sources | clamped to VRChat's limits: doppler 0, distance floors/caps, and **made fully 3D** | CVR feeds them to its spatializer unclamped; one `minDistance 0` source on the wearer's body can mute the whole game's audio while worn. CVR also decides whether to spatialize *from the blend itself*, so a 2D source is never handed to the spatializer and can be **silent for everyone but you** |
-| Animator-played audio (`VRCAnimatorPlayAudio`) | looping: AudioSource enable window animated by the state · one-shots: a `CVRAudioDriver` index pulse | a looping sound plays for as long as its state plays; a one-shot plays to completion however quickly the state exits, which is how contact-triggered sounds behave. One clip at a fixed volume/pitch: randomised choice, ranges and start delays can't ride along and are listed in the report |
+| Animator-played audio (`VRCAnimatorPlayAudio`) | looping: AudioSource enable window animated by the state · one-shots: a `CVRAudioDriver` index pulse | a looping sound plays for as long as its state plays; a one-shot plays to completion however quickly the state exits, which is how contact-triggered sounds behave. One clip at a fixed volume/pitch: randomised choice, ranges and start delays can't ride along and are listed in the report. One-shot states sharing an AudioSource each keep their own clip; two looping states on one source both play the first one's clip, and the report names them. A one-shot with no clip on it or on its source is listed as removed |
 | Shaders without stereo support | patched copy in `RehomedAssets` | optional; see [below](#shaders-that-only-draw-into-one-eye) |
 | VRCFury temp materials/shaders | rescued into `RehomedAssets` | Fury deletes its temp folder on its next build |
 | VRCFury parameter compressor | removed | a VRChat sync workaround that breaks sync here |
@@ -422,6 +423,11 @@ the report says so plainly.
 ⚠️ **Several constraints of the same type on one object still merge into one.** Unity and CVR allow
 only one per type per object, so the second's offsets are dropped; its sources are kept.
 
+**An animation that moves a parent constraint's offsets is carried over**, position and rotation,
+per source. ⚠️ On the other constraint
+types an animated offset is not: the constraint keeps the offset it was built with, and the report
+lists each such curve.
+
 **Rotation offsets are measured, not copied.** VRC constraints evaluate in the editor, so at
 conversion time the scene pose *is* VRChat's solver output: the offset is derived from that
 directly rather than trusting both engines to apply the field in the same space. (Multi-source or
@@ -514,7 +520,7 @@ Two authors who never spoke, five percent apart.
 </details>
 
 Four facts about the source carry over without any conversion, because they're categorical rather
-than numeric:
+than numeric. *Fit the preset to the PhysBone* applies them:
 
 - **No gravity** stays none: presets ship their own, and one of them would make a chain fall for
   the first time in ChilloutVR
@@ -525,23 +531,36 @@ than numeric:
 - **Wind influence goes to zero**, because VRChat has no wind at all. ChilloutVR worlds do, and
   MagicaCloth2 ships fully responsive to it, so a converted chain would otherwise pick up motion
   its author never tuned for.
-- **`Is Animated` sets Animation Pose Ratio to 1**. MagicaCloth2 settles a chain back to the pose
-  the avatar was *built* in; a PhysBone marked `Is Animated` is one an animation moves. Left at
-  the default the two fight and the cloth wins: a chest or ear slider that scales its own bones
-  simply stops working, and the avatar quietly has a different shape from the original at
-  identical menu settings. The source flag decides this, so it's applied rather than reported.
 
-Stretch & squish, multi-child blending and angle limits are reported rather than converted, each
-naming the field to change if that chain wants it.
+The same option raises the speed limits a spring preset ships (1 m/s, below walking pace) to
+MagicaCloth2's own defaults: VRChat clamps nothing, so the author tuned against full movement, and a
+limit is kept so a teleport can't fling the chain across the world. Each raise is reported.
+
+**`Is Animated` sets Animation Pose Ratio to 1**, with that option on or off. MagicaCloth2 settles a
+chain back to the pose the avatar was *built* in; a PhysBone marked `Is Animated` is one an
+animation moves. Left at the default the two fight and the cloth wins: a chest or ear slider that
+scales its own bones simply stops working, and the avatar quietly has a different shape from the
+original at identical menu settings. The source flag decides this, so it's applied without asking,
+and the report names each chain it applied to.
+
+Stretch & squish and multi-child blending are reported rather than converted, each naming the field
+to change if that chain wants it. Angle limits become a distance bound while *Bound swing to the
+source's limit* is on, as it is by default; off, the chain swings without one.
 
 **Using DynamicBone instead?** Almost none of this applies: PhysBones and DynamicBone *are* the
-same kind of simulation, so that path maps values 1:1. Two exceptions. First, *Size for the
-largest a slider makes the body* still applies: chain radii and converted colliders grow by the
-same mesh measurement, since a slider that grows the body past an authored radius breaks the
-collision identically on both solvers (inside-bound "cage" colliders are left alone: growing the
-body a cage contains would shrink the room inside it). Second, deliberately: **gravity is written
-to `m_Force`, never to `m_Gravity`.** `m_Gravity` is the natural match, and it is unusable in
-ChilloutVR on any avatar that isn't at scale exactly 1.0: the client cancels the rest-pose share
+same kind of simulation, so that path maps field for field, with three rescalings: pull becomes
+elasticity at 0.2×, because DynamicBone's useful elasticity range is that much smaller; gravity
+becomes a force at the same 0.2×, because where a chain settles is the balance of the two, so the
+resting pose matches VRChat's; and spring becomes damping, inverted
+([the derivation](docs/SolverCalibration.md)). Don't "fix" either 0.2× back up to the PhysBone's
+number: raising the elasticity alone makes the chain about five times stiffer than in VRChat, and
+raising the force alone makes it deflect about five times further. Two exceptions beyond that.
+First, *Size for the largest a slider makes the body* still applies: chain radii and converted
+colliders grow by the same mesh measurement, since a slider that grows the body past an authored
+radius breaks the collision identically on both solvers (inside-bound "cage" colliders are left
+alone: growing the body a cage contains would shrink the room inside it). Second, deliberately:
+**gravity is written to `m_Force`, never to `m_Gravity`**, at the 0.2× above. `m_Gravity` is the
+natural match, and it is unusable in ChilloutVR on any avatar that isn't at scale exactly 1.0: the client cancels the rest-pose share
 of gravity with one factor of scale too many, so the gravity term comes out as `g × scale − g`.
 That's zero at scale 1, and **negative below it**, which lifts hair and tails toward the sky. A
 converted avatar carries a height scaler, so it is essentially never at scale 1. `m_Force` is added
@@ -558,7 +577,7 @@ come along; the report names each chain that had one.
 | setting | default | what it does |
 |---|---|---|
 | **Match a preset to each chain** | on | Hair, tail, skirt, cape or accessory by bone name; otherwise a soft/middle/hard spring by how firmly the PhysBone held its rest pose |
-| **Fit the preset to the PhysBone** | on | The four categorical facts above. Turn it off to get the preset exactly as its author wrote it |
+| **Fit the preset to the PhysBone** | on | The four categorical facts above and the raised speed limits. Turn it off to get the preset as its author wrote it, apart from `Is Animated`, which always applies |
 | **Derive physics from the PhysBone** | on | Converts pull, spring and stiffness into damping and angle restoration. It can *firm* the matched preset with the source's own character but never soften it below that preset's baseline: MagicaCloth2's own presets are the floor of a spring that still reads as one, and a very loose PhysBone converts faithfully to mush without it. The report says when the floor held. Turn it off to get the preset exactly as authored |
 | **Size particles from the mesh** | on | MagicaCloth2's radius is the collision body of a simulated bone. Left alone it is whatever the matched preset shipped: the same size on a breast as on a hair strand, so collision covers a fraction of what you see. This measures the mesh those bones move: with your blendshapes applied, so a body slider left part-way up is measured as you actually wear it, and sizes each chain to it. The source PhysBone's radius is deliberately *not* used: in VRChat it only governs contact with PhysBone colliders, so it is routinely near zero |
 | **Size for the largest a slider makes the body** | on | A body slider grows the mesh, but MagicaCloth2's radius is fixed: of its parameters only pose ratio, gravity, damping, inertia, wind and blend weight can be animated at all, so collision is right at one slider position and wrong at the rest. This measures the mesh again with every animated blendshape pushed as far as the animator can take it, and keeps the larger reading: collision covers the body when the slider is up and is a little generous when it's down, which is the better way round. Shapes that *shrink* cost nothing: the saved reading simply wins. On the DynamicBone path the same measurement grows chain radii and converted colliders |
@@ -623,7 +642,8 @@ explicitly instead, including into the other options of a dropdown, and only whe
 visible rides those bones.
 
 [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones) adds grabbing back,
-and AvatarBridge already targets it: converted cloths are named after the PhysBone's parameter so
+and AvatarBridge already targets it: converted cloths and DynamicBone holders are named after the
+PhysBone's parameter so
 the mod's `_IsGrabbed` and `_Angle` drive your existing grab-reactive logic, and those parameters
 are kept synced rather than made local. That's as far as any converter can go: **grabbing is a
 client mod**, so only people who have installed it can grab anything on your avatar.
@@ -890,11 +910,12 @@ to selected materials* puts the deform back after an unlock/edit/re-lock.
    Beneath: **Add a hole**, **Add a ring** (under the bone you have selected in the
    Hierarchy, or in a `YAPS/` folder on the avatar) and **Make selected mesh a plug**, or, with a
    *bone* selected, **Make a plug from bone**, which bakes the skinned mesh that bone drives from
-   that bone down, on the material slot weighted to it. Where a new socket or plug goes is the
+   that bone down, on every material the chain's vertices use. Where a new socket or plug goes is the
    Hierarchy selection, and a line under the buttons says what that is. (Right-clicking a bone in
    the Hierarchy has the same two: *YAPS ▸ Add a hole here* and *Add a ring here*.) Under *Tidy*,
-   **Clean up leftovers** sweeps an avatar for what a hand-deleted socket left behind: an animator
-   layer with no socket, a depth parameter nothing reads, a menu toggle aiming at nothing.
+   **Clean up leftovers** sweeps an avatar for what a hand-deleted socket or plug left behind: an
+   animator layer with no socket, a depth parameter nothing reads, a menu toggle aiming at nothing,
+   a tag chooser whose plug is gone.
 3. **Build.** Bakes every plug: measuring the mesh, patching the shader of every material its
    triangles use, writing
    the knobs, wiring its size animations, announcing it to every socket family, and builds each
@@ -933,8 +954,8 @@ and `YAPS Ring` to `Assets/YAPS/Prefabs`. Drag one under a bone, point its +Z th
 should enter, and every plug on the platform reads it: DPS marker lights at VRCFury's exact
 ranges, TPS and SPS pointers, and a front so plugs thread rather than aim. Nothing to understand.
 
-**A plug prop prefab**: *Tools ▸ YAPS ▸ Create a plug prop prefab* writes `YAPS Plug Prop` beside
-them: a whole spawnable in one click, built and baked on the current shader with its pickup and
+**A plug prop prefab**: *Tools ▸ YAPS ▸ Create a plug prop prefab* writes `YAPS Plug Prop` and
+its mesh, `YAPS Plug Prop Mesh`, beside them: a whole spawnable in one click, built and baked on the current shader with its pickup and
 grab collider wired, finding sockets by their marker lights. Drop it in a scene and upload it
 from the CCK as a prop.
 
@@ -949,8 +970,8 @@ already on the platform is the one it went up with.
 `YAPS Ring and Socket Prop` beside them: the plug prop's other half, a spawnable carrying a ring to
 pass through above and a hole to enter below, facing opposite ways so one prop serves both. Resize
 the body and move the sockets before uploading. Both sockets carry marker lights, and a mesh has
-four vertex light slots, so an old DPS toy sees one at a time; anything modern finds both by
-contact. **Not yet confirmed in game**: it is built and it behaves in the editor, and nobody has
+four vertex light slots, so an old DPS toy sees one at a time; anything reading the screen atlas
+finds both. **Not yet confirmed in game**: it is built and it behaves in the editor, and nobody has
 uploaded one and used it with another person yet.
 
 **YAPS Socket** (the component the prefabs carry): hole or ring, and a ring can be **One way**, so
@@ -970,8 +991,8 @@ Setting the mesh back to **None** and building again takes all of that out: the 
 parameter, the contact and the mesh's own material, unless your own animations still read the
 depth. **Test depth** moves those shapes on the mesh in the editor so you can see the stages
 without a plug; nothing is saved, and they go back when you click away. **Preview** bends every
-baked plug in the scene toward the socket, and drops one in front of it when nothing baked is
-within a couple of metres: the plug prop prefab if the project has one, since that is baked on
+baked plug in the scene toward the socket, and drops one in front of it when no baked plug's base
+or tip is within arm's reach (0.4 m past the plug's own length): the plug prop prefab if the project has one, since that is baked on
 the shader the project has today, otherwise a plug built on the spot. While it runs, the plug's
 own tip drives the shapes the way the game will. Once built, the socket-side shape knobs. *Advanced*
 holds the marker lights, *Rebuild markers* and **Remove this socket**.
@@ -1059,7 +1080,7 @@ list that will not fit on the plug often fits on the sockets instead.
 A name means the same thing here as it does in SPS, because it is hashed the same way, so
 `hips`, `hipsfront`, `hipsback`, `head`, `chest`, `hand`, `handleft`, `handright`, `foot`,
 `footleft` and `footright` are worth using where they fit: those are the eleven SPS works out from
-the bone nearest a socket. Anything else is a private word between you and the plug's author.
+the humanoid bone a socket hangs from, and a socket on any other humanoid bone gets none. Anything else is a private word between you and the plug's author.
 
 **A tag is stored as a fingerprint, not as a word, and fingerprints can agree.** There is room for
 one pixel of tags in the atlas, so a socket does not carry a list: each of its tags lights three
@@ -1102,9 +1123,14 @@ global tag every socket and plug carries unless you turned it off. So a plug tha
 everything still answers everything, and a plug narrowed to one place stays narrowed to it. A
 rule that applied to yourself but not to other people, or the other way round, keeps its side:
 see **Which of your own sockets a plug may enter** above. The two lists land on the plug itself,
-so you can read them, change them and re-bake without losing them. One thing changes: where an avatar has
-three or more sockets on the hips, they come across as `hips` without the front and back split: with
-two the front one is the one further forward, and with three the guess is worth less than the name.
+so you can read them, change them and re-bake without losing them. Front and back on the hips are
+worked out as SPS does: of the sockets on the hips, the two nearest the hips along the front-to-back
+axis are the pair, and the one further forward is `hipsfront`. Plugs and sockets sharing one name, which is
+VRCFury's default, keep their own settings. Two on one object cannot be told apart once baked, so
+each takes the defaults and the report names them. A socket the conversion cannot trace back to its
+SPS original, one an armature link merged into a bone, say, keeps only the shared tag and is listed
+in the report. A plug it cannot trace takes the default tags and overrun, answering any socket, and
+is listed too.
 
 **Choosing at runtime.** A plug listing two or more tags gets a menu dropdown of its own, so the
 wearer can narrow it to one of them, widen it to *Anything*, or leave it on *As built*, which is
@@ -1113,7 +1139,9 @@ on the refuse list stays refused. Only a hash of a name travels, never the name,
 stays private between you and the other author. On your own sockets it narrows the ticks left as
 they started; one you ticked yourself stays open. The dropdown narrows what the plug asks for; it
 cannot make a route carry what it has no room for, so the paragraph above still applies to every
-setting on it.
+setting on it. Building again takes the dropdown out once the plug lists fewer than two tags or is
+deleted; when its mesh moves, the dropdown is rebuilt under a new parameter and its saved choice
+starts over.
 
 **The components themselves do nothing in game, so don't animate them.** A YAPS Plug or YAPS
 Socket is setup data: the bake writes what it says into the material, and ChilloutVR strips the
@@ -1165,7 +1193,9 @@ leaving a second copy behind.
 vertex-light slots forever, and a plug with no switch cannot be put away, so Build gives each an
 Advanced Settings entry, **off by default**, and writes its layer and parameter straight into
 the controller the avatar uploads, and into your base controller too when the CCK has generated
-one from it, so the layer ships now and survives the next *Create Animator*. It does not press
+one from it, so the layer ships now and survives the next *Create Animator*. Never into the CCK's
+own stock controller, which every avatar in the project shares: an avatar still running it is told
+to get its own controller first (the CVRAvatar's Advanced Avatar Settings create one). It does not press
 *Create Animator* for you and does not copy your base controller or replace your override
 controller; the CCK's own generator, run later, sees the parameter already driven and skips the
 entry as it is meant to. Anything the avatar
@@ -1175,11 +1205,18 @@ added a toggle that turns out to be unnecessary, the next one removes it.
 
 **Taking things out again.** Every plug and socket has **Remove**: on its row in the window, and
 in its own inspector. It takes the thing out entire: the objects the tool made, its animator layer
-and parameter, its menu entry, the size wiring in your clips, and the bake, putting the material
-it replaced back in its slot. With other plugs still on the same mesh, the menu entry, the size
-wiring and their slots stay, since those are theirs too, and a plug that was given a slot of its
-own puts the mesh back as it was before. A dialog lists exactly what will go first, and it is one
-undo step.
+and parameter, its menu entries (a plug's deform toggle, its own-sockets toggle and its tag
+chooser), the size wiring in your clips, and the bake, putting the material it replaced back in its
+slot. With other plugs still on the same mesh, the menu entries, the size wiring and their slots
+stay, since those are theirs too, and a plug that was given a slot of its own puts the mesh back as
+it was before. A skinned mesh keeps the culling the bake gave it: a mesh that is all plug keeps the
+box fitted round its rest pose and reach, with **Update When Offscreen** off, and a mesh the plug
+only shares keeps its own box, grown only where it fell short of the plug's reach. A plug on a plain
+mesh puts back the mesh it had before the bake, which widened the culling box on a copy, so a model
+was never edited. The copy stays while another plug on the same mesh still needs it, and a mesh
+that is an asset of its own keeps the wider box. A converted plug keeps the copy too, as does one
+baked by an earlier version: neither has a record of the original, so put that mesh back in the
+Mesh Filter by hand. A dialog lists exactly what will go first, and it is one undo step.
 The files it generated stay in `Assets/YAPS/Generated` for the next Bake, so an undo never points
 at a missing asset. If you delete one by hand instead, *Clean up leftovers* in the window finds
 what it left.
@@ -1306,14 +1343,10 @@ fragment pass it can read, and points this avatar's materials at the copy.
   locked Poiyomi does, and declares a plain depth texture for optional features.
 - **A screen grab can't be fixed this way.** The effect draws in both eyes, but the background it
   bends comes from one, and the report says so.
-- **Shaders needing more than the derivable fixes get a recipe**: written by hand once and applied
-  to your copy on later conversions, matched by the shader's name and by every line it edits, so a
-  shader that merely shares a name gets the generic patch instead. Nothing is redistributed; the
-  recipe is the edit, not the shader. Hit one with no recipe? Open an issue.
 - **Not everything can be patched.** A pass whose vertex function isn't plainly written
   (`Out vert(In v)`), or whose structs are Unity's own, is left as it was: the rest of the shader is
   patched and the report names that pass. A shader with no pass it can read is listed for
-  hand-fixing.
+  hand-fixing. Hit a shader it can't fix? Open an issue.
 - **Every shader gets a verdict in the report**: patched, couldn't be, or already correct, for the
   materials a toggle swaps in as well. Modern Poiyomi declares the full macro set, so locked shaders
   normally land in the last group, and so do surface shaders.
@@ -1338,7 +1371,9 @@ So each parameter is retyped from what the avatar's logic says it is: the **menu
 (Toggle → bool, Dropdown → int, Slider → float), or for parameters with no control, how the
 **animator compares** it. Anything read as a *quantity* (blend tree, motion time, or written by a
 clip) stays `float`, and is named in the report so you can see the tool declined rather than
-missed it.
+missed it. One exception to Toggle → bool: several toggles setting one value to different levels
+(0.25, 0.5, 0.75) come across as a slider, because a ChilloutVR toggle can only write 0 or 1. The
+report lists the levels so you can drag the slider to them.
 
 **Parameters a menu control drives are always synced**, whatever the imported flag says. VRChat's
 256-bit budget taught authors and VRCFury to mark menu parameters *not synced* and carry the values
@@ -1357,16 +1392,18 @@ blendshapes. On a typical VRCFT avatar that's a couple of layers and a few hundr
 
 - **Native CVR Component**: sets up `CVRFaceTracking` and maps the shapes. Self-contained, but the
   built-in solver is a bit stiff. **Rigs that name their shapes without a side are handled**: many
-  ship one `EyeLookDown` where ChilloutVR's own matcher looks for `EyeLookDownLeft` and
-  `EyeLookDownRight` and so fills neither. Both slots get that shape: the report says how many were
+  ship one `CheekPuff` where ChilloutVR's own matcher looks for `CheekPuffLeft` and
+  `CheekPuffRight` and so fills neither. Both slots get that shape: the report says how many were
   matched this way, and expect symmetric movement on them, since there's only one shape to move.
-  This also decides the *Analyse avatar* recommendation, so a rig like that no longer reads as
+  Slots where the side *is* the movement, a jaw, tongue or lip shifting left or right, are never
+  filled from a sideless shape: a plain `Tongue` is not a tongue moving sideways. This also decides the *Analyse this avatar* recommendation, so a rig like that no longer reads as
   having no face tracking at all.
 - **Unity Animator Blendtrees (DSR)**: injects DragonSkyRunner's *CVR Eye & Face Tracking* rig
   (bundled), repaths every clip onto your actual eye bones and face mesh, and reconciles its shape
   vocabulary against whatever your mesh has: by name, casing, **ARKit ↔ Unified Expressions**
   aliases, and combined/split rules. An **ARKit avatar** works without renaming anything. Smoother
-  and more expressive.
+  and more expressive. Eyes the avatar already turns with a constraint are left to it: the gaze rig
+  is not built on them, the report says so, and ChilloutVR's own eye look stays on.
 - **Keep the avatar's own rig**: nothing is stripped, and this is *not* a do-it-yourself option:
   the existing rig (Jerry's Templates, Pawlygon, OSCmooth setups…) **converts** with the rest of
   the animator. Smoothing proxies VRChat never synced automatically become `#`-local, which costs
@@ -1416,20 +1453,22 @@ in a ChilloutVR project and these cards work on their own; see [Installation](#i
 
 | card | does |
 |---|---|
-| **Check this avatar** | Reads only. Names the components ChilloutVR deletes on load, tallies the 3200-bit sync budget, lists parameters used but never declared and declared but never read, menu entries whose type disagrees with the animator's, shaders that draw into one eye, cloth with no root bones |
+| **Check this avatar** | Reads only. Names the components ChilloutVR deletes on load, tallies the 3200-bit sync budget, lists parameters used but never declared and declared but never read, menu entries whose type disagrees with the animator's, shaders that draw into one eye, bone cloth with no root bones |
 | **What this avatar does** | Reads only. Reads the animator, the menu and the components into one model and names what the avatar can and cannot do: features its author built and never wired to anything, things two layers both animate where the higher one quietly wins, menu controls nothing reads, parameters that lost their driver in the conversion, and objects that could come off as ChilloutVR props. It answers by reading rather than by flipping switches, so a toggle a preset overrides is never mistaken for a dead one |
-| **What this avatar costs** | **Weigh it** reads only: texture memory against the surface each map actually covers, so a 2K texture on a fingernail is named as one and told what size it should be. Also contacts against the 512 overlapping pairs ChilloutVR gives the whole instance, triangles, cloth simulating N transforms, blendshapes nothing animates, materials each carrying their own locked shader copy, pointers by family, and sets of materials that could share one texture. **Fix it** then acts. Every map whose detail cannot reach the eye drops a size, anything uncompressed gets compressed, and a mask holding one channel three times, or an alpha channel that is white everywhere, drops to a format half the size: import settings only, so no texture file is edited, and **Put the textures back** restores every original. A texture a shader reads back exactly, point filtered with no mips, is left alone: those pixels are numbers rather than colour and compressing one rewrites them. Fix it also strips renderers switched off with nothing in any clip able to switch them on, which is a tickbox on the card if you would rather it did not. The component goes and the object stays, so anything parented to it keeps working, and Ctrl+Z puts it back |
-| **Free wins** | Removes only what is provably inert: layers with no states, and parameters no clip writes, no transition reads, and no driver, menu control or contact names. Decided by reading the controller, never by flipping something and watching: an individual toggle that a preset overrides looks dead and is not. Parameters the game itself writes are kept and listed. Written to a copy of the controller; your original is not edited |
+| **What this avatar costs** | **Weigh it** reads only: texture memory against the surface each map actually covers, so a 2K texture on a fingernail is named as one and told what size it should be. Also contacts against the 512 overlapping pairs ChilloutVR gives the whole instance, triangles, cloth simulating N transforms, blendshapes nothing animates, materials each carrying their own locked shader copy, pointers by family, and sets of materials that could share one texture. **Fix it** then acts. Every map whose detail cannot reach the eye drops a size, and a PNG or JPG of the Default texture type changes format where its pixels allow: uncompressed gets compressed, and a linear mask holding one channel three times, or an alpha channel that is white everywhere, drops to a format half the size (other file types and crunched textures keep their format): import settings only, so no texture file is edited, and **Put the textures back** restores every original, a conversion's own resize included, even after Unity restarts. The card keeps its record in the same per-avatar output folder as the converter, a custom **Output folder** included. A texture a shader reads back exactly, point filtered with no mips, is left alone: those pixels are numbers rather than colour and compressing one rewrites them. Fix it also strips renderers switched off with nothing in any clip or menu toggle able to switch them on, which is a tickbox on the card if you would rather it did not. The component goes and the object stays, so anything parented to it keeps working, and Ctrl+Z puts it back |
+| **Free wins** | Removes only what is provably inert: layers with no states (a synced layer, which has none of its own, is kept), and parameters no clip writes, no transition reads, and no driver, menu control or contact names. Decided by reading the controller, never by flipping something and watching: an individual toggle that a preset overrides looks dead and is not. Parameters the game itself writes are kept and listed. Written to a copy of the controller; your original is not edited. The copy replaces the original everywhere the avatar wires it: the uploaded overrides, the Base Controller and the Animator. An avatar still running the CCK's own controller is left alone until it has its own |
 | **Stereo shaders** | Patches shaders without single-pass instanced support into copies that have it, and points the object's materials at them; see [Shaders that only draw into one eye](#shaders-that-only-draw-into-one-eye). Materials an animation swaps in are not followed here, because that would mean editing your clips; the converter does follow them, on its own copies |
-| **Face: visemes and blink** | Finds the face mesh and wires the standard viseme and blink blendshapes onto the CVRAvatar. Touches nothing else on it |
+| **Face: visemes and blink** | Finds the face mesh and wires the standard viseme and blink blendshapes onto the CVRAvatar. A face mesh already set there is kept unless the visemes are found on another one. Touches nothing else on it |
 | **Audio limits** | Clamps every audio source to settings ChilloutVR handles: doppler off, distance floors and caps, fully 3D. One `minDistance 0` source on a wearer can mute the whole game |
 | **Mesh bounds** | Resizes skinned mesh bounds to the avatar's own volume plus clearance, so meshes stop vanishing at the screen's edge |
-| **Height slider** | Adds the quick-menu Height slider (0.25×–4×, centred on the original size) to the root's animator controller and advanced settings. Its menu entry goes first in the Advanced Settings list, where people look for it. This one edits the controller asset the avatar uses |
-| **Store description** | Writes the [description](#store-description) from what the avatar has and types it into the upload page when that window is open |
+| **Height slider** | Adds the quick-menu Height slider (0.25×–4×, centred on the original size) to the controller ChilloutVR uploads (the one under the avatar's override controller, else its base controller) and to its advanced settings. Its menu entry goes first in the Advanced Settings list, where people look for it. Refused, as an error, while that controller is the CCK's own stock one, since layers added there would reach every avatar in the project. Not added, with a warning, when the avatar already has its own parameter or menu entry called "Height" |
+| **Store description** | Writes the [description](#store-description) from what the avatar has, types it into the upload page when that window is open and its Description box is empty, and copies it to the clipboard either way |
 | **Merge animators** | Any sources into a target: every layer and parameter deep-copied, layers after the target's own, same-named layers renamed, a parameter present in both with different types named and the target's type kept. Written to a copy beside the target by default; sources are never edited |
 
-The Toolkit sits in the same package as the converter and YAPS and links to both; it lives in its
-own window because a general utility should not require opening a penetration tool.
+The Toolkit ships with the converter and links to it and to the CCK Animator Tester. YAPS is a
+separate 18+ add-on: the Toolkit links to its window when it is installed, and to where to get it
+when it is not. The Toolkit lives in its own window because a general utility should not require
+opening a penetration tool.
 
 ## Setup mode
 
@@ -1456,7 +1495,7 @@ table [above](#options) and isn't repeated here.
 
 ### Analyse this avatar
 
-The button above both option cards, greyed out until an avatar is picked. It reads the avatar as it
+The button above the Physics, Manual and Automated cards, greyed out until an avatar is picked. It reads the avatar as it
 sits in the scene, PhysBones, blendshapes, shaders, parameters and layers, and lists what it found
 against the settings those decide, each row with its own **Apply**. Nothing changes until you press
 one. Each check asks the converter's own question through the converter's own code, so a
@@ -1481,6 +1520,23 @@ Under it, **What the report tells you** holds two ticks that only ever read, in 
 | **Say what this avatar costs (recommended)** | on | Adds texture memory, contacts, triangles and cloth to the report: the same measurement as the Toolkit's **What this avatar costs** card |
 | **Say what this avatar does (recommended)** | on | Adds unwired features, layers fighting over the same thing and possible props to the report |
 
+### Physics: which solver, and how the chains feel
+
+A card of its own, above Manual and Automated: which solver to convert into isn't something the
+avatar decides, so it isn't buried with the settings that are.
+
+| setting | default | what it does |
+|---|---|---|
+| **Convert PhysBones to** | MagicaCloth 2 | MagicaCloth 2 gives the best result in ChilloutVR; DynamicBone is the built-in fallback. Analyse checks which is actually installed |
+| **GrabbyBones mod support** | on | Keeps chains grabbable by the GrabbyBones mod, the closest thing CVR has to VRChat's bone grabbing |
+| **Delete PhysBones after converting** | on | Removes the VRChat components once their replacements exist. Off leaves both: the converted physics still simulates, and ChilloutVR does nothing with the PhysBones |
+
+**Convert toe PhysBones** and **Size for the largest a slider makes the body** sit under these for
+both solvers. On MagicaCloth 2 the card adds *Advanced physics tuning*, folded away, and a **Your
+call** section with the two that depend on intent rather than measurement: **Add physics to toggled
+rigs that have none** and **Auto-assign nearby colliders**. All of them are in the
+[physics table](#options) above and not repeated here.
+
 ### Manual options: what the avatar can't tell you
 
 The card that stays open. Every row is a departure from the source avatar, a judgement about the
@@ -1494,15 +1550,9 @@ settle. Leaving all of them alone converts fine.
 | **Opt-ins ▸ Penetration ▸ Show the avatar's OWN depth animations to other players** | off | Not YAPS's socket shapes, which already play for everyone on a synced parameter. This is the bulges and winces the avatar's author animated in VRChat, which are contact-driven, and ChilloutVR runs an avatar's triggers on the wearer's machine alone. Off, each socket's depth parameter is local: free, and only the wearer sees the reaction. On, it syncs and the room sees it, at 32 bits per socket: one depth parameter each, six sockets is about 192 of 3200; a socket that kept several depth parameters as authored pays for each. Needs *Penetration* on *Convert to YAPS* |
 | **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder: you must press **Create Controller** yourself |
-| **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of this avatar's measured height, centred on its original size. Parent-constrained props are re-anchored so they scale with you |
+| **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of this avatar's measured height, centred on its original size. Parent-constrained props are re-anchored so they scale with you. Not added, with a warning, when the avatar already has its own parameter or menu entry called "Height": rename that one to get the slider |
 | **Extra strip keywords** | *(empty)* | Comma separated. Each is matched as a parameter prefix and a layer name, for other VRChat-only systems |
-| **Output folder** | `Assets/AvatarBridgeOutput` | Where the converted avatar and its rehomed clips, materials and controllers are written. The folder alone is the whole conversion |
-
-Physics has a card of its own, above Manual and Automated, which solver to convert into isn't
-something the avatar decides, so it isn't buried with the settings that are. Its **Your call**
-section holds the three that depend on intent rather than measurement: **Convert toe PhysBones**,
-**Add physics to toggled rigs that have none** and **Auto-assign nearby colliders**: described in
-the [physics table](#options) above and not repeated here.
+| **Output folder** | `Assets/AvatarBridgeOutput` | Where the converted avatar and its rehomed clips, materials and controllers are written, in a folder named after the avatar. The folder alone is the whole conversion. A different avatar with the same name gets `<avatar> 2` beside it rather than overwriting it; an avatar in a scene that was never saved has nothing to tell it apart by, so it still shares by name |
 
 ### Automated options: set from the avatar
 
@@ -1511,10 +1561,7 @@ Analyse sets them to match. Open it to override a measurement deliberately, not 
 
 | setting | default | what it does |
 |---|---|---|
-| **Work on a clone (recommended)** | on | Converts a copy and leaves your original untouched. Turning it off edits the avatar in the scene |
-| **Convert PhysBones to** | MagicaCloth 2 | MagicaCloth 2 gives the best result in ChilloutVR; DynamicBone is the built-in fallback. Analyse checks which is actually installed |
-| **Delete PhysBones after converting** | on | Removes the VRChat components once their replacements exist. Off leaves both, which uploads but simulates nothing |
-| **GrabbyBones mod support** | on | Keeps chains grabbable by the GrabbyBones mod, the closest thing CVR has to VRChat's bone grabbing |
+| **Work on a clone (recommended)** | on | Converts a copy and leaves your original untouched. Turning it off edits the avatar in the scene, except on a VRCFury or Modular Avatar avatar: the bake always makes a copy, and the original is switched off |
 | **Face tracking** | Native CVR Component | Native drives blendshapes through CVR's own `CVRFaceTracking`: self-contained, a bit stiff. *Unity Animator Blendtrees (DSR)* rebuilds DragonSkyRunner's rig onto the avatar: smoother, more expressive. *Keep the avatar's own rig* strips nothing. Both set-up modes replace any existing FT rig |
 | **Remove GoGo Loco (recommended)** | on | Strips GoGo Loco, whose locomotion VRChat needs and ChilloutVR provides natively |
 | **Penetration** | Convert to YAPS | One choice, three answers. *Convert to YAPS (recommended)* rebuilds the penetration system for ChilloutVR: a from-scratch deform, the author's own tuning carried across, sockets found through the screen atlas and DPS marker lights, readable by and reading every system on the platform. *Remove* takes it all out: every plug and socket goes, and the plug mesh stays, straight. *Leave as VRChat built it (won't work)* touches nothing, and functions nowhere. The OGB, PCS and Wholesome haptics stacks go with the first two: they cost no sync bits, but each is a contact, and ChilloutVR budgets 512 overlapping pairs a frame for the whole instance: a converted avatar carried over a hundred. *Opt-ins ▸ OSC toys* keeps them beside a converted system if you drive a toy from them. The choice needs the 18+ [YAPS add-on](#yaps-penetration-that-works-in-chilloutvr) installed; without it the penetration is removed and the report names the add-on |
@@ -1525,7 +1572,7 @@ Analyse sets them to match. Open it to override a measurement deliberately, not 
 | **Additive** | off | VRChat's additive layer, usually breathing |
 | **Action (emotes, AFK)** | off | Emotes and AFK. Off by default because Action takes full body control and misfires are very visible. An Action layer holding **only** VRChat's `proxy_*` placeholders is left out even when this is on; see [spinning on the spot](#the-avatar-spins-on-the-spot-usually-after-landing-and-only-in-vr) |
 | **Preserve parameter sync state** | on | Keeps each parameter's local/synced status as VRChat had it, rather than syncing everything: **except parameters a menu control drives, which always sync**. VRChat's tight budget made de-syncing menu parameters a common trick, usually with VRCFury syncing them through machinery that doesn't survive conversion, so "not synced" is untrustworthy on anything with a control; a toggle others can't see the effect of is a broken feature, and ChilloutVR's 3200-bit budget can afford it. The report lists every parameter this re-synced |
-| **Expose menu-less synced parameters** | on | Synced parameters with no menu control still [need an entry to exist](#a-menu-control-appears-moves-syncs-and-does-nothing) in CVR |
+| **Expose menu-less synced parameters** | on | Gives synced parameters with no menu control a settings entry, so their values are saved between loads and can be set by hand. Not needed for sync |
 | **Convert contact senders/receivers** | on | VRChat contacts become [pointers and triggers](#contacts) |
 | **Recreate built-in VRC colliders as pointers** | on | The fingers, head and torso colliders VRChat gives every avatar for free |
 | **Grow contact zones with the body's sliders** | on | A zone authored on a body part a blendshape slider can grow stays authored-size while the mesh grows past it, so the touch lands inside the body short of the zone. Measured like the physics sizes: the mesh around each zone at rest and with every animated shape at full reach. A zone one slider grows follows that slider live; growth spread across shapes holds the grown size. The report names each zone and what was done |
@@ -1533,7 +1580,7 @@ Analyse sets them to match. Open it to override a measurement deliberately, not 
 | **Convert VRC Head Chop** | on | `VRCHeadChop` becomes `FPRExclusion`: CVR's first-person hiding |
 | **Convert spatial audio** | on | `VRCSpatialAudioSource` becomes a plain `AudioSource` with equivalent spatial settings |
 | **Auto-wire blink blendshapes** | on | Detects blink shapes on the face mesh (`Blink L`/`Blink R` and similar) and turns on CVR's Eye Blink Settings when the descriptor didn't name any |
-| **Resize oversized textures** | on | Every texture the avatar carries is measured against the mesh that wears it and resized to what that mesh can show; a one-channel or fully opaque texture also gets a format half the size. A texture a shader reads as exact values (point filtered, no mipmaps) is never resized. Import settings only, nothing is written to a texture file, and **Put the textures back** on the report undoes all of it. A texture any material outside this avatar uses is refused and named. The same measurement the Toolkit's **What this avatar costs** card makes, run without being asked |
+| **Resize oversized textures** | on | Every texture the avatar carries is measured against the mesh that wears it and resized to what that mesh can show; a PNG or JPG of the Default texture type also gets a smaller format where its pixels allow: compressed if it was uncompressed, or half the size for a linear mask holding one channel three times or an alpha channel that is white everywhere. A texture a shader reads as exact values (point filtered, no mipmaps) is never resized. Import settings only, nothing is written to a texture file, and **Put the textures back** on the report undoes all of it; the Convert card keeps offering it for the picked avatar after the report is gone, even after Unity restarts. A texture any material outside this avatar uses is refused and named. The same measurement the Toolkit's **What this avatar costs** card makes, run without being asked, and that card offers the same undo button for the converted avatar, including after Unity restarts |
 
 **Base, Additive and Action switch themselves off when you pick an avatar with no such layer**: the
 slot is empty or holds VRChat's default. These settings persist between avatars, so a tick meant for
@@ -1661,8 +1708,10 @@ Bipeds are unaffected by any of it.
   poses), but VRChat avatars whose eyes move by blendshape only get a report entry. (Blink and
   blendshape face tracking *are* handled.)
 - **PhysBone posing, stretch & squish** and their `_Stretch` / `_Squish` / `_IsPosed` parameters
-- **VRC state behaviours** other than Parameter Driver and Tracking Control (which becomes
-  `BodyControl`): removed and counted
+- **Some VRC state behaviours**: Temporary Pose Space, Playable Layer Control, and a Layer Control
+  aimed at the Action layer, are removed and counted. Parameter Driver, Tracking and Locomotion
+  Control (which become `BodyControl`), Play Audio and the other Layer Controls convert; see
+  [What gets converted](#what-gets-converted)
 - **Synced animator layers** and **ONSP audio**
 - **Content tags**: set CVR's *Advanced Tagging* (NSFW, loud audio…) yourself before uploading
 - **VRChat-only rendering**: anything needing VRChat's own shader systems. Meshes and materials
@@ -1676,7 +1725,7 @@ Bipeds are unaffected by any of it.
   transforms usually needs Action ticked**: a mech that folds into a vehicle keeps its menu toggle
   and its mesh swaps (those are FX) but loses the sequence that drives them, so it goes in and
   never comes out. The conversion warns when it is leaving a layer behind, naming what's in it, and
-  *Analyse avatar* offers a **Turn on** for it. Ticking Action on
+  *Analyse this avatar* offers a **Turn on** for it. Ticking Action on
   merges the layer at **weight 0, the weight VRChat itself gives it** (VRChat raises the Action
   playable only while an emote plays; ChilloutVR has no playable layers to raise, and at weight 1
   its idle state would hold your body in rest pose above locomotion). The layer's **full-body
@@ -1701,7 +1750,13 @@ Bipeds are unaffected by any of it.
   converted there's nothing to re-wire to**, and the control will look right and do nothing; the
   report warns for each, naming the clip and the PhysBone, next to the *Skipped* entry saying why.
   **Collider switches follow too**: a dress that disables the leg colliders that would clip it
-  animates the converted collider's own object now, a form both MagicaCloth2 and DynamicBone honour.
+  animates the converted collider's own object now, a form MagicaCloth2 honours. Stock DynamicBone
+  checks only the collider component's own switch, so on the DynamicBone target a collider whose
+  object is switched off may keep colliding; that has not been checked in game. A collider that was
+  disabled in VRChat now converts switched off too. One under a switched-off object follows that
+  object: off at load, and on when a toggle switches the object on. With the *CVR Native Targets*
+  toggle style, a converted collider placed outside that object stays on instead, since a native
+  toggle switches only the object it names.
   What can't follow is animation of **live physics values**: a size slider growing a chain's
   radius, gravity changing with an outfit, because MagicaCloth2's parameters cannot be driven by
   animation at all. The chain keeps its converted values, the rest of the animation plays, and the
@@ -1814,7 +1869,7 @@ converting again gives more objects because there are more chains.
 **If a count really does grow** between two conversions of an unchanged avatar, that is a bug worth
 reporting, with `ConversionReport.md` and `Diagnostics.md` from both runs. One thing to check first:
 whether the avatar you are converting already has a **MagicaCloth Phys** object of its own, which
-happens if it was once converted with *Make a copy* switched off. The report says so when it does;
+happens if it was once converted with *Work on a clone* switched off. The report says so when it does;
 delete that object and convert again.
 
 ### I move slower (or faster) than I expect, and nothing in the avatar does that
@@ -1856,8 +1911,9 @@ e.g. *matched 10 of the tracking shape names: 12 are needed*. A score near the t
 shapes are there under names it couldn't read; a score of nothing means it found no tracking shapes
 at all.
 
-Shapes named **without a side** are handled (one `EyeLookDown` standing for
-`EyeLookDownLeft`/`Right`, including upper/lower quadrants). What still won't be found is a scheme
+Shapes named **without a side** are handled (one `CheekPuff` standing for
+`CheekPuffLeft`/`Right`), except where the side is the movement
+itself: a plain `Tongue` never fills `TongueLeft`. What still won't be found is a scheme
 that renames the shapes themselves. If yours is one, that's worth
 [reporting](#reporting-a-bug): the shape names on that mesh are the whole fix.
 
@@ -2371,6 +2427,10 @@ after the animator, so with both systems running any expression using that shape
 eyes. Where the removed layer's shape is also used by surviving expressions, the native blink is moved
 to a free shape pair instead.
 
+**Eyelids on a mesh of their own don't blink.** ChilloutVR blinks the face mesh only, so a blink
+shape that lives on a separate eyelid mesh is not wired, and the report warns and names the mesh.
+Merge the eyelids into the face mesh, or name a blink shape the face mesh has on the CVRAvatar.
+
 ### An effect draws in one eye only in VR
 
 Expected, and not caused by converting; see
@@ -2388,6 +2448,11 @@ private upload limit. The real message is in `Player.log` or the console just ab
 ### One extra recompile after importing
 
 Normal. That's AvatarBridge registering its scripting defines.
+
+The same goes for removing MagicaCloth2, DynamicBone or the 18+ add-on: one failed compile is
+expected, and AvatarBridge then clears its own define and compiles again. If the errors stay,
+delete `AVATARBRIDGE_MAGICA`, `AVATARBRIDGE_DYNBONE` or `AVATARBRIDGE_YAPS` from *Project Settings ▸
+Player ▸ Scripting Define Symbols*.
 
 ### YAPS: the plug does not bend toward a socket in game
 
@@ -2459,7 +2524,10 @@ Work down the list; the first that fits is usually it.
   the plug went rigid for as long as that toggle was on, looked perfectly normal, and the tool
   still reported it baked, because the slot it checks holds the baked copy. Every material an
   animation can put in that slot is now baked alongside the one the mesh wears, and the clip is
-  pointed at the copy. A plug baked before 4.5.0 needs baking again to pick this up.
+  pointed at the copy. Each copy also carries the plug's own settings, its tuning, tags, overrun
+  and own-socket choices, and a knob changed in the plug's inspector reaches them too; before, a
+  copy bent on the shader's defaults while its toggle was on. Convert again or bake the plug again
+  to pick this up.
 - **Is it a DPS or TPS toy? Then pick the socket in "Marker lights".** Old toys read sockets by
   their marker lights, and only **one** socket's pair is ever lit: Unity gives a mesh four
   vertex-light slots, a socket takes two, and the tracker of whatever enters takes a third, so
@@ -2485,8 +2553,13 @@ Work down the list; the first that fits is usually it.
 The plug's material wears a shader the patcher cannot wrap: Unity's Standard and everything else
 built in has no source on disk, and a surface shader has no vertex function of its own. Since 4.0
 the tool falls back to **YAPS Simple Lit** with the colour and textures carried over and says so
-in the outcome; on a converted avatar the report names the material. If you want the original
+in the outcome; on a converted avatar the report names the material. A converted socket that is
+its own mesh falls back the same way; a socket on the body keeps its contact-driven shapes and its
+own shader. If you want the original
 look, put a shader with source on the mesh, Poiyomi patches cleanly, and re-bake or reconvert.
+A shader that patches but takes no normal or no tangent from the mesh is the other cause: a skinned
+plug finds which way it points from those, so on that shader it stays straight, while a plug that is
+its own mesh object still bends. The outcome says so; YAPS Simple Lit carries both.
 A shader still carrying VRChat's SPS is a different refusal: that is a conversion, not a swap;
 run the avatar through the converter.
 
@@ -2592,7 +2665,8 @@ the wearer again.
 The entry is in the Advanced Settings list but the animator has no parameter of that name. The CCK
 writes one per entry only when you press *Create Animator*; the toolkit writes its own entries'
 layers straight into the controller the avatar uploads and its base controller, so this means a
-build has not run since the entry appeared. Press **Bake every plug and verify** once: it reports
+build has not run since the entry appeared, or the avatar still runs the CCK's own controller, which
+the toolkit never writes into. Press **Bake every plug and verify** once: it reports
 the layer and parameter it wrote, or *Create Animator* on the CVRAvatar, which does the same for
 every entry at the cost of regenerating the controller.
 
@@ -2609,7 +2683,8 @@ Two things make a report solvable immediately:
    measurements behind it: package versions, every setting used, the rig's shape, where the head
    and eye bones actually sit against the viewpoint, the constraint census, and which asset
    references resolve to nothing. It's all facts and no advice, so it diffs cleanly between two
-   conversions. Nothing in either file leaves your machine unless you send it.
+   conversions. Nothing in either file leaves your machine unless you send it. A conversion an
+   error stopped writes `ConversionReport.md` alone, naming the step that failed; attach that.
 2. **Attach the right log:**
 
    | Symptom | Log |

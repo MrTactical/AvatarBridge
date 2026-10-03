@@ -62,7 +62,7 @@ namespace AvatarBridge
             root.AddToClassList(EditorGUIUtility.isProSkin ? "dark" : "light");
 
             root.Add(BridgeElements.Banner("YAPS", "Yet Another Penetration System  ·  for ChilloutVR",
-                BridgeDefines.Version));
+                "v" + BridgeDefines.Version));
 
             _tabs = new VisualElement();
             root.Add(_tabs);
@@ -143,7 +143,8 @@ namespace AvatarBridge
             have.Body.Add(_selection);
 
             // Props: a plug or socket on its own object becomes a spawnable
-            // with a pickup, a collider and, for a baked plug, the channel.
+            // with a pickup and a collider. A baked plug's old contact
+            // channel is taken out, since plugs no longer read it.
             have.Body.Add(BridgeElements.SubHeading("Props"));
             _makeProp = Btn("Make selected object a prop", () => MakeProp(Selection.activeGameObject));
             _verifyProp = Btn("Verify prop", () =>
@@ -300,7 +301,7 @@ namespace AvatarBridge
         // so the list always covers the whole thing.
         void Pick(GameObject picked)
         {
-            var top = TopOf(picked);
+            var top = picked != null ? YapsNativeBuilder.AvatarRoot(picked.transform).gameObject : null;
             _target = top;
             if (_picker != null && _picker.value != top) _picker.SetValueWithoutNotify(top);
             if (_pickNote != null)
@@ -310,18 +311,6 @@ namespace AvatarBridge
                     : $"Listing \"{top.name}\", the {(top.GetComponent<CVRAvatar>() != null ? "avatar" : top.GetComponent<CVRSpawnable>() != null ? "prop" : "top object")} above \"{picked.name}\".";
             }
             Rescan();
-        }
-
-        // The avatar or prop an object belongs to: the CVRAvatar or
-        // CVRSpawnable above it, else its top object.
-        static GameObject TopOf(GameObject go)
-        {
-            if (go == null) return null;
-            var avatar = go.GetComponentInParent<CVRAvatar>(true);
-            if (avatar != null) return avatar.gameObject;
-            var prop = go.GetComponentInParent<CVRSpawnable>(true);
-            if (prop != null) return prop.gameObject;
-            return go.transform.root.gameObject;
         }
 
         const string PickHint = "Drop an avatar or prop here, or anything under it. Everything on the whole thing is listed.";
@@ -628,12 +617,9 @@ namespace AvatarBridge
             if (f.CarriedBy != null) return;
             if (f.Kind == YapsScanner.Kind.Socket)
             {
-                var shapes = new List<string>();
-                if (f.Material != null && f.Material.HasProperty("_YAPS_ShapeCount"))
-                {
-                    // Shape names are not on the material; the rows stay for the user.
-                }
-                YapsNativeBuilder.AdoptSocket(f.Root, f.Renderer, f.Material, shapes);
+                // Shape names are not on the material, so the user fills the
+                // rows. An empty list, not null: it still carries the power over.
+                YapsNativeBuilder.AdoptSocket(f.Root, f.Renderer, f.Material, new string[0]);
             }
             else
             {
@@ -776,7 +762,7 @@ namespace AvatarBridge
                 lines.AddRange(o.Notes.Where(n => n.Contains("menu toggle") || n.Contains("Wired")));
             }
             // The plugs' toggles into the menu animator, once. Sockets do their own.
-            string menu = YapsToggles.RefreshMenuAnimator(_target.GetComponentInChildren<CVRAvatar>(), edits);
+            string menu = YapsToggles.RefreshMenuAnimator(_target.GetComponentInChildren<CVRAvatar>(true), edits);
             if (menu != null) lines.Add(menu);
             foreach (var s in _target.GetComponentsInChildren<YapsSocket>(true))
             {
@@ -785,9 +771,8 @@ namespace AvatarBridge
             }
             // The writers go on the sockets; the surface they publish to goes on
             // the avatar. Only the converter used to add it, so a hand-built avatar
-            // had sockets writing to a screen nothing grabbed. One switch for both
-            // halves, as on the convert path.
-            if (YapsAtlas.Enabled && YapsAtlas.AddClear(_target.transform) != null
+            // had sockets writing to a screen nothing grabbed.
+            if (YapsAtlas.AddClear(_target.transform) != null
                 && YapsAtlas.AddGrab(_target.transform) != null)
             {
                 lines.Add("Added the screen surface plugs read each other through.");
@@ -795,7 +780,7 @@ namespace AvatarBridge
 
             // Last, and once: the channel reads the frames the bakes just
             // measured, and it replaces its own wiring rather than stacking.
-            lines.AddRange(YapsNativeChannel.Build(_target.GetComponentInChildren<CVRAvatar>()));
+            lines.AddRange(YapsNativeChannel.Build(_target.GetComponentInChildren<CVRAvatar>(true)));
             Rescan();
             string headline = $"Built {plugsOk} of {plugsTried} plug{(plugsTried == 1 ? "" : "s")} and " +
                               $"{socketsBuilt} socket{(socketsBuilt == 1 ? "" : "s")}.";

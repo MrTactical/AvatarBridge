@@ -70,18 +70,36 @@ namespace AvatarBridge
         public static int Clear(CVRAvatar avatar)
         {
             if (avatar == null) return 0;
+            // The controllers the avatar ships, plus the Animator's slot older
+            // builds wrote into. The slot alone missed a channel built into the
+            // uploaded controller, which then shipped with nothing reported.
             var animator = avatar.GetComponent<Animator>();
-            var controller = BridgeContext.Underlying(animator != null ? animator.runtimeAnimatorController : null);
-            int before = Count(avatar, controller);
-            Clear(avatar, controller);
-            return before - Count(avatar, controller);
+            var legacy = BridgeContext.Underlying(animator != null ? animator.runtimeAnimatorController : null);
+            var controllers = YapsOwner.Targets(avatar);
+            if (legacy != null && !controllers.Contains(legacy)) controllers.Add(legacy);
+            int before = Count(avatar, controllers);
+            Clear(avatar, controllers);
+            return before - Count(avatar, controllers);
         }
 
-        static int Count(CVRAvatar avatar, AnimatorController controller)
+        static bool Host(Transform t) => t.name.StartsWith("YAPS Channel ") || t.name.StartsWith("YAPS Driver ");
+
+        // Only a driver carrying the channel's own values. An empty one is the
+        // avatar's, and deleting it went unreported.
+        static bool ChannelDriver(CVRAnimatorDriver d) => d != null && d.animatorParameters.Count > 0
+            && d.animatorParameters.All(p => p != null && Mine.IsMatch(p));
+
+        static bool ChannelDriver(CVRMaterialDriver d) => d != null && d.tasks.Count > 0
+            && d.tasks.All(t => t != null && t.PropertyName != null && t.PropertyName.StartsWith("_YAPS_"));
+
+        static int Count(CVRAvatar avatar, List<AnimatorController> controllers)
         {
-            int n = avatar.GetComponentsInChildren<Transform>(true)
-                .Count(t => t != null && (t.name.StartsWith("YAPS Channel ") || t.name.StartsWith("YAPS Driver ")));
-            if (controller != null)
+            int n = avatar.GetComponentsInChildren<Transform>(true).Count(t => t != null && Host(t));
+            // A driver on a host goes with it and is counted there; one on the
+            // avatar root, where older builds put the material driver, was not.
+            n += avatar.GetComponentsInChildren<CVRAnimatorDriver>(true).Count(d => ChannelDriver(d) && !Host(d.transform));
+            n += avatar.GetComponentsInChildren<CVRMaterialDriver>(true).Count(d => ChannelDriver(d) && !Host(d.transform));
+            foreach (var controller in controllers)
             {
                 n += controller.layers.Count(l => Mine.IsMatch(l.name));
                 n += controller.parameters.Count(p => Mine.IsMatch(p.name));
@@ -92,43 +110,35 @@ namespace AvatarBridge
         // What a previous build wired, and nothing else. Drivers are only
         // taken when everything they carry is the channel's own: an avatar
         // may have drivers of its own, which are not the toolkit's to delete.
-        static void Clear(CVRAvatar avatar, AnimatorController controller)
+        static void Clear(CVRAvatar avatar, List<AnimatorController> controllers)
         {
             foreach (var t in avatar.GetComponentsInChildren<Transform>(true).ToList())
             {
-                if (t == null) continue;
-                if (t.name.StartsWith("YAPS Channel ") || t.name.StartsWith("YAPS Driver "))
-                {
-                    Undo.DestroyObjectImmediate(t.gameObject);
-                }
+                if (t != null && Host(t)) Undo.DestroyObjectImmediate(t.gameObject);
             }
             foreach (var driver in avatar.GetComponentsInChildren<CVRAnimatorDriver>(true).ToList())
             {
-                if (driver == null) continue;
-                if (driver.animatorParameters.Count == 0
-                    || driver.animatorParameters.All(p => p != null && Mine.IsMatch(p)))
-                {
-                    Undo.DestroyObjectImmediate(driver);
-                }
+                if (ChannelDriver(driver)) Undo.DestroyObjectImmediate(driver);
             }
             foreach (var driver in avatar.GetComponentsInChildren<CVRMaterialDriver>(true).ToList())
             {
-                if (driver == null) continue;
-                if (driver.tasks.Count == 0
-                    || driver.tasks.All(t => t != null && t.PropertyName != null
-                                             && t.PropertyName.StartsWith("_YAPS_")))
-                {
-                    Undo.DestroyObjectImmediate(driver);
-                }
+                if (ChannelDriver(driver)) Undo.DestroyObjectImmediate(driver);
             }
 
-            // Sweep reaches here with no controller when the avatar has none.
-            if (controller == null) return;
-            var layers = controller.layers.Where(l => !Mine.IsMatch(l.name)).ToArray();
-            if (layers.Length != controller.layers.Length) controller.layers = layers;
-            foreach (var p in controller.parameters.Where(p => Mine.IsMatch(p.name)).ToList())
+            foreach (var controller in controllers)
             {
-                controller.RemoveParameter(p);
+                var layers = controller.layers.Where(l => !Mine.IsMatch(l.name)).ToArray();
+                var parameters = controller.parameters.Where(p => Mine.IsMatch(p.name)).ToList();
+                if (layers.Length == controller.layers.Length && parameters.Count == 0) continue;
+                if (layers.Length != controller.layers.Length)
+                {
+                    var old = YapsOwner.Embedded(controller,
+                        controller.layers.Where(l => Mine.IsMatch(l.name)).Select(l => l.stateMachine));
+                    controller.layers = layers;
+                    YapsOwner.DropUnreached(controller, old);
+                }
+                foreach (var p in parameters) controller.RemoveParameter(p);
+                EditorUtility.SetDirty(controller);
             }
         }
     }

@@ -43,11 +43,12 @@ namespace AvatarBridge
             holder.transform.SetParent(home, false);
             var cloth = holder.AddComponent<MagicaCloth>();
 
-            // Where "off" lives. A holder inside an inactive object rides
-            // that object's toggle, so its component stays enabled unless
-            // the source component itself was disabled. A holder that is
-            // active while its source was not carries off on the component,
-            // and the animator pass writes the switch onto that flag.
+            // Where "off" lives. Holders sit in one collection under the
+            // avatar, so a holder is inactive only when the avatar itself
+            // is: every source then reads inactive too, and only the
+            // component's own flag says anything. Otherwise off is carried
+            // on the component, and the animator pass writes the switch
+            // onto that flag.
             bool ridesObject = !holder.activeInHierarchy;
             if (ridesObject)
             {
@@ -197,7 +198,7 @@ namespace AvatarBridge
             // back wider than the chain can carry is still railed in rather than trusted.
             if (ctx.Settings.fitRadiusToMesh)
             {
-                float measured = MeasureMeshRadius(ctx, data, out int samples, out bool grownForReach);
+                float measured = MeasureMesh(ctx, data, out int samples, out _, out bool grownForReach);
                 if (measured > 0f)
                 {
                     float before = sdata.radius.value;
@@ -279,12 +280,6 @@ namespace AvatarBridge
             return Write(ctx, data, new Dictionary<VRCPhysBoneCollider, ColliderComponent>());
         }
 
-        // Where the cloth holder lives: under the target-side counterpart of
-        // the object the PhysBone COMPONENT sat on in the source. The
-        // component is on the source avatar and the holder goes on the clone,
-        // so the path is mapped across; if the mapping fails (the object was
-        // stripped, or is the root itself) the avatar root is the fallback,
-        // which is exactly where holders always went before.
         public const string CollectionName = "MagicaCloth Phys";
 
         // One object for all of them, under the avatar.
@@ -805,7 +800,8 @@ namespace AvatarBridge
                 return null;
             }
 
-            var go = new GameObject("MagicaCollider_" + parent.name);
+            // Sibling-unique: two colliders on one bone would share an animation path.
+            var go = new GameObject(PhysBoneConverter.UniqueChildName(parent, "MagicaCollider_" + parent.name));
             go.transform.SetParent(parent, false);
             go.transform.localPosition = pbCollider.position;
             go.transform.localRotation = pbCollider.rotation;
@@ -879,43 +875,27 @@ namespace AvatarBridge
 
         const float MinBoneWeight = 0.2f;
 
-        static float MeasureMeshRadius(BridgeContext ctx, PhysBoneChainData data, out int sampled)
-            => MeasureMesh(ctx, data, out sampled, out _);
-
-        static float MeasureMeshRadius(BridgeContext ctx, PhysBoneChainData data, out int sampled,
-            out bool grown)
-            => MeasureMesh(ctx, data, out sampled, out _, out _, out grown);
-
         static float MeasureMesh(BridgeContext ctx, PhysBoneChainData data, out int sampled,
-            out Vector3 centre)
-            => MeasureMesh(ctx, data, out sampled, out centre, out _);
-
-        static float MeasureMesh(BridgeContext ctx, PhysBoneChainData data, out int sampled,
-            out Vector3 centre, out HashSet<Transform> meshBones)
-            => MeasureMesh(ctx, data, out sampled, out centre, out meshBones, out _);
-
-        static float MeasureMesh(BridgeContext ctx, PhysBoneChainData data, out int sampled,
-            out Vector3 centre, out HashSet<Transform> meshBones, out bool grown)
+            out HashSet<Transform> meshBones, out bool grown)
         {
             grown = false;
-            float saved = MeasureMeshAt(ctx, data, out sampled, out centre, out meshBones, false);
-            if (!ctx.Settings.sizePhysicsForLargest || BlendShapeReach(ctx).Count == 0)
+            float saved = MeasureMeshAt(ctx, data, out sampled, out meshBones, false);
+            if (!ctx.Settings.sizePhysicsForLargest || MeshGrowth.Reach(ctx).Count == 0)
             {
                 return saved;
             }
             // Measured again with every animated shape at full reach,
             // keeping the larger. That catches a growth slider without
             // deciding per shape which way it goes.
-            float atReach = MeasureMeshAt(ctx, data, out _, out _, out _, true);
+            float atReach = MeasureMeshAt(ctx, data, out _, out _, true);
             grown = atReach > saved;
             return Mathf.Max(saved, atReach);
         }
 
         static float MeasureMeshAt(BridgeContext ctx, PhysBoneChainData data, out int sampled,
-            out Vector3 centre, out HashSet<Transform> meshBones, bool atReach)
+            out HashSet<Transform> meshBones, bool atReach)
         {
             sampled = 0;
-            centre = Vector3.zero;
             meshBones = new HashSet<Transform>();
             var chain = new HashSet<Transform>();
             CollectChainBones(data.Root, data.Ignores, chain);
@@ -925,47 +905,14 @@ namespace AvatarBridge
             }
 
             var distances = new List<float>();
-            var positions = new List<Vector3>();
             var flat = new Dictionary<Transform, List<Vector2>>();
-            foreach (var renderer in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            // In the order the meshes first name each bone: ChooseCollisionBones breaks a tie
+            // between two bones by the order meshBones gives them.
+            foreach (var entry in BindLocalVertices(ctx, atReach))
             {
-                var mesh = renderer.sharedMesh;
-                if (mesh == null)
+                if (chain.Contains(entry.Key))
                 {
-                    continue;
-                }
-                Vector3[] vertices;
-                BoneWeight[] weights;
-                Matrix4x4[] binds;
-                try
-                {
-                    // As the avatar is actually worn: base mesh plus whatever blendshape weights
-                    // the renderer carries. Measuring mesh.vertices sizes physics to a silhouette
-                    // nobody sees whenever a body slider is shipped part-way up.
-                    vertices = DeformedVertices(ctx, renderer, mesh, atReach);
-                    weights = mesh.boneWeights;
-                    binds = mesh.bindposes;
-                }
-                catch
-                {
-                    continue;   // unreadable mesh, nothing to measure, and not worth failing over
-                }
-                var bones = renderer.bones;
-                if (bones == null || vertices.Length == 0 || weights.Length != vertices.Length)
-                {
-                    continue;
-                }
-
-                // One sample in N on a dense mesh: a 60k-vertex body does not need every vertex
-                // to say how thick a breast is, and every chain on every avatar pays this cost.
-                int stride = Mathf.Max(1, vertices.Length / MeshSampleTarget);
-                for (int i = 0; i < vertices.Length; i += stride)
-                {
-                    var w = weights[i];
-                    AddRadiusSample(distances, positions, flat, meshBones, vertices[i], w.boneIndex0, w.weight0, bones, binds, chain);
-                    AddRadiusSample(distances, positions, flat, meshBones, vertices[i], w.boneIndex1, w.weight1, bones, binds, chain);
-                    AddRadiusSample(distances, positions, flat, meshBones, vertices[i], w.boneIndex2, w.weight2, bones, binds, chain);
-                    AddRadiusSample(distances, positions, flat, meshBones, vertices[i], w.boneIndex3, w.weight3, bones, binds, chain);
+                    AddRadiusSamples(distances, flat, meshBones, entry.Key, entry.Value);
                 }
             }
 
@@ -974,11 +921,6 @@ namespace AvatarBridge
             {
                 return 0f;
             }
-            foreach (var p in positions)
-            {
-                centre += p;
-            }
-            centre /= positions.Count;
             distances.Sort();
 
             // A particle is a sphere, bounded by the narrowest way
@@ -1101,150 +1043,11 @@ namespace AvatarBridge
 
         static readonly float[] StationFractions = { 0.1f, 0.18f, 0.26f, 0.34f };
 
-        static BridgeContext reachOwner;
-        static Dictionary<string, float> reachCache;
-
-        static Dictionary<string, float> BlendShapeReach(BridgeContext ctx)
-        {
-            if (ReferenceEquals(reachOwner, ctx) && reachCache != null)
-            {
-                return reachCache;
-            }
-            var reach = new Dictionary<string, float>(StringComparer.Ordinal);
-            if (ctx.Settings.sizePhysicsForLargest && ctx.SourceDescriptor != null)
-            {
-                var seen = new HashSet<AnimationClip>();
-                foreach (var entry in AnimatorMerger.GetSelectedVrcControllers(ctx))
-                {
-                    if (entry.controller == null)
-                    {
-                        continue;
-                    }
-                    foreach (var clip in entry.controller.animationClips)
-                    {
-                        if (clip == null || !seen.Add(clip))
-                        {
-                            continue;
-                        }
-                        foreach (var binding in AnimationUtility.GetCurveBindings(clip))
-                        {
-                            if (binding.type != typeof(SkinnedMeshRenderer)
-                                || !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal))
-                            {
-                                continue;
-                            }
-                            var curve = AnimationUtility.GetEditorCurve(clip, binding);
-                            if (curve == null || curve.keys.Length == 0)
-                            {
-                                continue;
-                            }
-                            float high = curve.keys[0].value;
-                            foreach (var key in curve.keys)
-                            {
-                                high = Mathf.Max(high, key.value);
-                            }
-                            string key2 = binding.path + "|" + binding.propertyName.Substring("blendShape.".Length);
-                            reach[key2] = reach.TryGetValue(key2, out var had) ? Mathf.Max(had, high) : high;
-                        }
-                    }
-                }
-            }
-            reachOwner = ctx;
-            reachCache = reach;
-            return reach;
-        }
-
-        static BridgeContext deformedOwner;
-        static Dictionary<string, Vector3[]> deformedCache;
-
-        static Vector3[] DeformedVertices(BridgeContext ctx, SkinnedMeshRenderer renderer, Mesh mesh,
-            bool atReach = false)
-        {
-            if (!ReferenceEquals(deformedOwner, ctx) || deformedCache == null)
-            {
-                deformedOwner = ctx;
-                deformedCache = new Dictionary<string, Vector3[]>(StringComparer.Ordinal);
-            }
-            string path = AnimationUtility.CalculateTransformPath(renderer.transform, ctx.Target.transform);
-            string cacheKey = (atReach ? "max|" : "saved|") + path;
-            if (deformedCache.TryGetValue(cacheKey, out var known))
-            {
-                return known;
-            }
-
-            var reach = atReach ? BlendShapeReach(ctx) : null;
-            var vertices = mesh.vertices;
-            int shapes = mesh.blendShapeCount;
-            if (shapes > 0)
-            {
-                Vector3[] lower = null, upper = null;
-                for (int s = 0; s < shapes; s++)
-                {
-                    float weight = renderer.GetBlendShapeWeight(s);
-                    // The far end of what the animator can reach, when asked for it. A slider the
-                    // avatar ships at zero still grows the body once someone moves it.
-                    if (reach != null && reach.TryGetValue(path + "|" + mesh.GetBlendShapeName(s), out var high))
-                    {
-                        weight = Mathf.Max(weight, high);
-                    }
-                    if (Mathf.Abs(weight) < 0.01f)
-                    {
-                        continue;   // off, and reading its frames is the expensive part
-                    }
-                    if (lower == null)
-                    {
-                        lower = new Vector3[vertices.Length];
-                        upper = new Vector3[vertices.Length];
-                    }
-                    ApplyBlendShape(mesh, s, weight, vertices, lower, upper);
-                }
-            }
-            deformedCache[cacheKey] = vertices;
-            return vertices;
-        }
-
-        static void ApplyBlendShape(Mesh mesh, int shape, float weight, Vector3[] into,
-            Vector3[] lower, Vector3[] upper)
-        {
-            int frames = mesh.GetBlendShapeFrameCount(shape);
-            if (frames <= 0)
-            {
-                return;
-            }
-            int high = frames - 1;
-            for (int f = 0; f < frames; f++)
-            {
-                if (mesh.GetBlendShapeFrameWeight(shape, f) >= weight)
-                {
-                    high = f;
-                    break;
-                }
-            }
-            float highWeight = mesh.GetBlendShapeFrameWeight(shape, high);
-            if (high == 0)
-            {
-                float scale = highWeight > 0f ? weight / highWeight : 0f;
-                mesh.GetBlendShapeFrameVertices(shape, 0, lower, null, null);
-                for (int i = 0; i < into.Length; i++)
-                {
-                    into[i] += lower[i] * scale;
-                }
-                return;
-            }
-            float lowWeight = mesh.GetBlendShapeFrameWeight(shape, high - 1);
-            float span = highWeight - lowWeight;
-            float t = span > 0f ? (weight - lowWeight) / span : 0f;
-            mesh.GetBlendShapeFrameVertices(shape, high - 1, lower, null, null);
-            mesh.GetBlendShapeFrameVertices(shape, high, upper, null, null);
-            for (int i = 0; i < into.Length; i++)
-            {
-                into[i] += Vector3.LerpUnclamped(lower[i], upper[i], t);
-            }
-        }
-
         static BridgeContext boneVertexOwner;
         static Dictionary<Transform, List<Vector3>> boneVertexCache;
 
+        // The saved samples in world space. The bind pose put each vertex in its bone's own
+        // space; that bone's current matrix puts it back where it is skinned to.
         static Dictionary<Transform, List<Vector3>> BoneVertices(BridgeContext ctx)
         {
             if (ReferenceEquals(boneVertexOwner, ctx) && boneVertexCache != null)
@@ -1252,7 +1055,51 @@ namespace AvatarBridge
                 return boneVertexCache;
             }
             var byBone = new Dictionary<Transform, List<Vector3>>();
-            foreach (var renderer in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            foreach (var entry in BindLocalVertices(ctx, false))
+            {
+                if (entry.Key == null)
+                {
+                    continue;   // destroyed since the meshes were read
+                }
+                var toWorld = entry.Key.localToWorldMatrix;
+                var world = new List<Vector3>(entry.Value.Count);
+                foreach (var local in entry.Value)
+                {
+                    world.Add(toWorld.MultiplyPoint3x4(local));
+                }
+                byBone[entry.Key] = world;
+            }
+            boneVertexOwner = ctx;
+            boneVertexCache = byBone;
+            return byBone;
+        }
+
+        static BridgeContext bindLocalOwner;
+        static SkinnedMeshRenderer[] bindLocalRenderers;
+        static Dictionary<Transform, List<Vector3>>[] bindLocalCache;   // [0] saved, [1] at full reach
+
+        // Per bone, every vertex weighted to it at MinBoneWeight or more, in that bone's own
+        // space by its bind pose. Read from the meshes once per conversion: every chain used
+        // to walk every vertex of every mesh, up to four times, for its own few bones.
+        static Dictionary<Transform, List<Vector3>> BindLocalVertices(BridgeContext ctx, bool atReach)
+        {
+            // Read again when a pass since has added or removed a mesh, as walking afresh did.
+            var renderers = ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            if (!ReferenceEquals(bindLocalOwner, ctx) || bindLocalRenderers == null
+                || !renderers.SequenceEqual(bindLocalRenderers))
+            {
+                bindLocalOwner = ctx;
+                bindLocalRenderers = renderers;
+                bindLocalCache = new Dictionary<Transform, List<Vector3>>[2];
+            }
+            int slot = atReach ? 1 : 0;
+            if (bindLocalCache[slot] != null)
+            {
+                return bindLocalCache[slot];
+            }
+
+            var byBone = new Dictionary<Transform, List<Vector3>>();
+            foreach (var renderer in renderers)
             {
                 var mesh = renderer.sharedMesh;
                 if (mesh == null)
@@ -1267,7 +1114,7 @@ namespace AvatarBridge
                     // As the avatar is actually worn: base mesh plus whatever blendshape weights
                     // the renderer carries. Measuring mesh.vertices sizes physics to a silhouette
                     // nobody sees whenever a body slider is shipped part-way up.
-                    vertices = DeformedVertices(ctx, renderer, mesh);
+                    vertices = MeshGrowth.Deformed(ctx, renderer, mesh, atReach);
                     weights = mesh.boneWeights;
                     binds = mesh.bindposes;
                 }
@@ -1281,22 +1128,23 @@ namespace AvatarBridge
                     continue;
                 }
 
+                // One sample in N on a dense mesh: a 60k-vertex body does not need every vertex
+                // to say how thick a breast is.
                 int stride = Mathf.Max(1, vertices.Length / MeshSampleTarget);
                 for (int i = 0; i < vertices.Length; i += stride)
                 {
                     var w = weights[i];
-                    AddBoneVertex(byBone, vertices[i], w.boneIndex0, w.weight0, bones, binds);
-                    AddBoneVertex(byBone, vertices[i], w.boneIndex1, w.weight1, bones, binds);
-                    AddBoneVertex(byBone, vertices[i], w.boneIndex2, w.weight2, bones, binds);
-                    AddBoneVertex(byBone, vertices[i], w.boneIndex3, w.weight3, bones, binds);
+                    AddBindLocal(byBone, vertices[i], w.boneIndex0, w.weight0, bones, binds);
+                    AddBindLocal(byBone, vertices[i], w.boneIndex1, w.weight1, bones, binds);
+                    AddBindLocal(byBone, vertices[i], w.boneIndex2, w.weight2, bones, binds);
+                    AddBindLocal(byBone, vertices[i], w.boneIndex3, w.weight3, bones, binds);
                 }
             }
-            boneVertexOwner = ctx;
-            boneVertexCache = byBone;
+            bindLocalCache[slot] = byBone;
             return byBone;
         }
 
-        static void AddBoneVertex(Dictionary<Transform, List<Vector3>> byBone, Vector3 vertex,
+        static void AddBindLocal(Dictionary<Transform, List<Vector3>> byBone, Vector3 vertex,
             int boneIndex, float weight, Transform[] bones, Matrix4x4[] binds)
         {
             if (weight < MinBoneWeight || boneIndex < 0
@@ -1309,15 +1157,20 @@ namespace AvatarBridge
             {
                 return;
             }
-            // The bind pose puts the vertex in the bone's own space; that bone's current matrix
-            // puts it back where it is skinned to, which is the same route the particle radius
-            // takes to find the middle of a mesh.
-            Vector3 bindLocal = binds[boneIndex].MultiplyPoint3x4(vertex);
             if (!byBone.TryGetValue(bone, out var list))
             {
                 byBone[bone] = list = new List<Vector3>();
             }
-            list.Add(bone.localToWorldMatrix.MultiplyPoint3x4(bindLocal));
+            list.Add(binds[boneIndex].MultiplyPoint3x4(vertex));
+        }
+
+        // Drops every per-conversion cache in this file; each is rebuilt on its next use.
+        internal static void ReleaseCaches()
+        {
+            boneVertexOwner = bindLocalOwner = null;
+            boneVertexCache = null;
+            bindLocalRenderers = null;
+            bindLocalCache = null;
         }
 
         static float MinimumCaliperRadius(List<Vector2> section)
@@ -1348,51 +1201,44 @@ namespace AvatarBridge
             return narrowest * 0.5f;
         }
 
-        static void AddRadiusSample(List<float> into, List<Vector3> positions,
-            Dictionary<Transform, List<Vector2>> flat,
-            HashSet<Transform> meshBones, Vector3 vertex, int boneIndex, float weight,
-            Transform[] bones, Matrix4x4[] binds, HashSet<Transform> chain)
+        // One chain bone's samples. Its axis and scale are read live, never cached with the
+        // vertices: the axis is the first child, and the writers hang "_End" tips and
+        // colliders under bones as they go.
+        static void AddRadiusSamples(List<float> into, Dictionary<Transform, List<Vector2>> flat,
+            HashSet<Transform> meshBones, Transform bone, List<Vector3> bindLocal)
         {
-            if (weight < MinBoneWeight || boneIndex < 0
-                || boneIndex >= bones.Length || boneIndex >= binds.Length)
-            {
-                return;
-            }
-            var bone = bones[boneIndex];
-            if (bone == null || !chain.Contains(bone))
-            {
-                return;
-            }
-
-            // The bind pose puts the vertex in the bone's own space, so this does not move when
-            // the avatar does.
-            Vector3 local = binds[boneIndex].MultiplyPoint3x4(vertex);
             Vector3 axis = bone.childCount > 0 ? bone.GetChild(0).localPosition : Vector3.zero;
-            Vector3 perpendicular = axis.sqrMagnitude > 1e-10f
-                ? Vector3.ProjectOnPlane(local, axis.normalized)
-                : local;
-            float distance = perpendicular.magnitude;
+            bool hasAxis = axis.sqrMagnitude > 1e-10f;
+            Vector3 a = hasAxis ? axis.normalized : Vector3.up;
 
             // Bone-local units become world units, which is what MagicaCloth2's radius is in.
             Vector3 scale = bone.lossyScale;
             float mean = (Mathf.Abs(scale.x) + Mathf.Abs(scale.y) + Mathf.Abs(scale.z)) / 3f;
-            if (distance > 0f && mean > 0f)
+            if (!(mean > 0f))
             {
-                into.Add(distance * mean);
-                // Bind-pose local put through the bone's current world matrix IS where that
-                // vertex is skinned to, which is what "the middle of the mesh" has to mean.
-                positions.Add(bone.localToWorldMatrix.MultiplyPoint3x4(local));
-                meshBones.Add(bone);
+                return;
+            }
 
-                // The same offset in the plane across the bone, kept PER BONE so the
-                // cross-section's narrowest width can be measured. Per bone matters: each one
-                // has its own frame, and pooling a panel whose bones fan out smears the section
-                // into a cloud wider than any single bone's, which is most of what a flat mesh
-                // needed measuring for. See MinimumCaliperRadius.
-                Vector3 a = axis.sqrMagnitude > 1e-10f ? axis.normalized : Vector3.up;
-                Vector3 e1 = Vector3.Cross(a, Mathf.Abs(a.x) < 0.9f ? Vector3.right : Vector3.forward).normalized;
-                Vector3 e2 = Vector3.Cross(a, e1).normalized;
-                if (!flat.TryGetValue(bone, out var section))
+            // The same offset in the plane across the bone, kept PER BONE so the
+            // cross-section's narrowest width can be measured. Per bone matters: each one
+            // has its own frame, and pooling a panel whose bones fan out smears the section
+            // into a cloud wider than any single bone's, which is most of what a flat mesh
+            // needed measuring for. See MinimumCaliperRadius.
+            Vector3 e1 = Vector3.Cross(a, Mathf.Abs(a.x) < 0.9f ? Vector3.right : Vector3.forward).normalized;
+            Vector3 e2 = Vector3.Cross(a, e1).normalized;
+            List<Vector2> section = null;
+            foreach (var local in bindLocal)
+            {
+                // In the bone's own space, so this does not move when the avatar does.
+                Vector3 perpendicular = hasAxis ? Vector3.ProjectOnPlane(local, a) : local;
+                float distance = perpendicular.magnitude;
+                if (!(distance > 0f))
+                {
+                    continue;
+                }
+                into.Add(distance * mean);
+                meshBones.Add(bone);
+                if (section == null)
                 {
                     flat[bone] = section = new List<Vector2>();
                 }
@@ -1435,7 +1281,7 @@ namespace AvatarBridge
             spring &= TrySetMember(sdata.springConstraint, "springPower", power);
 
             var collisionBones = ChooseCollisionBones(ctx, data, out float collisionRadius);
-            bool collision = false;
+            bool collision = false, sized = false;
             if (collisionBones.Count > 0)
             {
                 var list = sdata.colliderCollisionConstraint?.GetType()
@@ -1446,9 +1292,18 @@ namespace AvatarBridge
                     bones.AddRange(collisionBones);
                     collision = true;
                 }
-                if (collision && collisionRadius > 0f)
+                // This runs after "Size particles from the mesh" and the radius
+                // cap, so it honours both itself. Writing past them silently
+                // undid the user's choice and the cap's "reduced to" line.
+                if (collision && collisionRadius > 0f && ctx.Settings.fitRadiusToMesh)
                 {
-                    sdata.radius.SetValue(collisionRadius);
+                    float spacing = ctx.Settings.capParticleRadius ? MeasureBoneSpacing(data.Root) : 0f;
+                    if (spacing > 0f)
+                    {
+                        collisionRadius = Mathf.Min(collisionRadius, spacing * 0.5f);
+                    }
+                    sdata.radius.value = collisionRadius;   // direct, keeping any depth curve
+                    sized = true;
                 }
             }
             string collisionBone = collisionBones.Count > 0
@@ -1460,8 +1315,8 @@ namespace AvatarBridge
                 (spring ? $" (power {power:0.###})" : " (spring settings unavailable on this MagicaCloth2 version)") +
                 (collision
                     ? $", and only \"{collisionBone}\" ({collisionBones.Count} of {data.Root.childCount} " +
-                      $"branch(es)) is offered for collision, sized {collisionRadius:0.###} " +
-                      "from the mesh"
+                      "branch(es)) is offered for collision" +
+                      (sized ? $", sized {collisionRadius:0.###} from the mesh" : "")
                     : ", though its collision bone could not be set on this MagicaCloth2 version") +
                 ". Inertia stays at the preset's value.");
         }
@@ -1480,8 +1335,7 @@ namespace AvatarBridge
             // The middle of the MESH, not the middle of the bones. A chain's bones are spaced
             // along its length while the mesh they carry is a lump somewhere on it, so the two
             // midpoints are different places and the difference picks a different bone.
-            radius = MeasureMesh(ctx, data, out int samples, out _,
-                out HashSet<Transform> meshBones);
+            radius = MeasureMesh(ctx, data, out int samples, out HashSet<Transform> meshBones, out _);
             if (samples < MinMeshSamples || meshBones.Count == 0)
             {
                 return chosen;   // nothing measurable; better no collision bone than a guessed one
@@ -1655,30 +1509,6 @@ namespace AvatarBridge
             }
             curveData.SetValue(value, curveStart, curveEnd);
             return true;
-        }
-
-        static bool TrySetCurveValue(object target, string fieldName, float value)
-        {
-            if (target == null)
-            {
-                return false;
-            }
-            var field = target.GetType().GetField(fieldName, BindingFlags.Public | BindingFlags.Instance);
-            if (field == null)
-            {
-                return false;
-            }
-            if (field.GetValue(target) is CurveSerializeData curveData)
-            {
-                curveData.SetValue(value);
-                return true;
-            }
-            if (field.FieldType == typeof(float))
-            {
-                field.SetValue(target, value);
-                return true;
-            }
-            return false;
         }
 
         static string PathOf(Transform t) => t != null ? t.name : "(null)";

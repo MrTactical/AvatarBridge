@@ -30,12 +30,6 @@
 float4 _CVR_PlayerHipPositions[255];
 float4 CVRGlobalParams1;
 
-inline float3 YapsNormalizeOr(float3 v, float3 fallback)
-{
-    float lengthSq = dot(v, v);
-    return lengthSq < 1e-12 ? fallback : v * rsqrt(lengthSq);
-}
-
 // --- the screen atlas ------------------------------------------------
 //
 // A LIST, NOT A WINNER. Picking the nearest socket makes a plug flip
@@ -53,7 +47,6 @@ struct YapsChain
     float3 position[YAPS_CHAIN_MAX];
     float3 forward[YAPS_CHAIN_MAX];
     float  kind[YAPS_CHAIN_MAX];      // 0 ring, 1 hole
-    float  arc[YAPS_CHAIN_MAX + 1];   // where each socket sits along the shaft
     int    count;
     float  engaged;
     float  headers;   // cells whose header said something was there
@@ -73,7 +66,6 @@ struct YapsSocket
 {
     float3 position;
     float3 forward;
-    float3 up;
     float engaged;
     float isHole;
     // Who decided this answer: 0 nobody, 1 the editor's preview, 2 a marker
@@ -142,17 +134,16 @@ inline float3 YapsLightPosition(uint slot)
     return float3(unity_4LightPosX0[slot], unity_4LightPosY0[slot], unity_4LightPosZ0[slot]);
 }
 
-// Whose body is this light on, and is it the plug's own?
-//
-// ChilloutVR publishes every player's hip to every shader, so ask it:
-// nearest player to the plug, nearest to the light, same person or not.
-// Nothing is transmitted.
-//
-// A judgement, not a fact, built to fail SAFE: "not mine" whenever it
-// cannot tell. A discarded light costs a socket that should have worked, a
-// kept one costs a plug bent into its wearer, which recovers as soon as
-// anything better resolves. Doubt keeps the light.
-//
+// The protocol digit in a vertex light's second decimal, or -1 when the
+// range is too long to be protocol. One decode, so every reader agrees on
+// the digit. The black test stays with each caller: the plug and the socket
+// test colour differently, and which is right only shows in game.
+inline int YapsLightDigit(uint slot)
+{
+    float range = YapsLightRange(slot);
+    return range >= 0.5 ? -1 : (int) round(fmod(range, 0.1) * 100.0);
+}
+
 // Does this plug refuse a socket publishing this tag word? Only the atlas
 // asks: it is the one route that carries what a socket IS. See the plug's
 // tag uniforms for why the other two cannot.
@@ -175,6 +166,17 @@ inline bool YapsTagsRefuse(int socketWord)
     return wanted && !matched;
 }
 
+// Whose body is this socket on, and is it the plug's own?
+//
+// ChilloutVR publishes every player's hip to every shader, so ask it:
+// nearest player to the plug, nearest to the light, same person or not.
+// Nothing is transmitted.
+//
+// A judgement, not a fact, built to fail SAFE: "not mine" whenever it
+// cannot tell. A discarded light costs a socket that should have worked, a
+// kept one costs a plug bent into its wearer, which recovers as soon as
+// anything better resolves. Doubt keeps the light.
+//
 // Takes a WORLD POSITION rather than a slot, so the atlas can ask the same
 // question about a socket it read off the screen. The owner is the one the
 // atlas carried for it, zero when there is none, as for every light.
@@ -235,14 +237,6 @@ bool YapsSameBodyOwned(float3 plugOrigin, float3 lightAt, int owner)
     return dot(hip - lightAt, hip - lightAt) < dot(hip - plugOrigin, hip - plugOrigin);
 }
 
-bool YapsSameBodyAt(float3 plugOrigin, float3 lightAt)
-{
-    return YapsSameBodyOwned(plugOrigin, lightAt, 0);
-}
-
-// Does ownership keep this plug out of a socket it read off the atlas? One
-// of the wearer's own that carries a number: the plug's own list says, a
-// bit per socket, chosen in the editor. Anything else: the body test.
 // One of the wearer's own, known by id, that carries a number.
 bool YapsOwnNumbered(int owner, int index)
 {
@@ -250,6 +244,9 @@ bool YapsOwnNumbered(int owner, int index)
     return mine != 0 && owner == mine && index > 0;
 }
 
+// Does ownership keep this plug out of a socket it read off the atlas? One
+// of the wearer's own that carries a number: the plug's own list says, a
+// bit per socket, chosen in the editor. Anything else: the body test.
 bool YapsSelfRefuses(float3 root, float3 at, int owner, int index)
 {
     if (_YAPS_SelfTag < 0 || _YAPS_SelfAllow >= 0.5) return false;
@@ -267,9 +264,21 @@ bool YapsSelfChosen(int owner, int index)
         && (((int) round(_YAPS_SelfChosen) >> (index - 1)) & 1) != 0;
 }
 
-inline bool YapsSameBodyAs(float3 plugOrigin, uint slot)
+// The wearer's own socket lights. They are permanently nearest, so without
+// this the plug never looks elsewhere.
+//
+// Ownership goes by PLAYER POSITIONS alone. It used to be a digit in
+// the range's fourth decimal, built on precision nobody had measured:
+// only the SECOND decimal survives, since range is reconstructed as
+// 5*rsqrt(atten) rather than read. A prop authored at 0.4206 arrived
+// nearer 0.4203 and was skipped by a plug whose tag was 3.
+//
+// _YAPS_SelfTag is only a flag now. Zero or more means check ownership,
+// -1 means there is nothing to check for.
+bool YapsLightOwn(float3 plugOrigin, uint slot)
 {
-    return YapsSameBodyAt(plugOrigin, YapsLightPosition(slot));
+    if (_YAPS_SelfTag < 0) return false;
+    return YapsSameBodyOwned(plugOrigin, YapsLightPosition(slot), 0);
 }
 
 // The SOCKET side of the same question: is this tracker light the wearer's
@@ -308,32 +317,16 @@ bool YapsSocketOwnPlug(float3 ownerAnchor, uint slot)
     return bestLight < bestAnchor;
 }
 
-int YapsClassifyLight(uint slot, float3 plugOrigin)
+// What a light's range says it is. Whose it is stays with the caller: that
+// loops over every player, and most lights in the slots are not sockets.
+int YapsClassifyLight(uint slot)
 {
-    float range = YapsLightRange(slot);
-    if (range >= 0.5) return YAPS_LIGHT_NONE;
+    int digit = YapsLightDigit(slot);
+    if (digit < 0) return YAPS_LIGHT_NONE;
 
     // A protocol light is authored black. Colour means real lighting.
     float4 colour = unity_LightColor[slot];
     if (any(colour.rgb > 0.0001) && colour.a > 0) return YAPS_LIGHT_NONE;
-
-    // The wearer's own sockets, skipped before anything else. They are
-    // permanently nearest, so without this the plug never looks elsewhere.
-    //
-    // Ownership goes by PLAYER POSITIONS alone. It used to be a digit in
-    // the range's fourth decimal, built on precision nobody had measured:
-    // only the SECOND decimal survives, since range is reconstructed as
-    // 5*rsqrt(atten) rather than read. A prop authored at 0.4206 arrived
-    // nearer 0.4203 and was skipped by a plug whose tag was 3.
-    //
-    // _YAPS_SelfTag is only a flag now. Zero or more means check ownership,
-    // -1 means there is nothing to check for.
-    if (_YAPS_SelfTag >= 0 && YapsSameBodyAs(plugOrigin, slot))
-    {
-        return YAPS_LIGHT_NONE;
-    }
-
-    int digit = (int) round(fmod(range, 0.1) * 100.0);
 
     // YAPS first: the two digits legacy never claimed.
     if (digit == 7) return YAPS_LIGHT_ROOT;
@@ -352,58 +345,59 @@ int YapsClassifyLight(uint slot, float3 plugOrigin)
 // Nearest root to the plug, with its front partner if one arrived. Unity
 // may hand over a root without its front, so an unpaired root still yields
 // a position and leaves the axis to the caller.
-// preferNear: where to rank from. The contact channel used to supply it;
-// now it is the plug's own origin, and the atlas answers the two-socket
-// prop below before any light is asked.
 //
-// Ranking by distance to the PLUG picked the wrong light on a prop with
-// two sockets. A hole and a ring six centimetres apart are both inside the
-// envelope, and which sits nearer the plug's origin flips as the plug
-// moves in, so a plug inside the hole was handed the ring's kind and swept
-// past. It changed with viewing distance, which reads as a socket that
-// breaks when you look at it.
+// Ranked by distance to the plug, which picks the wrong light on a prop
+// with two sockets: a hole and a ring six centimetres apart swap places as
+// the plug moves in. The contact channel once ranked from its own answer;
+// now the atlas answers that prop before any light is asked.
 //
-// The reach gate still measures from the plug, which is the engagement
-// envelope. Only the ranking moved.
-bool YapsFindLightSocket(float3 plugOrigin, float3 preferNear, float reach,
+// Each slot is classified once, and ownership, a loop over every player,
+// is asked only of a light that would otherwise be taken. The plug's own
+// tip light sits in its slots every frame and never reaches it.
+bool YapsFindLightSocket(float3 plugOrigin, float reach,
                          out float3 position, out float3 forward,
                          out float holeHint)
 {
     position = 0;
     forward = 0;
     holeHint = -1;   // the light did not say
-    float bestRankSq = 1e30;
+    // The reach gate and the best so far in one: nearer than both or skipped.
+    float bestSq = reach * reach;
     bool found = false;
+
+    int4 kinds = int4(YapsClassifyLight(0), YapsClassifyLight(1),
+                      YapsClassifyLight(2), YapsClassifyLight(3));
 
     [unroll]
     for (uint i = 0; i < 4; i++)
     {
-        int kind = YapsClassifyLight(i, plugOrigin);
+        int kind = kinds[i];
         if (!YapsIsRoot(kind)) continue;
         float3 at = YapsLightPosition(i);
         float fromPlugSq = dot(at - plugOrigin, at - plugOrigin);
-        if (fromPlugSq >= reach * reach) continue;
-        float rankSq = dot(at - preferNear, at - preferNear);
-        if (rankSq >= bestRankSq) continue;
-        bestRankSq = rankSq;
+        if (fromPlugSq >= bestSq) continue;
+        if (YapsLightOwn(plugOrigin, i)) continue;
+        bestSq = fromPlugSq;
         position = at;
         found = true;
         holeHint = kind == YAPS_LIGHT_HOLE ? 1 : (kind == YAPS_LIGHT_RING ? 0 : -1);
 
         // Its front light sits about a centimetre along the socket axis.
-        // A very short baseline, so it is taken only when unambiguous.
+        // The NEAREST front within ten centimetres. Taking the last one in
+        // the gate handed a root its neighbour's front when two sockets sit
+        // a hand apart, and the axis pointed sideways.
         forward = 0;
+        float frontSq = 0.01;
         [unroll]
         for (uint j = 0; j < 4; j++)
         {
-            if (YapsClassifyLight(j, plugOrigin) != YAPS_LIGHT_FRONT) continue;
-            float3 front = YapsLightPosition(j);
-            float3 offset = front - at;
+            if (kinds[j] != YAPS_LIGHT_FRONT) continue;
+            float3 offset = YapsLightPosition(j) - at;
             float offsetSq = dot(offset, offset);
-            if (offsetSq > 1e-8 && offsetSq < 0.01)
-            {
-                forward = normalize(offset);
-            }
+            if (!(offsetSq > 1e-8 && offsetSq < frontSq)) continue;
+            if (YapsLightOwn(plugOrigin, j)) continue;
+            frontSq = offsetSq;
+            forward = normalize(offset);
         }
     }
     return found;
@@ -420,8 +414,8 @@ bool YapsFindLightSocket(float3 plugOrigin, float3 preferNear, float reach,
 // not a socket, nobody authored it and nothing switches it off, so a plug
 // with no socket in range stays exactly as it was.
 //
-// The player positions are read for YapsSameBodyAs alone, and it goes the
-// other way: it REJECTS a wearer's own socket lights. It never aims at
+// The player positions are read for the ownership tests alone, and they go
+// the other way: they REJECT a wearer's own sockets. They never aim at
 // anyone. Keep that distinction.
 
 // --- the resolution --------------------------------------------------
@@ -487,7 +481,7 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength, float3 l
     {
         int lv = scan == 0 ? fine : lvl;
         if (scan == 1 && lv == fine) break;
-        float size = max(YAPS_ATLAS_CELL * pow(4.0, lv), 1e-6);
+        float size = YapsAtlasCellSize(lv);
         // The coverage block round the base, not the middle: engagement is
         // measured from the base, so a block centred there needs the least
         // reach to hold every socket in it.
@@ -503,11 +497,8 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength, float3 l
             int3 c = mine + int3(dx, dy, dz);
             float tagWant = YapsAtlasTag(c);
 
-            int idx = YapsAtlasHash(c) % total;
-            if (idx < 0) idx += total;
-            int step = YapsAtlasHash2(c) % max(total - 1, 1);
-            if (step < 0) step += max(total - 1, 1);
-            int idxB = (idx + step + 1) % total;
+            int idx, idxB;
+            YapsAtlasHomes(c, total, idx, idxB);
 
             [loop] for (int home = 0; home < 2; home++)
             {
@@ -541,7 +532,13 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength, float3 l
                     float d = distance(at, root);
 
                     float4 f4 = YAPS_ATLAS_LOAD(px + YAPS_ATLAS_SLOTPX, cellY);
-                    float3 fwd = normalize(f4.rgb * 2 - 1);
+                    // Zero when the writer had no facing, never normalize(0),
+                    // whose NaN would ride the facing into the curve. A real
+                    // facing decodes near unit length; the writer's 0.5 for none
+                    // decodes to about 0.004 per axis on an 8-bit target, so the
+                    // test is on length, not on exact zero.
+                    float3 fwdRaw = f4.rgb * 2 - 1;
+                    float3 fwd = dot(fwdRaw, fwdRaw) > 0.25 ? normalize(fwdRaw) : (float3)0;
                     float kind;
                     int ownIndex;
                     bool oneWay;
@@ -612,6 +609,12 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength, float3 l
                         continue;
                     }
 
+                    // BEHIND THE BASE, past where YapsResolveSocket's fade reaches
+                    // zero. Admitted, a nearer one took link 0 from a socket ahead
+                    // and that fade switched the whole plug off. A lone socket fades
+                    // out exactly as before, since it is at zero by here anyway.
+                    if (dot(at - root, axis) < -len * 0.5) continue;
+
                     if (scan == 1 && (YAPS_CH_SAME(0) || YAPS_CH_SAME(1) || YAPS_CH_SAME(2) || YAPS_CH_SAME(3)))
                         continue;
 
@@ -663,9 +666,6 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength, float3 l
     }
     chain.count = count;
 
-    // Chords rather than true cubic arc length, as the single-socket
-    // path already approximates.
-    chain.arc[0] = 0;
     float3 prev = root;
     [unroll] for (int i3 = 0; i3 < YAPS_CHAIN_MAX; i3++)
     {
@@ -677,12 +677,12 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength, float3 l
         // It used to be ring-only, when an aimed-away hole was supposed to
         // have been rejected first. A converter inherits the original
         // avatar's convention, so an aimed-away hole is usually correct.
-        if (d3 > 1e-5 && dot(sockF[i3], seg) > 0)
+        //
+        // ALONG the approach, as the deform's: its handle sits at
+        // socket - forward. Pointed back toward the plug, the chain put that
+        // handle past every socket and the shaft hairpinned at each link.
+        if (d3 > 1e-5 && dot(sockF[i3], seg) < 0)
             sockF[i3] = -sockF[i3];
-        // Entries past the count get a range nothing falls inside rather
-        // than a branch. A runtime-dependent continue stopped this loop
-        // unrolling, and it must unroll to keep the indices constant.
-        chain.arc[i3 + 1] = chain.arc[i3] + (i3 < count ? d3 : 1e6);
         prev = sockP[i3];
 
         chain.position[i3] = sockP[i3];
@@ -713,7 +713,6 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     socket.isHole = 0;
     socket.position = 0;
     socket.forward = 0;
-    socket.up = 0;
     socket.tier = 0;
     socket.atlasHeaders = 0;
     socket.atlasHits = 0;
@@ -729,7 +728,6 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
         socket.isHole = _YAPS_SocketFlags.y;
         socket.position = _YAPS_SocketPos.xyz;
         socket.forward = _YAPS_SocketForward.xyz;
-        socket.up = _YAPS_SocketUp.xyz;
         socket.tier = 1;
         found = dot(socket.position, socket.position) > 1e-6;
     }
@@ -745,7 +743,7 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     float3 lightPosition;
     float3 lightForward;
     float lightHoleHint;
-    if (!found && YapsFindLightSocket(plugOrigin, plugOrigin, worldLength * 1.6,
+    if (!found && YapsFindLightSocket(plugOrigin, worldLength * 1.6,
                                       lightPosition, lightForward, lightHoleHint))
     {
         socket.position = lightPosition;

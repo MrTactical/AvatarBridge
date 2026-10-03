@@ -55,7 +55,7 @@ namespace AvatarBridge
                 Knobs = new[]
                 {
                     new Knob("_YAPS_Enabled", "Deform on", RowKind.Toggle),
-                    new Knob("_YAPS_Length", "Length", RowKind.Float, help: "metres, from the bake"),
+                    new Knob("_YAPS_Length", "Length", RowKind.Float, help: "from the bake: metres on a skinned mesh, the object's own units on a plain one"),
                     new Knob("_YAPS_Overrun", "Carry on through a ring", RowKind.Toggle, "SPS",
                         "On, the tip keeps going past a ring. Off, the shaft stops at every socket."),
                     new Knob("_YAPS_TaperStart", "Hole taper begins", RowKind.Slider, help: "how far past a hole the shaft starts to narrow, as a fraction of length"),
@@ -109,7 +109,7 @@ namespace AvatarBridge
                 Blurb = "Which sockets this plug will bend toward.",
                 Knobs = new[]
                 {
-                    new Knob("_YAPS_SelfTag", "Own-avatar tag", RowKind.Float, help: "marks the wearer's own sockets so it ignores them: -1 on a prop"),
+                    new Knob("_YAPS_SelfTag", "Own-avatar tag", RowKind.Float, help: "1 when the avatar wears sockets of its own, so it checks whose a socket is; -1 when there are none to check, a prop included"),
                     new Knob("_YAPS_SelfAllow", "Answer the wearer's own sockets", RowKind.Toggle, help: "off by default: an own socket is nearer than anyone else's and would take every bend"),
                     new Knob("_YAPS_UseAtlas", "Read the screen atlas", RowKind.Slider, help: "finds sockets through the screen, with no light slot. Off falls back to marker lights"),
                 }},
@@ -132,22 +132,19 @@ namespace AvatarBridge
                 Blurb = "Views that say why nothing is happening.",
                 Knobs = new[]
                 {
-                    new Knob("_YAPS_Debug", "View", RowKind.Enum, help: "The plug goes straight and its LENGTH is the answer.\nResolved by: a quarter nothing, half the preview, three quarters a marker light, full the atlas.\nGap to socket: distance as a fraction of the plug; a jump means a different socket.\nEngagement: a tenth at 0, full at 1.\nSocket facing: full same way, half square across, none facing back.\nAtlas taps: a tenth nothing, a third not this plug's, two thirds out of reach or own body, full found.\nAtlas target: a tenth target too small, four tenths wrong screen, seven tenths right screen and empty, full on.\nSet it Off before upload."),
+                    new Knob("_YAPS_Debug", "View", RowKind.Enum, help: "The plug goes straight and its LENGTH is the answer.\nResolved by: a quarter nothing, half the preview, three quarters a marker light, full the atlas.\nGap to socket: distance as a fraction of the plug; a jump means a different socket.\nEngagement: a tenth at 0, full at 1.\nSocket facing: full same way, a little over half square across, a tenth facing back.\nAtlas taps: a tenth nothing, a third not this plug's, two thirds out of reach or own body, full found.\nAtlas target: a tenth target too small, four tenths wrong screen, seven tenths right screen and empty, full on.\nSet it Off before upload."),
                 }},
         };
 
-        static readonly string[] Internals =
-        {
-            "_YAPS_Bake", "_YAPS_VertexCount", "_YAPS_BakeScale", "_YAPS_BakeGirth", "_YAPS_FrameFromVertex",
-            "_YAPS_ShapeCount", "_YAPS_ShapeWeights", "_YAPS_ShapeWeights2", "_YAPS_ShapeWeights3",
-            "_YAPS_ShapeWeights4", "_YAPS_ChannelSpace", "_YAPS_ChannelExtents",
-            "_YAPS_SocketPos", "_YAPS_SocketForward", "_YAPS_SocketUp", "_YAPS_SocketFlags",
-            "_YAPS_SocketFront", "_YAPS_SocketOrigin", "_YAPS_SocketNoSelfExclude",
-        };
+        // Every other _YAPS_ property is an internal, found by prefix. A hand
+        // list of them drifted from the patcher's block, and the fallback panel
+        // hides every _YAPS_ name, so a missed one showed nowhere.
+        static readonly HashSet<string> Claimed =
+            new HashSet<string>(Sections.SelectMany(s => s.Knobs).Select(k => k.Name));
 
         // --- styles -----------------------------------------------------------
 
-        static GUIStyle _banner, _bannerTitle, _bannerSub, _header, _blurb, _from, _help;
+        static GUIStyle _banner, _bannerTitle, _bannerSub, _bannerVersion, _header, _blurb, _from, _help, _box;
         static Texture2D _white;
 
         static void EnsureStyles()
@@ -157,6 +154,9 @@ namespace AvatarBridge
             _banner = new GUIStyle { padding = new RectOffset(12, 12, 8, 8) };
             _bannerTitle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 15, normal = { textColor = Color.white } };
             _bannerSub = new GUIStyle(EditorStyles.miniLabel) { normal = { textColor = new Color(1, 1, 1, 0.8f) } };
+            _bannerVersion = new GUIStyle(_bannerSub) { alignment = TextAnchor.MiddleRight };
+            // No box; the header is the structure.
+            _box = new GUIStyle { padding = new RectOffset(14, 4, 4, 8) };
             _header = new GUIStyle(EditorStyles.boldLabel) { fontSize = 12, alignment = TextAnchor.MiddleLeft, padding = new RectOffset(6, 6, 0, 0) };
             _blurb = new GUIStyle(EditorStyles.miniLabel) { wordWrap = true, padding = new RectOffset(8, 8, 0, 4) };
             _from = new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleRight, normal = { textColor = new Color(0.6f, 0.6f, 0.6f) } };
@@ -197,7 +197,7 @@ namespace AvatarBridge
                 Open[key] = open;
                 if (!open) continue;
 
-                using (new EditorGUILayout.VerticalScope(BoxStyle()))
+                using (new EditorGUILayout.VerticalScope(_box))
                 {
                     if (!string.IsNullOrEmpty(section.Blurb)) GUILayout.Label(section.Blurb, _blurb);
                     foreach (var knob in present) DrawKnob(editor, byName[knob.Name], knob);
@@ -213,17 +213,21 @@ namespace AvatarBridge
             {
                 string key = material.shader.name + "/Internals";
                 if (!Open.TryGetValue(key, out bool open)) open = false;
-                open = SectionHeader("Internals", new Color(0.4f, 0.4f, 0.4f), open, "written by the bake: read-only");
+                open = SectionHeader("Internals", new Color(0.4f, 0.4f, 0.4f), open, "written by the build: read-only");
                 Open[key] = open;
                 if (open)
                 {
-                    using (new EditorGUILayout.VerticalScope(BoxStyle()))
+                    using (new EditorGUILayout.VerticalScope(_box))
                     using (new EditorGUI.DisabledScope(true))
                     {
-                        foreach (string name in Internals)
+                        foreach (var prop in properties)
                         {
-                            if (byName.TryGetValue(name, out var prop))
-                                editor.ShaderProperty(prop, prop.displayName.Replace("YAPS ", ""));
+                            if (!prop.name.StartsWith("_YAPS_", StringComparison.Ordinal) || Claimed.Contains(prop.name)) continue;
+                            // A name declared twice is drawn once.
+                            if (byName[prop.name] != prop) continue;
+                            // The patcher's markers hold a class and a shader name, not a value.
+                            if ((prop.flags & MaterialProperty.PropFlags.HideInInspector) != 0) continue;
+                            editor.ShaderProperty(prop, prop.displayName.Replace("YAPS ", ""));
                         }
                     }
                 }
@@ -259,6 +263,18 @@ namespace AvatarBridge
             }
         }
 
+        // A plain mesh's length is held in that mesh's own units, so metres
+        // need the renderer: the selected one, when it wears this material.
+        static string LengthText(float raw, Material material)
+        {
+            var go = Selection.activeGameObject;
+            var r = go != null ? go.GetComponent<Renderer>() : null;
+            if (r != null && r.sharedMaterials.Contains(material))
+                return $"{YapsNativeBuilder.WorldLength(r, material):0.###} m";
+            bool skinned = material.HasProperty("_YAPS_FrameFromVertex") && material.GetFloat("_YAPS_FrameFromVertex") > 0.5f;
+            return skinned ? $"{raw:0.###} m" : $"{raw:0.###} mesh units";
+        }
+
         static void Banner(string role, float length, Material material)
         {
             var laid = GUILayoutUtility.GetRect(0, 44, GUILayout.ExpandWidth(true));
@@ -274,10 +290,10 @@ namespace AvatarBridge
             var title = new Rect(rect.x + 12, rect.y + 6, rect.width - 24, 20);
             GUI.Label(title, "YAPS", _bannerTitle);
             var sub = new Rect(rect.x + 12, rect.y + 24, rect.width - 24, 16);
-            string subText = length > 0 ? $"{role}  ·  {length:0.###} m  ·  {material.shader.name.Replace("Hidden/YAPS/", "patched ")}" : role;
+            string subText = length > 0 ? $"{role}  ·  {LengthText(length, material)}  ·  {material.shader.name.Replace("Hidden/YAPS/", "patched ")}" : role;
             GUI.Label(sub, subText, _bannerSub);
             var ver = new Rect(rect.xMax - 60, rect.y + 6, 50, 16);
-            GUI.Label(ver, BridgeDefines.Version, new GUIStyle(_bannerSub) { alignment = TextAnchor.MiddleRight });
+            GUI.Label(ver, "v" + BridgeDefines.Version, _bannerVersion);
             GUILayout.Space(6);
 
             // A material can be running a shader older than the toolkit, and
@@ -318,8 +334,9 @@ namespace AvatarBridge
             var e = Event.current;
             if (e.type == EventType.MouseDown && full.Contains(e.mousePosition))
             {
+                // Not GUI.changed: a fold is no property, and the change check
+                // around the sections syncs every plug in the scene on one.
                 open = !open; e.Use();
-                GUI.changed = true;
             }
             if (e.type == EventType.MouseMove) EditorWindow.focusedWindow?.Repaint();
             return open;
@@ -387,12 +404,6 @@ namespace AvatarBridge
                     GUILayout.Label(knob.Help, _help);
                 }
             }
-        }
-
-        // No box; the header is the structure.
-        static GUIStyle BoxStyle()
-        {
-            return new GUIStyle { padding = new RectOffset(14, 4, 4, 8) };
         }
 
         static void Rule()

@@ -56,10 +56,6 @@ namespace AvatarBridge
 
         public List<Transform> ToeExclusions = new List<Transform>();
 
-        public static PhysBoneChainData Read(VRCPhysBone pb) => Read(pb, null);
-
-        public static PhysBoneChainData Read(VRCPhysBone pb, Animator animator) => Read(pb, animator, false);
-
         public static PhysBoneChainData Read(VRCPhysBone pb, Animator animator, bool excludeToes)
         {
             var data = new PhysBoneChainData

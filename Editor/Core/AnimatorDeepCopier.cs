@@ -6,8 +6,9 @@ using UnityEngine;
 namespace AvatarBridge
 {
     // Deep-copies animator controller content so AvatarBridge never mutates the user's
-    // original VRChat controllers. Animation clips are shared by reference (they are not
-    // modified by the conversion except via clone-on-write in the rename pass).
+    // original VRChat controllers. Animation clips are shared by reference: a rename clones a
+    // clip before rewriting it, and the passes that edit clips run on the conversion's own
+    // copies, made by AnimationSelfContainer.
     //
     // Usage: create one instance per source controller, call CloneLayer() for each layer.
     // State/state-machine cross references (transition destinations) are resolved from
@@ -152,7 +153,7 @@ namespace AvatarBridge
                 // those are assigned; and min/max are meaningless in manual mode, so authors
                 // leave them anywhere. VRCFury emits its manual trees with min = max = 0. Copying
                 // that faithfully crushed every child threshold to 0, which turned a 1D tree into
-                // one that plays all of its clips at once: on "Kaides Expie" the tail-scale tree
+                // one that plays all of its clips at once: on one avatar a tail-scale tree
                 // held both extremes at full weight and the tail swallowed the avatar.
                 //
                 // So min/max are only copied when they actually mean something; that is, when

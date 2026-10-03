@@ -92,7 +92,7 @@ namespace AvatarBridge
             var rows = new List<string>
             {
                 Row("VRChat SDK", VersionOf("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor")),
-                Row("ChilloutVR CCK", VersionOf("ABI.CCK.Components.CVRAvatar")),
+                Row("ChilloutVR CCK", VersionOf("ABI.CCK.Components.CVRAvatar", CckVersion())),
                 Row("VRCFury", VersionOf("VF.Model.VRCFury")),
                 Row("Modular Avatar", VersionOf("nadena.dev.modular_avatar.core.ModularAvatarInformation")),
                 Row("MagicaCloth2", VersionOf("MagicaCloth2.MagicaCloth")),
@@ -101,7 +101,7 @@ namespace AvatarBridge
             return Table(new[] { "Package", "Assembly / version" }, rows);
         }
 
-        static string VersionOf(string fullTypeName)
+        static string VersionOf(string fullTypeName, string knownVersion = null)
         {
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
@@ -110,7 +110,7 @@ namespace AvatarBridge
                     if (assembly.GetType(fullTypeName, false) != null)
                     {
                         var name = assembly.GetName();
-                        return $"`{name.Name}` {name.Version}";
+                        return $"`{name.Name}` {knownVersion ?? PackageVersion(assembly) ?? name.Version?.ToString()}";
                     }
                 }
                 catch
@@ -119,6 +119,52 @@ namespace AvatarBridge
                 }
             }
             return "not installed";
+        }
+
+        // Anything compiled through an asmdef carries no AssemblyVersion and reads 0.0.0.0, so the
+        // package's own version is the one worth printing.
+        static string PackageVersion(Assembly assembly)
+        {
+            try
+            {
+                return UnityEditor.PackageManager.PackageInfo.FindForAssembly(assembly)?.version;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        // The CCK lives under Assets and compiles into Assembly-CSharp, which has no version of its
+        // own. Read by name, because not every CCK spells the constant the same way.
+        static string CckVersion()
+        {
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.Static;
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try
+                {
+                    var common = assembly.GetType("ABI.CCK.Scripts.CVRCommon", false);
+                    if (common == null)
+                    {
+                        continue;
+                    }
+                    foreach (string member in new[] { "CCK_VERSION_FULL", "CCK_VERSION" })
+                    {
+                        object value = common.GetProperty(member, flags)?.GetValue(null)
+                                       ?? common.GetField(member, flags)?.GetValue(null);
+                        if (value != null)
+                        {
+                            return value.ToString();
+                        }
+                    }
+                }
+                catch
+                {
+                    // Same as VersionOf: a broken assembly is skipped, not fatal.
+                }
+            }
+            return null;
         }
 
         // ------------------------------------------------------------------ settings ----
@@ -181,7 +227,7 @@ namespace AvatarBridge
             // The decoy score. A humanoid stand-in skeleton deforms nothing, which is what
             // distinguishes a decoy-rig quadruped from an ordinary avatar, and it took four
             // attempts to work that out because nobody had measured it.
-            var deforming = DeformingBones(ctx.Target);
+            var deforming = AvatarFeatureDetect.DeformingBones(ctx.Target);
             var mapped = new List<Transform>();
             foreach (HumanBodyBones bone in Enum.GetValues(typeof(HumanBodyBones)))
             {
@@ -210,45 +256,6 @@ namespace AvatarBridge
                     (negative.Count > 0 ? $": e.g. `{negative[0].name}`" : "")),
             }));
             return text.ToString();
-        }
-
-        static HashSet<Transform> DeformingBones(GameObject root)
-        {
-            var deforming = new HashSet<Transform>();
-            foreach (var skin in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
-            {
-                var mesh = skin.sharedMesh;
-                var bones = skin.bones;
-                if (mesh == null || bones == null || bones.Length == 0)
-                {
-                    continue;
-                }
-                try
-                {
-                    var weights = mesh.GetAllBoneWeights();
-                    for (int i = 0; i < weights.Length; i++)
-                    {
-                        var w = weights[i];
-                        if (w.weight > 0f && w.boneIndex >= 0 && w.boneIndex < bones.Length
-                            && bones[w.boneIndex] != null)
-                        {
-                            deforming.Add(bones[w.boneIndex]);
-                        }
-                    }
-                }
-                catch
-                {
-                    // Unreadable mesh: count every listed bone rather than none.
-                    foreach (var bone in bones)
-                    {
-                        if (bone != null)
-                        {
-                            deforming.Add(bone);
-                        }
-                    }
-                }
-            }
-            return deforming;
         }
 
         // ------------------------------------------------------- head and viewpoint ----
@@ -299,9 +306,7 @@ namespace AvatarBridge
 
                 if (head != null)
                 {
-                    float tolerance = hips != null
-                        ? Mathf.Max(0.15f, Vector3.Distance(hips.position, head.position) * 0.5f)
-                        : 0.5f;
+                    float tolerance = AvatarFeatureDetect.HeadTolerance(animator);
                     rows.Add(Row("Head-distance tolerance", $"{tolerance:0.###} m"));
                     rows.Add(Row("Viewpoint to head bone",
                         $"{Vector3.Distance(AvatarFeatureDetect.CckGizmoWorldPoint(ctx.Target, cvr.viewPosition), head.position):0.###} m"));

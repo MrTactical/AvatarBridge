@@ -330,11 +330,24 @@ namespace AvatarBridge
                     "and the fix is authoring a blink blendshape.");
             }
             string blinkShape = GetBlinkBlendshapeName(vrc, sourceFace, out Mesh eyelidMesh);
-            if (!string.IsNullOrEmpty(blinkShape))
+            // ChilloutVR blinks the face mesh only, and VRChat's eyelids can be a mesh of their
+            // own: a shape wired by name onto a face mesh without it blinks nothing.
+            var faceMesh = cvrAvatar.bodyMesh != null ? cvrAvatar.bodyMesh.sharedMesh : null;
+            if (!string.IsNullOrEmpty(blinkShape) && faceMesh != null && faceMesh.GetBlendShapeIndex(blinkShape) < 0)
             {
-                WireDescriptorBlink(ctx, cvrAvatar, blinkShape, eyelidMesh);
+                var eyelids = vrc.customEyeLookSettings.eyelidsSkinnedMesh;
+                ctx.Report.Warning(Category, $"Blink blendshape \"{blinkShape}\" is not on the face mesh",
+                    $"It is on \"{(eyelids != null ? eyelids.name : eyelidMesh.name)}\", but ChilloutVR blinks " +
+                    $"only the face mesh, \"{cvrAvatar.bodyMesh.name}\", which has no shape by that name, so " +
+                    "it was not wired and the eyes will not blink. Merge the eyelids into the face mesh, or " +
+                    "name a blink shape the face mesh has on the CVRAvatar.");
             }
-            else if (ctx.Settings.wireBlinkBlendshapes && TryWireBlinkFromMesh(ctx, vrc, cvrAvatar))
+            else if (!string.IsNullOrEmpty(blinkShape))
+            {
+                // Paired on the mesh ChilloutVR will read, not the eyelid mesh.
+                WireDescriptorBlink(ctx, cvrAvatar, blinkShape, faceMesh != null ? faceMesh : eyelidMesh);
+            }
+            else if (ctx.Settings.wireBlinkBlendshapes && TryWireBlinkFromMesh(ctx, cvrAvatar))
             {
                 // Reported inside.
             }
@@ -507,39 +520,16 @@ namespace AvatarBridge
             return true;
         }
 
-        static bool AnimatedBlinkShape(BridgeContext ctx, VRCAvatarDescriptor vrc, out string drivenShape, out string drivenBy)
+        static bool AnimatedBlinkShape(BridgeContext ctx, out string drivenShape, out string drivenBy)
         {
             drivenShape = null;
             drivenBy = null;
-            // The source controllers, off the descriptor. This runs long
-            // before AnimatorMerger; ctx.MergedController is still null.
+            // The source controllers the merge will actually take. Every layer was read before,
+            // so a blink in an unticked layer switched native blink off and nothing merged blinked.
             var clips = new HashSet<AnimationClip>();
-            void Collect(VRCAvatarDescriptor.CustomAnimLayer[] layers)
+            foreach (var entry in AnimatorMerger.GetSelectedVrcControllers(ctx))
             {
-                if (layers == null)
-                {
-                    return;
-                }
-                foreach (var layer in layers)
-                {
-                    if (layer.animatorController == null)
-                    {
-                        continue;
-                    }
-                    foreach (var clip in layer.animatorController.animationClips)
-                    {
-                        if (clip != null)
-                        {
-                            clips.Add(clip);
-                        }
-                    }
-                }
-            }
-            Collect(vrc != null ? vrc.baseAnimationLayers : null);
-            Collect(vrc != null ? vrc.specialAnimationLayers : null);
-            if (ctx.MergedController != null)
-            {
-                foreach (var clip in ctx.MergedController.animationClips)
+                foreach (var clip in entry.controller.animationClips)
                 {
                     if (clip != null)
                     {
@@ -562,7 +552,11 @@ namespace AvatarBridge
                     // and the handful of naming schemes avatars actually use. Deliberately loose:
                     // a false positive costs the client's blink on an avatar that has its own,
                     // while a false negative is two systems fighting.
-                    if (shape.IndexOf("blink", StringComparison.OrdinalIgnoreCase) >= 0)
+                    //
+                    // Held at zero is not blinking: it is a reset, and the merge skips it the same way.
+                    if (shape.IndexOf("blink", StringComparison.OrdinalIgnoreCase) >= 0
+                        && AnimationUtility.GetEditorCurve(clip, binding) is AnimationCurve curve
+                        && curve.keys.Any(k => Mathf.Abs(k.value) > 0.001f))
                     {
                         drivenShape = shape;
                         drivenBy = $"\"{clip.name}\" drives \"{shape}\"";
@@ -573,7 +567,7 @@ namespace AvatarBridge
             return false;
         }
 
-        static bool TryWireBlinkFromMesh(BridgeContext ctx, VRCAvatarDescriptor vrc, CVRAvatar cvrAvatar)
+        static bool TryWireBlinkFromMesh(BridgeContext ctx, CVRAvatar cvrAvatar)
         {
             var mesh = cvrAvatar.bodyMesh != null ? cvrAvatar.bodyMesh.sharedMesh : null;
             if (mesh == null)
@@ -590,7 +584,7 @@ namespace AvatarBridge
             // the decision defers to the merge: the blinking layer
             // names the shape, not a name match here. Native blink
             // stays off here so the two never overlap.
-            if (AnimatedBlinkShape(ctx, vrc, out _, out _))
+            if (AnimatedBlinkShape(ctx, out _, out _))
             {
                 cvrAvatar.useBlinkBlendshapes = false;
                 ctx.AnimatorBlinkPending = true;
@@ -610,7 +604,7 @@ namespace AvatarBridge
                 AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Separate");
                 ctx.Report.Converted(Category, "Blink blendshapes auto-detected",
                     $"Descriptor set none; wired CVR blink to \"{left}\" / \"{right}\" (Separate). Enables " +
-                    "CVR's native blink and the CVR-VRCFT rig's eye-tracking-off fallback. Verify L/R aren't swapped.");
+                    "CVR's native blink and the DSR rig's eye-tracking-off fallback. Verify L/R aren't swapped.");
             }
             else if (combined != null)
             {

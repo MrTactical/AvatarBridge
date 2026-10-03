@@ -11,7 +11,7 @@ namespace AvatarBridge
     // folder, because "unique" is the wrong question there. GenerateUniqueAssetPath compares
     // against everything on disk, including the previous conversion's output, so reconverting
     // the same avatar never reuses a name; it appends a number and writes a fresh copy beside
-    // the old one. Kar's output folder had 22 copies of "Angry.anim" and 554 .anim files in
+    // the old one. One output folder had 22 copies of "Angry.anim" and 554 .anim files in
     // total, one set per conversion, of which 21 sets were orphans nothing referenced.
     //
     // The right question is "is this name taken BY THIS RUN". Within a run two different source
@@ -28,6 +28,8 @@ namespace AvatarBridge
         static readonly HashSet<string> ClaimedThisRun =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        // Call at the start of every entry point that writes through Claim. One that skips it
+        // inherits the last run's claims and parks a numbered copy instead.
         internal static void Reset()
         {
             ClaimedThisRun.Clear();
@@ -48,12 +50,35 @@ namespace AvatarBridge
 
             // Deleted rather than overwritten: CopyAsset refuses an occupied destination, and
             // CreateAsset onto one leaves the old object's sub-assets behind. The GUID changes
-            // either way; it already did, every run, when the name changed instead.
-            if (AssetDatabase.LoadMainAssetAtPath(candidate) != null)
+            // either way; it already did, every run, when the name changed instead. Asked by GUID:
+            // loading the old asset to test the path deserialised a whole mesh just to delete it.
+            if (!string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(candidate, AssetPathToGUIDOptions.OnlyExistingAssets)))
             {
                 AssetDatabase.DeleteAsset(candidate);
             }
             return candidate;
+        }
+
+        // Directory plus a full Refresh, as both callers always did. CreateFolder would skip the
+        // Refresh, and with it the import of anything earlier passes wrote straight to disk.
+        internal static void EnsureFolder(string dir)
+        {
+            Directory.CreateDirectory(Path.GetFullPath(Path.Combine(UnityEngine.Application.dataPath, "..", dir)));
+            AssetDatabase.Refresh();
+        }
+
+        // GetInvalidFileNameChars holds '/' on every platform, so shader category separators go too.
+        internal static string SafeFileName(string n)
+        {
+            if (string.IsNullOrEmpty(n))
+            {
+                return "Asset";
+            }
+            foreach (var c in Path.GetInvalidFileNameChars())
+            {
+                n = n.Replace(c, '_');
+            }
+            return n;
         }
     }
 }

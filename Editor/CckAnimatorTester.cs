@@ -72,7 +72,7 @@ namespace AvatarBridge
         {
             _layersOpen = EditorPrefs.GetBool(LayersOpenKey, false);
             EditorApplication.playModeStateChanged += OnPlayModeChanged;
-            Selection.selectionChanged += Rebuild;
+            Selection.selectionChanged += OnSelectionChanged;
             // The menu card mirrors the Animator's current controller.
             // The CCK regenerates it and conversions swap it wholesale;
             // polling a cheap fingerprint keeps the card true.
@@ -113,7 +113,7 @@ namespace AvatarBridge
         void OnDisable()
         {
             EditorApplication.playModeStateChanged -= OnPlayModeChanged;
-            Selection.selectionChanged -= Rebuild;
+            Selection.selectionChanged -= OnSelectionChanged;
             EditorApplication.update -= PollForChanges;
             Application.onBeforeRender -= HoldFaceShapes;
             DisablePhysics();
@@ -123,6 +123,16 @@ namespace AvatarBridge
         {
             PhysicsPlayModeChanged(change);
             Rebuild();
+        }
+
+        // A click inside the same avatar resolves to it again, and a rebuild
+        // would reset the face it is holding and rescan every blend tree.
+        void OnSelectionChanged()
+        {
+            if (ComputeFingerprint(ResolveAvatar()) != _fingerprint)
+            {
+                Rebuild();
+            }
         }
 
         void PollForChanges()
@@ -135,16 +145,17 @@ namespace AvatarBridge
             // Twice a second, not per frame: the Eye Blink and viseme fields are edited in the
             // inspector while the tester is open, and the fingerprint below deliberately does not
             // cover them.
-            CacheFaceShapes();
-            if (ComputeFingerprint() != _fingerprint)
+            // Resolved once for both: with nothing selected it searches the scene.
+            var avatar = ResolveAvatar();
+            CacheFaceShapes(avatar);
+            if (ComputeFingerprint(avatar) != _fingerprint)
             {
                 Rebuild();
             }
         }
 
-        int ComputeFingerprint()
+        int ComputeFingerprint(CVRAvatar avatar)
         {
-            var avatar = ResolveAvatar();
             unchecked
             {
                 int hash = avatar != null ? avatar.GetInstanceID() : 0;
@@ -252,45 +263,76 @@ namespace AvatarBridge
             return animator;
         }
 
+        // animator.parameters copies every parameter on each read, and a dragged
+        // slider drives once per event. Read again for another animator or
+        // controller, a changed count (an animator that only now initialised),
+        // and after every rebuild.
+        static Animator _typesFor;
+        static RuntimeAnimatorController _typesController;
+        static int _typesCount;
+        static readonly Dictionary<string, AnimatorControllerParameterType> _types =
+            new Dictionary<string, AnimatorControllerParameterType>();
+
+        static bool TryParameterType(Animator animator, string name, out AnimatorControllerParameterType type)
+        {
+            type = default;
+            if (animator == null || name == null)
+            {
+                return false;
+            }
+            if (animator != _typesFor || animator.runtimeAnimatorController != _typesController
+                || animator.parameterCount != _typesCount)
+            {
+                _types.Clear();
+                foreach (var parameter in animator.parameters)
+                {
+                    // First wins, as the linear search it replaces did.
+                    if (!_types.ContainsKey(parameter.name))
+                    {
+                        _types.Add(parameter.name, parameter.type);
+                    }
+                }
+                _typesFor = animator;
+                _typesController = animator.runtimeAnimatorController;
+                _typesCount = animator.parameterCount;
+            }
+            return _types.TryGetValue(name, out type);
+        }
+
         static void Drive(Animator animator, string name, float value)
         {
-            if (animator == null)
+            if (!TryParameterType(animator, name, out var type))
             {
                 return;
             }
-            foreach (var parameter in animator.parameters)
+            switch (type)
             {
-                if (parameter.name != name)
-                {
-                    continue;
-                }
-                switch (parameter.type)
-                {
-                    case AnimatorControllerParameterType.Float:
-                        animator.SetFloat(name, value);
-                        break;
-                    case AnimatorControllerParameterType.Int:
-                        animator.SetInteger(name, Mathf.RoundToInt(value));
-                        break;
-                    case AnimatorControllerParameterType.Bool:
-                        animator.SetBool(name, value != 0f);
-                        break;
-                    case AnimatorControllerParameterType.Trigger:
-                        if (value != 0f)
-                        {
-                            animator.SetTrigger(name);
-                        }
-                        break;
-                }
-                return;
+                case AnimatorControllerParameterType.Float:
+                    animator.SetFloat(name, value);
+                    break;
+                case AnimatorControllerParameterType.Int:
+                    animator.SetInteger(name, Mathf.RoundToInt(value));
+                    break;
+                case AnimatorControllerParameterType.Bool:
+                    animator.SetBool(name, value != 0f);
+                    break;
+                case AnimatorControllerParameterType.Trigger:
+                    if (value != 0f)
+                    {
+                        animator.SetTrigger(name);
+                    }
+                    break;
             }
         }
 
         void Rebuild()
         {
             // Stored up front so the poll doesn't immediately rebuild what was just built.
-            _fingerprint = ComputeFingerprint();
-            CacheFaceShapes();
+            var avatar = ResolveAvatar();
+            _fingerprint = ComputeFingerprint(avatar);
+            CacheFaceShapes(avatar);
+            // A rebuilt controller can keep its object and change its parameters.
+            _typesFor = null;
             rootVisualElement.Clear();
             try
             {
@@ -685,9 +727,8 @@ namespace AvatarBridge
             HoldFaceShapes();
         }
 
-        void CacheFaceShapes()
+        void CacheFaceShapes(CVRAvatar avatar)
         {
-            var avatar = ResolveAvatar();
             _faceMesh = avatar != null ? avatar.bodyMesh : null;
             var shared = _faceMesh != null ? _faceMesh.sharedMesh : null;
             if (shared == null)
@@ -802,7 +843,7 @@ namespace AvatarBridge
             int handTop = -1;
             for (int i = 0; i < asset.layers.Length; i++)
             {
-                if (asset.layers[i].name == "LeftHand" || asset.layers[i].name == "RightHand")
+                if (IsHandLayer(asset.layers[i].name))
                 {
                     handTop = i;
                 }
@@ -835,7 +876,7 @@ namespace AvatarBridge
             {
                 var layer = asset.layers[i];
                 bool conflicts = i > handTop && handTop >= 0 && PermitsFingers(layer.avatarMask)
-                                 && layer.name != "LeftHand" && layer.name != "RightHand";
+                                 && !IsHandLayer(layer.name);
                 if (conflicts)
                 {
                     conflictCount++;
@@ -868,7 +909,7 @@ namespace AvatarBridge
                 {
                     name.style.color = BridgeTheme.Bad;
                 }
-                else if (layer.name == "LeftHand" || layer.name == "RightHand")
+                else if (IsHandLayer(layer.name))
                 {
                     name.style.color = BridgeTheme.Good;
                 }
@@ -950,6 +991,11 @@ namespace AvatarBridge
 
             return card;
         }
+
+        // The merger numbers a second promoted hand layer "LeftHand 2".
+        static readonly System.Text.RegularExpressions.Regex HandLayerName =
+            new System.Text.RegularExpressions.Regex(@"^(Left|Right)Hand( \d+)?$");
+        static bool IsHandLayer(string name) => name != null && HandLayerName.IsMatch(name);
 
         static bool PermitsFingers(AvatarMask mask)
         {
@@ -1373,25 +1419,17 @@ namespace AvatarBridge
 
         static float? ReadParam(Animator animator, string name)
         {
-            if (animator == null)
+            if (!TryParameterType(animator, name, out var type))
             {
                 return null;
             }
-            foreach (var parameter in animator.parameters)
+            switch (type)
             {
-                if (parameter.name != name)
-                {
-                    continue;
-                }
-                switch (parameter.type)
-                {
-                    case AnimatorControllerParameterType.Float: return animator.GetFloat(name);
-                    case AnimatorControllerParameterType.Int: return animator.GetInteger(name);
-                    case AnimatorControllerParameterType.Bool: return animator.GetBool(name) ? 1f : 0f;
-                    default: return null;
-                }
+                case AnimatorControllerParameterType.Float: return animator.GetFloat(name);
+                case AnimatorControllerParameterType.Int: return animator.GetInteger(name);
+                case AnimatorControllerParameterType.Bool: return animator.GetBool(name) ? 1f : 0f;
+                default: return null;
             }
-            return null;
         }
 
         void BuildMenuControls(VisualElement parent, CVRAvatar avatar)
@@ -1494,8 +1532,16 @@ namespace AvatarBridge
                         {
                             foreach (var option in dropdown.options)
                             {
-                                names.Add(option != null && !string.IsNullOrEmpty(option.name)
-                                    ? option.name : $"option {names.Count}");
+                                string name = option != null && !string.IsNullOrEmpty(option.name)
+                                    ? option.name : $"option {names.Count}";
+                                // DropdownField resolves a pick by its label, so a repeated
+                                // label would always drive the first option carrying it.
+                                string unique = name;
+                                for (int n = 2; names.Contains(unique); n++)
+                                {
+                                    unique = $"{name} ({n})";
+                                }
+                                names.Add(unique);
                             }
                         }
                         if (names.Count == 0)

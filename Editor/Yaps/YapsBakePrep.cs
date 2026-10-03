@@ -23,7 +23,7 @@ namespace AvatarBridge
     public class YapsBakePrep
     {
         const string Category = "YAPS";
-        readonly List<(Component plug, bool was)> _flipped = new List<(Component, bool)>();
+        readonly List<Component> _flipped = new List<Component>();
         readonly List<string> _unswitchable = new List<string>();
 
         // The author's own per-plug settings, read off the component while it
@@ -32,8 +32,8 @@ namespace AvatarBridge
         // overrun: VRCFury lets an author say whether the tip may travel past
         // the socket, and every converted plug was getting "yes" regardless.
         //
-        // Keyed by the object the plug component sits on, which survives the
-        // bake as the parent of BakedSpsPlug.
+        // Keyed by KeyOf the object the plug component sits on, which survives
+        // the bake as the parent of BakedSpsPlug. PlugKey finds it again.
         public static readonly Dictionary<string, bool> AuthoredOverrun =
             new Dictionary<string, bool>();
 
@@ -67,9 +67,75 @@ namespace AvatarBridge
         // answers only what it named.
         const string Shared = YapsTags.Shared;
 
+        // Every plug and socket read, by key, and by name where no other of
+        // its kind has that name. The name is the fallback for an object the
+        // bake moved, and it was the only key once: VRCFury's own menu names
+        // every plug "SPS Plug" and every socket "SPS Socket", so the last one
+        // read gave its tags and overrun to all of them.
+        static readonly HashSet<string> PlugKeys = new HashSet<string>(), SocketKeys = new HashSet<string>();
+        static readonly Dictionary<string, string> PlugNames = new Dictionary<string, string>(),
+            SocketNames = new Dictionary<string, string>();
+
+        // The key a baked plug's or socket's owner was read under, or null
+        // when nothing was read for it.
+        public static string PlugKey(Transform owner, Transform root) => Find(owner, root, PlugKeys, PlugNames);
+        public static string SocketKey(Transform owner, Transform root) => Find(owner, root, SocketKeys, SocketNames);
+
+        static string Find(Transform owner, Transform root, HashSet<string> keys, Dictionary<string, string> names)
+        {
+            if (owner == null) return null;
+            string key = KeyOf(root, owner);
+            if (keys.Contains(key)) return key;
+            // Moved by the bake, which also puts its id on the name.
+            return names.TryGetValue(YapsScanner.StripFuryId(owner.name), out string named) ? named : null;
+        }
+
+        // The path from the avatar root, with "#n" on an object that has n
+        // earlier siblings of the same name, so two sockets of one name under
+        // one bone are still two keys. The bake keeps it: the copy keeps the
+        // order, and what the bake adds goes after.
+        static string KeyOf(Transform root, Transform t)
+        {
+            var parts = new List<string>();
+            for (var at = t; at != null && at != root; at = at.parent)
+            {
+                int n = 0;
+                for (int i = 0; at.parent != null && i < at.GetSiblingIndex(); i++)
+                {
+                    if (at.parent.GetChild(i).name == at.name) n++;
+                }
+                parts.Insert(0, n > 0 ? at.name + "#" + n : at.name);
+            }
+            return string.Join("/", parts);
+        }
+
+        // Two of a kind on one object have one key and cannot be told apart
+        // after the bake, so neither is keyed and both are named in `shared`.
+        static Dictionary<Component, string> Index(List<Component> found, Transform root,
+            HashSet<string> keys, Dictionary<string, string> names, List<string> shared)
+        {
+            var keyed = new Dictionary<Component, string>();
+            var named = found.GroupBy(c => YapsScanner.StripFuryId(c.gameObject.name))
+                .ToDictionary(g => g.Key, g => g.Count());
+            foreach (var group in found.GroupBy(c => KeyOf(root, c.transform)))
+            {
+                if (group.Count() > 1) { shared.Add(group.Key); continue; }
+                var one = group.First();
+                keyed[one] = group.Key;
+                keys.Add(group.Key);
+                string name = YapsScanner.StripFuryId(one.gameObject.name);
+                if (named[name] == 1) names[name] = group.Key;
+            }
+            return keyed;
+        }
+
         public static YapsBakePrep Begin(BridgeContext ctx, GameObject source)
         {
             var prep = new YapsBakePrep();
+            PlugKeys.Clear();
+            SocketKeys.Clear();
+            PlugNames.Clear();
+            SocketNames.Clear();
             AuthoredOverrun.Clear();
             AuthoredSocketTags.Clear();
             AuthoredAnswers.Clear();
@@ -82,19 +148,36 @@ namespace AvatarBridge
                 return prep;
             }
 
-            ReadTags(source);
-
+            var plugs = new List<Component>();
+            var sockets = new List<Component>();
             foreach (var component in source.GetComponentsInChildren<Component>(true))
             {
-                if (component == null || component.GetType().Name != "VRCFuryHapticPlug")
-                {
-                    continue;
-                }
+                if (component == null) continue;
+                string type = component.GetType().Name;
+                if (type == "VRCFuryHapticPlug") plugs.Add(component);
+                else if (type == "VRCFuryHapticSocket") sockets.Add(component);
+            }
+            var shared = new List<string>();
+            var plugKeys = Index(plugs, source.transform, PlugKeys, PlugNames, shared);
+            var socketKeys = Index(sockets, source.transform, SocketKeys, SocketNames, shared);
+            if (shared.Count > 0)
+            {
+                ctx.Report.Warning(Category,
+                    $"{shared.Count} object(s) carry two plugs or two sockets, so their own settings were not carried",
+                    "Once baked the two cannot be told apart. Each takes the defaults: a plug answers anything and " +
+                    "may pass the socket, a socket keeps the shared tag. Give each its own object and convert " +
+                    "again: " + string.Join(", ", shared));
+            }
+
+            ReadTags(source, plugs, sockets, plugKeys, socketKeys);
+
+            foreach (var component in plugs)
+            {
                 var overrun = component.GetType().GetField("spsOverrun",
                     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                if (overrun != null && overrun.FieldType == typeof(bool))
+                if (overrun != null && overrun.FieldType == typeof(bool) && plugKeys.TryGetValue(component, out string key))
                 {
-                    AuthoredOverrun[component.gameObject.name] = (bool) overrun.GetValue(component);
+                    AuthoredOverrun[key] = (bool) overrun.GetValue(component);
                 }
 
                 var field = component.GetType().GetField("enableSps",
@@ -117,7 +200,7 @@ namespace AvatarBridge
                 }
                 field.SetValue(component, false);
                 EditorUtility.SetDirty(component);
-                prep._flipped.Add((component, true));
+                prep._flipped.Add(component);
             }
 
             if (prep._flipped.Count > 0)
@@ -147,20 +230,18 @@ namespace AvatarBridge
         // what stops a converted plug refusing every socket on the avatar:
         // carrying an include list without carrying what the sockets ARE
         // would do exactly that.
-        static void ReadTags(GameObject source)
+        static void ReadTags(GameObject source, List<Component> plugs, List<Component> sockets,
+            Dictionary<Component, string> plugKeys, Dictionary<Component, string> socketKeys)
         {
-            var sockets = new List<Component>();
-            foreach (var component in source.GetComponentsInChildren<Component>(true))
+            foreach (var component in plugs)
             {
-                if (component == null) continue;
-                string type = component.GetType().Name;
-                if (type == "VRCFuryHapticSocket") { sockets.Add(component); continue; }
-                if (type != "VRCFuryHapticPlug") continue;
-
-                string plug = component.gameObject.name;
+                if (!plugKeys.TryGetValue(component, out string plug)) continue;
                 var answers = Rules(component, "includeTags", self: false);
                 var selfAnswers = Rules(component, "includeTags", self: true);
-                if (Flag(component, "useSharedTag")) { answers.Add(Shared); selfAnswers.Add(Shared); }
+                // First, never last: the bake keeps four, and the word that
+                // widens the list is the one that must not be cut. Appended,
+                // a plug with four tags of its own lost it and narrowed to them.
+                if (Flag(component, "useSharedTag")) { answers.Insert(0, Shared); selfAnswers.Insert(0, Shared); }
                 var refuses = Rules(component, "excludeTags", self: false);
                 var selfRefuses = Rules(component, "excludeTags", self: true);
                 if (answers.Count > 0) AuthoredAnswers[plug] = answers;
@@ -182,19 +263,19 @@ namespace AvatarBridge
                     ? Bones(socket.transform, bones)
                     : new List<string>();
             }
-            FrontAndBack(derived, animator);
+            FrontAndBack(derived, animator, source.transform);
 
             foreach (var socket in sockets)
             {
+                if (!socketKeys.TryGetValue(socket, out string key)) continue;
                 var tags = Strings(socket, "tags");
                 tags.AddRange(derived[socket]);
                 if (Flag(socket, "useSharedTag")) tags.Add(Shared);
-                if (tags.Count > 0) AuthoredSocketTags[socket.gameObject.name] = tags;
+                if (tags.Count > 0) AuthoredSocketTags[key] = tags;
             }
         }
 
-        // The bones SPS names a socket after. Nothing else is a tag there,
-        // so nothing else is worth mapping.
+        // The bones SPS names a socket after. Nothing else is a tag there.
         static readonly (HumanBodyBones Bone, string[] Tags)[] Named =
         {
             (HumanBodyBones.Hips, new[] { "hips" }),
@@ -214,10 +295,15 @@ namespace AvatarBridge
         {
             var map = new Dictionary<Transform, string[]>();
             if (animator == null || !animator.isHuman) return map;
-            foreach (var entry in Named)
+            // Every humanoid bone, the unnamed ones with no tags, so the climb
+            // stops at the first bone of any kind as SPS's does. Mapping the
+            // named ones alone climbed past them: a forearm socket came out
+            // "chest", and a thigh socket "hips", which also broke the hip pair.
+            for (var bone = HumanBodyBones.Hips; bone < HumanBodyBones.LastBone; bone++)
             {
-                var t = animator.GetBoneTransform(entry.Bone);
-                if (t != null && !map.ContainsKey(t)) map[t] = entry.Tags;
+                var t = animator.GetBoneTransform(bone);
+                if (t == null || map.ContainsKey(t)) continue;
+                map[t] = Named.FirstOrDefault(n => n.Bone == bone).Tags ?? new string[0];
             }
             return map;
         }
@@ -237,25 +323,29 @@ namespace AvatarBridge
 
         // Two sockets on the hips: the one further forward is the front.
         //
-        // Only when there are exactly two, which is SPS's own rule as well.
-        // With three the choice is a heuristic, and naming a front socket
-        // "hipsback" is worse than leaving both unnamed, since a plug that
-        // refuses one would then refuse the wrong one.
-        static void FrontAndBack(Dictionary<Component, List<string>> derived, Animator animator)
+        // With three or more, the pair is the two nearest the hips along the
+        // forward axis, the lower path first on a tie, which is SPS's choice.
+        // Dropping the split there instead left a plug refusing "hipsback"
+        // free to enter a socket it never entered in VRChat.
+        static void FrontAndBack(Dictionary<Component, List<string>> derived, Animator animator, Transform root)
         {
             if (animator == null || !animator.isHuman) return;
             var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
             var hand = animator.GetBoneTransform(HumanBodyBones.RightHand);
             if (hips == null || hand == null) return;
             var onHips = derived.Where(p => p.Value.Contains("hips")).Select(p => p.Key).ToList();
-            if (onHips.Count != 2) return;
+            if (onHips.Count < 2) return;
             var right = hand.position - hips.position;
             if (right.sqrMagnitude <= 0.000001f) return;
             var forward = Vector3.Cross(right.normalized, Vector3.up);
             if (forward.sqrMagnitude <= 0.000001f) return;
             forward.Normalize();
+            float Along(Component c) => Vector3.Dot(c.transform.position - hips.position, forward);
             var ordered = onHips
-                .OrderBy(c => Vector3.Dot(c.transform.position - hips.position, forward))
+                .OrderBy(c => Mathf.Abs(Along(c)))
+                .ThenBy(c => KeyOf(root, c.transform), System.StringComparer.Ordinal)
+                .Take(2)
+                .OrderBy(Along)
                 .ToList();
             derived[ordered[0]].Add("hipsback");
             derived[ordered[1]].Add("hipsfront");
@@ -313,7 +403,8 @@ namespace AvatarBridge
 
         public void Restore()
         {
-            foreach (var (plug, was) in _flipped)
+            // Only plugs that were on are listed, so on is what goes back.
+            foreach (var plug in _flipped)
             {
                 if (plug == null)
                 {
@@ -323,7 +414,7 @@ namespace AvatarBridge
                     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
                 if (field != null)
                 {
-                    field.SetValue(plug, was);
+                    field.SetValue(plug, true);
                     EditorUtility.SetDirty(plug);
                 }
             }

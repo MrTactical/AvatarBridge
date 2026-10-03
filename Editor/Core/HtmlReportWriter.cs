@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using UnityEditor;
-using UnityEditor.Animations;
 using UnityEngine;
 
 namespace AvatarBridge
@@ -44,8 +43,7 @@ namespace AvatarBridge
                 .OrderByDescending(g => g.Count).ToList();
 
             CountParameters(ctx, out int syncedParams, out int localParams);
-            GatherFacts(ctx, out int layers, out int states, out int clips,
-                out int meshes, out int blendshapes, out int materials);
+            GatherFacts(ctx, out int layers, out int meshes, out int blendshapes);
             float height = AvatarScalerInjector.MeasureHeight(ctx);
 
             var sb = new StringBuilder(160 * 1024);
@@ -86,7 +84,7 @@ namespace AvatarBridge
 
             // ------------------------------------------------------------------ charts ----
             sb.Append("<section class=\"charts\">");
-            Donut(sb, "What happened", total, new[]
+            Donut(sb, "What happened", total, "entries", new[]
             {
                 ("Converted", converted, "var(--good)"),
                 ("Approximated", approximated, "var(--info)"),
@@ -94,7 +92,7 @@ namespace AvatarBridge
                 ("Warnings", warnings, "var(--warn)"),
                 ("Errors", errors, "var(--bad)"),
             });
-            Donut(sb, "Parameter sync", syncedParams + localParams, new[]
+            Donut(sb, "Parameter sync", syncedParams + localParams, "parameters", new[]
             {
                 ("Synced", syncedParams, "var(--info)"),
                 ("Local (#)", localParams, "var(--mut)"),
@@ -183,7 +181,8 @@ namespace AvatarBridge
               .Append(count).Append("</button>");
         }
 
-        static void Donut(StringBuilder sb, string title, int total, (string Name, int Count, string Colour)[] slices)
+        static void Donut(StringBuilder sb, string title, int total, string unit,
+            (string Name, int Count, string Colour)[] slices)
         {
             sb.Append("<div class=\"card\"><h2>").Append(H(title)).Append("</h2><div class=\"donutrow\">");
             sb.Append("<svg viewBox=\"0 0 120 120\" role=\"img\" aria-label=\"").Append(H(title)).Append("\">");
@@ -192,6 +191,15 @@ namespace AvatarBridge
             var live = slices.Where(s => s.Count > 0).ToArray();
             foreach (var s in live)
             {
+                if (live.Length == 1)
+                {
+                    // A whole ring as an arc starts and ends on one point, and SVG draws nothing.
+                    sb.Append("<circle cx=\"").Append(F(cx)).Append("\" cy=\"").Append(F(cy)).Append("\" r=\"")
+                      .Append(F(r)).Append("\" fill=\"none\" stroke=\"").Append(s.Colour)
+                      .Append("\" stroke-width=\"16\"><title>").Append(H($"{s.Name}: {s.Count}"))
+                      .Append("</title></circle>");
+                    break;
+                }
                 double sweep = total > 0 ? 360.0 * s.Count / total : 0;
                 double a0 = angle + (live.Length > 1 ? gapDeg / 2 : 0);
                 double a1 = angle + sweep - (live.Length > 1 ? gapDeg / 2 : 0);
@@ -204,7 +212,7 @@ namespace AvatarBridge
                 angle += sweep;
             }
             sb.Append("<text x=\"60\" y=\"57\" class=\"dn\">").Append(total).Append("</text>");
-            sb.Append("<text x=\"60\" y=\"72\" class=\"dl\">entries</text></svg>");
+            sb.Append("<text x=\"60\" y=\"72\" class=\"dl\">").Append(H(unit)).Append("</text></svg>");
             sb.Append("<ul class=\"legend\">");
             foreach (var s in slices)
             {
@@ -263,49 +271,48 @@ namespace AvatarBridge
             }
         }
 
-        static void GatherFacts(BridgeContext ctx, out int layers, out int states, out int clips,
-            out int meshes, out int blendshapes, out int materials)
+        static void GatherFacts(BridgeContext ctx, out int layers, out int meshes, out int blendshapes)
         {
-            layers = 0; states = 0; clips = 0; meshes = 0; blendshapes = 0; materials = 0;
-            var controller = ctx.MergedController;
-            if (controller != null)
+            layers = ctx.MergedController != null ? ctx.MergedController.layers.Length : 0;
+            meshes = 0; blendshapes = 0;
+            if (ctx.Target == null) return;
+            foreach (var smr in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
-                layers = controller.layers.Length;
-                clips = controller.animationClips.Distinct().Count();
-                foreach (var layer in controller.layers)
-                {
-                    states += CountStates(layer.stateMachine);
-                }
+                meshes++;
+                blendshapes += smr.sharedMesh != null ? smr.sharedMesh.blendShapeCount : 0;
             }
-            if (ctx.Target != null)
-            {
-                var mats = new HashSet<Material>();
-                foreach (var smr in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
-                {
-                    meshes++;
-                    blendshapes += smr.sharedMesh != null ? smr.sharedMesh.blendShapeCount : 0;
-                    foreach (var m in smr.sharedMaterials) { if (m != null) mats.Add(m); }
-                }
-                materials = mats.Count;
-            }
-        }
-
-        static int CountStates(AnimatorStateMachine machine)
-        {
-            if (machine == null) return 0;
-            int n = machine.states.Length;
-            foreach (var sub in machine.stateMachines) { n += CountStates(sub.stateMachine); }
-            return n;
         }
 
         // ------------------------------------------------------------- tiny markdown ----
 
         static void AppendMiniMarkdown(StringBuilder sb, string md)
         {
-            bool inTable = false;
+            bool inTable = false, inFence = false;
             foreach (var raw in md.Replace("\r\n", "\n").Split('\n'))
             {
                 string line = raw;
+                // The weight and survey cards fold a column-aligned block away in <details>:
+                // a fence keeps its spacing, and its "#" lines are text, not headings.
+                if (line.TrimStart().StartsWith("```"))
+                {
+                    if (inTable) { sb.Append("</table>"); inTable = false; }
+                    sb.Append(inFence ? "</pre>" : "<pre>");
+                    inFence = !inFence;
+                    continue;
+                }
+                if (inFence) { sb.Append(H(line)).Append('\n'); continue; }
+                string tag = line.Trim();
+                if (tag == "<details>" || tag == "</details>")
+                {
+                    if (inTable) { sb.Append("</table>"); inTable = false; }
+                    sb.Append(tag);
+                    continue;
+                }
+                if (tag.StartsWith("<summary>") && tag.EndsWith("</summary>"))
+                {
+                    sb.Append("<summary>").Append(H(tag.Substring(9, tag.Length - 19))).Append("</summary>");
+                    continue;
+                }
                 bool tableRow = line.TrimStart().StartsWith("|");
                 if (inTable && !tableRow) { sb.Append("</table>"); inTable = false; }
                 if (tableRow)
@@ -331,6 +338,7 @@ namespace AvatarBridge
                 else { sb.Append("<p>").Append(Inline(line)).Append("</p>"); }
             }
             if (inTable) { sb.Append("</table>"); }
+            if (inFence) { sb.Append("</pre>"); }
         }
 
         static string Inline(string text)
@@ -411,7 +419,9 @@ margin-bottom:7px;overflow:hidden}
 .appx code{background:var(--bg);border-radius:4px;padding:1px 5px;
 font:12px ui-monospace,Consolas,monospace}
 .appx .li{padding-left:14px;position:relative}.appx .li:before{content:'–';position:absolute;left:0}
-.appx .gap{height:6px}
+.appx .gap{height:6px}.appx summary{cursor:pointer;font-weight:600}
+.appx pre{background:var(--bg);border-radius:8px;padding:10px 12px;margin:6px 0;overflow-x:auto;
+font:12px/1.45 ui-monospace,Consolas,monospace}
 footer{margin-top:34px;color:var(--ink2);font-size:12.5px}
 footer a{color:var(--accent)}
 @media(max-width:760px){.charts{grid-template-columns:1fr}.bl{width:110px}}";

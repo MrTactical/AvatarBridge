@@ -118,15 +118,12 @@ Shader "YAPS/Socket Readout"
                     int total = max(layout.cells, 1);
                     [loop] for (int lv = 0; lv < YAPS_ATLAS_LEVELS; lv++)
                     {
-                        float size = YAPS_ATLAS_CELL * pow(4.0, lv);
+                        float size = YapsAtlasCellSize(lv);
                         int3 cell = int3(floor(at / size));
                         float3 f = frac(at / size);
                         float tagWant = YapsAtlasTag(cell);
-                        int idx = YapsAtlasHash(cell) % total;
-                        if (idx < 0) idx += total;
-                        int step = YapsAtlasHash2(cell) % max(total - 1, 1);
-                        if (step < 0) step += max(total - 1, 1);
-                        int idxB = (idx + step + 1) % total;
+                        int idx, idxB;
+                        YapsAtlasHomes(cell, total, idx, idxB);
                         float state = 0;
                         [loop] for (int home = 0; home < 2; home++)
                         {
@@ -170,9 +167,8 @@ Shader "YAPS/Socket Readout"
                 [unroll] for (uint i = 0; i < 4; i++)
                 {
                     if (dot(unity_LightColor[i].rgb, unity_LightColor[i].rgb) > 0.0001) continue;
-                    float range = YapsLightRange(i);
-                    if (range >= 0.5) continue;
-                    int digit = (int) round(fmod(range, 0.1) * 100);
+                    int digit = YapsLightDigit(i);
+                    if (digit < 0) continue;
                     float3 lp = YapsLightPosition(i);
                     bool root = digit == 7 || (digit >= 1 && digit <= 4);
                     if (root && distance(lp, at) < 0.02) ownLight = 1;

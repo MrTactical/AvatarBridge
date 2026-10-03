@@ -45,6 +45,8 @@ namespace AvatarBridge
         static readonly Regex DepthDeclaration =
             new Regex(@"(?:uniform\s+)?sampler2D(?:_float|_half)?\s+_CameraDepthTexture\s*;");
         static readonly Regex DepthRead = new Regex(@"\btex2D(proj|lod)?\s*\(\s*_CameraDepthTexture\s*,");
+        // A #define and its replacement, continuation lines included.
+        static readonly Regex DefineLine = new Regex(@"#define[ \t]+(\w+)((?:\\\r?\n|[^\r\n])*)");
 
         // Per conversion: what the renderer pass patched, for the swap
         // pass that runs once the clips are the conversion's own.
@@ -133,13 +135,12 @@ namespace AvatarBridge
 
         // What one pass over shaders found. The renderer pass and the swap
         // pass report it the same way; the swap pass used to drop every
-        // already-correct, screen-grab and recipe line it collected.
+        // already-correct and screen-grab line it collected.
         class Outcome
         {
             public readonly List<string> Repointed = new List<string>();
             public readonly List<string> Refused = new List<string>();
             public readonly List<string> AlreadyCorrect = new List<string>();
-            public readonly List<string> Recipes = new List<string>();
             public readonly List<string> GrabLimited = new List<string>();
             public readonly List<string> PartlyPatched = new List<string>();
         }
@@ -164,8 +165,8 @@ namespace AvatarBridge
                 }
                 else
                 {
-                    result = TryPatch(source, shader.name, dir, out string reason, out var recipe,
-                        out bool exact, out bool grabbed, out var passesLeft);
+                    result = TryPatch(source, shader.name, dir, out string reason, out bool grabbed,
+                        out var passesLeft);
                     if (result == null)
                     {
                         outcome.Refused.Add($"{shader.name} ({reason})");
@@ -174,11 +175,6 @@ namespace AvatarBridge
                     {
                         outcome.Repointed.Add(shader.name);
                         if (grabbed) outcome.GrabLimited.Add(shader.name);
-                        if (recipe != null)
-                        {
-                            outcome.Recipes.Add($"{shader.name}: {recipe.Note}" + (exact ? "" :
-                                " (your copy differs from the revision the recipe was written against, but every line it edits matched)"));
-                        }
                         if (passesLeft.Count > 0)
                         {
                             outcome.PartlyPatched.Add($"{shader.name}: {string.Join(", ", passesLeft)}");
@@ -223,13 +219,6 @@ namespace AvatarBridge
                     "refract comes from one eye",
                     $"{string.Join(", ", o.GrabLimited.Distinct())}: they draw in both eyes, but refraction shows one " +
                     "eye's view. Unfixable here; use a shader that doesn't grab the screen if it bothers you.");
-            }
-            if (o.Recipes.Count > 0)
-            {
-                report.Approximated(Category,
-                    $"{o.Recipes.Count} shader(s){where} fixed by a hand-written stereo recipe",
-                    string.Join("; ", o.Recipes) + ". Matched by name and by every line it edits; originals " +
-                    "untouched. Check both eyes in VR.");
             }
             if (o.Refused.Count > 0)
             {
@@ -371,9 +360,11 @@ namespace AvatarBridge
         internal static StereoPlan PlanStereo(List<SourceFile> unit)
         {
             var plan = new StereoPlan();
-            var vertNames = unit.SelectMany(f => VertexPragma.Matches(f.Text).Cast<Match>())
+            var offPc = unit.ToDictionary(f => f, f => OffPcPrograms(f.Text));
+            bool OnPc(SourceFile f, int at) => !offPc[f].Any(r => at >= r.from && at < r.to);
+            var vertNames = unit.SelectMany(f => VertexPragma.Matches(f.Text).Cast<Match>().Where(m => OnPc(f, m.Index)))
                 .Select(m => m.Groups[1].Value).Distinct().ToList();
-            var fragNames = unit.SelectMany(f => FragmentPragma.Matches(f.Text).Cast<Match>())
+            var fragNames = unit.SelectMany(f => FragmentPragma.Matches(f.Text).Cast<Match>().Where(m => OnPc(f, m.Index)))
                 .Select(m => m.Groups[1].Value).Distinct().ToList();
             plan.Depth = unit.Any(f => DepthRead.IsMatch(f.Text));
             plan.DepthRewritable = plan.Depth && unit.All(f => DepthRead.Matches(f.Text).Cast<Match>().All(m =>
@@ -396,13 +387,46 @@ namespace AvatarBridge
                 if (macro != null) plan.Adds.Add(macro);
             }
 
+            // Authors wrap the macros: locked Poiyomi Pro calls its own
+            // POI_INITIALIZE_VERTEX_OUTPUT_STEREO, a #define holding Unity's.
+            // Reading names literally sent every Poiyomi material to be patched
+            // a second time (SpiSweepProbe), so a #define or a called function
+            // that holds the macro counts, one level deep.
+            var wrappers = StereoMacros.Concat(new[] { EyeIndexMacro }).ToDictionary(m => m, m =>
+                unit.SelectMany(f => DefineLine.Matches(f.Text).Cast<Match>())
+                    .Where(d => d.Groups[2].Value.Contains(m)).Select(d => d.Groups[1].Value).Distinct().ToList());
+            bool Has(string code, string macro)
+            {
+                if (code.Contains(macro) || wrappers[macro].Any(w => Regex.IsMatch(code, $@"\b{Regex.Escape(w)}\b")))
+                {
+                    return true;
+                }
+                foreach (string callee in Regex.Matches(code, @"\b([A-Za-z_]\w*)\s*\(").Cast<Match>()
+                             .Select(c => c.Groups[1].Value).Distinct())
+                {
+                    var definition = new Regex($@"\b\w+\s+{Regex.Escape(callee)}\s*\([^;{{)]*\)\s*\{{");
+                    foreach (var f in unit)
+                    {
+                        var d = definition.Match(f.Text);
+                        if (!d.Success) continue;
+                        int open = d.Index + d.Length - 1, close = MatchBrace(f.Text, open);
+                        string helper = close > open ? f.Text.Substring(open, close - open) : "";
+                        if (helper.Contains(macro) || wrappers[macro].Any(w => Regex.IsMatch(helper, $@"\b{Regex.Escape(w)}\b")))
+                        {
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }
+
             // Last in the struct, as Unity places them. First, the stereo member
             // came before a fragment's own system values (a VFACE) and only the
             // single-pass instanced variant failed to compile (SpiPatcherProbe).
             void Member(SourceFile owner, int open, string macro)
             {
                 int end = MatchBrace(owner.Text, open);
-                if (end > 0 && !owner.Text.Substring(open, end - open).Contains(macro))
+                if (end > 0 && !Has(owner.Text.Substring(open, end - open), macro))
                 {
                     Edit(owner, end, "\n\t\t\t\t" + macro + "\n\t\t\t", macro);
                 }
@@ -419,6 +443,7 @@ namespace AvatarBridge
                     {
                         int open = BodyOpen(file.Text, sig.Index + sig.Length);
                         if (open < 0) continue; // a call or a prototype, not the definition
+                        if (!OnPc(file, sig.Index)) continue;
                         plan.Passes++;
                         defined.Add(vertName);
                         string v2fType = sig.Groups[1].Value, inType = sig.Groups[2].Value, inArg = sig.Groups[3].Value;
@@ -445,12 +470,12 @@ namespace AvatarBridge
                         Member(inStruct.file, inStruct.open, StereoMacros[0]);
                         Member(v2fStruct.file, v2fStruct.open, StereoMacros[1]);
                         string setup = "";
-                        if (!body.Contains(StereoMacros[2]))
+                        if (!Has(body, StereoMacros[2]))
                         {
                             setup += $"\n\t\t\t\t{StereoMacros[2]}({inArg});";
                             plan.Adds.Add(StereoMacros[2]);
                         }
-                        if (!body.Contains(StereoMacros[3]))
+                        if (!Has(body, StereoMacros[3]))
                         {
                             setup += $"\n\t\t\t\t{StereoMacros[3]}({declaration.Groups[1].Value});";
                             plan.Adds.Add(StereoMacros[3]);
@@ -479,13 +504,13 @@ namespace AvatarBridge
                     var signature = new Regex($@"\b\w+\s+{Regex.Escape(fragName)}\s*\(\s*(\w+)\s+(\w+)");
                     foreach (Match sig in signature.Matches(file.Text))
                     {
-                        if (!outputTypes.Contains(sig.Groups[1].Value)) continue;
+                        if (!outputTypes.Contains(sig.Groups[1].Value) || !OnPc(file, sig.Index)) continue;
                         int paren = file.Text.IndexOf('(', sig.Index + sig.Groups[0].Value.IndexOf(fragName, StringComparison.Ordinal));
                         int shut = MatchParen(file.Text, paren);
                         int open = shut < 0 ? -1 : BodyOpen(file.Text, shut + 1);
                         int close = open < 0 ? -1 : MatchBrace(file.Text, open);
                         if (close < 0) continue;
-                        if (!file.Text.Substring(open, close - open).Contains(EyeIndexMacro))
+                        if (!Has(file.Text.Substring(open, close - open), EyeIndexMacro))
                         {
                             Edit(file, open + 1, $"\n\t\t\t\t{EyeIndexMacro}({sig.Groups[2].Value});", null);
                         }
@@ -494,6 +519,23 @@ namespace AvatarBridge
             }
             return plan;
         }
+
+        // A program that never compiles for PC is left alone. VRCFury's socket
+        // marker ends in a Metal-only pass with no stereo macros, and patching
+        // it copied a shader that already draws in both eyes (SpiSweepProbe).
+        static readonly Regex Program = new Regex(@"\b(?:CG|HLSL)PROGRAM\b(.*?)\bEND(?:CG|HLSL)\b", RegexOptions.Singleline);
+        static readonly Regex OnlyRenderers = new Regex(@"#pragma[ \t]+only_renderers\b([^\r\n]*)");
+        static readonly Regex ExcludeRenderers = new Regex(@"#pragma[ \t]+exclude_renderers\b([^\r\n]*)");
+        static readonly Regex D3D11 = new Regex(@"\bd3d11\b");
+
+        static List<(int from, int to)> OffPcPrograms(string text) =>
+            Program.Matches(text).Cast<Match>().Where(p =>
+            {
+                var only = OnlyRenderers.Match(p.Groups[1].Value);
+                var exclude = ExcludeRenderers.Match(p.Groups[1].Value);
+                return (only.Success && !D3D11.IsMatch(only.Groups[1].Value))
+                    || (exclude.Success && D3D11.IsMatch(exclude.Groups[1].Value));
+            }).Select(p => (p.Index, p.Index + p.Length)).ToList();
 
         // The definition's opening brace after a signature, across any return
         // semantic (": SV_Target"); -1 for a call or prototype.
@@ -664,11 +706,8 @@ namespace AvatarBridge
         }
 
         static Shader TryPatch(string sourcePath, string shaderName, string dir, out string reason,
-            out ShaderFixRecipes.Recipe appliedRecipe, out bool recipeWasExact, out bool grabPassLimited,
-            out List<string> passesLeft)
+            out bool grabPassLimited, out List<string> passesLeft)
         {
-            appliedRecipe = null;
-            recipeWasExact = false;
             grabPassLimited = false;
             passesLeft = new List<string>();
             List<SourceFile> unit;
@@ -687,10 +726,6 @@ namespace AvatarBridge
                 return null;
             }
             var shaderFile = unit[0];
-
-            // Taken before a single edit, so the fingerprint identifies
-            // the file as the user has it.
-            var recipe = ShaderFixRecipes.Find(shaderName, shaderFile.Text, out bool exactRecipeRevision);
 
             // Line endings are tracked per file (SourceFile.Crlf) and reapplied before writing:
             // the inserted lines use \n, and mixing them into a CRLF file makes Unity warn about
@@ -744,22 +779,6 @@ namespace AvatarBridge
             else if (plan.Depth)
             {
                 passesLeft.Add("its depth reads (one takes more than the depth value), which still read one eye");
-            }
-
-            // The hand-written recipe for this exact file, applied last,
-            // describing only what the generic pass cannot derive.
-            if (recipe != null)
-            {
-                if (!ShaderFixRecipes.TryApply(recipe, shaderFile.Text, out string patched, out string failure))
-                {
-                    // Every anchor existed in the original, so a generic
-                    // edit moved one. A recipe applies whole or not at all.
-                    reason = $"its stereo recipe no longer fits after the generic patch ({failure})";
-                    return null;
-                }
-                shaderFile.Text = patched;
-                appliedRecipe = recipe;
-                recipeWasExact = exactRecipeRevision;
             }
 
             // Rename so it can't collide with the original in the shader list.

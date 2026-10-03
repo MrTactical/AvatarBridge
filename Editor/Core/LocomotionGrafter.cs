@@ -839,24 +839,6 @@ namespace AvatarBridge
                 }
             }
         }
-
-        static int CountClips(Motion motion)
-        {
-            if (motion is AnimationClip)
-            {
-                return 1;
-            }
-            if (motion is BlendTree tree)
-            {
-                int n = 0;
-                foreach (var child in tree.children)
-                {
-                    n += CountClips(child.motion);
-                }
-                return n;
-            }
-            return 0;
-        }
     }
 }
 #endif

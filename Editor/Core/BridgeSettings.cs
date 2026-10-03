@@ -63,8 +63,8 @@ namespace AvatarBridge
         [Header("Physics")]
         public PhysicsTarget physicsTarget = PhysicsTarget.MagicaCloth2;
         public bool deleteConvertedPhysBones = true;
-        // Name converted MagicaCloth objects after their PhysBone parameter so the
-        // GrabbyBones mod drives the avatar's _IsGrabbed / _Angle grab-reactive logic.
+        // Name converted physics holders (MagicaCloth2 or DynamicBone) after their PhysBone
+        // parameter so the GrabbyBones mod drives the avatar's _IsGrabbed / _Angle grab-reactive logic.
         public bool grabbyBonesSupport = true;
         // Start each cloth from the MagicaCloth2 preset that fits the
         // chain. Structure comes from the PhysBone either way.
@@ -120,8 +120,6 @@ namespace AvatarBridge
         public bool addPhysicsToRiggedStyles = false;
 
         [Header("VRChat-only system stripping")]
-        // CVR provides locomotion and emotes natively. GoGo's layers
-        // fight them while burning sync budget.
         // Measure the converted avatar and say what to fix: texture memory
         // against the surface it covers, contacts against the instance's
         // budget, triangles, cloth, locked shader copies. Reads only, and
@@ -132,6 +130,8 @@ namespace AvatarBridge
         // reach, bindings two layers fight over, what lost its driver in the
         // conversion. Reads only.
         public bool surveyAvatar = true;
+        // CVR provides locomotion and emotes natively. GoGo's layers
+        // fight them while burning sync budget.
         public bool stripGogoLoco = true;
         // SPS/OGB/TPS, PCS and Wholesome are VRChat-specific.
         // Non-functional in CVR, and expensive in sync bits.
@@ -151,15 +151,6 @@ namespace AvatarBridge
         // Keep each socket's depth parameter synced, so the author's own
         // depth reactions play for the room. Two per socket, 32 bits each.
         public bool syncSocketDepthForOthers = false;
-        // How many sockets START lit; the lighthouse menu moves the lit
-        // pair after that, so this stopped being a per-avatar setting.
-        //
-        // One, not two. The third slot belongs to the tracker light of the
-        // prop or partner entering the socket, which lives on content this
-        // avatar cannot see at build time. Two lit sockets plus that tracker
-        // is five lights for four slots, and Unity drops the lowest range,
-        // which is always the hole root.
-        internal const int DefaultMaxLightEmittingSockets = 1;
         // Comma-separated. Matched as parameter prefixes and
         // layer-name substrings.
         public string extraStripKeywords = "";
@@ -192,8 +183,9 @@ namespace AvatarBridge
         // size that fits one fits the other. Anything a material outside
         // this avatar touches is refused and named instead.
         //
-        // Sizes only. Stripping renderers and tidying the animator stay on
-        // the button, where the avatar is in front of you.
+        // Sizes, and a smaller format where a PNG or JPG's own pixels allow
+        // it. Stripping renderers and tidying the animator stay on the
+        // button, where the avatar is in front of you.
         public bool slimTexturesOnConvert = true;
 
         // Copy shaders lacking single-pass instanced support into

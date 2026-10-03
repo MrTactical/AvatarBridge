@@ -47,7 +47,7 @@ namespace AvatarBridge
             {
                 ctx.Report.Skipped(Category, "Kept the avatar's own face tracking (chosen)",
                     "Nothing added. An existing rig merges with the animator; to add one, convert with " +
-                    "\"CVR-VRCFT\" selected.");
+                    "\"Native CVR Component\" or \"Unity Animator Blendtrees (DSR)\" selected.");
                 return;
             }
 
@@ -58,7 +58,7 @@ namespace AvatarBridge
                 // CVRFaceTracking component is not added. Just report the bundle state here.
                 if (!FaceTrackingPackages.IsInstalled())
                 {
-                    ctx.Report.Error(Category, "CVR-VRCFT face tracking selected, but its bundled assets are missing",
+                    ctx.Report.Error(Category, "\"Unity Animator Blendtrees (DSR)\" face tracking selected, but its bundled assets are missing",
                         $"Reimport AvatarBridge so \"{FaceTrackingPackages.DisplayName}\" is present, then convert again.");
                 }
                 return;
@@ -127,11 +127,7 @@ namespace AvatarBridge
                 return 0;
             }
 
-            var shapes = new List<string>(mesh.sharedMesh.blendShapeCount);
-            for (int i = 0; i < mesh.sharedMesh.blendShapeCount; i++)
-            {
-                shapes.Add(mesh.sharedMesh.GetBlendShapeName(i));
-            }
+            var plains = ShapeNames(mesh.sharedMesh).plain;
 
             int filled = 0;
             for (int i = 0; i < targets.Length; i++)
@@ -141,21 +137,21 @@ namespace AvatarBridge
                     continue;   // ChilloutVR already matched this one
                 }
                 string target = Simplify(targets[i].ToLowerInvariant());
-                string best = null;
+                int best = -1;
                 int bestLength = 0;
-                foreach (var shape in shapes)
+                for (int s = 0; s < plains.Count; s++)
                 {
-                    string plain = Simplify(shape.ToLowerInvariant());
+                    string plain = plains[s];
                     if (plain.Length <= bestLength || !IsSideVariant(target, plain))
                     {
                         continue;
                     }
-                    best = shape;
+                    best = s;
                     bestLength = plain.Length;
                 }
-                if (best != null)
+                if (best >= 0)
                 {
-                    slots[i] = best;
+                    slots[i] = mesh.sharedMesh.GetBlendShapeName(best);
                     filled++;
                 }
             }
@@ -174,7 +170,7 @@ namespace AvatarBridge
 
             foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
-                if (smr.sharedMesh == null || smr.sharedMesh.blendShapeCount == 0 || IsDebugMesh(smr))
+                if (smr.sharedMesh == null || smr.sharedMesh.blendShapeCount == 0 || IsDebugMesh(smr, root.transform))
                 {
                     continue;
                 }
@@ -196,7 +192,7 @@ namespace AvatarBridge
             // contest is only needed when nothing authoritative is available. Applied when the
             // named mesh carries face-tracking shapes at all, so an avatar whose visemes and FT
             // live on different meshes still resolves by score.
-            if (named != null && named != mesh && named.sharedMesh != null && !IsDebugMesh(named))
+            if (named != null && named != mesh && named.sharedMesh != null && !IsDebugMesh(named, root.transform))
             {
                 var namedShapes = ShapeNames(named.sharedMesh);
                 int namedLegacy = CountMatches(namedShapes, legacyShapes);
@@ -212,17 +208,21 @@ namespace AvatarBridge
             return mesh != null && score >= DetectionThreshold;
         }
 
-        static List<string> ShapeNames(Mesh mesh)
+        // Lowered and simplified once per mesh: every target is compared against every shape.
+        static (List<string> lowered, List<string> plain) ShapeNames(Mesh mesh)
         {
-            var names = new List<string>(mesh.blendShapeCount);
+            var lowered = new List<string>(mesh.blendShapeCount);
+            var plain = new List<string>(mesh.blendShapeCount);
             for (int i = 0; i < mesh.blendShapeCount; i++)
             {
-                names.Add(mesh.GetBlendShapeName(i).ToLowerInvariant());
+                string name = mesh.GetBlendShapeName(i).ToLowerInvariant();
+                lowered.Add(name);
+                plain.Add(Simplify(name));
             }
-            return names;
+            return (lowered, plain);
         }
 
-        static int CountMatches(List<string> loweredShapeNames, string[] targets)
+        static int CountMatches((List<string> lowered, List<string> plain) shapes, string[] targets)
         {
             int count = 0;
             foreach (var target in targets)
@@ -230,9 +230,10 @@ namespace AvatarBridge
                 string t = target.ToLowerInvariant();
                 string tPlain = Simplify(t);
                 bool hit = false;
-                foreach (var shape in loweredShapeNames)
+                for (int i = 0; i < shapes.lowered.Count; i++)
                 {
-                    string sPlain = Simplify(shape);
+                    string shape = shapes.lowered[i];
+                    string sPlain = shapes.plain[i];
                     if (shape.Contains(t) || sPlain.Contains(tPlain) || IsSideVariant(tPlain, sPlain))
                     {
                         hit = true;
@@ -255,6 +256,10 @@ namespace AvatarBridge
                 return false;
             }
             string rest = targetPlain.Substring(shapePlain.Length);
+            if (rest.Length > 0 && System.Array.IndexOf(DirectionalTargets, targetPlain) >= 0)
+            {
+                return false;
+            }
             return System.Array.IndexOf(SideWords, rest) >= 0;
         }
 
@@ -262,6 +267,14 @@ namespace AvatarBridge
         {
             "", "left", "right", "upper", "lower",
             "upperleft", "upperright", "lowerleft", "lowerright",
+        };
+
+        // On these the direction IS the movement, not a side of one shape: a plain "Tongue"
+        // standing in for TongueLeft sticks the tongue out when it should move sideways.
+        static readonly string[] DirectionalTargets =
+        {
+            "jawleft", "jawright", "tongueleft", "tongueright",
+            "mouthupperleft", "mouthupperright", "mouthlowerleft", "mouthlowerright",
         };
 
         static string Simplify(string s)
@@ -288,16 +301,13 @@ namespace AvatarBridge
             return fallback;
         }
 
-        static bool IsDebugMesh(SkinnedMeshRenderer smr)
+        // Internal so the face mesh finder can share it. The panel carries every tracking
+        // shape, so it outscores the real face. It is usually named innocuously and betrayed by its parents
+        // instead (VRCFury - Face Tracking - UE Blendshapes/VF_UE_Debug/WorldObject/Window/FT_Debug).
+        // The walk stops below the avatar root: a scene parent named "Debug" is not the panel.
+        internal static bool IsDebugMesh(SkinnedMeshRenderer smr, Transform root)
         {
-            string name = smr.name.ToLowerInvariant();
-            if (name.Contains("debug") || name.Contains("vf_ue") || name.Contains("ft_debug"))
-            {
-                return true;
-            }
-            // The panel is usually named innocuously and betrayed by its parents instead
-            // (VRCFury - Face Tracking - UE Blendshapes/VF_UE_Debug/WorldObject/Window/FT_Debug).
-            for (var t = smr.transform; t != null; t = t.parent)
+            for (var t = smr.transform; t != null && t != root; t = t.parent)
             {
                 string n = t.name.ToLowerInvariant();
                 if (n.Contains("debug") || n.Contains("vf_ue") || n.Contains("ft_debug")

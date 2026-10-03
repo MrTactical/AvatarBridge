@@ -75,7 +75,10 @@ namespace AvatarBridge
         public static void CreatePlugPropPrefab()
         {
             EnsureFolder(PrefabFolder);
-            var root = YapsNativeBuilder.BuildTestPlug(null, select: false);
+            // Its own mesh: the test plug's is overwritten by the next one
+            // spawned, which left the saved prefab with no mesh.
+            var root = YapsNativeBuilder.BuildTestPlug(null, select: false,
+                meshPath: PrefabFolder + "/YAPS Plug Prop Mesh.asset");
             if (root == null)
             {
                 Debug.LogError("[YAPS] Could not build the plug: YAPS Simple Lit is missing from the project.");
@@ -152,9 +155,9 @@ namespace AvatarBridge
             Debug.Log("[YAPS] Ring-and-socket prop prefab written to " + path + ". " + prop.Message +
                       (prop.Notes.Count > 0 ? " " + string.Join(" ", prop.Notes) : "") +
                       " Upload it from the CCK as a prop. Both sockets carry marker lights, and a mesh has " +
-                      "four vertex light slots, so an old DPS toy sees one of them at a time; anything " +
-                      "modern finds both by contact. Resize the body and move the sockets to taste before " +
-                      "uploading.");
+                      "four vertex light slots, so an old DPS toy sees one of them at a time; a YAPS plug " +
+                      "finds both through the screen atlas. Resize the body and move the sockets to taste " +
+                      "before uploading.");
         }
 
         // A socket in the scene rather than a prefab on disk, for previewing a
@@ -267,28 +270,22 @@ namespace AvatarBridge
         {
             if (socket == null) return false;
             var lit = Lit(socket);
-            return lit.IndexOf(socket) < Places(socket);
+            return lit.IndexOf(socket) < StartLit;
         }
 
-        // Four slots, two to a socket, and a tracker light takes one of the
-        // four before any socket does. The tracker that matters is rarely on
-        // this avatar: it belongs to the prop or the partner entering the
-        // socket, and there is no way to count those at build time. So the
-        // budget always reserves one slot for a tracker it cannot see.
+        // How many sockets start lit: one, whatever is on the avatar. Four
+        // slots, two to a socket, and a tracker light takes one of the four
+        // before any socket does. The tracker that matters is rarely on this
+        // avatar: it belongs to the prop or the partner entering the socket,
+        // and there is no way to count those at build time. So one slot is
+        // always held for a tracker the build cannot see, and the lighthouse
+        // menu moves which socket is lit after that.
         //
         // Getting this wrong broke holes and left rings working. The tracker
         // outranks every marker at 0.4906, a front is 0.4506 and a ring root
         // 0.4206, so with two sockets lit the fifth candidate is always the
         // hole root at 0.4106 and Unity drops exactly that one.
-        static int Places(YapsSocket socket)
-        {
-            var avatar = socket.GetComponentInParent<CVRAvatar>(true);
-            var root = avatar != null ? avatar.transform : socket.transform.root;
-            int trackers = root.GetComponentsInChildren<YapsPlug>(true)
-                .Count(p => p != null && p.emitTipLight);
-            int places = (4 - Mathf.Clamp(trackers, 1, 2)) / 2;
-            return Mathf.Clamp(places, 1, BridgeSettings.DefaultMaxLightEmittingSockets);
-        }
+        const int StartLit = 1;
 
         // The sockets asking for lights on this avatar, in the order they
         // get them.
@@ -307,8 +304,7 @@ namespace AvatarBridge
         public static string LightCapNote(YapsSocket socket)
         {
             if (socket == null || !socket.emitLights || WithinLightCap(socket)) return null;
-            int places = Places(socket);
-            var kept = Lit(socket).Take(places).Select(s => s.name);
+            var kept = Lit(socket).Take(StartLit).Select(s => s.name);
             // Four vertex light slots per mesh: a socket takes two and the
             // entering tracker a third, so a second lit socket evicts a hole's root.
             return $"marker lights start dark: only {string.Join(", ", kept)} start lit. The " +
@@ -356,12 +352,10 @@ namespace AvatarBridge
                 lights.gameObject.SetActive(WithinLightCap(socket));
             });
 
-            // The atlas writer. Off until something reads the atlas, and
-            // Replace deletes the folder when nothing goes in it, so a
-            // disabled atlas leaves no object behind.
+            // The atlas writer, on every socket: YAPS plugs find sockets
+            // through it.
             Replace(t, AtlasName, atlas =>
             {
-                if (!YapsAtlas.Enabled) return;
                 YapsAtlas.AddWriter(atlas, YapsAtlas.KindOf(socket), socket.tags);
                 // Its readout, where a menu can show it.
                 if (socket.readout && socket.GetComponentInParent<CVRAvatar>(true) != null) YapsDebugOverlayBuilder.AddSocketReadout(atlas);
@@ -408,7 +402,7 @@ namespace AvatarBridge
             // prop's or a world's still wants the number, for its bucket.
             var avatar = socket.GetComponentInParent<CVRAvatar>(true);
             if (avatar != null) YapsOwner.ApplySelf(avatar.gameObject);
-            else YapsOwner.NumberWriters(socket.transform.root.gameObject, false);
+            else YapsOwner.NumberWriters(YapsNativeBuilder.AvatarRoot(socket.transform).gameObject, false);
         }
 
         // Inside one of the toolkit's own folders under the socket.

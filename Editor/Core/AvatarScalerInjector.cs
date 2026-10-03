@@ -4,7 +4,6 @@ using System.Linq;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
-using UnityEngine.Animations;
 using ABI.CCK.Components;
 using ABI.CCK.Scripts;
 
@@ -22,7 +21,11 @@ namespace AvatarBridge
 
         const string HeightParam = "Height";
         internal const string TemplateParam = "Input";
-        internal const string SmoothingLayer = "Linear Smoothing Layer";
+        // The template's other names (Output, One, StepSize...) are generic
+        // enough for an avatar's own system to use, and sharing one drives
+        // both at once. They are local scaffolding, so they get our own.
+        const string Prefix = "#AvatarScaler/";
+        const string OutputParam = Prefix + "Output";
         const string SizeLayer = "Size";
         const float FallbackHeight = 1.3f;
 
@@ -44,6 +47,20 @@ namespace AvatarBridge
                 return;
             }
 
+            // "Height" is kept on purpose (see the note below), so an avatar
+            // with its own would have it taken over: default forced to mid
+            // range, and its own menu entry quietly driving the scaler.
+            var menu = ctx.CvrAvatar != null && ctx.CvrAvatar.avatarSettings != null
+                ? ctx.CvrAvatar.avatarSettings.settings : null;
+            if (master.parameters.Any(p => p.name == HeightParam)
+                || (menu != null && menu.Any(s => s != null && s.machineName == HeightParam)))
+            {
+                ctx.Report.Warning(Category, "Avatar scaler not added: the avatar already has its own \"Height\"",
+                    "The scaler's slider is called \"Height\", and sharing the name would drive the avatar's " +
+                    "own system and the scaler together. Rename the avatar's \"Height\" parameter to add the slider.");
+                return;
+            }
+
             float height = MeasureHeight(ctx);
             Vector3 baseScale = ctx.Target.transform.localScale;
 
@@ -51,19 +68,21 @@ namespace AvatarBridge
             var copier = new AnimatorDeepCopier();
             var layers = master.layers.ToList();
             var existing = new HashSet<string>(layers.Select(l => l.name));
+            // The bundled template still says "Input", "Output" and so on internally;
+            // the parameters are renamed, so every reference in the clone has to follow.
+            var names = source.parameters.ToDictionary(p => p.name, p => Renamed(p.name));
+            var clips = new Dictionary<AnimationClip, AnimationClip>();
             int added = 0;
             foreach (var srcLayer in source.layers)
             {
                 if (srcLayer.name == SizeLayer)
                 {
-                    continue; // we generate our own, avatar-calibrated Size layer
+                    continue; // replaced by a generated, avatar-calibrated Size layer
                 }
                 var clone = copier.CloneLayer(srcLayer);
                 clone.name = UniqueName(srcLayer.name, existing);
                 clone.defaultWeight = srcLayer.defaultWeight <= 0f ? 1f : srcLayer.defaultWeight;
-                // The bundled template still says "Input" internally; the parameter is renamed
-                // (see HeightParam), so every reference in the clone has to follow.
-                RenameParameterReferences(clone.stateMachine, TemplateParam, HeightParam);
+                RenameParameterReferences(clone.stateMachine, names, clips);
                 layers.Add(clone);
                 added++;
             }
@@ -73,34 +92,26 @@ namespace AvatarBridge
             added++;
             master.layers = layers.ToArray();
 
-            // ---- copy the parameters, defaulting Input/Output to the measured height ----
+            // ---- copy the parameters, defaulting Height/Output to mid-slider -----------
             var parameters = master.parameters.ToList();
             var have = new HashSet<string>(parameters.Select(p => p.name));
             var collisions = new List<string>();
             foreach (var p in source.parameters)
             {
-                // The template's menu parameter is called "Input"; the injected
-                // one is renamed. See the HeightParam comment for why.
-                string targetName = p.name == TemplateParam ? HeightParam : p.name;
+                string targetName = names[p.name];
                 if (have.Add(targetName))
                 {
                     var clone = AnimatorDeepCopier.CloneParameter(p);
                     clone.name = targetName;
-                    if (targetName == HeightParam || targetName == "Output")
+                    if (targetName == HeightParam || targetName == OutputParam)
                     {
                         clone.defaultFloat = DefaultSlider; // mid-slider = exactly 1× by construction
                     }
                     parameters.Add(clone);
                 }
-                else if (targetName == HeightParam || targetName == "Output")
-                {
-                    // Already present; retarget its default too.
-                    var existingParam = parameters.First(x => x.name == targetName);
-                    existingParam.defaultFloat = DefaultSlider;
-                }
                 else
                 {
-                    collisions.Add(p.name);
+                    collisions.Add(targetName);
                 }
             }
             master.parameters = parameters.ToArray();
@@ -131,8 +142,9 @@ namespace AvatarBridge
         {
             if (ctx.CvrAvatar != null)
             {
-                float scaleY = ctx.Target.transform.localScale.y;
-                float eye = ctx.CvrAvatar.viewPosition.y * (Mathf.Approximately(scaleY, 0f) ? 1f : scaleY);
+                // Already metres: the CCK stores the viewpoint scaled by the
+                // root (see AvatarFeatureDetect.CckGizmoWorldPoint).
+                float eye = ctx.CvrAvatar.viewPosition.y;
                 if (eye > 0.2f && eye < 6f)
                 {
                     return Mathf.Round(eye * 100f) / 100f; // clean 2-decimal metres
@@ -147,7 +159,7 @@ namespace AvatarBridge
             {
                 name = "Size",
                 blendType = BlendTreeType.Simple1D,
-                blendParameter = "Output",
+                blendParameter = OutputParam,
                 useAutomaticThresholds = false,
                 hideFlags = HideFlags.HideInHierarchy
             };
@@ -191,7 +203,18 @@ namespace AvatarBridge
             return candidate;
         }
 
-        internal static void RenameParameterReferences(AnimatorStateMachine machine, string from, string to)
+        // The menu parameter keeps its "Height"; everything else is scaffolding.
+        static string Renamed(string template) => template == TemplateParam ? HeightParam : Prefix + template;
+
+        static bool Rename(Dictionary<string, string> names, string from, out string to)
+        {
+            to = from;
+            return from != null && names.TryGetValue(from, out to);
+        }
+
+        // `clips` is shared across calls so a clip used twice is cloned once.
+        internal static void RenameParameterReferences(AnimatorStateMachine machine, Dictionary<string, string> names,
+            Dictionary<AnimationClip, AnimationClip> clips)
         {
             if (machine == null)
             {
@@ -204,52 +227,89 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                if (state.timeParameter == from) state.timeParameter = to;
-                if (state.speedParameter == from) state.speedParameter = to;
-                if (state.mirrorParameter == from) state.mirrorParameter = to;
-                if (state.cycleOffsetParameter == from) state.cycleOffsetParameter = to;
-                RenameInMotion(state.motion, from, to);
+                if (Rename(names, state.timeParameter, out string time)) state.timeParameter = time;
+                if (Rename(names, state.speedParameter, out string speed)) state.speedParameter = speed;
+                if (Rename(names, state.mirrorParameter, out string mirror)) state.mirrorParameter = mirror;
+                if (Rename(names, state.cycleOffsetParameter, out string offset)) state.cycleOffsetParameter = offset;
+                state.motion = RenameInMotion(state.motion, names, clips);
                 foreach (var transition in state.transitions)
                 {
-                    RenameInConditions(transition, from, to);
+                    RenameInConditions(transition, names);
                 }
             }
             foreach (var transition in machine.anyStateTransitions)
             {
-                RenameInConditions(transition, from, to);
+                RenameInConditions(transition, names);
             }
             foreach (var transition in machine.entryTransitions)
             {
-                RenameInConditions(transition, from, to);
+                RenameInConditions(transition, names);
             }
             foreach (var child in machine.stateMachines)
             {
-                RenameParameterReferences(child.stateMachine, from, to);
+                RenameParameterReferences(child.stateMachine, names, clips);
             }
         }
 
-        static void RenameInMotion(Motion motion, string from, string to)
+        static Motion RenameInMotion(Motion motion, Dictionary<string, string> names,
+            Dictionary<AnimationClip, AnimationClip> clips)
         {
+            if (motion is AnimationClip clip)
+            {
+                return RenameInClip(clip, names, clips);
+            }
             if (!(motion is BlendTree tree))
             {
-                return;
+                return motion;
             }
-            if (tree.blendParameter == from) tree.blendParameter = to;
-            if (tree.blendParameterY == from) tree.blendParameterY = to;
+            if (Rename(names, tree.blendParameter, out string x)) tree.blendParameter = x;
+            if (Rename(names, tree.blendParameterY, out string y)) tree.blendParameterY = y;
             // children is a value-type array copy: mutate it, recurse, write it back.
             var children = tree.children;
             for (int i = 0; i < children.Length; i++)
             {
-                if (children[i].directBlendParameter == from)
+                if (Rename(names, children[i].directBlendParameter, out string direct))
                 {
-                    children[i].directBlendParameter = to;
+                    children[i].directBlendParameter = direct;
                 }
-                RenameInMotion(children[i].motion, from, to);
+                children[i].motion = RenameInMotion(children[i].motion, names, clips);
             }
             tree.children = children;
+            return tree;
         }
 
-        static void RenameInConditions(AnimatorTransitionBase transition, string from, string to)
+        // The template's clips write Output and the delta as Animator curves,
+        // which renaming the layer never reaches. Cloned, never edited: they
+        // are the package's own assets.
+        static AnimationClip RenameInClip(AnimationClip clip, Dictionary<string, string> names,
+            Dictionary<AnimationClip, AnimationClip> clips)
+        {
+            if (clips.TryGetValue(clip, out var done))
+            {
+                return done;
+            }
+            var renames = AnimationUtility.GetCurveBindings(clip)
+                .Where(b => b.type == typeof(Animator) && string.IsNullOrEmpty(b.path) && names.ContainsKey(b.propertyName))
+                .ToArray();
+            var result = clip;
+            if (renames.Length > 0)
+            {
+                result = Object.Instantiate(clip);
+                result.name = clip.name;
+                foreach (var binding in renames)
+                {
+                    var curve = AnimationUtility.GetEditorCurve(result, binding);
+                    AnimationUtility.SetEditorCurve(result, binding, null);
+                    var renamed = binding;
+                    renamed.propertyName = names[binding.propertyName];
+                    AnimationUtility.SetEditorCurve(result, renamed, curve);
+                }
+            }
+            clips[clip] = result;
+            return result;
+        }
+
+        static void RenameInConditions(AnimatorTransitionBase transition, Dictionary<string, string> names)
         {
             if (transition == null)
             {
@@ -259,7 +319,7 @@ namespace AvatarBridge
             bool changed = false;
             for (int i = 0; i < conditions.Length; i++)
             {
-                if (conditions[i].parameter == from)
+                if (Rename(names, conditions[i].parameter, out string to))
                 {
                     conditions[i].parameter = to;
                     changed = true;

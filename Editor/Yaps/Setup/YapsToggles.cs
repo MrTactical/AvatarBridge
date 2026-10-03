@@ -16,21 +16,23 @@ namespace AvatarBridge
         // How many entries the toolkit added or removed, so a build knows
         // whether the animator needs touching; and which, by machine name,
         // so the layer of an added entry is written and a removed one's
-        // taken out.
+        // taken out. Each name keeps the count it was noted at and the
+        // avatar it was noted on.
         public static int Edits { get; private set; }
-        static readonly List<string> _added = new List<string>();
-        static readonly List<string> _removed = new List<string>();
+        static readonly List<(int at, CVRAvatar avatar, string machine)> _added = new List<(int, CVRAvatar, string)>();
+        static readonly List<(int at, CVRAvatar avatar, string machine)> _removed = new List<(int, CVRAvatar, string)>();
 
-        static void NoteAdded(string machineName)
+        static void NoteAdded(string machineName, CVRAvatar avatar)
         {
             Edits++;
-            if (!string.IsNullOrEmpty(machineName)) _added.Add(machineName);
+            if (!string.IsNullOrEmpty(machineName)) _added.Add((Edits, avatar, machineName));
         }
 
-        public static void NoteRemoved(string machineName)
+        // Without an avatar the name goes to the one the refresh is given.
+        public static void NoteRemoved(string machineName, CVRAvatar avatar = null)
         {
             Edits++;
-            if (!string.IsNullOrEmpty(machineName)) _removed.Add(machineName);
+            if (!string.IsNullOrEmpty(machineName)) _removed.Add((Edits, avatar, machineName));
         }
 
         // Puts the layers of entries added since `editsBefore` into the
@@ -38,23 +40,37 @@ namespace AvatarBridge
         // the note, or null when nothing changed.
         public static string RefreshMenuAnimator(CVRAvatar avatar, int editsBefore)
         {
-            if (avatar == null || Edits == editsBefore) return null;
-            var notes = new List<string>();
-            var settings = avatar.avatarSettings != null ? avatar.avatarSettings.settings : null;
-            foreach (string machine in _added.ToList())
-            {
-                var entry = settings?.FirstOrDefault(e => e != null && e.machineName == machine);
-                if (entry == null) continue;
-                string note = YapsAasAnimator.Wire(avatar, entry);
-                if (note != null) notes.Add(note);
-            }
-            foreach (string machine in _removed.ToList())
-            {
-                string note = YapsAasAnimator.Unwire(avatar, machine);
-                if (note != null) notes.Add(note);
-            }
+            // Only names noted since editsBefore, and the queue emptied on every
+            // return. A bake whose refresh found no avatar, or had no refresh,
+            // left its names here, and the next refresh on any avatar unwired
+            // them by name from that one.
+            var added = _added.Where(n => n.at > editsBefore).ToList();
+            var removed = _removed.Where(n => n.at > editsBefore).ToList();
             _added.Clear();
             _removed.Clear();
+            if (Edits == editsBefore) return null;
+            var notes = new List<string>();
+            // Each name on the avatar it was noted on. A caller that misses an
+            // inactive avatar passes null, and dropping its names left a first
+            // build's layers unwritten and a removed entry's layer for good.
+            CVRAvatar On(CVRAvatar noted) => ReferenceEquals(noted, null) ? avatar : noted;
+            foreach (var (_, noted, machine) in added)
+            {
+                var on = On(noted);
+                if (on == null) continue;
+                var settings = on.avatarSettings != null ? on.avatarSettings.settings : null;
+                var entry = settings?.FirstOrDefault(e => e != null && e.machineName == machine);
+                if (entry == null) continue;
+                string note = YapsAasAnimator.Wire(on, entry);
+                if (note != null) notes.Add(note);
+            }
+            foreach (var (_, noted, machine) in removed)
+            {
+                var on = On(noted);
+                if (on == null) continue;
+                string note = YapsAasAnimator.Unwire(on, machine);
+                if (note != null) notes.Add(note);
+            }
             return notes.Count > 0 ? string.Join("; ", notes) : null;
         }
 
@@ -93,9 +109,12 @@ namespace AvatarBridge
             // hole from ring by is a menu row they have to test in game.
             if (string.IsNullOrEmpty(bone)) return $"{socket.name} ({kind})";
             if (DefaultSocketNames.Contains(YapsScanner.StripFuryId(socket.name))) return $"{bone} {kind}";
-            return socket.name.Contains(bone)
-                ? $"{socket.name} ({kind})"
-                : $"{socket.name} ({bone} {kind})";
+            if (!socket.name.Contains(bone)) return $"{socket.name} ({bone} {kind})";
+            // Already says both, as RenameToLabel writes it. The suffix again
+            // read "Hips hole (hole)" after the first build renamed the socket.
+            return socket.name.EndsWith(" " + kind, System.StringComparison.OrdinalIgnoreCase)
+                ? socket.name
+                : $"{socket.name} ({kind})";
         }
 
         // The default-named socket object renamed after its bone, so the
@@ -103,11 +122,15 @@ namespace AvatarBridge
         // animates it by path, and when the user has named it themselves.
         public static string RenameToLabel(YapsSocket socket, CVRAvatar avatar)
         {
-            if (socket == null || !DefaultSocketNames.Contains(YapsScanner.StripFuryId(socket.name))) return null;
+            if (socket == null) return null;
+            string bare = YapsScanner.StripFuryId(socket.name);
+            if (!DefaultSocketNames.Contains(bare)) return null;
             // Never a converted socket: the conversion's clips - the
             // lighthouse, the wired toggles - animate paths through it,
             // and ToggledBy only sees clips that switch the object itself.
-            if (YapsScanner.StripFuryId(socket.name) == "BakedSpsSocket") return null;
+            // The conversion's rename makes BakedSpsSocket "YAPS Socket", and
+            // nothing else makes that name, so it marks a converted socket too.
+            if (bare == "BakedSpsSocket" || bare == "YAPS Socket") return null;
             string label = LabelFor(socket);
             if (label == socket.name) return null;
             if (ToggledBy(socket.gameObject, avatar) != null) return null;
@@ -243,7 +266,7 @@ namespace AvatarBridge
             if (entry.machineName != wasMachine)
             {
                 YapsAasAnimator.Unwire(avatar, wasMachine);
-                NoteAdded(entry.machineName);
+                NoteAdded(entry.machineName, avatar);
             }
             return $"{label}: menu toggle renamed from \"{was}\"" +
                    (entry.machineName != wasMachine ? $" ({wasMachine} → {entry.machineName})" : "");
@@ -272,7 +295,7 @@ namespace AvatarBridge
                 // An earlier build gave it a toggle it did not need.
                 Undo.RecordObject(avatar, "YAPS toggle");
                 settings.Remove(ours);
-                NoteRemoved(ours.machineName);
+                NoteRemoved(ours.machineName, avatar);
                 EditorUtility.SetDirty(avatar);
                 return $"{label}: menu toggle removed, it is already switched by {already}";
             }
@@ -292,7 +315,7 @@ namespace AvatarBridge
             settings = avatar.avatarSettings.settings;
             string machine = MachineName(settings, label);
             Undo.RecordObject(avatar, "YAPS toggle");
-            NoteAdded(machine);
+            NoteAdded(machine, avatar);
             settings.Add(new CVRAdvancedSettingsEntry
             {
                 name = label,
@@ -369,7 +392,7 @@ namespace AvatarBridge
                 if (ours == null) return $"{label}: already switched by {already}";
                 Undo.RecordObject(avatar, "YAPS toggle");
                 settings.Remove(ours);
-                NoteRemoved(ours.machineName);
+                NoteRemoved(ours.machineName, avatar);
                 EditorUtility.SetDirty(avatar);
                 return $"{label}: menu toggle removed, the plug is already switched by {already}";
             }
@@ -399,7 +422,7 @@ namespace AvatarBridge
             settings = avatar.avatarSettings.settings;
             string machine = MachineName(settings, label);
             Undo.RecordObject(avatar, "YAPS toggle");
-            NoteAdded(machine);
+            NoteAdded(machine, avatar);
             settings.Add(new CVRAdvancedSettingsEntry
             {
                 name = label,
@@ -433,9 +456,6 @@ namespace AvatarBridge
         public static string EnsureSelfToggle(YapsPlug plug, CVRAvatar avatar, Material material, string label)
         {
             if (plug == null || avatar == null || material == null || plug.Target == null) return null;
-            if (!material.HasProperty("_YAPS_SelfAllow")) return null;
-            if (!material.HasProperty("_YAPS_SelfTag") || material.GetFloat("_YAPS_SelfTag") < 0f) return null;
-            if (!material.HasProperty("_YAPS_UseAtlas") || material.GetFloat("_YAPS_UseAtlas") <= 0.5f) return null;
 
             var settings = avatar.avatarSettings != null ? avatar.avatarSettings.settings : null;
             string plugPath = AnimationUtility.CalculateTransformPath(plug.Target.transform, avatar.transform);
@@ -446,6 +466,20 @@ namespace AvatarBridge
                 && e.toggleSettings.useAnimationClip && Generated(e.toggleSettings.animationClip)
                 && AnimationUtility.GetCurveBindings(e.toggleSettings.animationClip)
                     .Any(b => b.path == plugPath && Writes(b, "_YAPS_SelfAllow")));
+            bool applies = material.HasProperty("_YAPS_SelfAllow")
+                           && material.HasProperty("_YAPS_SelfTag") && material.GetFloat("_YAPS_SelfTag") >= 0f
+                           && material.HasProperty("_YAPS_UseAtlas") && material.GetFloat("_YAPS_UseAtlas") > 0.5f;
+            if (!applies)
+            {
+                if (ours == null) return null;
+                // An earlier build's row, once the sockets or the atlas went.
+                // Returning before the lookup left it in the menu for good.
+                Undo.RecordObject(avatar, "YAPS toggle");
+                settings.Remove(ours);
+                NoteRemoved(ours.machineName, avatar);
+                EditorUtility.SetDirty(avatar);
+                return $"{label}: menu toggle removed, it can no longer change anything";
+            }
             var targets = Targets(plug, avatar.transform);
             if (ours != null)
             {
@@ -470,7 +504,7 @@ namespace AvatarBridge
             settings = avatar.avatarSettings.settings;
             string machine = MachineName(settings, label);
             Undo.RecordObject(avatar, "YAPS toggle");
-            NoteAdded(machine);
+            NoteAdded(machine, avatar);
             settings.Add(new CVRAdvancedSettingsEntry
             {
                 name = label,

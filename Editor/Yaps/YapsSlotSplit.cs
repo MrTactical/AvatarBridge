@@ -90,13 +90,23 @@ namespace AvatarBridge
             // survive it for Remove to go back to.
             Directory.CreateDirectory(dir);
             string path = dir + "/YAPS " + Safe(skin.name) + " " + YapsBaker.PlaceKey(skin.transform, plugRoot) + Suffix + ".asset";
-            if (AssetDatabase.GetAssetPath(mesh) == path)
+            // Rewritten in place when the file is there: deleting it destroys
+            // the mesh an earlier conversion's renderer still wears. Safe when
+            // the file is the mesh being split, which split already copied.
+            var saved = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+            if (saved != null)
             {
-                // The mesh being replaced is this file: move off it first.
-                skin.sharedMesh = split;
+                EditorUtility.CopySerialized(split, saved);
+                Object.DestroyImmediate(split);
+                EditorUtility.SetDirty(saved);
+                AssetDatabase.SaveAssetIfDirty(saved);
+                split = saved;
             }
-            AssetDatabase.DeleteAsset(path);
-            AssetDatabase.CreateAsset(split, path);
+            else
+            {
+                AssetDatabase.DeleteAsset(path);
+                AssetDatabase.CreateAsset(split, path);
+            }
             skin.sharedMesh = split;
             mats.Add(material);
             skin.sharedMaterials = mats.ToArray();
@@ -146,11 +156,10 @@ namespace AvatarBridge
             var mask = new bool[mesh.vertexCount];
             for (int i = 0; i < mask.Length && i < weights.Length; i++)
             {
-                var w = weights[i];
-                mask[i] = (plugBones.Contains(w.boneIndex0) && w.weight0 > 0.5f)
-                          || (plugBones.Contains(w.boneIndex1) && w.weight1 > 0.5f)
-                          || (plugBones.Contains(w.boneIndex2) && w.weight2 > 0.5f)
-                          || (plugBones.Contains(w.boneIndex3) && w.weight3 > 0.5f);
+                // The baker's own sum: tested one bone at a time, a vertex
+                // blended across the shaft's bones bent in the bake and was
+                // left out here.
+                mask[i] = YapsBaker.WeightOnPlug(weights[i], plugBones) > 0.5f;
             }
             return mask;
         }

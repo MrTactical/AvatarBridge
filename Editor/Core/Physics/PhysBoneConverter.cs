@@ -27,21 +27,38 @@ namespace AvatarBridge
             return made.transform;
         }
 
+        // Compared by name, not Transform.Find: a '/' in a parameter or bone
+        // name reads to Find as a path, so a clash went unseen.
         internal static string UniqueChildName(Transform parent, string name)
         {
-            if (parent.Find(name) == null)
+            var taken = new HashSet<string>(System.StringComparer.Ordinal);
+            foreach (Transform child in parent)
             {
-                return name;
+                taken.Add(child.name);
             }
-            int suffix = 2;
-            while (parent.Find($"{name} {suffix}") != null)
+            string candidate = name;
+            for (int n = 2; taken.Contains(candidate); n++)
             {
-                suffix++;
+                candidate = $"{name} {n}";
             }
-            return $"{name} {suffix}";
+            return candidate;
         }
 
-        internal static void RecordColliderHost(BridgeContext ctx, Component original, GameObject host)
+        // Null with physics conversion off: no solver, so no line names one. A context with
+        // no settings reads as the default target.
+        static string TargetName(BridgeContext ctx)
+        {
+            switch (ctx.Settings != null ? ctx.Settings.physicsTarget : PhysicsTarget.MagicaCloth2)
+            {
+                case PhysicsTarget.MagicaCloth2: return "MagicaCloth2";
+                case PhysicsTarget.DynamicBone: return "DynamicBone";
+                default: return null;
+            }
+        }
+
+        // Both writers route every collider host through here, so the rest
+        // state is matched once for both.
+        internal static void RecordColliderHost(BridgeContext ctx, VRCPhysBoneCollider original, GameObject host)
         {
             string originalPath = BridgeContext.RelativePath(ctx.Target.transform, original.transform);
             string hostPath = BridgeContext.RelativePath(ctx.Target.transform, host.transform);
@@ -50,6 +67,25 @@ namespace AvatarBridge
                 ctx.PhysicsColliderHosts[originalPath] = hosts = new List<string>();
             }
             hosts.Add(hostPath);
+
+            // A new host is live from load, so a collider that shipped switched off came out
+            // always on. The host takes the off state the hierarchy does not already give it: a
+            // disabled component, or an inactive object the host is not under (a rootTransform
+            // elsewhere). RepointColliderEnableCurves carries the switching onto it.
+            bool live = original.enabled;
+            // Native toggles switch objects without a clip, so nothing could switch on a host
+            // outside the object; there it stays live as before.
+            bool nativeToggles = ctx.Settings.toggleStyle == ToggleStyle.CvrNativeTargets;
+            // Judged inside the avatar only: one converted in place may itself be off in the scene.
+            for (var t = original.transform; live && !nativeToggles && t != null && t != ctx.Target.transform;
+                 t = t.parent)
+            {
+                live = t.gameObject.activeSelf || host.transform.IsChildOf(t);
+            }
+            if (!live)
+            {
+                host.SetActive(false);
+            }
         }
 
         internal static void RepointColliderEnableCurves(BridgeContext ctx)
@@ -69,9 +105,57 @@ namespace AvatarBridge
             }
 
             int repointed = 0;
+            int mirrored = 0;
             var dropped = new SortedSet<string>(StableSampleOrder.Instance);
             foreach (var clip in clips)
             {
+                // An object toggle above the collider switched it off in VRChat. A host under
+                // a rootTransform elsewhere is not below that object, so the toggle is copied
+                // onto it. Before the component repoint, which wins where both exist.
+                foreach (var binding in UnityEditor.AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (binding.type != typeof(GameObject) || binding.propertyName != "m_IsActive"
+                        || binding.path.Length == 0)
+                    {
+                        continue;
+                    }
+                    string under = binding.path + "/";
+                    Transform toggled = null;
+                    foreach (var entry in ctx.PhysicsColliderHosts)
+                    {
+                        if (entry.Key != binding.path && !entry.Key.StartsWith(under, System.StringComparison.Ordinal))
+                        {
+                            continue;
+                        }
+                        if (toggled == null)
+                        {
+                            toggled = BridgeContext.FindByAnimationPath(ctx.Target.transform, binding.path);
+                            if (toggled == null) break;
+                        }
+                        var curve = UnityEditor.AnimationUtility.GetEditorCurve(clip, binding);
+                        foreach (var hostPath in entry.Value)
+                        {
+                            var hostBinding = UnityEditor.EditorCurveBinding.FloatCurve(
+                                hostPath, typeof(GameObject), "m_IsActive");
+                            if (hostPath.StartsWith(under, System.StringComparison.Ordinal)
+                                || UnityEditor.AnimationUtility.GetEditorCurve(clip, hostBinding) != null)
+                            {
+                                continue;
+                            }
+                            // Resting off under an object resting on: something else holds the
+                            // collider off (a disabled component, a higher inactive object), and
+                            // this toggle must not wake it. Same guard as the contact hosts.
+                            var host = BridgeContext.FindByAnimationPath(ctx.Target.transform, hostPath);
+                            if (host == null || (!host.gameObject.activeSelf && toggled.gameObject.activeSelf))
+                            {
+                                continue;
+                            }
+                            UnityEditor.AnimationUtility.SetEditorCurve(clip, hostBinding, curve);
+                            mirrored++;
+                        }
+                    }
+                }
+
                 foreach (var binding in UnityEditor.AnimationUtility.GetCurveBindings(clip))
                 {
                     if (binding.type != typeof(VRCPhysBoneCollider))
@@ -101,10 +185,11 @@ namespace AvatarBridge
                 }
             }
 
-            if (repointed > 0)
+            if (repointed > 0 || mirrored > 0)
             {
-                ctx.Report.Converted(Category, $"{repointed} collider on/off animation(s) rewired",
-                    "They now toggle the converted collider's object.");
+                ctx.Report.Converted(Category, $"{repointed + mirrored} collider on/off animation(s) rewired",
+                    "They now toggle the converted collider's object." +
+                    (mirrored > 0 ? $" {mirrored} switched its parent object and now reach it too." : ""));
             }
             if (dropped.Count > 0)
             {
@@ -159,11 +244,14 @@ namespace AvatarBridge
 
             if (lost.Count > 0)
             {
+                string target = TargetName(ctx);
                 ctx.Report.Skipped(Category,
                     $"{lost.Count} animated PhysBone parameter(s) have no converted equivalent",
                     string.Join("; ", lost.Select(kv => $"{kv.Key} (e.g. {string.Join(", ", kv.Value)})")) +
-                    ": MagicaCloth2 cannot animate these, so the chain keeps its converted values. The rest of " +
-                    "each animation plays.");
+                    (target != null
+                        ? $": {target} cannot animate these, so the chain keeps its converted values."
+                        : ": physics conversion is off, so nothing carries these.") +
+                    " The rest of each animation plays.");
             }
         }
 
@@ -191,6 +279,12 @@ namespace AvatarBridge
 
         public static void Run(BridgeContext ctx)
         {
+            // Before the early return: the synthesized rig cloth later in the
+            // conversion reads both caches on an avatar with no PhysBones too.
+            GrabbyBonesSupport.Reset();
+#if AVATARBRIDGE_MAGICA
+            MagicaPresetLibrary.Reset();
+#endif
             ReportInheritedCloth(ctx);
             var physBones = ctx.Target.GetComponentsInChildren<VRCPhysBone>(true);
             if (physBones.Length == 0)
@@ -199,10 +293,6 @@ namespace AvatarBridge
                 return;
             }
 
-            GrabbyBonesSupport.Reset();
-#if AVATARBRIDGE_MAGICA
-            MagicaPresetLibrary.Reset();
-#endif
             ReportGrabbableChains(ctx, physBones);
 
             // Stacked systems (e.g. cake PB) put several PhysBones on the same root and let the
@@ -250,10 +340,11 @@ namespace AvatarBridge
                     var magicaColliderCache = new Dictionary<VRCPhysBoneCollider, MagicaCloth2.ColliderComponent>();
                     var writtenCloths = new List<(PhysBoneChainData, MagicaCloth2.MagicaCloth)>();
                     var skinnedM = SkinnedBones(ctx);
+                    var drivenM = ConstraintDriven(ctx);
                     foreach (var pb in physBones)
                     {
                         var chain = PhysBoneChainData.Read(pb, ctx.TargetAnimator, !ctx.Settings.convertToePhysBones);
-                        if (SkipToeChain(ctx, chain) || SkipConstraintDrivenChain(ctx, chain)
+                        if (SkipToeChain(ctx, chain) || SkipConstraintDrivenChain(ctx, chain, drivenM)
                             || SkipSquishOnlyChain(ctx, chain) || SkipHelperRigChain(ctx, chain, skinnedM))
                         {
                             continue;
@@ -263,6 +354,7 @@ namespace AvatarBridge
                     // Runs last: every collider the avatar defines has to exist before a chain can
                     // be offered one it didn't originally reference.
                     MagicaColliderAutoAssign.Run(ctx, writtenCloths, magicaColliderCache);
+                    DeleteConverted(ctx, physBones);
                     break;
 #else
                     // The break belongs inside this #if rather than after the #endif: without
@@ -279,16 +371,18 @@ namespace AvatarBridge
 #if AVATARBRIDGE_DYNBONE
                     var dbColliderCache = new Dictionary<VRCPhysBoneCollider, DynamicBoneColliderBase>();
                     var skinnedD = SkinnedBones(ctx);
+                    var drivenD = ConstraintDriven(ctx);
                     foreach (var pb in physBones)
                     {
                         var dbChain = PhysBoneChainData.Read(pb, ctx.TargetAnimator, !ctx.Settings.convertToePhysBones);
-                        if (SkipToeChain(ctx, dbChain) || SkipConstraintDrivenChain(ctx, dbChain)
+                        if (SkipToeChain(ctx, dbChain) || SkipConstraintDrivenChain(ctx, dbChain, drivenD)
                             || SkipSquishOnlyChain(ctx, dbChain) || SkipHelperRigChain(ctx, dbChain, skinnedD))
                         {
                             continue;
                         }
                         DynamicBoneWriter.Write(ctx, dbChain, dbColliderCache);
                     }
+                    DeleteConverted(ctx, physBones);
                     break;
 #else
                     // Same shape as the MagicaCloth2 branch above, and the same reason.
@@ -302,17 +396,21 @@ namespace AvatarBridge
                         "Physics conversion disabled in settings.");
                     return;
             }
+        }
 
-            if (ctx.Settings.deleteConvertedPhysBones)
+        // Called from each converting branch, not after the switch: with
+        // neither package installed every branch returns, and code after it
+        // was unreachable, the CS0162 the breaks above exist to avoid.
+        static void DeleteConverted(BridgeContext ctx, VRCPhysBone[] physBones)
+        {
+            if (!ctx.Settings.deleteConvertedPhysBones) return;
+            foreach (var pb in physBones)
             {
-                foreach (var pb in physBones)
-                {
-                    Object.DestroyImmediate(pb);
-                }
-                foreach (var collider in ctx.Target.GetComponentsInChildren<VRCPhysBoneCollider>(true))
-                {
-                    Object.DestroyImmediate(collider);
-                }
+                Object.DestroyImmediate(pb);
+            }
+            foreach (var collider in ctx.Target.GetComponentsInChildren<VRCPhysBoneCollider>(true))
+            {
+                Object.DestroyImmediate(collider);
             }
         }
 
@@ -334,19 +432,24 @@ namespace AvatarBridge
                     VRC.SDK3.Dynamics.Contact.Components.VRCContactSender>(true) != null;
                 grabbable.Add(root.name + (carriesContact ? " (carries a contact)" : ""));
             }
-            if (grabbable.Count == 0)
+            // With physics off nothing simulates the chain, so there is no solver to name.
+            string target = TargetName(ctx);
+            if (grabbable.Count == 0 || target == null)
             {
                 return;
             }
             ctx.Report.Approximated(Category,
-                $"{grabbable.Count} chain(s) could be grabbed in VRChat; MagicaCloth2 can't be",
+                $"{grabbable.Count} chain(s) could be grabbed in VRChat; {target} can't be",
                 string.Join(", ", grabbable.Take(8)) + (grabbable.Count > 8 ? ", …" : "") +
                 ". Only players with the GrabbyBones mod can grab them. A chain that \"carries a contact\" " +
                 "may need grabbing to work at all.");
         }
 
-        // Every bone any skinned mesh actually uses. Built once per run.
-        static HashSet<Transform> SkinnedBones(BridgeContext ctx)
+        // Every bone any skinned mesh lists. Built once per run, here and by
+        // HelperRigCleanup. Listed, not weighted, unlike the constraint pass:
+        // a helper rig judged by this gets deleted, and a listed bone that is
+        // deleted leaves a hole in that renderer's bone array.
+        internal static HashSet<Transform> SkinnedBones(BridgeContext ctx)
         {
             var used = new HashSet<Transform>();
             foreach (var skin in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
@@ -378,19 +481,21 @@ namespace AvatarBridge
             {
                 if (skinned.Contains(t)) return false;
             }
+            // A rigid accessory (an earring, a charm, a particle prop) skins
+            // no mesh either, and HelperRigCleanup deletes what it is handed.
+            if (HelperRigCleanup.HoldsContent(chain.Root)) return false;
 
             ctx.Report.Skipped(Category, ctx.PathInTarget(chain.Root),
                 "A helper stage that skins no mesh. A later pass puts one chain on the bone it drove.");
             ctx.HelperRigChains.Add(new BridgeContext.HelperRigChain
             {
                 Root = chain.Root,
-                Bones = chain.Root.GetComponentsInChildren<Transform>(true).ToList(),
                 Pull = chain.Pull,
                 Spring = chain.Spring,
                 Stiffness = chain.Stiffness,
                 Gravity = chain.Gravity,
                 Immobile = chain.Immobile,
-                Name = chain.Root.name,
+                IsAdvancedIntegration = chain.IsAdvancedIntegration,
             });
             return true;
         }
@@ -403,49 +508,98 @@ namespace AvatarBridge
         // stiffness 0, max squish 1, and the squish itself is driven by the
         // animator, which converts fine on its own. Chains with real spring or
         // stiffness are left alone; they lose the squish and keep the swing
-        // they were also doing.
+        // they were also doing. So are chains with pull below 1 or any
+        // gravity: spring 0 only removes momentum, and those still lag and hang.
         static bool SkipSquishOnlyChain(BridgeContext ctx, PhysBoneChainData chain)
         {
             if (chain.Root == null) return false;
             if (chain.MaxStretch <= 0f && chain.MaxSquish <= 0f) return false;
             if (chain.Spring > 0.01f || chain.Stiffness > 0.01f) return false;
+            if (chain.Pull < 0.99f || Mathf.Abs(chain.Gravity) > 0.01f) return false;
 
             ctx.Report.Skipped(Category, chain.Root.name,
                 $"Stretch and squish were all this chain did (max stretch {chain.MaxStretch:0.##}, max squish " +
-                $"{chain.MaxSquish:0.##}, spring {chain.Spring:0.##}, stiffness {chain.Stiffness:0.##}), which " +
-                "neither solver can do. No cloth made.");
+                $"{chain.MaxSquish:0.##}, pull {chain.Pull:0.##}, spring {chain.Spring:0.##}, stiffness " +
+                $"{chain.Stiffness:0.##}, gravity {chain.Gravity:0.##}), which neither solver can do. No cloth made.");
             return true;
         }
 
-        static bool SkipConstraintDrivenChain(BridgeContext ctx, PhysBoneChainData chain)
+        // Every constraint on the avatar, keyed by the transform it WRITES. A
+        // VRC constraint with Target Transform set drives that target wherever
+        // the component sits, and the constraint pass rebuilds it there, so
+        // looking only at components on the chain's own bones missed it.
+        static Dictionary<Transform, List<Component>> ConstraintDriven(BridgeContext ctx)
+        {
+            var driven = new Dictionary<Transform, List<Component>>();
+            foreach (var component in ctx.Target.GetComponentsInChildren<Component>(true))
+            {
+                if (component == null)
+                {
+                    continue;
+                }
+                // Unity's constraints count too, not just VRChat's. 2.91.0 only matched
+                // "VRC*Constraint"; but the NaN is an engine-level feedback loop between a
+                // component that WRITES a rotation every frame and a solver that integrates
+                // from its own previous state, and which constraint type does the writing is
+                // irrelevant. A base authored entirely on Unity constraints sailed straight
+                // past the 2.91.0 check with a tail cloth simulating three constraint-driven
+                // bones.
+                var type = component.GetType();
+                bool vrc = type.Name.StartsWith("VRC", System.StringComparison.Ordinal)
+                           && type.Name.EndsWith("Constraint", System.StringComparison.Ordinal);
+                if (!vrc && !(component is UnityEngine.Animations.IConstraint))
+                {
+                    continue;
+                }
+                // Not "?? component.transform": an unassigned Transform is
+                // Unity's fake null; == says null, ?? passes it.
+                var target = vrc
+                    ? (type.GetField("TargetTransform")?.GetValue(component)
+                       ?? type.GetProperty("TargetTransform")?.GetValue(component)) as Transform
+                    : null;
+                // A target outside the avatar is not followed: the constraint
+                // pass rebuilds it on its own object then (HostFor).
+                var writes = target != null && target.IsChildOf(ctx.Target.transform)
+                    ? target : component.transform;
+                if (!driven.TryGetValue(writes, out var writers))
+                {
+                    driven[writes] = writers = new List<Component>();
+                }
+                writers.Add(component);
+            }
+            return driven;
+        }
+
+        static bool SkipConstraintDrivenChain(BridgeContext ctx, PhysBoneChainData chain,
+            Dictionary<Transform, List<Component>> driven)
         {
             if (chain.Root == null)
             {
                 return false;
             }
-            string scaleOnly = null;
-            foreach (var t in chain.Root.GetComponentsInChildren<Transform>(true))
+            // Only the bones that can simulate. A humanoid exclusion takes its
+            // subtree out of the solver for good, so a twist constraint on a
+            // thigh must not cost a tail rooted at Hips. An author's own ignore
+            // still counts: MagicaCloth2 gives those up when honouring them
+            // would leave the chain unable to move.
+            var simulated = new List<Transform>();
+            void Walk(Transform t)
             {
-                foreach (var component in t.GetComponents<Component>())
+                if (t == null || chain.HumanoidExclusions.Contains(t)) return;
+                simulated.Add(t);
+                for (int i = 0; i < t.childCount; i++) Walk(t.GetChild(i));
+            }
+            Walk(chain.Root);
+
+            string scaleOnly = null;
+            foreach (var t in simulated)
+            {
+                if (!driven.TryGetValue(t, out var writers))
                 {
-                    if (component == null)
-                    {
-                        continue;
-                    }
-                    // Unity's constraints count too, not just VRChat's. 2.91.0 only matched
-                    // "VRC*Constraint"; but the NaN is an engine-level feedback loop between a
-                    // component that WRITES a rotation every frame and a solver that integrates
-                    // from its own previous state, and which constraint type does the writing is
-                    // irrelevant. An avatar authored on Unity constraints (the AnyTaur quadruped
-                    // base is entirely built this way) sailed straight past the 2.91.0 check with
-                    // a tail cloth simulating three constraint-driven bones.
-                    bool isConstraint = component is UnityEngine.Animations.IConstraint
-                        || (component.GetType().Name.StartsWith("VRC", System.StringComparison.Ordinal)
-                            && component.GetType().Name.EndsWith("Constraint", System.StringComparison.Ordinal));
-                    if (!isConstraint)
-                    {
-                        continue;
-                    }
+                    continue;
+                }
+                foreach (var component in writers)
+                {
                     // Except scale. The loop above is two things writing the
                     // SAME channel, and a scale constraint writes localScale
                     // and nothing else: the solver moves and rotates the bone,
@@ -468,7 +622,7 @@ namespace AvatarBridge
             if (scaleOnly != null)
             {
                 ctx.Report.Approximated(Category, ctx.PathInTarget(chain.Root),
-                    $"Simulated even though \"{scaleOnly}\" in this chain carries a scale constraint. "
+                    $"Simulated even though \"{scaleOnly}\" in this chain is driven by a scale constraint. "
                     + "Scale does not fight the solver, but bone lengths are measured once, at this scale.");
             }
             return false;

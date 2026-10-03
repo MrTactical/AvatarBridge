@@ -3,7 +3,6 @@
 // converter runs both; the toolkit runs them on any avatar.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
-using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
@@ -128,12 +127,15 @@ namespace AvatarBridge
 
         internal static void NormalizeSkinnedBounds(BridgeContext ctx)
         {
-            float height = Mathf.Max(AvatarScalerInjector.MeasureHeight(ctx), 1.5f);
+            float measured = AvatarScalerInjector.MeasureHeight(ctx);
+            // The floor is for the padding only. Judged against it, every
+            // avatar under 0.75 m read as an unmeasurable one.
+            float height = Mathf.Max(measured, 1.5f);
 
             if (!MeasureAvatarVolume(ctx.Target, out var envelope)
                 // Shorter than half the avatar means the geometry gave
                 // no usable answer. Decline rather than guess.
-                || envelope.size.y < height * 0.5f)
+                || envelope.size.y < measured * 0.5f)
             {
                 ctx.Report.Warning("Meshes", "Bounding boxes left as the avatar had them",
                     "The avatar's own volume could not be measured from its meshes, so there was nothing " +
@@ -213,7 +215,8 @@ namespace AvatarBridge
             return any;
         }
 
-        static Bounds TransformBounds(Matrix4x4 matrix, Bounds local)
+        // Also how YapsBaker carries a plug's reach into its root bone's space.
+        internal static Bounds TransformBounds(Matrix4x4 matrix, Bounds local)
         {
             var min = local.min;
             var max = local.max;

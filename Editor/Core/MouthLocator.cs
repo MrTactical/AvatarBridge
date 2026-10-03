@@ -12,8 +12,8 @@ namespace AvatarBridge
     //
     // The good source is the avatar's own geometry. A viseme blendshape stores a per-vertex delta,
     // so an open-mouth viseme like "aa" IS a map of which vertices form the mouth: take the ones
-    // that move most, average their positions, and the answer is measured rather than guessed .
-    // correct for any head shape, muzzle length or species, with no assumptions about proportion.
+    // that move most, average their positions, and the answer is measured rather than guessed,
+    // and correct for any head shape, muzzle length or species, with no assumptions about proportion.
     //
     // Falls back to the jaw bone (right for jaw-flap avatars, which have no visemes to read, but
     // it sits at the hinge rather than the lips) and then to the head bone, which is what every
@@ -31,12 +31,6 @@ namespace AvatarBridge
         static readonly int[] PreferredVisemes = { 10, 13, 14, 11, 12, 6, 4 }; // aa oh ou E ih CH DD
 
         const float DeltaThreshold = 0.35f;
-
-        public static Vector3 Locate(GameObject root, SkinnedMeshRenderer face, string[] visemeShapes,
-            Animator animator, Vector3 viewPosition, out Method method, out string detail)
-        {
-            return Locate(root, face, visemeShapes, animator, viewPosition, out method, out detail, out _);
-        }
 
         public static Vector3 Locate(GameObject root, SkinnedMeshRenderer face, string[] visemeShapes,
             Animator animator, Vector3 viewPosition, out Method method, out string detail,

@@ -83,9 +83,7 @@ float YapsPlugDepth(float3 socketAt, float3 ownerAnchor)
         // Black, or it is real lighting rather than protocol.
         if (dot(unity_LightColor[i].rgb, unity_LightColor[i].rgb) > 0.0001) continue;
 
-        float range = YapsLightRange(i);
-        if (range >= 0.5) continue;
-        int digit = (int) round(fmod(range, 0.1) * 100);
+        int digit = YapsLightDigit(i);
         if (digit != 8 && digit != 9) continue;
 
         // The wearer's own plug must not open the wearer's own socket.
@@ -125,6 +123,13 @@ void YapsSocketDeform(inout float3 position, inout float3 normal, inout float3 t
 
     // Two positions, two questions. The mesh origin says whose socket
     // this is, the baked offset where it is. Equal on a socket mesh.
+    //
+    // Right only where unity_ObjectToWorld is the renderer's own matrix,
+    // which is a plain mesh. A skinned mesh is drawn in world space with an
+    // identity matrix, so there both points land near the world origin and
+    // the baked deltas keep the bake pose. A skinned body mesh has to take
+    // the contact route until the anchor is recovered per vertex, as the
+    // plug's is.
     float3 ownerAnchor = mul(unity_ObjectToWorld, float4(0, 0, 0, 1)).xyz;
     float3 socketAt = mul(unity_ObjectToWorld, float4(_YAPS_SocketOrigin.xyz, 1)).xyz;
     float depth = YapsPlugDepth(socketAt, ownerAnchor);

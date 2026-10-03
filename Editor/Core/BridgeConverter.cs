@@ -8,14 +8,8 @@ using VRC.SDK3.Avatars.Components;
 namespace AvatarBridge
 {
     // Orchestrates a full VRChat -> ChilloutVR avatar conversion. Each pass reads shared
-    // state from the BridgeContext; the order matters:
-    //   1. Descriptor        (creates the CVRAvatar)
-    //   2. Parameters/menu   (fills preserve/impulse parameter sets)
-    //   3. PhysBones         (physics, before VRC components are deleted)
-    //   4. Contacts          (fills contact parameter set)
-    //   5. Animator merge    (uses all parameter sets for its rename pass)
-    //   6. Misc + constraints
-    //   7. VRC cleanup
+    // state from the BridgeContext. The order matters and lives in ContentPasses, where each
+    // pass says why it sits where it does.
     public static class BridgeConverter
     {
         public static BridgeReport Convert(VRCAvatarDescriptor descriptor, BridgeSettings settings)
@@ -59,10 +53,10 @@ namespace AvatarBridge
 
             try
             {
-                PrepareOutputFolder(ctx);
-                // Before anything is built or written: if the project has a baker installed that
-                // did not compile, every component it owns reads as absent and the conversion
-                // comes out quietly gutted. Stop here rather than spend the run producing it.
+                // Before anything is built or written, the output folder included: if the project
+                // has a baker installed that did not compile, every component it owns reads as
+                // absent and the conversion comes out quietly gutted. Stop here rather than spend
+                // the run producing it.
                 if (!BridgePreflight.Check(ctx))
                 {
                     report.Error("Conversion", "Stopped before converting",
@@ -70,7 +64,12 @@ namespace AvatarBridge
                         "than visibly broken, which is worse. Nothing was changed.");
                     return report;
                 }
+                // Setup's folder rules: the Toolkit finds a conversion's records only by landing
+                // on the same folder.
+                CvrSetup.PrepareOutputFolder(ctx, ctx.SourceDescriptor.gameObject, "Conversion");
                 PrepareTarget(ctx);
+                // Before any pass renames or deletes an object.
+                ctx.SnapshotSourcePaths();
                 WarnMissingScripts(ctx);
 
                 BridgePipeline.Execute(ctx, ContentPasses());
@@ -83,6 +82,8 @@ namespace AvatarBridge
                 // a separate object (clone or baked copy).
                 if (ctx.Target != descriptor.gameObject)
                 {
+                    // Recorded, or Undo removes the copy and leaves the original hidden.
+                    Undo.RecordObject(descriptor.gameObject, "AvatarBridge conversion");
                     descriptor.gameObject.SetActive(false);
                 }
 
@@ -108,12 +109,41 @@ namespace AvatarBridge
             {
                 report.Error("Conversion", "Unhandled exception", e.Message);
                 Debug.LogException(e);
+                WriteFailureReport(ctx, descriptor);
             }
             finally
             {
                 System.Threading.Thread.CurrentThread.CurrentCulture = previousCulture;
+#if AVATARBRIDGE_MAGICA
+                // The cloth writer's mesh caches; a run that throws before the
+                // helper-rig pass would otherwise keep them, and this avatar, alive.
+                MagicaClothWriter.ReleaseCaches();
+#endif
             }
             return report;
+        }
+
+        // A run that threw never reaches BridgeFinish, and it is the run whose report most needs
+        // sending. The markdown alone: the diagnostics would read a half-converted avatar.
+        static void WriteFailureReport(BridgeContext ctx, VRCAvatarDescriptor descriptor)
+        {
+            if (string.IsNullOrEmpty(ctx.OutputDir))
+            {
+                return;
+            }
+            try
+            {
+                string path = ctx.OutputDir + "/ConversionReport.md";
+                string name = ctx.Target != null ? ctx.Target.name : descriptor.gameObject.name;
+                File.WriteAllText(Path.GetFullPath(Path.Combine(Application.dataPath, "..", path)),
+                    ctx.Report.ToMarkdown(name));
+                AssetDatabase.ImportAsset(path);
+                ctx.Report.SavedReportPath = path;
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[AvatarBridge] The report could not be written either: {e.Message}");
+            }
         }
 
         static BridgePass[] ContentPasses()
@@ -173,9 +203,16 @@ namespace AvatarBridge
                     // clips, now that the clips are copies of this run's.
                     Pass("Repoint material swaps at stereo copies", ShaderSpiPatcher.RepointSwapClipsPass,
                          PassTraits.EditsClips),
+                    // The source's own clips are only repointed on our copies. First among the
+                    // path passes: the ones below recorded their paths after the head moved.
+                    Pass("Repoint curves into the removed second head", FuryHeadFlattener.RepointOnOurCopies,
+                         PassTraits.EditsClips),
+                    // Before the constraint and collider repoints, so curves into a deleted rig
+                    // are gone rather than listed as could not be carried.
+                    Pass("Strip helper rig curves", HelperRigCleanup.StripCurves, PassTraits.EditsClips),
 
-                    // After self-containment; it renames clip assets,
-                    // and only an owned copy may be renamed.
+                    // Gives each grafted emote state a renamed copy of its clip and edits
+                    // none: a rename in place would reach every other state using it.
                     Pass("Name grafted emote clips", AnimatorMerger.NameGraftedEmoteClips),
                     Pass("Strip dead material curves", AnimatorMerger.StripDeadMaterialCurves,
                          PassTraits.EditsClips),
@@ -205,8 +242,10 @@ namespace AvatarBridge
                     // touches no clip.
                     Pass("Steady auto socket mode", YapsConverter.SteadyAutoMode),
 #endif
-                    // Reads the final clip list, writes to particle components.
-                    Pass("Enable animated particle emitters", MiscConverter.EnableAnimatedParticleEmitters),
+                    // Reads the final clip list, enables emission on the systems a toggle
+                    // switches, and strips their emission curves from the clips.
+                    Pass("Enable animated particle emitters", MiscConverter.EnableAnimatedParticleEmitters,
+                         PassTraits.EditsClips),
                     // Animated PhysBone parameters have no retarget on
                     // the Magica path; named as lost and removed.
                     Pass("Report animated PhysBone properties",
@@ -235,6 +274,9 @@ namespace AvatarBridge
                     // hierarchy, or a renamed object's transform curves are
                     // silently dropped by every layer wearing one.
                     Pass("Refresh transform masks", AnimatorMerger.RefreshRigMasks),
+                    // Same reason: the CCK builds a native toggle's clips from
+                    // the path written at the merge, and objects have moved since.
+                    Pass("Refresh native toggle paths", ToggleNativizer.RefreshTargetPaths),
                     // Judge the saved file's references only now, after
                     // the self-container fixed what it was going to.
                     Pass("Audit serialized references", AnimatorMerger.AuditSerializedReferences),
@@ -327,46 +369,26 @@ namespace AvatarBridge
             {
                 var usage = ctx.CvrAvatar.GetParameterSyncUsage();
                 int used = usage.Item2; // base controller + menu entries = actual sync
-                ctx.Report.Converted("Sync", $"{used} of 3200 sync bits used",
-                    "In the CCK inspector this is the SECOND number of \"(0, N) of 3200\". The first is the " +
-                    "override controller, which AvatarBridge doesn't use, so \"0\" there is expected, not a problem.");
+                string cckNote = "In the CCK inspector this is the SECOND number of \"(0, N) of 3200\". The first is the " +
+                    "override controller, which AvatarBridge doesn't use, so \"0\" there is expected, not a problem.";
+                // Not an Error: the CCK rounds bools up to whole bytes and the client checks the
+                // budget before each parameter, so a few bits over can still all sync. The
+                // diagnostics entry counts the client's way and names any that won't.
+                if (used > 3200)
+                {
+                    ctx.Report.Warning("Sync", $"{used} of 3200 sync bits used, over the limit",
+                        "Parameters past the limit work for you and never reach anyone else. The sync budget " +
+                        "entry in Diagnostics names them, if any. " + cckNote);
+                }
+                else
+                {
+                    ctx.Report.Converted("Sync", $"{used} of 3200 sync bits used", cckNote);
+                }
             }
             catch (Exception e)
             {
                 ctx.Report.Warning("Sync", "Could not read sync usage", e.Message);
             }
-        }
-
-        static void PrepareOutputFolder(BridgeContext ctx)
-        {
-            string safeName = ctx.SourceDescriptor.gameObject.name;
-            foreach (char c in Path.GetInvalidFileNameChars())
-            {
-                safeName = safeName.Replace(c, '_');
-            }
-            // Names like ".", ".." or all-dots would escape (or collide with) the output
-            // folder; so would an empty name. Fall back to a fixed name instead.
-            safeName = safeName.Trim().Trim('.');
-            if (string.IsNullOrWhiteSpace(safeName))
-            {
-                safeName = "Avatar";
-            }
-
-            // The output folder must stay inside Assets. Delete and
-            // overwrite operations must never point outside the project.
-            string folder = (ctx.Settings.outputFolder ?? "").Trim().Replace('\\', '/').TrimEnd('/');
-            if (folder != "Assets" && !folder.StartsWith("Assets/") || folder.Contains(".."))
-            {
-                ctx.Report.Warning("Conversion", $"Output folder \"{ctx.Settings.outputFolder}\" is not inside Assets",
-                    "Using the default \"Assets/AvatarBridgeOutput\" instead.");
-                folder = "Assets/AvatarBridgeOutput";
-            }
-            ctx.OutputDir = folder + "/" + safeName;
-
-            string absolute = Path.GetFullPath(Path.Combine(
-                Application.dataPath, "..", ctx.OutputDir));
-            Directory.CreateDirectory(absolute);
-            AssetDatabase.Refresh();
         }
 
         static void WarnMissingScripts(BridgeContext ctx)

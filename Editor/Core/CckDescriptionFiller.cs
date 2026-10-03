@@ -76,8 +76,8 @@ namespace AvatarBridge
                 default:
                     return "Couldn't find the Description box. Make sure the CCK Control Panel is on " +
                            "the Builder tab with this avatar selected. If it is, this CCK version may " +
-                           "have renamed the field: \"Copy description\" still works, and that's worth " +
-                           "reporting.";
+                           "have renamed the field: the description can still be pasted in by hand, and " +
+                           "that's worth reporting.";
             }
         }
 

@@ -88,16 +88,6 @@ namespace AvatarBridge
             ClsSpringy = new ChainClass("Springy", MiddleSpring),
             ClsLoose = new ChainClass("Loose", SoftSpring);
 
-        public static IEnumerable<ChainClass> AllClasses => new[]
-        {
-            ClsBreast, ClsButt, ClsBelly, ClsThigh, ClsEar, ClsWhisker, ClsFluff,
-            ClsHairFront, ClsHairLong, ClsHairShort, ClsAhoge,
-            ClsTailLong, ClsTailShort, ClsWing, ClsHorn,
-            ClsSkirt, ClsDress, ClsCape, ClsRibbon, ClsSleeve, ClsClothStrip,
-            ClsEarring, ClsNecklace, ClsCharm,
-            ClsFloaty, ClsStiff, ClsSpringy, ClsLoose
-        };
-
         public static ChainClass Classify(PhysBoneChainData data)
         {
             int bones = CountBones(data.Root);
@@ -110,9 +100,9 @@ namespace AvatarBridge
 
             // The bone's own name said nothing; ask its ancestors. Add-on hair and clothing
             // prefabs routinely carry meaningless bone names inside a container that says
-            // exactly what they are: a tester's "Ty ROOT Nessy!" classified as a generic loose
-            // chain (Soft Spring preset; stretchy, and the hair came out floaty) while sitting
-            // under a container literally named "Ty hair". Nearest ancestor first, stopping at
+            // exactly what they are: a hair root with a nonsense name classified as a generic
+            // loose chain (Soft Spring preset; stretchy, and the hair came out floaty) while
+            // sitting under a container named for the hair. Nearest ancestor first, stopping at
             // the Animator so the avatar's own name never matches.
             for (var p = data.Root.parent; p != null && p.GetComponent<Animator>() == null; p = p.parent)
             {
@@ -336,10 +326,10 @@ namespace AvatarBridge
                     break;
                 }
             }
-            // A miss is not an answer. Caching it means "drop your own
-            // preset in and convert again" silently keeps shipping the
-            // built-in defaults for the rest of the session.
-            if (json != null) JsonCache[presetName] = json;
+            // A miss is cached too, or every chain searches the project
+            // again. Reset clears it at the start of each conversion, so a
+            // preset dropped in before the next one is still found.
+            JsonCache[presetName] = json;
             return json;
         }
 

@@ -38,6 +38,8 @@ namespace AvatarBridge
         {
             public AnimatorController Controller;
             public readonly List<string> Layers = new List<string>();
+            // Beside Layers, one each: a name can repeat, an index cannot.
+            public readonly List<int> LayerIndices = new List<int>();
             public readonly List<string> Parameters = new List<string>();
             public readonly List<string> Spared = new List<string>();
             public int PlaceholderStates;
@@ -47,25 +49,50 @@ namespace AvatarBridge
         public static Plan Find(CVRAvatar avatar, AvatarSurvey.Model model)
         {
             var plan = new Plan();
-            var animator = avatar != null ? avatar.GetComponent<Animator>() : null;
-            plan.Controller = BridgeContext.Underlying(animator != null ? animator.runtimeAnimatorController : null);
+            // The controller the survey read, so its layer indices and unused
+            // names apply to the object they were read from.
+            plan.Controller = model != null ? model.Controller : null;
             if (plan.Controller == null) return plan;
+            // Apply rewires whatever wraps it, and the CCK's own override
+            // asset wraps the stock controller for every avatar.
+            if (CvrSetup.SharedController(plan.Controller))
+            {
+                plan.Spared.Add("The avatar runs the CCK's own controller, which every avatar in the project " +
+                                "shares. Give it its own (the CVRAvatar's Advanced Avatar Settings create one), " +
+                                "then tidy again.");
+                return plan;
+            }
 
             var named = MenuNames(avatar);
+            var emptyNames = new HashSet<string>();
 
             foreach (var finding in model.Findings)
             {
                 if (finding.Kind == "empty layer")
                 {
-                    // The base layer stays whatever it holds: it carries the
-                    // default weight every other layer is written against.
-                    var layer = model.Layers.FirstOrDefault(l => l.Name == finding.Subject);
-                    if (layer != null && layer.Index == 0)
+                    // The finding names a layer, and a script-built controller
+                    // can repeat a name, so the first match may hold states.
+                    if (!emptyNames.Add(finding.Subject)) continue;
+                    foreach (var layer in model.Layers.Where(l => l.Name == finding.Subject && l.States == 0))
                     {
-                        plan.Spared.Add($"\"{finding.Subject}\" is the base layer");
-                        continue;
+                        // The base layer stays whatever it holds: it carries the
+                        // default weight every other layer is written against.
+                        if (layer.Index == 0)
+                        {
+                            plan.Spared.Add($"\"{finding.Subject}\" is the base layer");
+                            continue;
+                        }
+                        // No machine of its own, so it reads as empty, but it
+                        // plays another layer's states with its own motions.
+                        if (layer.Index < plan.Controller.layers.Length
+                            && plan.Controller.layers[layer.Index].syncedLayerIndex >= 0)
+                        {
+                            plan.Spared.Add($"\"{finding.Subject}\" is a synced layer");
+                            continue;
+                        }
+                        plan.Layers.Add(finding.Subject);
+                        plan.LayerIndices.Add(layer.Index);
                     }
-                    plan.Layers.Add(finding.Subject);
                 }
                 else if (finding.Kind == "unused parameter")
                 {
@@ -96,9 +123,9 @@ namespace AvatarBridge
             return plan;
         }
 
-        // Into a copy at `savePath`, or into the controller itself when it
-        // is null. The Toolkit always passes a path: someone pointing this
-        // at their own avatar should be able to throw the result away.
+        // Into a copy at `savePath`, never into the controller itself:
+        // someone pointing this at their own avatar should be able to throw
+        // the result away.
         public static AnimatorController Apply(CVRAvatar avatar, Plan plan, string savePath, BridgeReport report)
         {
             if (plan == null || plan.Controller == null)
@@ -106,28 +133,32 @@ namespace AvatarBridge
                 report.Error(Category, "No animator controller", "Nothing to read, so nothing to tidy.");
                 return null;
             }
-
-            var into = plan.Controller;
-            if (!string.IsNullOrEmpty(savePath))
+            if (string.IsNullOrEmpty(savePath))
             {
-                string from = AssetDatabase.GetAssetPath(plan.Controller);
-                // CopyAsset fails silently into a folder that is not there.
-                System.IO.Directory.CreateDirectory(System.IO.Path.GetFullPath(
-                    System.IO.Path.Combine(Application.dataPath, "..", System.IO.Path.GetDirectoryName(savePath))));
-                AssetDatabase.Refresh();
-                if (string.IsNullOrEmpty(from) || !AssetDatabase.CopyAsset(from, savePath))
-                {
-                    report.Error(Category, "Could not copy the controller", $"\"{from}\" to \"{savePath}\"");
-                    return null;
-                }
-                into = AssetDatabase.LoadAssetAtPath<AnimatorController>(savePath);
+                report.Error(Category, "No path for the copy", "Refused to tidy the controller in place, so the original is untouched.");
+                return null;
             }
 
-            int layers = 0;
-            foreach (string name in plan.Layers)
+            string from = AssetDatabase.GetAssetPath(plan.Controller);
+            // CopyAsset fails silently into a folder that is not there.
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetFullPath(
+                System.IO.Path.Combine(Application.dataPath, "..", System.IO.Path.GetDirectoryName(savePath))));
+            AssetDatabase.Refresh();
+            if (string.IsNullOrEmpty(from) || !AssetDatabase.CopyAsset(from, savePath))
             {
-                int index = System.Array.FindIndex(into.layers, l => l.name == name);
-                if (index < 0) continue;
+                report.Error(Category, "Could not copy the controller", $"\"{from}\" to \"{savePath}\"");
+                return null;
+            }
+            var into = AssetDatabase.LoadAssetAtPath<AnimatorController>(savePath);
+
+            // Highest first, so each removal leaves the lower indices valid,
+            // and checked again so a layer that plays something is never taken.
+            int layers = 0;
+            foreach (int index in plan.LayerIndices.OrderByDescending(x => x))
+            {
+                var current = into.layers;
+                if (index >= current.Length || current[index].syncedLayerIndex >= 0
+                    || HasStates(current[index].stateMachine)) continue;
                 into.RemoveLayer(index);
                 layers++;
             }
@@ -144,28 +175,47 @@ namespace AvatarBridge
             EditorUtility.SetDirty(into);
             AssetDatabase.SaveAssets();
 
-            if (into != plan.Controller)
+            // Everywhere the old one is wired. ChilloutVR uploads the overrides,
+            // the CCK's Create Controller copies the base, and the editor plays
+            // the slot. Swapping the slot alone left the upload untidied and the
+            // next survey offering the same removals.
+            Retarget(avatar.overrides, plan.Controller, into, null);
+            if (avatar.avatarSettings != null && avatar.avatarSettings.baseController == plan.Controller)
             {
-                var animator = avatar.GetComponent<Animator>();
-                // An avatar usually runs an override controller wrapping the
-                // base. Assigning over the top of that would throw away every
-                // clip mapping in it, so the swap happens one level down.
-                if (animator.runtimeAnimatorController is AnimatorOverrideController over)
-                {
-                    Undo.RecordObject(over, "Tidy animator");
-                    over.runtimeAnimatorController = into;
-                    EditorUtility.SetDirty(over);
-                }
-                else
-                {
-                    Undo.RecordObject(animator, "Tidy animator");
-                    animator.runtimeAnimatorController = into;
-                    EditorUtility.SetDirty(animator);
-                }
+                Undo.RecordObject(avatar, "Tidy animator");
+                avatar.avatarSettings.baseController = into;
+                EditorUtility.SetDirty(avatar);
             }
+            var animator = avatar.GetComponent<Animator>();
+            if (animator != null) Retarget(animator.runtimeAnimatorController, plan.Controller, into, animator);
 
             Fill(report, plan, layers, parameters, into);
             return into;
+        }
+
+        // An override wrapping the old controller is swapped one level down:
+        // assigning over it would throw away every clip mapping in it. When
+        // the slot holds the overrides already swapped, the walk finds `to`
+        // and stops.
+        static void Retarget(RuntimeAnimatorController held, AnimatorController from, AnimatorController to, Animator slot)
+        {
+            for (int guard = 0; held is AnimatorOverrideController over && guard < 8; guard++)
+            {
+                if (over.runtimeAnimatorController == from)
+                {
+                    Undo.RecordObject(over, "Tidy animator");
+                    over.runtimeAnimatorController = to;
+                    EditorUtility.SetDirty(over);
+                    return;
+                }
+                held = over.runtimeAnimatorController;
+            }
+            if (slot != null && held == from)
+            {
+                Undo.RecordObject(slot, "Tidy animator");
+                slot.runtimeAnimatorController = to;
+                EditorUtility.SetDirty(slot);
+            }
         }
 
         public static void Fill(BridgeReport report, Plan plan, int layers, int parameters, AnimatorController into)
@@ -192,11 +242,14 @@ namespace AvatarBridge
                     "Not waste: an empty slot crashes Unity. Each means a motion never arrived, usually a " +
                     "missing asset or a skipped build step. Find out why before relying on it.");
             }
-            if (into != null)
+            if (into != null && into != plan.Controller)
             {
                 report.Converted(Category, "Written to a copy", AssetDatabase.GetAssetPath(into));
             }
         }
+
+        static bool HasStates(AnimatorStateMachine machine) =>
+            machine != null && (machine.states.Length > 0 || machine.stateMachines.Any(c => HasStates(c.stateMachine)));
 
         static int CountPlaceholders(AnimatorController controller)
         {

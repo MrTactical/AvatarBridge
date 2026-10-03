@@ -19,8 +19,11 @@ namespace AvatarBridge
         {
             var chains = ctx.ConvertedPhysicsChains;
             // Zero chains still matters when style synthesis is on: an avatar whose ONLY
-            // physics would be a synthesized rig must reach phase 1 below.
-            if (chains == null || (chains.Count == 0 && !ctx.Settings.addPhysicsToRiggedStyles))
+            // physics would be a synthesized rig must reach phase 1 below. It matters
+            // too when every chain failed: the PhysBone toggles left stranded are
+            // reported below. Only a target of None means nobody wanted physics.
+            if (chains == null || (chains.Count == 0 && !ctx.Settings.addPhysicsToRiggedStyles
+                                   && ctx.Settings.physicsTarget == PhysicsTarget.None))
             {
                 return;
             }
@@ -186,6 +189,12 @@ namespace AvatarBridge
             // so "broken" reads as "always rigid".
             void NotePhysicslessStyle(Transform container)
             {
+                // With no chain converted at all, "never had physics" cannot be told
+                // apart from "its PhysBones failed to convert", so say nothing.
+                if (chains.Count == 0 && !ctx.Settings.addPhysicsToRiggedStyles)
+                {
+                    return;
+                }
                 if (!physicslessStyles.Add(container) || ChainInSubtree(container))
                 {
                     return;
@@ -504,13 +513,25 @@ namespace AvatarBridge
                         }
                     });
                 }
-                foreach (var container in activated)
+                // Outermost first, skipping any rig inside one already given a cloth.
+                // In hash order a nested pair either simulated the inner bones twice
+                // or left the outer rig rigid, varying run to run.
+                int Depth(Transform t)
                 {
-                    if (ChainInSubtree(container) || !IsSelfContainedRig(container, out var rigRoot))
+                    int depth = 0;
+                    for (; t.parent != null; t = t.parent) depth++;
+                    return depth;
+                }
+                var synthesized = new List<Transform>();
+                foreach (var container in activated.OrderBy(Depth))
+                {
+                    if (ChainInSubtree(container) || !IsSelfContainedRig(container, out var rigRoot)
+                        || synthesized.Any(r => rigRoot == r || rigRoot.IsChildOf(r)))
                     {
                         continue;
                     }
                     MagicaClothWriter.WriteSynthesized(ctx, rigRoot);
+                    synthesized.Add(rigRoot);
                 }
             }
 #endif

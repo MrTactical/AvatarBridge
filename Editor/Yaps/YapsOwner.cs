@@ -19,6 +19,7 @@ using ABI.CCK.Components;
 using AvatarBridge.Yaps;
 using UnityEditor;
 using UnityEditor.Animations;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 
 namespace AvatarBridge
@@ -88,7 +89,7 @@ namespace AvatarBridge
             foreach (var kv in numbers)
                 if (kv.Value > 0 && !OnHips(kv.Key.transform, human)) byDefault |= 1 << (kv.Value - 1);
 
-            var told = new HashSet<Renderer>();
+            var told = new HashSet<Material>();
             foreach (var plug in root.GetComponentsInChildren<YapsPlug>(true))
             {
                 // A converted plug has a component too, adopted off its
@@ -97,7 +98,8 @@ namespace AvatarBridge
                 // applies them; one set by hand, or by tag rules, is chosen and
                 // skips them.
                 int start = byDefault, chosen = 0;
-                var rules = RulesOf(plug.Target);
+                var own = MaterialsOf(plug);
+                var rules = RulesOf(own);
                 if (rules != null) start = RulesMask(rules, numbers, human, out chosen);
                 foreach (var s in plug.selfEnter)
                     if (s != null && numbers.TryGetValue(s, out int n) && n > 0) chosen |= 1 << (n - 1);
@@ -105,23 +107,18 @@ namespace AvatarBridge
                 foreach (var s in plug.selfRefuse)
                     if (s != null && numbers.TryGetValue(s, out int n) && n > 0) mask &= ~(1 << (n - 1));
                 chosen &= mask;
-                // Every mesh the bake reached, not only the named one.
-                var meshes = plug.bakedSlots.Where(b => b != null && b.renderer != null)
-                    .Select(b => b.renderer).Append(plug.Target).Where(r => r != null);
-                foreach (var r in meshes)
+                foreach (var m in own)
                 {
-                    if (told.Add(r))
-                        foreach (var m in r.sharedMaterials) SetMask(m, mask, chosen);
+                    if (told.Add(m)) SetMask(m, mask, chosen);
                 }
             }
             // A plug with no component, its component stripped: its author's
             // rules if the material kept any, else the default.
             foreach (var r in root.GetComponentsInChildren<Renderer>(true))
             {
-                if (told.Contains(r)) continue;
                 foreach (var m in r.sharedMaterials)
                 {
-                    if (m == null) continue;
+                    if (m == null || told.Contains(m)) continue;
                     var rules = RulesOn(m);
                     int chosen = 0;
                     int mask = rules != null ? RulesMask(rules, numbers, human, out chosen) : byDefault;
@@ -222,8 +219,51 @@ namespace AvatarBridge
             };
         }
 
-        static SelfRules RulesOf(Renderer r) =>
-            r == null ? null : r.sharedMaterials.Select(RulesOn).FirstOrDefault(x => x != null);
+        static SelfRules RulesOf(IEnumerable<Material> materials) =>
+            materials.Select(RulesOn).FirstOrDefault(x => x != null);
+
+        // The materials this plug baked: its slot and the slots it recorded,
+        // on whichever mesh, and on its own mesh every slot wearing the same
+        // bake, which finds a converted plug's second slot no record names.
+        // Never the whole renderer: two plugs on one mesh each have a slot of
+        // their own, and the first plug's mask and rules went onto both.
+        // The whole renderer only when nothing is recorded, as before. Then the
+        // variants a toggle swaps into those slots, which sit on no renderer
+        // until it plays and so kept the shader's own-socket default.
+        internal static List<Material> MaterialsOf(YapsPlug plug)
+        {
+            var found = SlotMaterialsOf(plug);
+            foreach (var v in plug.variants)
+                if (v != null && v.material != null && !found.Contains(v.material)) found.Add(v.material);
+            return found;
+        }
+
+        static List<Material> SlotMaterialsOf(YapsPlug plug)
+        {
+            var found = new List<Material>();
+            var target = plug.Target;
+            void Take(Renderer r, int slot)
+            {
+                if (r == null) return;
+                var mats = r.sharedMaterials;
+                if (slot >= 0 && slot < mats.Length && mats[slot] != null && !found.Contains(mats[slot]))
+                    found.Add(mats[slot]);
+            }
+            Take(target, plug.materialSlot);
+            foreach (var b in plug.bakedSlots)
+                if (b != null) Take(b.renderer != null ? b.renderer : target, b.slot);
+            if (target == null) return found;
+            if (found.Count == 0) return target.sharedMaterials.Where(m => m != null).Distinct().ToList();
+            var bakes = new HashSet<Texture>(found.Where(m => m.HasProperty("_YAPS_Bake"))
+                .Select(m => m.GetTexture("_YAPS_Bake")).Where(t => t != null));
+            foreach (var m in target.sharedMaterials)
+            {
+                if (m != null && !found.Contains(m) && m.HasProperty("_YAPS_Bake")
+                    && bakes.Contains(m.GetTexture("_YAPS_Bake")))
+                    found.Add(m);
+            }
+            return found;
+        }
 
         // Self tag rules are the author's whole answer for their own sockets,
         // as SPS reads them, so what they allow is chosen and skips the
@@ -263,7 +303,7 @@ namespace AvatarBridge
             var avatar = socket != null ? socket.GetComponentInParent<CVRAvatar>(true) : null;
             if (avatar == null || plug == null) return false;
             var human = HumanBones(avatar.GetComponent<Animator>());
-            var rules = RulesOf(plug.Target);
+            var rules = RulesOf(MaterialsOf(plug));
             if (rules != null && rules.Tagged) return rules.Allows(socket, human);
             bool hips = rules != null && rules.EntersHips;
             return (hips || !OnHips(socket.transform, human))
@@ -319,32 +359,55 @@ namespace AvatarBridge
             return note;
         }
 
+        // What Targets leaving out the CCK's own controller costs this avatar,
+        // or null. Every avatar-wide YAPS layer goes through Targets, so it is
+        // said here once. Apart from Wire's note, which callers report as done:
+        // this one is a failure. The CCK's default Base Controller is its own,
+        // and Create Controller copies the base over the generated one, so
+        // layers in the generated one alone go at the next press.
+        public static string SharedWarning(CVRAvatar avatar)
+        {
+            if (avatar == null) return null;
+            if (avatar.GetComponentInChildren<YapsPlug>(true) == null
+                && avatar.GetComponentInChildren<YapsSocket>(true) == null) return null;
+            if (CvrSetup.SharedController(Shipped(avatar)))
+            {
+                return "the CCK's own controller: this avatar runs it, so YAPS kept its layers out, since every " +
+                       "avatar in the project shares it and a CCK update replaces it. Set a copy of it as the " +
+                       "avatar's Base Controller, create the avatar's own controller from it in Advanced Avatar " +
+                       "Settings, then build again";
+            }
+            var based = avatar.avatarSettings != null ? BridgeContext.Underlying(avatar.avatarSettings.baseController) : null;
+            if (CvrSetup.SharedController(based))
+            {
+                return "the CCK's own Base Controller: YAPS layers went into the uploaded controller alone, and the " +
+                       "next Create Controller builds a new one from the base without them. Set a copy of the " +
+                       "CCK's controller as the avatar's Base Controller, then build again";
+            }
+            return null;
+        }
+
         // Every controller an avatar-wide layer goes into: the one ChilloutVR
         // uploads and the base the CCK rebuilds it from, once each. After the
         // CCK has generated Advanced Settings they are two files: a layer in
         // the uploaded one alone is lost at the next generate, and one in the
-        // base alone does not ship until then.
+        // base alone does not ship until then. Never the CCK's own controller,
+        // the same guard the Toolkit's Height card applies; SharedWarning says
+        // what that leaves out.
         public static List<AnimatorController> Targets(CVRAvatar avatar)
         {
             var list = new List<AnimatorController>();
             var shipped = Shipped(avatar);
-            if (shipped != null) list.Add(shipped);
+            if (shipped != null && !CvrSetup.SharedController(shipped)) list.Add(shipped);
             var based = avatar != null && avatar.avatarSettings != null
                 ? BridgeContext.Underlying(avatar.avatarSettings.baseController) : null;
-            if (based != null && !list.Contains(based)) list.Add(based);
+            if (based != null && !list.Contains(based) && !CvrSetup.SharedController(based)) list.Add(based);
             return list;
         }
 
-        // The controller ChilloutVR will actually run for this avatar.
-        public static AnimatorController Shipped(CVRAvatar avatar)
-        {
-            if (avatar == null) return null;
-            var shipped = avatar.overrides != null ? avatar.overrides.runtimeAnimatorController : null;
-            if (shipped == null && avatar.avatarSettings != null) shipped = avatar.avatarSettings.baseController;
-            var animator = avatar.GetComponent<Animator>();
-            if (shipped == null && animator != null) shipped = animator.runtimeAnimatorController;
-            return BridgeContext.Underlying(shipped);
-        }
+        // The controller ChilloutVR will actually run for this avatar, by the
+        // rule the Toolkit reads it with.
+        public static AnimatorController Shipped(CVRAvatar avatar) => AvatarSurvey.ShippedController(avatar);
 
         // A direct blend tree weighted by the parameter itself, over a clip
         // setting the property to 1, so the property comes out AS the id.
@@ -454,6 +517,13 @@ namespace AvatarBridge
 
         static bool RemoveLayer(AnimatorController controller)
         {
+            var parts = Embedded(controller, controller.layers.Where(l => l.name == LayerName).Select(l => l.stateMachine));
+            // The tree and clip carry the layer's name, so the ones earlier
+            // builds left go too.
+            string path = AssetDatabase.GetAssetPath(controller);
+            if (!string.IsNullOrEmpty(path))
+                parts.AddRange(AssetDatabase.LoadAllAssetsAtPath(path)
+                    .Where(o => (o is AnimationClip || o is BlendTree) && o.name == LayerName));
             bool removed = false;
             for (int i = controller.layers.Length - 1; i >= 0; i--)
             {
@@ -461,6 +531,7 @@ namespace AvatarBridge
                 controller.RemoveLayer(i);
                 removed = true;
             }
+            DropUnreached(controller, parts);
             return removed;
         }
 
@@ -470,6 +541,67 @@ namespace AvatarBridge
             if (p == null) return false;
             controller.RemoveParameter(p);
             return true;
+        }
+
+        // What YAPS layers embedded in the controller's own file: machines,
+        // states, transitions, behaviours and blend trees. Assigning
+        // controller.layers destroys none of it, so every rebuild left a dead
+        // copy behind. Read before the layers go, handed to DropUnreached
+        // after. Never clips: a layer may play the author's own, which can sit
+        // in the controller's file and are not YAPS's to destroy.
+        internal static List<UnityEngine.Object> Embedded(AnimatorController controller, IEnumerable<AnimatorStateMachine> machines)
+        {
+            string path = controller != null ? AssetDatabase.GetAssetPath(controller) : null;
+            if (string.IsNullOrEmpty(path)) return new List<UnityEngine.Object>();
+            var found = new HashSet<UnityEngine.Object>();
+            foreach (var machine in machines) Walk(machine, found);
+            return found.Where(o => o != null && !(o is AnimationClip) && AssetDatabase.GetAssetPath(o) == path).ToList();
+        }
+
+        // Destroyed with undo, as RemoveLayer destroys a machine, and never a
+        // part the controller's remaining layers still reach.
+        internal static void DropUnreached(AnimatorController controller, List<UnityEngine.Object> parts)
+        {
+            if (controller == null || parts == null || parts.Count == 0) return;
+            var live = new HashSet<UnityEngine.Object>(controller.animationClips);
+            foreach (var layer in controller.layers) Walk(layer.stateMachine, live);
+            foreach (var part in parts)
+            {
+                // Null once RemoveLayer has destroyed it already.
+                if (part == null || live.Contains(part)) continue;
+                Undo.DestroyObjectImmediate(part);
+            }
+            EditorUtility.SetDirty(controller);
+        }
+
+        static void Walk(AnimatorStateMachine machine, HashSet<UnityEngine.Object> into)
+        {
+            if (machine == null || !into.Add(machine)) return;
+            foreach (var b in machine.behaviours) into.Add(b);
+            foreach (var t in machine.anyStateTransitions) into.Add(t);
+            foreach (var t in machine.entryTransitions) into.Add(t);
+            foreach (var child in machine.states)
+            {
+                var state = child.state;
+                if (state == null || !into.Add(state)) continue;
+                foreach (var t in state.transitions) into.Add(t);
+                foreach (var b in state.behaviours) into.Add(b);
+                Walk(state.motion, into);
+            }
+            foreach (var child in machine.stateMachines)
+            {
+                foreach (var t in machine.GetStateMachineTransitions(child.stateMachine)) into.Add(t);
+                Walk(child.stateMachine, into);
+            }
+        }
+
+        static void Walk(Motion motion, HashSet<UnityEngine.Object> into)
+        {
+            if (motion == null || !into.Add(motion)) return;
+            if (motion is BlendTree tree)
+            {
+                foreach (var child in tree.children) Walk(child.motion, into);
+            }
         }
     }
 
@@ -486,9 +618,18 @@ namespace AvatarBridge
         static double _next;
         static MaterialPropertyBlock _block;
         // HasProperty on a Poiyomi material logs a drawer error each call.
+        // Emptied with each closed scene, or it holds every material it ever
+        // saw, destroyed ones included.
         static readonly Dictionary<Material, bool> Carries = new Dictionary<Material, bool>();
+        // Reused: this runs twice a second for as long as the editor is open.
+        static readonly List<Renderer> Renderers = new List<Renderer>();
+        static readonly List<Material> Mats = new List<Material>();
 
-        static YapsOwnerStandIn() => EditorApplication.update += Tick;
+        static YapsOwnerStandIn()
+        {
+            EditorApplication.update += Tick;
+            EditorSceneManager.sceneClosed += _ => Carries.Clear();
+        }
 
         static void Tick()
         {
@@ -520,19 +661,20 @@ namespace AvatarBridge
                 // A block on one slot replaces the renderer's for that slot,
                 // and the renderer's is where the Animator writes: per slot,
                 // this hid every menu toggle on every plug in the editor.
-                foreach (var r in avatar.GetComponentsInChildren<Renderer>(true))
+                avatar.GetComponentsInChildren(true, Renderers);
+                foreach (var r in Renderers)
                 {
-                    var mats = r.sharedMaterials;
-                    if (!mats.Any(CarriesOwner)) continue;
+                    r.GetSharedMaterials(Mats);
+                    if (!Mats.Any(CarriesOwner)) continue;
                     r.GetPropertyBlock(_block);
                     if (_block.GetFloat(Property) == id) continue;
                     _block.SetFloat(Property, id);
                     r.SetPropertyBlock(_block);
                     // What an earlier build left on each slot, which would
                     // still hide the renderer's block until the scene reloads.
-                    for (int slot = 0; slot < mats.Length; slot++)
+                    for (int slot = 0; slot < Mats.Count; slot++)
                     {
-                        if (CarriesOwner(mats[slot])) r.SetPropertyBlock(null, slot);
+                        if (CarriesOwner(Mats[slot])) r.SetPropertyBlock(null, slot);
                     }
                     changed = true;
                 }

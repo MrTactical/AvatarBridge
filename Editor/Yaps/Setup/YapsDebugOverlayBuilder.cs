@@ -1,9 +1,9 @@
 // The in-game readout for a plug that will not behave.
 //
-// Twelve cells painted by our own shader, saying who resolved the socket,
-// whether the plug is bending, what the atlas saw and what state the plug's
-// own bake and frame are in, plus two markers saying whether anything has
-// moved its bones.
+// Twelve cells painted by the readout's own shader, saying who resolved the
+// socket, whether the plug is bending, what the atlas saw and what state the
+// plug's own bake and frame are in, plus two markers saying whether anything
+// has moved its bones.
 //
 // The plug's own debug view answers in LENGTH and straightens the plug to
 // do it, so the bend and the reason for the bend can never be read at the
@@ -56,7 +56,7 @@ namespace AvatarBridge
 {
     public static class YapsDebugOverlayBuilder
     {
-        const string Category = "YAPS penetration system";
+        const string Category = "YAPS";
         // The object the first version built beside the plug. Still
         // removed, so an avatar built with it does not keep a dead quad.
         public const string ObjectName = "YAPS Debug Overlay";
@@ -200,27 +200,25 @@ namespace AvatarBridge
                 return;
             }
 
-            var mesh = source;
+            void Unbuilt(YapsPlug plug, string why) => report?.Warning(Category, plug.name,
+                "The readout could not be added to \"" + source.name + "\": " + why +
+                ". The plug itself is unaffected.");
             var built = new List<YapsPlug>();
             foreach (var plug in wanted)
             {
-                var next = WithReadout(mesh, plug.readoutAnchor, plug.readoutTip, out string why);
-                if (next == null)
-                {
-                    report?.Warning(Category, plug.name,
-                        "The readout could not be added to \"" + source.name + "\": " + why +
-                        ". The plug itself is unaffected.");
-                    continue;
-                }
-                if (mesh != source)
-                {
-                    UnityEngine.Object.DestroyImmediate(mesh);
-                }
-                mesh = next;
-                built.Add(plug);
+                if (plug.readoutAnchor >= source.vertexCount) Unbuilt(plug, "the anchor vertex is not on this mesh");
+                else built.Add(plug);
             }
             if (built.Count == 0)
             {
+                return;
+            }
+            // Every readout in one pass: a pass per plug copied the whole mesh
+            // and every blendshape frame again for each.
+            var mesh = WithReadout(source, built, out string failed);
+            if (mesh == null)
+            {
+                foreach (var plug in built) Unbuilt(plug, failed);
                 return;
             }
             mesh.name = source.name + MeshSuffix;
@@ -228,11 +226,25 @@ namespace AvatarBridge
             string dir = DirOf(built[0].readoutSource.GetTexture("_YAPS_Bake") as Texture2D) ?? Folder;
             Directory.CreateDirectory(dir);
             // Named for where the renderer sits as well: two renderers can share
-            // a mesh, or a mesh name, and one would delete the other's.
+            // a mesh, or a mesh name, and one would overwrite the other's.
             string key = Safe(renderer.name) + " " + YapsBaker.PlaceKey(renderer.transform);
             string meshPath = dir + "/YAPS " + key + MeshSuffix + ".asset";
-            AssetDatabase.DeleteAsset(meshPath);
-            AssetDatabase.CreateAsset(mesh, meshPath);
+            // Rewritten in place when the file is there: deleting it destroys
+            // the mesh an earlier conversion's renderer still wears.
+            var saved = AssetDatabase.LoadAssetAtPath<Mesh>(meshPath);
+            if (saved != null)
+            {
+                EditorUtility.CopySerialized(mesh, saved);
+                UnityEngine.Object.DestroyImmediate(mesh);
+                EditorUtility.SetDirty(saved);
+                AssetDatabase.SaveAssetIfDirty(saved);
+                mesh = saved;
+            }
+            else
+            {
+                AssetDatabase.DeleteAsset(meshPath);
+                AssetDatabase.CreateAsset(mesh, meshPath);
+            }
 
             var labels = new HashSet<string>();
             foreach (var plug in built)
@@ -346,7 +358,7 @@ namespace AvatarBridge
         // The plugs that recorded a readout on this renderer.
         static List<YapsPlug> Records(Renderer renderer)
         {
-            return renderer.transform.root.GetComponentsInChildren<YapsPlug>(true)
+            return YapsNativeBuilder.AvatarRoot(renderer.transform).GetComponentsInChildren<YapsPlug>(true)
                 .Where(p => p != null && p.readoutRenderer == renderer)
                 .ToList();
         }
@@ -366,7 +378,8 @@ namespace AvatarBridge
             return m.name.StartsWith(ObjectName, StringComparison.Ordinal);
         }
 
-        // The plug's mesh with three more quads, every vertex a copy of one
+        // The mesh with three more quads per plug, each plug's in a submesh
+        // of its own, every vertex a copy of one
         // real plug vertex: position, normal, tangent, every uv but the
         // first, bone weights and every blendshape delta. Skinned and shaped
         // the same, they arrive in the vertex shader where that vertex
@@ -381,21 +394,10 @@ namespace AvatarBridge
         // space, so an avatar that turned round moves every number; two
         // points a shaft apart do not have that problem, and the gap between
         // them is the only thing here that can see the BONES move.
-        static Mesh WithReadout(Mesh source, int anchor, int tip, out string why)
+        static Mesh WithReadout(Mesh source, List<YapsPlug> plugs, out string why)
         {
             why = null;
             int n = source.vertexCount;
-            if (anchor < 0 || anchor >= n)
-            {
-                why = "the anchor vertex is not on this mesh";
-                return null;
-            }
-            if (tip < 0 || tip >= n)
-            {
-                // Not fatal: the strip and the rest marker still mean what
-                // they mean. Only the pair reading is lost.
-                tip = anchor;
-            }
             Vector3[] vertices;
             try
             {
@@ -408,13 +410,26 @@ namespace AvatarBridge
                 return null;
             }
 
-            // Which real vertex each added vertex copies, in order.
-            var from = new int[Quads * Corners];
-            for (int q = 0; q < Quads; q++)
+            // Which real vertex each added vertex copies, in order. The caller
+            // has checked every anchor is on the mesh.
+            int per = Quads * Corners;
+            var from = new int[plugs.Count * per];
+            for (int p = 0; p < plugs.Count; p++)
             {
-                for (int c = 0; c < Corners; c++)
+                int anchor = plugs[p].readoutAnchor;
+                int tip = plugs[p].readoutTip;
+                if (tip < 0 || tip >= n)
                 {
-                    from[q * Corners + c] = q == 2 ? tip : anchor;
+                    // Not fatal: the strip and the rest marker still mean what
+                    // they mean. Only the pair reading is lost.
+                    tip = anchor;
+                }
+                for (int q = 0; q < Quads; q++)
+                {
+                    for (int c = 0; c < Corners; c++)
+                    {
+                        from[p * per + q * Corners + c] = q == 2 ? tip : anchor;
+                    }
                 }
             }
 
@@ -441,12 +456,15 @@ namespace AvatarBridge
                 {
                     // z is the quad. Nothing else separates three quads whose
                     // vertices are otherwise the same numbers.
-                    for (int q = 0; q < Quads; q++)
+                    for (int p = 0; p < plugs.Count; p++)
                     {
-                        uv.Add(new Vector4(0f, 0f, q, 0f));
-                        uv.Add(new Vector4(1f, 0f, q, 0f));
-                        uv.Add(new Vector4(0f, 1f, q, 0f));
-                        uv.Add(new Vector4(1f, 1f, q, 0f));
+                        for (int q = 0; q < Quads; q++)
+                        {
+                            uv.Add(new Vector4(0f, 0f, q, 0f));
+                            uv.Add(new Vector4(1f, 0f, q, 0f));
+                            uv.Add(new Vector4(0f, 1f, q, 0f));
+                            uv.Add(new Vector4(1f, 1f, q, 0f));
+                        }
                     }
                 }
                 else
@@ -503,20 +521,24 @@ namespace AvatarBridge
                 mesh.bindposes = source.bindposes;
             }
 
-            mesh.subMeshCount = source.subMeshCount + 1;
+            mesh.subMeshCount = source.subMeshCount + plugs.Count;
             for (int s = 0; s < source.subMeshCount; s++)
             {
                 mesh.SetIndices(source.GetIndices(s), source.GetTopology(s), s);
             }
-            // One submesh for all three, so the readout still costs the
+            // One submesh for all three, so each readout still costs the
             // renderer a single extra material slot.
             var triangles = new List<int>();
-            for (int q = 0; q < Quads; q++)
+            for (int p = 0; p < plugs.Count; p++)
             {
-                int b = n + q * Corners;
-                triangles.AddRange(new[] { b, b + 2, b + 1, b + 2, b + 3, b + 1 });
+                triangles.Clear();
+                for (int q = 0; q < Quads; q++)
+                {
+                    int b = n + p * per + q * Corners;
+                    triangles.AddRange(new[] { b, b + 2, b + 1, b + 2, b + 3, b + 1 });
+                }
+                mesh.SetTriangles(triangles, source.subMeshCount + p);
             }
-            mesh.SetTriangles(triangles, source.subMeshCount);
 
             var dv = new Vector3[n];
             var dn = new Vector3[n];
@@ -589,14 +611,10 @@ namespace AvatarBridge
             return Path.GetDirectoryName(path)?.Replace('\\', '/');
         }
 
-        // EVERY _YAPS_ VALUE THE PLUG HAS, copied by name rather than by a
-        // list kept here. A hand-written list rots the first time a property
-        // is added to the patcher's block, and the cell it feeds then reads
-        // zero without saying so. Anything the overlay shader cannot hold is
-        // reported, so the drift is loud.
-        //
-        // The animated ones arrive through the renderer's block at runtime
-        // regardless; this is for the values that only live on the material.
+        // Every _YAPS_ value the plug has, and anything the readout shader
+        // cannot hold reported, so a cell that reads zero for want of a
+        // property says so. The animated ones arrive through the renderer's
+        // block at runtime regardless.
         static void Copy(Material from, Material to, string label, BridgeReport report)
         {
             if (from == null || to == null)
@@ -604,48 +622,7 @@ namespace AvatarBridge
                 return;
             }
             var missing = new List<string>();
-            int count = ShaderUtil.GetPropertyCount(from.shader);
-            for (int i = 0; i < count; i++)
-            {
-                string name = ShaderUtil.GetPropertyName(from.shader, i);
-                if (!name.StartsWith("_YAPS_", StringComparison.Ordinal))
-                {
-                    continue;
-                }
-                // The patcher's markers, naming the shader it started from.
-                // Nothing a cell reads.
-                if (name == YapsShaderGUI.OriginalEditorProperty || name == YapsShaderPatcher.SourceShaderProperty)
-                {
-                    continue;
-                }
-                var kind = ShaderUtil.GetPropertyType(from.shader, i);
-                if (!to.HasProperty(name))
-                {
-                    if (kind == ShaderUtil.ShaderPropertyType.Float
-                        || kind == ShaderUtil.ShaderPropertyType.Range
-                        || kind == ShaderUtil.ShaderPropertyType.Vector)
-                    {
-                        missing.Add(name);
-                    }
-                    continue;
-                }
-                switch (kind)
-                {
-                    case ShaderUtil.ShaderPropertyType.Float:
-                    case ShaderUtil.ShaderPropertyType.Range:
-                        to.SetFloat(name, from.GetFloat(name));
-                        break;
-                    case ShaderUtil.ShaderPropertyType.Vector:
-                        to.SetVector(name, from.GetVector(name));
-                        break;
-                    case ShaderUtil.ShaderPropertyType.Color:
-                        to.SetColor(name, from.GetColor(name));
-                        break;
-                    case ShaderUtil.ShaderPropertyType.TexEnv:
-                        to.SetTexture(name, from.GetTexture(name));
-                        break;
-                }
-            }
+            YapsNativeBuilder.CopyYapsProperties(from, to, missing);
             EditorUtility.SetDirty(to);
             if (missing.Count == 0)
             {
@@ -693,6 +670,8 @@ namespace AvatarBridge
                 return had ? "readout toggle removed: nothing carries a readout" : null;
             }
 
+            // Recorded first, or undo leaves the two writes below behind.
+            Undo.RecordObject(avatar, "YAPS readout");
             if (avatar.avatarSettings == null)
             {
                 avatar.avatarSettings = new CVRAdvancedAvatarSettings
@@ -702,7 +681,6 @@ namespace AvatarBridge
                 };
             }
             avatar.avatarUsesAdvancedSettings = true;
-            Undo.RecordObject(avatar, "YAPS readout");
             if (ours == null)
             {
                 ours = new CVRAdvancedSettingsEntry { machineName = Parameter };

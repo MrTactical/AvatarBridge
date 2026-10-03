@@ -28,12 +28,8 @@ namespace AvatarBridge
             public bool OnState;
         }
 
-        static bool _targetsUnsupportedReported;
-
         public static void Run(BridgeContext ctx, AnimatorController master, List<AnimatorControllerLayer> vrcLayers)
         {
-            _targetsUnsupportedReported = false;
-            _dumpedTargetFields = false;
             _appliedTargets.Clear();
 
             var entriesByParam = new Dictionary<string, CVRAdvancedSettingsEntry>();
@@ -56,17 +52,19 @@ namespace AvatarBridge
             // every entry; asking it per entry meant a "no" could arrive
             // after earlier layers had already been removed from vrcLayers,
             // and the bail-out skipped the deferred cleanup that finishes
-            // them. Deterministic today, one CCK release from not being.
-            if (!TargetsSupported())
+            // them. Only the native style needs the list: the layer style
+            // writes no CCK targets, and a CCK without them must not stop
+            // its renames and branch expansion too.
+            bool useNativeTargets = ctx.Settings.toggleStyle == ToggleStyle.CvrNativeTargets;
+            if (useNativeTargets && TargetsField() == null)
             {
                 ctx.Report.Warning(Category, "CCK toggle targets not found on this CCK version",
                     "Keeping animator-based toggles instead.");
-                return;
+                useNativeTargets = false;
             }
 
             var removedMachines = new HashSet<AnimatorStateMachine>();
             var nativizedParams = new HashSet<string>();
-            bool useNativeTargets = ctx.Settings.toggleStyle == ToggleStyle.CvrNativeTargets;
             var renamedLayers = new List<(AnimatorStateMachine machine, string name)>();
 
             foreach (var layer in vrcLayers.ToList())
@@ -106,11 +104,7 @@ namespace AvatarBridge
                     continue;
                 }
 
-                if (!ApplyTargets(ctx, entry, targets))
-                {
-                    return; // CCK version without native targets; keep animator toggles
-                }
-
+                ApplyTargets(ctx, entry, targets);
                 removedMachines.Add(layer.stateMachine);
                 vrcLayers.Remove(layer);
                 nativizedParams.Add(param);
@@ -121,23 +115,18 @@ namespace AvatarBridge
             // Modern VRCFury merges many toggles as branches of shared direct blend
             // trees; pull pure object toggles out of those too. Only needed for the
             // CVR-native style; the layer style expands every branch below instead.
-            bool aborted = false;
             if (useNativeTargets)
             {
                 foreach (var layer in vrcLayers)
                 {
-                    if (aborted)
-                    {
-                        break;
-                    }
                     string layerName = layer.name;
                     SystemStripper.WalkMachines(layer.stateMachine, machine =>
                     {
                         foreach (var child in machine.states)
                         {
-                            if (!aborted && child.state.motion is BlendTree tree)
+                            if (child.state.motion is BlendTree tree)
                             {
-                                NativizeTreeToggles(ctx, tree, entriesByParam, nativizedParams, layerName, ref aborted);
+                                NativizeTreeToggles(ctx, tree, entriesByParam, nativizedParams, layerName);
                             }
                         }
                     });
@@ -253,15 +242,14 @@ namespace AvatarBridge
 
         static void NativizeTreeToggles(BridgeContext ctx, BlendTree tree,
             Dictionary<string, CVRAdvancedSettingsEntry> entriesByParam,
-            HashSet<string> nativizedParams, string layerName, ref bool aborted)
+            HashSet<string> nativizedParams, string layerName)
         {
             var children = tree.children;
             var kept = new List<ChildMotion>(children.Length);
             bool changed = false;
             foreach (var child in children)
             {
-                if (!aborted &&
-                    tree.blendType == BlendTreeType.Direct &&
+                if (tree.blendType == BlendTreeType.Direct &&
                     !string.IsNullOrEmpty(child.directBlendParameter) &&
                     entriesByParam.TryGetValue(child.directBlendParameter, out var entry) &&
                     child.motion is AnimationClip clip)
@@ -269,21 +257,18 @@ namespace AvatarBridge
                     var targets = ExtractPureToggleTargets(clip);
                     if (targets != null && targets.Count > 0)
                     {
-                        if (ApplyTargets(ctx, entry, targets))
-                        {
-                            nativizedParams.Add(child.directBlendParameter);
-                            changed = true;
-                            ctx.Report.Converted(Category, entry.name,
-                                $"{targets.Count} object(s) toggled natively by CVR; branch removed from \"{layerName}\".");
-                            continue; // drop this branch
-                        }
-                        aborted = true;
+                        ApplyTargets(ctx, entry, targets);
+                        nativizedParams.Add(child.directBlendParameter);
+                        changed = true;
+                        ctx.Report.Converted(Category, entry.name,
+                            $"{targets.Count} object(s) toggled natively by CVR; branch removed from \"{layerName}\".");
+                        continue; // drop this branch
                     }
                 }
                 var keptChild = child;
                 if (child.motion is BlendTree subTree)
                 {
-                    NativizeTreeToggles(ctx, subTree, entriesByParam, nativizedParams, layerName, ref aborted);
+                    NativizeTreeToggles(ctx, subTree, entriesByParam, nativizedParams, layerName);
                 }
                 kept.Add(keptChild);
             }
@@ -624,34 +609,21 @@ namespace AvatarBridge
 
         // ------------------------------------------------------------------- apply ----
 
-        // Whether this CCK exposes the native toggle target list at all.
+        // The CCK's native toggle target list, or null on a CCK without one.
         // The field layout differs between CCK versions and reflection keeps
         // this compiling either way.
-        static bool TargetsSupported()
+        static FieldInfo TargetsField()
         {
             var field = typeof(CVRAdvancesAvatarSettingGameObjectToggle)
                 .GetField("gameObjectTargets", BindingFlags.Public | BindingFlags.Instance);
-            return field != null && field.FieldType.IsGenericType;
+            return field != null && field.FieldType.IsGenericType ? field : null;
         }
 
-        static bool ApplyTargets(BridgeContext ctx, CVRAdvancedSettingsEntry entry, List<TargetInfo> targets)
+        // Only reached once Run has found the list on this CCK.
+        static void ApplyTargets(BridgeContext ctx, CVRAdvancedSettingsEntry entry, List<TargetInfo> targets)
         {
             var toggle = (CVRAdvancesAvatarSettingGameObjectToggle)entry.setting;
-
-            // Field layout differs slightly between CCK versions; reflection keeps this
-            // compiling and falls back to animator-based toggles cleanly.
-            var field = toggle.GetType().GetField("gameObjectTargets", BindingFlags.Public | BindingFlags.Instance);
-            if (field == null || !field.FieldType.IsGenericType)
-            {
-                if (!_targetsUnsupportedReported)
-                {
-                    ctx.Report.Warning(Category, "CCK toggle targets not found on this CCK version",
-                        "Keeping animator-based toggles instead.");
-                    _targetsUnsupportedReported = true;
-                }
-                return false;
-            }
-
+            var field = TargetsField();
             var list = field.GetValue(toggle) as IList;
             if (list == null)
             {
@@ -660,7 +632,7 @@ namespace AvatarBridge
             }
             var elementType = field.FieldType.GetGenericArguments()[0];
 
-            foreach (var target in targets)
+            foreach (var target in WithContactHosts(ctx, targets))
             {
                 var transform = BridgeContext.FindByAnimationPath(ctx.Target.transform, target.Path);
                 if (transform == null)
@@ -682,10 +654,38 @@ namespace AvatarBridge
                 list.Add(item);
             }
             EditorUtility.SetDirty(ctx.CvrAvatar);
-            return true;
         }
 
-        static bool _dumpedTargetFields;
+        // A contact rebuilt under a rootTransform elsewhere is not under the object the toggle
+        // switches, and a native toggle has no clip for a repoint pass to carry. So its host
+        // joins the toggle, and the contact stops when its object does.
+        static List<TargetInfo> WithContactHosts(BridgeContext ctx, List<TargetInfo> targets)
+        {
+            var all = new List<TargetInfo>(targets);
+            foreach (var pair in ctx.ContactHosts)
+            {
+                // The closest target decides: a clip can switch Outfit on and Outfit/Hat off.
+                var owner = targets.Where(t => IsUnder(pair.Key.path, t.Path))
+                    .OrderByDescending(t => t.Path.Length).FirstOrDefault();
+                if (owner == null || BridgeContext.FindByAnimationPath(ctx.Target.transform, owner.Path) == null) continue;
+                foreach (string host in pair.Value)
+                {
+                    if (IsUnder(host, owner.Path)) continue;
+                    var go = BridgeContext.FindByAnimationPath(ctx.Target.transform, host);
+                    if (go == null) continue;
+                    // In native mode MatchRestState turns a host off only for a disabled contact,
+                    // and the toggle must not wake it. If that mode ever gets the inactive-ancestor
+                    // rule, this needs the contact's enabled state recorded beside ContactHosts.
+                    if (!go.gameObject.activeSelf) continue;
+                    all.Add(new TargetInfo { Path = host, OnState = owner.OnState });
+                }
+            }
+            return all;
+        }
+
+        static bool IsUnder(string path, string root) =>
+            !string.IsNullOrEmpty(root) && path != null
+            && (path == root || path.StartsWith(root + "/", StringComparison.Ordinal));
 
         // Every (entry, object, state) handed to the CCK this run, so the
         // same one written from two branches is not added twice.
@@ -694,12 +694,6 @@ namespace AvatarBridge
         static void AssignTargetMembers(object item, GameObject go, bool onState, string path)
         {
             var fields = item.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance);
-            if (!_dumpedTargetFields)
-            {
-                Debug.Log("[AvatarBridge] CCK toggle target fields: " +
-                          string.Join(", ", fields.Select(f => $"{f.FieldType.Name} {f.Name}")));
-                _dumpedTargetFields = true;
-            }
             foreach (var field in fields)
             {
                 try
@@ -722,6 +716,64 @@ namespace AvatarBridge
                 {
                     // leave the field at its default
                 }
+            }
+        }
+
+        // The CCK builds a native toggle's clips from each target's path, and refreshes the
+        // path from the object only while its inspector list is drawn. Passes after the merge
+        // move and rename objects (the second head's contents, YAPS's renames), so a path
+        // written during the merge can name nothing by upload. Run once every object is final;
+        // the path is worked out exactly as the CCK's inspector does.
+        internal static void RefreshTargetPaths(BridgeContext ctx)
+        {
+            var field = TargetsField();
+            var settings = ctx.CvrAvatar != null ? ctx.CvrAvatar.avatarSettings?.settings : null;
+            if (field == null || settings == null)
+            {
+                return;
+            }
+            var root = ctx.CvrAvatar.transform;
+            int refreshed = 0;
+            foreach (var entry in settings)
+            {
+                if (!(entry?.setting is CVRAdvancesAvatarSettingGameObjectToggle toggle)
+                    || !(field.GetValue(toggle) is IList list))
+                {
+                    continue;
+                }
+                for (int i = 0; i < list.Count; i++)
+                {
+                    var item = list[i];
+                    if (item == null)
+                    {
+                        continue;
+                    }
+                    var fields = item.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance);
+                    var go = fields.Where(f => f.FieldType == typeof(GameObject))
+                        .Select(f => f.GetValue(item) as GameObject)
+                        .FirstOrDefault(g => g != null);
+                    if (go == null || !go.transform.IsChildOf(root))
+                    {
+                        continue;
+                    }
+                    string path = AnimationUtility.CalculateTransformPath(go.transform, root);
+                    foreach (var pathField in fields.Where(f => f.FieldType == typeof(string)
+                                 && f.Name.ToLowerInvariant().Contains("path")))
+                    {
+                        if (pathField.GetValue(item) as string != path)
+                        {
+                            pathField.SetValue(item, path);
+                            refreshed++;
+                        }
+                    }
+                    list[i] = item;
+                }
+            }
+            if (refreshed > 0)
+            {
+                EditorUtility.SetDirty(ctx.CvrAvatar);
+                ctx.Report.Converted(Category, $"{refreshed} native toggle target path(s) updated",
+                    "Their objects moved or were renamed after the toggle was built.");
             }
         }
     }

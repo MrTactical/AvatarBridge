@@ -95,6 +95,11 @@ namespace AvatarBridge
                 return;
             }
 
+            // Longest key first, sorted once: Remap runs for every binding of
+            // every clip, three times over. The fix-up below changes values
+            // only, and Remap reads them through the dictionary.
+            var longestFirst = remap.Keys.OrderByDescending(k => k.Length).ToArray();
+
             // A renamed object under a renamed object: its new path runs
             // through its parent's NEW name. Shortest first, so a parent is
             // settled before any child looks it up.
@@ -106,7 +111,7 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                if (Remap(value.Substring(0, cut), remap, out string movedParent))
+                if (Remap(value.Substring(0, cut), remap, longestFirst, out string movedParent))
                 {
                     remap[key] = movedParent + value.Substring(cut);
                 }
@@ -118,7 +123,7 @@ namespace AvatarBridge
             var deadBefore = new HashSet<string>();
             foreach (string path in AnimatedPaths(ctx))
             {
-                if (Remap(path, remap, out string moved)
+                if (Remap(path, remap, longestFirst, out string moved)
                     && BridgeContext.FindByAnimationPath(ctx.Target.transform, path) == null)
                 {
                     deadBefore.Add(moved);
@@ -130,8 +135,8 @@ namespace AvatarBridge
                 target.name = to;
             }
 
-            int rewritten = RewriteClips(ctx, remap);
-            RewriteMasks(ctx, remap);
+            int rewritten = RewriteClips(ctx, remap, longestFirst);
+            RewriteMasks(ctx, remap, longestFirst);
             var unresolved = Unresolved(ctx, deadBefore);
 
             if (unresolved.Count > 0)
@@ -167,14 +172,14 @@ namespace AvatarBridge
         // By PREFIX. Renaming a socket also moves every light, pointer and
         // trigger hanging beneath it, and those are addressed by their own
         // longer paths.
-        static int RewriteClips(BridgeContext ctx, Dictionary<string, string> remap)
+        static int RewriteClips(BridgeContext ctx, Dictionary<string, string> remap, string[] longestFirst)
         {
             int count = 0;
             foreach (var clip in Clips(ctx))
             {
                 foreach (var binding in AnimationUtility.GetCurveBindings(clip))
                 {
-                    if (!Remap(binding.path, remap, out string path))
+                    if (!Remap(binding.path, remap, longestFirst, out string path))
                     {
                         continue;
                     }
@@ -190,7 +195,7 @@ namespace AvatarBridge
                 // these is how a wardrobe half-applies.
                 foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
                 {
-                    if (!Remap(binding.path, remap, out string path))
+                    if (!Remap(binding.path, remap, longestFirst, out string path))
                     {
                         continue;
                     }
@@ -208,7 +213,7 @@ namespace AvatarBridge
         // A layer mask that lists transforms lets the layer move only the
         // ones listed, by path. A listed path that no longer matches drops
         // that object's position and scale curves without a word.
-        static void RewriteMasks(BridgeContext ctx, Dictionary<string, string> remap)
+        static void RewriteMasks(BridgeContext ctx, Dictionary<string, string> remap, string[] longestFirst)
         {
             var seen = new HashSet<AvatarMask>();
             string controllerPath = AssetDatabase.GetAssetPath(ctx.MergedController);
@@ -232,7 +237,7 @@ namespace AvatarBridge
                 bool touched = false;
                 for (int i = 0; i < mask.transformCount; i++)
                 {
-                    if (Remap(mask.GetTransformPath(i), remap, out string path))
+                    if (Remap(mask.GetTransformPath(i), remap, longestFirst, out string path))
                     {
                         mask.SetTransformPath(i, path);
                         touched = true;
@@ -245,7 +250,7 @@ namespace AvatarBridge
             }
         }
 
-        static bool Remap(string path, Dictionary<string, string> remap, out string moved)
+        static bool Remap(string path, Dictionary<string, string> remap, string[] longestFirst, out string moved)
         {
             moved = null;
             if (string.IsNullOrEmpty(path))
@@ -254,18 +259,18 @@ namespace AvatarBridge
             }
             // Longest key first: an object renamed inside another renamed
             // object must take its own new name, not only its parent's.
-            foreach (var pair in remap.OrderByDescending(p => p.Key.Length))
+            foreach (string key in longestFirst)
             {
-                if (path == pair.Key)
+                if (path == key)
                 {
-                    moved = pair.Value;
+                    moved = remap[key];
                     return true;
                 }
                 // The separator matters: "A/Socket" must not match a
                 // sibling called "A/SocketRing".
-                if (path.StartsWith(pair.Key + "/"))
+                if (path.StartsWith(key + "/"))
                 {
-                    moved = pair.Value + path.Substring(pair.Key.Length);
+                    moved = remap[key] + path.Substring(key.Length);
                     return true;
                 }
             }
