@@ -176,9 +176,11 @@ parameters or physics actually running.
   **Remote view** card snaps every `#` local parameter to its default: what other players' clients
   hold forever, so you can see remote-only flickering before you upload. Its **Physics** card
   (MagicaCloth2 only) walks, runs, turns, hops and shakes the avatar so its chains swing the way they
-  would in game; **Grab chains in the Scene view** lets you pull a chain and fling it, and **Draw
-  every chain** shows every chain's particles, colliders and swing bound at once. VRChat's Gesture
-  Manager can't do any of this: it needs the VRC descriptor, which conversion removes.
+  would in game; **Grab chains in the Scene view** marks the bones you can take hold of and lets you
+  pull a chain and fling it (MagicaCloth pushes a whole cloth component, so the chains sharing one
+  light up and move together), and **Draw every chain** shows every chain's particles, colliders
+  and swing bound at once. VRChat's Gesture Manager can't do any of this: it needs the VRC
+  descriptor, which conversion removes.
 - **Animations that can't possibly work get named**: a locked Poiyomi shader silently deletes any
   property that wasn't flagged animated, so the toggle plays perfectly and changes nothing, in
   VRChat as much as here. The report [lists every

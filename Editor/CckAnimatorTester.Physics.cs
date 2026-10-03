@@ -142,8 +142,9 @@ namespace AvatarBridge
             var grab = new Toggle("Grab chains in the Scene view")
             {
                 value = _grab,
-                tooltip = "Left-drag near a chain to pull it; let go to fling it. Pulls the whole cloth component " +
-                          "the bone belongs to, through MagicaCloth's own force.",
+                tooltip = "Dots mark the bones you can take hold of. Left-drag near one to pull it; let go to fling it. " +
+                          "MagicaCloth's force moves a whole cloth component, so the bones of the one under the cursor " +
+                          "light up: every chain in it moves together.",
             };
             grab.RegisterValueChangedCallback(e => { _grab = e.newValue; SceneView.RepaintAll(); });
             card.Body.Add(grab);
@@ -277,6 +278,8 @@ namespace AvatarBridge
             if (!_grab || avatar == null) return;
 
             var e = Event.current;
+            if (e.type == EventType.MouseMove) view.Repaint();
+            if (e.type == EventType.Repaint && _held == null) DrawGrabbable(avatar, e.mousePosition);
             int id = GUIUtility.GetControlID(FocusType.Passive);
             switch (e.GetTypeForControl(id))
             {
@@ -325,14 +328,36 @@ namespace AvatarBridge
             }
         }
 
+        // Where a drag can take hold, and what it would pull. The force goes to
+        // a whole cloth component, so every bone of the one under the cursor
+        // lights up: two chains sharing a cloth move together.
+        static void DrawGrabbable(CVRAvatar avatar, Vector2 mouse)
+        {
+            PickBone(avatar, mouse, out var hovered, out var hoveredBone);
+            foreach (var cloth in Cloths(avatar).Where(c => c.isActiveAndEnabled))
+            {
+                bool lit = cloth == hovered;
+                Handles.color = lit ? Color.yellow : new Color(1f, 1f, 1f, 0.4f);
+                foreach (var t in ChainBones(cloth))
+                {
+                    float size = HandleUtility.GetHandleSize(t.position) * (lit ? 0.03f : 0.018f);
+                    Handles.DotHandleCap(0, t.position, Quaternion.identity, size, EventType.Repaint);
+                }
+            }
+            if (hoveredBone == null) return;
+            int chains = hovered.SerializeData.rootBones.Count(r => r != null);
+            Handles.Label(hoveredBone.position, chains > 1 ? $"{hovered.name}: {chains} chains move together" : hovered.name);
+        }
+
         // The chain bone nearest the cursor, within a reach that does not
-        // steal clicks meant for the rest of the Scene view.
+        // steal clicks meant for the rest of the Scene view. A cloth that is
+        // off cannot take a force, so it is never picked.
         static bool PickBone(CVRAvatar avatar, Vector2 mouse, out MagicaCloth cloth, out Transform bone)
         {
             cloth = null;
             bone = null;
             float best = 24f;
-            foreach (var c in Cloths(avatar))
+            foreach (var c in Cloths(avatar).Where(c => c.isActiveAndEnabled))
             {
                 foreach (var t in ChainBones(c))
                 {
