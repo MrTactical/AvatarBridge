@@ -60,6 +60,29 @@ compiled by neither until it is deployed; run `check-defines.sh` against the pro
 **Gap closed 2026-10-03:** `compile-check.sh` now also compiles `CVR_CCK_EXISTS` with
 `AVATARBRIDGE_MAGICA` and no SDK, and `check-defines.sh` compiles the repo (Editor, Runtime, and the
 Dev harness by name), not the deployed copy, so the workaround above is no longer needed.
+**Round two 2026-10-04, after Joe tried it** ("pulling from a bone but not the correct one"; wanted
+the solver's settings overlaid, and to select, edit live and keep). The grab took the nearest bone
+in screen space, roots included, and a MagicaCloth root never moves, so the pull anchored there at
+full force forever: roots are now skipped (drawn as rings) unless a chain has nothing else, and
+near-ties go to the bone nearer the camera. DynamicBone joins MagicaCloth (card title "Physics",
+each solver behind its own define, all four combinations compile): its chains, radius and
+colliders are drawn, and a grab drives `m_Force` on top of the converter's gravity, put back after.
+*Draw every chain* labels each chain with its solver, key settings and a health colour (amber off,
+not running, or stretched past 1.5x; red NaN or 2 chain lengths from rest); a label click, or
+Ctrl-click a bone, selects the component. Inspector edits to selected chains are detected by a
+4 Hz hash of `EditorJsonUtility.ToJson` (MagicaCloth's `SerializeData` only, so the overlay's gizmo
+switches never count) and refreshed with `SetParameterChange`/`UpdateParameters` by name; the card
+lists them with *Keep* / *Keep all*, recorded by GlobalObjectId (instance id fallback for an unsaved
+scene) and written back on `EnteredEditMode` with Undo, any reference the record lost restored
+from the scene. Not yet seen in the GUI: all of it, and whether references survive the Play
+boundary in the JSON at all (the restore covers it either way). The probe still covers round one.
+Review repairs the same day: the near-tie window drifted with the running pick (a chain seen
+end-on handed the grab to its tip), now measured from the nearest bone; `m_Enabled` is stripped
+from the hash and the record, since toggles animate it on chain components and a Keep wrote the
+Play-mode on/off state over the scene default; label rects are per Scene view; a bone in reach
+beats a label over it; labels place worst first and a red one is never dropped; the avatar's
+chains are watched as well as the selection (a locked Inspector); kept records live in
+`SessionState` with a static `EnteredEditMode` hook, so closing the tester first loses nothing.
 
 **A mesh riding a plug stayed rigid through every rebuild. FIXED ON DEV 2026-09-26, found by Joe on
 his own avatar.** A whole-avatar plug rooted at the armature carries a second skinned mesh, a

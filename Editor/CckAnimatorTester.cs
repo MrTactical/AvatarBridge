@@ -18,7 +18,8 @@ namespace AvatarBridge
     // client writes, coerced by declared type like the client.
     public partial class CckAnimatorTester : EditorWindow
     {
-        // The physics card lives in its own file: it needs MagicaCloth2.
+        // The physics card lives in its own file, each solver it reads behind
+        // that solver's own define.
         partial void EnablePhysics();
         partial void DisablePhysics();
         partial void PhysicsPlayModeChanged(PlayModeStateChange change);
