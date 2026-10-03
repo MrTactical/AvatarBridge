@@ -937,6 +937,35 @@ IK. Needs the reporter's SDK version, which bone, and what the wrong result actu
 
 ## Loose ends, small but real
 
+### The stereo shader patcher, read end to end on 2026-10-03. BEING FIXED (Joe: "fix it all")
+
+A read of `ShaderSpiPatcher` with every claim checked against the code. From the code, none of it
+measured yet:
+
+1. **Multi-pass shaders get half a patch.** Only the first `#pragma vertex/fragment` is used and the
+   setup lines go into the first matching vertex function, so an outline or ForwardAdd pass with its
+   own vertex function stays one-eyed while the shader is reported patched.
+2. **Copies overwrite each other.** Copies are named `<stem>_SPI` with names deduplicated only within
+   one shader, so two shaders sharing a file or include name write the same file in `RehomedAssets`,
+   and a later failed patch deletes a file an earlier good copy includes.
+3. **Macros added twice.** A shader holding some of the four (instancing ID for GPU instancing) gets a
+   second copy, a duplicate struct member.
+4. **The toggle pass drops lines.** Swap-only shaders that are already correct, limited by a screen
+   grab, or patched by a recipe are collected and never reported.
+5. **`.failed.txt` keeps only the main file** while the report says the failing line is in it.
+6. **Unreadable reads as correct:** `DeclaresStereo` catches a throw and returns true.
+7. **Depth reads: two exact spellings only**, and never for a shader that already names all four
+   macros, which can still read a stereo depth array as a plain texture.
+8. **`#include_with_pragmas` is never followed**, checked or copied.
+9. **Surface shaders are refused and flagged as one-eyed**, when Unity generates their passes; a
+   surface shader with its own vert/frag pass (an outline) is refused whole. To be measured.
+10. **The compile check proves the default variant only**; nothing compiles `STEREO_INSTANCING_ON`.
+11. **Docs and comments out of step:** the README and the diagnostics warning put the tickbox "in
+   Advanced" (it is in Manual options, under Shaders); the README says screen reads are rewritten
+   (depth only) and that an edited shader's recipe "is refused rather than guessed at" (a mismatch
+   only adds a note); two header comments say locked shaders and shared-include structs are refused.
+12. **The advisor counts renderers only**, so swap-only one-eyed shaders never raise its suggestion.
+
 ### Toggle style "CVR Native Targets" lost its toggles (issue #8). FIXED ON DEV 2026-10-01
 
 Reported on 4.6.1 as every toggle dead in game. `ToggleNativizer` hands a plain object toggle to the
