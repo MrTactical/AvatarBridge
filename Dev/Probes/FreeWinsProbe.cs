@@ -93,10 +93,14 @@ namespace AvatarBridge.Regression
                 EditorUtility.SetDirty(copy);
                 AssetDatabase.SaveAssets();
                 animator.runtimeAnimatorController = copy;
+                // The survey reads the overrides first, so they must hold the dirty copy too.
+                avatar.overrides = copy;
             }
             else
             {
                 animator.runtimeAnimatorController = dirty;
+                avatar.overrides = null;
+                if (avatar.avatarSettings != null) avatar.avatarSettings.baseController = dirty;
             }
 
             int layersBefore = dirty.layers.Length, paramsBefore = dirty.parameters.Length;
@@ -133,7 +137,8 @@ namespace AvatarBridge.Regression
             // never flagged unused and never offered for removal. It is a
             // second line of defence, so it gets tested as one, against a
             // model that claims the thing the survey will not claim.
-            var pretend = new AvatarSurvey.Model();
+            // Find reads the model's controller, so the pretend one names one.
+            var pretend = new AvatarSurvey.Model { Controller = dirty };
             pretend.Findings.Add(new AvatarSurvey.Finding
             {
                 Kind = "unused parameter", Subject = gameDriven, Detail = "pretend",

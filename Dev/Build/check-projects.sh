@@ -15,6 +15,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 UNITY="${UNITY_DATA:-/c/Program Files/Unity/Hub/Editor/2022.3.22f1/Editor/Data}"
 MONO="$UNITY/MonoBleedingEdge/bin/mono.exe"
 CSC="$UNITY/MonoBleedingEdge/lib/mono/4.5/csc.exe"
+IKDASM="$UNITY/MonoBleedingEdge/lib/mono/4.5/ikdasm.exe"
 NETSTANDARD="$UNITY/MonoBleedingEdge/lib/mono/4.5/Facades/netstandard.dll"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -56,13 +57,37 @@ for proj in "${projects[@]}"; do
         done
         [ -n "$sdk" ] && while read -r f; do echo "-r:\"$(cygpath -w "$f")\""; done <<< "$sdk"
         find "$REPO/Editor" "$REPO/Runtime" -name '*.cs' | while read -r f; do echo "\"$(cygpath -w "$f")\""; done
+        # The dev harness deploy.sh refreshes by name, as a deploy leaves it,
+        # so every AvatarBridge type the project can see is a source here.
+        # Same lookup as deploy.sh: the harness folders only, last match wins,
+        # or a gitignored spike sharing a name gets compiled instead.
+        for have in "$proj/Assets/AvatarBridge/Editor/DevTools"/*.cs; do
+            [ -f "$have" ] || continue
+            src=$(find "$REPO"/Dev/{Corpus,Tests,Probes,Scenes,Tester} -name "$(basename "$have")" -type f 2>/dev/null | tail -n 1)
+            echo "\"$(cygpath -w "${src:-$have}")\""
+        done
         grep -rl --include=*.cs "AvatarBridge\|Yaps" "$proj/Assets" 2>/dev/null | grep -v "/Assets/AvatarBridge/" |
             while read -r f; do echo "\"$(cygpath -w "$f")\""; done
     } > "$rsp"
 
     if [ -n "$sdk" ]; then name="$(basename "$proj") (VRChat SDK)"; else name="$(basename "$proj") (no VRChat SDK)"; fi
     errors=$("$MONO" "$CSC" "@$(cygpath -w "$rsp")" 2>&1 | grep "error CS" | sort -u)
+    # A type the repo renamed or removed still resolves from the deployed copy
+    # in Assembly-CSharp-Editor.dll, so a script calling the old name compiles
+    # here and breaks once Unity rebuilds. One bound out of those dlls is stale.
+    stale=""
     if [ -f "$dll" ]; then
+        if "$MONO" "$IKDASM" "$(cygpath -w "$dll")" > "$WORK/il.txt"; then
+            stale=$(grep -o "\['\?Assembly-CSharp[^]]*]AvatarBridge[A-Za-z0-9_.]*" "$WORK/il.txt" | sort -u)
+        else
+            stale="(could not read the assembly back)"
+        fi
+    fi
+    if [ -f "$dll" ] && [ -n "$stale" ]; then
+        fail=1
+        echo "  FAILED  $name: resolved from the deployed copy, gone from the repo"
+        sed 's/^/          /' <<< "$stale" | head -15
+    elif [ -f "$dll" ]; then
         echo "  ok      $name"
     else
         fail=1

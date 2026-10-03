@@ -11,18 +11,13 @@
 #
 # No Unity launch and no domain reload: Unity leaves the exact compile
 # arguments for Assembly-CSharp-Editor in a response file, so this reuses
-# them and only swaps the -define: lines. Seconds per combination.
+# them and swaps only the -define: lines and its copy of this repo for the
+# repo itself. Seconds per combination.
 #
-# BLIND SPOT, and it will mislead you: this compiles the EDITOR assembly
-# against the prebuilt Assembly-CSharp.dll in Library/ScriptAssemblies. A
-# change to anything under Runtime/ is invisible until Unity rebuilds that
-# dll, so editor code using a new runtime member fails here with "does not
-# contain a definition for" while Unity itself compiles it happily. When
-# that happens, let Unity recompile once:
-#
-#   Unity.exe -batchmode -quit -projectPath "<project>" -logFile <log>
-#
-# then re-run. The failure is real only if it survives that.
+# Runtime goes in as source as well, beside the project's prebuilt runtime
+# assembly (CS0436, the source wins). Linked alone, that dll is whatever
+# Unity last compiled, so editor code using a runtime member added since
+# failed here with "does not contain a definition for" while Unity built it.
 #
 # Usage:
 #   check-defines.sh [project]     default: the corpus project
@@ -58,15 +53,33 @@ WORK="$PROJ/Temp/define-gate"
 rm -rf "$WORK"; mkdir -p "$WORK"
 trap 'rm -rf "$WORK"' EXIT
 fail=0
+baseline=""
+
+# Unity's source list names the project's deployed copy as of the last time
+# Unity compiled it: the previous deploy, missing every file added since. In
+# the release order this runs before deploying, so it checked the last
+# release, not this one. The repo's own files go in instead, and the dev
+# harness under Editor/DevTools maps back to Dev by name, as deploy.sh does.
+sources="$WORK/sources.rsp"
+{
+  find "$REPO/Editor" "$REPO/Runtime" -name '*.cs' | while read -r f; do echo "\"$(cygpath -w "$f")\""; done
+  grep '^"Assets/AvatarBridge/Editor/DevTools/' "$RSP" | tr -d '"\r' | while read -r have; do
+    src="$(find "$REPO/Dev" -name "$(basename "$have")" -type f -print -quit)"
+    echo "\"$(cygpath -w "${src:-$PROJ/$have}")\""
+  done
+} > "$sources"
 
 for magica in 1 0; do
   for dynbone in 1 0; do
     name="MAGICA=$magica DYNBONE=$dynbone"
     out="$WORK/out-$magica$dynbone.dll"
-    # The stock arguments, minus our two defines and its output, plus the
-    # combination under test. Everything else, 300-odd references, the
-    # source list, langversion, is exactly what Unity itself used.
-    grep -v "^-define:AVATARBRIDGE_MAGICA$\|^-define:AVATARBRIDGE_DYNBONE$\|^-out:" "$RSP" > "$WORK/args.rsp"
+    # The stock arguments, minus our two defines, its outputs and its copy of
+    # this repo, plus the combination under test and the repo's sources.
+    # Everything else, 300-odd references, langversion, is exactly what Unity
+    # itself used. -refout goes too: left in, it overwrote Unity's own ref
+    # assembly in Library.
+    grep -v "^-define:AVATARBRIDGE_MAGICA$\|^-define:AVATARBRIDGE_DYNBONE$\|^-out:\|^-refout:\|^\"Assets/AvatarBridge/" "$RSP" > "$WORK/args.rsp"
+    cat "$sources" >> "$WORK/args.rsp"
     echo "-out:\"$out\"" >> "$WORK/args.rsp"
     [ "$magica" = 1 ] && echo "-define:AVATARBRIDGE_MAGICA" >> "$WORK/args.rsp"
     [ "$dynbone" = 1 ] && echo "-define:AVATARBRIDGE_DYNBONE" >> "$WORK/args.rsp"
@@ -76,12 +89,20 @@ for magica in 1 0; do
     # csc's exit code is unreliable through the wrapper; the errors are the
     # answer. This project only: a project full of other assets' scripts is not
     # this gate's business.
-    ours="$(grep "error CS" "$log" | grep -i "AvatarBridge" | sort -u)"
+    ours="$(grep "error CS" "$log" | grep -iF -e "AvatarBridge" -e "$(cygpath -w "$REPO")" | sort -u)"
     any="$(grep -c "error CS" "$log")"
+    # Warnings too, but only the ones a combination adds over the full build
+    # (the first one run): code after a switch whose every case compiled out
+    # (CS0162) is a define mistake the full build cannot show. CS0436 is the
+    # runtime-as-source overlap described above.
+    warn="$(grep "warning CS" "$log" | grep -v "warning CS0436" | grep -iF "$(cygpath -w "$REPO")" | sort -u)"
+    [ "$magica$dynbone" = 11 ] && baseline="$warn"
+    added="$(comm -13 <(printf '%s\n' "$baseline") <(printf '%s\n' "$warn") | sed '/^$/d')"
 
-    if [ -n "$ours" ]; then
+    if [ -n "$ours" ] || [ -n "$added" ]; then
       echo "FAIL  $name"
-      echo "$ours" | sed 's/^/        /' | head -20
+      [ -n "$ours" ] && echo "$ours" | sed 's/^/        /' | head -20
+      [ -n "$added" ] && echo "$added" | sed 's/^/        /' | head -20
       fail=1
     elif [ "$any" -gt 0 ]; then
       echo "ok    $name  ($any error(s), none in AvatarBridge)"

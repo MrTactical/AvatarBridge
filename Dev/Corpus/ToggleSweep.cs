@@ -105,6 +105,9 @@ namespace AvatarBridge.Regression
 
         public static int Sweep(GameObject root)
         {
+            // Cleared first: the early returns below would otherwise hand the
+            // harness the previous avatar's result.
+            LastResult = default;
             var animator = root.GetComponent<Animator>() ?? root.GetComponentInChildren<Animator>(true);
             // The CCK wraps the generated controller in an override controller, sometimes twice.
             var runtime = animator != null ? animator.runtimeAnimatorController : null;

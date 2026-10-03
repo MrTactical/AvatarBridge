@@ -46,7 +46,7 @@ float4 main(uint id : SV_VertexID) : SV_POSITION
     YapsSocket s = YapsResolveSocket(float3(0,0,0), float3(0,0,1), float3(0,1,0), 0.2);
     YapsChain c = YapsResolveChain(float3(0,0,0), float3(0,0,1), 0.2, float3(1e9,1e9,1e9));
     return float4(s.position + s.forward + c.position[0],
-                  s.engaged + s.tier + c.arc[1] + c.count);
+                  s.engaged + s.tier + c.kind[1] + c.count);
 }
 BODY
 
@@ -64,8 +64,19 @@ float4 main(uint id : SV_VertexID) : SV_POSITION
 }
 BODY
 
+# The deform itself. fxc checks names in a function nothing calls but never
+# generates its code, so the [unroll] failures above would pass unseen.
+emit deform <<'BODY'
+float4 main(uint id : SV_VertexID, float3 p : POSITION, float3 n : NORMAL,
+            float3 t : TANGENT) : SV_POSITION
+{
+    YapsDeform(p, n, t, id);
+    return float4(p + n + t, 1);
+}
+BODY
+
 fail=0
-for t in plug writer; do
+for t in plug writer deform; do
     # X3556 is a note about integer modulus being slow, and X4008 a division
     # the stubs fold to zero. Neither is a defect in the shader.
     out="$("$FXC" -nologo -T vs_5_0 -E main -I "$YAPS" -I "$TMP" \

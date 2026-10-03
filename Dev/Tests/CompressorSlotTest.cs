@@ -63,6 +63,9 @@ namespace AvatarBridge.Regression
                 // A VRCFury working value that shadows nothing; must NOT be taken for a slot or
                 // a mirror, or the pass would start deleting Fury's own machinery.
                 controller.AddParameter("VF113_frameTime", AnimatorControllerParameterType.Float);
+                // Built-ins the compressor never touched: one nothing feeds, one the game drives.
+                controller.AddParameter("VelocityMagnitude", AnimatorControllerParameterType.Float);
+                controller.AddParameter("VelocityX", AnimatorControllerParameterType.Float);
 
                 var ctx = new BridgeContext
                 {
@@ -85,6 +88,9 @@ namespace AvatarBridge.Regression
                 fail += Check("VRCFury's own working value is left alone",
                     !ctx.PreserveParameters.Contains("VF113_frameTime")
                     && controller.parameters.Any(p => p.name == "VF113_frameTime"));
+                fail += Check("built-ins are not preserved, so a frozen one can still be pruned",
+                    !ctx.PreserveParameters.Contains("VelocityMagnitude")
+                    && !ctx.PreserveParameters.Contains("VelocityX"));
             }
             finally
             {

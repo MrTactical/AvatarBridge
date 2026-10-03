@@ -59,6 +59,14 @@ namespace AvatarBridge.Regression
                     "v2f vert(appdata v) { v2f o; UNITY_SETUP_INSTANCE_ID(v); UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o); o.pos = UnityObjectToClipPos(v.vertex); return o; }",
                     "fixed4 frag(v2f i) : SV_Target { return 1; }"));
                 Write("Grab/Grab.shader", GrabShader());
+                // The macros behind a #define and a helper, as locked Poiyomi Pro does.
+                Write("Wrapped/Wrapped.shader", Single("Hidden/SpiP/Wrapped",
+                    "#define MY_INIT_STEREO(o) UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o)\nstruct appdata { float4 vertex : POSITION; UNITY_VERTEX_INPUT_INSTANCE_ID };",
+                    "struct v2f { float4 pos : SV_POSITION; UNITY_VERTEX_OUTPUT_STEREO };\nvoid SetupStereo(appdata v) { UNITY_SETUP_INSTANCE_ID(v); }",
+                    "v2f vert(appdata v) { v2f o; SetupStereo(v); MY_INIT_STEREO(o); o.pos = UnityObjectToClipPos(v.vertex); return o; }",
+                    "fixed4 frag(v2f i) : SV_Target { return 1; }"));
+                // A ready pass beside a bare Metal-only one, as VRCFury's socket marker has.
+                Write("Metal/Metal.shader", MetalTail());
                 AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
 
                 // Each case patched on its own, so the report and the output
@@ -206,6 +214,11 @@ namespace AvatarBridge.Regression
                 Check(ShaderSpiPatcher.StereoProblems(Root + "/StereoDepth/SD.shader").Count == 0,
                     "and nothing for a shader naming every macro beside a plain depth read");
                 Check(ShaderSpiPatcher.StereoProblems(Root + "/Ready/Ready.shader").Count == 0, "and nothing for a ready shader");
+                Check(ShaderSpiPatcher.StereoProblems(Root + "/Wrapped/Wrapped.shader").Count == 0
+                      && ShaderSpiPatcher.DeclaresStereo(Root + "/Wrapped/Wrapped.shader"),
+                    "macros behind a #define and a helper function count as present");
+                Check(ShaderSpiPatcher.StereoProblems(Root + "/Metal/Metal.shader").Count == 0,
+                    "a pass that never compiles for PC is not counted");
             }
             catch (Exception e)
             {
@@ -305,6 +318,19 @@ namespace AvatarBridge.Regression
             $"            struct {in2} {{ float4 vertex : POSITION; float3 normal : NORMAL; }};\n            struct {out2} {{ float4 pos : SV_POSITION; }};\n" +
             $"            {out2} {vert2}({in2} v) {{ {out2} o; o.pos = UnityObjectToClipPos(v.vertex + float4(v.normal * 0.001, 0)); return o; }}\n" +
             $"            fixed4 {frag2}({out2} i, fixed facing : VFACE) : SV_Target {{ return 0; }}\n            ENDCG\n        }}\n    }}\n}}\n";
+
+        static string MetalTail() =>
+            "Shader \"Hidden/SpiP/Metal\"\n{\n    SubShader\n    {\n        Pass\n        {\n            CGPROGRAM\n" +
+            "            #pragma vertex vert\n            #pragma fragment frag\n            #pragma exclude_renderers metal\n            #include \"UnityCG.cginc\"\n" +
+            "            struct appdata { float4 vertex : POSITION; UNITY_VERTEX_INPUT_INSTANCE_ID };\n" +
+            "            struct v2f { float4 pos : SV_POSITION; UNITY_VERTEX_OUTPUT_STEREO };\n" +
+            "            v2f vert(appdata v) { v2f o; UNITY_SETUP_INSTANCE_ID(v); UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o); o.pos = UnityObjectToClipPos(v.vertex); return o; }\n" +
+            "            fixed4 frag(v2f i) : SV_Target { return 1; }\n            ENDCG\n        }\n    }\n" +
+            "    SubShader\n    {\n        Pass\n        {\n            CGPROGRAM\n" +
+            "            #pragma vertex vert\n            #pragma fragment frag\n            #pragma only_renderers metal\n" +
+            "            struct appdata { float4 vertex : POSITION; };\n            struct v2f { float4 vertex : SV_POSITION; };\n" +
+            "            v2f vert(appdata v) { v2f o; o.vertex = UnityObjectToClipPos(v.vertex); return o; }\n" +
+            "            float4 frag(v2f i) : SV_Target { return 0; }\n            ENDCG\n        }\n    }\n}\n";
 
         static string DepthShader(string name, bool stereo) =>
             Wrapped(name, "#pragma vertex vert\n#pragma fragment frag\n#include \"UnityCG.cginc\"\nsampler2D _CameraDepthTexture;\n" +

@@ -10,9 +10,10 @@
 //
 // Deploy into the test project's Assets/Editor/ to run.
 //
-// Run headless for anything past the quick set:
-//   Unity.exe -batchmode -quit -projectPath "<project>" \
-//     -executeMethod AvatarBridge.Regression.RegressionRunner.RunAllBatch
+// Run headless for anything past the quick set, always through
+// Dev/Corpus/run-corpus.sh (--quick, --subset FILE, --dynbone).
+// A raw Unity.exe launch takes every core at Normal priority and
+// skips the stale-deploy and open-editor checks.
 //
 // Headless is for determinism. VRCFury's Write Defaults dialog
 // changes the avatar per button pressed. Batchmode always answers
@@ -84,9 +85,13 @@ namespace AvatarBridge.Regression
         }
         static string BaselineDir => Root + "/Baseline";
         static string CurrentDir => Root + "/Current";
-        // Written when a run is cancelled. A partial Current/ looks exactly like a complete one,
-        // and accepting it would silently shrink the corpus to however far the run got.
+        // Written when a run starts and removed only when it finishes uncancelled, so a crash or
+        // a kill leaves it too. A partial Current/ looks exactly like a complete one, and
+        // accepting it would silently shrink the corpus to however far the run got.
         static string PartialMarker => CurrentDir + "/PARTIAL-DO-NOT-ACCEPT";
+        // Digest names that have a baseline and got no digest this run, for the report.
+        // Not a .txt, so neither the comparison nor Accept picks it up.
+        static string VanishedList => CurrentDir + "/_vanished.list";
 
         // Scenes that are never avatars. Matched as path substrings.
         static readonly string[] BuiltInExcluded =
@@ -175,7 +180,7 @@ namespace AvatarBridge.Regression
             }
             if (File.Exists(PartialMarker))
             {
-                Debug.LogError("[Regression] REFUSING: the last run was cancelled, so Current/ is " +
+                Debug.LogError("[Regression] REFUSING: the last run was cancelled or never finished, so Current/ is " +
                                "partial. Accepting it would shrink the corpus to however far that " +
                                "run got, and every avatar after the cancel would read as \"no " +
                                "baseline yet\" from then on. Re-run first.\n" +
@@ -268,9 +273,8 @@ namespace AvatarBridge.Regression
                 Debug.LogWarning(
                     "[Regression] running " + scenes.Count + " scenes interactively: VRCFury and " +
                     "the VRCSDK will block on modal dialogs for any avatar that fails to bake. " +
-                    "Close Unity and run headless instead:\n" +
-                    "  Unity.exe -batchmode -quit -projectPath \"<project>\" " +
-                    "-executeMethod AvatarBridge.Regression.RegressionRunner.RunAllBatch");
+                    "Close Unity and run headless, throttled, instead:\n" +
+                    "  bash Dev/Corpus/run-corpus.sh   (--quick, --subset FILE or --dynbone as needed)");
             }
 
             // Start from empty. A digest left behind by a previous, differently-scoped run is
@@ -279,9 +283,9 @@ namespace AvatarBridge.Regression
             if (Directory.Exists(CurrentDir))
             {
                 foreach (var stale in Directory.GetFiles(CurrentDir, "*.txt")) File.Delete(stale);
-                if (File.Exists(PartialMarker)) File.Delete(PartialMarker);
             }
             Directory.CreateDirectory(CurrentDir);
+            File.Delete(VanishedList);
 
             // Which build produced this run, kept OUT of the compared digests (see BuildDigest).
             // Not a .txt, so neither the comparison nor Accept picks it up.
@@ -289,8 +293,15 @@ namespace AvatarBridge.Regression
                 $"bridge: {BridgeDefines.Version}\nunity: {Application.unityVersion}\n" +
                 $"started: {DateTime.Now:yyyy-MM-dd HH:mm}\n");
 
+            // Up before the first avatar. A crash or a kill never reaches the end of this
+            // method, so writing it only on cancel left those runs unmarked.
+            File.WriteAllText(PartialMarker,
+                $"Started {DateTime.Now:yyyy-MM-dd HH:mm} and never finished: cancelled, crashed or killed.\n" +
+                "AcceptCurrent refuses while this file exists. Re-run to clear it.\n");
+
             var changes = new List<string>();
             var missing = new List<string>();
+            var noAvatar = new List<string>();
             var sweep = new SweepTally();
             var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             int ran = 0, failed = 0;
@@ -327,7 +338,7 @@ namespace AvatarBridge.Regression
                     try
                     {
                         digest = ConvertAndDigest(scenePath);
-                        if (digest == null) continue;   // no avatar in this scene
+                        if (digest == null) { noAvatar.Add(scenePath); continue; }   // no avatar in this scene
                     }
                     catch (Exception e)
                     {
@@ -349,7 +360,11 @@ namespace AvatarBridge.Regression
                     string baseline = Path.Combine(BaselineDir, file);
                     if (!File.Exists(baseline)) { missing.Add(name); TallySweep(sweep, name, digest, null); continue; }
                     string before = File.ReadAllText(baseline);
-                    if (before != digest) changes.Add($"{name}  ({DiffSummary(before, digest)})");
+                    if (before != digest)
+                    {
+                        RegressionReport.LineDiff(before, digest, out int rem, out int add);
+                        changes.Add($"{name}  (-{rem} +{add})");
+                    }
                     TallySweep(sweep, name, digest, before);
                 }
             }
@@ -359,13 +374,39 @@ namespace AvatarBridge.Regression
                 if (!Application.isBatchMode) EditorUtility.ClearProgressBar();
             }
 
+            // An avatar that stops producing a digest is a change, not a silence. A descriptor
+            // turned missing script, or a scene moved under an excluded path, used to drop out of
+            // the summary, the report and the exit code alike. Only a full run knows that every
+            // baseline should still have a scene.
+            var vanished = noAvatar.Select(s => DigestName(s))
+                .Where(f => File.Exists(Path.Combine(BaselineDir, f)))
+                .ToList();
+            if (label == "all" && !cancelled && Directory.Exists(BaselineDir))
+            {
+                var expected = new HashSet<string>(scenes.Select(s => DigestName(s)), StringComparer.OrdinalIgnoreCase);
+                vanished.AddRange(Directory.GetFiles(BaselineDir, "*.txt")
+                    .Select(f => Path.GetFileName(f))
+                    .Where(f => !expected.Contains(f))
+                    .OrderBy(f => f, StringComparer.Ordinal));
+            }
+
             var sb = new StringBuilder();
             sb.AppendLine($"[Regression/{label}] {ran} avatar(s) in {(DateTime.Now - started).TotalSeconds:F0}s" +
                           (failed > 0 ? $", {failed} threw" : ""));
+            if (ran == 0)
+                sb.AppendLine("  NOTHING RAN: no scene yielded an avatar. This is not a pass.");
+            if (noAvatar.Count > 0)
+                sb.AppendLine($"  no avatar found ({noAvatar.Count}): " +
+                              string.Join(", ", noAvatar.Select(s => Path.GetFileNameWithoutExtension(s))));
             if (missing.Count > 0)
                 sb.AppendLine($"  no baseline yet ({missing.Count}): {string.Join(", ", missing)}");
+            if (vanished.Count > 0)
+            {
+                sb.AppendLine($"  VANISHED ({vanished.Count}), a baseline with no digest this run:");
+                foreach (var v in vanished) sb.AppendLine("    " + Path.GetFileNameWithoutExtension(v));
+            }
             if (changes.Count == 0)
-                sb.AppendLine(missing.Count > 0 ? "  nothing else changed." : "  no changes.");
+                sb.AppendLine(missing.Count > 0 || vanished.Count > 0 ? "  nothing else changed." : "  no changes.");
             else
             {
                 sb.AppendLine($"  CHANGED ({changes.Count}):");
@@ -384,8 +425,10 @@ namespace AvatarBridge.Regression
                 sb.AppendLine($"  CANCELLED after {ran} of {scenes.Count}. Current/ is PARTIAL. " +
                               "Do not accept it as a baseline; re-run.");
                 Debug.LogError(sb.ToString());
-                return changes.Count;
+                return changes.Count + vanished.Count;
             }
+            File.Delete(PartialMarker);
+            if (vanished.Count > 0) File.WriteAllLines(VanishedList, vanished);
 
             // The run as a page a tester can read, beside the digests.
             try
@@ -399,7 +442,8 @@ namespace AvatarBridge.Regression
             }
 
             Debug.Log(sb.ToString());
-            return changes.Count;
+            // An empty run exits non-zero: zero avatars compared is not zero changed.
+            return Math.Max(changes.Count + vanished.Count, ran == 0 ? 1 : 0);
         }
 
         // The digest has carried a [sweep] block since the sweep shipped,
@@ -416,7 +460,7 @@ namespace AvatarBridge.Regression
 
         static void TallySweep(SweepTally tally, string name, string digest, string baseline)
         {
-            if (!ParseSweep(digest, out var now, out var names)) { tally.Unswept++; return; }
+            if (!RegressionReport.ReadSweep(digest, out var now, out var names)) { tally.Unswept++; return; }
             tally.Swept++;
             tally.Params += now[0];
             tally.Responded += now[1];
@@ -426,44 +470,12 @@ namespace AvatarBridge.Regression
 
             int[] was = null;
             var old = new HashSet<string>();
-            if (baseline != null && ParseSweep(baseline, out was, out var oldNames)) old.UnionWith(oldNames);
+            if (baseline != null && RegressionReport.ReadSweep(baseline, out was, out var oldNames)) old.UnionWith(oldNames);
 
             var fresh = names.Where(n => !old.Contains(n)).ToList();
             if (now[4] != 0 && (was == null || was[4] == 0)) fresh.Add("invalid");
             if (fresh.Count > 0) tally.Worse.Add($"{name}  +{string.Join("  +", fresh)}");
             else if (names.Count > 0 || now[4] != 0) tally.Carrying.Add($"{name} ({names.Count + now[4]})");
-        }
-
-        // The counts from the summary line, then the named stuck and
-        // refused lines under it. Positional: the writer's field order
-        // is fixed.
-        static bool ParseSweep(string digest, out int[] counts, out List<string> names)
-        {
-            counts = null;
-            names = new List<string>();
-            int at = digest.IndexOf("[sweep] params=", StringComparison.Ordinal);
-            if (at < 0) return false;
-            var lines = digest.Substring(at).Split('\n');
-            var read = new int[5];
-            int got = 0;
-            foreach (var part in lines[0].Split(' '))
-            {
-                int eq = part.IndexOf('=');
-                if (eq < 0 || got >= 5) continue;
-                if (int.TryParse(part.Substring(eq + 1), NumberStyles.Integer,
-                        CultureInfo.InvariantCulture, out int v))
-                    read[got++] = v;
-            }
-            if (got != 5) return false;
-            counts = read;
-            for (int i = 1; i < lines.Length; i++)
-            {
-                if (lines[i].StartsWith("  stuck ", StringComparison.Ordinal) ||
-                    lines[i].StartsWith("  refused ", StringComparison.Ordinal))
-                    names.Add(lines[i].Trim());
-                else break;
-            }
-            return true;
         }
 
         static void AppendSweepReport(StringBuilder sb, SweepTally sweep)
@@ -481,17 +493,6 @@ namespace AvatarBridge.Regression
             if (sweep.Carrying.Count > 0)
                 sb.AppendLine($"  [sweep] carrying old failures ({sweep.Carrying.Count}): " +
                               string.Join(", ", sweep.Carrying));
-        }
-
-        static string DiffSummary(string before, string after)
-        {
-            var a = before.Split('\n');
-            var b = after.Split('\n');
-            var removed = new HashSet<string>(a);
-            removed.ExceptWith(b);
-            var added = new HashSet<string>(b);
-            added.ExceptWith(a);
-            return $"-{removed.Count} +{added.Count}";
         }
 
         static string DigestName(string scenePath)
@@ -545,8 +546,9 @@ namespace AvatarBridge.Regression
             AdvisorTrace advised = null;
             var settings = AdvisorMode ? AdvisorSettings(descriptor, out advised) : CorpusSettings();
             var report = BridgeConverter.Convert(descriptor, settings);
-            reset.avatar = descriptor.gameObject.name;
-            var target = Selection.activeGameObject;   // BridgeConverter sets this to ctx.Target
+            // Never Selection: a failed conversion leaves it on the source or a half-built
+            // target, and the sweep would then digest that as the conversion.
+            var target = report.ConvertedRoot;
 
             var sb = new StringBuilder();
             sb.Append("avatar: ").Append(descriptor.gameObject.name).Append('\n');
@@ -660,7 +662,6 @@ namespace AvatarBridge.Regression
         {
             public int leftovers;      // previous conversions deleted out of the scene
             public int reactivated;    // objects switched back on above and including the source
-            public string avatar = "";
         }
 
         // Writes the reset to disk instead of doing it in memory.
@@ -1310,24 +1311,6 @@ namespace AvatarBridge.Regression
             if (trigger.stayTasks != null)
                 foreach (var t in trigger.stayTasks) if (t != null && !string.IsNullOrEmpty(t.settingName)) names.Add(t.settingName);
             return names;
-        }
-
-        static Type FindTypeByName(string fullName)
-        {
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                try
-                {
-                    var type = assembly.GetType(fullName, false);
-                    if (type != null) return type;
-                }
-                catch
-                {
-                    // Reflection-only and broken assemblies throw here; they are not where the
-                    // answer lives.
-                }
-            }
-            return null;
         }
 
         static void AppendControllers(StringBuilder sb, CVRAvatar avatar, GameObject target)
