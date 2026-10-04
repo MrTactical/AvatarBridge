@@ -92,6 +92,7 @@ namespace AvatarBridge
         // The selected chain's panel, rebuilt only when the selection names another chain.
         VisualElement _selectedPanel;
         Component _selectedChain;
+        const string AdvancedKey = "AvatarBridge.Tester.AdvancedChainSettings";
         Component _pickedChain;
         BridgeElements.Card _selectedFold;
         BridgeElements.KeyValueRow _selectedHealth;
@@ -200,6 +201,8 @@ namespace AvatarBridge
                 _gizmosBefore.Clear();
                 _restByBone.Clear();
                 _labels.Clear();
+                _rootsOnScreen.Clear();
+                _hover = null;
                 _seen.Clear();
                 _edited.Clear();
             }
@@ -327,7 +330,7 @@ namespace AvatarBridge
                 BridgeElements.Chip("flown off", Tone.Bad))));
             // Says where, since the chips above it are labels too and do nothing.
             card.Body.Add(BridgeElements.UnderToggle(BridgeElements.Hint(
-                "Click a chain's label in the Scene view to select and tune it.")));
+                "Hover a chain's label in the Scene view to read its settings; click it to select and tune it.")));
             // The gizmos belong to the avatar ticked for. Another one resolved
             // since, or a new Play session, needs them to match the box.
             if (_overlay) SetOverlay(avatar, true);
@@ -455,17 +458,40 @@ namespace AvatarBridge
             fold.Body.Add(BridgeElements.KeyValue("Colliders", ColliderCount(chain).ToString()));
 
             fold.Section("Settings");
-            // Bound, so an edit applies the Inspector's way and the edit poll lists it like one.
-            var so = new SerializedObject(chain);
-            var fields = new VisualElement();
-            foreach (var (path, label, tip) in Settings(chain))
+            // Simple is the handful people change while it plays; Advanced is the
+            // solver's own inspector, every setting it has, which applies live edits
+            // its own way. The edit poll sees both, so Keep works either way.
+            bool advanced = EditorPrefs.GetBool(AdvancedKey, false);
+            fold.Body.Add(new BridgeElements.Segmented(new[] { "Simple", "Advanced" }, advanced ? 1 : 0, i =>
             {
-                var field = BridgeElements.Bound(so, path, label, tip);
-                if (field != null) fields.Add(field);
+                EditorPrefs.SetBool(AdvancedKey, i == 1);
+                // The same chain again would keep its fields.
+                _selectedChain = null;
+                BridgeElements.Defer(_selectedPanel, ShowSelected);
+            }, new[]
+            {
+                "The settings people change most while it plays.",
+                $"Every setting {SolverName(chain)} has, through its own inspector.",
+            }));
+            if (advanced)
+            {
+                fold.Body.Add(new InspectorElement(chain));
+                fold.Body.Add(BridgeElements.Hint($"{SolverName(chain)}'s own inspector. Changes apply live."));
             }
-            fields.Bind(so);
-            fold.Body.Add(fields);
-            fold.Body.Add(BridgeElements.Hint("Changes apply live. Other settings are in the Inspector."));
+            else
+            {
+                // Bound, so an edit applies the Inspector's way and the edit poll lists it like one.
+                var so = new SerializedObject(chain);
+                var fields = new VisualElement();
+                foreach (var (path, label, tip) in Settings(chain))
+                {
+                    var field = BridgeElements.Bound(so, path, label, tip);
+                    if (field != null) fields.Add(field);
+                }
+                fields.Bind(so);
+                fold.Body.Add(fields);
+                fold.Body.Add(BridgeElements.Hint("Changes apply live. Advanced shows every setting."));
+            }
 
             _selectedKeep = BridgeElements.Btn("Keep", () =>
             {
@@ -857,6 +883,16 @@ namespace AvatarBridge
                     e.Use();
                     return;
             }
+            // Hovering a chain spells its settings out; only a change of chain repaints.
+            if (type == EventType.MouseMove && _overlay)
+            {
+                var over = LabelAt(view, e.mousePosition) ?? RootNear(view, e.mousePosition);
+                if (over != _hover)
+                {
+                    _hover = over;
+                    view.Repaint();
+                }
+            }
             // The overlay draws on Repaint alone, so without grabbing no other
             // event needs the avatar, and resolving it can search the scene.
             if (!_grab && type != EventType.Repaint) return;
@@ -912,6 +948,25 @@ namespace AvatarBridge
                     }
                     break;
             }
+        }
+
+        // The chain whose first root sits under the cursor, from where the last
+        // repaint put the roots.
+        Component RootNear(SceneView view, Vector2 mouse)
+        {
+            if (!_rootsOnScreen.TryGetValue(view, out var roots)) return null;
+            Component best = null;
+            float reach = 24f;
+            foreach (var (point, chain) in roots)
+            {
+                float d = Vector2.Distance(point, mouse);
+                if (chain != null && d < reach)
+                {
+                    reach = d;
+                    best = chain;
+                }
+            }
+            return best;
         }
 
         Component LabelAt(SceneView view, Vector2 mouse)
@@ -1273,6 +1328,8 @@ namespace AvatarBridge
             _overlay = on;
             _restByBone.Clear();
             _labels.Clear();
+            _rootsOnScreen.Clear();
+            _hover = null;
             // MagicaCloth draws its own particles, radius and colliders when
             // asked. A DynamicBone has no such switch and is drawn here.
             foreach (var chain in Chains(avatar))
@@ -1349,10 +1406,19 @@ namespace AvatarBridge
         // A label at each chain with its settings and health, and what the
         // solvers do not draw themselves: each bone's swing bound, and a
         // DynamicBone's bones, radius and colliders.
+        // Every chain is named with its health; the full settings line is only for
+        // the chain under the cursor and the one selected, or a busy avatar turns
+        // the view into a wall of numbers.
+        Component _hover;
+        readonly Dictionary<SceneView, List<(Vector2 point, Component chain)>> _rootsOnScreen =
+            new Dictionary<SceneView, List<(Vector2, Component)>>();
+
         void DrawChains(CVRAvatar avatar, SceneView view)
         {
             if (!_labels.TryGetValue(view, out var labels)) _labels[view] = labels = new List<(Rect, Component)>();
             labels.Clear();
+            if (!_rootsOnScreen.TryGetValue(view, out var roots)) _rootsOnScreen[view] = roots = new List<(Vector2, Component)>();
+            roots.Clear();
             if (avatar == null) return;
             var judged = new List<(Component chain, Vector3 at, (Color colour, string why, int rank) health)>();
             var drawn = new HashSet<Component>();
@@ -1360,25 +1426,30 @@ namespace AvatarBridge
             {
                 var health = Health(chain, draw: true);
                 DrawColliders(chain, drawn);
-                var roots = Roots(chain);
-                judged.Add((chain, roots.Count > 0 ? roots[0].position : chain.transform.position, health));
+                var chainRoots = Roots(chain);
+                var at = chainRoots.Count > 0 ? chainRoots[0].position : chain.transform.position;
+                judged.Add((chain, at, health));
+                roots.Add((HandleUtility.WorldToGUIPoint(at), chain));
             }
-            // Worst first, so a crowd leaves out the healthy and the switched
-            // off, never the chain in trouble. Stable, so ties keep hierarchy order.
+            // The spelled-out chains first, so they keep their place beside their
+            // root; then worst first, so a crowd leaves out the healthy and the
+            // switched off, never the chain in trouble. Stable, so ties keep
+            // hierarchy order.
+            bool Detailed(Component c) => c != null && (c == _hover || c == _selectedChain);
             var placed = new List<Rect>();
-            foreach (var (chain, at, health) in judged.OrderBy(j => j.health.rank))
+            foreach (var (chain, at, health) in judged.OrderBy(j => Detailed(j.chain) ? 0 : 1).ThenBy(j => j.health.rank))
             {
-                Label(chain, at, health, view.camera, placed, labels);
+                Label(chain, at, health, view.camera, placed, labels, Detailed(chain));
             }
         }
 
         void Label(Component chain, Vector3 at, (Color colour, string why, int rank) health, Camera camera,
-            List<Rect> placed, List<(Rect, Component)> labels)
+            List<Rect> placed, List<(Rect, Component)> labels, bool detailed)
         {
             // Off screen, a label is only clutter piled at the edge.
             var view = camera.WorldToViewportPoint(at);
             if (view.z <= 0f || view.x < 0f || view.x > 1f || view.y < 0f || view.y > 1f) return;
-            string text = LabelText(chain, health.why);
+            string text = detailed ? LabelText(chain, health.why) : ShortLabel(chain, health.why);
             var style = EditorStyles.whiteMiniLabel;
             var size = style.CalcSize(new GUIContent(text));
             var point = HandleUtility.WorldToGUIPoint(at);
@@ -1400,7 +1471,7 @@ namespace AvatarBridge
             placed.Add(rect);
             labels.Add((rect, chain));
             Handles.BeginGUI();
-            EditorGUI.DrawRect(rect, new Color(0f, 0f, 0f, 0.6f));
+            EditorGUI.DrawRect(rect, new Color(0f, 0f, 0f, detailed ? 0.8f : 0.45f));
             EditorGUI.DrawRect(new Rect(rect.x, rect.y, 3f, rect.height), health.colour);
             GUI.Label(new Rect(rect.x + 5f, rect.y, size.x, rect.height), text, style);
             Handles.EndGUI();
@@ -1409,7 +1480,10 @@ namespace AvatarBridge
         // The reason first and bracketed: at the end it read as one of the
         // values ("col 3  off").
         internal static string LabelText(Component chain, string why) =>
-            ShortName(chain) + (why != null ? $"  [{why}]" : "") + "  " + Readout(chain);
+            ShortLabel(chain, why) + "  " + Readout(chain);
+
+        static string ShortLabel(Component chain, string why) =>
+            ShortName(chain) + (why != null ? $"  [{why}]" : "");
 
         // Measured against where the chain hangs at rest. With draw, each
         // bone's swing bound, or a DynamicBone's bones and radius, on the way.

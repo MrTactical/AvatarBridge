@@ -180,14 +180,16 @@ parameters or physics actually running.
   (rings mark the roots the solver holds still, which can't be pulled) and lets you pull a chain and
   fling it; the force moves a whole component, so the chains sharing one light up and move together.
   Ctrl-click a bone (Cmd on a Mac) to select its component instead. **Draw every chain** shows every
-  chain's bones, radius, colliders and swing bound at once, with a label naming its solver and the
-  settings that decide how it moves: green when it runs normally, amber when it is switched off or
-  hidden, not running, or has a bone stretched out of shape, red when a bone has flown off. Click a
-  label to select that component: the card shows its health and its main settings as live fields
-  while it plays. Unity throws Play-mode changes away, so the card lists every physics component you
-  edit on the avatar: **Keep** (or **Keep all**) writes its settings back into the scene when Play
-  mode ends, and the card says which it kept once you are back in the editor. VRChat's Gesture Manager can't do any of this: it needs the VRC
-  descriptor, which conversion removes.
+  chain's bones, radius, colliders and swing bound at once, each named with a health bar; hover a
+  label to read its solver and the settings that decide how it moves: green when it runs normally,
+  amber when it is switched off or hidden, not running, or has a bone stretched out of shape, red
+  when a bone has flown off. Click a label to select that component: the card shows its health and
+  its settings as live fields while it plays, **Simple** for the few people change most or
+  **Advanced** for every setting the solver has, through its own inspector. Unity throws Play-mode
+  changes away, so the card lists every physics component you edit on the avatar: **Keep** (or
+  **Keep all**) writes its settings back into the scene when Play mode ends, and the card says which
+  it kept once you are back in the editor. VRChat's Gesture Manager can't do any of this: it needs
+  the VRC descriptor, which conversion removes.
 - **Animations that can't possibly work get named**: a locked Poiyomi shader silently deletes any
   property that wasn't flagged animated, so the toggle plays perfectly and changes nothing, in
   VRChat as much as here. The report [lists every
