@@ -626,6 +626,12 @@ namespace AvatarBridge.Regression
             {
                 sb.Append("  refused ").Append(name).Append('\n');
             }
+            // Not counted: a rest pose that creeps is a finding of its own, not a stuck toggle.
+            if (r.Unstable != null && r.Unstable.Count > 0)
+            {
+                sb.Append("  unstable at rest: ")
+                  .Append(string.Join(", ", r.Unstable.OrderBy(n => n, StringComparer.Ordinal))).Append('\n');
+            }
             if (thrown.Count > 0)
             {
                 sb.Append("  threw while driving, writes lost: ").Append(string.Join(", ", thrown)).Append('\n');

@@ -1015,6 +1015,24 @@ sweeps them, and an avatar with nothing to sweep says so. Still open: one avatar
 `ScaleFactorInverse` where it refused `EyeHeightAsMeters`; both are game-driven, and the scaler change
 explains the swap, so it reads as expected but has not been traced line by line.
 
+### Corpus 415: tree toggles whose "off" child animates only dead paths. MEASURED 2026-10-04, open
+
+VaponnyPC swept for the first time (it threw before) and reported 9 stuck. None is a regression: its
+controller matches the baseline except for the no-muscles mask on three renamed toggle layers, whose
+clips carry only `m_IsActive` on paths already missing in VRChat and no object-reference curve.
+- **Three were the sweep's own misreading** (VRCEmote, Collar, DPS). A 1D tree resting at 0.5 between
+  children that animate different blendshapes re-blends against the defaults each Drive's rebind
+  captures, so the shapes crept 50, 75, 87.5... and every drive charged the creep to its parameter.
+  The sweep now makes two no-op drives first and leaves whatever still moves out of every verdict; the
+  digest prints it as `unstable at rest:`. Rerun to confirm.
+- **Five are real and pre-existing.** 1D toggle trees whose off child was authored for another body and
+  animates only dead paths. `IsCurveless` sees curves, so `CollectToggleTrees` never offers that child
+  to `FillEmptyTreeSlotsWithRestoreClips`, and in CVR the shape stays where the on child left it.
+  Candidate fix: count a child as empty for that pass when no binding resolves on the target.
+- **One is the other shape** (now reported as unstable at rest): a slider's two children each animate a
+  property the other does not. No pass covers it, and the restore passes exempt tree-driven bindings
+  by design, so it needs a decision first.
+
 ### The audit of 2026-10-03: about 210 findings fixed on dev, not verified in game
 
 **What was done.** A read of the whole codebase against its own claims, in four waves: 177 findings

@@ -64,6 +64,7 @@ namespace AvatarBridge.Regression
             public int Responded;
             public List<string> Stuck;
             public List<string> Refused;
+            public List<string> Unstable;
             public bool Invalid;
         }
 
@@ -196,6 +197,24 @@ namespace AvatarBridge.Regression
                       "slots. This moves things in the open scene and does not put them back: reload it " +
                       "afterwards.");
 
+            // Two drives that change nothing. Every Drive rebinds, and a rebind captures the scene
+            // as the new defaults, so a tree resting between two children that animate different
+            // properties re-blends against its own output and creeps on every drive. That creep
+            // belongs to the rest pose, and was being charged to whichever parameter came next.
+            // Two, not one: Warmup leaves a different clip phase than SettleFrames does.
+            string first = parameters[0];
+            Drive(controller, animator, first, DefaultOf(controller, first));
+            Settle(animator, SettleFrames);
+            var rest = watch.Capture();
+            Drive(controller, animator, first, DefaultOf(controller, first));
+            Settle(animator, SettleFrames);
+            watch.Unstable.UnionWith(watch.ChangedLabels(rest));
+            if (watch.Unstable.Count > 0)
+            {
+                Debug.LogWarning($"[Sweep] UNSTABLE at rest, left out of every verdict: " +
+                                 string.Join(", ", watch.Unstable.OrderBy(l => l, System.StringComparer.Ordinal)));
+            }
+
             var stuck = new List<string>();
             var notApplied = new List<string>();
             // How many parameters visibly did anything when driven.
@@ -280,6 +299,7 @@ namespace AvatarBridge.Regression
                 Responded = responded,
                 Stuck = new List<string>(stuck),
                 Refused = new List<string>(notApplied),
+                Unstable = new List<string>(watch.Unstable),
                 Invalid = responded == 0,
             };
 
@@ -505,6 +525,9 @@ namespace AvatarBridge.Regression
 
             public int Count => labels.Length;
 
+            // Labels that move with no parameter changed; no verdict can rest on them.
+            public readonly HashSet<string> Unstable = new HashSet<string>();
+
             public Watchlist(GameObject root)
             {
                 objects = root.GetComponentsInChildren<Transform>(true);
@@ -581,7 +604,11 @@ namespace AvatarBridge.Regression
                 return new Reading { Numbers = numbers, References = references };
             }
 
-            public List<string> Differences(Reading before)
+            public List<string> Differences(Reading before) => Compare(before, false);
+
+            public List<string> ChangedLabels(Reading before) => Compare(before, true);
+
+            List<string> Compare(Reading before, bool labelsOnly)
             {
                 var now = Capture();
                 var moved = new List<string>();
@@ -590,13 +617,14 @@ namespace AvatarBridge.Regression
                 for (int i = 0; i < labels.Length; i++)
                 {
                     bool isReference = labels[i].Contains(" material[");
+                    string change = null;
                     if (isReference)
                     {
                         if (before.References[r] != now.References[r])
                         {
                             string was = before.References[r] != null ? before.References[r].name : "none";
                             string got = now.References[r] != null ? now.References[r].name : "none";
-                            moved.Add($"{labels[i]} {was} → {got}");
+                            change = $"{was} → {got}";
                         }
                         r++;
                     }
@@ -604,9 +632,13 @@ namespace AvatarBridge.Regression
                     {
                         if (Mathf.Abs(before.Numbers[n] - now.Numbers[n]) > Epsilon)
                         {
-                            moved.Add($"{labels[i]} {before.Numbers[n]:0.##} → {now.Numbers[n]:0.##}");
+                            change = $"{before.Numbers[n]:0.##} → {now.Numbers[n]:0.##}";
                         }
                         n++;
+                    }
+                    if (change != null && !Unstable.Contains(labels[i]))
+                    {
+                        moved.Add(labelsOnly ? labels[i] : $"{labels[i]} {change}");
                     }
                 }
                 return moved;
