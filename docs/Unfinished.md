@@ -969,6 +969,14 @@ IK. Needs the reporter's SDK version, which bone, and what the wrong result actu
 
 ## Loose ends, small but real
 
+*4.7.1 shipped 2026-10-04 on Joe's word: tag `v4.7.1`, merge `526b92e`, both packages published and
+extracted (public: no `Editor/Yaps`, `Runtime`, `Dev` or internal files; add-on: no converter). It is
+everything since 4.6.6: the audit and its corpus-414 fixes, the UI redesign, the tester's Physics card
+(DynamicBone, hover labels, Simple and Advanced settings, Keep) and the stereo patcher rework. A 4.7.0
+draft was built first, then deleted unpublished when two tester changes landed after it; its tag
+`v4.7.0` stays in history and that number was never shipped. Corpus 415 is the accepted YAPS baseline.
+Not verified in ChilloutVR; the records below say what only the game can settle.*
+
 ### The UI redesign, 2026-10-04: seen in offscreen renders, not yet used by a person
 
 Every window moved onto one kit (Editor/UI): tokens for spacing, type and colour per skin, cards with
