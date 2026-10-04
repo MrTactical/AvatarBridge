@@ -1494,7 +1494,6 @@ namespace AvatarBridge
                     case CVRAdvancedSettingsEntry.SettingsType.Slider:
                         var slider = BridgeElements.SliderField(label, null, 0f, 1f, ReadParam(quiet, parameter) ?? 0f,
                             v => Drive(LiveAnimator(), parameter, v));
-                        slider.AddToClassList("ab-field-wide");
                         Register(slider, parameter, !declared.Contains(parameter));
                         break;
                     case CVRAdvancedSettingsEntry.SettingsType.Dropdown:
@@ -1524,7 +1523,6 @@ namespace AvatarBridge
                             Mathf.RoundToInt(ReadParam(quiet, parameter) ?? 0f), 0, names.Count - 1);
                         var choice = BridgeElements.Popup(label, null, names.ToArray(), current,
                             index => Drive(LiveAnimator(), parameter, index));
-                        choice.AddToClassList("ab-field-wide");
                         Register(choice, parameter, !declared.Contains(parameter));
                         break;
                     case CVRAdvancedSettingsEntry.SettingsType.Joystick2D:
@@ -1533,7 +1531,6 @@ namespace AvatarBridge
                             string driven = parameter + "-" + axis;
                             var stick = BridgeElements.SliderField($"{label} {axis.ToUpperInvariant()}", null, -1f, 1f,
                                 ReadParam(quiet, driven) ?? 0f, v => Drive(LiveAnimator(), driven, v));
-                            stick.AddToClassList("ab-field-wide");
                             Register(stick, driven, !declared.Contains(driven));
                         }
                         break;
@@ -1541,7 +1538,6 @@ namespace AvatarBridge
                         // The kit has no float field; this is the one free-number entry.
                         var input = new FloatField(label) { value = ReadParam(quiet, parameter) ?? 0f };
                         input.AddToClassList("ab-field");
-                        input.AddToClassList("ab-field-wide");
                         input.RegisterValueChangedCallback(e =>
                             Drive(LiveAnimator(), parameter, e.newValue));
                         Register(input, parameter, !declared.Contains(parameter));

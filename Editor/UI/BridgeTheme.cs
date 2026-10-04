@@ -143,15 +143,28 @@ namespace AvatarBridge
         // only it starts in VRChat blue; every ChilloutVR-only surface runs plum to orange.
         public sealed class Span
         {
-            public static readonly Span Bridge = new Span(0f, 1f);
-            public static readonly Span Cvr = new Span(0.5f, 1f);
+            public static readonly Span Bridge = new Span(0f, 1f, 0.5f);
+            // The even middle of plum to orange is the rust stop, dE 18 from orange, so badges 2
+            // and 3 of a three-step card matched. The perceptual middle is the crimson the rust
+            // stop exists to avoid. 0.6 is berry: dE 31 from plum, 60 from orange, and further
+            // from the bad tone than orange itself.
+            public static readonly Span Cvr = new Span(0.5f, 1f, 0.6f);
 
-            readonly float _from, _to;
+            readonly float _from, _to, _middle;
             Texture2D _gradient;
 
-            Span(float from, float to) { _from = from; _to = to; }
+            Span(float from, float to, float middle) { _from = from; _to = to; _middle = middle; }
 
             public Color At(float t) => BridgeTheme.At(Mathf.Lerp(_from, _to, Mathf.Clamp01(t)));
+
+            // A step badge: the first and last steps sit on the span's ends, the middle on _middle.
+            public Color Step(int step, int of)
+            {
+                float u = of <= 1 ? 0f : Mathf.Clamp01((step - 1) / (float)(of - 1));
+                return BridgeTheme.At(u < 0.5f
+                    ? Mathf.Lerp(_from, _middle, u * 2f)
+                    : Mathf.Lerp(_middle, _to, u * 2f - 1f));
+            }
 
             internal Texture2D Gradient()
             {

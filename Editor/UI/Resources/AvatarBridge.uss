@@ -579,7 +579,10 @@
 /* --------------------------------------------------------------- chips ---- */
 
 /* The transparent border keeps a hover border from shifting the layout. 11px, not 10: chips carry
- * counts, and at 10 the strokes never reached full ink, so they measured 3.4 to 3.9:1 on light. */
+ * counts, and at 10 the strokes never reached full ink, so they measured 3.4 to 3.9:1 on light.
+ * Bold for the same reason: regular 11px still rendered at 2.9 to 3.8:1 on the light tints and
+ * 4.3 to 4.6 on dark, and even black on a light tint cannot reach 4.5 at regular weight. Bold
+ * strokes reach full ink, as the 11px caption shows, so the chip renders at its listed contrast. */
 .ab-chip {
     flex-shrink: 0;
     margin: 0 4px 0 0;
@@ -588,6 +591,7 @@
     border-radius: 3px;
     border-color: rgba(0, 0, 0, 0);
     font-size: 11px;
+    -unity-font-style: bold;
     -unity-text-align: middle-center;
 }
 
@@ -599,6 +603,7 @@
     border-radius: 3px;
     border-color: rgba(0, 0, 0, 0);
     font-size: 11px;
+    -unity-font-style: bold;
     cursor: link;
     transition-property: border-color;
     transition-duration: 0.09s;
@@ -634,31 +639,26 @@
 .ab-root .ab-chip-on.ab-chip-info {
     background-color: var(--ab-info-fill);
     color: var(--ab-on-fill);
-    -unity-font-style: bold;
 }
 
 .ab-root .ab-chip-on.ab-chip-good {
     background-color: var(--ab-good-fill);
     color: var(--ab-on-fill);
-    -unity-font-style: bold;
 }
 
 .ab-root .ab-chip-on.ab-chip-warn {
     background-color: var(--ab-warn-fill);
     color: var(--ab-on-fill);
-    -unity-font-style: bold;
 }
 
 .ab-root .ab-chip-on.ab-chip-bad {
     background-color: var(--ab-bad-fill);
     color: var(--ab-on-fill);
-    -unity-font-style: bold;
 }
 
 .ab-root .ab-chip-on.ab-chip-muted {
     background-color: var(--ab-muted-fill);
     color: var(--ab-on-fill);
-    -unity-font-style: bold;
 }
 
 .ab-root .ab-chip-click:focus {
@@ -685,17 +685,14 @@
     border-color: var(--ab-text-muted);
 }
 
-/* A zero-count filter chip is a disabled Button: dimmed, and it does not hover. */
+/* A zero-count filter chip is a disabled Button: dimmed, and it does not hover. Light fades
+ * less, below. */
 .ab-root .ab-chip-click:disabled {
     opacity: 0.45;
 }
 
 .ab-root .ab-chip-click:hover:disabled {
     border-color: rgba(0, 0, 0, 0);
-}
-
-.ab-chip-strong {
-    -unity-font-style: bold;
 }
 
 /* The light warn tint sits at about 1.1:1 on a card, so BETA lost its shape and read as a stray
@@ -995,16 +992,6 @@
     margin: 0;
 }
 
-/* AAS menu entries carry longer names than the options cards ("Tail Electric Effect
- * Toggle", "Storage Upgrade: Upper"); the standard 141px column clips them. .ab-root so it
- * still outranks the fold column above. */
-.ab-root .ab-field-wide > .unity-label,
-.ab-root .ab-field-wide > .unity-base-field > .unity-base-field__label {
-    width: 176px;
-    min-width: 176px;
-    flex-shrink: 0;
-}
-
 .ab-root .ab-field .unity-base-text-field__input,
 .ab-root .ab-field .unity-base-popup-field__input,
 .ab-root .ab-field .unity-object-field__input {
@@ -1148,13 +1135,15 @@
 }
 
 /* Picked here by skin, never in C#: a texture set inline keeps the old skin's glyph after a
- * switch. Good has no console icon of its own; info's "!" read as a caution on a success. */
+ * switch. Good has no console icon of its own; info's "!" read as a caution on a success.
+ * Info takes the Package Manager's circled "i": the console info icon is a "!" in a bubble, so
+ * every info notice read as a warning. Its Dark folder holds the light glyph, Light the dark one. */
 .dark .ab-notice-info > .ab-notice-icon {
-    background-image: resource('d_console.infoicon.sml');
+    background-image: resource('Icons/PackageManager/Dark/Info.png');
 }
 
 .light .ab-notice-info > .ab-notice-icon {
-    background-image: resource('console.infoicon.sml');
+    background-image: resource('Icons/PackageManager/Light/Info.png');
 }
 
 .dark .ab-notice-good > .ab-notice-icon {
@@ -1289,7 +1278,9 @@
  * measures about 1.8:1 against its own fill on light and 3.7:1 on dark (4.6:1 for Strong). 0.6
  * measured 2.2:1 on light; 0.65 brings 12px bold to about 2.5:1, though 11px text renders
  * thinner, near 2.2:1. A selected segment fades its white label into its own plum fill, so it
- * keeps more (1.9:1 at 0.45, 3.4:1 here). A disabled link sits at 0.75, its text already muted. */
+ * keeps more (1.9:1 at 0.45, 3.4:1 here). A disabled link sits at 0.75, its text already muted.
+ * So does a zero-count chip: tone text on its tint measured 1.6:1 at 0.45 (dark 2.8:1), and 0.75
+ * should bring it near 2.4:1. */
 .light .ab-seg-item:disabled,
 .light .ab-btn:disabled,
 .light .ab-primary:disabled {
@@ -1297,7 +1288,8 @@
 }
 
 .light .ab-seg-item.ab-on:disabled,
-.light .ab-link:disabled {
+.light .ab-link:disabled,
+.light .ab-chip-click:disabled {
     opacity: 0.75;
 }
 

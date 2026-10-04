@@ -1332,17 +1332,16 @@ namespace AvatarBridge
 
             // Always offered once a report exists, rather than only when something went wrong:
             // "it converted clean but the avatar is wrong in game" is a report worth having, and
-            // it's the case where the button used to be missing. The footer drops its copies.
+            // it's the case where the button used to be missing. Report an issue and
+            // Troubleshooting stay in the footer just below, so the footer reads the same in
+            // every state.
             b.Add(BridgeElements.ButtonRow(
                 BridgeElements.Caption("Help"),
                 BridgeElements.Btn("Copy diagnostics", () =>
                 {
                     BridgeLinks.CopyDiagnostics(lastReport);
                     ShowNotification(new GUIContent("Diagnostics copied"));
-                }, "Copies versions and detected packages to the clipboard."),
-                ExternalAction("Report an issue", () => BridgeLinks.OpenBugReport(lastReport),
-                    "Opens a pre-filled GitHub issue. Please attach the report: most bugs are diagnosed straight from it."),
-                BridgeElements.ExternalLink("Troubleshooting", BridgeLinks.Troubleshooting, "Setup and install help.")));
+                }, "Copies versions and detected packages to the clipboard.")));
         }
 
         UnityEngine.Object ResolveSubject(string subject, ref Dictionary<string, Transform> byName)
@@ -1406,13 +1405,15 @@ namespace AvatarBridge
 
         VisualElement BuildFooter()
         {
-            // A shown report's Help row already carries these two.
+            // With a report on screen the issue is about it, so the tooltip asks for it.
             bool reportShown = lastReport != null && mode != Mode.Tools;
             return BridgeElements.Footer(
-                reportShown ? null : BridgeElements.ExternalLink("Troubleshooting", BridgeLinks.Troubleshooting,
+                BridgeElements.ExternalLink("Troubleshooting", BridgeLinks.Troubleshooting,
                     "Setup and install help."),
-                reportShown ? null : ExternalAction("Report an issue", () => BridgeLinks.OpenBugReport(lastReport),
-                    "Opens a pre-filled GitHub issue with your versions and detected packages."),
+                ExternalAction("Report an issue", () => BridgeLinks.OpenBugReport(lastReport),
+                    reportShown
+                        ? "Opens a pre-filled GitHub issue. Please attach the report: most bugs are diagnosed straight from it."
+                        : "Opens a pre-filled GitHub issue with your versions and detected packages."),
                 DiscordLink());
         }
 #else

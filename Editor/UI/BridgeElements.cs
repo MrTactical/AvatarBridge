@@ -218,7 +218,7 @@ namespace AvatarBridge
                     // Arrow, badge, title, summary.
                     _header.Insert(_arrow != null ? 1 : 0, _badge);
                 }
-                _badge.style.backgroundColor = span.At(of <= 1 ? 0f : (step - 1) / (float)(of - 1));
+                _badge.style.backgroundColor = span.Step(step, of);
                 _badge.Q<Label>().text = step.ToString();
                 return this;
             }
