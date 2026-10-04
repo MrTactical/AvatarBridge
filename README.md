@@ -183,9 +183,10 @@ parameters or physics actually running.
   chain's bones, radius, colliders and swing bound at once, with a label naming its solver and the
   settings that decide how it moves: green when it runs normally, amber when it is switched off or
   hidden, not running, or has a bone stretched out of shape, red when a bone has flown off. Click a
-  label to select that component and tune it while it plays. Unity throws Play-mode changes away, so
-  the card lists every physics component you edit on the avatar: **Keep** (or **Keep all**) writes
-  its settings back into the scene when Play mode ends. VRChat's Gesture Manager can't do any of this: it needs the VRC
+  label to select that component: the card shows its health and its main settings as live fields
+  while it plays. Unity throws Play-mode changes away, so the card lists every physics component you
+  edit on the avatar: **Keep** (or **Keep all**) writes its settings back into the scene when Play
+  mode ends, and the card says which it kept once you are back in the editor. VRChat's Gesture Manager can't do any of this: it needs the VRC
   descriptor, which conversion removes.
 - **Animations that can't possibly work get named**: a locked Poiyomi shader silently deletes any
   property that wasn't flagged animated, so the toggle plays perfectly and changes nothing, in
@@ -920,7 +921,8 @@ to selected materials* puts the deform back after an unlock/edit/re-lock.
    *bone* selected, **Make a plug from bone**, which bakes the skinned mesh that bone drives from
    that bone down, on every material the chain's vertices use. Where a new socket or plug goes is the
    Hierarchy selection, and a line under the buttons says what that is. (Right-clicking a bone in
-   the Hierarchy has the same two: *YAPS ▸ Add a hole here* and *Add a ring here*.) Under *Tidy*,
+   the Hierarchy has the same two: *YAPS ▸ Add a hole here* and *Add a ring here*.) What a button
+   did is said under it. In the collapsed *Tools* card below, under *Tidy*,
    **Clean up leftovers** sweeps an avatar for what a hand-deleted socket or plug left behind: an
    animator layer with no socket, a depth parameter nothing reads, a menu toggle aiming at nothing,
    a tag chooser whose plug is gone.
@@ -930,8 +932,9 @@ to selected materials* puts the deform back after an unlock/edit/re-lock.
    socket: markers, shapes, and a menu toggle for anything the avatar cannot already switch off.
    Safe to run again; it edits, not stacks. On an avatar with DPS, TPS or SPS on it, Build is the
    upgrade. **This is the last step before an upload.** Placing and testing need no build, and a
-   socket's own inspector has a *Build this socket* for a single change on a finished avatar, but
-   only this button does the lot and checks it.
+   socket's own inspector offers *Build this socket* at the top whenever part of it is unbuilt, for
+   a single change on a finished avatar, but only this button does the lot and checks it. The
+   button keeps its name; the line under it counts what it will bake and verify.
 
 **Upgrade in place.** An avatar that never went through the converter but carries DPS, TPS or SPS
 becomes YAPS on the same mesh. A socket gains the markers it lacks so every plug family reads it.
@@ -941,14 +944,15 @@ moves to *YAPS Simple Lit* because Raliv's deform has no switch. Check the plug'
 skinned mesh before you Build. TPS upgrades are tested in game, on both props and avatars.
 
 **Make this a prop.** Select the top object of a plug or socket meant to be spawned in ChilloutVR
-and press **Make selected object a prop**: it gains a CVR Spawnable, a pickup anyone can take, a
+and press **Make selected object a prop**, in the window's *Tools* card: it gains a CVR Spawnable, a pickup anyone can take, a
 trigger collider to grab by: sized from the bake, on the prop's own object because that is where
 the game looks for it, and a trigger so the prop passes through people instead of shoving them,
 and nothing else. It finds sockets through the screen atlas, and by their marker lights where
 the atlas cannot answer, which every client works out for itself, so no one owns the answer and
 no one takes the prop off anyone. Run it again after a re-bake; it replaces its own work, not yours.
 
-**Drop the contact channel** takes off a channel an earlier build added to a prop. Plugs no longer
+**Drop the contact channel** (under *Legacy* in the same card, shown while the selected prop
+carries one) takes off a channel an earlier build added to a prop. Plugs no longer
 read it, so all it does is spend the prop's synced values and hand the prop to whoever's socket
 touches it; making the prop again takes it off too. **Verify prop** before each upload; it says
 when a prop from an early build has its grab collider in the wrong place.
@@ -1007,7 +1011,7 @@ holds the marker lights, *Rebuild markers* and **Remove this socket**.
 
 **A socket says when it is behind the toolkit.** Nothing revisits a socket once it is made: fixes
 ship to new ones and reach no existing one, and the two look identical. From 4.4.0 a socket
-carries the version that built it and its inspector leads with a card when that is not the version
+carries the version that built it and its inspector leads with a warning when that is not the version
 you are running, which version made it, and that baking it again is the fix. Worth acting on
 rather than ignoring: a socket built before 4.4.0 has half-size trigger volumes, a hole flag that
 can only be set, and a position that sticks where it last saw a plug. On a prop, run the prop
@@ -1059,7 +1063,8 @@ else, and a YAPS plug in a view too small for the atlas, until the dropdown poin
 overrides, and every knob in sections that say where the plug is: *Shape at rest · Inside a
 socket · Out of a socket · Motion inside a socket · The bend toward a socket · Past the opening ·
 How sockets find it*. Every knob wears the system it came from: DPS purple, TPS teal, SPS
-orange, YAPS green, and a **Show** filter at the top keeps only one system's knobs. Knobs write
+orange, YAPS green, and a **Show** filter at the top keeps only one system's knobs (the mesh
+fields, which belong to no system, always show). Knobs write
 straight to the plug's material; the material's own YAPS panel writes back; one set of values,
 two doors. **Bake** and **Remove this plug** are at the bottom. A plug baked into a material slot
 another plug on a different shaft already bends gets a slot of its own on a copy of the mesh, as
@@ -1241,8 +1246,9 @@ shader with source (Poiyomi, for one) on the mesh and re-bake if you need more.
 
 **Quiet the scene view.** A converted avatar carries ninety-odd CCK components, each with an
 icon, plus pointer spheres, trigger boxes and cloth wires, and all of it buries a socket. One
-switch in the window hides those while you place sockets and puts back exactly what it found. An
-editor preference; nothing on the avatar changes.
+button in the window's *Tools* card hides those while you place sockets, stays lit while it does,
+and puts back exactly what it found when pressed again. An editor preference; nothing on the
+avatar changes.
 
 **Test it** (the window's second tab): drop a test hole or ring in front of the scene camera and it
 arrives with Preview on: every baked plug in the scene bends toward it while you move it. **Test
@@ -1454,7 +1460,9 @@ line it can't verify is a line it doesn't print. It's sized to ChilloutVR's 256-
 cards in a window of their own.* The converter's own passes, one card each, run on
 **any** ChilloutVR avatar or prop: VRChat history or not, YAPS or not. Pick the object, press the
 button, read the rows. Same look, same report style, same code as the converter, so nothing here
-can drift from what a conversion does.
+can drift from what a conversion does. Each card's header says whether it only reads or changes
+the avatar, and after a run it counts the errors and warnings it found. A button that needs a
+`CVRAvatar` on the root stays greyed out until the object has one.
 
 The Toolkit ships in the converter's own package and needs no VRChat SDK: install AvatarBridge
 in a ChilloutVR project and these cards work on their own; see [Installation](#installation).
@@ -1469,7 +1477,7 @@ in a ChilloutVR project and these cards work on their own; see [Installation](#i
 | **Face: visemes and blink** | Finds the face mesh and wires the standard viseme and blink blendshapes onto the CVRAvatar. A face mesh already set there is kept unless the visemes are found on another one. Touches nothing else on it |
 | **Audio limits** | Clamps every audio source to settings ChilloutVR handles: doppler off, distance floors and caps, fully 3D. One `minDistance 0` source on a wearer can mute the whole game |
 | **Mesh bounds** | Resizes skinned mesh bounds to the avatar's own volume plus clearance, so meshes stop vanishing at the screen's edge |
-| **Height slider** | Adds the quick-menu Height slider (0.25×–4×, centred on the original size) to the controller ChilloutVR uploads (the one under the avatar's override controller, else its base controller) and to its advanced settings. Its menu entry goes first in the Advanced Settings list, where people look for it. Refused, as an error, while that controller is the CCK's own stock one, since layers added there would reach every avatar in the project. Not added, with a warning, when the avatar already has its own parameter or menu entry called "Height" |
+| **Height slider** | Adds the quick-menu Height slider (0.25×–4×, centred on the original size) to the controller ChilloutVR uploads (the one under the avatar's override controller, else its base controller) and to its advanced settings. Its menu entry goes first in the Advanced Settings list, where people look for it. Refused, with a warning, while that controller is the CCK's own stock one, since layers added there would reach every avatar in the project. Not added, with a warning, when the avatar already has its own parameter or menu entry called "Height" |
 | **Store description** | Writes the [description](#store-description) from what the avatar has, types it into the upload page when that window is open and its Description box is empty, and copies it to the clipboard either way |
 | **Merge animators** | Any sources into a target: every layer and parameter deep-copied, layers after the target's own, same-named layers renamed, a parameter present in both with different types named and the target's type kept. Written to a copy beside the target by default; sources are never edited |
 
@@ -1501,7 +1509,9 @@ around a paywall; the VRChat SDK is free, and VCC installs it with the project.
 
 Every setting in the window, with the default it ships with. Labels match the window verbatim; the
 tooltip on each control says the same thing at more length. Per-chain physics tuning has its own
-table [above](#options) and isn't repeated here.
+table [above](#options) and isn't repeated here. The **Find a setting** box above the Physics, Manual options
+and Automated options folds finds a setting by its label or by what its tooltip says, and opens
+whichever fold holds it.
 
 ### Analyse this avatar
 
@@ -1523,7 +1533,7 @@ On a VRCFury or Modular Avatar setup it says so first: the scan runs *before* th
 count is a floor and a zero means "none yet", not "none". That's also why it won't recommend
 switching physics off on a baked avatar whose hair and clothing haven't arrived yet.
 
-Under it, **What the report tells you** holds two ticks that only ever read, in setup mode too:
+Below the results, **What the report tells you** holds two ticks that only ever read, in setup mode too:
 
 | setting | default | what it does |
 |---|---|---|
@@ -1556,8 +1566,8 @@ settle. Leaving all of them alone converts fine.
 | setting | default | what it does |
 |---|---|---|
 | **Opt-ins ▸ OSC toys ▸ Keep the OGB / PCS haptics contacts** | off | Its own sub-section under Manual options, since an opt-in nobody can find is one nobody turns on. The toy-app contacts *Penetration* strips with the rest of the stack. Plugs and sockets work either way; these only drive a toy, and each one spends some of the instance's 512 contact pairs. See [OSC toys](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
-| **Opt-ins ▸ OSC toys ▸ Keep OGB haptics synced (OSCGoesBrrr, Lovense)** | off | Off, the kept OGB haptics parameters are local (free); OSCGoesBrrr's automatic detection skips ChilloutVR's `#` names, but its manual avatar-parameter links read them, and the report lists the names. On, they stay synced and automatic detection works with no setup, at 32 sync bits each, about nine per plug and per socket; the report's sync budget entry says where the avatar landed. Needs the contacts above kept and *Penetration* on *Convert to YAPS* |
-| **Opt-ins ▸ Penetration ▸ Show the avatar's OWN depth animations to other players** | off | Not YAPS's socket shapes, which already play for everyone on a synced parameter. This is the bulges and winces the avatar's author animated in VRChat, which are contact-driven, and ChilloutVR runs an avatar's triggers on the wearer's machine alone. Off, each socket's depth parameter is local: free, and only the wearer sees the reaction. On, it syncs and the room sees it, at 32 bits per socket: one depth parameter each, six sockets is about 192 of 3200; a socket that kept several depth parameters as authored pays for each. Needs *Penetration* on *Convert to YAPS* |
+| **Opt-ins ▸ OSC toys ▸ Keep OGB haptics synced (OSCGoesBrrr, Lovense)** (YAPS add-on) | off | Off, the kept OGB haptics parameters are local (free); OSCGoesBrrr's automatic detection skips ChilloutVR's `#` names, but its manual avatar-parameter links read them, and the report lists the names. On, they stay synced and automatic detection works with no setup, at 32 sync bits each, about nine per plug and per socket; the report's sync budget entry says where the avatar landed. Needs the contacts above kept and *Penetration* on *Convert to YAPS* |
+| **Opt-ins ▸ Penetration ▸ Show the avatar's OWN depth animations to other players** (YAPS add-on) | off | Not YAPS's socket shapes, which already play for everyone on a synced parameter. This is the bulges and winces the avatar's author animated in VRChat, which are contact-driven, and ChilloutVR runs an avatar's triggers on the wearer's machine alone. Off, each socket's depth parameter is local: free, and only the wearer sees the reaction. On, it syncs and the room sees it, at 32 bits per socket: one depth parameter each, six sockets is about 192 of 3200; a socket that kept several depth parameters as authored pays for each. Needs *Penetration* on *Convert to YAPS* |
 | **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder: you must press **Create Controller** yourself |
 | **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of this avatar's measured height, centred on its original size. Parent-constrained props are re-anchored so they scale with you. Not added, with a warning, when the avatar already has its own parameter or menu entry called "Height": rename that one to get the slider |
@@ -1566,7 +1576,7 @@ settle. Leaving all of them alone converts fine.
 
 ### Automated options: set from the avatar
 
-Folded away behind a warning, because each of these has a right answer the avatar already gives and
+Folded away, because each of these has a right answer the avatar already gives and
 Analyse sets them to match. Open it to override a measurement deliberately, not to browse.
 
 | setting | default | what it does |

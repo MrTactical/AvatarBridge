@@ -21,7 +21,23 @@ namespace AvatarBridge
         {
             var window = GetWindow<AvatarBridgeWindow>();
             window.titleContent = new GUIContent("AvatarBridge");
-            window.minSize = new Vector2(430, 560);
+            // 480 fits "Convert a VRChat avatar" in its third of the tab strip.
+            window.minSize = new Vector2(480, 560);
+        }
+
+        // One set, shared with the fallback for a project without the CCK.
+        const string BannerTitle = "AvatarBridge";
+        const string ConvertSubtitle = "VRChat → ChilloutVR avatar converter";
+        const string SetupSubtitle = "set up any avatar for ChilloutVR";
+        const string ToolsSubtitle = "utilities for any ChilloutVR avatar or prop";
+
+        // An external link whose address is worked out on click, such as an issue pre-filled
+        // with diagnostics. Built from ExternalLink so the arrow stays the kit's.
+        static Button ExternalAction(string text, Action open, string tooltip)
+        {
+            var link = BridgeElements.ExternalLink(text, BridgeLinks.Repo, tooltip);
+            link.clickable = new Clickable(open);
+            return link;
         }
 
 #if CVR_CCK_EXISTS
@@ -56,29 +72,17 @@ namespace AvatarBridge
         // Set while a deferred conversion is in flight, so the button can't queue a second one.
         // Convert-mode only, like the two below: ungated it warns in every CCK-only project.
         bool converting;
-#endif
-
-#if VRC_SDK_VRCSDK3
-        // Convert-mode only. Ungated, these earn CS0414 warnings in
-        // every CCK-only project.
-        bool showManual = true;
-        bool showAutomated;
-        bool showPhysics = true;
-        bool showPhysicsTuning = false;
         // What the last Analyse found, or null if it hasn't been run for the current avatar.
         // Cleared whenever the avatar changes: advice about a different avatar is worse than none.
         List<Advice> advice;
+        BridgeElements.PrimaryButton primary;
+        // Held so a rebuild can put the query back once the folds it filters exist.
+        ToolbarSearchField settingSearch;
 #endif
-        bool showFaceTracking = true;
-        bool showAdvanced;
 
         VisualElement body;
-        // Both paths tab: with the VRChat SDK to pick a mode, without it
-        // to reach setup and the toolkit.
-        VisualElement tabs;
-#if VRC_SDK_VRCSDK3
-        BridgeElements.PrimaryButton primary;
-#endif
+        // Banner and tabs, rebuilt with the body: the subtitle and the lit tab follow the mode.
+        VisualElement header;
 
         // ------------------------------------------------------------------ lifecycle --
 
@@ -130,30 +134,12 @@ namespace AvatarBridge
         {
             var root = rootVisualElement;
             root.Clear();
-            root.AddToClassList("ab-root");
-            // How the VRChat SDK does it too: one class on the root, and the stylesheet handles
-            // both skins from there rather than every colour being decided in C#.
-            BridgeTheme.ApplySkin(root);
+            BridgeElements.Root(root);
 
-            var sheet = Resources.Load<StyleSheet>("AvatarBridge");
-            if (sheet != null)
-            {
-                root.styleSheets.Add(sheet);
-            }
-            // If it didn't load, everything below still works, plainly.
+            header = new VisualElement();
+            root.Add(header);
 
-            root.Add(BridgeElements.Banner("AvatarBridge",
-                "VRChat → ChilloutVR avatar converter", "v" + BridgeDefines.Version));
-
-            // Held rather than added directly: the active tab is styled, so it has to be rebuilt
-            // when the mode changes or the highlight goes stale on the tab you just left.
-            tabs = new VisualElement();
-            root.Add(tabs);
-
-            var scroll = new ScrollView();
-            scroll.AddToClassList("ab-scroll");
-            // Nothing here wants to scroll sideways; labels wrap.
-            scroll.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
+            var scroll = BridgeElements.Scroll();
             root.Add(scroll);
 
             body = new VisualElement();
@@ -173,14 +159,19 @@ namespace AvatarBridge
                 return;
             }
             body.Clear();
+            header.Clear();
+            header.Add(BridgeElements.Banner(BannerTitle, Subtitle(), "v" + BridgeDefines.Version,
+                BridgeTheme.Span.Bridge));
 
+            // The kit runs onSelect a frame after the click, so rebuilding there is safe.
 #if VRC_SDK_VRCSDK3
-            tabs.Clear();
-            tabs.Add(BridgeElements.Tabs(
+            header.Add(BridgeElements.Tabs(
                 new[] { "Convert a VRChat avatar", "Set up any avatar", "Tools" },
-                new[] { "Avatar Icon", "Settings", "CustomTool" },
+                // Single-colour glyphs only: the active tab's white tint cannot recolour a colour icon.
+                new[] { "GameObject Icon", "Settings", "CustomTool" },
                 (int)mode,
-                index => { mode = (Mode)index; _savingFor = null; ScheduleRebuild(); }));
+                index => { mode = (Mode)index; _savingFor = null; Rebuild(); },
+                BridgeTheme.Span.Bridge));
 
             if (mode == Mode.Convert)
             {
@@ -195,29 +186,45 @@ namespace AvatarBridge
                 BuildSetupFlow();
             }
 #else
-            body.Add(new HelpBox(
-                "Converting needs the VRChat SDK, which isn't installed. Setup below still works on any humanoid.",
-                HelpBoxMessageType.Info));
-            tabs.Clear();
-            tabs.Add(BridgeElements.Tabs(
+            header.Add(BridgeElements.Tabs(
                 new[] { "Set up any avatar", "Tools" },
                 new[] { "Settings", "CustomTool" },
                 (int)mode,
-                index => { mode = (Mode)index; _savingFor = null; ScheduleRebuild(); }));
-            if (mode == Mode.Tools) BuildToolsFlow(); else BuildSetupFlow();
+                index => { mode = (Mode)index; _savingFor = null; Rebuild(); },
+                BridgeTheme.Span.Bridge));
+            if (mode == Mode.Tools)
+            {
+                BuildToolsFlow();
+            }
+            else
+            {
+                body.Add(BridgeElements.Notice(Tone.Info,
+                    "Converting needs the VRChat SDK, which isn't installed. Setup below still works on any humanoid."));
+                BuildSetupFlow();
+            }
 #endif
-            body.Add(Footer(lastReport != null));
+            body.Add(BuildFooter());
+        }
+
+        string Subtitle()
+        {
+#if VRC_SDK_VRCSDK3
+            if (mode == Mode.Convert)
+            {
+                return ConvertSubtitle;
+            }
+#endif
+            return mode == Mode.Tools ? ToolsSubtitle : SetupSubtitle;
         }
 
         // ------------------------------------------------------------- tools flow ----
 
         void BuildToolsFlow()
         {
-            body.Add(BridgeElements.Hint(
-                "For an avatar already set up for ChilloutVR. Also its own window: Tools ▸ Avatar Bridge ▸ ChilloutVR Toolkit."));
+            // Embedded: the window already owns the scroll and the footer.
             // A new pick drops the handed-over source, or the next rebuild pairs it with the wrong avatar.
             new ToolkitPanel(toolsTarget, true, toolsSource, t => { toolsTarget = t; toolsSource = null; })
-                .Mount(body);
+                .Mount(body, embedded: true);
         }
 
         // ----------------------------------------------------------- convert flow ----
@@ -226,29 +233,57 @@ namespace AvatarBridge
         void BuildConvertFlow()
         {
             // Step 1 sits at the VRChat end of the bridge, step 3 at the ChilloutVR end.
-            var pick = new BridgeElements.Card("Pick your VRChat avatar", null, null, 1, 0f);
+            var pick = new BridgeElements.Card("Pick your VRChat avatar").Step(1, 3, BridgeTheme.Span.Bridge);
             BuildAvatarPicker(pick.Body);
             body.Add(pick);
 
-            // Two cards, split by who can answer the question. Everything the avatar decides
+            // Three folds, split by who can answer the question. Everything the avatar decides
             // for itself is folded away under "Automated"; what is left in the open is the
             // short list nothing in the file can settle. Before this, forty-odd toggles sat at
             // one level with no way to tell which of them anyone was expected to think about.
-            var choose = new BridgeElements.Card("Choose what gets set up", null, null, 2, 0.5f);
+            var choose = new BridgeElements.Card("Choose what gets set up").Step(2, 3, BridgeTheme.Span.Bridge);
             BuildAnalyseSection(choose.Body);
+
+            // The two settings that change nothing, only what you are told. Under the results,
+            // which are why anybody pressed the button.
+            choose.Section("What the report tells you");
+            AddReadingOptions(choose.Body);
+
             // Physics first and open: which solver to convert into is the biggest decision in
             // the window and it is the wearer's, not the avatar's.
-            BuildPhysicsCard(choose.Body);
-            BuildManualCard(choose.Body);
-            BuildAutomatedCard(choose.Body);
+            var physics = BuildPhysicsFold(out var tuning);
+            var manual = BuildManualFold();
+            var automated = BuildAutomatedFold();
+
+            // Grouping alone does not make one setting findable, and two of the folds are often
+            // shut, so one box searches all of them.
+            settingSearch = BridgeElements.SearchField(tuning != null
+                ? new[] { physics, tuning, manual, automated }
+                : new[] { physics, manual, automated });
+            settingSearch.tooltip = "Find a setting: searches Physics, Manual options and Automated options.";
+            settingSearch.RegisterValueChangedCallback(e => settingFilter = e.newValue);
+            // The box has no placeholder in 2022.3; without a heading it read as a stray input
+            // belonging to the report toggles above.
+            choose.Section("Find a setting");
+            choose.Body.Add(settingSearch);
+            choose.Body.Add(physics);
+            choose.Body.Add(manual);
+            choose.Body.Add(automated);
             body.Add(choose);
 
-            var run = new BridgeElements.Card("Convert", null, null, 3, 1f);
+            // A toggle that rebuilds must not drop the query. Attached by now, so setting it
+            // filters exactly as typing does.
+            if (!string.IsNullOrEmpty(settingFilter))
+            {
+                settingSearch.value = settingFilter;
+            }
+
+            var run = new BridgeElements.Card("Convert").Step(3, 3, BridgeTheme.Span.Bridge);
             BuildConvertButton(run.Body);
             // Whenever the report's own button does not show: a second run finds the
             // textures already shrunk, reclaims nothing, and the record is still there.
             if (lastReport == null || lastReport.BytesReclaimed <= 0) BuildStoredRevert(run.Body);
-            BuildReport(run.Body);
+            BuildReport(run);
             body.Add(run);
         }
 
@@ -262,103 +297,86 @@ namespace AvatarBridge
             string root = CvrSetup.CheckedOutputFolder(settings.outputFolder) ?? "Assets/AvatarBridgeOutput";
             string dir = CvrSetup.FindOutputDir(root + "/" + CvrSetup.SafeFolderName(source.name), source);
             if (!AvatarSlimmer.CanRevert(dir)) return;
-            parent.Add(BridgeElements.Hint(
-                "An earlier conversion changed this avatar's texture import settings and kept the old ones in its output folder."));
-            parent.Add(new Button(() =>
-            {
-                var report = new BridgeReport();
-                AvatarSlimmer.Revert(dir, report);
-                ShowNotification(new GUIContent(report.Entries.Count > 0 ? report.Entries[0].Subject : "Textures put back"));
-                ScheduleRebuild();
-            })
-            { text = "Put the textures back" });
+            parent.Add(BridgeElements.Notice(Tone.Info,
+                "An earlier conversion changed this avatar's texture import settings and kept the old ones in its output folder.",
+                action: BridgeElements.Btn("Put the textures back", () =>
+                {
+                    var report = new BridgeReport();
+                    AvatarSlimmer.Revert(dir, report);
+                    ShowNotification(new GUIContent(report.Entries.Count > 0 ? report.Entries[0].Subject : "Textures put back"));
+                    ScheduleRebuild();
+                })));
         }
 
         void BuildAvatarPicker(VisualElement parent)
         {
-            var field = new ObjectField("VRChat avatar")
+            // The kit hands the pick over a frame later, so rebuilding here is safe.
+            parent.Add(BridgeElements.ObjectPicker<VRCAvatarDescriptor>("VRChat avatar", avatar, picked =>
             {
-                objectType = typeof(VRCAvatarDescriptor),
-                allowSceneObjects = true,
-                value = avatar,
-                tooltip = "A scene object with a VRC Avatar Descriptor.",
-            };
-            field.AddToClassList("ab-field");
-            field.RegisterValueChangedCallback(e =>
-            {
-                avatar = e.newValue as VRCAvatarDescriptor;
+                avatar = picked;
                 // Findings belong to the avatar they were measured on. Keeping them across a
                 // swap would show one avatar's shader and PhysBone counts under another's name.
                 advice = null;
                 adviceFilter = null;
                 MatchOptionalLayersToAvatar();
-                ScheduleRebuild();
-            });
-            parent.Add(field);
+                Rebuild();
+            }, "A scene object with a VRC Avatar Descriptor."));
 
             if (avatar == null)
             {
-                parent.Add(BridgeElements.Hint(
-                    "Drag your avatar here from the Hierarchy (the object with the VRC Avatar Descriptor)."));
+                parent.Add(BridgeElements.Hint("Drag your VRChat avatar here from the Hierarchy."));
                 return;
             }
 
             if (VRCFuryBaker.HasFuryComponents(avatar.gameObject))
             {
-                parent.Add(new HelpBox(
-                    "VRCFury detected: baked with its own builder first, so its features carry over.",
-                    HelpBoxMessageType.Info));
+                parent.Add(BridgeElements.Notice(Tone.Info,
+                    "VRCFury detected: baked with its own builder first, so its features carry over."));
             }
             if (ModularAvatarBaker.HasModularAvatarComponents(avatar.gameObject))
             {
-                parent.Add(new HelpBox(
-                    "Modular Avatar detected: baked through NDMF first, so its features carry over.",
-                    HelpBoxMessageType.Info));
+                parent.Add(BridgeElements.Notice(Tone.Info,
+                    "Modular Avatar detected: baked through NDMF first, so its features carry over."));
             }
         }
 
         // ------------------------------------------------------------------ analyse ----
+
+        // Action first, agreement last. A list that opens with six green "already set" rows
+        // buries the one red one, and the red one is why anybody pressed the button. The chips
+        // follow the same order.
+        static readonly (AdviceKind kind, string noun)[] AdviceOrder =
+        {
+            (AdviceKind.Blocked, "blocked"), (AdviceKind.Change, "recommended"), (AdviceKind.Manual, "your call"),
+            (AdviceKind.Confirm, "already set"), (AdviceKind.Inert, "not needed"),
+        };
 
         void BuildAnalyseSection(VisualElement parent)
         {
             parent.Add(BridgeElements.Hint(
                 "The defaults suit most avatars. Analyse offers the settings this one's contents decide."));
 
-            var button = ReportButton("Analyse this avatar",
-                "Reads PhysBones, blendshapes, shaders, parameters and layers. Nothing changes until you apply it.",
-                () => { Reanalyse(); ScheduleRebuild(); });
-            button.SetEnabled(avatar != null);
-            parent.Add(button);
+            var analyse = BridgeElements.Btn("Analyse this avatar", () => { Reanalyse(); ScheduleRebuild(); },
+                avatar != null
+                    ? "Reads PhysBones, blendshapes, shaders, parameters and layers. Nothing changes until you apply it."
+                    : "Pick an avatar in step 1 first.",
+                ButtonKind.Strong);
+            analyse.SetEnabled(avatar != null);
+            parent.Add(BridgeElements.ButtonRow(analyse));
 
-            // The two settings that change nothing, only what you are told.
-            // They belong with Analyse, not among the forty that build.
-            parent.Add(BridgeElements.SubHeading("What the report tells you"));
-            AddReadingOptions(parent);
-
-            if (avatar == null)
-            {
-                parent.Add(BridgeElements.Hint("Pick an avatar in step 1 to enable this."));
-                return;
-            }
-            if (advice == null)
+            if (avatar == null || advice == null)
             {
                 return;
             }
             if (advice.Count == 0)
             {
-                parent.Add(BridgeElements.Hint(
+                parent.Add(BridgeElements.Notice(Tone.Good,
                     "Nothing to change: the current settings already suit this avatar."));
                 return;
             }
 
-            // Action first, agreement last. A list that opens with six green "already set" rows
-            // buries the one red one, and the red one is why anybody pressed the button.
             var ordered = new List<Advice>();
-            foreach (var kind in new[]
-                     {
-                         AdviceKind.Blocked, AdviceKind.Change, AdviceKind.Manual,
-                         AdviceKind.Confirm, AdviceKind.Inert,
-                     })
+            foreach (var (kind, _) in AdviceOrder)
             {
                 foreach (var a in advice)
                 {
@@ -378,37 +396,31 @@ namespace AvatarBridge
                 }
             }
 
-            // Same shape as the conversion report below: banner, chips,
+            // Same shape as the conversion report below: verdict, chips,
             // rows. Two different-looking lists in one window is two
             // things to learn instead of one.
             int blocked = CountOf(AdviceKind.Blocked);
             int yours = CountOf(AdviceKind.Manual);
-            parent.Add(new HelpBox(
+            parent.Add(BridgeElements.Notice(
+                blocked > 0 ? Tone.Bad : recommendations > 0 ? Tone.Info : Tone.Good,
                 blocked > 0
-                    ? $"{blocked} setting(s) can't do what they say on this avatar. See below."
+                    ? $"{N(blocked, "setting can't", "settings can't")} do what they say on this avatar. See below."
                     : recommendations > 0
-                        ? $"{recommendations} setting(s) don't match this avatar."
+                        ? $"{N(recommendations, "setting doesn't", "settings don't")} match this avatar."
                         : yours > 0
-                            ? $"Everything measurable already matches. {yours} thing(s) are your call."
-                            : "Everything measurable already matches this avatar.",
-                blocked > 0 ? HelpBoxMessageType.Error
-                : recommendations > 0 ? HelpBoxMessageType.Warning
-                : HelpBoxMessageType.Info));
+                            ? $"Everything measurable already matches. {N(yours, "thing is", "things are")} your call."
+                            : "Everything measurable already matches this avatar."));
 
-            var chips = new VisualElement();
-            chips.AddToClassList("ab-row");
-            chips.style.flexWrap = Wrap.Wrap;
-            AddAdviceChip(chips, AdviceKind.Blocked, "blocked");
-            AddAdviceChip(chips, AdviceKind.Change, "recommended");
-            AddAdviceChip(chips, AdviceKind.Manual, "your call");
-            AddAdviceChip(chips, AdviceKind.Confirm, "already set");
-            AddAdviceChip(chips, AdviceKind.Inert, "not needed");
-            parent.Add(chips);
+            var chips = new List<VisualElement>();
+            foreach (var (kind, noun) in AdviceOrder)
+            {
+                chips.Add(AdviceChip(kind, noun));
+            }
+            parent.Add(BridgeElements.Chips(chips.ToArray()));
 
             if (recommendations > 1)
             {
-                parent.Add(ReportButton($"Apply all {recommendations} recommendations",
-                    "Applies the measured ones only, never the \"your call\" rows.",
+                parent.Add(BridgeElements.ButtonRow(BridgeElements.Btn($"Apply all {recommendations} recommendations",
                     () =>
                     {
                         foreach (var a in ordered)
@@ -420,18 +432,23 @@ namespace AvatarBridge
                         }
                         Reanalyse();
                         ScheduleRebuild();
-                    }));
+                    },
+                    "Applies the measured ones only, never the \"your call\" rows.",
+                    ButtonKind.Strong)));
             }
 
-            int shown = 0;
+            var rows = new List<VisualElement>();
             foreach (var a in ordered)
             {
                 if (adviceFilter.HasValue && a.Kind != adviceFilter.Value)
                 {
                     continue;
                 }
-                parent.Add(AdviceRow(a, shown % 2 == 1));
-                shown++;
+                rows.Add(AdviceRow(a));
+            }
+            if (rows.Count > 0)
+            {
+                parent.Add(BridgeElements.ReportList(rows));
             }
         }
 
@@ -478,38 +495,38 @@ namespace AvatarBridge
             return n;
         }
 
-        void AddAdviceChip(VisualElement parent, AdviceKind kind, string noun)
+        // A zero-count chip is disabled, so it dims and cannot select an empty list.
+        VisualElement AdviceChip(AdviceKind kind, string noun)
         {
             int count = CountOf(kind);
             bool selected = adviceFilter == kind;
-            parent.Add(BridgeElements.Chip($"{count} {noun}", KindColour(kind),
-                kind != AdviceKind.Confirm && kind != AdviceKind.Inert,
+            var chip = BridgeElements.Chip($"{count} {noun}", KindTone(kind), selected,
                 () =>
                 {
                     adviceFilter = selected ? (AdviceKind?)null : kind;
                     ScheduleRebuild();
                 },
-                selected,
-                count > 0));
+                selected ? "Click again to show every row." : $"Show only the {noun} rows.");
+            chip.SetEnabled(count > 0);
+            return chip;
         }
 
         static bool IsRecommendation(Advice a) => AvatarAdvisor.IsRecommendation(a);
 
-        VisualElement AdviceRow(Advice a, bool alternate)
+        VisualElement AdviceRow(Advice a)
         {
-            var row = BridgeElements.ReportRow(KindLabel(a.Kind), a.Setting, a.Finding,
-                KindColour(a.Kind), alternate);
+            var actions = new List<VisualElement>();
             if (a.Targets != null && a.Targets.Length > 0)
             {
-                row.Add(ReportButton(a.Targets.Length == 1 ? "Show" : $"Show {a.Targets.Length}",
+                actions.Add(BridgeElements.Btn(a.Targets.Length == 1 ? "Show" : $"Show {a.Targets.Length}",
+                    () => Ping(a.Targets),
                     a.Targets.Length == 1
                         ? $"Selects \"{a.Targets[0].name}\"."
-                        : "Selects all of them, so you can see what the count is made of.",
-                    () => Ping(a.Targets)));
+                        : "Selects all of them, so you can see what the count is made of."));
             }
             if (a.Apply != null)
             {
-                row.Add(ReportButton(a.Kind == AdviceKind.Manual ? "Turn on" : "Apply", null,
+                actions.Add(BridgeElements.Btn(a.Kind == AdviceKind.Manual ? "Turn on" : "Apply",
                     () =>
                     {
                         a.Apply(settings);
@@ -521,7 +538,10 @@ namespace AvatarBridge
                         ScheduleRebuild();
                     }));
             }
-            return row;
+            string label = KindLabel(a.Kind);
+            return BridgeElements.ReportRow(KindTone(a.Kind),
+                string.IsNullOrEmpty(a.Setting) ? label : label + ": " + a.Setting,
+                a.Finding, actions.ToArray());
         }
 
         static string KindLabel(AdviceKind kind)
@@ -536,15 +556,15 @@ namespace AvatarBridge
             }
         }
 
-        static Color KindColour(AdviceKind kind)
+        static Tone KindTone(AdviceKind kind)
         {
             switch (kind)
             {
-                case AdviceKind.Change: return BridgeTheme.Warn;
-                case AdviceKind.Confirm: return BridgeTheme.Good;
-                case AdviceKind.Inert: return BridgeTheme.Muted;
-                case AdviceKind.Manual: return BridgeTheme.CvrOrange;
-                default: return BridgeTheme.Bad;
+                case AdviceKind.Change: return Tone.Info;
+                case AdviceKind.Confirm: return Tone.Good;
+                case AdviceKind.Inert: return Tone.Muted;
+                case AdviceKind.Manual: return Tone.Warn;
+                default: return Tone.Bad;
             }
         }
 
@@ -555,35 +575,16 @@ namespace AvatarBridge
             where T : Enum
         {
             var values = (T[])Enum.GetValues(typeof(T));
-            var names = new List<string>(labels);
-            int index = Math.Max(0, Array.IndexOf(values, current));
-
-            var popup = new PopupField<string>(label, names, index) { tooltip = tooltip };
-            popup.AddToClassList("ab-field");
-            popup.RegisterValueChangedCallback(e =>
-            {
-                int chosen = names.IndexOf(e.newValue);
-                if (chosen >= 0)
-                {
-                    set(values[chosen]);
-                }
-            });
-            return popup;
+            return BridgeElements.Popup(label, tooltip, labels, Array.IndexOf(values, current), i => set(values[i]));
         }
 
-        void BuildPhysicsCard(VisualElement parent)
+        BridgeElements.Card BuildPhysicsFold(out BridgeElements.Card tuning)
         {
-            var card = new BridgeElements.Card("Physics",
-                showPhysics ? null : "which solver, and how the chains feel",
-                showPhysics, null, 0f, open => { showPhysics = open; ScheduleRebuild(); });
+            tuning = null;
+            var card = new BridgeElements.Card("Physics", "which solver, and how the chains feel", true)
+                .Nested().Remember("Converter.Physics");
             var b = card.Body;
 
-            AddPhysicsOptions(b);
-            parent.Add(card);
-        }
-
-        void AddPhysicsOptions(VisualElement b)
-        {
             b.Add(EnumPopup("Convert PhysBones to",
                 "MagicaCloth2 gives the best result in ChilloutVR; DynamicBone is the built-in fallback.",
                 new[] { "MagicaCloth 2", "DynamicBone", "None" },
@@ -592,15 +593,13 @@ namespace AvatarBridge
 
             if (settings.physicsTarget == PhysicsTarget.MagicaCloth2 && !BridgeDefines.HasMagicaCloth2)
             {
-                b.Add(new HelpBox(
-                    "MagicaCloth2 is not installed in this project: import it, or switch to DynamicBone.",
-                    HelpBoxMessageType.Warning));
+                b.Add(BridgeElements.Notice(Tone.Warn,
+                    "MagicaCloth2 is not installed in this project: import it, or switch to DynamicBone."));
             }
             if (settings.physicsTarget == PhysicsTarget.DynamicBone && !BridgeDefines.HasDynamicBone)
             {
-                b.Add(new HelpBox(
-                    "DynamicBone is not installed. The free VRLabs Dynamic-Bones-Stub also works for conversion.",
-                    HelpBoxMessageType.Warning));
+                b.Add(BridgeElements.Notice(Tone.Warn,
+                    "DynamicBone is not installed. The free VRLabs Dynamic-Bones-Stub also works for conversion."));
             }
 
             // Both writers name their holders from it.
@@ -623,50 +622,39 @@ namespace AvatarBridge
 
             if (settings.physicsTarget == PhysicsTarget.MagicaCloth2)
             {
-                b.Add(BridgeElements.SubHeading("MagicaCloth2 feel"));
-                b.Add(BridgeElements.Hint(
-                    "Leave these on. Turn one off only when a chain converts wrong; it falls back to " +
-                    "MagicaCloth2's defaults."));
-
                 // Closed by default. These are escape hatches for a
                 // chain that came out wrong, not decisions to make.
-                var feel = new Foldout { text = "Advanced physics tuning", value = showPhysicsTuning };
-                feel.AddToClassList("ab-field");
-                feel.RegisterValueChangedCallback(e =>
-                {
-                    // Foldouts inside carry their own change events up; only the fold's own counts.
-                    if (e.target == feel) showPhysicsTuning = e.newValue;
-                });
-                b.Add(feel);
-                var outer = b;
-                b = feel.contentContainer;
-
-                b.Add(BridgeElements.Bind("Match a preset to each chain",
+                tuning = new BridgeElements.Card("Advanced physics tuning", "MagicaCloth2 feel", false)
+                    .Nested().Remember("Converter.PhysicsTuning");
+                var t = tuning.Body;
+                t.Add(BridgeElements.Hint(
+                    "Leave these on. Turn one off only when a chain converts wrong; it falls back to " +
+                    "MagicaCloth2's defaults."));
+                t.Add(BridgeElements.Bind("Match a preset to each chain",
                     "Starts each chain from the preset that fits it: hair, tail, skirt, cape, accessory, or a spring by stiffness.",
                     settings.useMagicaPresets, v => settings.useMagicaPresets = v));
-                b.Add(BridgeElements.Bind("Fit the preset to the PhysBone",
+                t.Add(BridgeElements.Bind("Fit the preset to the PhysBone",
                     "Carries gravity and immobile across, and zeroes wind, which VRChat never had.",
                     settings.fitToPhysBone, v => settings.fitToPhysBone = v));
-                b.Add(BridgeElements.Bind("Derive physics from the PhysBone",
+                t.Add(BridgeElements.Bind("Derive physics from the PhysBone",
                     "Converts pull, spring and stiffness into damping and angle restoration, derived from both solvers.",
                     settings.derivePhysicsFromPhysBone, v => settings.derivePhysicsFromPhysBone = v));
-                b.Add(BridgeElements.Bind("Size particles from the mesh",
+                t.Add(BridgeElements.Bind("Size particles from the mesh",
                     "Sizes each chain's collision to the mesh it moves, not the preset's one size for all.",
                     settings.fitRadiusToMesh, v => settings.fitRadiusToMesh = v));
-                b.Add(BridgeElements.Bind("Fit colliders to the mesh",
+                t.Add(BridgeElements.Bind("Fit colliders to the mesh",
                     "Measures the limb each collider sits on and tapers the capsule to it. Off keeps the source's sizes.",
                     settings.fitCollidersToMesh, v => settings.fitCollidersToMesh = v));
-                b.Add(BridgeElements.Bind("Bound swing to the source's limit",
+                t.Add(BridgeElements.Bind("Bound swing to the source's limit",
                     "Keeps a loose chain within the PhysBone's angle limit, as a distance bound that cannot vibrate.",
                     settings.boundSwingToSourceLimit, v => settings.boundSwingToSourceLimit = v));
-                b.Add(BridgeElements.Bind("Cap particle radius to bone spacing",
+                t.Add(BridgeElements.Bind("Cap particle radius to bone spacing",
                     "Bounds each particle to half the gap between its bones. Try it on a long chain of close bones that misbehaves.",
                     settings.capParticleRadius, v => settings.capParticleRadius = v));
+                b.Add(tuning);
 
-                b = outer;   // out of the fold, "Your call" is not advanced, it is a choice
-                b.Add(BridgeElements.SubHeading("Your call"));
-                b.Add(BridgeElements.Hint(
-                    "The avatar can't answer these. Leaving them alone converts fine."));
+                // Out of the fold: "Your call" is not advanced, it is a choice.
+                card.Section("Your call");
                 b.Add(BridgeElements.Bind("Add physics to toggled rigs that have none",
                     "Gives physics to a toggled rig the author left without a PhysBone, like an add-on hairstyle. " +
                     "Off by default: some are rigid on purpose. The report names them either way.",
@@ -675,40 +663,27 @@ namespace AvatarBridge
                     "Lets each cloth collide with body colliders it could swing into, which VRChat did not. Check before uploading.",
                     settings.autoAssignNearbyColliders, v => settings.autoAssignNearbyColliders = v));
             }
+            return card;
         }
 
-        void BuildAutomatedCard(VisualElement parent)
+        BridgeElements.Card BuildAutomatedFold()
         {
             var card = new BridgeElements.Card("Automated options",
-                showAutomated ? null : "set for you from the avatar: physics, face tracking, layers, components",
-                showAutomated, null, 0f, open => { showAutomated = open; ScheduleRebuild(); });
+                "set for you from the avatar: face tracking, layers, components", false)
+                .Nested().Remember("Converter.Automated");
             var b = card.Body;
 
-            // Forty-odd settings under six headings, in a card that ships
-            // collapsed. Grouping alone does not make one findable.
-            var find = new TextField("Find a setting") { value = settingFilter };
-            find.AddToClassList("ab-field");
-            find.AddToClassList("ab-keep");
-            find.RegisterValueChangedCallback(e =>
-            {
-                settingFilter = e.newValue;
-                BridgeElements.Filter(b, settingFilter);
-            });
-            b.Add(find);
+            b.Add(BridgeElements.Hint("Analyse sets these. Change one only if you know why."));
 
-            b.Add(new HelpBox(
-                "The avatar decides these, and \"Analyse this avatar\" sets them. Change one only if you know why.",
-                HelpBoxMessageType.Warning));
-
-            b.Add(BridgeElements.SubHeading("General"));
+            card.Section("General");
             AddCloneToggle(b);
 
-            b.Add(BridgeElements.SubHeading("Face tracking"));
+            card.Section("Face tracking");
             AddFaceTrackingOptions(b);
             // Baking, cleanup, toggle rebuilding and masking always
             // run. Necessary steps are not options.
 
-            b.Add(BridgeElements.SubHeading("Remove VRChat-only systems"));
+            card.Section("Remove VRChat-only systems");
             b.Add(BridgeElements.Bind("Remove GoGo Loco (recommended)",
                 "ChilloutVR has its own locomotion, flight and emotes, which GoGo fights. Untick to keep GoGo's poses.",
                 settings.stripGogoLoco, v => { settings.stripGogoLoco = v; ScheduleRebuild(); }));
@@ -717,19 +692,19 @@ namespace AvatarBridge
                 // GoGo cannot fully function in CVR; it leans on
                 // VRChat-only animator primitives. Say so where the
                 // decision is made.
-                b.Add(BridgeElements.Hint(
-                    "⚠ EXPERIMENTAL: GoGo replaces ChilloutVR's locomotion, so tick Base, Additive and Action " +
-                    "below or there is none. Poses don't lock movement, floor poses keep a standing viewpoint, " +
-                    "and the quick-menu emotes stop."));
+                b.Add(BridgeElements.Notice(Tone.Warn,
+                    "Experimental. GoGo replaces ChilloutVR's locomotion, so tick Base, Additive and Action below " +
+                    "or there is none.",
+                    "Poses don't lock movement, floor poses keep a standing viewpoint, and the quick-menu emotes stop."));
             }
 #if !AVATARBRIDGE_YAPS
             // No add-on in the project, so "Convert to YAPS" is not an answer
             // this build can give. Offering it and quietly removing instead is
             // the worst of the three.
-            b.Add(new HelpBox(
+            b.Add(BridgeElements.Notice(Tone.Info,
                 "Penetration (DPS, TPS, SPS) is removed. The YAPS add-on rebuilds it; install it and the " +
-                "choice appears here.", HelpBoxMessageType.Info));
-            b.Add(Link("Get the YAPS add-on (GitHub)  ↗", () => Application.OpenURL(BridgeLinks.YapsRepo)));
+                "choice appears here.",
+                action: BridgeElements.ExternalLink("Get the YAPS add-on (GitHub)", BridgeLinks.YapsRepo)));
             // Nothing written to the settings here. These persist in
             // EditorPrefs, which are per USER on this machine and not per
             // project, so forcing them off in a project without the add-on
@@ -742,7 +717,7 @@ namespace AvatarBridge
             // One question over two settings, three answers; the fourth
             // combination the ticks allowed is not offered. Radio buttons stack
             // like the toggles around them.
-            var penetration = BridgeElements.Choice("Penetration",
+            b.Add(BridgeElements.Choice("Penetration",
                 "Convert to YAPS: rebuilt for ChilloutVR with the author's tuning, and works with DPS, TPS " +
                 "and SPS already on the platform.\n" +
                 "Remove: takes it all out.\n" +
@@ -754,39 +729,34 @@ namespace AvatarBridge
                     settings.stripSpsSystems = choice != 2;
                     settings.convertYapsSystems = choice == 0;
                     ScheduleRebuild();
-                });
-            b.Add(penetration);
+                }));
             b.Add(BridgeElements.Hint("DPS, TPS and SPS, with the OGB, PCS and Wholesome stacks that ride with them."));
             // What the other two answers cost, where the choice is made.
             if (settings.stripSpsSystems && !settings.convertYapsSystems)
             {
-                b.Add(new HelpBox(
-                    "Every plug and socket goes; the plug mesh stays, straight. Only converting again undoes it.",
-                    HelpBoxMessageType.Warning));
+                b.Add(BridgeElements.Notice(Tone.Warn,
+                    "Every plug and socket goes; the plug mesh stays, straight. Only converting again undoes it."));
             }
             else if (!settings.stripSpsSystems)
             {
-                b.Add(new HelpBox(
-                    "Nothing will bend or open, and the haptics parameters can push the avatar over the sync cap.",
-                    HelpBoxMessageType.Warning));
+                b.Add(BridgeElements.Notice(Tone.Warn,
+                    "Nothing will bend or open, and the haptics parameters can push the avatar over the sync cap."));
             }
             else if (settings.convertYapsSystems && settings.syncHapticsForOsc)
             {
                 b.Add(BridgeElements.Hint(
                     "The OGB haptics stay synced for OSC toys: that is on under Manual options ▸ Opt-ins."));
             }
-#endif
-#if AVATARBRIDGE_YAPS
             // The other door. The add-on builds and tunes penetration on an
-            // avatar already here; this converts. Absent, the card above has
-            // already said so and offered the download.
+            // avatar already here; this converts.
             b.Add(BridgeElements.Hint(
                 "Already on ChilloutVR? Tools ▸ YAPS ▸ Setup adds penetration to any avatar or prop."));
 #endif
             b.Add(BridgeElements.Bind("Remove animation that can't do anything (recommended)",
                 "Curves for material properties a locked shader baked away. They did nothing in VRChat either.",
                 settings.stripDeadMaterialAnimation, v => settings.stripDeadMaterialAnimation = v));
-            b.Add(BridgeElements.SubHeading("Animator layers to convert"));
+
+            card.Section("Animator layers to convert");
             b.Add(BridgeElements.Bind("FX (toggles, expressions)", null,
                 settings.convertFxLayer, v => settings.convertFxLayer = v));
             b.Add(BridgeElements.Bind("Gesture (hand poses)", null,
@@ -807,7 +777,7 @@ namespace AvatarBridge
                     (autoOffLayers.Count == 1 ? "that slot." : "those slots.")));
             }
 
-            b.Add(BridgeElements.SubHeading("Parameters & toggles"));
+            card.Section("Parameters & toggles");
             b.Add(BridgeElements.Bind("Preserve parameter sync state",
                 "Unsynced parameters become local, except ones a menu control drives: others should see what it does.",
                 settings.preserveParameterSyncState, v => settings.preserveParameterSyncState = v));
@@ -815,7 +785,7 @@ namespace AvatarBridge
                 "Gives them a settings entry so their values are saved between loads.",
                 settings.exposeMenulessSyncedParameters, v => settings.exposeMenulessSyncedParameters = v));
 
-            b.Add(BridgeElements.SubHeading("Components"));
+            card.Section("Components");
             b.Add(BridgeElements.Bind("Convert contact senders/receivers", null,
                 settings.convertContacts, v => { settings.convertContacts = v; ScheduleRebuild(); }));
             b.Add(BridgeElements.Bind("Recreate built-in VRC colliders as pointers",
@@ -838,24 +808,20 @@ namespace AvatarBridge
                 "its pixels allow, in import settings only. \"Put the textures " +
                 "back\" undoes it; textures shared outside the avatar are left alone.",
                 settings.slimTexturesOnConvert, v => settings.slimTexturesOnConvert = v));
-
-            // Survives a rebuild: the box keeps its text, so the card must
-            // come back filtered to match it.
-            BridgeElements.Filter(b, settingFilter);
-            parent.Add(card);
+            return card;
         }
 
-        void BuildManualCard(VisualElement parent)
+        BridgeElements.Card BuildManualFold()
         {
-            var card = new BridgeElements.Card("Manual options",
-                showManual ? null : "the calls only you can make",
-                showManual, null, 0f, open => { showManual = open; ScheduleRebuild(); });
+            // No summary: the hint under the header says the same thing.
+            var card = new BridgeElements.Card("Manual options", null, true)
+                .Nested().Remember("Converter.Manual");
             var b = card.Body;
 
             b.Add(BridgeElements.Hint(
                 "The avatar can't answer these. Leaving them alone converts fine."));
 
-            b.Add(BridgeElements.SubHeading("Shaders"));
+            card.Section("Shaders");
             b.Add(BridgeElements.Row(
                 BridgeElements.Bind("Patch non-SPI shaders for VR",
                     "A shader without stereo support draws into one eye in VR. Patches copies; originals " +
@@ -865,15 +831,10 @@ namespace AvatarBridge
 
             // Opt-ins live here, not beside the choice they qualify: a
             // feature nobody can find is a feature nobody turns on.
-            b.Add(BridgeElements.SubHeading("Opt-ins"));
-            var optIns = new VisualElement();
-            optIns.style.paddingLeft = 10;
-            optIns.style.borderLeftWidth = 2;
-            optIns.style.borderLeftColor = new Color(1f, 1f, 1f, 0.10f);
-            optIns.style.marginBottom = 6;
+            card.Section("Opt-ins");
+            var optIns = BridgeElements.Indent(
+                BridgeElements.Hint("Off unless you switch them on, and each says what it costs."));
             b.Add(optIns);
-            optIns.Add(BridgeElements.Hint(
-                "Off unless you switch them on, and each says what it costs."));
 
             optIns.Add(BridgeElements.SubHeading("OSC toys"));
             optIns.Add(BridgeElements.Bind("Keep the OGB / PCS haptics contacts",
@@ -883,39 +844,27 @@ namespace AvatarBridge
                 v => { settings.keepHapticsContacts = v; ScheduleRebuild(); }));
             if (settings.keepHapticsContacts)
             {
-                optIns.Add(new HelpBox(
-                    "Blame this if contacts get unreliable in a busy instance.",
-                    HelpBoxMessageType.Warning));
+                optIns.Add(BridgeElements.Notice(Tone.Warn,
+                    "Blame this if contacts get unreliable in a busy instance."));
             }
+#if AVATARBRIDGE_YAPS
+            // Only a converted penetration system keeps these parameters, and
+            // without the add-on there is none, so the tick could never act.
             optIns.Add(BridgeElements.Bind("Keep OGB haptics synced (OSCGoesBrrr, Lovense)",
                 "On, OSCGoesBrrr finds them automatically, at 32 sync bits each. Off, link them by hand; " +
                 "the report lists the names.",
                 settings.syncHapticsForOsc, v => { settings.syncHapticsForOsc = v; ScheduleRebuild(); }));
-            if (settings.syncHapticsForOsc && !settings.keepHapticsContacts)
-            {
-                optIns.Add(new HelpBox(
-                    "There are no haptics parameters to sync unless the contacts above are kept. " +
-                    "This does nothing on its own.", HelpBoxMessageType.Warning));
-            }
             if (settings.syncHapticsForOsc)
             {
-                optIns.Add(new HelpBox(
-                    "About 290 bits per plug or socket, and over 3200 nothing syncs. Launch ChilloutVR " +
-                    "with --osc-query-prefix=VRChat-Client.",
-                    HelpBoxMessageType.Warning));
-                // Without the add-on the answer is no whatever the setting
-                // says, which is the one thing the write above used to get
-                // right.
-#if AVATARBRIDGE_YAPS
-                if (!settings.convertYapsSystems)
-#endif
-                {
-                    optIns.Add(new HelpBox(
-                        "Does nothing unless Penetration is Convert to YAPS.", HelpBoxMessageType.Info));
-                }
+                const string cost = "About 290 bits per plug or socket, and over 3200 nothing syncs. Launch " +
+                                    "ChilloutVR with --osc-query-prefix=VRChat-Client.";
+                string blocker = !settings.keepHapticsContacts ? "Does nothing unless the contacts above are kept."
+                               : !settings.convertYapsSystems ? "Does nothing unless Penetration is Convert to YAPS."
+                               : null;
+                // One notice per toggle: what stops it working comes first, the cost behind More.
+                optIns.Add(BridgeElements.Notice(Tone.Warn, blocker ?? cost, blocker != null ? cost : null));
             }
 
-#if AVATARBRIDGE_YAPS
             optIns.Add(BridgeElements.SubHeading("Penetration"));
             optIns.Add(BridgeElements.Bind("Show the avatar's OWN depth animations to other players",
                 "The bulges the author animated on the body. Off, only you see them; on, everyone, at 32 " +
@@ -923,31 +872,23 @@ namespace AvatarBridge
                 settings.syncSocketDepthForOthers, v => { settings.syncSocketDepthForOthers = v; ScheduleRebuild(); }));
             if (settings.syncSocketDepthForOthers)
             {
-                optIns.Add(new HelpBox(
-                    "32 bits per depth parameter, and over 3200 nothing syncs. The report's sync budget says where it landed.",
-                    HelpBoxMessageType.Warning));
+                optIns.Add(BridgeElements.Notice(Tone.Warn,
+                    "32 bits per depth parameter, and over 3200 nothing syncs. The report's sync budget says where it landed."));
             }
 #endif
 
-            b.Add(BridgeElements.SubHeading("Menu & extras"));
+            card.Section("Menu & extras");
             b.Add(EnumPopup("Toggle style",
                 "Animator Layers: each toggle gets its own layer.\n" +
                 "CVR Native Targets: left to the CCK; press \"Create Controller\" on the avatar.",
                 new[] { "Animator Layers", "CVR Native Targets" },
                 settings.toggleStyle, v => settings.toggleStyle = v));
             AddHeightScaler(b);
-
-            var extra = new TextField("Extra strip keywords")
-            {
-                value = settings.extraStripKeywords,
-                tooltip = "Comma separated parameter prefixes and layer names of other VRChat-only systems to remove.",
-            };
-            extra.AddToClassList("ab-field");
-            extra.RegisterValueChangedCallback(e => settings.extraStripKeywords = e.newValue);
-            b.Add(extra);
+            b.Add(BridgeElements.Text("Extra strip keywords",
+                "Comma separated parameter prefixes and layer names of other VRChat-only systems to remove.",
+                settings.extraStripKeywords, v => settings.extraStripKeywords = v));
             AddOutputFolder(b);
-
-            parent.Add(card);
+            return card;
         }
 
         void BuildConvertButton(VisualElement parent)
@@ -967,7 +908,7 @@ namespace AvatarBridge
             }
             else if (ftPackageMissing)
             {
-                parent.Add(FaceTrackingMissingBox());
+                parent.Add(FaceTrackingMissing("Automated options ▸ Face tracking"));
             }
         }
 
@@ -1003,21 +944,12 @@ namespace AvatarBridge
 
         void BuildSetupFlow()
         {
-            var pick = new BridgeElements.Card("Pick any avatar", null, null, 1, 0f);
-            var field = new ObjectField("Avatar")
+            var pick = new BridgeElements.Card("Pick any avatar").Step(1, 3, BridgeTheme.Span.Bridge);
+            pick.Body.Add(BridgeElements.ObjectPicker<GameObject>("Avatar", setupAvatar, picked =>
             {
-                objectType = typeof(GameObject),
-                allowSceneObjects = true,
-                value = setupAvatar,
-                tooltip = "Any avatar in the scene. A Humanoid rig gives the best result.",
-            };
-            field.AddToClassList("ab-field");
-            field.RegisterValueChangedCallback(e =>
-            {
-                setupAvatar = e.newValue as GameObject;
-                ScheduleRebuild();
-            });
-            pick.Body.Add(field);
+                setupAvatar = picked;
+                Rebuild();
+            }, "Any avatar in the scene. A Humanoid rig gives the best result."));
 
             if (setupAvatar == null)
             {
@@ -1029,38 +961,43 @@ namespace AvatarBridge
                 var animator = setupAvatar.GetComponent<Animator>();
                 if (animator == null || !animator.isHuman)
                 {
-                    pick.Body.Add(new HelpBox(
+                    pick.Body.Add(BridgeElements.Notice(Tone.Warn,
                         "Not a Humanoid rig: the viewpoint is guessed and eye tracking can't be wired. Set " +
-                        "Humanoid in the model's import settings.", HelpBoxMessageType.Warning));
+                        "Humanoid in the model's import settings."));
                 }
                 if (setupAvatar.GetComponent<ABI.CCK.Components.CVRAvatar>() != null)
                 {
-                    pick.Body.Add(new HelpBox(
-                        "It already has a CVRAvatar: its Advanced Avatar Settings are rebuilt from scratch.",
-                        HelpBoxMessageType.Warning));
+                    pick.Body.Add(BridgeElements.Notice(Tone.Warn,
+                        "It already has a CVRAvatar: its Advanced Avatar Settings are rebuilt from scratch."));
                 }
             }
             body.Add(pick);
 
-            var choose = new BridgeElements.Card("Choose what gets set up", null, null, 2, 0.5f);
+            var choose = new BridgeElements.Card("Choose what gets set up").Step(2, 3, BridgeTheme.Span.Bridge);
             choose.Body.Add(BridgeElements.Hint("Viewpoint, visemes and blink are always detected and wired."));
             // Where the converter puts them: what the report TELLS you, kept
             // apart from what gets built.
-            choose.Body.Add(BridgeElements.SubHeading("What the report tells you"));
+            choose.Section("What the report tells you");
             AddReadingOptions(choose.Body);
-            BuildFaceTrackingCard(choose.Body);
-            BuildExtrasCard(choose.Body);
 
-            var advanced = new BridgeElements.Card("Advanced options",
-                showAdvanced ? null : "output folder, blink",
-                showAdvanced, null, 0f, open => { showAdvanced = open; ScheduleRebuild(); });
+            // The summary reads the popup's own labels, so the two never disagree.
+            var faceTracking = new BridgeElements.Card("Face tracking", FtLabels[FtIndex], true)
+                .Nested().Remember("Converter.SetupFaceTracking");
+            AddFaceTrackingOptions(faceTracking.Body);
+            choose.Body.Add(faceTracking);
+
+            choose.Section("Extras");
+            AddHeightScaler(choose.Body);
+
+            var advanced = new BridgeElements.Card("Advanced options", "clone, output folder, blink", false)
+                .Nested().Remember("Converter.SetupAdvanced");
             AddCloneToggle(advanced.Body);
             AddOutputFolder(advanced.Body);
             AddBlinkToggle(advanced.Body);
             choose.Body.Add(advanced);
             body.Add(choose);
 
-            var run = new BridgeElements.Card("Set up", null, null, 3, 1f);
+            var run = new BridgeElements.Card("Set up").Step(3, 3, BridgeTheme.Span.Bridge);
             bool ftPackageMissing = FaceTrackingAssetsMissing;
             var button = new BridgeElements.PrimaryButton(
                 setupAvatar == null ? "Set up avatar" : $"Set up \"{setupAvatar.name}\"",
@@ -1094,9 +1031,9 @@ namespace AvatarBridge
             }
             else if (ftPackageMissing)
             {
-                run.Body.Add(FaceTrackingMissingBox());
+                run.Body.Add(FaceTrackingMissing("Face tracking in step 2"));
             }
-            BuildReport(run.Body);
+            BuildReport(run);
             body.Add(run);
         }
 
@@ -1134,20 +1071,16 @@ namespace AvatarBridge
         bool FaceTrackingAssetsMissing =>
             settings.faceTrackingMode == FaceTrackingMode.DragonSkyRunner && !FaceTrackingPackages.IsInstalled();
 
-        static HelpBox FaceTrackingMissingBox() => new HelpBox(
-            "The bundled face-tracking assets are missing: reimport AvatarBridge, or set " +
-            "Face tracking to Native or None.", HelpBoxMessageType.Warning);
+        // Names the popup's real answers and where it is, since it sits in a fold.
+        static VisualElement FaceTrackingMissing(string where) => BridgeElements.Notice(Tone.Warn,
+            $"The bundled face-tracking assets are missing. Reimport AvatarBridge, or set {where} to " +
+            $"{FtLabels[0]} or {FtLabels[2]}.");
 
         void AddOutputFolder(VisualElement parent)
         {
-            var output = new TextField("Output folder")
-            {
-                value = settings.outputFolder,
-                tooltip = "Where assets and the report go, inside Assets. Kept outside the tool's folder so updating never erases them.",
-            };
-            output.AddToClassList("ab-field");
-            output.RegisterValueChangedCallback(e => settings.outputFolder = e.newValue);
-            parent.Add(output);
+            parent.Add(BridgeElements.Text("Output folder",
+                "Where assets and the report go, inside Assets. Kept outside the tool's folder so updating never erases them.",
+                settings.outputFolder, v => settings.outputFolder = v));
         }
 
         void AddBlinkToggle(VisualElement parent)
@@ -1157,64 +1090,41 @@ namespace AvatarBridge
                 settings.wireBlinkBlendshapes, v => settings.wireBlinkBlendshapes = v));
         }
 
-
-        void BuildExtrasCard(VisualElement parent)
-        {
-            var card = new BridgeElements.Card("Extras");
-            AddHeightScaler(card.Body);
-            parent.Add(card);
-        }
-
         static readonly FaceTrackingMode[] FtModes =
             { FaceTrackingMode.Native, FaceTrackingMode.DragonSkyRunner, FaceTrackingMode.None };
 
         static readonly string[] FtLabels =
             { "Native CVR Component", "Unity Animator Blendtrees (DSR)", "Keep the avatar's own rig" };
 
-        void BuildFaceTrackingCard(VisualElement parent)
-        {
-            string summary = settings.faceTrackingMode == FaceTrackingMode.Native ? "native component"
-                           : settings.faceTrackingMode == FaceTrackingMode.DragonSkyRunner ? "CVR VRCFT rig"
-                           : "avatar's own rig";
-            var card = new BridgeElements.Card("Face tracking", summary, showFaceTracking, null, 0f,
-                open => showFaceTracking = open);
-            AddFaceTrackingOptions(card.Body);
-            parent.Add(card);
-        }
+        int FtIndex => Mathf.Max(0, Array.IndexOf(FtModes, settings.faceTrackingMode));
 
         void AddFaceTrackingOptions(VisualElement b)
         {
-            int index = Mathf.Max(0, Array.IndexOf(FtModes, settings.faceTrackingMode));
-            var popup = new PopupField<string>("Face tracking",
-                new System.Collections.Generic.List<string>(FtLabels), index)
-            {
-                tooltip = "Native CVR Component: ChilloutVR's own, a bit stiff.\n" +
-                          "Unity Animator Blendtrees (DSR): DragonSkyRunner's rig, smoother.\n" +
-                          "Keep the avatar's own rig: converts the existing one untouched.\n" +
-                          "The first two replace any rig already there.",
-            };
-            popup.AddToClassList("ab-field");
-            popup.RegisterValueChangedCallback(e =>
-            {
-                settings.faceTrackingMode = FtModes[Array.IndexOf(FtLabels, e.newValue)];
-                ScheduleRebuild();
-            });
-            b.Add(popup);
+            b.Add(BridgeElements.Popup("Face tracking",
+                "Native CVR Component: ChilloutVR's own, a bit stiff.\n" +
+                "Unity Animator Blendtrees (DSR): DragonSkyRunner's rig, smoother.\n" +
+                "Keep the avatar's own rig: converts the existing one untouched.\n" +
+                "The first two replace any rig already there.",
+                FtLabels, FtIndex,
+                i =>
+                {
+                    settings.faceTrackingMode = FtModes[i];
+                    ScheduleRebuild();
+                }));
 
             if (settings.faceTrackingMode == FaceTrackingMode.DragonSkyRunner)
             {
                 if (FaceTrackingPackages.IsInstalled())
                 {
-                    b.Add(new HelpBox(
+                    b.Add(BridgeElements.Notice(Tone.Info,
                         "Rebuilds DragonSkyRunner's bundled face and eye tracking rig onto this avatar. Gaze " +
-                        "strength may want tuning.", HelpBoxMessageType.Info));
-                    b.Add(Link("DragonSkyRunner's package (GitHub)  ↗",
-                        () => Application.OpenURL(FaceTrackingPackages.Url)));
+                        "strength may want tuning.",
+                        action: BridgeElements.ExternalLink("DragonSkyRunner's package (GitHub)", FaceTrackingPackages.Url)));
                 }
                 else
                 {
-                    b.Add(new HelpBox($"The bundled \"{FaceTrackingPackages.DisplayName}\" assets are missing: reimport AvatarBridge.",
-                        HelpBoxMessageType.Warning));
+                    b.Add(BridgeElements.Notice(Tone.Warn,
+                        $"The bundled \"{FaceTrackingPackages.DisplayName}\" assets are missing: reimport AvatarBridge."));
                 }
             }
         }
@@ -1223,45 +1133,42 @@ namespace AvatarBridge
 
         ReportStatus? reportFilter;
 
-        void AddFilterChip(VisualElement parent, ReportStatus status, string noun, Color colour, bool emphasise)
+        // "1 error", not "1 error(s)": visible copy should not read like a template.
+        static string N(int n, string one, string many) => $"{n} {(n == 1 ? one : many)}";
+
+        // One noun pair per status, for its chip; the plural also names the filter in the hint.
+        static readonly (ReportStatus status, string one, string many)[] ReportChips =
+        {
+            (ReportStatus.Converted, "done", "done"), (ReportStatus.Approximated, "approximated", "approximated"),
+            (ReportStatus.Skipped, "skipped", "skipped"), (ReportStatus.Warning, "warning", "warnings"),
+            (ReportStatus.Error, "error", "errors"),
+        };
+
+        VisualElement ReportChip(ReportStatus status, string one, string many)
         {
             int count = lastReport.CountOf(status);
             bool selected = reportFilter == status;
-            parent.Add(BridgeElements.Chip($"{count} {noun}", colour, emphasise,
+            var chip = BridgeElements.Chip(N(count, one, many), BridgeTheme.ToneOf(status), selected,
                 () =>
                 {
                     reportFilter = selected ? (ReportStatus?)null : status;
                     ScheduleRebuild();
-                },
-                selected,
-                count > 0));
+                });
+            chip.SetEnabled(count > 0);
+            return chip;
         }
 
-        static Button ReportButton(string text, string tooltip, Action action)
+        // The end of the flow: pick, analyse, tweak, convert, optimise. Hands the avatar to the
+        // tools rather than acting here, and only offered when there is something to take off.
+        Button SlimButton()
         {
-            var button = new Button(action) { text = text, tooltip = tooltip };
-            button.AddToClassList("ab-btn");
-            return button;
-        }
-
-        // The end of the flow: pick, analyse, tweak, convert, optimise.
-        // Hands the avatar to the tools rather than acting here.
-        void BuildSlimButton(VisualElement parent)
-        {
-            var root = lastReport != null ? lastReport.ConvertedRoot : null;
+            var root = lastReport.ConvertedRoot;
             var cvr = root != null ? root.GetComponent<ABI.CCK.Components.CVRAvatar>() : null;
-            if (cvr == null) return;
+            if (cvr == null) return null;
 
             long saved = SavingFor(cvr);
-            parent.Add(BridgeElements.Hint(saved > 0
-                ? $"About {(saved / 1048576f):0.0} MB of texture can come off with nothing visible changing."
-                : "Nothing here is obviously wasteful."));
-
-            // The same size as Convert, so it reads as the next step rather
-            // than as one option among the row of links below it. Solid CVR
-            // orange: the crossing is done, and this is the far side.
-            parent.Add(new BridgeElements.PrimaryButton(
-                saved > 0 ? $"Make it lighter: {(saved / 1048576f):0.0} MB to reclaim" : "Optimise this avatar",
+            if (saved <= 0) return null;
+            return BridgeElements.Btn($"Make it lighter: {(saved / 1048576f):0.0} MB to reclaim",
                 () =>
                 {
                     toolsTarget = root;
@@ -1269,7 +1176,8 @@ namespace AvatarBridge
                     mode = Mode.Tools;
                     ScheduleRebuild();
                 },
-                BridgeTheme.CvrOrange));
+                "Texture that can come off with nothing visible changing. Opens the Tools tab on the result.",
+                ButtonKind.Strong);
         }
 
         // What "Make it lighter" would reclaim, for the offer on the button.
@@ -1296,142 +1204,32 @@ namespace AvatarBridge
         // time: the other tab's avatar is unrelated to this report.
         GameObject reportSource;
 
-        void BuildReport(VisualElement parent)
+        void BuildReport(BridgeElements.Card card)
         {
             if (lastReport == null)
             {
                 return;
             }
+            var b = card.Body;
             int errors = lastReport.CountOf(ReportStatus.Error);
             int warnings = lastReport.CountOf(ReportStatus.Warning);
 
-            // Above the verdict, because it is good news and the verdict may
-            // not be. The report's own entry lists the textures; this is the
-            // number, which is the part worth reading from across the room.
-            if (lastReport.BytesReclaimed > 0)
+            b.Add(BridgeElements.Notice(
+                errors > 0 ? Tone.Bad : warnings > 0 ? Tone.Warn : Tone.Good,
+                errors > 0 ? $"Finished with {N(errors, "error", "errors")}. See below."
+                : warnings > 0 ? $"Done! {N(warnings, "thing may", "things may")} want a look. See below."
+                : "Done! The avatar is ready for the CCK's upload checks."));
+
+            var chips = new List<VisualElement>();
+            foreach (var (status, one, many) in ReportChips)
             {
-                parent.Add(new HelpBox(
-                    $"Optimised on the way through: {(lastReport.BytesReclaimed / 1048576f):0.0} MB of "
-                    + "texture nobody was ever going to see, reclaimed. Your graphics card says thank you, "
-                    + "and so does everyone standing near you. The report says which textures and what "
-                    + "each one became; \"Resize oversized textures\" turns it off for next time.",
-                    HelpBoxMessageType.Info));
-
-                // The undo, beside the announcement. This one happens without
-                // being asked now, so the way back cannot live in another
-                // window: the record is a file in the output folder, and the
-                // saved report sits in that same folder.
-                string outputDir = string.IsNullOrEmpty(lastReport.SavedReportPath)
-                    ? null
-                    : System.IO.Path.GetDirectoryName(lastReport.SavedReportPath);
-                if (!string.IsNullOrEmpty(outputDir) && AvatarSlimmer.CanRevert(outputDir))
-                {
-                    parent.Add(new Button(() =>
-                    {
-                        AvatarSlimmer.Revert(outputDir, lastReport);
-                        lastReport.BytesReclaimed = 0;
-                        _savingFor = null;
-                        ScheduleRebuild();
-                    })
-                    { text = "Put the textures back" });
-                }
+                chips.Add(ReportChip(status, one, many));
             }
-
-            parent.Add(new HelpBox(
-                errors > 0 ? $"Finished with {errors} error(s). See below."
-                : warnings > 0 ? $"Done! {warnings} thing(s) may want a look. See below."
-                : "Done! The avatar is ready for the CCK's upload checks.",
-                errors > 0 ? HelpBoxMessageType.Error
-                : warnings > 0 ? HelpBoxMessageType.Warning
-                : HelpBoxMessageType.Info));
-
-            BuildSlimButton(parent);
-
-            var chips = new VisualElement();
-            chips.AddToClassList("ab-row");
-            chips.style.flexWrap = Wrap.Wrap;
-            AddFilterChip(chips, ReportStatus.Converted, "done", BridgeTheme.Good, true);
-            AddFilterChip(chips, ReportStatus.Approximated, "approximated", BridgeTheme.Warn, false);
-            AddFilterChip(chips, ReportStatus.Skipped, "skipped", BridgeTheme.Muted, false);
-            AddFilterChip(chips, ReportStatus.Warning, "warnings", BridgeTheme.Warn, warnings > 0);
-            AddFilterChip(chips, ReportStatus.Error, "errors", BridgeTheme.Bad, errors > 0);
-            parent.Add(chips);
-
-            parent.Add(BridgeElements.Hint(reportFilter.HasValue
-                ? $"Showing {reportFilter.Value.ToString().ToLowerInvariant()} only. Click the chip again to go back."
-                : "Everything that needs a look. Click a chip to see just those."));
-
-            var actions = new VisualElement();
-            actions.AddToClassList("ab-report-row");
-
-            if (!string.IsNullOrEmpty(lastReport.SavedReportPath))
-            {
-                if (!string.IsNullOrEmpty(lastReport.SavedHtmlPath))
-                {
-                    actions.Add(ReportButton("Open web report",
-                        "The same report as a page: charts, filters, and the technical appendix.",
-                        () => EditorUtility.OpenWithDefaultApp(lastReport.SavedHtmlPath)));
-                }
-                actions.Add(ReportButton("Open full report", null, () =>
-                {
-                    var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(lastReport.SavedReportPath);
-                    if (asset != null) { AssetDatabase.OpenAsset(asset); }
-                }));
-                actions.Add(ReportButton("Show in Project", null, () =>
-                {
-                    var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(lastReport.SavedReportPath);
-                    if (asset != null) { EditorGUIUtility.PingObject(asset); }
-                }));
-            }
-
-            if (!string.IsNullOrEmpty(lastReport.StoreDescription))
-            {
-                actions.Add(ReportButton("Copy description",
-                    "A store listing of what the avatar has, with room for your own words first. Also saved as Description.txt.",
-                    () =>
-                    {
-                        EditorGUIUtility.systemCopyBuffer = lastReport.StoreDescription;
-                        ShowNotification(new GUIContent("Description copied"));
-                    }));
-
-                actions.Add(ReportButton("Fill CCK description",
-                    "Types it into the CCK's Description box, if empty. Open the Builder tab with this avatar first.",
-                    () =>
-                    {
-                        var result = CckDescriptionFiller.Fill(lastReport.StoreDescription);
-                        ShowNotification(new GUIContent(
-                            result == CckDescriptionFiller.Result.Filled
-                                ? "Description filled" : "Couldn't fill it"));
-                        Debug.Log("[AvatarBridge] " + CckDescriptionFiller.Explain(result));
-                    }));
-            }
-
-            // Always offered once a report exists, rather than only when something went wrong:
-            // "it converted clean but the avatar is wrong in game" is a report worth having, and
-            // it's the case where the button used to be missing. The footer drops its copies.
-            actions.Add(ReportButton("Report an issue",
-                "Opens a pre-filled GitHub issue. Please attach the report: " +
-                "most bugs are diagnosed straight from it.",
-                () => BridgeLinks.OpenBugReport(lastReport)));
-            actions.Add(ReportButton("Copy diagnostics",
-                "Copies versions and detected packages to the clipboard.",
-                () =>
-                {
-                    BridgeLinks.CopyDiagnostics(lastReport);
-                    ShowNotification(new GUIContent("Diagnostics copied"));
-                }));
-            actions.Add(ReportButton("Troubleshooting  ↗", "Setup and install help.",
-                () => Application.OpenURL(BridgeLinks.Troubleshooting)));
-            if (actions.childCount > 0)
-            {
-                parent.Add(actions);
-            }
+            b.Add(BridgeElements.Chips(chips.ToArray()));
 
             // The full list lives in the report file; this shows what
             // the chips select. Default: everything needing a look.
-            var list = new ScrollView();
-            list.AddToClassList("ab-report-list");
-            int shown = 0;
+            var rows = new List<VisualElement>();
             // Filled on the first subject that is not a path, then shared by
             // every row: one walk of the avatar per rebuild, not one per row.
             Dictionary<string, Transform> byName = null;
@@ -1444,25 +1242,107 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                var row = BridgeElements.ReportRow(entry.Category, entry.Subject, entry.Detail,
-                    BridgeTheme.StatusColour(entry.Status), shown % 2 == 1);
                 // Most subjects are object paths or names. Ones that
                 // still resolve become clickable; prose ones do not.
                 var found = ResolveSubject(entry.Subject, ref byName);
-                if (found != null)
-                {
-                    row.Add(ReportButton("Show", $"Selects \"{found.name}\" in the Hierarchy.",
-                        () => Ping(new UnityEngine.Object[] { found })));
-                }
-                list.Add(row);
-                shown++;
+                rows.Add(found != null
+                    ? BridgeElements.ReportRow(entry, BridgeElements.Btn("Show",
+                        () => Ping(new UnityEngine.Object[] { found }),
+                        $"Selects \"{found.name}\" in the Hierarchy."))
+                    : BridgeElements.ReportRow(entry));
             }
             // A clean run has nothing to list, and an empty bordered box reads as something that
             // failed to load rather than as good news.
-            if (shown > 0)
+            if (rows.Count > 0)
             {
-                parent.Add(list);
+                b.Add(BridgeElements.Hint(reportFilter.HasValue
+                    ? $"Showing {Array.Find(ReportChips, c => c.status == reportFilter.Value).many} only. " +
+                      "Click the chip again to show everything."
+                    : "Everything that needs a look. Click a chip to see just those."));
+                b.Add(BridgeElements.ReportList(rows));
             }
+
+            if (lastReport.BytesReclaimed > 0)
+            {
+                // The undo, beside the announcement. This one happens without
+                // being asked now, so the way back cannot live in another
+                // window: the record is a file in the output folder, and the
+                // saved report sits in that same folder.
+                string outputDir = string.IsNullOrEmpty(lastReport.SavedReportPath)
+                    ? null
+                    : System.IO.Path.GetDirectoryName(lastReport.SavedReportPath);
+                var undo = !string.IsNullOrEmpty(outputDir) && AvatarSlimmer.CanRevert(outputDir)
+                    ? BridgeElements.Btn("Put the textures back", () =>
+                    {
+                        AvatarSlimmer.Revert(outputDir, lastReport);
+                        lastReport.BytesReclaimed = 0;
+                        _savingFor = null;
+                        ScheduleRebuild();
+                    })
+                    : null;
+                b.Add(BridgeElements.Notice(Tone.Good,
+                    $"{(lastReport.BytesReclaimed / 1048576f):0.0} MB reclaimed by Resize oversized textures.",
+                    action: undo));
+            }
+
+            card.Section("Next");
+            var slim = SlimButton();
+            if (slim != null)
+            {
+                b.Add(BridgeElements.ButtonRow(slim));
+            }
+
+            if (!string.IsNullOrEmpty(lastReport.SavedReportPath))
+            {
+                b.Add(BridgeElements.ButtonRow(
+                    BridgeElements.Caption("Report"),
+                    string.IsNullOrEmpty(lastReport.SavedHtmlPath) ? null : BridgeElements.Btn("Open web report",
+                        () => EditorUtility.OpenWithDefaultApp(lastReport.SavedHtmlPath),
+                        "The same report as a page: charts, filters, and the technical appendix."),
+                    BridgeElements.Btn("Open full report", () =>
+                    {
+                        var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(lastReport.SavedReportPath);
+                        if (asset != null) { AssetDatabase.OpenAsset(asset); }
+                    }),
+                    BridgeElements.Btn("Show in Project", () =>
+                    {
+                        var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(lastReport.SavedReportPath);
+                        if (asset != null) { EditorGUIUtility.PingObject(asset); }
+                    })));
+            }
+
+            if (!string.IsNullOrEmpty(lastReport.StoreDescription))
+            {
+                b.Add(BridgeElements.ButtonRow(
+                    BridgeElements.Caption("Store"),
+                    BridgeElements.Btn("Copy description", () =>
+                    {
+                        EditorGUIUtility.systemCopyBuffer = lastReport.StoreDescription;
+                        ShowNotification(new GUIContent("Description copied"));
+                    }, "A store listing of what the avatar has, with room for your own words first. Also saved as Description.txt."),
+                    BridgeElements.Btn("Fill CCK description", () =>
+                    {
+                        var result = CckDescriptionFiller.Fill(lastReport.StoreDescription);
+                        ShowNotification(new GUIContent(
+                            result == CckDescriptionFiller.Result.Filled
+                                ? "Description filled" : "Couldn't fill it"));
+                        Debug.Log("[AvatarBridge] " + CckDescriptionFiller.Explain(result));
+                    }, "Types it into the CCK's Description box, if empty. Open the Builder tab with this avatar first.")));
+            }
+
+            // Always offered once a report exists, rather than only when something went wrong:
+            // "it converted clean but the avatar is wrong in game" is a report worth having, and
+            // it's the case where the button used to be missing. The footer drops its copies.
+            b.Add(BridgeElements.ButtonRow(
+                BridgeElements.Caption("Help"),
+                BridgeElements.Btn("Copy diagnostics", () =>
+                {
+                    BridgeLinks.CopyDiagnostics(lastReport);
+                    ShowNotification(new GUIContent("Diagnostics copied"));
+                }, "Copies versions and detected packages to the clipboard."),
+                ExternalAction("Report an issue", () => BridgeLinks.OpenBugReport(lastReport),
+                    "Opens a pre-filled GitHub issue. Please attach the report: most bugs are diagnosed straight from it."),
+                BridgeElements.ExternalLink("Troubleshooting", BridgeLinks.Troubleshooting, "Setup and install help.")));
         }
 
         UnityEngine.Object ResolveSubject(string subject, ref Dictionary<string, Transform> byName)
@@ -1504,87 +1384,62 @@ namespace AvatarBridge
 
         // ------------------------------------------------------------------- footer ---
 
-        static Button Link(string text, Action action) => BridgeElements.Link(text, action);
-
-        Button DiscordButton()
+        Button DiscordLink()
         {
-            string label = BridgeLinks.HasDiscordLink
-                ? $"Discord: {BridgeLinks.DiscordUser}"
-                : $"Copy Discord: {BridgeLinks.DiscordUser}";
-
-            var button = ReportButton(label,
-                BridgeLinks.HasDiscordLink
-                    ? "Opens Discord. Best for quick questions; please use GitHub issues for bugs " +
-                      "so they don't get lost."
-                    : "Copies the handle to your clipboard. Best for quick questions; please use " +
-                      "GitHub issues for bugs so they don't get lost.",
-                () =>
-                {
-                    BridgeLinks.OpenDiscord();
-                    if (!BridgeLinks.HasDiscordLink)
-                    {
-                        ShowNotification(new GUIContent("Copied: " + BridgeLinks.DiscordUser));
-                    }
-                });
-            return button;
+            if (string.IsNullOrEmpty(BridgeLinks.DiscordUser))
+            {
+                return null;
+            }
+            const string why = "Best for quick questions; please use GitHub issues for bugs so they don't get lost.";
+            if (BridgeLinks.HasDiscordLink)
+            {
+                return ExternalAction($"Discord: {BridgeLinks.DiscordUser}", BridgeLinks.OpenDiscord,
+                    "Opens Discord. " + why);
+            }
+            // Nowhere to open, so this one copies and carries no arrow.
+            return BridgeElements.TextLink($"Copy Discord: {BridgeLinks.DiscordUser}", () =>
+            {
+                BridgeLinks.CopyDiscord();
+                ShowNotification(new GUIContent("Copied: " + BridgeLinks.DiscordUser));
+            }, "Copies the handle to your clipboard. " + why);
         }
 
-        VisualElement Footer(bool reportShown)
+        VisualElement BuildFooter()
         {
-            var footer = new VisualElement();
-            footer.AddToClassList("ab-footer");
-            if (!reportShown)
-            {
-                footer.Add(ReportButton("Troubleshooting  ↗", "Setup and install help.",
-                    () => Application.OpenURL(BridgeLinks.Troubleshooting)));
-                footer.Add(ReportButton("Report an issue  ↗",
-                    "Opens a pre-filled GitHub issue with your versions and detected packages.",
-                    () => BridgeLinks.OpenBugReport(lastReport)));
-            }
-            if (!string.IsNullOrEmpty(BridgeLinks.DiscordUser))
-            {
-                footer.Add(DiscordButton());
-            }
-            return footer;
+            // A shown report's Help row already carries these two.
+            bool reportShown = lastReport != null && mode != Mode.Tools;
+            return BridgeElements.Footer(
+                reportShown ? null : BridgeElements.ExternalLink("Troubleshooting", BridgeLinks.Troubleshooting,
+                    "Setup and install help."),
+                reportShown ? null : ExternalAction("Report an issue", () => BridgeLinks.OpenBugReport(lastReport),
+                    "Opens a pre-filled GitHub issue with your versions and detected packages."),
+                DiscordLink());
         }
 #else
         void CreateGUI()
         {
-            var root = rootVisualElement;
-            BridgeTheme.ApplySkin(root);
-            var sheet = Resources.Load<StyleSheet>("AvatarBridge");
-            if (sheet != null)
-            {
-                root.styleSheets.Add(sheet);
-            }
+            var root = BridgeElements.Root(rootVisualElement);
+            root.Add(BridgeElements.Banner(BannerTitle, ConvertSubtitle, "v" + BridgeDefines.Version,
+                BridgeTheme.Span.Bridge));
 
-            root.Add(BridgeElements.Banner("AvatarBridge",
-                "VRChat → ChilloutVR avatar converter", "v" + BridgeDefines.Version));
-
-            var body = new VisualElement();
-            body.AddToClassList("ab-scroll");
+            var body = BridgeElements.Scroll();
             root.Add(body);
 
-            body.Add(new HelpBox(
-                "AvatarBridge converts VRChat avatars to ChilloutVR. It needs both SDKs for that:",
-                HelpBoxMessageType.Warning));
-            body.Add(new Label(
-                (BridgeDefines.HasVrcAvatarSdk ? "✔" : "✘") + "  VRChat Avatars SDK (SDK3), to read the avatar"));
-            body.Add(new Label(
-                (BridgeDefines.HasCck ? "✔" : "✘") + "  ChilloutVR CCK (4.x recommended), always required"));
-            body.Add(new HelpBox(
-                "Import what's missing and reopen this window. With the CCK alone, Setup mode still works.",
-                HelpBoxMessageType.Info));
+            body.Add(BridgeElements.Notice(Tone.Warn,
+                "AvatarBridge converts VRChat avatars to ChilloutVR. It needs both SDKs for that:"));
+            body.Add(BridgeElements.KeyValue("VRChat SDK",
+                BridgeDefines.HasVrcAvatarSdk ? "✔ Avatars SDK3 installed" : "✘ Missing: the Avatars SDK3 reads the avatar",
+                BridgeDefines.HasVrcAvatarSdk ? Tone.Good : Tone.Bad));
+            body.Add(BridgeElements.KeyValue("ChilloutVR CCK",
+                BridgeDefines.HasCck ? "✔ Installed" : "✘ Missing: always required, 4.x recommended",
+                BridgeDefines.HasCck ? Tone.Good : Tone.Bad));
+            body.Add(BridgeElements.Notice(Tone.Info,
+                "Import what's missing and reopen this window. With the CCK alone, Setup mode still works."));
 
-            var footer = new VisualElement();
-            footer.AddToClassList("ab-footer");
-            var guide = new Button(() => Application.OpenURL(BridgeLinks.Troubleshooting)) { text = "Setup guide  ↗" };
-            guide.AddToClassList("ab-btn");
-            var issue = new Button(() => BridgeLinks.OpenBugReport()) { text = "Report an issue  ↗" };
-            issue.AddToClassList("ab-btn");
-            footer.Add(guide);
-            footer.Add(issue);
-            body.Add(footer);
+            body.Add(BridgeElements.Footer(
+                BridgeElements.ExternalLink("Setup guide", BridgeLinks.Troubleshooting, "Setup and install help."),
+                ExternalAction("Report an issue", () => BridgeLinks.OpenBugReport(),
+                    "Opens a pre-filled GitHub issue with your versions and detected packages.")));
         }
 #endif
     }

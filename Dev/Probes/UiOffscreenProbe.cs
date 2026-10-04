@@ -77,16 +77,19 @@ namespace AvatarBridge.Regression
                     if (type == null) { Log($"skip {key}: not in this project"); continue; }
                     var target = wantsConverted ? converted : source;
                     if (target != null) Selection.activeGameObject = target;
-                    foreach (bool light in new[] { false, true })
+                    foreach (var (suffix, prepare) in Passes(key, type, source, converted))
                     {
-                        try
+                        foreach (bool light in new[] { false, true })
                         {
-                            Render(type, Path.Combine(outDir, $"{key}-{(light ? "light" : "dark")}.png"), width, height, light);
-                        }
-                        catch (Exception e)
-                        {
-                            failed++;
-                            Debug.LogException(e);
+                            try
+                            {
+                                Render(type, Path.Combine(outDir, $"{key}{suffix}-{(light ? "light" : "dark")}.png"), width, height, light, prepare);
+                            }
+                            catch (Exception e)
+                            {
+                                failed++;
+                                Debug.LogException(e);
+                            }
                         }
                     }
                 }
@@ -134,18 +137,104 @@ namespace AvatarBridge.Regression
                 var type = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("AvatarBridge.CckAnimatorTester", false)).FirstOrDefault(t => t != null);
                 var avatar = UnityEngine.Object.FindObjectsOfType<CVRAvatar>().FirstOrDefault();
                 if (avatar != null) Selection.activeGameObject = avatar.gameObject;
-                foreach (bool light in new[] { false, true })
+                void Pass(string suffix)
                 {
-                    try { Render(type, Path.Combine(parts[0], $"tester-play-{(light ? "light" : "dark")}.png"), int.Parse(parts[1]), int.Parse(parts[2]), light); }
-                    catch (Exception e) { failed++; Debug.LogException(e); }
+                    foreach (bool light in new[] { false, true })
+                    {
+                        try { Render(type, Path.Combine(parts[0], $"tester-play{suffix}-{(light ? "light" : "dark")}.png"), int.Parse(parts[1]), int.Parse(parts[2]), light); }
+                        catch (Exception e) { failed++; Debug.LogException(e); }
+                    }
                 }
+                // The layers card remembers being collapsed, which would hide its table every run.
+                const string layersKey = "AvatarBridge.Card.Tester.Layers";
+                bool wasOpen = EditorPrefs.GetBool(layersKey, false);
+                EditorPrefs.SetBool(layersKey, true);
+                try
+                {
+                    Pass("");
+                    // The avatar root carries no chain, so the selected-chain panel needs one picked.
+                    var chains = avatar != null ? type.GetMethod("Chains", Any)?.Invoke(null, new object[] { avatar }) as System.Collections.Generic.List<Component> : null;
+                    var chain = chains?.FirstOrDefault();
+                    if (chain != null)
+                    {
+                        Selection.activeGameObject = chain.gameObject;
+                        Pass("-selected");
+                    }
+                    else Log("no chain under the avatar; selected pass skipped");
+                }
+                finally { EditorPrefs.SetBool(layersKey, wasOpen); }
                 Log(failed == 0 ? "done" : $"done with {failed} failure(s)");
                 EditorApplication.Exit(failed == 0 ? 0 : 1);
             }
             EditorApplication.update += Step;
         }
 
-        static void Render(Type windowType, string file, int width, int height, bool light)
+        // The converter ignores Selection, so the empty window is followed by one holding the
+        // source avatar, one analysed, and one holding a report: the states a picked avatar
+        // unlocks are the ones most likely to break.
+        static (string suffix, Action<EditorWindow> prepare)[] Passes(string key, Type type, GameObject source, GameObject converted)
+        {
+            var empty = new (string, Action<EditorWindow>)[] { ("", null) };
+            var field = key == "converter" ? type.GetField("avatar", Any) : null;
+            var descriptor = field != null && source != null ? source.GetComponent(field.FieldType) : null;
+            // The toolkit reads its kept target in CreateGUI. Check is pressed on the built window,
+            // so the summary, the accent stripe and the report list get drawn too.
+            if (key == "toolkit" && converted != null)
+            {
+                void Target(EditorWindow w) => type.GetField("target", Any).SetValue(w, converted);
+                return empty.Concat(new (string, Action<EditorWindow>)[]
+                {
+                    ("-picked", Target),
+                    ("-checked", w =>
+                    {
+                        Target(w);
+                        type.GetMethod("CreateGUI", Any).Invoke(w, null);
+                        var check = w.rootVisualElement.Query<Button>().Where(b => b.text == "Check").First();
+                        ((Action)typeof(Clickable).GetField("clicked", Any).GetValue(check.clickable))();
+                    }),
+                }).ToArray();
+            }
+            if (descriptor == null) return empty;
+            void Pick(EditorWindow w) => field.SetValue(w, descriptor);
+            return empty.Concat(new (string, Action<EditorWindow>)[]
+            {
+                ("-picked", Pick),
+                ("-analysed", w => { Pick(w); type.GetMethod("Reanalyse", Any).Invoke(w, null); }),
+                ("-report", w => { Pick(w); type.GetField("lastReport", Any).SetValue(w, SampleReport(converted)); }),
+            }).ToArray();
+        }
+
+        // Made up, with rows for every status, so each chip, the list, the reclaimed notice and
+        // every Next row have something to draw. Subjects name the converted avatar's own
+        // objects where there is one, so rows get their Show button.
+        static BridgeReport SampleReport(GameObject converted)
+        {
+            var report = new BridgeReport
+            {
+                ConvertedRoot = converted,
+                SavedReportPath = "Assets/AvatarBridgeOutput/Sample/Report.md",
+                SavedHtmlPath = "Assets/AvatarBridgeOutput/Sample/Report.html",
+                StoreDescription = "Sample",
+                BytesReclaimed = 37L * 1048576,
+            };
+            var names = converted != null
+                ? converted.GetComponentsInChildren<Transform>(true).Skip(1).Select(t => t.name).Take(5).ToArray()
+                : new string[0];
+            string Subject(int i) => i < names.Length ? names[i] : "Body";
+            // Entries directly, not Add: Add logs warnings and errors, and these are not real.
+            void Row(ReportStatus status, string category, int subject, string detail) =>
+                report.Entries.Add(new ReportEntry { Status = status, Category = category, Subject = Subject(subject), Detail = detail });
+            Row(ReportStatus.Converted, "PhysBones", 0, "Converted to MagicaCloth 2.");
+            Row(ReportStatus.Converted, "Menu", 1, "");
+            Row(ReportStatus.Approximated, "Contacts", 2, "Radius rounded to the nearest pointer size.");
+            Row(ReportStatus.Skipped, "Components", 3, "No ChilloutVR equivalent.");
+            Row(ReportStatus.Warning, "Shaders", 4, "Not single-pass instanced: renders in one eye only in VR.");
+            Row(ReportStatus.Warning, "Animator", 0, "A layer writes a parameter nothing reads.");
+            Row(ReportStatus.Error, "Textures", 1, "Could not read the import settings.");
+            return report;
+        }
+
+        static void Render(Type windowType, string file, int width, int height, bool light, Action<EditorWindow> prepare = null)
         {
             var owner = ScriptableObject.CreateInstance<Owner>();
             var utility = typeof(VisualElement).Assembly.GetType("UnityEngine.UIElements.UIElementsUtility");
@@ -175,7 +264,9 @@ namespace AvatarBridge.Regression
                 content.styleSheets.Add(theme);
             }
             root.Add(content);
-            windowType.GetMethod("CreateGUI", Any)?.Invoke(window, null);
+            prepare?.Invoke(window);
+            // A prepare that built the window to press something in it is not built over.
+            if (content.childCount == 0) windowType.GetMethod("CreateGUI", Any)?.Invoke(window, null);
             // The window themes itself from EditorGUIUtility.isProSkin; follow the capture instead.
             foreach (var e in content.Query(className: light ? "dark" : "light").ToList().Prepend(content))
             {

@@ -9,6 +9,7 @@ using MagicaCloth2;
 #endif
 using UnityEditor;
 using UnityEditor.SceneManagement;
+using UnityEditor.UIElements;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -78,6 +79,31 @@ namespace AvatarBridge
         double _nextEditPoll;
         VisualElement _editedRows;
 
+        // What the 4 Hz edit poll refreshes in place. Null outside Play mode, where the card
+        // has nothing live to show.
+        BridgeElements.Card _physicsCard;
+        List<Component> _physicsChains;
+        VisualElement _healthChips;
+        (int good, int warn, int bad) _healthShown;
+        Tone _physicsAccent;
+        BridgeElements.Segmented _motionPicker;
+        Button _stopButton;
+
+        // The selected chain's panel, rebuilt only when the selection names another chain.
+        VisualElement _selectedPanel;
+        Component _selectedChain;
+        Component _pickedChain;
+        BridgeElements.Card _selectedFold;
+        BridgeElements.KeyValueRow _selectedHealth;
+        Button _selectedKeep;
+        VisualElement _selectedState;
+        string _selectedStateShown;
+        Tone _selectedAccent;
+
+        const string KeptWord = "kept";
+        const string ChangedWord = "changed since Keep";
+        const string KeepTip = "Write this component's settings as they are now into the scene when Play mode ends.";
+
         // What Keep recorded, written into the scene once Play mode ends. In
         // SessionState and applied by a static hook, so neither the domain
         // reload around Play mode nor closing the tester first loses it.
@@ -90,6 +116,9 @@ namespace AvatarBridge
         }
 
         const string KeptKey = "AvatarBridge.KeptPhysics";
+        // Who ApplyKept wrote to, for the card to say so back in the editor. Cleared when the
+        // next Play session starts.
+        const string KeptLastKey = "AvatarBridge.KeptPhysics.Last";
 
         static KeptRecords LoadKept() =>
             JsonUtility.FromJson<KeptRecords>(SessionState.GetString(KeptKey, "{}")) ?? new KeptRecords();
@@ -157,6 +186,7 @@ namespace AvatarBridge
         {
             if (change == PlayModeStateChange.ExitingEditMode)
             {
+                SessionState.EraseString(KeptLastKey);
                 CaptureRest();
             }
             else if (change == PlayModeStateChange.ExitingPlayMode)
@@ -180,81 +210,346 @@ namespace AvatarBridge
             scroll.Add(SafeCard("Physics", () => BuildPhysicsCard(avatar, live)));
         }
 
+        static readonly string[] MotionNames = { "Walk", "Run", "Turn", "Jump", "Shake", "Sit" };
+
+        static readonly string[] MotionTips =
+        {
+            "Walks a circle 1.5 m across at walking pace, the locomotion parameters along with it.",
+            "Runs a wider circle at running pace.",
+            "Spins on the spot, half a turn a second.",
+            "Hops in place, Grounded off while in the air.",
+            "Twists side to side three times a second, as a head shake drives hair.",
+            "Sits still, Sitting on, so chains settle in the seated pose.",
+        };
+
         VisualElement BuildPhysicsCard(CVRAvatar avatar, bool live)
         {
-            var card = new BridgeElements.Card("Physics");
+            _physicsCard = null;
+            _healthChips = null;
+            _motionPicker = null;
+            _stopButton = null;
+            _selectedPanel = null;
+            _selectedChain = null;
+            _selectedHealth = null;
+            _editedRows = null;
+
+            var card = new BridgeElements.Card("Physics", expanded: true).Remember("Tester.Physics");
             if (Solvers == null)
             {
-                card.Body.Add(BridgeElements.Hint(
-                    "No supported physics package is installed: this card reads MagicaCloth2 and DynamicBone."));
-                card.SetEnabled(false);
+                card.SetSummary("no package");
+                card.Body.Add(BridgeElements.Empty("No physics package",
+                    "This card reads MagicaCloth2 and DynamicBone, and neither is installed in this project."));
+                return card;
+            }
+            if (avatar == null)
+            {
+                card.SetSummary("none");
+                card.Body.Add(BridgeElements.Empty("No avatar", "Pick a ChilloutVR avatar in the Avatar card."));
                 return card;
             }
             var chains = Chains(avatar);
-            card.SetSummary(chains.Count == 0
-                ? null
-                : string.Join(", ", chains.GroupBy(c => c.GetType().Name).Select(g => $"{g.Count()} {g.Key}")));
-            card.Body.Add(BridgeElements.Hint(chains.Count == 0
-                ? $"No {Solvers} on this avatar, so nothing here moves."
-                : "Move the avatar and watch its chains swing, drag one in the Scene view, or draw them all with " +
-                  "their settings and click one to tune it. Play mode only; everything resets when it ends " +
-                  "unless you keep an edit."));
-
-            var row = new VisualElement();
-            row.style.flexDirection = FlexDirection.Row;
-            row.style.flexWrap = Wrap.Wrap;
-            row.style.marginTop = 4;
-            foreach (var (motion, tip) in new[]
+            if (chains.Count == 0)
             {
-                (Moves.Walk, "Walks a circle 1.5 m across at walking pace, the locomotion parameters along with it."),
-                (Moves.Run, "Runs a wider circle at running pace."),
-                (Moves.Turn, "Spins on the spot, half a turn a second."),
-                (Moves.Jump, "Hops in place, Grounded off while in the air."),
-                (Moves.Shake, "Twists side to side three times a second, as a head shake drives hair."),
-                (Moves.Sit, "Sits still, Sitting on, so chains settle in the seated pose."),
-            })
-            {
-                var captured = motion;
-                // Resolved at the click, as the animator it drives is.
-                var button = new Button(() => StartMotion(ResolveAvatar(), captured)) { text = motion.ToString(), tooltip = tip };
-                button.style.marginBottom = 2;
-                row.Add(button);
+                card.SetSummary("none");
+                card.Body.Add(BridgeElements.Empty("No physics on this avatar",
+                    $"\"{avatar.name}\" has no {Solvers} components."));
+                return card;
             }
-            row.Add(new Button(() => StopMotion()) { text = "Stop", tooltip = "Back to where it started, standing." });
-            card.Body.Add(row);
 
-            var grab = new Toggle("Grab chains in the Scene view")
-            {
-                value = _grab,
-                tooltip = "Dots mark the bones you can take hold of; rings mark the roots the solver holds still, " +
-                          "which cannot be pulled. Left-drag near a dot to pull it; let go to fling it. Ctrl-click " +
-                          "(Cmd on a Mac) selects its component instead. The force moves a whole component, so the " +
-                          "bones of the one under the cursor light up: every chain in it moves together.",
-            };
-            grab.RegisterValueChangedCallback(e => { _grab = e.newValue; SceneView.RepaintAll(); });
-            card.Body.Add(grab);
+            card.SetSummary(chains.Count == 1 ? "1 chain" : $"{chains.Count} chains");
+            card.Body.Add(BridgeElements.KeyValue("Solvers",
+                string.Join(", ", chains.GroupBy(SolverName).Select(g => $"{g.Key} × {g.Count()}"))));
 
-            var overlay = new Toggle("Draw every chain")
+            if (!live)
             {
-                value = _overlay,
-                tooltip = "Every chain at once: its bones, radius, colliders and swing bound (the sphere a bone may " +
-                          "not leave, around where it hangs at rest), and a label with its solver and the settings " +
-                          "that decide how it moves. Green runs normally; amber is switched off or hidden, not running, or " +
-                          "has a bone stretched past half its length again; red has a bone flown off or invalid. " +
-                          "Click a label to select that component and tune it live.",
-            };
-            overlay.RegisterValueChangedCallback(e => SetOverlay(ResolveAvatar(), e.newValue));
-            card.Body.Add(overlay);
+                string kept = SessionState.GetString(KeptLastKey, "");
+                if (kept != "")
+                {
+                    card.Body.Add(BridgeElements.Notice(Tone.Good, $"Kept the Play-mode settings of {kept}."));
+                }
+                // No button: the pinned state notice already owns Enter Play mode.
+                card.Body.Add(BridgeElements.Empty("Play mode only",
+                    "Motion, grabbing and live tuning run in Play mode. Everything resets when it ends unless you " +
+                    "keep an edit."));
+                return card;
+            }
+
+            _physicsCard = card;
+            _physicsChains = chains;
+            _healthChips = BridgeElements.Chips();
+            _healthShown = (-1, -1, -1);
+            _physicsAccent = Tone.None;
+            card.Body.Add(BridgeElements.KeyValue("Health", _healthChips,
+                "Every chain, judged as Draw every chain colours it"));
+
+            card.Section("Move the avatar");
+            // Resolved at the click, as the animator it drives is.
+            _motionPicker = new BridgeElements.Segmented(MotionNames, (int)_motion - 1, i =>
+            {
+                StartMotion(ResolveAvatar(), (Moves)(i + 1));
+                RefreshPhysicsCard();
+            }, MotionTips);
+            card.Body.Add(_motionPicker);
+            // Above Stop, which it does not describe.
+            card.Body.Add(BridgeElements.Hint("Moves the avatar the way a player would, so its chains swing."));
+            // Outside the track, so stopping never looks like another preset.
+            _stopButton = BridgeElements.Btn("Stop", () =>
+            {
+                StopMotion();
+                RefreshPhysicsCard();
+            }, "Back to where it started, standing.");
+            card.Body.Add(BridgeElements.ButtonRow(_stopButton));
+
+            card.Section("Scene view");
+            card.Body.Add(BridgeElements.Bind("Grab chains in the Scene view",
+                "Dots mark the bones you can take hold of; rings mark the roots the solver holds still, " +
+                "which cannot be pulled. Left-drag near a dot to pull it; let go to fling it. Ctrl-click " +
+                "(Cmd on a Mac) selects its component instead. The force moves a whole component, so the " +
+                "bones of the one under the cursor light up: every chain in it moves together.",
+                _grab, on =>
+                {
+                    _grab = on;
+                    SceneView.RepaintAll();
+                }));
+            // Always visible: eyes are on the Scene view then, where a tooltip cannot be read.
+            card.Body.Add(BridgeElements.UnderToggle(BridgeElements.Hint(
+                "Left-drag a dot to pull, let go to fling. Ctrl-click (Cmd on a Mac) selects its component.")));
+            card.Body.Add(BridgeElements.Bind("Draw every chain",
+                "Every chain at once: its bones, radius, colliders and swing bound (the sphere a bone may " +
+                "not leave, around where it hangs at rest), and a label with its solver and the settings " +
+                "that decide how it moves. Green runs normally; amber is switched off or hidden, not running, or " +
+                "has a bone stretched past half its length again; red has a bone flown off or invalid. " +
+                "Click a label to select that component and tune it live.",
+                _overlay, on => SetOverlay(ResolveAvatar(), on)));
+            card.Body.Add(BridgeElements.UnderToggle(BridgeElements.Chips(
+                BridgeElements.Chip("running", Tone.Good),
+                BridgeElements.Chip("off, hidden or stretched", Tone.Warn),
+                BridgeElements.Chip("flown off", Tone.Bad))));
+            // Says where, since the chips above it are labels too and do nothing.
+            card.Body.Add(BridgeElements.UnderToggle(BridgeElements.Hint(
+                "Click a chain's label in the Scene view to select and tune it.")));
             // The gizmos belong to the avatar ticked for. Another one resolved
             // since, or a new Play session, needs them to match the box.
-            if (live && _overlay) SetOverlay(avatar, true);
+            if (_overlay) SetOverlay(avatar, true);
+
+            _selectedPanel = new VisualElement();
+            card.Body.Add(_selectedPanel);
+            ShowSelected();
 
             _editedRows = new VisualElement();
             card.Body.Add(_editedRows);
             ShowEdited();
 
-            card.SetEnabled(live && chains.Count > 0);
+            RefreshPhysicsCard();
             return card;
+        }
+
+        static string SolverName(Component c) =>
+#if AVATARBRIDGE_MAGICA
+            c is MagicaCloth ? "MagicaCloth 2" :
+#endif
+            c.GetType().Name;
+
+        static string ShortName(Component c) => c.name.Replace("MagicaCloth_", "").Replace("DynamicBone_", "");
+
+        static Tone RankTone(int rank) => rank == 0 ? Tone.Bad : rank == 2 ? Tone.Good : Tone.Warn;
+
+        static Tone StateTone(string state) =>
+            state == KeptWord ? Tone.Good : state == ChangedWord ? Tone.Warn : Tone.Muted;
+
+        // Null when never kept.
+        static string KeptState(Component c, KeptRecords records)
+        {
+            int i = records.instances.IndexOf(c.GetInstanceID());
+            return i < 0 ? null : records.json[i].GetHashCode() == Hash(c) ? KeptWord : ChangedWord;
+        }
+
+        // At the edit poll's 4 Hz. Values and classes only: rebuilding here would drop a field
+        // mid-edit. No panel check: the build calls this before the card is attached, so the
+        // first frame already shows Health and Stop. Refreshing a detached card is harmless.
+        void RefreshPhysicsCard()
+        {
+            if (_physicsCard == null) return;
+            int good = 0, warn = 0, bad = 0, trouble = 0;
+            foreach (var c in _physicsChains)
+            {
+                if (c == null) continue;
+                int rank = Health(c).rank;
+                if (rank == 0) bad++;
+                else if (rank == 2) good++;
+                else
+                {
+                    warn++;
+                    if (rank == 1) trouble++;
+                }
+            }
+            if ((good, warn, bad) != _healthShown)
+            {
+                _healthShown = (good, warn, bad);
+                _healthChips.Clear();
+                if (good > 0) _healthChips.Add(BridgeElements.Chip($"{good} running", Tone.Good));
+                if (warn > 0) _healthChips.Add(BridgeElements.Chip($"{warn} off or stretched", Tone.Warn));
+                if (bad > 0) _healthChips.Add(BridgeElements.Chip($"{bad} flown off", Tone.Bad));
+            }
+            // Switched off is amber but not trouble, so it alone leaves the header plain.
+            var accent = bad > 0 ? Tone.Bad : trouble > 0 ? Tone.Warn : Tone.None;
+            if (accent != _physicsAccent)
+            {
+                _physicsAccent = accent;
+                _physicsCard.Accent(accent);
+            }
+            _motionPicker.SetCurrent((int)_motion - 1);
+            _stopButton.SetEnabled(_motion != Moves.None);
+            RefreshSelected();
+        }
+
+        partial void PhysicsSelectionChanged() => ShowSelected();
+
+        // The chain the selection names: a chain component itself, as a label click or a
+        // Ctrl-click selects, or the chains on a selected object.
+        static List<Component> SelectedChains()
+        {
+            if (Selection.activeObject is Component one && IsChain(one))
+            {
+                return one.gameObject.scene.IsValid() ? new List<Component> { one } : new List<Component>();
+            }
+            var go = Selection.activeGameObject;
+            return go == null || !go.scene.IsValid()
+                ? new List<Component>()
+                : go.GetComponents<Component>().Where(IsChain).ToList();
+        }
+
+        void ShowSelected()
+        {
+            if (_selectedPanel == null) return;
+            var chains = SelectedChains();
+            var chain = chains.Contains(_pickedChain) ? _pickedChain : chains.FirstOrDefault();
+            // The same chain again keeps its fields, and whatever is being typed into them.
+            if (chain == _selectedChain && (chain == null) == (_selectedPanel.childCount == 0)) return;
+
+            _selectedPanel.Clear();
+            _selectedChain = chain;
+            _selectedFold = null;
+            _selectedHealth = null;
+            _selectedKeep = null;
+            _selectedState = null;
+            _selectedStateShown = null;
+            _selectedAccent = Tone.None;
+            if (chain == null) return;
+
+            var fold = new BridgeElements.Card(ShortName(chain), SolverName(chain), expanded: true)
+                .Nested().Remember("Tester.SelectedChain");
+            if (chains.Count > 1)
+            {
+                fold.Body.Add(BridgeElements.Popup("Component", "This object carries more than one chain.",
+                    chains.Select(c => $"{ShortName(c)} ({SolverName(c)})").ToArray(), chains.IndexOf(chain), i =>
+                    {
+                        _pickedChain = chains[i];
+                        // The popup lives in the panel this rebuilds.
+                        BridgeElements.Defer(_selectedPanel, ShowSelected);
+                    }));
+            }
+            _selectedHealth = BridgeElements.KeyValue("Health", "");
+            fold.Body.Add(_selectedHealth);
+            fold.Body.Add(BridgeElements.KeyValue("Bones", ChainBones(chain).Count.ToString()));
+            fold.Body.Add(BridgeElements.KeyValue("Colliders", ColliderCount(chain).ToString()));
+
+            fold.Section("Settings");
+            // Bound, so an edit applies the Inspector's way and the edit poll lists it like one.
+            var so = new SerializedObject(chain);
+            var fields = new VisualElement();
+            foreach (var (path, label, tip) in Settings(chain))
+            {
+                var field = BridgeElements.Bound(so, path, label, tip);
+                if (field != null) fields.Add(field);
+            }
+            fields.Bind(so);
+            fold.Body.Add(fields);
+            fold.Body.Add(BridgeElements.Hint("Changes apply live. Other settings are in the Inspector."));
+
+            _selectedKeep = BridgeElements.Btn("Keep", () =>
+            {
+                Keep(chain);
+                BridgeElements.Defer(_selectedPanel, AfterKeep);
+            }, KeepTip, ButtonKind.Strong);
+            _selectedState = new VisualElement();
+            fold.Body.Add(BridgeElements.ButtonRow(_selectedKeep, _selectedState));
+
+            _selectedFold = fold;
+            _selectedPanel.Add(fold);
+            RefreshSelected();
+        }
+
+        void RefreshSelected()
+        {
+            if (_selectedHealth == null) return;
+            if (_selectedChain == null)
+            {
+                ShowSelected();
+                return;
+            }
+            var health = Health(_selectedChain);
+            var tone = RankTone(health.rank);
+            _selectedHealth.Set(health.why ?? "running", tone);
+            if (tone != _selectedAccent)
+            {
+                _selectedAccent = tone;
+                _selectedFold.Accent(tone);
+            }
+            string state = KeptState(_selectedChain, LoadKept());
+            _selectedKeep.SetEnabled(state != KeptWord);
+            if (state != _selectedStateShown)
+            {
+                _selectedStateShown = state;
+                _selectedState.Clear();
+                if (state != null) _selectedState.Add(BridgeElements.Chip(state, StateTone(state)));
+            }
+        }
+
+        void AfterKeep()
+        {
+            ShowEdited();
+            RefreshPhysicsCard();
+        }
+
+        // The settings that decide how a chain moves, as live fields. Leaf properties, so the
+        // solver's own drawers never take over. DynamicBone leaves out m_Force, which the grab
+        // writes, and m_Gravity, which the converter owns.
+        static (string path, string label, string tip)[] Settings(Component c)
+        {
+#if AVATARBRIDGE_MAGICA
+            if (c is MagicaCloth)
+            {
+                return new[]
+                {
+                    ("serializeData.gravity", "Gravity", "How hard the chain is pulled down."),
+                    ("serializeData.damping.value", "Damping", "How fast a swing dies away."),
+                    ("serializeData.radius.value", "Radius", "Each particle's collision size."),
+                    ("serializeData.angleRestorationConstraint.useAngleRestoration", "Restore angle",
+                        "Pulls each bone back toward the angle it hangs at rest."),
+                    ("serializeData.angleRestorationConstraint.stiffness.value", "Restore stiffness",
+                        "How hard Restore angle pulls."),
+                    ("serializeData.angleLimitConstraint.useAngleLimit", "Limit angle",
+                        "Caps how far a bone may bend from rest."),
+                    ("serializeData.angleLimitConstraint.limitAngle.value", "Limit (degrees)",
+                        "The cap Limit angle holds a bone to."),
+                };
+            }
+#endif
+#if AVATARBRIDGE_DYNBONE
+            if (c is DynamicBone)
+            {
+                return new[]
+                {
+                    ("m_Damping", "Damping", "How fast a swing dies away."),
+                    ("m_Elasticity", "Elasticity", "How hard each bone is pulled back toward its rest pose."),
+                    ("m_Stiffness", "Stiffness", "How much of its rest shape the chain keeps."),
+                    ("m_Inert", "Inertia", "How little of the body's own motion the chain takes on."),
+                    ("m_Radius", "Radius", "Each bone's collision size."),
+                };
+            }
+#endif
+            return new (string, string, string)[0];
         }
 
         // ---- the solvers --------------------------------------------------------------
@@ -334,6 +629,24 @@ namespace AvatarBridge
             }
         }
 
+        static int ColliderCount(Component c)
+        {
+#if AVATARBRIDGE_MAGICA
+            if (c is MagicaCloth cloth)
+            {
+                return (Member(Member(cloth.SerializeData, "colliderCollisionConstraint"), "colliderList") as System.Collections.IList)?
+                    .Cast<Object>().Count(o => o != null) ?? 0;
+            }
+#endif
+#if AVATARBRIDGE_DYNBONE
+            if (c is DynamicBone db)
+            {
+                return db.m_Colliders != null ? db.m_Colliders.Count(x => x != null) : 0;
+            }
+#endif
+            return 0;
+        }
+
         // One line of what decides how a chain moves, read off the component.
         static string Readout(Component c)
         {
@@ -343,8 +656,7 @@ namespace AvatarBridge
                 var data = cloth.SerializeData;
                 var restore = Member(data, "angleRestorationConstraint");
                 var limit = Member(data, "angleLimitConstraint");
-                int colliders = (Member(Member(data, "colliderCollisionConstraint"), "colliderList") as System.Collections.IList)?
-                    .Cast<Object>().Count(o => o != null) ?? 0;
+                int colliders = ColliderCount(c);
                 string restoring = Member(restore, "useAngleRestoration") is true
                     ? $"{Member(Member(restore, "stiffness"), "value"):0.##}" : "off";
                 string limited = Member(limit, "useAngleLimit") is true
@@ -357,7 +669,7 @@ namespace AvatarBridge
 #if AVATARBRIDGE_DYNBONE
             if (c is DynamicBone db)
             {
-                int colliders = db.m_Colliders != null ? db.m_Colliders.Count(x => x != null) : 0;
+                int colliders = ColliderCount(c);
                 return $"DynamicBone  damp {db.m_Damping:0.###}  elast {db.m_Elasticity:0.###}  " +
                        $"stiff {db.m_Stiffness:0.##}  inert {db.m_Inert:0.##}  r {db.m_Radius:0.###}  col {colliders}";
             }
@@ -396,8 +708,10 @@ namespace AvatarBridge
             }
         }
 
-        static void Select(Component c)
+        // Picked first, so a click on one of several chains on an object shows that one.
+        void Select(Component c)
         {
+            _pickedChain = c;
             Selection.activeObject = c;
             EditorGUIUtility.PingObject(c);
         }
@@ -825,6 +1139,7 @@ namespace AvatarBridge
                 changed = true;
             }
             if (changed) ShowEdited();
+            RefreshPhysicsCard();
         }
 
         void ShowEdited()
@@ -833,32 +1148,34 @@ namespace AvatarBridge
             _editedRows.Clear();
             _edited.RemoveAll(c => c == null);
             if (_edited.Count == 0) return;
-            var heading = BridgeElements.SubHeading("Edited this Play session");
-            heading.style.marginTop = 6;
-            _editedRows.Add(heading);
-            _editedRows.Add(BridgeElements.Hint(
-                "Unity throws away what changes in Play mode. Keep writes a component's settings back into the " +
-                "scene when Play mode ends; nothing you do not keep is kept."));
+            _editedRows.Add(BridgeElements.SubHeading("Edited this Play session"));
+            _editedRows.Add(BridgeElements.Hint("Unity discards Play-mode changes.",
+                "Keep writes a component's settings into the scene when Play mode ends. Nothing you do not keep is kept."));
             var records = LoadKept();
+            var rows = new List<VisualElement>();
             foreach (var chain in _edited)
             {
                 var captured = chain;
-                int kept = records.instances.IndexOf(chain.GetInstanceID());
-                string state = kept < 0 ? "" : records.json[kept].GetHashCode() == Hash(chain) ? "  kept" : "  changed since Keep";
-                var line = new VisualElement();
-                line.style.flexDirection = FlexDirection.Row;
-                line.style.alignItems = Align.Center;
-                var name = new Label($"{chain.name}  ({chain.GetType().Name}){state}");
-                name.style.flexGrow = 1;
-                line.Add(name);
-                line.Add(new Button(() => { Keep(captured); ShowEdited(); })
+                string state = KeptState(chain, records);
+                // These rows are rebuilt by the Keep inside them, so it waits out its click.
+                var keep = BridgeElements.Btn("Keep", () =>
                 {
-                    text = "Keep",
-                    tooltip = "Write this component's settings as they are now into the scene when Play mode ends.",
-                });
-                _editedRows.Add(line);
+                    Keep(captured);
+                    BridgeElements.Defer(_editedRows, AfterKeep);
+                }, KeepTip);
+                keep.SetEnabled(state != KeptWord);
+                rows.Add(BridgeElements.ReportRow(StateTone(state), ShortName(chain), SolverName(chain),
+                    state != null ? BridgeElements.Chip(state, StateTone(state)) : null, keep));
             }
-            _editedRows.Add(new Button(() => { foreach (var c in _edited) Keep(c); ShowEdited(); }) { text = "Keep all" });
+            _editedRows.Add(BridgeElements.ReportList(rows));
+            if (_edited.Count >= 2)
+            {
+                _editedRows.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Keep all", () =>
+                {
+                    foreach (var c in _edited) Keep(c);
+                    BridgeElements.Defer(_editedRows, AfterKeep);
+                }, "Keep every component listed here.")));
+            }
         }
 
         static void Keep(Component chain)
@@ -904,6 +1221,15 @@ namespace AvatarBridge
             if (names.Count > 0)
             {
                 Debug.Log($"[AvatarBridge] Kept the Play-mode settings of {string.Join(", ", names)}.");
+                SessionState.SetString(KeptLastKey, string.Join(", ", names));
+                // A tester may have rebuilt before this hook ran; a frame later it says so.
+                EditorApplication.delayCall += () =>
+                {
+                    foreach (var tester in Resources.FindObjectsOfTypeAll<CckAnimatorTester>())
+                    {
+                        if (tester.rootVisualElement.panel != null) tester.Rebuild();
+                    }
+                };
             }
         }
 
@@ -1004,9 +1330,12 @@ namespace AvatarBridge
             return string.Join("/", parts);
         }
 
-        static readonly Color HealthGood = new Color(0.3f, 0.9f, 0.5f);
-        static readonly Color HealthWarn = new Color(1f, 0.7f, 0.1f);
-        static readonly Color HealthBad = new Color(1f, 0.3f, 0.25f);
+        // The window's own tones, so amber here is the card's Warn. Always the dark-skin fills:
+        // labels sit on a black box and bones on the scene, whatever the editor skin.
+        static readonly Color HealthGood = BridgeTheme.Overlay(Tone.Good);
+        static readonly Color HealthWarn = BridgeTheme.Overlay(Tone.Warn);
+        static readonly Color HealthBad = BridgeTheme.Overlay(Tone.Bad);
+        static readonly Color BoneLine = BridgeTheme.Overlay(Tone.Info);
 
         // How far a chain has strayed from where it hangs at rest. Stretch is
         // the worst bone's distance from its parent over the rest distance,
@@ -1080,8 +1409,7 @@ namespace AvatarBridge
         // The reason first and bracketed: at the end it read as one of the
         // values ("col 3  off").
         internal static string LabelText(Component chain, string why) =>
-            chain.name.Replace("MagicaCloth_", "").Replace("DynamicBone_", "") +
-            (why != null ? $"  [{why}]" : "") + "  " + Readout(chain);
+            ShortName(chain) + (why != null ? $"  [{why}]" : "") + "  " + Readout(chain);
 
         // Measured against where the chain hangs at rest. With draw, each
         // bone's swing bound, or a DynamicBone's bones and radius, on the way.
@@ -1129,7 +1457,7 @@ namespace AvatarBridge
                 {
                     float bound = Curve(maxDistance, depth / (float)deepest);
                     float off = Vector3.Distance(rest, bone.position);
-                    Handles.color = off > bound * 0.95f ? new Color(1f, 0.55f, 0.1f) : new Color(0.3f, 0.9f, 0.5f, 0.8f);
+                    Handles.color = off > bound * 0.95f ? HealthWarn : WithAlpha(HealthGood, 0.8f);
                     Handles.DrawLine(rest, bone.position);
                     WireSphere(rest, bound);
                 };
@@ -1142,7 +1470,7 @@ namespace AvatarBridge
                 var falloff = db.m_RadiusDistrib != null && db.m_RadiusDistrib.length > 0 ? db.m_RadiusDistrib : null;
                 return (bone, rest, depth, along) =>
                 {
-                    Handles.color = new Color(0.4f, 0.8f, 1f, 0.8f);
+                    Handles.color = WithAlpha(BoneLine, 0.8f);
                     Handles.DrawLine(bone.parent.position, bone.position);
                     // DynamicBone's own falloff: its curve over the length so far.
                     float r = db.m_Radius * scale * (falloff != null && length > 0f ? falloff.Evaluate(along / length) : 1f);
@@ -1227,6 +1555,8 @@ namespace AvatarBridge
             var local = RestOf(child) ?? (child.localPosition, child.localRotation);
             return rest * Matrix4x4.TRS(local.Item1, local.Item2, child.localScale);
         }
+
+        static Color WithAlpha(Color c, float a) => new Color(c.r, c.g, c.b, a);
 
         static readonly Vector3[] Axes = { Vector3.up, Vector3.right, Vector3.forward };
 

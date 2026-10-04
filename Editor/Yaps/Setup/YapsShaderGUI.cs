@@ -23,34 +23,24 @@ namespace AvatarBridge
 
         struct Knob
         {
-            public string Name, Label, From, Help;
+            public string Name, Label, From, Help, More;
             public RowKind Kind;
-            public Knob(string name, string label, RowKind kind, string from = null, string help = null)
-            { Name = name; Label = label; Kind = kind; From = from; Help = help; }
+            public Knob(string name, string label, RowKind kind, string from = null, string help = null, string more = null)
+            { Name = name; Label = label; Kind = kind; From = from; Help = help; More = more; }
         }
 
+        // Each section's stripe is its place along the ChilloutVR span, worked out when drawn so
+        // it follows the skin; Debug and Internals are grey.
         struct Section
         {
             public string Title, Blurb;
-            public Color Tint;
             public Knob[] Knobs;
             public bool StartOpen;
         }
 
-        // Section tints along the family gradient.
-        static readonly Color TintPlug   = new Color(0.32f, 0.55f, 0.85f);
-        static readonly Color TintRest   = new Color(0.55f, 0.45f, 0.85f);
-        static readonly Color TintIn     = new Color(0.85f, 0.40f, 0.60f);
-        static readonly Color TintIdle   = new Color(0.85f, 0.55f, 0.35f);
-        static readonly Color TintMotion = new Color(0.85f, 0.70f, 0.30f);
-        static readonly Color TintCurve  = new Color(0.40f, 0.75f, 0.60f);
-        static readonly Color TintWho    = new Color(0.45f, 0.65f, 0.75f);
-        static readonly Color TintSocket = new Color(0.30f, 0.80f, 0.85f);
-        static readonly Color TintDebug  = new Color(0.55f, 0.55f, 0.55f);
-
         static readonly Section[] Sections =
         {
-            new Section { Title = "Plug", Tint = TintPlug, StartOpen = true,
+            new Section { Title = "Plug", StartOpen = true,
                 Blurb = "The basics. Length is measured from the mesh by the bake.",
                 Knobs = new[]
                 {
@@ -61,7 +51,7 @@ namespace AvatarBridge
                     new Knob("_YAPS_TaperStart", "Hole taper begins", RowKind.Slider, help: "how far past a hole the shaft starts to narrow, as a fraction of length"),
                     new Knob("_YAPS_TaperEnd", "Hole taper closes by", RowKind.Slider, help: "and where it has closed to a point"),
                 }},
-            new Section { Title = "Shape at rest", Tint = TintRest,
+            new Section { Title = "Shape at rest",
                 Blurb = "How the shaft sits when nothing is bending it.",
                 Knobs = new[]
                 {
@@ -69,7 +59,7 @@ namespace AvatarBridge
                     new Knob("_YAPS_ReCurvature", "Recurvature", RowKind.Slider, "DPS", "a second bend at the tip, opposite in sign: sweep, then hook"),
                     new Knob("_YAPS_EntranceStiffness", "Entrance stiffness", RowKind.Slider, "DPS", "how much the base resists bending: 0 bends evenly from the root"),
                 }},
-            new Section { Title = "Inside a socket", Tint = TintIn,
+            new Section { Title = "Inside a socket",
                 Blurb = "A grip at the opening and a swell just short of it.",
                 Knobs = new[]
                 {
@@ -79,7 +69,7 @@ namespace AvatarBridge
                     new Knob("_YAPS_BulgeDistance", "Bulge reach", RowKind.Slider, "DPS · TPS", "how far before the opening the swell begins"),
                     new Knob("_YAPS_BulgeFalloff", "Bulge falloff", RowKind.Slider, "TPS", "how far short of the opening it peaks; 0 peaks halfway"),
                 }},
-            new Section { Title = "Out of a socket", Tint = TintIdle,
+            new Section { Title = "Out of a socket",
                 Blurb = "Shrink and wriggle while no socket has it.",
                 Knobs = new[]
                 {
@@ -88,7 +78,7 @@ namespace AvatarBridge
                     new Knob("_YAPS_WriggleStrength", "Wriggle", RowKind.Slider, "DPS", "idle motion, tip-heavy"),
                     new Knob("_YAPS_WriggleSpeed", "Wriggle speed", RowKind.Slider, "DPS"),
                 }},
-            new Section { Title = "Motion inside a socket", Tint = TintMotion,
+            new Section { Title = "Motion inside a socket",
                 Blurb = "A stroke along the shaft while a socket has it.",
                 Knobs = new[]
                 {
@@ -96,7 +86,7 @@ namespace AvatarBridge
                     new Knob("_YAPS_PumpSpeed", "Pumping speed", RowKind.Slider, "TPS"),
                     new Knob("_YAPS_PumpWidth", "Pumping width", RowKind.Slider, "TPS", "how much of the shaft pumps: 1 is all of it, small values only the tip"),
                 }},
-            new Section { Title = "The bend toward a socket", Tint = TintCurve,
+            new Section { Title = "The bend toward a socket",
                 Blurb = "How the shaft arrives at a socket.",
                 Knobs = new[]
                 {
@@ -105,7 +95,7 @@ namespace AvatarBridge
                     new Knob("_YAPS_SmoothStart", "Ease into bend", RowKind.Slider, "TPS", "eases the join between the straight part and the curve"),
                     new Knob("_YAPS_MinimumSocketDistance", "Minimum socket distance", RowKind.Slider, "TPS", "a socket nearer than this is held off, so the plug does not fold"),
                 }},
-            new Section { Title = "Which sockets it answers", Tint = TintWho,
+            new Section { Title = "Which sockets it answers",
                 Blurb = "Which sockets this plug will bend toward.",
                 Knobs = new[]
                 {
@@ -113,7 +103,7 @@ namespace AvatarBridge
                     new Knob("_YAPS_SelfAllow", "Answer the wearer's own sockets", RowKind.Toggle, help: "off by default: an own socket is nearer than anyone else's and would take every bend"),
                     new Knob("_YAPS_UseAtlas", "Read the screen atlas", RowKind.Slider, help: "finds sockets through the screen, with no light slot. Off falls back to marker lights"),
                 }},
-            new Section { Title = "Socket", Tint = TintSocket,
+            new Section { Title = "Socket",
                 Blurb = "For a mesh that is a socket: how its shapes open as a plug goes in.",
                 Knobs = new[]
                 {
@@ -128,11 +118,13 @@ namespace AvatarBridge
                     new Knob("_YAPS_SocketShapeFade4", "Fades, shapes 12-15", RowKind.Vector, "DPS"),
                     new Knob("_YAPS_SocketDepth", "Depth from channel", RowKind.Slider, help: "-1 reads plugs by their tracker light alone"),
                 }},
-            new Section { Title = "Debug", Tint = TintDebug,
+            new Section { Title = "Debug",
                 Blurb = "Views that say why nothing is happening.",
                 Knobs = new[]
                 {
-                    new Knob("_YAPS_Debug", "View", RowKind.Enum, help: "The plug goes straight and its LENGTH is the answer.\nResolved by: a quarter nothing, half the preview, three quarters a marker light, full the atlas.\nGap to socket: distance as a fraction of the plug; a jump means a different socket.\nEngagement: a tenth at 0, full at 1.\nSocket facing: full same way, a little over half square across, a tenth facing back.\nAtlas taps: a tenth nothing, a third not this plug's, two thirds out of reach or own body, full found.\nAtlas target: a tenth target too small, four tenths wrong screen, seven tenths right screen and empty, full on.\nSet it Off before upload."),
+                    new Knob("_YAPS_Debug", "View", RowKind.Enum,
+                        help: "The plug goes straight and its length is the answer. Set it Off before upload.",
+                        more: "Resolved by: a quarter nothing, half the preview, three quarters a marker light, full the atlas.\nGap to socket: distance as a fraction of the plug; a jump means a different socket.\nEngagement: a tenth at 0, full at 1.\nSocket facing: full same way, a little over half square across, a tenth facing back.\nAtlas taps: a tenth nothing, a third not this plug's, two thirds out of reach or own body, full found.\nAtlas target: a tenth target too small, four tenths wrong screen, seven tenths right screen and empty, full on."),
                 }},
         };
 
@@ -144,24 +136,29 @@ namespace AvatarBridge
 
         // --- styles -----------------------------------------------------------
 
-        static GUIStyle _banner, _bannerTitle, _bannerSub, _bannerVersion, _header, _blurb, _from, _help, _box;
-        static Texture2D _white;
+        static GUIStyle _header, _blurb, _from, _right, _help, _box;
 
         static void EnsureStyles()
         {
-            if (_banner != null) return;
-            _white = Texture2D.whiteTexture;
-            _banner = new GUIStyle { padding = new RectOffset(12, 12, 8, 8) };
-            _bannerTitle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 15, normal = { textColor = Color.white } };
-            _bannerSub = new GUIStyle(EditorStyles.miniLabel) { normal = { textColor = new Color(1, 1, 1, 0.8f) } };
-            _bannerVersion = new GUIStyle(_bannerSub) { alignment = TextAnchor.MiddleRight };
-            // No box; the header is the structure.
-            _box = new GUIStyle { padding = new RectOffset(14, 4, 4, 8) };
-            _header = new GUIStyle(EditorStyles.boldLabel) { fontSize = 12, alignment = TextAnchor.MiddleLeft, padding = new RectOffset(6, 6, 0, 0) };
-            _blurb = new GUIStyle(EditorStyles.miniLabel) { wordWrap = true, padding = new RectOffset(8, 8, 0, 4) };
-            _from = new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleRight, normal = { textColor = new Color(0.6f, 0.6f, 0.6f) } };
-            _help = new GUIStyle(EditorStyles.miniLabel) { wordWrap = true, padding = new RectOffset(4, 0, 0, 3), normal = { textColor = new Color(0.62f, 0.62f, 0.62f) } };
+            if (_header == null)
+            {
+                // No box; the header is the structure.
+                _box = new GUIStyle { padding = new RectOffset(14, 4, 4, 8) };
+                _header = new GUIStyle(EditorStyles.boldLabel) { fontSize = 12, alignment = TextAnchor.MiddleLeft, padding = new RectOffset(6, 6, 0, 0) };
+                _blurb = new GUIStyle(EditorStyles.miniLabel) { wordWrap = true, padding = new RectOffset(8, 8, 0, 4) };
+                // Rich text, so each system wears its own tag colour.
+                _from = new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleRight, richText = true };
+                _right = new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleRight };
+                _help = new GUIStyle(EditorStyles.miniLabel) { wordWrap = true, padding = new RectOffset(4, 0, 0, 3) };
+            }
+            // Every draw, since the styles outlive a skin switch.
+            _blurb.normal.textColor = _right.normal.textColor = _help.normal.textColor = BridgeTheme.Muted;
         }
+
+        // The inspector's system tags, in the same series colours.
+        static string FromText(string from) => string.Join(" · ",
+            from.Split(new[] { " · " }, StringSplitOptions.RemoveEmptyEntries).Select(s =>
+                $"<color=#{ColorUtility.ToHtmlStringRGB(BridgeTheme.TagColour(YapsInspectorStyle.SystemSeries(s)))}>{s}</color>"));
 
         // --- draw --------------------------------------------------------------
 
@@ -175,25 +172,31 @@ namespace AvatarBridge
             var byName = new Dictionary<string, MaterialProperty>(properties.Length);
             foreach (var p in properties) byName[p.name] = p;
             var material = editor.target as Material;
-            bool hasSocket = byName.TryGetValue("_YAPS_SocketPower", out var sp) && sp.floatValue > 0;
+            // A socket bake as the socket inspector reads one: power alone
+            // cannot tell, since Strength 0 is a legal socket.
+            bool hasSocket = YapsSocketEditor.IsSocketBake(material);
             bool hasPlug = byName.TryGetValue("_YAPS_Enabled", out var en) && en.floatValue > 0;
-            string role = hasPlug && hasSocket ? "plug + socket" : hasSocket ? "socket" : "plug";
+            string role = hasSocket ? "socket" : "plug";
             float length = byName.TryGetValue("_YAPS_Length", out var lp) ? lp.floatValue : 0f;
 
             Banner(role, length, material);
 
             // Write the knobs back to the YapsPlug that owns this material.
             EditorGUI.BeginChangeCheck();
-            foreach (var section in Sections)
+            for (int i = 0; i < Sections.Length; i++)
             {
+                var section = Sections[i];
                 var present = section.Knobs.Where(k => byName.ContainsKey(k.Name)).ToArray();
                 if (present.Length == 0) continue;
                 if (section.Title == "Socket" && !hasSocket) continue;
                 if (section.Title != "Socket" && section.Title != "Debug" && !hasPlug && hasSocket) continue;
 
+                // Along the span, Debug last and grey.
+                var tint = section.Title == "Debug" ? BridgeTheme.Fill(Tone.Muted)
+                    : BridgeTheme.Span.Cvr.At(i / (float) (Sections.Length - 2));
                 string key = material.shader.name + "/" + section.Title;
                 if (!Open.TryGetValue(key, out bool open)) open = section.StartOpen;
-                open = SectionHeader(section.Title, section.Tint, open);
+                open = SectionHeader(section.Title, tint, open);
                 Open[key] = open;
                 if (!open) continue;
 
@@ -213,7 +216,7 @@ namespace AvatarBridge
             {
                 string key = material.shader.name + "/Internals";
                 if (!Open.TryGetValue(key, out bool open)) open = false;
-                open = SectionHeader("Internals", new Color(0.4f, 0.4f, 0.4f), open, "written by the build: read-only");
+                open = SectionHeader("Internals", BridgeTheme.Fill(Tone.Muted), open, "written by the build: read-only");
                 Open[key] = open;
                 if (open)
                 {
@@ -275,25 +278,13 @@ namespace AvatarBridge
             return skinned ? $"{raw:0.###} m" : $"{raw:0.###} mesh units";
         }
 
+        // The kit's banner at the inspector's 52px, bled to the panel's edges.
         static void Banner(string role, float length, Material material)
         {
-            var laid = GUILayoutUtility.GetRect(0, 44, GUILayout.ExpandWidth(true));
+            var laid = GUILayoutUtility.GetRect(0, 52, GUILayout.ExpandWidth(true));
             var rect = new Rect(0, laid.y, EditorGUIUtility.currentViewWidth, laid.height);
-            // The family gradient.
-            const int steps = 32;
-            for (int i = 0; i < steps; i++)
-            {
-                var slice = new Rect(rect.x + rect.width * i / steps, rect.y, rect.width / steps + 1, rect.height);
-                EditorGUI.DrawRect(slice, BridgeTheme.At((float) i / (steps - 1)));
-            }
-            EditorGUI.DrawRect(rect, new Color(0, 0, 0, 0.18f));
-            var title = new Rect(rect.x + 12, rect.y + 6, rect.width - 24, 20);
-            GUI.Label(title, "YAPS", _bannerTitle);
-            var sub = new Rect(rect.x + 12, rect.y + 24, rect.width - 24, 16);
-            string subText = length > 0 ? $"{role}  ·  {LengthText(length, material)}  ·  {material.shader.name.Replace("Hidden/YAPS/", "patched ")}" : role;
-            GUI.Label(sub, subText, _bannerSub);
-            var ver = new Rect(rect.xMax - 60, rect.y + 6, 50, 16);
-            GUI.Label(ver, "v" + BridgeDefines.Version, _bannerVersion);
+            string subText = length > 0 ? $"{role} · {LengthText(length, material)} · {material.shader.name.Replace("Hidden/YAPS/", "patched ")}" : role;
+            BridgeTheme.DrawBanner(rect, "YAPS", subText, "v" + BridgeDefines.Version, BridgeTheme.Span.Cvr);
             GUILayout.Space(6);
 
             // A material can be running a shader older than the toolkit, and
@@ -317,7 +308,7 @@ namespace AvatarBridge
             bool hover = full.Contains(Event.current.mousePosition);
             if (hover)
             {
-                EditorGUI.DrawRect(full, new Color(1, 1, 1, EditorGUIUtility.isProSkin ? 0.04f : 0.08f));
+                EditorGUI.DrawRect(full, EditorGUIUtility.isProSkin ? new Color(1f, 1f, 1f, 0.06f) : new Color(0f, 0f, 0f, 0.06f));
             }
             EditorGUI.DrawRect(new Rect(full.x, full.y + 4, 3, full.height - 8), tint);
             // Two strokes, crisp at any skin.
@@ -326,7 +317,7 @@ namespace AvatarBridge
             GUI.Label(new Rect(full.x + 28, full.y, full.width - 40, full.height), title, _header);
             if (!string.IsNullOrEmpty(right))
             {
-                GUI.Label(new Rect(full.x, full.y, full.width - 12, full.height), right, _from);
+                GUI.Label(new Rect(full.x, full.y, full.width - 12, full.height), right, _right);
             }
             EditorGUI.DrawRect(new Rect(full.x, full.yMax - 1, full.width, 1),
                 new Color(0.5f, 0.5f, 0.5f, EditorGUIUtility.isProSkin ? 0.18f : 0.28f));
@@ -359,7 +350,7 @@ namespace AvatarBridge
 
         static void DrawKnob(MaterialEditor editor, MaterialProperty prop, Knob knob)
         {
-            var label = new GUIContent(knob.Label, knob.Help);
+            var label = new GUIContent(knob.Label, knob.More != null ? knob.Help + "\n" + knob.More : knob.Help);
             using (new EditorGUILayout.HorizontalScope())
             {
                 switch (knob.Kind)
@@ -393,7 +384,7 @@ namespace AvatarBridge
                 }
                 if (!string.IsNullOrEmpty(knob.From))
                 {
-                    GUILayout.Label(knob.From, _from, GUILayout.Width(64));
+                    GUILayout.Label(FromText(knob.From), _from, GUILayout.Width(64));
                 }
             }
             if (!string.IsNullOrEmpty(knob.Help))
@@ -402,6 +393,29 @@ namespace AvatarBridge
                 {
                     GUILayout.Space(EditorGUIUtility.labelWidth + 4);
                     GUILayout.Label(knob.Help, _help);
+                }
+            }
+            // A long explanation folds behind More, keyed per knob like the sections.
+            if (!string.IsNullOrEmpty(knob.More))
+            {
+                string key = "more/" + knob.Name;
+                Open.TryGetValue(key, out bool more);
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    GUILayout.Space(EditorGUIUtility.labelWidth + 4);
+                    // A fold is no property: left as a change, it would sync every plug in the scene.
+                    bool changed = GUI.changed;
+                    more = EditorGUILayout.Foldout(more, more ? "Less" : "More", true);
+                    GUI.changed = changed;
+                }
+                Open[key] = more;
+                if (more)
+                {
+                    using (new EditorGUILayout.HorizontalScope())
+                    {
+                        GUILayout.Space(EditorGUIUtility.labelWidth + 4);
+                        GUILayout.Label(knob.More, _help);
+                    }
                 }
             }
         }

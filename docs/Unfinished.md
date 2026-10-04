@@ -969,6 +969,22 @@ IK. Needs the reporter's SDK version, which bone, and what the wrong result actu
 
 ## Loose ends, small but real
 
+### The UI redesign, 2026-10-04: seen in offscreen renders, not yet used by a person
+
+Every window moved onto one kit (Editor/UI): tokens for spacing, type and colour per skin, cards with
+nested and accent variants, sentence-case section headings, notices in place of HelpBoxes, segmented
+controls (gestures, stances, motion presets), strong / secondary / danger buttons, and a fixed label
+column. The tester's Physics card got a summary (solvers, health), a selected-chain panel with live
+fields and Keep, and empty states. Four rounds of rendered review (Dev/Probes/UiOffscreenProbe.cs, dark
+and the editor's real light theme, edit and Play mode) fixed what looked wrong, and every README-quoted
+label stayed verbatim.
+
+What a render cannot show, so is unverified: hover and press feel, keyboard focus, the selected-chain
+fields' live values (the offscreen panel does not run Unity's binding, so they read 0 there), and
+anything that only happens in a real Play session. Nits the last review left: pale light-skin chips,
+one row in the tester's Avatar menu card out of the label column, info notices using a "!" icon, YAPS
+steps 2 and 3 nearly the same orange, and the footer reflowing after a conversion.
+
 ### Corpus 414 after the audit: four regressions found and fixed on dev, 2026-10-04
 
 Run 414 (YAPS profile) changed all 83 digests against 412, as a batch that size must. Every changed

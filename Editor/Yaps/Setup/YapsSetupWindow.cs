@@ -28,14 +28,19 @@ namespace AvatarBridge
         GameObject _target;
         YapsScanner.Result _scan;
 
+        VisualElement _tabs;
         VisualElement _pages;
         VisualElement _foundBody;
         Label _summary;
-        HelpBox _next;
         Label _selection;
         Label _pickNote;
+        Label _buildCounts;
         VisualElement _buildLog;
-        Button _addHole, _addRing, _makePlug, _quiet, _makeProp, _verifyProp;
+        VisualElement _legacy;
+        // Each action reports under its own button. Results never go through the scan summary,
+        // which every rescan rewrites.
+        BridgeElements.NoticeBox _next, _addStatus, _propStatus, _tidyStatus;
+        Button _addHole, _addRing, _makePlug;
         BridgeElements.PrimaryButton _build;
         ObjectField _picker;
 
@@ -56,24 +61,17 @@ namespace AvatarBridge
 
         void CreateGUI()
         {
-            var root = rootVisualElement;
-            var sheet = Resources.Load<StyleSheet>("AvatarBridge");
-            if (sheet != null) root.styleSheets.Add(sheet);
-            root.AddToClassList(EditorGUIUtility.isProSkin ? "dark" : "light");
-
-            root.Add(BridgeElements.Banner("YAPS", "Yet Another Penetration System  ·  for ChilloutVR",
-                "v" + BridgeDefines.Version));
+            var root = BridgeElements.Root(rootVisualElement);
+            root.Add(BridgeElements.Banner("YAPS", "Yet Another Penetration System · for ChilloutVR",
+                "v" + BridgeDefines.Version, BridgeTheme.Span.Cvr));
 
             _tabs = new VisualElement();
             root.Add(_tabs);
 
-            _pages = new ScrollView();
-            _pages.AddToClassList("ab-scroll");
+            _pages = BridgeElements.Scroll();
             root.Add(_pages);
             ShowPage();
         }
-
-        VisualElement _tabs;
 
         void ShowPage()
         {
@@ -81,32 +79,25 @@ namespace AvatarBridge
             _tabs.Clear();
             _tabs.Add(BridgeElements.Tabs(
                 new[] { "Set up an avatar or prop", "Test it" },
-                // Unthemed: GetIcon adds the dark-skin prefix itself.
-                new[] { "Avatar Icon", "PlayButton" },
-                (int) _mode, i => { _mode = (Mode) i; ShowPage(); }));
+                // Unthemed: GetIcon adds the dark-skin prefix itself. Single-colour glyphs only:
+                // the active tab's white tint cannot recolour a colour icon like "Avatar Icon".
+                new[] { "Settings", "PlayButton" },
+                (int) _mode, i => { _mode = (Mode) i; ShowPage(); }, BridgeTheme.Span.Cvr));
             _pages.Clear();
             if (_mode == Mode.Setup) BuildSetupPage(); else BuildTestPage();
             _pages.Add(Footer());
         }
 
-        // The converter's footer: guide, bug report, Discord.
+        // Guide, bug report, Discord.
         static VisualElement Footer()
         {
-            var footer = new VisualElement();
-            footer.AddToClassList("ab-footer");
-            footer.Add(BridgeElements.Link("Guide  ↗", () => Application.OpenURL(BridgeLinks.YapsHelp)));
-            var report = BridgeElements.Link("Report an issue  ↗", BridgeLinks.OpenYapsBugReport);
-            report.tooltip = "Opens a pre-filled GitHub issue with your versions and detected packages, marked as a YAPS tool report.";
-            footer.Add(report);
-            if (!string.IsNullOrEmpty(BridgeLinks.DiscordUser))
-            {
-                var discord = BridgeElements.Link(
-                    BridgeLinks.HasDiscordLink ? $"Discord: {BridgeLinks.DiscordUser}" : $"Copy Discord: {BridgeLinks.DiscordUser}",
-                    BridgeLinks.OpenDiscord);
-                discord.tooltip = "Best for quick questions; please use GitHub issues for bugs so they don't get lost.";
-                footer.Add(discord);
-            }
-            return footer;
+            return BridgeElements.Footer(
+                BridgeElements.ExternalLink("Guide", BridgeLinks.YapsHelp, "The YAPS chapter of the README."),
+                BridgeElements.ExternalLink("Report an issue", BridgeLinks.OpenYapsBugReport,
+                    "Opens a pre-filled GitHub issue with your versions and detected packages, marked as a YAPS tool report."),
+                BridgeElements.ExternalLink("Discord", BridgeLinks.OpenDiscord,
+                    $"{BridgeLinks.DiscordUser} on Discord. Best for quick questions; please use GitHub issues for " +
+                    "bugs so they don't get lost."));
         }
 
         // --- the setup page --------------------------------------------------
@@ -114,93 +105,48 @@ namespace AvatarBridge
         void BuildSetupPage()
         {
             // 1. Pick.
-            var pick = new BridgeElements.Card("Pick your avatar or prop", null, null, 1, 0f);
-            _picker = new ObjectField("Avatar or prop") { objectType = typeof(GameObject), allowSceneObjects = true, value = _target };
+            var pick = new BridgeElements.Card("Pick your avatar or prop").Step(1, 3, BridgeTheme.Span.Cvr);
+            _picker = BridgeElements.ObjectPicker<GameObject>("Avatar or prop", _target, Pick);
             _pickNote = BridgeElements.Hint(PickHint);
-            _picker.RegisterValueChangedCallback(e => Pick(e.newValue as GameObject));
             pick.Body.Add(_picker);
             pick.Body.Add(_pickNote);
             _pages.Add(pick);
 
             // 2. What it has, and what to add.
-            var have = new BridgeElements.Card("What it has, and what to add", null, null, 2, 0.5f);
-            _summary = new Label("Pick something above.");
-            _summary.AddToClassList("ab-hint");
+            var have = new BridgeElements.Card("What it has, and what to add").Step(2, 3, BridgeTheme.Span.Cvr);
+            _summary = BridgeElements.Hint("");
             have.Body.Add(_summary);
             _foundBody = new VisualElement();
             have.Body.Add(_foundBody);
 
             // What to do next, from the scan and the selection.
-            _next = new HelpBox("", HelpBoxMessageType.Info);
+            _next = BridgeElements.Notice(Tone.Info, "");
             have.Body.Add(_next);
 
-            have.Body.Add(BridgeElements.SubHeading("Add"));
-            _addHole = Btn("Add a hole", () => AddSocket(YapsSocket.SocketKind.Hole));
-            _addRing = Btn("Add a ring", () => AddSocket(YapsSocket.SocketKind.Ring));
-            _makePlug = Btn("Make selected mesh a plug", MakePlug);
-            have.Body.Add(BridgeElements.Row(_addHole, _addRing, _makePlug));
+            have.Section("Add");
+            _addHole = BridgeElements.Btn("Add a hole", () => AddSocket(YapsSocket.SocketKind.Hole));
+            _addRing = BridgeElements.Btn("Add a ring", () => AddSocket(YapsSocket.SocketKind.Ring));
+            // True enabled or not, so the disabled button still says what turns it on.
+            _makePlug = BridgeElements.Btn("Make selected mesh a plug", MakePlug,
+                "Select a mesh, or the bone that drives one, to make it a plug.");
+            have.Body.Add(BridgeElements.ButtonRow(_addHole, _addRing, _makePlug));
             _selection = BridgeElements.Hint("");
             have.Body.Add(_selection);
-
-            // Props: a plug or socket on its own object becomes a spawnable
-            // with a pickup and a collider. A baked plug's old contact
-            // channel is taken out, since plugs no longer read it.
-            have.Body.Add(BridgeElements.SubHeading("Props"));
-            _makeProp = Btn("Make selected object a prop", () => MakeProp(Selection.activeGameObject));
-            _verifyProp = Btn("Verify prop", () =>
-            {
-                var o = YapsPropBuilder.Verify(Selection.activeGameObject);
-                _summary.text = o.Message + (o.Notes.Count > 0 ? "  " + string.Join(" ", o.Notes) : "");
-            });
-            have.Body.Add(BridgeElements.Row(_makeProp, _verifyProp));
-            // No button to add the channel any more: the plug's shader no
-            // longer reads it. Dropping one an older build added stays.
-            var channelOff = Btn("Drop the contact channel", () =>
-            {
-                var o = YapsPropBuilder.DropChannel(Selection.activeGameObject);
-                _summary.text = o.Message + (o.Notes.Count > 0 ? "  " + string.Join(" ", o.Notes) : "");
-            });
-            channelOff.tooltip = "Takes an old contact channel off a prop. Plugs no longer read it; it only spends synced values.";
-            have.Body.Add(channelOff);
-            have.Body.Add(BridgeElements.Hint(
-                "Select a plug or socket's top object. It becomes a spawnable with a pickup and a collider. " +
-                "Verify before each upload."));
-
-            // One switch hides the CCK's icons while sockets are placed.
-            have.Body.Add(BridgeElements.SubHeading("Scene view"));
-            _quiet = Btn(QuietLabel(), () => { SceneQuiet.Toggle(); _quiet.text = QuietLabel(); });
-            _quiet.tooltip = "Hides CCK icons, pointer spheres, trigger boxes, MagicaCloth wires and light icons so " +
-                             "YAPS gizmos show. Editor only; puts back what it found.";
-            have.Body.Add(BridgeElements.Row(_quiet));
-
-            // What a socket or plug deleted by hand leaves behind.
-            have.Body.Add(BridgeElements.SubHeading("Tidy"));
-            var sweep = Btn("Clean up leftovers", () =>
-            {
-                if (_target == null) return;
-                var done = YapsRemover.Sweep(_target.transform);
-                _summary.text = done.Count == 0
-                    ? "Nothing left behind."
-                    : $"Cleaned up {done.Count} leftover(s): " + string.Join("; ", done) + ". One undo step.";
-                foreach (var line in done) Debug.Log("[YAPS] Cleaned up " + line);
-                Rescan();
-            });
-            sweep.tooltip = "Removes what a socket or plug deleted by hand left behind: layers, parameters, " +
-                            "menu toggles and marker objects.";
-            have.Body.Add(BridgeElements.Row(sweep));
-            have.Body.Add(BridgeElements.Hint("A row's remove chip takes a plug or socket out in one undo step."));
+            _addStatus = Status();
+            have.Body.Add(_addStatus);
             _pages.Add(have);
             Selection.selectionChanged -= RefreshSelection;
             Selection.selectionChanged += RefreshSelection;
             EditorApplication.hierarchyChanged -= OnHierarchyChanged;
             EditorApplication.hierarchyChanged += OnHierarchyChanged;
 
-            // 3. Build.
-            var build = new BridgeElements.Card("Build", null, null, 3, 1f);
-            _build = new BridgeElements.PrimaryButton("Bake every plug and verify", BuildAll);
+            // 3. Build. The label is fixed because the README and the inspectors quote it; the
+            // counts go in the hint under it.
+            var build = new BridgeElements.Card("Build").Step(3, 3, BridgeTheme.Span.Cvr);
+            _build = new BridgeElements.PrimaryButton("Bake every plug and verify", BuildAll, BridgeTheme.BridgeTo);
             build.Body.Add(_build);
-            build.Body.Add(BridgeElements.Hint(
-                "Bakes every plug, rebuilds every socket, then checks the lot. Safe to run again."));
+            _buildCounts = BridgeElements.Hint("Nothing to build yet.");
+            build.Body.Add(_buildCounts);
 
             // What it did, line by line, where the button is. A summary
             // label was too easy to miss for work this large.
@@ -208,69 +154,154 @@ namespace AvatarBridge
             build.Body.Add(_buildLog);
             _pages.Add(build);
 
+            BuildToolsCard();
+
             // Present, say where; absent, say where to get it.
-            var cross = new BridgeElements.Card("Converting from VRChat?", null, false, null, 0f);
-            if (BridgeLinks.HasAvatarBridge)
-            {
-                cross.Body.Add(BridgeElements.Hint("AvatarBridge turns a VRChat avatar's DPS, TPS or SPS into YAPS."));
-                cross.Body.Add(BridgeElements.Row(Btn("Open AvatarBridge", () =>
-                    EditorApplication.ExecuteMenuItem("Tools/Avatar Bridge/VRChat to ChilloutVR Converter"))));
-            }
-            else
-            {
-                cross.Body.Add(BridgeElements.Hint(
-                    "AvatarBridge turns a VRChat avatar's DPS, TPS or SPS into YAPS. It is not in this project."));
-                cross.Body.Add(BridgeElements.Row(BridgeElements.Link("Get AvatarBridge (GitHub)  ↗",
-                    () => Application.OpenURL(BridgeLinks.Repo))));
-            }
-            _pages.Add(cross);
+            var also = new BridgeElements.Card("Also in this package", "the converter and the Toolkit", false).Remember("Yaps.Also");
+            also.Body.Add(LinkRow(BridgeLinks.HasAvatarBridge
+                    ? "AvatarBridge turns a VRChat avatar's DPS, TPS or SPS into YAPS."
+                    : "AvatarBridge turns a VRChat avatar's DPS, TPS or SPS into YAPS. It is not in this project.",
+                BridgeLinks.HasAvatarBridge
+                    ? BridgeElements.Btn("Open AvatarBridge", () =>
+                        EditorApplication.ExecuteMenuItem("Tools/Avatar Bridge/VRChat to ChilloutVR Converter"))
+                    : BridgeElements.ExternalLink("Get AvatarBridge", BridgeLinks.Repo)));
+            also.Body.Add(LinkRow(
+                "The ChilloutVR Toolkit checks an avatar for what the game will break and fixes shaders, " +
+                "visemes, audio and bounds.",
+                BridgeElements.Btn("Open the Toolkit", ToolkitWindow.Open)));
+            _pages.Add(also);
 
-            var toolkit = new BridgeElements.Card("More tools", null, false, null, 0.5f);
-            toolkit.Body.Add(BridgeElements.Hint(
-                "The ChilloutVR Toolkit checks an avatar for what the game will break, and fixes shaders, " +
-                "visemes, audio, bounds and more."));
-            toolkit.Body.Add(BridgeElements.Row(BridgeElements.Link("Open the Toolkit", ToolkitWindow.Open)));
-            _pages.Add(toolkit);
+            Pick(_target != null ? _target : Selection.activeGameObject);
+        }
 
-            if (_target == null && Selection.activeGameObject != null) Pick(Selection.activeGameObject);
-            else Rescan();
+        // Props, the legacy channel, the scene view and tidying: used now and then, so collapsed.
+        void BuildToolsCard()
+        {
+            var tools = new BridgeElements.Card("Tools", "props, quiet the scene view, clean up", false).Remember("Yaps.Tools");
+
+            // A plug or socket on its own object becomes a spawnable with a
+            // pickup and a collider.
+            tools.Section("Props");
+            tools.Body.Add(BridgeElements.ButtonRow(
+                BridgeElements.Btn("Make selected object a prop", () => MakeProp(Selection.activeGameObject, _propStatus)),
+                BridgeElements.Btn("Verify prop", () =>
+                {
+                    var o = YapsPropBuilder.Verify(Selection.activeGameObject);
+                    Say(_propStatus, o.Ok ? Tone.Good : Tone.Warn, o.Message, o.Notes);
+                }, "Checks the selected prop's synced values and grab collider, and repairs what it can.")));
+            tools.Body.Add(BridgeElements.Hint(
+                "Select a plug or socket's top object to make it a spawnable with a pickup and collider. " +
+                "Verify before uploading."));
+            _propStatus = Status();
+            tools.Body.Add(_propStatus);
+
+            // No button adds the channel any more: the plug's shader no longer
+            // reads it. Dropping one an older build added stays, shown only
+            // while the selection carries one. Its result lands in the props
+            // line above, since this section hides once the channel is gone.
+            _legacy = new VisualElement();
+            _legacy.Add(BridgeElements.SubHeading("Legacy"));
+            _legacy.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Drop the contact channel", () =>
+            {
+                var o = YapsPropBuilder.DropChannel(Selection.activeGameObject);
+                Say(_propStatus, o.Ok ? Tone.Good : Tone.Warn, o.Message, o.Notes);
+            }, "Takes an old contact channel off a prop. Plugs no longer read it; it only spends synced values.")));
+            _legacy.Add(BridgeElements.Hint(
+                "The selected prop carries a contact channel from an earlier build. Plugs no longer read it."));
+            tools.Body.Add(_legacy);
+
+            // One switch hides the CCK's icons while sockets are placed. Plum
+            // while on, like any pressed button; the label stays put.
+            tools.Section("Scene view");
+            Button quiet = null;
+            quiet = BridgeElements.Btn("Quiet the scene view while I work", () =>
+            {
+                SceneQuiet.Toggle();
+                quiet.EnableInClassList("ab-on", SceneQuiet.IsQuiet);
+            }, "Hides CCK icons, pointer spheres, trigger boxes, MagicaCloth wires and light icons so YAPS " +
+               "gizmos show. Editor only; puts back what it found. Click again to show them.");
+            quiet.EnableInClassList("ab-on", SceneQuiet.IsQuiet);
+            tools.Body.Add(BridgeElements.ButtonRow(quiet));
+
+            // What a socket or plug deleted by hand leaves behind.
+            tools.Section("Tidy");
+            tools.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Clean up leftovers", () =>
+            {
+                if (_target == null)
+                {
+                    _tidyStatus.Set("Pick an avatar or prop in step 1 first.", Tone.Warn);
+                    return;
+                }
+                var done = YapsRemover.Sweep(_target.transform);
+                _tidyStatus.Set(done.Count == 0
+                    ? "Nothing left behind."
+                    : $"Cleaned up {done.Count} leftover(s): " + string.Join("; ", done) + ". One undo step.",
+                    Tone.Good);
+                foreach (var line in done) Debug.Log("[YAPS] Cleaned up " + line);
+                Rescan();
+            }, "Removes what a socket or plug deleted by hand left behind: layers, parameters, " +
+               "menu toggles and marker objects.")));
+            tools.Body.Add(BridgeElements.Hint("A row's remove chip takes a plug or socket out in one undo step."));
+            _tidyStatus = Status();
+            tools.Body.Add(_tidyStatus);
+            _pages.Add(tools);
+        }
+
+        // A sentence beside the one button or link it is about.
+        static VisualElement LinkRow(string text, VisualElement link)
+        {
+            var hint = BridgeElements.Hint(text);
+            hint.AddToClassList("ab-grow");
+            return BridgeElements.Row(hint, link);
+        }
+
+        // A status line, hidden until an action reports.
+        static BridgeElements.NoticeBox Status()
+        {
+            var box = BridgeElements.Notice(Tone.Info, "");
+            box.Hide();
+            return box;
+        }
+
+        static void Say(BridgeElements.NoticeBox box, Tone tone, string message, List<string> notes)
+        {
+            box?.Set(message + (notes.Count > 0 ? " " + string.Join(" ", notes) : ""), tone);
         }
 
         // --- the test page -----------------------------------------------------
 
         void BuildTestPage()
         {
-            var what = new BridgeElements.Card("Test it here", null, null, 1, 0f);
-            what.Body.Add(BridgeElements.Hint(
+            var make = new BridgeElements.Card("Drop a test socket or plug");
+            make.Body.Add(BridgeElements.Hint(
                 "Drop a test socket in front of the camera and every baked plug in the scene bends toward it. " +
                 "Nothing here ships."));
-            _pages.Add(what);
-
-            var make = new BridgeElements.Card("Drop a test socket", null, null, 2, 0.5f);
-            make.Body.Add(BridgeElements.Row(
-                Btn("Test hole (previews)", () => TestSocket(YapsSocket.SocketKind.Hole)),
-                Btn("Test ring (previews)", () => TestSocket(YapsSocket.SocketKind.Ring)),
-                Btn("Test plug", () => YapsNativeBuilder.BuildTestPlug())));
+            make.Body.Add(BridgeElements.ButtonRow(
+                BridgeElements.Btn("Test hole (previews)", () => TestSocket(YapsSocket.SocketKind.Hole)),
+                BridgeElements.Btn("Test ring (previews)", () => TestSocket(YapsSocket.SocketKind.Ring)),
+                BridgeElements.Btn("Test plug", () => YapsNativeBuilder.BuildTestPlug())));
             make.Body.Add(BridgeElements.Hint(
                 "The socket lands previewing; move it around your plug. No plug? Test plug drops a baked capsule."));
             _pages.Add(make);
 
-            var props = new BridgeElements.Card("Props and prefabs", null, false, null, 1f);
-            props.Body.Add(BridgeElements.Row(Btn("Make the selected test object a prop", () => MakeProp(Selection.activeGameObject))));
+            var props = new BridgeElements.Card("Props and prefabs", null, false);
+            props.Section("Props");
+            var status = Status();
+            props.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Make the selected test object a prop",
+                () => MakeProp(Selection.activeGameObject, status))));
             props.Body.Add(BridgeElements.Hint(
-                "Select the test object's top first. It becomes a spawnable with a pickup and a collider, to " +
-                "upload and try with someone."));
-            props.Body.Add(BridgeElements.SubHeading("Prefabs"));
-            props.Body.Add(BridgeElements.Row(
-                Btn("Create universal socket prefabs", YapsSocketBuilder.CreatePrefabs),
-                Btn("Create a ring-and-socket prop prefab", YapsSocketBuilder.CreateSocketPropPrefab),
-                Btn("Create a plug prop prefab", YapsSocketBuilder.CreatePlugPropPrefab)));
+                "Select the test object's top first. It becomes a spawnable to upload and try with someone."));
+            props.Body.Add(status);
+            props.Section("Prefabs");
+            props.Body.Add(BridgeElements.ButtonRow(
+                BridgeElements.Btn("Create universal socket prefabs", YapsSocketBuilder.CreatePrefabs),
+                BridgeElements.Btn("Create a ring-and-socket prop prefab", YapsSocketBuilder.CreateSocketPropPrefab),
+                BridgeElements.Btn("Create a plug prop prefab", YapsSocketBuilder.CreatePlugPropPrefab)));
             props.Body.Add(BridgeElements.Hint(
-                "Socket prefabs go to Assets/YAPS/Prefabs; drag one under a bone on any avatar. The plug " +
-                "prop is a ready spawnable."));
-            props.Body.Add(BridgeElements.SubHeading("After an update"));
-            props.Body.Add(BridgeElements.Row(
-                Btn("Update every YAPS shader in this project", RefreshShaders)));
+                "Socket prefabs go to Assets/YAPS/Prefabs; drag one under a bone. The plug prop is a ready spawnable."));
+            props.Section("After an update");
+            props.Body.Add(BridgeElements.ButtonRow(
+                BridgeElements.Btn("Update every YAPS shader in this project", RefreshShaders)));
             props.Body.Add(BridgeElements.Hint(
                 "A prop keeps the shader it was built with. This updates every YAPS material in the project; " +
                 "upload old props again after."));
@@ -278,6 +309,7 @@ namespace AvatarBridge
         }
 
         // Every patched material in the project, not just what a bake reaches.
+        [MenuItem("Tools/YAPS/Update every YAPS shader in this project")]
         static void RefreshShaders()
         {
             string said = YapsShaderPatcher.SweepProject();
@@ -302,12 +334,20 @@ namespace AvatarBridge
         void Pick(GameObject picked)
         {
             var top = picked != null ? YapsNativeBuilder.AvatarRoot(picked.transform).gameObject : null;
+            // Results about the last target say nothing about this one.
+            if (top != _target)
+            {
+                _addStatus?.Clear();
+                _propStatus?.Clear();
+                _tidyStatus?.Clear();
+            }
             _target = top;
             if (_picker != null && _picker.value != top) _picker.SetValueWithoutNotify(top);
             if (_pickNote != null)
             {
-                _pickNote.text = top == null ? PickHint
-                    : top == picked ? $"Everything on \"{top.name}\" is listed below."
+                // Picked its own top: the field already names it, so the hint would only repeat it.
+                _pickNote.EnableInClassList("ab-hidden", top != null && top == picked);
+                _pickNote.text = top == null || top == picked ? PickHint
                     : $"Listing \"{top.name}\", the {(top.GetComponent<CVRAvatar>() != null ? "avatar" : top.GetComponent<CVRSpawnable>() != null ? "prop" : "top object")} above \"{picked.name}\".";
             }
             Rescan();
@@ -315,25 +355,17 @@ namespace AvatarBridge
 
         const string PickHint = "Drop an avatar or prop here, or anything under it. Everything on the whole thing is listed.";
 
-        static string QuietLabel() => SceneQuiet.IsQuiet
-            ? "Show the CCK's icons again"
-            : "Quiet the scene view while I work";
+        // Non-breaking spaces, so a wrap never splits the label the user is told to look for.
+        const string BakeQuoted = "\"Bake\u00A0every\u00A0plug\u00A0and\u00A0verify\"";
 
-        static Button Btn(string text, System.Action act)
-        {
-            var b = new Button(act) { text = text };
-            b.AddToClassList("ab-btn");
-            return b;
-        }
-
-        // The next-step line, from the scan and the selection.
+        // The next-step line, from the scan and the selection. It names the
+        // buttons to press, so it reads as a step rather than a status.
         void SayNext()
         {
             if (_next == null) return;
             if (_target == null)
             {
-                _next.text = "Drag your avatar or prop into the box above. Nothing happens until you do.";
-                _next.messageType = HelpBoxMessageType.Info;
+                _next.Set("Drag your avatar or prop into the box above. Nothing happens until you do.", Tone.Info);
                 return;
             }
             int plugs = _scan.Plugs.Count, sockets = _scan.Sockets.Count;
@@ -341,39 +373,33 @@ namespace AvatarBridge
             bool anyLegacy = _scan.Plugs.Any(p => !p.IsYapsAlready) || _scan.Sockets.Any(s => !s.IsYapsAlready);
             bool anyIssue = _scan.Plugs.Any(p => p.Notes.Count > 0) || _scan.Sockets.Any(s => s.Notes.Count > 0);
 
+            // The summary is hidden when the scan is empty, so this carries the answer first.
             if (plugs + sockets == 0)
             {
-                _next.text = "Nothing on it yet. For a plug, select its mesh or bone and Make a plug. For a socket, " +
-                             "select a bone and Add a hole or ring. Then Build.";
-                _next.messageType = HelpBoxMessageType.Info;
+                _next.Set("Nothing on it yet. Select a mesh or bone, press a button under Add, then " +
+                          BakeQuoted + " in step 3.", Tone.Info);
             }
             else if (anyLegacy)
             {
-                _next.text = "Some DPS, TPS or SPS here is not YAPS yet. Click \"upgrade to YAPS\" on a row, or " +
-                             "Build for all. Check a skinned plug's Root Bone first.";
-                _next.messageType = HelpBoxMessageType.Warning;
+                _next.Set("Some DPS, TPS or SPS here is not YAPS yet. Press \"upgrade to YAPS\" on a row, or " +
+                          BakeQuoted + " in step 3 for all of it. Check a skinned plug's " +
+                          "\"Root Bone\" first.", Tone.Warn);
             }
             else if (anyIssue)
             {
-                _next.text = "All YAPS, but the amber rows are missing something. Build fixes markers and bakes; " +
-                             "turn a socket with no axis so its arrow points in.";
-                _next.messageType = HelpBoxMessageType.Warning;
+                _next.Set("All YAPS, but the rows marked as warnings are missing something. " + BakeQuoted +
+                          " in step 3 fixes markers and bakes; turn a socket with no axis so its arrow points in.",
+                          Tone.Warn);
             }
             else if (allYaps)
             {
                 int bare = _scan.Plugs.Concat(_scan.Sockets).Count(f => f.Root != null
                     && f.Root.GetComponent<YapsSocket>() == null && f.Root.GetComponent<YapsPlug>() == null);
-                if (bare > 0)
-                {
-                    _next.text = $"All YAPS, but {bare} came from a conversion with nothing to edit. Click " +
-                                 "\"make editable\" on a row, or Build for all.";
-                    _next.messageType = HelpBoxMessageType.Info;
-                }
-                else
-                {
-                    _next.text = "All YAPS and editable. Select a row, retune it in the Inspector, then Build.";
-                    _next.messageType = HelpBoxMessageType.Info;
-                }
+                _next.Set(bare > 0
+                    ? $"All YAPS, but {bare} came from a conversion with nothing to edit. Press \"make editable\" " +
+                      "on a row, or " + BakeQuoted + " in step 3 for all."
+                    : "All YAPS and editable. Press \"customise\" on a row to retune it in the Inspector, then " +
+                      BakeQuoted + " in step 3.", Tone.Info);
             }
         }
         // Where a new socket or plug goes: the Hierarchy selection, and
@@ -388,6 +414,7 @@ namespace AvatarBridge
 
         void RefreshSelection()
         {
+            _legacy?.EnableInClassList("ab-hidden", !YapsPropBuilder.HasChannel(Selection.activeGameObject));
             if (_selection == null) return;
             var go = Candidate();
             if (go == null)
@@ -404,7 +431,7 @@ namespace AvatarBridge
             _selection.text = bone
                 ? $"Bone \"{go.name}\": a socket goes under it; a plug bakes the mesh it drives."
                 : mesh ? $"Mesh \"{go.name}\": Make a plug bakes this one."
-                : $"\"{go.name}\" is neither bone nor mesh: a socket goes in the YAPS folder, and no plug.";
+                : $"\"{go.name}\" is not a bone or mesh: a socket goes in the YAPS folder.";
             if (_addHole != null) _addHole.text = bone ? $"Add a hole under {go.name}" : "Add a hole";
             if (_addRing != null) _addRing.text = bone ? $"Add a ring under {go.name}" : "Add a ring";
             if (_makePlug != null)
@@ -414,6 +441,9 @@ namespace AvatarBridge
             }
         }
 
+        // From a row's own chip: the list it sits in is about to be cleared.
+        void RescanLater() => BridgeElements.Defer(_foundBody, Rescan);
+
         void Rescan()
         {
             if (_foundBody == null) return;
@@ -421,23 +451,30 @@ namespace AvatarBridge
             RefreshSelection();
             if (_target == null)
             {
-                _summary.text = "Pick something above.";
+                // The notice below says it, so the faint line would only repeat it.
+                _summary.AddToClassList("ab-hidden");
                 _build?.SetActive(false);
+                if (_buildCounts != null) _buildCounts.text = "Nothing to build yet.";
                 SayNext();
                 return;
             }
             _scan = YapsScanner.Scan(_target);
             _summary.text = _scan.Summary();
+            // Empty, the notice below opens with the answer instead.
+            _summary.EnableInClassList("ab-hidden", _scan.Total == 0);
             _build?.SetActive(_scan.Total > 0);
             // Carried meshes are not plugs to bake: their carrier bakes them.
             // Counting them promises a number the build will not do.
             int bakeable = _scan.Plugs.Count(p => p.CarriedBy == null);
-            _build?.SetLabel(_scan.Total > 0
-                ? $"Bake {bakeable} plug{(bakeable == 1 ? "" : "s")} and verify {_scan.Sockets.Count} socket{(_scan.Sockets.Count == 1 ? "" : "s")}"
-                : "Nothing to build yet");
+            if (_buildCounts != null)
+            {
+                _buildCounts.text = _scan.Total > 0
+                    ? $"{bakeable} plug{(bakeable == 1 ? "" : "s")} to bake and {_scan.Sockets.Count} socket{(_scan.Sockets.Count == 1 ? "" : "s")} to verify. Safe to run again."
+                    : "Nothing to build yet: add a hole or ring, or make a plug, in step 2.";
+            }
             SayNext();
 
-            bool alt = false;
+            var rows = new List<VisualElement>();
             void Row(YapsScanner.Found f)
             {
                 // Two sockets within three centimetres is one too many.
@@ -455,31 +492,18 @@ namespace AvatarBridge
                 // offers none of the controls that would make it a peer.
                 if (f.CarriedBy != null)
                 {
-                    var carried = BridgeElements.ReportRow("part of",
-                        f.Name,
-                        $"carried by \"{YapsToggles.LabelFor(f.CarriedBy)}\": bends with it, on its settings.",
-                        BridgeTheme.Dark ? new Color(0.45f, 0.47f, 0.52f) : new Color(0.55f, 0.57f, 0.62f), alt);
-                    carried.style.marginLeft = 22;
-                    carried.style.opacity = 0.75f;
-                    var held = f;
-                    carried.RegisterCallback<ClickEvent>(_ =>
-                    {
-                        if (held.Root != null) { Selection.activeTransform = held.Root; EditorGUIUtility.PingObject(held.Root); }
-                    });
-                    _foundBody.Add(carried);
-                    alt = !alt;
+                    var carried = BridgeElements.ReportRow(Tone.Muted, "Part of: " + f.Name,
+                        $"carried by \"{YapsToggles.LabelFor(f.CarriedBy)}\": bends with it, on its settings.");
+                    carried.AddToClassList("ab-report-item-child");
+                    carried.AddToClassList("ab-dim");
+                    SelectOnClick(carried, f);
+                    rows.Add(carried);
                     return;
                 }
 
-                bool complete = f.Notes.Count == 0;
-                // Nothing to fix but something to say gets a softer green than a silent
-                // row: working as designed must never wear the colour that means "you
-                // have a problem".
-                var settled = BridgeTheme.Dark ? new Color(0.42f, 0.72f, 0.52f) : new Color(0.28f, 0.55f, 0.35f);
-                var colour = f.IsYapsAlready && complete
-                             ? (f.Expected.Count > 0 ? settled : BridgeTheme.Good)
-                           : !complete ? BridgeTheme.Warn
-                           : new Color(0.45f, 0.65f, 0.95f);
+                // Nothing to fix but something to say stays green: working as
+                // designed must never wear the colour that means "you have a problem".
+                var tone = f.Notes.Count > 0 ? Tone.Warn : f.IsYapsAlready ? Tone.Good : Tone.Info;
                 string what = f.Kind == YapsScanner.Kind.Plug ? "Plug" : (f.IsHole ? "Hole" : "Ring");
                 var detail = new List<string>();
                 if (f.Kind == YapsScanner.Kind.Plug && f.StatedLength > 0) detail.Add($"{f.StatedLength:0.###} m");
@@ -496,94 +520,71 @@ namespace AvatarBridge
                 string title = sc != null ? YapsToggles.LabelFor(sc)
                              : pc != null ? YapsToggles.LabelFor(pc)
                              : f.Name;
-                var row = BridgeElements.ReportRow(what, title, string.Join("  ·  ", detail), colour, alt);
                 var captured = f;
-                row.RegisterCallback<ClickEvent>(_ =>
+                var actions = new List<VisualElement>();
+
+                if (sc != null || pc != null)
                 {
-                    if (captured.Root != null) { Selection.activeTransform = captured.Root; EditorGUIUtility.PingObject(captured.Root); }
-                });
-
-                var wrap = new VisualElement { style = { flexDirection = FlexDirection.Row, alignItems = Align.Center } };
-                row.style.flexGrow = 1;
-                wrap.Add(row);
-
-                var socketComp = f.Root != null ? f.Root.GetComponent<YapsSocket>() : null;
-                var plugComp = f.Root != null ? f.Root.GetComponent<YapsPlug>() : null;
-                bool hasComp = socketComp != null || plugComp != null;
-
-                // Customise: select it and open its inspector.
-                if (hasComp)
-                {
-                    var edit = BridgeElements.Chip("customise", new Color(0.45f, 0.65f, 0.95f), true, () =>
+                    actions.Add(BridgeElements.Chip("customise", Tone.Info, false, () =>
                     {
-                        if (captured.Root == null) { Rescan(); return; }
+                        if (captured.Root == null) { RescanLater(); return; }
                         Selection.activeTransform = captured.Root;
                         EditorGUIUtility.PingObject(captured.Root);
                         // Front the Inspector, opening one if there is none.
                         EditorApplication.ExecuteMenuItem("Window/General/Inspector");
-                    });
-                    edit.style.marginLeft = 6;
-                    wrap.Add(edit);
+                    }, "Selects it and opens its Inspector."));
                     // Remove: out entire, after a dialog saying what goes.
-                    var gone = BridgeElements.Chip("remove", BridgeTheme.Bad, false, () =>
+                    actions.Add(BridgeElements.Chip("remove", Tone.Bad, false, () =>
                     {
-                        if (captured.Root == null) { Rescan(); return; }
+                        if (captured.Root == null) { RescanLater(); return; }
                         var s = captured.Root.GetComponent<YapsSocket>();
                         var p = captured.Root.GetComponent<YapsPlug>();
                         bool did = s != null ? YapsRemover.Ask(s) : YapsRemover.Ask(p);
-                        if (did) Rescan();
-                    });
-                    gone.style.marginLeft = 4;
-                    wrap.Add(gone);
+                        if (did) RescanLater();
+                    }, "Takes it out entire, after a dialog saying what goes. One undo step."));
                 }
-                if (socketComp != null)
+                if (sc != null)
                 {
-                    var chip = BridgeElements.Chip(socketComp.preview ? "previewing" : "preview",
-                        BridgeTheme.Good, socketComp.preview, () =>
-                        {
-                            // A reconvert can leave the chip holding a dead component.
-                            if (socketComp == null) { Rescan(); return; }
-                            YapsPreview.Set(socketComp, !socketComp.preview);
-                            Rescan();
-                        }, socketComp.preview);
-                    chip.style.marginLeft = 4; chip.style.marginRight = 8;
-                    wrap.Add(chip);
+                    actions.Add(BridgeElements.Chip(sc.preview ? "previewing" : "preview", Tone.Good, sc.preview, () =>
+                    {
+                        // A reconvert can leave the chip holding a dead component.
+                        if (sc == null) { RescanLater(); return; }
+                        YapsPreview.Set(sc, !sc.preview);
+                        RescanLater();
+                    }, sc.preview ? "Previewing. Click again to stop." : "Bends baked plugs toward it in the scene view."));
                 }
-                else if (plugComp != null)
+                else if (pc != null)
                 {
                     // The plug's half of the same idea. A socket previews by dropping a
                     // plug in front of it; a plug had no row chip at all, because there was
                     // nothing for it to bend toward until the test socket existed.
                     bool testing = YapsPreview.TestSocketInScene;
-                    var chip = BridgeElements.Chip(testing ? "previewing" : "preview",
-                        BridgeTheme.Good, testing, () =>
-                        {
-                            if (captured.Root == null) { Rescan(); return; }
-                            if (YapsPreview.TestSocketInScene) YapsPreview.RemoveTestSocket();
-                            else YapsPreview.DropTestSocket(plugComp);
-                            Rescan();
-                        }, testing);
-                    chip.style.marginLeft = 4; chip.style.marginRight = 8;
-                    wrap.Add(chip);
+                    actions.Add(BridgeElements.Chip(testing ? "previewing" : "preview", Tone.Good, testing, () =>
+                    {
+                        if (captured.Root == null) { RescanLater(); return; }
+                        if (YapsPreview.TestSocketInScene) YapsPreview.RemoveTestSocket();
+                        else YapsPreview.DropTestSocket(pc);
+                        RescanLater();
+                    }, testing ? "Click again to take the test socket away." : "Drops a test socket ahead and bends this plug into it."));
                 }
-                else if (!hasComp && f.Root != null)
+                else if (f.Root != null)
                 {
                     // No component yet. YAPS output adopts; DPS, TPS or SPS
                     // upgrades in place: adopt, then build or bake.
                     bool legacy = !f.IsYapsAlready;
-                    var chip = BridgeElements.Chip(legacy ? "upgrade to YAPS" : "make editable", BridgeTheme.Warn, false, () =>
+                    actions.Add(BridgeElements.Chip(legacy ? "upgrade to YAPS" : "make editable", Tone.Warn, false, () =>
                     {
-                        if (captured.Root == null) { Rescan(); return; }
+                        if (captured.Root == null) { RescanLater(); return; }
                         Undo.RegisterFullObjectHierarchyUndo(captured.Root.gameObject, "Adopt YAPS " + (captured.Kind == YapsScanner.Kind.Plug ? "plug" : "socket"));
                         Adopt(captured);
                         if (legacy) Upgrade(captured);
-                        Rescan();
-                    });
-                    chip.style.marginLeft = 6; chip.style.marginRight = 8;
-                    wrap.Add(chip);
+                        RescanLater();
+                    }, legacy ? "Makes it YAPS in place, keeping the author's values." : "Adds the component that makes it editable here."));
                 }
-                _foundBody.Add(wrap);
-                alt = !alt;
+
+                var row = BridgeElements.ReportRow(tone, what + ": " + title, string.Join(" · ", detail), actions.ToArray());
+                SelectOnClick(row, f);
+                rows.Add(row);
             }
             // Each plug, then the meshes it carries, so "part of" sits under
             // the thing it is part of.
@@ -603,6 +604,18 @@ namespace AvatarBridge
                 Row(f);
             }
             foreach (var f in _scan.Sockets) Row(f);
+            if (rows.Count > 0) _foundBody.Add(BridgeElements.ReportList(rows));
+        }
+
+        // A row selects what it lists. Its chips are Buttons with their own job.
+        static void SelectOnClick(VisualElement row, YapsScanner.Found f)
+        {
+            row.RegisterCallback<ClickEvent>(e =>
+            {
+                if (e.target is Button || f.Root == null) return;
+                Selection.activeTransform = f.Root;
+                EditorGUIUtility.PingObject(f.Root);
+            });
         }
 
         // Puts the authoring component on a found plug or socket that has none.
@@ -650,7 +663,7 @@ namespace AvatarBridge
                 // the bare Bake.
                 var o = YapsNativeBuilder.BakeAndRefreshMenu(plug);
                 if (!o.Ok) Debug.LogError("[YAPS] " + o.Message);
-                _summary.text = o.Message + (o.Notes.Count > 0 ? "  " + string.Join(" ", o.Notes) : "");
+                Say(_addStatus, o.Ok ? Tone.Good : Tone.Bad, o.Message, o.Notes);
             }
         }
 
@@ -693,15 +706,17 @@ namespace AvatarBridge
                     rootBone = go.transform;
                     if (renderer == null)
                     {
-                        _summary.text = $"No skinned mesh has vertices weighted to \"{go.name}\" or the bones under it. " +
-                                        "Select the plug mesh itself instead, or the bone its shaft is actually skinned to.";
+                        _addStatus.Set($"No skinned mesh has vertices weighted to \"{go.name}\" or the bones under it. " +
+                                       "Select the plug mesh itself instead, or the bone its shaft is actually skinned to.",
+                                       Tone.Warn);
                         return;
                     }
                 }
             }
             if (renderer == null)
             {
-                _summary.text = "Select the mesh that should bend, or the bone the shaft grows from, in the Hierarchy, then press this.";
+                _addStatus.Set("Select the mesh that should bend, or the bone the shaft grows from, in the Hierarchy, then press this.",
+                               Tone.Warn);
                 return;
             }
             var plug = go.GetComponent<YapsPlug>();
@@ -728,18 +743,18 @@ namespace AvatarBridge
             }
             var o = YapsNativeBuilder.BakeAndRefreshMenu(plug);
             if (!o.Ok) Debug.LogError("[YAPS] " + o.Message);
-            if (_target == null) _picker.value = YapsSocketEditor.AvatarRootOf(go.transform).gameObject;
+            if (_target == null) Pick(YapsSocketEditor.AvatarRootOf(go.transform).gameObject);
             Rescan();
-            _summary.text = o.Message + (o.Notes.Count > 0 ? "  " + string.Join(" ", o.Notes) : "");
+            Say(_addStatus, o.Ok ? Tone.Good : Tone.Bad, o.Message, o.Notes);
         }
 
-        void MakeProp(GameObject root)
+        void MakeProp(GameObject root, BridgeElements.NoticeBox status)
         {
             var o = YapsPropBuilder.MakeProp(root);
             if (!o.Ok) Debug.LogError("[YAPS] " + o.Message);
-            if (o.Ok && _target == null) _picker.value = root;
+            if (o.Ok && _target == null) Pick(root);
             Rescan();
-            _summary.text = o.Message + (o.Notes.Count > 0 ? "  " + string.Join(" ", o.Notes) : "");
+            Say(status, o.Ok ? Tone.Good : Tone.Warn, o.Message, o.Notes);
         }
 
         void BuildAll()
@@ -784,7 +799,6 @@ namespace AvatarBridge
             Rescan();
             string headline = $"Built {plugsOk} of {plugsTried} plug{(plugsTried == 1 ? "" : "s")} and " +
                               $"{socketsBuilt} socket{(socketsBuilt == 1 ? "" : "s")}.";
-            _summary.text = headline + "  The Build card below says what it did.";
             ShowBuildLog(headline, lines);
         }
 
@@ -795,31 +809,32 @@ namespace AvatarBridge
             if (_buildLog == null) return;
             _buildLog.Clear();
             _buildLog.Add(BridgeElements.SubHeading("What Build did"));
-            _buildLog.Add(new HelpBox(headline + (lines.Count == 0
-                ? " Nothing needed doing."
-                : $" {lines.Count} note(s) below, and the same lines are in the Console."),
-                lines.Any(l => l.StartsWith("✗")) ? HelpBoxMessageType.Warning : HelpBoxMessageType.Info));
+            _buildLog.Add(BridgeElements.Notice(lines.Any(l => l.StartsWith("✗")) ? Tone.Warn : Tone.Good,
+                headline + (lines.Count == 0
+                    ? " Nothing needed doing."
+                    : $" {lines.Count} note(s) below, and the same lines are in the Console.")));
 
-            bool alt = false;
+            var rows = new List<VisualElement>();
             foreach (var line in lines)
             {
-                var colour = line.StartsWith("✗") ? BridgeTheme.Bad
-                           : line.StartsWith("⚠") || line.Contains("⚠") ? BridgeTheme.Warn
-                           : BridgeTheme.Good;
+                // An unmarked line is a note, never a success.
+                var tone = line.StartsWith("✗") ? Tone.Bad
+                         : line.Contains("⚠") ? Tone.Warn
+                         : line.StartsWith("✓") ? Tone.Good
+                         : Tone.Muted;
                 string text = line.TrimStart('✓', '✗', '⚠', ' ');
                 int cut = text.IndexOf(':');
                 string what = cut > 0 && cut < 40 ? text.Substring(0, cut) : "Build";
                 string rest = cut > 0 && cut < 40 ? text.Substring(cut + 1).Trim() : text;
-                _buildLog.Add(BridgeElements.ReportRow(colour == BridgeTheme.Bad ? "failed" : "done",
-                    what, rest, colour, alt));
-                alt = !alt;
+                rows.Add(BridgeElements.ReportRow(tone, tone == Tone.Bad ? "Failed: " + what : what, rest));
                 Debug.Log("[YAPS] " + line);
             }
+            if (rows.Count > 0) _buildLog.Add(BridgeElements.ReportList(rows));
 
             // Where the files went, and a way to get there.
             string dir = YapsNativeBuilder.OutputRoot + "/" + (_target != null ? _target.name : "");
             _buildLog.Add(BridgeElements.Hint("Generated materials, bakes and clips are in " + dir + "."));
-            _buildLog.Add(BridgeElements.Row(Btn("Show me the files", () =>
+            _buildLog.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Show me the files", () =>
             {
                 var folder = AssetDatabase.LoadAssetAtPath<Object>(dir)
                              ?? AssetDatabase.LoadAssetAtPath<Object>(YapsNativeBuilder.OutputRoot);
