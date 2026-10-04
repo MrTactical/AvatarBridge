@@ -4,6 +4,7 @@
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using ABI.CCK.Components;
 using UnityEditor;
 using UnityEditor.Animations;
@@ -85,6 +86,19 @@ namespace AvatarBridge
             });
             pick.Body.Add(picker);
             if (_target == null) pick.Body.Add(BridgeElements.Hint("Drag the avatar or prop here from the Hierarchy. Every card below acts on it."));
+            // By name, as the link below is: the tester is the one window here that can be absent.
+            var tester = typeof(ToolkitPanel).Assembly.GetType("AvatarBridge.CckAnimatorTester", false);
+            var avatarHere = _target != null ? _target.GetComponent<CVRAvatar>() : null;
+            if (tester != null && avatarHere != null)
+            {
+                var open = new Button(() => tester.GetMethod("OpenFor", BindingFlags.NonPublic | BindingFlags.Static)?.Invoke(null, new object[] { avatarHere }))
+                {
+                    text = "Open in the CCK Animator Tester",
+                    tooltip = "Opens the tester already pointed at this avatar: gestures, menu, face, physics, played the way the game does.",
+                };
+                open.style.marginTop = 4;
+                pick.Body.Add(BridgeElements.Row(open));
+            }
             _pages.Add(pick);
 
             var tools = new BridgeElements.Card("Tools", null, null, null, 0.5f);

@@ -499,6 +499,13 @@ namespace AvatarBridge
             {
                 Hold(_heldPoint - _heldBone.position);
             }
+#if AVATARBRIDGE_MAGICA
+            if (_flung != null)
+            {
+                if (Time.time < _flungUntil) Push(_flung, _flungVelocity, Mathf.Min(_flungVelocity.magnitude, 25f));
+                else _flung = null;
+            }
+#endif
 #if AVATARBRIDGE_DYNBONE
             else if (_forced != null)
             {
@@ -640,10 +647,19 @@ namespace AvatarBridge
             Handles.Label(hoveredBone.position, chains > 1 ? $"{hovered.name}: {chains} chains move together" : hovered.name);
         }
 
+        // What a pick may take hold of. A root never moves, so a pull on it
+        // pulls at nothing at full force for as long as it is held: one is
+        // offered only on a chain with no other bone.
+        internal static List<Transform> Grabbable(Component c)
+        {
+            var roots = Roots(c);
+            var bones = ChainBones(c);
+            var free = bones.Where(t => !roots.Contains(t)).ToList();
+            return free.Count > 0 ? free : bones;
+        }
+
         // The chain bone nearest the cursor, within a reach that does not steal
-        // clicks meant for the rest of the Scene view. A root never moves, so a
-        // pull on it pulls at nothing at full force for as long as it is held:
-        // one is picked only on a chain with no other bone. Bones within a few
+        // clicks meant for the rest of the Scene view. Bones within a few
         // pixels of the nearest go to the one nearer the camera, so a chain in
         // front wins over one behind it. Measured from the nearest, never from
         // the pick so far, or a row of close bones walks the pick off the cursor.
@@ -654,12 +670,8 @@ namespace AvatarBridge
             var near = new List<(Component chain, Transform bone, float d, float z)>();
             foreach (var c in Chains(avatar).Where(Running))
             {
-                var roots = Roots(c);
-                var bones = ChainBones(c);
-                bool free = bones.Any(t => !roots.Contains(t));
-                foreach (var t in bones)
+                foreach (var t in Grabbable(c))
                 {
-                    if (free && roots.Contains(t)) continue;
                     var at = HandleUtility.WorldToGUIPointWithDepth(t.position);
                     float d = Vector2.Distance(at, mouse);
                     if (at.z > 0f && d < reach) near.Add((c, t, d, at.z));
@@ -710,10 +722,24 @@ namespace AvatarBridge
 #endif
         }
 
+#if AVATARBRIDGE_MAGICA
+        // MagicaCloth applies a pushed force only in a frame that runs a simulation step (90 Hz)
+        // and clears it at the end of every frame, so a one-frame fling at 300 fps was usually
+        // thrown away (measured, PhysicsTesterProbe). It is re-sent for a little over one step.
+        MagicaCloth _flung;
+        Vector3 _flungVelocity;
+        float _flungUntil;
+#endif
+
         void LetGo()
         {
 #if AVATARBRIDGE_MAGICA
-            if (_held is MagicaCloth cloth) Push(cloth, _flingVelocity, Mathf.Min(_flingVelocity.magnitude, 25f));
+            if (_held is MagicaCloth cloth)
+            {
+                _flung = cloth;
+                _flungVelocity = _flingVelocity;
+                _flungUntil = Time.time + 1.5f / 90f;
+            }
 #endif
 #if AVATARBRIDGE_DYNBONE
             // A displacement of v/60 in one step adds v at 60 Hz; a linear fade
@@ -1003,18 +1029,10 @@ namespace AvatarBridge
             var drawn = new HashSet<Component>();
             foreach (var chain in Chains(avatar))
             {
-                var excluded = Excluded(chain);
-                var strain = new Strain();
-                Transform first = null;
-                foreach (var root in Roots(chain))
-                {
-                    if (first == null) first = root;
-                    var rest = root.localToWorldMatrix;
-                    float length = Reach(root, rest, excluded);
-                    Walk(root, rest, 0, 0f, length, excluded, ref strain, Drawer(chain, root, length));
-                }
+                var health = Health(chain, draw: true);
                 DrawColliders(chain, drawn);
-                judged.Add((chain, first != null ? first.position : chain.transform.position, Judge(chain, strain)));
+                var roots = Roots(chain);
+                judged.Add((chain, roots.Count > 0 ? roots[0].position : chain.transform.position, health));
             }
             // Worst first, so a crowd leaves out the healthy and the switched
             // off, never the chain in trouble. Stable, so ties keep hierarchy order.
@@ -1031,10 +1049,7 @@ namespace AvatarBridge
             // Off screen, a label is only clutter piled at the edge.
             var view = camera.WorldToViewportPoint(at);
             if (view.z <= 0f || view.x < 0f || view.x > 1f || view.y < 0f || view.y > 1f) return;
-            // The reason first and bracketed: at the end it read as one of the
-            // values ("col 3  off").
-            string text = chain.name.Replace("MagicaCloth_", "").Replace("DynamicBone_", "") +
-                          (health.why != null ? $"  [{health.why}]" : "") + "  " + Readout(chain);
+            string text = LabelText(chain, health.why);
             var style = EditorStyles.whiteMiniLabel;
             var size = style.CalcSize(new GUIContent(text));
             var point = HandleUtility.WorldToGUIPoint(at);
@@ -1060,6 +1075,27 @@ namespace AvatarBridge
             EditorGUI.DrawRect(new Rect(rect.x, rect.y, 3f, rect.height), health.colour);
             GUI.Label(new Rect(rect.x + 5f, rect.y, size.x, rect.height), text, style);
             Handles.EndGUI();
+        }
+
+        // The reason first and bracketed: at the end it read as one of the
+        // values ("col 3  off").
+        internal static string LabelText(Component chain, string why) =>
+            chain.name.Replace("MagicaCloth_", "").Replace("DynamicBone_", "") +
+            (why != null ? $"  [{why}]" : "") + "  " + Readout(chain);
+
+        // Measured against where the chain hangs at rest. With draw, each
+        // bone's swing bound, or a DynamicBone's bones and radius, on the way.
+        internal (Color colour, string why, int rank) Health(Component chain, bool draw = false)
+        {
+            var excluded = Excluded(chain);
+            var strain = new Strain();
+            foreach (var root in Roots(chain))
+            {
+                var rest = root.localToWorldMatrix;
+                float length = Reach(root, rest, excluded);
+                Walk(root, rest, 0, 0f, length, excluded, ref strain, draw ? Drawer(chain, root, length) : null);
+            }
+            return Judge(chain, strain);
         }
 
         // Red: a bone gone invalid, or thrown past twice the chain's length from

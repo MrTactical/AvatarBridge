@@ -33,6 +33,15 @@ namespace AvatarBridge
             window.minSize = new Vector2(360, 420);
         }
 
+        // From the Toolkit, already pointed at its avatar.
+        static void OpenFor(CVRAvatar avatar)
+        {
+            Open();
+            var window = GetWindow<CckAnimatorTester>();
+            window._override = avatar;
+            window.Rebuild();
+        }
+
         static readonly string[] VisemeNames =
         {
             "sil", "PP", "FF", "TH", "DD", "kk", "CH", "SS",

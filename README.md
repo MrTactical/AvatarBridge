@@ -1473,7 +1473,9 @@ in a ChilloutVR project and these cards work on their own; see [Installation](#i
 | **Store description** | Writes the [description](#store-description) from what the avatar has, types it into the upload page when that window is open and its Description box is empty, and copies it to the clipboard either way |
 | **Merge animators** | Any sources into a target: every layer and parameter deep-copied, layers after the target's own, same-named layers renamed, a parameter present in both with different types named and the target's type kept. Written to a copy beside the target by default; sources are never edited |
 
-The Toolkit ships with the converter and links to it and to the CCK Animator Tester. YAPS is a
+The Toolkit ships with the converter and links to it and to the CCK Animator Tester; with a
+ChilloutVR avatar picked, **Open in the CCK Animator Tester** opens the tester already pointed at
+it. YAPS is a
 separate 18+ add-on: the Toolkit links to its window when it is installed, and to where to get it
 when it is not. The Toolkit lives in its own window because a general utility should not require
 opening a penetration tool.
