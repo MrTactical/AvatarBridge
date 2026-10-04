@@ -2056,12 +2056,12 @@ Two report lines cover the other version, and they mean opposite things:
 | The report says | What it means |
 |---|---|
 | animate paths that were **already missing in VRChat** | Not a problem. Silent there too; nothing was lost |
-| **LOST** paths that existed before conversion | Real. A stripped system (GoGo, SPS) is the innocent cause: turn that strip off and check. Anything else is a bug |
+| **LOST** paths that existed before conversion | Real, and a bug: objects removed with a stripped system are not counted here. Please report it |
 
 Clips that switch a **constraint** on and off split the same three ways: *repointed at the Unity
 constraints* (working), *drove a constraint that was never built* (check your bake: a partial
 VRCFury/MA bake generates some constraint sets and not others), and *drove a constraint on an object
-that is now gone* (a stripped system, or a bug).
+that is now gone* (a bug: objects removed with a stripped system are not counted. Please report it).
 
 **Locked Poiyomi/Thry shaders** bake any property not flagged animated *at lock time* into the shader
 and delete it, so writing to it goes nowhere. **Fix it in Poiyomi's own material inspector**: unlock,

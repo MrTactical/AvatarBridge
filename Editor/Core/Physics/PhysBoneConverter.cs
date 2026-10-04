@@ -345,7 +345,8 @@ namespace AvatarBridge
                     {
                         var chain = PhysBoneChainData.Read(pb, ctx.TargetAnimator, !ctx.Settings.convertToePhysBones);
                         if (SkipToeChain(ctx, chain) || SkipConstraintDrivenChain(ctx, chain, drivenM)
-                            || SkipSquishOnlyChain(ctx, chain) || SkipHelperRigChain(ctx, chain, skinnedM))
+                            || SkipSquishOnlyChain(ctx, chain, skinnedM, drivenM)
+                            || SkipHelperRigChain(ctx, chain, skinnedM))
                         {
                             continue;
                         }
@@ -376,7 +377,8 @@ namespace AvatarBridge
                     {
                         var dbChain = PhysBoneChainData.Read(pb, ctx.TargetAnimator, !ctx.Settings.convertToePhysBones);
                         if (SkipToeChain(ctx, dbChain) || SkipConstraintDrivenChain(ctx, dbChain, drivenD)
-                            || SkipSquishOnlyChain(ctx, dbChain) || SkipHelperRigChain(ctx, dbChain, skinnedD))
+                            || SkipSquishOnlyChain(ctx, dbChain, skinnedD, drivenD)
+                            || SkipHelperRigChain(ctx, dbChain, skinnedD))
                         {
                             continue;
                         }
@@ -486,7 +488,8 @@ namespace AvatarBridge
             if (HelperRigCleanup.HoldsContent(chain.Root)) return false;
 
             ctx.Report.Skipped(Category, ctx.PathInTarget(chain.Root),
-                "A helper stage that skins no mesh. A later pass puts one chain on the bone it drove.");
+                "A helper stage that skins no mesh. If a constraint carried its motion onto a bone, a later " +
+                "pass puts one chain there.");
             ctx.HelperRigChains.Add(new BridgeContext.HelperRigChain
             {
                 Root = chain.Root,
@@ -510,18 +513,58 @@ namespace AvatarBridge
         // stiffness are left alone; they lose the squish and keep the swing
         // they were also doing. So are chains with pull below 1 or any
         // gravity: spring 0 only removes momentum, and those still lag and hang.
-        static bool SkipSquishOnlyChain(BridgeContext ctx, PhysBoneChainData chain)
+        //
+        // Unless nothing anyone sees moves with them. A grab-and-stretch
+        // handle is built that way, and its stretch drives the animator. Let
+        // through, it skins no mesh, so the helper-rig path took it, deleted
+        // it with the empty bones around it, and reported a cascade.
+        static bool SkipSquishOnlyChain(BridgeContext ctx, PhysBoneChainData chain, HashSet<Transform> skinned,
+            Dictionary<Transform, List<Component>> driven)
         {
             if (chain.Root == null) return false;
             if (chain.MaxStretch <= 0f && chain.MaxSquish <= 0f) return false;
             if (chain.Spring > 0.01f || chain.Stiffness > 0.01f) return false;
-            if (chain.Pull < 0.99f || Mathf.Abs(chain.Gravity) > 0.01f) return false;
+            if (chain.Pull < 0.99f || Mathf.Abs(chain.Gravity) > 0.01f)
+            {
+                if (MovesSomething(chain.Root, skinned, driven)) return false;
+                ctx.Report.Skipped(Category, chain.Root.name,
+                    $"Moves nothing rendered (max stretch {chain.MaxStretch:0.##}, pull {chain.Pull:0.##}, gravity " +
+                    $"{chain.Gravity:0.##}): no mesh is weighted to it, nothing visible sits under it, and no " +
+                    "constraint carries its motion to either. No cloth made; its bones are left as they were.");
+                return true;
+            }
 
             ctx.Report.Skipped(Category, chain.Root.name,
                 $"Stretch and squish were all this chain did (max stretch {chain.MaxStretch:0.##}, max squish " +
                 $"{chain.MaxSquish:0.##}, pull {chain.Pull:0.##}, spring {chain.Spring:0.##}, stiffness " +
                 $"{chain.Stiffness:0.##}, gravity {chain.Gravity:0.##}), which neither solver can do. No cloth made.");
             return true;
+        }
+
+        // A mesh weighted to the chain, content under it, or a constraint
+        // relaying its motion onto either. Relays are followed through empty
+        // bones in between: a staged rig reaches the mesh in several hops, and
+        // a relay onto an empty bone alone moves nothing.
+        static bool MovesSomething(Transform root, HashSet<Transform> skinned,
+            Dictionary<Transform, List<Component>> driven)
+        {
+            if (HelperRigCleanup.HoldsContent(root)) return true;
+            var reached = new HashSet<Transform>(root.GetComponentsInChildren<Transform>(true));
+            if (reached.Overlaps(skinned)) return true;
+            for (bool grew = true; grew;)
+            {
+                grew = false;
+                foreach (var relay in driven)
+                {
+                    if (reached.Contains(relay.Key)
+                        || !relay.Value.Any(c => AvatarFeatureDetect.ConstraintSources(c).Any(reached.Contains))) continue;
+                    var moved = relay.Key.GetComponentsInChildren<Transform>(true);
+                    if (moved.Any(skinned.Contains) || HelperRigCleanup.HoldsContent(relay.Key)) return true;
+                    reached.UnionWith(moved);
+                    grew = true;
+                }
+            }
+            return false;
         }
 
         // Every constraint on the avatar, keyed by the transform it WRITES. A

@@ -581,19 +581,39 @@ namespace AvatarBridge.Regression
                 return;
             }
             int findings;
+            // Exceptions a state behaviour throws inside Animator.Update are logged, not
+            // thrown, and the write it was making is lost. Types only, so digests stay stable.
+            var thrown = new SortedSet<string>(StringComparer.Ordinal);
+            Application.LogCallback note = (condition, stack, type) =>
+            {
+                if (type == LogType.Exception) thrown.Add(condition.Split(':')[0]);
+            };
+            Application.logMessageReceived += note;
             try
             {
                 findings = ToggleSweep.Sweep(target);
             }
             catch (Exception e)
             {
+                // The digest keeps the type; the stack goes to the log, or the next one is a guess.
+                Debug.LogException(e);
                 sb.Append("failed: ").Append(e.GetType().Name).Append('\n').Append('\n');
                 return;
+            }
+            finally
+            {
+                Application.logMessageReceived -= note;
             }
             var r = ToggleSweep.LastResult;
             if (findings < 0)
             {
                 sb.Append("skipped: no controller\n\n");
+                return;
+            }
+            // Zero swept printed as params=0 ... invalid=0, which read as clean.
+            if (r.Parameters == 0)
+            {
+                sb.Append("skipped: no user-facing parameters\n\n");
                 return;
             }
             sb.Append($"params={r.Parameters} responded={r.Responded} stuck={r.Stuck?.Count ?? 0} " +
@@ -605,6 +625,10 @@ namespace AvatarBridge.Regression
             foreach (var name in (r.Refused ?? new List<string>()).OrderBy(n => n, StableSampleOrder.Instance))
             {
                 sb.Append("  refused ").Append(name).Append('\n');
+            }
+            if (thrown.Count > 0)
+            {
+                sb.Append("  threw while driving, writes lost: ").Append(string.Join(", ", thrown)).Append('\n');
             }
             sb.Append('\n');
         }

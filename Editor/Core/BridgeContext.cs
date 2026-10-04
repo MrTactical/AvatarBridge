@@ -71,6 +71,15 @@ namespace AvatarBridge
         // No snapshot: never claim the conversion broke a path.
         public bool ResolvedInSource(string path) =>
             SourcePaths != null && !string.IsNullOrEmpty(path) && SourcePaths.Contains(path);
+
+        // Roots of the trees a pass deleted on purpose with the system they
+        // served. Their curves are dead by design: neither a loss to report
+        // nor a path to repair onto whatever shares the name.
+        public List<string> RemovedPaths = new List<string>();
+
+        public bool RemovedOnPurpose(string path) =>
+            !string.IsNullOrEmpty(path) && RemovedPaths.Any(r => path == r
+                || path.StartsWith(r + "/", StringComparison.Ordinal));
 #endif
 
         public GameObject Target;

@@ -916,7 +916,7 @@ namespace AvatarBridge
                 {
                     continue; // died with a parent
                 }
-                UnityEngine.Object.DestroyImmediate(transform.gameObject);
+                Delete(ctx, transform.gameObject);
                 removed++;
             }
             ctx.Report.Converted(Category, $"Removed the avatar's VRChat face-tracking rig: {removed} object(s)",
@@ -948,7 +948,7 @@ namespace AvatarBridge
             {
                 if (transform != null)
                 {
-                    UnityEngine.Object.DestroyImmediate(transform.gameObject);
+                    Delete(ctx, transform.gameObject);
                     removed++;
                 }
             }
@@ -1006,7 +1006,7 @@ namespace AvatarBridge
                 if (!string.IsNullOrEmpty(pointer.type) &&
                     pointerPrefixes.Any(p => pointer.type.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
                 {
-                    RemoveWithBareHost(pointer, bones);
+                    RemoveWithBareHost(ctx, pointer, bones);
                     removed++;
                 }
             }
@@ -1019,7 +1019,7 @@ namespace AvatarBridge
                     .ToList();
                 if (names.Count > 0 && names.All(isStripped))
                 {
-                    RemoveWithBareHost(trigger, bones);
+                    RemoveWithBareHost(ctx, trigger, bones);
                     removed++;
                 }
             }
@@ -1027,7 +1027,7 @@ namespace AvatarBridge
             {
                 if (exclusion.target == null)
                 {
-                    RemoveWithBareHost(exclusion, bones);
+                    RemoveWithBareHost(ctx, exclusion, bones);
                     removed++;
                 }
             }
@@ -1042,15 +1042,23 @@ namespace AvatarBridge
         // everything under it, wherever the source authored one of these on
         // a bone. The converter's own hosts are a childless object holding a
         // trigger collider, so they still go whole.
-        static void RemoveWithBareHost(Component component, HashSet<Transform> bones)
+        static void RemoveWithBareHost(BridgeContext ctx, Component component, HashSet<Transform> bones)
         {
             var host = component.gameObject;
             UnityEngine.Object.DestroyImmediate(component);
             if (host.transform.childCount == 0 && !bones.Contains(host.transform)
                 && host.GetComponents<Component>().All(c => c is Transform || c is Collider))
             {
-                UnityEngine.Object.DestroyImmediate(host);
+                Delete(ctx, host);
             }
+        }
+
+        // Recorded, so the clip audits count its curves as gone with the
+        // system rather than lost, and the path repair leaves them dead.
+        static void Delete(BridgeContext ctx, GameObject doomed)
+        {
+            ctx.RemovedPaths.Add(BridgeContext.RelativePath(ctx.Target.transform, doomed.transform));
+            UnityEngine.Object.DestroyImmediate(doomed);
         }
 
         static HashSet<Transform> SkinBones(GameObject root) =>

@@ -812,7 +812,7 @@ namespace AvatarBridge
             return target != null ? target : component.transform;
         }
 
-        static IEnumerable<Transform> ConstraintSources(Component component)
+        internal static IEnumerable<Transform> ConstraintSources(Component component)
         {
             if (component is UnityEngine.Animations.IConstraint unity)
             {

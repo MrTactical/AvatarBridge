@@ -291,6 +291,12 @@ namespace AvatarBridge
                     }
                     if (replacement == null)
                     {
+                        // Deleted with a stripped system: dead by design, and
+                        // already reported where the system was removed.
+                        if (ctx.RemovedOnPurpose(binding.path))
+                        {
+                            continue;
+                        }
                         // Two different situations. Object missing:
                         // this conversion removed it. Object present but
                         // constraint-less: nothing ever put one there,
@@ -385,7 +391,8 @@ namespace AvatarBridge
             {
                 ctx.Report.Warning(Category,
                     $"{lost.Count} curve(s) drove a constraint on an object that is now GONE",
-                    "Usually a removed system (GoGo, SPS) took it; if not, please report it: " +
+                    "Objects removed with a stripped system are not counted here, so this is unexpected. " +
+                    "Please report it: " +
                     string.Join("; ", lost) + ".");
             }
             if (movedByBake.Count > 0)

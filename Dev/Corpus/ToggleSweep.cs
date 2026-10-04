@@ -5,6 +5,8 @@ using UnityEditor;
 using UnityEditor.Animations;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Animations;
+using UnityEngine.Playables;
 using ABI.CCK.Components;
 using VRC.SDK3.Avatars.Components;
 
@@ -157,6 +159,20 @@ namespace AvatarBridge.Regression
             animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
             animator.Rebind();
             Settle(animator, Warmup);
+
+            // A graph bound to the animator trips VRCFury's parameter shims, and the CCK
+            // driver's SetFloat goes through them too, so its writes are lost. Named here
+            // because nothing in the converter creates one.
+            if (animator.hasBoundPlayables)
+            {
+                var bound = UnityEditor.Playables.Utility.GetAllGraphs()
+                    .Where(g => g.IsValid())
+                    .SelectMany(g => Enumerable.Range(0, g.GetOutputCountByType<AnimationPlayableOutput>())
+                        .Select(i => (AnimationPlayableOutput)g.GetOutputByType<AnimationPlayableOutput>(i))
+                        .Where(o => o.IsOutputValid() && o.GetTarget() == animator)
+                        .Select(o => g.GetEditorName() + (o.GetSourcePlayable().IsNull() ? " (no source)" : "")));
+                Debug.Log($"[Sweep] graphs bound to the animator: {string.Join(", ", bound)}");
+            }
 
             // What the animator has actually made of the physics once it has settled, which is a
             // different question from what the prefab was saved as. A cloth saved disabled whose
@@ -317,7 +333,7 @@ namespace AvatarBridge.Regression
                 {
                     continue;
                 }
-                float weight = i == 0 ? 1f : animator.GetLayerWeight(i);
+                float weight = i == 0 ? 1f : LayerWeight(animator, i);
                 if (weight < 0.5f || layer.blendingMode == AnimatorLayerBlendingMode.Additive)
                 {
                     continue;
@@ -409,6 +425,23 @@ namespace AvatarBridge.Regression
                 }
             }
             return findings;
+        }
+
+        // VRCFury replaces Animator.GetLayerWeight with a playable lookup that
+        // throws ArgumentNullException once a graph bound to the animator has an
+        // output with no source, and that aborted whole sweeps. Its own fallback
+        // is used then, so the reading matches every avatar the lookup survives.
+        static float LayerWeight(Animator animator, int layer)
+        {
+            try
+            {
+                return animator.GetLayerWeight(layer);
+            }
+            catch (System.ArgumentNullException)
+            {
+                var direct = animator.runtimeAnimatorController as AnimatorController;
+                return direct != null ? direct.layers[layer].defaultWeight : 1f;
+            }
         }
 
         static void Drive(AnimatorController controller, Animator animator, string name, float value)

@@ -8390,7 +8390,7 @@ namespace AvatarBridge
                     // Only a path this conversion broke. One already dead in
                     // the source did nothing in VRChat, and a repair would make
                     // it live on an object it was never written for.
-                    if (!ctx.ResolvedInSource(binding.path))
+                    if (!ctx.ResolvedInSource(binding.path) || ctx.RemovedOnPurpose(binding.path))
                     {
                         return;
                     }
@@ -8643,7 +8643,9 @@ namespace AvatarBridge
                         continue;
                     }
                     total++;
-                    if (!Resolves(binding.path))
+                    // Deleted with a stripped system: dead by design, and
+                    // already reported where the system was removed.
+                    if (!Resolves(binding.path) && !ctx.RemovedOnPurpose(binding.path))
                     {
                         dead++;
                         example = example ?? binding.path;
@@ -8686,8 +8688,8 @@ namespace AvatarBridge
                     .Select(b => $"\"{b.clip}\" ({b.dead} of {b.total}, e.g. \"{b.example}\")");
                 ctx.Report.Warning(Category,
                     $"{lostClips.Count} clip(s) LOST paths that existed before conversion",
-                    string.Join("; ", lostLines) + (lostClips.Count > 8 ? "; …" : "") + ". Usually a removed " +
-                    "system (GoGo, SPS) took them; if not, please report it.");
+                    string.Join("; ", lostLines) + (lostClips.Count > 8 ? "; …" : "") + ". Objects removed with a " +
+                    "stripped system are not counted here, so this is unexpected: please report it.");
             }
 
             if (broken.Count == 0)
@@ -9104,9 +9106,13 @@ namespace AvatarBridge
             return dropped.Count;
         }
 
+        // Exact hand names, not IsHandLayer. A numbered duplicate is the
+        // avatar's own extra gesture layer and still needs the toggle passes,
+        // above all the AnyState self-restart suppression. Only the finger
+        // checks treat it as a hand layer.
         static bool IsProtectedLayer(string name)
         {
-            return name == "Locomotion/Emotes" || IsHandLayer(name)
+            return name == "Locomotion/Emotes" || name == "LeftHand" || name == "RightHand"
                    || name == "Size" || name == "Linear Smoothing Layer"
                    || name.StartsWith("[FT] ");
         }

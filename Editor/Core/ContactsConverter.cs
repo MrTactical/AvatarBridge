@@ -483,6 +483,12 @@ namespace AvatarBridge
 
                     if (!ctx.ContactHosts.TryGetValue((binding.path, sender), out var hosts))
                     {
+                        // Deleted with a stripped system: dead by design, and
+                        // already reported where the system was removed.
+                        if (ctx.RemovedOnPurpose(binding.path))
+                        {
+                            continue;
+                        }
                         // The contact this drove was skipped rather than converted.
                         dropped.Add($"\"{clip.name}\" -> {binding.path} ({binding.propertyName})");
                         continue;
@@ -538,7 +544,8 @@ namespace AvatarBridge
         // binding sets layers fighting, so each is settled by what it
         // says across all its clips, against the zone's rest state:
         //   on and off  -> a real toggle, left alone.
-        //   rest only   -> Write Defaults residue. Stripped.
+        //   rest only   -> Write Defaults residue. Stripped, unless every
+        //                  toggle sits above it: then it is their restore.
         //   away only   -> nothing takes it back. Plain states get the
         //                  rest value written; a tree's turn-off goes.
         internal static void BalanceRewiredZoneCurves(BridgeContext ctx)
@@ -564,8 +571,16 @@ namespace AvatarBridge
             int balanced = 0;
             int stripped = 0;
             int layersTouched = 0;
-            foreach (var layer in ctx.MergedController.layers)
+            // Every layer is read twice. The first round only records which
+            // layers move each zone, so a layer asserting rest can tell a
+            // toggle below it from one above it.
+            var layers = ctx.MergedController.layers;
+            var movers = new Dictionary<UnityEditor.EditorCurveBinding, List<int>>();
+            for (int step = 0; step < layers.Length * 2; step++)
             {
+                int index = step % layers.Length;
+                bool recordOnly = step < layers.Length;
+                var layer = layers[index];
                 // A constant in an additive layer adds instead of asserting.
                 if (layer.blendingMode == UnityEditor.Animations.AnimatorLayerBlendingMode.Additive)
                 {
@@ -713,21 +728,41 @@ namespace AvatarBridge
                     }
                     bool switchesOn = top > 0.5f;
                     bool switchesOff = bottom <= 0.5f;
-                    if (switchesOn && switchesOff)
-                    {
-                        continue;   // a real toggle; it owns the zone
-                    }
                     // A zone whose contact shipped switched off rests off, so
                     // "on only" is its real switch rather than residue.
                     var t = BridgeContext.FindByAnimationPath(ctx.Target.transform, binding.path);
                     bool restsOn = t == null || t.gameObject.activeSelf;
+                    if (recordOnly)
+                    {
+                        if (restsOn ? switchesOff : switchesOn)
+                        {
+                            if (!movers.TryGetValue(binding, out var at))
+                            {
+                                movers[binding] = at = new List<int>();
+                            }
+                            at.Add(index);
+                        }
+                        continue;
+                    }
+                    if (switchesOn && switchesOff)
+                    {
+                        continue;   // a real toggle; it owns the zone
+                    }
                     if (switchesOn == restsOn)
                     {
                         // Asserts rest and nothing else: Write Defaults
                         // residue, and it overrides real toggles below it.
-                        foreach (var clip in owned)
+                        // Kept when every toggle sits above: then it is the
+                        // only write putting the zone back once that layer
+                        // stops switching it.
+                        bool restoresAbove = movers.TryGetValue(binding, out var moved)
+                            && moved.Any(i => i > index) && !moved.Any(i => i < index);
+                        if (!restoresAbove)
                         {
-                            stripPairs.Add((clip, binding));
+                            foreach (var clip in owned)
+                            {
+                                stripPairs.Add((clip, binding));
+                            }
                         }
                         continue;
                     }
@@ -752,7 +787,7 @@ namespace AvatarBridge
                         toFill.Add((binding, restsOn ? 1f : 0f));
                     }
                 }
-                if (stripPairs.Count == 0 && toFill.Count == 0)
+                if (recordOnly || (stripPairs.Count == 0 && toFill.Count == 0))
                 {
                     continue;
                 }

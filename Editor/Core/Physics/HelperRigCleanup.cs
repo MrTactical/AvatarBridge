@@ -289,6 +289,16 @@ namespace AvatarBridge
 
         static void Report(BridgeContext ctx, int dropped, int bones, string where)
         {
+            // No relay read from the rig, so there was no cascade to lose: say
+            // what was found rather than describe one.
+            if (dropped == 0)
+            {
+                ctx.Report.Warning(Category, $"{ctx.HelperRigChains.Count} chain(s) moved no mesh; no cloth made",
+                    "None is weighted to a mesh, nothing rendered sits under them, and no constraint reads them, " +
+                    "so a cloth there would move nothing. " +
+                    (bones > 0 ? $"Removed with them: {bones} transform(s)." : "Their bones are left in place."));
+                return;
+            }
             ctx.Report.Warning(Category, $"A physics addon did not survive conversion ({ctx.HelperRigChains.Count} chains)",
                 "Helper bones feeding each other through constraints, with no mesh on them. Cloth simulates each " +
                 "chain alone and would deform the body, so none was converted. " +

@@ -969,6 +969,36 @@ IK. Needs the reporter's SDK version, which bone, and what the wrong result actu
 
 ## Loose ends, small but real
 
+### Corpus 414 after the audit: four regressions found and fixed on dev, 2026-10-04
+
+Run 414 (YAPS profile) changed all 83 digests against 412, as a batch that size must. Every changed
+signature was accounted for. Most trace to intended fixes: the height scaler's parameters became local
+`#AvatarScaler/...` (the sweep's parameter count drops by exactly those three), false blend-tree
+warnings went, texture-cost wording changed, VRCFury's parameter-math layer carries the no-muscles mask,
+and rigid accessory chains that used to be deleted as helper rigs now get a cloth.
+
+Four were not intended, and each is fixed and verified on a subset (414s, 414b):
+- **"clip(s) LOST paths that existed before conversion"** appeared on 18 avatars. Every lost path sat
+  under a system the converter deletes on purpose (the world-scale detector of an SPS setup). The audit
+  had started seeing those paths correctly; deliberate deletions are now recorded
+  (`BridgeContext.RemovedPaths`, `SystemStripper.Delete`) and neither the clip audit, the path repair
+  (which could otherwise move such a curve onto an unrelated object of the same name), the constraint
+  report nor the contact report counts them.
+- **A contact toggle stuck its colliders off.** The new collider-curve mirror fed collider hosts into
+  the zone balance pass, which stripped the one lower-layer write that turned them back on. A rest-only
+  write is now kept when every layer that moves the binding sits above it.
+- **Numbered hand layers lost their AnyState self-restart guard** (and the other toggle passes) as a
+  side effect of the finger-mask fix. `IsProtectedLayer` is exact-name again; the finger fix lives in
+  the hand-pose audit and holds.
+- **Unskinned grab-and-stretch handles were deleted as helper rigs.** A chain that moves no rendered
+  vertex and drives no constraint is left alone again, and the helper-rig report no longer claims
+  constraints where none were removed.
+
+Also: the toggle sweep threw on 11 avatars in every run, so their toggles were never compared; it now
+sweeps them, and an avatar with nothing to sweep says so. Still open: one avatar's sweep now refuses
+`ScaleFactorInverse` where it refused `EyeHeightAsMeters`; both are game-driven, and the scaler change
+explains the swap, so it reads as expected but has not been traced line by line.
+
 ### The audit of 2026-10-03: about 210 findings fixed on dev, not verified in game
 
 **What was done.** A read of the whole codebase against its own claims, in four waves: 177 findings
