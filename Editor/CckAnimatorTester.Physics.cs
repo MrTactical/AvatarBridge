@@ -92,6 +92,7 @@ namespace AvatarBridge
         // The selected chain's panel, rebuilt only when the selection names another chain.
         VisualElement _selectedPanel;
         Component _selectedChain;
+        const string AdvancedKey = "AvatarBridge.Tester.AdvancedChainSettings";
         Component _pickedChain;
         BridgeElements.Card _selectedFold;
         BridgeElements.KeyValueRow _selectedHealth;
@@ -457,17 +458,40 @@ namespace AvatarBridge
             fold.Body.Add(BridgeElements.KeyValue("Colliders", ColliderCount(chain).ToString()));
 
             fold.Section("Settings");
-            // Bound, so an edit applies the Inspector's way and the edit poll lists it like one.
-            var so = new SerializedObject(chain);
-            var fields = new VisualElement();
-            foreach (var (path, label, tip) in Settings(chain))
+            // Simple is the handful people change while it plays; Advanced is the
+            // solver's own inspector, every setting it has, which applies live edits
+            // its own way. The edit poll sees both, so Keep works either way.
+            bool advanced = EditorPrefs.GetBool(AdvancedKey, false);
+            fold.Body.Add(new BridgeElements.Segmented(new[] { "Simple", "Advanced" }, advanced ? 1 : 0, i =>
             {
-                var field = BridgeElements.Bound(so, path, label, tip);
-                if (field != null) fields.Add(field);
+                EditorPrefs.SetBool(AdvancedKey, i == 1);
+                // The same chain again would keep its fields.
+                _selectedChain = null;
+                BridgeElements.Defer(_selectedPanel, ShowSelected);
+            }, new[]
+            {
+                "The settings people change most while it plays.",
+                $"Every setting {SolverName(chain)} has, through its own inspector.",
+            }));
+            if (advanced)
+            {
+                fold.Body.Add(new InspectorElement(chain));
+                fold.Body.Add(BridgeElements.Hint($"{SolverName(chain)}'s own inspector. Changes apply live."));
             }
-            fields.Bind(so);
-            fold.Body.Add(fields);
-            fold.Body.Add(BridgeElements.Hint("Changes apply live. Other settings are in the Inspector."));
+            else
+            {
+                // Bound, so an edit applies the Inspector's way and the edit poll lists it like one.
+                var so = new SerializedObject(chain);
+                var fields = new VisualElement();
+                foreach (var (path, label, tip) in Settings(chain))
+                {
+                    var field = BridgeElements.Bound(so, path, label, tip);
+                    if (field != null) fields.Add(field);
+                }
+                fields.Bind(so);
+                fold.Body.Add(fields);
+                fold.Body.Add(BridgeElements.Hint("Changes apply live. Advanced shows every setting."));
+            }
 
             _selectedKeep = BridgeElements.Btn("Keep", () =>
             {
