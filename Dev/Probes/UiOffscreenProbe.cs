@@ -6,7 +6,9 @@
 //
 // Run: Unity.exe -batchmode -projectPath <p> -executeMethod AvatarBridge.Regression.UiOffscreenProbe.Run
 //        -captureOut <dir> [-captureScene <Assets/...unity>] [-capturePrefab <Assets/...prefab>]
-//        [-captureWindows converter,toolkit,tester,yaps] [-captureHeight 2400]
+//        [-captureWindows converter,toolkit,tester,yaps] [-captureHeight 2600] [-capturePlay]
+// Each render is cropped to its content and cut into tiles about 1000 px tall, so a long
+// window reads at full size. -capturePlay then enters Play mode and renders the tester live.
 // Explore() lists the internal panel API, for when a Unity upgrade moves it.
 #if CVR_CCK_EXISTS
 using System;
@@ -21,9 +23,18 @@ using UnityEngine.UIElements;
 
 namespace AvatarBridge.Regression
 {
+    [InitializeOnLoad]
     public static class UiOffscreenProbe
     {
         class Owner : ScriptableObject { }
+
+        const string PlayKey = "UiOffscreenProbe.play";
+
+        static UiOffscreenProbe()
+        {
+            string pending = SessionState.GetString(PlayKey, "");
+            if (pending.Length > 0) EditorApplication.delayCall += () => ResumeInPlay(pending);
+        }
 
         static readonly (string key, string type, bool converted)[] Windows =
         {
@@ -85,8 +96,53 @@ namespace AvatarBridge.Regression
                 failed++;
                 Debug.LogException(e);
             }
+            if (Array.IndexOf(args, "-capturePlay") >= 0 && failed == 0)
+            {
+                SessionState.SetString(PlayKey, $"{outDir}|{width}|{height}");
+                EditorApplication.EnterPlaymode();
+                // A project with domain reload off for Play mode never reruns the static
+                // constructor, so the resume is also queued from here; whichever runs first wins.
+                EditorApplication.delayCall += () =>
+                {
+                    string pending = SessionState.GetString(PlayKey, "");
+                    if (pending.Length > 0) ResumeInPlay(pending);
+                };
+                return;
+            }
             Log(failed == 0 ? "done" : $"done with {failed} failure(s)");
             EditorApplication.Exit(failed == 0 ? 0 : 1);
+        }
+
+        // After the domain reload into Play: a few seconds for cloth to build, then the tester
+        // live, both skins.
+        static void ResumeInPlay(string pending)
+        {
+            SessionState.EraseString(PlayKey);
+            var parts = pending.Split('|');
+            double start = EditorApplication.timeSinceStartup;
+            void Step()
+            {
+                if (!EditorApplication.isPlaying && EditorApplication.timeSinceStartup - start > 180.0)
+                {
+                    Log("Play mode never started; giving up");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+                if (!EditorApplication.isPlaying || EditorApplication.timeSinceStartup - start < 4.0) return;
+                EditorApplication.update -= Step;
+                int failed = 0;
+                var type = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("AvatarBridge.CckAnimatorTester", false)).FirstOrDefault(t => t != null);
+                var avatar = UnityEngine.Object.FindObjectsOfType<CVRAvatar>().FirstOrDefault();
+                if (avatar != null) Selection.activeGameObject = avatar.gameObject;
+                foreach (bool light in new[] { false, true })
+                {
+                    try { Render(type, Path.Combine(parts[0], $"tester-play-{(light ? "light" : "dark")}.png"), int.Parse(parts[1]), int.Parse(parts[2]), light); }
+                    catch (Exception e) { failed++; Debug.LogException(e); }
+                }
+                Log(failed == 0 ? "done" : $"done with {failed} failure(s)");
+                EditorApplication.Exit(failed == 0 ? 0 : 1);
+            }
+            EditorApplication.update += Step;
         }
 
         static void Render(Type windowType, string file, int width, int height, bool light)
@@ -146,12 +202,54 @@ namespace AvatarBridge.Regression
             RenderTexture.active = was;
             rt.Release();
 
-            // Trim the empty tail so a short window is not a tall grey page.
-            float used = content.layout.height > 0 ? content.contentRect.height : height;
-            File.WriteAllBytes(file, tex.EncodeToPNG());
-            Log($"wrote {file} ({width}x{height}, content {used:0} tall)");
+            Save(tex, file, light ? new Color(0.784f, 0.784f, 0.784f) : new Color(0.22f, 0.22f, 0.22f));
             UnityEngine.Object.DestroyImmediate(window);
             UnityEngine.Object.DestroyImmediate(owner);
+        }
+
+        // Rows are bottom-up in the texture. A band of more than 40 rows of one colour (the
+        // empty part of a scroll view above a pinned footer, or the page below the content) is
+        // cut to 16, so the tiles carry content; then the rest is cut into tiles from the top.
+        static void Save(Texture2D tex, string file, Color background)
+        {
+            int w = tex.width, h = tex.height;
+            var pixels = tex.GetPixels32();
+            bool Plain(int y)
+            {
+                var first = pixels[y * w];
+                for (int x = 1; x < w; x += 2)
+                {
+                    var p = pixels[y * w + x];
+                    if (Mathf.Abs(p.r - first.r) + Mathf.Abs(p.g - first.g) + Mathf.Abs(p.b - first.b) > 9) return false;
+                }
+                return true;
+            }
+            var keep = new System.Collections.Generic.List<int>();   // top-down, in texture rows
+            int run = 0;
+            for (int y = h - 1; y >= 0; y--)
+            {
+                run = Plain(y) ? run + 1 : 0;
+                if (run <= 16) keep.Add(y);
+            }
+            while (keep.Count > 0 && Plain(keep[keep.Count - 1]) && keep.Count > 1) keep.RemoveAt(keep.Count - 1);
+            int used = keep.Count, tile = 1000, count = Mathf.CeilToInt(used / (float)tile);
+            string stem = Path.Combine(Path.GetDirectoryName(file), Path.GetFileNameWithoutExtension(file));
+            for (int i = 0; i < count; i++)
+            {
+                int rows = Mathf.Min(tile, used - i * tile);
+                var part = new Texture2D(w, rows, TextureFormat.RGB24, false);
+                var block = new Color32[w * rows];
+                for (int r = 0; r < rows; r++)
+                {
+                    int src = keep[i * tile + r];                 // top-down source row
+                    System.Array.Copy(pixels, src * w, block, (rows - 1 - r) * w, w);
+                }
+                part.SetPixels32(block);
+                part.Apply();
+                File.WriteAllBytes($"{stem}-{i:00}.png", part.EncodeToPNG());
+                UnityEngine.Object.DestroyImmediate(part);
+            }
+            Log($"wrote {stem}-00..{count - 1:00}.png ({w}x{used} in {count} tile(s), {h - used} plain rows dropped)");
         }
 
         static GameObject FindSource()
@@ -159,7 +257,8 @@ namespace AvatarBridge.Regression
             var descriptor = AppDomain.CurrentDomain.GetAssemblies()
                 .Select(a => a.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", false)).FirstOrDefault(t => t != null);
             if (descriptor == null) return null;
-            return UnityEngine.Object.FindObjectsOfType(descriptor).OfType<Component>().FirstOrDefault()?.gameObject;
+            // Inactive too: a scene often keeps its source avatar switched off beside the copy.
+            return Resources.FindObjectsOfTypeAll(descriptor).OfType<Component>().FirstOrDefault(c => c.gameObject.scene.IsValid())?.gameObject;
         }
 
         public static void Explore()
