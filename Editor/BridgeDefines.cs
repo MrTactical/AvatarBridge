@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using UnityEditor;
 using UnityEditor.Build;
+using UnityEditor.Compilation;
 using UnityEngine;
 
 namespace AvatarBridge
@@ -21,7 +23,7 @@ namespace AvatarBridge
     [InitializeOnLoad]
     public static class BridgeDefines
     {
-        public const string Version = "4.6.6";
+        public const string Version = "4.7.0";
 
         public const string MagicaDefine = "AVATARBRIDGE_MAGICA";
         public const string DynamicBoneDefine = "AVATARBRIDGE_DYNBONE";
@@ -34,6 +36,18 @@ namespace AvatarBridge
         {
             // Delayed so defines never mutate mid-compilation.
             EditorApplication.delayCall += SyncDefines;
+            // A removed package leaves its define behind, and the code it gates
+            // compiles into this same assembly: the compile fails, nothing
+            // reloads, and SyncDefines never runs again. The old domain stays
+            // loaded after a failed compile, so it still hears this.
+            CompilationPipeline.assemblyCompilationFinished += (_, messages) =>
+            {
+                if (messages.Any(m => m.type == CompilerMessageType.Error))
+                {
+                    EditorApplication.delayCall -= SyncAfterFailedCompile;
+                    EditorApplication.delayCall += SyncAfterFailedCompile;
+                }
+            };
         }
 
         public static bool HasMagicaCloth2 => TypeExists("MagicaCloth2.MagicaCloth");
@@ -45,7 +59,31 @@ namespace AvatarBridge
         public static bool HasVrcAvatarSdk => TypeExists("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
         public static bool HasCck => TypeExists("ABI.CCK.Components.CVRAvatar");
 
-        static void SyncDefines()
+        static void SyncDefines() => SyncDefines(HasMagicaCloth2, HasDynamicBone, HasYaps);
+
+        // After a failed compile the loaded types are stale, since assemblies
+        // never unload. Unity names a MonoBehaviour's file after its class, so
+        // the scripts the compile was given say what is really installed.
+        static void SyncAfterFailedCompile()
+        {
+            var scripts = new HashSet<string>(CompilationPipeline.GetAssemblies()
+                .SelectMany(a => a.sourceFiles).Select(f => Path.GetFileName(f)));
+            SyncDefines(
+                HasMagicaCloth2 && StillInstalled(scripts, "MagicaCloth.cs", "MagicaCloth2.MagicaCloth"),
+                HasDynamicBone && StillInstalled(scripts, "DynamicBone.cs", "DynamicBone"),
+                HasYaps && StillInstalled(scripts, "YapsPlug.cs", "AvatarBridge.Yaps.YapsPlug"));
+        }
+
+        static bool StillInstalled(HashSet<string> scripts, string script, string typeName)
+        {
+            if (scripts.Contains(script)) return true;
+            // Shipped as a DLL there is no script, and the DLL itself is the
+            // evidence. A compiled script assembly is not: it outlives its source.
+            string dll = FindType(typeName)?.Assembly.Location.Replace('\\', '/');
+            return !string.IsNullOrEmpty(dll) && !dll.Contains("/Library/ScriptAssemblies/") && File.Exists(dll);
+        }
+
+        static void SyncDefines(bool magica, bool dynamicBone, bool yaps)
         {
             var target = NamedBuildTarget.FromBuildTargetGroup(
                 BuildPipeline.GetBuildTargetGroup(EditorUserBuildSettings.activeBuildTarget));
@@ -65,9 +103,9 @@ namespace AvatarBridge
             }
 
             bool changed = false;
-            changed |= SetDefine(defines, MagicaDefine, HasMagicaCloth2);
-            changed |= SetDefine(defines, DynamicBoneDefine, HasDynamicBone);
-            changed |= SetDefine(defines, YapsDefine, HasYaps);
+            changed |= SetDefine(defines, MagicaDefine, magica);
+            changed |= SetDefine(defines, DynamicBoneDefine, dynamicBone);
+            changed |= SetDefine(defines, YapsDefine, yaps);
             // Always false. Passing it through SetDefine rather than dropping
             // the line is what clears it out of projects that still have it.
             changed |= SetDefine(defines, ContactsDefine, false);
@@ -95,15 +133,18 @@ namespace AvatarBridge
             return false;
         }
 
-        static bool TypeExists(string fullTypeName)
+        static bool TypeExists(string fullTypeName) => FindType(fullTypeName) != null;
+
+        static Type FindType(string fullTypeName)
         {
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
                 try
                 {
-                    if (assembly.GetType(fullTypeName, false) != null)
+                    var type = assembly.GetType(fullTypeName, false);
+                    if (type != null)
                     {
-                        return true;
+                        return type;
                     }
                 }
                 catch
@@ -111,7 +152,7 @@ namespace AvatarBridge
                     // Reflection-only or broken assemblies can throw; ignore them.
                 }
             }
-            return false;
+            return null;
         }
     }
 }

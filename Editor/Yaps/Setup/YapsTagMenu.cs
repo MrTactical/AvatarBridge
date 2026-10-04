@@ -20,6 +20,7 @@ namespace AvatarBridge
     public static class YapsTagMenu
     {
         const string LayerPrefix = "YAPS tags ";
+        const string KeyPrefix = "YAPS/Tags/";
 
         // Only a plug that lists more than one tag gets a chooser: with one
         // tag there is nothing to choose between, and with none the plug
@@ -29,11 +30,13 @@ namespace AvatarBridge
             if (avatar == null || controller == null) return null;
 
             var notes = new List<string>();
+            var live = new HashSet<string>();
             foreach (var plug in avatar.GetComponentsInChildren<YapsPlug>(true))
             {
                 if (plug == null || plug.Target == null) continue;
                 var tags = Listed(plug.answers);
                 string parameter = Parameter(avatar, plug);
+                live.Add(parameter);
 
                 // Listed caps at what the bake holds. Say so: a row missing
                 // from the menu reads as a tag that was never typed.
@@ -45,7 +48,7 @@ namespace AvatarBridge
                 }
                 if (tags.Count < 2)
                 {
-                    if (RemoveEntry(avatar, parameter) | RemoveLayer(controller, parameter))
+                    if (Remove(avatar, controller, parameter))
                     {
                         notes.Add(YapsToggles.LabelFor(plug) + ": tag chooser removed, fewer than two tags");
                     }
@@ -62,7 +65,36 @@ namespace AvatarBridge
                 notes.Add(YapsToggles.LabelFor(plug) + ": tag chooser added (" + parameter + "), "
                           + tags.Count + " tags, \"As built\" by default");
             }
+
+            // A chooser keyed on no plug: its plug was deleted, or its mesh moved
+            // and the key moved with it. The loop above never reaches it, and it
+            // kept a menu row and a synced Int.
+            var keys = controller.layers.Where(l => l.name.StartsWith(LayerPrefix))
+                .Select(l => l.name.Substring(LayerPrefix.Length))
+                .Concat(controller.parameters.Select(p => p.name));
+            if (avatar.avatarSettings != null && avatar.avatarSettings.settings != null)
+                keys = keys.Concat(avatar.avatarSettings.settings.Where(e => e != null).Select(e => e.machineName));
+            foreach (string key in keys.Where(k => k != null && k.StartsWith(KeyPrefix) && !live.Contains(k))
+                         .Distinct().ToList())
+            {
+                if (Remove(avatar, controller, key)) notes.Add("tag chooser " + key + " removed, no plug uses it");
+            }
             return notes.Count > 0 ? string.Join("; ", notes) : null;
+        }
+
+        // Entry, layer and Int. The Int goes only once nothing reads it, and
+        // left behind it still synced.
+        static bool Remove(CVRAvatar avatar, AnimatorController controller, string parameter)
+        {
+            bool removed = RemoveEntry(avatar, parameter) | RemoveLayer(controller, parameter);
+            int index = System.Array.FindIndex(controller.parameters, p => p.name == parameter);
+            if (index >= 0 && !YapsRemover.ParameterUsed(controller, parameter))
+            {
+                controller.RemoveParameter(index);
+                EditorUtility.SetDirty(controller);
+                removed = true;
+            }
+            return removed;
         }
 
         // The author's list, normalised the way the bake normalises it, then
@@ -102,7 +134,7 @@ namespace AvatarBridge
         static string Parameter(CVRAvatar avatar, YapsPlug plug)
         {
             string path = AnimationUtility.CalculateTransformPath(plug.Target.transform, avatar.transform);
-            return "YAPS/Tags/" + (path.GetHashCode() & 0x7FFFFF).ToString("X6");
+            return KeyPrefix + (path.GetHashCode() & 0x7FFFFF).ToString("X6");
         }
 
         static void EnsureEntry(CVRAvatar avatar, string parameter, string label, List<string> labels)

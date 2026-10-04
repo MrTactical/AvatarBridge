@@ -1,7 +1,6 @@
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
-using System.IO;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
@@ -44,7 +43,7 @@ namespace AvatarBridge
                 return;
             }
             string dir = ctx.OutputDir.TrimEnd('/') + "/RehomedAssets";
-            EnsureFolder(dir);
+            OutputAssetPaths.EnsureFolder(dir);
 
             var map = new Dictionary<Motion, Motion>();
             var maskMap = new Dictionary<AvatarMask, AvatarMask>();
@@ -135,7 +134,7 @@ namespace AvatarBridge
                     return clip;
                 }
                 AnimationClip copy = null;
-                string dst = OutputAssetPaths.Claim($"{dir}/{SafeName(clip.name)}.anim");
+                string dst = OutputAssetPaths.Claim($"{dir}/{OutputAssetPaths.SafeFileName(clip.name)}.anim");
                 // A standalone .anim copies byte-perfectly; a clip living inside an FBX or
                 // another controller has to be materialized into its own asset instead.
                 if (AssetDatabase.IsMainAsset(clip)
@@ -222,7 +221,7 @@ namespace AvatarBridge
             }
             AvatarMask copy = null;
             string src = AssetDatabase.GetAssetPath(mask);
-            string dst = OutputAssetPaths.Claim($"{dir}/{SafeName(mask.name)}.mask");
+            string dst = OutputAssetPaths.Claim($"{dir}/{OutputAssetPaths.SafeFileName(mask.name)}.mask");
             if (AssetDatabase.IsMainAsset(mask)
                 && src.EndsWith(".mask", StringComparison.OrdinalIgnoreCase)
                 && AssetDatabase.CopyAsset(src, dst))
@@ -300,26 +299,6 @@ namespace AvatarBridge
                 return false; // the CCK ships with every project that can upload
             }
             return true;
-        }
-
-        static void EnsureFolder(string dir)
-        {
-            string abs = Path.GetFullPath(Path.Combine(Application.dataPath, "..", dir));
-            Directory.CreateDirectory(abs);
-            AssetDatabase.Refresh();
-        }
-
-        static string SafeName(string n)
-        {
-            if (string.IsNullOrEmpty(n))
-            {
-                return "Asset";
-            }
-            foreach (var c in Path.GetInvalidFileNameChars())
-            {
-                n = n.Replace(c, '_');
-            }
-            return n;
         }
     }
 }

@@ -32,15 +32,17 @@ namespace AvatarBridge.Regression
             public List<string> SweepNames = new List<string>();
             public List<string> SweepNew = new List<string>();
             public bool SweepInvalidNew;
+            public bool Vanished;                     // a baseline with no digest this run
 
             public int Rank =>
-                Exception != null ? 0 :
+                Vanished || Exception != null ? 0 :
                 Errors > 0 || ErrorLines.Count > 0 ? 1 :
                 SweepNew.Count > 0 || SweepInvalidNew ? 2 :
                 !HasBaseline ? 3 :
                 Changed ? 4 : 5;
 
             public string Status =>
+                Vanished ? "vanished" :
                 Exception != null ? "threw" :
                 Errors > 0 || ErrorLines.Count > 0 ? "errors" :
                 SweepNew.Count > 0 || SweepInvalidNew ? "sweep worse" :
@@ -76,10 +78,7 @@ namespace AvatarBridge.Regression
                     if (before != now)
                     {
                         a.Changed = true;
-                        var oldLines = new HashSet<string>(before.Split('\n'));
-                        var newLines = new HashSet<string>(now.Split('\n'));
-                        a.LinesRemoved = oldLines.Except(newLines).Count();
-                        a.LinesAdded = newLines.Except(oldLines).Count();
+                        LineDiff(before, now, out a.LinesRemoved, out a.LinesAdded);
                     }
                     var old = Parse(basePath);
                     a.SweepNew = a.SweepNames.Where(n => !old.SweepNames.Contains(n)).ToList();
@@ -93,6 +92,20 @@ namespace AvatarBridge.Regression
                 avatars.Add(a);
             }
 
+            // Baselines the run wrote no digest for. Only the harness knows which scenes a run
+            // covered, so it lists them; without this they appeared nowhere on the page.
+            string gone = Path.Combine(currentDir, "_vanished.list");
+            if (File.Exists(gone))
+            {
+                foreach (var f in File.ReadAllLines(gone).Select(l => l.Trim()).Where(l => l.Length > 0))
+                {
+                    avatars.Add(new Avatar
+                    {
+                        File = f, Name = Path.GetFileNameWithoutExtension(f), HasBaseline = true, Vanished = true,
+                    });
+                }
+            }
+
             string info = Path.Combine(currentDir, "_run.info");
             string runInfo = File.Exists(info) ? File.ReadAllText(info).Trim().Replace("\n", " · ") : "";
 
@@ -100,11 +113,30 @@ namespace AvatarBridge.Regression
             return outPath;
         }
 
-        static Avatar Parse(string file)
+        // The harness tallies the console summary with these, so each digest format has one reader.
+        internal static bool ReadSweep(string digest, out int[] counts, out List<string> names)
+        {
+            var a = Parse(digest.Split('\n'), "");
+            counts = a.Sweep;
+            names = a.SweepNames;
+            return counts != null;
+        }
+
+        internal static void LineDiff(string before, string after, out int removed, out int added)
+        {
+            var oldLines = new HashSet<string>(before.Split('\n'));
+            var newLines = new HashSet<string>(after.Split('\n'));
+            removed = oldLines.Except(newLines).Count();
+            added = newLines.Except(oldLines).Count();
+        }
+
+        static Avatar Parse(string file) => Parse(File.ReadLines(file), file);
+
+        static Avatar Parse(IEnumerable<string> lines, string file)
         {
             var a = new Avatar { File = Path.GetFileName(file), Name = Path.GetFileNameWithoutExtension(file) };
             bool inSweep = false;
-            foreach (var raw in File.ReadLines(file))
+            foreach (var raw in lines)
             {
                 var line = raw.TrimEnd();
                 var m = Regex.Match(line, @"^avatar: (.+)$");
@@ -195,7 +227,10 @@ ul{margin:.3rem 0;padding-left:1.2rem}li{margin:.15rem 0}
             sb.Append("<div class='tiles'>");
             Tile(sb, avatars.Count.ToString(), "avatars", "");
             Tile(sb, eyes.Count.ToString(), "need eyes", eyes.Count > 0 ? "bad" : "ok");
-            Tile(sb, changed.Count.ToString(), "changed", changed.Count > 0 ? "warn" : "ok");
+            // Every moved digest, whatever else is wrong with the avatar: one that already
+            // carried an error must not hide a fresh change behind the same red chip.
+            int moved = avatars.Count(a => a.Changed);
+            Tile(sb, moved.ToString(), "changed", moved > 0 ? "warn" : "ok");
             Tile(sb, clean.Count.ToString(), "unchanged", "ok");
             Tile(sb, swept.Sum(a => a.Sweep[0]).ToString(), "params swept", "");
             Tile(sb, swept.Sum(a => a.Sweep[1]).ToString(), "responded", "");
@@ -205,10 +240,12 @@ ul{margin:.3rem 0;padding-left:1.2rem}li{margin:.15rem 0}
             sb.Append("</div>");
 
             Section(sb, "Needs eyes", eyes,
-                "A thrown conversion, an error, or a toggle newly stuck against the baseline.");
+                "A thrown conversion, an error, a toggle newly stuck against the baseline, or an " +
+                "avatar that vanished from the run.");
             Section(sb, "No baseline yet", fresh, "First run for these; nothing to compare.");
             Section(sb, "Changed", changed, "The digest moved. Same-shaped changes across many " +
-                "avatars usually mean one intended fix; an odd one out is the thing to open.");
+                "avatars usually mean one intended fix; an odd one out is the thing to open. " +
+                "Avatars above that also changed carry a changed chip there and count in the tile.");
             Section(sb, "Held steady", clean, null);
 
             sb.Append("<p class='sub'>Generated ").Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm"))
@@ -235,6 +272,9 @@ ul{margin:.3rem 0;padding-left:1.2rem}li{margin:.15rem 0}
             sb.Append("<details><summary><span class='name'>").Append(H(a.Name)).Append("</span>");
             string cls = a.Rank <= 1 ? "bad" : a.Rank == 2 ? "warn" : a.Rank == 5 ? "ok" : "";
             sb.Append("<span class='chip ").Append(cls).Append("'>").Append(H(a.Status)).Append("</span>");
+            if (a.Changed && a.Rank != 4)
+                sb.Append("<span class='chip warn'>changed −").Append(a.LinesRemoved)
+                  .Append(" +").Append(a.LinesAdded).Append("</span>");
             if (a.Warnings > 0)
                 sb.Append("<span class='chip'>").Append(a.Warnings).Append(" warnings</span>");
             if (a.Sweep != null && (a.Sweep[2] > 0 || a.Sweep[3] > 0))
@@ -244,9 +284,13 @@ ul{margin:.3rem 0;padding-left:1.2rem}li{margin:.15rem 0}
 
             if (a.Exception != null)
                 sb.Append("<p class='mono'>EXCEPTION ").Append(H(a.Exception)).Append("</p>");
-            sb.Append("<p class='dim mono'>converted ").Append(a.Converted)
-              .Append(" · approximated ").Append(a.Approximated)
-              .Append(" · skipped ").Append(a.Skipped).Append("</p>");
+            if (a.Vanished)
+                sb.Append("<p>The baseline has a digest and this run wrote none: the scene lost its " +
+                          "avatar descriptor, moved under an excluded path, or is gone.</p>");
+            else
+                sb.Append("<p class='dim mono'>converted ").Append(a.Converted)
+                  .Append(" · approximated ").Append(a.Approximated)
+                  .Append(" · skipped ").Append(a.Skipped).Append("</p>");
             if (a.SweepNew.Count > 0)
             {
                 sb.Append("<p><b>Newly failing toggles</b></p><ul>");

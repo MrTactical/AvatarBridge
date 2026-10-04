@@ -14,8 +14,8 @@ namespace AvatarBridge
     //   spring    -> m_Damping (inverted)
     //   stiffness -> m_Stiffness
     //   immobile  -> m_Inert
-    //   gravity   -> m_Force only, scaled by ElasticityScale so the force/restore balance .
-    //                and therefore the resting pose; matches VRChat; m_Gravity is forced to
+    //   gravity   -> m_Force only, scaled by ElasticityScale so the force/restore balance,
+    //                and with it the resting pose, matches VRChat. m_Gravity is forced to
     //                zero because ChilloutVR's rest-pose cancellation for it is
     //                scale-dependent (see the comment on the gravity block below)
     //   curves    -> distribution curves (identical multiplier-along-chain semantics)
@@ -41,7 +41,14 @@ namespace AvatarBridge
             // binding names a path and a component TYPE, so two DynamicBones
             // on the same GameObject could not be toggled apart.
             var home = PhysBoneConverter.CollectionUnder(ctx, CollectionName);
-            var holder = new GameObject(PhysBoneConverter.UniqueChildName(home, "DynamicBone_" + data.Root.name));
+            // GrabbyBones grabs DynamicBones too and names its parameters after the holder,
+            // so the holder takes the PhysBone's parameter name, as the cloth writer does.
+            string holderName = "DynamicBone_" + data.Root.name;
+            if (ctx.Settings.grabbyBonesSupport && !string.IsNullOrEmpty(data.Parameter))
+            {
+                holderName = GrabbyBonesSupport.RegisterAndName(ctx, data.Parameter);
+            }
+            var holder = new GameObject(PhysBoneConverter.UniqueChildName(home, holderName));
             holder.transform.SetParent(home, false);
             var db = holder.AddComponent<DynamicBone>();
             db.m_Root = data.Root;
@@ -93,7 +100,14 @@ namespace AvatarBridge
                 db.m_InertDistrib = new AnimationCurve(data.ImmobileCurve.keys);
             }
 
-            db.m_Radius = data.Radius;
+            // PhysBone multiplies its radius by the bone's largest lossy scale
+            // (VRC.Dynamics PhysBoneManager), DynamicBone by its own object's x
+            // scale. The holder sits under the avatar root, so on an armature at
+            // scale 100 the raw number came out a hundred times thin.
+            var rootScale = data.Root.lossyScale;
+            float worldRadius = data.Radius *
+                                Mathf.Max(Mathf.Abs(rootScale.x), Mathf.Abs(rootScale.y), Mathf.Abs(rootScale.z));
+            db.m_Radius = worldRadius / Mathf.Max(Mathf.Abs(holder.transform.lossyScale.x), 1e-4f);
             if (PhysBoneChainData.HasCurve(data.RadiusCurve))
             {
                 db.m_RadiusDistrib = new AnimationCurve(data.RadiusCurve.keys);
@@ -101,11 +115,8 @@ namespace AvatarBridge
             // The same growth the MagicaCloth path applies: a slider
             // that grows the body past the authored radius leaves the
             // chain colliding with a body that is not the one shown.
-            if (ctx.Settings.sizePhysicsForLargest && data.Root != null)
+            if (ctx.Settings.sizePhysicsForLargest)
             {
-                var rootScale = data.Root.lossyScale;
-                float rootMean = (Mathf.Abs(rootScale.x) + Mathf.Abs(rootScale.y) + Mathf.Abs(rootScale.z)) / 3f;
-                float worldRadius = data.Radius * Mathf.Max(rootMean, 1e-4f);
                 float push = MeshGrowth.Around(ctx, data.Root.position,
                     Mathf.Max(worldRadius * 2.5f, 0.06f));
                 if (push >= 0.005f && worldRadius > 0f)
@@ -139,7 +150,16 @@ namespace AvatarBridge
                 }
             }
 
-            db.m_EndOffset = data.EndpointPosition;
+            // PhysBone reads Endpoint Position in the bone's own scaled units
+            // (measured, Dev/Probes/EndpointScaleProbe), DynamicBone reads
+            // m_EndOffset in metres, so on an armature at scale 100 the tip
+            // came out a hundred times short.
+            // ponytail: length only; DynamicBone turns the offset by its own
+            // transform, not each leaf's, which one offset cannot match on a
+            // chain whose leaves face apart.
+            var tipScale = data.Root.lossyScale;
+            db.m_EndOffset = data.EndpointPosition *
+                             ((Mathf.Abs(tipScale.x) + Mathf.Abs(tipScale.y) + Mathf.Abs(tipScale.z)) / 3f);
             db.m_Exclusions = new List<Transform>(data.Ignores);
             if (data.HumanoidExclusions.Count > 0)
             {
@@ -183,8 +203,17 @@ namespace AvatarBridge
             }
             if (!string.IsNullOrEmpty(data.Parameter))
             {
-                ctx.Report.Skipped(Category, data.Root.name,
-                    $"PhysBone parameter \"{data.Parameter}\" has no CVR equivalent.");
+                if (ctx.Settings.grabbyBonesSupport)
+                {
+                    ctx.Report.Approximated(Category, data.Root.name,
+                        $"PhysBone parameter \"{data.Parameter}\": _IsGrabbed and _Angle work via the GrabbyBones " +
+                        "mod (DynamicBone object named to match). _Stretch/_Squish/_IsPosed have no equivalent.");
+                }
+                else
+                {
+                    ctx.Report.Skipped(Category, data.Root.name,
+                        $"PhysBone parameter \"{data.Parameter}\" has no CVR equivalent.");
+                }
             }
 
             ctx.Report.Converted(Category, data.Root.name,
@@ -205,7 +234,8 @@ namespace AvatarBridge
             Transform parent = pbCollider.rootTransform != null ? pbCollider.rootTransform : pbCollider.transform;
             string shape = pbCollider.shapeType.ToString();
 
-            var go = new GameObject("DBCollider_" + parent.name);
+            // Sibling-unique: two colliders on one bone would share an animation path.
+            var go = new GameObject(PhysBoneConverter.UniqueChildName(parent, "DBCollider_" + parent.name));
             go.transform.SetParent(parent, false);
             go.transform.localPosition = pbCollider.position;
             go.transform.localRotation = pbCollider.rotation;

@@ -14,9 +14,9 @@ namespace AvatarBridge
     // This file used to keep the GUID stable the other way: build the new controller in a
     // scratch folder, File.Copy its bytes over the old asset, force a synchronous reimport.
     // The GUID survived; the OBJECT did not. A reimport destroys the native controller and
-    // every sub-asset and creates replacements, so everything still holding the old ones .
-    // the Animator window ("AnimatorStateMachine has been destroyed" spam), tester tools,
-    // anything with domain reload switched off; was left holding corpses. With Unity's
+    // every sub-asset and creates replacements, so everything still holding the old ones (the
+    // Animator window and its "AnimatorStateMachine has been destroyed" spam, tester tools,
+    // anything with domain reload switched off) was left holding corpses. With Unity's
     // "Enter Play Mode Options" on, nothing between conversions throws that stale state
     // away, and pressing Play re-awakes Animators against it: a session-long crash series,
     // SIGSEGV inside GenerateGraph/DoBlendTreeEvaluation, preceded by
@@ -35,7 +35,6 @@ namespace AvatarBridge
                 AssetDatabase.CreateAsset(controller, assetPath);
                 Embed(controller, controller);
                 AssetDatabase.SaveAssets();
-                ValidateSavedController(controller, assetPath);
                 return controller;
             }
 
@@ -56,7 +55,12 @@ namespace AvatarBridge
             EditorUtility.CopySerialized(controller, existing);
             Embed(existing, existing);
             AssetDatabase.SaveAssets();
-            ValidateSavedController(existing, assetPath);
+            // Its data now lives on the existing root, and nothing holds it.
+            // Only the root object goes; the machines it listed are the asset's now.
+            if (controller != existing && !AssetDatabase.Contains(controller))
+            {
+                Object.DestroyImmediate(controller);
+            }
             return existing;
         }
 
@@ -105,51 +109,6 @@ namespace AvatarBridge
             var seen = new HashSet<Object>();
             Add(layer.avatarMask, asset, seen);
             AddMachine(layer.stateMachine, asset, seen);
-        }
-
-        static void ValidateSavedController(AnimatorController original, string assetPath)
-        {
-            var reloaded = AssetDatabase.LoadAssetAtPath<AnimatorController>(assetPath);
-            if (reloaded == null)
-            {
-                Debug.LogError($"[AvatarBridge] Saved controller could not be reloaded from {assetPath}!");
-                return;
-            }
-            int originalLayers = original.layers.Length;
-            int reloadedLayers = reloaded.layers.Length;
-            int originalStates = CountStates(original);
-            int reloadedStates = CountStates(reloaded);
-            if (originalLayers != reloadedLayers || originalStates != reloadedStates)
-            {
-                Debug.LogError($"[AvatarBridge] Controller lost data on save: layers {originalLayers}->{reloadedLayers}, " +
-                               $"states {originalStates}->{reloadedStates}. Report this at the AvatarBridge repo.");
-            }
-            else
-            {
-                Debug.Log($"[AvatarBridge] Controller saved intact: {reloadedLayers} layers, {reloadedStates} states.");
-            }
-        }
-
-        static int CountStates(AnimatorController controller)
-        {
-            int count = 0;
-            void Walk(AnimatorStateMachine machine)
-            {
-                if (machine == null)
-                {
-                    return;
-                }
-                count += machine.states.Length;
-                foreach (var child in machine.stateMachines)
-                {
-                    Walk(child.stateMachine);
-                }
-            }
-            foreach (var layer in controller.layers)
-            {
-                Walk(layer.stateMachine);
-            }
-            return count;
         }
 
         static void Add(Object obj, AnimatorController asset, HashSet<Object> seen)

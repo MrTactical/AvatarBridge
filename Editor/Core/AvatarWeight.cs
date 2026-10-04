@@ -46,11 +46,17 @@ namespace AvatarBridge
             public long DiskBytes;
             public int Materials;
 
-            // Highest density among the materials using it, never the
-            // average: the mesh that shows it closest decides.
+            // Lowest density among the materials using it, never the
+            // average: the use with the fewest texels per metre needs every
+            // one it has, so it decides. Highest let a button shrink a shirt.
             public float Density;
             public float WorldArea;
             public int Suggested;
+            // Only switched-off renderers use it, so stripping them frees it.
+            public bool Dead;
+            // What the card advice gives back for this texture, counted once:
+            // the smallest size, compressed, or gone with its renderer.
+            public long Reclaim;
         }
 
         public class Callout
@@ -132,7 +138,7 @@ namespace AvatarBridge
             var textures = new Dictionary<Texture, TextureUse>();
             var areas = new Dictionary<Material, Area>();
             var meshCache = new Dictionary<Mesh, MeshData>();
-            var switched = SwitchedPaths(survey);
+            var switched = SwitchedPaths(avatar, survey);
             // Kept apart until every renderer has been read. Adding and
             // removing as they go makes the answer depend on which renderer
             // the loop reaches last.
@@ -170,7 +176,7 @@ namespace AvatarBridge
                 string path = AnimationUtility.CalculateTransformPath(r.transform, avatar.transform);
                 if (mesh != null)
                 {
-                    report.Triangles += mesh.triangles.Length / 3;
+                    report.Triangles += AvatarDescription.TriangleCount(mesh);
                     report.SubMeshes += mesh.subMeshCount;
                     report.BlendShapes += mesh.blendShapeCount;
                     for (int i = 0; i < mesh.blendShapeCount; i++)
@@ -181,8 +187,9 @@ namespace AvatarBridge
                 }
 
                 // Off in the scene and nothing in the animator can turn it
-                // on: it is carried, downloaded and never seen.
-                bool dead = survey != null && !Live(r, avatar.transform, switched);
+                // on: it is carried, downloaded and never seen. With no
+                // controller read, nothing proves it is never switched on.
+                bool dead = survey != null && survey.Controller != null && !Live(r, avatar.transform, switched);
                 if (dead) report.Dead.Add(path);
 
                 foreach (var m in r.sharedMaterials)
@@ -228,6 +235,7 @@ namespace AvatarBridge
                 .Distinct()
                 .Where(t => !liveTextures.Contains(t) && textures.ContainsKey(t))
                 .ToList();
+            foreach (var t in deadTextures) textures[t].Dead = true;
             report.DeadBytes = deadTextures.Sum(t => textures[t].Bytes);
             // Nothing references them once the renderer goes, so they leave
             // the download too, at the packed size where crunch applies.
@@ -255,6 +263,8 @@ namespace AvatarBridge
 
         static void Judge(Report r)
         {
+            // The share of each texture left once its advice is taken.
+            var keeps = r.Textures.ToDictionary(t => t, t => 1.0);
             var oversized = new List<KeyValuePair<TextureUse, long>>();
             foreach (var t in r.Textures)
             {
@@ -263,6 +273,7 @@ namespace AvatarBridge
                 long saved = t.Bytes - (long)(t.Bytes * shrink * shrink);
                 if (saved < 262144) continue;
                 oversized.Add(new KeyValuePair<TextureUse, long>(t, saved));
+                keeps[t] *= shrink * shrink;
             }
             oversized.Sort((a, b) => b.Value.CompareTo(a.Value));
 
@@ -287,9 +298,13 @@ namespace AvatarBridge
             var uncompressed = r.Textures.Where(t => !t.Compressed && !t.Data && t.Bytes > 1048576).ToList();
             foreach (var t in uncompressed)
             {
-                // BC7 is a byte a pixel; anything uncompressed is four.
-                long saved = t.Bytes - t.Bytes / 4;
-                Add(r, saved, $"\"{t.Name}\" is {t.Format}, four bytes a pixel, uncompressed. " +
+                // BC7 is a byte a pixel. Uncompressed is the format's own
+                // size, one for R8 and eight for RGBAHalf, not always four.
+                long perPixel = t.Texture != null ? GraphicsFormatUtility.GetBlockSize(t.Texture.graphicsFormat) : 4;
+                if (perPixel <= 1) continue;
+                long saved = t.Bytes - t.Bytes / perPixel;
+                keeps[t] /= perPixel;
+                Add(r, saved, $"\"{t.Name}\" is {t.Format}, {perPixel} bytes a pixel, uncompressed. " +
                               "Compressing it costs nothing anybody will see.", 0, t.Name);
             }
 
@@ -303,11 +318,17 @@ namespace AvatarBridge
             }
 
             int costly = r.Dead.Count - r.DeadFreesNothing.Count;
-            if (r.DeadBytes > 1048576 && costly > 0)
+            if (StripAdvised(r))
             {
                 Add(r, r.DeadBytes, $"{costly} renderer(s) are switched off and nothing in the animator can " +
                                     "switch them on, so their textures are downloaded and never seen. Either wire " +
                                     "them to a toggle or strip them.");
+            }
+
+            // Read/Write is system memory, not the card, so it is not counted.
+            foreach (var t in r.Textures)
+            {
+                t.Reclaim = StripAdvised(r) && t.Dead ? t.Bytes : t.Bytes - (long)(t.Bytes * keeps[t]);
             }
 
             // Worth saying even at nothing reclaimed. The textures are shared
@@ -399,6 +420,21 @@ namespace AvatarBridge
         static void Add(Report r, long bytes, string text, int rank = 0, string subject = null)
             => r.Callouts.Add(new Callout { Bytes = bytes, Text = text, Rank = rank, Subject = subject });
 
+        static bool StripAdvised(Report r) => r.DeadBytes > 1048576 && r.Dead.Count > r.DeadFreesNothing.Count;
+
+        // The headline. Each texture once: the callouts overlap, and one
+        // texture oversized, uncompressed and dead summed past the total.
+        // Left alone stops a resize, not a strip.
+        static long Reclaimable(Report r)
+        {
+            bool strip = StripAdvised(r);
+            return r.Textures.Sum(t => (strip && t.Dead) || !r.LeftAlone.ContainsKey(t.Name) ? t.Reclaim : 0);
+        }
+
+        static string LeftAloneNote(string user) =>
+            $" Left alone though: {user} uses it too, and the size lives on the texture rather than on the " +
+            "avatar, so shrinking it here would shrink it there.";
+
         // What the optimiser has decided it will not touch, and who is in the
         // way. Advice nothing will ever act on should say so rather than
         // repeat itself every time the card is drawn.
@@ -430,7 +466,7 @@ namespace AvatarBridge
                     if (!textures.TryGetValue(tex, out var use) || use.Data) continue;
                     double texels = (double)use.Width * use.Height * uv;
                     float density = (float)System.Math.Sqrt(texels / area.World);
-                    if (density <= use.Density) continue;
+                    if (use.Density > 0f && density >= use.Density) continue;
                     use.Density = density;
                     use.WorldArea = (float)area.World;
                 }
@@ -497,7 +533,7 @@ namespace AvatarBridge
 
         // Every object path some layer switches on or off, so a renderer that
         // is off in the scene can be told apart from one a menu controls.
-        static HashSet<string> SwitchedPaths(AvatarSurvey.Model survey)
+        static HashSet<string> SwitchedPaths(CVRAvatar avatar, AvatarSurvey.Model survey)
         {
             var paths = new HashSet<string>(System.StringComparer.Ordinal);
             if (survey == null) return paths;
@@ -507,6 +543,14 @@ namespace AvatarBridge
                 if (cut < 0) continue;
                 string property = binding.Substring(cut + 2);
                 if (property == "m_IsActive" || property == "m_Enabled") paths.Add(binding.Substring(0, cut));
+            }
+            // Native toggles and dropdowns switch their targets, or play their
+            // clips, from a layer the CCK builds itself, which this controller
+            // may not hold yet.
+            var settings = avatar.avatarSettings != null ? avatar.avatarSettings.settings : null;
+            if (settings != null)
+            {
+                foreach (var entry in settings) paths.UnionWith(AvatarSurvey.TargetPaths(entry));
             }
             return paths;
         }
@@ -588,8 +632,7 @@ namespace AvatarBridge
         static void FindAtlasCandidates(CVRAvatar avatar, HashSet<Material> materials, Report report)
         {
             var animated = new HashSet<string>(System.StringComparer.Ordinal);
-            var animator = avatar.GetComponent<Animator>();
-            var controller = BridgeContext.Underlying(animator != null ? animator.runtimeAnimatorController : null);
+            var controller = AvatarSurvey.ShippedController(avatar);
             if (controller != null)
             {
                 foreach (var clip in controller.animationClips)
@@ -673,7 +716,7 @@ namespace AvatarBridge
         // it looks precise. Crunch does not appear here either: it is a
         // download size, and a crunched texture unpacks to its plain DXT
         // size the moment it is uploaded.
-        static long GpuBytes(Texture tex)
+        internal static long GpuBytes(Texture tex)
         {
             var format = tex.graphicsFormat;
             if (format == GraphicsFormat.None) return 0;
@@ -711,14 +754,14 @@ namespace AvatarBridge
             return file.Exists ? file.Length : 0;
         }
 
-        static Mesh MeshOf(Renderer r)
+        internal static Mesh MeshOf(Renderer r)
         {
             if (r is SkinnedMeshRenderer skin) return skin.sharedMesh;
             var filter = r.GetComponent<MeshFilter>();
             return filter != null ? filter.sharedMesh : null;
         }
 
-        static IEnumerable<Texture> TexturesOf(Material m)
+        internal static IEnumerable<Texture> TexturesOf(Material m)
         {
             if (m == null || m.shader == null) yield break;
             int count = ShaderUtil.GetPropertyCount(m.shader);
@@ -769,7 +812,7 @@ namespace AvatarBridge
 
             if (r.Callouts.Count > 0)
             {
-                long saved = r.Callouts.Sum(c => c.Bytes);
+                long saved = Reclaimable(r);
                 sb.Append("## what to fix");
                 if (saved > 0) sb.Append(" (").Append(Mb(saved)).Append(" of it)");
                 sb.Append('\n');
@@ -806,6 +849,11 @@ namespace AvatarBridge
                 foreach (var c in r.Callouts)
                 {
                     sb.Append("- ");
+                    if (c.Subject != null && r.LeftAlone.TryGetValue(c.Subject, out string user))
+                    {
+                        sb.Append(c.Text).Append(LeftAloneNote(user)).Append('\n');
+                        continue;
+                    }
                     if (c.Bytes > 0) sb.Append("**").Append(Mb(c.Bytes)).Append("**: ");
                     sb.Append(c.Text).Append('\n');
                 }
@@ -822,10 +870,11 @@ namespace AvatarBridge
         // for a document showed up in the inspector as asterisks.
         public static string Summary(Report r, bool markdown = false)
         {
-            long saved = r.Callouts.Sum(c => c.Bytes);
+            long saved = Reclaimable(r);
             string head = $"{Mb(r.TextureBytes)} of texture across {r.Textures.Count} maps, " +
                           $"{r.Triangles:N0} triangles, {r.Pointers + r.Triggers} contacts.";
-            if (saved <= 0) return head + " Nothing here is worth changing.";
+            // Read/Write alone still has a line of its own below.
+            if (saved <= 0) return r.Callouts.Any(c => c.Bytes > 0) ? head : head + " Nothing here is worth changing.";
             string point = $"{Mb(saved)} of that comes off with nothing visible changing.";
             return markdown ? head + $" **{point}**" : head + " " + point;
         }
@@ -839,10 +888,8 @@ namespace AvatarBridge
                 // Advice the optimiser has already refused stops being advice.
                 if (c.Subject != null && weight.LeftAlone.TryGetValue(c.Subject, out string user))
                 {
-                    report.Add(ReportStatus.Approximated, "Weight", $"\"{c.Subject}\" left alone", c.Text +
-                        $" Left alone though: {user} uses it too, and the size lives on the texture rather " +
-                        "than on the avatar, so shrinking it here would shrink it there. Fix it will not " +
-                        "touch this one.");
+                    report.Add(ReportStatus.Approximated, "Weight", $"\"{c.Subject}\" left alone",
+                        c.Text + LeftAloneNote(user));
                     continue;
                 }
                 report.Add(ReportStatus.Warning, "Weight",

@@ -11,11 +11,19 @@ namespace AvatarBridge.Yaps
     public class YapsPlug : MonoBehaviour
     {
         [Tooltip("The mesh that bends. Leave empty to use the renderer on this object.")]
-        public Renderer renderer;
+        // new: hides the obsolete Component.renderer. Renaming would drop serialized data.
+        public new Renderer renderer;
 
-        [Tooltip("-1 bakes every material the bone chain reaches. A number bakes that slot alone, " +
-                 "and a plug spanning several tears at the seam.")]
+        [Tooltip("-1 bakes every material the bone chain reaches, or on a converted plug every one the " +
+                 "conversion baked. A number bakes that slot alone, and a plug spanning several tears at the seam.")]
         public int materialSlot = -1;
+
+        // Made by the converter, which recorded every slot and mesh it baked
+        // in bakedSlots. Its object is a marker under a bone, so a chain read
+        // from it finds no slots, or every material of the body; a re-bake
+        // takes the records instead.
+        [HideInInspector]
+        public bool converted;
 
         [Header("Skinned mesh")]
         [Tooltip("The bone the shaft grows from; only vertices weighted to it and its children " +
@@ -175,10 +183,29 @@ namespace AvatarBridge.Yaps
         public System.Collections.Generic.List<BakedSlot> bakedSlots =
             new System.Collections.Generic.List<BakedSlot>();
 
+        // A material an animation swaps into a baked slot, baked as that
+        // slot's own. It sits on no renderer until the toggle plays, so the
+        // knobs and the own-socket ticks reach it only through this record.
+        [System.Serializable]
+        public class SlotVariant
+        {
+            public Renderer renderer;
+            public int slot;
+            public Material material;
+        }
+
+        [HideInInspector]
+        public List<SlotVariant> variants = new List<SlotVariant>();
+
         // The mesh before this plug's triangles moved to a slot of their own,
         // off a slot another plug's bake held, for Remove to put back.
         [HideInInspector]
         public Mesh splitFrom;
+
+        // A plain mesh before the bake widened its bounds on a copy, for
+        // Remove to put back.
+        [HideInInspector]
+        public Mesh boundsFrom;
 
         // The wearer's own sockets, as changes against the default: every one
         // may be entered except those on the hips. Changes rather than a full

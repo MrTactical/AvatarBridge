@@ -1,6 +1,6 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
-using ABI.CCK.Components;
 using System.Linq;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
 
@@ -18,7 +18,9 @@ namespace AvatarBridge
     {
         const string Category = "Humanoid rig";
 
-        static readonly string[] JawWords = { "jaw", "chin", "mandible", "mouth", "kuchi", "ago" };
+        static readonly string[] JawWords = { "jaw", "mandible", "mouth", "kuchi" };
+        // Whole words only: as substrings they sit inside "dragon" and "machine".
+        static readonly string[] ShortJawWords = { "chin", "ago" };
 
         public static void Run(BridgeContext ctx)
         {
@@ -40,18 +42,32 @@ namespace AvatarBridge
                 return;
             }
 
-            // What a wrong Jaw actually costs. Not the voice position;
-            // that is measured from the viseme mesh. The exposure is
-            // jaw-bone lip sync, and only avatars using that mode.
-            bool jawLipSync = ctx.CvrAvatar != null
-                && ctx.CvrAvatar.visemeMode == CVRAvatar.CVRAvatarVisemeMode.JawBone;
+            // Read from the VRChat descriptor: ctx.CvrAvatar does not exist yet, this pass runs
+            // first. CVR drives the humanoid Jaw for jaw-flap lip sync, so unmapping the bone the
+            // descriptor moves, whatever its name, is what leaves the mouth dead. With no bone
+            // named there, the same placement test the voice uses decides.
+            var vrc = ctx.SourceDescriptor;
+            bool jawLipSync = vrc != null
+                && vrc.lipSync == VRC.SDKBase.VRC_AvatarDescriptor.LipSyncStyle.JawFlapBone;
+            bool believable = AvatarFeatureDetect.JawIsBelievable(ctx.Target, animator, jaw, out _);
+            if (jawLipSync && (vrc.lipSyncJawBone != null ? ctx.FindInTarget(vrc.lipSyncJawBone) == jaw : believable))
+            {
+                ctx.Report.Converted(Category, "Humanoid Jaw kept",
+                    $"Mapped to \"{jaw.name}\", the bone this avatar's jaw-flap lip sync moves, so it keeps moving.");
+                return;
+            }
+
+            // What a wrong Jaw costs while it stays mapped. Jaw-flap lip sync moves it, and the
+            // Auto voice position sits on any jaw that passes the placement test.
             string cost = jawLipSync
                 ? $" This avatar uses JAW-BONE lip sync, so \"{jaw.name}\" is what moves when you " +
                   "speak. Switch it to blendshape visemes on the CVRAvatar, or fix the Jaw mapping."
-                : $" This avatar does not use jaw-bone lip sync, so nothing drives \"{jaw.name}\" " +
-                  "today and the voice position is measured from the mouth mesh rather than the " +
-                  "jaw: the mapping is wrong but currently harmless. It would start to matter if " +
-                  "you switched this avatar to jaw-bone lip sync.";
+                : believable
+                    ? $" Nothing drives \"{jaw.name}\" for lip sync, but the voice position is placed on it. " +
+                      "Check the voice with the CVRAvatar gizmo, or fix the Jaw mapping."
+                    : $" This avatar does not use jaw-bone lip sync, so nothing drives \"{jaw.name}\" " +
+                      "today, and the voice position is measured from the mouth mesh because the bone " +
+                      "sits nowhere a jaw could. The mapping is wrong but currently harmless.";
 
             var description = animator.avatar.humanDescription;
             var root = animator.gameObject;
@@ -193,8 +209,17 @@ namespace AvatarBridge
         {
             var wanted = new System.Collections.Generic.HashSet<string>(
                 description.human.Select(h => h.boneName).Where(n => !string.IsNullOrEmpty(n)));
+            var all = root.GetComponentsInChildren<Transform>(true);
+            // Ancestors too: "Armature" is no human bone, yet a duplicate of it refuses the rebuild.
+            foreach (var bone in all.Where(t => wanted.Contains(t.name)).ToArray())
+            {
+                for (var p = bone.parent; p != null && p != root; p = p.parent)
+                {
+                    wanted.Add(p.name);
+                }
+            }
             var counts = new System.Collections.Generic.Dictionary<string, int>();
-            foreach (var t in root.GetComponentsInChildren<Transform>(true))
+            foreach (var t in all)
             {
                 if (!wanted.Contains(t.name))
                 {
@@ -208,11 +233,14 @@ namespace AvatarBridge
 
         static bool LooksLikeAJaw(string name)
         {
-            string plain = new string(name.ToLowerInvariant()
-                .Select(c => char.IsLetterOrDigit(c) ? c : ' ').ToArray());
-            var words = plain.Split(' ');
-            return JawWords.Any(w => words.Contains(w))
-                   || JawWords.Any(w => plain.Replace(" ", "").Contains(w));
+            // camelCase and digit boundaries split too, so "ChinBone" and "Ago01" still read as words.
+            string spaced = Regex.Replace(name,
+                "(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|(?<=[A-Za-z])(?=[0-9])|(?<=[0-9])(?=[A-Za-z])", " ");
+            var words = new string(spaced.ToLowerInvariant()
+                    .Select(c => char.IsLetterOrDigit(c) ? c : ' ').ToArray())
+                .Split(new[] { ' ' }, System.StringSplitOptions.RemoveEmptyEntries);
+            string plain = string.Concat(words);
+            return JawWords.Any(w => plain.Contains(w)) || ShortJawWords.Any(w => words.Contains(w));
         }
     }
 }

@@ -30,7 +30,7 @@ Shader "YAPS/Atlas Socket"
         // and a back. Shares the facing pixel's alpha with the number.
         [Enum(Ring,0,Hole,1,OneWayRing,2)] _YAPS_Kind ("Socket kind", Float) = 0
 
-        // The socket's tag set, 15 bits in a float. Zero is untagged, which
+        // The socket's tag word, 20 bits in a float. Zero is untagged, which
         // is what every socket built before version 3 and every legacy
         // socket found by light is, and what a plug with no include list
         // answers.
@@ -74,23 +74,18 @@ Shader "YAPS/Atlas Socket"
             int level = min(q / 2, YAPS_ATLAS_LEVELS - 1);
             int home = q % 2;
 
-            float size = YAPS_ATLAS_CELL * pow(4.0, level);
+            float size = YapsAtlasCellSize(level);
             float3 world = mul(unity_ObjectToWorld, float4(0, 0, 0, 1)).xyz;
-            float3 scaled = world / max(size, 1e-6);
+            float3 scaled = world / size;
             int3 cell = int3(floor(scaled));
             float3 f = frac(scaled);
 
             // Off target the quad goes nowhere, but the maths still runs.
             YapsAtlasLayout layout = YapsAtlasLayoutNow();
             int total = max(layout.cells, 1);
-            int idx = YapsAtlasHash(cell) % total;
-            if (idx < 0) idx += total;
-            if (home == 1)
-            {
-                int step = YapsAtlasHash2(cell) % max(total - 1, 1);
-                if (step < 0) step += max(total - 1, 1);
-                idx = (idx + step + 1) % total;
-            }
+            int idxA, idxB;
+            YapsAtlasHomes(cell, total, idxA, idxB);
+            int idx = home == 1 ? idxB : idxA;
             YapsAtlasCellPixels(idx, level, layout, cellPx, cellPy);
 
             // A numbered socket takes the bucket its number gives, turned by
@@ -106,7 +101,15 @@ Shader "YAPS/Atlas Socket"
             int owner = YapsOwnerOf(_YAPS_Owner);
             sub = number > 0 ? (number - 1 + (owner != 0 ? owner : octant)) & 7 : octant;
             payload = f;
-            facing = normalize(mul((float3x3)unity_ObjectToWorld, float3(0, 0, 1))) * 0.5 + 0.5;
+            // A socket scaled to zero along Z has no +Z to normalise, and the
+            // NaN reads back as -1 on an 8-bit target. Its X and Y still span
+            // the face, so their cross is the facing. Scaled to zero on every
+            // axis it writes 0.5, zero only on a half target: 8 bits store
+            // 128/255, so the reader must take a short vector as no facing.
+            float3x3 m = (float3x3)unity_ObjectToWorld;
+            float3 z = mul(m, float3(0, 0, 1));
+            if (dot(z, z) < 1e-12) z = cross(mul(m, float3(1, 0, 0)), mul(m, float3(0, 1, 0)));
+            facing = (dot(z, z) < 1e-12 ? z : normalize(z)) * 0.5 + 0.5;
             tag = 0.5 + 0.5 * YapsAtlasTag(cell);
         }
         ENDCG

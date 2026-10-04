@@ -18,11 +18,16 @@ namespace AvatarBridge.Regression
     //   4. The mesh holds together while a socket walks in: seams, edges, pops.
     //   5. A ring on the plug's own shaft is treated as its ticks say.
     //   6. With -yapsShots <folder>, pictures of a hole coming in from the side.
+    //   7. Seeded scenarios: a hole in from a shell of directions, across the
+    //      tip and out, rules 1, 2 and 4 at every step.
+    //   8. A ring then a hole on the plug's axis: the shaft threads the ring,
+    //      rules 1, 2 and 4 at every step.
     // Which route found it comes from the shipped "Resolved by" view, which
     // straightens the plug to a quarter, half, three quarters or all of its
     // length, so no resolve code is copied here to drift from the shader's.
     //
     // Run: -executeMethod AvatarBridge.Regression.YapsBendTester.Run [-yapsAvatar <prefab path>] [-yapsShots <folder>]
+    //      [-yapsSeed <n>] [-yapsScenarios <count>] [-yapsScenario <index>]
     public static class YapsBendTester
     {
         const string DefaultAvatar = "Assets/AvatarBridgeOutput/Alexa/Alexa (ChilloutVR).prefab";
@@ -112,11 +117,11 @@ namespace AvatarBridge.Regression
 
                 // Off to the side at 2.5 lengths, wide, so the plug and every
                 // test place are in frame: a plug culled out never draws.
-                Camera MakeCamera(string name, bool halfFloat)
+                Camera MakeCamera(string name, bool halfFloat, int size = 1024)
                 {
                     var go = new GameObject("__Camera " + name);
                     var cam = go.AddComponent<Camera>();
-                    var rt = new RenderTexture(1024, 1024, 24, halfFloat ? RenderTextureFormat.ARGBHalf : RenderTextureFormat.ARGB32);
+                    var rt = new RenderTexture(size, size, 24, halfFloat ? RenderTextureFormat.ARGBHalf : RenderTextureFormat.ARGB32);
                     cam.targetTexture = rt;
                     cam.allowHDR = halfFloat;
                     cam.allowMSAA = false;
@@ -134,6 +139,8 @@ namespace AvatarBridge.Regression
                 }
                 var hdr = MakeCamera("HDR", true);
                 var ldr = MakeCamera("8-bit", false);
+                // A quarter-size 8-bit view, as a small window or a mirror gives.
+                var small = MakeCamera("small 8-bit", false, 256);
 
                 int n = skin.sharedMesh.vertexCount;
                 // Past the vertices, the atlas list the capture shader probes.
@@ -282,7 +289,7 @@ namespace AvatarBridge.Regression
                 {
                     var sock = MakeSocket("__Test " + k.label, k.kind, k.oneWay, k.atlas, k.lights);
                     Log($"{k.label}: {sock.GetComponentsInChildren<Light>(false).Length} marker light(s) on, " +
-                        $"{sock.GetComponentsInChildren<Renderer>(true).Count(r => YapsAtlas.IsPlumbing(r.sharedMaterial))} atlas renderer(s)");
+                        $"{sock.GetComponentsInChildren<Renderer>(true).Count(r => YapsMarks.IsAtlasMaterial(r.sharedMaterial))} atlas renderer(s)");
                     foreach (var cam in new[] { hdr, ldr })
                     {
                         var counts = new int[4];
@@ -518,6 +525,147 @@ namespace AvatarBridge.Regression
                     UnityEngine.Object.DestroyImmediate(walker);
                 }
 
+                // 7. Seeded scenarios: a hole comes in from a shell of
+                // directions, sweeps past the tip at a depth and withdraws,
+                // with rule 1, 2 and 4 held at every step, and found at its
+                // deepest from every camera, a small view included. -yapsSeed and
+                // -yapsScenarios choose them; -yapsScenario runs one alone,
+                // which is the repro line a failure prints.
+                {
+                    int seed = int.TryParse(Arg("-yapsSeed"), out int seedArg) ? seedArg : 1;
+                    int scenarios = int.TryParse(Arg("-yapsScenarios"), out int countArg) ? countArg : 6;
+                    int alone = int.TryParse(Arg("-yapsScenario"), out int aloneArg) ? aloneArg : -1;
+                    var visitor = MakeSocket("__Scenario", YapsSocket.SocketKind.Hole, false, true, true);
+                    // One generator drawn in order, every scenario's numbers taken
+                    // even when it is skipped: a generator per scenario off nearby
+                    // seeds gave nearly the same first numbers, so the "shell of
+                    // directions" stepped 3 degrees at a time.
+                    var rng = new System.Random(seed);
+                    for (int index = 0; index < scenarios; index++)
+                    {
+                        float angle = (float) (rng.NextDouble() * 75.0);
+                        float turn = (float) (rng.NextDouble() * 360.0);
+                        float depth = 0.2f + (float) (rng.NextDouble() * 0.6);
+                        float sweep = (rng.NextDouble() < 0.5 ? -1f : 1f) * (20f + (float) (rng.NextDouble() * 30.0));
+                        if (alone >= 0 && index != alone) continue;
+                        var route = new List<(float angle, float turn, float reach)>();
+                        for (float r = 1.8f; r > depth; r -= 0.02f) route.Add((angle, turn, r));
+                        for (int s = 0; s <= 20; s++) route.Add((angle + sweep * s / 20f, turn, depth));
+                        for (float r = depth + 0.02f; r <= 1.8f; r += 0.02f) route.Add((angle + sweep, turn, r));
+                        string name = $"scenario {index}: in at {angle:0}°/{turn:0}° to {depth:0.00}L, across {sweep:0}°, out";
+                        string repro = $"repro: -yapsSeed {seed} -yapsScenario {index}";
+
+                        var faults = new List<string>();
+                        Vector4[] last = null;
+                        Vector3 lastAt = Vector3.zero;
+                        for (int s = 0; s < route.Count; s++)
+                        {
+                            Aim(visitor.transform, route[s]);
+                            var bent = Capture(hdr, 0f);
+                            var at = visitor.transform.position;
+                            string here = $"step {s}, {route[s].angle:0.0}° at {route[s].reach:0.00}L";
+                            if (s == 0 && Moved(bent) >= 0.5e-3f)
+                                faults.Add($"{here}: bent {Moved(bent) * 1000f:0.0} mm with the socket out of reach");
+                            if (s == route.FindIndex(p => p.reach <= depth + 1e-4f))
+                                foreach (var cam in new[] { hdr, ldr, small })
+                                    if (TierOf(Capture(cam, 1f)) != 3)
+                                        faults.Add($"{here}: not found by the atlas at its deepest, on the {cam.name} camera");
+                            float open = seams.Count == 0 ? 0f : seams.Max(pr => Vector3.Distance(bent[pr.a], bent[pr.b]));
+                            if (open >= 0.5e-3f) faults.Add($"{here}: a seam opens {open * 1000f:0.00} mm");
+                            int outside = 0;
+                            float stretched = 1f;
+                            foreach (var (va, vb, len) in edges)
+                            {
+                                float ratio = Vector3.Distance(bent[va], bent[vb]) / len;
+                                stretched = Mathf.Max(stretched, ratio);
+                                if (ratio < 0.2f && Vector3.Dot((Vector3) bent[va] - at, visitor.transform.forward) >= 1e-3f) outside++;
+                            }
+                            if (outside > edges.Count / 100 || stretched >= 6f)
+                                faults.Add($"{here}: {outside} edges crushed outside the opening, worst stretch {stretched:0.00}x");
+                            if (last != null)
+                            {
+                                float socketMove = Vector3.Distance(at, lastAt), meshMove = 0f;
+                                for (int i = 0; i < n; i++)
+                                    if (bent[i].w > 0.5f && last[i].w > 0.5f) meshMove = Mathf.Max(meshMove, Vector3.Distance(bent[i], last[i]));
+                                if (socketMove > 1e-6f && meshMove > 10f * socketMove && meshMove > 0.5e-3f)
+                                    faults.Add($"{here}: the mesh jumped {meshMove * 1000f:0.0} mm for a {socketMove * 1000f:0.0} mm socket move");
+                            }
+                            last = bent;
+                            lastAt = at;
+                        }
+                        Log($"{name}: {route.Count} steps, {faults.Count} fault(s)");
+                        foreach (var f in faults.Take(4)) Log($"  {f}");
+                        if (faults.Count > 0) Log($"  {repro}");
+                        fail += Check($"{name}: holds at every step", faults.Count == 0);
+                    }
+                    UnityEngine.Object.DestroyImmediate(visitor);
+                }
+
+                // 8. Two sockets on the path, a ring and then a hole, walked in
+                // along the plug's axis until they sit at half a length and a
+                // whole one. Every case above has one socket on the path, so a
+                // chain folding back at each link went unseen. No generator: the
+                // seeded scenarios keep the numbers they always drew.
+                {
+                    var thread = MakeSocket("__Chain ring", YapsSocket.SocketKind.Ring, false, true, false, 1);
+                    var end = MakeSocket("__Chain hole", YapsSocket.SocketKind.Hole, false, true, false, 2);
+                    // Numbered and owned, as a wearer's pair is, so the two never share a bucket.
+                    foreach (var r in thread.GetComponentsInChildren<Renderer>(true).Concat(end.GetComponentsInChildren<Renderer>(true)))
+                    {
+                        var block = new MaterialPropertyBlock();
+                        r.GetPropertyBlock(block);
+                        block.SetFloat("_YAPS_Owner", 4242);
+                        r.SetPropertyBlock(block);
+                    }
+                    var faults = new List<string>();
+                    Vector4[] last = null;
+                    Vector3 lastAt = Vector3.zero;
+                    // From the ring at 1.8 lengths, where the scenarios start, in steps of 0.02.
+                    const int steps = 65;
+                    for (int s = 0; s <= steps; s++)
+                    {
+                        float off = 1.3f * (steps - s) / steps;
+                        Aim(thread.transform, (0f, 0f, 0.5f + off));
+                        Aim(end.transform, (0f, 0f, 1f + off));
+                        var bent = Capture(hdr, 0f);
+                        var at = end.transform.position;
+                        string here = $"step {s}, ring at {0.5f + off:0.00}L, hole at {1f + off:0.00}L";
+                        if (s == 0 && Moved(bent) >= 0.5e-3f)
+                            faults.Add($"{here}: bent {Moved(bent) * 1000f:0.0} mm with both sockets out of reach");
+                        if (s == steps)
+                            foreach (var cam in new[] { hdr, ldr })
+                                if (TierOf(Capture(cam, 1f)) != 3)
+                                    faults.Add($"{here}: not found by the atlas, on the {cam.name} camera");
+                        float open = seams.Count == 0 ? 0f : seams.Max(pr => Vector3.Distance(bent[pr.a], bent[pr.b]));
+                        if (open >= 0.5e-3f) faults.Add($"{here}: a seam opens {open * 1000f:0.00} mm");
+                        int outside = 0;
+                        float stretched = 1f;
+                        foreach (var (va, vb, len) in edges)
+                        {
+                            float ratio = Vector3.Distance(bent[va], bent[vb]) / len;
+                            stretched = Mathf.Max(stretched, ratio);
+                            if (ratio < 0.2f && Vector3.Dot((Vector3) bent[va] - at, end.transform.forward) >= 1e-3f) outside++;
+                        }
+                        if (outside > edges.Count / 100 || stretched >= 6f)
+                            faults.Add($"{here}: {outside} edges crushed outside the hole, worst stretch {stretched:0.00}x");
+                        if (last != null)
+                        {
+                            float socketMove = Vector3.Distance(at, lastAt), meshMove = 0f;
+                            for (int i = 0; i < n; i++)
+                                if (bent[i].w > 0.5f && last[i].w > 0.5f) meshMove = Mathf.Max(meshMove, Vector3.Distance(bent[i], last[i]));
+                            if (socketMove > 1e-6f && meshMove > 10f * socketMove && meshMove > 0.5e-3f)
+                                faults.Add($"{here}: the mesh jumped {meshMove * 1000f:0.0} mm for a {socketMove * 1000f:0.0} mm move");
+                        }
+                        last = bent;
+                        lastAt = at;
+                    }
+                    Log($"a ring then a hole on the axis: {steps + 1} steps, {faults.Count} fault(s); list at the end: {ListOf(Capture(hdr, 0f))}");
+                    foreach (var f in faults.Take(4)) Log($"  {f}");
+                    fail += Check("a ring then a hole on the axis: holds at every step", faults.Count == 0);
+                    UnityEngine.Object.DestroyImmediate(thread);
+                    UnityEngine.Object.DestroyImmediate(end);
+                }
+
                 // 5. A ring on the plug's own shaft, where the reporter's bend
                 // ended. Building it under the avatar numbers it and tells the
                 // plug, so the plug must do what its own-socket ticks say, with
@@ -644,7 +792,7 @@ namespace AvatarBridge.Regression
             YapsSocketBuilder.Build(socket);
             if (!atlas)
                 foreach (var r in go.GetComponentsInChildren<Renderer>(true))
-                    if (YapsAtlas.IsPlumbing(r.sharedMaterial))
+                    if (YapsMarks.IsAtlasMaterial(r.sharedMaterial))
                         UnityEngine.Object.DestroyImmediate(r.gameObject);
             // A number, as YapsOwner.ApplySelf gives a wearer's sockets.
             if (number > 0)

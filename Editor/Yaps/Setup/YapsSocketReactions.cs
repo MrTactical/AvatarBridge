@@ -28,13 +28,28 @@ namespace AvatarBridge
 
         // Synced, and named after the bone. No '#', no spaces: CVR takes
         // neither.
-        public static string Parameter(YapsSocket socket) => "YAPS/" + Machine(YapsToggles.LabelFor(socket)) + "/Depth";
+        public static string Parameter(YapsSocket socket) => "YAPS/" + Machine(Unique(socket)) + "/Depth";
 
         public static string LegacyParameter(YapsSocket socket) => "#YAPS/" + Sanitise(socket.name) + "/Depth";
 
-        public static string LayerName(YapsSocket socket) => "YAPS " + YapsToggles.LabelFor(socket) + " reactions";
+        public static string LayerName(YapsSocket socket) => "YAPS " + Unique(socket) + " reactions";
 
-        public static string AnimationsLayerName(YapsSocket socket) => "YAPS " + YapsToggles.LabelFor(socket) + " animations";
+        public static string AnimationsLayerName(YapsSocket socket) => "YAPS " + Unique(socket) + " animations";
+
+        // The label, with " 2" and on for a later socket in the hierarchy
+        // that shares it, the converter's numbering for its parameters. Two
+        // same-kind sockets on one bone shared one layer, one parameter and
+        // one set of clips, and removing either took the other's reactions.
+        static string Unique(YapsSocket socket)
+        {
+            string label = YapsToggles.LabelFor(socket);
+            if (socket == null) return label;
+            var avatar = socket.GetComponentInParent<CVRAvatar>(true);
+            var top = avatar != null ? avatar.transform : socket.transform.root;
+            int earlier = top.GetComponentsInChildren<YapsSocket>(true).TakeWhile(s => s != socket)
+                .Count(s => YapsToggles.LabelFor(s) == label);
+            return earlier == 0 ? label : label + " " + (earlier + 1);
+        }
 
         // Always 1: the weight each clip's tree gets in the animations layer's
         // direct tree. Local, since every client already agrees on 1.
@@ -58,7 +73,11 @@ namespace AvatarBridge
                 .Where(c => !string.IsNullOrEmpty(AssetDatabase.GetAssetPath(c))).ToList();
             if (controllers.Count == 0)
             {
-                failure = $"✗ {socket.name}: the avatar has no animator controller on disk to put the layer in";
+                // Targets leaves the CCK's own controller out, which is not the same as none.
+                failure = CvrSetup.SharedController(YapsOwner.Shipped(avatar))
+                    ? $"✗ {socket.name}: the avatar runs the CCK's own controller, which YAPS never writes into: set a copy " +
+                      "of it as the avatar's Base Controller and create its own from that in Advanced Avatar Settings"
+                    : $"✗ {socket.name}: the avatar has no animator controller on disk to put the layer in";
                 return null;
             }
             return controllers;
@@ -98,7 +117,6 @@ namespace AvatarBridge
             AnimationClip empty = null;
             if (clips.Count > 0)
             {
-                EnsureTrigger(socket, parameter);
                 string dir = YapsNativeBuilder.OutputRoot + "/" + Sanitise(avatar.name);
                 YapsNativeBuilder.EnsureFolderPublic(dir);
                 string emptyPath = dir + "/YAPS Empty.anim";
@@ -118,6 +136,7 @@ namespace AvatarBridge
                 int existing = layers.FindIndex(l => l.name == layerName);
                 if (existing < 0 && !string.IsNullOrEmpty(socket.builtAnimations) && socket.builtAnimations != layerName)
                     existing = layers.FindIndex(l => l.name == socket.builtAnimations);
+                var old = existing >= 0 ? YapsOwner.Embedded(controller, new[] { layers[existing].stateMachine }) : null;
 
                 // Every clip removed: the layer goes, and the parameters with it
                 // once nothing else reads them.
@@ -125,6 +144,7 @@ namespace AvatarBridge
                 {
                     if (existing >= 0) layers.RemoveAt(existing);
                     controller.layers = layers.ToArray();
+                    YapsOwner.DropUnreached(controller, old);
                     foreach (string name in new[] { One, parameter })
                     {
                         var p = controller.parameters.FirstOrDefault(x => x.name == name);
@@ -170,6 +190,7 @@ namespace AvatarBridge
                 if (existing >= 0) layers[existing] = layer; else layers.Add(layer);
                 controller.layers = layers.ToArray();
                 AnimatorAssetSaver.EmbedLayer(layer, controller);
+                YapsOwner.DropUnreached(controller, old);
                 EditorUtility.SetDirty(controller);
             }
 
@@ -177,9 +198,17 @@ namespace AvatarBridge
             {
                 Undo.RecordObject(socket, "YAPS socket animations");
                 socket.builtAnimations = "";
+                // Clear ran first and kept the contact for this layer, which
+                // was still reading its parameter then.
+                string host = DropUnreadHost(socket, controllers);
                 AssetDatabase.SaveAssets();
-                return $"✓ {socket.name}: no depth animations left, layer \"{layerName}\" taken out";
+                return $"✓ {socket.name}: no depth animations left, layer \"{layerName}\" taken out" +
+                       (host != null ? ", and " + host : "");
             }
+            // After the layer is replaced, so a name only its old self read
+            // is not kept.
+            var also = AlsoRead(socket, parameter, controllers);
+            EnsureTrigger(socket, parameter, also);
             if (socket.builtAnimations != layerName)
             {
                 Undo.RecordObject(socket, "YAPS socket animations");
@@ -188,7 +217,7 @@ namespace AvatarBridge
             }
             AssetDatabase.SaveAssets();
             return $"✓ {socket.name}: {clips.Count} depth animation(s) in layer \"{layerName}\", driven by the " +
-                   $"synced parameter {parameter}, depth 1 at {ReachOf(socket):0.00} m in";
+                   $"synced parameter {parameter}, depth 1 at {ReachOf(socket):0.00} m in" + AlsoNote(also);
         }
 
         // Sync tally for the report. Past the cap the client drops the
@@ -311,9 +340,8 @@ namespace AvatarBridge
             if (controllers == null) return null;
 
             bool played = socket.depthAnimations.Any(a => a != null && a.clip != null);
-            string parameter = Parameter(socket);
+            var names = NamesOf(socket, host);
             var done = new List<string>();
-            bool read = played;
             foreach (var controller in controllers)
             {
                 string layerName = LayerName(socket);
@@ -326,27 +354,32 @@ namespace AvatarBridge
                 }
                 if (at >= 0)
                 {
+                    var old = YapsOwner.Embedded(controller, new[] { layers[at].stateMachine });
                     layers.RemoveAt(at);
                     controller.layers = layers.ToArray();
+                    YapsOwner.DropUnreached(controller, old);
                     EditorUtility.SetDirty(controller);
                     string line = $"layer \"{layerName}\" taken out";
                     if (!done.Contains(line)) done.Add(line);
                 }
                 if (played) continue;
-                if (YapsRemover.ParameterUsed(controller, parameter)) { read = true; continue; }
-                var p = controller.parameters.FirstOrDefault(x => x.name == parameter);
-                if (p != null)
+                foreach (string parameter in names)
                 {
-                    controller.RemoveParameter(p);
-                    EditorUtility.SetDirty(controller);
-                    if (!done.Contains("its depth parameter")) done.Add("its depth parameter");
+                    if (YapsRemover.ParameterUsed(controller, parameter)) continue;
+                    var p = controller.parameters.FirstOrDefault(x => x.name == parameter);
+                    if (p != null)
+                    {
+                        controller.RemoveParameter(p);
+                        EditorUtility.SetDirty(controller);
+                        if (!done.Contains("its depth parameter")) done.Add("its depth parameter");
+                    }
                 }
             }
-            // The contact only once no controller still reads its parameter.
-            if (!read && host != null)
+            // The contact only once no controller still reads anything it writes.
+            if (!played)
             {
-                Undo.DestroyObjectImmediate(host.gameObject);
-                done.Add("the depth contact");
+                string contact = DropUnreadHost(socket, controllers);
+                if (contact != null) done.Add(contact);
             }
             if (!string.IsNullOrEmpty(socket.builtLayer) || !string.IsNullOrEmpty(socket.builtParameter))
             {
@@ -358,6 +391,67 @@ namespace AvatarBridge
             if (done.Count == 0) return null;
             AssetDatabase.SaveAssets();
             return string.Join(", ", done);
+        }
+
+        // Every name the depth contact may write: this build's, the last
+        // build's, and the ones its trigger writes. A converted socket's
+        // trigger writes the converter's name, "#" when local or numbered
+        // for a second socket on the bone, and its author's layers read
+        // that; asking for the bare name alone found nothing reading it and
+        // deleted the contact they ran on.
+        //
+        // Never another socket's current name. Two sockets that swap places
+        // in the hierarchy swap names too, and the old one, still read by
+        // the other socket's layer, kept both contacts writing both
+        // parameters for good.
+        static List<string> NamesOf(YapsSocket socket, Transform host)
+        {
+            var avatar = socket.GetComponentInParent<CVRAvatar>(true);
+            var top = avatar != null ? avatar.transform : socket.transform.root;
+            var others = new HashSet<string>(top.GetComponentsInChildren<YapsSocket>(true)
+                .Where(s => s != socket).Select(Parameter));
+            return new[] { Parameter(socket), socket.builtParameter }.Concat(Written(host))
+                .Where(n => !string.IsNullOrEmpty(n) && !others.Contains(n)).Distinct().ToList();
+        }
+
+        static List<string> Written(Transform host)
+        {
+            var trigger = host != null ? host.GetComponent<CVRAdvancedAvatarSettingsTrigger>() : null;
+            if (trigger == null || trigger.stayTasks == null) return new List<string>();
+            return trigger.stayTasks.Where(t => t != null && !string.IsNullOrEmpty(t.settingName))
+                .Select(t => t.settingName).Distinct().ToList();
+        }
+
+        // The names besides this build's that the contact keeps writing
+        // because a controller reads them: on a rebuilt conversion, the
+        // converter's name its author's repointed layers read. Replacing
+        // the trigger with the synced name alone silenced those layers.
+        // The reader may also be this socket's own layer not rebuilt yet
+        // after a rename, so the note does not say whose layer it is.
+        static List<string> AlsoRead(YapsSocket socket, string parameter, List<AnimatorController> controllers) =>
+            NamesOf(socket, socket.transform.Find(HostName))
+                .Where(n => n != parameter && controllers.Any(c => YapsRemover.ParameterUsed(c, n))).ToList();
+
+        static string AlsoNote(List<string> also) =>
+            also.Count > 0 ? $"; the contact also writes {string.Join(", ", also)}, which a layer still reads" : "";
+
+        // The contact once no controller reads anything it writes. Null when
+        // it stays, then writing only the names still read, so a rebuilt
+        // conversion goes back to the one name it was converted with.
+        static string DropUnreadHost(YapsSocket socket, List<AnimatorController> controllers)
+        {
+            var host = socket.transform.Find(HostName);
+            if (host == null) return null;
+            var names = NamesOf(socket, host);
+            if (controllers.Any(c => names.Any(n => YapsRemover.ParameterUsed(c, n))))
+            {
+                var written = Written(host);
+                var read = written.Where(n => names.Contains(n) && controllers.Any(c => YapsRemover.ParameterUsed(c, n))).ToList();
+                if (read.Count > 0 && read.Count < written.Count) EnsureTrigger(socket, read[0], read.Skip(1));
+                return null;
+            }
+            Undo.DestroyObjectImmediate(host.gameObject);
+            return "the depth contact";
         }
 
         public static string Build(YapsSocket socket)
@@ -378,7 +472,6 @@ namespace AvatarBridge
                 return $"✗ {socket.name}: none of the named shapes are on \"{renderer.name}\"";
 
             string parameter = Parameter(socket);
-            EnsureTrigger(socket, parameter);
 
             // Depth parameters no socket owns and no layer reads go with
             // it, or they pile up one per rename.
@@ -478,11 +571,17 @@ namespace AvatarBridge
                 {
                     name = layerName, defaultWeight = 1f, stateMachine = machine,
                 };
+                var old = existing >= 0 ? YapsOwner.Embedded(controller, new[] { layers[existing].stateMachine }) : null;
                 if (existing >= 0) layers[existing] = layer; else layers.Add(layer);
                 controller.layers = layers.ToArray();
                 AnimatorAssetSaver.EmbedLayer(layer, controller);
+                YapsOwner.DropUnreached(controller, old);
                 EditorUtility.SetDirty(controller);
             }
+            // After the layer is replaced, so a name only its old self read
+            // is not kept.
+            var also = AlsoRead(socket, parameter, controllers);
+            EnsureTrigger(socket, parameter, also);
             // What it is called now, so the next build can find it after a
             // rename and Remove knows what to take out.
             if (socket.builtLayer != layerName || socket.builtParameter != parameter)
@@ -495,7 +594,8 @@ namespace AvatarBridge
             AssetDatabase.SaveAssets();
 
             string note = $"✓ {socket.name}: {stages.Count} shape(s) on \"{renderer.name}\" react to a plug's tip through a contact, " +
-                          $"depth 1 at {ReachOf(socket):0.00} m in (layer \"{layerName}\", synced parameter {parameter}, 32 bits{SyncRoom(avatar)})";
+                          $"depth 1 at {ReachOf(socket):0.00} m in (layer \"{layerName}\", synced parameter {parameter}, 32 bits{SyncRoom(avatar)})" +
+                          AlsoNote(also);
             if (cleared > 0) note += $"; cleared {cleared} stale depth parameter(s) no layer read";
             if (missing.Count > 0) note += $"; not on the mesh: {string.Join(", ", missing)}";
             return note;
@@ -519,15 +619,18 @@ namespace AvatarBridge
             return parameter;
         }
 
-        static void EnsureTrigger(YapsSocket socket, string parameter)
+        // One stay and one exit task per name, all fed the same depth.
+        static void EnsureTrigger(YapsSocket socket, string parameter, IEnumerable<string> also = null)
         {
+            var names = new[] { parameter }.Concat(also ?? Enumerable.Empty<string>())
+                .Where(n => !string.IsNullOrEmpty(n)).Distinct().ToList();
             TriggerBox(socket, out var offset, out var size);
             var old = socket.transform.Find(HostName);
             if (old != null)
             {
                 var have = old.GetComponent<CVRAdvancedAvatarSettingsTrigger>();
-                if (have != null && have.stayTasks.Count == 1 && have.stayTasks[0].settingName == parameter
-                    && have.stayTasks[0].updateMethod == CVRAdvancedAvatarSettingsTriggerTaskStay.UpdateMethod.SetFromPosition
+                if (have != null && have.stayTasks.Select(t => t.settingName).SequenceEqual(names)
+                    && have.stayTasks.All(t => t.updateMethod == CVRAdvancedAvatarSettingsTriggerTaskStay.UpdateMethod.SetFromPosition)
                     && have.sampleDirection == CVRAdvancedAvatarSettingsTrigger.SampleDirection.ZNegative
                     && have.allowedTypes != null && have.allowedTypes.SequenceEqual(TipTypes)
                     && have.areaSize == size && have.areaOffset == offset)
@@ -545,19 +648,22 @@ namespace AvatarBridge
             trigger.areaSize = size;
             trigger.areaOffset = offset;
             trigger.sampleDirection = CVRAdvancedAvatarSettingsTrigger.SampleDirection.ZNegative;
-            trigger.stayTasks.Add(new CVRAdvancedAvatarSettingsTriggerTaskStay
+            foreach (string name in names)
             {
-                updateMethod = CVRAdvancedAvatarSettingsTriggerTaskStay.UpdateMethod.SetFromPosition,
-                settingName = parameter,
-                minValue = 0f,
-                maxValue = 1f,
-            });
-            trigger.exitTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
-            {
-                updateMethod = CVRAdvancedAvatarSettingsTriggerTask.UpdateMethod.Override,
-                settingName = parameter,
-                settingValue = 0f,
-            });
+                trigger.stayTasks.Add(new CVRAdvancedAvatarSettingsTriggerTaskStay
+                {
+                    updateMethod = CVRAdvancedAvatarSettingsTriggerTaskStay.UpdateMethod.SetFromPosition,
+                    settingName = name,
+                    minValue = 0f,
+                    maxValue = 1f,
+                });
+                trigger.exitTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
+                {
+                    updateMethod = CVRAdvancedAvatarSettingsTriggerTask.UpdateMethod.Override,
+                    settingName = name,
+                    settingValue = 0f,
+                });
+            }
         }
 
         static string Sanitise(string s)

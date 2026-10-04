@@ -117,17 +117,38 @@ namespace AvatarBridge
         public static string CurrentNameFor(Material patchedOrOriginal)
         {
             if (patchedOrOriginal == null || patchedOrOriginal.shader == null) return null;
+            var shader = patchedOrOriginal.shader;
+            if (NameCache.TryGetValue(shader, out string cached)) return cached;
             // A patched material names its own source; an unpatched one is
             // its own source.
-            var from = OriginalShaderOf(patchedOrOriginal) ?? patchedOrOriginal.shader;
+            var from = OriginalShaderOf(patchedOrOriginal) ?? shader;
             string sourcePath = ShaderSpiPatcher.SourcePathOf(from);
             if (string.IsNullOrEmpty(sourcePath)) return null;
             var unit = ShaderSpiPatcher.ReadUnit(sourcePath);
             if (unit.Count == 0) return null;
             string yaps = LoadYapsSource(out _);
             if (yaps == null) return null;
-            return PatchedName(unit[0].Text, Hash(sourcePath + EmittedVersion(yaps) + unit.Count));
+            return NameCache[shader] = PatchedName(unit[0].Text, NameHash(sourcePath, unit, yaps));
         }
+
+        // The answer depends on the material's shader and on files in the
+        // project, nothing else, so it holds until something imports. The
+        // material panel asks on every GUI event, and each answer read the
+        // whole include closure and hashed it. Failures are never kept: a
+        // read that failed once is tried again.
+        static readonly Dictionary<Shader, string> NameCache = new Dictionary<Shader, string>();
+
+        sealed class NameCacheReset : AssetPostprocessor
+        {
+            static void OnPostprocessAllAssets(string[] imported, string[] deleted, string[] moved, string[] movedFrom) =>
+                NameCache.Clear();
+        }
+
+        // The source TEXT is in it, not only the path. Updating or re-locking a
+        // shader rewrites the same file, so a name blind to that never went
+        // stale, and a re-patch wrote over the copy other materials still used.
+        static string NameHash(string sourcePath, List<ShaderSpiPatcher.SourceFile> unit, string yaps) =>
+            Hash(sourcePath + EmittedVersion(yaps) + unit.Count + string.Concat(unit.Select(f => f.Text)));
 
         // Whether a patched material is carrying code this version no longer
         // emits. False whenever it cannot be told.
@@ -338,6 +359,8 @@ namespace AvatarBridge
                 refusal = loadFailure;
                 return null;
             }
+            // Before any edit below: the name is taken from the source as it is on disk.
+            string hash = NameHash(sourcePath, unit, yaps);
 
             // Properties first: the block is in the shader file, and later
             // edits work on offsets that this would otherwise shift.
@@ -365,7 +388,6 @@ namespace AvatarBridge
                 return null;
             }
 
-            string hash = Hash(sourcePath + EmittedVersion(yaps) + unit.Count);
             string newName = PatchedName(shaderFile.Text, hash);
             shaderFile.Text = ShaderSpiPatcher.Rename(shaderFile.Text, newName);
 
@@ -378,10 +400,17 @@ namespace AvatarBridge
                 return null;
             }
 
+            bool frameless = unit.Any(f => f.Text.Contains(NoNormal) || f.Text.Contains(NoTangent));
             report?.Converted(Category, material.name,
                 $"Deform patched into \"{material.shader.name}\" across {patchedPasses} pass(es). " +
                 "The original shader is untouched; a copy carrying YAPS was written beside the " +
                 "converted avatar and the material repointed at it."
+                + (frameless
+                    ? " Its vertex input takes no normal or no tangent from the mesh, and a skinned " +
+                      "plug finds which way it points from those, so a skinned plug on this shader " +
+                      "stays straight. A plug that is its own mesh object bends as normal. YAPS " +
+                      "Simple Lit carries both."
+                    : "")
                 + (skippedShadowPasses > 0
                     ? $" {skippedShadowPasses} shadow pass(es) use Unity's own shadow-caster " +
                       "function, which lives in Unity's includes rather than in this shader, so " +
@@ -612,13 +641,42 @@ namespace AvatarBridge
             var body = new StringBuilder();
             body.AppendLine();
             body.AppendLine("    // --- YAPS ---");
+            // The block runs before the host's own setup, and an instanced
+            // variant reads unity_ObjectToWorld through the instance id, which
+            // is 0 until that runs: every batched copy deformed in the first
+            // one's frame. Repeated only when the host already calls it on this
+            // parameter outside any #if, so the input is known to carry the id.
+            // A second call sets the same values, and outside instancing it is
+            // empty.
+            int bodyClose = MatchBracket(file.Text, braceOpen, '{', '}');
+            string hostBody = bodyClose > braceOpen
+                ? file.Text.Substring(braceOpen, bodyClose - braceOpen) : "";
+            // A commented-out call is no evidence: its struct member is often
+            // commented out too, and v.instanceID then fails the instanced
+            // variants only, which the import-time error check never compiles.
+            hostBody = Regex.Replace(hostBody, @"//[^\n]*|/\*.*?\*/", "", RegexOptions.Singleline);
+            var hostSetup = Regex.Match(hostBody,
+                $@"\bUNITY_SETUP_INSTANCE_ID\s*\(\s*{Regex.Escape(parameterName)}\s*\)");
+            if (hostSetup.Success)
+            {
+                string before = hostBody.Substring(0, hostSetup.Index);
+                int depth = Regex.Matches(before, @"^[ \t]*#[ \t]*if", RegexOptions.Multiline).Count
+                            - Regex.Matches(before, @"^[ \t]*#[ \t]*endif", RegexOptions.Multiline).Count;
+                if (depth == 0)
+                {
+                    body.AppendLine($"    UNITY_SETUP_INSTANCE_ID({parameterName});");
+                }
+            }
             body.AppendLine($"    float3 yapsPosition = {parameterName}.{positionField}.xyz;");
+            // Zero when the host has none. A constant stand-in read as a real
+            // direction, and a skinned plug recovered a different wrong frame
+            // per vertex from it; zero makes the deform leave the vertex alone.
             body.AppendLine(normalField != null
                 ? $"    float3 yapsNormal = {parameterName}.{normalField}.xyz;"
-                : "    float3 yapsNormal = float3(0,0,1);");
+                : NoNormal);
             body.AppendLine(tangentField != null
                 ? $"    float3 yapsTangent = {parameterName}.{tangentField}.xyz;"
-                : "    float3 yapsTangent = float3(1,0,0);");
+                : NoTangent);
             // BOTH ends, unconditionally, and this is deliberate.
             //
             // Each guards itself on its own enable, _YAPS_Enabled for a plug and
@@ -652,6 +710,9 @@ namespace AvatarBridge
             file.Text = file.Text.Insert(head.Index, "\n" + yaps + "\n");
             return true;
         }
+
+        const string NoNormal = "    float3 yapsNormal = float3(0,0,0);";
+        const string NoTangent = "    float3 yapsTangent = float3(0,0,0);";
 
         static int MatchBracket(string text, int open, char opening, char closing)
         {
@@ -843,14 +904,14 @@ namespace AvatarBridge
             foreach (var file in unit)
             {
                 string folder = Path.GetDirectoryName(file.OriginalPath) ?? ".";
-                file.Text = Regex.Replace(file.Text, @"#include\s+""([^""]+)""", m =>
+                file.Text = ShaderSpiPatcher.IncludeDirective.Replace(file.Text, m =>
                 {
-                    string candidate = ShaderSpiPatcher.ResolveInclude(folder, m.Groups[1].Value);
+                    string candidate = ShaderSpiPatcher.ResolveInclude(folder, m.Groups[2].Value);
                     if (candidate != null
                         && byPath.TryGetValue(Path.GetFullPath(candidate), out var target)
                         && target != file)
                     {
-                        return $"#include \"{target.OutputName}\"";
+                        return m.Groups[1].Value + target.OutputName + m.Groups[3].Value;
                     }
                     return m.Value;
                 });
@@ -864,10 +925,30 @@ namespace AvatarBridge
                 }
             }
 
+            // Every slot, extra and socket on one source arrives here with the
+            // same text. Rewriting a file bumps its time, and that alone
+            // reimports and recompiles it, so an identical, working copy is
+            // used as it is. Anything less goes the whole way below.
+            string shaderPath = dir + "/" + shaderFile.OutputName;
+            if (unit.All(f =>
+                {
+                    string path = dir + "/" + f.OutputName;
+                    return File.Exists(path) && File.ReadAllText(path) == f.Text;
+                })
+                && AssetDatabase.LoadAssetAtPath<Shader>(shaderPath) is Shader existing
+                && !ShaderUtil.ShaderHasError(existing))
+            {
+                return existing;
+            }
+
             var written = new List<string>();
+            var created = new List<string>();
             foreach (var file in unit)
             {
                 string path = dir + "/" + file.OutputName;
+                // A file already here has this name and may be in use. A
+                // failure below removes only what this call created.
+                if (!File.Exists(path)) created.Add(path);
                 File.WriteAllText(path, file.Text);
                 written.Add(path);
             }
@@ -879,14 +960,13 @@ namespace AvatarBridge
                 AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
             }
             AssetDatabase.Refresh();
-            string shaderPath = written[0];
             AssetDatabase.ImportAsset(shaderPath, ImportAssetOptions.ForceSynchronousImport);
 
             var result = AssetDatabase.LoadAssetAtPath<Shader>(shaderPath);
             if (result == null)
             {
                 error = "Unity did not import it as a shader at all";
-                CleanUp(written, shaderPath);
+                CleanUp(created, shaderPath);
                 return null;
             }
             if (ShaderUtil.ShaderHasError(result))
@@ -898,7 +978,7 @@ namespace AvatarBridge
                 // Keep the failing source next to the avatar so the error
                 // can be read against real line numbers.
                 File.WriteAllText(shaderPath + ".failed.txt", shaderFile.Text);
-                CleanUp(written, null);
+                CleanUp(created, null);
                 return null;
             }
             return result;

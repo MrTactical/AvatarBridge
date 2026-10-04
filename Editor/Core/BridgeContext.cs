@@ -46,9 +46,8 @@ namespace AvatarBridge
         public class HelperRigChain
         {
             public Transform Root;                  // the helper chain's root
-            public System.Collections.Generic.List<Transform> Bones;
             public float Pull, Spring, Stiffness, Gravity, Immobile;
-            public string Name;
+            public bool IsAdvancedIntegration;
         }
 
         public System.Collections.Generic.List<HelperRigChain> HelperRigChains =
@@ -56,6 +55,31 @@ namespace AvatarBridge
 
 #if VRC_SDK_VRCSDK3
         public VRCAvatarDescriptor SourceDescriptor;
+
+        // Every object path the source had before any pass renamed or
+        // deleted one. A baked copy or an in-place run converts the source
+        // itself, so its live hierarchy cannot say what was there.
+        public HashSet<string> SourcePaths;
+
+        public void SnapshotSourcePaths()
+        {
+            var root = SourceDescriptor.transform;
+            SourcePaths = new HashSet<string>(root.GetComponentsInChildren<Transform>(true)
+                .Select(t => RelativePath(root, t)), StringComparer.Ordinal);
+        }
+
+        // No snapshot: never claim the conversion broke a path.
+        public bool ResolvedInSource(string path) =>
+            SourcePaths != null && !string.IsNullOrEmpty(path) && SourcePaths.Contains(path);
+
+        // Roots of the trees a pass deleted on purpose with the system they
+        // served. Their curves are dead by design: neither a loss to report
+        // nor a path to repair onto whatever shares the name.
+        public List<string> RemovedPaths = new List<string>();
+
+        public bool RemovedOnPurpose(string path) =>
+            !string.IsNullOrEmpty(path) && RemovedPaths.Any(r => path == r
+                || path.StartsWith(r + "/", StringComparison.Ordinal));
 #endif
 
         public GameObject Target;
@@ -143,6 +167,15 @@ namespace AvatarBridge
         // material is usually worn by other meshes too and they must keep it.
         public Dictionary<(Renderer renderer, int slot), (Material from, Material to)>
             YapsMaterialSwaps = new Dictionary<(Renderer, int), (Material, Material)>();
+
+        // Alternate materials the animator swaps onto a plug slot, baked and
+        // repointed once the clips are the conversion's own copies.
+        public List<(Renderer renderer, int slot, Material from, Material to)>
+            YapsVariantSwaps = new List<(Renderer, int, Material, Material)>();
+
+        // Textures the slim pass left alone because another avatar shares them,
+        // texture name to the avatar sharing it, so the weight report skips them.
+        public Dictionary<string, string> SlimLeftAlone;
 
         public Dictionary<string, List<string>> PhysicsColliderHosts =
             new Dictionary<string, List<string>>();

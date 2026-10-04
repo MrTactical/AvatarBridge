@@ -5,6 +5,8 @@ using UnityEditor;
 using UnityEditor.Animations;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Animations;
+using UnityEngine.Playables;
 using ABI.CCK.Components;
 using VRC.SDK3.Avatars.Components;
 
@@ -62,6 +64,7 @@ namespace AvatarBridge.Regression
             public int Responded;
             public List<string> Stuck;
             public List<string> Refused;
+            public List<string> Unstable;
             public bool Invalid;
         }
 
@@ -105,6 +108,9 @@ namespace AvatarBridge.Regression
 
         public static int Sweep(GameObject root)
         {
+            // Cleared first: the early returns below would otherwise hand the
+            // harness the previous avatar's result.
+            LastResult = default;
             var animator = root.GetComponent<Animator>() ?? root.GetComponentInChildren<Animator>(true);
             // The CCK wraps the generated controller in an override controller, sometimes twice.
             var runtime = animator != null ? animator.runtimeAnimatorController : null;
@@ -155,6 +161,20 @@ namespace AvatarBridge.Regression
             animator.Rebind();
             Settle(animator, Warmup);
 
+            // A graph bound to the animator trips VRCFury's parameter shims, and the CCK
+            // driver's SetFloat goes through them too, so its writes are lost. Named here
+            // because nothing in the converter creates one.
+            if (animator.hasBoundPlayables)
+            {
+                var bound = UnityEditor.Playables.Utility.GetAllGraphs()
+                    .Where(g => g.IsValid())
+                    .SelectMany(g => Enumerable.Range(0, g.GetOutputCountByType<AnimationPlayableOutput>())
+                        .Select(i => (AnimationPlayableOutput)g.GetOutputByType<AnimationPlayableOutput>(i))
+                        .Where(o => o.IsOutputValid() && o.GetTarget() == animator)
+                        .Select(o => g.GetEditorName() + (o.GetSourcePlayable().IsNull() ? " (no source)" : "")));
+                Debug.Log($"[Sweep] graphs bound to the animator: {string.Join(", ", bound)}");
+            }
+
             // What the animator has actually made of the physics once it has settled, which is a
             // different question from what the prefab was saved as. A cloth saved disabled whose
             // toggle defaults ON should be running by now; one that is still off after the
@@ -176,6 +196,24 @@ namespace AvatarBridge.Regression
                       "propert(ies): object activity, renderer enable, blendshape weights and material " +
                       "slots. This moves things in the open scene and does not put them back: reload it " +
                       "afterwards.");
+
+            // Two drives that change nothing. Every Drive rebinds, and a rebind captures the scene
+            // as the new defaults, so a tree resting between two children that animate different
+            // properties re-blends against its own output and creeps on every drive. That creep
+            // belongs to the rest pose, and was being charged to whichever parameter came next.
+            // Two, not one: Warmup leaves a different clip phase than SettleFrames does.
+            string first = parameters[0];
+            Drive(controller, animator, first, DefaultOf(controller, first));
+            Settle(animator, SettleFrames);
+            var rest = watch.Capture();
+            Drive(controller, animator, first, DefaultOf(controller, first));
+            Settle(animator, SettleFrames);
+            watch.Unstable.UnionWith(watch.ChangedLabels(rest));
+            if (watch.Unstable.Count > 0)
+            {
+                Debug.LogWarning($"[Sweep] UNSTABLE at rest, left out of every verdict: " +
+                                 string.Join(", ", watch.Unstable.OrderBy(l => l, System.StringComparer.Ordinal)));
+            }
 
             var stuck = new List<string>();
             var notApplied = new List<string>();
@@ -261,6 +299,7 @@ namespace AvatarBridge.Regression
                 Responded = responded,
                 Stuck = new List<string>(stuck),
                 Refused = new List<string>(notApplied),
+                Unstable = new List<string>(watch.Unstable),
                 Invalid = responded == 0,
             };
 
@@ -314,7 +353,7 @@ namespace AvatarBridge.Regression
                 {
                     continue;
                 }
-                float weight = i == 0 ? 1f : animator.GetLayerWeight(i);
+                float weight = i == 0 ? 1f : LayerWeight(animator, i);
                 if (weight < 0.5f || layer.blendingMode == AnimatorLayerBlendingMode.Additive)
                 {
                     continue;
@@ -408,6 +447,23 @@ namespace AvatarBridge.Regression
             return findings;
         }
 
+        // VRCFury replaces Animator.GetLayerWeight with a playable lookup that
+        // throws ArgumentNullException once a graph bound to the animator has an
+        // output with no source, and that aborted whole sweeps. Its own fallback
+        // is used then, so the reading matches every avatar the lookup survives.
+        static float LayerWeight(Animator animator, int layer)
+        {
+            try
+            {
+                return animator.GetLayerWeight(layer);
+            }
+            catch (System.ArgumentNullException)
+            {
+                var direct = animator.runtimeAnimatorController as AnimatorController;
+                return direct != null ? direct.layers[layer].defaultWeight : 1f;
+            }
+        }
+
         static void Drive(AnimatorController controller, Animator animator, string name, float value)
         {
             var parameters = controller.parameters;
@@ -468,6 +524,9 @@ namespace AvatarBridge.Regression
             readonly int blendShapeTotal;
 
             public int Count => labels.Length;
+
+            // Labels that move with no parameter changed; no verdict can rest on them.
+            public readonly HashSet<string> Unstable = new HashSet<string>();
 
             public Watchlist(GameObject root)
             {
@@ -545,7 +604,11 @@ namespace AvatarBridge.Regression
                 return new Reading { Numbers = numbers, References = references };
             }
 
-            public List<string> Differences(Reading before)
+            public List<string> Differences(Reading before) => Compare(before, false);
+
+            public List<string> ChangedLabels(Reading before) => Compare(before, true);
+
+            List<string> Compare(Reading before, bool labelsOnly)
             {
                 var now = Capture();
                 var moved = new List<string>();
@@ -554,13 +617,14 @@ namespace AvatarBridge.Regression
                 for (int i = 0; i < labels.Length; i++)
                 {
                     bool isReference = labels[i].Contains(" material[");
+                    string change = null;
                     if (isReference)
                     {
                         if (before.References[r] != now.References[r])
                         {
                             string was = before.References[r] != null ? before.References[r].name : "none";
                             string got = now.References[r] != null ? now.References[r].name : "none";
-                            moved.Add($"{labels[i]} {was} → {got}");
+                            change = $"{was} → {got}";
                         }
                         r++;
                     }
@@ -568,9 +632,13 @@ namespace AvatarBridge.Regression
                     {
                         if (Mathf.Abs(before.Numbers[n] - now.Numbers[n]) > Epsilon)
                         {
-                            moved.Add($"{labels[i]} {before.Numbers[n]:0.##} → {now.Numbers[n]:0.##}");
+                            change = $"{before.Numbers[n]:0.##} → {now.Numbers[n]:0.##}";
                         }
                         n++;
+                    }
+                    if (change != null && !Unstable.Contains(labels[i]))
+                    {
+                        moved.Add(labelsOnly ? labels[i] : $"{labels[i]} {change}");
                     }
                 }
                 return moved;

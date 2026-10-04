@@ -1,6 +1,7 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using UnityEditor;
 using UnityEngine;
 
@@ -10,7 +11,7 @@ namespace AvatarBridge
     // point, as a ratio. The physics sizing asks the same question per
     // chain inside the MagicaCloth writer; contact zones need the
     // answer too, and this must compile without MagicaCloth2, so the
-    // measurement lives here on its own.
+    // measurement lives here.
     //
     // Two readings of every skinned mesh: the pose as saved, and the
     // pose with every blendshape any selected controller animates
@@ -23,10 +24,29 @@ namespace AvatarBridge
         const int SampleTarget = 200000;
         const int MinSamples = 12;
         const float MinBoneWeight = 0.2f;
-        static BridgeContext owner;
-        static Dictionary<string, float> reach;
-        static Dictionary<string, Vector3[]> deformed;
-        static Dictionary<string, string> groupParent;
+
+        // Per conversion and released with it. Every zone and chain asks
+        // about the same meshes, and the deformed copies are the size of
+        // every mesh on the avatar.
+        sealed class Cache
+        {
+            internal Dictionary<string, float> Reach;
+            internal readonly Dictionary<string, string> GroupParent =
+                new Dictionary<string, string>(StringComparer.Ordinal);
+            // By renderer, not path: two sibling meshes with one name share a
+            // path, and the second was handed the first one's vertices.
+            internal readonly Dictionary<(SkinnedMeshRenderer renderer, bool atReach), Vector3[]> Deformed =
+                new Dictionary<(SkinnedMeshRenderer, bool), Vector3[]>();
+            internal readonly Dictionary<Mesh, (BoneWeight[] weights, Matrix4x4[] binds)> Skin =
+                new Dictionary<Mesh, (BoneWeight[], Matrix4x4[])>();
+            internal readonly Dictionary<(Mesh mesh, int shape), (int[] index, Vector3[] delta)> LastFrame =
+                new Dictionary<(Mesh, int), (int[], Vector3[])>();
+        }
+
+        static readonly ConditionalWeakTable<BridgeContext, Cache> Caches =
+            new ConditionalWeakTable<BridgeContext, Cache>();
+
+        static Cache CacheOf(BridgeContext ctx) => Caches.GetValue(ctx, _ => new Cache());
 
         // World metres the animator's blendshapes can push the surface
         // around a point outward, 0 when they cannot. A ratio of far
@@ -36,7 +56,7 @@ namespace AvatarBridge
         // moved the reading. Displacement per vertex is the honest
         // measure of how far past the zone the body can get.
         internal static float Around(BridgeContext ctx, Vector3 worldCentre, float captureRadius)
-            => Around(ctx, worldCentre, captureRadius, out _);
+            => Measure(ctx, worldCentre, captureRadius, null);
 
         // perShape: each animated shape's share of the push, keyed
         // "renderer path|shape name".
@@ -44,6 +64,14 @@ namespace AvatarBridge
             out Dictionary<string, float> perShape)
         {
             perShape = new Dictionary<string, float>(StringComparer.Ordinal);
+            return Measure(ctx, worldCentre, captureRadius, perShape);
+        }
+
+        // perShape null: the caller wants the push alone, and attributing
+        // it is most of the cost.
+        static float Measure(BridgeContext ctx, Vector3 worldCentre, float captureRadius,
+            Dictionary<string, float> perShape)
+        {
             if (ctx?.Target == null)
             {
                 return 0f;
@@ -53,8 +81,11 @@ namespace AvatarBridge
                 return 0f;   // nothing animated grows anything
             }
 
+            var cache = CacheOf(ctx);
             var deltas = new List<float>();
-            var samples = new List<(SkinnedMeshRenderer renderer, int index, Matrix4x4 toWorld, Vector3 direction)>();
+            var samples = perShape != null
+                ? new List<(SkinnedMeshRenderer renderer, int index, Matrix4x4 toWorld, Vector3 direction)>()
+                : null;
             foreach (var renderer in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
                 var mesh = renderer.sharedMesh;
@@ -69,8 +100,11 @@ namespace AvatarBridge
                 {
                     rest = Deformed(ctx, renderer, mesh, atReach: false);
                     grown = Deformed(ctx, renderer, mesh, atReach: true);
-                    weights = mesh.boneWeights;
-                    binds = mesh.bindposes;
+                    if (!cache.Skin.TryGetValue(mesh, out var skin))
+                    {
+                        cache.Skin[mesh] = skin = (mesh.boneWeights, mesh.bindposes);
+                    }
+                    (weights, binds) = skin;
                 }
                 catch
                 {
@@ -110,10 +144,13 @@ namespace AvatarBridge
                     // the way a shrinking slider costs the physics
                     // sizes nothing.
                     deltas.Add(Mathf.Max(0f, Vector3.Distance(atGrown, worldCentre) - restDistance));
-                    Vector3 direction = restDistance > 1e-4f
-                        ? (atRest - worldCentre) / restDistance
-                        : (atGrown - atRest).normalized;
-                    samples.Add((renderer, i, toWorld, direction));
+                    if (samples != null)
+                    {
+                        Vector3 direction = restDistance > 1e-4f
+                            ? (atRest - worldCentre) / restDistance
+                            : (atGrown - atRest).normalized;
+                        samples.Add((renderer, i, toWorld, direction));
+                    }
                 }
             }
 
@@ -122,7 +159,10 @@ namespace AvatarBridge
                 return 0f;
             }
             deltas.Sort();
-            AttributeShapes(ctx, samples, perShape);
+            if (perShape != null)
+            {
+                AttributeShapes(ctx, samples, perShape);
+            }
             // The far edge of the push, robust to a stray vertex. The
             // median would under-read a shape that only grows one side
             // of the body, which is what growth sliders do.
@@ -135,6 +175,7 @@ namespace AvatarBridge
             Dictionary<string, float> perShape)
         {
             var extents = Reach(ctx);
+            var cache = CacheOf(ctx);
             var byRenderer = new Dictionary<SkinnedMeshRenderer, List<int>>();
             for (int i = 0; i < samples.Count; i++)
             {
@@ -168,21 +209,23 @@ namespace AvatarBridge
                     {
                         continue;
                     }
-                    scratch = scratch ?? new Vector3[mesh.vertexCount];
-                    try
-                    {
-                        mesh.GetBlendShapeFrameVertices(s, frames - 1, scratch, null, null);
-                    }
-                    catch
+                    var (moved, delta) = LastFrame(cache, mesh, s, frames - 1, ref scratch);
+                    if (moved == null)
                     {
                         continue;
                     }
                     float scale = reachWeight / frameWeight;
-                    var pushes = new List<float>();
+                    var pushes = new List<float>(pair.Value.Count);
                     foreach (int i in pair.Value)
                     {
                         var sample = samples[i];
-                        Vector3 world = sample.toWorld.MultiplyVector(scratch[sample.index] * scale);
+                        int at = Array.BinarySearch(moved, sample.index);
+                        if (at < 0)
+                        {
+                            pushes.Add(0f);   // a vertex the shape does not move pushes nothing
+                            continue;
+                        }
+                        Vector3 world = sample.toWorld.MultiplyVector(delta[at] * scale);
                         pushes.Add(Mathf.Max(0f, Vector3.Dot(world, sample.direction)));
                     }
                     if (pushes.Count < MinSamples)
@@ -199,6 +242,43 @@ namespace AvatarBridge
             }
         }
 
+        // One frame's moved vertices, read once per conversion. Every zone
+        // asks about the same shapes, a full read copies the whole mesh,
+        // and a shape moves only part of it. Index null: unreadable.
+        static (int[] index, Vector3[] delta) LastFrame(Cache cache, Mesh mesh, int shape, int frame,
+            ref Vector3[] scratch)
+        {
+            if (cache.LastFrame.TryGetValue((mesh, shape), out var known))
+            {
+                return known;
+            }
+            (int[], Vector3[]) result = (null, null);
+            scratch = scratch ?? new Vector3[mesh.vertexCount];
+            try
+            {
+                mesh.GetBlendShapeFrameVertices(shape, frame, scratch, null, null);
+                var index = new List<int>();
+                var delta = new List<Vector3>();
+                for (int i = 0; i < scratch.Length; i++)
+                {
+                    // Exact, not Unity's ==, which calls a tiny delta zero.
+                    var d = scratch[i];
+                    if (d.x != 0f || d.y != 0f || d.z != 0f)
+                    {
+                        index.Add(i);
+                        delta.Add(d);
+                    }
+                }
+                result = (index.ToArray(), delta.ToArray());
+            }
+            catch
+            {
+                // cached as unreadable
+            }
+            cache.LastFrame[(mesh, shape)] = result;
+            return result;
+        }
+
         // The weight the animator can push one shape to, for mapping its
         // curves onto a zone's scale.
         internal static float ReachOf(BridgeContext ctx, string shapeKey)
@@ -211,27 +291,27 @@ namespace AvatarBridge
         internal static string GroupOf(BridgeContext ctx, string shapeKey)
         {
             Reach(ctx);
-            return Find(shapeKey);
+            return Find(CacheOf(ctx).GroupParent, shapeKey);
         }
 
-        static string Find(string key)
+        static string Find(Dictionary<string, string> parents, string key)
         {
-            if (groupParent == null || !groupParent.TryGetValue(key, out var parent) || parent == key)
+            if (!parents.TryGetValue(key, out var parent) || parent == key)
             {
                 return key;
             }
-            string root = Find(parent);
-            groupParent[key] = root;
+            string root = Find(parents, parent);
+            parents[key] = root;
             return root;
         }
 
-        static void Union(string a, string b)
+        static void Union(Dictionary<string, string> parents, string a, string b)
         {
-            string ra = Find(a);
-            string rb = Find(b);
+            string ra = Find(parents, a);
+            string rb = Find(parents, b);
             if (ra != rb)
             {
-                groupParent[rb] = ra;
+                parents[rb] = ra;
             }
         }
 
@@ -240,16 +320,15 @@ namespace AvatarBridge
 
         // Highest weight any selected controller's curves push each
         // blendshape to, keyed "renderer path|shape name".
-        static Dictionary<string, float> Reach(BridgeContext ctx)
+        internal static Dictionary<string, float> Reach(BridgeContext ctx)
         {
-            if (ReferenceEquals(owner, ctx) && reach != null)
+            var cache = CacheOf(ctx);
+            if (cache.Reach != null)
             {
-                return reach;
+                return cache.Reach;
             }
-            owner = ctx;
-            deformed = new Dictionary<string, Vector3[]>(StringComparer.Ordinal);
-            reach = new Dictionary<string, float>(StringComparer.Ordinal);
-            groupParent = new Dictionary<string, string>(StringComparer.Ordinal);
+            var reach = cache.Reach = new Dictionary<string, float>(StringComparer.Ordinal);
+            var groupParent = cache.GroupParent;
             var seen = new HashSet<AnimationClip>();
             foreach (var entry in AnimatorMerger.GetSelectedVrcControllers(ctx))
             {
@@ -293,26 +372,31 @@ namespace AvatarBridge
                     }
                     for (int i = 1; i < raised.Count; i++)
                     {
-                        Union(raised[0], raised[i]);
+                        Union(groupParent, raised[0], raised[i]);
                     }
                 }
             }
             return reach;
         }
 
-        static Vector3[] Deformed(BridgeContext ctx, SkinnedMeshRenderer renderer, Mesh mesh, bool atReach)
+        // The mesh as worn, or with every animated shape at the far end of
+        // its curves. Once per renderer per conversion: every zone asks
+        // about the same meshes.
+        internal static Vector3[] Deformed(BridgeContext ctx, SkinnedMeshRenderer renderer, Mesh mesh,
+            bool atReach = false)
         {
-            string path = AnimationUtility.CalculateTransformPath(renderer.transform, ctx.Target.transform);
-            string key = (atReach ? "max|" : "saved|") + path;
-            if (deformed.TryGetValue(key, out var known))
+            var cache = CacheOf(ctx);
+            if (cache.Deformed.TryGetValue((renderer, atReach), out var known))
             {
                 return known;
             }
 
+            // The path is still what an animation names, so it is what reach is keyed by.
+            string path = AnimationUtility.CalculateTransformPath(renderer.transform, ctx.Target.transform);
             var extents = atReach ? Reach(ctx) : null;
             var vertices = mesh.vertices;
             int shapes = mesh.blendShapeCount;
-            Vector3[] scratch = null;
+            Vector3[] lower = null, upper = null;
             for (int s = 0; s < shapes; s++)
             {
                 float weight = renderer.GetBlendShapeWeight(s);
@@ -322,16 +406,20 @@ namespace AvatarBridge
                 }
                 if (Mathf.Abs(weight) < 0.01f)
                 {
-                    continue;
+                    continue;   // off, and reading its frames is the expensive part
                 }
-                scratch = scratch ?? new Vector3[vertices.Length];
-                Apply(mesh, s, weight, vertices, scratch);
+                if (lower == null)
+                {
+                    lower = new Vector3[vertices.Length];
+                    upper = new Vector3[vertices.Length];
+                }
+                Apply(mesh, s, weight, vertices, lower, upper);
             }
-            deformed[key] = vertices;
+            cache.Deformed[(renderer, atReach)] = vertices;
             return vertices;
         }
 
-        static void Apply(Mesh mesh, int shape, float weight, Vector3[] into, Vector3[] scratch)
+        static void Apply(Mesh mesh, int shape, float weight, Vector3[] into, Vector3[] lower, Vector3[] upper)
         {
             int frames = mesh.GetBlendShapeFrameCount(shape);
             if (frames <= 0)
@@ -351,27 +439,24 @@ namespace AvatarBridge
             if (high == 0)
             {
                 float scale = highWeight > 0f ? weight / highWeight : 0f;
-                mesh.GetBlendShapeFrameVertices(shape, 0, scratch, null, null);
+                mesh.GetBlendShapeFrameVertices(shape, 0, lower, null, null);
                 for (int i = 0; i < into.Length; i++)
                 {
-                    into[i] += scratch[i] * scale;
+                    into[i] += lower[i] * scale;
                 }
                 return;
             }
-            // Between two authored frames: the lower frame fully, plus
-            // the slice of the step up to the requested weight.
+            // Between two authored frames, and past the last one along its
+            // final step, the way a single frame already scales past 100.
+            // Clamping here sized contacts for less than physics.
             float lowWeight = mesh.GetBlendShapeFrameWeight(shape, high - 1);
             float span = highWeight - lowWeight;
-            float t = span > 0f ? Mathf.Clamp01((weight - lowWeight) / span) : 0f;
-            mesh.GetBlendShapeFrameVertices(shape, high - 1, scratch, null, null);
+            float t = span > 0f ? (weight - lowWeight) / span : 0f;
+            mesh.GetBlendShapeFrameVertices(shape, high - 1, lower, null, null);
+            mesh.GetBlendShapeFrameVertices(shape, high, upper, null, null);
             for (int i = 0; i < into.Length; i++)
             {
-                into[i] += scratch[i] * (1f - t);
-            }
-            mesh.GetBlendShapeFrameVertices(shape, high, scratch, null, null);
-            for (int i = 0; i < into.Length; i++)
-            {
-                into[i] += scratch[i] * t;
+                into[i] += Vector3.LerpUnclamped(lower[i], upper[i], t);
             }
         }
     }

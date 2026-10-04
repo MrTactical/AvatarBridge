@@ -7,8 +7,13 @@
 # them present in the source, against a DLL a day older than the deploy.
 # Compare Library/ScriptAssemblies/Assembly-CSharp.dll against the files you
 # deployed before believing a failure, or let Unity open the project once.
-# Compiles the editor scripts four times: with the VRChat SDK and without,
-# each with and without the YAPS add-on.
+# Compiles the editor scripts five times: with the VRChat SDK and without,
+# each with and without the YAPS add-on, and MagicaCloth2 without the SDK.
+#
+# The references are the project's own ScriptAssemblies, which hold its
+# deployed copy of this repo, add-on included. A type a combination leaves
+# out still resolves from there and the compile passes, so each assembly is
+# read back and any AvatarBridge type bound out of Assembly-CSharp* fails it.
 #
 # Everything but the first combination matters. A ChilloutVR-only user
 # installs AvatarBridge for the toolkit and never has the VRChat SDK, and
@@ -22,16 +27,24 @@
 set -u
 
 UNITY="${UNITY_DATA:-/c/Program Files/Unity/Hub/Editor/2022.3.22f1/Editor/Data}"
-PROJECT="${1:-/d/UnityVRCCrap/Non Corpus Zone}"
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
+# The same project check-defines.sh uses, so the two gates agree.
+# shellcheck source=/dev/null
+[ -f "$REPO/Dev/local.cfg" ] && . "$REPO/Dev/local.cfg"
+PROJECT="${1:-${AVATARBRIDGE_PROJECT:-}}"
+[ -n "$PROJECT" ] || {
+    echo "pass a project path, or set AVATARBRIDGE_PROJECT in Dev/local.cfg" >&2
+    exit 1
+}
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 MONO="$UNITY/MonoBleedingEdge/bin/mono.exe"
 CSC="$UNITY/MonoBleedingEdge/lib/mono/4.5/csc.exe"
+IKDASM="$UNITY/MonoBleedingEdge/lib/mono/4.5/ikdasm.exe"
 NETSTANDARD="$UNITY/MonoBleedingEdge/lib/mono/4.5/Facades/netstandard.dll"
 
-for tool in "$MONO" "$CSC" "$NETSTANDARD"; do
+for tool in "$MONO" "$CSC" "$IKDASM" "$NETSTANDARD"; do
     if [ ! -f "$tool" ]; then
         echo "ABORT: missing $tool" >&2
         exit 1
@@ -39,7 +52,10 @@ for tool in "$MONO" "$CSC" "$NETSTANDARD"; do
 done
 
 fail=0
+# MagicaCloth2 without the SDK is the toolkit's audience. check-defines.sh
+# varies the physics defines only in a project that has the SDK.
 for defines in "CVR_CCK_EXISTS" \
+               "CVR_CCK_EXISTS;AVATARBRIDGE_MAGICA" \
                "CVR_CCK_EXISTS;AVATARBRIDGE_YAPS" \
                "CVR_CCK_EXISTS;VRC_SDK_VRCSDK3" \
                "CVR_CCK_EXISTS;VRC_SDK_VRCSDK3;AVATARBRIDGE_YAPS"; do
@@ -58,6 +74,12 @@ for defines in "CVR_CCK_EXISTS" \
     # UnityEngine and UnityEditor too, and having both makes every type
     # ambiguous.
     for dll_path in "$UNITY/Managed/UnityEngine"/*.dll "$PROJECT/Library/ScriptAssemblies"/*.dll; do
+        # Without the SDK, nothing built on it either: a ChilloutVR-only
+        # project has none of these, so a type found in one is not there.
+        case "$defines" in
+            *VRC_SDK_VRCSDK3*) ;;
+            *) case "$(basename "$dll_path")" in VRC*|com.vrcfury*|*vrchat*) continue ;; esac ;;
+        esac
         [ -f "$dll_path" ] && echo "-r:\"$(cygpath -w "$dll_path")\"" >> "$rsp"
     done
 
@@ -77,11 +99,11 @@ for defines in "CVR_CCK_EXISTS" \
     # in. Linking the deployed one meant a runtime change was never checked
     # here at all: a new type read as missing and a broken attribute read as
     # fine, both until somebody opened Unity.
-    sources="$REPO/Editor $REPO/Runtime"
+    sources=("$REPO/Editor" "$REPO/Runtime")
     # Dev tooling assumes a machine with everything installed, so it only
     # joins the combination that has everything.
     case "$defines" in
-        *VRC_SDK_VRCSDK3*AVATARBRIDGE_YAPS*) sources="$REPO/Editor $REPO/Runtime $REPO/Dev" ;;
+        *VRC_SDK_VRCSDK3*AVATARBRIDGE_YAPS*) sources+=("$REPO/Dev") ;;
     esac
     # Without the add-on those files are not in the project at all, so
     # compiling them would prove the wrong thing: the point of the run is
@@ -91,8 +113,8 @@ for defines in "CVR_CCK_EXISTS" \
     # it was the same blind spot the YAPS closure check exists for, in the
     # other direction: a shipped file reaching a type that stayed behind.
     case "$defines" in
-        *AVATARBRIDGE_YAPS*) find $sources -name '*.cs' ;;
-        *)                   find $sources -name '*.cs'                                   -not -path '*/Editor/Yaps/*' -not -path '*/Runtime/*' ;;
+        *AVATARBRIDGE_YAPS*) find "${sources[@]}" -name '*.cs' ;;
+        *)                   find "${sources[@]}" -name '*.cs' -not -path '*/Editor/Yaps/*' -not -path '*/Runtime/*' ;;
     esac |
         while read -r f; do echo "\"$(cygpath -w "$f")\"" >> "$rsp"; done
 
@@ -100,7 +122,21 @@ for defines in "CVR_CCK_EXISTS" \
     "$MONO" "$CSC" "@$(cygpath -w "$rsp")" 2>&1 | grep -E "error CS" | head -20
 
     if [ -f "$dll" ]; then
-        echo "    ok"
+        # Every AvatarBridge type this combination may use is in its sources,
+        # so one bound out of the deployed Assembly-CSharp* is a type the user
+        # will not have. A failed read-back is a failure, not a clean pass.
+        if "$MONO" "$IKDASM" "$(cygpath -w "$dll")" > "$WORK/il.txt"; then
+            leaked="$(grep -o "\['\?Assembly-CSharp[^]]*]AvatarBridge[A-Za-z0-9_.]*" "$WORK/il.txt" | sort -u)"
+        else
+            leaked="(could not read the assembly back)"
+        fi
+        if [ -n "$leaked" ]; then
+            echo "    FAILED: resolved from the project's deployed copy, not these sources"
+            echo "$leaked" | sed 's/^/      /' | head -20
+            fail=1
+        else
+            echo "    ok"
+        fi
     else
         echo "    FAILED: no assembly produced"
         fail=1

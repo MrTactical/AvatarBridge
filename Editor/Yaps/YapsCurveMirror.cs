@@ -78,13 +78,7 @@ namespace AvatarBridge
                     }
                     // Blendshapes animate 0..100; the bake stores full
                     // shapes, so the material takes 0..1.
-                    var source = AnimationUtility.GetEditorCurve(clip, binding);
-                    var scaled = new AnimationCurve();
-                    foreach (var key in source.keys)
-                    {
-                        scaled.AddKey(new Keyframe(key.time, key.value * 0.01f,
-                            key.inTangent * 0.01f, key.outTangent * 0.01f));
-                    }
+                    var scaled = Scaled(AnimationUtility.GetEditorCurve(clip, binding), 0.01f);
                     SetOnSlots(clip, rendererPath, renderer, WeightPack(index), "." + "xyzw"[index & 3], scaled);
                     written++;
                 }
@@ -202,16 +196,23 @@ namespace AvatarBridge
         // are divided with the values or the curve kinks between keys.
         static AnimationCurve AsRatio(AnimationCurve curve, float atBake)
         {
-            float divisor = Mathf.Max(Mathf.Abs(atBake), 1e-4f);
+            // Signed: a mirrored bone animates from -1, and dividing by the
+            // magnitude handed the shader -1 for "as baked".
+            float divisor = Mathf.Abs(atBake) < 1e-4f ? Mathf.Sign(atBake) * 1e-4f : atBake;
+            return Scaled(curve, Mathf.Abs(divisor - 1f) > 1e-4f ? 1f / divisor : 1f);
+        }
+
+        // Values and tangents together, on a copy of the keys so the weighted
+        // tangents come along: rebuilding each Keyframe from four numbers
+        // dropped them and changed the easing.
+        static AnimationCurve Scaled(AnimationCurve curve, float factor)
+        {
             var keys = curve.keys;
-            if (Mathf.Abs(divisor - 1f) > 1e-4f)
+            for (int i = 0; i < keys.Length; i++)
             {
-                for (int i = 0; i < keys.Length; i++)
-                {
-                    keys[i].value /= divisor;
-                    keys[i].inTangent /= divisor;
-                    keys[i].outTangent /= divisor;
-                }
+                keys[i].value *= factor;
+                keys[i].inTangent *= factor;
+                keys[i].outTangent *= factor;
             }
             return new AnimationCurve(keys);
         }

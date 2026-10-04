@@ -1,23 +1,146 @@
-/* AvatarBridge; window stylesheet.
+/* AvatarBridge; the kit stylesheet, shared by every window and inspector.
  *
- * Shape and spacing follow the two panels this window sits beside: the CCK's rounded 1px-bordered
- * cards, and the VRChat SDK's header fills and 3/6/14/24 spacing scale. Colours that exist as
- * Unity design tokens use the token, so both editor skins work without a second palette; the
- * .dark / .light classes on the root cover the rest, which is how the VRChat SDK does it too.
+ * Every colour is a token declared on .dark and .light. The root carries exactly one of those,
+ * so every descendant resolves them. The window background is Unity's own and never set here.
+ *
+ * Scales; a value off them is a review failure:
+ *   spacing  0, 2, 4, 6, 8, 12, 16, and -2 / -4 for hover bleed. .ab-inspector's -4 / -15 match
+ *            Unity's inspector inset. Heights (banner 62 / 52, primary 36, strong 28, button 24,
+ *            tabs 30, segment 22) are sizes, not spacing.
+ *   type     19 / 15 banner, 14 primary, 13 card title, 12 body and headings, 11 hint,
+ *            secondary and chip, 10 version pill. Regular and bold only.
+ *   radius   3 chip and segment, 4 button, input, notice and fold, 6 card, primary and tab strip,
+ *            9 version pill.
+ *   borders  1px, except the 3px accent stripes and the 2px indent rule.
+ *
+ * A rule that restyles a Unity control (Button, Toggle, TextField, ToolbarSearchField) is written
+ * .ab-root .ab-x and covers :hover, :hover:active, :focus and :disabled. Unity's own are
+ * .unity-button:hover (0,2,0) and .unity-button:hover:active (0,3,0), so these win on
+ * specificity rather than on a tie. Container rules that space their children sit at the end
+ * of the file, after every control rule they override.
  *
  * Gradients are absent on purpose. USS has no gradient support in any current Unity, so those
  * are generated textures assigned from BridgeTheme.
  */
 
+/* -------------------------------------------------------------- tokens ---- */
+
+.dark {
+    --ab-card: #3E3E3E;
+    --ab-card-head: #484848;
+    --ab-card-head-hover: #505050;
+    --ab-fold-head: #434343;
+    --ab-fold-head-hover: #4A4A4A;
+    --ab-inset: #333333;
+    --ab-row-alt: #393939;
+    --ab-border: #262626;
+    --ab-hairline: #555555;
+    --ab-indent-rule: #5A5A5A;
+    --ab-text-strong: #EEEEEE;
+    --ab-text-muted: #BEBEBE;
+    --ab-hover: rgba(255, 255, 255, 0.05);
+    --ab-btn: #4F4F4F;
+    --ab-btn-hover: #5A5A5A;
+    --ab-btn-press: #444444;
+    --ab-btn-text: #E0E0E0;
+    --ab-strong: #4E3A57;
+    --ab-strong-hover: #5C4566;
+    --ab-strong-text: #EEEEEE;
+
+    --ab-good: #5BE38A;
+    --ab-good-tint: #3B5242;
+    --ab-good-fill: #2BCF5C;
+    --ab-warn: #EBCB5A;
+    --ab-warn-tint: #555037;
+    --ab-warn-fill: #E3BE0C;
+    --ab-bad: #FF9C94;
+    --ab-bad-tint: #573F3F;
+    --ab-bad-fill: #F04747;
+    --ab-info: #8EC3FF;
+    --ab-info-tint: #394659;
+    --ab-info-fill: #4A94FF;
+    --ab-muted-tint: #484848;
+    --ab-muted-fill: #9A9A9A;
+    --ab-on-fill: #141414;
+    --ab-tag-1: #D7B5F7;
+    --ab-tag-2: #66DDD0;
+    --ab-tag-3: #FFB57A;
+    --ab-tag-4: #8AE895;
+}
+
+.light {
+    --ab-card: #D2D2D2;
+    --ab-card-head: #BDBDBD;
+    --ab-card-head-hover: #B4B4B4;
+    --ab-fold-head: #C8C8C8;
+    --ab-fold-head-hover: #C0C0C0;
+    --ab-inset: #DCDCDC;
+    --ab-row-alt: #D5D5D5;
+    --ab-border: #9C9C9C;
+    --ab-hairline: #B0B0B0;
+    --ab-indent-rule: #A0A0A0;
+    --ab-text-strong: #111111;
+    --ab-text-muted: #333333;
+    /* Light only: Unity's unchecked box edge is 1.5:1 on this card, where dark's reads as a well. */
+    --ab-control-edge: #747474;
+    --ab-hover: rgba(0, 0, 0, 0.05);
+    --ab-btn: #E2E2E2;
+    --ab-btn-hover: #EBEBEB;
+    --ab-btn-press: #D6D6D6;
+    --ab-btn-text: #1A1A1A;
+    --ab-strong: #D9C6DF;
+    --ab-strong-hover: #CDB5D5;
+    --ab-strong-text: #111111;
+
+    --ab-good: #12561F;
+    --ab-good-tint: #BCC7BF;
+    --ab-good-fill: #1E7A34;
+    --ab-warn: #5A4700;
+    --ab-warn-tint: #C9C6B9;
+    --ab-warn-fill: #8A6D00;
+    --ab-bad: #8E1515;
+    --ab-bad-tint: #CEBDBD;
+    --ab-bad-fill: #B02020;
+    --ab-info: #0D428F;
+    --ab-info-tint: #BCC4CC;
+    --ab-info-fill: #1B5E9E;
+    --ab-muted-tint: #C4C4C4;
+    --ab-muted-fill: #5C5C5C;
+    --ab-on-fill: #FFFFFF;
+    --ab-tag-1: #55257E;
+    --ab-tag-2: #07514A;
+    --ab-tag-3: #743200;
+    --ab-tag-4: #16561F;
+}
+
 /* ---------------------------------------------------------------- root ---- */
 
+/* Plum is the bridge's middle, owned by neither platform, so as the selection colour it never
+ * reads as a status. */
 .ab-root {
     flex-grow: 1;
+    --ab-plum: #7A3B8C;
 }
 
 .ab-scroll {
     flex-grow: 1;
-    padding: 6px 8px 10px 8px;
+    padding: 8px 8px 16px 8px;
+}
+
+.ab-footer {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: 16px;
+    padding-top: 8px;
+    border-top-width: 1px;
+    border-top-color: var(--ab-hairline);
+}
+
+/* Component inspectors are built from the same elements as the windows. The inspector already
+ * insets its content; pull the banner back out to the edges. */
+.ab-inspector {
+    margin: -4px -15px 0 -15px;
 }
 
 /* -------------------------------------------------------------- banner ---- */
@@ -25,16 +148,17 @@
 .ab-banner {
     height: 62px;
     flex-shrink: 0;
-    -unity-background-scale-mode: stretch-to-fill;
-    justify-content: center;
-    padding-left: 14px;
-    padding-right: 12px;
     flex-direction: row;
     align-items: center;
+    padding-left: 16px;
+    padding-right: 12px;
+    -unity-background-scale-mode: stretch-to-fill;
 }
 
 .ab-banner-text {
     flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
     justify-content: center;
 }
 
@@ -47,66 +171,95 @@
 }
 
 .ab-banner-sub {
-    font-size: 10px;
-    color: rgba(255, 255, 255, 0.78);
-    margin: 2px 0 0 1px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.90);
+    margin: 2px 0 0 0;
     padding: 0;
 }
 
 .ab-version {
-    background-color: rgba(0, 0, 0, 0.26);
+    flex-shrink: 0;
+    margin-left: 8px;
+    padding: 2px 8px;
     border-radius: 9px;
-    padding: 2px 9px;
+    background-color: rgba(0, 0, 0, 0.26);
     font-size: 10px;
     color: rgba(255, 255, 255, 0.95);
-    flex-shrink: 0;
+}
+
+.ab-inspector .ab-banner {
+    height: 52px;
+}
+
+.ab-inspector .ab-banner-title {
+    font-size: 15px;
 }
 
 /* ---------------------------------------------------------------- tabs ---- */
 
+/* A recessed track, so the inactive tabs read as choices rather than as plain text. */
 .ab-tabs {
     flex-direction: row;
-    height: 28px;
+    flex-shrink: 0;
+    height: 30px;
     margin: 6px 8px;
     padding: 2px;
     border-width: 1px;
-    border-radius: 5px;
-    border-color: var(--unity-colors-button-border);
-    flex-shrink: 0;
+    border-radius: 6px;
+    border-color: var(--ab-border);
+    background-color: var(--ab-inset);
 }
 
-.ab-tab {
+.ab-root .ab-tab {
     flex-grow: 1;
+    flex-shrink: 1;
+    flex-basis: 0;
+    min-width: 0;
     flex-direction: row;
     align-items: center;
     justify-content: center;
-    border-radius: 3px;
+    margin: 0 2px 0 0;
+    padding: 0 4px;
+    border-width: 1px;
+    border-radius: 4px;
+    border-color: rgba(0, 0, 0, 0);
+    background-color: rgba(0, 0, 0, 0);
     transition-property: background-color;
     transition-duration: 0.09s;
+}
+
+.ab-root .ab-tab:focus {
+    border-color: var(--ab-info-fill);
+}
+
+.ab-root .ab-tab:hover,
+.ab-root .ab-tab:hover:active {
+    background-color: var(--ab-hover);
+}
+
+.ab-root .ab-tab:disabled {
+    opacity: 0.45;
 }
 
 .ab-tab-icon {
     width: 14px;
     height: 14px;
-    margin-right: 5px;
+    margin-right: 4px;
     flex-shrink: 0;
     -unity-background-scale-mode: scale-to-fit;
     -unity-background-image-tint-color: var(--unity-colors-default-text);
 }
 
 .ab-tab > .unity-label {
+    flex-shrink: 1;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
     font-size: 11px;
     -unity-text-align: middle-center;
-    padding: 0;
-    margin: 0;
-}
-
-.dark .ab-tab:hover {
-    background-color: rgba(255, 255, 255, 0.06);
-}
-
-.light .ab-tab:hover {
-    background-color: rgba(0, 0, 0, 0.05);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
 .ab-tab-on > .unity-label {
@@ -118,174 +271,746 @@
     -unity-background-image-tint-color: rgb(255, 255, 255);
 }
 
+/* Tabs load the light d_ glyph on both skins (about #C4C4C4), and a tint only multiplies it. Under
+ * the dark default text it sank to #A1A1A1 beside a near-white label; white leaves it at the
+ * editor's own icon grey, the brightest it can go. */
+.dark .ab-tab-icon {
+    -unity-background-image-tint-color: rgb(255, 255, 255);
+}
+
 /* --------------------------------------------------------------- cards ---- */
 
 .ab-card {
-    border-width: 1px;
-    border-radius: 5px;
+    flex-shrink: 0;
     margin-bottom: 6px;
     overflow: hidden;
-    flex-shrink: 0;
+    border-width: 1px;
+    border-radius: 6px;
+    border-color: var(--ab-border);
+    background-color: var(--ab-card);
 }
 
-.dark .ab-card {
-    border-color: rgba(0, 0, 0, 0.55);
-}
-
-.light .ab-card {
-    border-color: rgba(0, 0, 0, 0.22);
-}
-
+/* Distinctly lighter than the body on dark and darker on light; the old pair sat within two
+ * levels of each other. 32 is what a step badge makes of a header, so plain cards stacked under
+ * step cards keep their height. */
 .ab-card-header {
     flex-direction: row;
     align-items: center;
-    padding: 6px 9px;
-    min-height: 24px;
-}
-
-.dark .ab-card-header {
-    background-color: rgb(60, 60, 60);
-}
-
-.light .ab-card-header {
-    background-color: rgb(203, 203, 203);
-}
-
-.ab-card-header {
+    min-height: 32px;
+    padding: 6px 12px;
+    background-color: var(--ab-card-head);
     transition-property: background-color;
     transition-duration: 0.09s;
 }
 
-.dark .ab-card-collapsible:hover > .ab-card-header {
-    background-color: rgb(71, 71, 71);
+.ab-card-collapsible > .ab-card-header {
+    cursor: link;
 }
 
-.light .ab-card-collapsible:hover > .ab-card-header {
-    background-color: rgb(213, 213, 213);
+.ab-card-collapsible > .ab-card-header:hover,
+.ab-card-collapsible > .ab-card-header:focus {
+    background-color: var(--ab-card-head-hover);
 }
 
-/* Unity ships a pale arrow and a dark one; picking the wrong one loses it entirely against
- * the header. Selected per skin rather than hardcoded, so both themes keep an arrow. */
-.ab-card-arrow {
+/* Opt-in, for a fixed card stacked among folding ones: 12 plus the arrow's 28px slot (see
+ * below), so the titles share one column. Not automatic, since a window of fixed cards
+ * would gain an empty gutter. */
+.ab-card-static > .ab-card-header {
+    padding-left: 40px;
+}
+
+/* A text glyph, not Unity's IN_foldout textures: those are faint by design (1.55:1 on the light
+ * header, 2.3:1 on dark) and a tint can only darken them. Muted text is 4.6:1 or better on both. */
+.ab-card-header > .ab-card-arrow {
     width: 13px;
-    height: 13px;
-    margin-right: 4px;
+    margin: 0 4px 0 0;
+    padding: 0;
     flex-shrink: 0;
-    -unity-background-scale-mode: scale-to-fit;
-}
-
-/* Underscores, not spaces. "d_IN foldout" doesn't resolve and Unity substitutes a warning
- * triangle, which looked like the card was reporting a problem. The CCK gets this right and
- * this is its spelling. */
-.dark .ab-card-arrow {
-    background-image: resource('d_IN_foldout@2x');
-}
-
-.light .ab-card-arrow {
-    background-image: resource('IN_foldout@2x');
-}
-
-.dark .ab-card-arrow-on {
-    background-image: resource('d_IN_foldout_on@2x');
-}
-
-.light .ab-card-arrow-on {
-    background-image: resource('IN_foldout_on@2x');
-}
-
-.ab-card-title {
-    -unity-font-style: bold;
-    font-size: 12px;
-    flex-grow: 1;
-    margin: 0;
-    padding: 0;
-}
-
-.ab-card-summary {
     font-size: 10px;
-    -unity-text-align: middle-right;
-    flex-shrink: 1;
-    margin: 0;
-    padding: 0;
+    -unity-text-align: middle-center;
+    color: var(--ab-text-muted);
 }
 
-.ab-card-body {
-    padding: 8px 9px 9px 9px;
+/* A card's arrow takes the step badge's slot (20px plus its 8px margin), glyph centred, so
+ * collapsible and numbered cards share one title column. Folds keep the tight arrow. */
+.ab-card-collapsible > .ab-card-header > .ab-card-arrow {
+    width: 20px;
+    margin-right: 8px;
 }
 
-.dark .ab-card-body {
-    background-color: rgba(255, 255, 255, 0.028);
+.ab-card.ab-fold > .ab-card-header > .ab-card-arrow {
+    width: 13px;
+    margin-right: 4px;
 }
 
-.light .ab-card-body {
-    background-color: rgba(0, 0, 0, 0.022);
+/* A container whose cards have no badges (the Toolkit): the badge slot would be dead space
+ * between each arrow and its title. A static card's title keeps the column: 12 + 13 + 6. */
+.ab-cards-plain .ab-card-collapsible > .ab-card-header > .ab-card-arrow {
+    width: 13px;
+    margin-right: 6px;
 }
 
-/* --------------------------------------------------------------- steps ---- */
+.ab-cards-plain .ab-card-static > .ab-card-header {
+    padding-left: 31px;
+}
 
 .ab-step-badge {
-    width: 19px;
-    height: 19px;
-    border-radius: 10px;
-    margin-right: 8px;
+    width: 20px;
+    height: 20px;
     flex-shrink: 0;
-    -unity-background-scale-mode: stretch-to-fill;
+    margin-right: 8px;
+    border-radius: 10px;
     align-items: center;
     justify-content: center;
 }
 
 .ab-step-badge > .unity-label {
-    font-size: 11px;
-    -unity-font-style: bold;
-    color: rgb(255, 255, 255);
     margin: 0;
     padding: 0;
-}
-
-/* Secondary text, set here rather than inline in C# so switching editor theme is handled by
- * the cascade instead of by a colour sampled once when the element was built. */
-.dark .ab-card-summary,
-.dark .ab-sub,
-.dark .ab-hint {
-    color: rgba(255, 255, 255, 0.50);
-}
-
-.light .ab-card-summary,
-.light .ab-sub,
-.light .ab-hint {
-    color: rgba(0, 0, 0, 0.55);
-}
-
-/* ------------------------------------------------------------ controls ---- */
-
-/* Group headings carry a hairline, which is what stops the Advanced card reading as one
- * undifferentiated wall of twenty checkboxes. */
-.ab-sub {
-    font-size: 9px;
+    font-size: 11px;
     -unity-font-style: bold;
-    margin: 11px 0 4px 0;
-    padding: 0 0 3px 0;
-    border-bottom-width: 1px;
+    -unity-text-align: middle-center;
+    color: rgb(255, 255, 255);
 }
 
-.dark .ab-sub {
-    border-bottom-color: rgba(255, 255, 255, 0.07);
-}
-
-.light .ab-sub {
-    border-bottom-color: rgba(0, 0, 0, 0.08);
-}
-
-.ab-hint {
-    font-size: 10px;
-    white-space: normal;
-    margin: 0 0 4px 1px;
+/* The title holds its width and the summary truncates first. */
+.ab-card-title {
+    flex-grow: 1;
+    flex-shrink: 0;
+    margin: 0;
     padding: 0;
+    font-size: 13px;
+    -unity-font-style: bold;
+    color: var(--ab-text-strong);
 }
+
+.ab-card-summary {
+    flex-shrink: 1;
+    min-width: 0;
+    margin: 0 0 0 8px;
+    padding: 0;
+    font-size: 11px;
+    color: var(--ab-text-muted);
+    -unity-text-align: middle-right;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* 8 at the bottom, not 12: the last child's own margins (a button row's 6) already add to it,
+ * and 12 left every card ending in buttons bottom-heavy. */
+.ab-card-body {
+    padding: 8px 12px 8px 12px;
+}
+
+/* A section fold inside a card: the same card, tighter, with no fill of its own. */
+.ab-card.ab-fold {
+    margin: 6px 0;
+    border-radius: 4px;
+    border-color: var(--ab-hairline);
+    background-color: rgba(0, 0, 0, 0);
+}
+
+.ab-fold > .ab-card-header {
+    min-height: 24px;
+    padding: 4px 8px;
+    background-color: var(--ab-fold-head);
+}
+
+/* A fold inside a fold is an outlined row inside a filled one: with its parent's header fill it
+ * read as the parent's sibling. Hover and focus below outrank this, so they keep their fill. */
+.ab-fold .ab-fold > .ab-card-header {
+    background-color: rgba(0, 0, 0, 0);
+}
+
+.ab-fold.ab-card-collapsible > .ab-card-header:hover,
+.ab-fold.ab-card-collapsible > .ab-card-header:focus {
+    background-color: var(--ab-fold-head-hover);
+}
+
+.ab-fold > .ab-card-header > .ab-card-title {
+    font-size: 12px;
+}
+
+.ab-fold > .ab-card-body {
+    padding: 6px 8px 8px 8px;
+}
+
+/* After .ab-fold, whose border shorthand would otherwise repaint the stripe. */
+.ab-card.ab-card-accent-info {
+    border-left-width: 3px;
+    border-left-color: var(--ab-info-fill);
+}
+
+.ab-card.ab-card-accent-good {
+    border-left-width: 3px;
+    border-left-color: var(--ab-good-fill);
+}
+
+.ab-card.ab-card-accent-warn {
+    border-left-width: 3px;
+    border-left-color: var(--ab-warn-fill);
+}
+
+.ab-card.ab-card-accent-bad {
+    border-left-width: 3px;
+    border-left-color: var(--ab-bad-fill);
+}
+
+.ab-card.ab-card-accent-muted {
+    border-left-width: 3px;
+    border-left-color: var(--ab-muted-fill);
+}
+
+/* A card kept below the scroll area. */
+.ab-card.ab-pinned {
+    flex-shrink: 0;
+    margin: 0 8px 6px 8px;
+}
+
+/* A notice kept above it: the cards' gutter, a gap under the banner, never squashed. */
+.ab-notice.ab-pinned {
+    flex-shrink: 0;
+    margin: 6px 8px 0 8px;
+}
+
+/* ------------------------------------------------------------ headings ---- */
+
+/* The rule sits above the heading, so it separates the heading from the previous group's
+ * content rather than from its own. */
+.ab-section {
+    margin: 12px 0 4px 0;
+    padding: 8px 0 0 0;
+    border-top-width: 1px;
+    border-top-color: var(--ab-hairline);
+    font-size: 12px;
+    -unity-font-style: bold;
+    color: var(--ab-text-strong);
+    white-space: normal;
+}
+
+/* The indent's own rule already groups these; a hairline per heading as well flattened the
+ * hierarchy. Before -first so a first heading still loses its margin on the tie. */
+.ab-indent > .ab-section {
+    margin-top: 8px;
+    padding-top: 0;
+    border-top-width: 0;
+}
+
+.ab-section.ab-section-first {
+    margin-top: 0;
+    padding-top: 0;
+    border-top-width: 0;
+}
+
+.ab-caption {
+    margin: 6px 0 2px 0;
+    padding: 0;
+    font-size: 11px;
+    -unity-font-style: bold;
+    color: var(--ab-text-muted);
+}
+
+.ab-caption.ab-caption-first {
+    margin-top: 0;
+}
+
+/* 2px on top of a field's own 2px margin puts a hint 4px under its control. */
+.ab-hint {
+    margin: 2px 0 4px 0;
+    padding: 0;
+    font-size: 11px;
+    color: var(--ab-text-muted);
+    white-space: normal;
+}
+
+/* Wrapping row, so More ends the short line instead of taking a row of its own. */
+.ab-hint-block {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    margin: 2px 0 4px 0;
+}
+
+.ab-hint-block > .ab-hint-rest {
+    width: 100%;
+}
+
+/* The block carries the margin, so More stays on the short line's baseline. */
+.ab-hint-block > .ab-hint {
+    flex-shrink: 1;
+    margin: 0;
+}
+
+/* ----------------------------------------------------------- key-value ---- */
+
+/* The key column matches .ab-field's label, so facts and controls line up. */
+.ab-kv {
+    flex-direction: row;
+    align-items: flex-start;
+    margin: 2px 0;
+}
+
+.ab-kv-key {
+    width: 141px;
+    min-width: 141px;
+    flex-shrink: 0;
+    margin: 0;
+    font-size: 12px;
+    color: var(--ab-text-muted);
+}
+
+.ab-kv-value {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
+    margin: 0;
+    font-size: 12px;
+    color: var(--ab-text-strong);
+    white-space: normal;
+}
+
+/* A chip's padding sat its smaller text about 2px below the key's; this levels them.
+ * The row stays flex-start for values that wrap. */
+.ab-kv > .ab-chips {
+    margin-top: -2px;
+}
+
+/* --------------------------------------------------------------- chips ---- */
+
+/* The transparent border keeps a hover border from shifting the layout. 11px, not 10: chips carry
+ * counts, and at 10 the strokes never reached full ink, so they measured 3.4 to 3.9:1 on light.
+ * Bold for the same reason: regular 11px still rendered at 2.9 to 3.8:1 on the light tints and
+ * 4.3 to 4.6 on dark, and even black on a light tint cannot reach 4.5 at regular weight. Bold
+ * strokes reach full ink, as the 11px caption shows, so the chip renders at its listed contrast. */
+.ab-chip {
+    flex-shrink: 0;
+    margin: 0 4px 0 0;
+    padding: 2px 6px;
+    border-width: 1px;
+    border-radius: 3px;
+    border-color: rgba(0, 0, 0, 0);
+    font-size: 11px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+}
+
+.ab-root .ab-chip-click {
+    min-height: 0;
+    margin: 0 4px 0 0;
+    padding: 2px 6px;
+    border-width: 1px;
+    border-radius: 3px;
+    border-color: rgba(0, 0, 0, 0);
+    font-size: 11px;
+    -unity-font-style: bold;
+    cursor: link;
+    transition-property: border-color;
+    transition-duration: 0.09s;
+}
+
+.ab-root .ab-chip.ab-chip-info {
+    background-color: var(--ab-info-tint);
+    color: var(--ab-info);
+}
+
+.ab-root .ab-chip.ab-chip-good {
+    background-color: var(--ab-good-tint);
+    color: var(--ab-good);
+}
+
+.ab-root .ab-chip.ab-chip-warn {
+    background-color: var(--ab-warn-tint);
+    color: var(--ab-warn);
+}
+
+.ab-root .ab-chip.ab-chip-bad {
+    background-color: var(--ab-bad-tint);
+    color: var(--ab-bad);
+}
+
+.ab-root .ab-chip.ab-chip-muted {
+    background-color: var(--ab-muted-tint);
+    color: var(--ab-text-muted);
+}
+
+/* Selected: the solid fill with --ab-on-fill text, dark on the bright dark-skin fills and white
+ * on the deep light-skin ones. White on the old yellow sat at 1.8:1. */
+.ab-root .ab-chip-on.ab-chip-info {
+    background-color: var(--ab-info-fill);
+    color: var(--ab-on-fill);
+}
+
+.ab-root .ab-chip-on.ab-chip-good {
+    background-color: var(--ab-good-fill);
+    color: var(--ab-on-fill);
+}
+
+.ab-root .ab-chip-on.ab-chip-warn {
+    background-color: var(--ab-warn-fill);
+    color: var(--ab-on-fill);
+}
+
+.ab-root .ab-chip-on.ab-chip-bad {
+    background-color: var(--ab-bad-fill);
+    color: var(--ab-on-fill);
+}
+
+.ab-root .ab-chip-on.ab-chip-muted {
+    background-color: var(--ab-muted-fill);
+    color: var(--ab-on-fill);
+}
+
+.ab-root .ab-chip-click:focus {
+    border-color: var(--ab-info-fill);
+}
+
+.ab-root .ab-chip-click.ab-chip-info:hover {
+    border-color: var(--ab-info);
+}
+
+.ab-root .ab-chip-click.ab-chip-good:hover {
+    border-color: var(--ab-good);
+}
+
+.ab-root .ab-chip-click.ab-chip-warn:hover {
+    border-color: var(--ab-warn);
+}
+
+.ab-root .ab-chip-click.ab-chip-bad:hover {
+    border-color: var(--ab-bad);
+}
+
+.ab-root .ab-chip-click.ab-chip-muted:hover {
+    border-color: var(--ab-text-muted);
+}
+
+/* A zero-count filter chip is a disabled Button: dimmed, and it does not hover. Light fades
+ * less, below. */
+.ab-root .ab-chip-click:disabled {
+    opacity: 0.45;
+}
+
+.ab-root .ab-chip-click:hover:disabled {
+    border-color: rgba(0, 0, 0, 0);
+}
+
+/* The light warn tint sits at about 1.1:1 on a card, so BETA lost its shape and read as a stray
+ * word. The fill as its border gives it one; the border is already there, transparent. */
+.light .ab-chip-strong.ab-chip-warn {
+    border-color: var(--ab-warn-fill);
+}
+
+/* Categorical, for systems a knob came from. The kit never learns what the series mean. */
+.ab-root .ab-chip.ab-tag-1 {
+    background-color: var(--ab-muted-tint);
+    color: var(--ab-tag-1);
+}
+
+.ab-root .ab-chip.ab-tag-2 {
+    background-color: var(--ab-muted-tint);
+    color: var(--ab-tag-2);
+}
+
+.ab-root .ab-chip.ab-tag-3 {
+    background-color: var(--ab-muted-tint);
+    color: var(--ab-tag-3);
+}
+
+.ab-root .ab-chip.ab-tag-4 {
+    background-color: var(--ab-muted-tint);
+    color: var(--ab-tag-4);
+}
+
+.ab-chips {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+/* ------------------------------------------------------------- buttons ---- */
+
+/* Secondary. Margin 0: rows and button rows provide spacing, so a button sits level with the
+ * field beside it. */
+.ab-root .ab-btn {
+    height: 24px;
+    min-height: 0;
+    margin: 0;
+    padding: 0 12px;
+    border-width: 1px;
+    border-radius: 4px;
+    border-color: var(--ab-border);
+    background-color: var(--ab-btn);
+    color: var(--ab-btn-text);
+    font-size: 11px;
+    -unity-text-align: middle-center;
+    transition-property: background-color, border-color;
+    transition-duration: 0.09s;
+}
+
+.ab-root .ab-btn:focus {
+    border-color: var(--ab-info-fill);
+}
+
+.ab-root .ab-btn:hover {
+    background-color: var(--ab-btn-hover);
+}
+
+.ab-root .ab-btn:hover:active {
+    background-color: var(--ab-btn-press);
+}
+
+/* The colour beats Unity's own disabled text colour, which stacked on the opacity and left a
+ * light-skin label near invisible. The kinds below override it on a tie. */
+.ab-root .ab-btn:disabled {
+    opacity: 0.45;
+    color: var(--ab-btn-text);
+}
+
+.ab-root .ab-btn:hover:disabled {
+    background-color: var(--ab-btn);
+}
+
+/* Strong: a card's own action. */
+.ab-root .ab-btn.ab-btn-strong {
+    height: 28px;
+    border-color: var(--ab-plum);
+    background-color: var(--ab-strong);
+    color: var(--ab-strong-text);
+    font-size: 12px;
+    -unity-font-style: bold;
+}
+
+.ab-root .ab-btn.ab-btn-strong:focus {
+    border-color: var(--ab-info-fill);
+}
+
+.ab-root .ab-btn.ab-btn-strong:hover {
+    background-color: var(--ab-strong-hover);
+}
+
+.ab-root .ab-btn.ab-btn-strong:hover:active,
+.ab-root .ab-btn.ab-btn-strong:hover:disabled {
+    background-color: var(--ab-strong);
+}
+
+/* Danger: always on its own row after a section rule, never beside navigation. */
+.ab-root .ab-btn.ab-btn-danger {
+    background-color: var(--ab-bad-tint);
+    color: var(--ab-bad);
+}
+
+.ab-root .ab-btn.ab-btn-danger:hover {
+    background-color: var(--ab-bad-tint);
+    border-color: var(--ab-bad-fill);
+}
+
+.ab-root .ab-btn.ab-btn-danger:hover:active {
+    background-color: var(--ab-bad-tint);
+}
+
+.ab-root .ab-btn.ab-btn-danger:hover:disabled {
+    background-color: var(--ab-bad-tint);
+    border-color: var(--ab-border);
+}
+
+/* A button held on, such as Preview while previewing. Last, so it outranks the kinds above. */
+.ab-root .ab-btn.ab-on,
+.ab-root .ab-btn.ab-on:hover,
+.ab-root .ab-btn.ab-on:hover:active {
+    border-color: var(--ab-plum);
+    background-color: var(--ab-plum);
+    color: rgb(255, 255, 255);
+}
+
+/* Text only: footers, More, clear, Show all. Focus shows as the hover fill, having no border. */
+.ab-root .ab-link {
+    min-height: 0;
+    margin: 0;
+    padding: 0 2px;
+    border-width: 0;
+    border-radius: 3px;
+    background-color: rgba(0, 0, 0, 0);
+    color: var(--ab-info);
+    font-size: 12px;
+    -unity-text-align: middle-left;
+}
+
+.ab-root .ab-link:focus,
+.ab-root .ab-link:hover,
+.ab-root .ab-link:hover:active {
+    background-color: var(--ab-hover);
+}
+
+/* Muted, so a disabled link stops reading as a link on dark. Light gets a lighter fade below. */
+.ab-root .ab-link:disabled {
+    opacity: 0.45;
+    color: var(--ab-text-muted);
+}
+
+.ab-root .ab-link:hover:disabled {
+    background-color: rgba(0, 0, 0, 0);
+}
+
+/* --------------------------------------------------------------- primary ---- */
+
+/* One per view. Hover and press are a black sheen under the label, so the label's contrast
+ * only rises; the colour or gradient underneath is inline, from BridgeTheme. */
+.ab-root .ab-primary {
+    flex-shrink: 0;
+    height: 36px;
+    margin: 6px 0 2px 0;
+    padding: 0;
+    overflow: hidden;
+    border-width: 0;
+    border-radius: 6px;
+    align-items: center;
+    justify-content: center;
+    -unity-background-scale-mode: stretch-to-fill;
+}
+
+.ab-primary > .unity-label {
+    margin: 0;
+    padding: 0;
+    font-size: 14px;
+    -unity-font-style: bold;
+    color: rgb(255, 255, 255);
+}
+
+.ab-primary-sheen {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0);
+    transition-property: background-color;
+    transition-duration: 0.09s;
+}
+
+.ab-root .ab-primary:focus {
+    border-width: 2px;
+    border-color: rgba(255, 255, 255, 0.85);
+}
+
+.ab-root .ab-primary:hover > .ab-primary-sheen {
+    background-color: rgba(0, 0, 0, 0.12);
+}
+
+.ab-root .ab-primary:hover:active > .ab-primary-sheen {
+    background-color: rgba(0, 0, 0, 0.20);
+}
+
+/* A neutral slab, not a faded brand colour: faded, it read as a danger tint while doing nothing.
+ * SetActive takes the inline fill off so this one shows. Dimmed like .ab-btn:disabled, since at
+ * full opacity the light-skin slab looked like a live button. */
+.ab-root .ab-primary:disabled {
+    opacity: 0.45;
+    border-width: 1px;
+    border-color: var(--ab-border);
+    background-color: var(--ab-btn);
+}
+
+.ab-root .ab-primary:disabled > .unity-label {
+    color: var(--ab-btn-text);
+}
+
+.ab-root .ab-primary:disabled > .ab-primary-sheen {
+    background-color: rgba(0, 0, 0, 0);
+}
+
+/* ---------------------------------------------------------------- rows ---- */
 
 .ab-row {
     flex-direction: row;
     align-items: center;
+}
+
+.ab-btn-row {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    margin: 6px 0 2px 0;
+}
+
+.ab-toolbar {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+/* A group that belongs to the heading above it. The rule is a token, so it shows on both skins. */
+.ab-indent {
+    margin: 4px 0 0 2px;
+    padding-left: 12px;
+    border-left-width: 2px;
+    border-left-color: var(--ab-indent-rule);
+}
+
+/* A carried, part-of row. */
+.ab-dim {
+    opacity: 0.75;
+}
+
+/* One shape stage on a socket: a tinted stripe beside its rows, like a report row. */
+.ab-stage {
+    flex-direction: row;
+    margin: 2px 0 6px 0;
+}
+
+/* -------------------------------------------------------------- fields ---- */
+
+.ab-field {
+    margin: 2px 0;
+}
+
+/* A fixed width, not a minimum: with min-width the longest label in a card ("Convert PhysBones
+ * to") pushed its own control right while every other field stayed put, so nothing lined up
+ * down the column. PropertyField nests its field one level down. An overflow ends in an
+ * ellipsis rather than half a glyph. */
+.ab-field > .unity-label,
+.ab-field > .unity-base-field > .unity-base-field__label {
+    width: 141px;
+    min-width: 141px;
+    flex-shrink: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* A fold's border and padding inset its body 9px, which pushed the value column 9px right of
+ * the card's own fields. 132 fits "Convert PhysBones to" whole, where 123 cut its last letter.
+ * One level only: no fold in a fold holds a labelled field. */
+.ab-fold .ab-field > .unity-label,
+.ab-fold .ab-field > .unity-base-field > .unity-base-field__label,
+.ab-fold .ab-kv-key {
+    width: 132px;
+    min-width: 132px;
+}
+
+.ab-field > .unity-base-field {
+    margin: 0;
+}
+
+.ab-root .ab-field .unity-base-text-field__input,
+.ab-root .ab-field .unity-base-popup-field__input,
+.ab-root .ab-field .unity-object-field__input {
+    border-radius: 4px;
+}
+
+/* Unity's light groove matches the card, so a disabled slider showed a lone knob. The disabled
+ * selector outranks a theme rule for the disabled groove. */
+.ab-root .ab-slider .unity-base-slider__tracker,
+.ab-root .ab-slider:disabled .unity-base-slider__tracker {
+    background-color: var(--ab-indent-rule);
+    border-color: var(--ab-indent-rule);
+}
+
+/* A slider's number box: wide enough for three decimals, no wider. */
+.ab-slider .unity-base-slider__text-field {
+    width: 52px;
+    min-width: 52px;
+    flex-shrink: 0;
 }
 
 /* Checkbox first, then the label; so a column of toggles has its boxes aligned instead of
@@ -303,18 +1028,14 @@
 
 /* The row lights up under the cursor, so it's obvious which of twenty toggles you're about
  * to hit; the checkbox alone is a small target to aim at. */
-.dark .ab-toggle:hover {
-    background-color: rgba(255, 255, 255, 0.05);
-}
-
-.light .ab-toggle:hover {
-    background-color: rgba(0, 0, 0, 0.045);
+.ab-root .ab-toggle:hover {
+    background-color: var(--ab-hover);
 }
 
 .ab-toggle > .unity-toggle__input {
     flex-grow: 0;
     flex-shrink: 0;
-    margin-right: 5px;
+    margin-right: 6px;
 }
 
 .ab-toggle > .unity-label {
@@ -322,76 +1043,6 @@
     flex-grow: 0;
     margin-left: 0;
     padding-left: 0;
-}
-
-.ab-field {
-    margin: 2px 0;
-}
-
-/* A fixed width, not a minimum: with min-width the longest label in a card ("Convert PhysBones
- * to") pushed its own control right while every other field stayed put, so nothing lined up
- * down the column. */
-.ab-field > .unity-label {
-    width: 132px;
-    min-width: 132px;
-    flex-shrink: 0;
-}
-
-/* AAS menu entries carry longer names than the options cards ("Tail Electric Effect
- * Toggle", "Storage Upgrade: Upper"); the standard 132px column clips them. */
-.ab-field-wide > .unity-label {
-    width: 176px;
-    min-width: 176px;
-    flex-shrink: 0;
-}
-
-/* Component inspectors (YapsSocket, YapsPlug) are built from the same elements as the windows.
- * The inspector already insets its content; pull the banner back out to the edges. */
-.ab-inspector {
-    margin: -4px -15px 0 -15px;
-}
-
-.ab-inspector .ab-banner {
-    height: 52px;
-}
-
-.ab-inspector .ab-banner-title {
-    font-size: 15px;
-}
-
-/* A slider's number box: wide enough for three decimals, no wider. */
-.ab-slider .unity-base-slider__text-field {
-    width: 52px;
-    min-width: 52px;
-    flex-shrink: 0;
-}
-
-/* One shape stage on a socket: a tinted stripe beside its rows, like a report row. */
-.ab-stage {
-    flex-direction: row;
-    margin: 2px 0 6px 0;
-}
-
-/* The system a knob came from, as a small chip to the control's right. */
-.ab-from {
-    margin-left: 4px;
-    padding: 1px 6px;
-    font-size: 9px;
-    flex-shrink: 0;
-}
-
-/* A section fold inside a card: the same card, a little tighter. */
-.ab-fold {
-    margin: 4px 0 4px 0;
-}
-
-.ab-fold > .ab-card-header {
-    padding: 4px 8px;
-    min-height: 22px;
-}
-
-.ab-fold > .ab-card-body {
-    padding: 6px 8px 8px 8px;
 }
 
 /* One question, a few answers: radio buttons stacked under the field's label column, each
@@ -405,184 +1056,522 @@
 }
 
 .ab-radio .unity-radio-button {
-    margin: 0 0 1px -4px;
+    margin: 0 0 2px -4px;
     padding: 2px 4px;
     border-radius: 3px;
 }
 
-.dark .ab-radio .unity-radio-button:hover {
-    background-color: rgba(255, 255, 255, 0.05);
+.ab-root .ab-radio .unity-radio-button:hover {
+    background-color: var(--ab-hover);
 }
 
-.light .ab-radio .unity-radio-button:hover {
-    background-color: rgba(0, 0, 0, 0.045);
+/* Still a TextField, so names stay copyable, but it no longer looks editable. */
+.ab-code {
+    margin: 2px 0;
 }
 
-/* ----------------------------------------------------------- primary  ---- */
-
-.ab-primary {
-    height: 38px;
-    border-radius: 5px;
+.ab-root .ab-code .unity-base-text-field__input,
+.ab-root .ab-code:hover .unity-base-text-field__input,
+.ab-root .ab-code:focus .unity-base-text-field__input {
     border-width: 0;
-    margin: 4px 0 2px 0;
-    -unity-background-scale-mode: stretch-to-fill;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
+    background-color: var(--ab-inset);
 }
 
-.ab-primary > .unity-label {
-    font-size: 13px;
-    -unity-font-style: bold;
-    color: rgb(255, 255, 255);
+/* ToolbarSearchField has a fixed toolbar width and a 16 px toolbar height of its own; every other
+ * input in a kit window is 18. */
+.ab-root .ab-search {
+    width: auto;
+    min-width: 0;
+    height: 18px;
+    flex-grow: 1;
+    flex-shrink: 1;
+    margin: 0 0 6px 0;
+}
+
+/* Light only: the stock light glyph is pale grey on a near-white box, about 2.2:1. The dark one
+ * already reads at muted-text brightness, and a tint can only darken it. */
+.light .ab-search .unity-search-field-base__search-button {
+    -unity-background-image-tint-color: var(--ab-text-muted);
+}
+
+/* -------------------------------------------------------------- notice ---- */
+
+.ab-notice {
+    flex-direction: row;
+    align-items: flex-start;
+    margin: 4px 0 6px 0;
+    padding: 8px;
+    border-width: 0;
+    border-left-width: 3px;
+    border-radius: 4px;
+}
+
+.ab-notice-info {
+    background-color: var(--ab-info-tint);
+    border-left-color: var(--ab-info-fill);
+}
+
+.ab-notice-good {
+    background-color: var(--ab-good-tint);
+    border-left-color: var(--ab-good-fill);
+}
+
+.ab-notice-warn {
+    background-color: var(--ab-warn-tint);
+    border-left-color: var(--ab-warn-fill);
+}
+
+.ab-notice-bad {
+    background-color: var(--ab-bad-tint);
+    border-left-color: var(--ab-bad-fill);
+}
+
+.ab-notice-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    margin-right: 6px;
+    -unity-background-scale-mode: scale-to-fit;
+}
+
+/* Picked here by skin, never in C#: a texture set inline keeps the old skin's glyph after a
+ * switch. Good has no console icon of its own; info's "!" read as a caution on a success.
+ * Info takes the Package Manager's circled "i": the console info icon is a "!" in a bubble, so
+ * every info notice read as a warning. Its Dark folder holds the light glyph, Light the dark one. */
+.dark .ab-notice-info > .ab-notice-icon {
+    background-image: resource('Icons/PackageManager/Dark/Info.png');
+}
+
+.light .ab-notice-info > .ab-notice-icon {
+    background-image: resource('Icons/PackageManager/Light/Info.png');
+}
+
+.dark .ab-notice-good > .ab-notice-icon {
+    background-image: resource('d_GreenCheckmark');
+}
+
+.light .ab-notice-good > .ab-notice-icon {
+    background-image: resource('GreenCheckmark');
+}
+
+.dark .ab-notice-warn > .ab-notice-icon {
+    background-image: resource('d_console.warnicon.sml');
+}
+
+.light .ab-notice-warn > .ab-notice-icon {
+    background-image: resource('console.warnicon.sml');
+}
+
+.dark .ab-notice-bad > .ab-notice-icon {
+    background-image: resource('d_console.erroricon.sml');
+}
+
+.light .ab-notice-bad > .ab-notice-icon {
+    background-image: resource('console.erroricon.sml');
+}
+
+.ab-notice-body {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
+}
+
+.ab-notice-text {
     margin: 0;
     padding: 0;
+    font-size: 12px;
+    color: var(--ab-text-strong);
+    white-space: normal;
 }
 
-/* Dimmed, but the label stays readable; at 0.4 on the whole element the text washed out
- * into the gradient and the button looked broken rather than waiting. */
-.ab-primary-off {
-    opacity: 0.55;
-}
+/* --------------------------------------------------------------- empty ---- */
 
-.ab-primary-off > .unity-label {
-    color: rgba(255, 255, 255, 0.85);
-}
-
-/* -------------------------------------------------------------- chips ---- */
-
-.ab-chip {
-    border-radius: 3px;
-    padding: 2px 7px;
-    margin-right: 4px;
-    font-size: 10px;
-    -unity-text-align: middle-center;
-    flex-shrink: 0;
-}
-
-.ab-beta {
-    border-radius: 3px;
-    padding: 1px 5px;
-    margin-left: 6px;
-    font-size: 9px;
-    -unity-font-style: bold;
-    -unity-text-align: middle-center;
-    flex-shrink: 0;
-}
-
-/* ------------------------------------------------------------- footer ---- */
-
-.ab-footer {
-    flex-direction: row;
+.ab-empty {
     align-items: center;
-    margin-top: 10px;
-    padding-top: 6px;
-    border-top-width: 1px;
-    border-top-color: var(--unity-colors-button-border);
-    flex-wrap: wrap;
+    padding: 16px 8px;
 }
 
-/* The report's buttons. Setting only size left them with Unity's stock fill and border, which
- * is what made them read as bolted on; these carry their own surface. */
-.ab-btn {
-    height: 24px;
-    border-radius: 4px;
-    border-width: 1px;
-    padding: 0 12px;
-    margin: 4px 6px 0 0;
+.ab-empty-title {
+    margin: 0;
+    font-size: 12px;
+    -unity-font-style: bold;
+    color: var(--ab-text-strong);
+    -unity-text-align: middle-center;
+    white-space: normal;
+}
+
+.ab-empty-text {
+    margin: 4px 0 0 0;
     font-size: 11px;
-    transition-property: background-color;
-    transition-duration: 0.09s;
+    color: var(--ab-text-muted);
+    -unity-text-align: middle-center;
+    white-space: normal;
 }
 
-.dark .ab-btn {
-    background-color: rgba(255, 255, 255, 0.09);
-    border-color: rgba(0, 0, 0, 0.45);
-    color: rgba(255, 255, 255, 0.88);
-}
+/* ----------------------------------------------------------- segmented ---- */
 
-.light .ab-btn {
-    background-color: rgba(0, 0, 0, 0.06);
-    border-color: rgba(0, 0, 0, 0.22);
-    color: rgba(0, 0, 0, 0.85);
-}
-
-.dark .ab-btn:hover {
-    background-color: rgba(255, 255, 255, 0.16);
-}
-
-.light .ab-btn:hover {
-    background-color: rgba(0, 0, 0, 0.12);
-}
-
-.ab-report-row {
+/* When the track wraps at narrow widths the second line stretches across it, so it stays
+ * aligned instead of restarting under its caption. */
+.ab-seg {
     flex-direction: row;
     flex-wrap: wrap;
-}
-
-/* Clickable chips need to look clickable, and the selected one fills solid. */
-.ab-chip-click {
-    border-radius: 3px;
-    transition-property: background-color;
-    transition-duration: 0.09s;
-}
-
-.ab-report-list {
-    max-height: 260px;
-    margin-top: 5px;
+    margin: 2px 0 6px 0;
+    padding: 2px;
     border-width: 1px;
     border-radius: 4px;
+    border-color: var(--ab-border);
+    background-color: var(--ab-inset);
 }
 
-.dark .ab-report-list {
-    border-color: rgba(0, 0, 0, 0.45);
+.ab-root .ab-seg-item {
+    flex-grow: 1;
+    min-width: 52px;
+    height: 22px;
+    min-height: 0;
+    margin: 1px;
+    padding: 0 4px;
+    border-width: 1px;
+    border-radius: 3px;
+    border-color: rgba(0, 0, 0, 0);
+    background-color: rgba(0, 0, 0, 0);
+    color: var(--ab-btn-text);
+    font-size: 11px;
+    -unity-text-align: middle-center;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
-.light .ab-report-list {
-    border-color: rgba(0, 0, 0, 0.18);
+.ab-root .ab-seg-item:focus {
+    border-color: var(--ab-info-fill);
+}
+
+.ab-root .ab-seg-item:hover,
+.ab-root .ab-seg-item:hover:active {
+    background-color: var(--ab-hover);
+}
+
+.ab-root .ab-seg-item:disabled {
+    opacity: 0.45;
+    color: var(--ab-btn-text);
+}
+
+.ab-root .ab-seg-item:hover:disabled {
+    background-color: rgba(0, 0, 0, 0);
+}
+
+.ab-root .ab-seg-item.ab-on,
+.ab-root .ab-seg-item.ab-on:hover,
+.ab-root .ab-seg-item.ab-on:hover:active,
+.ab-root .ab-seg-item.ab-on:hover:disabled {
+    background-color: var(--ab-plum);
+    color: rgb(255, 255, 255);
+    -unity-font-style: bold;
+}
+
+.ab-root .ab-seg-item.ab-on:disabled {
+    color: rgb(255, 255, 255);
+}
+
+/* Opacity blends in linear space, and every VRChat and CVR project is Linear. So a fade darkens a
+ * dark label on light far more than it dims a light label on dark: at 0.45 a disabled label
+ * measures about 1.8:1 against its own fill on light and 3.7:1 on dark (4.6:1 for Strong). 0.6
+ * measured 2.2:1 on light; 0.65 brings 12px bold to about 2.5:1, though 11px text renders
+ * thinner, near 2.2:1. A selected segment fades its white label into its own plum fill, so it
+ * keeps more (1.9:1 at 0.45, 3.4:1 here). A disabled link sits at 0.75, its text already muted.
+ * So does a zero-count chip: tone text on its tint measured 1.6:1 at 0.45 (dark 2.8:1), and 0.75
+ * should bring it near 2.4:1. */
+.light .ab-seg-item:disabled,
+.light .ab-btn:disabled,
+.light .ab-primary:disabled {
+    opacity: 0.65;
+}
+
+.light .ab-seg-item.ab-on:disabled,
+.light .ab-link:disabled,
+.light .ab-chip-click:disabled {
+    opacity: 0.75;
+}
+
+/* Dark's half of the same fix. A disabled Strong button kept its plum edge and bright label, so
+ * it read as live; muted text and a plain edge bring dark to about 2.8:1 (Strong 3.1:1). A fade
+ * barely dims a light label on dark, so segments take the muted text too: about 3.6:1, 2.9:1
+ * on the faded plum. */
+.dark .ab-btn:disabled {
+    color: var(--ab-text-muted);
+    border-color: var(--ab-border);
+}
+
+.dark .ab-seg-item:disabled,
+.dark .ab-seg-item.ab-on:disabled,
+.dark .ab-seg-item.ab-on:hover:disabled {
+    color: var(--ab-text-muted);
+}
+
+.dark .ab-primary:disabled > .unity-label {
+    color: var(--ab-text-muted);
+}
+
+/* Light lost the plum edge too, so a disabled Strong button stops reading as a soft live one.
+ * After the Strong rule it ties with, so it wins. */
+.light .ab-btn:disabled {
+    border-color: var(--ab-border);
+}
+
+/* Unity's unchecked box nearly vanishes on the light card. Hover and focus are left to Unity. */
+.light .ab-toggle .unity-toggle__checkmark,
+.light .ab-field .unity-radio-button__checkmark-background {
+    border-color: var(--ab-control-edge);
+}
+
+/* Unity fades a disabled control to 0.5 and leaves its text colour alone, so light field text
+ * measured 1.8:1 on the card against 3.6:1 on dark. A paler colour would only fade further.
+ * 0.75 gives about 3.3:1. .unity-disabled, not :disabled: Unity puts it on the topmost disabled
+ * element only, so this replaces its fade instead of stacking under a disabled parent's. */
+.light .ab-field.unity-disabled,
+.light .ab-toggle.unity-disabled {
+    opacity: 0.75;
+}
+
+/* Disabling the whole track gives it Unity's .unity-disabled fade, and opacity multiplies
+ * down, so every item faded twice (1.35:1 on light). The items' own fade above is the one
+ * measured, so the track keeps its full opacity. */
+.ab-root .ab-seg:disabled {
+    opacity: 1;
+}
+
+/* A hairline between items, so a track with nothing lit still reads as buttons. The lit
+ * item's own edge takes its fill. */
+.ab-root .ab-seg > .ab-seg-item.ab-after {
+    border-left-color: var(--ab-hairline);
+}
+
+.ab-root .ab-seg > .ab-seg-item.ab-on {
+    border-left-color: var(--ab-plum);
+}
+
+/* -------------------------------------------------------------- report ---- */
+
+/* No max-height and no inner scroller: a nested scroller trapped the wheel. Long lists end in
+ * a "Show all" row instead. */
+.ab-report-list {
+    margin-top: 6px;
+    overflow: hidden;
+    border-width: 1px;
+    border-radius: 4px;
+    border-color: var(--ab-border);
+    background-color: var(--ab-inset);
 }
 
 /* An entry is a status stripe plus two lines of text, not one long sentence. Wrapping the
  * detail under its own heading is what makes a page of these skimmable. */
 .ab-report-item {
     flex-direction: row;
-    padding: 5px 7px 5px 0;
+    padding: 4px 8px 4px 0;
 }
 
-.dark .ab-report-item-alt {
-    background-color: rgba(255, 255, 255, 0.030);
+.ab-report-item.ab-report-item-child {
+    padding-left: 16px;
 }
 
-.light .ab-report-item-alt {
-    background-color: rgba(0, 0, 0, 0.028);
+.ab-row-alt {
+    background-color: var(--ab-row-alt);
 }
 
 .ab-report-stripe {
     width: 3px;
-    border-radius: 2px;
-    margin: 1px 7px 1px 5px;
     flex-shrink: 0;
+    margin: 1px 8px 1px 6px;
+    border-radius: 2px;
+}
+
+.ab-stripe-info {
+    background-color: var(--ab-info-fill);
+}
+
+.ab-stripe-good {
+    background-color: var(--ab-good-fill);
+}
+
+.ab-stripe-warn {
+    background-color: var(--ab-warn-fill);
+}
+
+.ab-stripe-bad {
+    background-color: var(--ab-bad-fill);
+}
+
+.ab-stripe-muted {
+    background-color: var(--ab-muted-fill);
+}
+
+.ab-report-text {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
 }
 
 .ab-report-head {
-    font-size: 11px;
-    -unity-font-style: bold;
-    white-space: normal;
     margin: 0;
     padding: 0;
+    font-size: 12px;
+    -unity-font-style: bold;
+    color: var(--ab-text-strong);
+    white-space: normal;
 }
 
 .ab-report-detail {
-    font-size: 10px;
-    white-space: normal;
     margin: 2px 0 0 0;
     padding: 0;
+    font-size: 11px;
+    color: var(--ab-text-muted);
+    white-space: normal;
 }
 
-.dark .ab-report-detail {
-    color: rgba(255, 255, 255, 0.58);
+.ab-report-actions {
+    flex-direction: row;
+    align-items: center;
+    flex-shrink: 0;
+    margin-left: 6px;
 }
 
-.light .ab-report-detail {
-    color: rgba(0, 0, 0, 0.62);
+.ab-report-more {
+    padding: 4px 8px;
+}
+
+/* A table: one hairline under the head row, and cells that clip rather than wrap. */
+.ab-table-head {
+    flex-direction: row;
+    margin-bottom: 2px;
+    padding-bottom: 2px;
+    border-bottom-width: 1px;
+    border-bottom-color: var(--ab-hairline);
+}
+
+.ab-table-head > .unity-label {
+    font-size: 11px;
+    -unity-font-style: bold;
+    color: var(--ab-text-muted);
+}
+
+.ab-cell {
+    margin: 0 6px 0 0;
+    padding: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.ab-list-short {
+    max-height: 160px;
+}
+
+/* --------------------------------------------- container child spacing ---- */
+
+/* Last, so these win their ties with the control rules above, which all set margin 0. */
+.ab-root .ab-row > .ab-after {
+    margin-left: 6px;
+}
+
+.ab-root .ab-btn-row > * {
+    margin: 0 6px 4px 0;
+}
+
+/* Fits "Report" at 11px bold, so rows led by captions of different lengths start their first
+ * control on one edge instead of ragged. */
+.ab-root .ab-btn-row > .ab-caption {
+    min-width: 44px;
+}
+
+.ab-root .ab-toolbar > * {
+    margin-right: 6px;
+}
+
+.ab-root .ab-chips > * {
+    margin: 0 4px 4px 0;
+}
+
+.ab-root .ab-footer > * {
+    margin-right: 12px;
+}
+
+.ab-root .ab-report-actions > * {
+    margin-left: 4px;
+}
+
+/* A field's single-line height. Beside an 18px field a 24px button stepped 3px past it top
+ * and bottom. Growing the field instead would leave its label high, since Unity tops it. */
+.ab-root .ab-row > .ab-btn {
+    height: 18px;
+}
+
+/* The checkbox and its 6px gap, so a note lines up with the label of the toggle above it
+ * instead of reading as a paragraph of its own. */
+.ab-root .ab-under-toggle {
+    margin-left: 20px;
+}
+
+/* The hint's own size, and the link's 2px padding pulled back so its text starts on the hint's
+ * left edge. */
+.ab-root .ab-more {
+    align-self: flex-start;
+    margin: 2px 0 0 -2px;
+    font-size: 11px;
+}
+
+/* Inline after a hint's short line: a space's width from its full stop. */
+.ab-root .ab-hint-block > .ab-more {
+    align-self: auto;
+    margin: 0 0 0 2px;
+}
+
+.ab-root .ab-notice .ab-notice-action {
+    align-self: flex-start;
+    margin-top: 6px;
+}
+
+.ab-root .ab-empty .ab-empty-action {
+    margin-top: 8px;
+}
+
+/* ----------------------------------------------------------- utilities ---- */
+
+.ab-grow {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
+}
+
+.ab-text-good {
+    color: var(--ab-good);
+}
+
+.ab-text-warn {
+    color: var(--ab-warn);
+}
+
+.ab-text-bad {
+    color: var(--ab-bad);
+}
+
+.ab-text-info {
+    color: var(--ab-info);
+}
+
+.ab-text-muted {
+    color: var(--ab-text-muted);
+}
+
+.ab-text-strong {
+    color: var(--ab-text-strong);
+}
+
+/* The kit-wide hide class, and the search's own, kept apart so clearing a search never shows
+ * anything a window hid on purpose. */
+.ab-hidden {
+    display: none;
+}
+
+.ab-filtered-out {
+    display: none;
 }

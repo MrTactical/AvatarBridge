@@ -144,9 +144,20 @@ namespace AvatarBridge
                 if (target != null)
                 {
                     var mats = target.sharedMaterials;
-                    for (int i = 0; i < mats.Length; i++)
+                    var order = Enumerable.Range(0, mats.Length);
+                    if (comp.materialSlot >= 0) order = order.Where(s => s == comp.materialSlot);
+                    else if (comp.converted)
                     {
-                        if (comp.materialSlot >= 0 && i != comp.materialSlot) continue;
+                        // An auto slot names no material, so two plugs splitting one
+                        // mesh both showed the first plug material on it. The converter
+                        // records the primary first on its mesh. A native bake in place
+                        // records nothing for it, so its first record can be a mirror.
+                        var record = comp.bakedSlots?.FirstOrDefault(b => b != null && b.slot >= 0
+                            && b.slot < mats.Length && YapsNativeBuilder.Same(b.renderer, target, comp));
+                        if (record != null) order = order.OrderBy(s => s != record.slot);
+                    }
+                    foreach (int i in order)
+                    {
                         var origin = YapsLegacyMap.Detect(mats[i], out var part);
                         if (origin == YapsLegacyMap.Origin.None || part != YapsLegacyMap.Part.Plug) continue;
                         f.Material = mats[i]; f.MaterialSlot = i;
@@ -161,9 +172,9 @@ namespace AvatarBridge
                 result.Plugs.Add(f);
             }
             // The plug object and its renderer are often different subtrees.
-            // Pair a plug material with the nearest plug object under the avatar.
+            // Pair a plug material with the plug object weighted to it, else the nearest.
             var plugObjects = root.GetComponentsInChildren<Transform>(true)
-                .Where(t => t.name == "YAPS Plug" || t.name.StartsWith("BakedSpsPlug"))
+                .Where(t => IsPlugObject(t.name))
                 .Where(t => !owned.Contains(t)).ToList();
             foreach (var r in root.GetComponentsInChildren<Renderer>(true))
             {
@@ -176,9 +187,15 @@ namespace AvatarBridge
                     var owner = PlugOwner(r.transform);
                     if (owner == r.transform && plugObjects.Count > 0)
                     {
-                        // Not above the renderer: the first unclaimed plug object.
-                        owner = plugObjects[0];
-                        plugObjects.RemoveAt(0);
+                        // Not above the renderer: one whose bones carry it, else the
+                        // nearest. Hierarchy order crossed two plugs' meshes over.
+                        var bounds = r.bounds;
+                        owner = plugObjects
+                            .OrderByDescending(t => YapsBaker.CountVerticesUnder(r, t) > 0)
+                            .ThenBy(t => (bounds.ClosestPoint(t.position) - t.position).sqrMagnitude)
+                            .ThenBy(t => (bounds.center - t.position).sqrMagnitude)
+                            .First();
+                        plugObjects.Remove(owner);
                     }
                     var f = NewPlug(owner, r);
                     f.Material = mats[i]; f.MaterialSlot = i;
@@ -263,7 +280,6 @@ namespace AvatarBridge
 
         // --- ownership -----------------------------------------------------
 
-        // The object that is the socket, walking up from a marker.
         // "[VF564] BakedSpsSocket" -> "BakedSpsSocket".
         public static string StripFuryId(string name)
         {
@@ -275,6 +291,15 @@ namespace AvatarBridge
             return close < 0 ? name : name.Substring(close + 1).TrimStart();
         }
 
+        // Every name test reads through Fury's id. ArmatureLink renames what
+        // it moves "[VF724] BakedSpsSocket", and a raw test misses each one.
+        public static bool NameStarts(string name, string prefix) =>
+            name != null && StripFuryId(name).StartsWith(prefix, StringComparison.Ordinal);
+
+        static bool IsPlugObject(string name) => NameStarts(name, "BakedSpsPlug") || StripFuryId(name) == "YAPS Plug";
+        static bool IsSocketObject(string name) => NameStarts(name, "BakedSpsSocket") || StripFuryId(name) == "YAPS Socket";
+
+        // The object that is the socket, walking up from a marker.
         static Transform SocketOwner(Transform marker, Transform root)
         {
             // Inclusive of the root; the scan target may be the socket.
@@ -285,8 +310,7 @@ namespace AvatarBridge
                 // below answers instead: a different ancestor for the lights than
                 // for the pointers, which reads as two sockets on one spot and
                 // invites deleting a working half.
-                string n = StripFuryId(at.name);
-                if (n == "YAPS Socket" || n.StartsWith("BakedSpsSocket")) return at;
+                if (IsSocketObject(at.name)) return at;
                 if (at.GetComponent<Yaps.YapsSocket>() != null) return at;
                 if (at == root) break;
             }
@@ -309,7 +333,7 @@ namespace AvatarBridge
         {
             for (var at = renderer; at != null; at = at.parent)
             {
-                if (at.name == "YAPS Plug" || at.name.StartsWith("BakedSpsPlug")) return at;
+                if (IsPlugObject(at.name)) return at;
                 if (at.GetComponent<Yaps.YapsPlug>() != null) return at;
             }
             return renderer;
@@ -320,9 +344,9 @@ namespace AvatarBridge
         {
             for (var at = owner; at != null; at = at.parent)
             {
-                string n = at.name;
-                if (n == "YAPS Socket" || n.StartsWith("BakedSpsSocket") || n == "Original Object"
-                    || n == "WorldSpace" || n == "OneSpace" || n == "Lights" || n == "Senders") continue;
+                string n = at.name, bare = StripFuryId(n);
+                if (IsSocketObject(n) || bare == "Original Object"
+                    || bare == "WorldSpace" || bare == "OneSpace" || bare == "Lights" || bare == "Senders") continue;
                 var m = System.Text.RegularExpressions.Regex.Match(n, @"^\[VF\d+\]\s*(.+)$");
                 return m.Success ? m.Groups[1].Value : n;
             }
@@ -394,12 +418,13 @@ namespace AvatarBridge
             if (f.ReadableBy != Speaks.None) f.ReadableBy |= Speaks.YAPS;
 
             // Authored by, best guess.
-            if (f.IsYapsAlready || (f.Root != null && f.Root.name == "YAPS Socket")) f.Origin = YapsLegacyMap.Origin.YAPS;
-            else if (f.Root != null && f.Root.name.StartsWith("BakedSpsSocket")) f.Origin = YapsLegacyMap.Origin.SPS;
+            bool yapsNamed = f.Root != null && StripFuryId(f.Root.name) == "YAPS Socket";
+            if (f.IsYapsAlready || yapsNamed) f.Origin = YapsLegacyMap.Origin.YAPS;
+            else if (f.Root != null && NameStarts(f.Root.name, "BakedSpsSocket")) f.Origin = YapsLegacyMap.Origin.SPS;
             else if (rootLight != null && f.Pointers.Count == 0) f.Origin = YapsLegacyMap.Origin.DPS;
             else if (f.Pointers.Any(p => p.type.StartsWith("TPS_Orf_")) && rootLight == null) f.Origin = YapsLegacyMap.Origin.TPS;
             else f.Origin = YapsLegacyMap.Origin.SPS;
-            if (f.Root != null && f.Root.name == "YAPS Socket") f.IsYapsAlready = true;
+            if (yapsNamed) f.IsYapsAlready = true;
 
             if (!f.HasAxis) f.Notes.Add("no axis, plugs will aim at it rather than thread it");
             if (rootLight == null && !f.IsYapsAlready) f.Notes.Add("no marker lights, DPS plugs and light-only plugs cannot see it");

@@ -31,25 +31,34 @@ namespace AvatarBridge
     {
         const string Category = "PhysBones";
 
+        // Paths of the rigs Run deleted, for StripCurves. Per conversion.
+        static readonly List<string> deletedPaths = new List<string>();
+
         public static void Run(BridgeContext ctx)
         {
+            Clean(ctx);
+#if AVATARBRIDGE_MAGICA
+            // The last pass that sizes a cloth from the mesh, so its vertex caches
+            // go here rather than holding this avatar's meshes until the next run.
+            MagicaClothWriter.ReleaseCaches();
+#endif
+        }
+
+        static void Clean(BridgeContext ctx)
+        {
+            deletedPaths.Clear();
             if (ctx.HelperRigChains.Count == 0) return;
 
-            var skinned = new HashSet<Transform>();
-            foreach (var skin in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
-            {
-                if (skin == null || skin.bones == null) continue;
-                foreach (var b in skin.bones)
-                {
-                    if (b != null) skinned.Add(b);
-                }
-            }
+            var skinned = PhysBoneConverter.SkinnedBones(ctx);
 
             // The rig is the highest ancestor whose whole subtree moves no
             // mesh. Climbing stops at the first ancestor holding a skinned
             // bone, which keeps an ordinary chain from dragging the armature
             // in with it. Its scale and position targets live outside the
             // PhysBones, so the chain roots alone are not the rig.
+            // It also stops below anything visible: an unskinned group of
+            // rigid accessories moves no skinned mesh either, and climbing
+            // into it deleted every accessory in it.
             var rig = new HashSet<Transform>();
             var tops = new HashSet<Transform>();
             foreach (var chain in ctx.HelperRigChains)
@@ -58,7 +67,7 @@ namespace AvatarBridge
                 var top = chain.Root;
                 for (var up = chain.Root.parent; up != null && up != ctx.Target.transform; up = up.parent)
                 {
-                    if (up.GetComponentsInChildren<Transform>(true).Any(skinned.Contains)) break;
+                    if (up.GetComponentsInChildren<Transform>(true).Any(skinned.Contains) || HoldsContent(up)) break;
                     top = up;
                 }
                 foreach (var b in top.GetComponentsInChildren<Transform>(true)) rig.Add(b);
@@ -123,7 +132,7 @@ namespace AvatarBridge
             // it silently loses collision. Keeping a rig is cheap; breaking a
             // hair chain's collision is not, and would not be noticed until
             // somebody's hair went through their shoulder in game.
-            int removedBones = 0, removedCurves = 0, kept = 0;
+            int removedBones = 0, kept = 0;
             foreach (var top in tops)
             {
                 if (top == null) continue;
@@ -132,7 +141,8 @@ namespace AvatarBridge
                     kept++;
                     continue;
                 }
-                removedCurves += StripCurvesUnder(ctx, top);
+                string path = BridgeContext.RelativePath(ctx.Target.transform, top);
+                if (!string.IsNullOrEmpty(path)) deletedPaths.Add(path);
                 removedBones += top.GetComponentsInChildren<Transform>(true).Length;
                 Object.DestroyImmediate(top.gameObject);
             }
@@ -153,7 +163,7 @@ namespace AvatarBridge
                 ctx.Report.Approximated(Category, kept + " helper rig(s) left in place",
                     "A surviving cloth borrows their colliders, or they carry contacts still needed. They are inert.");
             }
-            Report(ctx, dropped, removedBones, removedCurves, where);
+            Report(ctx, dropped, removedBones, where);
         }
 
         // Would a cloth rooted here move anything? True if this bone or
@@ -161,12 +171,18 @@ namespace AvatarBridge
         static bool MovesMesh(Transform t, HashSet<Transform> skinned)
             => t.GetComponentsInChildren<Transform>(true).Any(skinned.Contains);
 
+        // Something a player sees or hears under this transform. A rigid
+        // accessory skins no mesh, yet it is content, never a helper stage.
+        internal static bool HoldsContent(Transform t)
+            => t.GetComponentInChildren<Renderer>(true) != null
+               || t.GetComponentInChildren<Light>(true) != null
+               || t.GetComponentInChildren<AudioSource>(true) != null;
+
         // Contacts living inside the rig. Cake PB keeps its squish triggers
-        // in there, and the corpus caught this: BHFBunny went from five
-        // contacts to none, CowBotSFW from two to none. The rig's physics is
-        // dead but a trigger in it is still what a hand touches, so the whole
-        // rig stays rather than lose them. Transforms are cheaper than a
-        // feature that silently stops responding.
+        // in there, and deleting the rig took every one of them with it. The
+        // rig's physics is dead but a trigger in it is still what a hand
+        // touches, so the whole rig stays rather than lose them. Transforms
+        // are cheaper than a feature that silently stops responding.
         static bool CarriesContacts(Transform top)
             => top.GetComponentsInChildren<ABI.CCK.Components.CVRPointer>(true).Any(c => c != null)
                || top.GetComponentsInChildren<ABI.CCK.Components.CVRAdvancedAvatarSettingsTrigger>(true)
@@ -193,19 +209,26 @@ namespace AvatarBridge
                     if (entry is Component c && c != null && inside.Contains(c.transform)) return true;
                 }
             }
+#if AVATARBRIDGE_DYNBONE
+            // The DynamicBone target parents its colliders under the PhysBone
+            // collider's own bone, which can sit inside the rig just the same.
+            foreach (var db in ctx.Target.GetComponentsInChildren<DynamicBone>(true))
+            {
+                if (db == null || db.m_Colliders == null || inside.Contains(db.transform)) continue;
+                if (db.m_Colliders.Any(c => c != null && inside.Contains(c.transform))) return true;
+            }
+#endif
             return false;
         }
 
-        // Curves addressing what is about to be deleted. They drove constraint
-        // weights and collider toggles inside the rig; left behind they would
-        // address objects that no longer exist.
-        static int StripCurvesUnder(BridgeContext ctx, Transform top)
+        // Curves addressing what Run deleted. They drove constraint weights
+        // and collider toggles inside the rig; left behind they would address
+        // objects that no longer exist. Its own pass, after self-containment:
+        // during Run the clips are still the author's or a package's files.
+        public static void StripCurves(BridgeContext ctx)
         {
-            if (ctx.MergedController == null) return 0;
-            string prefix = BridgeContext.RelativePath(ctx.Target.transform, top);
-            if (string.IsNullOrEmpty(prefix)) return 0;
+            if (ctx.MergedController == null || deletedPaths.Count == 0) return;
 
-            int removed = 0;
             var clips = new HashSet<AnimationClip>();
             foreach (var clip in ctx.MergedController.animationClips)
             {
@@ -215,16 +238,14 @@ namespace AvatarBridge
             {
                 foreach (var binding in UnityEditor.AnimationUtility.GetCurveBindings(clip))
                 {
-                    if (binding.path != prefix
-                        && !binding.path.StartsWith(prefix + "/", System.StringComparison.Ordinal))
+                    if (deletedPaths.Any(prefix => binding.path == prefix
+                            || binding.path.StartsWith(prefix + "/", System.StringComparison.Ordinal)))
                     {
-                        continue;
+                        UnityEditor.AnimationUtility.SetEditorCurve(clip, binding, null);
                     }
-                    UnityEditor.AnimationUtility.SetEditorCurve(clip, binding, null);
-                    removed++;
                 }
             }
-            return removed;
+            deletedPaths.Clear();
         }
 
         // No source component, the way a synthesized chain has none, but the
@@ -238,11 +259,13 @@ namespace AvatarBridge
                 Root = bone,
                 InitiallyActive = bone.gameObject.activeInHierarchy,
                 ComponentEnabled = true,
+                IsAdvancedIntegration = from.IsAdvancedIntegration,
                 Pull = from.Pull,
                 Spring = from.Spring,
                 Stiffness = from.Stiffness,
                 Gravity = from.Gravity,
                 Immobile = from.Immobile,
+                LimitTypeName = "None",
             };
 #if AVATARBRIDGE_MAGICA
             if (ctx.Settings.physicsTarget == PhysicsTarget.MagicaCloth2)
@@ -264,12 +287,22 @@ namespace AvatarBridge
             return false;
         }
 
-        static void Report(BridgeContext ctx, int dropped, int bones, int curves, string where)
+        static void Report(BridgeContext ctx, int dropped, int bones, string where)
         {
+            // No relay read from the rig, so there was no cascade to lose: say
+            // what was found rather than describe one.
+            if (dropped == 0)
+            {
+                ctx.Report.Warning(Category, $"{ctx.HelperRigChains.Count} chain(s) moved no mesh; no cloth made",
+                    "None is weighted to a mesh, nothing rendered sits under them, and no constraint reads them, " +
+                    "so a cloth there would move nothing. " +
+                    (bones > 0 ? $"Removed with them: {bones} transform(s)." : "Their bones are left in place."));
+                return;
+            }
             ctx.Report.Warning(Category, $"A physics addon did not survive conversion ({ctx.HelperRigChains.Count} chains)",
                 "Helper bones feeding each other through constraints, with no mesh on them. Cloth simulates each " +
                 "chain alone and would deform the body, so none was converted. " +
-                $"Removed with it: {dropped} constraint(s), {bones} transform(s), {curves} curve(s). {where}");
+                $"Removed with it: {dropped} constraint(s), {bones} transform(s). {where}");
         }
     }
 }

@@ -15,6 +15,10 @@ namespace AvatarBridge
     // still carry the generated files under AvatarBridge/Runtime, and
     // a future CCK shipping real contact components would collide with
     // them. They are recognised by their header line and deleted once.
+    //
+    // Never delete this file. A package import overwrites files and removes
+    // none, so without it an install updated from before 3.7.4 keeps the
+    // old generator under this name and goes on running it.
     [InitializeOnLoad]
     public static class ContactStubPatcher
     {
@@ -22,11 +26,20 @@ namespace AvatarBridge
 
         static ContactStubPatcher()
         {
+            // Once per editor session, not after every script reload: nothing
+            // generates these files any more, so a reload cannot bring them back.
+            if (SessionState.GetBool("AvatarBridge.ContactStubsSwept", false))
+            {
+                return;
+            }
             EditorApplication.delayCall += RemoveGeneratedDeclarations;
         }
 
         static void RemoveGeneratedDeclarations()
         {
+            // Marked here, not in the constructor: a reload before the next
+            // tick drops the queued call, and the next reload must queue it again.
+            SessionState.SetBool("AvatarBridge.ContactStubsSwept", true);
             string dir = GeneratedFolder();
             if (dir == null || !Directory.Exists(dir))
             {

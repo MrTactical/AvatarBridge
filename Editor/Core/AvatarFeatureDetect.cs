@@ -16,35 +16,20 @@ namespace AvatarBridge
     {
         // ------------------------------------------- face tracking parameters ----
 
-        static readonly HashSet<string> FtPlainNames = new HashSet<string>
-        {
-            "EyesY", "LeftEyeX", "RightEyeX",
-            "LeftEyeLidExpandedSqueeze", "RightEyeLidExpandedSqueeze", "EyesDilation"
-        };
-
-        static readonly HashSet<string> FtGateNames = new HashSet<string>
-        {
-            "EyeTracking", "FaceTracking", "EyeTrackingActive", "LipTrackingActive",
-            "FacialExpressionsDisabled"
-        };
-
+        // The stripper's rule, so the tester and the kept-rig report see what a face tracking
+        // mode would replace. Control flags are left out: the tester's neutral face would write
+        // 0 over an enable flag the rig rests at 1. A /Smoothed/ copy follows its source, so it
+        // is not counted or driven twice.
         public static bool IsFaceTrackingParameter(string name)
         {
-            if (string.IsNullOrEmpty(name) || name.Contains("/Smoothed/"))
-            {
-                return false;
-            }
-            if (name.Contains("v2/"))
-            {
-                return true;
-            }
-            string shortName = FaceTrackingShortName(name);
-            return FtPlainNames.Contains(shortName) || FtGateNames.Contains(shortName);
+            return !string.IsNullOrEmpty(name) && !name.Contains("/Smoothed/") &&
+                   FaceTrackingParameters.IsFaceTracking(name) &&
+                   !FaceTrackingParameters.IsControlFlag(FaceTrackingShortName(name));
         }
 
         public static bool IsFaceTrackingGate(string name)
         {
-            return IsFaceTrackingParameter(name) && FtGateNames.Contains(FaceTrackingShortName(name));
+            return IsFaceTrackingParameter(name) && FaceTrackingParameters.IsGateName(FaceTrackingShortName(name));
         }
 
         public static string FaceTrackingShortName(string name)
@@ -226,7 +211,7 @@ namespace AvatarBridge
             foreach (var smr in meshes)
             {
                 var m = smr.sharedMesh;
-                if (m == null || m.blendShapeCount == 0 || IsDebugMesh(smr.name))
+                if (m == null || m.blendShapeCount == 0 || FaceTrackingConverter.IsDebugMesh(smr, root.transform))
                 {
                     continue;
                 }
@@ -237,12 +222,6 @@ namespace AvatarBridge
                 }
             }
             return best;
-        }
-
-        static bool IsDebugMesh(string name)
-        {
-            string n = name.ToLowerInvariant();
-            return n.Contains("debug") || n.Contains("vf_ue") || n.Contains("ft_debug");
         }
 
         // --------------------------------------------------------------- viewpoint ----
@@ -339,7 +318,7 @@ namespace AvatarBridge
                         return false;
                     }
                     float headBoneHeight = Vector3.Distance(hips.position, head.position);
-                    world = OffsetFromBone(head, new Vector3(
+                    world = OffsetFromBone(root, head, new Vector3(
                         0f, -0.1f * headBoneHeight, 0.1f * headBoneHeight));
                 }
             }
@@ -426,7 +405,6 @@ namespace AvatarBridge
                 return false;
             }
             var jaw = animator.GetBoneTransform(HumanBodyBones.Jaw);
-            var head = animator.GetBoneTransform(HumanBodyBones.Head);
             // A mapped Jaw is only used if it is somewhere a jaw could
             // be; the slot is optional and unvalidated. On failure
             // return false so the caller reaches MouthLocator.
@@ -440,10 +418,6 @@ namespace AvatarBridge
             //
             // Found on an avatar with 15 viseme blendshapes whose voice still landed mid-face,
             // because this path answered first and never mentioned the visemes existed.
-            if (jaw == null)
-            {
-                return false;
-            }
             if (jaw == null)
             {
                 return false;
@@ -463,7 +437,7 @@ namespace AvatarBridge
             }
             var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
             float span = hips != null ? Vector3.Distance(hips.position, head.position) : 0f;
-            localPosition = RootOffset(root, OffsetFromBone(head, span > 0.0001f
+            localPosition = RootOffset(root, OffsetFromBone(root, head, span > 0.0001f
                 ? new Vector3(0f, 0.008f * span, 0.1f * span)
                 : new Vector3(0f, 0.005f, 0.06f)));
             return true;
@@ -634,15 +608,7 @@ namespace AvatarBridge
                 return false;
             }
 
-            // The same tolerance every other head check uses, so one rig can't be judged by two
-            // different standards.
-            var head = animator != null && animator.isHuman
-                ? animator.GetBoneTransform(HumanBodyBones.Head) : null;
-            var hips = animator != null && animator.isHuman
-                ? animator.GetBoneTransform(HumanBodyBones.Hips) : null;
-            float tolerance = head != null && hips != null
-                ? Mathf.Max(0.15f, Vector3.Distance(hips.position, head.position) * 0.5f)
-                : 0.5f;
+            float tolerance = HeadTolerance(animator);
 
             float NearestDeforming(Vector3 point)
             {
@@ -708,13 +674,7 @@ namespace AvatarBridge
             {
                 return false;
             }
-            var head = animator != null && animator.isHuman
-                ? animator.GetBoneTransform(HumanBodyBones.Head) : null;
-            var hips = animator != null && animator.isHuman
-                ? animator.GetBoneTransform(HumanBodyBones.Hips) : null;
-            float tolerance = head != null && hips != null
-                ? Mathf.Max(0.15f, Vector3.Distance(hips.position, head.position) * 0.5f)
-                : 0.5f;
+            float tolerance = HeadTolerance(animator);
 
             var point = CckGizmoWorldPoint(root, stored);
             foreach (var bone in deforming)
@@ -777,7 +737,7 @@ namespace AvatarBridge
             }
             else if (head != null)
             {
-                voiceWorld = OffsetFromBone(head, span > 0.0001f
+                voiceWorld = OffsetFromBone(root, head, span > 0.0001f
                     ? new Vector3(0f, 0.008f * span, 0.1f * span)
                     : new Vector3(0f, 0.005f, 0.06f));
                 voiceFrom = $"just in front of \"{head.name}\"";
@@ -794,7 +754,7 @@ namespace AvatarBridge
             return true;
         }
 
-        static HashSet<Transform> DeformingBones(GameObject root)
+        internal static HashSet<Transform> DeformingBones(GameObject root)
         {
             var deforming = new HashSet<Transform>();
             foreach (var skin in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
@@ -852,7 +812,7 @@ namespace AvatarBridge
             return target != null ? target : component.transform;
         }
 
-        static IEnumerable<Transform> ConstraintSources(Component component)
+        internal static IEnumerable<Transform> ConstraintSources(Component component)
         {
             if (component is UnityEngine.Animations.IConstraint unity)
             {
@@ -893,14 +853,15 @@ namespace AvatarBridge
             return value is T typed ? typed : default;
         }
 
-        static Vector3 OffsetFromBone(Transform bone, Vector3 offsetInMetres)
+        static Vector3 OffsetFromBone(GameObject root, Transform bone, Vector3 offsetInMetres)
         {
             // The AVATAR's orientation, not the bone's. A bone's local axes are whatever the
             // rigger felt like: on one robot avatar the head bone's +Z pointed at the sky, so
             // "6 cm forward" became "6 cm up" and the voice position sat above the eyes. The
-            // avatar root is the one transform whose forward really is forward.
-            var root = bone.root;
-            return bone.position + root.rotation * offsetInMetres;
+            // avatar root is the one transform whose forward really is forward. Passed in,
+            // not bone.root: that is the top of the scene, an organiser object when the
+            // avatar is converted in place under one.
+            return bone.position + root.transform.rotation * offsetInMetres;
         }
 
         static Vector3 ProjectSingleEye(Animator animator, Transform singleEye)
@@ -927,12 +888,8 @@ namespace AvatarBridge
             {
                 return null;
             }
-            var hips = animator != null && animator.isHuman
-                ? animator.GetBoneTransform(HumanBodyBones.Hips)
-                : null;
-            float tolerance = hips != null
-                ? Mathf.Max(0.15f, Vector3.Distance(hips.position, head.position) * 0.5f)
-                : 0.5f;
+            // The humanoid head's tolerance; the one caller passes that same bone.
+            float tolerance = HeadTolerance(animator);
 
             Transform best = null;
             float bestDistance = float.MaxValue;
@@ -1014,12 +971,20 @@ namespace AvatarBridge
             {
                 return false;
             }
-            var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
-            tolerance = hips != null
-                ? Mathf.Max(0.15f, Vector3.Distance(hips.position, head.position) * 0.5f)
-                : 0.5f;
+            tolerance = HeadTolerance(animator);
             distance = Vector3.Distance(CckGizmoWorldPoint(root, stored), head.position);
             return true;
+        }
+
+        // How far from the head a point may sit and still count as on it. Every head check uses
+        // this one, so one rig is never judged by two standards.
+        internal static float HeadTolerance(Animator animator)
+        {
+            var head = animator != null && animator.isHuman ? animator.GetBoneTransform(HumanBodyBones.Head) : null;
+            var hips = animator != null && animator.isHuman ? animator.GetBoneTransform(HumanBodyBones.Hips) : null;
+            return head != null && hips != null
+                ? Mathf.Max(0.15f, Vector3.Distance(hips.position, head.position) * 0.5f)
+                : 0.5f;
         }
 
         public static void VerifyHeadPlacement(BridgeContext ctx, string category,
@@ -1034,10 +999,7 @@ namespace AvatarBridge
             {
                 return;
             }
-            var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
-            float tolerance = hips != null
-                ? Mathf.Max(0.15f, Vector3.Distance(hips.position, head.position) * 0.5f)
-                : 0.5f;
+            float tolerance = HeadTolerance(animator);
 
             void Check(string what, Vector3 stored)
             {

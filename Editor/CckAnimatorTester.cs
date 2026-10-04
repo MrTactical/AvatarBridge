@@ -16,8 +16,16 @@ namespace AvatarBridge
     // Gesture Manager cannot test conversions; it needs the removed
     // VRC descriptor. Every control here writes the parameters the
     // client writes, coerced by declared type like the client.
-    public class CckAnimatorTester : EditorWindow
+    public partial class CckAnimatorTester : EditorWindow
     {
+        // The physics card lives in its own file, each solver it reads behind
+        // that solver's own define.
+        partial void EnablePhysics();
+        partial void DisablePhysics();
+        partial void PhysicsPlayModeChanged(PlayModeStateChange change);
+        partial void PhysicsSelectionChanged();
+        partial void AddPhysicsCard(VisualElement scroll, CVRAvatar avatar, bool live);
+
         [MenuItem("Tools/Avatar Bridge/CCK Animator Tester")]
         static void Open()
         {
@@ -26,19 +34,46 @@ namespace AvatarBridge
             window.minSize = new Vector2(360, 420);
         }
 
+        // From the Toolkit, already pointed at its avatar.
+        static void OpenFor(CVRAvatar avatar)
+        {
+            Open();
+            var window = GetWindow<CckAnimatorTester>();
+            window._override = avatar;
+            window.Rebuild();
+        }
+
         static readonly string[] VisemeNames =
         {
             "sil", "PP", "FF", "TH", "DD", "kk", "CH", "SS",
             "nn", "RR", "aa", "E", "I", "O", "U"
         };
 
-        static readonly (string name, int value)[] Poses =
+        static readonly (string name, int value, string tip)[] Poses =
         {
-            ("Idle", 0), ("Open", -1), ("Fist", 1), ("Thumbs", 2),
-            ("Gun", 3), ("Point", 4), ("Peace", 5), ("RnR", 6)
+            ("Idle", 0, null), ("Open", -1, null), ("Fist", 1, null), ("Thumbs", 2, null),
+            ("Gun", 3, null), ("Point", 4, null), ("Peace", 5, null), ("RnR", 6, "Rock'n'roll")
         };
 
-        const string LayersOpenKey = "AvatarBridge.Tester.LayersOpen";
+        // The state flags are not independent; the client computes them together. Chairs and
+        // water keep Grounded true, crouch and prone derive from Upright in VR, Flying
+        // interrupts everything. So: one exclusive stance writing the exact flag set the game
+        // would feed, never a flag soup.
+        static readonly (string name, string tip)[] Stances =
+        {
+            ("Standing", "Grounded, nothing else: Standard Locomotion."),
+            ("Crouching", "Crouching + Grounded, Upright into the crouch band (0.40–0.75). " +
+                          "In VR the game derives this from your real height."),
+            ("Prone", "Prone + Grounded, Upright below 0.40: the game's prone threshold."),
+            ("Airborne", "Grounded off, nothing else: the jump/fall chain " +
+                         "(JumpStart, JumpAir, then JumpLand when Grounded returns)."),
+            ("Flying", "Flying on, Grounded off. An AnyState override in the CCK layer: " +
+                       "it interrupts every state, emotes included."),
+            ("Sitting", "Sitting + Grounded: the game keeps Grounded true in chairs."),
+            ("Swimming", "Swimming + Grounded: the game keeps Grounded true in water too."),
+        };
+
+        static readonly string[] StanceFlags = { "Grounded", "Crouching", "Prone", "Flying", "Sitting", "Swimming" };
 
         CVRAvatar _override;
         float _loudness = 1f;
@@ -57,16 +92,26 @@ namespace AvatarBridge
         bool _visemesEnabled;
         float _blink;
         int _viseme;
-        // Read in OnEnable, never as a field initializer. Unity forbids
-        // EditorPrefs in a ScriptableObject constructor; the throw
-        // leaves the window half-built and unthemed.
-        bool _layersOpen;
+
+        // Several cards write the same parameters: Reset, the physics motions and the stance
+        // all move what the sliders show. Each control registers how to show a value, and Drive
+        // calls them after writing, so no card is left showing a value the animator dropped.
+        readonly Dictionary<string, List<System.Action<float>>> _views =
+            new Dictionary<string, List<System.Action<float>>>();
+
+        void View(string parameter, System.Action<float> show)
+        {
+            if (!_views.TryGetValue(parameter, out var list))
+            {
+                _views[parameter] = list = new List<System.Action<float>>();
+            }
+            list.Add(show);
+        }
 
         void OnEnable()
         {
-            _layersOpen = EditorPrefs.GetBool(LayersOpenKey, false);
             EditorApplication.playModeStateChanged += OnPlayModeChanged;
-            Selection.selectionChanged += Rebuild;
+            Selection.selectionChanged += OnSelectionChanged;
             // The menu card mirrors the Animator's current controller.
             // The CCK regenerates it and conversions swap it wholesale;
             // polling a cheap fingerprint keeps the card true.
@@ -76,22 +121,15 @@ namespace AvatarBridge
             // writes these weights. An editor-update write lands at an unspecified point around
             // the frame and loses to the animator often enough to look broken.
             Application.onBeforeRender += HoldFaceShapes;
+            EnablePhysics();
         }
 
         void CreateGUI()
         {
-            // Skin and stylesheet applied here and never again.
-            // isProSkin is not dependable inside update polls, and one
-            // false reading would stick. Rebuild only clears children,
-            // so this setup survives every rebuild.
-            var root = rootVisualElement;
-            root.AddToClassList("ab-root");
-            BridgeTheme.ApplySkin(root);
-            var sheet = Resources.Load<StyleSheet>("AvatarBridge");
-            if (sheet != null && !root.styleSheets.Contains(sheet))
-            {
-                root.styleSheets.Add(sheet);
-            }
+            // Skin and stylesheet applied here and never again, bar OnFocus. isProSkin is not
+            // dependable inside update polls, and one false reading would stick. Rebuild only
+            // clears children, so this setup survives every rebuild.
+            BridgeElements.Root(rootVisualElement);
             Rebuild();
         }
 
@@ -106,12 +144,31 @@ namespace AvatarBridge
         void OnDisable()
         {
             EditorApplication.playModeStateChanged -= OnPlayModeChanged;
-            Selection.selectionChanged -= Rebuild;
+            Selection.selectionChanged -= OnSelectionChanged;
             EditorApplication.update -= PollForChanges;
             Application.onBeforeRender -= HoldFaceShapes;
+            DisablePhysics();
         }
 
-        void OnPlayModeChanged(PlayModeStateChange _) => Rebuild();
+        void OnPlayModeChanged(PlayModeStateChange change)
+        {
+            PhysicsPlayModeChanged(change);
+            Rebuild();
+        }
+
+        // A click inside the same avatar resolves to it again, and a rebuild
+        // would reset the face it is holding and rescan every blend tree.
+        void OnSelectionChanged()
+        {
+            if (ComputeFingerprint(ResolveAvatar()) != _fingerprint)
+            {
+                Rebuild();
+            }
+            else
+            {
+                PhysicsSelectionChanged();
+            }
+        }
 
         void PollForChanges()
         {
@@ -123,16 +180,17 @@ namespace AvatarBridge
             // Twice a second, not per frame: the Eye Blink and viseme fields are edited in the
             // inspector while the tester is open, and the fingerprint below deliberately does not
             // cover them.
-            CacheFaceShapes();
-            if (ComputeFingerprint() != _fingerprint)
+            // Resolved once for both: with nothing selected it searches the scene.
+            var avatar = ResolveAvatar();
+            CacheFaceShapes(avatar);
+            if (ComputeFingerprint(avatar) != _fingerprint)
             {
                 Rebuild();
             }
         }
 
-        int ComputeFingerprint()
+        int ComputeFingerprint(CVRAvatar avatar)
         {
-            var avatar = ResolveAvatar();
             unchecked
             {
                 int hash = avatar != null ? avatar.GetInstanceID() : 0;
@@ -240,45 +298,86 @@ namespace AvatarBridge
             return animator;
         }
 
-        static void Drive(Animator animator, string name, float value)
+        // animator.parameters copies every parameter on each read, and a dragged
+        // slider drives once per event. Read again for another animator or
+        // controller, a changed count (an animator that only now initialised),
+        // and after every rebuild.
+        static Animator _typesFor;
+        static RuntimeAnimatorController _typesController;
+        static int _typesCount;
+        static readonly Dictionary<string, AnimatorControllerParameterType> _types =
+            new Dictionary<string, AnimatorControllerParameterType>();
+
+        static bool TryParameterType(Animator animator, string name, out AnimatorControllerParameterType type)
         {
-            if (animator == null)
+            type = default;
+            if (animator == null || name == null)
+            {
+                return false;
+            }
+            if (animator != _typesFor || animator.runtimeAnimatorController != _typesController
+                || animator.parameterCount != _typesCount)
+            {
+                _types.Clear();
+                foreach (var parameter in animator.parameters)
+                {
+                    // First wins, as the linear search it replaces did.
+                    if (!_types.ContainsKey(parameter.name))
+                    {
+                        _types.Add(parameter.name, parameter.type);
+                    }
+                }
+                _typesFor = animator;
+                _typesController = animator.runtimeAnimatorController;
+                _typesCount = animator.parameterCount;
+            }
+            return _types.TryGetValue(name, out type);
+        }
+
+        void Drive(Animator animator, string name, float value)
+        {
+            if (!TryParameterType(animator, name, out var type))
             {
                 return;
             }
-            foreach (var parameter in animator.parameters)
+            switch (type)
             {
-                if (parameter.name != name)
+                case AnimatorControllerParameterType.Float:
+                    animator.SetFloat(name, value);
+                    break;
+                case AnimatorControllerParameterType.Int:
+                    value = Mathf.RoundToInt(value);
+                    animator.SetInteger(name, (int)value);
+                    break;
+                case AnimatorControllerParameterType.Bool:
+                    value = value != 0f ? 1f : 0f;
+                    animator.SetBool(name, value != 0f);
+                    break;
+                case AnimatorControllerParameterType.Trigger:
+                    if (value != 0f)
+                    {
+                        animator.SetTrigger(name);
+                    }
+                    return;
+            }
+            if (_views.TryGetValue(name, out var views))
+            {
+                foreach (var show in views)
                 {
-                    continue;
+                    show(value);
                 }
-                switch (parameter.type)
-                {
-                    case AnimatorControllerParameterType.Float:
-                        animator.SetFloat(name, value);
-                        break;
-                    case AnimatorControllerParameterType.Int:
-                        animator.SetInteger(name, Mathf.RoundToInt(value));
-                        break;
-                    case AnimatorControllerParameterType.Bool:
-                        animator.SetBool(name, value != 0f);
-                        break;
-                    case AnimatorControllerParameterType.Trigger:
-                        if (value != 0f)
-                        {
-                            animator.SetTrigger(name);
-                        }
-                        break;
-                }
-                return;
             }
         }
 
         void Rebuild()
         {
             // Stored up front so the poll doesn't immediately rebuild what was just built.
-            _fingerprint = ComputeFingerprint();
-            CacheFaceShapes();
+            var avatar = ResolveAvatar();
+            _fingerprint = ComputeFingerprint(avatar);
+            CacheFaceShapes(avatar);
+            // A rebuilt controller can keep its object and change its parameters.
+            _typesFor = null;
+            _views.Clear();
             rootVisualElement.Clear();
             try
             {
@@ -316,303 +415,296 @@ namespace AvatarBridge
         void Build()
         {
             var root = rootVisualElement;
-            // Without the stylesheet the cards render as bare labels.
-            root.AddToClassList("ab-root");
-            // Exclusive, not additive. The root survives every Rebuild,
-            // and carrying both skin classes renders light in dark.
-            BridgeTheme.ApplySkin(root);
-            var sheet = Resources.Load<StyleSheet>("AvatarBridge");
-            if (sheet != null && !root.styleSheets.Contains(sheet))
-            {
-                root.styleSheets.Add(sheet);
-            }
-
             root.Add(BridgeElements.Banner("CCK Animator Tester",
-                "drive a ChilloutVR avatar the way the game does", "v" + BridgeDefines.Version));
-
-            var scroll = new ScrollView();
-            scroll.style.flexGrow = 1;
-            scroll.style.paddingLeft = 8;
-            scroll.style.paddingRight = 8;
-            scroll.style.paddingTop = 6;
-            root.Add(scroll);
+                "drive a ChilloutVR avatar the way the game does", "v" + BridgeDefines.Version,
+                BridgeTheme.Span.Cvr));
 
             var avatar = ResolveAvatar();
             bool live = Application.isPlaying && avatar != null;
+            // Read for each control's starting value, so a rebuild in Play mode shows what the
+            // animator holds instead of snapping every control back to zero.
+            var quiet = live ? avatar.GetComponentInChildren<Animator>(true) : null;
 
-            // ---- target ------------------------------------------------------------------
-            var pick = new BridgeElements.Card("Avatar");
-            var field = new ObjectField("CVR avatar")
+            // Outside the scroll, so the reason the window is idle is always on screen.
+            BridgeElements.NoticeBox state = null;
+            if (avatar == null)
             {
-                objectType = typeof(CVRAvatar),
-                allowSceneObjects = true,
-                value = _override
-            };
-            field.RegisterValueChangedCallback(e => { _override = e.newValue as CVRAvatar; Rebuild(); });
-            pick.Body.Add(field);
-            pick.Body.Add(BridgeElements.Hint(
-                avatar == null
-                    ? "No ChilloutVR avatar found: select one in the scene, or drop it above."
-                    : (Application.isPlaying
-                        ? $"Driving \"{avatar.name}\". Every control writes what ChilloutVR itself writes."
-                        : $"Found \"{avatar.name}\": enter PLAY MODE to drive it; animators only evaluate there.")));
-            pick.Body.Add(BridgeElements.Hint(
-                "The ChilloutVR side of Gesture Manager, which cannot drive a converted avatar."));
-            scroll.Add(pick);
-
-            // ---- gestures ----------------------------------------------------------------
-            var gestures = new BridgeElements.Card("Gestures");
-            gestures.Body.Add(PoseRow("Left", "GestureLeft"));
-            gestures.Body.Add(PoseRow("Right", "GestureRight"));
-            // The game's analog fist: the trigger squeeze is the
-            // gesture. GestureLeft carries the 0..1 grip value in the
-            // fist band; driving only the weight does nothing.
-            gestures.Body.Add(DrivenSlider("Left trigger (fist curl)", 0f, 1f, 0f, v =>
+                state = BridgeElements.Notice(Tone.Info,
+                    "No ChilloutVR avatar found. Select one in the scene, or drop it in the Avatar card.");
+            }
+            else if (!Application.isPlaying)
             {
-                var a = LiveAnimator();
-                Drive(a, "GestureLeft", v);
-                Drive(a, "GestureLeftIdx", Mathf.RoundToInt(v));
-                Drive(a, "GestureLeftWeight", v);
-            }));
-            gestures.Body.Add(DrivenSlider("Right trigger (fist curl)", 0f, 1f, 0f, v =>
+                state = BridgeElements.Notice(Tone.Info, $"Found \"{avatar.name}\". Enter Play mode to drive it.",
+                    action: BridgeElements.Btn("Enter Play mode", EditorApplication.EnterPlaymode,
+                        "Animators only evaluate in Play mode.", ButtonKind.Strong));
+            }
+            if (state != null)
             {
-                var a = LiveAnimator();
-                Drive(a, "GestureRight", v);
-                Drive(a, "GestureRightIdx", Mathf.RoundToInt(v));
-                Drive(a, "GestureRightWeight", v);
-            }));
-            gestures.SetEnabled(live);
-            scroll.Add(gestures);
-
-            // ---- locomotion --------------------------------------------------------------
-            var locomotion = new BridgeElements.Card("Locomotion");
-            locomotion.Body.Add(DrivenSlider("Movement X  (strafe)", -1f, 1f, 0f, v =>
-            {
-                var a = LiveAnimator();
-                Drive(a, "MovementX", v);
-                Drive(a, "VelocityX", v * 4f); // ~run speed, so velocity-driven trees react too
-            }));
-            locomotion.Body.Add(DrivenSlider("Movement Y  (forward)", -1f, 1f, 0f, v =>
-            {
-                var a = LiveAnimator();
-                Drive(a, "MovementY", v);
-                Drive(a, "VelocityZ", v * 4f);
-            }));
-            // The state flags are not independent; the client computes
-            // them together. Chairs and water keep Grounded true, crouch
-            // and prone derive from Upright in VR, Flying interrupts
-            // everything. So: one exclusive stance writing the exact
-            // flag set the game would feed, never a flag soup.
-            var quiet = Application.isPlaying && avatar != null
-                ? avatar.GetComponentInChildren<Animator>(true)
-                : null;
-            float Flag(string flagName) => ReadParam(quiet, flagName) ?? 0f;
-            Slider upright = null;
-            var stanceButtons = new Dictionary<string, Button>();
-            // Recover the current stance from the live flags, in the layer's own precedence.
-            string stance =
-                Flag("Flying") > 0.5f ? "Flying" :
-                Flag("Sitting") > 0.5f ? "Sitting" :
-                Flag("Swimming") > 0.5f ? "Swimming" :
-                Flag("Prone") > 0.5f ? "Prone" :
-                Flag("Crouching") > 0.5f ? "Crouching" :
-                (ReadParam(quiet, "Grounded") ?? 1f) < 0.5f ? "Airborne" : "Standing";
-
-            void DriveStance(string name, bool moveUpright)
-            {
-                var a = LiveAnimator();
-                Drive(a, "Grounded", name == "Airborne" || name == "Flying" ? 0f : 1f);
-                Drive(a, "Crouching", name == "Crouching" ? 1f : 0f);
-                Drive(a, "Prone", name == "Prone" ? 1f : 0f);
-                Drive(a, "Flying", name == "Flying" ? 1f : 0f);
-                Drive(a, "Sitting", name == "Sitting" ? 1f : 0f);
-                Drive(a, "Swimming", name == "Swimming" ? 1f : 0f);
-                // Ground stances drag Upright along, mirroring the VR height derivation.
-                float height = name == "Standing" ? 1f
-                    : name == "Crouching" ? 0.6f
-                    : name == "Prone" ? 0.25f : -1f;
-                if (moveUpright && height >= 0f && upright != null)
-                {
-                    upright.SetValueWithoutNotify(height);
-                    Drive(a, "Upright", height);
-                }
-                stance = name;
-                foreach (var pair in stanceButtons)
-                {
-                    pair.Value.style.unityFontStyleAndWeight =
-                        pair.Key == name ? FontStyle.Bold : FontStyle.Normal;
-                }
+                state.AddToClassList("ab-pinned");
+                root.Add(state);
             }
 
-            var stanceRow = new VisualElement();
-            stanceRow.style.flexDirection = FlexDirection.Row;
-            stanceRow.style.flexWrap = Wrap.Wrap;
-            stanceRow.style.alignItems = Align.Center;
-            stanceRow.style.marginTop = 4;
-            var stanceCaption = new Label("Stance");
-            stanceCaption.style.width = 44;
-            stanceCaption.style.unityTextAlign = TextAnchor.MiddleLeft;
-            stanceRow.Add(stanceCaption);
-            foreach (var (name, tip) in new[]
-            {
-                ("Standing", "Grounded, nothing else: Standard Locomotion."),
-                ("Crouching", "Crouching + Grounded, Upright into the crouch band (0.40–0.75). " +
-                              "In VR the game derives this from your real height."),
-                ("Prone", "Prone + Grounded, Upright below 0.40: the game's prone threshold."),
-                ("Airborne", "Grounded off, nothing else: the jump/fall chain " +
-                             "(JumpStart, JumpAir, then JumpLand when Grounded returns)."),
-                ("Flying", "Flying on, Grounded off. An AnyState override in the CCK layer: " +
-                           "it interrupts every state, emotes included."),
-                ("Sitting", "Sitting + Grounded: the game KEEPS Grounded true in chairs."),
-                ("Swimming", "Swimming + Grounded: the game keeps Grounded true in water too."),
-            })
-            {
-                string captured = name;
-                var stanceButton = new Button(() => DriveStance(captured, moveUpright: true))
-                {
-                    text = name,
-                    tooltip = tip,
-                };
-                stanceButton.style.marginBottom = 2;
-                if (captured == stance)
-                {
-                    stanceButton.style.unityFontStyleAndWeight = FontStyle.Bold;
-                }
-                stanceButtons[captured] = stanceButton;
-                stanceRow.Add(stanceButton);
-            }
-            locomotion.Body.Add(stanceRow);
+            var scroll = BridgeElements.Scroll();
+            root.Add(scroll);
+            scroll.Add(BuildAvatarCard(avatar, live));
+            scroll.Add(BuildGesturesCard(quiet, live));
+            scroll.Add(BuildLocomotionCard(quiet, live));
+            // Beside the locomotion it drives.
+            AddPhysicsCard(scroll, avatar, live);
+            scroll.Add(BuildFaceCard(live));
+            scroll.Add(SafeCard("Face tracking", () => BuildFaceTrackingCard(avatar, live)));
 
-            upright = new Slider("Upright  (1 = standing)", 0f, 1f)
+            var menu = new BridgeElements.Card("Avatar menu", "Advanced Avatar Settings", expanded: true)
+                .Remember("Tester.Avatar menu");
+            BuildMenuControls(menu, avatar, live);
+            scroll.Add(menu);
+
+            scroll.Add(BuildRemoteCard(live));
+
+            scroll.Add(BridgeElements.Footer(
+                BridgeElements.ExternalLink("Guide", BridgeLinks.Repo + "#highlights",
+                    "What the tester does, in the README"),
+                // A link that builds its url from this install, so it cannot be a plain ExternalLink.
+                BridgeElements.TextLink("Report an issue ↗", () => BridgeLinks.OpenBugReport(),
+                    "Opens a GitHub issue with your Unity and package versions filled in")));
+
+            // Pinned below the scroll view, not inside it. The point is watching layers react
+            // while a control is driven, so the readout must stay on screen. Its own rows scroll
+            // internally, so fifty layers cannot swallow the window either.
+            root.Add(SafeCard("Animator layers", () => BuildLayerCard(avatar)));
+        }
+
+        VisualElement BuildAvatarCard(CVRAvatar avatar, bool live)
+        {
+            var card = new BridgeElements.Card("Avatar", expanded: true).Remember("Tester.Avatar");
+            card.Body.Add(BridgeElements.ObjectPicker<CVRAvatar>("CVR avatar", _override, picked =>
             {
-                value = ReadParam(quiet, "Upright") ?? 1f,
-                showInputField = true,
-                tooltip = "Viewpoint over avatar height. Below 0.75 crouches, below 0.40 goes prone, as in game.",
-            };
-            upright.RegisterValueChangedCallback(e =>
+                _override = picked;
+                Rebuild();
+            }, "Pin an avatar here, or leave it empty to follow the scene selection."));
+            if (_override != null)
             {
-                Drive(LiveAnimator(), "Upright", e.newValue);
-                // Mirror the client's VR derivation, ground stances only.
-                // CanCrouch/CanProne refuse while flying, swimming, sitting.
-                if (stance == "Standing" || stance == "Crouching" || stance == "Prone")
+                var pinned = BridgeElements.Hint("Pinned: scene selection is ignored.");
+                pinned.AddToClassList("ab-grow");
+                // The rebuild clears this link, so it waits out its own click.
+                Button unpin = null;
+                unpin = BridgeElements.TextLink("Unpin", () => BridgeElements.Defer(unpin, () =>
                 {
-                    string derived = e.newValue <= 0.4f ? "Prone"
-                        : e.newValue <= 0.75f ? "Crouching" : "Standing";
-                    if (derived != stance)
+                    _override = null;
+                    Rebuild();
+                }), "Follow the scene selection again");
+                card.Body.Add(BridgeElements.Row(pinned, unpin));
+            }
+            else if (avatar != null)
+            {
+                card.Body.Add(BridgeElements.Hint($"Using \"{avatar.name}\" from the scene. Drop one here to pin it."));
+            }
+            var resting = BridgeElements.Btn("Resting defaults", RestingDefaults,
+                "Back to what the game reports standing still");
+            resting.SetEnabled(live);
+            card.Body.Add(BridgeElements.ButtonRow(resting));
+            return card;
+        }
+
+        // The values the game itself rests at. Standing writes the whole stance flag set and
+        // returns Upright to 1; every card showing one of these follows through its view.
+        void RestingDefaults()
+        {
+            var a = LiveAnimator();
+            if (a == null)
+            {
+                return;
+            }
+            DriveStance("Standing", moveUpright: true);
+            Drive(a, "AFK", 0f);
+            Drive(a, "IsLocal", 1f);
+            Drive(a, "TrackingType", 3f);
+            Drive(a, "VRMode", 0f);
+            Drive(a, "MovementX", 0f);
+            Drive(a, "MovementY", 0f);
+            Drive(a, "VelocityX", 0f);
+            Drive(a, "VelocityZ", 0f);
+            Drive(a, "GestureLeftIdx", 0f);
+            Drive(a, "GestureRightIdx", 0f);
+            Drive(a, "GestureLeft", 0f);
+            Drive(a, "GestureRight", 0f);
+        }
+
+        VisualElement BuildGesturesCard(Animator quiet, bool live)
+        {
+            var card = new BridgeElements.Card("Gestures", expanded: true).Remember("Tester.Gestures");
+            card.Body.Add(BridgeElements.Caption("Left hand"));
+            card.Body.Add(PoseSegment("GestureLeft", quiet, live));
+            card.Body.Add(BridgeElements.Caption("Right hand"));
+            card.Body.Add(PoseSegment("GestureRight", quiet, live));
+            card.Body.Add(TriggerSlider("Left trigger", "GestureLeft", quiet, live));
+            card.Body.Add(TriggerSlider("Right trigger", "GestureRight", quiet, live));
+            return card;
+        }
+
+        VisualElement BuildLocomotionCard(Animator quiet, bool live)
+        {
+            var card = new BridgeElements.Card("Locomotion", expanded: true).Remember("Tester.Locomotion");
+
+            var strafe = BridgeElements.SliderField("Strafe", "Movement X, with Velocity X at about run speed",
+                -1f, 1f, ReadParam(quiet, "MovementX") ?? 0f, v =>
+                {
+                    var a = LiveAnimator();
+                    Drive(a, "MovementX", v);
+                    Drive(a, "VelocityX", v * 4f); // ~run speed, so velocity-driven trees react too
+                });
+            View("MovementX", strafe.SetValueWithoutNotify);
+            var forward = BridgeElements.SliderField("Forward", "Movement Y, with Velocity Z at about run speed",
+                -1f, 1f, ReadParam(quiet, "MovementY") ?? 0f, v =>
+                {
+                    var a = LiveAnimator();
+                    Drive(a, "MovementY", v);
+                    Drive(a, "VelocityZ", v * 4f);
+                });
+            View("MovementY", forward.SetValueWithoutNotify);
+
+            // Each flag as last written, so the lit stance is the one the layer would pick.
+            var flags = StanceFlags.ToDictionary(f => f, f => ReadParam(quiet, f));
+            var stance = new BridgeElements.Segmented(Stances.Select(s => s.name).ToArray(), StanceFrom(flags),
+                i => DriveStance(Stances[i].name, moveUpright: true), Stances.Select(s => s.tip).ToArray());
+            foreach (string flag in StanceFlags)
+            {
+                string captured = flag;
+                View(flag, v =>
+                {
+                    flags[captured] = v;
+                    stance.SetCurrent(StanceFrom(flags));
+                });
+            }
+
+            var upright = BridgeElements.SliderField("Upright",
+                "1 = standing. Viewpoint over avatar height: below 0.75 crouches, below 0.40 goes prone, as in game.",
+                0f, 1f, ReadParam(quiet, "Upright") ?? 1f, v =>
+                {
+                    Drive(LiveAnimator(), "Upright", v);
+                    // Mirror the client's VR derivation, ground stances only.
+                    // CanCrouch/CanProne refuse while flying, swimming, sitting.
+                    string current = Stances[StanceFrom(flags)].name;
+                    if (current == "Standing" || current == "Crouching" || current == "Prone")
                     {
-                        DriveStance(derived, moveUpright: false);
+                        string derived = v <= 0.4f ? "Prone" : v <= 0.75f ? "Crouching" : "Standing";
+                        if (derived != current)
+                        {
+                            DriveStance(derived, moveUpright: false);
+                        }
                     }
-                }
-            });
-            locomotion.Body.Add(upright);
+                });
+            View("Upright", upright.SetValueWithoutNotify);
 
             // AFK is fed from the headset proximity sensor. Only
             // reaches avatars that declare an AFK parameter.
-            var afk = new Toggle
-            {
-                text = "AFK",
-                value = Flag("AFK") > 0.5f,
-                tooltip = "The headset proximity sensor in game. Independent of stance; only " +
-                          "does anything if the avatar declares an AFK parameter.",
-            };
-            afk.style.marginTop = 4;
-            afk.RegisterValueChangedCallback(e => Drive(LiveAnimator(), "AFK", e.newValue ? 1f : 0f));
-            locomotion.Body.Add(afk);
-            locomotion.SetEnabled(live);
-            scroll.Add(locomotion);
+            var afk = BridgeElements.Bind("AFK",
+                "The headset proximity sensor in game. Independent of stance; only does anything if the " +
+                "avatar declares an AFK parameter.",
+                (ReadParam(quiet, "AFK") ?? 0f) > 0.5f, on => Drive(LiveAnimator(), "AFK", on ? 1f : 0f));
+            View("AFK", v => afk.SetValueWithoutNotify(v > 0.5f));
 
-            // ---- face & emotes -----------------------------------------------------------
+            foreach (var control in new VisualElement[] { strafe, forward, stance, upright, afk })
+            {
+                control.SetEnabled(live);
+            }
+            card.Body.Add(strafe);
+            card.Body.Add(forward);
+            card.Body.Add(BridgeElements.Caption("Stance"));
+            card.Body.Add(stance);
+            card.Body.Add(upright);
+            card.Body.Add(afk);
+            return card;
+        }
+
+        static int StanceFrom(Dictionary<string, float?> flags)
+        {
+            bool On(string name) => (flags[name] ?? 0f) > 0.5f;
+            // The layer's own precedence.
+            string stance =
+                On("Flying") ? "Flying" :
+                On("Sitting") ? "Sitting" :
+                On("Swimming") ? "Swimming" :
+                On("Prone") ? "Prone" :
+                On("Crouching") ? "Crouching" :
+                (flags["Grounded"] ?? 1f) < 0.5f ? "Airborne" : "Standing";
+            return System.Array.FindIndex(Stances, s => s.name == stance);
+        }
+
+        void DriveStance(string name, bool moveUpright)
+        {
+            var a = LiveAnimator();
+            Drive(a, "Grounded", name == "Airborne" || name == "Flying" ? 0f : 1f);
+            Drive(a, "Crouching", name == "Crouching" ? 1f : 0f);
+            Drive(a, "Prone", name == "Prone" ? 1f : 0f);
+            Drive(a, "Flying", name == "Flying" ? 1f : 0f);
+            Drive(a, "Sitting", name == "Sitting" ? 1f : 0f);
+            Drive(a, "Swimming", name == "Swimming" ? 1f : 0f);
+            // Ground stances drag Upright along, mirroring the VR height derivation.
+            float height = name == "Standing" ? 1f
+                : name == "Crouching" ? 0.6f
+                : name == "Prone" ? 0.25f : -1f;
+            if (moveUpright && height >= 0f)
+            {
+                Drive(a, "Upright", height);
+            }
+        }
+
+        VisualElement BuildFaceCard(bool live)
+        {
             // Visemes and blinking are not animator features in CVR;
             // the client writes blendshape weights on the mesh
             // directly. Parameters are still driven for animator logic,
             // but the visible mouth comes from the blendshapes.
-            var face = new BridgeElements.Card("Face & emotes");
+            var card = new BridgeElements.Card("Face & emotes", expanded: true).Remember("Tester.Face & emotes");
             // Held on the mesh every frame; backing fields must start
             // where the controls start.
             _viseme = 0;
             _loudness = 1f;
             _blink = 0f;
-            var viseme = new DropdownField("Viseme", new List<string>(VisemeNames), 0);
-            viseme.RegisterValueChangedCallback(e =>
-                ApplyViseme(System.Array.IndexOf(VisemeNames, e.newValue), _loudness));
-            face.Body.Add(viseme);
-            face.Body.Add(DrivenSlider("Viseme loudness", 0f, 1f, 1f, v =>
-            {
-                _loudness = v;
-                ApplyViseme(System.Array.IndexOf(VisemeNames, viseme.value), v);
-            }));
-            face.Body.Add(DrivenSlider("Blink", 0f, 1f, 0f, ApplyBlink));
-            var emoteRow = new VisualElement();
-            emoteRow.style.flexDirection = FlexDirection.Row;
-            var emoteField = new IntegerField("Emote") { value = 0 };
-            emoteField.style.flexGrow = 1;
-            emoteRow.Add(emoteField);
-            emoteRow.Add(new Button(() => Drive(LiveAnimator(), "Emote", emoteField.value)) { text = "Play" });
-            emoteRow.Add(new Button(() =>
+            var viseme = BridgeElements.Popup("Viseme", "The mouth shape lipsync reports", VisemeNames, 0,
+                index => ApplyViseme(index, _loudness));
+            var loudness = BridgeElements.SliderField("Viseme loudness", "How far the viseme opens", 0f, 1f, 1f,
+                v => ApplyViseme(viseme.index, v));
+            var blink = BridgeElements.SliderField("Blink", "0 open, 1 shut", 0f, 1f, 0f, ApplyBlink);
+            int emote = 0;
+            var emoteField = BridgeElements.IntField("Emote", "The emote number the game plays", 0, v => emote = v);
+            emoteField.AddToClassList("ab-grow");
+            var play = BridgeElements.Btn("Play", () => Drive(LiveAnimator(), "Emote", emote), "Play this emote");
+            var cancel = BridgeElements.Btn("Cancel", () =>
             {
                 var a = LiveAnimator();
                 Drive(a, "Emote", 0f);
                 Drive(a, "CancelEmote", 1f);
-            }) { text = "Cancel" });
-            face.Body.Add(emoteRow);
-            face.Body.Add(BridgeElements.Hint(
+            }, "Cancel the playing emote");
+            var emoteRow = BridgeElements.Row(emoteField, play, cancel);
+            // The controls, not the row: a disabled row fades and its buttons fade again inside it.
+            foreach (var control in new VisualElement[] { viseme, loudness, blink, emoteField, play, cancel })
+            {
+                control.SetEnabled(live);
+            }
+            card.Body.Add(viseme);
+            card.Body.Add(BridgeElements.Hint(
                 "Visemes and blink are written after the animator, as in game, so they beat any animation on " +
                 "the same shape."));
-            face.SetEnabled(live);
-            scroll.Add(face);
+            card.Body.Add(loudness);
+            card.Body.Add(blink);
+            card.Body.Add(emoteRow);
+            return card;
+        }
 
-            // ---- face tracking -----------------------------------------------------------
-            var faceTracking = SafeCard("Face tracking", () => BuildFaceTrackingCard(avatar));
-            faceTracking.SetEnabled(live);
-            scroll.Add(faceTracking);
-
-            // ---- the avatar's own menu ---------------------------------------------------
-            var menu = new BridgeElements.Card("Avatar menu  (Advanced Avatar Settings)");
-            BuildMenuControls(menu.Body, avatar);
-            menu.SetEnabled(live);
-            scroll.Add(menu);
-
-            // ---- resting defaults --------------------------------------------------------
-            var reset = new BridgeElements.Card("Reset");
-            reset.Body.Add(new Button(() =>
-            {
-                var a = LiveAnimator();
-                if (a == null)
-                {
-                    return;
-                }
-                // The values the game itself rests at. Standing writes
-                // the whole stance flag set and returns Upright to 1.
-                DriveStance("Standing", moveUpright: true);
-                Drive(a, "AFK", 0f);
-                afk.SetValueWithoutNotify(false);
-                Drive(a, "IsLocal", 1f);
-                Drive(a, "TrackingType", 3f);
-                Drive(a, "VRMode", 0f);
-                Drive(a, "MovementX", 0f);
-                Drive(a, "MovementY", 0f);
-                Drive(a, "VelocityX", 0f);
-                Drive(a, "VelocityZ", 0f);
-                Drive(a, "GestureLeftIdx", 0f);
-                Drive(a, "GestureRightIdx", 0f);
-                Drive(a, "GestureLeft", 0f);
-                Drive(a, "GestureRight", 0f);
-            }) { text = "Resting defaults  (what the game reports standing still)" });
-            reset.SetEnabled(live);
-            scroll.Add(reset);
-
-            // ---- the avatar as other players run it ----
-            // Remote copies never receive "#" locals, and streams are
-            // stripped from them, so those parameters sit at their
-            // defaults forever. An animator depending on a live local
-            // value can behave differently for others: a layer that looks parked to
-            // the wearer can cycle between states for everyone else, which in game reads as an
-            // animation rapidly looping that the wearer cannot see at all.
-            var remote = new BridgeElements.Card("Remote view");
-            remote.Body.Add(BridgeElements.Hint(
-                "Sets every \"#\" local parameter to its default, as other players see it. A layer that then " +
-                "cycles or changes state does so for everyone but you."));
-            remote.Body.Add(new Button(() =>
+        // The avatar as other players run it. Remote copies never receive "#" locals, and
+        // streams are stripped from them, so those parameters sit at their defaults forever. An
+        // animator depending on a live local value can behave differently for others: a layer
+        // that looks parked to the wearer can cycle between states for everyone else, which in
+        // game reads as an animation rapidly looping that the wearer cannot see at all.
+        VisualElement BuildRemoteCard(bool live)
+        {
+            var card = new BridgeElements.Card("Remote view", expanded: true).Remember("Tester.Remote view");
+            card.Body.Add(BridgeElements.Hint(
+                "Puts every \"#\" local parameter at its default, as other players' clients hold it.",
+                "A layer that then cycles or changes state does so for everyone but you."));
+            var snap = BridgeElements.Btn("Snap \"#\" locals to their defaults", () =>
             {
                 var a = LiveAnimator();
                 if (a == null)
@@ -638,21 +730,10 @@ namespace AvatarBridge
                             break;
                     }
                 }
-            }) { text = "Snap \"#\" locals to their defaults  (how remote clients hold them)" });
-            remote.SetEnabled(live);
-            scroll.Add(remote);
-
-            // ---- live layer readout ----
-            // Pinned below the scroll view, not inside it. The point is
-            // watching layers react while a control is driven, so the
-            // readout must stay on screen. Its own rows scroll internally, so
-            // fifty layers cannot swallow the window either.
-            var layers = SafeCard("Animator layers", () => BuildLayerCard(avatar));
-            layers.style.flexShrink = 0;
-            layers.style.marginLeft = 8;
-            layers.style.marginRight = 8;
-            layers.style.marginBottom = 6;
-            root.Add(layers);
+            }, "How remote clients hold them");
+            snap.SetEnabled(live);
+            card.Body.Add(BridgeElements.ButtonRow(snap));
+            return card;
         }
 
         void ApplyViseme(int index, float loudness)
@@ -671,9 +752,8 @@ namespace AvatarBridge
             HoldFaceShapes();
         }
 
-        void CacheFaceShapes()
+        void CacheFaceShapes(CVRAvatar avatar)
         {
-            var avatar = ResolveAvatar();
             _faceMesh = avatar != null ? avatar.bodyMesh : null;
             var shared = _faceMesh != null ? _faceMesh.sharedMesh : null;
             if (shared == null)
@@ -732,40 +812,62 @@ namespace AvatarBridge
             }
         }
 
-        VisualElement PoseRow(string label, string floatParameter)
+        VisualElement PoseSegment(string floatParameter, Animator quiet, bool live)
         {
-            var row = new VisualElement();
-            row.style.flexDirection = FlexDirection.Row;
-            row.style.flexWrap = Wrap.Wrap;
-            row.style.marginBottom = 4;
-            row.style.alignItems = Align.Center;
-            var caption = new Label(label);
-            caption.style.width = 44;
-            caption.style.unityTextAlign = TextAnchor.MiddleLeft;
-            row.Add(caption);
-            foreach (var pose in Poses)
-            {
-                int value = pose.value;
-                row.Add(new Button(() =>
+            var segment = new BridgeElements.Segmented(Poses.Select(p => p.name).ToArray(),
+                // Idle outside Play mode, as the stance shows its resting Standing.
+                PoseIndex(ReadParam(quiet, floatParameter) ?? 0f), i =>
                 {
+                    int value = Poses[i].value;
                     var animator = LiveAnimator();
                     // Int drives the pose states, float rides along,
                     // weight curls the analog fist. The client's trio.
                     Drive(animator, floatParameter + "Idx", value);
                     Drive(animator, floatParameter, value);
                     Drive(animator, floatParameter + "Weight", value == 1 ? 1f : 0f);
-                }) { text = pose.name });
+                }, Poses.Select(p => p.tip).ToArray());
+            View(floatParameter, v => segment.SetCurrent(PoseIndex(v)));
+            segment.SetEnabled(live);
+            return segment;
+        }
+
+        // Anything in the fist band reads as the fist: the trigger squeeze is that gesture.
+        static int PoseIndex(float? value)
+        {
+            if (value == null)
+            {
+                return -1;
             }
-            return row;
+            float v = value.Value;
+            int pose = v > 0f && v < 1f ? 1 : Mathf.RoundToInt(v);
+            return System.Array.FindIndex(Poses, p => p.value == pose);
+        }
+
+        // The game's analog fist: the trigger squeeze is the gesture. GestureLeft carries the
+        // 0..1 grip value in the fist band; driving only the weight does nothing.
+        VisualElement TriggerSlider(string label, string floatParameter, Animator quiet, bool live)
+        {
+            float now = ReadParam(quiet, floatParameter) ?? 0f;
+            var slider = BridgeElements.SliderField(label, "How far the fist curls", 0f, 1f,
+                now >= 0f && now <= 1f ? now : 0f, v =>
+                {
+                    var a = LiveAnimator();
+                    Drive(a, floatParameter, v);
+                    Drive(a, floatParameter + "Idx", Mathf.RoundToInt(v));
+                    Drive(a, floatParameter + "Weight", v);
+                });
+            // A pose past the fist band is not a squeeze.
+            View(floatParameter, v => slider.SetValueWithoutNotify(v >= 0f && v <= 1f ? v : 0f));
+            slider.SetEnabled(live);
+            return slider;
         }
 
         VisualElement BuildLayerCard(CVRAvatar avatar)
         {
             // Collapsed by default and remembered. A diagnostic, not
             // something to scroll past on every visit.
-            var card = new BridgeElements.Card("Animator layers  (live)",
-                summary: null, expanded: _layersOpen,
-                onToggle: open => { _layersOpen = open; EditorPrefs.SetBool(LayersOpenKey, open); });
+            var card = new BridgeElements.Card("Animator layers", expanded: false).Remember("Tester.Layers");
+            card.AddToClassList("ab-pinned");
             var animator = avatar != null ? avatar.GetComponentInChildren<Animator>(true) : null;
             var runtime = animator != null ? animator.runtimeAnimatorController : null;
             while (runtime is AnimatorOverrideController over)
@@ -776,111 +878,106 @@ namespace AvatarBridge
 
             if (!Application.isPlaying || animator == null || asset == null)
             {
+                card.SetSummary(Application.isPlaying ? "no controller" : "Play mode only");
                 card.Body.Add(BridgeElements.Hint(
                     animator == null || asset == null
                         ? "No animator controller to read yet."
-                        : "Enter PLAY MODE to see layer weights and playing clips, as the CCK Debugger shows them."));
+                        : "Enter Play mode to see layer weights and playing clips, as the CCK Debugger shows them."));
                 return card;
             }
 
-            // Which layers own the hand pose, and therefore which layers ABOVE them are able to
+            // Which layers own the hand pose, and therefore which layers above them are able to
             // ruin it. Highest index wins: it is the one that writes last.
             int handTop = -1;
             for (int i = 0; i < asset.layers.Length; i++)
             {
-                if (asset.layers[i].name == "LeftHand" || asset.layers[i].name == "RightHand")
+                if (IsHandLayer(asset.layers[i].name))
                 {
                     handTop = i;
                 }
             }
 
+            card.Body.Add(BridgeElements.Chips(
+                BridgeElements.Chip("hand layer", Tone.Info, tooltip: "A layer that owns the hand pose"),
+                BridgeElements.Chip("⚠ conflict", Tone.Bad,
+                    tooltip: "Above the hand-pose layer, with a mask that lets it write finger muscles")));
+
             var header = new VisualElement();
-            header.style.flexDirection = FlexDirection.Row;
-            header.Add(Cell("#", 22, TextAnchor.MiddleRight));
-            header.Add(Flex("LAYER", 1f));
-            header.Add(Cell("WT", 38, TextAnchor.MiddleRight));
-            header.Add(Cell("MASK", 76, TextAnchor.MiddleLeft));
-            header.Add(Flex("PLAYING", 1.3f));
-            foreach (var child in header.Children())
-            {
-                child.AddToClassList("ab-sub");
-                child.style.marginRight = 6;
-            }
+            header.AddToClassList("ab-table-head");
+            header.Add(Cell("#", width: 22));
+            header.Add(Cell("Layer", share: 1f));
+            header.Add(Cell("Weight", width: 44));
+            // 88 fits "GesturesRight", and the hand masks are what this table exists to check.
+            header.Add(Cell("Mask", width: 88));
+            header.Add(Cell("Playing", share: 1.3f));
+            var gutter = new VisualElement();
+            header.Add(gutter);
             card.Body.Add(header);
 
             // The rows scroll under the fixed column header, capped so the pinned card leaves
             // the controls above it room to breathe. Scrollbar space is why the header sits
             // outside: with it inside, the header would shift left whenever the bar appears.
             var list = new ScrollView();
-            list.style.maxHeight = 240;
+            list.AddToClassList("ab-list-short");
             card.Body.Add(list);
+            // The rows lose the scrollbar's width and the header does not, so the flexible
+            // columns would split the difference and every column after Layer drift right.
+            // Measured, so it follows the bar appearing and going: a data width.
+            list.contentViewport.RegisterCallback<GeometryChangedEvent>(_ =>
+                gutter.style.width = list.layout.width - list.contentViewport.layout.width);
 
-            var rows = new List<(Label weight, Label playing, VisualElement row)>();
+            var rows = new List<(Label weight, Label playing)>();
             int conflictCount = 0;
             for (int i = 0; i < animator.layerCount && i < asset.layers.Length; i++)
             {
                 var layer = asset.layers[i];
-                bool conflicts = i > handTop && handTop >= 0 && PermitsFingers(layer.avatarMask)
-                                 && layer.name != "LeftHand" && layer.name != "RightHand";
+                bool hand = IsHandLayer(layer.name);
+                bool conflicts = i > handTop && handTop >= 0 && PermitsFingers(layer.avatarMask) && !hand;
                 if (conflicts)
                 {
                     conflictCount++;
                 }
 
-                var row = new VisualElement();
-                row.style.flexDirection = FlexDirection.Row;
-                row.style.paddingTop = 1;
-                row.style.paddingBottom = 1;
-                // Banding, not borders: at fifty-plus layers the eye needs help staying on a
-                // line, and a 4% wash reads in either editor skin.
-                if (i % 2 == 1)
-                {
-                    row.style.backgroundColor = new Color(1f, 1f, 1f, 0.04f);
-                }
+                // Cells join the row directly, not through Row's children: .ab-cell carries the gap.
+                var row = BridgeElements.Row();
+                // Banding, not borders: at fifty-plus layers the eye needs help staying on a line.
+                row.EnableInClassList("ab-row-alt", i % 2 == 1);
                 row.tooltip = conflicts
-                    ? $"Layer {i} sits ABOVE the hand-pose layer ({handTop}) and its mask lets it write " +
+                    ? $"Layer {i} sits above the hand-pose layer ({handTop}) and its mask lets it write " +
                       "finger muscles. On Override at weight 1 it replaces whatever pose a gesture just " +
                       "played: the fingers stop moving in game even though the gesture is playing here."
                     : $"Layer {i} \"{layer.name}\": {layer.blendingMode}, default weight " +
                       $"{layer.defaultWeight:0.##}, mask " +
                       (layer.avatarMask != null ? layer.avatarMask.name : "none") + ".";
 
-                var index = Cell(i.ToString(), 22, TextAnchor.MiddleRight);
-                index.style.color = BridgeTheme.Muted;
+                var index = Cell(i.ToString(), width: 22);
+                BridgeElements.SetTone(index, Tone.Muted);
                 row.Add(index);
 
-                var name = Flex(conflicts ? "⚠ " + layer.name : layer.name, 1f);
-                if (conflicts)
-                {
-                    name.style.color = BridgeTheme.Bad;
-                }
-                else if (layer.name == "LeftHand" || layer.name == "RightHand")
-                {
-                    name.style.color = BridgeTheme.Good;
-                }
+                // One colour, one meaning: info marks a hand layer, bad a conflict.
+                var name = Cell(conflicts ? "⚠ " + layer.name : layer.name, share: 1f);
+                BridgeElements.SetTone(name, conflicts ? Tone.Bad : hand ? Tone.Info : Tone.None);
                 row.Add(name);
 
-                var weight = Cell("–", 38, TextAnchor.MiddleRight);
+                var weight = Cell("–", width: 44);
                 row.Add(weight);
 
-                var mask = Cell(ShortMaskName(layer.avatarMask), 76, TextAnchor.MiddleLeft);
-                mask.style.color = BridgeTheme.Muted;
+                var mask = Cell(ShortMaskName(layer.avatarMask), width: 88);
+                BridgeElements.SetTone(mask, Tone.Muted);
                 row.Add(mask);
 
-                var playing = Flex("", 1.3f);
+                var playing = Cell("", share: 1.3f);
                 row.Add(playing);
 
-                foreach (var child in row.Children())
-                {
-                    child.style.marginRight = 6;
-                }
                 list.Add(row);
-                rows.Add((weight, playing, row));
+                rows.Add((weight, playing));
             }
 
             card.SetSummary(conflictCount > 0
-                ? $"{rows.Count} layers · {conflictCount} may overwrite gestures"
-                : $"{rows.Count} layers");
+                ? $"live · {rows.Count} layers · {conflictCount} may overwrite gestures"
+                : $"live · {rows.Count} layers");
+            // Collapsed by default, so the header has to show the conflict.
+            card.Accent(conflictCount > 0 ? Tone.Bad : Tone.None);
 
             if (handTop < 0)
             {
@@ -891,7 +988,7 @@ namespace AvatarBridge
 
             // 10 Hz: fast enough to read a gesture landing, slow enough to be free. The
             // scheduler stops with the element, so a closed window costs nothing.
-            card.schedule.Execute(() =>
+            void Tick()
             {
                 if (!Application.isPlaying || animator == null)
                 {
@@ -901,7 +998,8 @@ namespace AvatarBridge
                 {
                     float w = animator.GetLayerWeight(i);
                     rows[i].weight.text = w.ToString("0.00");
-                    rows[i].weight.style.color = w > 0.001f ? BridgeTheme.Good : BridgeTheme.Muted;
+                    rows[i].weight.EnableInClassList("ab-text-strong", w > 0.001f);
+                    rows[i].weight.EnableInClassList("ab-text-muted", w <= 0.001f);
 
                     var clips = animator.GetCurrentAnimatorClipInfo(i);
                     var text = new List<string>();
@@ -923,19 +1021,23 @@ namespace AvatarBridge
                         }
                     }
                     rows[i].playing.text = text.Count == 0
-                        ? "-"
+                        ? "–"
                         : string.Join(", ", text.GetRange(0, Mathf.Min(3, text.Count)))
                           + (text.Count > 3 ? $" +{text.Count - 3}" : "");
-                    // Null hands the colour back to the stylesheet rather than pinning a
-                    // literal one, so the row still reads correctly in both editor skins.
-                    rows[i].playing.style.color = text.Count == 0
-                        ? new StyleColor(BridgeTheme.Muted)
-                        : new StyleColor(StyleKeyword.Null);
+                    rows[i].playing.EnableInClassList("ab-text-muted", text.Count == 0);
                 }
-            }).Every(100);
+            }
+            // Once now, or a fresh card shows placeholder dashes until the first tick.
+            Tick();
+            card.schedule.Execute(Tick).Every(100);
 
             return card;
         }
+
+        // The merger numbers a second promoted hand layer "LeftHand 2".
+        static readonly System.Text.RegularExpressions.Regex HandLayerName =
+            new System.Text.RegularExpressions.Regex(@"^(Left|Right)Hand( \d+)?$");
+        static bool IsHandLayer(string name) => name != null && HandLayerName.IsMatch(name);
 
         static bool PermitsFingers(AvatarMask mask)
         {
@@ -1058,124 +1160,74 @@ namespace AvatarBridge
             }
         }
 
-        VisualElement BuildFaceTrackingCard(CVRAvatar avatar)
+        VisualElement BuildFaceTrackingCard(CVRAvatar avatar, bool live)
         {
-            var card = new BridgeElements.Card("Face tracking");
             var declared = ControllerParameterList(avatar);
             var faceParams = declared.Where(AvatarFeatureDetect.IsFaceTrackingParameter).ToList();
 
-            // Native is checked first. A native avatar declares no
-            // per-expression parameters at all; the component reads the
-            // headset and writes the mesh. Zero parameters is what a
-            // correct native conversion looks like.
-            if (!faceParams.Any(p => !AvatarFeatureDetect.IsFaceTrackingGate(p)))
+            // Native first: the component reads the headset and writes the
+            // mesh, with no parameters. It used to show only when the
+            // controller declared none, so one stray TongueOut hid a fully
+            // mapped native face behind a slider nothing reads.
+            var nativeSetup = avatar != null ? avatar.GetComponentInChildren<CVRFaceTracking>(true) : null;
+            bool native = nativeSetup != null && nativeSetup.FaceMesh != null && nativeSetup.FaceBlendShapes != null
+                          && nativeSetup.FaceBlendShapes.Any(s => !string.IsNullOrEmpty(s) && s != "-none-");
+            var mesh = native ? nativeSetup.FaceMesh.sharedMesh : null;
+            var shapes = NativeShapes(nativeSetup, mesh);
+            // Beside a native face, gates alone drive nothing worth a section.
+            bool showParams = native
+                ? faceParams.Any(p => !AvatarFeatureDetect.IsFaceTrackingGate(p))
+                : faceParams.Count > 0;
+
+            if (!native && !showParams)
             {
-                var nativeSetup = avatar != null ? avatar.GetComponentInChildren<CVRFaceTracking>(true) : null;
-                if (nativeSetup != null && nativeSetup.FaceMesh != null && nativeSetup.FaceBlendShapes != null
-                    && nativeSetup.FaceBlendShapes.Any(s => !string.IsNullOrEmpty(s) && s != "-none-"))
-                {
-                    BuildNativeFaceShapeSliders(card, nativeSetup);
-                    return card;
-                }
+                var none = new BridgeElements.Card("Face tracking", expanded: true).Remember("Tester.Face tracking");
+                none.SetSummary("none");
+                none.Body.Add(BridgeElements.Empty("No face tracking on this avatar",
+                    "Convert with a face tracking mode other than \"Keep the avatar's own rig\", or bring one " +
+                    "with a Unified Expressions rig."));
+                return none;
             }
 
-            if (faceParams.Count == 0)
+            int count = shapes.Count + (showParams ? faceParams.Count : 0);
+            var card = new BridgeElements.Card("Face tracking", expanded: count <= BridgeElements.SearchFrom)
+                .Remember("Tester.Face tracking");
+            card.SetSummary(native
+                ? $"{shapes.Count} blendshapes (native)" + (showParams ? $" · {faceParams.Count} parameters" : "")
+                : $"{faceParams.Count} parameters");
+
+            if (count > BridgeElements.SearchFrom)
             {
-                card.Body.Add(BridgeElements.Hint(
-                    "No face tracking on this avatar. Convert with a face tracking mode other than \"Keep the " +
-                    "avatar's own rig\", or bring one with a Unified Expressions rig."));
-                return card;
-            }
-
-            var animator = avatar != null ? avatar.GetComponentInChildren<Animator>(true) : null;
-            var runtime = animator != null ? animator.runtimeAnimatorController : null;
-            while (runtime is AnimatorOverrideController over)
-            {
-                runtime = over.runtimeAnimatorController;
-            }
-            var asset = runtime as UnityEditor.Animations.AnimatorController;
-            var ranges = ScanParameterRanges(asset);
-
-            card.SetSummary($"{faceParams.Count} parameters");
-            card.Body.Add(BridgeElements.Hint(
-                "The parameters VRCFaceTracking drives in game. Shapes moving here prove the rig survived."));
-
-            var sliders = new Dictionary<string, Slider>();
-
-            // The gates first: with one of these at 0 the rig is off and every slider below it
-            // looks broken. That is a support question waiting to happen, so they lead.
-            foreach (string gate in faceParams.Where(AvatarFeatureDetect.IsFaceTrackingGate))
-            {
-                string captured = gate;
-                var toggle = new Toggle(AvatarFeatureDetect.FaceTrackingShortName(gate))
-                {
-                    value = FaceRestValue(gate) > 0f,
-                    tooltip = $"{gate}\n\nThe rig's own master switch for this half. At 0 nothing " +
-                              "below moves, however hard it is driven.",
-                };
-                toggle.RegisterValueChangedCallback(e =>
-                    Drive(LiveAnimator(), captured, e.newValue ? 1f : 0f));
-                card.Body.Add(toggle);
-            }
-
-            var searchable = new List<(VisualElement element, string key)>();
-            if (faceParams.Count > 12)
-            {
-                var search = new ToolbarSearchField();
-                search.style.width = Length.Percent(100);
-                search.style.marginTop = 4;
-                search.style.marginBottom = 4;
-                search.RegisterValueChangedCallback(e =>
-                {
-                    string query = (e.newValue ?? "").ToLowerInvariant();
-                    foreach (var (element, key) in searchable)
-                    {
-                        element.style.display = key.Contains(query) ? DisplayStyle.Flex : DisplayStyle.None;
-                    }
-                });
+                var search = BridgeElements.SearchField(card);
+                search.tooltip = "Find a blendshape or parameter by name";
                 card.Body.Add(search);
             }
 
-            foreach (string group in FaceGroupOrder)
+            // Filled below; the buttons sit above what they reset.
+            var shapeSliders = new List<(Slider slider, int index)>();
+            var paramSliders = new Dictionary<string, Slider>();
+            Button clear = shapes.Count == 0 ? null : BridgeElements.Btn("Clear all shapes", () =>
             {
-                // The gates already have their own toggles above.
-                var inGroup = faceParams
-                    .Where(p => !AvatarFeatureDetect.IsFaceTrackingGate(p) && FaceGroup(p) == group)
-                    .OrderBy(AvatarFeatureDetect.FaceTrackingShortName).ToList();
-                if (inGroup.Count == 0)
+                var renderer = nativeSetup.FaceMesh;
+                if (renderer == null)
                 {
-                    continue;
+                    return;
                 }
-                var heading = BridgeElements.SubHeading(group);
-                heading.style.marginTop = 6;
-                card.Body.Add(heading);
-                searchable.Add((heading, group.ToLowerInvariant()));
-
-                foreach (string param in inGroup)
+                Undo.RecordObject(renderer, "Face tracking preview reset");
+                foreach (var (slider, index) in shapeSliders)
                 {
-                    FaceParamRange(ranges, param, out float lo, out float hi);
-                    string label = AvatarFeatureDetect.FaceTrackingShortName(param);
-                    var slider = new Slider(label, lo, hi)
-                    {
-                        value = FaceRestValue(param),
-                        showInputField = true,
-                        tooltip = $"{param}   ({lo:0.##} to {hi:0.##}, read from the rig's own blend trees)",
-                    };
-                    slider.RegisterValueChangedCallback(e => Drive(LiveAnimator(), param, e.newValue));
-                    card.Body.Add(slider);
-                    sliders[param] = slider;
-                    searchable.Add((slider, label.ToLowerInvariant()));
+                    slider.SetValueWithoutNotify(0f);
+                    renderer.SetBlendShapeWeight(index, 0f);
                 }
-            }
-
-            var restButton = new Button(() =>
+            }, "Back to 0, where native shapes rest.");
+            Button neutral = !showParams ? null : BridgeElements.Btn("Neutral face", () =>
             {
                 var a = LiveAnimator();
                 if (a == null)
                 {
                     return;
                 }
-                foreach (var pair in sliders)
+                foreach (var pair in paramSliders)
                 {
                     float value = FaceRestValue(pair.Key);
                     pair.Value.SetValueWithoutNotify(value);
@@ -1190,28 +1242,121 @@ namespace AvatarBridge
                 }
                 Drive(a, "#Direct", 1f);
                 Drive(a, "Direct", 1f);
-            })
+            }, "The rig's own resting values: eyelids at 0.8 and pupils at 0.5, not zero, which would shut the eyes.");
+            neutral?.SetEnabled(live);
+            if (clear != null || neutral != null)
             {
-                text = "Neutral face  (the rig's own resting values)",
-                tooltip = "Eyelids at 0.8 and pupils at 0.5, not zero, which would shut the eyes.",
-            };
-            restButton.style.marginTop = 6;
-            card.Body.Add(restButton);
+                var tools = BridgeElements.ToolbarRow(clear, neutral);
+                // Kept through a search: they act on every shape, shown or not.
+                tools.AddToClassList("ab-keep");
+                card.Body.Add(tools);
+            }
+
+            // Not Play-gated: these record Undo and work on the mesh in edit mode too.
+            if (native)
+            {
+                card.Section("Blendshapes");
+                if (mesh == null)
+                {
+                    card.Body.Add(BridgeElements.Hint(
+                        $"\"{nativeSetup.FaceMesh.name}\" has no mesh, so its blendshapes can't be driven."));
+                }
+                else if (shapes.Count == 0)
+                {
+                    card.Body.Add(BridgeElements.Hint(
+                        "No slot names a shape on this mesh. Assign them on the CVRFaceTracking component."));
+                }
+                else
+                {
+                    card.Body.Add(BridgeElements.Hint(
+                        $"ChilloutVR writes these {shapes.Count} shapes on \"{nativeSetup.FaceMesh.name}\" from the " +
+                        "headset. One that moves here is mapped."));
+                }
+                foreach (string shape in shapes)
+                {
+                    int index = mesh.GetBlendShapeIndex(shape);
+                    var renderer = nativeSetup.FaceMesh;
+                    var slider = BridgeElements.SliderField(shape,
+                        $"Blendshape {index} on \"{renderer.name}\".\n\nIn game ChilloutVR writes this from the " +
+                        $"headset, scaled by Blend Shape Strength ({nativeSetup.BlendShapeStrength:0}%).",
+                        0f, 100f, renderer.GetBlendShapeWeight(index), v =>
+                        {
+                            if (renderer != null)
+                            {
+                                Undo.RecordObject(renderer, "Face tracking preview");
+                                renderer.SetBlendShapeWeight(index, v);
+                            }
+                        });
+                    card.Body.Add(slider);
+                    shapeSliders.Add((slider, index));
+                }
+            }
+
+            if (!showParams)
+            {
+                return card;
+            }
+
+            var animator = avatar != null ? avatar.GetComponentInChildren<Animator>(true) : null;
+            var runtime = animator != null ? animator.runtimeAnimatorController : null;
+            while (runtime is AnimatorOverrideController over)
+            {
+                runtime = over.runtimeAnimatorController;
+            }
+            var asset = runtime as UnityEditor.Animations.AnimatorController;
+            var ranges = ScanParameterRanges(asset);
+
+            card.Section("Animator parameters");
+            card.Body.Add(BridgeElements.Hint(
+                "The parameters VRCFaceTracking drives in game. Shapes moving here prove the rig survived."));
+
+            // The gates first: with one of these at 0 the rig is off and every slider below it
+            // looks broken. That is a support question waiting to happen, so they lead.
+            foreach (string gate in faceParams.Where(AvatarFeatureDetect.IsFaceTrackingGate))
+            {
+                string captured = gate;
+                var toggle = BridgeElements.Bind(AvatarFeatureDetect.FaceTrackingShortName(gate),
+                    $"{gate}\n\nThe rig's own master switch for this half. At 0 nothing below moves, however " +
+                    "hard it is driven.",
+                    FaceRestValue(gate) > 0f, on => Drive(LiveAnimator(), captured, on ? 1f : 0f));
+                toggle.SetEnabled(live);
+                card.Body.Add(toggle);
+            }
+
+            foreach (string group in FaceGroupOrder)
+            {
+                // The gates already have their own toggles above.
+                var inGroup = faceParams
+                    .Where(p => !AvatarFeatureDetect.IsFaceTrackingGate(p) && FaceGroup(p) == group)
+                    .OrderBy(AvatarFeatureDetect.FaceTrackingShortName).ToList();
+                if (inGroup.Count == 0)
+                {
+                    continue;
+                }
+                card.Section(group);
+                foreach (string param in inGroup)
+                {
+                    FaceParamRange(ranges, param, out float lo, out float hi);
+                    var slider = BridgeElements.SliderField(AvatarFeatureDetect.FaceTrackingShortName(param),
+                        $"{param}   ({lo:0.##} to {hi:0.##}, read from the rig's own blend trees)",
+                        lo, hi, FaceRestValue(param), v => Drive(LiveAnimator(), param, v));
+                    slider.SetEnabled(live);
+                    card.Body.Add(slider);
+                    paramSliders[param] = slider;
+                }
+            }
             return card;
         }
 
-        void BuildNativeFaceShapeSliders(BridgeElements.Card card, CVRFaceTracking native)
+        // Distinct, in mapping order, skipping the CCK's empty-slot marker and any shape the
+        // mesh does not have.
+        static List<string> NativeShapes(CVRFaceTracking native, Mesh mesh)
         {
-            var mesh = native.FaceMesh.sharedMesh;
-            if (mesh == null)
-            {
-                card.Body.Add(BridgeElements.Hint(
-                    $"\"{native.FaceMesh.name}\" has no mesh, so its blendshapes can't be driven."));
-                return;
-            }
-
-            // Distinct, in mapping order, skipping the CCK's empty-slot marker.
             var shapes = new List<string>();
+            if (native == null || mesh == null || native.FaceBlendShapes == null)
+            {
+                return shapes;
+            }
             var seen = new HashSet<string>();
             foreach (string shape in native.FaceBlendShapes)
             {
@@ -1221,111 +1366,27 @@ namespace AvatarBridge
                     shapes.Add(shape);
                 }
             }
-
-            card.SetSummary($"{shapes.Count} blendshapes  (native)");
-            card.Body.Add(BridgeElements.Hint(
-                $"Native face tracking writes these {shapes.Count} shapes on \"{native.FaceMesh.name}\" from the " +
-                "headset. A shape that moves here is mapped."));
-
-            if (shapes.Count == 0)
-            {
-                card.Body.Add(BridgeElements.Hint(
-                    "No slot names a shape on this mesh. Assign them on the CVRFaceTracking component."));
-                return;
-            }
-
-            var searchable = new List<(VisualElement element, string key)>();
-            if (shapes.Count > 12)
-            {
-                var search = new ToolbarSearchField();
-                search.style.width = Length.Percent(100);
-                search.style.marginTop = 4;
-                search.style.marginBottom = 4;
-                search.RegisterValueChangedCallback(e =>
-                {
-                    string query = (e.newValue ?? "").ToLowerInvariant();
-                    foreach (var (element, key) in searchable)
-                    {
-                        element.style.display = key.Contains(query) ? DisplayStyle.Flex : DisplayStyle.None;
-                    }
-                });
-                card.Body.Add(search);
-            }
-
-            var built = new List<(Slider slider, int index)>();
-            foreach (string shape in shapes)
-            {
-                int index = mesh.GetBlendShapeIndex(shape);
-                var renderer = native.FaceMesh;
-                var slider = new Slider(shape, 0f, 100f)
-                {
-                    value = renderer.GetBlendShapeWeight(index),
-                    showInputField = true,
-                    tooltip = $"Blendshape {index} on \"{renderer.name}\".\n\nIn game ChilloutVR writes " +
-                              $"this from the headset, scaled by Blend Shape Strength ({native.BlendShapeStrength:0}%).",
-                };
-                slider.RegisterValueChangedCallback(e =>
-                {
-                    if (renderer != null)
-                    {
-                        Undo.RecordObject(renderer, "Face tracking preview");
-                        renderer.SetBlendShapeWeight(index, e.newValue);
-                    }
-                });
-                card.Body.Add(slider);
-                built.Add((slider, index));
-                searchable.Add((slider, shape.ToLowerInvariant()));
-            }
-
-            var reset = new Button(() =>
-            {
-                var renderer = native.FaceMesh;
-                if (renderer == null)
-                {
-                    return;
-                }
-                Undo.RecordObject(renderer, "Face tracking preview reset");
-                foreach (var (slider, index) in built)
-                {
-                    slider.SetValueWithoutNotify(0f);
-                    renderer.SetBlendShapeWeight(index, 0f);
-                }
-            })
-            {
-                text = "Clear all shapes  (back to 0)",
-                tooltip = "Native shapes rest at 0.",
-            };
-            reset.style.marginTop = 6;
-            card.Body.Add(reset);
+            return shapes;
         }
 
-        static Label Cell(string text, float width, TextAnchor align)
-        {
-            var label = Clipped(text);
-            label.style.width = width;
-            label.style.flexShrink = 0;
-            label.style.flexGrow = 0;
-            label.style.unityTextAlign = align;
-            return label;
-        }
-
-        static Label Flex(string text, float grow)
-        {
-            var label = Clipped(text);
-            label.style.flexGrow = grow;
-            label.style.flexShrink = 1;
-            label.style.flexBasis = 0;
-            label.style.minWidth = 0;
-            return label;
-        }
-
-        static Label Clipped(string text)
+        // Column widths are data: a fixed column gets a width, a flexible one a share of what
+        // is left, so every row lines up under the header.
+        static Label Cell(string text, float width = 0f, float share = 0f)
         {
             var label = new Label(text);
-            label.style.overflow = Overflow.Hidden;
-            label.style.whiteSpace = WhiteSpace.NoWrap;
-            label.style.textOverflow = TextOverflow.Ellipsis;
-            label.style.fontSize = 11;
+            label.AddToClassList("ab-cell");
+            if (width > 0f)
+            {
+                label.style.width = width;
+                label.style.flexShrink = 0;
+            }
+            else
+            {
+                label.style.flexGrow = share;
+                label.style.flexShrink = 1;
+                label.style.flexBasis = 0;
+                label.style.minWidth = 0;
+            }
             return label;
         }
 
@@ -1349,39 +1410,24 @@ namespace AvatarBridge
                 : mask.name;
         }
 
-        static VisualElement DrivenSlider(string label, float lo, float hi, float initial,
-            System.Action<float> onChange)
-        {
-            var slider = new Slider(label, lo, hi) { value = initial, showInputField = true };
-            slider.RegisterValueChangedCallback(e => onChange(e.newValue));
-            return slider;
-        }
-
         static float? ReadParam(Animator animator, string name)
         {
-            if (animator == null)
+            if (!TryParameterType(animator, name, out var type))
             {
                 return null;
             }
-            foreach (var parameter in animator.parameters)
+            switch (type)
             {
-                if (parameter.name != name)
-                {
-                    continue;
-                }
-                switch (parameter.type)
-                {
-                    case AnimatorControllerParameterType.Float: return animator.GetFloat(name);
-                    case AnimatorControllerParameterType.Int: return animator.GetInteger(name);
-                    case AnimatorControllerParameterType.Bool: return animator.GetBool(name) ? 1f : 0f;
-                    default: return null;
-                }
+                case AnimatorControllerParameterType.Float: return animator.GetFloat(name);
+                case AnimatorControllerParameterType.Int: return animator.GetInteger(name);
+                case AnimatorControllerParameterType.Bool: return animator.GetBool(name) ? 1f : 0f;
+                default: return null;
             }
-            return null;
         }
 
-        void BuildMenuControls(VisualElement parent, CVRAvatar avatar)
+        void BuildMenuControls(BridgeElements.Card card, CVRAvatar avatar, bool live)
         {
+            var parent = card.Body;
             var settings = avatar != null && avatar.avatarSettings != null
                 ? avatar.avatarSettings.settings
                 : null;
@@ -1390,51 +1436,35 @@ namespace AvatarBridge
                 parent.Add(BridgeElements.Hint("No Advanced Avatar Settings entries on this avatar."));
                 return;
             }
-            var live = Application.isPlaying && avatar != null
-                ? avatar.GetComponentInChildren<Animator>(true)
-                : null;
+            var quiet = live ? avatar.GetComponentInChildren<Animator>(true) : null;
 
             // The card follows the controller actually on the Animator.
             // Undeclared entries grey out with the reason; the
             // fingerprint poll rebuilds on any controller change.
             var declared = new HashSet<string>(ControllerParameterList(avatar));
-            var watched = avatar != null ? avatar.GetComponentInChildren<Animator>(true) : null;
-            var watchedController = watched != null ? watched.runtimeAnimatorController : null;
-            parent.Add(BridgeElements.Hint(watchedController != null
-                ? $"Reading \"{watchedController.name}\": this card refreshes itself when the " +
-                  "controller or its parameters change."
-                : "No animator controller assigned: every entry stays greyed until one is."));
-
-            // Menus routinely run past thirty entries; a filter beats scrolling. Rows register
-            // themselves with their searchable text and the filter just flips display.
-            var rows = new List<(VisualElement element, string key)>();
-            if (settings.Count > 8)
+            var watched = avatar.GetComponentInChildren<Animator>(true);
+            if (watched == null || watched.runtimeAnimatorController == null)
             {
-                var search = new ToolbarSearchField();
-                search.style.width = Length.Percent(100);
-                search.style.marginBottom = 5;
-                search.RegisterValueChangedCallback(e =>
-                {
-                    string query = e.newValue ?? "";
-                    foreach (var (element, key) in rows)
-                    {
-                        element.style.display =
-                            key.IndexOf(query, System.StringComparison.OrdinalIgnoreCase) >= 0
-                                ? DisplayStyle.Flex
-                                : DisplayStyle.None;
-                    }
-                });
+                parent.Add(BridgeElements.Hint("No animator controller assigned: every entry stays greyed until one is."));
+            }
+
+            // Menus routinely run past thirty entries; a filter beats scrolling. It reads each
+            // entry's tooltip too, so a parameter name finds its entry.
+            if (settings.Count > BridgeElements.SearchFrom)
+            {
+                var search = BridgeElements.SearchField(card);
+                search.tooltip = "Find a menu entry by its name or the parameter it drives";
                 parent.Add(search);
             }
+            int noticeAt = parent.childCount;
+
             // Every entry hover-reveals the parameter it drives.
             // The menu shows labels; bug reports talk machine names.
             int missingCount = 0;
-            void Register(VisualElement element, string entryLabel, string parameterName,
-                bool missing = false)
+            void Register(VisualElement element, string parameterName, bool missing)
             {
                 if (missing)
                 {
-                    element.SetEnabled(false);
                     element.tooltip = $"\"{parameterName}\" is not in the animator controller, so it drives nothing.";
                     missingCount++;
                 }
@@ -1442,7 +1472,7 @@ namespace AvatarBridge
                 {
                     element.tooltip = $"drives \"{parameterName}\"";
                 }
-                rows.Add((element, entryLabel + "\n" + parameterName));
+                element.SetEnabled(live && !missing);
                 parent.Add(element);
             }
 
@@ -1457,21 +1487,14 @@ namespace AvatarBridge
                 switch (entry.type)
                 {
                     case CVRAdvancedSettingsEntry.SettingsType.Toggle:
-                        var toggle = new Toggle(label) { value = (ReadParam(live, parameter) ?? 0f) != 0f };
-                        // The main window's checkbox-first row: boxes align in a column and the
-                        // whole row highlights under the cursor, instead of each checkbox
-                        // trailing its own label at a different x.
-                        toggle.AddToClassList("ab-toggle");
-                        toggle.RegisterValueChangedCallback(e =>
-                            Drive(LiveAnimator(), parameter, e.newValue ? 1f : 0f));
-                        Register(toggle, label, parameter, !declared.Contains(parameter));
+                        var toggle = BridgeElements.Bind(label, null, (ReadParam(quiet, parameter) ?? 0f) != 0f,
+                            on => Drive(LiveAnimator(), parameter, on ? 1f : 0f));
+                        Register(toggle, parameter, !declared.Contains(parameter));
                         break;
                     case CVRAdvancedSettingsEntry.SettingsType.Slider:
-                        var slider = DrivenSlider(label, 0f, 1f, ReadParam(live, parameter) ?? 0f,
+                        var slider = BridgeElements.SliderField(label, null, 0f, 1f, ReadParam(quiet, parameter) ?? 0f,
                             v => Drive(LiveAnimator(), parameter, v));
-                        slider.AddToClassList("ab-field");
-                        slider.AddToClassList("ab-field-wide");
-                        Register(slider, label, parameter, !declared.Contains(parameter));
+                        Register(slider, parameter, !declared.Contains(parameter));
                         break;
                     case CVRAdvancedSettingsEntry.SettingsType.Dropdown:
                         var dropdown = entry.setting as CVRAdvancesAvatarSettingGameObjectDropdown;
@@ -1480,8 +1503,16 @@ namespace AvatarBridge
                         {
                             foreach (var option in dropdown.options)
                             {
-                                names.Add(option != null && !string.IsNullOrEmpty(option.name)
-                                    ? option.name : $"option {names.Count}");
+                                string name = option != null && !string.IsNullOrEmpty(option.name)
+                                    ? option.name : $"option {names.Count}";
+                                // A popup resolves a pick by its label, so a repeated
+                                // label would always drive the first option carrying it.
+                                string unique = name;
+                                for (int n = 2; names.Contains(unique); n++)
+                                {
+                                    unique = $"{name} ({n})";
+                                }
+                                names.Add(unique);
                             }
                         }
                         if (names.Count == 0)
@@ -1489,49 +1520,46 @@ namespace AvatarBridge
                             names.Add("option 0");
                         }
                         int current = Mathf.Clamp(
-                            Mathf.RoundToInt(ReadParam(live, parameter) ?? 0f), 0, names.Count - 1);
-                        var choice = new DropdownField(label, names, current);
-                        choice.AddToClassList("ab-field");
-                        choice.AddToClassList("ab-field-wide");
-                        choice.RegisterValueChangedCallback(e =>
-                            Drive(LiveAnimator(), parameter, names.IndexOf(e.newValue)));
-                        Register(choice, label, parameter, !declared.Contains(parameter));
+                            Mathf.RoundToInt(ReadParam(quiet, parameter) ?? 0f), 0, names.Count - 1);
+                        var choice = BridgeElements.Popup(label, null, names.ToArray(), current,
+                            index => Drive(LiveAnimator(), parameter, index));
+                        Register(choice, parameter, !declared.Contains(parameter));
                         break;
                     case CVRAdvancedSettingsEntry.SettingsType.Joystick2D:
-                        var joyX = DrivenSlider($"{label} X", -1f, 1f, ReadParam(live, parameter + "-x") ?? 0f,
-                            v => Drive(LiveAnimator(), parameter + "-x", v));
-                        joyX.AddToClassList("ab-field");
-                        joyX.AddToClassList("ab-field-wide");
-                        Register(joyX, label, parameter + "-x", !declared.Contains(parameter + "-x"));
-                        var joyY = DrivenSlider($"{label} Y", -1f, 1f, ReadParam(live, parameter + "-y") ?? 0f,
-                            v => Drive(LiveAnimator(), parameter + "-y", v));
-                        joyY.AddToClassList("ab-field");
-                        joyY.AddToClassList("ab-field-wide");
-                        Register(joyY, label, parameter + "-y", !declared.Contains(parameter + "-y"));
+                        foreach (string axis in new[] { "x", "y" })
+                        {
+                            string driven = parameter + "-" + axis;
+                            var stick = BridgeElements.SliderField($"{label} {axis.ToUpperInvariant()}", null, -1f, 1f,
+                                ReadParam(quiet, driven) ?? 0f, v => Drive(LiveAnimator(), driven, v));
+                            Register(stick, driven, !declared.Contains(driven));
+                        }
                         break;
                     case CVRAdvancedSettingsEntry.SettingsType.InputSingle:
-                        var input = new FloatField(label) { value = ReadParam(live, parameter) ?? 0f };
+                        // The kit has no float field; this is the one free-number entry.
+                        var input = new FloatField(label) { value = ReadParam(quiet, parameter) ?? 0f };
                         input.AddToClassList("ab-field");
-                        input.AddToClassList("ab-field-wide");
                         input.RegisterValueChangedCallback(e =>
                             Drive(LiveAnimator(), parameter, e.newValue));
-                        Register(input, label, parameter, !declared.Contains(parameter));
+                        Register(input, parameter, !declared.Contains(parameter));
                         break;
                     default:
+                        // An explanation, so never dimmed with the controls.
                         var hint = BridgeElements.Hint(
                             $"{label}: {entry.type} isn't driveable from here yet.");
-                        Register(hint, label, parameter);
+                        hint.tooltip = $"drives \"{parameter}\"";
+                        parent.Add(hint);
                         break;
                 }
             }
             // Greyed entries: the menu has them, the animator does not yet.
-            // Said once here, not only in a tooltip.
+            // Said once, above them, not only in a tooltip.
             if (missingCount > 0)
             {
-                parent.Add(new HelpBox(
+                var missing = BridgeElements.Notice(Tone.Warn,
                     $"{missingCount} greyed entr{(missingCount == 1 ? "y is" : "ies are")} not in the animator yet. " +
-                    "Press Create Animator on the CVRAvatar's Advanced Settings.",
-                    HelpBoxMessageType.Info));
+                    "Press Create Animator on the CVRAvatar's Advanced Settings.");
+                missing.AddToClassList("ab-keep");
+                parent.Insert(noticeAt, missing);
             }
         }
     }

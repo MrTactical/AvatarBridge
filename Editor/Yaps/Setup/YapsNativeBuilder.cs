@@ -1,5 +1,6 @@
-// Turns a YapsPlug into a plug: measure, bake, patch, write knobs,
-// announce. Static meshes and markers today.
+// Turns a YapsPlug into a plug and a YapsSocket's shapes into a bake:
+// measure, bake, patch, write knobs, announce. Plain and skinned meshes,
+// every slot and mesh the chain reaches, a slot of its own on a shared one.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.IO;
@@ -49,7 +50,7 @@ namespace AvatarBridge
             var renderer = plug.Target;
             if (renderer == null) { o.Message = "the plug has no renderer"; return o; }
 
-            string dir = OutputRoot + "/" + Sanitise(TopName(plug.transform));
+            string dir = OutputRoot + "/" + Sanitise(AvatarRoot(plug.transform).name);
             EnsureFolder(dir);
 
             var report = new BridgeReport();
@@ -59,7 +60,17 @@ namespace AvatarBridge
             // or their vertices bake as the plug's.
             YapsDebugOverlayBuilder.Restore(plug);
             YapsDebugOverlayBuilder.Restore(renderer);
-            var result = YapsBaker.Bake(renderer, chainRoot, dir, report, out string failure, flipAxis: plug.flipAxis);
+            var filter = renderer.GetComponent<MeshFilter>();
+            var unbounded = filter != null ? filter.sharedMesh : null;
+            // Every clip that can run, not only the ones WireSize may write to:
+            // the box has to hold whatever resizes the bone.
+            var top = AvatarRoot(plug.transform);
+            float size = YapsBaker.LargestSize(YapsSwapFollow.RunnableClips(top),
+                SizeBones(plug.rootBone, YapsSwapFollow.AnimationRootOf(top)));
+            var result = YapsBaker.Bake(renderer, chainRoot, dir, report, out string failure,
+                flipAxis: plug.flipAxis, sizeScale: size);
+            // A plain mesh moved onto the bounds copy; a re-bake keeps the copy and the record.
+            if (filter != null && filter.sharedMesh != unbounded) { plug.boundsFrom = unbounded; EditorUtility.SetDirty(plug); }
             if (result == null) { o.Message = "could not bake: " + failure; return o; }
             // A plain mesh bakes in its own units; the markers and the
             // report want metres.
@@ -67,20 +78,36 @@ namespace AvatarBridge
             o.Length = plug.lengthOverride > 0 ? plug.lengthOverride : result.Length * toMetres;
             o.Radius = result.Radius * toMetres;
 
-            // The named slot; else, on a skinned mesh, the slot the chain
-            // moves; else the first.
+            // The named slot; else the ones a conversion recorded; else, on a
+            // skinned mesh, the slot the chain moves; else the first.
             var mats = renderer.sharedMaterials;
             if (mats == null || mats.Length == 0) { o.Message = "the renderer has no materials"; return o; }
             int slot = plug.materialSlot >= 0 && plug.materialSlot < mats.Length ? plug.materialSlot : -1;
             // Every slot the plug's vertices reach, not only the primary. An
             // explicit materialSlot is the author overriding that and wins.
             var alsoSlots = new List<int>();
-            if (slot < 0 && renderer is SkinnedMeshRenderer skinned && plug.rootBone != null)
+            if (slot < 0 && plug.converted)
+            {
+                // The slots the conversion baked, primary first, never the
+                // plain-mesh branch below: that would take every material on
+                // the body.
+                int lost = plug.bakedSlots.Count(b => b != null && b.renderer == null);
+                if (lost > 0)
+                    o.Notes.Add($"{lost} baked slot record(s) name no mesh, or a mesh since deleted, so they " +
+                                "were not baked again.");
+                alsoSlots = RecordedSlots(plug, renderer);
+                if (alsoSlots.Count == 0)
+                {
+                    o.Message = "this converted plug has no record of the slots it was baked into; convert the avatar again";
+                    return o;
+                }
+                slot = alsoSlots[0];
+            }
+            else if (slot < 0 && renderer is SkinnedMeshRenderer skinned && plug.rootBone != null)
             {
                 // result.Root, not plug.rootBone: the bake may have descended
                 // to the shaft, and the slots have to be the ones it baked.
-                slot = SlotWeightedTo(skinned, result.Root);
-                alsoSlots = SlotsWeightedTo(skinned, result.Root);
+                alsoSlots = SlotsWeightedTo(skinned, result.Root, out slot);
             }
             else if (slot < 0)
             {
@@ -138,7 +165,15 @@ namespace AvatarBridge
                         // it reaches changed with the mesh, and the one it
                         // left is the other plug's: mirroring into it would
                         // take that material over after all.
-                        alsoSlots = SlotsWeightedTo(shared, result.Root);
+                        if (plug.converted)
+                        {
+                            // Its record follows its triangles, or the next
+                            // re-bake starts from the slot it just left.
+                            foreach (var b in plug.bakedSlots)
+                                if (b != null && b.slot == slot && b.renderer == renderer) b.slot = added;
+                            alsoSlots = RecordedSlots(plug, renderer);
+                        }
+                        else alsoSlots = SlotsWeightedTo(shared, result.Root);
                         alsoSlots.Remove(slot);
                         slot = added;
                         mats = renderer.sharedMaterials;
@@ -209,6 +244,9 @@ namespace AvatarBridge
             var patched = fresh
                 ? YapsBaker.Apply(result, source, shader, dir, result.FromSkinnedMesh, splitKey)
                 : source;
+            // One walk for the swap repair here and the variants below. Nothing
+            // between them adds a clip; Follow only rewrites keys.
+            var clips = YapsSwapFollow.RunnableClips(renderer.transform);
             if (patched != source)
             {
                 mats[slot] = patched;
@@ -219,7 +257,7 @@ namespace AvatarBridge
                 // Any toggle that assigns this slot has to follow the bake, or
                 // it hands the slot back to the unbaked material the moment
                 // the animator runs.
-                YapsSwapFollow.Follow(renderer, slot, original, patched, report);
+                YapsSwapFollow.Follow(renderer, slot, original, patched, report, clips);
             }
             else
             {
@@ -246,29 +284,9 @@ namespace AvatarBridge
                     AssetDatabase.DeleteAsset(old);
                 }
             }
-            if (plug.lengthOverride > 0) patched.SetFloat("_YAPS_Length", plug.lengthOverride);
+            if (plug.lengthOverride > 0) patched.SetFloat("_YAPS_Length", BakeLength(renderer, patched, plug.lengthOverride));
             patched.SetFloat("_YAPS_Enabled", 1f);
-            // 1 when this avatar wears sockets of its own, so the plug checks
-            // ownership before answering a light, -1 when there is nothing to check
-            // for. The toolkit hardcoded -1, which reads as "this avatar has no
-            // sockets" and switches own-body exclusion off entirely:
-            //
-            //     if (_YAPS_SelfTag >= 0 && YapsSameBodyAs(...)) skip;
-            //
-            // The wearer's own sockets are permanently in reach and permanently
-            // nearest, so a plug that does not skip them never looks at anybody
-            // else's. The atlas skips them only past engagement onset now, so
-            // the flag still decides whether ownership is asked about at all.
-            var ownAvatar = plug.GetComponentInParent<CVRAvatar>(true);
-            bool ownSockets = ownAvatar != null
-                              && ownAvatar.GetComponentsInChildren<YapsSocket>(true).Length > 0;
-            patched.SetFloat("_YAPS_SelfTag", ownSockets ? 1f : -1f);
-
-            // The tag sets, one pattern per component. Only the atlas reads
-            // them: a contact cannot see what a socket is tagged, so the
-            // channel tier answers without asking.
-            patched.SetVector("_YAPS_TagInclude", YapsTags.Patterns(plug.answers));
-            patched.SetVector("_YAPS_TagExclude", YapsTags.Patterns(plug.refuses));
+            WritePlugWide(plug, patched);
             // Past four, entries are dropped. Saying so here because the
             // inspector list takes as many as anyone types and the bake was
             // the only thing that knew otherwise.
@@ -279,11 +297,6 @@ namespace AvatarBridge
                     + "not baked: that is all the plug has room for. Delete the ones you do not "
                     + "need, or put them on the socket instead, which has no limit.");
             }
-            // Build adds the socket writers and the avatar's clear and grab, so a
-            // toolkit avatar published to the atlas and then read none of it: the
-            // flag was set on the convert path only, and a plug with it off falls
-            // back to the lights without saying so.
-            patched.SetFloat("_YAPS_UseAtlas", YapsAtlas.Enabled ? 1f : 0f);
 
             // A fresh bake of a legacy plug: carry the author's values onto
             // the YAPS knobs, switch the old deform off, and let the
@@ -298,14 +311,6 @@ namespace AvatarBridge
                 o.Notes.Add($"Upgraded from {legacy}: {carried.Count} setting(s) carried" +
                             (unmapped.Count > 0 ? $"; no YAPS counterpart for {string.Join(", ", unmapped)}" : "") + ".");
             }
-            // And every OTHER material a toggle can put in that slot. Follow only
-            // repairs the swap that puts the bake source back; an alternate look
-            // was never the source, so nothing above reaches it and the plug goes
-            // rigid for as long as that toggle is on.
-            YapsSwapFollow.FollowVariants(renderer, slot, result, dir,
-                YapsSwapFollow.RunnableClips(renderer.transform), report,
-                original, source, patched);
-
             WriteKnobs(plug, patched);
             EditorUtility.SetDirty(patched);
             o.Material = patched;
@@ -330,13 +335,22 @@ namespace AvatarBridge
             // And every OTHER mesh the same bones move. One plug, one frame,
             // a bake each.
             var meshes = new List<(Renderer, YapsBaker.Result)> { (renderer, result) };
-            int alsoMats = MirrorToRenderers(plug, renderer, result, dir, report, out int alsoMeshes, meshes);
+            int alsoMats = MirrorToRenderers(plug, renderer, result, dir, report, out int alsoMeshes, meshes, size);
             if (alsoMeshes > 0)
             {
                 o.Notes.Add($"{alsoMeshes} other mesh(es) on this avatar are weighted to the plug's bone " +
                             $"chain, so they were baked into it too ({alsoMats} material(s)), sharing this " +
                             "plug's frame and length. Left out they would have stayed rigid while the rest bent.");
             }
+
+            // And every OTHER material a toggle can put in that slot. Follow only
+            // repairs the swap that puts the bake source back; an alternate look
+            // was never the source, so nothing above reaches it and the plug goes
+            // rigid for as long as that toggle is on. After the knobs and every
+            // slot are written: each variant copies its slot's finished values,
+            // or it bends on the shader's defaults.
+            YapsSwapFollow.FollowVariants(plug, renderer, slot, result, dir, clips, report,
+                patched, original, source);
 
             // Announce: tip light for DPS, pointers for TPS and SPS.
             BuildMarkers(plug, result, o.Length, o.Radius);
@@ -362,12 +376,44 @@ namespace AvatarBridge
             o.Ok = true;
             o.Message = $"Baked \"{renderer.name}\": {o.Length:0.###} m, {result.VertexCount} vertices, " +
                         $"{result.Shapes.Count} shape(s), material \"{patched.name}\".";
-            o.Notes.Add(YapsPropBuilder.IsProp(TopOf(plug.transform).gameObject)
+            o.Notes.Add(YapsPropBuilder.IsProp(AvatarRoot(plug.transform).gameObject)
                 ? "This plug is on a prop; make it a prop again so the prop carries the new bake."
                 : "This plug finds sockets through the screen atlas, and by their marker lights where the " +
                   "atlas cannot answer: a view too small to hold it, or content that only has lights.");
             if (result.FromSkinnedMesh) o.Notes.Add("Skinned mesh: frame recovered per vertex.");
             return o;
+        }
+
+        // The switches every material of one plug shares. A carried mesh left
+        // on its last bake's answers a socket the rest refuses, and tears there.
+        static void WritePlugWide(YapsPlug plug, Material m)
+        {
+            // 1 when this avatar wears sockets of its own, so the plug checks
+            // ownership before answering a light, -1 when there is nothing to check
+            // for. The toolkit hardcoded -1, which reads as "this avatar has no
+            // sockets" and switches own-body exclusion off entirely:
+            //
+            //     if (_YAPS_SelfTag >= 0 && YapsSameBodyAs(...)) skip;
+            //
+            // The wearer's own sockets are permanently in reach and permanently
+            // nearest, so a plug that does not skip them never looks at anybody
+            // else's. The atlas skips them only past engagement onset now, so
+            // the flag still decides whether ownership is asked about at all.
+            var ownAvatar = plug.GetComponentInParent<CVRAvatar>(true);
+            bool ownSockets = ownAvatar != null
+                              && ownAvatar.GetComponentsInChildren<YapsSocket>(true).Length > 0;
+            m.SetFloat("_YAPS_SelfTag", ownSockets ? 1f : -1f);
+
+            // The tag sets, one pattern per component. Only the atlas reads
+            // them: a contact cannot see what a socket is tagged, so the
+            // channel tier answers without asking.
+            m.SetVector("_YAPS_TagInclude", YapsTags.Patterns(plug.answers));
+            m.SetVector("_YAPS_TagExclude", YapsTags.Patterns(plug.refuses));
+            // Build adds the socket writers and the avatar's clear and grab, so a
+            // toolkit avatar published to the atlas and then read none of it: the
+            // flag was set on the convert path only, and a plug with it off falls
+            // back to the lights without saying so.
+            m.SetFloat("_YAPS_UseAtlas", 1f);
         }
 
         // Mirrors the avatar's own size animations onto the plug's material:
@@ -376,7 +422,7 @@ namespace AvatarBridge
         // it mirrors, and says so. Idempotent: the same curve every time.
         static void WireSize(YapsPlug plug, List<(Renderer renderer, YapsBaker.Result result)> meshes, Outcome o)
         {
-            var top = TopOf(plug.transform);
+            var top = AvatarRoot(plug.transform);
             // NOT the Animator's own slot. ChilloutVR uploads what avatar.overrides
             // points at and falls back to avatarSettings.baseController. The
             // Animator's slot holds a generated override that is not what ships,
@@ -392,18 +438,7 @@ namespace AvatarBridge
 
             // Each bone with its path: the mirror reads the scale it is
             // sitting at now, which is the pose the bake just measured.
-            var bones = new Dictionary<string, Transform>();
-            var chainRoot = plug.rootBone;
-            if (chainRoot != null)
-            {
-                void Bone(Transform t)
-                {
-                    string p = AnimationUtility.CalculateTransformPath(t, animRoot);
-                    if (p != null) bones[p] = t;
-                }
-                Bone(chainRoot);
-                for (int i = 0; i < chainRoot.childCount; i++) Bone(chainRoot.GetChild(i));
-            }
+            var bones = SizeBones(plug.rootBone, animRoot);
 
             // Every mesh the bake reached, or a resized or switched plug tears
             // where one mesh heard the animation and the other did not.
@@ -447,6 +482,23 @@ namespace AvatarBridge
                 o.Notes.Add($"{missed.Count} animated shape(s) that move the plug are not in the bake " +
                             $"({string.Join(", ", missed.Take(6))}); the bake holds the {YapsBaker.MaxShapes} that move it most.");
             }
+        }
+
+        // The chain root and its bone children by path: a size slider scales
+        // one of them. The mirror reads it for the shader, the bake for its
+        // culling box.
+        static Dictionary<string, Transform> SizeBones(Transform chainRoot, Transform animRoot)
+        {
+            var bones = new Dictionary<string, Transform>();
+            if (chainRoot == null || animRoot == null) return bones;
+            void Bone(Transform t)
+            {
+                string p = AnimationUtility.CalculateTransformPath(t, animRoot);
+                if (p != null) bones[p] = t;
+            }
+            Bone(chainRoot);
+            for (int i = 0; i < chainRoot.childCount; i++) Bone(chainRoot.GetChild(i));
+            return bones;
         }
 
         public const string SimpleLitName = "YAPS/Simple Lit";
@@ -498,14 +550,35 @@ namespace AvatarBridge
             return length;
         }
 
-        // Every YapsPlug wearing this material takes the values back.
+        // The other way: metres into the units the material holds, at rest.
+        // The length override is metres, and written raw it gave a scaled
+        // plain mesh an envelope off by its import scale.
+        public static float BakeLength(Renderer renderer, Material m, float metres)
+        {
+            bool skinned = m != null && m.HasProperty("_YAPS_FrameFromVertex")
+                ? m.GetFloat("_YAPS_FrameFromVertex") > 0.5f
+                : renderer is SkinnedMeshRenderer s && s.bones != null && s.bones.Length > 0;
+            float scale = !skinned && renderer != null ? Mathf.Abs(renderer.transform.lossyScale.z) : 1f;
+            return metres / Mathf.Max(scale, 1e-6f);
+        }
+
+        // Every YapsPlug wearing this material takes the values back. After a
+        // slot split two plugs share a mesh, and one's panel rewrote the
+        // other's knobs, so a slot another plug owns is skipped. A slot nobody
+        // recorded still syncs, as before.
         public static void SyncPlugsFrom(Material m)
         {
             if (m == null) return;
-            foreach (var plug in Object.FindObjectsOfType<YapsPlug>(true))
+            var plugs = Object.FindObjectsOfType<YapsPlug>(true);
+            foreach (var plug in plugs)
             {
                 var r = plug.Target;
-                if (r == null || !r.sharedMaterials.Contains(m)) continue;
+                if (r == null) continue;
+                var mats = r.sharedMaterials;
+                var slots = Enumerable.Range(0, mats.Length).Where(i => mats[i] == m).ToList();
+                if (slots.Count == 0) continue;
+                if (!slots.Any(i => OwnsSlot(plug, r, i, m))
+                    && plugs.Any(p => p != plug && slots.Any(i => OwnsSlot(p, r, i, m)))) continue;
                 // Only a real change dirties the scene.
                 string before = JsonUtility.ToJson(plug);
                 Undo.RecordObject(plug, "YAPS plug knobs");
@@ -542,9 +615,12 @@ namespace AvatarBridge
 
         static void BuildMarkers(YapsPlug plug, YapsBaker.Result result, float length, float radius)
         {
-            // A skinned mesh's markers sit on the measured frame.
+            // A skinned mesh's markers sit on the measured frame, a plain mesh's
+            // on its own origin and +Z, where its bake bends from, which is not
+            // the plug object when the component sits above the mesh.
             bool skinned = result != null && result.FromSkinnedMesh;
-            AnnouncePlug(plug.transform, skinned ? result.Origin : (Vector3?) null, skinned ? result.Rotation : (Quaternion?) null,
+            var mesh = plug.Target != null ? plug.Target.transform : plug.transform;
+            AnnouncePlug(plug.transform, skinned ? result.Origin : mesh.position, skinned ? result.Rotation : mesh.rotation,
                 length, radius, plug.emitTipLight, plug.emitPointers);
         }
 
@@ -578,9 +654,12 @@ namespace AvatarBridge
                 var have = new HashSet<string>(parent.GetComponentsInChildren<CVRPointer>(true)
                     .Where(p => p != null && p.transform != m && !p.transform.IsChildOf(m))
                     .Select(p => p.type));
+                // Offsets are metres along the frame. The markers inherit the
+                // parent's scale, so a raw local offset under a 100x armature
+                // bone put the tip a hundred lengths out.
                 void Add(string name, string type, Vector3 at)
                 {
-                    if (!have.Contains(type)) YapsSocketBuilder.Pointer(m, name, type, at);
+                    if (!have.Contains(type)) YapsSocketBuilder.Pointer(m, name, type, m.InverseTransformVector(m.rotation * at));
                 }
                 Add("Tip (for older sockets)", "TPS_Pen_Penetrating", new Vector3(0, 0, length));
                 Add("Tip", "SPSLL_Pen_Penetrating", new Vector3(0, 0, length));
@@ -639,25 +718,23 @@ namespace AvatarBridge
         // --- the socket's shapes ------------------------------------------------
         //
         // Whether the mesh's own origin IS the socket, a dedicated socket mesh
-        // as a rule. Depth measures from the baked _YAPS_SocketOrigin now, so
-        // what still hangs on this is which fallbacks a bake may take: a body
-        // mesh must never have its material swapped or another socket's bake
-        // replaced.
+        // as a rule. Only that mesh opens in its shader: depth measures from
+        // the mesh origin, and only a mesh whose origin is the socket measures
+        // from the right place. A skinned socket mesh is unverified: it draws
+        // with an identity object matrix too (yaps_socket.cginc).
         public static bool MeshIsTheSocket(Renderer renderer, Transform socket)
         {
             if (renderer == null || socket == null) return false;
             return Vector3.Distance(renderer.transform.position, socket.position) < 0.03f;
         }
 
-        // The route Build takes for this socket's shapes: the animator when
-        // its reactions layer is already built or another socket holds the
-        // mesh's one bake, the shader otherwise. The editors ask this too,
-        // so what the inspector says is what Build does.
+        // The route Build takes for this socket's shapes: the shader on a mesh
+        // of the socket's own, the animator on any other. The editors ask this
+        // too, so what the inspector says is what Build does.
         public static bool ShapesByContact(YapsSocket socket)
         {
             if (socket == null || socket.renderer == null) return false;
-            if (MeshIsTheSocket(socket.renderer, socket.transform)) return false;
-            return YapsSocketReactions.Exists(socket) || AnotherSocketBaked(socket, socket.renderer);
+            return !MeshIsTheSocket(socket.renderer, socket.transform);
         }
 
         // Does a plug of the wearer's own rest on top of this socket?
@@ -673,14 +750,14 @@ namespace AvatarBridge
         // is the point the shader measures from, and it carries the length.
         static bool OwnPlugRestsOn(YapsSocket socket)
         {
-            var top = socket.transform.root;
+            var top = AvatarRoot(socket.transform);
             if (top == null) return false;
             foreach (var light in top.GetComponentsInChildren<Light>(true))
             {
                 if (light == null || light.type != LightType.Point) continue;
                 // 0.001, the protocol's own window, not an exact match: the
-            // wearer's plug counts here whether YAPS baked it or DPS did.
-            if (Mathf.Abs(light.range - TrackerRange) > 0.001f) continue;
+                // wearer's plug counts here whether YAPS baked it or DPS did.
+                if (Mathf.Abs(light.range - TrackerRange) > 0.001f) continue;
                 float length = Mathf.Max(light.intensity, 0.01f);
                 // Within its own length of the socket, plus a hand's width
                 // of slack for a pose that is not quite the rest one.
@@ -690,26 +767,18 @@ namespace AvatarBridge
             return false;
         }
 
-        // A different socket already baked into this renderer's material.
-        // One material carries one bake and one origin, so the second
-        // socket on a mesh takes the animator instead of replacing it.
-        static bool AnotherSocketBaked(YapsSocket socket, Renderer renderer)
-        {
-            foreach (var s in socket.transform.root.GetComponentsInChildren<YapsSocket>(true))
-            {
-                if (s != socket && s.renderer == renderer && s.bakedFrom != null) return true;
-            }
-            return false;
-        }
-
         // A socket's own baked material, told from a plug's: the socket bake
-        // switches the deform off and writes a power, the plug bake does the
-        // opposite. Both carry _YAPS_Bake, so the texture alone says nothing.
-        static bool IsSocketMaterial(Material m)
+        // switches the deform off, the plug bake switches it on. Both carry
+        // _YAPS_Bake, so the texture alone says nothing. Power alone cannot
+        // tell either: Strength can be 0, which sent a rebuild of the socket's
+        // own material down the contact route, and a plug switched off in its
+        // panel reads 0 too. So the slot this socket recorded counts first.
+        static bool IsSocketMaterial(Material m, YapsSocket socket, Renderer renderer, int slot)
         {
-            return m != null
-                   && m.HasProperty("_YAPS_SocketPower") && m.GetFloat("_YAPS_SocketPower") > 0f
-                   && m.HasProperty("_YAPS_Enabled") && m.GetFloat("_YAPS_Enabled") <= 0f;
+            if (m == null || !m.HasProperty("_YAPS_Enabled") || m.GetFloat("_YAPS_Enabled") > 0f) return false;
+            bool recorded = socket.bakedRenderer == renderer ? socket.bakedSlot == slot
+                : socket.bakedRenderer == null && socket.bakedFrom != null;
+            return recorded || m.HasProperty("_YAPS_SocketPower") && m.GetFloat("_YAPS_SocketPower") > 0f;
         }
 
         // Everything Build does for one socket: its markers, its shapes,
@@ -745,6 +814,8 @@ namespace AvatarBridge
             string readout = null;
             foreach (var controller in YapsOwner.Targets(avatar)) readout = YapsDebugOverlayBuilder.Menu(avatar, controller) ?? readout;
             if (readout != null) lines.Add($"✓ {readout}");
+            string shared = YapsOwner.SharedWarning(avatar);
+            if (shared != null) lines.Add($"✗ {shared}");
             return lines;
         }
 
@@ -779,10 +850,13 @@ namespace AvatarBridge
         // The blendshapes name it: a shape's deltas are non-zero on exactly the
         // vertices it moves, and those are the socket's own triangles. Biggest
         // share wins, and a mesh with one material keeps the old answer.
-        static int SocketSlot(SkinnedMeshRenderer skin, IEnumerable<string> shapes)
+        // Only submeshes with a material: Unity allows fewer materials than
+        // submeshes, and one past the end has nothing to patch.
+        static int SocketSlot(SkinnedMeshRenderer skin, IEnumerable<string> shapes, int materials)
         {
             var mesh = skin != null ? skin.sharedMesh : null;
-            if (mesh == null || mesh.subMeshCount < 2) return 0;
+            int subs = mesh != null ? Mathf.Min(mesh.subMeshCount, materials) : 0;
+            if (subs < 2) return 0;
 
             var moved = new bool[mesh.vertexCount];
             var delta = new Vector3[mesh.vertexCount];
@@ -802,7 +876,7 @@ namespace AvatarBridge
             if (!any) return 0;
 
             int best = 0, bestHits = 0;
-            for (int sub = 0; sub < mesh.subMeshCount; sub++)
+            for (int sub = 0; sub < subs; sub++)
             {
                 var indices = mesh.GetTriangles(sub);
                 int hits = 0;
@@ -813,8 +887,8 @@ namespace AvatarBridge
             return best;
         }
 
-        // Bakes the socket's chosen shapes into its mesh's material, staged
-        // as the component says. Returns what happened, for the window.
+        // Where the socket's bake went, so Unbake and Remove find it again
+        // after the mesh field changes.
         static void RecordSocketSlot(YapsSocket socket, Renderer renderer, int slot)
         {
             if (socket.bakedRenderer == renderer && socket.bakedSlot == slot) return;
@@ -837,9 +911,14 @@ namespace AvatarBridge
                 && mats[socket.bakedSlot].HasProperty("_YAPS_Bake"))
             {
                 Undo.RecordObject(renderer, "YAPS socket bake");
+                var baked = mats[socket.bakedSlot];
                 mats[socket.bakedSlot] = socket.bakedFrom;
                 renderer.sharedMaterials = mats;
-                said = $"\"{renderer.name}\" back on \"{socket.bakedFrom.name}\"";
+                // The bake pointed this slot's swap keys at its material. Left
+                // there, a toggle puts the shader deform back on a socket that
+                // no longer has it, beside any reactions layer on the same shapes.
+                YapsSwapFollow.Follow(renderer, socket.bakedSlot, baked, socket.bakedFrom);
+                said =$"\"{renderer.name}\" back on \"{socket.bakedFrom.name}\"";
             }
             if (socket.bakedFrom == null && socket.bakedRenderer == null) return said;
             Undo.RecordObject(socket, "YAPS socket bake");
@@ -850,6 +929,8 @@ namespace AvatarBridge
             return said;
         }
 
+        // Bakes the socket's chosen shapes into its mesh's material, staged
+        // as the component says. Returns what happened, for the window.
         public static string BakeSocket(YapsSocket socket)
         {
             if (socket == null) return null;
@@ -871,28 +952,22 @@ namespace AvatarBridge
             }
             if (renderer.sharedMesh == null || renderer.sharedMesh.blendShapeCount == 0)
                 return $"✗ {socket.name}: its mesh has no blendshapes";
-            // A body mesh can open too, now that depth measures from the baked
-            // socket origin rather than the mesh pivot. Two cases still take the
-            // animator: a socket whose reactions layer is already built, since bake
-            // and reactions drive the same shapes and apply them twice, and a
-            // second socket on a mesh another one baked. Remove the built layer and
-            // build again to move a socket across.
-            bool own = MeshIsTheSocket(renderer, socket.transform);
-            if (!own && YapsSocketReactions.Exists(socket))
-                return YapsSocketReactions.Build(socket);
-            if (!own && AnotherSocketBaked(socket, renderer))
+            // Any mesh but the socket's own opens through the animator, see
+            // MeshIsTheSocket. Unbaked first: an earlier build put body-mesh
+            // sockets on the shader, and that material would stay beside the
+            // reactions, driving the same shapes twice.
+            if (!MeshIsTheSocket(renderer, socket.transform))
             {
-                string reacted = YapsSocketReactions.Build(socket);
-                return (reacted ?? $"✓ {socket.name}") +
-                       " (another socket baked this mesh, and a material holds one bake, so its " +
-                       "shapes are driven by a depth contact instead)";
+                string put = Unbake(socket);
+                string reacted = YapsSocketReactions.Build(socket) ?? $"✓ {socket.name}";
+                return put != null ? $"{reacted} ({put})" : reacted;
             }
 
             var mats = renderer.sharedMaterials;
             if (mats == null || mats.Length == 0) return $"✗ {socket.name}: its mesh has no material";
-            int slot = SocketSlot(renderer, stages.Select(s => s.blendshape));
+            int slot = SocketSlot(renderer, stages.Select(s => s.blendshape), mats.Length);
             if (mats[slot] == null) return $"✗ {socket.name}: its mesh has no material";
-            string dir = OutputRoot + "/" + Sanitise(TopName(socket.transform));
+            string dir = OutputRoot + "/" + Sanitise(AvatarRoot(socket.transform).name);
             EnsureFolder(dir);
             var report = new BridgeReport();
             var wanted = stages.Select(s => s.blendshape).ToList();
@@ -907,7 +982,7 @@ namespace AvatarBridge
             // socket's and the plug stops deforming, which is what a ring placed on
             // the plug's own mesh does. Drive the shapes by contact instead: same
             // reactions, nobody's bake overwritten.
-            if (source.HasProperty("_YAPS_Bake") && !IsSocketMaterial(source))
+            if (source.HasProperty("_YAPS_Bake") && !IsSocketMaterial(source, socket, renderer, slot))
             {
                 string byContact = YapsSocketReactions.Build(socket);
                 return (byContact ?? $"✓ {socket.name}") +
@@ -929,9 +1004,10 @@ namespace AvatarBridge
                 // bake and leaves the deform on whatever code shipped that day.
                 if (YapsShaderPatcher.IsStale(material)) YapsShaderPatcher.Refresh(material, dir, report);
                 var previous = material.GetTexture("_YAPS_Bake");
-                material.SetTexture("_YAPS_Bake", result.Bake);
-                material.SetFloat("_YAPS_VertexCount", result.VertexCount);
-                material.SetFloat("_YAPS_ShapeCount", result.Shapes.Count);
+                // The same call the fresh bake below makes, as the plug's re-bake
+                // does. Three fields copied by hand left the length, the rest
+                // scale and the shape weights at whatever the last bake wrote.
+                YapsBaker.Apply(result, material, result.FromSkinnedMesh);
                 string old = previous != null && previous != result.Bake ? AssetDatabase.GetAssetPath(previous) : null;
                 if (!string.IsNullOrEmpty(old) && old.StartsWith(OutputRoot + "/", System.StringComparison.Ordinal))
                     AssetDatabase.DeleteAsset(old);
@@ -939,15 +1015,6 @@ namespace AvatarBridge
             else
             {
                 var shader = YapsShaderPatcher.Patch(source, dir, report, out string refusal, out _);
-                if (shader == null && !own)
-                {
-                    // Swapping a BODY to SimpleLit would repaint the whole
-                    // avatar to rescue one socket. The animator route costs
-                    // sync bits but changes nothing anyone can see.
-                    string reacted = YapsSocketReactions.Build(socket);
-                    return (reacted ?? $"✓ {socket.name}") +
-                           $" (its mesh's shader could not be patched: {refusal})";
-                }
                 if (shader == null)
                 {
                     var plain = OnSimpleLit(source, out string why);
@@ -960,6 +1027,10 @@ namespace AvatarBridge
                 if (socket.bakedFrom == null) { socket.bakedFrom = mats[slot]; EditorUtility.SetDirty(socket); }
                 RecordSocketSlot(socket, renderer, slot);
                 var wasSocket = mats[slot];
+                // The body usually sits outside the socket's hierarchy, so its
+                // undo did not cover this: Ctrl+Z cleared bakedFrom and left the
+                // patched material on with nothing for Remove to put back.
+                Undo.RecordObject(renderer, "Build YAPS socket");
                 mats[slot] = material;
                 renderer.sharedMaterials = mats;
                 // The slot the bake actually went into, never 0. The repair is keyed by
@@ -969,18 +1040,22 @@ namespace AvatarBridge
                 YapsSwapFollow.Follow(renderer, slot, wasSocket, material, report);
             }
 
-            WriteStages(material, stages.Select(s => (s.startsAt, s.fadeOver)).ToList());
+            // Stage k is baked shape k, not row k: the bake drops names the mesh
+            // lacks and repeats, which shifted every later shape onto an earlier
+            // row's range.
+            WriteStages(material, result.Shapes
+                .Select(n => stages.FirstOrDefault(s => s.blendshape == n))
+                .Select(s => s != null ? (s.startsAt, s.fadeOver) : (0f, 0.3f)).ToList());
             material.SetFloat("_YAPS_SocketPower", socket.shapePower);
             material.SetFloat("_YAPS_SocketDepth", -1f);
             // Where the socket sits in the mesh's own space. Depth measures
-            // from here; ownership stays on the mesh origin. Near zero for a
-            // dedicated socket mesh, the socket's real seat on a body.
+            // from here; ownership stays on the mesh origin. Near zero, as
+            // only the socket's own mesh gets this far.
             material.SetVector("_YAPS_SocketOrigin",
                 renderer.transform.InverseTransformPoint(socket.transform.position));
             // Self-exclusion, unless the anchor cannot say whose socket this
             // is. See RidesAMovingLimb.
-            bool undecidable = MeshIsTheSocket(renderer, socket.transform)
-                               && RidesAMovingLimb(socket.transform);
+            bool undecidable = RidesAMovingLimb(socket.transform);
             material.SetFloat("_YAPS_SocketNoSelfExclude",
                 OwnPlugRestsOn(socket) && !undecidable ? 0f : 1f);
             EditorUtility.SetDirty(material);
@@ -1130,9 +1205,6 @@ namespace AvatarBridge
             return bone;
         }
 
-        // The material slot whose triangles are weighted to this bone and its
-        // children the most. -1 when none is.
-        //
         // Patch each extra slot and give it the primary's deform exactly.
         // Returns how many were mirrored.
         static int MirrorToSlots(YapsPlug plug, Renderer renderer, Material primary,
@@ -1141,6 +1213,8 @@ namespace AvatarBridge
             if (slots == null || slots.Count == 0) return 0;
             var mats = renderer.sharedMaterials;
             int done = 0;
+            // Walked once for every slot: Follow rewrites keys, never the set of clips.
+            List<AnimationClip> clips = null;
             foreach (int i in slots)
             {
                 if (i < 0 || i >= mats.Length || mats[i] == null || mats[i] == primary) continue;
@@ -1190,7 +1264,8 @@ namespace AvatarBridge
                 CopyYapsProperties(primary, target);
                 EditorUtility.SetDirty(target);
                 RecordBakedSlot(plug, renderer, i, was);
-                YapsSwapFollow.Follow(renderer, i, was, target, report);
+                YapsSwapFollow.Follow(renderer, i, was, target, report,
+                    clips ??= YapsSwapFollow.RunnableClips(renderer.transform));
                 done++;
             }
             if (done > 0) renderer.sharedMaterials = mats;
@@ -1198,16 +1273,31 @@ namespace AvatarBridge
         }
 
         // Every _YAPS_ value from one material onto another, so two submeshes
-        // of one mesh cannot disagree about how they bend.
-        static void CopyYapsProperties(Material from, Material to)
+        // of one mesh cannot disagree about how they bend, and the readout
+        // shows what the plug really has. Copied by name, never from a list
+        // kept here: a list rots the first time the patcher gains a property.
+        // missing: the numbers `to` has no room for, for a caller that must
+        // say so.
+        public static void CopyYapsProperties(Material from, Material to, List<string> missing = null)
         {
+            if (from == null || to == null) return;
             var shader = from.shader;
             for (int i = 0; i < ShaderUtil.GetPropertyCount(shader); i++)
             {
                 string name = ShaderUtil.GetPropertyName(shader, i);
                 if (!name.StartsWith("_YAPS_", System.StringComparison.Ordinal)) continue;
-                if (!to.HasProperty(name)) continue;
-                switch (ShaderUtil.GetPropertyType(shader, i))
+                // The patcher's markers carry their meaning in the description,
+                // so the value is nothing anyone reads.
+                if (name == YapsShaderGUI.OriginalEditorProperty || name == YapsShaderPatcher.SourceShaderProperty) continue;
+                var kind = ShaderUtil.GetPropertyType(shader, i);
+                if (!to.HasProperty(name))
+                {
+                    if (kind == ShaderUtil.ShaderPropertyType.Float || kind == ShaderUtil.ShaderPropertyType.Range
+                        || kind == ShaderUtil.ShaderPropertyType.Vector)
+                        missing?.Add(name);
+                    continue;
+                }
+                switch (kind)
                 {
                     case ShaderUtil.ShaderPropertyType.Float:
                     case ShaderUtil.ShaderPropertyType.Range:
@@ -1245,6 +1335,15 @@ namespace AvatarBridge
             EditorUtility.SetDirty(plug);
         }
 
+        // A converted plug's slots on one mesh, in the order the converter
+        // recorded them, which puts its primary first.
+        static List<int> RecordedSlots(YapsPlug plug, Renderer on)
+        {
+            int count = on.sharedMaterials.Length;
+            return plug.bakedSlots.Where(b => b != null && b.renderer == on && b.slot >= 0 && b.slot < count)
+                .Select(b => b.slot).Distinct().ToList();
+        }
+
         // A record with no renderer was written before a plug could span
         // them, and belonged to the plug's own.
         public static bool Same(Renderer recorded, Renderer asked, YapsPlug plug)
@@ -1268,26 +1367,32 @@ namespace AvatarBridge
         // Only when the author has not named a material slot. Naming one says
         // "this mesh, this slot", and reaching onto other renderers would be
         // answering a question nobody asked.
+        //
+        // A converted plug takes the meshes and slots its conversion recorded,
+        // baked from the same root the converter used. Its object is a marker
+        // with no bones under it, so the chain tests below would find nothing.
         static int MirrorToRenderers(YapsPlug plug, Renderer primaryRenderer, YapsBaker.Result primary,
-            string dir, BridgeReport report, out int meshes, List<(Renderer, YapsBaker.Result)> joined)
+            string dir, BridgeReport report, out int meshes, List<(Renderer, YapsBaker.Result)> joined, float size)
         {
             meshes = 0;
-            if (plug == null || plug.rootBone == null || plug.materialSlot >= 0) return 0;
+            if (plug == null || plug.materialSlot >= 0) return 0;
+            bool converted = plug.converted;
+            if (!converted && plug.rootBone == null) return 0;
             if (primary == null || !primary.FromSkinnedMesh) return 0;
-            // The avatar, not the scene root: two avatars parented under one
-            // container would otherwise lend each other their meshes.
-            var avatar = plug.GetComponentInParent<CVRAvatar>(true);
-            var root = avatar != null ? avatar.transform : TopOf(plug.transform);
+            var root = AvatarRoot(plug.transform);
             int done = 0;
-            foreach (var skin in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            var skins = converted
+                ? plug.bakedSlots.Where(b => b != null).Select(b => b.renderer as SkinnedMeshRenderer).Distinct()
+                : root.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            foreach (var skin in skins)
             {
                 if (skin == null || skin == primaryRenderer || skin.sharedMesh == null) continue;
-                var slots = SlotsWeightedTo(skin, plug.rootBone);
+                var slots = converted ? RecordedSlots(plug, skin) : SlotsWeightedTo(skin, plug.rootBone);
                 if (slots.Count == 0) continue;
                 // The converter's line too, from the shaft the bake settled on.
                 // Any weight on the chain would take a body touching the base,
                 // and bake all of it to bend a few vertices at the seam.
-                if (!YapsBaker.RidesPlug(skin, primary.Root != null ? primary.Root : plug.rootBone))
+                if (!converted && !YapsBaker.RidesPlug(skin, primary.Root != null ? primary.Root : plug.rootBone))
                 {
                     report?.Skipped("YAPS", $"\"{skin.name}\" left out of the plug",
                         "It meets the plug only at the plug's root bone, so it is taken for the body " +
@@ -1311,8 +1416,8 @@ namespace AvatarBridge
                     continue;
                 }
 
-                var result = YapsBaker.Bake(skin, plug.rootBone, dir, report, out string failure,
-                    flipAxis: plug.flipAxis, shareFrameWith: primary);
+                var result = YapsBaker.Bake(skin, converted ? primary.Root : plug.rootBone, dir, report, out string failure,
+                    flipAxis: plug.flipAxis, shareFrameWith: primary, sizeScale: size);
                 if (result == null)
                 {
                     report?.Warning("YAPS", $"\"{skin.name}\" could not join the plug",
@@ -1351,6 +1456,7 @@ namespace AvatarBridge
         {
             var mats = skin.sharedMaterials;
             int done = 0;
+            List<AnimationClip> clips = null;
             foreach (int i in slots)
             {
                 if (i < 0 || i >= mats.Length || mats[i] == null) continue;
@@ -1379,9 +1485,11 @@ namespace AvatarBridge
                     target = YapsBaker.Apply(result, was, shader, dir, true);
                     mats[i] = target;
                     RecordBakedSlot(plug, skin, i, was);
-                    YapsSwapFollow.Follow(skin, i, was, target, report);
+                    YapsSwapFollow.Follow(skin, i, was, target, report,
+                        clips ??= YapsSwapFollow.RunnableClips(skin.transform));
                 }
                 WriteKnobs(plug, target);
+                WritePlugWide(plug, target);
                 // On, as the primary is. A copy switched off by hand stayed off
                 // and rigid through every rebuild.
                 target.SetFloat("_YAPS_Enabled", 1f);
@@ -1389,7 +1497,7 @@ namespace AvatarBridge
                 // materials. A carried mesh kept the measured length, so with an
                 // override set the body ran one envelope and the collar another, every
                 // threshold, taper and reach landing at a different depth per mesh.
-                if (plug.lengthOverride > 0) target.SetFloat("_YAPS_Length", plug.lengthOverride);
+                if (plug.lengthOverride > 0) target.SetFloat("_YAPS_Length", BakeLength(skin, target, plug.lengthOverride));
                 done++;
             }
             if (done > 0) skin.sharedMaterials = mats;
@@ -1402,9 +1510,15 @@ namespace AvatarBridge
         // one plug being the clear case, and a submesh left unpatched stays
         // rigid while its neighbours bend, so the mesh tears along the seam.
         // Any real weight counts: one moving vertex is enough to tear it.
-        public static List<int> SlotsWeightedTo(SkinnedMeshRenderer skin, Transform rootBone)
+        //
+        // heaviest: the slot whose triangles are weighted to the chain the
+        // most, -1 when none is. One walk answers both, so the two cannot
+        // disagree about which vertices count, and a bake reads the weights
+        // once.
+        public static List<int> SlotsWeightedTo(SkinnedMeshRenderer skin, Transform rootBone, out int heaviest)
         {
             var slots = new List<int>();
+            heaviest = -1;
             if (skin == null || skin.sharedMesh == null || skin.bones == null || rootBone == null) return slots;
             var mesh = skin.sharedMesh;
             var weights = mesh.boneWeights;
@@ -1413,6 +1527,7 @@ namespace AvatarBridge
             for (int i = 0; i < skin.bones.Length; i++)
                 if (skin.bones[i] != null && (skin.bones[i] == rootBone || skin.bones[i].IsChildOf(rootBone))) chain.Add(i);
             if (chain.Count == 0) return slots;
+            float most = 0f;
             for (int sub = 0; sub < mesh.subMeshCount; sub++)
             {
                 float total = 0f;
@@ -1425,40 +1540,20 @@ namespace AvatarBridge
                     if (chain.Contains(w.boneIndex1)) total += w.weight1;
                     if (chain.Contains(w.boneIndex2)) total += w.weight2;
                     if (chain.Contains(w.boneIndex3)) total += w.weight3;
-                    if (total > 0.001f) break;
                 }
                 if (total > 0.001f) slots.Add(sub);
+                if (total > most) { most = total; heaviest = sub; }
             }
             return slots;
         }
 
+        public static List<int> SlotsWeightedTo(SkinnedMeshRenderer skin, Transform rootBone) =>
+            SlotsWeightedTo(skin, rootBone, out _);
+
         public static int SlotWeightedTo(SkinnedMeshRenderer skin, Transform rootBone)
         {
-            if (skin == null || skin.sharedMesh == null || skin.bones == null || rootBone == null) return -1;
-            var mesh = skin.sharedMesh;
-            var weights = mesh.boneWeights;
-            if (weights == null || weights.Length == 0) return -1;
-            var chain = new HashSet<int>();
-            for (int i = 0; i < skin.bones.Length; i++)
-                if (skin.bones[i] != null && (skin.bones[i] == rootBone || skin.bones[i].IsChildOf(rootBone))) chain.Add(i);
-            if (chain.Count == 0) return -1;
-            int best = -1; float bestWeight = 0f;
-            for (int s = 0; s < mesh.subMeshCount; s++)
-            {
-                float total = 0f;
-                var seen = new HashSet<int>();
-                foreach (int v in mesh.GetTriangles(s))
-                {
-                    if (v >= weights.Length || !seen.Add(v)) continue;
-                    var w = weights[v];
-                    if (chain.Contains(w.boneIndex0)) total += w.weight0;
-                    if (chain.Contains(w.boneIndex1)) total += w.weight1;
-                    if (chain.Contains(w.boneIndex2)) total += w.weight2;
-                    if (chain.Contains(w.boneIndex3)) total += w.weight3;
-                }
-                if (total > bestWeight) { bestWeight = total; best = s; }
-            }
-            return best;
+            SlotsWeightedTo(skin, rootBone, out int heaviest);
+            return heaviest;
         }
 
         // The mirror of WriteKnobs.
@@ -1492,7 +1587,11 @@ namespace AvatarBridge
         // --- the test plug ---------------------------------------------------
 
         // A capsule with a YapsPlug, on Simple Lit, baked through the normal path.
-        public static GameObject BuildTestPlug(Transform parent = null, bool select = true, float length = 0.25f)
+        // meshPath: where a plug that outlives the scene keeps its mesh. The
+        // default is overwritten by every test plug, so a prefab saved around it
+        // lost its mesh the next time one spawned.
+        public static GameObject BuildTestPlug(Transform parent = null, bool select = true, float length = 0.25f,
+            string meshPath = null)
         {
             length = Mathf.Clamp(length, 0.08f, 1.5f);
             float radius = Mathf.Clamp(0.028f * length / 0.25f, 0.015f, 0.07f);
@@ -1505,12 +1604,12 @@ namespace AvatarBridge
             }
             var mf = root.AddComponent<MeshFilter>();
             var mr = root.AddComponent<MeshRenderer>();
-            EnsureFolder(OutputRoot + "/Test Plug");
             var mesh = CapsuleMesh(length, radius);
             // One asset, overwritten. GenerateUniqueAssetPath left a mesh
             // behind for every spawn, and the test plug is spawned to try
             // something and deleted straight after.
-            string meshPath = OutputRoot + "/Test Plug/YAPS Test Plug Mesh.asset";
+            if (string.IsNullOrEmpty(meshPath)) meshPath = OutputRoot + "/Test Plug/YAPS Test Plug Mesh.asset";
+            EnsureFolder(Path.GetDirectoryName(meshPath).Replace('\\', '/'));
             AssetDatabase.DeleteAsset(meshPath);
             AssetDatabase.CreateAsset(mesh, meshPath);
             mf.sharedMesh = mesh;
@@ -1578,22 +1677,35 @@ namespace AvatarBridge
 
         // --- helpers ------------------------------------------------------------
 
-        // The other plug whose bake this slot's material holds, if any.
+        // The other plug whose bake this slot's material holds, if any. Its
+        // baked-slot records count too: a slot it mirrored into holds a copy
+        // that is neither its readout source nor its named slot, and missing
+        // that let this plug re-bake the copy and delete the texture the other
+        // plug's primary shares.
         static YapsPlug OwnerOfSlot(YapsPlug plug, Renderer renderer, int slot, Material material)
         {
-            var avatar = plug.GetComponentInParent<CVRAvatar>(true);
-            var top = avatar != null ? avatar.transform : TopOf(plug.transform);
-            return top.GetComponentsInChildren<YapsPlug>(true).FirstOrDefault(p => p != plug && p.Target == renderer
-                && (p.readoutSource == material || p.materialSlot == slot));
+            return AvatarRoot(plug.transform).GetComponentsInChildren<YapsPlug>(true).FirstOrDefault(p => p != plug
+                && OwnsSlot(p, renderer, slot, material));
         }
 
-        static Transform TopOf(Transform t)
+        // Whose bake a slot holds. One rule for the bake, the inspector and the
+        // material panel's write-back, or they disagree on which plug a slot is.
+        public static bool OwnsSlot(YapsPlug p, Renderer r, int slot, Material m) =>
+            p.Target == r && (p.readoutSource == m || p.materialSlot == slot)
+            || p.bakedSlots.Any(b => b != null && b.slot == slot && Same(b.renderer, r, p));
+
+        // The avatar or prop a part belongs to, else its top object. One answer
+        // for every "which avatar" question: the scene root lets two avatars
+        // parented under one container count each other's plugs, take each
+        // other's meshes and share one output folder.
+        public static Transform AvatarRoot(Transform t)
         {
-            var top = t; while (top.parent != null) top = top.parent;
-            return top;
+            if (t == null) return null;
+            var avatar = t.GetComponentInParent<CVRAvatar>(true);
+            if (avatar != null) return avatar.transform;
+            var prop = t.GetComponentInParent<CVRSpawnable>(true);
+            return prop != null ? prop.transform : t.root;
         }
-
-        static string TopName(Transform t) => TopOf(t).name;
 
         static string Sanitise(string s)
         {

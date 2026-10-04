@@ -92,7 +92,15 @@ namespace AvatarBridge
             }
             foreach (var pass in passes)
             {
-                pass.Run(ctx);
+                try
+                {
+                    pass.Run(ctx);
+                }
+                catch (Exception e)
+                {
+                    // The bare message never says where, and the report entry is all a user sends.
+                    throw new Exception($"\"{pass.Name}\" failed: {e.GetType().Name}: {e.Message}", e);
+                }
             }
         }
     }

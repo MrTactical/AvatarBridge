@@ -20,6 +20,7 @@
 // Shared because the bug is not the converter's. The native toolkit
 // replaces the same slot on the same kind of renderer, and an avatar
 // set up natively is MORE likely to have its toggles already built.
+#if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
 using ABI.CCK.Components;
@@ -177,40 +178,73 @@ namespace AvatarBridge.Yaps
         // checks still holds the baked copy.
         //
         // The bake belongs to the MESH, not the material, so the same result goes
-        // into each variant and only the look differs.
-        public static int FollowVariants(Renderer renderer, int slot, YapsBaker.Result result,
+        // into each variant and only the look differs. `primary` is the slot's
+        // finished material, every knob and flag already written: each variant
+        // copies it and is remembered on the plug.
+        public static int FollowVariants(YapsPlug plug, Renderer renderer, int slot, YapsBaker.Result result,
                                          string dir, IEnumerable<AnimationClip> clips,
-                                         BridgeReport report, params Material[] known)
+                                         BridgeReport report, Material primary, params Material[] known)
         {
-            if (renderer == null || result == null || clips == null) return 0;
-            Transform root = AnimationRootOf(renderer.transform);
-            if (root == null) return 0;
+            if (renderer == null || clips == null) return 0;
             var runnable = clips.Where(c => c != null).Distinct().ToList();
-            if (runnable.Count == 0) return 0;
-
-            string path = AnimationUtility.CalculateTransformPath(renderer.transform, root);
-            var seen = new HashSet<Material>(known.Where(m => m != null));
-            var variants = new List<Material>();
-            foreach (var clip in runnable)
+            string path = AnimationUtility.CalculateTransformPath(renderer.transform,
+                                                                  AnimationRootOf(renderer.transform));
+            var baked = BakeVariants(renderer, slot, result, dir, runnable, report, primary, known);
+            foreach (var (_, copy) in baked) Remember(plug, renderer, slot, copy);
+            // A re-bake skips the variants it baked before, as already carrying a
+            // bake, and one baked before the plug kept this record is on no list.
+            // Any keyed here that wears this slot's bake texture is one of them,
+            // and every one is brought level with the new values.
+            var bake = primary != null && primary.HasProperty("_YAPS_Bake") ? primary.GetTexture("_YAPS_Bake") : null;
+            if (bake != null)
             {
-                foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                foreach (var m in Keyed(runnable, path, slot))
                 {
-                    if (binding.path != path || SlotIndex(binding.propertyName) != slot) continue;
-                    var keys = AnimationUtility.GetObjectReferenceCurve(clip, binding);
-                    if (keys == null) continue;
-                    foreach (var key in keys)
-                    {
-                        var m = key.value as Material;
-                        // A material already carrying a bake is one of ours from an
-                        // earlier run. Baking a baked material buries the original.
-                        if (m == null || m.HasProperty("_YAPS_Bake") || !seen.Add(m)) continue;
-                        variants.Add(m);
-                    }
+                    if (m != primary && m.HasProperty("_YAPS_Bake") && m.GetTexture("_YAPS_Bake") == bake)
+                        Remember(plug, renderer, slot, m);
                 }
             }
-            if (variants.Count == 0) return 0;
+            Refresh(plug);
+            if (baked.Count == 0) return 0;
+            // Only a variant something now swaps in counts as followed. One
+            // whose swap sits in a package clip is baked and never worn.
+            int repointed = 0, followed = 0;
+            var skipped = new SortedSet<string>();
+            foreach (var (variant, copy) in baked)
+            {
+                int n = RepointInClips(runnable, path, slot, variant, copy, skipped);
+                repointed += n;
+                if (n > 0) followed++;
+            }
+            WarnSkipped(report, skipped);
+            if (followed > 0 && report != null)
+            {
+                report.Converted("YAPS",
+                    $"Baked {followed} alternate material(s) the animator swaps in",
+                    "So the plug still bends while an alternate skin is on.");
+            }
+            return repointed;
+        }
 
-            int repointed = 0;
+        // The bake half alone, each variant with its baked copy, for a caller
+        // that keeps the pairs. The converter is one, and calls it only once
+        // its clips are its own copies, or repointing edits the author's.
+        public static List<(Material variant, Material baked)> BakeVariants(
+            Renderer renderer, int slot, YapsBaker.Result result, string dir,
+            IEnumerable<AnimationClip> clips, BridgeReport report, Material primary, params Material[] known)
+        {
+            var done = new List<(Material variant, Material baked)>();
+            if (renderer == null || result == null || clips == null) return done;
+            Transform root = AnimationRootOf(renderer.transform);
+            if (root == null) return done;
+
+            string path = AnimationUtility.CalculateTransformPath(renderer.transform, root);
+            var skip = new HashSet<Material>(known.Append(primary).Where(m => m != null));
+            // A material already carrying a bake is one of ours from an
+            // earlier run. Baking a baked material buries the original.
+            var variants = Keyed(clips, path, slot)
+                .Where(m => !m.HasProperty("_YAPS_Bake") && !skip.Contains(m)).ToList();
+
             var refused = new SortedSet<string>();
             foreach (var variant in variants)
             {
@@ -237,7 +271,11 @@ namespace AvatarBridge.Yaps
                 {
                     YapsNativeBuilder.SwitchOffLegacyDeform(baked, legacy);
                 }
-                repointed += RepointInClips(runnable, path, slot, variant, baked);
+                // The bake alone left the variant on the shader's defaults: no
+                // atlas, no tags, no own-socket ticks, stock curvature. Same mesh
+                // and slot, so the primary's bake fields are this one's too.
+                YapsNativeBuilder.CopyYapsProperties(primary, baked);
+                done.Add((variant, baked));
             }
 
             if (refused.Count > 0 && report != null)
@@ -247,21 +285,64 @@ namespace AvatarBridge.Yaps
                     "Their shaders refused the deform, so the plug won't bend while they're on. Give them a " +
                     "shader with source and bake again: " + string.Join(", ", refused));
             }
-            if (repointed > 0 && report != null)
+            return done;
+        }
+
+        // Every material a clip keys into this path and slot, once each.
+        static IEnumerable<Material> Keyed(IEnumerable<AnimationClip> clips, string path, int slot)
+        {
+            var seen = new HashSet<Material>();
+            foreach (var clip in clips.Where(c => c != null).Distinct())
             {
-                report.Converted("YAPS",
-                    $"Baked {variants.Count - refused.Count} alternate material(s) the animator swaps in",
-                    "So the plug still bends while an alternate skin is on.");
+                foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                {
+                    if (binding.path != path || SlotIndex(binding.propertyName) != slot) continue;
+                    var keys = AnimationUtility.GetObjectReferenceCurve(clip, binding);
+                    if (keys == null) continue;
+                    foreach (var key in keys)
+                    {
+                        var m = key.value as Material;
+                        if (m != null && seen.Add(m)) yield return m;
+                    }
+                }
             }
-            return repointed;
+        }
+
+        // A baked variant onto the plug its slot belongs to, once.
+        public static void Remember(YapsPlug plug, Renderer renderer, int slot, Material baked)
+        {
+            if (plug == null || renderer == null || baked == null) return;
+            if (plug.variants.Any(v => v != null && v.material == baked && v.renderer == renderer && v.slot == slot)) return;
+            plug.variants.Add(new YapsPlug.SlotVariant { renderer = renderer, slot = slot, material = baked });
+            EditorUtility.SetDirty(plug);
+        }
+
+        // Every remembered variant brought level with what its slot wears now,
+        // so a knob changed after the bake reaches the alternate look as well.
+        public static void Refresh(YapsPlug plug)
+        {
+            if (plug == null) return;
+            foreach (var v in plug.variants)
+            {
+                if (v == null || v.renderer == null || v.material == null) continue;
+                var mats = v.renderer.sharedMaterials;
+                if (v.slot < 0 || v.slot >= mats.Length) continue;
+                var primary = mats[v.slot];
+                // A slot Remove put back holds no bake to copy.
+                if (primary == null || primary == v.material || !primary.HasProperty("_YAPS_Bake")) continue;
+                YapsNativeBuilder.CopyYapsProperties(primary, v.material);
+                EditorUtility.SetDirty(v.material);
+            }
         }
 
         // The native path: no merged controller to read, so the clips come off
         // whatever the avatar or prop actually runs. All three sources, for the
         // reason given above RunnableClips: a swap that fires from the wrong
-        // controller breaks the plug just the same.
+        // controller breaks the plug just the same. A caller following several
+        // slots passes RunnableClips once, since walking every controller per
+        // slot repeats the same answer.
         public static int Follow(Renderer renderer, int slot, Material from, Material to,
-                                 BridgeReport report = null)
+                                 BridgeReport report = null, IList<AnimationClip> clips = null)
         {
             if (renderer == null || from == null || to == null || from == to)
             {
@@ -269,7 +350,7 @@ namespace AvatarBridge.Yaps
             }
 
             Transform root = AnimationRootOf(renderer.transform);
-            var clips = RunnableClips(renderer.transform);
+            if (clips == null) clips = RunnableClips(renderer.transform);
             if (root == null || clips.Count == 0)
             {
                 return 0;
@@ -278,13 +359,7 @@ namespace AvatarBridge.Yaps
             string path = AnimationUtility.CalculateTransformPath(renderer.transform, root);
             var skipped = new SortedSet<string>();
             int repointed = RepointInClips(clips, path, slot, from, to, skipped);
-            if (skipped.Count > 0 && report != null)
-            {
-                report.Warning("YAPS",
-                    $"{skipped.Count} material swap(s) could not be repointed",
-                    "They live in a package, so they were not edited, and playing one straightens the plug. Copy " +
-                    "the clip into your project: " + string.Join(", ", skipped));
-            }
+            WarnSkipped(report, skipped);
             if (repointed > 0 && report != null)
             {
                 report.Converted("YAPS",
@@ -293,5 +368,15 @@ namespace AvatarBridge.Yaps
             }
             return repointed;
         }
+
+        static void WarnSkipped(BridgeReport report, ICollection<string> skipped)
+        {
+            if (skipped.Count == 0 || report == null) return;
+            report.Warning("YAPS",
+                $"{skipped.Count} material swap(s) could not be repointed",
+                "They live in a package, so they were not edited, and playing one straightens the plug. Copy " +
+                "the clip into your project: " + string.Join(", ", skipped));
+        }
     }
 }
+#endif

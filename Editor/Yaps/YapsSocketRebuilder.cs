@@ -17,7 +17,7 @@ namespace AvatarBridge
 {
     public static class YapsSocketRebuilder
     {
-        const string Category = "YAPS penetration system";
+        const string Category = "YAPS";
 
         // The tip types a depth trigger listens for; a trigger filtered to
         // these and writing from a stay task is the author's depth channel.
@@ -380,6 +380,9 @@ namespace AvatarBridge
                 // Trigger-written, so nothing in the controller reads it unless
                 // the repoint happened, and the orphan prune would take it.
                 ctx.ContactParameters.Add(parameter);
+                // Recorded as built, so the toolkit's Remove knows this name
+                // and takes it out once nothing reads it.
+                socket.builtParameter = parameter;
                 if (spec.DepthParams.Count == 1)
                 {
                     if (RenameParameterEverywhere(ctx.MergedController, spec.DepthParams[0], parameter))
@@ -406,10 +409,11 @@ namespace AvatarBridge
         }
 
         // LAST of everything that writes a socket's active state. The
-        // lighthouse asserts the chosen socket ON as well as lit, and a layer
-        // wins by coming later, so it has to follow the wired toggles. Without
-        // it a converted avatar could switch a socket on from Fury's toggle,
-        // show it in the hierarchy, and still present a dark socket to a prop.
+        // lighthouse lights the chosen socket, and switches it on only when no
+        // toggle of its own can; it reads which toggles exist off the
+        // controller, so every toggle has to be wired first. One wired after
+        // it read as no toggle, and the lighthouse then held that socket on
+        // over its own switch.
         public static void Lighthouse(BridgeContext ctx)
         {
             string lighthouse = YapsLighthouse.Build(ctx.CvrAvatar, ctx.MergedController);
@@ -487,9 +491,13 @@ namespace AvatarBridge
                         if (state.mirrorParameter == from) state.mirrorParameter = to;
                         foreach (var t in state.transitions) RenameConditions(t, from, to);
                         if (state.motion is BlendTree tree) RenameTree(tree, from, to);
+                        foreach (var behaviour in state.behaviours) RenameDriver(behaviour as AnimatorDriver, from, to);
                     }
                     foreach (var t in machine.anyStateTransitions) RenameConditions(t, from, to);
                     foreach (var t in machine.entryTransitions) RenameConditions(t, from, to);
+                    foreach (var sub in machine.stateMachines)
+                        foreach (var t in machine.GetStateMachineTransitions(sub.stateMachine)) RenameConditions(t, from, to);
+                    foreach (var behaviour in machine.behaviours) RenameDriver(behaviour as AnimatorDriver, from, to);
                 }
             }
             EditorUtility.SetDirty(controller);
@@ -522,8 +530,26 @@ namespace AvatarBridge
             if (tree == null) return;
             if (tree.blendParameter == from) tree.blendParameter = to;
             if (tree.blendParameterY == from) tree.blendParameterY = to;
-            foreach (var child in tree.children)
-                if (child.motion is BlendTree deeper) RenameTree(deeper, from, to);
+            // A Direct tree weights each child by name, and smoothing trees read
+            // the depth that way. Children is a copy, so it is written back.
+            var children = tree.children;
+            for (int i = 0; i < children.Length; i++)
+            {
+                if (children[i].directBlendParameter == from) children[i].directBlendParameter = to;
+                if (children[i].motion is BlendTree deeper) RenameTree(deeper, from, to);
+            }
+            tree.children = children;
+        }
+
+        static void RenameDriver(AnimatorDriver driver, string from, string to)
+        {
+            if (driver == null) return;
+            foreach (var task in driver.EnterTasks.Concat(driver.ExitTasks))
+            {
+                if (task.targetName == from) task.targetName = to;
+                if (task.aType == AnimatorDriverTask.SourceType.Parameter && task.aName == from) task.aName = to;
+                if (task.bType == AnimatorDriverTask.SourceType.Parameter && task.bName == from) task.bName = to;
+            }
         }
     }
 }

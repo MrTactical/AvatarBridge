@@ -22,6 +22,10 @@ namespace AvatarBridge
 
         static Dictionary<string, string> relocated = new Dictionary<string, string>();
 
+        // VRC source index to Unity source index, keyed by SourceKey. They differ: a source with
+        // no transform is skipped, and a merged constraint's sources land after the first one's.
+        static Dictionary<string, int> sourceIndex = new Dictionary<string, int>();
+
         internal static readonly string[] VrcConstraintTypeNames =
         {
             "VRCParentConstraint", "VRCPositionConstraint", "VRCRotationConstraint",
@@ -44,6 +48,7 @@ namespace AvatarBridge
             // MUST run before anything converts: a Unity constraint bakes its rest offsets
             // against the parent the transform has when it is created.
             relocated = new Dictionary<string, string>();   // per conversion, never carried over
+            sourceIndex = new Dictionary<string, int>();
             reparented = AlignLocalSpaceRelays(ctx);
             // VrcConstraintTypeNames below gates this loop deliberately, rather than sitting
             // beside it as a list someone has to remember to update: AvatarAdvisor counts what
@@ -61,17 +66,16 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                bool ok;
                 try
                 {
                     switch (typeName)
                     {
-                        case "VRCParentConstraint": ok = ConvertParent(ctx, component); break;
-                        case "VRCPositionConstraint": ok = ConvertPosition(ctx, component); break;
-                        case "VRCRotationConstraint": ok = ConvertRotation(ctx, component); break;
-                        case "VRCScaleConstraint": ok = ConvertScale(ctx, component); break;
-                        case "VRCAimConstraint": ok = ConvertAim(ctx, component); break;
-                        case "VRCLookAtConstraint": ok = ConvertLookAt(ctx, component); break;
+                        case "VRCParentConstraint": ConvertParent(ctx, component); break;
+                        case "VRCPositionConstraint": ConvertPosition(ctx, component); break;
+                        case "VRCRotationConstraint": ConvertRotation(ctx, component); break;
+                        case "VRCScaleConstraint": ConvertScale(ctx, component); break;
+                        case "VRCAimConstraint": ConvertAim(ctx, component); break;
+                        case "VRCLookAtConstraint": ConvertLookAt(ctx, component); break;
                         default: continue;   // unreachable: the guard above already filtered
                     }
                 }
@@ -86,17 +90,14 @@ namespace AvatarBridge
                         $"(path '{ctx.PathInTarget(component.transform)}') could not be converted:\n{e}");
                     continue;
                 }
-                if (ok)
+                converted++;
+                if (!realigned.Contains(component.transform))
                 {
-                    converted++;
-                    if (!realigned.Contains(component.transform))
-                    {
-                        NoteLocalSpace(ctx, component, localSpaceRelays);
-                        DisableUnfollowableLocalSpace(ctx, component, typeName, disabledLocalSpace);
-                    }
-                    NoteMirrored(ctx, component, mirrored);
-                    UnityEngine.Object.DestroyImmediate(component);
+                    NoteLocalSpace(ctx, component, localSpaceRelays);
+                    DisableUnfollowableLocalSpace(ctx, component, typeName, disabledLocalSpace);
                 }
+                NoteMirrored(ctx, component, mirrored);
+                UnityEngine.Object.DestroyImmediate(component);
             }
 
             if (converted > 0)
@@ -141,6 +142,27 @@ namespace AvatarBridge
                 return animatedRotationPaths;
             }
             animatedRotationPaths = new HashSet<string>();
+            foreach (var clip in AllClips(ctx))
+            {
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (binding.type == typeof(Transform)
+                        && (binding.propertyName.StartsWith("m_LocalRotation", StringComparison.Ordinal)
+                            || binding.propertyName.StartsWith("localEulerAngles", StringComparison.Ordinal)))
+                    {
+                        animatedRotationPaths.Add(binding.path);
+                    }
+                }
+            }
+            return animatedRotationPaths;
+        }
+
+        // The merged controller directly as well as via the Animator. A controller that would
+        // crash Unity is deliberately never assigned to an Animator (see AnimatorMerger), and
+        // reading the clip list only through the component would silently skip every curve on
+        // exactly the avatars that need the most repair.
+        static HashSet<AnimationClip> AllClips(BridgeContext ctx)
+        {
             var controllers = new List<RuntimeAnimatorController>();
             foreach (var animator in ctx.Target.GetComponentsInChildren<Animator>(true))
             {
@@ -153,26 +175,18 @@ namespace AvatarBridge
             {
                 controllers.Add(ctx.MergedController);
             }
+            var clips = new HashSet<AnimationClip>();
             foreach (var controller in controllers)
             {
                 foreach (var clip in controller.animationClips)
                 {
-                    if (clip == null)
+                    if (clip != null)
                     {
-                        continue;
-                    }
-                    foreach (var binding in AnimationUtility.GetCurveBindings(clip))
-                    {
-                        if (binding.type == typeof(Transform)
-                            && (binding.propertyName.StartsWith("m_LocalRotation", StringComparison.Ordinal)
-                                || binding.propertyName.StartsWith("localEulerAngles", StringComparison.Ordinal)))
-                        {
-                            animatedRotationPaths.Add(binding.path);
-                        }
+                        clips.Add(clip);
                     }
                 }
             }
-            return animatedRotationPaths;
+            return clips;
         }
 
         static void ReportDisabledLocalSpace(BridgeContext ctx, List<string> disabled)
@@ -218,36 +232,13 @@ namespace AvatarBridge
             {
                 return;
             }
-            var clips = new HashSet<AnimationClip>();
-            var controllers = new List<RuntimeAnimatorController>();
-            foreach (var animator in ctx.Target.GetComponentsInChildren<Animator>(true))
-            {
-                if (animator.runtimeAnimatorController != null)
-                {
-                    controllers.Add(animator.runtimeAnimatorController);
-                }
-            }
-            // The merged controller directly as well as via the Animator. A controller that would
-            // crash Unity is deliberately never assigned to an Animator (see AnimatorMerger), and
-            // reading the clip list only through the component would silently skip every curve on
-            // exactly the avatars that need the most repair.
-            if (ctx.MergedController != null)
-            {
-                controllers.Add(ctx.MergedController);
-            }
-            foreach (var controller in controllers)
-            {
-                foreach (var clip in controller.animationClips)
-                {
-                    if (clip != null)
-                    {
-                        clips.Add(clip);
-                    }
-                }
-            }
+            var clips = AllClips(ctx);
 
             int repointed = 0, followed = 0;
             var dropped = new SortedSet<string>(StableSampleOrder.Instance);
+            var droppedOffsets = new SortedSet<string>(StableSampleOrder.Instance); // not Freeze To World, so not worded as it
+            var droppedRest = new SortedSet<string>(StableSampleOrder.Instance);    // rest pose or axis switches, likewise
+            var unmappedSources = new SortedSet<string>(StableSampleOrder.Instance); // a VRC source with no Unity source
             var lost = new SortedSet<string>(StableSampleOrder.Instance);        // the object is gone: something here removed it
             var neverBuilt = new SortedSet<string>(StableSampleOrder.Instance);  // the object is there, but never had a constraint
             var movedByBake = new SortedSet<string>(StableSampleOrder.Instance); // the object exists under a different parent
@@ -267,31 +258,22 @@ namespace AvatarBridge
                         continue;
                     }
                     // Never write into the author's own asset: this runs
-                    // before the clips are copied, so they can still be
-                    // source files on disk.
+                    // after self-containment, but it also reads every nested
+                    // Animator's controller, whose clips can still be the
+                    // author's files on disk.
                     if (!mayRewrite)
                     {
                         protectedSources.Add(sourcePath);
                         continue;
                     }
                     var curve = AnimationUtility.GetEditorCurve(clip, binding);
-                    string property = MapConstraintProperty(binding.propertyName);
+                    string property = MapConstraintProperty(binding.propertyName, out int vrcSource);
 
-                    // Follow the constraint if it moved. A Target
-                    // Transform constraint is rebuilt on the object it
-                    // drives, so the clip's path names somewhere the
-                    // constraint no longer is.
                     string path = binding.path;
-                    var replacement = ConstraintTypeOnPath(ctx, path, binding.type.Name);
-                    if (replacement == null && relocated.TryGetValue(path, out string movedTo))
+                    var replacement = FollowConstraint(ctx, ref path, binding.type.Name);
+                    if (path != binding.path)
                     {
-                        var afterMove = ConstraintTypeOnPath(ctx, movedTo, binding.type.Name);
-                        if (afterMove != null)
-                        {
-                            path = movedTo;
-                            replacement = afterMove;
-                            followed++;
-                        }
+                        followed++;
                     }
                     string where = $"\"{clip.name}\" -> {binding.path} ({binding.propertyName})";
 
@@ -299,11 +281,22 @@ namespace AvatarBridge
                     AnimationUtility.SetEditorCurve(clip, binding, null);
                     if (property == null)
                     {
-                        dropped.Add(where);
+                        // "Offset." and not "Offset": RebakeOffsetsWhenUnfrozen belongs to Freeze To World.
+                        string name = binding.propertyName;
+                        (name.Contains("Offset.") ? droppedOffsets
+                            : name.Contains("AtRest.") || name.StartsWith("Affects", StringComparison.Ordinal)
+                                ? droppedRest
+                                : dropped).Add(where);
                         continue;
                     }
                     if (replacement == null)
                     {
+                        // Deleted with a stripped system: dead by design, and
+                        // already reported where the system was removed.
+                        if (ctx.RemovedOnPurpose(binding.path))
+                        {
+                            continue;
+                        }
                         // Two different situations. Object missing:
                         // this conversion removed it. Object present but
                         // constraint-less: nothing ever put one there,
@@ -325,6 +318,18 @@ namespace AvatarBridge
                             lost.Add(where);
                         }
                         continue;
+                    }
+                    if (vrcSource >= 0)
+                    {
+                        // Keyed by the curve's own path, not the followed one: a relocated
+                        // constraint's sources were recorded under the object it sat on.
+                        if (!sourceIndex.TryGetValue(SourceKey(binding.path, binding.type.Name, vrcSource),
+                                out int unitySource))
+                        {
+                            unmappedSources.Add(where);
+                            continue;
+                        }
+                        property = string.Format(property, unitySource);
                     }
                     AnimationUtility.SetEditorCurve(clip, new EditorCurveBinding
                     {
@@ -360,11 +365,34 @@ namespace AvatarBridge
                     "will change the constraint but not pin anything in place: " +
                     string.Join("; ", dropped) + ".");
             }
+            if (droppedOffsets.Count > 0)
+            {
+                ctx.Report.Approximated(Category,
+                    $"{droppedOffsets.Count} curve(s) animated a constraint offset, which is not carried over",
+                    "Dropped rather than left pointing at nothing. The constraint keeps the offset it was " +
+                    "built with, so whatever the animation shifted stays at rest: " +
+                    string.Join("; ", droppedOffsets) + ".");
+            }
+            if (droppedRest.Count > 0)
+            {
+                ctx.Report.Approximated(Category,
+                    $"{droppedRest.Count} curve(s) animated a constraint's rest pose or axes, which is not carried over",
+                    "Dropped rather than left pointing at nothing. The constraint keeps the rest pose and axes " +
+                    "it was built with: " + string.Join("; ", droppedRest) + ".");
+            }
+            if (unmappedSources.Count > 0)
+            {
+                ctx.Report.Approximated(Category,
+                    $"{unmappedSources.Count} curve(s) animated a constraint source that was not carried over",
+                    "Usually an empty source slot, which converts to nothing. Dropped rather than left " +
+                    "driving a different source: " + string.Join("; ", unmappedSources) + ".");
+            }
             if (lost.Count > 0)
             {
                 ctx.Report.Warning(Category,
                     $"{lost.Count} curve(s) drove a constraint on an object that is now GONE",
-                    "Usually a removed system (GoGo, SPS) took it; if not, please report it: " +
+                    "Objects removed with a stripped system are not counted here, so this is unexpected. " +
+                    "Please report it: " +
                     string.Join("; ", lost) + ".");
             }
             if (movedByBake.Count > 0)
@@ -423,8 +451,11 @@ namespace AvatarBridge
             return string.IsNullOrEmpty(path) || ctx.Target.transform.Find(path) != null;
         }
 
-        static string MapConstraintProperty(string vrcProperty)
+        // A per-source property comes back with {0} where the Unity index goes and `source` set to
+        // the VRC index; the caller fills it in from sourceIndex.
+        static string MapConstraintProperty(string vrcProperty, out int source)
         {
+            source = -1;
             switch (vrcProperty)
             {
                 case "IsActive": return "m_Active";
@@ -433,33 +464,63 @@ namespace AvatarBridge
                 case "Enabled":
                 case "m_Enabled": return "m_Enabled";
             }
-            // Per-source weights. The spelling in the wild is
+            // Per-source fields. The spelling in the wild is
             // "Sources.source0.Weight": VRC's source list is a class
-            // with sixteen fixed fields, which is what makes the
-            // weights animatable. The array form never occurs.
+            // with sixteen fixed fields, which is what makes them
+            // animatable. The array form never occurs.
             const string fieldPrefix = "Sources.source";
-            const string suffix = ".Weight";
-            if (vrcProperty.StartsWith(fieldPrefix, StringComparison.Ordinal) &&
-                vrcProperty.EndsWith(suffix, StringComparison.Ordinal))
+            int dot = vrcProperty.StartsWith(fieldPrefix, StringComparison.Ordinal)
+                ? vrcProperty.IndexOf('.', fieldPrefix.Length)
+                : -1;
+            if (dot > 0 && int.TryParse(vrcProperty.Substring(fieldPrefix.Length, dot - fieldPrefix.Length),
+                    out int n))
             {
-                string index = vrcProperty.Substring(fieldPrefix.Length,
-                    vrcProperty.Length - fieldPrefix.Length - suffix.Length);
-                if (int.TryParse(index, out _))
+                // Parent offsets copy 1:1, same axes and same units (measured, Dev/Probes/ConstraintOffsetProbe).
+                // ConvertParent copies the static values raw too, so an animated one agrees with them.
+                string field = vrcProperty.Substring(dot + 1);
+                const string position = "ParentPositionOffset.", rotation = "ParentRotationOffset.";
+                string unity = field == "Weight" ? "m_Sources.Array.data[{0}].weight"
+                    : field.StartsWith(position, StringComparison.Ordinal)
+                        ? "m_TranslationOffsets.Array.data[{0}]." + field.Substring(position.Length)
+                    : field.StartsWith(rotation, StringComparison.Ordinal)
+                        ? "m_RotationOffsets.Array.data[{0}]." + field.Substring(rotation.Length)
+                    : null;
+                if (unity != null)
                 {
-                    return $"m_Sources.Array.data[{index}].weight";
+                    source = n;
                 }
+                return unity;
             }
             // The array spelling, kept in case any serialization path ever produces it.
             const string prefix = "Sources.Array.data[";
             const string arraySuffix = "].Weight";
             if (vrcProperty.StartsWith(prefix, StringComparison.Ordinal) &&
-                vrcProperty.EndsWith(arraySuffix, StringComparison.Ordinal))
+                vrcProperty.EndsWith(arraySuffix, StringComparison.Ordinal) &&
+                int.TryParse(vrcProperty.Substring(prefix.Length,
+                    vrcProperty.Length - prefix.Length - arraySuffix.Length), out n))
             {
-                string index = vrcProperty.Substring(prefix.Length,
-                    vrcProperty.Length - prefix.Length - arraySuffix.Length);
-                return $"m_Sources.Array.data[{index}].weight";
+                source = n;
+                return "m_Sources.Array.data[{0}].weight";
             }
             return null;
+        }
+
+        // Where a curve on a VRC constraint lands. A Target Transform constraint is rebuilt on the
+        // object it drives, so the clip's path names somewhere the constraint no longer is.
+        // ConstraintScaleRelay asks this before the curves are repointed and must get the same answer.
+        internal static Type FollowConstraint(BridgeContext ctx, ref string path, string vrcTypeName)
+        {
+            var replacement = ConstraintTypeOnPath(ctx, path, vrcTypeName);
+            if (replacement == null && relocated.TryGetValue(path, out string movedTo))
+            {
+                var afterMove = ConstraintTypeOnPath(ctx, movedTo, vrcTypeName);
+                if (afterMove != null)
+                {
+                    path = movedTo;
+                    return afterMove;
+                }
+            }
+            return replacement;
         }
 
         static Type ConstraintTypeOnPath(BridgeContext ctx, string path, string vrcTypeName)
@@ -527,27 +588,15 @@ namespace AvatarBridge
             var skinned = SkinningBones(ctx.Target);
 
             var animatedPaths = new HashSet<string>();
-            foreach (var animator in ctx.Target.GetComponentsInChildren<Animator>(true))
+            foreach (var clip in AllClips(ctx))
             {
-                var rac = animator.runtimeAnimatorController;
-                if (rac == null)
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
                 {
-                    continue;
+                    animatedPaths.Add(binding.path);
                 }
-                foreach (var clip in rac.animationClips)
+                foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
                 {
-                    if (clip == null)
-                    {
-                        continue;
-                    }
-                    foreach (var binding in AnimationUtility.GetCurveBindings(clip))
-                    {
-                        animatedPaths.Add(binding.path);
-                    }
-                    foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
-                    {
-                        animatedPaths.Add(binding.path);
-                    }
+                    animatedPaths.Add(binding.path);
                 }
             }
 
@@ -825,6 +874,7 @@ namespace AvatarBridge
 
         class SourceData
         {
+            public int Index;   // VRC's, the N in a curve's "Sources.sourceN"
             public Transform Transform;
             public float Weight;
             public Vector3 ParentPositionOffset;
@@ -839,8 +889,10 @@ namespace AvatarBridge
             {
                 return result;
             }
+            int index = -1;
             foreach (var item in enumerable)
             {
+                index++;
                 if (item == null)
                 {
                     continue;
@@ -852,6 +904,7 @@ namespace AvatarBridge
                 }
                 result.Add(new SourceData
                 {
+                    Index = index,
                     Transform = transform,
                     Weight = Get(item, "Weight", 1f),
                     ParentPositionOffset = Get(item, "ParentPositionOffset", Vector3.zero),
@@ -859,6 +912,20 @@ namespace AvatarBridge
                 });
             }
             return result;
+        }
+
+        static string SourceKey(string path, string vrcTypeName, int vrcIndex) => $"{path}|{vrcTypeName}|{vrcIndex}";
+
+        static int AddSource(BridgeContext ctx, Component vrc, IConstraint unity, SourceData s)
+        {
+            int idx = unity.AddSource(new ConstraintSource { sourceTransform = s.Transform, weight = s.Weight });
+            // First wins: with two constraints of one type on an object, a curve binds to the first.
+            string key = SourceKey(ctx.PathInTarget(vrc.transform), vrc.GetType().Name, s.Index);
+            if (!sourceIndex.ContainsKey(key))
+            {
+                sourceIndex[key] = idx;
+            }
+            return idx;
         }
 
         static void ApplyCommon<T>(object vrc, T unity) where T : Behaviour, IConstraint
@@ -876,7 +943,7 @@ namespace AvatarBridge
             unity.constraintActive = Get(vrc, "IsActive", true);
         }
 
-        static bool WarnIfUnsupported(BridgeContext ctx, object vrc, Component component)
+        static void WarnIfUnsupported(BridgeContext ctx, object vrc, Component component)
         {
             if (Get(vrc, "FreezeToWorld", false))
             {
@@ -902,23 +969,22 @@ namespace AvatarBridge
                         "Whatever it was driving will not move.");
                 }
             }
-            return true;
         }
 
-        static bool ConvertParent(BridgeContext ctx, Component vrc)
+        static void ConvertParent(BridgeContext ctx, Component vrc)
         {
             var unity = GetOrAdd<ParentConstraint>(ctx, vrc, out bool existed);
             var sources = ReadSources(vrc);
             foreach (var s in sources)
             {
-                int idx = unity.AddSource(new ConstraintSource { sourceTransform = s.Transform, weight = s.Weight });
+                int idx = AddSource(ctx, vrc, unity, s);
                 unity.SetTranslationOffset(idx, s.ParentPositionOffset);
                 unity.SetRotationOffset(idx, s.ParentRotationOffset);
             }
             if (existed)
             {
                 ReportMerged(ctx, vrc, "parent");
-                return true; // keep the first constraint's rest/axis; just merge these sources in
+                return; // keep the first constraint's rest/axis; just merge these sources in
             }
             var parentDriven = DrivenBy(ctx, vrc);
             unity.translationAtRest = parentDriven != vrc.transform
@@ -932,20 +998,19 @@ namespace AvatarBridge
             WarnIfUnsupported(ctx, vrc, vrc);
             ApplyCommon(vrc, unity);
             ctx.Report.Converted(Category, ctx.PathInTarget(vrc.transform), "Parent constraint");
-            return true;
         }
 
-        static bool ConvertPosition(BridgeContext ctx, Component vrc)
+        static void ConvertPosition(BridgeContext ctx, Component vrc)
         {
             var unity = GetOrAdd<PositionConstraint>(ctx, vrc, out bool existed);
             foreach (var s in ReadSources(vrc))
             {
-                unity.AddSource(new ConstraintSource { sourceTransform = s.Transform, weight = s.Weight });
+                AddSource(ctx, vrc, unity, s);
             }
             if (existed)
             {
                 ReportMerged(ctx, vrc, "position");
-                return true;
+                return;
             }
             var posDriven = DrivenBy(ctx, vrc);
             unity.translationOffset = Get(vrc, "PositionOffset", Vector3.zero);
@@ -956,20 +1021,19 @@ namespace AvatarBridge
             WarnIfUnsupported(ctx, vrc, vrc);
             ApplyCommon(vrc, unity);
             ctx.Report.Converted(Category, ctx.PathInTarget(vrc.transform), "Position constraint");
-            return true;
         }
 
-        static bool ConvertRotation(BridgeContext ctx, Component vrc)
+        static void ConvertRotation(BridgeContext ctx, Component vrc)
         {
             var unity = GetOrAdd<RotationConstraint>(ctx, vrc, out bool existed);
             foreach (var s in ReadSources(vrc))
             {
-                unity.AddSource(new ConstraintSource { sourceTransform = s.Transform, weight = s.Weight });
+                AddSource(ctx, vrc, unity, s);
             }
             if (existed)
             {
                 ReportMerged(ctx, vrc, "rotation");
-                return true;
+                return;
             }
             // Measured from the live pose, which is VRChat's own solver
             // output; the field is the fallback. Copying it trusts both
@@ -1001,20 +1065,19 @@ namespace AvatarBridge
                 rotMeasured
                     ? "Rotation constraint: offset measured from the pose VRChat's own solver left in the scene"
                     : "Rotation constraint");
-            return true;
         }
 
-        static bool ConvertScale(BridgeContext ctx, Component vrc)
+        static void ConvertScale(BridgeContext ctx, Component vrc)
         {
             var unity = GetOrAdd<ScaleConstraint>(ctx, vrc, out bool existed);
             foreach (var s in ReadSources(vrc))
             {
-                unity.AddSource(new ConstraintSource { sourceTransform = s.Transform, weight = s.Weight });
+                AddSource(ctx, vrc, unity, s);
             }
             if (existed)
             {
                 ReportMerged(ctx, vrc, "scale");
-                return true;
+                return;
             }
             unity.scaleOffset = Get(vrc, "ScaleOffset", Vector3.one);
             var scaleDriven = DrivenBy(ctx, vrc);
@@ -1025,20 +1088,19 @@ namespace AvatarBridge
             WarnIfUnsupported(ctx, vrc, vrc);
             ApplyCommon(vrc, unity);
             ctx.Report.Converted(Category, ctx.PathInTarget(vrc.transform), "Scale constraint");
-            return true;
         }
 
-        static bool ConvertAim(BridgeContext ctx, Component vrc)
+        static void ConvertAim(BridgeContext ctx, Component vrc)
         {
             var unity = GetOrAdd<AimConstraint>(ctx, vrc, out bool existed);
             foreach (var s in ReadSources(vrc))
             {
-                unity.AddSource(new ConstraintSource { sourceTransform = s.Transform, weight = s.Weight });
+                AddSource(ctx, vrc, unity, s);
             }
             if (existed)
             {
                 ReportMerged(ctx, vrc, "aim");
-                return true;
+                return;
             }
             var aimDriven = DrivenBy(ctx, vrc);
             unity.aimVector = Get(vrc, "AimAxis", Vector3.forward);
@@ -1051,20 +1113,19 @@ namespace AvatarBridge
                 "Aim constraint: world-up mode settings are not transferred; verify behaviour.");
             WarnIfUnsupported(ctx, vrc, vrc);
             ApplyCommon(vrc, unity);
-            return true;
         }
 
-        static bool ConvertLookAt(BridgeContext ctx, Component vrc)
+        static void ConvertLookAt(BridgeContext ctx, Component vrc)
         {
             var unity = GetOrAdd<LookAtConstraint>(ctx, vrc, out bool existed);
             foreach (var s in ReadSources(vrc))
             {
-                unity.AddSource(new ConstraintSource { sourceTransform = s.Transform, weight = s.Weight });
+                AddSource(ctx, vrc, unity, s);
             }
             if (existed)
             {
                 ReportMerged(ctx, vrc, "look-at");
-                return true;
+                return;
             }
             unity.roll = Get(vrc, "Roll", 0f);
             var upTransform = Get<Transform>(vrc, "WorldUpTransform", null);
@@ -1081,7 +1142,6 @@ namespace AvatarBridge
             WarnIfUnsupported(ctx, vrc, vrc);
             ApplyCommon(vrc, unity);
             ctx.Report.Converted(Category, ctx.PathInTarget(vrc.transform), "LookAt constraint");
-            return true;
         }
 
         // ---------------------------------------------------------------- helpers ----

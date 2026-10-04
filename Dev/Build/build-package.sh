@@ -13,27 +13,47 @@
 #   build-package.sh --dev      dev build    -> AvatarBridge-<version>-dev.unitypackage
 #   build-package.sh --test TAG test build   -> AvatarBridge-<version>-test-TAG.unitypackage
 #                               public contents, for select testers; a tag is spent once built
+#   build-package.sh --yaps --test TAG       -> YAPS-<version>-adult-test-TAG.unitypackage
+#
+# A release (public or --yaps, without --test) is built from a commit: it
+# refuses uncommitted changes unless --dirty is passed, and refuses a version
+# that is already tagged.
 #
 # Every mode is labelled. Never infer contents from a missing suffix.
 # Packages built before 2026-08-01 have no suffix and are all public.
 # They keep those names; GitHub released them under those names.
 #
 # Public builds prune Dev/ and Regression/. That is what ships.
-# Dev builds carry the harness under Editor/DevTools/. Never release a dev build.
+# Dev builds carry the add-on too, and the harness under Editor/DevTools/,
+# since the harness exercises both. Never release a dev build.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ROOT_GUID="979cbf9a9a344ae7ad3f8b3bb3381da0"   # the "Assets/AvatarBridge" folder entry
 STAGE="$(mktemp -d)"
-trap 'rm -rf "$STAGE"' EXIT
+# Scratch for the checks. STAGE is tarred whole, so anything left in it ships.
+WORK="$(mktemp -d)"
+trap 'rm -rf "$STAGE" "$WORK"' EXIT
 
-MODE="public"
-if [ "${1:-}" = "--dev" ]; then MODE="dev"; fi
-if [ "${1:-}" = "--yaps" ]; then MODE="yaps"; fi
-TAG=""
-if [ "${1:-}" = "--test" ]; then
-  MODE="test"; TAG="${2:-}"
-  if [ -z "$TAG" ]; then echo "--test needs a tag, e.g. --test rebuild" >&2; exit 1; fi
+# Every argument is read. Only the first used to be, so a misspelt flag built
+# the public package and "--yaps --test" took the release name.
+MODE="public" TAG="" DEV=0 DIRTY=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dev)   DEV=1 ;;
+    --yaps)  MODE="yaps" ;;
+    --test)
+      TAG="${2:-}"
+      if [ -z "$TAG" ] || [ "${TAG#-}" != "$TAG" ]; then echo "--test needs a tag, e.g. --test rebuild" >&2; exit 1; fi
+      shift ;;
+    --dirty) DIRTY=1 ;;
+    *) echo "unknown argument: $1 (the usage is at the top of this script)" >&2; exit 1 ;;
+  esac
+  shift
+done
+if [ "$DEV" = 1 ]; then
+  if [ "$MODE" = "yaps" ] || [ -n "$TAG" ]; then echo "--dev takes no other mode: it never ships" >&2; exit 1; fi
+  MODE="dev"
 fi
 
 VERSION="$(sed -n 's/.*public const string Version = "\(.*\)".*/\1/p' "$REPO/Editor/BridgeDefines.cs")"
@@ -42,8 +62,8 @@ if [ "$MODE" = "dev" ]; then
   OUT="$REPO/AvatarBridge-$VERSION-dev.unitypackage"
 elif [ "$MODE" = "yaps" ]; then
   # 18+ in the filename, so it says so before anyone opens it.
-  OUT="$REPO/YAPS-$VERSION-adult.unitypackage"
-elif [ "$MODE" = "test" ]; then
+  OUT="$REPO/YAPS-$VERSION-adult${TAG:+-test-$TAG}.unitypackage"
+elif [ -n "$TAG" ]; then
   OUT="$REPO/AvatarBridge-$VERSION-test-$TAG.unitypackage"
 else
   OUT="$REPO/AvatarBridge-$VERSION-public.unitypackage"
@@ -53,12 +73,12 @@ fi
 # one ship together at the same version, so they do not block each other;
 # each only refuses to overwrite itself. Packages before 2026-08-01 shipped
 # with no suffix, and ~300 of those exist.
-case "$MODE" in
+case "$MODE${TAG:+-test}" in
   public) taken_names=("$REPO/AvatarBridge-$VERSION.unitypackage" \
                        "$REPO/AvatarBridge-$VERSION-public.unitypackage") ;;
   yaps)   taken_names=("$REPO/YAPS-$VERSION.unitypackage" \
                        "$REPO/YAPS-$VERSION-adult.unitypackage") ;;
-  test)   taken_names=("$REPO/AvatarBridge-$VERSION-test-$TAG.unitypackage") ;;
+  *-test) taken_names=("$OUT") ;;
   dev)    taken_names=() ;;   # a dev build may be rebuilt over itself; it never ships
 esac
 for taken in ${taken_names+"${taken_names[@]}"}; do
@@ -67,6 +87,26 @@ for taken in ${taken_names+"${taken_names[@]}"}; do
     exit 1
   fi
 done
+
+COMMIT="$(git -C "$REPO" rev-parse --short HEAD)"
+# What the walk would read that HEAD does not hold. Dev and docs never ship;
+# the add-on's README does, from Dev/Build.
+DIRTY_TREE="$(git -C "$REPO" status --porcelain -- . ':!Dev' ':!docs'
+  if [ "$MODE" = "yaps" ]; then git -C "$REPO" status --porcelain -- Dev/Build/README-yaps.md; fi)"
+if [ "$MODE" != "dev" ] && [ -z "$TAG" ]; then
+  # Artefacts are gitignored, so another worktree or a fresh clone has none
+  # and the file check above passes there. The tag is in every checkout.
+  if git -C "$REPO" rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+    echo "REFUSING: v$VERSION is already tagged. Bump the version; never reuse one that shipped." >&2
+    exit 1
+  fi
+  if [ -n "$DIRTY_TREE" ] && [ "$DIRTY" = 0 ]; then
+    echo "REFUSING: uncommitted changes would ship in this release:" >&2
+    echo "$DIRTY_TREE" >&2
+    echo "Commit them, or pass --dirty to build this tree anyway." >&2
+    exit 1
+  fi
+fi
 rm -f "$OUT"
 
 guid_of() { sed -n 's/^guid: \([0-9a-f]*\).*/\1/p' "$1" | head -1; }
@@ -84,11 +124,11 @@ guid_of() { sed -n 's/^guid: \([0-9a-f]*\).*/\1/p' "$1" | head -1; }
 # reaches for will fail that compile, not this script, so check the closure
 # before editing this list. Destination paths and GUIDs are the public
 # package's, so installing both overlays rather than duplicates.
-YAPS_CORE="BridgeContext BridgeReport BridgeSettings ShaderSpiPatcher ShaderFixRecipes \
+YAPS_CORE="BridgeContext BridgeReport BridgeSettings ShaderSpiPatcher \
 AnimatorAssetSaver AnimatorDeepCopier AvatarScalerInjector OutputAssetPaths AvatarDescription \
 AvatarHygiene BridgeDiagnostics CckDescriptionFiller CvrSetup AvatarFeatureDetect \
 FaceTrackingConverter FaceTrackingInjector MouthLocator UnifiedBlendshapes FaceTrackingPackages \
-CvrParameterNames GestureMap AvatarSurvey AvatarWeight AvatarSlimmer BridgeFinish DiagnosticsWriter HtmlReportWriter \
+FaceTrackingParameters CvrParameterNames GestureMap AvatarSurvey AvatarWeight AvatarSlimmer BridgeFinish DiagnosticsWriter HtmlReportWriter \
 YapsMarks"
 
 yaps_files() {
@@ -114,9 +154,10 @@ yaps_files() {
 # 4.1.1 shipped broken for anyone installing YAPS on its own.
 #
 # Comments are stripped first, because half of Core is named in prose and
-# every one of those would be a false alarm. Only namespace-level public and
-# internal types count, so a private nested enum that happens to share a name
-# with somebody's field is not one either.
+# every one of those would be a false alarm. Plain string literals go too: a
+# type named in one is a reflection lookup, never a compile dependency. Only
+# namespace-level public and internal types count, so a private nested enum
+# that happens to share a name with somebody's field is not one either.
 #
 # This is a closure check, not a compiler: it catches a shipped file
 # referencing a type that stayed behind. For the real thing, compile the
@@ -124,35 +165,44 @@ yaps_files() {
 # use MonoBleedingEdge/bin/mono.exe with lib/mono/4.5/csc.exe, since the
 # Roslyn csc under lib/mono/msbuild fails to start and prints no "error CS"
 # lines, which reads as a clean compile.
-strip_comments() { sed 's://.*::' "$1" | awk '/\/\*/{b=1} !b{print} /\*\//{b=0}'; }
+# Strings before comments, so a URL's "//" no longer cuts the rest of its line.
+# An interpolated string keeps its text, since its holes are code.
+strip_comments() { sed -E 's/(^|[^$])"[^"]*"/\1""/g; s://.*::' "$1" | awk '/\/\*/{b=1} !b{print} /\*\//{b=0}'; }
 
 check_yaps_closure() { # $1 = newline-delimited list of shipped paths
-  local shipped="$1" bad=0 t s
-  for f in Editor/Core/*.cs; do
+  local shipped="$1" bad=0 t s hit
+  # Every shipped file stripped once, at its own path, so each type below
+  # costs one grep instead of a pass over the whole list.
+  while IFS= read -r s; do
+    case "$s" in *.cs) ;; *) continue ;; esac
+    mkdir -p "$WORK/stripped/$(dirname "$s")"
+    strip_comments "$s" > "$WORK/stripped/$s"
+  done < "$shipped"
+
+  # All of Editor, not only Editor/Core's top level: the physics writers and
+  # the windows at the Editor root stay behind too.
+  find Editor -name '*.cs' | while IFS= read -r f; do
     grep -qxF "$f" "$shipped" && continue
-    # A Core file with no namespace-level type is ordinary, and grep says so
+    # A file with no namespace-level type is ordinary, and grep says so
     # by exiting 1. Under `set -e` with pipefail that would end the build.
     { grep -ohE "^    (public|internal)( static| sealed| abstract| partial)* (class|struct|enum|interface) [A-Z][A-Za-z0-9_]*" "$f" || true; } \
       | awk '{print $NF}'
-  done | sort -u > "$STAGE/absent.txt"
+  done | sort -u > "$WORK/absent.txt"
 
   while IFS= read -r t; do
-    while IFS= read -r s; do
-      case "$s" in *.cs) ;; *) continue ;; esac
-      if strip_comments "$s" | grep -qE "\b$t\b"; then
-        echo "  !! \"$t\" is used by $s but its file is not in the YAPS package" >&2
-        bad=1
-        break
-      fi
-    done < "$shipped"
-  done < "$STAGE/absent.txt"
+    hit="$({ grep -rlE "\b$t\b" "$WORK/stripped" || true; } | head -1)"
+    if [ -n "$hit" ]; then
+      echo "  !! \"$t\" is used by ${hit#"$WORK/stripped/"} but its file is not in the YAPS package" >&2
+      bad=1
+    fi
+  done < "$WORK/absent.txt"
 
   if [ "$bad" -ne 0 ]; then
     echo "ABORT: the YAPS package would not compile on its own." >&2
     echo "       Add the missing file(s) to YAPS_CORE, or keep the reference out of what YAPS ships." >&2
     exit 1
   fi
-  echo "  yaps closure: every Core type the package uses travels with it"
+  echo "  yaps closure: every Editor type the package uses travels with it"
 }
 
 emit() { # $1=guid  $2=pathname  $3=meta  $4=asset(optional)
@@ -182,9 +232,9 @@ cd "$REPO"
 # Built once: the closure check reads the same list the packer walks, so the
 # two can never disagree about what ships.
 if [ "$MODE" = "yaps" ]; then
-  yaps_files > "$STAGE/yaps.list"
-  tr '\0' '\n' < "$STAGE/yaps.list" > "$STAGE/yaps.txt"
-  check_yaps_closure "$STAGE/yaps.txt"
+  yaps_files > "$WORK/yaps.list"
+  tr '\0' '\n' < "$WORK/yaps.list" > "$WORK/yaps.txt"
+  check_yaps_closure "$WORK/yaps.txt"
 fi
 while IFS= read -r -d '' path; do
   rel="${path#./}"
@@ -215,17 +265,19 @@ while IFS= read -r -d '' path; do
     emit "$g" "Assets/AvatarBridge/$rel" "$meta" "$src"
   fi
   count=$((count+1))
-done < <(if [ "$MODE" = "yaps" ]; then cat "$STAGE/yaps.list"; else
+done < <(if [ "$MODE" = "yaps" ]; then cat "$WORK/yaps.list"; else
   # Editor/Yaps and Runtime are the add-on, and the add-on is its own 18+
   # download. YapsMarks stays behind: the survey meets the materials it
-  # names on any avatar converted while the add-on was installed.
+  # names on any avatar converted while the add-on was installed. A dev
+  # build keeps them, because the harness it carries uses add-on types.
+  addon=(-o -path './Editor/Yaps' -o -path './Runtime')
+  if [ "$MODE" = "dev" ]; then addon=(); fi
   find . -mindepth 1 \
     \( -name '.*' \
        -o -path './docs' \
        -o -path './Dev' \
        -o -path './Regression' \
-       -o -path './Editor/Yaps' \
-       -o -path './Runtime' \
+       ${addon+"${addon[@]}"} \
        -o -name 'CLAUDE.md' -o -name 'AGENTS.md' -o -name 'Review.md' \) -prune -o -print0
 fi)
 
@@ -290,6 +342,7 @@ fi
 tar --force-local -czf "$OUT" -C "$STAGE" .
 echo "built $OUT"
 echo "  version : $VERSION"
-echo "  mode    : $MODE$([ "$MODE" = dev ] && echo '   *** DEV TOOLS INCLUDED. DO NOT RELEASE ***')"
+echo "  mode    : $MODE${TAG:+ test $TAG}$([ "$MODE" = dev ] && echo '   *** DEV TOOLS INCLUDED. DO NOT RELEASE ***')"
+echo "  commit  : $COMMIT${DIRTY_TREE:+ plus uncommitted changes}"
 echo "  assets  : $count (+1 root folder)"
 echo "  bytes   : $(stat -c%s "$OUT")"

@@ -2,6 +2,13 @@
 // grabs it. The protocol itself lives in yaps_atlas.cginc, which is where the
 // shaders read it from.
 //
+// Writing costs a handful of tiny draws per socket and a grab is a full
+// screen copy per camera, mirrors included. Still unproven in ChilloutVR:
+// what that costs in a crowded instance, how it behaves in mirrors and in
+// VR, and whether a viewer with custom shaders blocked sees anything at all.
+// It also paints: the payload is colour, so an occupied cell puts a few
+// pixels on screen.
+//
 // No VRChat types here on purpose, so the standalone toolkit can call it.
 using System.Collections.Generic;
 using System.IO;
@@ -14,18 +21,6 @@ namespace AvatarBridge
 {
     public static class YapsAtlas
     {
-        // ON. It was off while nothing read the atlas, because writing costs a
-        // handful of tiny draws per socket and a grab is a full screen copy per
-        // camera with mirrors getting their own, so publishing to a screen
-        // nobody reads charges the whole room for nothing. The resolver reads
-        // it now, on both builders.
-        //
-        // Still unproven in ChilloutVR: what it costs in a crowded instance,
-        // how it behaves in mirrors and in VR, and whether a viewer with custom
-        // shaders blocked sees anything at all. It also paints: the payload is
-        // colour, so an occupied cell puts a few pixels on screen.
-        public const bool Enabled = true;
-
         // Must match YAPS_ATLAS_LEVELS in yaps_atlas.cginc. Only the mesh
         // needs it here, and only to know how many quads to make.
         const int Levels = 4;
@@ -91,13 +86,6 @@ namespace AvatarBridge
         }
 
         public const string GrabName = "YAPS Atlas Grab";
-
-        // The clear, the grab and every socket writer, told apart by shader
-        // rather than by name or by where they sit, because a report that
-        // offers the user something to DO about an object has to skip these.
-        // A prop chip or an atlasing suggestion on this tool's own plumbing is
-        // advice nobody can act on, and reads as a bug.
-        public static bool IsPlumbing(Material m) => YapsMarks.IsAtlasMaterial(m);
 
         // The clear, without which an empty cell reads as the opaque screen
         // and every cell looks occupied. One per room is enough and a second
@@ -185,7 +173,7 @@ namespace AvatarBridge
             mesh.SetUVs(0, corners);
             mesh.SetTriangles(tris, 0);
             mesh.bounds = new Bounds(Vector3.zero, Vector3.one * BoundsSize);
-            return Save(mesh, path, have != null);
+            return Save(mesh, path, have);
         }
 
         // One unit quad. The clear shader scales it to the atlas rect in
@@ -210,7 +198,7 @@ namespace AvatarBridge
             });
             mesh.triangles = new[] { 0, 2, 1, 1, 2, 3 };
             mesh.bounds = new Bounds(Vector3.zero, Vector3.one * BoundsSize);
-            return Save(mesh, path, have != null);
+            return Save(mesh, path, have);
         }
 
         // One degenerate triangle. The grab pass writes no colour and no depth,
@@ -232,16 +220,23 @@ namespace AvatarBridge
             mesh.triangles = new[] { 0, 1, 2 };
             // Last: assigning vertices recomputes bounds.
             mesh.bounds = new Bounds(Vector3.zero, Vector3.one * BoundsSize);
-            return Save(mesh, path, have != null);
+            return Save(mesh, path, have);
         }
 
-        static Mesh Save(Mesh mesh, string path, bool replacing)
+        // An outdated mesh is rewritten in place, never deleted and created
+        // again: that destroys the object and the file's identity, and every
+        // writer, clear and grab on an avatar converted earlier pointed at it.
+        static Mesh Save(Mesh mesh, string path, Mesh have)
         {
-            Directory.CreateDirectory(Folder);
-            if (replacing)
+            if (have != null)
             {
-                AssetDatabase.DeleteAsset(path);
+                EditorUtility.CopySerialized(mesh, have);
+                Object.DestroyImmediate(mesh);
+                EditorUtility.SetDirty(have);
+                AssetDatabase.SaveAssetIfDirty(have);
+                return have;
             }
+            Directory.CreateDirectory(Folder);
             AssetDatabase.CreateAsset(mesh, path);
             return mesh;
         }

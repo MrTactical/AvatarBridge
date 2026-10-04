@@ -17,6 +17,10 @@
 #   Dev/Corpus/run-corpus.sh --label 392     name the log
 #   Dev/Corpus/run-corpus.sh --advisor       each avatar converted the way Apply all
 #                                            would, into its own digest folder
+#   Dev/Corpus/run-corpus.sh --allow-stale   run even though the deploy differs from the repo
+#   Dev/Corpus/run-corpus.sh --subset FILE   only the scenes FILE lists, one Assets/ path per line
+#   Dev/Corpus/run-corpus.sh --quick         the [quickset] from Regression/corpus.cfg
+#   Dev/Corpus/run-corpus.sh --dynbone       the DynamicBone fallback solver, into its own folder
 #
 # AVATARBRIDGE_YAPS=1 is what a user gets and what Regression/Yaps
 # compares against; unset measures convertYapsSystems false, which lands
@@ -47,31 +51,86 @@ CORES_TO_LEAVE="${env_cores:-${AVATARBRIDGE_CORES_TO_LEAVE:-4}}"
 
 yaps=1
 advisor=0
+allow_stale=0
+dynbone=0
+subset=""
+scope=all
 label=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --yaps-off) yaps=0 ;;
         --advisor) advisor=1 ;;
+        --allow-stale) allow_stale=1 ;;
+        --dynbone) dynbone=1 ;;
+        --quick) scope=quick ;;
+        --subset) shift; subset="${1:-}"; scope=subset ;;
         --label) shift; label="${1:-}" ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
     shift
 done
 
+# The advisor picks the physics target itself, and the harness files an
+# advisor run under Advisor/ whatever AVATARBRIDGE_PHYSICS says.
+if [ "$advisor" = "1" ] && [ "$dynbone" = "1" ]; then
+    echo "--dynbone does not combine with --advisor: the advisor chooses the solver" >&2
+    exit 2
+fi
+if [ "$scope" = "subset" ] && [ ! -f "$subset" ]; then
+    echo "--subset needs a file of scene paths; no file at '$subset'" >&2
+    exit 2
+fi
+
 [ -n "$label" ] || label=$(date +%Y%m%d-%H%M)
 suffix=$([ "$yaps" = "1" ] && echo "yaps-on" || echo "yaps-off")
 [ "$advisor" = "1" ] && suffix="$suffix-advisor"
+[ "$dynbone" = "1" ] && suffix="$suffix-dynbone"
+[ "$scope" != "all" ] && suffix="$suffix-$scope"
 log="$REPO/Regression/corpus-run-$label-$suffix.log"
 
 [ -x "$UNITY" ] || { echo "no Unity at $UNITY" >&2; exit 1; }
 [ -d "$PROJECT" ] || { echo "no project at $PROJECT" >&2; exit 1; }
 
+# Batch Unity cannot open a project the GUI has open: it dies in
+# HandleProjectAlreadyOpenInAnotherInstance, which reads as a crash and
+# exits 1 like a changed digest. An open editor holds Temp/UnityLockfile,
+# so an exclusive open fails; one a crash left behind opens fine and is no
+# obstacle. Exit 3 is the only refusal, so a missing powershell never blocks.
+lock="$PROJECT/Temp/UnityLockfile"
+if [ -f "$lock" ]; then
+    powershell.exe -NoProfile -Command "
+      try { [IO.File]::Open('$(cygpath -w "$lock" 2>/dev/null || echo "$lock")', 'Open', 'ReadWrite', 'None').Close() }
+      catch [IO.IOException] { exit 3 }" >/dev/null 2>&1
+    if [ $? -eq 3 ]; then
+        echo "the project is open in another Unity ($lock is held). Close it first." >&2
+        exit 1
+    fi
+fi
+
 # The deployed copy, not the repo: the corpus tests what was installed.
 # A run against a stale deploy measures yesterday's code and looks clean.
-deployed="$PROJECT/Assets/AvatarBridge/Editor/Yaps/YapsBaker.cs"
-if [ -f "$deployed" ] && ! cmp -s "$REPO/Editor/Yaps/YapsBaker.cs" "$deployed"; then
-    echo "WARNING: the deployed toolkit differs from the repo. Deploy before running," >&2
-    echo "         or this measures whatever is installed over there." >&2
+# Every shipped folder deploy.sh copies, not one file: a fix in Editor/Core
+# alone passed a one-file check. Repo-side only, since deploy copies rather
+# than mirrors and the deploy legitimately holds more (Editor/DevTools).
+dest="$PROJECT/Assets/AvatarBridge"
+stale=$(for d in AvatarScaler Editor FaceTracking Presets Runtime; do
+    [ -d "$REPO/$d" ] || continue
+    if [ -d "$dest/$d" ]; then
+        # diff single-quotes a path holding a space, so match both forms.
+        diff -rq -x '*.meta' "$REPO/$d" "$dest/$d" 2>&1 | grep -vF -e "Only in $dest/" -e "Only in '$dest/"
+    else
+        echo "missing: $d"
+    fi
+done)
+if [ -n "$stale" ]; then
+    echo "the deployed toolkit differs from the repo:" >&2
+    echo "$stale" | sed 's/^/  /' >&2
+    if [ "$allow_stale" = "1" ]; then
+        echo "WARNING: running anyway (--allow-stale); this measures whatever is installed there." >&2
+    else
+        echo "Deploy first (Dev/Build/deploy.sh), or pass --allow-stale to measure the deploy as it is." >&2
+        exit 1
+    fi
 fi
 
 export AVATARBRIDGE_REPO="$(cygpath -w "$REPO" 2>/dev/null || echo "$REPO")"
@@ -79,32 +138,60 @@ if [ "$yaps" = "1" ]; then export AVATARBRIDGE_YAPS=1; else unset AVATARBRIDGE_Y
 # Unset unless asked for: a value left in the environment would otherwise
 # turn a normal run into the advisor profile and compare it against nothing.
 if [ "$advisor" = "1" ]; then export AVATARBRIDGE_PROFILE=advisor; else unset AVATARBRIDGE_PROFILE; fi
+# Same trap: a leftover value files the run under DynamicBone/ while the
+# log still says it was the default.
+if [ "$dynbone" = "1" ]; then export AVATARBRIDGE_PHYSICS=DynamicBone; else unset AVATARBRIDGE_PHYSICS; fi
+case "$scope" in
+    subset)
+        # Unity resolves the path itself, so hand it an absolute Windows one.
+        export AVATARBRIDGE_SUBSET="$(cygpath -aw "$subset" 2>/dev/null || echo "$subset")"
+        method=RunSubsetBatch ;;
+    quick) method=RunQuickBatch ;;
+    *) method=RunAllBatch ;;
+esac
 
 echo "corpus: $suffix -> $log"
 "$UNITY" -batchmode -quit \
     -projectPath "$PROJECT" \
-    -executeMethod AvatarBridge.Regression.RegressionRunner.RunAllBatch \
+    -executeMethod "AvatarBridge.Regression.RegressionRunner.$method" \
     -logFile "$log" &
 unity_pid=$!
 
-# Throttle as soon as it exists. Unity spawns helpers, so every one gets
-# it, and the loop retries because the process is not up immediately.
+# Throttle the process just launched, by its Windows pid. Matching every
+# process named Unity also caught an editor open on another project, left it
+# slowed after the run, and could stop before the batch Unity was even up.
+# Helpers it spawns afterwards inherit both settings.
+winpid=$(cat "/proc/$unity_pid/winpid" 2>/dev/null || echo 0)
 powershell.exe -NoProfile -Command "
+  if ($winpid -lt 1) { Write-Output 'NOT throttled: no Windows pid for the launched Unity'; exit }
   \$cores = (Get-CimInstance Win32_ComputerSystem).NumberOfLogicalProcessors
+  \$use = \$cores - $CORES_TO_LEAVE
+  if (\$use -lt 1) { Write-Output \"NOT throttled: leaving $CORES_TO_LEAVE cores of \$cores leaves none to run on\"; exit }
   \$mask = [int64]0
-  for (\$i = 0; \$i -lt (\$cores - $CORES_TO_LEAVE); \$i++) { \$mask = \$mask -bor ([int64]1 -shl \$i) }
+  for (\$i = 0; \$i -lt \$use; \$i++) { \$mask = \$mask -bor ([int64]1 -shl \$i) }
+  \$why = 'process $winpid never appeared'
   for (\$try = 0; \$try -lt 30; \$try++) {
-    \$found = \$false
-    foreach (\$p in Get-Process Unity -ErrorAction SilentlyContinue) {
-      try { \$p.PriorityClass = 'BelowNormal'; \$p.ProcessorAffinity = [IntPtr]\$mask; \$found = \$true } catch { }
-    }
-    if (\$found) { Write-Output \"throttled: BelowNormal, \$(\$cores - $CORES_TO_LEAVE) of \$cores cores\"; break }
+    try {
+      \$p = Get-Process -Id $winpid -ErrorAction Stop
+      \$p.PriorityClass = 'BelowNormal'; \$p.ProcessorAffinity = [IntPtr]\$mask
+      Write-Output \"throttled: BelowNormal, \$use of \$cores cores\"; exit
+    } catch { \$why = \$_.Exception.Message }
     Start-Sleep -Seconds 2
   }
+  Write-Output \"NOT throttled: \$why\"
 " 2>/dev/null
 
 wait $unity_pid
 code=$?
-echo "corpus finished, exit $code (0 = no digest changed)"
+# Unity exits 1 for its own failures too, so the code alone cannot say a
+# digest changed. The harness logs its summary as "[Regression/<scope>]";
+# without that line the run never got as far as comparing.
+if [ "$code" = "0" ]; then
+    echo "corpus finished, exit 0: no digest changed"
+elif grep -q '^\[Regression/' "$log" 2>/dev/null; then
+    echo "corpus finished, exit $code: digests changed or vanished, or nothing ran; the summary is in the log"
+else
+    echo "corpus FAILED, exit $code: Unity stopped before the run reported. Not a digest change; read the log."
+fi
 echo "log: $log"
 exit $code

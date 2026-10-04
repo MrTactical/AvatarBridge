@@ -16,7 +16,8 @@
 #
 # Copies rather than mirrors. Deleting what is not in the repo would take
 # the corpus harness out of the corpus project, which lives under
-# Editor/DevTools and is put there by the package build, not by this.
+# Editor/DevTools and is put there by the package build, not by this. What
+# the repo no longer has is listed as ORPHAN instead.
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SHIPPED=(AvatarScaler Editor FaceTracking Presets Runtime)
@@ -61,7 +62,12 @@ for proj in "${projects[@]}"; do
     if [ -d "$dest/Editor/DevTools" ]; then
         stale=0
         while IFS= read -r have; do
-            src=$(find "$REPO/Dev" -name "$(basename "$have")" -type f -print -quit)
+            # The harness folders and their subfolders, never all of Dev: that
+            # let a gitignored spike sharing a name replace the harness copy.
+            # check-projects.sh resolves the same way. Last match wins, as in
+            # the package build. A missing folder fails find, and pipefail
+            # would end the deploy on it.
+            src=$(find "$REPO"/Dev/{Corpus,Tests,Probes,Scenes,Tester} -name "$(basename "$have")" -type f 2>/dev/null | tail -n 1) || true
             [ -n "$src" ] || continue
             cmp -s "$src" "$have" || { cp "$src" "$have"; stale=$((stale + 1)); }
         done < <(find "$dest/Editor/DevTools" -maxdepth 1 -name '*.cs')
@@ -70,6 +76,14 @@ for proj in "${projects[@]}"; do
     for f in "${FILES[@]}"; do
         [ -f "$REPO/$f" ] && cp "$REPO/$f" "$dest/"
         [ -f "$REPO/$f.meta" ] && cp "$REPO/$f.meta" "$dest/"
+    done
+    # Copying never deletes, so a file the repo renamed or removed keeps
+    # compiling here. Name it; deleting stays a decision made by hand.
+    for d in "${SHIPPED[@]}"; do
+        [ -d "$dest/$d" ] || continue
+        while IFS= read -r f; do
+            [ -e "$REPO/${f#"$dest"/}" ] || echo "  ORPHAN (not in repo): ${f#"$dest"/}"
+        done < <(find "$dest/$d" -path "$dest/Editor/DevTools" -prune -o -type f ! -name '*.meta' -print)
     done
     now=$(sed -n 's/.*const string Version = "\(.*\)".*/\1/p' "$dest/Editor/BridgeDefines.cs")
     echo "  ${was:-none} -> $now   $proj"

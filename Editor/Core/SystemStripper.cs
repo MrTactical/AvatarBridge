@@ -120,12 +120,19 @@ namespace AvatarBridge
                 && GogoParamPrefixes.Any(g => p.name.StartsWith(g, StringComparison.OrdinalIgnoreCase)));
         }
 
-        static IEnumerable<string> StrippedParameterPrefixes(BridgeContext ctx)
+        // The strip rule for these settings: the parameter prefixes, and the hints
+        // RemoveLayers matches layer names against. Run, the menu converter's
+        // WillBeStripped and the test hook all read this one, because three
+        // hand-built copies had already drifted: the menu kept building controls
+        // for the haptics parameters Run then removed.
+        static (List<string> paramPrefixes, List<string> layerHints) StripRule(BridgeContext ctx)
         {
             var prefixes = new List<string>();
+            var hints = new List<string>();
             if (ctx.Settings.stripGogoLoco)
             {
                 prefixes.AddRange(GogoParamPrefixes);
+                hints.AddRange(GogoNameHints);
                 if (AvatarUsesGogo(ctx))
                 {
                     prefixes.Add("VRCEmote");
@@ -135,15 +142,30 @@ namespace AvatarBridge
             {
                 // Converting keeps the depth parameters and makes them local,
                 // free but wearer-only: CVR runs a trigger on that machine alone.
+                // The layers that play a socket's reactions stay, since their
+                // parameters now do.
                 if (KeepingPenetration(ctx))
                 {
                     prefixes.AddRange(OtherSpsParamPrefixes);
+                    hints.AddRange(OtherSpsLayerHints);
+                    if (!ctx.Settings.keepHapticsContacts)
+                    {
+                        // Stripped, not localised: a local contact still takes
+                        // its place in the instance's pair budget, and the
+                        // touch and frot stacks are most of what an avatar
+                        // spends. Their triggers go with their parameters,
+                        // through RemoveOrphanedCvrComponents.
+                        prefixes.AddRange(HapticsParamPrefixes);
+                    }
                 }
                 else
                 {
                     prefixes.AddRange(AllSpsParamPrefixes);
+                    hints.AddRange(AllSpsLayerHints);
                 }
             }
+            // User-supplied keywords (comma separated) act as both parameter prefixes and
+            // layer-name hints, for add-ons this list doesn't know about yet.
             if (!string.IsNullOrWhiteSpace(ctx.Settings.extraStripKeywords))
             {
                 foreach (var raw in ctx.Settings.extraStripKeywords.Split(','))
@@ -152,15 +174,19 @@ namespace AvatarBridge
                     if (keyword.Length >= 2)
                     {
                         prefixes.Add(keyword);
+                        hints.Add(keyword.ToLowerInvariant());
                     }
                 }
             }
-            return prefixes;
+            return (prefixes, hints);
         }
 
-        public static bool WillBeStripped(BridgeContext ctx, string name) =>
+        static bool MatchesAny(List<string> prefixes, string name) =>
             !string.IsNullOrEmpty(name) &&
-            StrippedParameterPrefixes(ctx).Any(p => name.StartsWith(p, StringComparison.OrdinalIgnoreCase));
+            prefixes.Any(p => name.StartsWith(p, StringComparison.OrdinalIgnoreCase));
+
+        public static bool WillBeStripped(BridgeContext ctx, string name) =>
+            MatchesAny(StripRule(ctx).paramPrefixes, name);
 
         public static void Run(BridgeContext ctx, AnimatorController master, List<AnimatorControllerLayer> vrcLayers)
         {
@@ -181,75 +207,40 @@ namespace AvatarBridge
             // when the user has turned every other stripper off.
             StripParameterCompressor(ctx, master, vrcLayers);
 
-            var paramPrefixes = new List<string>(StrippedParameterPrefixes(ctx));
-            var layerHints = new List<string>();
-            if (ctx.Settings.stripGogoLoco)
+            var (paramPrefixes, layerHints) = StripRule(ctx);
+            if (KeepingPenetration(ctx))
             {
-                layerHints.AddRange(GogoNameHints);
-            }
-            if (ctx.Settings.stripSpsSystems)
-            {
-                if (KeepingPenetration(ctx))
+                if (!ctx.Settings.keepHapticsContacts)
                 {
-                    // The layers that play a socket's reactions stay, since
-                    // their parameters now do.
-                    layerHints.AddRange(OtherSpsLayerHints);
-                    if (!ctx.Settings.keepHapticsContacts)
-                    {
-                        // Stripped, not localised: a local contact still takes
-                        // its place in the instance's pair budget, and the
-                        // touch and frot stacks are most of what an avatar
-                        // spends. Their triggers go with their parameters,
-                        // through RemoveOrphanedCvrComponents below.
-                        paramPrefixes.AddRange(HapticsParamPrefixes);
-                        ReportHapticsRemoved(ctx);
-                    }
-                    // OGB's haptics stay synced only on request: an OSC toy
-                    // app reads them by their VRChat name, and a local
-                    // parameter's "#" hides them. Their sync cost is the
-                    // user's, and the budget check names it.
-                    ctx.ForceLocalPrefixes.AddRange(ctx.Settings.syncHapticsForOsc
-                        ? YapsParamPrefixes.Where(p => p != "OGB")
-                        : YapsParamPrefixes);
-                    // The author's depth reactions: local and free, or
-                    // synced so the room sees them. Left synced, they fall
-                    // to the contact rule below and keep their names.
-                    if (!ctx.Settings.syncSocketDepthForOthers)
-                    {
-                        ctx.ForceLocalPatterns.AddRange(YapsContactParamPatterns);
-                    }
-                    else
-                    {
-                        ctx.Report.Warning(Category,
-                            "Socket depth reactions kept synced so other players see them",
-                            "As asked: 32 bits per socket, so everyone sees them. Over 3200, nothing syncs; the sync " +
-                            "budget entry says where this landed.");
-                    }
-                    if (ctx.Settings.syncHapticsForOsc)
-                    {
-                        ctx.Report.Warning(Category,
-                            "OGB haptics parameters kept synced for OSC toys",
-                            "As asked: 32 bits each, about nine per plug and socket. Over 3200, nothing syncs; the sync " +
-                            "budget entry says where this landed.");
-                    }
+                    ReportHapticsRemoved(ctx);
+                }
+                // OGB's haptics stay synced only on request: an OSC toy
+                // app reads them by their VRChat name, and a local
+                // parameter's "#" hides them. Their sync cost is the
+                // user's, and the budget check names it.
+                ctx.ForceLocalPrefixes.AddRange(ctx.Settings.syncHapticsForOsc
+                    ? YapsParamPrefixes.Where(p => p != "OGB")
+                    : YapsParamPrefixes);
+                // The author's depth reactions: local and free, or
+                // synced so the room sees them. Left synced, they fall
+                // to the contact rule below and keep their names.
+                if (!ctx.Settings.syncSocketDepthForOthers)
+                {
+                    ctx.ForceLocalPatterns.AddRange(YapsContactParamPatterns);
                 }
                 else
                 {
-                    layerHints.AddRange(AllSpsLayerHints);
+                    ctx.Report.Warning(Category,
+                        "Socket depth reactions kept synced so other players see them",
+                        "As asked: 32 bits per socket, so everyone sees them. Over 3200, nothing syncs; the sync " +
+                        "budget entry says where this landed.");
                 }
-            }
-            // User-supplied keywords (comma separated) act as both parameter prefixes and
-            // layer-name hints, for add-ons this list doesn't know about yet.
-            if (!string.IsNullOrWhiteSpace(ctx.Settings.extraStripKeywords))
-            {
-                foreach (var raw in ctx.Settings.extraStripKeywords.Split(','))
+                if (ctx.Settings.syncHapticsForOsc)
                 {
-                    string keyword = raw.Trim();
-                    if (keyword.Length >= 2)
-                    {
-                        paramPrefixes.Add(keyword);
-                        layerHints.Add(keyword.ToLowerInvariant());
-                    }
+                    ctx.Report.Warning(Category,
+                        "OGB haptics parameters kept synced for OSC toys",
+                        "As asked: 32 bits each, about nine per plug and socket. Over 3200, nothing syncs; the sync " +
+                        "budget entry says where this landed.");
                 }
             }
             if (paramPrefixes.Count == 0)
@@ -257,9 +248,7 @@ namespace AvatarBridge
                 return;
             }
 
-            bool IsStrippedParam(string name) =>
-                !string.IsNullOrEmpty(name) &&
-                paramPrefixes.Any(p => name.StartsWith(p, StringComparison.OrdinalIgnoreCase));
+            bool IsStrippedParam(string name) => MatchesAny(paramPrefixes, name);
 
             // VRCFury tags every generated layer with its component id ("[VF77] ...").
             // If a component's synced parameters are stripped, all its layers go too.
@@ -304,20 +293,9 @@ namespace AvatarBridge
         internal static void RemoveLayersForTest(BridgeContext ctx, AnimatorController master,
             List<AnimatorControllerLayer> vrcLayers)
         {
-            var paramPrefixes = new List<string>(StrippedParameterPrefixes(ctx));
-            var layerHints = new List<string>();
-            if (ctx.Settings.stripGogoLoco)
-            {
-                layerHints.AddRange(GogoNameHints);
-            }
-            if (ctx.Settings.stripSpsSystems)
-            {
-                layerHints.AddRange(AllSpsLayerHints);
-            }
-            bool IsStrippedParam(string name) =>
-                !string.IsNullOrEmpty(name) &&
-                paramPrefixes.Any(p => name.StartsWith(p, StringComparison.OrdinalIgnoreCase));
-            RemoveLayers(ctx, master, vrcLayers, layerHints, new HashSet<string>(), IsStrippedParam);
+            var (paramPrefixes, layerHints) = StripRule(ctx);
+            RemoveLayers(ctx, master, vrcLayers, layerHints, new HashSet<string>(),
+                name => MatchesAny(paramPrefixes, name));
         }
 
         static bool NamesGogoParameterFamily(string lowerName)
@@ -345,6 +323,9 @@ namespace AvatarBridge
                                strippedFuryIds.Any(id => layer.name.Contains($"[VF{id}]"));
 
                 var refs = CollectParameterRefs(layer.stateMachine);
+                // The merge's own driver scratch belongs to no system, so it must not weigh in the
+                // ratio. Only here: the dead-parameter prune still has to see it referenced.
+                refs.Remove(AnimatorMerger.DriverScratch);
                 int strippedRefs = refs.Count(isStripped);
                 bool referenceHit = strippedRefs > 0 && strippedRefs >= refs.Count * 0.6f;
 
@@ -809,11 +790,15 @@ namespace AvatarBridge
             // not trustworthy on a compressed avatar; de-syncing is
             // what the compressor does. Restoring sync costs 32 bits;
             // the other mistake costs the feature. VF-prefixed names
-            // are VRCFury's own working values and stay excluded.
+            // are VRCFury's own working values and stay excluded. So are
+            // the built-ins: the compressor never touched those, and
+            // preserving one kept a frozen local synced and alive past
+            // the prune after its layers were stripped.
             var furyOwn = new System.Text.RegularExpressions.Regex(@"^VF\d+_");
             foreach (var p in master.parameters)
             {
-                if (!string.IsNullOrEmpty(p.name) && !furyOwn.IsMatch(p.name) && !IsCompressor(p.name))
+                if (!string.IsNullOrEmpty(p.name) && !furyOwn.IsMatch(p.name) && !IsCompressor(p.name)
+                    && !CvrParameterNames.NeverFed(p.name) && !CvrParameterNames.IsGameDriven(p.name))
                 {
                     ctx.PreserveParameters.Add(p.name);
                 }
@@ -834,15 +819,19 @@ namespace AvatarBridge
         //
         // Fury's components by type name, and the contact tags every system
         // uses, which are the same prefixes the strip already works from.
-        internal static void NotePenetrationAddOn(BridgeContext ctx)
+        //
+        // Looked for in the first pass and reported here. By now Fury's bake
+        // has taken its components and the strip has deleted the baked trees
+        // that carried the contacts, so a look this late finds nothing.
+        static BridgeContext penetrationFoundOn;
+
+        static bool HadPenetration(BridgeContext ctx)
         {
-            var source = ctx.SourceDescriptor != null ? ctx.SourceDescriptor.gameObject : ctx.Target;
-            if (source == null || !ctx.Settings.stripSpsSystems)
+            if (ctx.Target == null || !ctx.Settings.stripSpsSystems)
             {
-                return;
+                return false;
             }
-            bool found = false;
-            foreach (var component in source.GetComponentsInChildren<Component>(true))
+            foreach (var component in ctx.Target.GetComponentsInChildren<Component>(true))
             {
                 if (component == null)
                 {
@@ -850,17 +839,22 @@ namespace AvatarBridge
                 }
                 if (component.GetType().Name.StartsWith("VRCFuryHaptic", StringComparison.Ordinal))
                 {
-                    found = true;
-                    break;
+                    return true;
                 }
                 var tags = component.GetType().GetField("collisionTags")?.GetValue(component) as IEnumerable<string>;
                 if (tags != null && tags.Any(t => !string.IsNullOrEmpty(t)
                         && YapsPointerTypePrefixes.Any(prefix => t.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))))
                 {
-                    found = true;
-                    break;
+                    return true;
                 }
             }
+            return false;
+        }
+
+        internal static void NotePenetrationAddOn(BridgeContext ctx)
+        {
+            bool found = penetrationFoundOn == ctx;
+            penetrationFoundOn = null;
             if (!found)
             {
                 return;
@@ -873,6 +867,9 @@ namespace AvatarBridge
 
         internal static void RemoveStrippedObjects(BridgeContext ctx)
         {
+#if !AVATARBRIDGE_YAPS
+            penetrationFoundOn = HadPenetration(ctx) ? ctx : null;
+#endif
             if (ctx.Settings.stripSpsSystems)
             {
                 RemoveObjects(ctx);
@@ -887,6 +884,10 @@ namespace AvatarBridge
                 return;
             }
 
+            // The hints match anywhere in a name, so a mesh called
+            // "Face_VRCFT" matched too. A rig draws nothing and skins
+            // nothing; whatever holds a renderer or a bone stays.
+            var bones = SkinBones(ctx.Target);
             var doomed = new List<Transform>();
             foreach (var transform in ctx.Target.GetComponentsInChildren<Transform>(true))
             {
@@ -895,7 +896,9 @@ namespace AvatarBridge
                     continue;
                 }
                 if (FaceTrackingObjectHints.Any(hint =>
-                        transform.name.IndexOf(hint, StringComparison.OrdinalIgnoreCase) >= 0))
+                        transform.name.IndexOf(hint, StringComparison.OrdinalIgnoreCase) >= 0)
+                    && transform.GetComponentInChildren<Renderer>(true) == null
+                    && !transform.GetComponentsInChildren<Transform>(true).Any(bones.Contains))
                 {
                     doomed.Add(transform);
                 }
@@ -913,7 +916,7 @@ namespace AvatarBridge
                 {
                     continue; // died with a parent
                 }
-                UnityEngine.Object.DestroyImmediate(transform.gameObject);
+                Delete(ctx, transform.gameObject);
                 removed++;
             }
             ctx.Report.Converted(Category, $"Removed the avatar's VRChat face-tracking rig: {removed} object(s)",
@@ -945,7 +948,7 @@ namespace AvatarBridge
             {
                 if (transform != null)
                 {
-                    UnityEngine.Object.DestroyImmediate(transform.gameObject);
+                    Delete(ctx, transform.gameObject);
                     removed++;
                 }
             }
@@ -997,12 +1000,13 @@ namespace AvatarBridge
                 pointerPrefixes = pointerPrefixes.Concat(HapticsPointerTypePrefixes).ToArray();
             }
             int removed = 0;
+            var bones = SkinBones(ctx.Target);
             foreach (var pointer in ctx.Target.GetComponentsInChildren<CVRPointer>(true))
             {
                 if (!string.IsNullOrEmpty(pointer.type) &&
                     pointerPrefixes.Any(p => pointer.type.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
                 {
-                    UnityEngine.Object.DestroyImmediate(pointer.gameObject);
+                    RemoveWithBareHost(ctx, pointer, bones);
                     removed++;
                 }
             }
@@ -1015,7 +1019,7 @@ namespace AvatarBridge
                     .ToList();
                 if (names.Count > 0 && names.All(isStripped))
                 {
-                    UnityEngine.Object.DestroyImmediate(trigger.gameObject);
+                    RemoveWithBareHost(ctx, trigger, bones);
                     removed++;
                 }
             }
@@ -1023,7 +1027,7 @@ namespace AvatarBridge
             {
                 if (exclusion.target == null)
                 {
-                    UnityEngine.Object.DestroyImmediate(exclusion.gameObject);
+                    RemoveWithBareHost(ctx, exclusion, bones);
                     removed++;
                 }
             }
@@ -1032,6 +1036,34 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category, $"Removed {removed} orphaned pointer/trigger/exclusion object(s)");
             }
         }
+
+        // The component, and its object only when nothing is left there but
+        // a collider. Destroying the object outright would take a bone, and
+        // everything under it, wherever the source authored one of these on
+        // a bone. The converter's own hosts are a childless object holding a
+        // trigger collider, so they still go whole.
+        static void RemoveWithBareHost(BridgeContext ctx, Component component, HashSet<Transform> bones)
+        {
+            var host = component.gameObject;
+            UnityEngine.Object.DestroyImmediate(component);
+            if (host.transform.childCount == 0 && !bones.Contains(host.transform)
+                && host.GetComponents<Component>().All(c => c is Transform || c is Collider))
+            {
+                Delete(ctx, host);
+            }
+        }
+
+        // Recorded, so the clip audits count its curves as gone with the
+        // system rather than lost, and the path repair leaves them dead.
+        static void Delete(BridgeContext ctx, GameObject doomed)
+        {
+            ctx.RemovedPaths.Add(BridgeContext.RelativePath(ctx.Target.transform, doomed.transform));
+            UnityEngine.Object.DestroyImmediate(doomed);
+        }
+
+        static HashSet<Transform> SkinBones(GameObject root) =>
+            new HashSet<Transform>(root.GetComponentsInChildren<SkinnedMeshRenderer>(true)
+                .SelectMany(r => r.bones.Concat(new[] { r.rootBone })).Where(b => b != null));
 
         // -------------------------------------------------------------------- menu ----
 

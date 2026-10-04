@@ -8,19 +8,43 @@ namespace AvatarBridge
     // they can be stripped (Native and DragonSkyRunner modes both replace the avatar's FT)
     // and never turned into menu toggles.
     //
-    // Matching is by namespace (`FT/...`, `OSCm/...`) plus a set of well-known control
-    // flags that don't carry a namespace. Note: DragonSkyRunner's own params use a bare
-    // `v2/...` prefix (no `FT/`), so this deliberately does NOT match `v2/`; the injected
-    // rig must survive.
+    // Matching is by namespace (`FT/...`, `OSCm/...`, a bare `v2/...` segment) plus the
+    // well-known names that carry none: control flags, the legacy eye parameters and the
+    // CVR-VRCFT gates. The bare `v2/` rigs are matched too: the strip runs before the
+    // CVR-VRCFT rig is injected, so there is nothing of ours yet for it to take.
     public static class FaceTrackingParameters
     {
-        static readonly HashSet<string> KnownControlFlags = new HashSet<string>
+        // The rig's master switches, which the tester shows as toggles.
+        static readonly HashSet<string> GateNames = new HashSet<string>
         {
-            "EyeTrackingActive", "LipTrackingActive", "FaceTrackingActive",
+            "EyeTracking", "FaceTracking", "EyeTrackingActive", "LipTrackingActive",
+            "FacialExpressionsDisabled"
+        };
+
+        // Settings, not expressions. Their resting value is the rig's own, often 1.
+        static readonly HashSet<string> ControlFlags = new HashSet<string>
+        {
+            "FaceTrackingActive",
             "VisemesEnable", "EyeDilationEnable", "EyeDilationTracking",
-            "FacialExpressionsDisabled", "FaceTrackingEmulation", "FaceTrackingLimits",
+            "FaceTrackingEmulation", "FaceTrackingLimits",
             "RemoteModeActive", "BinaryBlendshapes", "SmoothingAmount"
         };
+
+        static readonly HashSet<string> LegacyEyeNames = new HashSet<string>
+        {
+            "EyesY", "LeftEyeX", "RightEyeX",
+            "LeftEyeLidExpandedSqueeze", "RightEyeLidExpandedSqueeze", "EyesDilation"
+        };
+
+        public static bool IsGateName(string name)
+        {
+            return !string.IsNullOrEmpty(name) && GateNames.Contains(name.TrimStart('#'));
+        }
+
+        public static bool IsControlFlag(string name)
+        {
+            return !string.IsNullOrEmpty(name) && ControlFlags.Contains(name.TrimStart('#'));
+        }
 
         public static bool IsFaceTracking(string rawName)
         {
@@ -29,12 +53,14 @@ namespace AvatarBridge
                 return false;
             }
             string name = rawName.TrimStart('#');
-            if (KnownControlFlags.Contains(name))
+            if (ControlFlags.Contains(name) || LegacyEyeNames.Contains(name) || GateNames.Contains(name))
             {
                 return true;
             }
+            // v2/ as a whole segment only: "Jacketv2/On" is somebody's toggle.
             return name.StartsWith("OSCm/") || name.Contains("/OSCm/") ||
-                   name.StartsWith("FT/") || name.Contains("/FT/");
+                   name.StartsWith("FT/") || name.Contains("/FT/") ||
+                   name.StartsWith("v2/") || name.Contains("/v2/");
         }
     }
 }

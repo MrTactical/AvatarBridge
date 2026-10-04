@@ -366,6 +366,18 @@ namespace AvatarBridge
                     {
                         paths.Add(binding.path);
                     }
+#if VRC_SDK_VRCSDK3
+                    // A converted constraint's curves still name the VRC component here. They are
+                    // repointed onto m_TranslationOffsets later, and would write the offset back on
+                    // top of a relay. Rotation offsets are safe: they turn the target, never move it.
+                    else if (binding.type != null && binding.type.Name == "VRCParentConstraint" &&
+                             binding.propertyName.Contains(".ParentPositionOffset."))
+                    {
+                        string path = binding.path;
+                        ConstraintConverter.FollowConstraint(ctx, ref path, binding.type.Name);
+                        paths.Add(path);
+                    }
+#endif
                 }
             }
             return paths;

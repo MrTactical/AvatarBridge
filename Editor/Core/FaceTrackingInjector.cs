@@ -57,7 +57,7 @@ namespace AvatarBridge
             var source = FaceTrackingPackages.LoadController();
             if (source == null)
             {
-                ctx.Report.Error(Category, "CVR-VRCFT face tracking selected, but its animator wasn't found",
+                ctx.Report.Error(Category, "\"Unity Animator Blendtrees (DSR)\" face tracking selected, but its animator wasn't found",
                     $"The bundled \"{FaceTrackingPackages.DisplayName}\" assets are missing from the project.");
                 return;
             }
@@ -146,13 +146,17 @@ namespace AvatarBridge
                 ReportReconciliation(ctx, faceMesh.name, shapePlan, unmapped);
             }
 
+            // No gaze rig means nothing moves the eyes, so the toggle's ON clip must not switch
+            // CVR's own eye look off. Its blink switch stays: the eyelids are still tracked.
+            bool keepNativeEyeLook = !pathRemap.ContainsKey(PkgEyeL);
+
             int rewritten = 0;
-            if (pathRemap.Count > 0 || (shapePlan != null && shapePlan.Count > 0))
+            if (pathRemap.Count > 0 || (shapePlan != null && shapePlan.Count > 0) || keepNativeEyeLook)
             {
                 var cache = new Dictionary<AnimationClip, AnimationClip>();
                 foreach (var layer in injectedLayers)
                 {
-                    RewriteMachine(layer.stateMachine, pathRemap, shapePlan, faceMeshPath, cache);
+                    RewriteMachine(layer.stateMachine, pathRemap, shapePlan, faceMeshPath, keepNativeEyeLook, cache);
                 }
                 rewritten = cache.Count(kv => kv.Key != kv.Value);
             }
@@ -163,7 +167,7 @@ namespace AvatarBridge
             AddTrackingToggles(ctx);
 
             ctx.Report.Converted(Category,
-                $"Injected CVR-VRCFT face tracking: {injectedLayers.Count} layer(s), {addedParams} parameter(s)",
+                $"Injected \"Unity Animator Blendtrees (DSR)\" face tracking: {injectedLayers.Count} layer(s), {addedParams} parameter(s)",
                 $"DragonSkyRunner's rig, rebuilt onto this avatar ({rewritten} clip(s) rebound). Added \"Eye Tracking\" " +
                 "and \"Face Tracking\" menu toggles. Eye gaze magnitude may want tuning per the package readme; " +
                 "verify the eye RotationConstraints in play mode.");
@@ -272,10 +276,21 @@ namespace AvatarBridge
                 return;
             }
 
-            var leftEmpty = MakeEyeTarget("EyeTracking.L", head, leftEye);
-            var rightEmpty = MakeEyeTarget("EyeTracking.R", head, rightEye);
-            ConstrainEye(leftEye, leftEmpty, head);
-            ConstrainEye(rightEye, rightEmpty, head);
+            var driver = RotationDriver(leftEye) ?? RotationDriver(rightEye);
+            if (driver != null)
+            {
+                ctx.Report.Warning(Category, "Eyes already constrained: eye gaze left unwired",
+                    $"\"{driver.name}\" is turned by its own {driver.GetType().Name}, which a gaze constraint " +
+                    "would fight, and \"Eye Tracking\" could no longer release it. Face shapes still work; " +
+                    "CVR's native eye look stays on.");
+                return;
+            }
+
+            var frame = MakeGazeFrame(ctx, head);
+            var leftEmpty = MakeEyeTarget("EyeTracking.L", frame, leftEye);
+            var rightEmpty = MakeEyeTarget("EyeTracking.R", frame, rightEye);
+            ConstrainEye(leftEye, leftEmpty);
+            ConstrainEye(rightEye, rightEmpty);
 
             remap[PkgEyeL] = ctx.PathInTarget(leftEye);
             remap[PkgEyeR] = ctx.PathInTarget(rightEye);
@@ -320,22 +335,82 @@ namespace AvatarBridge
             return null;
         }
 
-        static Transform MakeEyeTarget(string name, Transform head, Transform eye)
+        // The gaze clips key the empties' local Euler angles in Unity's own frame ("Down" is +X,
+        // "Left" is -Y, neutral is zero), so the empties' parent must face the way the avatar
+        // does. The head bone's own axes only do on a rig that happens to be axis-aligned; on a
+        // rolled one the eyes turned the wrong way. Under the head, so gaze still follows it.
+        static Transform MakeGazeFrame(BridgeContext ctx, Transform head)
         {
-            var existing = head.Find(name);
+            var frame = MakeEyeTarget("EyeTracking.Frame", head, head);
+            frame.rotation = ctx.Target.transform.rotation;
+            // Earlier builds hung the empties straight off the head; a re-run in place adopts
+            // them rather than leaving dead twins beside the new ones.
+            foreach (var name in new[] { "EyeTracking.L", "EyeTracking.R" })
+            {
+                var old = head.Find(name);
+                if (old != null && frame.Find(name) == null)
+                {
+                    Undo.SetTransformParent(old, frame, "AvatarBridge FT eye rig");
+                }
+            }
+            return frame;
+        }
+
+        static Transform MakeEyeTarget(string name, Transform parent, Transform at)
+        {
+            var existing = parent.Find(name);
             var go = existing != null ? existing.gameObject : new GameObject(name);
             if (existing == null)
             {
                 Undo.RegisterCreatedObjectUndo(go, "AvatarBridge FT eye rig");
-                go.transform.SetParent(head, false);
+                go.transform.SetParent(parent, false);
             }
-            go.transform.position = eye.position;
-            go.transform.rotation = head.rotation; // head-forward frame
+            go.transform.position = at.position;
+            go.transform.localRotation = Quaternion.identity;   // what the neutral clip keys
             go.transform.localScale = Vector3.one;
             return go.transform;
         }
 
-        static void ConstrainEye(Transform eye, Transform target, Transform head)
+        // The avatar's own rotation driver on an eye, Unity or VRChat. Not wiped: the Constraints
+        // pass later merges a VRC constraint's sources into the same RotationConstraint at equal
+        // weight. A constraint left by an earlier run, driven only by the gaze empties, is ours.
+        static Component RotationDriver(Transform eye)
+        {
+            foreach (var c in eye.GetComponents<Component>())
+            {
+                if (c == null || c is PositionConstraint || c is ScaleConstraint)
+                {
+                    continue;
+                }
+                if (c is RotationConstraint rc && DrivenByGazeEmpties(rc))
+                {
+                    continue;
+                }
+                string name = c.GetType().Name;
+                if (c is IConstraint
+                    || (name.StartsWith("VRC", StringComparison.Ordinal) && name.EndsWith("Constraint", StringComparison.Ordinal)
+                        && name != "VRCPositionConstraint" && name != "VRCScaleConstraint"))
+                {
+                    return c;
+                }
+            }
+            return null;
+        }
+
+        static bool DrivenByGazeEmpties(RotationConstraint rc)
+        {
+            for (int i = 0; i < rc.sourceCount; i++)
+            {
+                var source = rc.GetSource(i).sourceTransform;
+                if (source != null && source.name != "EyeTracking.L" && source.name != "EyeTracking.R")
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        static void ConstrainEye(Transform eye, Transform target)
         {
             var rc = eye.GetComponent<RotationConstraint>();
             if (rc == null)
@@ -349,69 +424,31 @@ namespace AvatarBridge
             rc.AddSource(new ConstraintSource { sourceTransform = target, weight = 1f });
             rc.rotationAxis = Axis.X | Axis.Y | Axis.Z;
             rc.weight = 1f;
-            // Source is head-aligned; the offset that keeps the eye at rest is its rotation
-            // relative to the head (so eye.world = source.world * offset == eye rest world).
-            var relToHead = Quaternion.Inverse(head.rotation) * eye.rotation;
-            rc.rotationOffset = relToHead.eulerAngles;
+            // The offset that keeps the eye at rest while the source sits at its neutral pose
+            // (eye.world = source.world * offset == eye rest world).
+            var relToSource = Quaternion.Inverse(target.rotation) * eye.rotation;
+            rc.rotationOffset = relToSource.eulerAngles;
             rc.rotationAtRest = eye.localEulerAngles;
             rc.locked = true;
             rc.constraintActive = true;
             EditorUtility.SetDirty(rc);
         }
 
+        // The native path's resolver, so both modes agree on the face. The descriptor's mesh is the
+        // VISEME mesh, and wins only when it carries the tracking shapes itself: taken blindly,
+        // an avatar with visemes on one mesh and tracking shapes on another lost every shape.
         static SkinnedMeshRenderer ResolveFaceMesh(BridgeContext ctx)
         {
-            if (ctx.CvrAvatar != null && ctx.CvrAvatar.bodyMesh != null)
-            {
-                return ctx.CvrAvatar.bodyMesh;
-            }
-            var meshes = ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true);
-            foreach (var smr in meshes)
-            {
-                if (string.Equals(smr.name, "Body", StringComparison.OrdinalIgnoreCase))
-                {
-                    return smr;
-                }
-            }
-            SkinnedMeshRenderer best = null;
-            int bestScore = 0;
-            foreach (var smr in meshes)
-            {
-                var m = smr.sharedMesh;
-                if (m == null || m.blendShapeCount == 0 || IsDebugMesh(ctx, smr))
-                {
-                    continue;
-                }
-                int score = 0;
-                for (int i = 0; i < m.blendShapeCount; i++)
-                {
-                    string s = m.GetBlendShapeName(i).ToLowerInvariant();
-                    if (s.Contains("jawopen") || s.Contains("eyelookout") || s.Contains("mouthclosed"))
-                    {
-                        score++;
-                    }
-                }
-                if (score > bestScore)
-                {
-                    bestScore = score;
-                    best = smr;
-                }
-            }
-            return bestScore > 0 ? best : null;
-        }
-
-        static bool IsDebugMesh(BridgeContext ctx, SkinnedMeshRenderer smr)
-        {
-            string name = smr.name.ToLowerInvariant();
-            string path = ctx.PathInTarget(smr.transform).ToLowerInvariant();
-            return name.Contains("debug") || path.Contains("debug")
-                   || path.Contains("vf_ue") || path.Contains("ft_debug") || path.Contains("worldobject");
+            var named = ctx.CvrAvatar != null ? ctx.CvrAvatar.bodyMesh : null;
+            // Below the detection bar too: the best scorer is still the likeliest face.
+            FaceTrackingConverter.DetectShapes(ctx.Target, named, out var mesh, out _, out _);
+            return mesh != null ? mesh : named;
         }
 
         // ------------------------------------------------------ path + shape rewrite ----
 
         static void RewriteMachine(AnimatorStateMachine machine, Dictionary<string, string> pathRemap,
-            Dictionary<string, ShapeAction> shapePlan, string faceMeshPath,
+            Dictionary<string, ShapeAction> shapePlan, string faceMeshPath, bool keepNativeEyeLook,
             Dictionary<AnimationClip, AnimationClip> cache)
         {
             if (machine == null)
@@ -421,17 +458,17 @@ namespace AvatarBridge
             var states = machine.states;
             for (int i = 0; i < states.Length; i++)
             {
-                states[i].state.motion = RewriteMotion(states[i].state.motion, pathRemap, shapePlan, faceMeshPath, cache);
+                states[i].state.motion = RewriteMotion(states[i].state.motion, pathRemap, shapePlan, faceMeshPath, keepNativeEyeLook, cache);
             }
             machine.states = states;
             foreach (var child in machine.stateMachines)
             {
-                RewriteMachine(child.stateMachine, pathRemap, shapePlan, faceMeshPath, cache);
+                RewriteMachine(child.stateMachine, pathRemap, shapePlan, faceMeshPath, keepNativeEyeLook, cache);
             }
         }
 
         static Motion RewriteMotion(Motion motion, Dictionary<string, string> pathRemap,
-            Dictionary<string, ShapeAction> shapePlan, string faceMeshPath,
+            Dictionary<string, ShapeAction> shapePlan, string faceMeshPath, bool keepNativeEyeLook,
             Dictionary<AnimationClip, AnimationClip> cache)
         {
             if (motion is BlendTree tree)
@@ -439,7 +476,7 @@ namespace AvatarBridge
                 var kids = tree.children;
                 for (int i = 0; i < kids.Length; i++)
                 {
-                    kids[i].motion = RewriteMotion(kids[i].motion, pathRemap, shapePlan, faceMeshPath, cache);
+                    kids[i].motion = RewriteMotion(kids[i].motion, pathRemap, shapePlan, faceMeshPath, keepNativeEyeLook, cache);
                 }
                 bool auto = tree.useAutomaticThresholds;
                 tree.useAutomaticThresholds = false;
@@ -449,7 +486,7 @@ namespace AvatarBridge
             }
             if (motion is AnimationClip clip)
             {
-                return RewriteClip(clip, pathRemap, shapePlan, faceMeshPath, cache);
+                return RewriteClip(clip, pathRemap, shapePlan, faceMeshPath, keepNativeEyeLook, cache);
             }
             return motion;
         }
@@ -457,7 +494,7 @@ namespace AvatarBridge
         const string ShapePrefix = "blendShape.";
 
         static AnimationClip RewriteClip(AnimationClip clip, Dictionary<string, string> pathRemap,
-            Dictionary<string, ShapeAction> shapePlan, string faceMeshPath,
+            Dictionary<string, ShapeAction> shapePlan, string faceMeshPath, bool keepNativeEyeLook,
             Dictionary<AnimationClip, AnimationClip> cache)
         {
             if (clip == null)
@@ -471,7 +508,8 @@ namespace AvatarBridge
 
             var floatBindings = AnimationUtility.GetCurveBindings(clip);
             var objBindings = AnimationUtility.GetObjectReferenceCurveBindings(clip);
-            bool needs = floatBindings.Any(b => NeedsRewrite(b, pathRemap, shapePlan))
+            bool IsEyeLook(EditorCurveBinding b) => keepNativeEyeLook && b.path == "" && b.propertyName == "useEyeMovement";
+            bool needs = floatBindings.Any(b => NeedsRewrite(b, pathRemap, shapePlan) || IsEyeLook(b))
                          || objBindings.Any(b => pathRemap.ContainsKey(b.path));
             if (!needs)
             {
@@ -502,6 +540,10 @@ namespace AvatarBridge
 
             foreach (var b in floatBindings)
             {
+                if (IsEyeLook(b))
+                {
+                    continue;   // cleared below with the rest, and never written back
+                }
                 var curve = AnimationUtility.GetEditorCurve(clone, b);
                 string newPath = pathRemap.TryGetValue(b.path, out var p) ? p : b.path;
 

@@ -12,8 +12,10 @@ namespace AvatarBridge
 {
     public static class SceneQuiet
     {
-        const string OnKey = "YAPS.SceneQuiet.On";
-        const string SavedKey = "YAPS.SceneQuiet.Saved";
+        // Per project: EditorPrefs are machine-wide, but the icon and gizmo
+        // states they record belong to one project.
+        static string OnKey => "YAPS.SceneQuiet.On:" + Application.dataPath;
+        static string SavedKey => "YAPS.SceneQuiet.Saved:" + Application.dataPath;
 
         public static bool IsQuiet => EditorPrefs.GetBool(OnKey, false);
 

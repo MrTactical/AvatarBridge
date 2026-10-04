@@ -1,5 +1,5 @@
 // YAPS, Yet Another Penetration System, for ChilloutVR.
-// Property block, injected into the patched shader's Properties{}.
+// The uniforms behind the properties the patcher adds to Properties{}.
 //
 // Inspired by VRCFury's SPS. No SPS code here.
 // See docs/YAPS-CLEAN-ROOM.md.
@@ -20,45 +20,29 @@ float _YAPS_VertexCount;
 float _YAPS_Enabled;       // master gate / apply fraction, 0..1
 float _YAPS_Length;        // plug length in its own local space
 float _YAPS_Overrun;       // may the tip travel past the socket
-// Always 1 now. The baker writes renderer units, so nothing to undo.
-// Kept because shipped materials still reference it.
-float _YAPS_BakeScale;   // the plug's length scale, from its bones; 1 at rest
-float _YAPS_BakeGirth;   // its radial scale, likewise
+// The plug's length and radial scale from its OWN bones, 1 as baked.
+// YapsCurveMirror animates both from the bones' scale curves, so a size
+// slider reaches the bake. Held at 1, a scaled plug squashes.
+float _YAPS_BakeScale;
+float _YAPS_BakeGirth;
 
 // Where the plug's own frame comes from.
 //   0  the renderer's transform, when the plug is its own object
 //   1  recovered from the vertex, required on a skinned mesh
 float _YAPS_FrameFromVertex;
 
-// --- the socket, written by the discrete channel ---------------------
-// A CVRMaterialDriver task writes these every frame from animator
-// parameters, so every camera and every viewer agrees.
-// The editor harness writes the same four.
-float4 _YAPS_SocketPos;    // see _YAPS_ChannelSpace
-float4 _YAPS_SocketForward; // xyz world direction, w unused
-float4 _YAPS_SocketUp;     // xyz world direction,  w unused
-float4 _YAPS_SocketFlags;  // x: engaged 0..1, y: is-hole, z/w spare
-
-// The socket's SECOND point, in the same space as _YAPS_SocketPos.
-// Every socket already publishes one: TPS_Orf_Norm, SPSLL_Socket_Front.
-// The pair IS the axis. Subtracting gives it outright.
-float4 _YAPS_SocketFront;
-
-// How to read _YAPS_SocketPos.
-//   0  a world position, written directly. The editor harness does this.
-//   1  the socket's offset in the PLUG's frame, each axis 0..1 across the
-//      box below. The contact channel cannot express anything else.
+// --- the editor's preview socket -------------------------------------
+// World space, from a property block that never ships.
 //
-// THE FRAME CHANNEL SPACE IS MEASURED IN, in the RENDERER's object space.
-// Never the frame recovered per vertex. Tried; a plug rooted high in a
-// skeleton decoded a different position per vertex and tore itself apart.
-// Zero forward means nothing was published, so old bakes still work.
-float4 _YAPS_ChannelOrigin;
-float4 _YAPS_ChannelForward;
-float4 _YAPS_ChannelUp;
-
+// The contact channel used to drive these from a CVRMaterialDriver, in
+// its own space with _YAPS_ChannelSpace at 1, beside a socket front and a
+// channel frame. It is gone (see YapsResolveSocket), so its leftovers are
+// Properties entries only, kept for old materials, and a material still
+// flagged 1 is ignored.
+float4 _YAPS_SocketPos;     // xyz world position
+float4 _YAPS_SocketForward; // xyz world direction, w unused
+float4 _YAPS_SocketFlags;   // x: engaged 0..1, y: is-hole, z/w spare
 float _YAPS_ChannelSpace;
-float4 _YAPS_ChannelExtents;  // xyz half-extents of that box, in metres
 
 // Which sockets belong to this plug's OWN avatar, so it can ignore them.
 //
@@ -95,11 +79,12 @@ float _YAPS_SelfSockets;
 float _YAPS_SelfChosen;
 
 
-// The screen atlas, off by default. A THIRD transport beside the channel
-// and the lights, not a replacement for either.
+// The screen atlas. The property defaults to 0; conversion and Build both
+// set 1. The marker lights answer where it cannot.
 float _YAPS_UseAtlas;
 
-// Debug view. 0 off, 1 "Resolved by".
+// Debug view. 0 off, 1 resolved by, 2 gap to socket, 3 engagement,
+// 4 socket facing, 5 atlas taps, 6 atlas target.
 // The patcher only edits the VERTEX stage, so the view cannot paint.
 // It answers in plug LENGTH instead. See YapsDeform.
 float _YAPS_Debug;

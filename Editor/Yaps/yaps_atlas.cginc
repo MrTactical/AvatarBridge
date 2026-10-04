@@ -168,6 +168,21 @@ int YapsAtlasHash2(int3 c)
     return (int) (YapsAtlasMix(c, 0x85EBCA6Bu) & 0x7FFFFFFFu);
 }
 
+// A cell's two slots. Writer, reader and readout must address them bit for
+// bit alike. Both hashes are masked positive, so neither needs a sign fix;
+// total is at least 1.
+void YapsAtlasHomes(int3 cell, int total, out int a, out int b)
+{
+    a = YapsAtlasHash(cell) % total;
+    b = (a + YapsAtlasHash2(cell) % max(total - 1, 1) + 1) % total;
+}
+
+// A level's cell edge, in metres.
+float YapsAtlasCellSize(int level)
+{
+    return YAPS_ATLAS_CELL * pow(4.0, level);
+}
+
 // Who owns the payload. An offset alone cannot say.
 //
 // Seven bits, odd numerators. The writer stores 0.5 + tag / 2, which
@@ -197,7 +212,7 @@ float YapsAtlasTag(int3 c)
 //
 // Fewer cells cost what the grid size table in YAPS5.md says they cost:
 // more sockets clash on both homes and vanish, and more strangers share the
-// slots a plug opens, each passing the cell tag one time in 256. Still
+// slots a plug opens, each passing the cell tag one time in 128. Still
 // better than no atlas at all. The floor stops it at about a tenth of the
 // full grid; a 256 square target holds 434 cells and clears it.
 #define YAPS_ATLAS_MINCELLS 384

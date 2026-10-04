@@ -24,7 +24,65 @@ lost a Weight line because `NativeToggleProbe` had converted it in the corpus pr
 settings and slimmed six of its textures; put back with `AvatarSlimmer.Revert`. Lesson: a probe that
 converts in the corpus project must not slim, or must revert. Accepted as the YAPS baseline on Joe's
 word for the night (410 kept in `Baseline-pre-412-20261002`). The log is named 411 by mistake: that
-label was already 2026-09-24's run.
+label was already 2026-09-24's run. Snugglin's digest in it carried the slimmed texture; a one-avatar
+YAPS-on subset after the revert brought the Weight line back and nothing else, and that digest
+replaced it in the baseline.
+
+**Corpus 413 (2026-10-02, YAPS off, full, throttled): accepted as the opt-out baseline.** Its
+baseline dated from 4.5.0 (2026-09-09), so all 83 changed against it. Explained by comparing each
+avatar with the accepted YAPS-on run instead: 53 are identical but for the `convertYapsSystems`
+stamp, and all 30 that differ carry a penetration system the two profiles treat differently (SPS
+and TPS layers stripped instead of converted, so layers renumber and pointers and triggers go; DPS
+or TPS marker lights reported as kept, one Converted line, measured on VaponnyPC by converting it
+in both profiles). Every other line matches, so the opt-out run's drift since 4.5.0 is the drift
+each YAPS-on baseline already accepted. 4.5.0's kept in `Baseline-pre-413-20261002`.
+
+**A Physics card in the CCK Animator Tester. BUILT 2026-10-02, unreleased: Joe tries it first.**
+Asked for by Joe (motion presets, grab and fling, overlay; not the side-by-side with VRChat). A
+card of its own, `Editor/CckAnimatorTester.Physics.cs`, behind `AVATARBRIDGE_MAGICA`, wired through
+partial methods so the tester builds without MagicaCloth2. Play mode only. *Walk*, *Run* (circles
+1.5 and 3 m across, so there is never an about-turn the cloth would read as a teleport), *Turn*,
+*Jump* (Grounded off in the air), *Shake*, *Sit*, *Stop*, driving the avatar root from
+`Application.onBeforeRender` with the locomotion parameters alongside. *Grab chains in the Scene
+view* pulls the cloth component nearest the cursor toward the mouse with MagicaCloth's `AddForce`
+and flings it on release, so it moves a whole component, not one bone. *Draw every chain* sets
+MagicaCloth's own `GizmoSerializeData.always` and `clothDebugSettings.enable` on every chain and
+puts them back when switched off; the card adds names and each bone's swing bound, measured from
+the rest pose captured as Play starts. Newer MagicaCloth2 members are reached by name.
+`Dev/Probes/PhysicsTesterProbe` runs it headless in Play mode on a converted avatar: a push moves a
+chain 5 mm, walking moves the avatar 1.43 m and swings chains 16.6 degrees against 0.0 standing,
+Stop puts it back, the overlay goes on and back to how each chain was. Only 2 of that avatar's 12
+cloths were running at rest; why the other 10 were not was not looked into. Not yet seen by eye:
+the Scene view drawing and the mouse grab, which a batch run cannot show. **Compile-check gap found
+on the way:** `compile-check.sh` never defines `AVATARBRIDGE_MAGICA`, and `check-defines.sh`
+compiles the deployed copy in a project, not the repo, so code behind both CCK and MagicaCloth is
+compiled by neither until it is deployed; run `check-defines.sh` against the project holding it.
+**Gap closed 2026-10-03:** `compile-check.sh` now also compiles `CVR_CCK_EXISTS` with
+`AVATARBRIDGE_MAGICA` and no SDK, and `check-defines.sh` compiles the repo (Editor, Runtime, and the
+Dev harness by name), not the deployed copy, so the workaround above is no longer needed.
+**Round two 2026-10-04, after Joe tried it** ("pulling from a bone but not the correct one"; wanted
+the solver's settings overlaid, and to select, edit live and keep). The grab took the nearest bone
+in screen space, roots included, and a MagicaCloth root never moves, so the pull anchored there at
+full force forever: roots are now skipped (drawn as rings) unless a chain has nothing else, and
+near-ties go to the bone nearer the camera. DynamicBone joins MagicaCloth (card title "Physics",
+each solver behind its own define, all four combinations compile): its chains, radius and
+colliders are drawn, and a grab drives `m_Force` on top of the converter's gravity, put back after.
+*Draw every chain* labels each chain with its solver, key settings and a health colour (amber off,
+not running, or stretched past 1.5x; red NaN or 2 chain lengths from rest); a label click, or
+Ctrl-click a bone, selects the component. Inspector edits to selected chains are detected by a
+4 Hz hash of `EditorJsonUtility.ToJson` (MagicaCloth's `SerializeData` only, so the overlay's gizmo
+switches never count) and refreshed with `SetParameterChange`/`UpdateParameters` by name; the card
+lists them with *Keep* / *Keep all*, recorded by GlobalObjectId (instance id fallback for an unsaved
+scene) and written back on `EnteredEditMode` with Undo, any reference the record lost restored
+from the scene. Not yet seen in the GUI: all of it, and whether references survive the Play
+boundary in the JSON at all (the restore covers it either way). The probe still covers round one.
+Review repairs the same day: the near-tie window drifted with the running pick (a chain seen
+end-on handed the grab to its tip), now measured from the nearest bone; `m_Enabled` is stripped
+from the hash and the record, since toggles animate it on chain components and a Keep wrote the
+Play-mode on/off state over the scene default; label rects are per Scene view; a bone in reach
+beats a label over it; labels place worst first and a red one is never dropped; the avatar's
+chains are watched as well as the selection (a locked Inspector); kept records live in
+`SessionState` with a static `EnteredEditMode` hook, so closing the tester first loses nothing.
 
 **A mesh riding a plug stayed rigid through every rebuild. FIXED ON DEV 2026-09-26, found by Joe on
 his own avatar.** A whole-avatar plug rooted at the armature carries a second skinned mesh, a
@@ -94,6 +152,18 @@ digests the conversion only. Design:
 - **Scenarios, seeded, run on their own.** Sockets approaching from a shell of directions, swept
   past the tip, withdrawn; locomotion with physics on; the Animator Tester's toggle flips; HDR,
   8-bit and small views; a second avatar for ownership. A failure saves a repro scene.
+  **First part BUILT 2026-10-02**, rule 7 of `YapsBendTester`: a hole comes in from a seeded
+  direction (0 to 75 degrees off the shaft, any turn) to a seeded depth (0.2 to 0.8L), sweeps 20 to
+  50 degrees across the tip there, and withdraws to 1.8L, with no bend out of reach, the atlas
+  finding it at its deepest, no seam past 0.5 mm, under 1% of edges crushed outside the opening,
+  no stretch past 6x and no mesh step past ten times the socket's, checked at every step.
+  `-yapsSeed` and `-yapsScenarios` (default 1 and 6) pick them; a failure prints the
+  `-yapsSeed n -yapsScenario i` line that replays it alone, in place of a saved scene, since the
+  capture materials are not assets a scene could keep. At its deepest each scenario must also be
+  found from the 8-bit camera and a 256-pixel one, a small view as a mirror gives. One generator is
+  drawn in order: a generator per scenario off neighbouring seeds stepped the directions 3 degrees
+  at a time. On Alexa: 12 of 12 hold on seed 1, 124 to 178 steps each; it has not yet been seen to
+  fail. Still to do: locomotion with physics on, toggle flips, a second avatar.
 - **Invariants, one per bug met.** No socket in range, no bend. A socket anywhere round the tip
   resolves. No edge stretches past a bound, across renderers too. Hidden parts stay hidden bent.
   A small socket move is a small mesh change. Every camera gives the same answer.
@@ -238,6 +308,14 @@ light, a plug seen.
   carrying one, `Menu` now also drops the `YAPS/Readout` parameter: a controller parameter syncs
   whether the menu names it or not, so before this the bit outlived the toggle. `ReadoutProbe`
   turns every tick off (no readout, layer, parameter or row) and back on.
+
+*4.6.6 shipped 2026-10-02, overnight on Joe's word: tag `v4.6.6`, merge `4213ee1`, both packages
+published (not a draft) and extracted (public: no `Editor/Yaps`, `Runtime` or `Dev`; add-on: the
+4.6.5 file list exactly, no converter). In it: native toggles kept in the menu (issue #8, reply
+posted, left open for the reporter), Unity's controller warning no longer counted as a VRCFury
+failure, the stereo patch reading root-written includes and renaming a no-space header, the one-eye
+warning no longer flagging locked Poiyomi 7.3, and the rider re-patch. Corpus 412 clean and
+accepted as the YAPS baseline. Not worn in game yet.*
 
 *4.6.5 shipped 2026-09-26: tag `v4.6.5`, merge `a744e6c`, both packages published and extracted
 (public: the 4.6.4 file list; add-on: the 4.6.4 file list plus `YapsSlotSplit.cs`, no converter).
@@ -549,6 +627,12 @@ so only one client ever computes it. Every viewer's GPU can compute the same dep
 and the texture parser hands it to that viewer's own animator, so every client arrives at the
 answer independently and there is nothing left to transmit. The toggle stops being cheaper and
 stops existing.
+
+*Withdrawn 2026-10-03: `AnotherSocketBaked` is gone, and a body-mesh socket no longer takes the
+shader route at all, because a skinned mesh draws with an identity object matrix and the baked
+origin lands near the world origin (`yaps_socket.cginc`); `ShapesByContact` sends every mesh but the
+socket's own to the contact route. Several bakes per material only matters once the socket anchor
+is recovered per vertex, as the plug's is. Until then the lever below is blocked.*
 
 A second lever, for how many sockets can use the free shader route at all: **one material carries
 one bake and one origin**, see `AnotherSocketBaked` in `YapsNativeBuilder`, so the second socket on
@@ -885,6 +969,254 @@ IK. Needs the reporter's SDK version, which bone, and what the wrong result actu
 
 ## Loose ends, small but real
 
+### The UI redesign, 2026-10-04: seen in offscreen renders, not yet used by a person
+
+Every window moved onto one kit (Editor/UI): tokens for spacing, type and colour per skin, cards with
+nested and accent variants, sentence-case section headings, notices in place of HelpBoxes, segmented
+controls (gestures, stances, motion presets), strong / secondary / danger buttons, and a fixed label
+column. The tester's Physics card got a summary (solvers, health), a selected-chain panel with live
+fields and Keep, and empty states. Four rounds of rendered review (Dev/Probes/UiOffscreenProbe.cs, dark
+and the editor's real light theme, edit and Play mode) fixed what looked wrong, and every README-quoted
+label stayed verbatim.
+
+What a render cannot show, so is unverified: hover and press feel, keyboard focus, the selected-chain
+fields' live values (the offscreen panel does not run Unity's binding, so they read 0 there), and
+anything that only happens in a real Play session. Nits the last review left: pale light-skin chips,
+one row in the tester's Avatar menu card out of the label column, info notices using a "!" icon, YAPS
+steps 2 and 3 nearly the same orange, and the footer reflowing after a conversion.
+
+### Corpus 414 after the audit: four regressions found and fixed on dev, 2026-10-04
+
+Run 414 (YAPS profile) changed all 83 digests against 412, as a batch that size must. Every changed
+signature was accounted for. Most trace to intended fixes: the height scaler's parameters became local
+`#AvatarScaler/...` (the sweep's parameter count drops by exactly those three), false blend-tree
+warnings went, texture-cost wording changed, VRCFury's parameter-math layer carries the no-muscles mask,
+and rigid accessory chains that used to be deleted as helper rigs now get a cloth.
+
+Four were not intended, and each is fixed and verified on a subset (414s, 414b):
+- **"clip(s) LOST paths that existed before conversion"** appeared on 18 avatars. Every lost path sat
+  under a system the converter deletes on purpose (the world-scale detector of an SPS setup). The audit
+  had started seeing those paths correctly; deliberate deletions are now recorded
+  (`BridgeContext.RemovedPaths`, `SystemStripper.Delete`) and neither the clip audit, the path repair
+  (which could otherwise move such a curve onto an unrelated object of the same name), the constraint
+  report nor the contact report counts them.
+- **A contact toggle stuck its colliders off.** The new collider-curve mirror fed collider hosts into
+  the zone balance pass, which stripped the one lower-layer write that turned them back on. A rest-only
+  write is now kept when every layer that moves the binding sits above it.
+- **Numbered hand layers lost their AnyState self-restart guard** (and the other toggle passes) as a
+  side effect of the finger-mask fix. `IsProtectedLayer` is exact-name again; the finger fix lives in
+  the hand-pose audit and holds.
+- **Unskinned grab-and-stretch handles were deleted as helper rigs.** A chain that moves no rendered
+  vertex and drives no constraint is left alone again, and the helper-rig report no longer claims
+  constraints where none were removed.
+
+Also: the toggle sweep threw on 11 avatars in every run, so their toggles were never compared; it now
+sweeps them, and an avatar with nothing to sweep says so. Still open: one avatar's sweep now refuses
+`ScaleFactorInverse` where it refused `EyeHeightAsMeters`; both are game-driven, and the scaler change
+explains the swap, so it reads as expected but has not been traced line by line.
+
+### Corpus 415: tree toggles whose "off" child animates only dead paths. MEASURED 2026-10-04, open
+
+VaponnyPC swept for the first time (it threw before) and reported 9 stuck. None is a regression: its
+controller matches the baseline except for the no-muscles mask on three renamed toggle layers, whose
+clips carry only `m_IsActive` on paths already missing in VRChat and no object-reference curve.
+- **Three were the sweep's own misreading** (VRCEmote, Collar, DPS). A 1D tree resting at 0.5 between
+  children that animate different blendshapes re-blends against the defaults each Drive's rebind
+  captures, so the shapes crept 50, 75, 87.5... and every drive charged the creep to its parameter.
+  The sweep now makes two no-op drives first and leaves whatever still moves out of every verdict; the
+  digest prints it as `unstable at rest:`. Rerun to confirm.
+- **Five are real and pre-existing.** 1D toggle trees whose off child was authored for another body and
+  animates only dead paths. `IsCurveless` sees curves, so `CollectToggleTrees` never offers that child
+  to `FillEmptyTreeSlotsWithRestoreClips`, and in CVR the shape stays where the on child left it.
+  Candidate fix: count a child as empty for that pass when no binding resolves on the target.
+- **One is the other shape** (now reported as unstable at rest): a slider's two children each animate a
+  property the other does not. No pass covers it, and the restore passes exempt tree-driven bindings
+  by design, so it needs a decision first.
+
+### The audit of 2026-10-03: about 210 findings fixed on dev, not verified in game
+
+**What was done.** A read of the whole codebase against its own claims, in four waves: 177 findings
+(166 fixed, 6 partly fixed, 5 skipped), a review of those fixes whose real points were repaired, the
+items left for an author decision decided and built, and a last review of that round. By area: the
+animator merger 23, YAPS 55 (converter 21, setup tool 27, shaders 7), physics 14, analysis and the
+cost card 17, the window and the Toolkit 16, the conversion pipeline 11, assets 9, face tracking 9,
+docs 5, build scripts and the Dev harness 18. README updated in the same pass. Compiled, not run in
+ChilloutVR and not through the corpus.
+
+**What the open items became.** All fixed on dev, compiled, none worn:
+
+- **YC1-05, plug bounds.** A skinned mesh that is all plug gets a box fitted to its rest pose plus a
+  plug length round the base, `updateWhenOffscreen` off; a body mesh keeps its box, grown only to
+  the reach. ChilloutVR: several own-body sockets plus a partner's DPS socket, and a plug bending at
+  the screen edge.
+- **YC1-01, toggle-swapped variants.** Each copies every `_YAPS_` value from its slot's finished
+  material, is recorded on the plug (`YapsPlug.variants`) and follows later knob writes, in both
+  builders.
+- **YS1-07, an adopted plug pinned to one slot.** The converter adopts with slot -1, marks the plug
+  `converted` and records every slot and mesh it baked, primary first; re-bake and mirroring walk
+  those records, extra meshes take the plug-wide tag, self and atlas values, and the Setup row shows
+  each plug's own material. Needs a reconvert.
+- **PHY-14, animated parent-constraint offsets.** Carried 1:1 (names and units measured), weight and
+  offset curves remapped to the Unity source index, a curve on a skipped source dropped and
+  reported, and the `ConstraintScaleRelay` guard in the same change.
+- **YS2-02, depth-channel naming.** Toolkit Build keeps the synced name and also writes each name the
+  author's layers still read, on one trigger; Clear trims back. ChilloutVR: whether two
+  `SetFromPosition` stay tasks on one trigger both fire.
+- **YC1-06, Remove and the bounds copy.** The original mesh is recorded (`YapsPlug.boundsFrom`) and
+  Remove puts it back, keeping the copy while another plug shares it. Toolkit bakes only: plugs baked
+  earlier and every converted plug keep the copy (the converter half is under Still open).
+- **FT-04, one face-tracking rule.** `FaceTrackingParameters.cs` ships in `YAPS_CORE`,
+  `AvatarFeatureDetect` delegates to it, and `FtPlainNames` is gone.
+- **AM2-04, paths dead in VRChat too.** Repairs only paths in a source snapshot taken after
+  `PrepareTarget`, and the broken-paths audit reads the same snapshot, so baked and in-place runs
+  report lost paths as lost. Accepted cost: a bone renamed after its animation was authored is no
+  longer repaired.
+- **YC1-03, untraceable SPS owners.** Still no route back for a socket merged into a bone; an
+  untraced plug now gets its own report line too. Rare and left: a merged socket under a bone
+  carrying its own SPS socket takes that socket's tags.
+- **UI-02, the folder-name rule.** The converter calls `CvrSetup.PrepareOutputFolder`, the settings
+  key lives in `CvrSetup`, and the Convert card offers *Put the textures back* from the folder's
+  record once the report is gone.
+- **ANA-002, the dead-renderer test.** The survey reads clip-mode CCK controls' clips and the clips a
+  shipped override controller swaps in.
+- **DOC-04, the CCK's stock controller.** One resolver (`AvatarSurvey.ShippedController`) and one
+  guard (`CvrSetup.SharedController`): YAPS layers and Free wins never write into it and say so, and
+  Free wins swaps its copy in everywhere the avatar wires the original.
+
+**Still open**, each with why:
+
+- **PHY-03, native mode's ancestor rule.** A contact or collider host outside the switched-off object
+  it belongs under still converts live in *CVR Native Targets*; dropping that needs the contact's
+  enabled state recorded beside `ctx.ContactHosts`. Whether a switched-off host stops a DynamicBone
+  collider needs ChilloutVR.
+- **ANA-016, MeshCloth cost.** Counted as 0 transforms; needs a particle estimate and wording of its
+  own. New work.
+- **A native plug whose Root Bone is an empty under a bone** keeps the one-slot re-bake YS1-07 fixed
+  for converted plugs. Not touched.
+- **PHY-14b, animated offsets and rest values on position, scale, aim and look-at constraints** are
+  dropped (reported). The SDK's reverse map in `AvatarDynamicsSetup.cs` gives their names. A rotation
+  constraint's offset is measured from the live pose, so its animated offset stays dropped unless
+  checked in ChilloutVR.
+- **FT-02, face shapes after Face Tracking goes off.** The rig's off states are Write Defaults on with
+  no motion, and ChilloutVR restores no defaults, so the last tracked shapes may stay. A zero clip
+  would fight the native blink `EyeTrakingOFF` hands back and override the avatar's expressions.
+  ChilloutVR: turn Face Tracking off mid-expression and watch the face.
+- **FT-05, eye gaze on a rolled head bone.** The gaze empties hang off `EyeTracking.Frame`, turned to
+  the avatar's facing, so the clips' angles should hold on a head bone that is not axis-aligned.
+  Compiled only. Play mode or ChilloutVR: such an avatar looking down and left.
+- **ASSET-FURYHEAD-REFS, skins bound to VRCFury's second head.** `FuryHeadFlattener.RepointReferences`
+  moves anything naming `vrcfAlwaysVisibleHead` onto the head bone, but nobody has seen VRCFury bind
+  bones to the copy. Convert such an avatar, read the report's count, check the skin keeps its pose.
+- **YSH-13, the protocol-light black test differs between plug and socket.** The plug's
+  `YapsClassifyLight` rejects `any(rgb > 1e-4) && a > 0`; `YapsPlugDepth` and the readout reject
+  `dot(rgb,rgb) > 1e-4`, which accepts a near-black third-party light the plug refuses. The digit
+  decode is shared now (`YapsLightDigit`), the colour test is not. Settle in game which one
+  third-party lights need, then fold it into the helper.
+- **The socket readout's plug cell shows the wearer's own plug** where the socket would exclude it.
+  Author decision: an own-plug state in the cell, or a per-socket readout material copying
+  `_YAPS_SocketNoSelfExclude`.
+- **YSH-07, a skinned plug and the height slider.** `yapsScale` reads `unity_ObjectToWorld`, identity
+  on a skinned mesh, so the bend may not follow the slider. Game first: a skinned plug in a socket at
+  2x and 0.5x, Gap or Resolved-by view. The fix would be an avatar-scale property mirrored next to
+  the slider, used in the per-vertex recovery too.
+- **YSH-18, shadow and depth passes** resolve with different light and atlas state from the visible
+  pass. Game: a plug bent through a marker light and one through the atlas, under a shadow-casting
+  light. If confirmed, decide per pass, and add a README Known limitations line.
+- **Remove leaves the slot's material-swap keys on the bake.** `YapsRemover.RemoveSocket` and the
+  plug restore put the original material back but never repoint the swap keys, so a toggle that
+  swaps that slot brings the removed bake back. Unbake already reverses them with
+  `YapsSwapFollow.Follow(renderer, slot, baked, original)`; Remove should too. Not done.
+- **YC1-06b, a converted plain-mesh plug keeps the bounds copy after Remove.** `boundsFrom` has one
+  writer, `YapsNativeBuilder.cs:73`. The converter bakes through `YapsBaker.Bake`
+  (`YapsConverter.cs:201`), which makes the same `bounds.asset` copy, and `AdoptPlug` never sets the
+  record; a later toolkit re-bake then reads the copy as the original. Fix: take
+  `filter.sharedMesh` before that bake and set it on the adopted plug when the bake moved the
+  filter, as the toolkit does. README "Taking things out again" says converted plugs keep the copy;
+  change it in the same commit. Needs a reconvert. Not done.
+- **The *Fit the preset to the PhysBone* tooltip and settings comment lag the code.**
+  `FitToPhysBone` (`MagicaClothWriter.cs:622`) also raises the preset's four speed limits, and the
+  README says so. The window tooltip (`AvatarBridgeWindow.cs:648`) names gravity, immobile and wind
+  but not the speed limits; the `fitToPhysBone` comment (`BridgeSettings.cs:72`) names neither wind
+  nor the speed limits. Code-only text change. Not done.
+- **Animators nested on child objects** are not walked by the survey, so a renderer only such an
+  Animator switches on can read Dead and be stripped by *Fix it*. Author decision: it changes every
+  `Layer.Bindings` count.
+- **AM1-10, the menu-name rename rule.** Whether `RenamePass` should trigger on
+  `IllegalMenuNameChars` (`[^a-zA-Z0-9/\-_#]`) instead of its own list, leaving
+  `VerifyMenuParameterNames` to assert. Author decision: it changes the names users get for menu
+  parameters holding `.`, `!`, `&`, `+` or non-ASCII letters.
+- **AM1-14, PlayAudio paths with a slash.** Whether VRChat plays a PlayAudio whose AudioSource object
+  has `/` in its name is untested; one VRChat test before `ConvertPlayAudio` moves to
+  `FindByAnimationPath`.
+- **YS2-22, the tag-chooser key.** `YapsTagMenu.Parameter` and `YapsRemover.ChooserKey` hash the
+  renderer path with `string.GetHashCode`, stable on Mono and randomised on CoreCLR. Before any
+  runtime switch, move both to a fixed hash and keep the legacy key while saved values use it, since
+  ChilloutVR restores by parameter name. Low priority.
+- **Docs outside the README.** `YAPS-CLEAN-ROOM.md` still rests YAPS's independence on "no screen
+  atlas, a contact channel", both since reversed: rewrite it around what YAPS does today (its own
+  atlas protocol, DPS marker lights). `YAPS5.md` names `DefaultMaxLightEmittingSockets` and
+  `YapsAtlas.Enabled`, both gone. The `ParameterMenuConverter` header still says its entries exist
+  so ChilloutVR syncs the values.
+- **Optional, no bug behind them:** an early out in `YapsDeform` before the full baked read (YC1-10;
+  a compact layout would be a protocol change), one `PatchOnSimpleLit` for both builders (YC1-08),
+  sharing the clip walk in `ConstraintScaleRelay` (PHY-13), a weights-based helper-rig rule shared
+  with `ConstraintConverter.SkinningBones` (PHY-19, a behaviour decision), and the Toolkit's *Mesh
+  bounds* button re-applying the avatar envelope to a separate plug mesh after a native bake.
+
+### The stereo shader patcher, read end to end on 2026-10-03. FIXED ON DEV the same day, not in game
+
+**What changed.** One analysis, `PlanStereo`, finds every vertex and fragment function named by a
+pragma, in every pass and file, and the exact edits each needs; whether a shader needs patching
+(`DeclaresStereo`), the one-eye warning (`StereoProblems`) and the patch itself all read it, so they
+cannot disagree. Edits are planned on the text as read and applied from the end of each file back.
+Two facts it rests on were measured first (`Dev/Probes/SpiFactsProbe`): Unity's generated
+surface-shader code carries all four macros in every pass, and a duplicated instancing member
+compiles in the default variant with `ShaderHasError` false and fails only with
+`STEREO_INSTANCING_ON`. So the copy is now also compiled outright in the single-pass instanced
+variant, every pass, through `ShaderData.Pass.CompileVariant`. That check found a bug old and new
+code shared: the stereo member went FIRST in the struct, and a fragment taking its own system value
+(a `VFACE`) failed in exactly the variant ChilloutVR draws; members now go last, as Unity places
+them. `Dev/Probes/SpiPatcherProbe` builds a shader per fault and passes 32 of 32.
+
+**One item deliberately not done:** a shader naming all four macros is not patched for a plain depth
+read. `Dev/Probes/SpiSweepProbe` puts every shader of the corpus project (1092) through old and new
+builds; counting depth sent nearly every locked Poiyomi Pro material to be copied, for optional
+features that declare a plain depth texture. Depth reads are rewritten only in shaders patched
+anyway, and only when every read takes the depth value alone (`DecodeFloatRG` of two channels would
+compile and read wrong); otherwise they are left and the report says so.
+
+The record as found:
+
+A read of `ShaderSpiPatcher` with every claim checked against the code. From the code, none of it
+measured yet:
+
+1. **Multi-pass shaders get half a patch.** Only the first `#pragma vertex/fragment` is used and the
+   setup lines go into the first matching vertex function, so an outline or ForwardAdd pass with its
+   own vertex function stays one-eyed while the shader is reported patched.
+2. **Copies overwrite each other.** Copies are named `<stem>_SPI` with names deduplicated only within
+   one shader, so two shaders sharing a file or include name write the same file in `RehomedAssets`,
+   and a later failed patch deletes a file an earlier good copy includes.
+3. **Macros added twice.** A shader holding some of the four (instancing ID for GPU instancing) gets a
+   second copy, a duplicate struct member.
+4. **The toggle pass drops lines.** Swap-only shaders that are already correct or limited by a
+   screen grab are collected and never reported.
+5. **`.failed.txt` keeps only the main file** while the report says the failing line is in it.
+6. **Unreadable reads as correct:** `DeclaresStereo` catches a throw and returns true.
+7. **Depth reads: two exact spellings only**, and never for a shader that already names all four
+   macros, which can still read a stereo depth array as a plain texture.
+8. **`#include_with_pragmas` is never followed**, checked or copied.
+9. **Surface shaders are refused and flagged as one-eyed**, when Unity generates their passes; a
+   surface shader with its own vert/frag pass (an outline) is refused whole. To be measured.
+10. **The compile check proves the default variant only**; nothing compiles `STEREO_INSTANCING_ON`.
+11. **Docs and comments out of step:** the README and the diagnostics warning put the tickbox "in
+   Advanced" (it is in Manual options, under Shaders); the README says screen reads are rewritten
+   (depth only) and that an edited shader's recipe "is refused rather than guessed at" (a mismatch
+   only adds a note); two header comments say locked shaders and shared-include structs are refused.
+   *The recipe claim is moot, done 2026-10-03: the recipe machinery held no recipes and is removed
+   (`ShaderFixRecipes.cs` deleted, its branches gone from `ShaderSpiPatcher`), and the README no
+   longer mentions recipes.*
+12. **The advisor counts renderers only**, so swap-only one-eyed shaders never raise its suggestion.
+
 ### Toggle style "CVR Native Targets" lost its toggles (issue #8). FIXED ON DEV 2026-10-01
 
 Reported on 4.6.1 as every toggle dead in game. `ToggleNativizer` hands a plain object toggle to the
@@ -912,7 +1244,11 @@ units, as the `_End` bone does, and the 7.7 m leash over a 10 m tip is the same 
 authored values were simply long in VRChat too. What remains is the other path: `DynamicBoneWriter`
 passes the raw value to `m_EndOffset`, which DynamicBone reads in metres, so on a scale-100
 armature its tips come out 100 times shorter than VRChat's. Nobody has reported it and DynamicBone
-is rarely the target; fix it with a scale, the first time it matters. The original record follows.
+is rarely the target. **FIXED ON WIP 2026-10-02 (Joe's go-ahead overnight):** the value is scaled
+by the chain root's lossy scale, so the tip's length matches; its direction still follows
+DynamicBone's own transform, not each leaf's, which no single offset can match. Compile-checked in
+the corpus project; not run, since DynamicBone's tip is read from its source (line 619,
+`TransformDirection`) rather than measured. The original record follows.
 
 
 Found in a user's report (4.6.4). `MagicaClothWriter` realises a PhysBone's Endpoint Position as a

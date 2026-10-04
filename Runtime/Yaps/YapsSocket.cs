@@ -22,7 +22,8 @@ namespace AvatarBridge.Yaps
 
         [Header("Shapes that open as a plug goes in")]
         [Tooltip("The mesh whose shapes open, usually the body. Empty for a socket that only bends plugs.")]
-        public SkinnedMeshRenderer renderer;
+        // new: hides the obsolete Component.renderer. Renaming would drop serialized data.
+        public new SkinnedMeshRenderer renderer;
 
         [Tooltip("Up to sixteen, each opening over its own depth range, as fractions of the plug's " +
                  "length. Once open, a shape stays open.")]
@@ -115,8 +116,10 @@ namespace AvatarBridge.Yaps
         [NonSerialized]
         public bool preview;
 
-        // Faces along +Z; the front markers sit a centimetre along it.
-        public Vector3 Forward => transform.forward;
+        // Outside the #if: a serialized field the player build lacks gives
+        // the component two different layouts.
+        [Tooltip("For a plug that only appears in Play Mode, or to see the bend on a posed avatar.")]
+        public bool previewInPlayMode;
 
 #if UNITY_EDITOR
         // Editor preview: writes the socket into every YAPS plug in the scene.
@@ -129,12 +132,11 @@ namespace AvatarBridge.Yaps
         // where Unity forbids creating native objects.
         static MaterialPropertyBlock _block;
         static MaterialPropertyBlock Block => _block ?? (_block = new MaterialPropertyBlock());
+        // Reused so the per-frame scan does not allocate an array per renderer.
+        static readonly System.Collections.Generic.List<Material> _mats = new System.Collections.Generic.List<Material>();
 
         // The inspector also ticks this on every scene repaint.
         void Update() => PreviewTick();
-
-        [Tooltip("For a plug that only appears in Play Mode, or to see the bend on a posed avatar.")]
-        public bool previewInPlayMode;
 
         public void PreviewTick()
         {
@@ -151,6 +153,10 @@ namespace AvatarBridge.Yaps
             // brings it in. That left no way at all to look at the bend.
             if (UnityEngine.Application.isPlaying && !previewInPlayMode) return;
 
+            // Plugs fetched once per tick, and only once a YAPS renderer
+            // turns up: CarrierOf used to scan the scene per renderer, twice.
+            YapsPlug[] plugs = null;
+
             // Inactive ones too. An avatar plug ships switched off and an
             // erection clip activates it at runtime, so in edit mode the
             // mesh is hidden. Skipping inactive objects here wrote no block
@@ -163,9 +169,12 @@ namespace AvatarBridge.Yaps
             // toggle on the plug for the rest of the session.
             foreach (var r in FindObjectsOfType<Renderer>(true))
             {
-                var m = System.Array.Find(r.sharedMaterials, x => x != null && IsYapsMaterial(x)
+                r.GetSharedMaterials(_mats);
+                var m = _mats.Find(x => x != null && IsYapsMaterial(x)
                     && x.HasProperty("_YAPS_VertexCount") && x.GetFloat("_YAPS_VertexCount") > 0f);
                 if (m == null) continue;
+                if (plugs == null) plugs = FindObjectsOfType<YapsPlug>(true);
+                var origin = PlugOrigin(r, plugs);
                 if (!_touched.Exists(t => t.Renderer == r))
                 {
                     _touched.Add(new Touched
@@ -175,11 +184,11 @@ namespace AvatarBridge.Yaps
                     });
                 }
                 float length = m.HasProperty("_YAPS_Length") ? m.GetFloat("_YAPS_Length") : 0.25f;
-                float gap = Vector3.Distance(PlugOrigin(r), transform.position);
+                float gap = Vector3.Distance(origin, transform.position);
                 float engaged = 1f - Mathf.Clamp01((gap - length * 1.2f) / Mathf.Max(length * 0.4f, 0.001f));
                 // What the atlas does with a one-way ring and a plug behind it.
                 if (kind == SocketKind.Ring && oneWay
-                    && Vector3.Dot(transform.forward, PlugOrigin(r) - transform.position) < 0f) engaged = 0f;
+                    && Vector3.Dot(transform.forward, origin - transform.position) < 0f) engaged = 0f;
                 r.GetPropertyBlock(Block);
                 // World space: the one route the shader still reads. The
                 // contact channel's own route, which this used to imitate,
@@ -187,7 +196,6 @@ namespace AvatarBridge.Yaps
                 Block.SetFloat("_YAPS_ChannelSpace", 0f);
                 Block.SetVector("_YAPS_SocketPos", transform.position);
                 Block.SetVector("_YAPS_SocketForward", transform.forward);
-                Block.SetVector("_YAPS_SocketUp", transform.up);
                 Block.SetVector("_YAPS_SocketFlags", new Vector4(engaged, kind == SocketKind.Hole ? 1f : 0f, 0f, 0f));
                 r.SetPropertyBlock(Block);
             }
@@ -211,10 +219,10 @@ namespace AvatarBridge.Yaps
         // measured from the waist while the body's measured from the feet,
         // so the collar engaged first and visibly bent before everything
         // around it, in both preview routes. One plug, one origin, one gate.
-        static YapsPlug CarrierOf(Renderer r)
+        static YapsPlug CarrierOf(Renderer r, YapsPlug[] plugs)
         {
             YapsPlug carried = null;
-            foreach (var plug in FindObjectsOfType<YapsPlug>(true))
+            foreach (var plug in plugs)
             {
                 if (plug == null) continue;
                 if (plug.Target == r) return plug;
@@ -223,9 +231,9 @@ namespace AvatarBridge.Yaps
             return carried;
         }
 
-        static Vector3 PlugOrigin(Renderer r)
+        static Vector3 PlugOrigin(Renderer r, YapsPlug[] plugs)
         {
-            var carrier = CarrierOf(r);
+            var carrier = CarrierOf(r, plugs);
             if (carrier != null)
             {
                 var markers = carrier.transform.Find("YAPS Markers");
@@ -251,7 +259,6 @@ namespace AvatarBridge.Yaps
                 Block.SetVector("_YAPS_SocketFlags", Vector4.zero);
                 Block.SetVector("_YAPS_SocketPos", Vector4.zero);
                 Block.SetVector("_YAPS_SocketForward", Vector4.zero);
-                Block.SetVector("_YAPS_SocketUp", Vector4.zero);
                 t.Renderer.SetPropertyBlock(Block);
             }
             _touched.Clear();

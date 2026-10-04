@@ -29,8 +29,13 @@ namespace AvatarBridge
         const string Category = "VRCFury";
         const string CopyName = "vrcfAlwaysVisibleHead";
 
+        // This run's renames, kept for RepointOnOurCopies: a clip that is still the source's own
+        // file is only repointed once self-containment has copied it.
+        static List<KeyValuePair<string, string>> _renames;
+
         public static void Run(BridgeContext ctx)
         {
+            _renames = null;
             var copies = ctx.Target.GetComponentsInChildren<Transform>(true)
                 .Where(t => t != null && t.name.StartsWith(CopyName, System.StringComparison.Ordinal))
                 .ToList();
@@ -47,7 +52,7 @@ namespace AvatarBridge
                 return;
             }
 
-            int moved = 0, deleted = 0, repointed = 0;
+            int moved = 0, deleted = 0, repointed = 0, references = 0;
             var renames = new List<KeyValuePair<string, string>>();
             var names = new List<string>();
 
@@ -55,15 +60,13 @@ namespace AvatarBridge
             {
                 if (copy == null || copy == head || head.IsChildOf(copy)) continue;
 
-                // Only while the real head still has a mesh of its own. The
-                // copy is redundant because ChilloutVR hides yours natively,
-                // but if a setup MOVED the head mesh here instead of copying
-                // it, deleting this takes the avatar's face with it.
-                if (!HeadStillHasAMesh(ctx, head, copy))
+                // Its children move and references to it are repointed below, so the only mesh
+                // deleting it can take is a renderer on the copy itself.
+                if (copy.GetComponent<Renderer>() != null)
                 {
                     ctx.Report.Approximated(Category, "Always-visible head kept",
-                        "It carries the only head mesh this avatar has, so it is not a spare copy " +
-                        "and removing it would take the face. Left exactly as found.");
+                        "It carries a mesh of its own, which removing it would take along. " +
+                        "Left exactly as found.");
                     continue;
                 }
 
@@ -80,11 +83,13 @@ namespace AvatarBridge
                 }
 
                 renames.Add(new KeyValuePair<string, string>(ctx.PathInTarget(copy), null));
+                references += RepointReferences(ctx.Target, copy, head);
                 Object.DestroyImmediate(copy.gameObject);
                 deleted++;
             }
 
             repointed = Repoint(ctx, renames);
+            _renames = renames;
 
             ctx.Report.Converted(Category, $"{deleted} always-visible head(s) removed",
                 (moved > 0
@@ -92,19 +97,53 @@ namespace AvatarBridge
                       (moved > names.Count ? ", …" : "") + ". "
                     : "") +
                 "VRCFury's second head has no job here, and anything on it stayed off. It now sits on the " +
-                $"head bone, same place, with {repointed} animation curve(s) repointed.");
+                $"head bone, same place, with {repointed} animation curve(s) repointed" +
+                (references > 0 ? $" and {references} reference(s) to it, such as bone slots, moved to the head bone." : "."));
         }
 
-        // Is a mesh weighted to the head bone somewhere OUTSIDE this copy?
-        static bool HeadStillHasAMesh(BridgeContext ctx, Transform head, Transform copy)
+        // Bone slots, root bones, constraint sources and physics roots that named the copy itself
+        // follow it to the head it is pinned to, so a skin bound to it keeps its pose. Left on the
+        // destroyed copy they read null, and the vertices collapse. Transforms are skipped: their
+        // parent and child links are Unity's own bookkeeping.
+        static int RepointReferences(GameObject root, Transform copy, Transform head)
         {
-            foreach (var skin in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            int changed = 0;
+            foreach (var component in root.GetComponentsInChildren<Component>(true))
             {
-                if (skin == null || skin.bones == null) continue;
-                if (skin.transform.IsChildOf(copy)) continue;
-                if (skin.bones.Any(b => b != null && (b == head || b.IsChildOf(head)))) return true;
+                if (component == null || component is Transform || component.transform == copy) continue;
+                var so = new SerializedObject(component);
+                var it = so.GetIterator();
+                bool any = false;
+                while (it.Next(true))
+                {
+                    if (it.propertyType != SerializedPropertyType.ObjectReference) continue;
+                    var value = it.objectReferenceValue;
+                    if (value == null) continue;
+                    if (value == copy) it.objectReferenceValue = head;
+                    else if (value == copy.gameObject) it.objectReferenceValue = head.gameObject;
+                    else continue;
+                    any = true;
+                    changed++;
+                }
+                if (any) so.ApplyModifiedPropertiesWithoutUndo();
             }
-            return false;
+            return changed;
+        }
+
+        // Runs after self-containment, for the curves Run had to leave alone.
+        public static void RepointOnOurCopies(BridgeContext ctx)
+        {
+            var renames = _renames;
+            _renames = null;
+            if (renames == null) return;
+
+            int repointed = Repoint(ctx, renames);
+            if (repointed > 0)
+            {
+                ctx.Report.Converted(Category, $"{repointed} more curve(s) followed the removed head",
+                    "They sat in the avatar's own animation files, so they were repointed on this " +
+                    "conversion's copies, leaving the originals untouched.");
+            }
         }
 
         // Curves addressing the old paths, moved to the new ones. A rename to
@@ -116,7 +155,7 @@ namespace AvatarBridge
             var clips = new HashSet<AnimationClip>();
             foreach (var clip in ctx.MergedController.animationClips)
             {
-                if (clip != null) clips.Add(clip);
+                if (clip != null && Owned(ctx, clip)) clips.Add(clip);
             }
 
             int changed = 0;
@@ -152,6 +191,19 @@ namespace AvatarBridge
                 }
             }
             return changed;
+        }
+
+        // Only a clip this run may edit: in memory, in the output folder, or bake output that
+        // is rebuilt every bake. Anything else is still somebody's own file on disk.
+        static bool Owned(BridgeContext ctx, AnimationClip clip)
+        {
+            string path = AssetDatabase.GetAssetPath(clip).Replace('\\', '/');
+            string output = (ctx.OutputDir ?? string.Empty).Replace('\\', '/').TrimEnd('/');
+            return path.Length == 0
+                   || (output.Length > 0 && path.StartsWith(output + "/", System.StringComparison.OrdinalIgnoreCase))
+                   || path.Contains("__Generated")
+                   || path.Contains("GeneratedAssets")
+                   || path.Contains("/VRCFury/Generated");
         }
 
         // The longest old path this binding sits under, so a child's own

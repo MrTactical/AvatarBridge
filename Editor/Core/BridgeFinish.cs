@@ -46,6 +46,7 @@ namespace AvatarBridge
                 if (ctx.Settings.weighAvatar)
                 {
                     var weight = AvatarWeight.Measure(ctx.CvrAvatar, survey);
+                    AvatarWeight.NoteLeftAlone(weight, ctx.SlimLeftAlone);
                     ctx.Report.WeightCard = AvatarWeight.Markdown(weight);
                     AvatarWeight.Fill(ctx.Report, weight);
                 }
