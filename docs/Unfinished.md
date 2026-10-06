@@ -967,6 +967,66 @@ their SDK differs; a name that does not resolve now warns instead of being assum
 **Still open, and not answerable in the editor:** ChilloutVR's constraint order against its own
 IK. Needs the reporter's SDK version, which bone, and what the wrong result actually looks like.
 
+## PhysBone parity, round two: the overnight of 2026-10-06. ON DEV, measured, not in game
+
+**Result (run n6 against the 4.7.2 baseline, median error copy vs original):** walk swing 1.04 to
+0.30, turn 1.38 to 0.40, head turn 1.40 to 0.40, jump 1.78 to 0.42, lying hang 2.7 to 1.1 degrees,
+rest sag 0.42 to 0.19. Worse: quick shake 0.52 to 0.77 (scatter, little bias). "stretch" turned out
+to be the root-to-tip distance, which a curved chain straightening also raises, so it cannot judge
+squish; only the press test on squishing chains can, and the test set has two.
+
+**A regression the measurements caught and fixed:** removing the restoration floor (fix 3) was right
+for hanging chains and wrong for soft bodies, whose PhysBones pull weakly because they hold the body
+in other ways: copies swung 100 to 180 degrees on a walk against 8 in the original, which is the
+flailing and clipping Joe saw live. Soft bodies keep the preset's root restoration at both ends (a
+per-end taper still left 50 degrees); now 21 against 8. Multi-child re-rooting skips soft bodies
+(their root is sprung, not pinned). Squish touches only squishing sources: rigid bone length for
+everyone swung chains measurably less (distance stiffness also resists bending).
+
+**Soft-body collision option:** first version (spheres at full volume) made things worse, two
+neighbours overlapping at rest and shoving every frame; spheres sized to the gap were then all
+skipped, because the bodies' own volume radii already overlap. Final: with the option on, each soft
+body is shrunk to 45% of the way to its neighbour and its sphere matches; measured neutral to
+slightly better (soft walk 20.7 to 18.8, sag 0.19 to 0.27). Off by default as decided.
+
+**GrabbyBones:** research and a fork plan, private in `Regression/GrabbyBonesForkPlan.md` (it leans on
+the client decompile). GPL-3.0; the author has pose on his own roadmap and merges outside PRs, so
+the plan recommends an upstream PR first and a fork only if declined.
+
+**Joe's bigger idea (2026-10-07, answered, not started):** a mod-side GPU soft-body system (draw a
+blanket with the pen, turn a prop into a soft body). Feasible for mod users in about 2 ms with particles
+against capsules (true mesh-to-mesh is not); non-mod viewers can only see pre-uploaded shader-simulated
+prefabs. Its own project, much bigger than the GrabbyBones work; first step would be a local one-prop
+prototype to prove the budget.
+
+Joe's decisions before leaving it running: commit to dev and deploy to all 8 projects, **no release**
+(main waits for him); **one** full throttled corpus run after the fixes; the soft-body collision
+option ships **off**; GrabbyBones fork is **research and a written plan only**. He also wants the A/B
+videos for Discord if the results hold up (captions name no avatar; the footage shows paid test
+avatars, so posting is his call).
+
+Found while he watched the live view: Sootie's breasts clipped. Two causes, both fixed: the
+soft-body spring floor had been bypassed for every `MC2_Preset_Bridge_*` preset (it was meant for
+user-saved ones, but those share the shipped file's name, so the floor is back for all), and the
+soft-body collision radius came from the chain measurement's narrowest cross-section, 2 mm on a
+breast whose bones carry the front skin; it is now the median distance from the collision bone to
+the mesh it carries.
+
+Fixed tonight, each measured on its own (runs n0 to n5 in the scratchpad `physab/`): PhysBone 1.0
+stiffness (`AsVersion11`, exact); Multi Child Type Ignore rooted at the children (no hinge at the
+waistband); squish as bone-length stiffness (rigid without squish; presets had shipped it soft);
+hand and finger colliders written as spheres (a capsule under a hand stops ChilloutVR adding the
+hand collider that pushes other people's cloth, and on a finger gets it filtered out); the
+soft-body collision option and its Toolkit card.
+
+Gap research (decompile of Joe's beta client, so unverified unless noted): **pushing works natively**,
+ChilloutVR adds players' hand colliders to every MagicaCloth2 cloth (Joe confirms he pushes cloth in
+game all the time); a native grab is possible as an aim driven by the "grab" contact tag but costs
+about 97 sync bits per chain, which Joe rejected (four chains would eat the budget), so grab, pose,
+stretch and squish go to a **GrabbyBones fork** (plan in progress); `_Angle` is possible natively
+with a constraint rig and a parameter stream (32 bits per chain); `_IsGrabbed` approximately with a
+"grab"-tag trigger (1 bit; the tag starts on at load until the player's first fist); `_IsPosed` not.
+
 ## MagicaCloth2 settings: measured against the originals and fixed, 2026-10-06. ON DEV, not in game
 
 **Measured.** `Dev/Probes/PhysicsAbProbe.cs` converts a scene with a new user's defaults, keeps the

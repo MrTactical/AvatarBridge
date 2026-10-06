@@ -355,6 +355,10 @@ namespace AvatarBridge
                     // Runs last: every collider the avatar defines has to exist before a chain can
                     // be offered one it didn't originally reference.
                     MagicaColliderAutoAssign.Run(ctx, writtenCloths, magicaColliderCache);
+                    if (ctx.Settings.softBodiesCollide)
+                    {
+                        SoftBodyContact.Link(ctx.Target, ctx.Report);
+                    }
                     DeleteConverted(ctx, physBones);
                     break;
 #else

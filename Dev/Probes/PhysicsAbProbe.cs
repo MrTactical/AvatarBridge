@@ -38,7 +38,7 @@ namespace AvatarBridge.Regression
     {
         const string K = "PhysicsAbProbe.";
         const float Fps = 90f;
-        const float End = 27f;
+        const float End = 31.5f;
 
         // Motion start, motion end, end of the window that watches it settle.
         static readonly (string name, float start, float stop, float end)[] Phases =
@@ -53,8 +53,10 @@ namespace AvatarBridge.Regression
 
         sealed class Side
         {
-            public Transform root, tip, mid;
+            public Transform root, tip, mid, press;
             public Vector3 endpoint, bind, bindMid;
+            public Vector3? restPress;
+            public float pressRadius;
             public readonly List<Vector3> v = new List<Vector3>(), m = new List<Vector3>();
         }
 
@@ -72,6 +74,15 @@ namespace AvatarBridge.Regression
         }
 
         static List<Chain> chains;
+        static readonly HashSet<string> SoftClasses = new HashSet<string> { "Breast", "Butt", "Belly", "Thigh" };
+
+        sealed class Pair
+        {
+            public Chain a, b;
+            public float srcRest, dstRest, srcMin = float.MaxValue, dstMin = float.MaxValue;
+        }
+
+        static List<Pair> pairs;
         static Body srcBody, dstBody;
         static int startFrame = -1, playFrames;
         static float walked;
@@ -178,6 +189,9 @@ namespace AvatarBridge.Regression
             SessionState.SetInt(K + "index", 0);
             SessionState.SetInt(K + "stage", 0);
             SessionState.SetString(K + "gravityScale", Arg("-abGravityScale") ?? "");
+            SessionState.SetString(K + "capture", Arg("-abCapture") ?? "");
+            SessionState.SetInt(K + "softCollide", Array.IndexOf(Environment.GetCommandLineArgs(), "-abSoftCollide") >= 0 ? 1 : 0);
+            SessionState.SetInt(K + "live", Array.IndexOf(Environment.GetCommandLineArgs(), "-abLive") >= 0 ? 1 : 0);
             Directory.CreateDirectory(SessionState.GetString(K + "out", ""));
             Hook();
             Next();
@@ -191,6 +205,7 @@ namespace AvatarBridge.Regression
             {
                 Debug.Log("[PhysicsAb] done");
                 SessionState.EraseInt(K + "stage");
+                if (SessionState.GetInt(K + "live", 0) == 1) return;   // watched: leave the editor open
                 EditorApplication.Exit(0);
                 return;
             }
@@ -232,6 +247,11 @@ namespace AvatarBridge.Regression
                 slimTexturesOnConvert = false,
                 physicsTarget = PhysicsTarget.MagicaCloth2,
             };
+            // By name, so the probe still builds against a converter from before the option.
+            if (SessionState.GetInt(K + "softCollide", 0) == 1)
+            {
+                typeof(BridgeSettings).GetField("softBodiesCollide")?.SetValue(settings, true);
+            }
             var report = BridgeConverter.Convert(descriptor, settings);
             var converted = report.ConvertedRoot;
             if (converted == null)
@@ -276,6 +296,7 @@ namespace AvatarBridge.Regression
 
             var lines = new List<string>();
             var seenRoots = new HashSet<Transform>();
+            pressParent = null;
             int skippedNoCloth = 0, skippedNoMatch = 0;
             foreach (var pb in descriptor.GetComponentsInChildren<VRCPhysBone>(true))
             {
@@ -312,17 +333,38 @@ namespace AvatarBridge.Regression
                 }
 
                 var endpoint = tip == root ? data.EndpointPosition : Vector3.zero;
+
+                // A sphere for each side that presses into the tip along the chain after the lying
+                // hold: a PhysBone collider on the source chain, a MagicaCloth2 one on the copy's cloth.
+                float reach = tip == root ? root.TransformVector(endpoint).magnitude : Vector3.Distance(root.position, tip.position);
+                float pressRadius = Mathf.Max(0.01f, 0.2f * reach);
+                var srcPress = MakePress("PhysicsAb press", pressRadius);
+                var physCollider = srcPress.gameObject.AddComponent<VRCPhysBoneCollider>();
+                physCollider.radius = pressRadius;
+                pb.colliders.Add(physCollider);
+                var dstPress = MakePress("PhysicsAb press copy", pressRadius);
+                var magicaCollider = dstPress.gameObject.AddComponent<MagicaSphereCollider>();
+                magicaCollider.SetSize(pressRadius);
+                foreach (var cloth in converted.GetComponentsInChildren<MagicaCloth>(true))
+                {
+                    if (!cloth.SerializeData.rootBones.Any(r => r != null && (r == dRoot || r.IsChildOf(dRoot) || dRoot.IsChildOf(r)))) continue;
+                    var collision = cloth.SerializeData.colliderCollisionConstraint;
+                    collision.colliderList.Add(magicaCollider);
+                    if (collision.mode == ColliderCollisionConstraint.Mode.None) collision.mode = ColliderCollisionConstraint.Mode.Point;
+                }
                 string pars = string.Format(CultureInfo.InvariantCulture,
-                    (data.IsVersion10 ? "v1.0 " : "v1.1 ") + "{0} pull={1:0.##} spring={2:0.##} stiff={3:0.##} grav={4:0.##}/{5:0.##} imm={6:0.##}({7}) limit={8}:{9:0}/{10:0} bones={11}",
+                    (IsVersion10(pb) ? "v1.0 " : "v1.1 ") + "{0} pull={1:0.##} spring={2:0.##} stiff={3:0.##} grav={4:0.##}/{5:0.##} imm={6:0.##}({7}) limit={8}:{9:0}/{10:0} bones={11} radius={12:0.###} squish={13:0.##} stretch={14:0.##}",
                     data.IsAdvancedIntegration ? "adv" : "simple", data.Pull, data.Spring, data.Stiffness, data.Gravity,
-                    data.GravityFalloff, data.Immobile, data.ImmobileTypeName, data.LimitTypeName, data.MaxAngleX, data.MaxAngleZ, tipDepth + 1);
+                    data.GravityFalloff, data.Immobile, data.ImmobileTypeName, data.LimitTypeName, data.MaxAngleX, data.MaxAngleZ, tipDepth + 1,
+                    data.Radius, data.MaxSquish, data.MaxStretch);
                 lines.Add(string.Join("|",
                     Rel(root, descriptor.transform).Replace("|", "_"),
                     MagicaPresetLibrary.Classify(data).Name,
                     pars,
                     IndexPath(root), IndexPath(tip), IndexPath(mid),
                     IndexPath(dRoot), IndexPath(dTip), IndexPath(dMid),
-                    V3(endpoint)));
+                    V3(endpoint),
+                    IndexPath(srcPress), IndexPath(dstPress), pressRadius.ToString(CultureInfo.InvariantCulture)));
             }
             Debug.Log($"[PhysicsAb] {scenePath}: {lines.Count} chain(s) matched, {skippedNoCloth} without a cloth, {skippedNoMatch} not found in the copy");
             if (lines.Count == 0) return false;
@@ -335,6 +377,25 @@ namespace AvatarBridge.Regression
         }
 
         static string Rel(Transform t, Transform root) => AnimationUtility.CalculateTransformPath(t, root);
+
+        // From the component, not PhysBoneChainData, so the probe still builds against a converter
+        // from before the chain data carried it.
+        static bool IsVersion10(VRCPhysBone pb) => pb.version.ToString().Contains("1_0");
+
+        // Parked far below until the press; a plain sphere shows it on camera, without a collider of its own.
+        static Transform pressParent;
+
+        static Transform MakePress(string name, float radius)
+        {
+            if (pressParent == null) pressParent = new GameObject("PhysicsAb presses").transform;
+            var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            go.name = name;
+            go.transform.SetParent(pressParent, false);
+            UnityEngine.Object.DestroyImmediate(go.GetComponent<Collider>());
+            go.transform.localScale = Vector3.one * radius * 2f;
+            go.transform.position = Vector3.down * 100f;
+            return go.transform;
+        }
 
         static Transform Find(Transform root, string rel)
         {
@@ -437,6 +498,12 @@ namespace AvatarBridge.Regression
                 c.src.root = FromIndexPath(f[3]); c.src.tip = FromIndexPath(f[4]); c.src.mid = FromIndexPath(f[5]);
                 c.dst.root = FromIndexPath(f[6]); c.dst.tip = FromIndexPath(f[7]); c.dst.mid = FromIndexPath(f[8]);
                 c.src.endpoint = c.dst.endpoint = ParseV3(f[9]);
+                if (f.Length >= 13)
+                {
+                    c.src.press = FromIndexPath(f[10]);
+                    c.dst.press = FromIndexPath(f[11]);
+                    c.src.pressRadius = c.dst.pressRadius = float.Parse(f[12], CultureInfo.InvariantCulture);
+                }
                 if (c.src.root == null || c.dst.root == null || c.src.tip == null || c.dst.tip == null) continue;
                 chains.Add(c);
             }
@@ -445,6 +512,26 @@ namespace AvatarBridge.Regression
                 c.src.bind = Vec(c.src, false); c.src.bindMid = Vec(c.src, true);
                 c.dst.bind = Vec(c.dst, false); c.dst.bindMid = Vec(c.dst, true);
             }
+            // Soft bodies whose tips start within reach of each other: the pair a breast makes.
+            pairs = new List<Pair>();
+            var soft = chains.Where(c => SoftClasses.Contains(c.cls)).ToList();
+            for (int i = 0; i < soft.Count; i++)
+            {
+                for (int j = i + 1; j < soft.Count; j++)
+                {
+                    float rest = Vector3.Distance(soft[i].src.tip.position, soft[j].src.tip.position);
+                    float reach = soft[i].src.bind.magnitude + soft[j].src.bind.magnitude;
+                    if (rest > 0f && rest < 2f * reach)
+                    {
+                        pairs.Add(new Pair
+                        {
+                            a = soft[i], b = soft[j], srcRest = rest,
+                            dstRest = Vector3.Distance(soft[i].dst.tip.position, soft[j].dst.tip.position),
+                        });
+                    }
+                }
+            }
+            SetUpCapture();
         }
 
         // The tip (or the midpoint) relative to the chain's root, in the space of the root's
@@ -513,6 +600,221 @@ namespace AvatarBridge.Regression
                     body.head.rotation = Quaternion.AngleAxis(headYaw, body.avatar.up) * body.avatar.rotation * body.headRel;
                 }
             }
+            if (t >= 27f) Press(t);
+            Watch(t);
+        }
+
+        // Push in over a second, hold a second, let go over half a second: the sphere starts just
+        // past the tip and travels toward the root by 40% of the chain's reach.
+        static void Press(float t)
+        {
+            float push = t < 28f ? Smooth(t - 27f) : t < 29f ? 1f : t < 29.5f ? 1f - Smooth((t - 29f) / 0.5f) : 0f;
+            foreach (var c in chains)
+            {
+                foreach (var s in new[] { c.src, c.dst })
+                {
+                    if (s.press == null) continue;
+                    if (s.restPress == null)
+                    {
+                        int from = Mathf.Max(0, s.v.Count - Mathf.RoundToInt(0.5f * Fps));
+                        var sum = Vector3.zero;
+                        for (int i = from; i < s.v.Count; i++) sum += s.v[i];
+                        s.restPress = sum / Mathf.Max(1, s.v.Count - from);
+                    }
+                    var parent = s.root.parent;
+                    var rootWorld = s.root.position;
+                    var tipWorld = parent.TransformPoint(parent.InverseTransformPoint(rootWorld) + s.restPress.Value);
+                    var along = tipWorld - rootWorld;
+                    var dir = along.normalized;
+                    s.press.position = push <= 0f ? Vector3.down * 100f
+                        : tipWorld + dir * (s.pressRadius * 1.05f) - dir * (0.4f * along.magnitude * push);
+                }
+            }
+        }
+
+        // ------------------------------------------------------------------ filming
+
+        // -abCapture <dir>: every third step (30 frames a second of simulated time) each shot is
+        // rendered once per avatar, from the same offset, so the two can be laid side by side.
+        // Each avatar is put on a layer of its own so neither camera sees the other one.
+        sealed class Shot
+        {
+            public string name;
+            public Vector3 offset;   // in the avatar's starting frame, in avatar heights
+            public bool head;
+            public Camera src, dst;
+        }
+
+        static List<Shot> shots;
+        static RenderTexture shotTarget;
+        static Texture2D shotPixels;
+        static float shotHeight;
+
+        static void SetUpCapture()
+        {
+            shots = null;
+            live = null;
+            string dir = SessionState.GetString(K + "capture", "");
+            bool watched = SessionState.GetInt(K + "live", 0) == 1;
+            if (dir.Length == 0 && !watched) return;
+            void Layer(Transform root, int layer)
+            {
+                foreach (var t in root.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = layer;
+            }
+            Layer(srcBody.avatar, 29);
+            Layer(dstBody.avatar, 30);
+            foreach (var c in chains)
+            {
+                if (c.src.press != null) Layer(c.src.press, 29);
+                if (c.dst.press != null) Layer(c.dst.press, 30);
+            }
+            // Head height, not renderer bounds: one stray particle system or helper mesh makes the bounds huge.
+            shotHeight = srcBody.head != null
+                ? Mathf.Max(0.3f, Vector3.Dot(srcBody.head.position - srcBody.avatar.position, Vector3.up) * 1.1f)
+                : 1.5f;
+            if (!UnityEngine.Object.FindObjectsOfType<Light>().Any(l => l.isActiveAndEnabled && l.type == LightType.Directional))
+            {
+                var sun = new GameObject("PhysicsAb light").AddComponent<Light>();
+                sun.type = LightType.Directional;
+                sun.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
+            }
+            Camera Make(int layer)
+            {
+                var cam = new GameObject("PhysicsAb camera").AddComponent<Camera>();
+                cam.enabled = false;
+                cam.clearFlags = CameraClearFlags.SolidColor;
+                cam.backgroundColor = new Color(0.16f, 0.17f, 0.2f);
+                cam.cullingMask = 1 << layer;
+                cam.fieldOfView = 35f;
+                cam.nearClipPlane = 0.02f;
+                return cam;
+            }
+            if (watched)
+            {
+                live = new Shot { src = Make(29), dst = Make(30) };
+                foreach (var cam in new[] { live.src, live.dst })
+                {
+                    cam.enabled = true;
+                    cam.depth = 50;
+                    cam.fieldOfView = 40f;
+                }
+                live.src.rect = new Rect(0f, 0f, 0.5f, 1f);
+                live.dst.rect = new Rect(0.5f, 0f, 0.5f, 1f);
+                new GameObject("PhysicsAb captions").AddComponent<Captions>();
+                Application.targetFrameRate = (int)Fps;
+                QualitySettings.vSyncCount = 0;
+            }
+            if (dir.Length == 0) return;
+            shots = new List<Shot>
+            {
+                new Shot { name = "front", offset = Angle("front") },
+                new Shot { name = "back", offset = Angle("back") },
+                new Shot { name = "head", offset = Angle("head"), head = true },
+            };
+            foreach (var s in shots)
+            {
+                s.src = Make(29);
+                s.dst = Make(30);
+                Directory.CreateDirectory(Path.Combine(dir, s.name));
+            }
+            shotTarget = new RenderTexture(ShotWidth, ShotHeight, 24);
+            shotPixels = new Texture2D(ShotWidth, ShotHeight, TextureFormat.RGB24, false);
+        }
+
+        const int ShotWidth = 800, ShotHeight = 450;
+        static Shot live;
+
+        // Camera offsets in the avatar's starting frame, in avatar heights.
+        static Vector3 Angle(string name)
+        {
+            switch (name)
+            {
+                // About 1.75 heights away: a 35 degree view then holds the whole avatar.
+                case "front": return new Vector3(0.8f, 0.15f, 1.55f);
+                case "back": return new Vector3(-0.8f, 0.3f, -1.5f);
+                case "head": return new Vector3(0.5f, 0.12f, -0.65f);
+                case "side": return new Vector3(1.7f, 0.15f, 0.1f);
+                default: return new Vector3(1.3f, 1.1f, 0.5f);   // high, for lying down
+            }
+        }
+
+        // The watched view picks the angle that shows each motion best.
+        static (string name, bool head, string caption) Scene(float t)
+        {
+            if (t < 2f) return ("front", false, "Standing still");
+            if (t < 6.5f) return ("front", false, "Walk forward, then stop");
+            if (t < 9.5f) return ("back", false, "Turn 90 degrees");
+            if (t < 12f) return ("head", true, "Head turn (body still)");
+            if (t < 15f) return ("side", false, "Jump");
+            if (t < 18.5f) return ("back", false, "Quick shake");
+            if (t < 27f) return ("high", false, "Lie face down and hold (gravity)");
+            return ("back", false, "A sphere presses into each chain");
+        }
+
+        static void Place(Camera cam, Body body, Vector3 offset, bool onHead)
+        {
+            var head = body.head != null ? body.head.position : body.avatar.position + body.avatar.up * shotHeight * 0.9f;
+            var centre = onHead ? head : (body.avatar.position + head) * 0.5f;
+            cam.transform.position = centre + body.rot0 * (offset * shotHeight);
+            cam.transform.LookAt(centre, Vector3.up);
+        }
+
+        static void Watch(float t)
+        {
+            if (live == null) return;
+            var (name, head, caption) = Scene(t);
+            Place(live.src, srcBody, Angle(name), head);
+            Place(live.dst, dstBody, Angle(name), head);
+            Captions.Line = caption;
+        }
+
+        // Editor-only and Play-mode-only, so a plain MonoBehaviour from this assembly is fine.
+        sealed class Captions : MonoBehaviour
+        {
+            public static string Line = "";
+            GUIStyle style;
+
+            void OnGUI()
+            {
+                if (style == null)
+                {
+                    style = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+                    style.normal.textColor = Color.white;
+                }
+                style.fontSize = Mathf.Max(14, Screen.height / 28);
+                float h = style.fontSize * 1.8f;
+                void Box(Rect r, string text)
+                {
+                    GUI.color = new Color(0f, 0f, 0f, 0.55f);
+                    GUI.DrawTexture(r, Texture2D.whiteTexture);
+                    GUI.color = Color.white;
+                    GUI.Label(r, text, style);
+                }
+                Box(new Rect(10, 10, Screen.width / 2f - 20, h), "Original: VRChat PhysBones");
+                Box(new Rect(Screen.width / 2f + 10, 10, Screen.width / 2f - 20, h), "Converted: MagicaCloth2");
+                Box(new Rect(Screen.width * 0.2f, Screen.height - h - 14, Screen.width * 0.6f, h), Line);
+            }
+        }
+
+        static void Film(int step)
+        {
+            if (shots == null || step % 3 != 0) return;
+            string dir = SessionState.GetString(K + "capture", "");
+            foreach (var s in shots)
+            {
+                foreach (var (cam, body, side) in new[] { (s.src, srcBody, "src"), (s.dst, dstBody, "dst") })
+                {
+                    Place(cam, body, s.offset, s.head);
+                    cam.targetTexture = shotTarget;
+                    cam.Render();
+                    var was = RenderTexture.active;
+                    RenderTexture.active = shotTarget;
+                    shotPixels.ReadPixels(new Rect(0, 0, ShotWidth, ShotHeight), 0, 0);
+                    shotPixels.Apply();
+                    RenderTexture.active = was;
+                    File.WriteAllBytes(Path.Combine(dir, s.name, $"{side}_{step / 3:00000}.png"), shotPixels.EncodeToPNG());
+                }
+            }
         }
 
         static void ReadStep()
@@ -522,6 +824,12 @@ namespace AvatarBridge.Regression
             {
                 c.src.v.Add(Vec(c.src, false)); c.src.m.Add(Vec(c.src, true));
                 c.dst.v.Add(Vec(c.dst, false)); c.dst.m.Add(Vec(c.dst, true));
+            }
+            Film(Time.frameCount - startFrame);
+            foreach (var pr in pairs)
+            {
+                pr.srcMin = Mathf.Min(pr.srcMin, Vector3.Distance(pr.a.src.tip.position, pr.b.src.tip.position));
+                pr.dstMin = Mathf.Min(pr.dstMin, Vector3.Distance(pr.a.dst.tip.position, pr.b.dst.tip.position));
             }
             if ((Time.frameCount - startFrame) / Fps < End) return;
             try
@@ -543,7 +851,7 @@ namespace AvatarBridge.Regression
 
         sealed class Metrics
         {
-            public float sag, stretch, lie, liehold;
+            public float sag, stretch, lie, liehold, pressRatio = float.NaN, pressAngle = float.NaN, pressRecover = float.NaN;
             public readonly Dictionary<string, (float peak, float settle, float overshoot, float midShare)> phase =
                 new Dictionary<string, (float, float, float, float)>();
         }
@@ -608,6 +916,25 @@ namespace AvatarBridge.Regression
             h0 = Ix(25f); h1 = Ix(27f);
             for (int i = h0; i < h1; i++) hang += Vector3.Angle(s.v[i], rest);
             m.liehold = hang / Mathf.Max(1, h1 - h0);
+            // Pressed: how much shorter it got, how far it bent out of the way, how fast it came back.
+            if (s.restPress != null && s.restPress.Value.sqrMagnitude > 1e-12f)
+            {
+                var rp = s.restPress.Value;
+                float ratio = 1f, angle = 0f;
+                for (int i = Ix(27f); i < Ix(29.5f); i++)
+                {
+                    ratio = Mathf.Min(ratio, s.v[i].magnitude / rp.magnitude);
+                    angle = Mathf.Max(angle, Vector3.Angle(s.v[i], rp));
+                }
+                int back = -1;
+                for (int i = Ix(29.5f); i < n; i++)
+                {
+                    if (Mathf.Abs(s.v[i].magnitude / rp.magnitude - 1f) < 0.05f && Vector3.Angle(s.v[i], rp) < Mathf.Max(3f, 0.1f * angle)) { back = i; break; }
+                }
+                m.pressRatio = ratio;
+                m.pressAngle = angle;
+                m.pressRecover = back < 0 ? float.NaN : (back - Ix(29.5f)) / Fps;
+            }
             return m;
         }
 
@@ -635,6 +962,9 @@ namespace AvatarBridge.Regression
                 Row(c, "stretch", a.stretch, b.stretch);
                 Row(c, "lie", a.lie, b.lie);
                 Row(c, "liehold", a.liehold, b.liehold);
+                Row(c, "press.ratio", a.pressRatio, b.pressRatio);
+                Row(c, "press.angle", a.pressAngle, b.pressAngle);
+                Row(c, "press.recover", a.pressRecover, b.pressRecover);
                 foreach (var (name, _, _, _) in Phases)
                 {
                     var p = a.phase[name];
@@ -647,14 +977,21 @@ namespace AvatarBridge.Regression
                     Row(c, name + ".midshare", p.midShare, q.midShare);
                 }
             }
+            foreach (var pr in pairs)
+            {
+                var both = new Chain { name = pr.a.name + " + " + pr.b.name, cls = "pair " + pr.a.cls, pars = "" };
+                Row(both, "pair.closest", pr.srcMin / Mathf.Max(1e-6f, pr.srcRest), pr.dstMin / Mathf.Max(1e-6f, pr.dstRest));
+            }
             File.WriteAllText(Path.Combine(outDir, avatar + ".tsv"), rows.ToString());
 
             // Medians per class: the copy against the original, side by side.
             var sum = new StringBuilder($"{avatar}: {chains.Count} chain(s)\n");
             foreach (var cls in perClass.Keys.OrderBy(k => k, StringComparer.Ordinal))
             {
-                sum.Append($"\n[{cls}] n={perClass[cls]["sag"].Count}\n");
-                foreach (var metric in new[] { "sag", "lie", "liehold", "walk.peak", "walk.settle", "walk.overshoot", "walk.midshare",
+                // Pair rows carry only their own metric, so count whatever the class has.
+                sum.Append($"\n[{cls}] n={perClass[cls].Values.Max(l => l.Count)}\n");
+                foreach (var metric in new[] { "sag", "lie", "liehold", "pair.closest", "press.ratio", "press.angle",
+                             "walk.peak", "walk.settle", "walk.overshoot", "walk.midshare",
                              "turn.peak", "head.peak", "head.settle", "jump.peak", "shake.peak", "stretch" })
                 {
                     if (!perClass[cls].TryGetValue(metric, out var list)) continue;

@@ -115,6 +115,12 @@ namespace AvatarBridge
         // never wired stays uncollided either way; this improves on
         // the original rather than reproducing it.
         public bool autoAssignNearbyColliders = false;
+        // Also departs from the source: soft bodies near each other (the
+        // two breasts, the two thighs) get a sphere on each collision
+        // bone handed to the other, so they push apart instead of passing
+        // through. VRChat collides chains with colliders only, never with
+        // each other. MagicaCloth2 only.
+        public bool softBodiesCollide = false;
         // Invents physics the author never made. A toggled style with
         // its own rig and mesh but no PhysBone gets a synthesized
         // MagicaCloth, preset by classification. Off because some

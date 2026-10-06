@@ -49,6 +49,13 @@ namespace AvatarBridge
                 : pull * (1f - spring * SimplifiedSpringCeiling);
         }
 
+        // PhysBone 1.0 adds stiffness * prevVector and puts the bone back to its length; 1.1
+        // subtracts the step's own displacement. So a 1.0 chain with stiffness s moves exactly
+        // like a 1.1 chain with s / (1 + s), checked against the decompiled solver to float
+        // precision. Everything below is derived for 1.1.
+        public static float AsVersion11(float stiffness, bool version10) =>
+            version10 ? stiffness / (1f + Mathf.Max(0f, stiffness)) : stiffness;
+
         public static float Damping(float pull, float spring, float stiffness, bool advanced)
         {
             return Mathf.Clamp01((1f - Rebase(Retention60(pull, spring, stiffness, advanced))) / DampingScale);

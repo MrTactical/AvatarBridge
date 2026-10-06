@@ -156,3 +156,14 @@ PhysBones on five avatars, 114 chains with gravity across both versions, by swee
 the value that matched each chain's hang. With it, the median hang error lying down went from
 about 15 degrees to 2. The version matters as much as the number: most of a 1.0 avatar's chains
 hang several times further than the same gravity on 1.1.
+
+## PhysBone 1.0 stiffness
+
+Version 1.0's Advanced branch adds `stiffness * prevVector` to the step and then puts the bone back
+to its length; 1.1 subtracts the step's own displacement. Writing w for the begin-point offset and d
+for the shared step, 1.0's candidate is (1+s)V + w + d, which points the same way as
+V + (w+d)/(1+s), and 1.1's is V + (1-s')(w+d). So a 1.0 chain with stiffness s moves exactly like a
+1.1 chain with s' = s/(1+s), through collisions, limits and grabs too, since everything after the
+branch is shared. Checked by transcribing both branches into a script: across 2000 random states the
+largest endpoint gap was 2.4e-15 bone lengths. `PhysBoneSolverMap.AsVersion11` applies it before
+the 1.1 derivation. Simplified integration reads stiffness in neither version.

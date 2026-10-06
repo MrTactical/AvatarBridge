@@ -500,10 +500,10 @@ written as MagicaCloth2's **Bone Spring**: a volume anchored to a bone and held 
 position, rather than as Bone Cloth, which is for things that *hang*. Converting them as chains is
 what made them swing like a pendulum. Bone Spring also lets collision be offered on **one bone per
 side** instead of every bone in the chain, so a touch lands on the part that's actually there; the
-bone chosen is the one whose pivot sits nearest the middle of the mesh that side carries. Their
-inertia is left at the preset's value rather than converted from *Immobile*, because an anchored
-body can't be thrown off the avatar: holding inertia down would only stop it answering your
-movement. A preset you saved yourself keeps its spring strength as saved, and a piercing or charm
+bone chosen is the one whose pivot sits nearest the middle of the mesh that side carries, and it
+collides at the size of that mesh, measured from the pivot. Their inertia is left at the preset's
+value rather than converted from *Immobile*, because an anchored body can't be thrown off the
+avatar: holding inertia down would only stop it answering your movement. A piercing or charm
 hanging from a breast bone is converted as the jewellery it is, not as a second soft body.
 
 **Size is measured as you wear it, once.** Every radius here comes from the mesh with your
@@ -547,7 +547,9 @@ and MagicaCloth2 90 Hz, so a retention `r` on one side is `r^(60/90)` on the oth
 multipliers had to be undone along the way: MagicaCloth2 scales both its damping and its
 restoration stiffness by `0.2` before the solver sees them *and* applies restoration three times
 per step, and PhysBone's `stiffness` isn't an independent axis at all (the algebra collapses it into
-a scale on the other two, and Simplified integration never reads it).
+a scale on the other two, and Simplified integration never reads it). PhysBone 1.0 applies
+stiffness differently again, and a 1.0 chain with stiffness *s* moves exactly like a 1.1 chain with
+*s* / (1 + *s*), so that is what the conversion uses for it.
 
 Gravity differs in kind. PhysBone 1.1 leans each bone's rest pose toward straight down by the
 gravity fraction; PhysBone 1.0 applies it as a force that pull holds off; MagicaCloth2 applies an
@@ -587,9 +589,15 @@ scales its own bones simply stops working, and the avatar quietly has a differen
 original at identical menu settings. The source flag decides this, so it's applied without asking,
 and the report names each chain it applied to.
 
-Stretch & squish and multi-child blending have no MagicaCloth2 equivalent, so they are reported
-rather than converted. Angle limits become a distance bound while *Bound swing to the source's
-limit* is on, as it is by default; off, the chain swings without one.
+**Squish** carries over as how firmly a chain's bones hold their length: a PhysBone with *Max
+Squish* gets softer bones, so a collider can shorten them, and the cloth may shrink as far toward
+its root. **Stretch** can't: MagicaCloth2 lets no chain stretch more than 3% however it is set, so
+*Max Stretch* is reported. **Multi Child Type** *Ignore*, the default, roots the cloth at each
+branch's first bone, so a skirt or a bunch of hair strands moves from where VRChat moves it rather
+than hinging at the waistband or hairline; *Average* turns the root toward its branches but can't
+carry them rigidly with it, and *First* has no equivalent. Angle limits become a distance bound
+while *Bound swing to the source's limit* is on, as it is by default; off, the chain swings without
+one.
 
 **Using DynamicBone instead?** Almost none of this applies: PhysBones and DynamicBone *are* the
 same kind of simulation, so that path maps field for field, with three rescalings: pull becomes
@@ -624,7 +632,7 @@ cancellation and can't come along; the report names each chain that had one.
 |---|---|---|
 | **Match a preset to each chain** | on | Hair, tail, skirt, cape, accessory and more, read from the bone's name or, failing that, the nearest parent object whose name says what it is; otherwise a soft/middle/hard spring by how firmly the PhysBone held its rest pose |
 | **Fit the preset to the PhysBone** | on | The converted gravity, immobile, wind, the preset's angle limit and depth inertia, all as above, and the raised speed limits. Turn it off to leave those at the preset's values; `Is Animated` applies either way |
-| **Derive physics from the PhysBone** | on | Converts pull, spring and stiffness into damping and angle restoration. The preset's damping stays as a floor; restoration has none, because holding it at the preset's value made loose hair several times stiffer than its PhysBone and swing about half as far. The report gives the preset's numbers beside the converted ones. Turn it off to keep the preset's own damping and restoration |
+| **Derive physics from the PhysBone** | on | Converts pull, spring and stiffness into damping and angle restoration. The preset's damping stays as a floor. Restoration has none on a hanging chain, because holding it at the preset's value made loose hair several times stiffer than its PhysBone and swing about half as far; a soft body keeps the preset's restoration as its floor, since without it a breast swung many times further than its PhysBone. The report gives the preset's numbers beside the converted ones. Turn it off to keep the preset's own damping and restoration |
 | **Size particles from the mesh** | on | MagicaCloth2's radius is the collision body of a simulated bone. Left alone it is whatever the matched preset shipped: the same size on a breast as on a hair strand, so collision covers a fraction of what you see. This measures the mesh those bones move: with your blendshapes applied, so a body slider left part-way up is measured as you actually wear it, and sizes each chain to it. The source PhysBone's radius is deliberately *not* used: in VRChat it only governs contact with PhysBone colliders, so it is routinely near zero |
 | **Size for the largest a slider makes the body** | on | MagicaCloth2 can't animate a radius, so collision sized for one position of a blendshape body slider is wrong at every other. This measures the mesh again with every animated blendshape pushed as far as the animator can take it and keeps the larger reading: a little generous with the slider down rather than inside the body with it up. Shapes that *shrink* cost nothing. On the DynamicBone path the same measurement grows chain radii and converted colliders |
 | **Fit colliders to the mesh** | on | Measures the body part each collider sits on and fits MagicaCloth2's capsule to it, with a start and an end radius so it tapers the way the limb does (a sphere collider takes the narrower end). The measurement *replaces* the source's numbers, which are routinely one default stamped onto every collider; only the host bone's own vertices are read. Off keeps the source's sizes. The report gives the before and after for each |
@@ -632,6 +640,7 @@ cancellation and can't come along; the report names each chain that had one.
 | **Convert toe PhysBones** | off | Toes are left out of the simulation entirely: both chains *rooted* at them and toe branches found part-way down a longer chain (a leg or skirt chain that runs through the feet), for MagicaCloth2 and DynamicBone alike. Simulated toes splay and swing while IK plants the foot, which reads as broken feet rather than as physics. Turn on if the toe physics are deliberate |
 | **Bound swing to the source's limit** | on | A PhysBone's angle limit is often the only thing keeping a deliberately loose chain presentable: convert the looseness without it and the chain swings much further here than it did in VRChat. This bounds how far each bone may travel from rest, worked out from that limit, which VRChat applies at every joint, along the chain's own bones, easing to nothing at the root. A soft body keeps its spring range instead, since MagicaCloth2 turns distance bounds off for one. It's a *distance* bound rather than an angle limit, so it removes motion instead of adding a restoring force and can't set the chain vibrating |
 | **Auto-assign nearby colliders** | off | Gives each cloth the avatar's own colliders it could swing into. Improves on the original rather than copying it, so check before uploading |
+| **Soft bodies push each other apart** | off | Soft bodies near each other, like the two breasts or thighs, collide instead of passing through: a sphere on each one's collision bone, given to the others. VRChat collides chains only with colliders, never with each other, so this too improves on the original. Also a Toolkit card, for an avatar already converted |
 | **Add physics to toggled rigs that have none** | off | A toggled style (usually add-on hair) carrying its own rig and mesh but no PhysBone was rigid in VRChat too; this synthesizes a MagicaCloth for it, preset by classification, wired to the style's toggle. Off because it invents physics the author never made |
 
 ## Contacts
@@ -677,6 +686,12 @@ back on a supported footing.
 **MagicaCloth2 has no grab.** VRChat lets you take hold of a PhysBone and pull it, and plenty of
 avatars are built entirely around that: a pump handle, a leash, a lever, anything a stranger is
 meant to pull. Converted, those chains still hang and swing, but nobody can hold them.
+
+**Pushing needs no mod.** ChilloutVR gives every avatar a MagicaCloth2 collider on each hand, and
+those hands push other people's converted cloth (between friends by default, in ChilloutVR's own
+settings), each player seeing it on their own screen. A converted collider on a hand or finger is
+written as a sphere: a capsule there stops ChilloutVR adding the hand's own collider, and that
+avatar's hands would push nobody's cloth.
 
 **Where the converted physics lives.** Every cloth goes on its own object under a single
 `MagicaCloth Phys` object on the avatar root (`DynamicBone Phys` on that path), rather than beside
@@ -1541,6 +1556,7 @@ in a ChilloutVR project and these cards work on their own; see [Installation](#i
 | **Face: visemes and blink** | Finds the face mesh and wires the standard viseme and blink blendshapes onto the CVRAvatar. A face mesh already set there is kept unless the visemes are found on another one. Touches nothing else on it |
 | **Audio limits** | Clamps every audio source to settings ChilloutVR handles: doppler off, distance floors and caps, fully 3D. One `minDistance 0` source on a wearer can mute the whole game |
 | **Mesh bounds** | Resizes skinned mesh bounds to the avatar's own volume plus clearance, so meshes stop vanishing at the screen's edge |
+| **Soft bodies** | MagicaCloth2 only. Lets soft bodies that sit near each other, like the two breasts or thighs, push apart instead of passing through: a sphere on each one's collision bone, given to the others. Neither VRChat nor MagicaCloth2 does this on its own, so it improves on the original. A soft body carrying both sides on one cloth is named, since those two cannot push each other. Running it twice changes nothing |
 | **Height slider** | Adds the quick-menu Height slider (0.25×–4×, centred on the original size) to the controller ChilloutVR uploads (the one under the avatar's override controller, else its base controller) and to its advanced settings. Its menu entry goes first in the Advanced Settings list, where people look for it. Refused, with a warning, while that controller is the CCK's own stock one, since layers added there would reach every avatar in the project. Not added, with a warning, when the avatar already has its own parameter or menu entry called "Height" |
 | **Store description** | Writes the [description](#store-description) from what the avatar has, types it into the upload page when that window is open and its Description box is empty, and copies it to the clipboard either way |
 | **Merge animators** | Any sources into a target: layers and parameters copied (clips and masks are shared, not duplicated), layers after the target's own, same-named layers renamed, a parameter present in both with different types named and the target's type kept. A synced layer is left out and named, since a copy of one would play nothing. Written to a copy beside the target by default; sources are never edited |

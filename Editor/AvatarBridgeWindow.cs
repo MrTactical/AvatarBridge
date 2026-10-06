@@ -662,6 +662,9 @@ namespace AvatarBridge
                 b.Add(BridgeElements.Bind("Auto-assign nearby colliders",
                     "Lets each cloth collide with body colliders it could swing into, which VRChat did not. Check before uploading.",
                     settings.autoAssignNearbyColliders, v => settings.autoAssignNearbyColliders = v));
+                b.Add(BridgeElements.Bind("Soft bodies push each other apart",
+                    "Breasts, thighs and other soft bodies near each other stop passing through, which VRChat did not do. Check before uploading.",
+                    settings.softBodiesCollide, v => settings.softBodiesCollide = v));
             }
             return card;
         }

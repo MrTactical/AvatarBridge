@@ -116,25 +116,20 @@ namespace AvatarBridge
                 sdata.animationPoseRatio = 1f;
             }
 
-            // Multi Child Type "Ignore" pins a branching root; only the
-            // branches simulate. rootRotation 0 reproduces the pin.
-            // Otherwise 1.0 ("child-based"): PhysBone rotates the root
-            // to follow its children, and 0.5 would leave every chain
-            // one joint stiffer at the base. Presets never carry
-            // rootRotation, so this survives either apply order.
-            if (data.RootHasMultipleChildren && data.MultiChildTypeName == "Ignore")
-            {
-                sdata.rootRotation = 0f;
-            }
-            else
-            {
-                sdata.rootRotation = 1f;
-            }
+            // Multi Child Type "Ignore" leaves a branching root unsimulated in VRChat, its
+            // children fixed at their rest offsets beside it, and each branch simulates from its
+            // own first bone. So the cloth is rooted at those children, not at the branching bone:
+            // rooted there with rootRotation 0, the children swung about it like a hinge at the
+            // waistband or hairline that VRChat does not have. rootRotation 1 everywhere: PhysBone
+            // turns a root to follow its children, and 0.5 would leave every chain one joint
+            // stiffer at the base. Presets never carry rootRotation, so this survives either order.
+            // Not for a soft body, whose root is held by a spring rather than pinned.
+            bool ignoreBranching = !softBody && IgnoresBranching(data);
+            sdata.rootRotation = 1f;
 
-            ctx.Report.Converted(Category, data.Root.name,
-                data.RootHasMultipleChildren && data.MultiChildTypeName == "Ignore"
-                    ? "Root held still (rotation 0), as Multi Child Type Ignore does."
-                    : "Root turns with the chain (rotation 1), as in VRChat. Lower Root Rotation if the base moves too much.");
+            ctx.Report.Converted(Category, data.Root.name, ignoreBranching
+                ? "Rooted at each branch's first bone, the branching bone itself left to the animation, as Multi Child Type Ignore does."
+                : "Root turns with the chain (rotation 1), as in VRChat. Lower Root Rotation if the base moves too much.");
 
             if (data.HumanoidExclusions.Count > 0)
             {
@@ -154,13 +149,13 @@ namespace AvatarBridge
                     "if they are deliberate.");
             }
 
-            if (data.Ignores.Count == 0)
+            if (data.Ignores.Count == 0 && !ignoreBranching)
             {
                 sdata.rootBones.Add(data.Root);
             }
             else
             {
-                WriteRootsExcluding(ctx, sdata, data);
+                WriteRootsExcluding(ctx, sdata, data);   // with no ignores, that roots each child
             }
 
             // Endpoint Position appends a virtual bone to every leaf.
@@ -248,12 +243,12 @@ namespace AvatarBridge
 
             if (ctx.Settings.derivePhysicsFromPhysBone)
             {
-                DerivePhysics(ctx, data, sdata);
+                DerivePhysics(ctx, data, sdata, softBody);
             }
 
             if (softBody)
             {
-                ConfigureSoftBody(ctx, data, sdata, chainClass, customPreset);
+                ConfigureSoftBody(ctx, data, sdata, chainClass);
             }
 
             if (ctx.Settings.fitToPhysBone)
@@ -524,12 +519,11 @@ namespace AvatarBridge
                 $"{data.Pull:0.##}, spring {data.Spring:0.##}, stiffness {data.Stiffness:0.##}, gravity " +
                 $"{data.Gravity:0.##}, immobile {data.Immobile:0.##}, radius {data.Radius:0.###}. {fate}");
 
-            if (data.MaxStretch > 0f || data.MaxSquish > 0f)
+            if (data.MaxStretch > 0f)
             {
                 ctx.Report.Skipped(Category, data.Root.name,
-                    $"Stretch & Squish (max stretch {data.MaxStretch:0.##}, max squish {data.MaxSquish:0.##}) is " +
-                    "not converted: MagicaCloth2's BoneCloth keeps each bone at its rest length, so a chain " +
-                    "swings but never lengthens or compresses.");
+                    $"Max Stretch {data.MaxStretch:0.##} is not converted: MagicaCloth2 lets no chain stretch more " +
+                    "than 3% of its length, however it is set.");
             }
 
             if (data.IsAnimated)
@@ -543,8 +537,11 @@ namespace AvatarBridge
             if (data.RootHasMultipleChildren && !string.IsNullOrEmpty(data.MultiChildTypeName))
             {
                 ctx.Report.Approximated(Category, data.Root.name, data.MultiChildTypeName == "Ignore"
-                    ? "Multi Child Type 'Ignore': Root Rotation 0, so the root stays still as in VRChat."
-                    : $"Multi Child Type '{data.MultiChildTypeName}' has no equivalent: branches simulate apart.");
+                    ? "Multi Child Type 'Ignore': each branch simulates from its own first bone, as in VRChat."
+                    : data.MultiChildTypeName == "Average"
+                        ? "Multi Child Type 'Average': the root turns toward the average of its branches, as in VRChat, but " +
+                          "MagicaCloth2 cannot carry the other branches rigidly with it."
+                        : $"Multi Child Type '{data.MultiChildTypeName}' has no equivalent: the root turns toward the average of its branches.");
             }
 
             if (!string.IsNullOrEmpty(data.Parameter))
@@ -556,15 +553,21 @@ namespace AvatarBridge
             }
         }
 
-        static void DerivePhysics(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata)
+        static void DerivePhysics(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata, bool softBody)
         {
             bool advanced = data.IsAdvancedIntegration;
 
             // The preset's damping, read before overwrite, kept as a floor. Restoration has
-            // none: a floor at the preset's root value made loose hair about nine times
-            // stiffer than its PhysBone, measured in Play mode as half the swing.
+            // none on a hanging chain: a floor at the preset's root value made loose hair about
+            // nine times stiffer than its PhysBone, measured in Play mode as half the swing. A
+            // soft body keeps the preset's root restoration as its floor at both ends: its
+            // PhysBone's pull is low because the PhysBone holds it in other ways, and with the
+            // floor gone the copies swung 100 to 180 degrees on a walk where the originals swung
+            // 8; following the preset's taper instead still left them swinging 50.
             float dampFloor = sdata.damping.value;
             float restPreset = sdata.angleRestorationConstraint.stiffness.value;
+            float restFloorRoot = softBody ? restPreset : 0f;
+            float restFloorTip = restFloorRoot;
 
             // Evaluate both ends of the chain. PhysBone multiplies each base value by its curve
             // at the bone's depth, so root and tip can want quite different things.
@@ -572,8 +575,10 @@ namespace AvatarBridge
             float pullTip = data.Pull * PhysBoneSolverMap.SafeEvaluate(data.PullCurve, 1f);
             float springRoot = data.Spring * PhysBoneSolverMap.SafeEvaluate(data.SpringCurve, 0f);
             float springTip = data.Spring * PhysBoneSolverMap.SafeEvaluate(data.SpringCurve, 1f);
-            float stiffRoot = data.Stiffness * PhysBoneSolverMap.SafeEvaluate(data.StiffnessCurve, 0f);
-            float stiffTip = data.Stiffness * PhysBoneSolverMap.SafeEvaluate(data.StiffnessCurve, 1f);
+            float stiffRoot = PhysBoneSolverMap.AsVersion11(
+                data.Stiffness * PhysBoneSolverMap.SafeEvaluate(data.StiffnessCurve, 0f), data.IsVersion10);
+            float stiffTip = PhysBoneSolverMap.AsVersion11(
+                data.Stiffness * PhysBoneSolverMap.SafeEvaluate(data.StiffnessCurve, 1f), data.IsVersion10);
 
             float dampRoot = PhysBoneSolverMap.Damping(pullRoot, springRoot, stiffRoot, advanced);
             float dampTip = PhysBoneSolverMap.Damping(pullTip, springTip, stiffTip, advanced);
@@ -584,10 +589,10 @@ namespace AvatarBridge
                 out float dampValue, out float dampStart, out float dampEnd, out bool dampCurve);
             sdata.damping.SetValue(dampValue, dampStart, dampEnd, dampCurve);
 
-            float restRoot = PhysBoneSolverMap.RestorationStiffness(
-                pullRoot, springRoot, stiffRoot, advanced, out bool satRoot);
-            float restTip = PhysBoneSolverMap.RestorationStiffness(
-                pullTip, springTip, stiffTip, advanced, out bool satTip);
+            float restRoot = Mathf.Max(restFloorRoot, PhysBoneSolverMap.RestorationStiffness(
+                pullRoot, springRoot, stiffRoot, advanced, out bool satRoot));
+            float restTip = Mathf.Max(restFloorTip, PhysBoneSolverMap.RestorationStiffness(
+                pullTip, springTip, stiffTip, advanced, out bool satTip));
             PhysBoneSolverMap.MapCurve(restRoot, restTip,
                 out float restValue, out float restStart, out float restEnd, out bool restCurve);
 
@@ -609,13 +614,6 @@ namespace AvatarBridge
                     "not be visible, but the chain will not get any stiffer than it now is.");
             }
 
-            if (!advanced && data.Stiffness > 0.01f)
-            {
-                ctx.Report.Approximated(Category, data.Root.name,
-                    $"Stiffness {data.Stiffness:0.##} was ignored, because VRChat ignores it too: " +
-                    "PhysBone's Simplified integration never reads stiffness. Switching the source PhysBone " +
-                    "to Advanced would make it mean something in both.");
-            }
         }
 
         static void FitToPhysBone(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata,
@@ -686,6 +684,28 @@ namespace AvatarBridge
             // polarity flipped. Both values move together: split, they ask
             // the chain to hold still and swing at once. Never on a soft
             // body, which cannot be flung anyway.
+            // Bone length. A PhysBone bone keeps its length unless Max Squish lets a collider or a
+            // grab shorten it, and pull brings it back. MagicaCloth2 holds length through distance
+            // stiffness, which also resists some bending, so making every chain rigid swung them
+            // measurably less than their PhysBones (Play-mode A/B, 2026-10-06) and was undone. Only
+            // a squishing source changes it: softened by its squish, never below 0.2, which would
+            // leave a bone held by the tether alone, never firmer than the preset, and the tether's
+            // shrink limit opened to match. Soft bodies keep MagicaCloth2's own fixed values.
+            if (!softBody && data.MaxSquish > 0f)
+            {
+                float squish = Mathf.Clamp01(data.MaxSquish);
+                float was = sdata.distanceConstraint.stiffness.value;
+                float stiffness = Mathf.Min(was, Mathf.Max(0.2f, 1f - squish));
+                sdata.distanceConstraint.stiffness.SetValue(stiffness);
+                if (squish > sdata.tetherConstraint.distanceCompression)
+                {
+                    sdata.tetherConstraint.distanceCompression = squish;
+                }
+                ctx.Report.Approximated(Category, data.Root.name,
+                    $"Bones hold their length at stiffness {stiffness:0.##} (the preset had {was:0.##}), so a collider " +
+                    $"can shorten them, for the source's Max Squish {squish:0.##}.");
+            }
+
             // Depth inertia holds the bones near the root still while the avatar moves; several
             // presets ship 0.7 to 1.0 of it, and VRChat has nothing like it.
             float depth = GetFloat(sdata.inertiaConstraint, "depthInertia");
@@ -739,7 +759,7 @@ namespace AvatarBridge
             {
                 return;
             }
-            var segments = LongestPath(data.Root, data.Ignores);
+            var segments = SimulatedPath(data);
             if (segments.Sum() <= 0f)
             {
                 return;   // single bone with no reach; a leash would only pin it
@@ -796,7 +816,7 @@ namespace AvatarBridge
         // no pull in VRChat either, so gravity never reached it there.
         static float ConvertedGravity(PhysBoneChainData data, ClothSerializeData sdata, out float angleDeg)
         {
-            var segments = LongestPath(data.Root, data.Ignores);
+            var segments = SimulatedPath(data);
             int count = Mathf.Max(1, segments.Count);
             float pull = data.Pull * PhysBoneSolverMap.SafeEvaluate(data.PullCurve, 0.5f);
             float theta = PhysBoneHangAngle(count, Mathf.Clamp(Mathf.Abs(data.Gravity), 0f, 0.99f), pull,
@@ -843,6 +863,34 @@ namespace AvatarBridge
                 y += Mathf.Sin(phi);
             }
             return Mathf.Atan2(y, x);
+        }
+
+        static bool IgnoresBranching(PhysBoneChainData data) =>
+            data.RootHasMultipleChildren && data.MultiChildTypeName == "Ignore";
+
+        // The segments VRChat actually bends: from the root, or, when Multi Child Type Ignore
+        // leaves a branching root still, from the longest branch's first bone.
+        static List<float> SimulatedPath(PhysBoneChainData data)
+        {
+            if (!IgnoresBranching(data))
+            {
+                return LongestPath(data.Root, data.Ignores);
+            }
+            var best = new List<float>();
+            for (int i = 0; i < data.Root.childCount; i++)
+            {
+                var child = data.Root.GetChild(i);
+                if (data.Ignores.Contains(child))
+                {
+                    continue;
+                }
+                var path = LongestPath(child, data.Ignores);
+                if (path.Sum() > best.Sum())
+                {
+                    best = path;
+                }
+            }
+            return best;
         }
 
         // Segment lengths along the longest branch below root, ignored bones left out.
@@ -950,7 +998,22 @@ namespace AvatarBridge
 
             ColliderComponent collider;
             string fitted = null;
-            if (shape.Contains("Capsule"))
+            // ChilloutVR gives each hand its own MagicaCloth2 capsule, the one that pushes other
+            // people's cloth, but only when the hand carries no capsule of its own; one on a finger
+            // also gets filtered out as not being a hand. So a hand or finger collider becomes a
+            // sphere, at the capsule's middle, as wide as its radius and a little of its length.
+            bool onHand = OnHand(ctx, parent);
+            if (shape.Contains("Capsule") && onHand)
+            {
+                var sphere = go.AddComponent<MagicaSphereCollider>();
+                float half = Mathf.Max(pbCollider.height * 0.5f, pbCollider.radius);
+                float radius = Mathf.Lerp(pbCollider.radius, half, 0.5f);
+                sphere.SetSize(radius);
+                collider = sphere;
+                fitted = $"made a sphere of radius {radius:0.###}: a capsule on a hand would stop ChilloutVR adding " +
+                         "the hand capsule that pushes other people's cloth";
+            }
+            else if (shape.Contains("Capsule"))
             {
                 var capsule = go.AddComponent<MagicaCapsuleCollider>();
                 capsule.direction = MagicaCapsuleCollider.Direction.Y; // PB capsules extend along local Y
@@ -1009,6 +1072,24 @@ namespace AvatarBridge
             PhysBoneConverter.RecordColliderHost(ctx, pbCollider, go);
             cache[pbCollider] = collider;
             return collider;
+        }
+
+        static bool OnHand(BridgeContext ctx, Transform t)
+        {
+            var animator = ctx.TargetAnimator;
+            if (animator == null || !animator.isHuman || t == null)
+            {
+                return false;
+            }
+            foreach (var bone in new[] { HumanBodyBones.LeftHand, HumanBodyBones.RightHand })
+            {
+                var hand = animator.GetBoneTransform(bone);
+                if (hand != null && (t == hand || t.IsChildOf(hand)))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         const int MeshSampleTarget = 200000;
@@ -1409,7 +1490,7 @@ namespace AvatarBridge
         const float SoftBodySpringPower = 0.06f;
 
         static void ConfigureSoftBody(BridgeContext ctx, PhysBoneChainData data,
-            ClothSerializeData sdata, string chainClass, bool customPreset)
+            ClothSerializeData sdata, string chainClass)
         {
             bool spring = TrySetMember(sdata.springConstraint, "useSpring", true);
             float presetPower = 0f;
@@ -1419,8 +1500,10 @@ namespace AvatarBridge
             {
                 presetPower = existing;
             }
-            // A preset someone tuned and saved is theirs, softer or not.
-            float power = customPreset && presetPower > 0f ? presetPower : Mathf.Max(presetPower, SoftBodySpringPower);
+            // The floor applies to a dropped-in preset too: it shares the shipped file's name, so the
+            // two cannot be told apart, and letting the shipped Breast preset's 0.01 through made
+            // soft bodies six times floppier.
+            float power = Mathf.Max(presetPower, SoftBodySpringPower);
             spring &= TrySetMember(sdata.springConstraint, "springPower", power);
 
             var collisionBones = ChooseCollisionBones(ctx, data, out float collisionRadius);
@@ -1483,6 +1566,8 @@ namespace AvatarBridge
             {
                 return chosen;   // nothing measurable; better no collision bone than a guessed one
             }
+
+            var volumeRadii = new List<float>();
 
             // One per branch, not one per chain. A single root often
             // carries a mirrored pair, and one bone for the whole mesh
@@ -1567,9 +1652,34 @@ namespace AvatarBridge
                 if (best != null && !chosen.Contains(best))
                 {
                     chosen.Add(best);
+                    // How far the mesh it carries reaches from that pivot: the size of the volume,
+                    // which is what a soft body collides as. The chain measurement above takes the
+                    // narrowest cross-section, half a panel's thickness, and on a breast whose
+                    // bones carry the front skin that came out a crescent 2 mm thick.
+                    var reach = new List<float>();
+                    foreach (var bone in branch)
+                    {
+                        if (vertices.TryGetValue(bone, out var points))
+                        {
+                            foreach (var p in points)
+                            {
+                                reach.Add(Vector3.Distance(p, best.position));
+                            }
+                        }
+                    }
+                    if (reach.Count >= MinMeshSamples)
+                    {
+                        reach.Sort();
+                        volumeRadii.Add(reach[reach.Count / 2]);
+                    }
                 }
             }
 
+            if (volumeRadii.Count > 0)
+            {
+                volumeRadii.Sort();
+                radius = volumeRadii[0];
+            }
             return chosen;
         }
 
