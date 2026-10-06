@@ -361,8 +361,8 @@ instance rather than per avatar: 512 overlapping pairs a frame, and everything p
 without a word. A converted avatar carried over a hundred of them, so two people close together
 could spend the room's budget and stop every contact in it, including the ones YAPS needs and other
 people's. Tick **Keep the OGB / PCS haptics contacts** if you drive a toy from those parameters and
-would rather pay that price. It acts only while *Penetration* is *Convert to YAPS*, which needs the
-YAPS add-on: *Remove* takes them out whatever the tick says.
+would rather pay that price. It is offered only with the YAPS add-on installed and acts only while
+*Penetration* is *Convert to YAPS*: *Remove* takes them out whatever the tick says.
 
 **What YAPS itself spends, for comparison.** No receivers for the bend, and one synced
 parameter, 32 bits, for the owner id: a plug finds sockets through the screen atlas and marker
@@ -1630,7 +1630,7 @@ settle. Leaving all of them alone converts fine.
 | setting | default | what it does |
 |---|---|---|
 | **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
-| **Opt-ins ▸ OSC toys ▸ Keep the OGB / PCS haptics contacts** | off | The toy-app contacts *Penetration* strips with the rest of the stack. Plugs and sockets work either way; these only drive a toy, and each one spends some of the instance's 512 contact pairs. Needs *Penetration* on *Convert to YAPS*, which needs the YAPS add-on; *Remove* strips them regardless. See [OSC toys](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
+| **Opt-ins ▸ OSC toys ▸ Keep the OGB / PCS haptics contacts** (YAPS add-on) | off | The toy-app contacts *Penetration* strips with the rest of the stack. Plugs and sockets work either way; these only drive a toy, and each one spends some of the instance's 512 contact pairs. Needs *Penetration* on *Convert to YAPS*; *Remove* strips them regardless. See [OSC toys](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
 | **Opt-ins ▸ OSC toys ▸ Keep OGB haptics synced (OSCGoesBrrr, Lovense)** (YAPS add-on) | off | Off, the kept OGB haptics parameters are local (free); OSCGoesBrrr's automatic detection skips ChilloutVR's `#` names, but its manual avatar-parameter links read them, and the report lists the names. On, they stay synced and automatic detection works with no links to add (ChilloutVR still needs its `--osc-query-prefix=VRChat-Client` launch argument), at 32 sync bits each, about nine per plug and per socket; the report's sync budget entry says where the avatar landed. Needs the contacts above kept and *Penetration* on *Convert to YAPS* |
 | **Opt-ins ▸ Penetration ▸ Show the avatar's OWN depth animations to other players** (YAPS add-on) | off | Not YAPS's socket shapes, which already play for everyone on a synced parameter. This is the bulges and winces the avatar's author animated in VRChat, which are contact-driven, and ChilloutVR runs an avatar's triggers on the wearer's machine alone. Off, each socket's depth parameter is local: free, and only the wearer sees the reaction. On, it syncs and the room sees it, at 32 bits per socket: one depth parameter each, six sockets is about 192 of 3200; a socket that kept several depth parameters as authored pays for each. Needs *Penetration* on *Convert to YAPS* |
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder: you must press **Create Controller** yourself |
@@ -2705,8 +2705,8 @@ included, under their real name; a local parameter in ChilloutVR is one whose na
 `#`. OSCGoesBrrr finds the game by an OSCQuery service name starting with `VRChat-Client-`, and
 its automatic plug and socket detection reads only parameters whose name starts with `OGB/`.
 
-So: tick **Keep the OGB / PCS haptics contacts** (*Manual options ▸ Opt-ins ▸ OSC toys*) before
-converting. They are stripped with the rest of the penetration stack by default, and without them
+So: tick **Keep the OGB / PCS haptics contacts** (*Manual options ▸ Opt-ins ▸ OSC toys*, YAPS
+add-on) before converting. They are stripped with the rest of the penetration stack by default, and without them
 there is nothing for a toy to read. Then launch ChilloutVR with `--osc-query-prefix=VRChat-Client`
 (its own launch argument for OSC tools written for VRChat), and OGB will find it. The haptics
 parameters kept are local by default, so they arrive as `#OGB/…`, which OGB's *automatic* plug and

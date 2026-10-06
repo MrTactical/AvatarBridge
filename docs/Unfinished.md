@@ -969,6 +969,33 @@ IK. Needs the reporter's SDK version, which bone, and what the wrong result actu
 
 ## Loose ends, small but real
 
+*4.7.1 shipped 2026-10-04 on Joe's word: tag `v4.7.1`, merge `526b92e`, both packages published and
+extracted (public: no `Editor/Yaps`, `Runtime`, `Dev` or internal files; add-on: no converter). It is
+everything since 4.6.6: the audit and its corpus-414 fixes, the UI redesign, the tester's Physics card
+(DynamicBone, hover labels, Simple and Advanced settings, Keep) and the stereo patcher rework. A 4.7.0
+draft was built first, then deleted unpublished when two tester changes landed after it; its tag
+`v4.7.0` stays in history and that number was never shipped. Corpus 415 is the accepted YAPS baseline.
+Not verified in ChilloutVR; the records below say what only the game can settle.*
+
+### README audited against the code, 2026-10-06. Both loose ends FIXED the same day
+
+Every section was checked against the code by one auditor each, plus sweeps for labels, defaults,
+feature coverage and links, and every proposed edit was re-checked by a skeptic before it went in
+(246 edits proposed, 4 refuted, then 42 wrap and wording fixes from a final review of the diff). Wrong
+labels (13), defaults, features that changed, avatar-specific details and outdated version history were
+corrected, and what 4.7.x added (the tester's Physics card, Find a setting, Open in the CCK Animator
+Tester) is now described. The header screenshot is a fresh 4.7.1 render, `docs/images/window-471.png`,
+made by UiOffscreenProbe with `-captureRename "Generic Avatar" -captureTile 4000`.
+
+Found and fixed on Joe's word:
+- **Keep the OGB / PCS haptics contacts was shown in the public window, where it could never act**
+  (without the add-on the converter forces *Remove*). Its sibling *Keep OGB haptics synced* was already
+  inside `#if AVATARBRIDGE_YAPS`; now the whole *Opt-ins* section is, since every tick in it acts on a
+  converted penetration system. On dev, unreleased; README rows say "(YAPS add-on)".
+- **The 4.7.1 release notes said "press Build once on each plug and socket".** No control has that
+  name. The published notes now say *Tools ▸ YAPS ▸ Setup*, **Bake every plug and verify**, which bakes
+  every plug and builds every socket.
+
 ### The UI redesign, 2026-10-04: seen in offscreen renders, not yet used by a person
 
 Every window moved onto one kit (Editor/UI): tokens for spacing, type and colour per skin, cards with
@@ -977,7 +1004,8 @@ controls (gestures, stances, motion presets), strong / secondary / danger button
 column. The tester's Physics card got a summary (solvers, health), a selected-chain panel with live
 fields and Keep, and empty states. Four rounds of rendered review (Dev/Probes/UiOffscreenProbe.cs, dark
 and the editor's real light theme, edit and Play mode) fixed what looked wrong, and every README-quoted
-label stayed verbatim.
+label stayed verbatim. *(Withdrawn 2026-10-06: the README audit below found 13 quoted labels that did
+not match, several older than the redesign.)*
 
 What a render cannot show, so is unverified: hover and press feel, keyboard focus, the selected-chain
 fields' live values (the offscreen panel does not run Unity's binding, so they read 0 there), and

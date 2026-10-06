@@ -829,8 +829,11 @@ namespace AvatarBridge
                     settings.patchNonSpiShaders, v => settings.patchNonSpiShaders = v),
                 BridgeElements.BetaTag()));
 
+#if AVATARBRIDGE_YAPS
             // Opt-ins live here, not beside the choice they qualify: a
-            // feature nobody can find is a feature nobody turns on.
+            // feature nobody can find is a feature nobody turns on. All of
+            // them act on a converted penetration system, and without the
+            // add-on there is none, so no tick here could ever act.
             card.Section("Opt-ins");
             var optIns = BridgeElements.Indent(
                 BridgeElements.Hint("Off unless you switch them on, and each says what it costs."));
@@ -847,9 +850,6 @@ namespace AvatarBridge
                 optIns.Add(BridgeElements.Notice(Tone.Warn,
                     "Blame this if contacts get unreliable in a busy instance."));
             }
-#if AVATARBRIDGE_YAPS
-            // Only a converted penetration system keeps these parameters, and
-            // without the add-on there is none, so the tick could never act.
             optIns.Add(BridgeElements.Bind("Keep OGB haptics synced (OSCGoesBrrr, Lovense)",
                 "On, OSCGoesBrrr finds them automatically, at 32 sync bits each. Off, link them by hand; " +
                 "the report lists the names.",
