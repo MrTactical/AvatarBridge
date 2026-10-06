@@ -969,7 +969,8 @@ IK. Needs the reporter's SDK version, which bone, and what the wrong result actu
 
 ## Loose ends, small but real
 
-*4.7.1 shipped 2026-10-04 on Joe's word: tag `v4.7.1`, merge `526b92e`, both packages published and
+*4.7.2 shipped 2026-10-06 on Joe's word (tag `v4.7.2`, merge `7f6e9b8`): the Opt-ins gate and the audited README, no reconvert needed.
+4.7.1 shipped 2026-10-04 on Joe's word: tag `v4.7.1`, merge `526b92e`, both packages published and
 extracted (public: no `Editor/Yaps`, `Runtime`, `Dev` or internal files; add-on: no converter). It is
 everything since 4.6.6: the audit and its corpus-414 fixes, the UI redesign, the tester's Physics card
 (DynamicBone, hover labels, Simple and Advanced settings, Keep) and the stereo patcher rework. A 4.7.0
@@ -991,7 +992,7 @@ Found and fixed on Joe's word:
 - **Keep the OGB / PCS haptics contacts was shown in the public window, where it could never act**
   (without the add-on the converter forces *Remove*). Its sibling *Keep OGB haptics synced* was already
   inside `#if AVATARBRIDGE_YAPS`; now the whole *Opt-ins* section is, since every tick in it acts on a
-  converted penetration system. On dev, unreleased; README rows say "(YAPS add-on)".
+  converted penetration system. Shipped in 4.7.2; README rows say "(YAPS add-on)".
 - **The 4.7.1 release notes said "press Build once on each plug and socket".** No control has that
   name. The published notes now say *Tools ▸ YAPS ▸ Setup*, **Bake every plug and verify**, which bakes
   every plug and builds every socket.
