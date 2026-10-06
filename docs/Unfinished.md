@@ -967,6 +967,54 @@ their SDK differs; a name that does not resolve now warns instead of being assum
 **Still open, and not answerable in the editor:** ChilloutVR's constraint order against its own
 IK. Needs the reporter's SDK version, which bone, and what the wrong result actually looks like.
 
+## MagicaCloth2 settings: what a code review says is wrong, 2026-10-06. UNMEASURED, awaiting Joe
+
+Joe called the MagicaCloth2 output "really bad". Six reviewers read the writer against the MC2 source
+and the decompiled VRC.Dynamics (scratchpad copy of `PhysBoneManager.cs`), each challenged by a
+skeptic. Nothing below is measured yet; the plan is an A/B harness first (original PhysBones and the
+conversion driven by the same motion in Play mode, tip sag / swing / settle / overshoot compared),
+then fixes one at a time, then the game. The harness needs a head-turn motion: every Physics-card
+motion moves the avatar root, so it can never show what Immobile does on a head turn.
+
+The core 60/90 Hz calibration, the 0.2 restoration scale and 3 iterations, zero wind, raised
+movement limits, the inertia anchor, humanoid exclusions and `_End` tips all held up. What did not,
+ranked by how visible it should be:
+
+1. **The swing bound pins the base and middle of every limited chain.** MC2 squares depth before it
+   reads maxDistance (`MotionConstraint.cs:194`, also in CVR's copy); the writer's comment
+   (`MagicaClothWriter.cs:724-729`) assumes linear. One chord for the whole chain, from
+   `Max(MaxAngleX, MaxAngleZ)` (`:707`) where VRChat reads only X for Angle/Hinge and Z defaults to 45;
+   hinge plane and limit rotation ignored. Found independently by two reviewers.
+2. **Presets leak values the derivation never overwrites.** `angleLimitConstraint` (the constraint
+   3.7.0 removed for vibrating; the README says it is off) stays on from LongHair 75, Skirt 60, Cape
+   45, FrontHair 15 and others, even for a source with no limit. `velocityAttenuation` 0.55-0.8 stays,
+   so only part of each restoring move becomes momentum. `particleSpeedLimit` 2-4 m/s stays (hunch).
+3. **Damping lands at a fifth.** MC2 scales inspector damping by 0.2 (`ClothSerializeDataFunction.cs:181`)
+   and `PhysBoneSolverMap.Damping` never divides it back, unlike restoration. The 2026-08-06 preset
+   floors cover for it, and the restoration floor reads the preset's ROOT value and flattens the
+   taper (`MagicaClothWriter.cs:560-586`): floored hair and tail tips 5-10x stiffer than the preset.
+   Items 2 and 3 pull bounce in opposite directions; only measuring says which wins.
+4. **Gravity never converts.** Only zero and negative are handled (`:646-664`); positive source
+   gravity gets the preset's 0-7, so tails, earrings and charms on Tail/Accessory presets never hang.
+   Gravity falloff unread (DynamicBone only). PhysBone v1.1 gravity bends the target pose; MC2's is an
+   acceleration, so even a converted value needs calibrating.
+5. **Soft bodies (BoneSpring).** MC2 forces gravity 0 and turns the swing bound off for BoneSpring
+   (`MotionConstraint.cs:118,122`), yet the report says "Swing bounded" for every limited soft body.
+   The 0.06 power floor overrides a user's saved preset (`:1267,1280`) despite Presets/README.md.
+   Jewellery under a breast bone becomes a soft body through the ancestor walk
+   (`MagicaPresetLibrary.cs:107-114`); "Pec" and "Hip Jiggle" are missed. A shared parent root springs
+   both sides as one block.
+6. **Collision.** Point mode (`:184`, `MagicaColliderAutoAssign.cs:82`) where VRChat collides the bone
+   as a capsule with lerped radius, so chains pass between particles; MC2's Edge mode matches. The
+   author's radius is replaced by a mesh thickness; collider fitting sizes spheres from their narrow
+   ends and never re-centres.
+7. **Inertia split** (weakened by its skeptic): all three of world, local and anchor take `1-immobile`
+   (`:670-697`). Walking ends up over-held; head turns slightly over-held. Needs the harness.
+8. **Structure.** `ignoreOtherPhysBones` never read, so a nested chain is driven by two cloths.
+   Curves keep only endpoints though MC2 samples 16 points; the Immobile curve is dropped. PhysBone
+   `version` never read (v1.0 stiffness algebra differs). One cloth per PhysBone (issue #7): the
+   "asked which avatar" blocker is stale, the reporter sent it on Discord. Distance culling unused.
+
 ## Loose ends, small but real
 
 *4.7.2 shipped 2026-10-06 on Joe's word (tag `v4.7.2`, merge `7f6e9b8`): the Opt-ins gate and the audited README, no reconvert needed.
