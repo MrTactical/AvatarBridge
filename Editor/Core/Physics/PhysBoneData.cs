@@ -23,6 +23,8 @@ namespace AvatarBridge
         public Vector3 EndpointPosition;
 
         public bool IsAdvancedIntegration;
+        // PhysBone 1.0 and 1.1 solve gravity and stiffness differently; old components stay 1.0.
+        public bool IsVersion10;
         public float Pull;
         public AnimationCurve PullCurve;
         public float Spring;              // "Momentum" in advanced mode
@@ -67,6 +69,7 @@ namespace AvatarBridge
                 ComponentEnabled = pb.enabled,
                 EndpointPosition = pb.endpointPosition,
                 IsAdvancedIntegration = pb.integrationType.ToString().Contains("Advanced"),
+                IsVersion10 = pb.version.ToString().Contains("1_0"),
                 Pull = pb.pull,
                 PullCurve = pb.pullCurve,
                 Spring = pb.spring,

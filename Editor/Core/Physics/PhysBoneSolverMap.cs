@@ -13,9 +13,14 @@ namespace AvatarBridge
 
         public const float RestorationScale = 0.2f;
 
+        // Damping is scaled the same way: ClothSerializeDataFunction multiplies it by 0.2
+        // ("20%") before the solver sees it. Missing this left every chain with a fifth of
+        // its damping, measured as overshoot in Play mode against the original PhysBones.
+        public const float DampingScale = 0.2f;
+
         const float SimplifiedSpringCeiling = 0.99f;
 
-        const int RestorationIterations = 3;
+        public const int RestorationIterations = 3;
 
         static float Rebase(float retentionAt60)
         {
@@ -46,7 +51,7 @@ namespace AvatarBridge
 
         public static float Damping(float pull, float spring, float stiffness, bool advanced)
         {
-            return Mathf.Clamp01(1f - Rebase(Retention60(pull, spring, stiffness, advanced)));
+            return Mathf.Clamp01((1f - Rebase(Retention60(pull, spring, stiffness, advanced))) / DampingScale);
         }
 
         public static float RestorationStiffness(float pull, float spring, float stiffness,

@@ -206,12 +206,20 @@ namespace AvatarBridge
                 return ClsClothStrip;
             }
 
+            // --- jewellery hanging off the body, before the body part it hangs from: a piercing
+            //     under a breast bone is a charm on a chain, not a soft body
+            if (Has(n, "piercing"))
+            {
+                return ClsCharm;
+            }
+
             // --- body jiggle -----------------------------------------------------------------
-            if (Has(n, "breast", "boob", "oppai", "bust"))
+            if (Has(n, "breast", "boob", "oppai", "bust") || HasToken(t, "pec", "pecs", "pectoral"))
             {
                 return ClsBreast;
             }
-            if (Has(n, "booty", "glute") || HasToken(t, "butt", "ass", "rear"))
+            if (Has(n, "booty", "glute") || HasToken(t, "butt", "ass", "rear") ||
+                (HasToken(t, "jiggle") && HasToken(t, "hip", "hips")))
             {
                 return ClsButt;
             }

@@ -634,7 +634,7 @@ namespace AvatarBridge
                     "Starts each chain from the preset that fits it: hair, tail, skirt, cape, accessory, or a spring by stiffness.",
                     settings.useMagicaPresets, v => settings.useMagicaPresets = v));
                 t.Add(BridgeElements.Bind("Fit the preset to the PhysBone",
-                    "Carries gravity and immobile across, and zeroes wind, which VRChat never had.",
+                    "Converts gravity and immobile, zeroes wind, which VRChat never had, and turns off the preset's angle limit.",
                     settings.fitToPhysBone, v => settings.fitToPhysBone = v));
                 t.Add(BridgeElements.Bind("Derive physics from the PhysBone",
                     "Converts pull, spring and stiffness into damping and angle restoration, derived from both solvers.",

@@ -69,9 +69,10 @@ namespace AvatarBridge
         // Start each cloth from the MagicaCloth2 preset that fits the
         // chain. Structure comes from the PhysBone either way.
         public bool useMagicaPresets = true;
-        // After the preset loads, apply the PhysBone facts that mean
-        // the same thing in MagicaCloth2: no gravity, upward gravity,
-        // and immobile (world influence inverted).
+        // After the preset loads, apply what the PhysBone says about
+        // gravity (converted to where the chain settles), immobile (as
+        // inertia against the same frame) and wind (none), and turn off
+        // the preset's own angle limit and depth inertia.
         public bool fitToPhysBone = true;
         // Derive damping and angle restoration from the PhysBone's
         // pull, spring and stiffness. Both solvers are position
@@ -97,8 +98,9 @@ namespace AvatarBridge
         // when a size slider is up. Shrinking shapes cost nothing.
         public bool sizePhysicsForLargest = true;
         // Honour the source's Angle/Hinge/Polar limit as a distance
-        // bound from rest. A distance bound removes motion rather than
-        // adding a restoring force, so it cannot start vibration.
+        // bound from rest, allowing for the limit at every joint. A
+        // distance bound removes motion rather than adding a restoring
+        // force, so it cannot start vibration. Not on soft bodies.
         public bool boundSwingToSourceLimit = true;
         // Bound the particle to half the bone gap. Off since the
         // radius became a measurement; on a soft body this throws most

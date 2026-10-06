@@ -79,7 +79,7 @@ namespace AvatarBridge
                     {
                         if (sdata.colliderCollisionConstraint.colliderList.Count == 0)
                         {
-                            sdata.colliderCollisionConstraint.mode = ColliderCollisionConstraint.Mode.Point;
+                            sdata.colliderCollisionConstraint.mode = ColliderCollisionConstraint.Mode.Edge;   // as the writer: whole bones, like VRChat
                         }
                         sdata.colliderCollisionConstraint.colliderList.Add(magica);
                         added.Add($"{owner.name} ({clearance * 100f:0.#} cm)");

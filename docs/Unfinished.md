@@ -967,14 +967,50 @@ their SDK differs; a name that does not resolve now warns instead of being assum
 **Still open, and not answerable in the editor:** ChilloutVR's constraint order against its own
 IK. Needs the reporter's SDK version, which bone, and what the wrong result actually looks like.
 
-## MagicaCloth2 settings: what a code review says is wrong, 2026-10-06. UNMEASURED, awaiting Joe
+## MagicaCloth2 settings: measured against the originals and fixed, 2026-10-06. ON DEV, not in game
+
+**Measured.** `Dev/Probes/PhysicsAbProbe.cs` converts a scene with a new user's defaults, keeps the
+source beside the copy, turns every Animator off (cullingMode AlwaysAnimate first: MC2's default
+culling follows the Animator, and nothing is on screen in batch, so it culled every cloth) and drives
+both through one 90 fps timeline: walk, turn, a Head-bone turn, jump, shake, lie down and hold. Per
+chain it compares rest sag, swing peak, settle, overshoot, mid-chain share and where it hangs lying
+down; `-abGravityScale` sweeps gravity on the copy. Five avatars, 172 chains: Sootie (112, all
+PhysBone 1.1), LanaCan, Kar, Zombunny, agisynth (mostly 1.0). Scripts and runs in the session
+scratchpad (`physab/`: `ab.sh`, `compare.py`, `gravfit.py`).
+
+Median error, copy against original (peaks in log2, 1.0 = twice or half; hang in degrees):
+
+| metric | before | after |
+|---|---|---|
+| walk swing | 1.04 (copy swung half as far) | 0.30 |
+| turn | 1.38 | 0.41 |
+| head turn | 1.40 | 0.43 |
+| jump | 1.78 | 0.42 |
+| walk overshoot | 0.27 (copy bounced back) | 0.08 |
+| lying-down hang | 2.7 (15 to 30 at times in between) | 2.1 |
+| rest sag | 0.42 | 0.19 |
+| shake | 0.52 | 0.79, worse: more scatter, little bias |
+| stretch | +6% | +8% |
+
+What it took, each measured on its own: the swing bound squared over depth and per joint (small,
+all closer); preset angle limit off and particle limit raised (large); damping divided by MC2's 0.2
+and no restoration floor (the big one: the floor made loose hair about nine times stiffer); gravity
+converted per PhysBone version, falloff included, with an empirical load factor (fitted from the
+sweep, `docs/SolverCalibration.md`); inertia on one control per Immobile type, depth inertia off
+(head turns and jumps closer, walks a little further); Edge collision (neutral on these metrics,
+kept because it matches VRChat's capsule); soft-body report, saved spring power, piercing and
+"Pec"/"Hip Jiggle" names.
+
+Open: shake scatter and the slight over-swing (copies now lean about 1.2x the original's swing);
+PhysBone 1.0's stiffness algebra (renormalised, about 1/(1+k)) is still read as 1.1's; gravity
+1.0 on a stiff chain cannot reach VRChat's full hang (G caps at 20); the load factor is fitted on
+two avatars' worth of gravity chains. Everything here is editor-measured: **Joe checks in game.**
+
+### The review that started it, kept for the findings not yet acted on
 
 Joe called the MagicaCloth2 output "really bad". Six reviewers read the writer against the MC2 source
 and the decompiled VRC.Dynamics (scratchpad copy of `PhysBoneManager.cs`), each challenged by a
-skeptic. Nothing below is measured yet; the plan is an A/B harness first (original PhysBones and the
-conversion driven by the same motion in Play mode, tip sag / swing / settle / overshoot compared),
-then fixes one at a time, then the game. The harness needs a head-turn motion: every Physics-card
-motion moves the avatar root, so it can never show what Immobile does on a head turn.
+skeptic. Items 1 to 7 below are now fixed as above unless noted; item 8 is open.
 
 The core 60/90 Hz calibration, the 0.2 restoration scale and 3 iterations, zero wind, raised
 movement limits, the inertia anchor, humanoid exclusions and `_End` tips all held up. What did not,

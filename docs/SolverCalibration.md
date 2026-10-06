@@ -46,10 +46,14 @@ giving retention `0.99*spring` and restoring `(1 - 0.99*spring) * pull`.
 MagicaCloth2 is position-based Verlet with the velocity re-derived from the position delta
 (`velocity = (nextPos - velocityOldPos) / dt`), and applies its two coefficients as:
 
-    velocity *= saturate(1 - damping * simulationPower.z)               // once per step
+    velocity *= saturate(1 - damping * 0.2 * simulationPower.z)         // once per step
     rotate toward rest by saturate(stiffness * 0.2 * simulationPower.w) // 3x per step
 
-Two multipliers hide in that second line and both have to be undone. The `* 0.2f` is in
+The damping line's `* 0.2` is in `ClothSerializeDataFunction` ("20%"), so the inspector damping
+is the per-step loss divided by 0.2. It went unnoticed until 2026-10-06, when driving original
+PhysBones and their conversions through the same motion in Play mode showed every converted chain
+overshooting; until then each chain had a fifth of its damping. Two multipliers hide in the second
+line and both have to be undone. The `* 0.2f` is in
 `AngleConstraint.Convert`; the inspector's restoration is scaled to a fifth of its face
 value before the solver sees it. And the constraint runs inside
 `for (k = 0; k < Define.System.AngleLimitIteration; k++)` with that constant equal to 3,
@@ -130,3 +134,25 @@ compensate; one factor too many, because local-to-world already put that scale
 back. The gravity term works out to (g * scale - g), which is zero only at scale 1:
 at 0.376 it is -0.62g, upward. m_Force is added after the cancellation and only ever
 multiplied by scale, so it is correct at every size.
+
+## Gravity
+
+The two solvers disagree about what gravity is, so no single factor converts it.
+
+- PhysBone 1.1 leans each bone's pose toward straight down, `lerp(pose, down, gravity)`, and pull
+  springs the bone toward that leaned pose. A bone held out level settles at
+  `atan(g / (1 - g))` from its already-bent parent, whatever its pull.
+- PhysBone 1.0 adds gravity as a force, `down * gravity * length`, that pull holds off: a bone
+  settles where `tan(angle) = g cos(angle) / pull`.
+- Both weaken a bone's gravity by `lerp(1 - falloff, 1, 1 - dot(rest down, down))` as it turns.
+- MagicaCloth2 applies an acceleration that angle restoration holds off. A segment settles where a
+  step's pull, `G dt^2 cos(theta)`, equals what restoration takes back, `rho theta L`, and the
+  chain's weight is carried down to its root.
+
+So the writer works out where the chain settles in VRChat, bone by bone (`PhysBoneHangAngle`),
+and solves the MagicaCloth2 equation for G at that angle, divided by a load factor of
+`3.4 * segments^(1/3)`. The load factor is empirical: fitted in Play mode against original
+PhysBones on five avatars, 114 chains with gravity across both versions, by sweeping G and taking
+the value that matched each chain's hang. With it, the median hang error lying down went from
+about 15 degrees to 2. The version matters as much as the number: most of a 1.0 avatar's chains
+hang several times further than the same gravity on 1.1.
