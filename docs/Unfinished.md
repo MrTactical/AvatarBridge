@@ -977,7 +977,7 @@ draft was built first, then deleted unpublished when two tester changes landed a
 `v4.7.0` stays in history and that number was never shipped. Corpus 415 is the accepted YAPS baseline.
 Not verified in ChilloutVR; the records below say what only the game can settle.*
 
-### README audited against the code, 2026-10-06. Two loose ends open
+### README audited against the code, 2026-10-06. Both loose ends FIXED the same day
 
 Every section was checked against the code by one auditor each, plus sweeps for labels, defaults,
 feature coverage and links, and every proposed edit was re-checked by a skeptic before it went in
@@ -987,14 +987,14 @@ corrected, and what 4.7.x added (the tester's Physics card, Find a setting, Open
 Tester) is now described. The header screenshot is a fresh 4.7.1 render, `docs/images/window-471.png`,
 made by UiOffscreenProbe with `-captureRename "Generic Avatar" -captureTile 4000`.
 
-Open:
-- **Keep the OGB / PCS haptics contacts is shown in the public window, where it can never act.**
-  `AvatarBridgeWindow.cs:840`: its sibling *Keep OGB haptics synced* sits inside `#if AVATARBRIDGE_YAPS`
-  for exactly that reason, and this one does not. The README now says it needs the add-on; moving it
-  inside the same `#if` is the fix (one question, one control).
-- **The 4.7.1 release notes say "press Build once on each plug and socket".** No control has that
-  name: the plug inspector says *Bake* / *Re-bake*, the socket *Build this socket*, and the YAPS window's
-  step 3 *Bake every plug and verify*, which does every row. The published notes need Joe's word to edit.
+Found and fixed on Joe's word:
+- **Keep the OGB / PCS haptics contacts was shown in the public window, where it could never act**
+  (without the add-on the converter forces *Remove*). Its sibling *Keep OGB haptics synced* was already
+  inside `#if AVATARBRIDGE_YAPS`; now the whole *Opt-ins* section is, since every tick in it acts on a
+  converted penetration system. On dev, unreleased; README rows say "(YAPS add-on)".
+- **The 4.7.1 release notes said "press Build once on each plug and socket".** No control has that
+  name. The published notes now say *Tools ▸ YAPS ▸ Setup*, **Bake every plug and verify**, which bakes
+  every plug and builds every socket.
 
 ### The UI redesign, 2026-10-04: seen in offscreen renders, not yet used by a person
 
