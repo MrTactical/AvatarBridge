@@ -45,6 +45,7 @@ namespace AvatarBridge.Regression
         };
 
         const BindingFlags Any = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
+        static int tileRows = 1000;
 
         public static void Run()
         {
@@ -68,6 +69,14 @@ namespace AvatarBridge.Regression
                     if (asset != null) converted = (GameObject)PrefabUtility.InstantiatePrefab(asset);
                 }
                 if (converted == null) converted = UnityEngine.Object.FindObjectOfType<CVRAvatar>()?.gameObject;
+                // For a public screenshot: the scene is never saved, so the rename stays in memory.
+                string rename = Arg("-captureRename");
+                if (!string.IsNullOrEmpty(rename))
+                {
+                    if (source != null) source.name = rename;
+                    if (converted != null) converted.name = rename + " (ChilloutVR)";
+                }
+                if (int.TryParse(Arg("-captureTile"), out int t) && t > 0) tileRows = t;
                 Log($"source {(source != null ? source.name : "none")}, converted {(converted != null ? converted.name : "none")}");
 
                 foreach (var (key, typeName, wantsConverted) in Windows)
@@ -323,7 +332,7 @@ namespace AvatarBridge.Regression
                 if (run <= 16) keep.Add(y);
             }
             while (keep.Count > 0 && Plain(keep[keep.Count - 1]) && keep.Count > 1) keep.RemoveAt(keep.Count - 1);
-            int used = keep.Count, tile = 1000, count = Mathf.CeilToInt(used / (float)tile);
+            int used = keep.Count, tile = tileRows, count = Mathf.CeilToInt(used / (float)tile);
             string stem = Path.Combine(Path.GetDirectoryName(file), Path.GetFileNameWithoutExtension(file));
             for (int i = 0; i < count; i++)
             {

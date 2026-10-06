@@ -977,6 +977,25 @@ draft was built first, then deleted unpublished when two tester changes landed a
 `v4.7.0` stays in history and that number was never shipped. Corpus 415 is the accepted YAPS baseline.
 Not verified in ChilloutVR; the records below say what only the game can settle.*
 
+### README audited against the code, 2026-10-06. Two loose ends open
+
+Every section was checked against the code by one auditor each, plus sweeps for labels, defaults,
+feature coverage and links, and every proposed edit was re-checked by a skeptic before it went in
+(246 edits proposed, 4 refuted, then 42 wrap and wording fixes from a final review of the diff). Wrong
+labels (13), defaults, features that changed, avatar-specific details and outdated version history were
+corrected, and what 4.7.x added (the tester's Physics card, Find a setting, Open in the CCK Animator
+Tester) is now described. The header screenshot is a fresh 4.7.1 render, `docs/images/window-471.png`,
+made by UiOffscreenProbe with `-captureRename "Generic Avatar" -captureTile 4000`.
+
+Open:
+- **Keep the OGB / PCS haptics contacts is shown in the public window, where it can never act.**
+  `AvatarBridgeWindow.cs:840`: its sibling *Keep OGB haptics synced* sits inside `#if AVATARBRIDGE_YAPS`
+  for exactly that reason, and this one does not. The README now says it needs the add-on; moving it
+  inside the same `#if` is the fix (one question, one control).
+- **The 4.7.1 release notes say "press Build once on each plug and socket".** No control has that
+  name: the plug inspector says *Bake* / *Re-bake*, the socket *Build this socket*, and the YAPS window's
+  step 3 *Bake every plug and verify*, which does every row. The published notes need Joe's word to edit.
+
 ### The UI redesign, 2026-10-04: seen in offscreen renders, not yet used by a person
 
 Every window moved onto one kit (Editor/UI): tokens for spacing, type and colour per skin, cards with
@@ -985,7 +1004,8 @@ controls (gestures, stances, motion presets), strong / secondary / danger button
 column. The tester's Physics card got a summary (solvers, health), a selected-chain panel with live
 fields and Keep, and empty states. Four rounds of rendered review (Dev/Probes/UiOffscreenProbe.cs, dark
 and the editor's real light theme, edit and Play mode) fixed what looked wrong, and every README-quoted
-label stayed verbatim.
+label stayed verbatim. *(Withdrawn 2026-10-06: the README audit below found 13 quoted labels that did
+not match, several older than the redesign.)*
 
 What a render cannot show, so is unverified: hover and press feel, keyboard focus, the selected-chain
 fields' live values (the offscreen panel does not run Unity's binding, so they read 0 there), and
