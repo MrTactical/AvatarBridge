@@ -266,6 +266,7 @@ namespace AvatarBridge
                 Gravity = from.Gravity,
                 Immobile = from.Immobile,
                 LimitTypeName = "None",
+                StandIn = true,
             };
 #if AVATARBRIDGE_MAGICA
             if (ctx.Settings.physicsTarget == PhysicsTarget.MagicaCloth2)

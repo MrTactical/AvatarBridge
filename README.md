@@ -509,6 +509,15 @@ Spring would also let the root bone itself slide a few centimetres, which a Phys
 on a walk that moved a breast's root by a third of its length and pulled straps and jewellery
 weighted to it off the body, so the root is held still and the jiggle stays in the tip.
 
+**Add-ons that build physics out of constraints** (marshmallow PB and similar) can't cross: they
+stack several helper chains with no mesh on them and drive the real bone through constraints, and
+a cloth simulates each chain alone. The report names the add-on, removes its helper rig, and puts
+one soft body on the bone it was driving. That stand-in works the other way round from the rest:
+these add-ons *move* the bone rather than swing it, which is what makes them read as squish, so the
+stand-in's root may slide about the body's own length, it collides at that root, and its bending is
+held near rest. Squeezed from both sides it shifts and squashes instead of tilting. It is still one
+chain where the add-on had a cascade, so it won't feel identical; the report says so.
+
 **Size is measured as you wear it, once.** Every radius here comes from the mesh with your
 blendshape weights applied, so an avatar saved with a body slider part-way up is measured at the
 shape people will see. What it can't do is *follow* that slider in game: a size slider that works

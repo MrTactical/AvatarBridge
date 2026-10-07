@@ -1032,6 +1032,18 @@ a walk (new probe metric `slide`, root position in the parent's space over chain
 straps weighted to it off the body (Joe's screenshot). A quarter-radius cap left 8.5%; 0 leaves 2%
 and the swing angles matched as well or better. Now 0.
 
+**Marshmallow stand-in, 2026-10-07 (Joe: "the squish is less obvious on magicacloth").** Measured
+with the original baked (the probe now renames its baked copy, which the converter's own VRCFury
+bake used to destroy) and a squeeze phase (two palm-sized balls pushing the pair together): marshmallow
+moves the bone itself (root slide 1.5 chain lengths) and bends it 10 degrees, the stand-in pinned its
+root and bent 31 to 104. Stand-ins (`PhysBoneChainData.StandIn`, set by HelperRigCleanup) now keep the
+root slide, widened to the body's length, collide at the root too, and hold restoration at 1. Butt.L:
+pressed bend 40 to 12 (marshmallow 5.5), squeeze bend 31 to 14 (10), jump 104 to 35 (12). Still
+swingier than marshmallow on jumps and shakes; marshmallow's contact-driven squish (animator
+parameters moving its colliders) needs the VRChat layers running, which batch Play mode does not.
+Also fixed in the probe: press colliders sat on the scaled ball, so both solvers saw them far
+smaller than drawn; every press result before 2026-10-07 used undersized balls.
+
 **Still open: a belly flailing.** LanaCan's belly peaks at 160 to 170 degrees on the walk where the
 original moves 3, and slides 0.36 even at limitDistance 0. Not investigated.
 

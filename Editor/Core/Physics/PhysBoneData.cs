@@ -15,6 +15,9 @@ namespace AvatarBridge
         public GameObject SourceGameObject;
         public Transform Root;
         public bool Synthesized;
+        // Put in for a physics add-on that moved this bone through constraints rather than as a
+        // chain (marshmallow PB): it slides the flesh more than it bends it.
+        public bool StandIn;
         // VRChat avatars often stack several PhysBones on the same chain and toggle
         // between them via the animator; converted physics must start in the same state.
         public bool InitiallyActive;

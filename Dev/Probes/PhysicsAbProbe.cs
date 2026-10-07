@@ -38,7 +38,7 @@ namespace AvatarBridge.Regression
     {
         const string K = "PhysicsAbProbe.";
         const float Fps = 90f;
-        const float End = 31.5f;
+        const float End = 35f;
 
         // Motion start, motion end, end of the window that watches it settle.
         static readonly (string name, float start, float stop, float end)[] Phases =
@@ -49,6 +49,7 @@ namespace AvatarBridge.Regression
             ("jump", 12f, 12.6f, 15f),
             ("shake", 15f, 16f, 18.5f),
             ("lie", 18.5f, 19.2f, 27f),
+            ("squeeze", 31.5f, 33f, 35f),
         };
 
         sealed class Side
@@ -307,7 +308,12 @@ namespace AvatarBridge.Regression
                     $"returned {(bakedSource == null ? "null" : bakedSource.name)}, descriptor " +
                     $"{(bakedSource != null && bakedSource.GetComponent<VRCAvatarDescriptor>() != null)}, " +
                     $"{(bakedSource == null ? 0 : bakedSource.GetComponentsInChildren<VRCPhysBone>(true).Length)} PhysBone(s)\n" +
-                    string.Join("\n", bakeReport.Entries.Select(e => e.Subject + " | " + e.Detail)));
+                    string.Join("\n", bakeReport.Entries.Select(e => e.Subject + " | " + e.Detail)) +
+                    "\nscene roots: " + string.Join(", ", descriptor.gameObject.scene.GetRootGameObjects()
+                        .Select(g => $"{g.name}[{g.transform.childCount}]{(g.activeSelf ? "" : " off")}")) +
+                    (bakedSource == null ? "" : "\nbaked children: " + string.Join(", ",
+                        Enumerable.Range(0, bakedSource.transform.childCount).Select(i => bakedSource.transform.GetChild(i))
+                            .Select(c => $"{c.name}{(c.gameObject.activeSelf ? "" : " off")}"))));
                 if (bakedSource == null || bakedSource.GetComponent<VRCAvatarDescriptor>() == null)
                 {
                     bakedSource = null;
@@ -315,6 +321,9 @@ namespace AvatarBridge.Regression
                 }
                 else
                 {
+                    // VRCFury replaces a test copy of the same name, so the converter's own bake would
+                    // destroy this one.
+                    bakedSource.name = descriptor.name + " (probe source)";
                     bakedSource.transform.SetPositionAndRotation(descriptor.transform.position, descriptor.transform.rotation);
                     bakedSource.SetActive(false);
                 }
@@ -442,6 +451,54 @@ namespace AvatarBridge.Regression
                     V3(endpoint),
                     IndexPath(srcPress), IndexPath(dstPress), pressRadius.ToString(CultureInfo.InvariantCulture)));
             }
+            // A cloth the converter put on a bone no PhysBone roots: a physics add-on (marshmallow PB)
+            // moves that bone through constraints from its own chains. Measured on the same bone,
+            // pressed by a collider every source PhysBone hears, since which layer feels a touch is
+            // the add-on's business.
+            foreach (var dRoot in clothRoots.Distinct())
+            {
+                if (seenRoots.Any(r => { var d = Find(converted.transform, Rel(r, descriptor.transform)); return d != null && (d == dRoot || dRoot.IsChildOf(d)); })) continue;
+                var root = Find(descriptor.transform, Rel(dRoot, converted.transform));
+                if (root == null || root.childCount == 0) continue;
+                Transform tip = root;
+                int tipDepth = 0;
+                void Deep(Transform x, int depth)
+                {
+                    if (depth > tipDepth) { tip = x; tipDepth = depth; }
+                    for (int i = 0; i < x.childCount; i++) Deep(x.GetChild(i), depth + 1);
+                }
+                Deep(root, 0);
+                var mid = tip;
+                for (int i = 0; i < tipDepth / 2 && mid != root; i++) mid = mid.parent;
+                var dTip = Find(converted.transform, Rel(tip, descriptor.transform));
+                var dMid = Find(converted.transform, Rel(mid, descriptor.transform));
+                if (dTip == null || dMid == null) continue;
+                float pressRadius = Mathf.Max(0.01f, 0.2f * Vector3.Distance(root.position, tip.position));
+                var srcPress = MakePress("PhysicsAb press", pressRadius);
+                var physCollider = srcPress.gameObject.AddComponent<VRCPhysBoneCollider>();
+                physCollider.radius = pressRadius;
+                foreach (var pb in descriptor.GetComponentsInChildren<VRCPhysBone>(true)) pb.colliders.Add(physCollider);
+                var dstPress = MakePress("PhysicsAb press copy", pressRadius);
+                var magicaCollider = dstPress.gameObject.AddComponent<MagicaSphereCollider>();
+                magicaCollider.SetSize(pressRadius);
+                foreach (var cloth in converted.GetComponentsInChildren<MagicaCloth>(true))
+                {
+                    if (!cloth.SerializeData.rootBones.Contains(dRoot)) continue;
+                    var collision = cloth.SerializeData.colliderCollisionConstraint;
+                    collision.colliderList.Add(magicaCollider);
+                    if (collision.mode == ColliderCollisionConstraint.Mode.None) collision.mode = ColliderCollisionConstraint.Mode.Point;
+                }
+                string lower = root.name.ToLowerInvariant();
+                lines.Add(string.Join("|",
+                    Rel(root, descriptor.transform).Replace("|", "_"),
+                    lower.Contains("butt") ? "Butt" : lower.Contains("breast") ? "Breast" : "Driven",
+                    "driven by constraints",
+                    IndexPath(root), IndexPath(tip), IndexPath(mid),
+                    IndexPath(dRoot), IndexPath(dTip), IndexPath(dMid),
+                    V3(Vector3.zero),
+                    IndexPath(srcPress), IndexPath(dstPress), pressRadius.ToString(CultureInfo.InvariantCulture)));
+                Debug.Log($"[PhysicsAb] driven bone {root.name} measured against its cloth");
+            }
             File.WriteAllText(Path.Combine(SessionState.GetString(K + "out", ""), "physbones.txt"), pbList.ToString());
             Debug.Log($"[PhysicsAb] {scenePath}: {lines.Count} chain(s) matched, {skippedNoCloth} without a cloth, {skippedNoMatch} not found in the copy");
             if (lines.Count == 0) return false;
@@ -482,16 +539,31 @@ namespace AvatarBridge.Regression
         // Parked far below until the press; a plain sphere shows it on camera, without a collider of its own.
         static Transform pressParent;
 
+        // The colliders go on an unscaled root and the visible ball on a child: both solvers scale a
+        // collider by its transform, so one on a sphere scaled to its own diameter was far smaller
+        // than it looked.
         static Transform MakePress(string name, float radius)
         {
             if (pressParent == null) pressParent = new GameObject("PhysicsAb presses").transform;
+            var root = new GameObject(name).transform;
+            root.SetParent(pressParent, false);
+            root.position = Vector3.down * 100f;
             var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            go.name = name;
-            go.transform.SetParent(pressParent, false);
+            go.name = "ball";
             UnityEngine.Object.DestroyImmediate(go.GetComponent<Collider>());
+            go.transform.SetParent(root, false);
             go.transform.localScale = Vector3.one * radius * 2f;
-            go.transform.position = Vector3.down * 100f;
-            return go.transform;
+            // Drawn through the body: it presses into flesh, where an opaque sphere is hidden.
+            var mat = new Material(Shader.Find("Hidden/Internal-Colored"));
+            mat.SetColor("_Color", new Color(1f, 0.35f, 0.2f, 0.45f));
+            mat.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.Always);
+            mat.SetInt("_ZWrite", 0);
+            mat.SetInt("_Cull", 0);
+            mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            mat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            mat.renderQueue = 4000;
+            go.GetComponent<Renderer>().sharedMaterial = mat;
+            return root;
         }
 
         static Transform Find(Transform root, string rel)
@@ -723,6 +795,31 @@ namespace AvatarBridge.Regression
                     var tipWorld = parent.TransformPoint(parent.InverseTransformPoint(rootWorld) + s.restPress.Value);
                     var along = tipWorld - rootWorld;
                     var dir = along.normalized;
+                    // From 31.5 s a soft body with a partner of its class is squeezed instead: the same
+                    // sphere comes in from its outer side toward the partner, as two hands pushing the
+                    // pair together would.
+                    if (t >= 31.5f)
+                    {
+                        push = t < 32.5f ? Smooth(t - 31.5f) : t < 33.5f ? 1f : t < 34f ? 1f - Smooth((t - 33.5f) / 0.5f) : 0f;
+                        var partner = SoftClasses.Contains(c.cls)
+                            ? chains.Where(o => o != c && o.cls == c.cls)
+                                .OrderBy(o => Vector3.Distance((s == c.src ? o.src : o.dst).root.position, rootWorld)).FirstOrDefault()
+                            : null;
+                        if (partner == null) { s.press.position = Vector3.down * 100f; continue; }
+                        // A palm-sized ball, the gap between the pair across, starts clear of the
+                        // outer side and ends with its surface at the middle: the pair pushed into
+                        // each other, as two hands squeezing would.
+                        var other = (s == c.src ? partner.src : partner.dst).tip.position;
+                        var outward = Vector3.ProjectOnPlane(tipWorld - other, Vector3.up).normalized;
+                        float half = 0.5f * Vector3.Distance(tipWorld, other);
+                        float big = Mathf.Max(s.pressRadius, half);
+                        var middle = 0.5f * (tipWorld + other);
+                        s.press.localScale = Vector3.one * (big / s.pressRadius);
+                        s.press.position = push <= 0f ? Vector3.down * 100f
+                            : Vector3.Lerp(tipWorld + outward * (big + half), middle + outward * big, push);
+                        continue;
+                    }
+                    s.press.localScale = Vector3.one;
                     s.press.position = push <= 0f ? Vector3.down * 100f
                         : tipWorld + dir * (s.pressRadius * 1.05f) - dir * (0.4f * along.magnitude * push);
                 }
@@ -760,6 +857,11 @@ namespace AvatarBridge.Regression
             }
             Layer(srcBody.avatar, 29);
             Layer(dstBody.avatar, 30);
+            foreach (var c in chains)
+            {
+                if (c.src.press != null) Layer(c.src.press, 29);
+                if (c.dst.press != null) Layer(c.dst.press, 30);
+            }
             foreach (var c in chains)
             {
                 if (c.src.press != null) Layer(c.src.press, 29);
@@ -970,7 +1072,7 @@ namespace AvatarBridge.Regression
 
         sealed class Metrics
         {
-            public float sag, stretch, slide, lie, liehold, pressRatio = float.NaN, pressAngle = float.NaN, pressRecover = float.NaN;
+            public float sag, stretch, slide, squeeze, lie, liehold, pressRatio = float.NaN, pressAngle = float.NaN, pressRecover = float.NaN;
             public readonly Dictionary<string, (float peak, float settle, float overshoot, float midShare)> phase =
                 new Dictionary<string, (float, float, float, float)>();
         }
@@ -995,6 +1097,10 @@ namespace AvatarBridge.Regression
             };
             var restRoot = Mean(s.r, 1.5f, 2f);
             m.slide = s.r.Max(x => (x - restRoot).magnitude) / Mathf.Max(1e-6f, rest.magnitude);
+            // How far the tip itself moves while squeezed, root motion included, in chain lengths.
+            var tipBefore = Mean(s.r, 31f, 31.5f) + Mean(s.v, 31f, 31.5f);
+            for (int i = Ix(31.5f); i < n; i++)
+                m.squeeze = Mathf.Max(m.squeeze, (s.r[i] + s.v[i] - tipBefore).magnitude / Mathf.Max(1e-6f, rest.magnitude));
             foreach (var (name, start, stop, end) in Phases)
             {
                 int i0 = Ix(start), i1 = Ix(stop), i2 = Ix(end);
@@ -1082,6 +1188,7 @@ namespace AvatarBridge.Regression
                 Row(c, "sag", a.sag, b.sag);
                 Row(c, "stretch", a.stretch, b.stretch);
                 Row(c, "slide", a.slide, b.slide);
+                Row(c, "squeeze.shift", a.squeeze, b.squeeze);
                 Row(c, "lie", a.lie, b.lie);
                 Row(c, "liehold", a.liehold, b.liehold);
                 Row(c, "press.ratio", a.pressRatio, b.pressRatio);
@@ -1114,7 +1221,7 @@ namespace AvatarBridge.Regression
                 sum.Append($"\n[{cls}] n={perClass[cls].Values.Max(l => l.Count)}\n");
                 foreach (var metric in new[] { "sag", "lie", "liehold", "pair.closest", "press.ratio", "press.angle",
                              "walk.peak", "walk.settle", "walk.overshoot", "walk.midshare",
-                             "turn.peak", "head.peak", "head.settle", "jump.peak", "shake.peak", "stretch", "slide" })
+                             "turn.peak", "head.peak", "head.settle", "jump.peak", "shake.peak", "stretch", "slide", "squeeze.shift", "squeeze.peak" })
                 {
                     if (!perClass[cls].TryGetValue(metric, out var list)) continue;
                     float Median(IEnumerable<float> xs)

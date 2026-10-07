@@ -1482,6 +1482,8 @@ namespace AvatarBridge
             }
         }
 
+        const float StandInRestoration = 1f;
+
         static readonly HashSet<string> SoftBodyClasses = new HashSet<string>
         {
             "Breast", "Butt", "Belly", "Thigh",
@@ -1507,6 +1509,12 @@ namespace AvatarBridge
             spring &= TrySetMember(sdata.springConstraint, "springPower", power);
 
             var collisionBones = ChooseCollisionBones(ctx, data, out float collisionRadius);
+            // A stand-in collides at its root as well, which slides: a push then moves the whole
+            // body, as the add-on did, instead of turning it about a fixed root.
+            if (data.StandIn && collisionBones.Count > 0 && !collisionBones.Contains(data.Root))
+            {
+                collisionBones.Insert(0, data.Root);
+            }
             bool collision = false, sized = false;
             if (collisionBones.Count > 0)
             {
@@ -1537,8 +1545,22 @@ namespace AvatarBridge
             // weighted to it off the body, and a cap at a quarter of its size still left a tenth.
             // At 0 the jiggle stays in the tip, and the swing matched the original as well or
             // better (Play-mode A/B, 2026-10-07).
-            bool pinned = GetFloat(sdata.springConstraint, "limitDistance") is float range && range > 0f
+            // A stand-in for an add-on is the opposite case: marshmallow PB moves the bone itself,
+            // about its own length under a squeeze, and bends it 6 to 8 degrees where this cloth
+            // bent 38. So its root keeps the preset's slide and its bending is held near rest.
+            bool pinned = !data.StandIn && GetFloat(sdata.springConstraint, "limitDistance") is float range && range > 0f
                 && TrySetMember(sdata.springConstraint, "limitDistance", 0f);
+            if (data.StandIn)
+            {
+                // As far as the body is long: the add-on moved the bone about its own length.
+                float reach = SimulatedPath(data).Sum();
+                if (reach > 0f && GetFloat(sdata.springConstraint, "limitDistance") is float preset && reach > preset)
+                {
+                    TrySetMember(sdata.springConstraint, "limitDistance", reach);
+                }
+                sdata.angleRestorationConstraint.useAngleRestoration = true;
+                sdata.angleRestorationConstraint.stiffness.SetValue(StandInRestoration);
+            }
 
             string collisionBone = collisionBones.Count > 0
                 ? string.Join("\", \"", collisionBones.Select(b => b.name))
@@ -1553,6 +1575,8 @@ namespace AvatarBridge
                       (sized ? $", sized {collisionRadius:0.###} from the mesh" : "")
                     : ", though its collision bone could not be set on this MagicaCloth2 version") +
                 (pinned ? ". Its root stays put, as a PhysBone's does, so straps weighted to it stay on" : "") +
+                (data.StandIn ? ". It stands in for an add-on that slid the bone rather than swinging it, so its root " +
+                    "may slide and its bending is held near rest, which reads as squish rather than swing" : "") +
                 ". Inertia stays at the preset's value.");
         }
 
