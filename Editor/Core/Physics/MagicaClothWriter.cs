@@ -1532,6 +1532,14 @@ namespace AvatarBridge
                     sized = true;
                 }
             }
+            // A Bone Spring lets its root slide, which a PhysBone never does: the preset's 5 cm moved
+            // a breast's root by a third of its length on a walk, dragging straps and jewellery
+            // weighted to it off the body, and a cap at a quarter of its size still left a tenth.
+            // At 0 the jiggle stays in the tip, and the swing matched the original as well or
+            // better (Play-mode A/B, 2026-10-07).
+            bool pinned = GetFloat(sdata.springConstraint, "limitDistance") is float range && range > 0f
+                && TrySetMember(sdata.springConstraint, "limitDistance", 0f);
+
             string collisionBone = collisionBones.Count > 0
                 ? string.Join("\", \"", collisionBones.Select(b => b.name))
                 : null;
@@ -1544,6 +1552,7 @@ namespace AvatarBridge
                       "branch(es)) is offered for collision" +
                       (sized ? $", sized {collisionRadius:0.###} from the mesh" : "")
                     : ", though its collision bone could not be set on this MagicaCloth2 version") +
+                (pinned ? ". Its root stays put, as a PhysBone's does, so straps weighted to it stay on" : "") +
                 ". Inertia stays at the preset's value.");
         }
 

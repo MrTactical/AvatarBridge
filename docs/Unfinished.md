@@ -1008,8 +1008,32 @@ project where they build. Two fixes found on the way: `ModularAvatarBaker` passe
 which resolves to NDMF's ambient default (Generic, not VRChat), now asks for VRChat by name; the
 probe's originals were being rebuilt by VRCFury's play-mode build (it builds every avatar on Play,
 NDMF plugins included), now skipped with Av3Emulator's "(ShadowClone)" name marker, and the probe
-bakes the original before converting. Candidate fix to measure once marshmallow builds: a soft body
-whose PhysBone has Max Squish converts as Bone Cloth (collision on every particle, squish mapped).
+bakes the original before converting.
+
+Measured since (2026-10-07, `-abForceSquish 0.5` on LanaCan and Kar, original and copy both
+squishing): **Bone Cloth for a squishing soft body is WITHDRAWN.** It shortens about right (a butt at
+0.55 of its length against the original's 0.59) but bends 70 to 140 degrees away from a press where
+the original bends 18: median press-angle error 59 degrees, against 10 as Bone Spring. Bone Spring
+stays. What a real fix needs: Bone Spring collision on more than one bone, or Bone Cloth held far
+stiffer near rest than the restoration floor manages; neither tried.
+
+Marshmallow PB, once built (`-abStripBrokenFury` removes the one broken PCS component on the open
+scene): it is a stack of 18 PhysBones per avatar (PhysBone, Inertia, Gravity, Buffer, Squish,
+Gravity_Squish and Collision chains per side, Max Squish 0.3 to 1) under `cake_PB_Setup/Dummy(for PB
+count)`, and in a VRCFury test copy that whole tree is still disabled with nothing on the breast
+bones. Unknown whether an upload wires it further; Joe is checking in Play mode. If it is layered
+chains combined through constraints, converting each layer as its own cloth cannot reproduce it:
+it would need recognising and converting as a whole. Also: after a VRCFury build Debug.Log is
+silent for the rest of that call, so the probe writes `bake.txt` and `physbones.txt` instead.
+
+**Soft-body root slide, FIXED 2026-10-07.** Bone Spring lets the root bone slide within
+`springConstraint.limitDistance`; the preset's 5 cm moved a breast root by a third of its length on
+a walk (new probe metric `slide`, root position in the parent's space over chain length), dragging
+straps weighted to it off the body (Joe's screenshot). A quarter-radius cap left 8.5%; 0 leaves 2%
+and the swing angles matched as well or better. Now 0.
+
+**Still open: a belly flailing.** LanaCan's belly peaks at 160 to 170 degrees on the walk where the
+original moves 3, and slides 0.36 even at limitDistance 0. Not investigated.
 
 **GrabbyBones:** research and a fork plan, private in `Regression/GrabbyBonesForkPlan.md` (it leans on
 the client decompile). GPL-3.0; the author has pose on his own roadmap and merges outside PRs, so

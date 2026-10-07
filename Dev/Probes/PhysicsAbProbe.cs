@@ -57,7 +57,7 @@ namespace AvatarBridge.Regression
             public Vector3 endpoint, bind, bindMid;
             public Vector3? restPress;
             public float pressRadius;
-            public readonly List<Vector3> v = new List<Vector3>(), m = new List<Vector3>();
+            public readonly List<Vector3> v = new List<Vector3>(), m = new List<Vector3>(), r = new List<Vector3>();
         }
 
         sealed class Chain
@@ -194,6 +194,8 @@ namespace AvatarBridge.Regression
             SessionState.SetInt(K + "softShots", Array.IndexOf(Environment.GetCommandLineArgs(), "-abSoftShots") >= 0 ? 1 : 0);
             SessionState.SetInt(K + "softCollide", Array.IndexOf(Environment.GetCommandLineArgs(), "-abSoftCollide") >= 0 ? 1 : 0);
             SessionState.SetInt(K + "live", Array.IndexOf(Environment.GetCommandLineArgs(), "-abLive") >= 0 ? 1 : 0);
+            SessionState.SetInt(K + "stripFury", Array.IndexOf(Environment.GetCommandLineArgs(), "-abStripBrokenFury") >= 0 ? 1 : 0);
+            SessionState.SetFloat(K + "forceSquish", float.TryParse(Arg("-abForceSquish"), NumberStyles.Float, CultureInfo.InvariantCulture, out float squish) ? squish : 0f);
             Directory.CreateDirectory(SessionState.GetString(K + "out", ""));
             Hook();
             Next();
@@ -263,6 +265,36 @@ namespace AvatarBridge.Regression
             // PB adds its own at build) is compared against a baked copy, the way an upload sees it.
             // Baked BEFORE converting, from the untouched original; NDMF decides for itself whether
             // it has anything to do, since a plugin carries no Modular Avatar component to find.
+            // -abStripBrokenFury: one VRCFury component whose files are not in this project stops the
+            // whole build, and the PhysBones a build adds with it. Removed from the open scene only.
+            if (SessionState.GetInt(K + "stripFury", 0) == 1)
+            {
+                if (PrefabUtility.IsPartOfPrefabInstance(descriptor.gameObject))
+                {
+                    PrefabUtility.UnpackPrefabInstance(PrefabUtility.GetOutermostPrefabInstanceRoot(descriptor.gameObject),
+                        PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+                }
+                foreach (var c in descriptor.GetComponentsInChildren<Component>(true).Where(IsBrokenFury).ToList())
+                {
+                    Debug.Log($"[PhysicsAb] removed the broken {c.GetType().Name} on {c.name}");
+                    UnityEngine.Object.DestroyImmediate(c);
+                }
+            }
+            // -abForceSquish v: Max Squish v on every soft-body PhysBone that has none, original and
+            // copy alike, to measure the squish conversion on avatars that never used it.
+            float forceSquish = SessionState.GetFloat(K + "forceSquish", 0f);
+            if (forceSquish > 0f)
+            {
+                var anim = descriptor.GetComponent<Animator>();
+                foreach (var pb in descriptor.GetComponentsInChildren<VRCPhysBone>(true))
+                {
+                    if (pb.maxSquish > 0f) continue;
+                    var d = PhysBoneChainData.Read(pb, anim, true);
+                    if (d.Root == null || !SoftClasses.Contains(MagicaPresetLibrary.Classify(d).Name)) continue;
+                    pb.maxSquish = forceSquish;
+                    Debug.Log($"[PhysicsAb] Max Squish {forceSquish} on {pb.name}");
+                }
+            }
             GameObject bakedSource = null;
             if (SessionState.GetInt(K + "bake", 0) == 1)
             {
@@ -270,6 +302,12 @@ namespace AvatarBridge.Regression
                 bakedSource = VRCFuryBaker.HasFuryComponents(descriptor.gameObject)
                     ? VRCFuryBaker.TryBake(descriptor, bakeReport)
                     : ModularAvatarBaker.TryBake(descriptor, bakeReport);
+                // To a file as well: a VRCFury build can leave Debug.Log silent for the rest of the call.
+                File.WriteAllText(Path.Combine(SessionState.GetString(K + "out", ""), "bake.txt"),
+                    $"returned {(bakedSource == null ? "null" : bakedSource.name)}, descriptor " +
+                    $"{(bakedSource != null && bakedSource.GetComponent<VRCAvatarDescriptor>() != null)}, " +
+                    $"{(bakedSource == null ? 0 : bakedSource.GetComponentsInChildren<VRCPhysBone>(true).Length)} PhysBone(s)\n" +
+                    string.Join("\n", bakeReport.Entries.Select(e => e.Subject + " | " + e.Detail)));
                 if (bakedSource == null || bakedSource.GetComponent<VRCAvatarDescriptor>() == null)
                 {
                     bakedSource = null;
@@ -334,8 +372,10 @@ namespace AvatarBridge.Regression
             var seenRoots = new HashSet<Transform>();
             pressParent = null;
             int skippedNoCloth = 0, skippedNoMatch = 0;
+            var pbList = new StringBuilder();
             foreach (var pb in descriptor.GetComponentsInChildren<VRCPhysBone>(true))
             {
+                pbList.Append($"{Rel(pb.transform, descriptor.transform)} active={pb.gameObject.activeInHierarchy} enabled={pb.enabled} root={(pb.rootTransform != null ? pb.rootTransform.name : "-")} squish={pb.maxSquish}\n");
                 if (!pb.gameObject.activeInHierarchy || !pb.enabled) continue;
                 var data = PhysBoneChainData.Read(pb, animator, true);
                 var root = data.Root;
@@ -402,6 +442,7 @@ namespace AvatarBridge.Regression
                     V3(endpoint),
                     IndexPath(srcPress), IndexPath(dstPress), pressRadius.ToString(CultureInfo.InvariantCulture)));
             }
+            File.WriteAllText(Path.Combine(SessionState.GetString(K + "out", ""), "physbones.txt"), pbList.ToString());
             Debug.Log($"[PhysicsAb] {scenePath}: {lines.Count} chain(s) matched, {skippedNoCloth} without a cloth, {skippedNoMatch} not found in the copy");
             if (lines.Count == 0) return false;
 
@@ -422,6 +463,21 @@ namespace AvatarBridge.Regression
         // From the component, not PhysBoneChainData, so the probe still builds against a converter
         // from before the chain data carried it.
         static bool IsVersion10(VRCPhysBone pb) => pb.version.ToString().Contains("1_0");
+
+        // The test VRCFuryBaker reports with: a reference that was set and no longer resolves.
+        static bool IsBrokenFury(Component c)
+        {
+            if (c == null) return false;
+            string ns = c.GetType().Namespace ?? "";
+            if (ns != "VF" && !ns.StartsWith("VF.") && !c.GetType().Name.StartsWith("VRCFury")) return false;
+            var it = new SerializedObject(c).GetIterator();
+            while (it.Next(true))
+            {
+                if (it.propertyType == SerializedPropertyType.ObjectReference
+                    && it.objectReferenceInstanceIDValue != 0 && it.objectReferenceValue == null) return true;
+            }
+            return false;
+        }
 
         // Parked far below until the press; a plain sphere shows it on camera, without a collider of its own.
         static Transform pressParent;
@@ -883,6 +939,10 @@ namespace AvatarBridge.Regression
             {
                 c.src.v.Add(Vec(c.src, false)); c.src.m.Add(Vec(c.src, true));
                 c.dst.v.Add(Vec(c.dst, false)); c.dst.m.Add(Vec(c.dst, true));
+                // The root's own position: every other metric is root to tip, which a root that
+                // moves as a whole leaves unchanged. A PhysBone never moves one; a Bone Spring does.
+                c.src.r.Add(c.src.root.parent.InverseTransformPoint(c.src.root.position));
+                c.dst.r.Add(c.dst.root.parent.InverseTransformPoint(c.dst.root.position));
             }
             Film(Time.frameCount - startFrame);
             foreach (var pr in pairs)
@@ -910,7 +970,7 @@ namespace AvatarBridge.Regression
 
         sealed class Metrics
         {
-            public float sag, stretch, lie, liehold, pressRatio = float.NaN, pressAngle = float.NaN, pressRecover = float.NaN;
+            public float sag, stretch, slide, lie, liehold, pressRatio = float.NaN, pressAngle = float.NaN, pressRecover = float.NaN;
             public readonly Dictionary<string, (float peak, float settle, float overshoot, float midShare)> phase =
                 new Dictionary<string, (float, float, float, float)>();
         }
@@ -933,6 +993,8 @@ namespace AvatarBridge.Regression
                 sag = Vector3.Angle(s.bind, rest),
                 stretch = s.v.Max(x => x.magnitude) / Mathf.Max(1e-6f, rest.magnitude),
             };
+            var restRoot = Mean(s.r, 1.5f, 2f);
+            m.slide = s.r.Max(x => (x - restRoot).magnitude) / Mathf.Max(1e-6f, rest.magnitude);
             foreach (var (name, start, stop, end) in Phases)
             {
                 int i0 = Ix(start), i1 = Ix(stop), i2 = Ix(end);
@@ -1019,6 +1081,7 @@ namespace AvatarBridge.Regression
                 var b = Measure(c.dst);
                 Row(c, "sag", a.sag, b.sag);
                 Row(c, "stretch", a.stretch, b.stretch);
+                Row(c, "slide", a.slide, b.slide);
                 Row(c, "lie", a.lie, b.lie);
                 Row(c, "liehold", a.liehold, b.liehold);
                 Row(c, "press.ratio", a.pressRatio, b.pressRatio);
@@ -1051,7 +1114,7 @@ namespace AvatarBridge.Regression
                 sum.Append($"\n[{cls}] n={perClass[cls].Values.Max(l => l.Count)}\n");
                 foreach (var metric in new[] { "sag", "lie", "liehold", "pair.closest", "press.ratio", "press.angle",
                              "walk.peak", "walk.settle", "walk.overshoot", "walk.midshare",
-                             "turn.peak", "head.peak", "head.settle", "jump.peak", "shake.peak", "stretch" })
+                             "turn.peak", "head.peak", "head.settle", "jump.peak", "shake.peak", "stretch", "slide" })
                 {
                     if (!perClass[cls].TryGetValue(metric, out var list)) continue;
                     float Median(IEnumerable<float> xs)

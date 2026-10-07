@@ -504,7 +504,10 @@ bone chosen is the one whose pivot sits nearest the middle of the mesh that side
 collides at the size of that mesh, measured from the pivot. Their inertia is left at the preset's
 value rather than converted from *Immobile*, because an anchored body can't be thrown off the
 avatar: holding inertia down would only stop it answering your movement. A piercing or charm
-hanging from a breast bone is converted as the jewellery it is, not as a second soft body.
+hanging from a breast bone is converted as the jewellery it is, not as a second soft body. Bone
+Spring would also let the root bone itself slide a few centimetres, which a PhysBone never does;
+on a walk that moved a breast's root by a third of its length and pulled straps and jewellery
+weighted to it off the body, so the root is held still and the jiggle stays in the tip.
 
 **Size is measured as you wear it, once.** Every radius here comes from the mesh with your
 blendshape weights applied, so an avatar saved with a body slider part-way up is measured at the
