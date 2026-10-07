@@ -75,11 +75,17 @@ namespace AvatarBridge
             GameObject baked;
             try
             {
-                // ManualProcessAvatar(GameObject, INDMFPlatformProvider = null); null platform
-                // resolves to the default (VRChat) platform, giving plain VRChat components to convert.
+                // ManualProcessAvatar(GameObject, INDMFPlatformProvider = null). Null is NOT VRChat:
+                // it resolves to NDMF's ambient default, which starts as Generic, and a Generic bake
+                // leaves platform-neutral PortableDynamicBone components where PhysBones should be.
+                // ChilloutVR deletes those on load, which silently cost marshmallow PB avatars all
+                // their breast physics. So the VRChat platform is asked for by name.
+                var vrchat = FindType("nadena.dev.ndmf.vrchat.VRChatPlatform")
+                    ?.GetProperty("Instance", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)
+                    ?.GetValue(null);
                 object[] args = bake.GetParameters().Length == 1
                     ? new object[] { source.gameObject }
-                    : new object[] { source.gameObject, null };
+                    : new object[] { source.gameObject, vrchat };
                 baked = bake.Invoke(null, args) as GameObject;
             }
             catch (Exception e)

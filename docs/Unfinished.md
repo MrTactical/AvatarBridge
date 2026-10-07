@@ -998,6 +998,19 @@ baseline only as expected: the new setting line, report counts, hand capsules tu
 Child Ignore roots listed as each branch's first bone, and one fewer stuck toggle on the Adrina scenes.
 **A full run needs Joe's word again** (one authorisation, one run).
 
+**Soft-body squish, 2026-10-07 (Joe asked: do they actually squish, like marshmallow PB?).** Not
+yet. The press test shows originals giving way 15 to 48 degrees or shortening where the copies barely
+react: a Bone Spring collides on one bone per side only, and squish is not mapped for soft bodies.
+Marshmallow PB could not be measured: both avatars carrying it in the corpus project (BHFBunny, Male
+BBL w/ MPB) have VRCFury setups referencing Dismay PCS generated files that project lacks, so Fury
+refuses to build them and marshmallow's physics never exists there, original or converted. Needs a
+project where they build. Two fixes found on the way: `ModularAvatarBaker` passed NDMF a null platform,
+which resolves to NDMF's ambient default (Generic, not VRChat), now asks for VRChat by name; the
+probe's originals were being rebuilt by VRCFury's play-mode build (it builds every avatar on Play,
+NDMF plugins included), now skipped with Av3Emulator's "(ShadowClone)" name marker, and the probe
+bakes the original before converting. Candidate fix to measure once marshmallow builds: a soft body
+whose PhysBone has Max Squish converts as Bone Cloth (collision on every particle, squish mapped).
+
 **GrabbyBones:** research and a fork plan, private in `Regression/GrabbyBonesForkPlan.md` (it leans on
 the client decompile). GPL-3.0; the author has pose on his own roadmap and merges outside PRs, so
 the plan recommends an upstream PR first and a fork only if declined.

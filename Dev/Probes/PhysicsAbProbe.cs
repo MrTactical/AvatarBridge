@@ -190,6 +190,8 @@ namespace AvatarBridge.Regression
             SessionState.SetInt(K + "stage", 0);
             SessionState.SetString(K + "gravityScale", Arg("-abGravityScale") ?? "");
             SessionState.SetString(K + "capture", Arg("-abCapture") ?? "");
+            SessionState.SetInt(K + "bake", Array.IndexOf(Environment.GetCommandLineArgs(), "-abBake") >= 0 ? 1 : 0);
+            SessionState.SetInt(K + "softShots", Array.IndexOf(Environment.GetCommandLineArgs(), "-abSoftShots") >= 0 ? 1 : 0);
             SessionState.SetInt(K + "softCollide", Array.IndexOf(Environment.GetCommandLineArgs(), "-abSoftCollide") >= 0 ? 1 : 0);
             SessionState.SetInt(K + "live", Array.IndexOf(Environment.GetCommandLineArgs(), "-abLive") >= 0 ? 1 : 0);
             Directory.CreateDirectory(SessionState.GetString(K + "out", ""));
@@ -213,6 +215,11 @@ namespace AvatarBridge.Regression
             {
                 if (Prepare(scenes[index].Trim()))
                 {
+                    // NDMF rebuilds an avatar on entering Play (marshmallow PB is an NDMF plugin), which
+                    // destroys the bones this probe drives. Its switch lasts the session only.
+                    var ndmf = AppDomain.CurrentDomain.GetAssemblies()
+                        .Select(a => a.GetType("nadena.dev.ndmf.config.Config", false)).FirstOrDefault(x => x != null);
+                    ndmf?.GetProperty("ApplyOnPlay")?.SetValue(null, false);
                     SessionState.SetInt(K + "stage", 1);
                     waitingSince = EditorApplication.timeSinceStartup;
                     EditorApplication.EnterPlaymode();
@@ -252,6 +259,28 @@ namespace AvatarBridge.Regression
             {
                 typeof(BridgeSettings).GetField("softBodiesCollide")?.SetValue(settings, true);
             }
+            // -abBake: an avatar whose PhysBones only exist after VRCFury or NDMF has run (marshmallow
+            // PB adds its own at build) is compared against a baked copy, the way an upload sees it.
+            // Baked BEFORE converting, from the untouched original; NDMF decides for itself whether
+            // it has anything to do, since a plugin carries no Modular Avatar component to find.
+            GameObject bakedSource = null;
+            if (SessionState.GetInt(K + "bake", 0) == 1)
+            {
+                var bakeReport = new BridgeReport();
+                bakedSource = VRCFuryBaker.HasFuryComponents(descriptor.gameObject)
+                    ? VRCFuryBaker.TryBake(descriptor, bakeReport)
+                    : ModularAvatarBaker.TryBake(descriptor, bakeReport);
+                if (bakedSource == null || bakedSource.GetComponent<VRCAvatarDescriptor>() == null)
+                {
+                    bakedSource = null;
+                    Debug.Log("[PhysicsAb] nothing to bake: " + string.Join(" | ", bakeReport.Entries.Select(e => e.Subject + " " + e.Detail)));
+                }
+                else
+                {
+                    bakedSource.transform.SetPositionAndRotation(descriptor.transform.position, descriptor.transform.rotation);
+                    bakedSource.SetActive(false);
+                }
+            }
             var report = BridgeConverter.Convert(descriptor, settings);
             var converted = report.ConvertedRoot;
             if (converted == null)
@@ -263,6 +292,13 @@ namespace AvatarBridge.Regression
             for (var t = descriptor.transform; t != null; t = t.parent) t.gameObject.SetActive(true);
             converted.SetActive(true);
             converted.transform.position += Vector3.right * 3f;
+            if (bakedSource != null)
+            {
+                bakedSource.SetActive(true);
+                descriptor.gameObject.SetActive(false);
+                descriptor = bakedSource.GetComponent<VRCAvatarDescriptor>();
+                Debug.Log($"[PhysicsAb] comparing against the baked original, {descriptor.GetComponentsInChildren<VRCPhysBone>(true).Length} PhysBone(s)");
+            }
             // A calibration sweep scales every cloth's gravity here, on the copy only.
             if (float.TryParse(SessionState.GetString(K + "gravityScale", ""), NumberStyles.Float, CultureInfo.InvariantCulture, out float gravityScale))
             {
@@ -370,6 +406,11 @@ namespace AvatarBridge.Regression
             if (lines.Count == 0) return false;
 
             SessionState.SetString(K + "avatar", descriptor.name);
+            // VRCFury builds every avatar in the scene on entering Play, running the upload hooks
+            // (NDMF plugins included), which rebuilds bones this probe drives. It skips names
+            // carrying Av3Emulator's "(ShadowClone)"; the scene is never saved, and no machine-wide
+            // preference gets touched.
+            descriptor.gameObject.name += " (ShadowClone)";
             SessionState.SetString(K + "bodies", string.Join("|", IndexPath(descriptor.transform), head != null ? IndexPath(head) : "",
                 IndexPath(converted.transform), dstHead != null ? IndexPath(dstHead) : ""));
             SessionState.SetString(K + "chains", string.Join("\n", lines));
@@ -641,7 +682,7 @@ namespace AvatarBridge.Regression
         {
             public string name;
             public Vector3 offset;   // in the avatar's starting frame, in avatar heights
-            public bool head;
+            public bool head, soft;
             public Camera src, dst;
         }
 
@@ -705,12 +746,20 @@ namespace AvatarBridge.Regression
                 QualitySettings.vSyncCount = 0;
             }
             if (dir.Length == 0) return;
-            shots = new List<Shot>
-            {
-                new Shot { name = "front", offset = Angle("front") },
-                new Shot { name = "back", offset = Angle("back") },
-                new Shot { name = "head", offset = Angle("head"), head = true },
-            };
+            shots = SessionState.GetInt(K + "softShots", 0) == 1
+                ? new List<Shot>
+                {
+                    // Close on the soft bodies, from the front, the side and low behind.
+                    new Shot { name = "front", offset = new Vector3(0.25f, 0.05f, 0.55f), soft = true },
+                    new Shot { name = "back", offset = new Vector3(0.6f, 0.02f, 0.05f), soft = true },
+                    new Shot { name = "head", offset = new Vector3(-0.3f, 0.0f, -0.55f), soft = true },
+                }
+                : new List<Shot>
+                {
+                    new Shot { name = "front", offset = Angle("front") },
+                    new Shot { name = "back", offset = Angle("back") },
+                    new Shot { name = "head", offset = Angle("head"), head = true },
+                };
             foreach (var s in shots)
             {
                 s.src = Make(29);
@@ -759,6 +808,15 @@ namespace AvatarBridge.Regression
             cam.transform.LookAt(centre, Vector3.up);
         }
 
+        // Centred on the soft bodies' tips, this side's own, so both columns frame the same part.
+        static void PlaceSoft(Camera cam, Body body, bool source, Vector3 offset)
+        {
+            var tips = chains.Where(c => SoftClasses.Contains(c.cls)).Select(c => (source ? c.src : c.dst).tip.position).ToList();
+            var centre = tips.Count > 0 ? tips.Aggregate(Vector3.zero, (a, b) => a + b) / tips.Count : body.avatar.position + Vector3.up * shotHeight * 0.6f;
+            cam.transform.position = centre + body.avatar.rotation * (offset * shotHeight);
+            cam.transform.LookAt(centre, body.avatar.up);
+        }
+
         static void Watch(float t)
         {
             if (live == null) return;
@@ -804,7 +862,8 @@ namespace AvatarBridge.Regression
             {
                 foreach (var (cam, body, side) in new[] { (s.src, srcBody, "src"), (s.dst, dstBody, "dst") })
                 {
-                    Place(cam, body, s.offset, s.head);
+                    if (s.soft) PlaceSoft(cam, body, side == "src", s.offset);
+                    else Place(cam, body, s.offset, s.head);
                     cam.targetTexture = shotTarget;
                     cam.Render();
                     var was = RenderTexture.active;
