@@ -989,6 +989,15 @@ skipped, because the bodies' own volume radii already overlap. Final: with the o
 body is shrunk to 45% of the way to its neighbour and its sphere matches; measured neutral to
 slightly better (soft walk 20.7 to 18.8, sag 0.19 to 0.27). Off by default as decided.
 
+**Corpus (the one authorised run, label physics-1007): PARTIAL, not accepted.** Unity died natively
+(SIGSEGV in `Animator.Rebind`, called from ToggleSweep.Drive) on avatar 14 of 87, Abbess. The same
+avatar alone, through the corpus settings and the sweep (`Dev/Probes/SweepCrashProbe.cs`), converts
+and sweeps cleanly with the baseline's result (12 stuck + 5 refused), so it is not that avatar and not
+deterministic; likely state accumulated over a long session. The 13 digests it wrote differ from the
+baseline only as expected: the new setting line, report counts, hand capsules turned spheres, Multi
+Child Ignore roots listed as each branch's first bone, and one fewer stuck toggle on the Adrina scenes.
+**A full run needs Joe's word again** (one authorisation, one run).
+
 **GrabbyBones:** research and a fork plan, private in `Regression/GrabbyBonesForkPlan.md` (it leans on
 the client decompile). GPL-3.0; the author has pose on his own roadmap and merges outside PRs, so
 the plan recommends an upstream PR first and a fork only if declined.
