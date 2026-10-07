@@ -49,6 +49,7 @@ namespace AvatarBridge
             // against the parent the transform has when it is created.
             relocated = new Dictionary<string, string>();   // per conversion, never carried over
             sourceIndex = new Dictionary<string, int>();
+            sourceStandIns.Clear();
             reparented = AlignLocalSpaceRelays(ctx);
             // VrcConstraintTypeNames below gates this loop deliberately, rather than sitting
             // beside it as a list someone has to remember to update: AvatarAdvisor counts what
@@ -618,6 +619,39 @@ namespace AvatarBridge
                     continue;
                 }
 
+                // A bone whose parent a PhysBone moves, carrying bones of its own, cannot go: moved,
+                // its children stop following the chain. A physics add-on's cascade hangs every later
+                // stage off such a bone, and moving it parked them on a still part of the rig, 11 cm
+                // out of place at rest (Play-mode trace, 2026-10-07). When the source never changes
+                // its own rotation, a fixed copy of it under the bone's parent gives the same answer
+                // in world space, and nothing moves.
+                if (constrained.childCount > 0 && Simulated(ctx, constrained.parent))
+                {
+                    if (StaticLocally(ctx, source, animatedPaths))
+                    {
+                        var standIn = new GameObject(source.name + " (local frame)").transform;
+                        standIn.SetParent(constrained.parent, false);
+                        standIn.localPosition = source.localPosition;
+                        standIn.localRotation = source.localRotation;
+                        standIn.localScale = source.localScale;
+                        sourceStandIns[(component, source)] = standIn;
+                        ctx.Report.Converted(Category, ctx.PathInTarget(constrained),
+                            $"Local-space rotation relay from \"{source.name}\": a fixed copy of that source, " +
+                            $"\"{standIn.name}\", sits under this bone's own parent and drives it instead, so a " +
+                            "world-space constraint reproduces it exactly while the bone stays where it is, with " +
+                            "the bones it carries. The source never changes its own rotation, so the copy is exact.");
+                    }
+                    else
+                    {
+                        ctx.Report.Approximated(Category, ctx.PathInTarget(constrained),
+                            $"Solved in local space against \"{source.name}\", which Unity cannot do. Moving the " +
+                            "bone would take the bones it carries out of the physics chain it hangs from, and the " +
+                            "source changes its own rotation, so a fixed copy would not do either. Converted as a " +
+                            "world-space constraint; it will not follow correctly.");
+                    }
+                    continue;
+                }
+
                 string why = BlocksMove(ctx, constrained, skinned, animatedPaths)
                              ?? BlocksMirroredMove(constrained, source.parent);
                 if (why != null)
@@ -645,6 +679,62 @@ namespace AvatarBridge
                 RepointMaskPaths(ctx);
             }
             return moved;
+        }
+
+        // A local-space relay's source, swapped per constraint for a fixed copy under the
+        // constrained bone's parent. Per conversion.
+        static readonly Dictionary<(object, Transform), Transform> sourceStandIns =
+            new Dictionary<(object, Transform), Transform>();
+
+        // Whether physics simulates this bone: it sits under a chain's root. This pass runs after
+        // physics conversion, so the chain may already be a MagicaCloth2 or DynamicBone component.
+        static bool Simulated(BridgeContext ctx, Transform t)
+        {
+            if (t == null) return false;
+            foreach (var c in ctx.Target.GetComponentsInChildren<Component>(true))
+            {
+                if (c == null) continue;
+                var roots = new List<Transform>();
+                switch (c.GetType().Name)
+                {
+                    case "VRCPhysBone":
+                        var root = Get<Transform>(c, "rootTransform", null);
+                        roots.Add(root != null ? root : c.transform);   // Unity's null, which ?? does not see
+                        break;
+                    case "DynamicBone":
+                        roots.Add(Get<Transform>(c, "m_Root", null));
+                        break;
+                    case "MagicaCloth":
+                        if (Get<object>(Get<object>(c, "SerializeData", null), "rootBones", null) is IEnumerable bones)
+                        {
+                            foreach (var b in bones) roots.Add(b as Transform);
+                        }
+                        break;
+                    default:
+                        continue;
+                }
+                foreach (var r in roots)
+                {
+                    if (r != null && (t == r || t.IsChildOf(r))) return true;
+                }
+            }
+            return false;
+        }
+
+        // Whether nothing ever changes this bone's rotation relative to its parent: no animation,
+        // no constraint writing it, no PhysBone simulating it.
+        static bool StaticLocally(BridgeContext ctx, Transform t, HashSet<string> animatedPaths)
+        {
+            if (animatedPaths.Contains(ctx.PathInTarget(t)) || Simulated(ctx, t)) return false;
+            foreach (var c in ctx.Target.GetComponentsInChildren<Component>(true))
+            {
+                if (c == null) continue;
+                if (c is UnityEngine.Animations.IConstraint && c.transform == t) return false;
+                if (!c.GetType().Name.StartsWith("VRC") || !c.GetType().Name.EndsWith("Constraint")) continue;
+                var target = Get<Transform>(c, "TargetTransform", null);
+                if ((target != null ? target : c.transform) == t) return false;
+            }
+            return true;
         }
 
         static HashSet<Transform> SkinningBones(GameObject root)
@@ -901,6 +991,10 @@ namespace AvatarBridge
                 if (transform == null)
                 {
                     continue; // a source with no transform constrains to nothing, and null-sources crash AddSource
+                }
+                if (sourceStandIns.TryGetValue((vrcConstraint, transform), out var standIn))
+                {
+                    transform = standIn;
                 }
                 result.Add(new SourceData
                 {

@@ -1044,6 +1044,18 @@ parameters moving its colliders) needs the VRChat layers running, which batch Pl
 Also fixed in the probe: press colliders sat on the scaled ball, so both solvers saw them far
 smaller than drawn; every press result before 2026-10-07 used undersized balls.
 
+**Marshmallow rig kept, chain by chain: TRIED 2026-10-07, STOPPED, non-deterministic.** Converting
+each cake_PB helper chain to its own cloth and keeping its constraints (dev switch, now removed; the
+whole experiment is `Regression/KeptRigExperiment-2026-10-07.patch`). Found and FIXED on the way:
+`AlignLocalSpaceRelays` moved Neutral_L1 (a local-space relay carrying every later stage) out of the
+Gravity chain, putting the butt 13 cm out of place at rest; a bone with children under a simulated
+parent now stays put and a fixed copy of a static source drives it (4.6 cm). Then: the same build run
+three times put Butt.L 1.0, 3.3 and 11.7 cm out of place at rest, so no fix could be told from noise.
+Likely cause, unproven: MagicaCloth2 solves cloths in parallel with no order, and the cascade feeds
+each stage from the last. Wrong guesses this round, withdrawn: Buffer held by inside-bounds spheres
+(its limits are ordinary colliders), Buffer resting pressed into them (it is not). Also in the patch,
+unmeasured: inside-bounds colliders as a distance bound. Next attempt starts from the variance.
+
 **Still open: a belly flailing.** LanaCan's belly peaks at 160 to 170 degrees on the walk where the
 original moves 3, and slides 0.36 even at limitDistance 0. Not investigated.
 

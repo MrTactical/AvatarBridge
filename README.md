@@ -470,7 +470,10 @@ Usually this costs nothing: where object and source share a parent, its rotation
 sides. It matters when the source sits in a **different chain**, and there the parents can be *made*
 to agree by moving the constrained bone under the source's own parent. That's not an approximation:
 it turns a constraint Unity can't express into one it can, and it cascades down the chain. This is
-what makes [quadrupeds](#quadruped--finalik-avatars) work.
+what makes [quadrupeds](#quadruped--finalik-avatars) work. One exception: a bone that carries bones of its own and hangs from
+a physics chain is never moved, because its children would stop following the chain. If its source
+never changes its own rotation, a fixed copy of that source is put under the bone's parent instead,
+which gives the same answer with nothing moved.
 
 Moving a bone is only safe when nothing depends on where it *is*: rotation-only relay, no mesh
 skinned to it, no animation addressing it (curves match by path), and nothing mirrored. Every move is

@@ -84,6 +84,7 @@ namespace AvatarBridge.Regression
         }
 
         static List<Pair> pairs;
+        static List<(string name, Transform s, Transform d, List<Vector3> sp, List<Vector3> dp)> traced;
         static Body srcBody, dstBody;
         static int startFrame = -1, playFrames;
         static float walked;
@@ -195,6 +196,8 @@ namespace AvatarBridge.Regression
             SessionState.SetInt(K + "softShots", Array.IndexOf(Environment.GetCommandLineArgs(), "-abSoftShots") >= 0 ? 1 : 0);
             SessionState.SetInt(K + "softCollide", Array.IndexOf(Environment.GetCommandLineArgs(), "-abSoftCollide") >= 0 ? 1 : 0);
             SessionState.SetInt(K + "live", Array.IndexOf(Environment.GetCommandLineArgs(), "-abLive") >= 0 ? 1 : 0);
+            SessionState.SetString(K + "bones", Arg("-abBones") ?? "");
+            SessionState.SetString(K + "trace", Arg("-abTrace") ?? "");
             SessionState.SetInt(K + "stripFury", Array.IndexOf(Environment.GetCommandLineArgs(), "-abStripBrokenFury") >= 0 ? 1 : 0);
             SessionState.SetFloat(K + "forceSquish", float.TryParse(Arg("-abForceSquish"), NumberStyles.Float, CultureInfo.InvariantCulture, out float squish) ? squish : 0f);
             Directory.CreateDirectory(SessionState.GetString(K + "out", ""));
@@ -384,7 +387,8 @@ namespace AvatarBridge.Regression
             var pbList = new StringBuilder();
             foreach (var pb in descriptor.GetComponentsInChildren<VRCPhysBone>(true))
             {
-                pbList.Append($"{Rel(pb.transform, descriptor.transform)} active={pb.gameObject.activeInHierarchy} enabled={pb.enabled} root={(pb.rootTransform != null ? pb.rootTransform.name : "-")} squish={pb.maxSquish}\n");
+                pbList.Append($"{Rel(pb.transform, descriptor.transform)} active={pb.gameObject.activeInHierarchy} enabled={pb.enabled} root={(pb.rootTransform != null ? pb.rootTransform.name : "-")} squish={pb.maxSquish} colliders=" +
+                    string.Join(",", pb.colliders.Where(x => x != null).Select(x => x.name + (((VRCPhysBoneCollider)x).insideBounds ? "(in)" : ""))) + "\n");
                 if (!pb.gameObject.activeInHierarchy || !pb.enabled) continue;
                 var data = PhysBoneChainData.Read(pb, animator, true);
                 var root = data.Root;
@@ -455,8 +459,13 @@ namespace AvatarBridge.Regression
             // moves that bone through constraints from its own chains. Measured on the same bone,
             // pressed by a collider every source PhysBone hears, since which layer feels a touch is
             // the add-on's business.
-            foreach (var dRoot in clothRoots.Distinct())
+            // -abBones a;b: these bones too, by name, cloth or not: a kept add-on rig moves them through
+            // constraints, with every cloth hearing the press.
+            var named = (SessionState.GetString(K + "bones", "")).Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+            var namedBones = converted.GetComponentsInChildren<Transform>(true).Where(x => named.Contains(x.name)).ToList();
+            foreach (var dRoot in clothRoots.Concat(namedBones).Distinct())
             {
+                bool byName = namedBones.Contains(dRoot);
                 if (seenRoots.Any(r => { var d = Find(converted.transform, Rel(r, descriptor.transform)); return d != null && (d == dRoot || dRoot.IsChildOf(d)); })) continue;
                 var root = Find(descriptor.transform, Rel(dRoot, converted.transform));
                 if (root == null || root.childCount == 0) continue;
@@ -483,7 +492,7 @@ namespace AvatarBridge.Regression
                 magicaCollider.SetSize(pressRadius);
                 foreach (var cloth in converted.GetComponentsInChildren<MagicaCloth>(true))
                 {
-                    if (!cloth.SerializeData.rootBones.Contains(dRoot)) continue;
+                    if (!byName && !cloth.SerializeData.rootBones.Contains(dRoot)) continue;
                     var collision = cloth.SerializeData.colliderCollisionConstraint;
                     collision.colliderList.Add(magicaCollider);
                     if (collision.mode == ColliderCollisionConstraint.Mode.None) collision.mode = ColliderCollisionConstraint.Mode.Point;
@@ -500,6 +509,19 @@ namespace AvatarBridge.Regression
                 Debug.Log($"[PhysicsAb] driven bone {root.name} measured against its cloth");
             }
             File.WriteAllText(Path.Combine(SessionState.GetString(K + "out", ""), "physbones.txt"), pbList.ToString());
+            // -abTrace a;b: every bone under these, on both sides, recorded each step, to find where
+            // two hierarchies part company. Paired by path; a bone the copy lacks is left out.
+            var traceRoots = SessionState.GetString(K + "trace", "").Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+            var trace = new List<string>();
+            foreach (var x in descriptor.GetComponentsInChildren<Transform>(true).Where(x => traceRoots.Contains(x.name)))
+            {
+                foreach (var b in x.GetComponentsInChildren<Transform>(true))
+                {
+                    var d = Find(converted.transform, Rel(b, descriptor.transform));
+                    if (d != null) trace.Add(Rel(b, descriptor.transform) + "|" + IndexPath(b) + "|" + IndexPath(d));
+                }
+            }
+            SessionState.SetString(K + "tracePairs", string.Join("\n", trace));
             Debug.Log($"[PhysicsAb] {scenePath}: {lines.Count} chain(s) matched, {skippedNoCloth} without a cloth, {skippedNoMatch} not found in the copy");
             if (lines.Count == 0) return false;
 
@@ -658,6 +680,14 @@ namespace AvatarBridge.Regression
             }
             srcBody = MakeBody(b[0], b[1]);
             dstBody = MakeBody(b[2], b[3]);
+            traced = new List<(string name, Transform s, Transform d, List<Vector3> sp, List<Vector3> dp)>();
+            foreach (var line in SessionState.GetString(K + "tracePairs", "").Split('\n'))
+            {
+                var f = line.Split('|');
+                if (f.Length < 3) continue;
+                var s = FromIndexPath(f[1]); var d = FromIndexPath(f[2]);
+                if (s != null && d != null) traced.Add((f[0], s, d, new List<Vector3>(), new List<Vector3>()));
+            }
             chains = new List<Chain>();
             foreach (var line in SessionState.GetString(K + "chains", "").Split('\n'))
             {
@@ -1046,6 +1076,12 @@ namespace AvatarBridge.Regression
                 c.src.r.Add(c.src.root.parent.InverseTransformPoint(c.src.root.position));
                 c.dst.r.Add(c.dst.root.parent.InverseTransformPoint(c.dst.root.position));
             }
+            foreach (var tr in traced)
+            {
+                // In each avatar's own frame, so the 3 m between them cancels.
+                tr.sp.Add(srcBody.avatar.InverseTransformPoint(tr.s.position));
+                tr.dp.Add(dstBody.avatar.InverseTransformPoint(tr.d.position));
+            }
             Film(Time.frameCount - startFrame);
             foreach (var pr in pairs)
             {
@@ -1168,6 +1204,26 @@ namespace AvatarBridge.Regression
         static void Write()
         {
             string outDir = SessionState.GetString(K + "out", "");
+            if (traced != null && traced.Count > 0)
+            {
+                // For each bone: how far apart the two sides sit at rest, the first time they are 1 cm
+                // further apart than that, and the worst. Sorted by that first time: the top of the
+                // list is where the copy starts to go wrong.
+                var tsb = new StringBuilder("bone\trest_cm\tfirst_s\tmax_cm\tmax_at_s\n");
+                foreach (var tr in traced.Select(tr =>
+                {
+                    int n = Mathf.Min(tr.sp.Count, tr.dp.Count);
+                    var dev = Enumerable.Range(0, n).Select(i => (tr.sp[i] - tr.dp[i]).magnitude * 100f).ToList();
+                    float rest = n > 0 ? dev[Mathf.Min(n - 1, Mathf.RoundToInt(1.5f * Fps))] : 0f;
+                    int first = dev.FindIndex(v => v > rest + 1f);
+                    int worst = n > 0 ? dev.IndexOf(dev.Max()) : 0;
+                    return (tr.name, rest, first: first < 0 ? 999f : first / Fps, max: n > 0 ? dev.Max() : 0f, at: worst / Fps);
+                }).OrderBy(x => x.first).ThenByDescending(x => x.max))
+                {
+                    tsb.Append($"{tr.name}\t{tr.rest:0.0}\t{tr.first:0.00}\t{tr.max:0.0}\t{tr.at:0.00}\n");
+                }
+                File.WriteAllText(Path.Combine(outDir, "trace.tsv"), tsb.ToString());
+            }
             string avatar = SessionState.GetString(K + "avatar", "avatar");
             foreach (char ch in Path.GetInvalidFileNameChars()) avatar = avatar.Replace(ch, '_');
             var rows = new StringBuilder("chain\tclass\tmetric\tsrc\tdst\tparams\n");
