@@ -1116,6 +1116,14 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
   bodies collide with, a teleport snapping the joints, whether a content filter strips them, and
   how a body follows an animated parent (a dynamic body under a moving bone is teleported with
   it). Next is an in-game spike: one chain on one avatar.
+- **Joint spike built (`Dev/Probes/JointSpike.cs`, menu Tools > AvatarBridge Dev > Joint spike).** Each
+  bone follows its own body through a parent constraint; the bodies sit under the avatar root, no
+  colliders. Self-test (batch, script-stepped at 90 Hz): under the avatar root the tip strays 5.1 cm
+  walking and 12.1 cm on a jump from its settled sag, 0.2 cm after a 100 m teleport, bones 0.87 to
+  1.46 of rest. Under the hips the same chain strays 0.2 cm everywhere: a dynamic body under a moving
+  parent is teleported with it, confirmed. Settled sag 6.9 cm, untuned. The client decompile shows
+  Rigidbody and joints pass the avatar filter untouched; only colliders are processed (content
+  filters, layers, a kinematic body added). Awaiting Joe's upload.
 
 ## MagicaCloth2 settings: measured against the originals and fixed, 2026-10-06. ON DEV, not in game
 
