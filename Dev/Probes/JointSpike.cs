@@ -166,7 +166,6 @@ namespace AvatarBridge.Regression
             if (undo) Undo.RegisterCreatedObjectUndo(holder.gameObject, "Joint spike");
 
             var chain = Longest(chainRoot, nested);
-            var flesh = Flesh(avatar, chain);
             var bodies = new List<Rigidbody>();
             for (int i = 1; i < chain.Count; i++)
             {
@@ -192,17 +191,11 @@ namespace AvatarBridge.Regression
                 // avatar stood still a moment, the bone froze until something shoved the body itself.
                 rb.sleepThreshold = 0f;
                 rb.interpolation = RigidbodyInterpolation.Interpolate;
-                // The flesh this bone carries, so a touch on the skin reaches it; under half a bone
-                // when it carries none, so neighbours never touch.
+                // Under half a bone, so neighbours never touch. Sized to the flesh, it moved as one
+                // block and stretched 1.4 to 1.6; the squish is the shader dent's job.
                 var sphere = go.AddComponent<SphereCollider>();
+                sphere.radius = length * 0.45f;
                 float room = length * StretchRoom;
-                if (flesh.TryGetValue(bone, out var f))
-                {
-                    sphere.center = go.transform.InverseTransformPoint(f.center);
-                    sphere.radius = f.radius / go.transform.lossyScale.x;
-                    room = Mathf.Max(length, f.radius) * StretchRoom;
-                }
-                else sphere.radius = length * 0.45f;
                 var j = go.AddComponent<ConfigurableJoint>();
                 j.connectedBody = targetBody;
                 j.anchor = Vector3.zero;
@@ -223,8 +216,7 @@ namespace AvatarBridge.Regression
                 pc.constraintActive = true;
                 bodies.Add(rb);
                 Debug.Log($"[JointSpike] {bone.name}: body radius {sphere.radius * go.transform.lossyScale.x * 100f:0.0} cm, " +
-                          $"{Vector3.Distance(go.transform.TransformPoint(sphere.center), bone.position) * 100f:0.0} cm off the bone, room {room * 100f:0.0} cm" +
-                          (flesh.ContainsKey(bone) ? "" : " (no flesh of its own)"));
+                          $"room {room * 100f:0.0} cm");
             }
             Debug.Log($"[JointSpike] {chainRoot.name}: layered on MagicaCloth2 \"{string.Join("\", \"", cloths)}\", {bodies.Count} lag bodies under \"{holder.name}\"" +
                       (cloths.Count == 0 ? "; no cloth covers it, so it only lags" : ""));
@@ -232,8 +224,8 @@ namespace AvatarBridge.Regression
         }
 
         // Per bone, a sphere over the skin it mostly moves: centred on those vertices, out to their
-        // median distance, so it sits a little inside the surface and a touch has to press in.
-        static Dictionary<Transform, (Vector3 center, float radius)> Flesh(Transform avatar, List<Transform> chain)
+        // median distance, so it sits a little inside the surface. The dent's pair plane reads it.
+        public static Dictionary<Transform, (Vector3 center, float radius)> Flesh(Transform avatar, List<Transform> chain)
         {
             var points = chain.ToDictionary(b => b, b => new List<Vector3>());
             foreach (var smr in avatar.GetComponentsInChildren<SkinnedMeshRenderer>(true))

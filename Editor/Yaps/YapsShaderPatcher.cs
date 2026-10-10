@@ -105,6 +105,10 @@ namespace AvatarBridge
         _YAPS_SocketShapeFade2 (""YAPS socket shape fades 4-7"", Vector) = (0.3, 0.3, 0.3, 0.3)
         _YAPS_SocketShapeFade3 (""YAPS socket shape fades 8-11"", Vector) = (0.3, 0.3, 0.3, 0.3)
         _YAPS_SocketShapeFade4 (""YAPS socket shape fades 12-15"", Vector) = (0.3, 0.3, 0.3, 0.3)
+        [Header(YAPS dent)]
+        _YAPS_DentPower (""YAPS soft-body dent"", Range(0,1)) = 0
+        _YAPS_DentSoftness (""YAPS dent edge, share of the radius"", Range(0.05,1)) = 0.3
+        _YAPS_DentBulge (""YAPS dent bulge"", Range(0,2)) = 0.6
 ";
 
         // The name the patch of `original` would carry if it were made now.
@@ -691,6 +695,7 @@ namespace AvatarBridge
             body.AppendLine($"    YapsDeform(yapsPosition, yapsNormal, yapsTangent, {idExpression});");
             body.AppendLine(
                 $"    YapsSocketDeform(yapsPosition, yapsNormal, yapsTangent, {idExpression});");
+            body.AppendLine("    YapsDentDeform(yapsPosition, yapsNormal, yapsTangent);");
             body.AppendLine($"    {parameterName}.{positionField}.xyz = yapsPosition;");
             if (normalField != null)
             {
@@ -831,7 +836,7 @@ namespace AvatarBridge
             string[] names =
             {
                 "yaps_props.cginc", "yaps_atlas.cginc", "yaps_resolve.cginc", "yaps_deform.cginc",
-                "yaps_socket.cginc",
+                "yaps_socket.cginc", "yaps_dent.cginc",
             };
             var sb = new StringBuilder();
             foreach (string name in names)

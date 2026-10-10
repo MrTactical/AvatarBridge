@@ -366,6 +366,36 @@ namespace AvatarBridge.Regression
             foreach (var bone in converted.GetComponentsInChildren<Transform>(true).Where(t => layered.Contains(t.name)).ToList())
                 JointSpike.BuildLayered(bone, false, null);
             pressPushesBodies = layered.Length > 0;
+#if AVATARBRIDGE_YAPS
+            // -abDent: the skin over those chains takes the YAPS dent, fed the copy's presses.
+            if (Dent)
+            {
+                // Every skinned layer, not only the skin: a top left undented had the skin push
+                // through it in stripes. Clothing often rides bones of its own, so match by none.
+                var done = new Dictionary<Material, Material>();
+                foreach (var smr in converted.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                {
+                    var mats = smr.sharedMaterials;
+                    for (int i = 0; i < mats.Length; i++)
+                    {
+                        if (mats[i] == null) continue;
+                        if (!done.TryGetValue(mats[i], out var dented))
+                        {
+                            var shader = YapsShaderPatcher.Patch(mats[i], "Assets/PhysicsAbDent", null, out string refusal, out _);
+                            dented = shader == null ? null : new Material(mats[i]) { shader = shader };
+                            if (dented != null) dented.SetFloat("_YAPS_DentPower", 1f);
+                            // -abBulge x: the ring's height, for A/B against the default.
+                            if (dented != null && float.TryParse(Arg("-abBulge"), NumberStyles.Float, CultureInfo.InvariantCulture, out float bulge))
+                                dented.SetFloat("_YAPS_DentBulge", bulge);
+                            Debug.Log($"[PhysicsAb] dent on \"{mats[i].name}\" of {smr.name}: {(dented != null ? shader.name : refusal)}");
+                            done[mats[i]] = dented;
+                        }
+                        if (dented != null) mats[i] = dented;
+                    }
+                    smr.sharedMaterials = mats;
+                }
+            }
+#endif
 
             // Only the script moves either avatar, and no emulator takes one over in Play.
             foreach (var root in scene.GetRootGameObjects())
@@ -573,6 +603,8 @@ namespace AvatarBridge.Regression
         static Transform pressParent;
         // A layered chain is squashed through its bodies, which only a physics collider reaches.
         static bool pressPushesBodies;
+        // Read from the command line each time: a static set before Play is gone after the reload.
+        static bool Dent => Array.IndexOf(Environment.GetCommandLineArgs(), "-abDent") >= 0;
 
         // The colliders go on an unscaled root and the visible ball on a child: both solvers scale a
         // collider by its transform, so one on a sphere scaled to its own diameter was far smaller
@@ -603,6 +635,8 @@ namespace AvatarBridge.Regression
             mat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
             mat.renderQueue = 4000;
             go.GetComponent<Renderer>().sharedMaterial = mat;
+            // Hidden in a dent run: drawn over the skin, even a faint ball hid the dent it made.
+            go.GetComponent<Renderer>().enabled = !Dent;
             return root;
         }
 
@@ -874,6 +908,57 @@ namespace AvatarBridge.Regression
             }
         }
 
+        // Each layered chain's flesh, in its bone's space: found on the first frame of Play.
+        static List<(Transform bone, Vector3 local, float radius)> dentFlesh;
+
+        // Fed after MagicaCloth2 writes and before the frame is filmed, so the dent follows the
+        // bones as drawn. Both avatars see the globals; only the copy's skin reads them.
+        static void FeedDent()
+        {
+            if (!Dent) return;
+            // Layered chains only: four slots, and other presses took them first.
+            var layered = (Arg("-abLayered") ?? "").Split(';');
+            var mine = chains.Where(c => layered.Contains(c.dst.root.name)).ToList();
+            var spheres = new Vector4[4];
+            int n = 0;
+            foreach (var c in mine)
+            {
+                var p = c.dst.press;
+                if (p == null || p.position.y < -50f || n == 4) continue;
+                if (spheres.Take(n).Any(v => (Vector3)v == p.position)) continue;
+                var at = p.position;
+                spheres[n++] = new Vector4(at.x, at.y, at.z, c.dst.pressRadius * p.localScale.x);
+            }
+            Shader.SetGlobalVectorArray("_YAPS_DentSpheres", spheres);
+
+            if (dentFlesh == null)
+            {
+                dentFlesh = new List<(Transform, Vector3, float)>();
+                foreach (var c in mine)
+                {
+                    var bones = c.dst.root.GetComponentsInChildren<Transform>(true).ToList();
+                    var flesh = JointSpike.Flesh(dstBody.avatar, bones);
+                    if (flesh.Count == 0) continue;
+                    var big = flesh.OrderByDescending(f => f.Value.radius).First();
+                    dentFlesh.Add((big.Key, big.Key.InverseTransformPoint(big.Value.center), big.Value.radius));
+                    Debug.Log($"[PhysicsAb] dent flesh of {c.dst.root.name}: on {big.Key.name}, radius {big.Value.radius * 100f:0.0} cm");
+                }
+            }
+            // -abNoPair: spheres only, to see what the pair plane adds.
+            if (dentFlesh.Count < 2 || Array.IndexOf(Environment.GetCommandLineArgs(), "-abNoPair") >= 0) return;
+            var a = dentFlesh[0].bone.TransformPoint(dentFlesh[0].local);
+            var b = dentFlesh[1].bone.TransformPoint(dentFlesh[1].local);
+            float ra = dentFlesh[0].radius, rb = dentFlesh[1].radius;
+            var axis = (b - a).normalized;
+            // The plane sits where the two surfaces would meet, shared by their sizes.
+            var mid = a + axis * (Vector3.Distance(a, b) * ra / (ra + rb));
+            Shader.SetGlobalVector("_YAPS_DentPlane", new Vector4(axis.x, axis.y, axis.z, Vector3.Dot(mid, axis)));
+            Shader.SetGlobalVector("_YAPS_DentZone", new Vector4(mid.x, mid.y, mid.z, 1.5f * Mathf.Max(ra, rb)));
+            // ponytail: the median radius sits inside the skin, so 1.25x stands in for the surface;
+            // measure the real overlap from the mesh if the bulge reads wrong.
+            Shader.SetGlobalFloat("_YAPS_DentOverlap", Mathf.Max(0f, 1.25f * (ra + rb) - Vector3.Distance(a, b)) * 0.5f);
+        }
+
         // ------------------------------------------------------------------ filming
 
         // -abCapture <dir>: every third step (30 frames a second of simulated time) each shot is
@@ -1121,6 +1206,7 @@ namespace AvatarBridge.Regression
                 tr.sp.Add(srcBody.avatar.InverseTransformPoint(tr.s.position));
                 tr.dp.Add(dstBody.avatar.InverseTransformPoint(tr.d.position));
             }
+            FeedDent();
             Film(Time.frameCount - startFrame);
             foreach (var pr in pairs)
             {
@@ -1139,6 +1225,7 @@ namespace AvatarBridge.Regression
             Install(false);
             Time.captureFramerate = 0;
             chains = null;
+            dentFlesh = null;
             SessionState.SetInt(K + "stage", 2);
             EditorApplication.ExitPlaymode();
         }

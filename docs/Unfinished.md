@@ -1138,6 +1138,25 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
   one that touches an avatar's bodies is the in-game question. `Longest` follows the deepest branch,
   so a nested chain (a piercing) can take the bodies instead of the soft body's own tip. Also fixed:
   bodies now never sleep, since a kinematic target moved by its transform does not wake them.
+  Sizing the bodies to the flesh (tried 2026-10-10) moved each part as one block and stretched it
+  1.4 to 1.6 of rest; reverted to half a bone. Squish is the shader's job, stretch the joints'.
+- **Three layers, 2026-10-11: MagicaCloth2 swings, joints stretch, the YAPS dent squishes.** Add-on
+  only (squish is 18+ content, Joe's call). `Editor/Yaps/yaps_dent.cginc`, patched into every YAPS
+  shader, gated by `_YAPS_DentPower` (default 0, so nothing changes until something turns it on):
+  - Up to four spheres push skin out onto their surface, stopping 20% of the depth short so a top
+    and the skin under it keep their order (pushed onto one surface they z-fought in stripes).
+  - The displaced flesh rises in a ring round each press, its slope capped at 0.5: steeper, the
+    skin under a top rose past it and showed through.
+  - A soft pair pressed together meets on a plane: skin past it still facing across flattens onto
+    it, and each side swells round the flat. Sides are told apart by facing, so one mesh carrying
+    both needs no tagging.
+  - Verified in batch Play mode on one avatar's chest (`PhysicsAbProbe -abDent`, every skinned
+    renderer patched). The squeeze stays full and whole, close to the PhysBones original. Not
+    seen in game.
+  Open: the transport. The probe sets world-space globals; in game the spheres must come from hands
+  and other avatars (vertex lights, the atlas, or a trigger position), and the pair plane from the
+  wearer's own flesh centres. Also: own-body spheres need a mask, and the patcher's new properties
+  change every patched shader's name hash, so existing YAPS materials re-patch on the next convert.
 
 ## MagicaCloth2 settings: measured against the originals and fixed, 2026-10-06. ON DEV, not in game
 
