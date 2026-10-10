@@ -1084,7 +1084,7 @@ namespace AvatarBridge.Regression
 
         // Layered chains squash each other only if their bodies meet: the nearest pair of bodies
         // from two different chains, surface to surface, negative when they overlap.
-        static float gap = float.MaxValue, gapTouch;
+        static float gap = float.MaxValue, gapTouch, restGap;
         static int gapAt = -1;
         static void BodyGap(int n)
         {
@@ -1097,6 +1097,7 @@ namespace AvatarBridge.Regression
                     if (a.transform.parent != b.transform.parent && a.GetInstanceID() < b.GetInstanceID())
                         least = Mathf.Min(least, Vector3.Distance(a.transform.position, b.transform.position) - a.radius - b.radius);
             if (least == float.MaxValue) return;
+            if (n == 1) restGap = least;
             if (least <= 0f) gapTouch++;
             if (least < gap) { gap = least; gapAt = n; }
         }
@@ -1332,7 +1333,7 @@ namespace AvatarBridge.Regression
             Debug.Log("[PhysicsAb] wrote " + avatar);
             if (gapAt >= 0)
                 Debug.Log($"[PhysicsAb] layered bodies of two chains came within {gap * 100f:0.0} cm, surface to surface, at {gapAt / Fps:0.0} s" +
-                          $"; touching {gapTouch / Fps:0.00} s in all");
+                          $"; touching {gapTouch / Fps:0.00} s in all; {restGap * 100f:0.0} cm apart at the start");
         }
     }
 }

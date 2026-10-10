@@ -28,7 +28,7 @@ namespace AvatarBridge.Regression
         public const float SwingLimit = 45f;
         public const float SwingSpring = 4f;    // pulls a bone back to its rest angle
 
-        public const float LagSpring = 60f;       // layered: how hard a body chases its cloth bone
+        public const float LagSpring = 30f;       // layered: how hard a body chases its rest place
 
         [MenuItem("Tools/AvatarBridge Dev/Joint spike: selected chain roots")]
         static void BuildOnSelection()
@@ -148,8 +148,13 @@ namespace AvatarBridge.Regression
         {
             var avatar = holderParent != null ? holderParent : AvatarRoot(chainRoot);
             var cloths = new List<string>();
+            var nested = new HashSet<Transform>();
             foreach (var cloth in avatar.GetComponentsInChildren<Component>(true).Where(c => c != null && Covers(c, chainRoot) && c.GetType().Name == "MagicaCloth"))
             {
+                // A chain rooted inside this one (a piercing) is its own cloth's, never a soft-body bone.
+                var roots = new SerializedObject(cloth).FindProperty("serializeData.rootBones");
+                for (int i = 0; roots != null && i < roots.arraySize; i++)
+                    if (roots.GetArrayElementAtIndex(i).objectReferenceValue is Transform r && r != chainRoot && r.IsChildOf(chainRoot)) nested.Add(r);
                 var so = new SerializedObject(cloth);
                 so.FindProperty("serializeData.animationPoseRatio").floatValue = 1f;
                 so.ApplyModifiedProperties();
@@ -160,7 +165,8 @@ namespace AvatarBridge.Regression
             holder.SetParent(avatar, false);
             if (undo) Undo.RegisterCreatedObjectUndo(holder.gameObject, "Joint spike");
 
-            var chain = Longest(chainRoot);
+            var chain = Longest(chainRoot, nested);
+            var flesh = Flesh(avatar, chain);
             var bodies = new List<Rigidbody>();
             for (int i = 1; i < chain.Count; i++)
             {
@@ -185,20 +191,29 @@ namespace AvatarBridge.Regression
                 // A kinematic target moved by its transform never wakes a sleeping body: once the
                 // avatar stood still a moment, the bone froze until something shoved the body itself.
                 rb.sleepThreshold = 0f;
-                rb.freezeRotation = true;
                 rb.interpolation = RigidbodyInterpolation.Interpolate;
-                // Under half a bone, so neighbours never touch; what touches it squashes the bone.
-                go.AddComponent<SphereCollider>().radius = length * 0.45f;
+                // The flesh this bone carries, so a touch on the skin reaches it; under half a bone
+                // when it carries none, so neighbours never touch.
+                var sphere = go.AddComponent<SphereCollider>();
+                float room = length * StretchRoom;
+                if (flesh.TryGetValue(bone, out var f))
+                {
+                    sphere.center = go.transform.InverseTransformPoint(f.center);
+                    sphere.radius = f.radius / go.transform.lossyScale.x;
+                    room = Mathf.Max(length, f.radius) * StretchRoom;
+                }
+                else sphere.radius = length * 0.45f;
                 var j = go.AddComponent<ConfigurableJoint>();
                 j.connectedBody = targetBody;
                 j.anchor = Vector3.zero;
                 j.autoConfigureConnectedAnchor = false;
                 j.connectedAnchor = Vector3.zero;
                 j.xMotion = j.yMotion = j.zMotion = ConfigurableJointMotion.Limited;
-                j.linearLimit = new SoftJointLimit { limit = length * StretchRoom };
+                j.linearLimit = new SoftJointLimit { limit = room };
                 var chase = new JointDrive { positionSpring = LagSpring, positionDamper = LagSpring * 0.03f, maximumForce = float.MaxValue };
                 j.xDrive = j.yDrive = j.zDrive = chase;
-                j.angularXMotion = j.angularYMotion = j.angularZMotion = ConfigurableJointMotion.Free;
+                // Turned with its target, so a sphere off the bone stays over its flesh as the avatar turns.
+                j.angularXMotion = j.angularYMotion = j.angularZMotion = ConfigurableJointMotion.Locked;
 
                 var pc = undo ? Undo.AddComponent<PositionConstraint>(bone.gameObject) : bone.gameObject.AddComponent<PositionConstraint>();
                 pc.AddSource(new ConstraintSource { sourceTransform = go.transform, weight = 1f });
@@ -207,10 +222,56 @@ namespace AvatarBridge.Regression
                 pc.locked = true;
                 pc.constraintActive = true;
                 bodies.Add(rb);
+                Debug.Log($"[JointSpike] {bone.name}: body radius {sphere.radius * go.transform.lossyScale.x * 100f:0.0} cm, " +
+                          $"{Vector3.Distance(go.transform.TransformPoint(sphere.center), bone.position) * 100f:0.0} cm off the bone, room {room * 100f:0.0} cm" +
+                          (flesh.ContainsKey(bone) ? "" : " (no flesh of its own)"));
             }
             Debug.Log($"[JointSpike] {chainRoot.name}: layered on MagicaCloth2 \"{string.Join("\", \"", cloths)}\", {bodies.Count} lag bodies under \"{holder.name}\"" +
                       (cloths.Count == 0 ? "; no cloth covers it, so it only lags" : ""));
             return bodies;
+        }
+
+        // Per bone, a sphere over the skin it mostly moves: centred on those vertices, out to their
+        // median distance, so it sits a little inside the surface and a touch has to press in.
+        static Dictionary<Transform, (Vector3 center, float radius)> Flesh(Transform avatar, List<Transform> chain)
+        {
+            var points = chain.ToDictionary(b => b, b => new List<Vector3>());
+            foreach (var smr in avatar.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                if (smr.sharedMesh == null) continue;
+                var bones = smr.bones;
+                var mine = new Dictionary<int, Transform>();
+                for (int i = 0; i < bones.Length; i++)
+                    if (bones[i] != null && points.ContainsKey(bones[i])) mine[i] = bones[i];
+                if (mine.Count == 0) continue;
+                // Skinned by hand from the bones and bind poses: a bake's space depends on the
+                // renderer's scale, which a converted rig can carry at 100.
+                var mesh = smr.sharedMesh;
+                var verts = mesh.vertices;
+                var weights = mesh.boneWeights;
+                var bind = mesh.bindposes;
+                var skin = new Matrix4x4[bones.Length];
+                for (int i = 0; i < bones.Length && i < bind.Length; i++)
+                    skin[i] = bones[i] != null ? bones[i].localToWorldMatrix * bind[i] : Matrix4x4.zero;
+                for (int v = 0; v < weights.Length && v < verts.Length; v++)
+                {
+                    var w = weights[v];
+                    if (w.weight0 < 0.5f || !mine.TryGetValue(w.boneIndex0, out var bone)) continue;
+                    var p = skin[w.boneIndex0].MultiplyPoint3x4(verts[v]) * w.weight0
+                          + skin[w.boneIndex1].MultiplyPoint3x4(verts[v]) * w.weight1
+                          + skin[w.boneIndex2].MultiplyPoint3x4(verts[v]) * w.weight2
+                          + skin[w.boneIndex3].MultiplyPoint3x4(verts[v]) * w.weight3;
+                    points[bone].Add(p);
+                }
+            }
+            var result = new Dictionary<Transform, (Vector3, float)>();
+            foreach (var pair in points.Where(p => p.Value.Count >= 20))
+            {
+                var center = pair.Value.Aggregate(Vector3.zero, (a, b) => a + b) / pair.Value.Count;
+                var distances = pair.Value.Select(p => Vector3.Distance(p, center)).OrderBy(d => d).ToList();
+                result[pair.Key] = (center, distances[distances.Count / 2]);
+            }
+            return result;
         }
 
         static Transform AvatarRoot(Transform t)
@@ -242,12 +303,13 @@ namespace AvatarBridge.Regression
             return false;
         }
 
-        static List<Transform> Longest(Transform from)
+        static List<Transform> Longest(Transform from, HashSet<Transform> skip = null)
         {
             var best = new List<Transform>();
             for (int i = 0; i < from.childCount; i++)
             {
-                var path = Longest(from.GetChild(i));
+                if (skip != null && skip.Contains(from.GetChild(i))) continue;
+                var path = Longest(from.GetChild(i), skip);
                 if (path.Count > best.Count) best = path;
             }
             best.Insert(0, from);
