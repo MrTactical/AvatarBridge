@@ -764,11 +764,11 @@ namespace AvatarBridge
         internal static IEnumerable<Texture> TexturesOf(Material m)
         {
             if (m == null || m.shader == null) yield break;
-            int count = ShaderUtil.GetPropertyCount(m.shader);
-            for (int i = 0; i < count; i++)
+            // Asked by name, never by shader property index: scanning a whole project, a
+            // broken or recompiling shader reported more properties than it would hand out.
+            foreach (int id in m.GetTexturePropertyNameIDs())
             {
-                if (ShaderUtil.GetPropertyType(m.shader, i) != ShaderUtil.ShaderPropertyType.TexEnv) continue;
-                var tex = m.GetTexture(ShaderUtil.GetPropertyName(m.shader, i));
+                var tex = m.GetTexture(id);
                 if (tex != null) yield return tex;
             }
         }
