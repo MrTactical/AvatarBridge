@@ -106,6 +106,9 @@ namespace AvatarBridge.Regression
             EditorApplication.update += Tick;
         }
 
+        // A chain layered by the joint spike is simulated on its copy, beside it.
+        static bool Same(Transform r, Transform d) => r == d || (r.parent == d.parent && r.name == d.name + " (cloth copy)");
+
         static string Arg(string name)
         {
             var args = Environment.GetCommandLineArgs();
@@ -243,6 +246,9 @@ namespace AvatarBridge.Regression
         static bool Prepare(string scenePath)
         {
             var scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
+            // A conversion saved in the scene would stand in the same spot on camera. Gone in memory only.
+            foreach (var old in scene.GetRootGameObjects().Where(r => r.name.EndsWith(" (ChilloutVR)")))
+                UnityEngine.Object.DestroyImmediate(old);
             var descriptor = scene.GetRootGameObjects().Select(r => r.GetComponentInChildren<VRCAvatarDescriptor>(true))
                 .FirstOrDefault(d => d != null);
             if (descriptor == null)
@@ -355,6 +361,11 @@ namespace AvatarBridge.Regression
                 foreach (var cloth in converted.GetComponentsInChildren<MagicaCloth>(true)) cloth.SerializeData.gravity *= gravityScale;
                 Debug.Log($"[PhysicsAb] gravity scaled by {gravityScale}");
             }
+            // -abLayered a;b: these chains on the copy get the joint spike layered on MagicaCloth2.
+            var layered = (Arg("-abLayered") ?? "").Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var bone in converted.GetComponentsInChildren<Transform>(true).Where(t => layered.Contains(t.name)).ToList())
+                JointSpike.BuildLayered(bone, false, null);
+            pressPushesBodies = layered.Length > 0;
 
             // Only the script moves either avatar, and no emulator takes one over in Play.
             foreach (var root in scene.GetRootGameObjects())
@@ -415,7 +426,7 @@ namespace AvatarBridge.Regression
                     skippedNoMatch++;
                     continue;
                 }
-                if (!clothRoots.Any(r => r == dRoot || r.IsChildOf(dRoot) || dRoot.IsChildOf(r)))
+                if (!clothRoots.Any(r => Same(r, dRoot) || r.IsChildOf(dRoot) || dRoot.IsChildOf(r)))
                 {
                     skippedNoCloth++;
                     continue;
@@ -436,7 +447,7 @@ namespace AvatarBridge.Regression
                 magicaCollider.SetSize(pressRadius);
                 foreach (var cloth in converted.GetComponentsInChildren<MagicaCloth>(true))
                 {
-                    if (!cloth.SerializeData.rootBones.Any(r => r != null && (r == dRoot || r.IsChildOf(dRoot) || dRoot.IsChildOf(r)))) continue;
+                    if (!cloth.SerializeData.rootBones.Any(r => r != null && (Same(r, dRoot) || r.IsChildOf(dRoot) || dRoot.IsChildOf(r)))) continue;
                     var collision = cloth.SerializeData.colliderCollisionConstraint;
                     collision.colliderList.Add(magicaCollider);
                     if (collision.mode == ColliderCollisionConstraint.Mode.None) collision.mode = ColliderCollisionConstraint.Mode.Point;
@@ -492,7 +503,7 @@ namespace AvatarBridge.Regression
                 magicaCollider.SetSize(pressRadius);
                 foreach (var cloth in converted.GetComponentsInChildren<MagicaCloth>(true))
                 {
-                    if (!byName && !cloth.SerializeData.rootBones.Contains(dRoot)) continue;
+                    if (!byName && !cloth.SerializeData.rootBones.Any(r => r != null && Same(r, dRoot))) continue;
                     var collision = cloth.SerializeData.colliderCollisionConstraint;
                     collision.colliderList.Add(magicaCollider);
                     if (collision.mode == ColliderCollisionConstraint.Mode.None) collision.mode = ColliderCollisionConstraint.Mode.Point;
@@ -560,6 +571,8 @@ namespace AvatarBridge.Regression
 
         // Parked far below until the press; a plain sphere shows it on camera, without a collider of its own.
         static Transform pressParent;
+        // A layered chain is squashed through its bodies, which only a physics collider reaches.
+        static bool pressPushesBodies;
 
         // The colliders go on an unscaled root and the visible ball on a child: both solvers scale a
         // collider by its transform, so one on a sphere scaled to its own diameter was far smaller
@@ -570,6 +583,11 @@ namespace AvatarBridge.Regression
             var root = new GameObject(name).transform;
             root.SetParent(pressParent, false);
             root.position = Vector3.down * 100f;
+            if (pressPushesBodies && name.EndsWith(" copy"))
+            {
+                root.gameObject.AddComponent<SphereCollider>().radius = radius;
+                root.gameObject.AddComponent<Rigidbody>().isKinematic = true;
+            }
             var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             go.name = "ball";
             UnityEngine.Object.DestroyImmediate(go.GetComponent<Collider>());

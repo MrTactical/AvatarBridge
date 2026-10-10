@@ -1124,6 +1124,20 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
   parent is teleported with it, confirmed. Settled sag 6.9 cm, untuned. The client decompile shows
   Rigidbody and joints pass the avatar filter untouched; only colliders are processed (content
   filters, layers, a kinematic body added). Awaiting Joe's upload.
+- **Layered on MagicaCloth2: works in batch Play mode, 2026-10-10.** The first build drove a copy of
+  the chain with the cloth and had the real bones follow it. Dead by design: MC2 restores its bones
+  to rest in EarlyUpdate, before physics and constraints, so nothing outside MC2 ever read the
+  simulated pose. (It also left BoneSpring's `collisionBones` on the real bones, so the copy collided
+  nothing.) Now MC2 stays on the real bones at Animation Pose Ratio 1; each bone below the root is
+  position-constrained to a lag body (sphere collider, no gravity) chasing a kinematic target at its
+  rest place under the chain's parent. Constraints run before MC2 reads the pose, so MC2 settles to
+  the pushed pose and adds its swing on top. Probe, a soft chest chain against its plain-MC2 twin,
+  press ratio 0.85 vs 0.92 (PhysBones 0.75), squeeze bend 23° vs 8° (51°), stretch 1.12 vs 1.05.
+  Self-test without the cloth: tip body pushed 30% of a bone holds it at 0.90, rebounds to 1.02.
+  Open: the squash needs a **physics** collider to reach the bodies; whether ChilloutVR gives hands
+  one that touches an avatar's bodies is the in-game question. `Longest` follows the deepest branch,
+  so a nested chain (a piercing) can take the bodies instead of the soft body's own tip. Also fixed:
+  bodies now never sleep, since a kinematic target moved by its transform does not wake them.
 
 ## MagicaCloth2 settings: measured against the originals and fixed, 2026-10-06. ON DEV, not in game
 

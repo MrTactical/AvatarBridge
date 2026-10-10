@@ -86,6 +86,7 @@ namespace AvatarBridge.Regression
                 var rb = go.AddComponent<Rigidbody>();
                 rb.mass = Mass;
                 rb.angularDrag = 0.5f;
+                rb.sleepThreshold = 0f;   // see the lag body below
                 rb.interpolation = RigidbodyInterpolation.Interpolate;
                 if (colliders) go.AddComponent<SphereCollider>().radius = Mathf.Max(0.02f, length * 0.6f);
                 // With no collider Unity would give it a unit inertia, far too heavy to swing.
@@ -136,57 +137,41 @@ namespace AvatarBridge.Regression
             return bodies;
         }
 
-        // MagicaCloth2 keeps the swing and the pushes (ChilloutVR feeds every player's hands into
-        // every cloth), simulating a copy of the chain. Each real bone turns with its copy and sits
-        // where a body chasing the copy bone is: a push that shortens the copy squashes the bone,
-        // and the body's lag overshoots on release. The copy is one frame behind MagicaCloth2,
-        // since constraints run before it writes. Bodies root first; the root has none.
+        // MagicaCloth2 keeps simulating the real bones. Each bone below the root sits where a body
+        // chasing its rest place is, put there by a position constraint before MagicaCloth2 reads
+        // the pose; at Animation Pose Ratio 1 it settles to that pose rather than the rest pose, so
+        // the swing lands on top of the body's lag and of anything pushing the body.
+        // Never a copy of the chain for the cloth to drive: MagicaCloth2 restores its bones to rest
+        // in EarlyUpdate, before physics and constraints, so nothing outside it reads its output.
+        // Bodies root first; the root has none.
         public static List<Rigidbody> BuildLayered(Transform chainRoot, bool undo, Transform holderParent)
         {
             var avatar = holderParent != null ? holderParent : AvatarRoot(chainRoot);
-            var copy = Object.Instantiate(chainRoot.gameObject, chainRoot.parent).transform;
-            copy.name = chainRoot.name + " (cloth copy)";
-            copy.SetPositionAndRotation(chainRoot.position, chainRoot.rotation);
-            foreach (var c in copy.GetComponentsInChildren<Component>(true).Where(c => !(c is Transform)).ToList())
-                Object.DestroyImmediate(c);
-            if (undo) Undo.RegisterCreatedObjectUndo(copy.gameObject, "Joint spike");
-
-            int retargeted = 0;
-            foreach (var cloth in avatar.GetComponentsInChildren<Component>(true).Where(c => c != null && c.GetType().Name == "MagicaCloth"))
+            var cloths = new List<string>();
+            foreach (var cloth in avatar.GetComponentsInChildren<Component>(true).Where(c => c != null && Covers(c, chainRoot) && c.GetType().Name == "MagicaCloth"))
             {
                 var so = new SerializedObject(cloth);
-                var roots = so.FindProperty("serializeData.rootBones");
-                for (int i = 0; roots != null && i < roots.arraySize; i++)
-                {
-                    var e = roots.GetArrayElementAtIndex(i);
-                    if (e.objectReferenceValue == chainRoot) { e.objectReferenceValue = copy; retargeted++; }
-                }
+                so.FindProperty("serializeData.animationPoseRatio").floatValue = 1f;
                 so.ApplyModifiedProperties();
+                cloths.Add(cloth.name);
             }
-            Debug.Log($"[JointSpike] {chainRoot.name}: {retargeted} MagicaCloth root(s) moved to the copy" +
-                      (retargeted == 0 ? "; nothing simulates the copy, so the chain will hang still" : ""));
 
             var holder = new GameObject(chainRoot.name + " (lag bodies)").transform;
             holder.SetParent(avatar, false);
             if (undo) Undo.RegisterCreatedObjectUndo(holder.gameObject, "Joint spike");
 
-            var real = Longest(chainRoot);
-            var twin = Longest(copy);
+            var chain = Longest(chainRoot);
             var bodies = new List<Rigidbody>();
-            for (int i = 0; i < real.Count; i++)
+            for (int i = 1; i < chain.Count; i++)
             {
-                var bone = real[i];
-                var rc = undo ? Undo.AddComponent<RotationConstraint>(bone.gameObject) : bone.gameObject.AddComponent<RotationConstraint>();
-                rc.AddSource(new ConstraintSource { sourceTransform = twin[i], weight = 1f });
-                rc.rotationAtRest = bone.localEulerAngles;
-                rc.rotationOffset = Vector3.zero;
-                rc.locked = true;
-                rc.constraintActive = true;
-                if (i == 0) continue;
-
-                float length = Vector3.Distance(bone.position, real[i - 1].position);
+                var bone = chain[i];
+                float length = Vector3.Distance(bone.position, chain[i - 1].position);
+                // Under the chain's parent, not a cloth bone: the cloth would take it for a bone of
+                // its own, and at physics time its bones stand at rest anyway.
                 var target = new GameObject(bone.name + " (lag target)");
-                target.transform.SetParent(twin[i], false);
+                target.transform.SetParent(chainRoot.parent, false);
+                target.transform.SetPositionAndRotation(bone.position, bone.rotation);
+                if (undo) Undo.RegisterCreatedObjectUndo(target, "Joint spike");
                 var targetBody = target.AddComponent<Rigidbody>();
                 targetBody.isKinematic = true;
                 targetBody.useGravity = false;
@@ -197,8 +182,13 @@ namespace AvatarBridge.Regression
                 var rb = go.AddComponent<Rigidbody>();
                 rb.mass = Mass;
                 rb.useGravity = false;   // the cloth already sags; this only lags
+                // A kinematic target moved by its transform never wakes a sleeping body: once the
+                // avatar stood still a moment, the bone froze until something shoved the body itself.
+                rb.sleepThreshold = 0f;
                 rb.freezeRotation = true;
                 rb.interpolation = RigidbodyInterpolation.Interpolate;
+                // Under half a bone, so neighbours never touch; what touches it squashes the bone.
+                go.AddComponent<SphereCollider>().radius = length * 0.45f;
                 var j = go.AddComponent<ConfigurableJoint>();
                 j.connectedBody = targetBody;
                 j.anchor = Vector3.zero;
@@ -218,7 +208,8 @@ namespace AvatarBridge.Regression
                 pc.constraintActive = true;
                 bodies.Add(rb);
             }
-            Debug.Log($"[JointSpike] {chainRoot.name}: layered, {bodies.Count} lag bodies under \"{holder.name}\"");
+            Debug.Log($"[JointSpike] {chainRoot.name}: layered on MagicaCloth2 \"{string.Join("\", \"", cloths)}\", {bodies.Count} lag bodies under \"{holder.name}\"" +
+                      (cloths.Count == 0 ? "; no cloth covers it, so it only lags" : ""));
             return bodies;
         }
 
@@ -393,36 +384,39 @@ namespace AvatarBridge.Regression
             Object.DestroyImmediate(avatar.gameObject);
         }
 
-        // Layered: the cloth copy stands in for MagicaCloth2, driven by hand. A push shortens its
-        // second bone by 30% for half a second, then lets go. Reports how short the real bone got
-        // and how far past rest it rebounded.
+        // Layered, without the cloth: a sphere pushed 30% of a bone into the tip body for half a
+        // second, then pulled away. Reports how short the body held the bone and how far past
+        // rest it rebounded.
         static void LayeredTest()
         {
             var avatar = new GameObject("Avatar").transform;
             var hips = new GameObject("Hips").transform;
             hips.SetParent(avatar, false);
             hips.localPosition = Vector3.up;
-            var soft = Rig(hips, "Soft", new Vector3(0f, 0.3f, 0.1f), 2, new Vector3(0f, -0.01f, 0.07f));
+            var soft = Rig(hips, "Soft", new Vector3(0f, 0.3f, 0.1f), 3, new Vector3(0f, -0.01f, 0.07f));
             var bodies = BuildLayered(soft, false, avatar);
-            var copy = soft.parent.Find(soft.name + " (cloth copy)");
-            var twin = Longest(copy);
-            var restLocal = twin[1].localPosition;
-            float rest = restLocal.magnitude;
+            var chain = Longest(soft);
+            float rest = Vector3.Distance(chain[2].position, chain[1].position);
+            var press = new GameObject("press").AddComponent<SphereCollider>();
+            press.radius = rest;
+            press.gameObject.AddComponent<Rigidbody>().isKinematic = true;
+            var dir = (chain[2].position - chain[1].position).normalized;
             const float step = 1f / 90f;
             float shortest = float.MaxValue, rebound = 0f;
             for (int s = 0; s < 270; s++)
             {
                 float t = s * step;
-                float press = t >= 1f && t < 1.6f ? Mathf.Clamp01((t - 1f) / 0.1f) * 0.3f : 0f;
-                twin[1].localPosition = restLocal * (1f - press);
+                float push = t >= 1f && t < 1.6f ? Mathf.Clamp01((t - 1f) / 0.1f) * 0.3f : -10f;
+                press.transform.position = chain[2].position + dir * (press.radius + 0.45f * rest - push * rest);
                 Physics.SyncTransforms();
                 Physics.Simulate(step);
-                float length = Vector3.Distance(bodies[0].position, twin[0].position) / rest;
+                float length = Vector3.Distance(bodies[1].position, bodies[0].position) / rest;
                 if (t >= 1f && t < 1.6f) shortest = Mathf.Min(shortest, length);
                 if (t >= 1.6f) rebound = Mathf.Max(rebound, length);
             }
-            Debug.Log($"[JointSpike] layered, cloth bone pushed 30% short for 0.5 s: real bone reached {shortest:0.00} of rest, " +
+            Debug.Log($"[JointSpike] layered, tip body pushed 30% of a bone for 0.5 s: bone held at {shortest:0.00} of rest, " +
                       $"rebounded to {rebound:0.00} on release");
+            Object.DestroyImmediate(press.gameObject);
             Object.DestroyImmediate(avatar.gameObject);
         }
     }
