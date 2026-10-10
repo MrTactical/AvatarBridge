@@ -1082,6 +1082,25 @@ namespace AvatarBridge.Regression
             }
         }
 
+        // Layered chains squash each other only if their bodies meet: the nearest pair of bodies
+        // from two different chains, surface to surface, negative when they overlap.
+        static float gap = float.MaxValue, gapTouch;
+        static int gapAt = -1;
+        static void BodyGap(int n)
+        {
+            if (n == 1) { gap = float.MaxValue; gapAt = -1; gapTouch = 0; }
+            var spheres = UnityEngine.Object.FindObjectsOfType<SphereCollider>()
+                .Where(x => x.transform.parent != null && x.transform.parent.name.EndsWith(" (lag bodies)")).ToList();
+            float least = float.MaxValue;
+            foreach (var a in spheres)
+                foreach (var b in spheres)
+                    if (a.transform.parent != b.transform.parent && a.GetInstanceID() < b.GetInstanceID())
+                        least = Mathf.Min(least, Vector3.Distance(a.transform.position, b.transform.position) - a.radius - b.radius);
+            if (least == float.MaxValue) return;
+            if (least <= 0f) gapTouch++;
+            if (least < gap) { gap = least; gapAt = n; }
+        }
+
         static void ReadStep()
         {
             if (!EditorApplication.isPlaying || chains == null || startFrame < 0) return;
@@ -1089,6 +1108,7 @@ namespace AvatarBridge.Regression
             {
                 c.src.v.Add(Vec(c.src, false)); c.src.m.Add(Vec(c.src, true));
                 c.dst.v.Add(Vec(c.dst, false)); c.dst.m.Add(Vec(c.dst, true));
+                if (c == chains[0]) BodyGap(c.dst.v.Count);
                 // The root's own position: every other metric is root to tip, which a root that
                 // moves as a whole leaves unchanged. A PhysBone never moves one; a Bone Spring does.
                 c.src.r.Add(c.src.root.parent.InverseTransformPoint(c.src.root.position));
@@ -1310,6 +1330,9 @@ namespace AvatarBridge.Regression
             }
             File.WriteAllText(Path.Combine(outDir, avatar + ".txt"), sum.ToString());
             Debug.Log("[PhysicsAb] wrote " + avatar);
+            if (gapAt >= 0)
+                Debug.Log($"[PhysicsAb] layered bodies of two chains came within {gap * 100f:0.0} cm, surface to surface, at {gapAt / Fps:0.0} s" +
+                          $"; touching {gapTouch / Fps:0.00} s in all");
         }
     }
 }
