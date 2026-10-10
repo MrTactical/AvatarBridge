@@ -1097,6 +1097,26 @@ stretch and squish go to a **GrabbyBones fork** (plan in progress); `_Angle` is 
 with a constraint rig and a parameter stream (32 bits per chain); `_IsGrabbed` approximately with a
 "grab"-tag trigger (1 bit; the tag starts on at load until the player's first fist); `_IsPosed` not.
 
+**Stretch past 3%, three routes measured (2026-10-10, `Dev/Probes/Perf/SoftBodyPerf`, RTX 4080 /
+9800X3D, batch, throttled; nothing here run in game).** MagicaCloth2 itself does shorten and
+lengthen bones (BoneCloth writes each moving bone's local position, `VirtualMeshManager.cs:1185`),
+but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no avatar can change.
+
+- **Shader dent: free.** Four marker-slot dents per vertex measured below the noise (floor 0.052 ns a
+  vertex, dent +0.00). Under 3 us GPU for a 60k-vertex body in two passes and a mirror. Its cost is
+  the shader patch and the transport, not the math. Dents only where a marker is.
+- **GPU feedback (camera to 1x1 texture to parser): dead on cost.** 76 to 79 us CPU per camera at 1
+  to 10, 216 us each at 40 (8.6 ms a frame). It is also gated by each viewer's Cameras filter.
+  The parser itself is cheap: one double-buffered AsyncGPUReadback per texture per frame, about 6 us
+  to request (client decompile), 8 bits a channel.
+- **PhysX joints: open and cheap.** Rigidbody and ConfigurableJoint are on the avatar whitelist.
+  Five chains of three an avatar at 90 Hz: 0.21 ms step for one avatar, 0.79 ms for forty (about
+  15 us each past the first). p99 spiked to 5.9 ms, unexplained (throttled run). Bones genuinely
+  ranged 0.54 to 1.60 of rest. Unknown in game: ChilloutVR's fixed step, which layers avatar
+  bodies collide with, a teleport snapping the joints, whether a content filter strips them, and
+  how a body follows an animated parent (a dynamic body under a moving bone is teleported with
+  it). Next is an in-game spike: one chain on one avatar.
+
 ## MagicaCloth2 settings: measured against the originals and fixed, 2026-10-06. ON DEV, not in game
 
 **Measured.** `Dev/Probes/PhysicsAbProbe.cs` converts a scene with a new user's defaults, keeps the
