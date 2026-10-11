@@ -1183,6 +1183,27 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
   untried. Also: own-body spheres need a mask, and the patcher's new properties
   change every patched shader's name hash, so existing YAPS materials re-patch on the next convert.
 
+- **Bone-scale squash, 2026-10-11: supersedes the shader pair squash above.** The soft pair is
+  squashed by scaling bones, not by moving vertices, so skin and every layer over it share one
+  deformation and cannot tear or show through by construction. No shader transport needed.
+  - Each carrying bone's slot in every renderer's bone list is swapped for a skin bone in a stack:
+    follow (part centre) > aim (at the partner) > scale > counter (undoes the aim) > skin bones.
+    The stack is identity at rest, so bind poses are untouched.
+  - The scale flattens along the pair line and overfills across it, the far side held still by a
+    pivot shift: along = clamp(1 - press / (2 reach), 0.6, 1), across = min(1 + 2.33 (1 - along),
+    1.5). The overfill reads as full rather than shrunk (`-abOverfill`, `-abFlattest`).
+  - Built from constraints only, so it can ship to ChilloutVR: the follow is a ParentConstraint on
+    the part's TOP carrying bone (on the main bone, a chain root's skin was dragged 16 cm by its
+    child's swing), an AimConstraint, a RotationConstraint counter, and per skin bone a
+    RotationConstraint to its bone plus a PositionConstraint below the top (all-static offsets
+    lost the joint stretch, 16.7 cm off). Constraints solve in world space, so the parent's squash
+    cannot reach a child's moving offset: measured 6.5 cm off the exact stack at full squash on
+    one avatar, 7.9 cm on another, under 0.3 cm where the press is small. Looks the same on film.
+  - Probe: `PhysicsAbProbe -abSquash`. Verified in batch Play mode on three avatars, breasts and
+    butt. Not seen in game.
+  Open: the driver. Plan: a box trigger per part with SetFromPosition and a pointer on the
+  partner, one synced float per part into the animator, which drives the scale node's scale and
+  pivot. Then tuning (overfill, flattest, spring-back) and the converter (add-on only).
 ## MagicaCloth2 settings: measured against the originals and fixed, 2026-10-06. ON DEV, not in game
 
 **Measured.** `Dev/Probes/PhysicsAbProbe.cs` converts a scene with a new user's defaults, keeps the

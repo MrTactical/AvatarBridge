@@ -927,6 +927,12 @@ namespace AvatarBridge.Regression
             public List<(Transform bone, float weight, Vector3 local)> anchors;
             public float deepest;
             public float nearest = float.MaxValue, nearestReach;
+            public Transform follow, aim, scale, counter;
+            public List<(Transform bone, Transform skin)> skins;
+            public float flattest = 1f, restReach, followError = -1f, skinError, skinErrorRest;
+            public string skinErrorNote;
+            public Transform followTop;
+            public Vector3 followLocal;
             public string deepestNote;
         }
         static List<DentPart> dentParts;
@@ -999,6 +1005,14 @@ namespace AvatarBridge.Regression
                     part[i + 1] = new Vector4(cb.x, cb.y, cb.z, hb);
                     axes[i] = new Vector4(axis.x, axis.y, axis.z, press * share);
                     axes[i + 1] = new Vector4(-axis.x, -axis.y, -axis.z, press * (1f - share));
+                    if (i == 0 && Time.frameCount % 10 == 0) MeasureThrough(0, 1, Time.frameCount);
+                    if (Squash)
+                    {
+                        if (a.follow == null) { BuildSquash(a, ha); BuildSquash(b, hb); }
+                        UpdateSquash(a, b, press * share);
+                        UpdateSquash(b, a, press * (1f - share));
+                        axes[i].w = axes[i + 1].w = 0f;
+                    }
                 }
             // Whether the flesh spheres stop anything at all: two kinematic presses can force them through.
             for (int f = 0; f + 1 < flesh.Count; f += 2)
@@ -1013,6 +1027,142 @@ namespace AvatarBridge.Regression
             Shader.SetGlobalVectorArray("_YAPS_DentAxis", axes);
         }
 
+        // -abSquash: the part squashes by bone scale, never by moving vertices. The skinning of
+        // every bone carrying it moves onto a stack beside the rig, built only from constraints
+        // the avatar can carry: follow (ParentConstraint to the main bone, at the part's centre),
+        // aim (AimConstraint at the partner's follow), scale (the one animated value), counter
+        // (RotationConstraint back to the follow), then a skin bone per carrying bone in the
+        // bones' own hierarchy, each copying its bone's rotation. At rest the stack is identity,
+        // so the bind pose holds; every renderer weighted to those bones follows, so layers
+        // cannot part; the physics bones never see the scale. Each vertex moved on its own tore
+        // the skin and parted it from the top over it; the main bone alone left the chain
+        // root's 43% of the part unsquashed, and it slid past its partner.
+        static bool Squash => Array.IndexOf(Environment.GetCommandLineArgs(), "-abSquash") >= 0;
+        static float FlagF(string name, float fallback) =>
+            float.TryParse(Arg(name), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : fallback;
+        // How much it grows across per unit it flattens. Overfilled reads as full: a breast
+        // squashed to 0.85 and grown to 1.35 across holds 1.5 times its volume and looks soft.
+        static float Overfill => FlagF("-abOverfill", 2.33f);
+        static float Flattest => FlagF("-abFlattest", 0.6f);
+        // The follow rides the part's top carrying bone, so that bone's skin keeps an exact rest
+        // offset and takes the whole squash. Riding the main bone instead, a chain root's skin
+        // was dragged 16 cm by the swing of its own child. Skin bones below it copy their bone's
+        // position too, keeping a joint's stretch at the cost of the squash on their own origin.
+        // -abSkinPos static keeps the rest offset all the way down instead.
+        static bool SkinFollowsPosition => Arg("-abSkinPos") != "static";
+
+        static void BuildSquash(DentPart p, float reach)
+        {
+            p.restReach = reach;
+            p.follow = new GameObject(p.name + " squash").transform;
+            p.follow.SetParent(dstBody.avatar, false);
+            int Depth(Transform t) { int d = 0; for (; t != null; t = t.parent) d++; return d; }
+            var carriers = p.anchors.Where(x => x.weight >= 0.03f).OrderBy(x => Depth(x.bone)).ToList();
+            var top = carriers[0].bone;
+            p.follow.SetPositionAndRotation(p.bone.TransformPoint(p.middle), top.rotation);
+            var parent = p.follow.gameObject.AddComponent<UnityEngine.Animations.ParentConstraint>();
+            parent.AddSource(new UnityEngine.Animations.ConstraintSource { sourceTransform = top, weight = 1f });
+            // The editor's Activate, by hand: the offset is the follow's pose in the bone's frame.
+            parent.SetTranslationOffset(0, Vector3.Scale(top.InverseTransformPoint(p.follow.position), top.lossyScale));
+            parent.SetRotationOffset(0, Vector3.zero);
+            p.followTop = top;
+            p.followLocal = top.InverseTransformPoint(p.follow.position);
+            parent.locked = true;
+            parent.constraintActive = true;
+            p.aim = new GameObject("aim").transform;
+            p.aim.SetParent(p.follow, false);
+            p.scale = new GameObject("scale").transform;
+            p.scale.SetParent(p.aim, false);
+            p.counter = new GameObject("counter").transform;
+            p.counter.SetParent(p.scale, false);
+            var counter = p.counter.gameObject.AddComponent<UnityEngine.Animations.RotationConstraint>();
+            counter.AddSource(new UnityEngine.Animations.ConstraintSource { sourceTransform = p.follow, weight = 1f });
+            counter.locked = true;
+            counter.constraintActive = true;
+            p.skins = new List<(Transform, Transform)>();
+            foreach (var (bone, weight, _) in carriers)
+            {
+                // Under the skin of its nearest carrying ancestor, so a squash of the root reaches it.
+                var under = p.skins.Where(x => bone.IsChildOf(x.bone)).OrderByDescending(x => Depth(x.bone)).Select(x => x.skin).FirstOrDefault() ?? p.counter;
+                var skin = new GameObject(bone.name + " skin").transform;
+                skin.SetParent(under, false);
+                skin.SetPositionAndRotation(bone.position, bone.rotation);
+                skin.localScale = bone.lossyScale / under.lossyScale.x;
+                var turn = skin.gameObject.AddComponent<UnityEngine.Animations.RotationConstraint>();
+                turn.AddSource(new UnityEngine.Animations.ConstraintSource { sourceTransform = bone, weight = 1f });
+                turn.locked = true;
+                turn.constraintActive = true;
+                if (SkinFollowsPosition && under != p.counter)
+                {
+                    var move = skin.gameObject.AddComponent<UnityEngine.Animations.PositionConstraint>();
+                    move.AddSource(new UnityEngine.Animations.ConstraintSource { sourceTransform = bone, weight = 1f });
+                    move.locked = true;
+                    move.constraintActive = true;
+                }
+                p.skins.Add((bone, skin));
+            }
+            int swapped = 0;
+            foreach (var smr in dstBody.avatar.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var bones = smr.bones;
+                bool any = false;
+                foreach (var (bone, skin) in p.skins)
+                {
+                    int at = Array.IndexOf(bones, bone);
+                    if (at < 0) continue;
+                    bones[at] = skin;
+                    any = true;
+                }
+                if (!any) continue;
+                smr.bones = bones;
+                swapped++;
+            }
+            Debug.Log($"[PhysicsAb] squash {p.name}: {string.Join(", ", p.skins.Select(x => x.bone.name))} skin through its stack on {swapped} renderer(s)");
+        }
+
+        // Only the scale is set here, standing in for the animator; everything else is constraints.
+        // Flattened along the press so its facing side moves back by its share of the press while
+        // its far side stays, and grown across by the overfill.
+        static void UpdateSquash(DentPart p, DentPart partner, float pushed)
+        {
+            if (p.aim.GetComponent<UnityEngine.Animations.AimConstraint>() == null)
+            {
+                var aim = p.aim.gameObject.AddComponent<UnityEngine.Animations.AimConstraint>();
+                aim.AddSource(new UnityEngine.Animations.ConstraintSource { sourceTransform = partner.follow, weight = 1f });
+                aim.aimVector = Vector3.forward;
+                aim.upVector = Vector3.up;
+                aim.worldUpType = UnityEngine.Animations.AimConstraint.WorldUpType.ObjectRotationUp;
+                aim.worldUpObject = dstBody.avatar;
+                aim.worldUpVector = Vector3.up;
+                aim.locked = true;
+                aim.constraintActive = true;
+            }
+            // Where the follow sits against where it should: proves the offset is right, once.
+            if (p.followError < 0f && Time.frameCount % 30 == 0)
+            {
+                p.followError = Vector3.Distance(p.follow.position, p.followTop.TransformPoint(p.followLocal));
+                Debug.Log($"[PhysicsAb] squash {p.name}: follow sits {p.followError * 100f:0.00} cm from the part's centre");
+            }
+            // How far each skin bone sits from where the exact stack would put it: the follow's
+            // frame, squashed, applied to the bone's pose in that frame. Measured at the part's
+            // centre, before this frame's scale is set, so both read the same squash.
+            var exact = p.counter.localToWorldMatrix * p.follow.worldToLocalMatrix;
+            var centre = Centre(p);
+            bool atRest = p.scale.localScale == Vector3.one;
+            foreach (var (bone, skin) in p.skins)
+            {
+                var local = bone.InverseTransformPoint(centre);
+                float error = Vector3.Distance((exact * bone.localToWorldMatrix).MultiplyPoint3x4(local), skin.localToWorldMatrix.MultiplyPoint3x4(local));
+                if (atRest) p.skinErrorRest = Mathf.Max(p.skinErrorRest, error);
+                else if (error > p.skinError) { p.skinError = error; p.skinErrorNote = $"{bone.name} at frame {Time.frameCount}"; }
+            }
+            float along = Mathf.Clamp(1f - pushed / (2f * p.restReach), Flattest, 1f);
+            float across = Mathf.Min(1f + Overfill * (1f - along), 1.5f);
+            p.flattest = Mathf.Min(p.flattest, along);
+            p.scale.localScale = new Vector3(across, across, along);
+            p.scale.localPosition = new Vector3(0f, 0f, -p.restReach * (1f - along) / p.follow.lossyScale.x);
+        }
+
         // A flesh-sized sphere on the part's lag body that meets only its partner's, so the pair
         // cannot pass through each other while every other body stays bone-sized (sized to the
         // flesh everywhere, chains moved as blocks and stretched). Short of the reach: the rest
@@ -1020,6 +1170,65 @@ namespace AvatarBridge.Regression
         const float FleshStop = 0.75f;
         static readonly List<Collider> flesh = new List<Collider>();
         static float fleshSank;
+        static SkinnedMeshRenderer skinBody;
+        static int[] skinPart;
+        static Mesh skinBaked;
+        static float skinThrough;
+        static int skinThroughCount;
+        static string skinThroughNote;
+
+        // How deep the pair's skin actually passes into each other: a vertex of part a behind the
+        // surface of part b at the nearest b vertex (within 2 cm), measured on the baked skin.
+        // Checks the result itself, where press and reach only describe the plan.
+        static void MeasureThrough(int a, int b, int frame)
+        {
+            if (skinBody == null || skinPart == null) return;
+            if (skinBaked == null) skinBaked = new Mesh();
+            skinBody.BakeMesh(skinBaked, true);
+            var v = skinBaked.vertices;
+            var n = skinBaked.normals;
+            var m = skinBody.transform.localToWorldMatrix;
+            const float Cell = 0.02f;
+            var grid = new Dictionary<Vector3Int, List<int>>();
+            Vector3Int Key(Vector3 x) => new Vector3Int(Mathf.FloorToInt(x.x / Cell), Mathf.FloorToInt(x.y / Cell), Mathf.FloorToInt(x.z / Cell));
+            var world = new Vector3[v.Length];
+            for (int i = 0; i < v.Length && i < skinPart.Length; i++)
+            {
+                if (skinPart[i] != a && skinPart[i] != b) continue;
+                world[i] = m.MultiplyPoint3x4(v[i]);
+                if (skinPart[i] != b) continue;
+                var k = Key(world[i]);
+                if (!grid.TryGetValue(k, out var list)) grid[k] = list = new List<int>();
+                list.Add(i);
+            }
+            float deepest = 0f;
+            int count = 0;
+            for (int i = 0; i < v.Length && i < skinPart.Length; i++)
+            {
+                if (skinPart[i] != a) continue;
+                var k = Key(world[i]);
+                int best = -1;
+                float bestD = Cell * Cell;
+                for (int x = -1; x <= 1; x++)
+                    for (int y = -1; y <= 1; y++)
+                        for (int z = -1; z <= 1; z++)
+                        {
+                            if (!grid.TryGetValue(k + new Vector3Int(x, y, z), out var list)) continue;
+                            foreach (int j in list)
+                            {
+                                float d = (world[j] - world[i]).sqrMagnitude;
+                                if (d < bestD) { bestD = d; best = j; }
+                            }
+                        }
+                if (best < 0) continue;
+                float depth = -Vector3.Dot(world[i] - world[best], m.MultiplyVector(n[best]).normalized);
+                if (depth <= 0.002f) continue;
+                count++;
+                deepest = Mathf.Max(deepest, depth);
+            }
+            if (deepest > skinThrough) { skinThrough = deepest; skinThroughNote = $"at frame {frame}"; }
+            skinThroughCount = Mathf.Max(skinThroughCount, count);
+        }
 
         static void AddFlesh(DentPart p, float reach)
         {
@@ -1132,6 +1341,8 @@ namespace AvatarBridge.Regression
             // The skin is the renderer carrying the most of the parts; every other one near it
             // reads its shares from the nearest skin vertex, found through a 2 cm grid.
             var body = meshes.OrderByDescending(m => m.owned).FirstOrDefault();
+            skinBody = body.smr;
+            skinPart = body.share?.Select(sh => { for (int q = 0; q < 4; q++) if (sh[q] >= 0.5f) return q; return -1; }).ToArray();
             const float Cell = 0.02f, Near = 0.03f;
             var grid = new Dictionary<Vector3Int, List<int>>();
             Vector3Int Key(Vector3 p) => new Vector3Int(Mathf.FloorToInt(p.x / Cell), Mathf.FloorToInt(p.y / Cell), Mathf.FloorToInt(p.z / Cell));
@@ -1193,6 +1404,8 @@ namespace AvatarBridge.Regression
                 if (carried[i].Count == 0 || points[i].Count < 20) { Debug.Log($"[PhysicsAb] dent part {p.name}: too few vertices"); continue; }
                 // Turns with the bone that carries most of it.
                 p.bone = carried[i].OrderByDescending(kv => kv.Value).First().Key;
+                float all = carried[i].Values.Sum();
+                Debug.Log($"[PhysicsAb] dent part {p.name} carried by " + string.Join(", ", carried[i].OrderByDescending(kv => kv.Value).Take(6).Select(kv => $"{kv.Key.name} {kv.Value / all:P0}")));
                 var local = points[i].Select(x => p.bone.InverseTransformPoint(x)).ToList();
                 p.middle = local.Aggregate(Vector3.zero, (acc, x) => acc + x) / local.Count;
                 // Its centre moves with every bone carrying it, by weight: on its main bone alone, a
@@ -1369,7 +1582,10 @@ namespace AvatarBridge.Regression
         // Centred on the soft bodies' tips, this side's own, so both columns frame the same part.
         static void PlaceSoft(Camera cam, Body body, bool source, Vector3 offset)
         {
-            var tips = chains.Where(c => SoftClasses.Contains(c.cls)).Select(c => (source ? c.src : c.dst).tip.position).ToList();
+            // -abFocus a;b: frame these chains only, where the soft bodies of a whole avatar
+            // average to somewhere between them.
+            var focus = (Arg("-abFocus") ?? "").Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+            var tips = chains.Where(c => SoftClasses.Contains(c.cls) && (focus.Length == 0 || focus.Contains(c.dst.root.name))).Select(c => (source ? c.src : c.dst).tip.position).ToList();
             var centre = tips.Count > 0 ? tips.Aggregate(Vector3.zero, (a, b) => a + b) / tips.Count : body.avatar.position + Vector3.up * shotHeight * 0.6f;
             cam.transform.position = centre + body.avatar.rotation * (offset * shotHeight);
             cam.transform.LookAt(centre, body.avatar.up);
@@ -1493,12 +1709,16 @@ namespace AvatarBridge.Regression
             Time.captureFramerate = 0;
             chains = null;
             for (int i = 0; dentParts != null && i + 1 < dentParts.Count; i += 2)
-                Debug.Log($"[PhysicsAb] pair {dentParts[i].name}/{dentParts[i + 1].name} deepest: {dentParts[i].deepestNote ?? $"never pressed, nearest {dentParts[i].nearest * 100f:0.0} cm (rest {dentParts[i].restGap * 100f:0.0}, reach {dentParts[i].nearestReach * 100f:0.0})"}");
+                Debug.Log($"[PhysicsAb] pair {dentParts[i].name}/{dentParts[i + 1].name} deepest: {(Squash ? $"flattest {dentParts[i].flattest:0.00} / {dentParts[i + 1].flattest:0.00}, " : "")}{dentParts[i].deepestNote ?? $"never pressed, nearest {dentParts[i].nearest * 100f:0.0} cm (rest {dentParts[i].restGap * 100f:0.0}, reach {dentParts[i].nearestReach * 100f:0.0})"}");
             if (flesh.Count >= 2)
                 Debug.Log($"[PhysicsAb] flesh spheres sank {fleshSank * 100f:0.0} cm into each other at most");
+                foreach (var dp in dentParts.Where(x => x.skins != null))
+                    Debug.Log($"[PhysicsAb] squash {dp.name}: skin off the exact stack by {dp.skinErrorRest * 100f:0.00} cm at rest, {dp.skinError * 100f:0.00} cm squashed ({dp.skinErrorNote})");
+                Debug.Log($"[PhysicsAb] skin of the first pair passed through {skinThrough * 100f:0.0} cm at most {skinThroughNote}, {skinThroughCount} vertices at most");
             dentParts = null;
             flesh.Clear();
             fleshSank = 0f;
+            skinThrough = 0f; skinThroughCount = 0; skinThroughNote = "never"; skinBody = null; skinPart = null;
             SessionState.SetInt(K + "stage", 2);
             EditorApplication.ExitPlaymode();
         }
