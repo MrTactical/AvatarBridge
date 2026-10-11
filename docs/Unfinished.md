@@ -1553,6 +1553,11 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     MagicaCloth2 stand-in is: position heavily damped with no spring overshoot, swing lag on
     rotation only, rest pose tilted by orientation. Needs the A/B probe (batch, GUI closed).
     Next: the stand-in's damping from those, other players' hands from the globals.
+    The heft sweep is queued, NOT RUN (stopped 2026-10-11 for the night): PhysicsAbProbe on
+    `Assets/BHFBunny/BHFBUNNY.unity` with `-abBake -abStripBrokenFury`, then `-abTune
+    "(?i)breast|butt|chest|boob;..."` at damping 0.9, worldInertia 0.5, both, and 0.97 with
+    0.25. Read the converter's report for anchored inertia first: there worldInertia is 1 and
+    the influence sits in anchorInertia. The jump to beat: stand-in 35 degrees, marshmallow 12.
     Open: the globals in stable; the probe moving parts by hand instead of through the cloth.
   Open: remote copies,
   the measurement probe (camera cost, controller
