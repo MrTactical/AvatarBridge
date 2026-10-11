@@ -924,7 +924,9 @@ namespace AvatarBridge.Regression
             public Matrix4x4 spread;   // covariance of its skin, 3x3 in the corner
             public float restGap;      // to its partner, on the first frame
             public Vector3[] skin;     // its vertices, in its bone's space
+            public List<(Transform bone, float weight, Vector3 local)> anchors;
             public float deepest;
+            public float nearest = float.MaxValue, nearestReach;
             public string deepestNote;
         }
         static List<DentPart> dentParts;
@@ -961,8 +963,8 @@ namespace AvatarBridge.Regression
                 {
                     var a = dentParts[i];
                     var b = dentParts[i + 1];
-                    var ca = a.bone.TransformPoint(a.middle);
-                    var cb = b.bone.TransformPoint(b.middle);
+                    var ca = Centre(a);
+                    var cb = Centre(b);
                     var sa = WorldSpread(a);
                     var sb = WorldSpread(b);
                     var axis = (cb - ca).normalized;
@@ -981,6 +983,7 @@ namespace AvatarBridge.Regression
                     // Touching from where they stood at rest, or from where their surfaces meet
                     // if they stood apart: the rest pose stays exactly as authored.
                     float press = Mathf.Max(0f, Mathf.Min(a.restGap, ha + hb) - gap);
+                    if (gap < a.nearest) { a.nearest = gap; a.nearestReach = ha + hb; }
                     // The deepest press each pair saw, in the avatar's frame, to read against the film.
                     if (press > a.deepest)
                     {
@@ -1021,7 +1024,7 @@ namespace AvatarBridge.Regression
         static void AddFlesh(DentPart p, float reach)
         {
             // The nearest body at or below the part's bone: a chain root carries none of its own.
-            var at = p.bone.TransformPoint(p.middle);
+            var at = Centre(p);
             // Found through the constraint that hangs each bone on its body: by name, chains whose
             // bones share a name took each other's.
             var body = p.bone.GetComponentsInChildren<UnityEngine.Animations.PositionConstraint>(true)
@@ -1074,8 +1077,10 @@ namespace AvatarBridge.Regression
             m.m00 * (m.m11 * m.m22 - m.m12 * m.m21) - m.m01 * (m.m10 * m.m22 - m.m12 * m.m20) + m.m02 * (m.m10 * m.m21 - m.m11 * m.m20);
 
         // Each vertex's share of each part is its skin weight to that part's bones, baked into a
-        // texture per renderer and read by vertex id. Each part's shape is measured from the
-        // vertices it carries at least half of, skinned by hand from the bind poses: a bake's
+        // texture per renderer and read by vertex id. A layer over the skin takes the shares of
+        // the skin under it instead of its own: a top weighted less to the breasts than the skin
+        // squashed less, and the skin spilled out through it. Each part's shape is measured from
+        // the vertices it carries at least half of, skinned by hand from the bind poses: a bake's
         // space depends on the renderer's scale, which a converted rig can carry at 100.
         static List<DentPart> BuildDentParts(List<Chain> soft)
         {
@@ -1083,6 +1088,7 @@ namespace AvatarBridge.Regression
             var boneSets = soft.Select(c => new HashSet<Transform>(c.dst.root.GetComponentsInChildren<Transform>(true))).ToList();
             var points = parts.Select(_ => new List<Vector3>()).ToList();
             var carried = parts.Select(_ => new Dictionary<Transform, float>()).ToList();
+            var meshes = new List<(SkinnedMeshRenderer smr, Vector3[] at, Vector4[] share, int owned)>();
             foreach (var smr in dstBody.avatar.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
                 var mesh = smr.sharedMesh;
@@ -1098,49 +1104,103 @@ namespace AvatarBridge.Regression
                 var skin = new Matrix4x4[bones.Length];
                 for (int b = 0; b < bones.Length && b < bind.Length; b++)
                     skin[b] = bones[b] != null ? bones[b].localToWorldMatrix * bind[b] : Matrix4x4.zero;
-                int width = 1024, height = Mathf.Max(1, (verts.Length + width - 1) / width);
-                var pixels = new Color32[width * height];
-                var share = new float[4];
-                for (int v = 0; v < weights.Length && v < verts.Length; v++)
+                int count = Mathf.Min(weights.Length, verts.Length);
+                var at = new Vector3[count];
+                var shares = new Vector4[count];
+                int owned = 0;
+                for (int v = 0; v < count; v++)
                 {
                     var w = weights[v];
-                    Array.Clear(share, 0, 4);
                     int[] index = { w.boneIndex0, w.boneIndex1, w.boneIndex2, w.boneIndex3 };
                     float[] weight = { w.weight0, w.weight1, w.weight2, w.weight3 };
+                    var share = Vector4.zero;
                     for (int q = 0; q < 4; q++)
                     {
+                        at[v] += skin[index[q]].MultiplyPoint3x4(verts[v]) * weight[q];
                         int part = owner[index[q]];
                         if (weight[q] <= 0f || part < 0) continue;
                         share[part] += weight[q];
                         var bone = bones[index[q]];
                         carried[part][bone] = (carried[part].TryGetValue(bone, out var t) ? t : 0f) + weight[q];
                     }
-                    pixels[v] = new Color32((byte)(share[0] * 255f + 0.5f), (byte)(share[1] * 255f + 0.5f),
-                        (byte)(share[2] * 255f + 0.5f), (byte)(share[3] * 255f + 0.5f));
-                    int mostly = Array.FindIndex(share, x => x >= 0.5f);
-                    if (mostly < 0) continue;
-                    var at = Vector3.zero;
-                    for (int q = 0; q < 4; q++) at += skin[index[q]].MultiplyPoint3x4(verts[v]) * weight[q];
-                    points[mostly].Add(at);
+                    shares[v] = share;
+                    if (Mathf.Max(share.x, share.y, share.z, share.w) >= 0.5f) owned++;
+                }
+                meshes.Add((smr, at, shares, owned));
+            }
+
+            // The skin is the renderer carrying the most of the parts; every other one near it
+            // reads its shares from the nearest skin vertex, found through a 2 cm grid.
+            var body = meshes.OrderByDescending(m => m.owned).FirstOrDefault();
+            const float Cell = 0.02f, Near = 0.03f;
+            var grid = new Dictionary<Vector3Int, List<int>>();
+            Vector3Int Key(Vector3 p) => new Vector3Int(Mathf.FloorToInt(p.x / Cell), Mathf.FloorToInt(p.y / Cell), Mathf.FloorToInt(p.z / Cell));
+            if (body.smr != null)
+                for (int v = 0; v < body.at.Length; v++)
+                {
+                    var k = Key(body.at[v]);
+                    if (!grid.TryGetValue(k, out var list)) grid[k] = list = new List<int>();
+                    list.Add(v);
+                }
+            foreach (var m in meshes)
+            {
+                int borrowed = 0;
+                if (m.smr != body.smr)
+                    for (int v = 0; v < m.at.Length; v++)
+                    {
+                        var k = Key(m.at[v]);
+                        int best = -1;
+                        float bestD = Near * Near;
+                        for (int x = -2; x <= 2; x++)
+                            for (int y = -2; y <= 2; y++)
+                                for (int z = -2; z <= 2; z++)
+                                {
+                                    if (!grid.TryGetValue(k + new Vector3Int(x, y, z), out var list)) continue;
+                                    foreach (int s in list)
+                                    {
+                                        float d = (body.at[s] - m.at[v]).sqrMagnitude;
+                                        if (d < bestD) { bestD = d; best = s; }
+                                    }
+                                }
+                        if (best >= 0) { m.share[v] = body.share[best]; borrowed++; }
+                    }
+                int width = 1024, height = Mathf.Max(1, (m.at.Length + width - 1) / width);
+                var pixels = new Color32[width * height];
+                for (int v = 0; v < m.at.Length; v++)
+                {
+                    var s = m.share[v];
+                    pixels[v] = new Color32((byte)(s.x * 255f + 0.5f), (byte)(s.y * 255f + 0.5f), (byte)(s.z * 255f + 0.5f), (byte)(s.w * 255f + 0.5f));
+                    if (m.smr != body.smr) continue;
+                    for (int part = 0; part < parts.Count; part++)
+                        if (s[part] >= 0.5f) { points[part].Add(m.at[v]); break; }
                 }
                 // Linear and point-sampled: a share is a number, not a colour.
                 var tex = new Texture2D(width, height, TextureFormat.RGBA32, false, true) { filterMode = FilterMode.Point };
                 tex.SetPixels32(pixels);
                 tex.Apply(false);
                 var block = new MaterialPropertyBlock();
-                smr.GetPropertyBlock(block);
+                m.smr.GetPropertyBlock(block);
                 block.SetTexture("_YAPS_DentOwn", tex);
                 block.SetVector("_YAPS_DentOwn_TexelSize", new Vector4(1f / width, 1f / height, width, height));
-                smr.SetPropertyBlock(block);
+                m.smr.SetPropertyBlock(block);
+                if (m.smr != body.smr)
+                    Debug.Log($"[PhysicsAb] dent shares of {m.smr.name}: {borrowed} of {m.at.Length} vertices from the skin under them");
             }
+
             for (int i = 0; i < parts.Count; i++)
             {
                 var p = parts[i];
                 if (carried[i].Count == 0 || points[i].Count < 20) { Debug.Log($"[PhysicsAb] dent part {p.name}: too few vertices"); continue; }
-                // Follows the bone that carries most of it.
+                // Turns with the bone that carries most of it.
                 p.bone = carried[i].OrderByDescending(kv => kv.Value).First().Key;
                 var local = points[i].Select(x => p.bone.InverseTransformPoint(x)).ToList();
                 p.middle = local.Aggregate(Vector3.zero, (acc, x) => acc + x) / local.Count;
+                // Its centre moves with every bone carrying it, by weight: on its main bone alone, a
+                // part carried mostly by a chain root the joints never move stood still while its
+                // tip was pushed through its partner.
+                var world = p.bone.TransformPoint(p.middle);
+                float total = carried[i].Values.Sum();
+                p.anchors = carried[i].Select(kv => (kv.Key, kv.Value / total, kv.Key.InverseTransformPoint(world))).ToList();
                 var c = Matrix4x4.zero;
                 foreach (var x in local)
                 {
@@ -1152,11 +1212,18 @@ namespace AvatarBridge.Regression
                 c.m33 = 1f;
                 p.spread = c;
                 p.skin = local.ToArray();
-                var world = WorldSpread(p);
+                var spread = WorldSpread(p);
                 Debug.Log($"[PhysicsAb] dent part {p.name}: {points[i].Count} vertices on {p.bone.name}, " +
-                          $"half-widths {Mathf.Sqrt(3f * world.m00) * 100f:0.0} x {Mathf.Sqrt(3f * world.m11) * 100f:0.0} x {Mathf.Sqrt(3f * world.m22) * 100f:0.0} cm (world x y z)");
+                          $"half-widths {Mathf.Sqrt(3f * spread.m00) * 100f:0.0} x {Mathf.Sqrt(3f * spread.m11) * 100f:0.0} x {Mathf.Sqrt(3f * spread.m22) * 100f:0.0} cm (world x y z)");
             }
             return parts.Where(p => p.bone != null).ToList();
+        }
+
+        static Vector3 Centre(DentPart p)
+        {
+            var c = Vector3.zero;
+            foreach (var (bone, weight, local) in p.anchors) c += bone.TransformPoint(local) * weight;
+            return c;
         }
 
         // ------------------------------------------------------------------ filming
@@ -1426,7 +1493,7 @@ namespace AvatarBridge.Regression
             Time.captureFramerate = 0;
             chains = null;
             for (int i = 0; dentParts != null && i + 1 < dentParts.Count; i += 2)
-                Debug.Log($"[PhysicsAb] pair {dentParts[i].name}/{dentParts[i + 1].name} deepest: {dentParts[i].deepestNote ?? "never pressed"}");
+                Debug.Log($"[PhysicsAb] pair {dentParts[i].name}/{dentParts[i + 1].name} deepest: {dentParts[i].deepestNote ?? $"never pressed, nearest {dentParts[i].nearest * 100f:0.0} cm (rest {dentParts[i].restGap * 100f:0.0}, reach {dentParts[i].nearestReach * 100f:0.0})"}");
             if (flesh.Count >= 2)
                 Debug.Log($"[PhysicsAb] flesh spheres sank {fleshSank * 100f:0.0} cm into each other at most");
             dentParts = null;

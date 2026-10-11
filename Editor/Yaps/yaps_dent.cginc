@@ -80,15 +80,18 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         float give = 3 * press / span;
         float keep = u < 1 ? 1 - give * u * u : 1 - give;
         float moved = u < 1 ? reach - span + span * (u - give * u * u * u / 3) : reach - press + (t - reach) * keep;
-        // The spill: the skin round the seam rises along its own sideways facing, at most a
-        // press or so, so the face itself (facing the partner) stays flat. Grown outward from
-        // the line between the parts instead, a broad inner face sat far from that line and
-        // was thrown two or three times its distance.
+        // The spill: the skin round the seam moves out from the line between the parts, at
+        // most a press, fading in over half a reach of that line so the middle of the face
+        // stays put. Grown in proportion to that distance, a broad inner face was thrown two
+        // or three times it; along each vertex's own facing, skin and the top over it
+        // facing slightly apart spilled apart and the skin came through.
         float ease = saturate(u);
         float spill = _YAPS_DentSpill * press * ease * ease * (3 - 2 * ease);
+        float3 away = q - axis * t;
+        away /= max(length(away), 0.5 * reach);
         float na = dot(n, axis);
         float3 side = n - axis * na;
-        squash += (axis * (moved - t) + side * spill) * shares[p];
+        squash += (axis * (moved - t) + away * spill) * shares[p];
         if (hasNormal)
         {
             // Pressed thinner along the axis, the skin faces more along it; a spill that rises

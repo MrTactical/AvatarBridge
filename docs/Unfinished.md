@@ -1148,11 +1148,18 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
   - The displaced flesh rises in a ring round each press, its slope capped at 0.5: steeper, the
     skin under a top rose past it and showed through.
   - A soft pair pressed together gives only on the facing side: a band four press depths deep is
-    pushed back to the plane where the two meet, and the skin round the seam spills out along its
-    own sideways facing (`_YAPS_DentSpill`, in press depths, default 1). The far side never moves.
+    pushed back to the plane where the two meet, and the skin round the seam spills out away from
+    the line between the parts, at most a press, fading in over half a reach of that line
+    (`_YAPS_DentSpill`, in press depths, default 1). The far side never moves. Spilled along each
+    vertex's own facing instead, skin and the top over it faced slightly apart, spilled apart by
+    centimetres at a deep press, and the skin showed through the top in blotches.
   - Which part a vertex belongs to is its skin weight to that part's bones, baked per renderer
     into a point texture read by vertex id (`_YAPS_DentOwn`). Guessed from position and facing,
-    neighbours went different ways and tore.
+    neighbours went different ways and tore. Every renderer over the skin (the renderer carrying
+    the most of the parts) takes the share of the nearest skin vertex within 3 cm instead of its
+    own: a top weighted less to the breasts than the skin squashed less, and the skin came through.
+  - Each part's centre moves with every bone carrying it, by weight. On its main bone alone, a part
+    carried mostly by a chain root the joints never move stood still.
   - How far each part reaches toward its partner is the 98th percentile of its own vertices along
     the line between them, every frame. The covariance estimate said 15 cm where breasts touching
     at rest reached 21, and the squash barely began (1.2 cm of press, now 11).
