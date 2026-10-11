@@ -45,7 +45,7 @@ namespace AvatarBridge.Regression
         int stage, frames;
         readonly List<int> latency = new List<int>();
         readonly Dictionary<int, float> dtByFrame = new Dictionary<int, float>();
-        readonly List<string> dtRows = new List<string>();
+        readonly List<string> dtRows = new List<string>(), camRows = new List<string>();
 
         Camera stampCam;
         RenderTexture stampRt;
@@ -258,6 +258,9 @@ namespace AvatarBridge.Regression
                 var c = front[0];
                 int drawn = c.r + 256 * c.g;
                 latency.Add((Time.frameCount & 0xFFFF) - drawn);
+                // The same question as B12 for an ordinary camera draw, to tell the blit from the editor's clock.
+                if (dtByFrame.TryGetValue(drawn, out float truth) && camRows.Count < 5)
+                    camRows.Add($"frame {drawn}: camera draw dt {c.b * 100f / 255f:0.0} ms (0.4 ms steps), Time.deltaTime {truth * 1000:0.000} ms");
             }
             if (!inFlight)
             {
@@ -299,7 +302,9 @@ namespace AvatarBridge.Regression
             var hist = latency.GroupBy(x => x).OrderBy(g => g.Key).Select(g => $"{g.Key} frames x{g.Count()}");
             SquashMeasureProbe.Log($"B4 parser lag, render to applied value, {latency.Count} reads: {string.Join(", ", hist)}");
             foreach (var r in dtRows) SquashMeasureProbe.Log("B12 " + r);
+            foreach (var r in camRows) SquashMeasureProbe.Log("B12 " + r);
             SquashMeasureProbe.Log($"B12 {dtReads} reads: worst dt error {dtWorst * 100:0.00}% (gate 1%), worst running-sum drift {sumWorst * 1000:0.000} ms over {dtSum:0.0} s (half precision)");
+            if (inFlight) request.WaitForCompletion();
             front.Dispose();
             back.Dispose();
             SquashMeasureProbe.Log("done");
@@ -321,12 +326,13 @@ namespace AvatarBridge.Regression
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
+            #include ""UnityCG.cginc""
             float _ProbeFrame;
             float4 vert(float4 v : POSITION, float2 uv : TEXCOORD0) : SV_POSITION { return float4(uv * 2 - 1, 0.5, 1); }
             float4 frag() : SV_Target
             {
                 float f = fmod(_ProbeFrame, 65536);
-                return float4(fmod(f, 256) / 255, floor(f / 256) / 255, 0, 1);
+                return float4(fmod(f, 256) / 255, floor(f / 256) / 255, saturate(unity_DeltaTime.x * 10), 1);
             }
             ENDCG
         }

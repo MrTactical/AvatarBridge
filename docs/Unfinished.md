@@ -1293,6 +1293,17 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     error magenta) decodes to rest. Gates before building: the controller and provider must run
     on remote copies in stable (in-game test), and a replacement shader must draw every body
     shader at its skinned pose (batch probe). Gravity sag stays with MagicaCloth2.
+  - Measurement probe, first slice (SquashMeasureProbe, batch Play mode, editor timings, 2026-10-11):
+    B2 one tiny camera costs a median 71-90 us at 500-5000 renderers, p90 135-165 us; an empty-layer
+    mask saves 10-15%. Under the 100 us gate, so K = 4 holds if the client is no worse than the editor.
+    B3 controller work 12 us per copy (gate 25): the 12 m Mid radius holds. B4 the client's parser loop
+    replayed: 2 frames from render to applied value 79%, 3 frames 21%, one 13-frame hitch in 300. B8
+    decode: fresh texture and the parser's black read rest; the error shader's magenta reads FULL
+    flattening (r is 1), white fallbacks read full on both, Standard 0.04. So r is not a safe channel:
+    only g survives magenta, and nothing survives white. The reader in game still puts flattening on
+    r. B12 FAILS: a LateUpdate blit sees unity_DeltaTime as a constant 0.005, while a camera draw sees
+    the real dt (from about 5 ms up). A blitter spring cannot take dt from the shader; next test is
+    whether _Time advances in a blit, else a fixed dt. Not yet run: B1, B5-B7, B9-B11, B13.
   Open: remote copies (the Cameras content filter defaults to never blocked, so not that),
   the measurement probe (camera cost, controller
   cost, readback latency, replacement universality), then the staged build above, tuning, and
