@@ -1209,13 +1209,29 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     only the client's box read is emulated. Matches the C#-driven squash on film (flattest 0.85
     against 0.86). The press comes from rest reaches, so it reads up to 9 cm off the press
     measured from the skin each frame; not visible on film.
+  - In game, 2026-10-11, driven by the trigger: another player pushing the pair together
+    squashed it and looked right; the menu slider at 30 looked right, at 100 (centres together,
+    the maximum) looked wrong with no partner pressing. But it cost a synced float per pair,
+    and it only knew pushed-together: no touch, no squash against the body, no gravity.
+  - Zero-sync reader, built and run in the probe (`-abReader`), replaces the trigger: a camera on
+    one part's aim (orthographic, vertex lit so no shadow maps, near plane 0.00123) renders a
+    quad on the partner's follow into a 4x4 linear texture. The quad's shader draws only for
+    that camera (orthographic, that near plane, facing it within 25 degrees) and writes both
+    parts' along and across into one pixel's four channels; a `CVRTexturePropertyParser` sets
+    each scale node's localScale and pivot from them (4 tasks per part). Every client measures
+    its own copy against its own cloth, so nothing syncs. Probe emulates the client's parser
+    from its decompile (8-bit read, lerp, reflection): within 0.0017 of the exact squash (one
+    8-bit step) on Kar, breasts and butt, and the film matches the trigger version frame for
+    frame. The client reads a frame or two late; the probe reads the same frame.
   - In-game test rig: `Dev/Probes/SquashTestBuilder.cs` (menu Tools/YAPS/Dev/Add the squash
-    test, or batch) puts the driven squash on a converted avatar, measured at rest in edit mode,
-    layers written to every controller `YapsOwner.Targets` returns. Pairs are found by name:
-    skinned bones naming a soft part AND a side, so a shared root both parts hang from is skipped.
-  Open: the in-game result (does the trigger fire on the wearer's own pointer, does
-  SetFromPosition read as decompiled, does the float reach remote copies), tuning (overfill,
-  flattest, spring-back), then the converter (add-on only).
+    test, or batch) puts the reader squash on a converted avatar, measured at rest in edit mode,
+    assets in `Assets/AvatarBridgeOutput/SquashTest`. A 4 cm cube in front of the chest shows the
+    texture: magenta at rest, toward green when squeezed. Pairs are found by name: skinned bones
+    naming a soft part AND a side, so a shared root both parts hang from is skipped.
+  Open: the reader in game (does an avatar camera render, are remote copies filtered by the
+  per-viewer Cameras setting, what the extra camera costs); then touch and squash against the
+  body (depth cameras on the same parser), gravity sag, tuning (overfill, flattest,
+  spring-back), then the converter (add-on only).
 ## MagicaCloth2 settings: measured against the originals and fixed, 2026-10-06. ON DEV, not in game
 
 **Measured.** `Dev/Probes/PhysicsAbProbe.cs` converts a scene with a new user's defaults, keeps the

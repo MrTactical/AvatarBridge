@@ -935,6 +935,9 @@ namespace AvatarBridge.Regression
             public Transform followTop;
             public Vector3 followLocal;
             public SquashDriver driver;
+            public CVRTexturePropertyParser reader;
+            public float readerStart, readerWorst;
+            public string readerNote;
             public string deepestNote;
         }
         static List<DentPart> dentParts;
@@ -1010,10 +1013,17 @@ namespace AvatarBridge.Regression
                     if (i == 0 && Time.frameCount % 10 == 0) MeasureThrough(0, 1, Time.frameCount);
                     if (Squash)
                     {
-                        if (a.follow == null) { BuildSquash(a, ha); BuildSquash(b, hb); if (Driver) BuildDriver(a, b, share, i / 2); }
+                        if (a.follow == null)
+                        {
+                            BuildSquash(a, ha);
+                            BuildSquash(b, hb);
+                            if (Driver) BuildDriver(a, b, share, i / 2);
+                            if (Reader) BuildReader(a, b, share);
+                        }
                         if (Driver) ReadBox(a.driver, press);
-                        UpdateSquash(a, b, press * share, !Driver);
-                        UpdateSquash(b, a, press * (1f - share), !Driver);
+                        if (Reader) ReadReader(a, b, share);
+                        UpdateSquash(a, b, press * share, !Driver && !Reader);
+                        UpdateSquash(b, a, press * (1f - share), !Driver && !Reader);
                         axes[i].w = axes[i + 1].w = 0f;
                     }
                 }
@@ -1040,7 +1050,7 @@ namespace AvatarBridge.Regression
         // cannot part; the physics bones never see the scale. Each vertex moved on its own tore
         // the skin and parted it from the top over it; the main bone alone left the chain
         // root's 43% of the part unsquashed, and it slid past its partner.
-        static bool Squash => Array.IndexOf(Environment.GetCommandLineArgs(), "-abSquash") >= 0 || Driver;
+        static bool Squash => Array.IndexOf(Environment.GetCommandLineArgs(), "-abSquash") >= 0 || Driver || Reader;
         static float FlagF(string name, float fallback) =>
             float.TryParse(Arg(name), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : fallback;
         // How much it grows across per unit it flattens. Overfilled reads as full: a breast
@@ -1284,6 +1294,50 @@ namespace AvatarBridge.Regression
             // Against the skin-measured press the rest of the probe uses.
             float off = Mathf.Abs(d.value * d.start - press);
             if (off > d.worst) { d.worst = off; d.worstNote = $"frame {Time.frameCount}, box {d.value * d.start * 100f:0.0} cm, skin {press * 100f:0.0} cm"; }
+        }
+
+        // -abReader: the squash with nothing synced, built by SquashTestBuilder.Reader. The reader
+        // camera renders each frame and the client's parser is emulated from its decompile: the
+        // pixel read at 8 bits, each task's value lerped and set by reflection. The client reads
+        // a frame or two late; this reads the same frame, so it can match the exact squash.
+        static bool Reader => Array.IndexOf(Environment.GetCommandLineArgs(), "-abReader") >= 0;
+        static Texture2D readerPixels;
+
+        static void BuildReader(DentPart a, DentPart b, float share)
+        {
+            a.readerStart = Mathf.Min(a.restGap, a.restReach + b.restReach);
+            var material = new Material(ShaderUtil.CreateShaderAsset(SquashTestBuilder.ReaderSource));
+            a.reader = SquashTestBuilder.Reader(a.aim, b.follow, a.scale, b.scale, a.restReach, b.restReach, a.readerStart, share,
+                Flattest, Overfill, material, SquashTestBuilder.ReaderTexture(), SquashTestBuilder.ReaderQuad());
+            a.readerNote = b.readerNote = "never off";
+            Debug.Log($"[PhysicsAb] reader {a.name}/{b.name}: start {a.readerStart * 100f:0.0} cm, {a.reader.tasks.Count} tasks, shader {(material.shader.isSupported ? "supported" : "NOT supported")}");
+        }
+
+        static void ReadReader(DentPart a, DentPart b, float share)
+        {
+            var parser = a.reader;
+            parser.GetComponent<Camera>().Render();
+            if (readerPixels == null) readerPixels = new Texture2D(4, 4, TextureFormat.RGBA32, false, true);
+            RenderTexture.active = parser.texture;
+            readerPixels.ReadPixels(new Rect(0, 0, 4, 4), 0, 0);
+            RenderTexture.active = null;
+            foreach (var t in parser.tasks)
+            {
+                float v = Mathf.LerpUnclamped(t.minValue, t.maxValue, readerPixels.GetPixel(t.x, t.y)[(int)t.channel]);
+                var property = t.component.GetType().GetProperty(t.propertyName);
+                var value = (Vector3)property.GetValue(t.component);
+                value[t.targetIndex] = v;
+                property.SetValue(t.component, value);
+            }
+            // Against the exact squash from the same follows, so only the shader, the 8 bits and
+            // the parser's tasks stand between them.
+            float press = Mathf.Clamp(a.readerStart - Vector3.Distance(a.follow.position, b.follow.position), 0f, a.readerStart);
+            foreach (var (p, s) in new[] { (a, share), (b, 1f - share) })
+            {
+                var (scale, back) = Squashed(p, press * s);
+                float off = Mathf.Max((p.scale.localScale - scale).magnitude, Mathf.Abs(p.scale.localPosition.z - back));
+                if (off > p.readerWorst) { p.readerWorst = off; p.readerNote = $"frame {Time.frameCount}, read {p.scale.localScale.z:0.000} along, exact {scale.z:0.000}"; }
+            }
         }
 
         // A flesh-sized sphere on the part's lag body that meets only its partner's, so the pair
@@ -1841,6 +1895,8 @@ namespace AvatarBridge.Regression
             foreach (var d in drivers)
                 Debug.Log($"[PhysicsAb] driver {d.name}: peaked at {d.peak:0.00}, press off the skin's by {d.worst * 100f:0.0} cm at most ({d.worstNote})");
             drivers.Clear();
+            foreach (var dp in dentParts?.Where(x => x.readerNote != null) ?? Enumerable.Empty<DentPart>())
+                Debug.Log($"[PhysicsAb] reader {dp.name}: off the exact squash by {dp.readerWorst:0.0000} at most ({dp.readerNote})");
             squashRoot = null; squashAnimator = null; squashController = null;
             dentParts = null;
             flesh.Clear();

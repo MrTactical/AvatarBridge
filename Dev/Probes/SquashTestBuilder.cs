@@ -1,15 +1,19 @@
 // Puts the bone-scale squash on a converted avatar for an in-game test: the
-// build PhysicsAbProbe -abDriver runs, made persistent, so it can be uploaded.
+// build PhysicsAbProbe -abReader runs, made persistent, so it can be uploaded.
 //
 // Each soft pair (found by name: breast, boob, butt, booty, glute, one each
-// side) gets a constraint stack per part that the part's skin moves through,
-// a box trigger on one part's aim reading a pointer on its partner, and one
-// synced float per pair driving a blend tree layer that sets both scales.
-// Measured at rest, in edit mode, from the skin the parts' bones carry.
+// side) gets a constraint stack per part that the part's skin moves through.
+// Nothing is synced: a camera on one part's aim renders a quad on its partner
+// into a 4x4 texture, the quad's shader turns the distance into both parts'
+// squash, and a texture parser writes it into the stacks. Every client runs
+// that on its own copy, against its own cloth. Measured at rest, in edit
+// mode, from the skin the parts' bones carry.
 //
-// What the in-game test answers: does the trigger fire on the wearer's own
-// pointer, does SetFromPosition read as the decompile says, and does the
-// float reach remote copies. Only ChilloutVR can say.
+// What the in-game test answers: does an avatar camera render the quad, does
+// the parser read it, and do remote copies do both. The cube in front of the
+// chest shows the texture: magenta at rest, toward green when squeezed. A cube
+// that changes with no squash means the parser is the link that failed.
+// Only ChilloutVR can say.
 //
 //   Menu: select the converted avatar, Tools/YAPS/Dev/Add the squash test
 //   Batch: -executeMethod AvatarBridge.Regression.SquashTestBuilder.Batch
@@ -20,20 +24,20 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using ABI.CCK.Components;
-using ABI.CCK.Scripts;
 using UnityEditor;
-using UnityEditor.Animations;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Animations;
+using UnityEngine.Rendering;
 using VRC.SDK3.Avatars.Components;
+using Channel = ABI.CCK.Components.CVRTexturePropertyParserTask.Channel;
 
 namespace AvatarBridge.Regression
 {
     public static class SquashTestBuilder
     {
         const string RootName = "YAPS squash";
-        const string LayerPrefix = "YAPS squash ";
+        const string Folder = "Assets/AvatarBridgeOutput/SquashTest";
         const float Overfill = 2.33f, Flattest = 0.6f, Fullest = 1.5f;
         static readonly Regex Soft = new Regex("breast|boob|butt|booty|glute", RegexOptions.IgnoreCase);
         static readonly Regex Side = new Regex(@"left|right|[._ ]?[lr](?=$|[._ ])", RegexOptions.IgnoreCase);
@@ -93,8 +97,6 @@ namespace AvatarBridge.Regression
         {
             var root = avatar.transform;
             if (root.Find(RootName) != null) return "already has the squash; convert again first";
-            var controllers = YapsOwner.Targets(avatar);
-            if (controllers.Count == 0) return "no controller to add the layer to";
 
             // Skinned chain roots naming a side, paired by name with the side taken out. Skinned,
             // so a cloth or collider object named after its chain does not pair up as well; a side,
@@ -110,6 +112,8 @@ namespace AvatarBridge.Regression
 
             var squash = new GameObject(RootName).transform;
             squash.SetParent(root, false);
+            var shader = ReaderShader();
+            var quad = Asset(ReaderQuad(), "Squash quad.asset");
             var log = new List<string>();
             int pair = 0;
             foreach (var bones in found)
@@ -126,19 +130,26 @@ namespace AvatarBridge.Regression
                 foreach (var p in parts) Stack(root, squash, p);
                 Aim(root, a, b);
                 Aim(root, b, a);
-                string param = "YAPS/Squash" + pair;
-                Driver(a, b, param, start);
-                var keys = Keys(a, b, share, start);
-                var meter = Meter(root, squash, a, b, param);
-                foreach (var c in controllers) Layer(root, c, a, b, share, start, param, keys, meter);
-                Slider(avatar, param, "Squash test " + pair);
-                log.Add($"{a.root.name}/{b.root.name}: box {start * 100f:0.0} cm, reach {a.reach * 100f:0.0} + {b.reach * 100f:0.0}, " +
-                        $"share {share:0.00}, {keys.Count} keys, {param}");
+                string name = $"{avatar.name} squash {pair}";
+                var texture = Asset(ReaderTexture(), name + ".renderTexture");
+                var material = Asset(new Material(shader), name + ".mat");
+                Reader(a.aim, b.follow, a.scale, b.scale, a.reach, b.reach, start, share, Flattest, Overfill, material, texture, quad);
+                EditorUtility.SetDirty(material);
+                Readout(root, squash, a, b, Asset(new Material(Shader.Find("Unlit/Texture")) { mainTexture = texture }, name + " readout.mat"));
+                log.Add($"{a.root.name}/{b.root.name}: start {start * 100f:0.0} cm, reach {a.reach * 100f:0.0} + {b.reach * 100f:0.0}, share {share:0.00}");
                 pair++;
             }
+            AssetDatabase.SaveAssets();
             EditorUtility.SetDirty(avatar.gameObject);
             EditorSceneManager.MarkSceneDirty(avatar.gameObject.scene);
-            return $"{pair} pair(s) on {avatar.name}, layer in {string.Join(", ", controllers.Select(AssetDatabase.GetAssetPath))}: " + string.Join("; ", log);
+            return $"{pair} pair(s) on {avatar.name}, assets in {Folder}: " + string.Join("; ", log);
+        }
+
+        static T Asset<T>(T asset, string file) where T : UnityEngine.Object
+        {
+            if (!AssetDatabase.IsValidFolder(Folder)) AssetDatabase.CreateFolder("Assets/AvatarBridgeOutput", "SquashTest");
+            AssetDatabase.CreateAsset(asset, AssetDatabase.GenerateUniqueAssetPath(Folder + "/" + file));
+            return asset;
         }
 
         // The skin each part's bones carry, posed as it stands: points from the renderer
@@ -285,120 +296,172 @@ namespace AvatarBridge.Regression
             aim.worldUpVector = Vector3.up;
         }
 
-        // A box on a's aim, its z down the line to b: 0 where the surfaces meet at rest, 1 with
-        // the centres together. Sampled on -Z; the exit task writes 0, since a stay task writes
-        // only while the pointer is inside.
-        static void Driver(Part a, Part b, string param, float start)
-        {
-            var pointer = Child(b.follow, "squash pointer").gameObject.AddComponent<CVRPointer>();
-            pointer.type = param;
-            var box = a.aim.gameObject.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
-            float unit = a.aim.lossyScale.x;
-            box.areaSize = Vector3.one * (start / unit);
-            box.areaOffset = new Vector3(0f, 0f, 0.5f * start / unit);
-            box.useAdvancedTrigger = true;
-            box.isLocalInteractable = true;
-            box.isNetworkInteractable = false;
-            box.allowedPointer.Add(pointer);
-            box.allowedTypes = new[] { param };
-            box.sampleDirection = CVRAdvancedAvatarSettingsTrigger.SampleDirection.ZNegative;
-            box.stayTasks.Add(new CVRAdvancedAvatarSettingsTriggerTaskStay
-                { settingName = param, minValue = 0f, maxValue = 1f, updateMethod = CVRAdvancedAvatarSettingsTriggerTaskStay.UpdateMethod.SetFromPosition });
-            box.exitTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask
-                { settingName = param, settingValue = 0f, updateMethod = CVRAdvancedAvatarSettingsTriggerTask.UpdateMethod.Override });
-        }
+        // The squash with nothing synced. A camera on a's aim renders one quad on b's follow into a
+        // 4x4 linear texture; the quad's shader turns the camera's distance into both parts' along
+        // and across, and a texture parser writes them into the scale nodes. Every client runs it on
+        // its own copy, so each viewer's squash follows the cloth that viewer sees. Channels: r a's
+        // along, g a's across, b b's along, a b's across, each 0..1 over its range. The parser
+        // reads 8 bits, a step of 0.0016 in scale.
+        public static readonly Color Rest = new Color(1f, 0f, 1f, 0f);
+        // Checked by the shader, so only the reader camera draws the quad.
+        public const float ReaderNear = 0.00123f;
 
-        static (Vector3 scale, float back) Squashed(Part p, float pushed)
+        public static CVRTexturePropertyParser Reader(Transform aimA, Transform followB, Transform scaleA, Transform scaleB,
+            float reachA, float reachB, float start, float share, float flattest, float overfill,
+            Material material, RenderTexture texture, Mesh quad)
         {
-            float along = Mathf.Clamp(1f - pushed / (2f * p.reach), Flattest, 1f);
-            float across = Mathf.Min(1f + Overfill * (1f - along), Fullest);
-            return (new Vector3(across, across, along), -p.reach * (1f - along) / p.follow.lossyScale.x);
-        }
+            float unit = followB.lossyScale.x;
+            material.SetFloat("_Start", start / unit);
+            material.SetFloat("_ReachA", reachA / unit);
+            material.SetFloat("_ReachB", reachB / unit);
+            material.SetFloat("_Share", share);
+            material.SetFloat("_Flattest", flattest);
+            material.SetFloat("_Overfill", overfill);
+            material.SetFloat("_Fullest", Fullest);
+            material.SetFloat("_Near", ReaderNear);
 
-        // Keyed at 0, 1 and wherever either part stops flattening or growing, so a 1D blend
-        // tree reproduces the squash exactly.
-        static List<float> Keys(Part a, Part b, float share, float start)
-        {
-            var keys = new List<float> { 0f, 1f };
-            foreach (var (p, s) in new[] { (a, share), (b, 1f - share) })
-                foreach (float bend in new[] { 1f - Flattest, (Fullest - 1f) / Overfill })
-                {
-                    float v = bend * 2f * p.reach / (start * s);
-                    if (v > 0f && v < 1f) keys.Add(v);
-                }
-            return keys.Distinct().OrderBy(v => v).ToList();
-        }
+            var target = Child(followB, "squash quad").gameObject;
+            target.AddComponent<MeshFilter>().sharedMesh = quad;
+            var renderer = target.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            renderer.lightProbeUsage = LightProbeUsage.Off;
+            renderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
+            renderer.allowOcclusionWhenDynamic = false;
 
-        // Built after the controller is an asset, so its parts embed in it or serialise as nothing.
-        // Instruments, since only the game can say which link fails. A bar in front of the pair
-        // that grows with the synced value: grows when squeezed, the trigger works. A menu slider
-        // on the same value: squashes when dragged, the animator and stack work. The trigger
-        // writes only while the pointer is inside, so at rest the slider is not overwritten.
-        const float MeterTall = 0.3f;
-        static Transform Meter(Transform root, Transform squash, Part a, Part b, string param)
-        {
-            var meter = GameObject.CreatePrimitive(PrimitiveType.Cube).transform;
-            UnityEngine.Object.DestroyImmediate(meter.GetComponent<Collider>());
-            meter.name = param.Replace('/', ' ') + " meter";
-            meter.SetParent(squash, false);
-            meter.position = 0.5f * (a.centre + b.centre) + root.forward * 0.4f;
-            meter.localScale = new Vector3(0.03f, 0.005f, 0.03f) / squash.lossyScale.x;
-            return meter;
-        }
+            var camera = Child(aimA, "squash camera").gameObject.AddComponent<Camera>();
+            camera.orthographic = true;
+            // Wide enough to keep b in view when the aim lags it by a frame.
+            camera.orthographicSize = start;
+            camera.nearClipPlane = ReaderNear;
+            camera.farClipPlane = 20f * start;
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.backgroundColor = Rest;
+            // Vertex lit renders no shadow maps for it, and the body's lit passes skip it.
+            camera.renderingPath = RenderingPath.VertexLit;
+            camera.useOcclusionCulling = false;
+            camera.allowHDR = false;
+            camera.allowMSAA = false;
+            camera.stereoTargetEye = StereoTargetEyeMask.None;
+            camera.depth = 1f;
+            camera.targetTexture = texture;
 
-        static void Slider(CVRAvatar avatar, string param, string label)
-        {
-            var settings = avatar.avatarSettings?.settings;
-            if (settings == null || settings.Any(x => x != null && x.machineName == param)) return;
-            settings.Insert(0, new CVRAdvancedSettingsEntry
+            var parser = camera.gameObject.AddComponent<CVRTexturePropertyParser>();
+            parser.texture = texture;
+            foreach (var (scale, along, across, reach) in new[]
+                { (scaleA, Channel.r, Channel.g, reachA), (scaleB, Channel.b, Channel.a, reachB) })
             {
-                name = label,
-                machineName = param,
-                unlinkNameFromMachineName = true,
-                type = CVRAdvancedSettingsEntry.SettingsType.Slider,
-                setting = new CVRAdvancesAvatarSettingSlider { defaultValue = 0f, usedType = CVRAdvancesAvatarSettingBase.ParameterType.Float },
-            });
-        }
-
-        static void Layer(Transform root, AnimatorController controller, Part a, Part b, float share, float start, string param, List<float> keys, Transform meter)
-        {
-            string name = LayerPrefix + param;
-            var tree = new BlendTree
-            {
-                name = name, blendParameter = param, blendType = BlendTreeType.Simple1D,
-                useAutomaticThresholds = false, hideFlags = HideFlags.HideInHierarchy,
-            };
-            AssetDatabase.AddObjectToAsset(tree, controller);
-            foreach (float v in keys)
-            {
-                var clip = new AnimationClip { name = $"{name} {v:0.000}", hideFlags = HideFlags.HideInHierarchy };
-                foreach (var (p, s) in new[] { (a, share), (b, 1f - share) })
-                {
-                    var (scale, back) = Squashed(p, v * start * s);
-                    string path = AnimationUtility.CalculateTransformPath(p.scale, root);
-                    void Key(string prop, float x) =>
-                        AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(path, typeof(Transform), prop), AnimationCurve.Constant(0f, 1f / 60f, x));
-                    Key("m_LocalScale.x", scale.x);
-                    Key("m_LocalScale.y", scale.y);
-                    Key("m_LocalScale.z", scale.z);
-                    Key("m_LocalPosition.z", back);
-                }
-                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(AnimationUtility.CalculateTransformPath(meter, root), typeof(Transform), "m_LocalScale.y"),
-                    AnimationCurve.Constant(0f, 1f / 60f, (0.005f + MeterTall * v) / meter.parent.lossyScale.x));
-                AssetDatabase.AddObjectToAsset(clip, controller);
-                tree.AddChild(clip, v);
+                parser.tasks.Add(Task(scale, "localScale", 0, across, 1f, Fullest));
+                parser.tasks.Add(Task(scale, "localScale", 1, across, 1f, Fullest));
+                parser.tasks.Add(Task(scale, "localScale", 2, along, flattest, 1f));
+                // The facing side back by what it flattened, the far side staying.
+                parser.tasks.Add(Task(scale, "localPosition", 2, along, -reach * (1f - flattest) / scale.parent.lossyScale.x, 0f));
             }
-            var machine = new AnimatorStateMachine { name = name, hideFlags = HideFlags.HideInHierarchy };
-            AssetDatabase.AddObjectToAsset(machine, controller);
-            var state = machine.AddState(name);
-            state.motion = tree;
-            state.writeDefaultValues = true;
-            machine.defaultState = state;
-            if (controller.parameters.All(x => x.name != param)) controller.AddParameter(param, AnimatorControllerParameterType.Float);
-            var layers = controller.layers.ToList();
-            layers.Add(new AnimatorControllerLayer { name = name, defaultWeight = 1f, stateMachine = machine });
-            controller.layers = layers.ToArray();
-            EditorUtility.SetDirty(controller);
+            return parser;
+        }
+
+        static CVRTexturePropertyParserTask Task(Transform target, string property, int index, Channel channel, float min, float max) =>
+            new CVRTexturePropertyParserTask
+            {
+                channel = channel, minValue = min, maxValue = max,
+                target = target.gameObject, component = target,
+                propertyName = property, typeIndex = 4, targetIndex = index,
+            };
+
+        // Linear: an sRGB target puts the gamma curve on the value.
+        public static RenderTexture ReaderTexture() =>
+            new RenderTexture(4, 4, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear) { filterMode = FilterMode.Point, useMipMap = false };
+
+        // Four corners the shader stretches over the whole target. Small bounds, so another
+        // avatar's quad is culled unless it sits in this camera's view.
+        public static Mesh ReaderQuad()
+        {
+            var mesh = new Mesh { name = "squash quad" };
+            mesh.vertices = new Vector3[4];
+            mesh.uv = new[] { new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0f, 1f), new Vector2(1f, 1f) };
+            mesh.triangles = new[] { 0, 2, 1, 2, 3, 1 };
+            mesh.bounds = new Bounds(Vector3.zero, Vector3.one * 0.01f);
+            return mesh;
+        }
+
+        static Shader ReaderShader()
+        {
+            string path = Folder + "/YapsSquashReader.shader";
+            if (!AssetDatabase.IsValidFolder(Folder)) AssetDatabase.CreateFolder("Assets/AvatarBridgeOutput", "SquashTest");
+            if (!System.IO.File.Exists(path) || System.IO.File.ReadAllText(path) != ReaderSource)
+            {
+                System.IO.File.WriteAllText(path, ReaderSource);
+                AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+            }
+            return AssetDatabase.LoadAssetAtPath<Shader>(path);
+        }
+
+        public const string ReaderSource = @"Shader ""YAPS/Dev/Squash Reader""
+{
+    Properties
+    {
+        _Start (""Start"", Float) = 0
+        _ReachA (""Reach A"", Float) = 1
+        _ReachB (""Reach B"", Float) = 1
+        _Share (""Share"", Float) = 0.5
+        _Flattest (""Flattest"", Float) = 0.6
+        _Overfill (""Overfill"", Float) = 2.33
+        _Fullest (""Fullest"", Float) = 1.5
+        _Near (""Reader near plane"", Float) = 0
+    }
+    SubShader
+    {
+        Tags { ""Queue""=""Overlay+100"" ""IgnoreProjector""=""True"" ""DisableBatching""=""True"" }
+        Pass
+        {
+            ZTest Always ZWrite Off Cull Off
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #include ""UnityCG.cginc""
+            float _Start, _ReachA, _ReachB, _Share, _Flattest, _Overfill, _Fullest, _Near;
+            struct v2f { float4 pos : SV_POSITION; nointerpolation float4 value : TEXCOORD0; };
+
+            // Along and across, each 0..1 over its range.
+            float2 Squash(float pushed, float reach)
+            {
+                float along = clamp(1 - pushed / (2 * reach), _Flattest, 1);
+                float across = min(1 + _Overfill * (1 - along), _Fullest);
+                return float2((along - _Flattest) / (1 - _Flattest), (across - 1) / (_Fullest - 1));
+            }
+
+            v2f vert(float4 vertex : POSITION, float2 uv : TEXCOORD0)
+            {
+                v2f o;
+                float3 to = unity_ObjectToWorld._m03_m13_m23 - _WorldSpaceCameraPos;
+                float3 forward = -normalize(UNITY_MATRIX_V[2].xyz);
+                // Only the reader camera: orthographic, its near plane, facing this quad within what
+                // a frame of aim lag allows. A main camera, a mirror or another pair's draws nothing.
+                bool reader = unity_OrthoParams.w > 0.5 && abs(_ProjectionParams.y - _Near) < 1e-6 && dot(to, forward) >= 0.9 * length(to);
+                float press = clamp(_Start - length(to) / length(unity_ObjectToWorld._m00_m10_m20), 0, _Start);
+                o.value = float4(Squash(press * _Share, _ReachA), Squash(press * (1 - _Share), _ReachB));
+                o.pos = reader ? float4(uv * 2 - 1, 0.5, 1) : float4(2, 2, 2, 1);
+                return o;
+            }
+
+            float4 frag(v2f i) : SV_Target { return i.value; }
+            ENDCG
+        }
+    }
+}
+";
+
+        // The texture itself on a cube in front of the pair, readable from any side.
+        static void Readout(Transform root, Transform squash, Part a, Part b, Material material)
+        {
+            var cube = GameObject.CreatePrimitive(PrimitiveType.Cube).transform;
+            UnityEngine.Object.DestroyImmediate(cube.GetComponent<Collider>());
+            cube.name = "squash readout";
+            cube.SetParent(squash, false);
+            cube.position = 0.5f * (a.centre + b.centre) + root.forward * 0.4f;
+            cube.localScale = Vector3.one * 0.04f / squash.lossyScale.x;
+            cube.GetComponent<MeshRenderer>().sharedMaterial = material;
         }
     }
 }
