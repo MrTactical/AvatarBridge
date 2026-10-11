@@ -694,7 +694,37 @@ namespace AvatarBridge.Regression
             for (int i = 0; i < 8; i++) slots[8 + i] = arms[i / 4][i % 4] ?? empty;
             provider.transforms = slots;
             provider.shaderPropertyName = "_YAPS_SquashFollow";
-            host.AddComponent<CVRRenderController>().cvrRenderComponents.Add(provider);
+
+            // One vertex on each slot, skinned to it, so the slots come through skinning, after
+            // the cloth and the IK. Its triangles have no area, so it draws nothing.
+            var skin = Child(host.transform, "skin").gameObject.AddComponent<SkinnedMeshRenderer>();
+            var skinBones = slots.Select(t => t == empty ? host.transform : t).ToArray();
+            var mesh = new Mesh { name = "YAPS squash skin" };
+            mesh.vertices = slots.Select(t => skin.transform.InverseTransformPoint(t.position)).ToArray();
+            mesh.boneWeights = Enumerable.Range(0, 16).Select(i => new BoneWeight { boneIndex0 = i, weight0 = 1f }).ToArray();
+            mesh.bindposes = skinBones.Select(b => b.worldToLocalMatrix * skin.transform.localToWorldMatrix).ToArray();
+            mesh.triangles = Enumerable.Range(0, 48).Select(i => i / 3).ToArray();
+            Asset(mesh, $"{avatar.name} squash skin.asset");
+            var blank = new Material(Shader.Find("Standard")) { name = "YAPS squash skin" };
+            Asset(blank, $"{avatar.name} squash skin.mat");
+            skin.sharedMesh = mesh;
+            skin.bones = skinBones;
+            skin.sharedMaterial = blank;
+            skin.updateWhenOffscreen = true;
+            skin.shadowCastingMode = ShadowCastingMode.Off;
+            skin.receiveShadows = false;
+            int stride = mesh.GetVertexBufferStride(0);
+            foreach (var copy in copies) copy.SetVector("_YAPS_SquashHands", new Vector4(1f, 0.05f, 1f, stride));
+            var skinned = host.AddComponent<CVRMaterialDataProvider>();
+            skinned.materials = copies.ToArray();
+            skinned.dataMode = CVRMaterialDataProvider.DataMode.SkinnedMeshRendererVertexBuffer;
+            skinned.smr = skin;
+            skinned.shaderPropertyName = "_YAPS_SquashSkin";
+            log.Add($"skin stride {stride}");
+
+            var controller = host.AddComponent<CVRRenderController>();
+            controller.cvrRenderComponents.Add(provider);
+            controller.cvrRenderComponents.Add(skinned);
 
             AssetDatabase.SaveAssets();
             EditorUtility.SetDirty(avatar.gameObject);

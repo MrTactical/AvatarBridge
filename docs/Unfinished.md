@@ -1426,8 +1426,27 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     the cloth, e.g. the provider's skinned vertex buffer mode on a helper mesh weighted to the
     follows (one frame late, unproven). Also unknown: whether the client's IK has moved the arm
     bones before the provider reads them.
-    Test: Add the squash test (shader), Play, move an arm or hand into a part. Then in game
-    with the own hands.
+    Both fixed the same day, editor-verified, NOT YET IN GAME:
+    - Skin reader: a helper SkinnedMeshRenderer under the host, one vertex per slot weighted
+      fully to it (an empty slot to the host), triangles with no area, `updateWhenOffscreen`,
+      read by a second provider in `SkinnedMeshRendererVertexBuffer` mode into
+      `ByteAddressBuffer _YAPS_SquashSkin` (shaders targeting 4.5 and up; `_YAPS_SquashHands.w`
+      is the stride, 12, and 0 falls back to the matrices). Measured: all 16 slots in the buffer
+      equal the bones' end-of-frame world positions, worst 0.00 cm, so the slots now arrive after
+      the cloth (and after the IK, in game) one skinning pass late, in world space. The pair gap
+      and the bone push can see the cloth again. Open: whether the client runs this mode on
+      avatars and remote copies.
+    - Hands press the part: each arm's deepest bone (upper arm, forearm or hand) and every other
+      player's hands (`_CVR_PlayerLeft/RightHandPositions`, `CVRGlobalParams1.y` players, capped
+      at 64, a ball of `_YAPS_SquashHands.y` metres, any hand within 1.5 radii of an own hand
+      skipped as the wearer's) press the part toward its side by how far they reach into it,
+      summed into the one press. Kar, wrist sunk 0.6 reach into the front: the part flattens and
+      bulges around the arm instead of the hand sinking in a groove; strong at that depth (the
+      pair's shape constants, flattest 0.6 and fullest 1.5, cap it). Gains in
+      `_YAPS_SquashHands` x (own) and z (others), live. Two hands from opposite sides cancel in
+      the one press vector: a known limit.
+    Test: Add the squash test (shader), upload, try the own hands in VR; a second player's hand
+    for the globals.
     Next: other players' hands from the globals, sag.
     Open: an unpatchable shader over a part (fall back to the bone stack), shadow passes using
     Unity's own caster, the globals in stable, the probe moving parts by hand instead of through

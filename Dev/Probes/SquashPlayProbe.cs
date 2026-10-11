@@ -33,6 +33,8 @@ namespace AvatarBridge.Regression
         static int frame;
         static Animator animator;
         static CVRMaterialDataProvider provider;
+        static SkinnedMeshRenderer skin;
+        static Vector3[] lastEnd;
         static Transform shoulder, elbow, wrist;
         static Quaternion shoulderRest, elbowRest;
         static Vector3 target;
@@ -63,9 +65,11 @@ namespace AvatarBridge.Regression
             if (!EditorApplication.isPlaying || provider != null || SessionState.GetInt(K + "on", 0) != 1) return;
             outDir = SessionState.GetString(K + "out", "");
             Directory.CreateDirectory(outDir);
-            provider = UnityEngine.Object.FindObjectOfType<CVRMaterialDataProvider>();
+            var providers = UnityEngine.Object.FindObjectsOfType<CVRMaterialDataProvider>();
+            provider = providers.First(p => p.dataMode == CVRMaterialDataProvider.DataMode.TransformLocalToWorld);
+            skin = providers.Where(p => p.dataMode == CVRMaterialDataProvider.DataMode.SkinnedMeshRendererVertexBuffer).Select(p => p.smr).FirstOrDefault();
             animator = provider.GetComponentInParent<CVRAvatar>().GetComponent<Animator>();
-            rows = new List<string> { "frame\tpart\toff_rest_cm\tpush_cm\tprovider_writes\tend_of_frame_off_rest_cm" };
+            rows = new List<string> { "frame\tpart\toff_rest_cm\tpush_cm\tprovider_writes\tend_of_frame_off_rest_cm\tskin_off_rest_cm\tskin_vs_last_end_cm\tskin_worst_slot_vs_last_end_cm" };
             Time.captureFramerate = Fps;
             frame = 0;
             var loop = PlayerLoop.GetCurrentPlayerLoop();
@@ -157,6 +161,29 @@ namespace AvatarBridge.Regression
             if (!EditorApplication.isPlaying || provider == null) return;
             var slots = provider.transforms;
             for (int p = 0; p < 4; p++) late[p] = (slots[p].position - slots[4 + p].position).magnitude;
+            lastEnd = slots.Select(t => t.position).ToArray();
+        }
+
+        // What the skinned helper holds when the provider reads it: the last skinning pass.
+        static Vector3[] SkinPositions()
+        {
+            if (skin == null) return null;
+            try
+            {
+                using (var buffer = skin.GetVertexBuffer())
+                {
+                    if (buffer == null) return null;
+                    var data = new float[buffer.count * buffer.stride / 4];
+                    buffer.GetData(data);
+                    int step = buffer.stride / 4;
+                    return Enumerable.Range(0, 16).Select(i => new Vector3(data[i * step], data[i * step + 1], data[i * step + 2])).ToArray();
+                }
+            }
+            catch (Exception e)
+            {
+                if (frame % 60 == 0) Debug.LogWarning("[SquashPlay] skin read: " + e.Message);
+                return null;
+            }
         }
 
         static void Log(Transform[] slots, Material m)
@@ -165,6 +192,10 @@ namespace AvatarBridge.Regression
             bool writes = written != null && written.Length > 0 && (written[0].GetColumn(3) - (Vector4)slots[0].position).sqrMagnitude < 1e-8f;
             var reach = m.GetVector("_YAPS_SquashReach");
             var push = m.GetVector("_YAPS_SquashPush");
+            var skinned = SkinPositions();
+            string F(float x) => x.ToString("0.00", CultureInfo.InvariantCulture);
+            string worst = skinned == null || lastEnd == null ? "-1" : F(Enumerable.Range(0, 16)
+                .Where(i => slots[i].lossyScale.x > 0f).Max(i => (skinned[i] - lastEnd[i]).magnitude) * 100f);
             for (int p = 0; p < 4; p++)
             {
                 if (slots[p].lossyScale.x <= 0f) continue;
@@ -173,7 +204,9 @@ namespace AvatarBridge.Regression
                 float press = Mathf.Max(lifted.magnitude - push.y * reach[p] * slots[p].lossyScale.x, 0f) * push.x;
                 rows.Add(string.Join("\t", frame, p, (off.magnitude * 100f).ToString("0.00", CultureInfo.InvariantCulture),
                     (press * 100f).ToString("0.00", CultureInfo.InvariantCulture), writes ? 1 : 0,
-                    (late.TryGetValue(p, out float l) ? l * 100f : -1f).ToString("0.00", CultureInfo.InvariantCulture)));
+                    (late.TryGetValue(p, out float l) ? l * 100f : -1f).ToString("0.00", CultureInfo.InvariantCulture),
+                    skinned == null ? "-1" : F((skinned[p] - skinned[4 + p]).magnitude * 100f),
+                    skinned == null || lastEnd == null ? "-1" : F((skinned[p] - lastEnd[p]).magnitude * 100f), worst));
             }
         }
 

@@ -7,13 +7,14 @@
 // snapped layers onto one surface, and the skin came through the top in
 // stripes and blotches.
 //
-// A soft PART (a breast, a cheek) is pressed along one line: by its partner,
-// along the line between them, and by whatever pushed its bone off its rest,
-// from the side the push came from. The two add into one press. The part
-// flattens along it and grows across, its facing side moving back by the press
-// and its far side staying. Then whatever still crosses the plane where the
-// pair meets is eased back onto it, and the own arms and hands, as capsules,
-// ease the skin out of their way.
+// A soft PART (a breast, a cheek) is pressed by its partner, along the line
+// between them; by whatever pushed its bone off its rest, from the side the push
+// came from; and by hands reaching into it, the own arms and every other
+// player's, from their side. All of it adds into one press. The part flattens
+// along it and grows across, its facing side moving back by the press and its
+// far side staying. Then whatever still crosses the plane where the pair meets
+// is eased back onto it, and the own arms and hands, as capsules, ease the skin
+// out of their way.
 //
 // Which part a vertex is comes from the mesh's own skin weights, baked per
 // vertex: its weight to a part's bones is its share of that part. Guessed from
@@ -50,8 +51,24 @@ float4 _YAPS_SquashPush;    // x push gain, y push ignored below this share of t
 float4 _YAPS_SquashLimbL;   // radius of the upper arm, lower arm and hand, each as a share of its own length
 float4 _YAPS_SquashLimbR;
 float _YAPS_SquashPulse;    // test builds: a press that comes and goes on its own, as a share of the start
+float4 _YAPS_SquashHands;   // x own arms' press gain, y other players' hand radius in metres, z their press gain, w skin stride in bytes (0 none)
+float4 _CVR_PlayerLeftHandPositions[255];
+float4 _CVR_PlayerRightHandPositions[255];
 
-float3 YapsSlot(int i) { return _YAPS_SquashFollow[i]._m03_m13_m23; }
+// The same slots again, from a helper mesh weighted one vertex to each and skinned. The provider
+// reads transforms in a script LateUpdate, before the cloth writes its bones and after it put
+// them back to rest, so a follow read there never moves. Skinning runs after the cloth.
+#if SHADER_TARGET >= 45
+ByteAddressBuffer _YAPS_SquashSkin;
+#endif
+
+float3 YapsSlot(int i)
+{
+#if SHADER_TARGET >= 45
+    if (_YAPS_SquashHands.w > 0) return asfloat(_YAPS_SquashSkin.Load3(i * (uint) _YAPS_SquashHands.w));
+#endif
+    return _YAPS_SquashFollow[i]._m03_m13_m23;
+}
 float YapsUnit(int i) { return length(_YAPS_SquashFollow[i]._m00_m10_m20); }
 
 // s past a surface, eased back from soft before it to a fifth of the slope, never flat: how
@@ -64,6 +81,63 @@ float YapsEase(float s, float soft, out float slope)
     float e = exp(-u / soft);
     slope = (1 - YAPS_DENT_KEEP) * e + YAPS_DENT_KEEP;
     return s + soft - soft * (1 - YAPS_DENT_KEEP) * (1 - e) - YAPS_DENT_KEEP * u;
+}
+
+// A capsule from a to b of radius r reaching into a part: the press toward it, by how far.
+float3 YapsPress(float3 centre, float reach, float3 a, float3 b, float r)
+{
+    float3 ab = b - a;
+    float len2 = dot(ab, ab);
+    float3 to = a + ab * saturate(dot(centre - a, ab) / max(len2, 1e-10)) - centre;
+    float dist = length(to);
+    float press = reach + r - dist;
+    return press > 0 && dist > 1e-6 ? to / dist * press : 0;
+}
+
+// Hands press the whole part, so it flattens under them. Only carving the skin out of their
+// way left the hand sunk in a groove.
+float3 YapsHandsPress(float3 centre, float reach)
+{
+    float3 pressing = 0;
+    if (_YAPS_SquashPush.w > 0 && _YAPS_SquashHands.x > 0)
+    {
+        // Per arm, its deepest bone: upper arm, forearm and hand overlap at the joints, and
+        // adding all three pressed one forearm in twice.
+        float3 arm[2] = { float3(0, 0, 0), float3(0, 0, 0) };
+        [unroll]
+        for (uint k = 0; k < 6; k++)
+        {
+            uint a = 8 + (k / 3) * 4 + k % 3;
+            if (YapsUnit(a) <= 0 || YapsUnit(a + 1) <= 0) continue;
+            float3 pa = YapsSlot(a), pb = YapsSlot(a + 1);
+            float r = (k < 3 ? _YAPS_SquashLimbL : _YAPS_SquashLimbR)[k % 3] * length(pb - pa);
+            float3 p = YapsPress(centre, reach, pa, pb, r);
+            if (dot(p, p) > dot(arm[k / 3], arm[k / 3])) arm[k / 3] = p;
+        }
+        pressing += (arm[0] + arm[1]) * _YAPS_SquashHands.x;
+    }
+    float r = _YAPS_SquashHands.y;
+    if (_YAPS_SquashHands.z > 0 && r > 0)
+    {
+        // Every player's hands, the wearer's among them, which the arms above already are: a
+        // hand by either own hand is skipped. Capped at 64 players for cost.
+        float3 ownL = YapsSlot(10), ownR = YapsSlot(14);
+        float mine = 2.25 * r * r;
+        int count = min((int) round(CVRGlobalParams1.y), 64);
+        [loop]
+        for (int i = 0; i < count; i++)
+        {
+            float3 hands[2] = { _CVR_PlayerLeftHandPositions[i].xyz, _CVR_PlayerRightHandPositions[i].xyz };
+            [unroll]
+            for (int j = 0; j < 2; j++)
+            {
+                float3 h = hands[j];
+                if (dot(h, h) < 1e-6 || dot(h - ownL, h - ownL) < mine || dot(h - ownR, h - ownR) < mine) continue;
+                pressing += YapsPress(centre, reach, h, h, r) * _YAPS_SquashHands.z;
+            }
+        }
+    }
+    return pressing;
 }
 
 void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tangent, uint vertexId)
@@ -135,6 +209,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
             float press = max(moved - _YAPS_SquashPush.y * reach, 0) * _YAPS_SquashPush.x;
             if (press > 0) pressing -= push / moved * press;
         }
+        pressing += YapsHandsPress(centre, reach);
 
         float press = length(pressing);
         if (press <= 0) continue;

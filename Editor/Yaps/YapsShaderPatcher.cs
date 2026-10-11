@@ -116,6 +116,7 @@ namespace AvatarBridge
         _YAPS_SquashPush (""YAPS squash: push gain, push ignored below, arm edge, arms on"", Vector) = (1,0.03,0.25,1)
         _YAPS_SquashLimbL (""YAPS squash left arm radii: upper, lower, hand"", Vector) = (0.2,0.18,0.25,0)
         _YAPS_SquashLimbR (""YAPS squash right arm radii: upper, lower, hand"", Vector) = (0.2,0.18,0.25,0)
+        _YAPS_SquashHands (""YAPS squash hands: own gain, others radius, others gain, skin stride"", Vector) = (1,0.05,1,0)
 ";
 
         // The name the patch of `original` would carry if it were made now.
