@@ -11,7 +11,7 @@
 //
 // What the in-game test answers: does an avatar camera render the quad, does
 // the parser read it, and do remote copies do both. The cube in front of the
-// chest shows the texture: magenta at rest, toward green when squeezed. A cube
+// chest shows the texture: black at rest, toward yellow when squeezed. A cube
 // that changes with no squash means the parser is the link that failed.
 // Only ChilloutVR can say.
 //
@@ -300,9 +300,10 @@ namespace AvatarBridge.Regression
         // 4x4 linear texture; the quad's shader turns the camera's distance into both parts' along
         // and across, and a texture parser writes them into the scale nodes. Every client runs it on
         // its own copy, so each viewer's squash follows the cloth that viewer sees. Channels: r a's
-        // along, g a's across, b b's along, a b's across, each 0..1 over its range. The parser
-        // reads 8 bits, a step of 0.0016 in scale.
-        public static readonly Color Rest = new Color(1f, 0f, 1f, 0f);
+        // flattening, g a's widening, b and a the same for b, each 0..1 over its range. The parser
+        // reads 8 bits, a step of 0.0016 in scale. Rest is black, so anything else that draws over
+        // the pixel black (in game something did) reads as no squash rather than a flat one.
+        public static readonly Color Rest = new Color(0f, 0f, 0f, 0f);
         // Checked by the shader, so only the reader camera draws the quad. The quad draws in the
         // last queue there is: anything else in the camera's box draws into the texture too, and
         // in game something drawn after it blacked out pixels.
@@ -358,9 +359,9 @@ namespace AvatarBridge.Regression
             {
                 parser.tasks.Add(Task(scale, "localScale", 0, across, 1f, Fullest));
                 parser.tasks.Add(Task(scale, "localScale", 1, across, 1f, Fullest));
-                parser.tasks.Add(Task(scale, "localScale", 2, along, flattest, 1f));
+                parser.tasks.Add(Task(scale, "localScale", 2, along, 1f, flattest));
                 // The facing side back by what it flattened, the far side staying.
-                parser.tasks.Add(Task(scale, "localPosition", 2, along, -reach * (1f - flattest) / scale.parent.lossyScale.x, 0f));
+                parser.tasks.Add(Task(scale, "localPosition", 2, along, 0f, -reach * (1f - flattest) / scale.parent.lossyScale.x));
             }
             return parser;
         }
@@ -427,12 +428,12 @@ namespace AvatarBridge.Regression
             float _Start, _ReachA, _ReachB, _Share, _Flattest, _Overfill, _Fullest, _Near;
             struct v2f { float4 pos : SV_POSITION; nointerpolation float4 value : TEXCOORD0; };
 
-            // Along and across, each 0..1 over its range.
+            // Flattening and widening, each 0..1 over its range, 0 at rest.
             float2 Squash(float pushed, float reach)
             {
                 float along = clamp(1 - pushed / (2 * reach), _Flattest, 1);
                 float across = min(1 + _Overfill * (1 - along), _Fullest);
-                return float2((along - _Flattest) / (1 - _Flattest), (across - 1) / (_Fullest - 1));
+                return float2((1 - along) / (1 - _Flattest), (across - 1) / (_Fullest - 1));
             }
 
             v2f vert(float4 vertex : POSITION, float2 uv : TEXCOORD0)
