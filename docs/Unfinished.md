@@ -1527,10 +1527,14 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     cutout, parallax, stereo instancing). Kar's Poiyomi 7 caster is its own, already patched.
     Still unsquashed: a caster from anywhere else outside the shader, and shaders with no caster
     that lean on a Fallback.
-    Strap torn at the shoulder (Joe, editor Play mode, same day): the builder's grid held only
-    skin WITH a share, so a strap over the shoulder found no skin within 3 cm and kept its own
-    weights, which lean on the part's bones; the squash moved it off still skin. Every skin
-    vertex goes in now, as the A/B probe's copy always did. Not yet seen in the editor.
+    Strap bending at the shoulder (Joe, editor Play mode, same day). WITHDRAWN as a squash bug:
+    the builder's grid did hold only skin WITH a share (every skin vertex goes in now, as the A/B
+    probe's copy always did), but Joe's rebuild with that fix still bent. Read from the source
+    FBX: skin and bra both carry up to 0.33 to 0.35 weight on the breast bones from the chest up
+    to the shoulder joint's height, and the strap over the shoulder's top 0.09 where the skin
+    has none. The breast cloth's root is pinned (not a stand-in), so the strap bends with the
+    breast as it would under the PhysBone in VRChat. The source paint, not the conversion;
+    less swing shrinks it.
     Test: the plain build in editor Play mode (hands in, lying back), then in game; which pairs
     pulse in the diagnostic build is still unread.
     Marshmallow PB read from its prefabs (2026-10-11, `Assets/marshmallow_PB`, ver2 stack; read
