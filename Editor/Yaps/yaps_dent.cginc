@@ -33,6 +33,8 @@
 #define YAPS_DENT_KEEP 0.2
 // How deep a dent may go, as a share of the presser's radius.
 #define YAPS_DENT_DEPTH 0.25
+// How far before the contact plane the squash starts to give, as a share of the reach.
+#define YAPS_SQUASH_SOFT 0.1
 
 float _YAPS_DentPower;
 float _YAPS_DentSoftness;
@@ -49,6 +51,10 @@ float4 _YAPS_DentAxis[4];      // xyz toward its partner, w how far it is pushed
 // own facing, and the skin came through. All zero until something writes them.
 float4x4 _YAPS_SquashTo[4];
 float4x4 _YAPS_SquashFrom[4];
+// Where a squashed part meets its partner: xyz toward the partner, w the plane's distance
+// along it. The map flattens the whole part, so the pair still overlapped where it reached past
+// its reach; what crosses the plane is pressed back onto it here. 0 for no contact.
+float4 _YAPS_SquashPlane[4];
 
 void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tangent, uint vertexId)
 {
@@ -84,6 +90,32 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
     }
     world += mapped;
     n = mappedN;
+
+    [unroll]
+    for (int c = 0; c < 4; c++)
+    {
+        float3 facing = _YAPS_SquashPlane[c].xyz;
+        float soft = YAPS_SQUASH_SOFT * _YAPS_DentPart[c].w;
+        if (shares[c] <= 0 || soft <= 0 || dot(facing, facing) == 0) continue;
+        float s = dot(world, facing) - _YAPS_SquashPlane[c].w;
+        float u = s + soft;
+        if (u <= 0) continue;
+        // Eased from the skin's own slope to a fifth of it, never flat: a layer and the skin
+        // under it keep their order, and nothing folds.
+        float slope = (1 - YAPS_DENT_KEEP) * exp(-u / soft) + YAPS_DENT_KEEP;
+        float pressed = -soft + soft * (1 - YAPS_DENT_KEEP) * (1 - exp(-u / soft)) + YAPS_DENT_KEEP * u;
+        float back = (s - pressed) * shares[c];
+        // What is pressed back spills out round the seam, away from the line between the parts.
+        float3 q = world - _YAPS_DentPart[c].xyz;
+        float3 away = q - facing * dot(q, facing);
+        away /= max(length(away), 0.5 * _YAPS_DentPart[c].w);
+        world += (away * _YAPS_DentSpill - facing) * back;
+        if (hasNormal)
+        {
+            float nf = dot(n, facing);
+            n = normalize(lerp(n, normalize(n + facing * nf * (1 / slope - 1)), shares[c]));
+        }
+    }
     float3 squash = 0;
     [unroll]
     for (int p = 0; p < 4; p++)

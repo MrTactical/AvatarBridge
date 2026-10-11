@@ -1010,6 +1010,17 @@ namespace AvatarBridge.Regression
                     part[i + 1] = new Vector4(cb.x, cb.y, cb.z, hb);
                     axes[i] = new Vector4(axis.x, axis.y, axis.z, press * share);
                     axes[i + 1] = new Vector4(-axis.x, -axis.y, -axis.z, press * (1f - share));
+                    // Both faces meet where each was pushed back to: one plane, seen from either side.
+                    // -abNoContact: the map alone.
+                    if (Affine && press > 0f)
+                    {
+                        measurePlanes[i] = new Vector4(axis.x, axis.y, axis.z, Vector3.Dot(axis, ca) + ha - press * share);
+                        measurePlanes[i + 1] = new Vector4(-axis.x, -axis.y, -axis.z, Vector3.Dot(-axis, cb) + hb - press * (1f - share));
+                    }
+                    else measurePlanes[i] = measurePlanes[i + 1] = Vector4.zero;
+                    bool contact = Array.IndexOf(Environment.GetCommandLineArgs(), "-abNoContact") < 0;
+                    squashPlanes[i] = contact ? measurePlanes[i] : Vector4.zero;
+                    squashPlanes[i + 1] = contact ? measurePlanes[i + 1] : Vector4.zero;
                     if (i == 0 && Time.frameCount % 10 == 0) MeasureThrough(0, 1, Time.frameCount);
                     if (Squash)
                     {
@@ -1049,10 +1060,18 @@ namespace AvatarBridge.Regression
                 }
                 Shader.SetGlobalMatrixArray("_YAPS_SquashTo", to);
                 Shader.SetGlobalMatrixArray("_YAPS_SquashFrom", from);
+                Shader.SetGlobalVectorArray("_YAPS_SquashPlane", squashPlanes);
+                squashParts = part;
             }
         }
 
-        // The shader's map, for measuring what BakeMesh cannot see.
+        static readonly Vector4[] squashPlanes = new Vector4[4];
+        static readonly Vector4[] measurePlanes = new Vector4[4];
+        static float planeCrossed;
+        static string planeCrossedNote = "never";
+        static Vector4[] squashParts;
+
+        // The shader's map and contact, for measuring what BakeMesh cannot see.
         static Vector3 Mapped(Vector3 world, Vector4 share)
         {
             if (!Affine || dentParts == null) return world;
@@ -1062,6 +1081,23 @@ namespace AvatarBridge.Regression
                 if (share[q] <= 0f || dentParts[q].follow == null) continue;
                 var map = dentParts[q].counter.localToWorldMatrix * dentParts[q].follow.worldToLocalMatrix;
                 moved += (map.MultiplyPoint3x4(world) - world) * share[q];
+            }
+            const float Keep = 0.2f;
+            float spill = 1f;
+            for (int c = 0; c < 4 && squashParts != null; c++)
+            {
+                var facing = (Vector3)squashPlanes[c];
+                float soft = 0.1f * squashParts[c].w;
+                if (share[c] <= 0f || soft <= 0f || facing == Vector3.zero) continue;
+                float s = Vector3.Dot(moved, facing) - squashPlanes[c].w;
+                float u = s + soft;
+                if (u <= 0f) continue;
+                float pressed = -soft + soft * (1f - Keep) * (1f - Mathf.Exp(-u / soft)) + Keep * u;
+                float back = (s - pressed) * share[c];
+                var at = moved - (Vector3)squashParts[c];
+                var away = at - facing * Vector3.Dot(at, facing);
+                away /= Mathf.Max(away.magnitude, 0.5f * squashParts[c].w);
+                moved += (away * spill - facing) * back;
             }
             return moved;
         }
@@ -1447,6 +1483,24 @@ namespace AvatarBridge.Regression
                 var k = Key(world[i]);
                 if (!grid.TryGetValue(k, out var list)) grid[k] = list = new List<int>();
                 list.Add(i);
+            }
+            // How far each part's skin crosses the plane where the pair meets, both sides added:
+            // the overlap, wherever it sits, with no search radius to cap it.
+            if (Affine && measurePlanes[a] != Vector4.zero)
+            {
+                float crossA = 0f, crossB = 0f;
+                for (int i = 0; i < world.Length && i < skinPart.Length; i++)
+                {
+                    int q = skinPart[i] == a ? a : skinPart[i] == b ? b : -1;
+                    if (q < 0) continue;
+                    float c = Vector3.Dot(world[i], measurePlanes[q]) - measurePlanes[q].w;
+                    if (q == a) crossA = Mathf.Max(crossA, c); else crossB = Mathf.Max(crossB, c);
+                }
+                if (crossA + crossB > planeCrossed)
+                {
+                    planeCrossed = crossA + crossB;
+                    planeCrossedNote = $"{crossA * 100f:0.0} + {crossB * 100f:0.0} cm at frame {frame}";
+                }
             }
             float deepest = 0f;
             int count = 0;
@@ -1963,6 +2017,7 @@ namespace AvatarBridge.Regression
                 foreach (var dp in dentParts?.Where(x => x.skins != null) ?? Enumerable.Empty<DentPart>())
                     Debug.Log($"[PhysicsAb] squash {dp.name}: skin off the exact stack by {dp.skinErrorRest * 100f:0.00} cm at rest, {dp.skinError * 100f:0.00} cm squashed ({dp.skinErrorNote})");
                 Debug.Log($"[PhysicsAb] skin of the first pair passed through {skinThrough * 100f:0.0} cm at most {skinThroughNote}, {skinThroughCount} vertices at most");
+                if (Affine) Debug.Log($"[PhysicsAb] skin of the first pair crossed its contact plane by {planeCrossed * 100f:0.0} cm at most ({planeCrossedNote})");
             foreach (var d in drivers)
                 Debug.Log($"[PhysicsAb] driver {d.name}: peaked at {d.peak:0.00}, press off the skin's by {d.worst * 100f:0.0} cm at most ({d.worstNote})");
             drivers.Clear();
@@ -1974,7 +2029,7 @@ namespace AvatarBridge.Regression
             dentParts = null;
             flesh.Clear();
             fleshSank = 0f;
-            skinThrough = 0f; skinThroughCount = 0; skinThroughNote = "never"; skinBody = null; skinPart = null;
+            skinThrough = 0f; skinThroughCount = 0; skinThroughNote = "never"; planeCrossed = 0f; planeCrossedNote = "never"; skinBody = null; skinPart = null;
             SessionState.SetInt(K + "stage", 2);
             EditorApplication.ExitPlaymode();
         }

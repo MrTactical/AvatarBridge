@@ -1348,8 +1348,17 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     at a point together, which is what kept the bones clean. Probe `-abSquash -abAffine`, three
     avatars: Kar and Lana match the bone films (mean pixel difference at most 1.6 and 0.2 of 255),
     and the bones' 7 to 17 cm stack error is gone. Zombunny (a top over the skin): no skin through
-    the top, but the pair's top passes through itself at the cleavage, about 2 cm, as it does
-    with bones (a scale flattens the whole part, so the two never form a contact face).
+    the top. WITHDRAWN: "the top passes through itself at the cleavage". The slits read as that
+    are stitched tears in the top, there at rest. The probe's "passed through" figure is capped
+    by its 2 cm search cell (every run reads 2.0), so it measured nothing either.
+  - Contact plane on top of the map: each part's skin that crosses the plane where the pair meets
+    is eased back onto it (from a tenth of the reach before it, keeping a fifth of the slope so
+    layers keep their order) and what is pushed back spills away from the line between the parts
+    (`_YAPS_SquashPlane`). The map already moves the facing apex back by the press, so the plane
+    adds no press of its own; it only catches what reaches past the reach. Measured as how far
+    the skin crosses the plane, both sides added, no radius cap: Kar 8.5 cm with the map alone,
+    2.3 cm with the plane (`-abNoContact` for the former). On Kar's dark shader the film shows
+    little; a lighter avatar with a deep press is the visual check still owed.
     Open: an unpatchable shader over a part (fall back to the bone stack), two copies sharing a
     material (fade the map out far from the part), shadow and outline passes, the provider on
     remote copies (A2).
