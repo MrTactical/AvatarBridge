@@ -1313,14 +1313,49 @@ namespace AvatarBridge.Regression
             Debug.Log($"[PhysicsAb] reader {a.name}/{b.name}: start {a.readerStart * 100f:0.0} cm, {a.reader.tasks.Count} tasks, shader {(ShaderUtil.ShaderHasError(material.shader) ? "HAS ERRORS" : material.shader.isSupported ? "supported" : "NOT supported")}");
         }
 
+        // -abPortrait: a stand-in for the client's Self Portrait, a camera half a metre in front of
+        // the head turned back at it, swept 90 degrees either side and rendered before the reader.
+        // In game the reader's texture went black at some views with it on and not with it off.
+        static bool Portrait => Array.IndexOf(Environment.GetCommandLineArgs(), "-abPortrait") >= 0;
+        static Camera portrait;
+        static int readerForeign, readerFrames;
+        static string readerForeignNote;
+
+        static void RenderPortrait()
+        {
+            var head = dstBody.avatar.GetComponentInChildren<Animator>()?.GetBoneTransform(HumanBodyBones.Head);
+            if (head == null) return;
+            if (portrait == null)
+            {
+                portrait = new GameObject("portrait stand-in").AddComponent<Camera>();
+                portrait.enabled = false;
+                portrait.clearFlags = CameraClearFlags.SolidColor;
+                portrait.backgroundColor = Color.clear;
+                portrait.depthTextureMode = DepthTextureMode.Depth;
+                portrait.targetTexture = new RenderTexture(512, 512, 24);
+            }
+            float yaw = Mathf.Sin(Time.frameCount * 0.05f) * 90f;
+            var turn = Quaternion.AngleAxis(yaw, dstBody.avatar.up) * dstBody.avatar.rotation;
+            portrait.transform.SetPositionAndRotation(head.position + turn * Vector3.forward * 0.5f, turn * Quaternion.Euler(0f, 180f, 0f));
+            portrait.Render();
+        }
+
         static void ReadReader(DentPart a, DentPart b, float share)
         {
             var parser = a.reader;
+            if (Portrait) RenderPortrait();
             parser.GetComponent<Camera>().Render();
             if (readerPixels == null) readerPixels = new Texture2D(4, 4, TextureFormat.RGBA32, false, true);
             RenderTexture.active = parser.texture;
             readerPixels.ReadPixels(new Rect(0, 0, 4, 4), 0, 0);
             RenderTexture.active = null;
+            // The quad writes no alpha and the reader clears to none, so any alpha is a foreign draw.
+            readerFrames++;
+            if (readerPixels.GetPixels32().Any(c => c.a > 0))
+            {
+                readerForeign++;
+                readerForeignNote = readerForeignNote ?? $"first at frame {Time.frameCount}" + (portrait != null ? $", portrait yaw {Mathf.Sin(Time.frameCount * 0.05f) * 90f:0}" : "");
+            }
             foreach (var t in parser.tasks)
             {
                 float v = Mathf.LerpUnclamped(t.minValue, t.maxValue, readerPixels.GetPixel(t.x, t.y)[(int)t.channel]);
@@ -1895,6 +1930,8 @@ namespace AvatarBridge.Regression
             foreach (var d in drivers)
                 Debug.Log($"[PhysicsAb] driver {d.name}: peaked at {d.peak:0.00}, press off the skin's by {d.worst * 100f:0.0} cm at most ({d.worstNote})");
             drivers.Clear();
+            if (readerFrames > 0)
+                Debug.Log($"[PhysicsAb] reader texture: foreign draws on {readerForeign} of {readerFrames} reads{(Portrait ? " with the portrait stand-in" : "")} ({readerForeignNote ?? "none"})");
             foreach (var dp in dentParts?.Where(x => x.readerNote != null) ?? Enumerable.Empty<DentPart>())
                 Debug.Log($"[PhysicsAb] reader {dp.name}: off the exact squash by {dp.readerWorst:0.0000} at most ({dp.readerNote})");
             squashRoot = null; squashAnimator = null; squashController = null;

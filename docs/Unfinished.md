@@ -1256,6 +1256,17 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     Also suspected: only the lower skin bone is pinned, so the squash slides each part's base
     14-15 cm instead of shaping it about its joint; one editor render (scale b set by hand)
     decides it before changing anything.
+  - Diagnostic results in game (2026-10-11): every readable cube showed all checks green, the
+    distance mid grey and the value at rest, so the reader works when it runs. The failure is
+    view-dependent, not distance: with the client's Self Portrait on, some views turn the readout
+    all black (no blue, no checks, no blink, so something opaque covered the whole texture after
+    the clear) while one part swells, which is b's widening reading the opaque alpha. Turning Self
+    Portrait off changes it. Self Portrait is a plain camera half a metre in front of the head,
+    turned back at it, clear colour transparent black, depth texture on. Fix 1 done: the value is
+    off alpha, pixel (0,0) a and (1,0) b, r flattening and g widening, filling the top and bottom
+    rows so a flipped target still reads; diagnostic cells moved to the middle rows. The probe
+    gains `-abPortrait` (a Self Portrait stand-in swept 90 degrees either side) and counts reads
+    with any alpha as foreign draws. Not yet run: the project was open in the GUI.
   - Target architecture (design study 2026-10-11, all costs ASSUMED until measured): the whole
     Marshmallow set, zero sync. No always-on camera: a CVRRenderController running a
     CVRMaterialDataProvider (bone matrices) into a self-feedback CVRBlitter computes pair
@@ -1270,7 +1281,7 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     on remote copies in stable (in-game test), and a replacement shader must draw every body
     shader at its skinned pose (batch probe). Gravity sag stays with MagicaCloth2.
   Open: remote copies (the Cameras content filter defaults to never blocked, so not that),
-  the middle-distance stop (diagnostic build), the measurement probe (camera cost, controller
+  what blacks out the texture with Self Portrait on (probe `-abPortrait`), the measurement probe (camera cost, controller
   cost, readback latency, replacement universality), then the staged build above, tuning, and
   the converter (add-on only).
 ## MagicaCloth2 settings: measured against the originals and fixed, 2026-10-06. ON DEV, not in game

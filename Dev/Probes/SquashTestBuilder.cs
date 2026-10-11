@@ -310,10 +310,11 @@ namespace AvatarBridge.Regression
         // The squash with nothing synced. A camera on a's aim renders one quad on b's follow into a
         // 4x4 linear texture; the quad's shader turns the camera's distance into both parts' along
         // and across, and a texture parser writes them into the scale nodes. Every client runs it on
-        // its own copy, so each viewer's squash follows the cloth that viewer sees. Channels: r a's
-        // flattening, g a's widening, b and a the same for b, each 0..1 over its range. The parser
-        // reads 8 bits, a step of 0.0016 in scale. Rest is black, so anything else that draws over
-        // the pixel black (in game something did) reads as no squash rather than a flat one.
+        // its own copy, so each viewer's squash follows the cloth that viewer sees. Pixel (0,0) is a,
+        // (1,0) is b: r flattening, g widening, each 0..1 over its range. The parser reads 8 bits, a
+        // step of 0.0016 in scale. Every value is 0 at rest and alpha carries none: in game the
+        // texture went opaque black, and the client's no-data colour is opaque black too, so a lost
+        // frame has to read as rest. With b's widening on alpha it swelled b to the full.
         public static readonly Color Rest = new Color(0f, 0f, 0f, 0f);
         // Checked by the shader, so only the reader camera draws the quad. The quad draws in the
         // last queue there is: anything else in the camera's box draws into the texture too, and
@@ -367,22 +368,22 @@ namespace AvatarBridge.Regression
 
             var parser = camera.gameObject.AddComponent<CVRTexturePropertyParser>();
             parser.texture = texture;
-            foreach (var (scale, along, across, reach) in new[]
-                { (scaleA, Channel.r, Channel.g, reachA), (scaleB, Channel.b, Channel.a, reachB) })
+            foreach (var (scale, x, reach) in new[]
+                { (scaleA, 0, reachA), (scaleB, 1, reachB) })
             {
-                parser.tasks.Add(Task(scale, "localScale", 0, across, 1f, Fullest));
-                parser.tasks.Add(Task(scale, "localScale", 1, across, 1f, Fullest));
-                parser.tasks.Add(Task(scale, "localScale", 2, along, 1f, flattest));
+                parser.tasks.Add(Task(scale, x, "localScale", 0, Channel.g, 1f, Fullest));
+                parser.tasks.Add(Task(scale, x, "localScale", 1, Channel.g, 1f, Fullest));
+                parser.tasks.Add(Task(scale, x, "localScale", 2, Channel.r, 1f, flattest));
                 // The facing side back by what it flattened, the far side staying.
-                parser.tasks.Add(Task(scale, "localPosition", 2, along, 0f, -reach * (1f - flattest) / scale.parent.lossyScale.x));
+                parser.tasks.Add(Task(scale, x, "localPosition", 2, Channel.r, 0f, -reach * (1f - flattest) / scale.parent.lossyScale.x));
             }
             return parser;
         }
 
-        static CVRTexturePropertyParserTask Task(Transform target, string property, int index, Channel channel, float min, float max) =>
+        static CVRTexturePropertyParserTask Task(Transform target, int x, string property, int index, Channel channel, float min, float max) =>
             new CVRTexturePropertyParserTask
             {
-                channel = channel, minValue = min, maxValue = max,
+                x = x, channel = channel, minValue = min, maxValue = max,
                 target = target.gameObject, component = target,
                 propertyName = property, typeIndex = 4, targetIndex = index,
             };
@@ -477,28 +478,22 @@ namespace AvatarBridge.Regression
                 if (_Diagnostic > 0.5) o.pos.y *= _ProjectionParams.x;
                 o.uv = uv;
                 o.checks = float4(ortho, near, facing, reader);
-                o.raw = float4(unity_OrthoParams.w, 0.5 * _ProjectionParams.y / _Near, dot(to, forward) / max(length(to), 1e-6), 0.5 * dist / max(_Start, 1e-6));
+                o.raw = float4(0, 0.5 * _ProjectionParams.y / _Near, dot(to, forward) / max(length(to), 1e-6), 0.5 * dist / max(_Start, 1e-6));
                 return o;
             }
 
-            // Diagnostic cells, column 0 and row 0 left to the squash so the parser's pixel (0,0)
-            // still reads it. Top row: orthographic, near plane, facing; green passes, red fails.
-            // Middle row: a cell blinking once a second (the camera is rendering), all checks, and
-            // the distance in grey (mid grey at the start of the press). Bottom row in grey: the
-            // ortho flag, the near plane (mid grey when exact) and the facing cosine.
+            // The squash fills the top and bottom rows, a's in even columns and b's in odd, so the
+            // parser's pixels read it whichever way up the target is. Diagnostic cells in the middle
+            // rows. Checks: orthographic, near plane, facing, all; green passes, red fails. Greys: a
+            // cell blinking once a second (the camera is rendering), the near plane (mid grey when
+            // exact), the facing cosine, the distance (mid grey at the start of the press).
             float4 frag(v2f i) : SV_Target
             {
                 int2 cell = (int2)floor(i.uv * 4);
-                if (_Diagnostic < 0.5 || cell.x == 0 || cell.y == 0) return i.value;
-                float4 good = float4(0, 1, 0, 1), bad = float4(1, 0, 0, 1);
-                if (cell.y == 3) return i.checks[cell.x - 1] > 0.5 ? good : bad;
-                if (cell.y == 2)
-                {
-                    if (cell.x == 1) return frac(_Time.y) < 0.5 ? float4(1, 1, 1, 1) : float4(0, 0, 0, 1);
-                    if (cell.x == 2) return i.checks.w > 0.5 ? good : bad;
-                    return float4(saturate(i.raw.www), 1);
-                }
-                return float4(saturate(i.raw[cell.x - 1].xxx), 1);
+                if (_Diagnostic < 0.5 || cell.y == 0 || cell.y == 3) return float4(cell.x % 2 ? i.value.zw : i.value.xy, 0, 0);
+                if (cell.y == 2) return i.checks[cell.x] > 0.5 ? float4(0, 1, 0, 1) : float4(1, 0, 0, 1);
+                if (cell.x == 0) return frac(_Time.y) < 0.5 ? float4(1, 1, 1, 1) : float4(0, 0, 0, 1);
+                return float4(saturate(i.raw[cell.x].xxx), 1);
             }
             ENDCG
         }
