@@ -1209,8 +1209,13 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     only the client's box read is emulated. Matches the C#-driven squash on film (flattest 0.85
     against 0.86). The press comes from rest reaches, so it reads up to 9 cm off the press
     measured from the skin each frame; not visible on film.
-  Open: test in game (one synced float per pair, the trigger's own-avatar pointer), tuning
-  (overfill, flattest, spring-back), then the converter (add-on only).
+  - In-game test rig: `Dev/Probes/SquashTestBuilder.cs` (menu Tools/YAPS/Dev/Add the squash
+    test, or batch) puts the driven squash on a converted avatar, measured at rest in edit mode,
+    layers written to every controller `YapsOwner.Targets` returns. Pairs are found by name:
+    skinned bones naming a soft part AND a side, so a shared root both parts hang from is skipped.
+  Open: the in-game result (does the trigger fire on the wearer's own pointer, does
+  SetFromPosition read as decompiled, does the float reach remote copies), tuning (overfill,
+  flattest, spring-back), then the converter (add-on only).
 ## MagicaCloth2 settings: measured against the originals and fixed, 2026-10-06. ON DEV, not in game
 
 **Measured.** `Dev/Probes/PhysicsAbProbe.cs` converts a scene with a new user's defaults, keeps the
