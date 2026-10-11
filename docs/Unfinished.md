@@ -1277,7 +1277,7 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     shader cannot produce. So something draws over the texture after the quad. Queue 5000 and
     ZTest Always did not guarantee last: transparent draws sort by sorting layer and order in
     layer before queue, and the camera's mask was Everything, so UI crossing the reader's box
-    lands on top. Fix 2 done, NOT verified in game: the quad's order in layer is the maximum, the
+    lands on top. Fix 2 done, verified in game 2026-10-11 (Self Portrait no longer swells, the far angle reads): the quad's order in layer is the maximum, the
     camera renders the player layers only (8 local, 10 remote), and diagnostic value cells carry
     blue so a foreign write shows as pure green. Unproven which object it was. Not covered: a
     later sorting layer, or a command buffer drawing after the camera.  - Target architecture (design study 2026-10-11, all costs ASSUMED until measured): the whole
@@ -1294,7 +1294,7 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     on remote copies in stable (in-game test), and a replacement shader must draw every body
     shader at its skinned pose (batch probe). Gravity sag stays with MagicaCloth2.
   Open: remote copies (the Cameras content filter defaults to never blocked, so not that),
-  fix 2 (sorting order and player-layer mask) in game with Self Portrait on, the measurement probe (camera cost, controller
+  the measurement probe (camera cost, controller
   cost, readback latency, replacement universality), then the staged build above, tuning, and
   the converter (add-on only).
 ## MagicaCloth2 settings: measured against the originals and fixed, 2026-10-06. ON DEV, not in game
