@@ -1235,7 +1235,18 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     by 2.5 times it, and the quad draws in the last queue (Overlay+1000).
     Joe could also turn the whole cube black. Black read as fully flat and no wider, a visible
     glitch, so the encoding is inverted: black is rest, and whatever draws over the pixel black
-    now reads as no squash. Not yet re-run in the probe (the editor was open).
+    now reads as no squash. Re-run in the probe: within 0.0017 of the exact squash on all four
+    parts.
+  - Camera-dependent failure in game: the squash works in first person and in a far third-person
+    camera, and stops (readout black, so the reader saw no quad) at a middle third-person
+    distance; the mirror follows the third-person state, and remote viewers saw it change with
+    distance. The client switches the local avatar's head-hidden clone per camera
+    (`AvatarClone`, `PlayerCloneDistanceDisabler`: within 0.8 m times the play-space scale of
+    the head), a suspect but not shown: the head stays visible in both states, and MeshRenderers
+    like the quad are not cloned. A diagnostic build ("Add the squash test (diagnostic)") draws
+    the quad for any 4x4 target and fills the readout with the reader's checks (orthographic,
+    near plane, facing, a blink showing the camera renders, the distance), the clear colour
+    blue; the squash still reads pixel (0,0).
   Open: remote copies (filtered by the per-viewer Cameras setting?), what the extra cameras
   cost, whether anything still draws over the read pixel; then touch and squash against the
   body (depth cameras on the same parser), gravity sag, tuning (overfill, flattest,

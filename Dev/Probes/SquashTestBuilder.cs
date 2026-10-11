@@ -51,6 +51,17 @@ namespace AvatarBridge.Regression
             public float reach, volume;
         }
 
+        // The diagnostic build draws the quad for any 4x4 target and spends pixels on the reader's
+        // checks, so a failed check shows on the readout instead of reading as rest.
+        static bool Diagnostic;
+
+        [MenuItem("Tools/YAPS/Dev/Add the squash test (diagnostic)")]
+        static void DiagnosticMenu()
+        {
+            Diagnostic = true;
+            try { Menu(); } finally { Diagnostic = false; }
+        }
+
         [MenuItem("Tools/YAPS/Dev/Add the squash test")]
         static void Menu()
         {
@@ -322,6 +333,7 @@ namespace AvatarBridge.Regression
             material.SetFloat("_Overfill", overfill);
             material.SetFloat("_Fullest", Fullest);
             material.SetFloat("_Near", ReaderNear);
+            material.SetFloat("_Diagnostic", Diagnostic ? 1f : 0f);
 
             var target = Child(followB, "squash quad").gameObject;
             target.AddComponent<MeshFilter>().sharedMesh = quad;
@@ -342,7 +354,8 @@ namespace AvatarBridge.Regression
             camera.nearClipPlane = ReaderNear;
             camera.farClipPlane = 2.5f * start;
             camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = Rest;
+            // Blue in the diagnostic: a frame the quad missed entirely, told apart from rest.
+            camera.backgroundColor = Diagnostic ? Color.blue : Rest;
             // Vertex lit renders no shadow maps for it, and the body's lit passes skip it.
             camera.renderingPath = RenderingPath.VertexLit;
             camera.useOcclusionCulling = false;
@@ -414,6 +427,7 @@ namespace AvatarBridge.Regression
         _Overfill (""Overfill"", Float) = 2.33
         _Fullest (""Fullest"", Float) = 1.5
         _Near (""Reader near plane"", Float) = 0
+        _Diagnostic (""Diagnostic"", Float) = 0
     }
     SubShader
     {
@@ -425,8 +439,15 @@ namespace AvatarBridge.Regression
             #pragma vertex vert
             #pragma fragment frag
             #include ""UnityCG.cginc""
-            float _Start, _ReachA, _ReachB, _Share, _Flattest, _Overfill, _Fullest, _Near;
-            struct v2f { float4 pos : SV_POSITION; nointerpolation float4 value : TEXCOORD0; };
+            float _Start, _ReachA, _ReachB, _Share, _Flattest, _Overfill, _Fullest, _Near, _Diagnostic;
+            struct v2f
+            {
+                float4 pos : SV_POSITION;
+                nointerpolation float4 value : TEXCOORD0;
+                float2 uv : TEXCOORD1;
+                nointerpolation float4 checks : TEXCOORD2;
+                nointerpolation float4 raw : TEXCOORD3;
+            };
 
             // Flattening and widening, each 0..1 over its range, 0 at rest.
             float2 Squash(float pushed, float reach)
@@ -443,14 +464,42 @@ namespace AvatarBridge.Regression
                 float3 forward = -normalize(UNITY_MATRIX_V[2].xyz);
                 // Only the reader camera: orthographic, its near plane, facing this quad within what
                 // a frame of aim lag allows. A main camera, a mirror or another pair's draws nothing.
-                bool reader = unity_OrthoParams.w > 0.5 && abs(_ProjectionParams.y - _Near) < 1e-6 && dot(to, forward) >= 0.9 * length(to);
-                float press = clamp(_Start - length(to) / length(unity_ObjectToWorld._m00_m10_m20), 0, _Start);
-                o.value = float4(Squash(press * _Share, _ReachA), Squash(press * (1 - _Share), _ReachB));
-                o.pos = reader ? float4(uv * 2 - 1, 0.5, 1) : float4(2, 2, 2, 1);
+                bool ortho = unity_OrthoParams.w > 0.5;
+                bool near = abs(_ProjectionParams.y - _Near) < 1e-6;
+                bool facing = dot(to, forward) >= 0.9 * length(to);
+                bool reader = ortho && near && facing;
+                float dist = length(to) / length(unity_ObjectToWorld._m00_m10_m20);
+                float press = clamp(_Start - dist, 0, _Start);
+                o.value = reader ? float4(Squash(press * _Share, _ReachA), Squash(press * (1 - _Share), _ReachB)) : 0;
+                bool draw = _Diagnostic > 0.5 ? all(_ScreenParams.xy == 4) : reader;
+                o.pos = draw ? float4(uv * 2 - 1, 0.5, 1) : float4(2, 2, 2, 1);
+                // Upright on the readout, the way a projected image would land.
+                if (_Diagnostic > 0.5) o.pos.y *= _ProjectionParams.x;
+                o.uv = uv;
+                o.checks = float4(ortho, near, facing, reader);
+                o.raw = float4(unity_OrthoParams.w, 0.5 * _ProjectionParams.y / _Near, dot(to, forward) / max(length(to), 1e-6), 0.5 * dist / max(_Start, 1e-6));
                 return o;
             }
 
-            float4 frag(v2f i) : SV_Target { return i.value; }
+            // Diagnostic cells, column 0 and row 0 left to the squash so the parser's pixel (0,0)
+            // still reads it. Top row: orthographic, near plane, facing; green passes, red fails.
+            // Middle row: a cell blinking once a second (the camera is rendering), all checks, and
+            // the distance in grey (mid grey at the start of the press). Bottom row in grey: the
+            // ortho flag, the near plane (mid grey when exact) and the facing cosine.
+            float4 frag(v2f i) : SV_Target
+            {
+                int2 cell = (int2)floor(i.uv * 4);
+                if (_Diagnostic < 0.5 || cell.x == 0 || cell.y == 0) return i.value;
+                float4 good = float4(0, 1, 0, 1), bad = float4(1, 0, 0, 1);
+                if (cell.y == 3) return i.checks[cell.x - 1] > 0.5 ? good : bad;
+                if (cell.y == 2)
+                {
+                    if (cell.x == 1) return frac(_Time.y) < 0.5 ? float4(1, 1, 1, 1) : float4(0, 0, 0, 1);
+                    if (cell.x == 2) return i.checks.w > 0.5 ? good : bad;
+                    return float4(saturate(i.raw.www), 1);
+                }
+                return float4(saturate(i.raw[cell.x - 1].xxx), 1);
+            }
             ENDCG
         }
     }
@@ -465,7 +514,7 @@ namespace AvatarBridge.Regression
             cube.name = "squash readout";
             cube.SetParent(squash, false);
             cube.position = 0.5f * (a.centre + b.centre) + root.forward * 0.4f;
-            cube.localScale = Vector3.one * 0.04f / squash.lossyScale.x;
+            cube.localScale = Vector3.one * (Diagnostic ? 0.1f : 0.04f) / squash.lossyScale.x;
             cube.GetComponent<MeshRenderer>().sharedMaterial = material;
         }
     }

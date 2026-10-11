@@ -1310,7 +1310,7 @@ namespace AvatarBridge.Regression
             a.reader = SquashTestBuilder.Reader(a.aim, b.follow, a.scale, b.scale, a.restReach, b.restReach, a.readerStart, share,
                 Flattest, Overfill, material, SquashTestBuilder.ReaderTexture(), SquashTestBuilder.ReaderQuad());
             a.readerNote = b.readerNote = "never off";
-            Debug.Log($"[PhysicsAb] reader {a.name}/{b.name}: start {a.readerStart * 100f:0.0} cm, {a.reader.tasks.Count} tasks, shader {(material.shader.isSupported ? "supported" : "NOT supported")}");
+            Debug.Log($"[PhysicsAb] reader {a.name}/{b.name}: start {a.readerStart * 100f:0.0} cm, {a.reader.tasks.Count} tasks, shader {(ShaderUtil.ShaderHasError(material.shader) ? "HAS ERRORS" : material.shader.isSupported ? "supported" : "NOT supported")}");
         }
 
         static void ReadReader(DentPart a, DentPart b, float share)
