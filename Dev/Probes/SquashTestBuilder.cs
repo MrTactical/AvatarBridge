@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using ABI.CCK.Components;
+using ABI.CCK.Scripts;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEditor.SceneManagement;
