@@ -333,11 +333,11 @@ namespace AvatarBridge.Regression
         // The squash with nothing synced. A camera on a's aim renders one quad on b's follow into a
         // 4x4 linear texture; the quad's shader turns the camera's distance into both parts' along
         // and across, and a texture parser writes them into the scale nodes. Every client runs it on
-        // its own copy, so each viewer's squash follows the cloth that viewer sees. Pixel (0,0) is a,
-        // (1,0) is b: r flattening, g widening, each 0..1 over its range. The parser reads 8 bits, a
-        // step of 0.0016 in scale. Every value is 0 at rest and alpha carries none: in game the
-        // texture went opaque black, and the client's no-data colour is opaque black too, so a lost
-        // frame has to read as rest. With b's widening on alpha it swelled b to the full.
+        // its own copy, so each viewer's squash follows the cloth that viewer sees. Columns 0 to 3 are
+        // a's flattening, a's widening, b's flattening, b's widening, each 0..1 over its range, all
+        // on g. The parser reads 8 bits, a step of 0.0016 in scale. Only g reads 0 from every no-data
+        // case: the client's no-data colour is opaque black, which swelled b while b sat on alpha,
+        // and the error shader's magenta has r and b full, which flattened a while flattening sat on r.
         public static readonly Color Rest = new Color(0f, 0f, 0f, 0f);
         // Checked by the shader, so only the reader camera draws the quad. The quad draws in the
         // last queue there is: anything else in the camera's box draws into the texture too, and
@@ -397,13 +397,13 @@ namespace AvatarBridge.Regression
             var parser = camera.gameObject.AddComponent<CVRTexturePropertyParser>();
             parser.texture = texture;
             foreach (var (scale, x, reach) in new[]
-                { (scaleA, 0, reachA), (scaleB, 1, reachB) })
+                { (scaleA, 0, reachA), (scaleB, 2, reachB) })
             {
-                parser.tasks.Add(Task(scale, x, "localScale", 0, Channel.g, 1f, Fullest));
-                parser.tasks.Add(Task(scale, x, "localScale", 1, Channel.g, 1f, Fullest));
-                parser.tasks.Add(Task(scale, x, "localScale", 2, Channel.r, 1f, flattest));
+                parser.tasks.Add(Task(scale, x + 1, "localScale", 0, Channel.g, 1f, Fullest));
+                parser.tasks.Add(Task(scale, x + 1, "localScale", 1, Channel.g, 1f, Fullest));
+                parser.tasks.Add(Task(scale, x, "localScale", 2, Channel.g, 1f, flattest));
                 // The facing side back by what it flattened, the far side staying.
-                parser.tasks.Add(Task(scale, x, "localPosition", 2, Channel.r, 0f, -reach * (1f - flattest) / scale.parent.lossyScale.x));
+                parser.tasks.Add(Task(scale, x, "localPosition", 2, Channel.g, 0f, -reach * (1f - flattest) / scale.parent.lossyScale.x));
             }
             return parser;
         }
@@ -510,16 +510,15 @@ namespace AvatarBridge.Regression
                 return o;
             }
 
-            // The squash fills the top and bottom rows, a's in even columns and b's in odd, so the
-            // parser's pixels read it whichever way up the target is, blue in the diagnostic so a foreign
-            // write shows. Diagnostic cells in the middle
-            // rows. Checks: orthographic, near plane, facing, all; green passes, red fails. Greys: a
+            // The squash fills the top and bottom rows, one value per column on g, so the parser's
+            // pixels read it whichever way up the target is; blue in the diagnostic so a foreign write
+            // shows. Diagnostic cells in the middle rows. Checks: orthographic, near plane, facing, all; green passes, red fails. Greys: a
             // cell blinking once a second (the camera is rendering), the near plane (mid grey when
             // exact), the facing cosine, the distance (mid grey at the start of the press).
             float4 frag(v2f i) : SV_Target
             {
                 int2 cell = (int2)floor(i.uv * 4);
-                if (_Diagnostic < 0.5 || cell.y == 0 || cell.y == 3) return float4(cell.x % 2 ? i.value.zw : i.value.xy, _Diagnostic, 0);
+                if (_Diagnostic < 0.5 || cell.y == 0 || cell.y == 3) return float4(0, i.value[cell.x], _Diagnostic, 0);
                 if (cell.y == 2) return i.checks[cell.x] > 0.5 ? float4(0, 1, 0, 1) : float4(1, 0, 0, 1);
                 if (cell.x == 0) return frac(_Time.y) < 0.5 ? float4(1, 1, 1, 1) : float4(0, 0, 0, 1);
                 return float4(saturate(i.raw[cell.x].xxx), 1);

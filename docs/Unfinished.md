@@ -1302,8 +1302,37 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     flattening (r is 1), white fallbacks read full on both, Standard 0.04. So r is not a safe channel:
     only g survives magenta, and nothing survives white. The reader in game still puts flattening on
     r. B12 FAILS: a LateUpdate blit sees unity_DeltaTime as a constant 0.005, while a camera draw sees
-    the real dt (from about 5 ms up). A blitter spring cannot take dt from the shader; next test is
-    whether _Time advances in a blit, else a fixed dt. Not yet run: B1, B5-B7, B9-B11, B13.
+    the real dt (from about 5 ms up). A blitter spring cannot take dt from the shader.
+  - Measurement probe, second slice (same day):
+    B1 PASS: the nearness replacement draws Standard, Unlit, transparent, cutout, locked Poiyomi
+    8.1 and unlocked Poiyomi Pro at the exact depth, and a skinned mesh at its posed depth, not the
+    bind pose. No lilToon material in the project, so lilToon is untested. B10: a vertex-displacing
+    shader draws undisplaced (A7 holds), lines and TextMesh draw at their real depth, the emitted
+    particle did not draw at all (probably the probe, not settled).
+    B4 setter 0.05 us per set through object (gate 1 us). B7 PASS: the sandwich at rest is off by
+    0.0001 mm at most over 20000 byte pairs.
+    B9 PASS once the clear is compensated: the project is linear and a camera's clear colour is
+    gamma, so (1/255, 0, 0, 0) as written clears to 0 and the handshake floor vanishes. Written as
+    LinearToGammaSpace(1.5/255) (17.6/255) it clears to exactly 1/255. Each camera's clear stays in
+    its own rect, and a camera left off reads 0 in its rect the next frame.
+    B5 FAILS: 600 Rotation and Position constraints on 20 rigs cost 2.2 ms a frame in
+    PreLateUpdate.ConstraintManagerUpdate (25 us with them disabled); 400 would be about 1.5 ms,
+    over the 1 ms redesign line even at half for the editor. The Far state disabling them is not
+    optional, and the skin chain needs a cheaper form before 20 wearers are realistic.
+    B6: the plain child follow and the skin under it have no error at the end of the frame with
+    the chest moved 10 cm a frame after every other LateUpdate (gate passes). The ParentConstraint
+    follow showed no lag either, against the one-frame lag the design expected, so constraints run
+    again somewhere after LateUpdate; measured at end of frame, not at render.
+    B11: off screen under CullUpdateTransforms (and CullCompletely) neither a GameObject-active
+    nor a Behaviour-enabled curve applies; AlwaysAnimate applies both. So A9 is false: on remote
+    copies a toggle written while the wearer is off screen waits until they are seen.
+    B12 FAILS outright: in a LateUpdate blit _Time is 0 and unity_DeltaTime the default 0.005, even
+    right after a camera rendered; a camera's own draw sees both. Time for the spring has to come
+    from elsewhere: a looping linear clip on the Flags transform the provider already reads would
+    give a clock (one frame old), else a fixed dt.
+    The reader in game moved off r: one value per column on g (a flattening, a widening, b
+    flattening, b widening), so the error shader's magenta reads rest. NOT yet verified in game.
+    Not run: B13 (the bone-table fallback is only designed if the controller fails G1).
   Open: remote copies (the Cameras content filter defaults to never blocked, so not that),
   the measurement probe (camera cost, controller
   cost, readback latency, replacement universality), then the staged build above, tuning, and
