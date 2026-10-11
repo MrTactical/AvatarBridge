@@ -109,14 +109,20 @@ namespace AvatarBridge
         _YAPS_DentPower (""YAPS soft-body dent"", Range(0,1)) = 0
         _YAPS_DentSpill (""YAPS squish spill, in press depths"", Range(0,2)) = 1
         [NoScaleOffset] _YAPS_DentOwn (""YAPS dent part shares, per vertex"", 2D) = ""black"" {}
-        _YAPS_SquashReach (""YAPS squash reach per part, follow units"", Vector) = (0,0,0,0)
+        _YAPS_SquashReach (""YAPS squash reach per part toward its partner, follow units"", Vector) = (0,0,0,0)
+        _YAPS_SquashAway (""YAPS squash reach per part away from its partner"", Vector) = (0,0,0,0)
+        _YAPS_SquashOut (""YAPS squash reach per part out of the body"", Vector) = (0,0,0,0)
+        _YAPS_SquashIn (""YAPS squash reach per part into the body"", Vector) = (0,0,0,0)
+        _YAPS_SquashSideA (""YAPS squash reach per part across, one way"", Vector) = (0,0,0,0)
+        _YAPS_SquashSideB (""YAPS squash reach per part across, the other way"", Vector) = (0,0,0,0)
         _YAPS_SquashPair (""YAPS squash pairs: start, first share; start, first share"", Vector) = (0,0.5,0,0.5)
-        _YAPS_SquashShape (""YAPS squash: flattest, overfill, fullest, contact"", Vector) = (0.6,2.33,1.5,1)
+        _YAPS_SquashShape (""YAPS squash: flattest, volume kept, widest, contact"", Vector) = (0.6,1,1.5,1)
         _YAPS_SquashPulse (""YAPS squash test pulse"", Float) = 0
-        _YAPS_SquashPush (""YAPS squash: push gain, push ignored below, arm edge, arms on"", Vector) = (1,0.03,0.25,1)
+        _YAPS_SquashPush (""YAPS squash: push gain, push ignored below, arm edge, arms on"", Vector) = (0,0.03,0.25,1)
         _YAPS_SquashLimbL (""YAPS squash left arm radii: upper, lower, hand"", Vector) = (0.2,0.18,0.25,0)
         _YAPS_SquashLimbR (""YAPS squash right arm radii: upper, lower, hand"", Vector) = (0.2,0.18,0.25,0)
         _YAPS_SquashHands (""YAPS squash hands: own gain, others radius, others gain, skin stride"", Vector) = (1,0.05,1,0)
+        _YAPS_SquashTune (""YAPS squash: lying-back weight, strength, bend give"", Vector) = (0.25,1,0.35,0)
 ";
 
         // The name the patch of `original` would carry if it were made now.

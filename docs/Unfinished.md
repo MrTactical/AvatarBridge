@@ -1473,13 +1473,46 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     WORKS the same day (Joe): the diagnostic build pulsed in editor Play mode, then in game on
     the wearer. Not yet read off it: whether both pairs pulsed in game (the skinned buffer) or
     the first alone (the matrix fallback, which carries no cloth).
-    Test: which pairs pulse in game; then the plain build for the own hands in VR and a second
-    player's hand for the globals.
-    Next: other players' hands from the globals, sag.
-    Open: an unpatchable shader over a part (fall back to the bone stack), shadow passes using
-    Unity's own caster, the globals in stable, the probe moving parts by hand instead of through
-    the cloth, cloth settling sideways off rest reading as a press.
-  Open: remote copies (the Cameras content filter defaults to never blocked, so not that),
+    Viewers with the Cameras content filter off see no squash at all (decompile, `AssetFilter`):
+    the filter destroys every Camera, CVRBlitter, CVRRenderController, CVRMaterialDataProvider,
+    Projector, texture parser and custom render texture updater on the avatar, so the shader gets
+    no slots and reads rest. No way around it inside the whitelist; the bone stack would be the
+    only route that survives it.
+    Joe: "the squish is extreme in game". Causes, from the shader: the diagnostic pulse; the
+    overfill (across = 1 + 2.33(1 - k), capped 1.5) GREW a squashed part by 27 to 68% of its
+    volume; the bone push read every swing of the cloth as a press; the reach was one radius, so
+    a hand at the side met a ball as big as the part's length. Refined 2026-10-11 (Joe: bend
+    before it squashes, no part may get bigger, check the volume), NOT YET IN EDITOR OR GAME:
+    - Volume kept: across = k^(-1/2), so flattening times widening squared is 1. A Python mirror
+      of the shader (closed meshes, signed volume) reads 1.000 on every case (side hands 2, 6
+      and 12 cm in, front 8 cm, two opposite hands, lying back, standing) against 1.04 to 1.68
+      for the old shape, and 0.998 for the pair with its contact plane. `_YAPS_SquashShape.y` is
+      now the share of volume kept (1 all).
+    - Ellipsoid reach: six reaches per part (toward the partner, away, out of the body, into it,
+      either way across), measured at rest as the 98th percentile of the part's skin, in a frame
+      from slots no cloth moves: the rests and a new back node per pair (slots 16 and 17, on the
+      rest bone behind the pair's middle, level when standing). A part with any reach missing
+      falls back to the one reach.
+    - Squeeze, not cancel: presses sum as S = sum v and M = sum v v^T / |v|; the squash runs
+      along M's main axis (power iteration from S), each side moving in by its own press, so two
+      opposite hands squeeze.
+    - Bend first: hand and arm presses across the body swing the part away about where it meets
+      the body (a shear, so volume stays), giving up to `Tune.z` of the reach out and saturating;
+      what the bend took comes off the squash.
+    - Sag: lying back presses the part toward the body by `Tune.x` of its reach out, faded in from
+      30% tilt. Hanging stretch is MagicaCloth2's.
+    - Bone push off by default (`_YAPS_SquashPush.x` 0), `Tune.y` scales every press.
+    - A layer whose shader cannot be patched, over 5% of a part's skin: the pair holds still
+      (its reaches baked 0) and the build log names the layer, since squashing the skin under a
+      layer that cannot follow pushes the skin through it.
+    Test: the plain build in editor Play mode (hands in, lying back), then in game; which pairs
+    pulse in the diagnostic build is still unread.
+    Next: other players' hands from the globals, measured against the soft-body original if Joe
+    means that by "look at actual squish".
+    Open: shadow passes using Unity's own caster (and shaders with a Fallback only) cast the
+    shadow unsquashed; a generated caster pass that calls the patched deform is the fix. The
+    globals in stable; the probe moving parts by hand instead of through the cloth.
+  Open: remote copies,
   the measurement probe (camera cost, controller
   cost, readback latency, replacement universality), then the staged build above, tuning, and
   the converter (add-on only).

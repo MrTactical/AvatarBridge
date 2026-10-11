@@ -563,7 +563,7 @@ namespace AvatarBridge.Regression
         // What the in-game test answers: does the provider run on remote copies, do the client's
         // materials take what it writes, and does the squash look right. A shader the patcher
         // refuses is reported and its layer left as it was.
-        const string ShaderHostName = "YAPS squash (shader)", FollowName = "YAPS squash follow", RestName = "YAPS squash rest";
+        const string ShaderHostName = "YAPS squash (shader)", FollowName = "YAPS squash follow", RestName = "YAPS squash rest", BackName = "YAPS squash back";
 
         [MenuItem("Tools/YAPS/Dev/Add the squash test (shader, diagnostic)")]
         static void ShaderDiagnosticMenu()
@@ -589,8 +589,16 @@ namespace AvatarBridge.Regression
 
             var parts = new List<Part>();
             var rests = new List<Transform>();
+            var backs = new List<Transform>();
             var log = new List<string>();
             var reach = Vector4.zero;
+            // The other five reaches of each part, in the frame the shader builds: away from the
+            // partner, out of the body, into it, and either way along cross(toward, out).
+            var away = Vector4.zero;
+            var outward = Vector4.zero;
+            var inward = Vector4.zero;
+            var sideA = Vector4.zero;
+            var sideB = Vector4.zero;
             var pair = new Vector4(0f, 0.5f, 0f, 0.5f);
             // The shader has room for two pairs.
             foreach (var bones in found.Take(2))
@@ -604,6 +612,17 @@ namespace AvatarBridge.Regression
                 float start = Mathf.Min(Vector3.Distance(a.centre, b.centre), a.reach + b.reach);
                 float share = a.volume + b.volume > 0f ? a.volume / (a.volume + b.volume) : 0.5f;
                 int i = parts.Count;
+                // Out of the body, level: from the bone above the pair to the pair's middle,
+                // with the up and down and the line between them taken out. The shader reads
+                // it as the pair's middle minus a node this far behind it on that bone.
+                var restBone = a.root.parent != null ? a.root.parent : a.root;
+                var mid = 0.5f * (a.centre + b.centre);
+                var level = Vector3.ProjectOnPlane(Vector3.ProjectOnPlane(mid - restBone.position, Vector3.up), axis);
+                if (level.sqrMagnitude < 1e-6f) level = Vector3.ProjectOnPlane(Vector3.ProjectOnPlane(root.forward, Vector3.up), axis);
+                var o = level.normalized;
+                var back = Child(restBone, BackName);
+                back.position = mid - o * a.reach;
+                backs.Add(back);
                 foreach (var p in measured)
                 {
                     // On the bone the cloth moves most. The chain root is held still by the
@@ -616,12 +635,21 @@ namespace AvatarBridge.Regression
                     var rest = Child(p.root.parent != null ? p.root.parent : p.root, RestName);
                     rest.position = p.centre;
                     rests.Add(rest);
-                    reach[parts.Count] = p.reach / Unit(p.follow);
+                    float unit = Unit(p.follow);
+                    var toward = p == a ? axis : -axis;
+                    var u = Vector3.Cross(toward, o);
+                    reach[parts.Count] = p.reach / unit;
+                    away[parts.Count] = Reach(p, -toward) / unit;
+                    outward[parts.Count] = Reach(p, o) / unit;
+                    inward[parts.Count] = Reach(p, -o) / unit;
+                    sideA[parts.Count] = Reach(p, u) / unit;
+                    sideB[parts.Count] = Reach(p, -u) / unit;
                     parts.Add(p);
                 }
                 pair[i] = start / Unit(a.follow);
                 pair[i + 1] = share;
-                log.Add($"{a.root.name}/{b.root.name} on {a.follow.parent.name}/{b.follow.parent.name}: start {start * 100f:0.0} cm, reach {a.reach * 100f:0.0} + {b.reach * 100f:0.0}, share {share:0.00}");
+                log.Add($"{a.root.name}/{b.root.name} on {a.follow.parent.name}/{b.follow.parent.name}: start {start * 100f:0.0} cm, reach {a.reach * 100f:0.0} + {b.reach * 100f:0.0}, " +
+                        $"out {outward[i] * Unit(a.follow) * 100f:0.0}, in {inward[i] * Unit(a.follow) * 100f:0.0}, share {share:0.00}");
             }
             if (parts.Count == 0) return string.Join("; ", log);
 
@@ -645,7 +673,8 @@ namespace AvatarBridge.Regression
 
             var copies = new List<Material>();
             var patched = new Dictionary<Material, Shader>();
-            foreach (var (smr, own) in Shares(root, parts.Select(p => p.root).ToList(), avatar.name))
+            var still = new HashSet<int>();
+            foreach (var (smr, own, shares) in Shares(root, parts.Select(p => p.root).ToList(), avatar.name))
             {
                 var mats = smr.sharedMaterials;
                 for (int slot = 0; slot < mats.Length; slot++)
@@ -659,17 +688,37 @@ namespace AvatarBridge.Regression
                         // Unity's own shadow caster cannot be patched, so that shadow stays unsquashed.
                         else if (shadows > 0) log.Add($"\"{source.name}\" casts its shadow unsquashed");
                     }
-                    if (shader == null) continue;
+                    if (shader == null)
+                    {
+                        // A layer that cannot move over a part that does: the skin would come
+                        // through it, so the pair under it holds still instead.
+                        var sm = smr.sharedMesh;
+                        int sub = Mathf.Min(slot, sm.subMeshCount - 1);
+                        foreach (int v in sm.GetIndices(sub))
+                            for (int m = 0; m < 4; m++)
+                                if (v < shares.Length && shares[v][m] >= 0.05f && still.Add(m & ~1))
+                                    log.Add($"\"{source.name}\" on {smr.name} cannot follow, so {parts[m & ~1].root.name}/{parts[m | 1].root.name} does not squash");
+                        continue;
+                    }
                     var copy = new Material(source) { shader = shader };
                     copy.SetFloat("_YAPS_DentPower", 1f);
                     copy.SetTexture("_YAPS_DentOwn", own);
                     copy.SetVector("_YAPS_SquashReach", reach);
+                    copy.SetVector("_YAPS_SquashAway", away);
+                    copy.SetVector("_YAPS_SquashOut", outward);
+                    copy.SetVector("_YAPS_SquashIn", inward);
+                    copy.SetVector("_YAPS_SquashSideA", sideA);
+                    copy.SetVector("_YAPS_SquashSideB", sideB);
+                    // Lying-back weight, strength, bend give.
+                    copy.SetVector("_YAPS_SquashTune", new Vector4(0.25f, 1f, 0.35f, 0f));
                     copy.SetVector("_YAPS_SquashPair", pair);
-                    copy.SetVector("_YAPS_SquashShape", new Vector4(Flattest, Overfill, Fullest, 1f));
+                    // Volume kept whole: the overfill made a squashed part a third bigger.
+                    copy.SetVector("_YAPS_SquashShape", new Vector4(Flattest, 1f, Fullest, 1f));
                     // Diagnostic: the pair squeezes and lets go every few seconds with nobody
                     // moving it, which only happens if the provider is writing the follows.
                     copy.SetFloat("_YAPS_SquashPulse", Diagnostic ? 0.3f : 0f);
-                    copy.SetVector("_YAPS_SquashPush", new Vector4(1f, 0.03f, 0.25f, 1f));
+                    // Bone push off: every swing of the cloth read as a press.
+                    copy.SetVector("_YAPS_SquashPush", new Vector4(0f, 0.03f, 0.25f, 1f));
                     copy.SetVector("_YAPS_SquashLimbL", limbs[0]);
                     copy.SetVector("_YAPS_SquashLimbR", limbs[1]);
                     Asset(copy, $"{avatar.name} {smr.name} {slot}.mat");
@@ -680,6 +729,11 @@ namespace AvatarBridge.Regression
                 }
                 smr.sharedMaterials = mats;
             }
+            if (still.Count > 0)
+            {
+                foreach (int m in still) { reach[m] = 0f; reach[m + 1] = 0f; }
+                foreach (var copy in copies) copy.SetVector("_YAPS_SquashReach", reach);
+            }
 
             // Off the root: the client works out whose avatar it is from the parent up.
             var host = Child(root, ShaderHostName).gameObject;
@@ -689,9 +743,10 @@ namespace AvatarBridge.Regression
             // The slots yaps_dent.cginc reads; a node scaled to zero for each one with nothing in it.
             var empty = Child(host.transform, "empty");
             empty.localScale = Vector3.zero;
-            var slots = Enumerable.Repeat(empty, 16).ToArray();
+            var slots = Enumerable.Repeat(empty, 18).ToArray();
             for (int i = 0; i < parts.Count; i++) { slots[i] = parts[i].follow; slots[4 + i] = rests[i]; }
             for (int i = 0; i < 8; i++) slots[8 + i] = arms[i / 4][i % 4] ?? empty;
+            for (int i = 0; i < backs.Count; i++) slots[16 + i] = backs[i];
             provider.transforms = slots;
             provider.shaderPropertyName = "_YAPS_SquashFollow";
 
@@ -701,9 +756,9 @@ namespace AvatarBridge.Regression
             var skinBones = slots.Select(t => t == empty ? host.transform : t).ToArray();
             var mesh = new Mesh { name = "YAPS squash skin" };
             mesh.vertices = slots.Select(t => skin.transform.InverseTransformPoint(t.position)).ToArray();
-            mesh.boneWeights = Enumerable.Range(0, 16).Select(i => new BoneWeight { boneIndex0 = i, weight0 = 1f }).ToArray();
+            mesh.boneWeights = Enumerable.Range(0, slots.Length).Select(i => new BoneWeight { boneIndex0 = i, weight0 = 1f }).ToArray();
             mesh.bindposes = skinBones.Select(b => b.worldToLocalMatrix * skin.transform.localToWorldMatrix).ToArray();
-            mesh.triangles = Enumerable.Range(0, 48).Select(i => i / 3).ToArray();
+            mesh.triangles = Enumerable.Range(0, 3 * slots.Length).Select(i => i / 3).ToArray();
             Asset(mesh, $"{avatar.name} squash skin.asset");
             var blank = new Material(Shader.Find("Standard")) { name = "YAPS squash skin" };
             Asset(blank, $"{avatar.name} squash skin.mat");
@@ -773,7 +828,7 @@ namespace AvatarBridge.Regression
         // Each skinned renderer's share of every part per vertex, in r, g, b, a: the weight the
         // part's bones carry. A layer riding bones of its own takes the share of the nearest skin
         // vertex within 3 cm, or the skin would squash out from under it.
-        static List<(SkinnedMeshRenderer smr, Texture2D own)> Shares(Transform root, List<Transform> parts, string name)
+        static List<(SkinnedMeshRenderer smr, Texture2D own, Vector4[] shares)> Shares(Transform root, List<Transform> parts, string name)
         {
             var sets = parts.Select(b => new HashSet<Transform>(b.GetComponentsInChildren<Transform>(true))).ToList();
             var meshes = new List<(SkinnedMeshRenderer smr, Vector3[] at, Vector4[] share, int owned)>();
@@ -808,7 +863,7 @@ namespace AvatarBridge.Regression
 
             // The skin is the renderer carrying the most of the parts, found through a 2 cm grid.
             var body = meshes.OrderByDescending(m => m.owned).FirstOrDefault();
-            if (body.smr == null || body.owned == 0) return new List<(SkinnedMeshRenderer, Texture2D)>();
+            if (body.smr == null || body.owned == 0) return new List<(SkinnedMeshRenderer, Texture2D, Vector4[])>();
             const float Cell = 0.02f, Near = 0.03f;
             var grid = new Dictionary<Vector3Int, List<int>>();
             Vector3Int Key(Vector3 p) => new Vector3Int(Mathf.FloorToInt(p.x / Cell), Mathf.FloorToInt(p.y / Cell), Mathf.FloorToInt(p.z / Cell));
@@ -819,7 +874,7 @@ namespace AvatarBridge.Regression
                 if (!grid.TryGetValue(k, out var list)) grid[k] = list = new List<int>();
                 list.Add(v);
             }
-            var result = new List<(SkinnedMeshRenderer, Texture2D)>();
+            var result = new List<(SkinnedMeshRenderer, Texture2D, Vector4[])>();
             foreach (var m in meshes)
             {
                 if (m.smr != body.smr)
@@ -860,7 +915,7 @@ namespace AvatarBridge.Regression
                 flags.FindProperty("m_IsReadable").boolValue = false;
                 flags.FindProperty("m_StreamingMipmaps").boolValue = true;
                 flags.ApplyModifiedPropertiesWithoutUndo();
-                result.Add((m.smr, tex));
+                result.Add((m.smr, tex, m.share));
             }
             return result;
         }
@@ -884,7 +939,7 @@ namespace AvatarBridge.Regression
                 }
                 if (any) smr.sharedMaterials = mats;
             }
-            foreach (var t in root.GetComponentsInChildren<Transform>(true).Where(t => t.name == FollowName || t.name == RestName || t.name == ShaderHostName).ToList())
+            foreach (var t in root.GetComponentsInChildren<Transform>(true).Where(t => t.name == FollowName || t.name == RestName || t.name == BackName || t.name == ShaderHostName).ToList())
                 if (t != null) UnityEngine.Object.DestroyImmediate(t.gameObject);
         }
 #endif
