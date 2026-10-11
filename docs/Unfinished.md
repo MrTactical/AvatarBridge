@@ -1411,8 +1411,23 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     own caster, which stays unsquashed. Compiled: fxc vs_5_0 (about 1180 slots, most behind
     the early exit for vertices outside the parts) and the editor assembly through Unity's
     Roslyn with the project's references.
-    Test: Add the squash test (shader), Play, move an arm or hand into a part, and drag a part's
-    cloth bone off rest. Then in game with the own hands.
+    Play check, 2026-10-11 (`Dev/Probes/SquashPlayProbe.cs`, Kar, batch): THE PROVIDER NEVER
+    SEES THE CLOTH. MagicaCloth2 puts its bones back to rest at EarlyUpdate and simulates after
+    the scripts' LateUpdate (`UpdateLocation.AfterLateUpdate`, the default, and the client's
+    Assembly-CSharp never changes it); the CCK and the client both run the provider from a plain
+    script LateUpdate (`LateEventsManager`). Measured: follow off its rest 0.00 cm every frame
+    at script time, up to 0.10 cm at the end of the same frames. So the pair gap and the bone
+    push only ever read the animated pose: neither can be driven by cloth through the provider.
+    The pulse worked because it is a timer. This is also the likely whole story of the first
+    upload showing nothing. Own arms do reach the shader (arms on against off changes the skin
+    around the hand and forearm only), but capped at half the radius the hand still sinks in:
+    it reads as a carve, not a squash. Next: hand contact as a press into the part's map, so
+    the part flattens under the hand. Cloth as a source would need a reader that runs after
+    the cloth, e.g. the provider's skinned vertex buffer mode on a helper mesh weighted to the
+    follows (one frame late, unproven). Also unknown: whether the client's IK has moved the arm
+    bones before the provider reads them.
+    Test: Add the squash test (shader), Play, move an arm or hand into a part. Then in game
+    with the own hands.
     Next: other players' hands from the globals, sag.
     Open: an unpatchable shader over a part (fall back to the bone stack), shadow passes using
     Unity's own caster, the globals in stable, the probe moving parts by hand instead of through
