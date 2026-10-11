@@ -303,7 +303,9 @@ namespace AvatarBridge.Regression
         // along, g a's across, b b's along, a b's across, each 0..1 over its range. The parser
         // reads 8 bits, a step of 0.0016 in scale.
         public static readonly Color Rest = new Color(1f, 0f, 1f, 0f);
-        // Checked by the shader, so only the reader camera draws the quad.
+        // Checked by the shader, so only the reader camera draws the quad. The quad draws in the
+        // last queue there is: anything else in the camera's box draws into the texture too, and
+        // in game something drawn after it blacked out pixels.
         public const float ReaderNear = 0.00123f;
 
         public static CVRTexturePropertyParser Reader(Transform aimA, Transform followB, Transform scaleA, Transform scaleB,
@@ -332,10 +334,12 @@ namespace AvatarBridge.Regression
 
             var camera = Child(aimA, "squash camera").gameObject.AddComponent<Camera>();
             camera.orthographic = true;
-            // Wide enough to keep b in view when the aim lags it by a frame.
-            camera.orthographicSize = start;
+            // Wide enough to keep b in view when the aim lags it by a frame, and no wider: whatever
+            // else stands in the box is drawn into the texture too. Past the far plane b reads as
+            // rest, which is right up to an avatar scaled 2.5 times; the planes do not scale with it.
+            camera.orthographicSize = 0.25f * start;
             camera.nearClipPlane = ReaderNear;
-            camera.farClipPlane = 20f * start;
+            camera.farClipPlane = 2.5f * start;
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.backgroundColor = Rest;
             // Vertex lit renders no shadow maps for it, and the body's lit passes skip it.
@@ -412,7 +416,7 @@ namespace AvatarBridge.Regression
     }
     SubShader
     {
-        Tags { ""Queue""=""Overlay+100"" ""IgnoreProjector""=""True"" ""DisableBatching""=""True"" }
+        Tags { ""Queue""=""Overlay+1000"" ""IgnoreProjector""=""True"" ""DisableBatching""=""True"" }
         Pass
         {
             ZTest Always ZWrite Off Cull Off

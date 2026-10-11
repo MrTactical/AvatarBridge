@@ -1228,8 +1228,13 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     assets in `Assets/AvatarBridgeOutput/SquashTest`. A 4 cm cube in front of the chest shows the
     texture: magenta at rest, toward green when squeezed. Pairs are found by name: skinned bones
     naming a soft part AND a side, so a shared root both parts hang from is skipped.
-  Open: the reader in game (does an avatar camera render, are remote copies filtered by the
-  per-viewer Cameras setting, what the extra camera costs); then touch and squash against the
+  - In game, 2026-10-11, the reader WORKS for the wearer: the cube went magenta at rest and green
+    squeezed, and the pair squashed, with nothing synced. Once the cube showed black pixels, which
+    the shader cannot write: something else in the camera's box drew after the quad. The box was
+    far too big (half height = the press start, far plane 20 times it); now a quarter of the start
+    by 2.5 times it, and the quad draws in the last queue (Overlay+1000).
+  Open: remote copies (filtered by the per-viewer Cameras setting?), what the extra cameras
+  cost, whether anything still draws over the read pixel; then touch and squash against the
   body (depth cameras on the same parser), gravity sag, tuning (overfill, flattest,
   spring-back), then the converter (add-on only).
 ## MagicaCloth2 settings: measured against the originals and fixed, 2026-10-06. ON DEV, not in game
