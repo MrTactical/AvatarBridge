@@ -1529,8 +1529,22 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     that lean on a Fallback.
     Test: the plain build in editor Play mode (hands in, lying back), then in game; which pairs
     pulse in the diagnostic build is still unread.
-    Next: Marshmallow PB's own settings for the heft in motion (MagicaCloth2's side), other
-    players' hands from the globals.
+    Marshmallow PB read from its prefabs (2026-10-11, `Assets/marshmallow_PB`, ver2 stack; read
+    only, not run). The visible breast bone is no PhysBone's output: constraints drive it.
+    Position follows the end of a Buffer chain (pull 0.5, spring 0, stiffness 0, hinge 45,
+    collider-floored): a damped follow with no spring, so it cannot bounce. Rotation is 0.5 to
+    0.7 an Inertia chain (spring 0.9, pull 0.05, angle limit 20/40) and the rest a look-at: the
+    lively lag is in rotation only. A Gravity chain (immobile 1, gravity 0.5, hinge) gauges tilt
+    and, through a time-driven clip, rotates the parent of the whole stack between Sag, Neutral
+    and Squish targets: lying back tilts the rest pose. The squish is a scale clip on the bone
+    driven by a gauge PhysBone's _Squish: at full squish 0.85 deep and 1.5 wide, at stretch 1.2
+    long and 0.85 wide, under a Scale constraint at weight 0.6. That GROWS the part (1.5 x 1.5
+    x 0.85 = 1.9 times the volume, about 1.5 if the weight blends from rest), the opposite of
+    Joe's no-bigger rule. Setup defaults: pull 0.1, momentum 0.5, stiffness 0.25, gravity 0.02,
+    immobile 0.5, limit 40, collision radius 4 cm, max squish 0.6. So the heft to copy into the
+    MagicaCloth2 stand-in is: position heavily damped with no spring overshoot, swing lag on
+    rotation only, rest pose tilted by orientation. Needs the A/B probe (batch, GUI closed).
+    Next: the stand-in's damping from those, other players' hands from the globals.
     Open: the globals in stable; the probe moving parts by hand instead of through the cloth.
   Open: remote copies,
   the measurement probe (camera cost, controller
