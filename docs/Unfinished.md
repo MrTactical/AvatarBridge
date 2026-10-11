@@ -1266,7 +1266,10 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     off alpha, pixel (0,0) a and (1,0) b, r flattening and g widening, filling the top and bottom
     rows so a flipped target still reads; diagnostic cells moved to the middle rows. The probe
     gains `-abPortrait` (a Self Portrait stand-in swept 90 degrees either side) and counts reads
-    with any alpha as foreign draws. Not yet run: the project was open in the GUI.
+    with any alpha as foreign draws. Run on Kar: within 0.0017 of the exact squash on all four parts,
+    and 0 foreign draws in 6302 reads both without and with the stand-in (logged as rendering on
+    the head). So a camera alone does not reproduce it; what Self Portrait changes in game is still
+    unknown, and needs the new diagnostic build in game.
   - Target architecture (design study 2026-10-11, all costs ASSUMED until measured): the whole
     Marshmallow set, zero sync. No always-on camera: a CVRRenderController running a
     CVRMaterialDataProvider (bone matrices) into a self-feedback CVRBlitter computes pair

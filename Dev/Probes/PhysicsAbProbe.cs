@@ -1324,7 +1324,7 @@ namespace AvatarBridge.Regression
         static void RenderPortrait()
         {
             var head = dstBody.avatar.GetComponentInChildren<Animator>()?.GetBoneTransform(HumanBodyBones.Head);
-            if (head == null) return;
+            if (head == null) { Debug.LogWarning("[PhysicsAb] portrait stand-in: no head bone, not rendered"); return; }
             if (portrait == null)
             {
                 portrait = new GameObject("portrait stand-in").AddComponent<Camera>();
@@ -1333,6 +1333,7 @@ namespace AvatarBridge.Regression
                 portrait.backgroundColor = Color.clear;
                 portrait.depthTextureMode = DepthTextureMode.Depth;
                 portrait.targetTexture = new RenderTexture(512, 512, 24);
+                Debug.Log($"[PhysicsAb] portrait stand-in on {head.name}, 0.5 m out, swept 90 degrees either side");
             }
             float yaw = Mathf.Sin(Time.frameCount * 0.05f) * 90f;
             var turn = Quaternion.AngleAxis(yaw, dstBody.avatar.up) * dstBody.avatar.rotation;
