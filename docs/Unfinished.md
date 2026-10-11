@@ -1247,10 +1247,32 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     the quad for any 4x4 target and fills the readout with the reader's checks (orthographic,
     near plane, facing, a blink showing the camera renders, the distance), the clear colour
     blue; the squash still reads pixel (0,0).
-  Open: remote copies (filtered by the per-viewer Cameras setting?), what the extra cameras
-  cost, whether anything still draws over the read pixel; then touch and squash against the
-  body (depth cameras on the same parser), gravity sag, tuning (overfill, flattest,
-  spring-back), then the converter (add-on only).
+  - Reader faults found reading the code (2026-10-11): part b's widening rides alpha, which the
+    readout cube cannot show and which any opaque draw sets to 1, so "black cube, one part
+    swollen" is a foreign write, not rest. The camera's cullingMask is Everything, so the world,
+    other players and the wearer's arms in the box draw into the texture on any frame the quad
+    misses (facing over 26 degrees, or b outside the box while the aim lags). Fixes: no value in
+    alpha, one row per part (r flattening, g widening), and a cullingMask of the avatar layers.
+    Also suspected: only the lower skin bone is pinned, so the squash slides each part's base
+    14-15 cm instead of shaping it about its joint; one editor render (scale b set by hand)
+    decides it before changing anything.
+  - Target architecture (design study 2026-10-11, all costs ASSUMED until measured): the whole
+    Marshmallow set, zero sync. No always-on camera: a CVRRenderController running a
+    CVRMaterialDataProvider (bone matrices) into a self-feedback CVRBlitter computes pair
+    contact, own arms and thighs as capsules, other players' hands from the client's
+    `_CVR_Player*Positions` shader globals, and a spring with velocity kept across frames. Two
+    small depth views (chest, pelvis) through CVRCameraHelper replacement shaders sit disabled
+    and are switched on by a parser writing `Camera.enabled` only when something foreign is
+    near or the posture says floor or ledge. The Animator's DistanceTo gives a LOD (off past
+    about 12 m, faded to rest on the GPU first). Encoding rule: everything that must be 0 at
+    rest rides one channel that every no-data case (fresh texture, the parser's opaque black,
+    error magenta) decodes to rest. Gates before building: the controller and provider must run
+    on remote copies in stable (in-game test), and a replacement shader must draw every body
+    shader at its skinned pose (batch probe). Gravity sag stays with MagicaCloth2.
+  Open: remote copies (the Cameras content filter defaults to never blocked, so not that),
+  the middle-distance stop (diagnostic build), the measurement probe (camera cost, controller
+  cost, readback latency, replacement universality), then the staged build above, tuning, and
+  the converter (add-on only).
 ## MagicaCloth2 settings: measured against the originals and fixed, 2026-10-06. ON DEV, not in game
 
 **Measured.** `Dev/Probes/PhysicsAbProbe.cs` converts a scene with a new user's defaults, keeps the
