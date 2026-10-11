@@ -867,9 +867,10 @@ namespace AvatarBridge.Regression
             const float Cell = 0.02f, Near = 0.03f;
             var grid = new Dictionary<Vector3Int, List<int>>();
             Vector3Int Key(Vector3 p) => new Vector3Int(Mathf.FloorToInt(p.x / Cell), Mathf.FloorToInt(p.y / Cell), Mathf.FloorToInt(p.z / Cell));
+            // Skin with no share goes in too: a strap painted onto the part's bones over a shoulder
+            // that never moves must copy that nothing, or it squashes off the skin under it.
             for (int v = 0; v < body.at.Length; v++)
             {
-                if (body.share[v] == Vector4.zero) continue;
                 var k = Key(body.at[v]);
                 if (!grid.TryGetValue(k, out var list)) grid[k] = list = new List<int>();
                 list.Add(v);
