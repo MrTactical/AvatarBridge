@@ -43,6 +43,12 @@ Texture2D _YAPS_DentOwn;       // per vertex: its share of parts 0 to 3 in r, g,
 float4 _YAPS_DentOwn_TexelSize;
 float4 _YAPS_DentPart[4];      // xyz the part's centre, w how far it reaches toward its partner
 float4 _YAPS_DentAxis[4];      // xyz toward its partner, w how far it is pushed back (0 none)
+// The bone squash as one map per part: its counter node's local-to-world after its follow's
+// world-to-local, so every layer at a point takes the same move and none can pass another.
+// A position-only map is what keeps layers in order; the dents above move each vertex by its
+// own facing, and the skin came through. All zero until something writes them.
+float4x4 _YAPS_SquashTo[4];
+float4x4 _YAPS_SquashFrom[4];
 
 void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tangent, uint vertexId)
 {
@@ -60,6 +66,24 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
     uint width = (uint) round(abs(1.0 / _YAPS_DentOwn_TexelSize.x));
     float4 own = _YAPS_DentOwn.Load(int3(vertexId % width, vertexId / width, 0));
     float shares[4] = { own.r, own.g, own.b, own.a };
+    float3 mapped = 0;
+    float3 mappedN = n;
+    [unroll]
+    for (int m = 0; m < 4; m++)
+    {
+        if (shares[m] <= 0 || _YAPS_SquashFrom[m][3][3] == 0) continue;
+        float4x4 map = mul(_YAPS_SquashTo[m], _YAPS_SquashFrom[m]);
+        mapped += (mul(map, float4(world, 1)).xyz - world) * shares[m];
+        if (hasNormal)
+        {
+            // The inverse transpose up to scale: each row the cross of the other two.
+            float3x3 a = (float3x3)map;
+            float3 bent = float3(dot(cross(a[1], a[2]), n), dot(cross(a[2], a[0]), n), dot(cross(a[0], a[1]), n));
+            mappedN = normalize(lerp(mappedN, normalize(bent), shares[m]));
+        }
+    }
+    world += mapped;
+    n = mappedN;
     float3 squash = 0;
     [unroll]
     for (int p = 0; p < 4; p++)

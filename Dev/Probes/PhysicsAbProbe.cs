@@ -1038,6 +1038,32 @@ namespace AvatarBridge.Regression
             }
             Shader.SetGlobalVectorArray("_YAPS_DentPart", part);
             Shader.SetGlobalVectorArray("_YAPS_DentAxis", axes);
+            if (Affine && dentParts.Count > 0 && dentParts[0].follow != null)
+            {
+                var to = new Matrix4x4[4];
+                var from = new Matrix4x4[4];
+                for (int i = 0; i < dentParts.Count && i < 4; i++)
+                {
+                    to[i] = dentParts[i].counter.localToWorldMatrix;
+                    from[i] = dentParts[i].follow.worldToLocalMatrix;
+                }
+                Shader.SetGlobalMatrixArray("_YAPS_SquashTo", to);
+                Shader.SetGlobalMatrixArray("_YAPS_SquashFrom", from);
+            }
+        }
+
+        // The shader's map, for measuring what BakeMesh cannot see.
+        static Vector3 Mapped(Vector3 world, Vector4 share)
+        {
+            if (!Affine || dentParts == null) return world;
+            var moved = world;
+            for (int q = 0; q < dentParts.Count && q < 4; q++)
+            {
+                if (share[q] <= 0f || dentParts[q].follow == null) continue;
+                var map = dentParts[q].counter.localToWorldMatrix * dentParts[q].follow.worldToLocalMatrix;
+                moved += (map.MultiplyPoint3x4(world) - world) * share[q];
+            }
+            return moved;
         }
 
         // -abSquash: the part squashes by bone scale, never by moving vertices. The skinning of
@@ -1050,7 +1076,11 @@ namespace AvatarBridge.Regression
         // cannot part; the physics bones never see the scale. Each vertex moved on its own tore
         // the skin and parted it from the top over it; the main bone alone left the chain
         // root's 43% of the part unsquashed, and it slid past its partner.
-        static bool Squash => Array.IndexOf(Environment.GetCommandLineArgs(), "-abSquash") >= 0 || Driver || Reader;
+        static bool Squash => Array.IndexOf(Environment.GetCommandLineArgs(), "-abSquash") >= 0 || Driver || Reader || Affine;
+        // -abAffine: the same stack with no skin bones. The dent shader takes each part's counter
+        // after its follow as one map and moves every layer by it, so no constraint per bone. In
+        // game a material data provider would write the two matrix arrays; here the probe does.
+        static bool Affine => Array.IndexOf(Environment.GetCommandLineArgs(), "-abAffine") >= 0;
         static float FlagF(string name, float fallback) =>
             float.TryParse(Arg(name), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : fallback;
         // How much it grows across per unit it flattens. Overfilled reads as full: a breast
@@ -1093,6 +1123,7 @@ namespace AvatarBridge.Regression
             counter.locked = true;
             counter.constraintActive = true;
             p.skins = new List<(Transform, Transform)>();
+            if (Affine) { Debug.Log($"[PhysicsAb] squash {p.name}: through the shader map, no skin bones"); return; }
             foreach (var (bone, weight, _) in carriers)
             {
                 // Under the skin of its nearest carrying ancestor, so a squash of the root reaches it.
@@ -1387,6 +1418,7 @@ namespace AvatarBridge.Regression
         static float fleshSank;
         static SkinnedMeshRenderer skinBody;
         static int[] skinPart;
+        static Vector4[] skinShare;
         static Mesh skinBaked;
         static float skinThrough;
         static int skinThroughCount;
@@ -1410,7 +1442,7 @@ namespace AvatarBridge.Regression
             for (int i = 0; i < v.Length && i < skinPart.Length; i++)
             {
                 if (skinPart[i] != a && skinPart[i] != b) continue;
-                world[i] = m.MultiplyPoint3x4(v[i]);
+                world[i] = Mapped(m.MultiplyPoint3x4(v[i]), skinShare[i]);
                 if (skinPart[i] != b) continue;
                 var k = Key(world[i]);
                 if (!grid.TryGetValue(k, out var list)) grid[k] = list = new List<int>();
@@ -1557,6 +1589,7 @@ namespace AvatarBridge.Regression
             // reads its shares from the nearest skin vertex, found through a 2 cm grid.
             var body = meshes.OrderByDescending(m => m.owned).FirstOrDefault();
             skinBody = body.smr;
+            skinShare = body.share;
             skinPart = body.share?.Select(sh => { for (int q = 0; q < 4; q++) if (sh[q] >= 0.5f) return q; return -1; }).ToArray();
             const float Cell = 0.02f, Near = 0.03f;
             var grid = new Dictionary<Vector3Int, List<int>>();

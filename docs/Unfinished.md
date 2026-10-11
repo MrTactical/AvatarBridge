@@ -1338,6 +1338,21 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     The reader in game moved off r: one value per column on g (a flattening, a widening, b
     flattening, b widening), so the error shader's magenta reads rest. Verified in game 2026-10-11: still squashes, rest unchanged.
     Not run: B13 (the bone-table fallback is only designed if the controller fails G1).
+  - Skin chain replaced by the shader, 2026-10-11 (B5 failed: about 3.5 us per constraint, two
+    per skin bone). The patched body shader applies the stack itself: each part's counter
+    local-to-world after its follow's world-to-local, as one map, weighted by the baked shares
+    (`_YAPS_SquashTo`, `_YAPS_SquashFrom` in `yaps_dent.cginc`). In game a
+    `CVRMaterialDataProvider` would write both arrays every LateUpdate, locally: no parser, no
+    sync, no skin bones. Why this is not the old shader route: the dents moved each vertex by its
+    own facing and collapsed layers onto one surface; a map of position alone moves every layer
+    at a point together, which is what kept the bones clean. Probe `-abSquash -abAffine`, three
+    avatars: Kar and Lana match the bone films (mean pixel difference at most 1.6 and 0.2 of 255),
+    and the bones' 7 to 17 cm stack error is gone. Zombunny (a top over the skin): no skin through
+    the top, but the pair's top passes through itself at the cleavage, about 2 cm, as it does
+    with bones (a scale flattens the whole part, so the two never form a contact face).
+    Open: an unpatchable shader over a part (fall back to the bone stack), two copies sharing a
+    material (fade the map out far from the part), shadow and outline passes, the provider on
+    remote copies (A2).
   Open: remote copies (the Cameras content filter defaults to never blocked, so not that),
   the measurement probe (camera cost, controller
   cost, readback latency, replacement universality), then the staged build above, tuning, and
