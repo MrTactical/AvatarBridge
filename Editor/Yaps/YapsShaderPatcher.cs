@@ -109,6 +109,8 @@ namespace AvatarBridge
         _YAPS_DentPower (""YAPS soft-body dent"", Range(0,1)) = 0
         _YAPS_DentSoftness (""YAPS dent edge, share of the radius"", Range(0.05,1)) = 0.3
         _YAPS_DentBulge (""YAPS dent bulge"", Range(0,2)) = 0.6
+        _YAPS_DentSpill (""YAPS squish spill, in press depths"", Range(0,2)) = 1
+        [NoScaleOffset] _YAPS_DentOwn (""YAPS dent part shares, per vertex"", 2D) = ""black"" {}
 ";
 
         // The name the patch of `original` would carry if it were made now.
@@ -695,7 +697,7 @@ namespace AvatarBridge
             body.AppendLine($"    YapsDeform(yapsPosition, yapsNormal, yapsTangent, {idExpression});");
             body.AppendLine(
                 $"    YapsSocketDeform(yapsPosition, yapsNormal, yapsTangent, {idExpression});");
-            body.AppendLine("    YapsDentDeform(yapsPosition, yapsNormal, yapsTangent);");
+            body.AppendLine($"    YapsDentDeform(yapsPosition, yapsNormal, yapsTangent, {idExpression});");
             body.AppendLine($"    {parameterName}.{positionField}.xyz = yapsPosition;");
             if (normalField != null)
             {

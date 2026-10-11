@@ -387,6 +387,8 @@ namespace AvatarBridge.Regression
                             // -abBulge x: the ring's height, for A/B against the default.
                             if (dented != null && float.TryParse(Arg("-abBulge"), NumberStyles.Float, CultureInfo.InvariantCulture, out float bulge))
                                 dented.SetFloat("_YAPS_DentBulge", bulge);
+                            if (dented != null && float.TryParse(Arg("-abSpill"), NumberStyles.Float, CultureInfo.InvariantCulture, out float spill))
+                                dented.SetFloat("_YAPS_DentSpill", spill);
                             Debug.Log($"[PhysicsAb] dent on \"{mats[i].name}\" of {smr.name}: {(dented != null ? shader.name : refusal)}");
                             done[mats[i]] = dented;
                         }
@@ -897,8 +899,11 @@ namespace AvatarBridge.Regression
                         float big = Mathf.Max(s.pressRadius, half);
                         var middle = 0.5f * (tipWorld + other);
                         s.press.localScale = Vector3.one * (big / s.pressRadius);
+                        // -abSqueezeDepth d: how far of the way to the middle the ball goes, 1 all of it.
+                        // All of it drives the pair a whole gap into each other, past what a hand does.
+                        float depth = float.TryParse(Arg("-abSqueezeDepth"), NumberStyles.Float, CultureInfo.InvariantCulture, out float d) ? d : 1f;
                         s.press.position = push <= 0f ? Vector3.down * 100f
-                            : Vector3.Lerp(tipWorld + outward * (big + half), middle + outward * big, push);
+                            : Vector3.Lerp(tipWorld + outward * (big + half), middle + outward * (big + (1f - depth) * half), push);
                         continue;
                     }
                     s.press.localScale = Vector3.one;
@@ -908,8 +913,21 @@ namespace AvatarBridge.Regression
             }
         }
 
-        // Each layered chain's flesh, in its bone's space: found on the first frame of Play.
-        static List<(Transform bone, Vector3 local, float radius)> dentFlesh;
+        // A soft part, measured from the vertices its bones carry: where its middle is and how
+        // its flesh spreads, in its bone's space so both follow the bone. Found on the first
+        // frame of Play.
+        sealed class DentPart
+        {
+            public string name;
+            public Transform bone;
+            public Vector3 middle;
+            public Matrix4x4 spread;   // covariance of its skin, 3x3 in the corner
+            public float restGap;      // to its partner, on the first frame
+            public Vector3[] skin;     // its vertices, in its bone's space
+            public float deepest;
+            public string deepestNote;
+        }
+        static List<DentPart> dentParts;
 
         // Fed after MagicaCloth2 writes and before the frame is filmed, so the dent follows the
         // bones as drawn. Both avatars see the globals; only the copy's skin reads them.
@@ -921,7 +939,9 @@ namespace AvatarBridge.Regression
             var mine = chains.Where(c => layered.Contains(c.dst.root.name)).ToList();
             var spheres = new Vector4[4];
             int n = 0;
-            foreach (var c in mine)
+            // -abNoSpheres: the pair squash alone, without the presses' dents.
+            bool noSpheres = Array.IndexOf(Environment.GetCommandLineArgs(), "-abNoSpheres") >= 0;
+            foreach (var c in noSpheres ? new List<Chain>() : mine)
             {
                 var p = c.dst.press;
                 if (p == null || p.position.y < -50f || n == 4) continue;
@@ -931,32 +951,212 @@ namespace AvatarBridge.Regression
             }
             Shader.SetGlobalVectorArray("_YAPS_DentSpheres", spheres);
 
-            if (dentFlesh == null)
-            {
-                dentFlesh = new List<(Transform, Vector3, float)>();
-                foreach (var c in mine)
+            // In -abLayered order, so its names pair up two by two: a;b;c;d is pairs ab and cd.
+            if (dentParts == null) dentParts = BuildDentParts(mine.OrderBy(c => Array.IndexOf(layered, c.dst.root.name)).Take(4).ToList());
+            // -abNoPair: spheres only, to see what the pair squash adds.
+            var part = new Vector4[4];
+            var axes = new Vector4[4];
+            if (Array.IndexOf(Environment.GetCommandLineArgs(), "-abNoPair") < 0)
+                for (int i = 0; i + 1 < dentParts.Count; i += 2)
                 {
-                    var bones = c.dst.root.GetComponentsInChildren<Transform>(true).ToList();
-                    var flesh = JointSpike.Flesh(dstBody.avatar, bones);
-                    if (flesh.Count == 0) continue;
-                    var big = flesh.OrderByDescending(f => f.Value.radius).First();
-                    dentFlesh.Add((big.Key, big.Key.InverseTransformPoint(big.Value.center), big.Value.radius));
-                    Debug.Log($"[PhysicsAb] dent flesh of {c.dst.root.name}: on {big.Key.name}, radius {big.Value.radius * 100f:0.0} cm");
+                    var a = dentParts[i];
+                    var b = dentParts[i + 1];
+                    var ca = a.bone.TransformPoint(a.middle);
+                    var cb = b.bone.TransformPoint(b.middle);
+                    var sa = WorldSpread(a);
+                    var sb = WorldSpread(b);
+                    var axis = (cb - ca).normalized;
+                    float gap = Vector3.Distance(ca, cb);
+                    // How far each surface reaches toward the other, read from its own skin.
+                    float ha = Reach(a, axis);
+                    float hb = Reach(b, -axis);
+                    if (a.restGap <= 0f)
+                    {
+                        a.restGap = b.restGap = gap;
+                        // Never overlapping at rest, or the pair would spring apart on the first frame.
+                        float fit = Mathf.Min(1f, gap / (ha + hb));
+                        AddFlesh(a, ha * fit);
+                        AddFlesh(b, hb * fit);
+                    }
+                    // Touching from where they stood at rest, or from where their surfaces meet
+                    // if they stood apart: the rest pose stays exactly as authored.
+                    float press = Mathf.Max(0f, Mathf.Min(a.restGap, ha + hb) - gap);
+                    // The deepest press each pair saw, in the avatar's frame, to read against the film.
+                    if (press > a.deepest)
+                    {
+                        a.deepest = press;
+                        a.deepestNote = $"press {press * 100f:0.0} cm, gap {gap * 100f:0.0} (rest {a.restGap * 100f:0.0}), reach {ha * 100f:0.0} + {hb * 100f:0.0}, " +
+                                        $"axis {dstBody.avatar.InverseTransformDirection(axis):F2}";
+                    }
+                    // The bigger part gives more, as a softer one would.
+                    float va = Mathf.Sqrt(Mathf.Max(Det3(sa), 0f)), vb = Mathf.Sqrt(Mathf.Max(Det3(sb), 0f));
+                    float share = va + vb > 0f ? va / (va + vb) : 0.5f;
+                    // Each pushed back toward itself, so the two faces meet on one plane.
+                    part[i] = new Vector4(ca.x, ca.y, ca.z, ha);
+                    part[i + 1] = new Vector4(cb.x, cb.y, cb.z, hb);
+                    axes[i] = new Vector4(axis.x, axis.y, axis.z, press * share);
+                    axes[i + 1] = new Vector4(-axis.x, -axis.y, -axis.z, press * (1f - share));
                 }
+            // Whether the flesh spheres stop anything at all: two kinematic presses can force them through.
+            for (int f = 0; f + 1 < flesh.Count; f += 2)
+            {
+                var fa = (SphereCollider)flesh[f];
+                var fb = (SphereCollider)flesh[f + 1];
+                float sank = fa.radius * fa.transform.lossyScale.x + fb.radius * fb.transform.lossyScale.x
+                             - Vector3.Distance(fa.transform.position, fb.transform.position);
+                fleshSank = Mathf.Max(fleshSank, sank);
             }
-            // -abNoPair: spheres only, to see what the pair plane adds.
-            if (dentFlesh.Count < 2 || Array.IndexOf(Environment.GetCommandLineArgs(), "-abNoPair") >= 0) return;
-            var a = dentFlesh[0].bone.TransformPoint(dentFlesh[0].local);
-            var b = dentFlesh[1].bone.TransformPoint(dentFlesh[1].local);
-            float ra = dentFlesh[0].radius, rb = dentFlesh[1].radius;
-            var axis = (b - a).normalized;
-            // The plane sits where the two surfaces would meet, shared by their sizes.
-            var mid = a + axis * (Vector3.Distance(a, b) * ra / (ra + rb));
-            Shader.SetGlobalVector("_YAPS_DentPlane", new Vector4(axis.x, axis.y, axis.z, Vector3.Dot(mid, axis)));
-            Shader.SetGlobalVector("_YAPS_DentZone", new Vector4(mid.x, mid.y, mid.z, 1.5f * Mathf.Max(ra, rb)));
-            // ponytail: the median radius sits inside the skin, so 1.25x stands in for the surface;
-            // measure the real overlap from the mesh if the bulge reads wrong.
-            Shader.SetGlobalFloat("_YAPS_DentOverlap", Mathf.Max(0f, 1.25f * (ra + rb) - Vector3.Distance(a, b)) * 0.5f);
+            Shader.SetGlobalVectorArray("_YAPS_DentPart", part);
+            Shader.SetGlobalVectorArray("_YAPS_DentAxis", axes);
+        }
+
+        // A flesh-sized sphere on the part's lag body that meets only its partner's, so the pair
+        // cannot pass through each other while every other body stays bone-sized (sized to the
+        // flesh everywhere, chains moved as blocks and stretched). Short of the reach: the rest
+        // is the shader's squash, which flattens the faces where the spheres stop them.
+        const float FleshStop = 0.75f;
+        static readonly List<Collider> flesh = new List<Collider>();
+        static float fleshSank;
+
+        static void AddFlesh(DentPart p, float reach)
+        {
+            // The nearest body at or below the part's bone: a chain root carries none of its own.
+            var at = p.bone.TransformPoint(p.middle);
+            // Found through the constraint that hangs each bone on its body: by name, chains whose
+            // bones share a name took each other's.
+            var body = p.bone.GetComponentsInChildren<UnityEngine.Animations.PositionConstraint>(true)
+                .Where(c => c.sourceCount > 0 && c.GetSource(0).sourceTransform != null)
+                .Select(c => c.GetSource(0).sourceTransform.GetComponent<Rigidbody>())
+                .Where(r => r != null)
+                .OrderBy(r => Vector3.Distance(r.position, at)).FirstOrDefault();
+            if (body == null) { Debug.Log($"[PhysicsAb] dent part {p.name}: no lag body on {p.bone.name}, so no flesh sphere"); return; }
+            var go = new GameObject(p.name + " (flesh)");
+            go.transform.SetParent(body.transform, false);
+            go.transform.position = at;
+            var sphere = go.AddComponent<SphereCollider>();
+            sphere.radius = FleshStop * reach / go.transform.lossyScale.x;
+            // Frictionless, so a pair pressed together slides off along its contact and rolls aside,
+            // the way pressed flesh gives; with friction they held and were forced through.
+            sphere.sharedMaterial = new PhysicMaterial("flesh")
+            {
+                dynamicFriction = 0f, staticFriction = 0f,
+                frictionCombine = PhysicMaterialCombine.Minimum, bounceCombine = PhysicMaterialCombine.Minimum
+            };
+            // Pairwise, not by layer: a layer matrix changed in the editor can outlive Play.
+            foreach (var other in UnityEngine.Object.FindObjectsOfType<Collider>())
+                if (other != sphere && !flesh.Contains(other)) Physics.IgnoreCollision(sphere, other);
+            flesh.Add(sphere);
+            Debug.Log($"[PhysicsAb] dent part {p.name}: flesh sphere {FleshStop * reach * 100f:0.0} cm on {body.name}");
+        }
+
+        // How far its skin really reaches one way: the spread said 15 cm where breasts that touched
+        // at rest reached 22, so the squash barely began. The 98th percentile, so one stray vertex
+        // does not set it.
+        static float Reach(DentPart p, Vector3 way)
+        {
+            var local = p.bone.localToWorldMatrix.transpose.MultiplyVector(way);
+            var along = new float[p.skin.Length];
+            for (int i = 0; i < along.Length; i++) along[i] = Vector3.Dot(p.skin[i] - p.middle, local);
+            Array.Sort(along);
+            return Mathf.Max(along[(int)(0.98f * (along.Length - 1))], 1e-4f);
+        }
+
+        static Matrix4x4 WorldSpread(DentPart p)
+        {
+            var m = p.bone.localToWorldMatrix;
+            m.SetColumn(3, new Vector4(0, 0, 0, 1));
+            var w = m * p.spread * m.transpose;
+            w.m33 = 1f;
+            return w;
+        }
+
+        static float Det3(Matrix4x4 m) =>
+            m.m00 * (m.m11 * m.m22 - m.m12 * m.m21) - m.m01 * (m.m10 * m.m22 - m.m12 * m.m20) + m.m02 * (m.m10 * m.m21 - m.m11 * m.m20);
+
+        // Each vertex's share of each part is its skin weight to that part's bones, baked into a
+        // texture per renderer and read by vertex id. Each part's shape is measured from the
+        // vertices it carries at least half of, skinned by hand from the bind poses: a bake's
+        // space depends on the renderer's scale, which a converted rig can carry at 100.
+        static List<DentPart> BuildDentParts(List<Chain> soft)
+        {
+            var parts = soft.Select(c => new DentPart { name = c.dst.root.name }).ToList();
+            var boneSets = soft.Select(c => new HashSet<Transform>(c.dst.root.GetComponentsInChildren<Transform>(true))).ToList();
+            var points = parts.Select(_ => new List<Vector3>()).ToList();
+            var carried = parts.Select(_ => new Dictionary<Transform, float>()).ToList();
+            foreach (var smr in dstBody.avatar.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var mesh = smr.sharedMesh;
+                if (mesh == null) continue;
+                var bones = smr.bones;
+                var owner = new int[bones.Length];
+                for (int b = 0; b < bones.Length; b++)
+                    owner[b] = bones[b] == null ? -1 : boneSets.FindIndex(set => set.Contains(bones[b]));
+                if (owner.All(x => x < 0)) continue;
+                var weights = mesh.boneWeights;
+                var verts = mesh.vertices;
+                var bind = mesh.bindposes;
+                var skin = new Matrix4x4[bones.Length];
+                for (int b = 0; b < bones.Length && b < bind.Length; b++)
+                    skin[b] = bones[b] != null ? bones[b].localToWorldMatrix * bind[b] : Matrix4x4.zero;
+                int width = 1024, height = Mathf.Max(1, (verts.Length + width - 1) / width);
+                var pixels = new Color32[width * height];
+                var share = new float[4];
+                for (int v = 0; v < weights.Length && v < verts.Length; v++)
+                {
+                    var w = weights[v];
+                    Array.Clear(share, 0, 4);
+                    int[] index = { w.boneIndex0, w.boneIndex1, w.boneIndex2, w.boneIndex3 };
+                    float[] weight = { w.weight0, w.weight1, w.weight2, w.weight3 };
+                    for (int q = 0; q < 4; q++)
+                    {
+                        int part = owner[index[q]];
+                        if (weight[q] <= 0f || part < 0) continue;
+                        share[part] += weight[q];
+                        var bone = bones[index[q]];
+                        carried[part][bone] = (carried[part].TryGetValue(bone, out var t) ? t : 0f) + weight[q];
+                    }
+                    pixels[v] = new Color32((byte)(share[0] * 255f + 0.5f), (byte)(share[1] * 255f + 0.5f),
+                        (byte)(share[2] * 255f + 0.5f), (byte)(share[3] * 255f + 0.5f));
+                    int mostly = Array.FindIndex(share, x => x >= 0.5f);
+                    if (mostly < 0) continue;
+                    var at = Vector3.zero;
+                    for (int q = 0; q < 4; q++) at += skin[index[q]].MultiplyPoint3x4(verts[v]) * weight[q];
+                    points[mostly].Add(at);
+                }
+                // Linear and point-sampled: a share is a number, not a colour.
+                var tex = new Texture2D(width, height, TextureFormat.RGBA32, false, true) { filterMode = FilterMode.Point };
+                tex.SetPixels32(pixels);
+                tex.Apply(false);
+                var block = new MaterialPropertyBlock();
+                smr.GetPropertyBlock(block);
+                block.SetTexture("_YAPS_DentOwn", tex);
+                block.SetVector("_YAPS_DentOwn_TexelSize", new Vector4(1f / width, 1f / height, width, height));
+                smr.SetPropertyBlock(block);
+            }
+            for (int i = 0; i < parts.Count; i++)
+            {
+                var p = parts[i];
+                if (carried[i].Count == 0 || points[i].Count < 20) { Debug.Log($"[PhysicsAb] dent part {p.name}: too few vertices"); continue; }
+                // Follows the bone that carries most of it.
+                p.bone = carried[i].OrderByDescending(kv => kv.Value).First().Key;
+                var local = points[i].Select(x => p.bone.InverseTransformPoint(x)).ToList();
+                p.middle = local.Aggregate(Vector3.zero, (acc, x) => acc + x) / local.Count;
+                var c = Matrix4x4.zero;
+                foreach (var x in local)
+                {
+                    var d = x - p.middle;
+                    for (int r = 0; r < 3; r++)
+                        for (int k = 0; k < 3; k++)
+                            c[r, k] += d[r] * d[k] / local.Count;
+                }
+                c.m33 = 1f;
+                p.spread = c;
+                p.skin = local.ToArray();
+                var world = WorldSpread(p);
+                Debug.Log($"[PhysicsAb] dent part {p.name}: {points[i].Count} vertices on {p.bone.name}, " +
+                          $"half-widths {Mathf.Sqrt(3f * world.m00) * 100f:0.0} x {Mathf.Sqrt(3f * world.m11) * 100f:0.0} x {Mathf.Sqrt(3f * world.m22) * 100f:0.0} cm (world x y z)");
+            }
+            return parts.Where(p => p.bone != null).ToList();
         }
 
         // ------------------------------------------------------------------ filming
@@ -1225,7 +1425,13 @@ namespace AvatarBridge.Regression
             Install(false);
             Time.captureFramerate = 0;
             chains = null;
-            dentFlesh = null;
+            for (int i = 0; dentParts != null && i + 1 < dentParts.Count; i += 2)
+                Debug.Log($"[PhysicsAb] pair {dentParts[i].name}/{dentParts[i + 1].name} deepest: {dentParts[i].deepestNote ?? "never pressed"}");
+            if (flesh.Count >= 2)
+                Debug.Log($"[PhysicsAb] flesh spheres sank {fleshSank * 100f:0.0} cm into each other at most");
+            dentParts = null;
+            flesh.Clear();
+            fleshSank = 0f;
             SessionState.SetInt(K + "stage", 2);
             EditorApplication.ExitPlaymode();
         }

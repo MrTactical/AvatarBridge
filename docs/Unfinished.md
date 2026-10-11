@@ -1147,15 +1147,33 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     and the skin under it keep their order (pushed onto one surface they z-fought in stripes).
   - The displaced flesh rises in a ring round each press, its slope capped at 0.5: steeper, the
     skin under a top rose past it and showed through.
-  - A soft pair pressed together meets on a plane: skin past it still facing across flattens onto
-    it, and each side swells round the flat. Sides are told apart by facing, so one mesh carrying
-    both needs no tagging.
-  - Verified in batch Play mode on one avatar's chest (`PhysicsAbProbe -abDent`, every skinned
-    renderer patched). The squeeze stays full and whole, close to the PhysBones original. Not
-    seen in game.
+  - A soft pair pressed together gives only on the facing side: a band four press depths deep is
+    pushed back to the plane where the two meet, and the skin round the seam spills out along its
+    own sideways facing (`_YAPS_DentSpill`, in press depths, default 1). The far side never moves.
+  - Which part a vertex belongs to is its skin weight to that part's bones, baked per renderer
+    into a point texture read by vertex id (`_YAPS_DentOwn`). Guessed from position and facing,
+    neighbours went different ways and tore.
+  - How far each part reaches toward its partner is the 98th percentile of its own vertices along
+    the line between them, every frame. The covariance estimate said 15 cm where breasts touching
+    at rest reached 21, and the squash barely began (1.2 cm of press, now 11).
+  - Withdrawn on the way, kept so nobody retries them: carving the overlap away (two crescents,
+    visibly losing volume); squashing the whole part toward its centre (the far side moved in, the
+    pair still slid through); growing the cross-section by one over the root of the compression,
+    about the line between the parts (a broad inner face sits far from that line and was thrown two
+    to three times its distance, the blow-up of 2026-10-11).
+  - Probe only: flesh-sized frictionless spheres on each partner's lag body, 75% of the reach,
+    colliding with nothing but each other. They halve how far a squeeze drives the bodies through
+    each other (23 cm to 9); two kinematic presses still force them. `-abSqueezeDepth` sets how far
+    the probe's squeeze goes (1 drives the pair a whole gap into each other, past any hand).
+  - Verified in batch Play mode on one avatar (`PhysicsAbProbe -abDent -abNoSpheres
+    -abSqueezeDepth 0.5`): the faces flatten against each other and spill. The original's
+    PhysBones under the same squeeze pass one breast entirely in front of the other, which ours
+    no longer does; the drift that is left comes from the probe's press geometry. Not seen in game.
   Open: the transport. The probe sets world-space globals; in game the spheres must come from hands
   and other avatars (vertex lights, the atlas, or a trigger position), and the pair plane from the
-  wearer's own flesh centres. Also: own-body spheres need a mask, and the patcher's new properties
+  wearer's own flesh centres, reaches and press (the probe computes them in C# from the skin). The
+  hand dent is off in the probe (`-abNoSpheres`): a probe-sized ball carved cups, a palm-sized one is
+  untried. Also: own-body spheres need a mask, and the patcher's new properties
   change every patched shader's name hash, so existing YAPS materials re-patch on the next convert.
 
 ## MagicaCloth2 settings: measured against the originals and fixed, 2026-10-06. ON DEV, not in game

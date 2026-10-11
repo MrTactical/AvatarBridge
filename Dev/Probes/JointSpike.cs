@@ -223,49 +223,6 @@ namespace AvatarBridge.Regression
             return bodies;
         }
 
-        // Per bone, a sphere over the skin it mostly moves: centred on those vertices, out to their
-        // median distance, so it sits a little inside the surface. The dent's pair plane reads it.
-        public static Dictionary<Transform, (Vector3 center, float radius)> Flesh(Transform avatar, List<Transform> chain)
-        {
-            var points = chain.ToDictionary(b => b, b => new List<Vector3>());
-            foreach (var smr in avatar.GetComponentsInChildren<SkinnedMeshRenderer>(true))
-            {
-                if (smr.sharedMesh == null) continue;
-                var bones = smr.bones;
-                var mine = new Dictionary<int, Transform>();
-                for (int i = 0; i < bones.Length; i++)
-                    if (bones[i] != null && points.ContainsKey(bones[i])) mine[i] = bones[i];
-                if (mine.Count == 0) continue;
-                // Skinned by hand from the bones and bind poses: a bake's space depends on the
-                // renderer's scale, which a converted rig can carry at 100.
-                var mesh = smr.sharedMesh;
-                var verts = mesh.vertices;
-                var weights = mesh.boneWeights;
-                var bind = mesh.bindposes;
-                var skin = new Matrix4x4[bones.Length];
-                for (int i = 0; i < bones.Length && i < bind.Length; i++)
-                    skin[i] = bones[i] != null ? bones[i].localToWorldMatrix * bind[i] : Matrix4x4.zero;
-                for (int v = 0; v < weights.Length && v < verts.Length; v++)
-                {
-                    var w = weights[v];
-                    if (w.weight0 < 0.5f || !mine.TryGetValue(w.boneIndex0, out var bone)) continue;
-                    var p = skin[w.boneIndex0].MultiplyPoint3x4(verts[v]) * w.weight0
-                          + skin[w.boneIndex1].MultiplyPoint3x4(verts[v]) * w.weight1
-                          + skin[w.boneIndex2].MultiplyPoint3x4(verts[v]) * w.weight2
-                          + skin[w.boneIndex3].MultiplyPoint3x4(verts[v]) * w.weight3;
-                    points[bone].Add(p);
-                }
-            }
-            var result = new Dictionary<Transform, (Vector3, float)>();
-            foreach (var pair in points.Where(p => p.Value.Count >= 20))
-            {
-                var center = pair.Value.Aggregate(Vector3.zero, (a, b) => a + b) / pair.Value.Count;
-                var distances = pair.Value.Select(p => Vector3.Distance(p, center)).OrderBy(d => d).ToList();
-                result[pair.Key] = (center, distances[distances.Count / 2]);
-            }
-            return result;
-        }
-
         static Transform AvatarRoot(Transform t)
         {
             var animator = t.GetComponentInParent<Animator>();
