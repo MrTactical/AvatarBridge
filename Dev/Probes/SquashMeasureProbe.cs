@@ -282,7 +282,7 @@ namespace AvatarBridge.Regression
                 inFlight = true;
             }
             B5Sample();
-            if (latency.Count >= 300 && dtReads >= 300 && b5Frames >= 300) Finish();
+            if (latency.Count >= 300 && dtReads >= 300 && b5Frames >= b5Forms.Count * B5Window) Finish();
         }
 
         void LateUpdate()
@@ -558,68 +558,95 @@ namespace AvatarBridge.Regression
             foreach (var t in targets) Destroy(t.gameObject);
         }
 
-        // B5: 20 rigs of 20 skin constraints following moving bones, measured by the profiler's
-        // constraint marker, 150 frames on and 150 off.
-        readonly List<IConstraint> b5Constraints = new List<IConstraint>();
+        // B5: skin constraints following moving bones on 20 rigs, by form, measured by the
+        // main-thread constraint phase, one form enabled at a time for 80 frames, then none.
+        readonly List<(string label, List<Behaviour> parts)> b5Forms = new List<(string, List<Behaviour>)>();
         readonly List<Transform> b5Bones = new List<Transform>();
-        readonly List<double> b5On = new List<double>(), b5Off = new List<double>();
-        readonly List<ProfilerRecorder> b5Recorders = new List<ProfilerRecorder>();
-        readonly List<string> b5Names = new List<string>();
+        readonly List<List<double>> b5Times = new List<List<double>>();
+        ProfilerRecorder b5Recorder;
+        bool b5Valid;
         int b5Frames;
+        const int B5Window = 80;
 
         void SetUpB5()
         {
+            var sources = new List<Transform[]>();
             for (int r = 0; r < 20; r++)
             {
                 var rig = new GameObject("rig" + r).transform;
                 rig.position = new Vector3(r, -600, 0);
-                Transform bone = rig, skin = rig;
+                var chain = new Transform[20];
+                Transform bone = rig;
                 for (int i = 0; i < 20; i++)
                 {
-                    var b = new GameObject("bone" + i).transform; b.SetParent(bone, false); b.localPosition = Vector3.up * 0.05f; bone = b; b5Bones.Add(b);
-                    var s = new GameObject("skin" + i).transform; s.SetParent(skin, false); s.localPosition = Vector3.up * 0.05f; skin = s;
-                    var rc = s.gameObject.AddComponent<RotationConstraint>();
-                    rc.AddSource(new ConstraintSource { sourceTransform = b, weight = 1 });
-                    rc.constraintActive = true;
-                    b5Constraints.Add(rc);
-                    if (i % 2 == 1)
+                    var b = new GameObject("bone" + i).transform; b.SetParent(bone, false); b.localPosition = Vector3.up * 0.05f; bone = b;
+                    chain[i] = b; b5Bones.Add(b);
+                }
+                sources.Add(chain);
+            }
+            void Form(string label, int count, Func<GameObject, Transform, int, IEnumerable<Behaviour>> add)
+            {
+                var parts = new List<Behaviour>();
+                foreach (var chain in sources)
+                {
+                    Transform skin = chain[0].parent;
+                    for (int i = 0; i < count; i++)
                     {
-                        var pc = s.gameObject.AddComponent<PositionConstraint>();
-                        pc.AddSource(new ConstraintSource { sourceTransform = b, weight = 1 });
-                        pc.constraintActive = true;
-                        b5Constraints.Add(pc);
+                        var t = new GameObject("skin" + i).transform; t.SetParent(skin, false); t.localPosition = Vector3.up * 0.05f; skin = t;
+                        parts.AddRange(add(t.gameObject, chain[i], i));
                     }
                 }
+                foreach (var b in parts) b.enabled = false;
+                b5Forms.Add(($"{label}, {parts.Count} components", parts));
             }
+            T Src<T>(T c, Transform from) where T : Behaviour, IConstraint
+            {
+                c.AddSource(new ConstraintSource { sourceTransform = from, weight = 1 });
+                c.constraintActive = true;
+                return c;
+            }
+            Form("rotation, plus position on every other bone (the test rig now)", 20, (go, b, i) =>
+                i % 2 == 1 ? new Behaviour[] { Src(go.AddComponent<RotationConstraint>(), b), Src(go.AddComponent<PositionConstraint>(), b) }
+                           : new Behaviour[] { Src(go.AddComponent<RotationConstraint>(), b) });
+            Form("parent only, 20 a rig", 20, (go, b, i) => new Behaviour[] { Src(go.AddComponent<ParentConstraint>(), b) });
+            Form("rotation only, 20 a rig", 20, (go, b, i) => new Behaviour[] { Src(go.AddComponent<RotationConstraint>(), b) });
+            Form("rotation only, 10 a rig", 10, (go, b, i) => new Behaviour[] { Src(go.AddComponent<RotationConstraint>(), b) });
+            Form("rotation only, 5 a rig", 5, (go, b, i) => new Behaviour[] { Src(go.AddComponent<RotationConstraint>(), b) });
+            b5Forms.Add(("none enabled", new List<Behaviour>()));
+            foreach (var _ in b5Forms) b5Times.Add(new List<double>());
             var handles = new List<ProfilerRecorderHandle>();
             ProfilerRecorderHandle.GetAvailable(handles);
             foreach (var h in handles)
             {
                 var d = ProfilerRecorderHandle.GetDescription(h);
-                // The main-thread phase only; the others nest inside it or run on workers.
-                if (d.Name != "PreLateUpdate.ConstraintManagerUpdate") continue;
-                b5Names.Add(d.Name);
-                b5Recorders.Add(ProfilerRecorder.StartNew(d.Category, d.Name));
+                if (d.Name == "PreLateUpdate.ConstraintManagerUpdate") b5Recorder = ProfilerRecorder.StartNew(d.Category, d.Name);
             }
-            SquashMeasureProbe.Log($"B5 {b5Constraints.Count} constraints on 20 rigs; profiler markers: {(b5Names.Count == 0 ? "none found" : string.Join(", ", b5Names))}");
+            b5Valid = b5Recorder.Valid;
+            foreach (var b in b5Forms[0].parts) b.enabled = true;
+            SquashMeasureProbe.Log($"B5 {b5Forms.Count - 1} forms on 20 rigs, marker valid {b5Valid}");
         }
 
         void B5Sample()
         {
-            if (b5Recorders.Count == 0) { b5Frames = 300; return; }
+            int form = b5Frames / B5Window;
+            if (!b5Valid || form >= b5Forms.Count) { b5Frames = Math.Max(b5Frames, b5Forms.Count * B5Window); return; }
             float a = Time.frameCount * 0.1f;
             foreach (var b in b5Bones) b.localRotation = Quaternion.Euler(Mathf.Sin(a) * 10f, 0, 0);
-            double ns = b5Recorders.Sum(r => (double)r.LastValue);
-            if (b5Frames < 150) b5On.Add(ns / 1000.0); else b5Off.Add(ns / 1000.0);
+            if (b5Frames % B5Window >= 10) b5Times[form].Add(b5Recorder.LastValue / 1000.0);
             b5Frames++;
-            if (b5Frames == 150) foreach (var c in b5Constraints) ((Behaviour)c).enabled = false;
+            if (b5Frames % B5Window == 0 && form + 1 < b5Forms.Count)
+            {
+                foreach (var b in b5Forms[form].parts) b.enabled = false;
+                foreach (var b in b5Forms[form + 1].parts) b.enabled = true;
+            }
         }
 
         void B5Report()
         {
-            if (b5On.Count == 0) { SquashMeasureProbe.Log("B5 no constraint marker to read"); return; }
-            SquashMeasureProbe.Log($"B5 constraint markers per frame: enabled median {Median(b5On.Skip(10).ToList()):0.0} us, disabled {Median(b5Off.Skip(10).ToList()):0.0} us (gate 300 us for 20 rigs)");
-            foreach (var r in b5Recorders) r.Dispose();
+            if (!b5Valid) { SquashMeasureProbe.Log("B5 no constraint marker to read"); return; }
+            for (int i = 0; i < b5Forms.Count; i++)
+                SquashMeasureProbe.Log($"B5 {b5Forms[i].label}: median {Median(b5Times[i]):0.0} us a frame, p90 {P(b5Times[i], 0.9):0.0} us");
+            b5Recorder.Dispose();
         }
 
         // B6: a LateUpdate after everything moves the chest 10 cm a frame, as IK would. At the end

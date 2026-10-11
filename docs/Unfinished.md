@@ -1319,6 +1319,11 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     PreLateUpdate.ConstraintManagerUpdate (25 us with them disabled); 400 would be about 1.5 ms,
     over the 1 ms redesign line even at half for the editor. The Far state disabling them is not
     optional, and the skin chain needs a cheaper form before 20 wearers are realistic.
+    Split by form on 20 rigs: cost is linear in components and the same per type, about 3.5 us
+    each in the editor (Rotation 1442 us for 400, Parent 1460 us for 400, Rotation 591 for 200,
+    282 for 100; none enabled 24). So only the count matters: a ParentConstraint in place of a
+    Rotation plus Position pair saves a third, and the 300 us gate for 20 wearers means about 5
+    components a wearer, which the current chain is far over.
     B6: the plain child follow and the skin under it have no error at the end of the frame with
     the chest moved 10 cm a frame after every other LateUpdate (gate passes). The ParentConstraint
     follow showed no lag either, against the one-frame lag the design expected, so constraints run
