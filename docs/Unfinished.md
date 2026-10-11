@@ -1336,7 +1336,7 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     from elsewhere: a looping linear clip on the Flags transform the provider already reads would
     give a clock (one frame old), else a fixed dt.
     The reader in game moved off r: one value per column on g (a flattening, a widening, b
-    flattening, b widening), so the error shader's magenta reads rest. NOT yet verified in game.
+    flattening, b widening), so the error shader's magenta reads rest. Verified in game 2026-10-11: still squashes, rest unchanged.
     Not run: B13 (the bone-table fallback is only designed if the controller fails G1).
   Open: remote copies (the Cameras content filter defaults to never blocked, so not that),
   the measurement probe (camera cost, controller
