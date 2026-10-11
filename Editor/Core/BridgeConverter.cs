@@ -160,6 +160,8 @@ namespace AvatarBridge
                     // BEFORE the descriptor: the descriptor pass places Voice Position, and the
                     // jaw bone is what it places it on. Unmapping a bogus jaw afterwards would
                     // leave the voice already sitting in the avatar's hair.
+                    // Skeleton first: the jaw rebuild reads the rig this one leaves.
+                    Pass("Humanoid rig skeleton", RigSkeletonSync.Run),
                     Pass("Humanoid rig", JawUnmapper.Run),
                     Pass("Avatar descriptor", DescriptorConverter.Run),
                     Pass("Face tracking", FaceTrackingConverter.Run),

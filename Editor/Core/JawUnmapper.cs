@@ -148,20 +148,9 @@ namespace AvatarBridge
                 return;
             }
 
-            // Saved, because an Avatar built in memory does not survive the scene: the animator
-            // would come back with a null rig and the avatar would stop being humanoid at all.
-            //
             // The name comes from "previous"; animator.avatar is null
             // here, cleared before the build.
-            rebuilt.name = previous.name;
-            string safe = new string(rebuilt.name.Select(c =>
-                System.IO.Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray());
-            // Claim, not GenerateUniqueAssetPath. Unique-against-disk
-            // includes the last conversion's rig, and reconverting
-            // would park numbered copies forever.
-            string assetPath = OutputAssetPaths.Claim($"{ctx.OutputDir}/{safe}_NoJaw.asset");
-            AssetDatabase.CreateAsset(rebuilt, assetPath);
-            int orphans = DeleteStaleRigs(ctx.OutputDir, assetPath);
+            SaveRig(ctx, rebuilt, previous.name, "_NoJaw", out int orphans);
             animator.avatar = rebuilt;
             EditorUtility.SetDirty(animator);
 
@@ -172,7 +161,22 @@ namespace AvatarBridge
                 (orphans > 0 ? $" {orphans} old rig(s) removed." : ""));
         }
 
-        static int DeleteStaleRigs(string dir, string keep)
+        // Saved, because an Avatar built in memory does not survive the scene: the animator
+        // would come back with a null rig and the avatar would stop being humanoid at all.
+        internal static void SaveRig(BridgeContext ctx, Avatar rebuilt, string name, string suffix, out int orphans)
+        {
+            rebuilt.name = name;
+            string safe = new string(name.Select(c =>
+                System.IO.Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray());
+            // Claim, not GenerateUniqueAssetPath. Unique-against-disk
+            // includes the last conversion's rig, and reconverting
+            // would park numbered copies forever.
+            string assetPath = OutputAssetPaths.Claim($"{ctx.OutputDir}/{safe}{suffix}.asset");
+            AssetDatabase.CreateAsset(rebuilt, assetPath);
+            orphans = DeleteStaleRigs(ctx.OutputDir, assetPath, suffix);
+        }
+
+        static int DeleteStaleRigs(string dir, string keep, string suffix)
         {
             if (!AssetDatabase.IsValidFolder(dir))
             {
@@ -187,12 +191,12 @@ namespace AvatarBridge
                     continue;
                 }
                 string file = System.IO.Path.GetFileNameWithoutExtension(path);
-                int cut = file.LastIndexOf("_NoJaw", System.StringComparison.Ordinal);
+                int cut = file.LastIndexOf(suffix, System.StringComparison.Ordinal);
                 if (cut < 0)
                 {
                     continue;
                 }
-                string tail = file.Substring(cut + "_NoJaw".Length).Trim();
+                string tail = file.Substring(cut + suffix.Length).Trim();
                 if (tail.Length > 0 && !int.TryParse(tail, out _))
                 {
                     continue;
@@ -205,7 +209,7 @@ namespace AvatarBridge
             return removed;
         }
 
-        static string AmbiguousBoneNames(Transform root, HumanDescription description)
+        internal static string AmbiguousBoneNames(Transform root, HumanDescription description)
         {
             var wanted = new System.Collections.Generic.HashSet<string>(
                 description.human.Select(h => h.boneName).Where(n => !string.IsNullOrEmpty(n)));

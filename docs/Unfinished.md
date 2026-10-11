@@ -813,6 +813,20 @@ version and still cross. Every tester has to be on the same build for the atlas.
 - Stripping contacts from the transport, which is planned, removes the channel latch further
   down this file, and leaves the owner id as the one self guard that does not rest on geometry.
 
+## An avatar floated, and folded up after full-body calibration. FIXED ON DEV 2026-10-11, not in game
+
+Field report 2026-10-11: feet off the floor on desktop, the body collapsing after FBT calibration,
+the hips looking wrong; on the floor in edit mode, floating in editor Play mode too. The armature
+was scaled about 9x and moved in the scene after the FBX's humanoid rig was made, so the rig's
+recorded skeleton put the hips at a different height from the body. `RigSkeletonSync` (before
+`JawUnmapper`) compares the recorded hips position, composed through the skeleton entries of
+every object above the hips, with the scene's; past 1% of the hips height it rewrites those
+entries and the hips position from the scene and rebuilds with `BuildHumanAvatar`, saved as
+`<rig>_Matched.asset`. Limb rotations keep the recorded T-pose.
+Test: reconvert, press Play (feet on the floor), then desktop and FBT in game. The source rig
+was not on this machine, so the report's numbers are the first reading of how far off it was.
+Open: a rig asset that the jaw pass also rebuilds leaves the `_Matched` copy unused in the output.
+
 ## An avatar spun on the spot after landing, in VR only. FIXED 2026-09-21 on dev, for 4.6.2
 
 **The 4.6.1 fix did not work, and the diagnosis below it is WITHDRAWN.** A second report on
@@ -1456,8 +1470,11 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     or wrong. The diagnostic build reports which: the pulse on both pairs means the skinned
     buffer arrives, the first pair alone that it reads empty, the second alone that it reads
     wrong.
-    Test: Add the squash test (shader, diagnostic), upload, watch which pair pulses; then the
-    plain build for the own hands in VR and a second player's hand for the globals.
+    WORKS the same day (Joe): the diagnostic build pulsed in editor Play mode, then in game on
+    the wearer. Not yet read off it: whether both pairs pulsed in game (the skinned buffer) or
+    the first alone (the matrix fallback, which carries no cloth).
+    Test: which pairs pulse in game; then the plain build for the own hands in VR and a second
+    player's hand for the globals.
     Next: other players' hands from the globals, sag.
     Open: an unpatchable shader over a part (fall back to the bone stack), shadow passes using
     Unity's own caster, the globals in stable, the probe moving parts by hand instead of through
