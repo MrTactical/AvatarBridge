@@ -59,6 +59,9 @@ namespace AvatarBridge.Regression
             try
             {
                 var scene = EditorSceneManager.OpenScene(Arg("-squashScene"), OpenSceneMode.Single);
+                // A conversion saved in the scene would be a second avatar to pick from. Gone in memory only.
+                foreach (var old in scene.GetRootGameObjects().Where(r => r.name.EndsWith(" (ChilloutVR)")))
+                    UnityEngine.Object.DestroyImmediate(old);
                 var descriptor = scene.GetRootGameObjects().Select(r => r.GetComponentInChildren<VRCAvatarDescriptor>(true)).FirstOrDefault(d => d != null);
                 var report = BridgeConverter.Convert(descriptor, new BridgeSettings { cloneAvatar = true });
                 var avatar = report.ConvertedRoot != null ? report.ConvertedRoot.GetComponent<CVRAvatar>() : null;
@@ -125,7 +128,9 @@ namespace AvatarBridge.Regression
                 string param = "YAPS/Squash" + pair;
                 Driver(a, b, param, start);
                 var keys = Keys(a, b, share, start);
-                foreach (var c in controllers) Layer(root, c, a, b, share, start, param, keys);
+                var meter = Meter(root, squash, a, b, param);
+                foreach (var c in controllers) Layer(root, c, a, b, share, start, param, keys, meter);
+                Slider(avatar, param, "Squash test " + pair);
                 log.Add($"{a.root.name}/{b.root.name}: box {start * 100f:0.0} cm, reach {a.reach * 100f:0.0} + {b.reach * 100f:0.0}, " +
                         $"share {share:0.00}, {keys.Count} keys, {param}");
                 pair++;
@@ -324,7 +329,37 @@ namespace AvatarBridge.Regression
         }
 
         // Built after the controller is an asset, so its parts embed in it or serialise as nothing.
-        static void Layer(Transform root, AnimatorController controller, Part a, Part b, float share, float start, string param, List<float> keys)
+        // Instruments, since only the game can say which link fails. A bar in front of the pair
+        // that grows with the synced value: grows when squeezed, the trigger works. A menu slider
+        // on the same value: squashes when dragged, the animator and stack work. The trigger
+        // writes only while the pointer is inside, so at rest the slider is not overwritten.
+        const float MeterTall = 0.3f;
+        static Transform Meter(Transform root, Transform squash, Part a, Part b, string param)
+        {
+            var meter = GameObject.CreatePrimitive(PrimitiveType.Cube).transform;
+            UnityEngine.Object.DestroyImmediate(meter.GetComponent<Collider>());
+            meter.name = param.Replace('/', ' ') + " meter";
+            meter.SetParent(squash, false);
+            meter.position = 0.5f * (a.centre + b.centre) + root.forward * 0.4f;
+            meter.localScale = new Vector3(0.03f, 0.005f, 0.03f) / squash.lossyScale.x;
+            return meter;
+        }
+
+        static void Slider(CVRAvatar avatar, string param, string label)
+        {
+            var settings = avatar.avatarSettings?.settings;
+            if (settings == null || settings.Any(x => x != null && x.machineName == param)) return;
+            settings.Insert(0, new CVRAdvancedSettingsEntry
+            {
+                name = label,
+                machineName = param,
+                unlinkNameFromMachineName = true,
+                type = CVRAdvancedSettingsEntry.SettingsType.Slider,
+                setting = new CVRAdvancesAvatarSettingSlider { defaultValue = 0f, usedType = CVRAdvancesAvatarSettingBase.ParameterType.Float },
+            });
+        }
+
+        static void Layer(Transform root, AnimatorController controller, Part a, Part b, float share, float start, string param, List<float> keys, Transform meter)
         {
             string name = LayerPrefix + param;
             var tree = new BlendTree
@@ -347,6 +382,8 @@ namespace AvatarBridge.Regression
                     Key("m_LocalScale.z", scale.z);
                     Key("m_LocalPosition.z", back);
                 }
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(AnimationUtility.CalculateTransformPath(meter, root), typeof(Transform), "m_LocalScale.y"),
+                    AnimationCurve.Constant(0f, 1f / 60f, (0.005f + MeterTall * v) / meter.parent.lossyScale.x));
                 AssetDatabase.AddObjectToAsset(clip, controller);
                 tree.AddChild(clip, v);
             }
