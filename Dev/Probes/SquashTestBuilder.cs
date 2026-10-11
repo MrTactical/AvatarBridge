@@ -368,6 +368,9 @@ namespace AvatarBridge.Regression
             renderer.lightProbeUsage = LightProbeUsage.Off;
             renderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
             renderer.allowOcclusionWhenDynamic = false;
+            // Transparent draws sort by order in layer before queue: in game a UI canvas crossing the
+            // reader's box drew after the quad and swelled one side. Last in its layer, then.
+            renderer.sortingOrder = short.MaxValue;
 
             var camera = Child(aimA, "squash camera").gameObject.AddComponent<Camera>();
             camera.orthographic = true;
@@ -387,6 +390,8 @@ namespace AvatarBridge.Regression
             camera.allowMSAA = false;
             camera.stereoTargetEye = StereoTargetEyeMask.None;
             camera.depth = 1f;
+            // The client's player layers only, local and remote: no UI, world, props or mirrors in the box.
+            camera.cullingMask = (1 << 8) | (1 << 10);
             camera.targetTexture = texture;
 
             var parser = camera.gameObject.AddComponent<CVRTexturePropertyParser>();
@@ -506,14 +511,15 @@ namespace AvatarBridge.Regression
             }
 
             // The squash fills the top and bottom rows, a's in even columns and b's in odd, so the
-            // parser's pixels read it whichever way up the target is. Diagnostic cells in the middle
+            // parser's pixels read it whichever way up the target is, blue in the diagnostic so a foreign
+            // write shows. Diagnostic cells in the middle
             // rows. Checks: orthographic, near plane, facing, all; green passes, red fails. Greys: a
             // cell blinking once a second (the camera is rendering), the near plane (mid grey when
             // exact), the facing cosine, the distance (mid grey at the start of the press).
             float4 frag(v2f i) : SV_Target
             {
                 int2 cell = (int2)floor(i.uv * 4);
-                if (_Diagnostic < 0.5 || cell.y == 0 || cell.y == 3) return float4(cell.x % 2 ? i.value.zw : i.value.xy, 0, 0);
+                if (_Diagnostic < 0.5 || cell.y == 0 || cell.y == 3) return float4(cell.x % 2 ? i.value.zw : i.value.xy, _Diagnostic, 0);
                 if (cell.y == 2) return i.checks[cell.x] > 0.5 ? float4(0, 1, 0, 1) : float4(1, 0, 0, 1);
                 if (cell.x == 0) return frac(_Time.y) < 0.5 ? float4(1, 1, 1, 1) : float4(0, 0, 0, 1);
                 return float4(saturate(i.raw[cell.x].xxx), 1);

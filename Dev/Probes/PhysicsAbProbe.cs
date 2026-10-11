@@ -1345,6 +1345,8 @@ namespace AvatarBridge.Regression
         {
             var parser = a.reader;
             if (Portrait) RenderPortrait();
+            // The editor avatar is on Default or a capture layer, not the client's player layers.
+            parser.GetComponent<Camera>().cullingMask = 1 << b.follow.Find("squash quad").gameObject.layer;
             parser.GetComponent<Camera>().Render();
             if (readerPixels == null) readerPixels = new Texture2D(4, 4, TextureFormat.RGBA32, false, true);
             RenderTexture.active = parser.texture;
