@@ -15,7 +15,8 @@
 // that changes with no squash means the parser is the link that failed.
 // Only ChilloutVR can say.
 //
-//   Menu: select the converted avatar, Tools/YAPS/Dev/Add the squash test
+//   Menu: select the converted avatar, Tools/YAPS/Dev/Add the squash test (an
+//         earlier test on it is stripped and rebuilt, no conversion needed)
 //   Batch: -executeMethod AvatarBridge.Regression.SquashTestBuilder.Batch
 //          -squashScene <scene> -squashOut <scene to save>
 #if CVR_CCK_EXISTS && VRC_SDK_VRCSDK3 && UNITY_EDITOR
@@ -102,12 +103,34 @@ namespace AvatarBridge.Regression
             return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
         }
 
+        // An earlier test off again, so it can be rebuilt without converting: each renderer's skin
+        // bones back to the bones they copy (their rotation constraint's source), then the stacks.
+        public static void Strip(Transform root)
+        {
+            var old = root.Find(RootName);
+            if (old == null) return;
+            foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var bones = smr.bones;
+                bool any = false;
+                for (int i = 0; i < bones.Length; i++)
+                {
+                    if (bones[i] == null || !bones[i].IsChildOf(old)) continue;
+                    var copy = bones[i].GetComponent<RotationConstraint>();
+                    bones[i] = copy != null && copy.sourceCount > 0 ? copy.GetSource(0).sourceTransform : null;
+                    any = true;
+                }
+                if (any) smr.bones = bones;
+            }
+            UnityEngine.Object.DestroyImmediate(old.gameObject);
+        }
+
         static bool Sided(Transform t) => Soft.IsMatch(t.name) && Side.IsMatch(t.name);
 
         public static string Add(CVRAvatar avatar)
         {
             var root = avatar.transform;
-            if (root.Find(RootName) != null) return "already has the squash; convert again first";
+            Strip(root);
 
             // Skinned chain roots naming a side, paired by name with the side taken out. Skinned,
             // so a cloth or collider object named after its chain does not pair up as well; a side,
