@@ -1359,9 +1359,28 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     the skin crosses the plane, both sides added, no radius cap: Kar 8.5 cm with the map alone,
     2.3 cm with the plane (`-abNoContact` for the former). On Kar's dark shader the film shows
     little; a lighter avatar with a deep press is the visual check still owed.
+  - Follows only, 2026-10-11: the shader works the whole squash out from where the parts are.
+    `_YAPS_SquashFollow[4]` holds each part's follow (a plain child of its top carrying bone, at
+    its centre); three vectors baked per material at build (`_YAPS_SquashReach`,
+    `_YAPS_SquashPair`, `_YAPS_SquashShape`) give the rest. The gap gives the press, the press the
+    map and the contact plane. `_YAPS_SquashTo`, `_YAPS_SquashFrom` and `_YAPS_SquashPlane` above
+    are gone, and no camera, parser, stack or constraint is left in this route. The press is read
+    in the first part's units, so both faces meet on one plane even when the two top bones are
+    scaled differently. Zombunny, probe feeding the follows: same deepest press as before
+    (12.9 cm), skin across the plane by 1.5 cm at most, the top stays over the skin.
+    Build for the in-game test: Tools > YAPS > Dev > Add the squash test (shader). It puts a
+    `CVRMaterialDataProvider` (TransformLocalToWorld) and its `CVRRenderController` on a child of
+    the root (the client finds the wearer from the parent up), patched copies of every layer's
+    materials with a share texture per renderer, and strips either earlier build. Batch-built on
+    Zombunny: 2 pairs, 9 materials, a built-in shader left alone. The CCK's `LateEventsManager`
+    also runs in editor Play mode, so the real provider can be measured in batch (not done yet).
+    In game, to answer: does the provider run on remote copies (A2); does the client's material
+    take the array (if the client instances renderer materials, the provider writes the asset and
+    nothing moves); does it look right.
     Open: an unpatchable shader over a part (fall back to the bone stack), two copies sharing a
-    material (fade the map out far from the part), shadow and outline passes, the provider on
-    remote copies (A2).
+    material (each skips vertices farther than four reaches from its part, so the last writer
+    squashes and the other copy stays still), shadow and outline passes, the provider on remote
+    copies (A2).
   Open: remote copies (the Cameras content filter defaults to never blocked, so not that),
   the measurement probe (camera cost, controller
   cost, readback latency, replacement universality), then the staged build above, tuning, and

@@ -45,16 +45,15 @@ Texture2D _YAPS_DentOwn;       // per vertex: its share of parts 0 to 3 in r, g,
 float4 _YAPS_DentOwn_TexelSize;
 float4 _YAPS_DentPart[4];      // xyz the part's centre, w how far it reaches toward its partner
 float4 _YAPS_DentAxis[4];      // xyz toward its partner, w how far it is pushed back (0 none)
-// The bone squash as one map per part: its counter node's local-to-world after its follow's
-// world-to-local, so every layer at a point takes the same move and none can pass another.
-// A position-only map is what keeps layers in order; the dents above move each vertex by its
-// own facing, and the skin came through. All zero until something writes them.
-float4x4 _YAPS_SquashTo[4];
-float4x4 _YAPS_SquashFrom[4];
-// Where a squashed part meets its partner: xyz toward the partner, w the plane's distance
-// along it. The map flattens the whole part, so the pair still overlapped where it reached past
-// its reach; what crosses the plane is pressed back onto it here. 0 for no contact.
-float4 _YAPS_SquashPlane[4];
+// The pair squash, worked out here from where the parts are: a material data provider writes
+// each part's follow (a plain child of its top carrying bone, at the part's centre) every
+// LateUpdate, locally, with nothing synced. Parts 0 and 1 are a pair, 2 and 3 another. Every
+// layer at a point takes the same move, a function of position alone, which is what keeps a top
+// over the skin; the dents below move each vertex by its own facing, and the skin came through.
+float4x4 _YAPS_SquashFollow[4];
+float4 _YAPS_SquashReach;   // how far each part reaches toward its partner, in its follow's units
+float4 _YAPS_SquashPair;    // pair 0: x where pressing starts (follow gap, part 0's units), y part 0's share; pair 1: z, w
+float4 _YAPS_SquashShape;   // x flattest, y overfill, z fullest, w contact plane on
 
 void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tangent, uint vertexId)
 {
@@ -72,43 +71,72 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
     uint width = (uint) round(abs(1.0 / _YAPS_DentOwn_TexelSize.x));
     float4 own = _YAPS_DentOwn.Load(int3(vertexId % width, vertexId / width, 0));
     float shares[4] = { own.r, own.g, own.b, own.a };
+    // Each part flattens along the line to its partner and grows across, its far side held,
+    // so its facing side moves back by its share of the press.
+    float3 squashAxis[4], squashCentre[4];
+    float squashPlane[4], squashReach[4];
+    bool squashContact[4];
     float3 mapped = 0;
     float3 mappedN = n;
     [unroll]
     for (int m = 0; m < 4; m++)
     {
-        if (shares[m] <= 0 || _YAPS_SquashFrom[m][3][3] == 0) continue;
-        float4x4 map = mul(_YAPS_SquashTo[m], _YAPS_SquashFrom[m]);
-        mapped += (mul(map, float4(world, 1)).xyz - world) * shares[m];
+        squashPlane[m] = 0;
+        squashContact[m] = false;
+        squashAxis[m] = 0;
+        squashCentre[m] = 0;
+        squashReach[m] = 0;
+        float unit = length(_YAPS_SquashFollow[m]._m00_m10_m20);
+        float partnerUnit = length(_YAPS_SquashFollow[m ^ 1]._m00_m10_m20);
+        if (shares[m] <= 0 || unit <= 0 || partnerUnit <= 0) continue;
+        float3 centre = _YAPS_SquashFollow[m]._m03_m13_m23;
+        float3 toward = _YAPS_SquashFollow[m ^ 1]._m03_m13_m23 - centre;
+        float reach = _YAPS_SquashReach[m] * unit;
+        float3 d = world - centre;
+        // Two copies of one avatar can share a material and so each other's follows: a vertex
+        // far from the part it belongs to is not this copy's, and stays.
+        if (length(toward) < 1e-6 || reach <= 0 || dot(d, d) > 16 * reach * reach) continue;
+        float3 axis = normalize(toward);
+        float start = m < 2 ? _YAPS_SquashPair.x : _YAPS_SquashPair.z;
+        float first = m < 2 ? _YAPS_SquashPair.y : _YAPS_SquashPair.w;
+        float share = (m & 1) == 0 ? first : 1 - first;
+        // Both parts in the first one's units, so each is pushed back to the same plane.
+        float press = max(start * length(_YAPS_SquashFollow[m & 2]._m00_m10_m20) - length(toward), 0) * share;
+        float along = clamp(1 - press / (2 * reach), _YAPS_SquashShape.x, 1);
+        float across = min(1 + _YAPS_SquashShape.y * (1 - along), _YAPS_SquashShape.z);
+        float t = dot(d, axis);
+        float3 moved = centre + across * d + (along - across) * axis * t - axis * reach * (1 - along);
+        mapped += (moved - world) * shares[m];
         if (hasNormal)
-        {
-            // The inverse transpose up to scale: each row the cross of the other two.
-            float3x3 a = (float3x3)map;
-            float3 bent = float3(dot(cross(a[1], a[2]), n), dot(cross(a[2], a[0]), n), dot(cross(a[0], a[1]), n));
-            mappedN = normalize(lerp(mappedN, normalize(bent), shares[m]));
-        }
+            mappedN = normalize(lerp(mappedN, normalize(n + axis * dot(axis, n) * (across / along - 1)), shares[m]));
+        squashAxis[m] = axis;
+        squashCentre[m] = centre;
+        squashReach[m] = reach;
+        squashPlane[m] = dot(axis, centre) + reach - press;
+        squashContact[m] = press > 0 && _YAPS_SquashShape.w > 0;
     }
     world += mapped;
     n = mappedN;
 
+    // The map flattens the whole part, so the pair still overlapped where it reached past its
+    // reach. What crosses the plane where the two meet is eased back onto it, from a tenth of
+    // the reach before it to a fifth of the slope, never flat: a layer and the skin under it keep
+    // their order and nothing folds. What is pushed back spills away from the line between them.
     [unroll]
     for (int c = 0; c < 4; c++)
     {
-        float3 facing = _YAPS_SquashPlane[c].xyz;
-        float soft = YAPS_SQUASH_SOFT * _YAPS_DentPart[c].w;
-        if (shares[c] <= 0 || soft <= 0 || dot(facing, facing) == 0) continue;
-        float s = dot(world, facing) - _YAPS_SquashPlane[c].w;
+        float soft = YAPS_SQUASH_SOFT * squashReach[c];
+        if (!squashContact[c] || soft <= 0) continue;
+        float3 facing = squashAxis[c];
+        float s = dot(world, facing) - squashPlane[c];
         float u = s + soft;
         if (u <= 0) continue;
-        // Eased from the skin's own slope to a fifth of it, never flat: a layer and the skin
-        // under it keep their order, and nothing folds.
         float slope = (1 - YAPS_DENT_KEEP) * exp(-u / soft) + YAPS_DENT_KEEP;
         float pressed = -soft + soft * (1 - YAPS_DENT_KEEP) * (1 - exp(-u / soft)) + YAPS_DENT_KEEP * u;
         float back = (s - pressed) * shares[c];
-        // What is pressed back spills out round the seam, away from the line between the parts.
-        float3 q = world - _YAPS_DentPart[c].xyz;
+        float3 q = world - squashCentre[c];
         float3 away = q - facing * dot(q, facing);
-        away /= max(length(away), 0.5 * _YAPS_DentPart[c].w);
+        away /= max(length(away), 0.5 * squashReach[c]);
         world += (away * _YAPS_DentSpill - facing) * back;
         if (hasNormal)
         {

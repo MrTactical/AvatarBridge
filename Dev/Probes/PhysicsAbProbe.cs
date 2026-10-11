@@ -373,6 +373,7 @@ namespace AvatarBridge.Regression
             {
                 // Every skinned layer, not only the skin: a top left undented had the skin push
                 // through it in stripes. Clothing often rides bones of its own, so match by none.
+                dentMaterials.Clear();
                 var done = new Dictionary<Material, Material>();
                 foreach (var smr in converted.GetComponentsInChildren<SkinnedMeshRenderer>(true))
                 {
@@ -384,7 +385,7 @@ namespace AvatarBridge.Regression
                         {
                             var shader = YapsShaderPatcher.Patch(mats[i], "Assets/PhysicsAbDent", null, out string refusal, out _);
                             dented = shader == null ? null : new Material(mats[i]) { shader = shader };
-                            if (dented != null) dented.SetFloat("_YAPS_DentPower", 1f);
+                            if (dented != null) { dented.SetFloat("_YAPS_DentPower", 1f); dentMaterials.Add(dented); }
                             // -abBulge x: the ring's height, for A/B against the default.
                             if (dented != null && float.TryParse(Arg("-abBulge"), NumberStyles.Float, CultureInfo.InvariantCulture, out float bulge))
                                 dented.SetFloat("_YAPS_DentBulge", bulge);
@@ -1010,18 +1011,7 @@ namespace AvatarBridge.Regression
                     part[i + 1] = new Vector4(cb.x, cb.y, cb.z, hb);
                     axes[i] = new Vector4(axis.x, axis.y, axis.z, press * share);
                     axes[i + 1] = new Vector4(-axis.x, -axis.y, -axis.z, press * (1f - share));
-                    // Both faces meet where each was pushed back to: one plane, seen from either side.
-                    // -abNoContact: the map alone.
-                    if (Affine && press > 0f)
-                    {
-                        measurePlanes[i] = new Vector4(axis.x, axis.y, axis.z, Vector3.Dot(axis, ca) + ha - press * share);
-                        measurePlanes[i + 1] = new Vector4(-axis.x, -axis.y, -axis.z, Vector3.Dot(-axis, cb) + hb - press * (1f - share));
-                    }
-                    else measurePlanes[i] = measurePlanes[i + 1] = Vector4.zero;
-                    bool contact = Array.IndexOf(Environment.GetCommandLineArgs(), "-abNoContact") < 0;
-                    squashPlanes[i] = contact ? measurePlanes[i] : Vector4.zero;
-                    squashPlanes[i + 1] = contact ? measurePlanes[i + 1] : Vector4.zero;
-                    if (i == 0 && Time.frameCount % 10 == 0) MeasureThrough(0, 1, Time.frameCount);
+                    pairShare[i / 2] = share;
                     if (Squash)
                     {
                         if (a.follow == null)
@@ -1049,57 +1039,98 @@ namespace AvatarBridge.Regression
             }
             Shader.SetGlobalVectorArray("_YAPS_DentPart", part);
             Shader.SetGlobalVectorArray("_YAPS_DentAxis", axes);
-            if (Affine && dentParts.Count > 0 && dentParts[0].follow != null)
+            if (Affine && dentParts.Count > 1 && dentParts[0].follow != null) FeedShaderSquash();
+            // After the feed, so the measure reads the map this frame draws.
+            if (dentParts.Count > 1 && Time.frameCount % 10 == 0) MeasureThrough(0, 1, Time.frameCount);
+        }
+
+        // -abAffine: the shader works the squash out from the follows alone, as the uploaded test
+        // does, the material data provider stood in for here. -abNoContact: the map alone.
+        static readonly float[] pairShare = { 0.5f, 0.5f };
+        static readonly List<Material> dentMaterials = new List<Material>();
+        static readonly Matrix4x4[] sqFollow = new Matrix4x4[4];
+        static Vector4 sqReach, sqPair, sqShape;
+        static float planeCrossed;
+        static string planeCrossedNote = "never";
+
+        static void FeedShaderSquash()
+        {
+            sqReach = Vector4.zero;
+            sqPair = new Vector4(0f, 0.5f, 0f, 0.5f);
+            for (int i = 0; i < 4; i++) sqFollow[i] = Matrix4x4.zero;
+            for (int i = 0; i < dentParts.Count && i < 4; i++)
             {
-                var to = new Matrix4x4[4];
-                var from = new Matrix4x4[4];
-                for (int i = 0; i < dentParts.Count && i < 4; i++)
-                {
-                    to[i] = dentParts[i].counter.localToWorldMatrix;
-                    from[i] = dentParts[i].follow.worldToLocalMatrix;
-                }
-                Shader.SetGlobalMatrixArray("_YAPS_SquashTo", to);
-                Shader.SetGlobalMatrixArray("_YAPS_SquashFrom", from);
-                Shader.SetGlobalVectorArray("_YAPS_SquashPlane", squashPlanes);
-                squashParts = part;
+                var p = dentParts[i];
+                sqFollow[i] = p.follow.localToWorldMatrix;
+                float unit = p.follow.lossyScale.x;
+                sqReach[i] = p.restReach / unit;
+                if (i % 2 == 1) continue;
+                var b = dentParts[i + 1];
+                sqPair[i] = Mathf.Min(p.restGap, p.restReach + b.restReach) / unit;
+                sqPair[i + 1] = pairShare[i / 2];
+            }
+            bool contact = Array.IndexOf(Environment.GetCommandLineArgs(), "-abNoContact") < 0;
+            sqShape = new Vector4(Flattest, Overfill, 1.5f, contact ? 1f : 0f);
+            foreach (var m in dentMaterials)
+            {
+                m.SetMatrixArray("_YAPS_SquashFollow", sqFollow);
+                m.SetVector("_YAPS_SquashReach", sqReach);
+                m.SetVector("_YAPS_SquashPair", sqPair);
+                m.SetVector("_YAPS_SquashShape", sqShape);
             }
         }
 
-        static readonly Vector4[] squashPlanes = new Vector4[4];
-        static readonly Vector4[] measurePlanes = new Vector4[4];
-        static float planeCrossed;
-        static string planeCrossedNote = "never";
-        static Vector4[] squashParts;
+        // The shader's frame for part m, as yaps_dent.cginc works it out.
+        static bool SquashFrame(int m, out Vector3 centre, out Vector3 axis, out float reach, out float along, out float across, out float press)
+        {
+            centre = axis = Vector3.zero;
+            reach = press = 0f;
+            along = across = 1f;
+            float unit = ((Vector3)sqFollow[m].GetColumn(0)).magnitude;
+            if (unit <= 0f || ((Vector3)sqFollow[m ^ 1].GetColumn(0)).magnitude <= 0f) return false;
+            centre = sqFollow[m].GetColumn(3);
+            var toward = (Vector3)sqFollow[m ^ 1].GetColumn(3) - centre;
+            reach = sqReach[m] * unit;
+            if (toward.magnitude < 1e-6f || reach <= 0f) return false;
+            axis = toward.normalized;
+            float start = m < 2 ? sqPair.x : sqPair.z;
+            float first = m < 2 ? sqPair.y : sqPair.w;
+            press = Mathf.Max(start * ((Vector3)sqFollow[m & 2].GetColumn(0)).magnitude - toward.magnitude, 0f) * ((m & 1) == 0 ? first : 1f - first);
+            along = Mathf.Clamp(1f - press / (2f * reach), sqShape.x, 1f);
+            across = Mathf.Min(1f + sqShape.y * (1f - along), sqShape.z);
+            return true;
+        }
 
         // The shader's map and contact, for measuring what BakeMesh cannot see.
         static Vector3 Mapped(Vector3 world, Vector4 share)
         {
             if (!Affine || dentParts == null) return world;
-            var moved = world;
-            for (int q = 0; q < dentParts.Count && q < 4; q++)
+            var mapped = Vector3.zero;
+            for (int m = 0; m < 4; m++)
             {
-                if (share[q] <= 0f || dentParts[q].follow == null) continue;
-                var map = dentParts[q].counter.localToWorldMatrix * dentParts[q].follow.worldToLocalMatrix;
-                moved += (map.MultiplyPoint3x4(world) - world) * share[q];
+                if (share[m] <= 0f || !SquashFrame(m, out var centre, out var axis, out float reach, out float along, out float across, out _)) continue;
+                var d = world - centre;
+                if (d.sqrMagnitude > 16f * reach * reach) continue;
+                var moved = centre + across * d + (along - across) * Vector3.Dot(d, axis) * axis - axis * reach * (1f - along);
+                mapped += (moved - world) * share[m];
             }
-            const float Keep = 0.2f;
-            float spill = 1f;
-            for (int c = 0; c < 4 && squashParts != null; c++)
+            world += mapped;
+            const float Keep = 0.2f, Spill = 1f;
+            for (int c = 0; c < 4 && sqShape.w > 0f; c++)
             {
-                var facing = (Vector3)squashPlanes[c];
-                float soft = 0.1f * squashParts[c].w;
-                if (share[c] <= 0f || soft <= 0f || facing == Vector3.zero) continue;
-                float s = Vector3.Dot(moved, facing) - squashPlanes[c].w;
+                if (share[c] <= 0f || !SquashFrame(c, out var centre, out var facing, out float reach, out _, out _, out float press) || press <= 0f) continue;
+                float soft = 0.1f * reach;
+                float s = Vector3.Dot(world, facing) - (Vector3.Dot(facing, centre) + reach - press);
                 float u = s + soft;
                 if (u <= 0f) continue;
                 float pressed = -soft + soft * (1f - Keep) * (1f - Mathf.Exp(-u / soft)) + Keep * u;
                 float back = (s - pressed) * share[c];
-                var at = moved - (Vector3)squashParts[c];
-                var away = at - facing * Vector3.Dot(at, facing);
-                away /= Mathf.Max(away.magnitude, 0.5f * squashParts[c].w);
-                moved += (away * spill - facing) * back;
+                var q = world - centre;
+                var away = q - facing * Vector3.Dot(q, facing);
+                away /= Mathf.Max(away.magnitude, 0.5f * reach);
+                world += (away * Spill - facing) * back;
             }
-            return moved;
+            return world;
         }
 
         // -abSquash: the part squashes by bone scale, never by moving vertices. The skinning of
@@ -1486,14 +1517,15 @@ namespace AvatarBridge.Regression
             }
             // How far each part's skin crosses the plane where the pair meets, both sides added:
             // the overlap, wherever it sits, with no search radius to cap it.
-            if (Affine && measurePlanes[a] != Vector4.zero)
+            if (Affine && SquashFrame(a, out _, out _, out _, out _, out _, out float pressA) && pressA > 0f)
             {
                 float crossA = 0f, crossB = 0f;
                 for (int i = 0; i < world.Length && i < skinPart.Length; i++)
                 {
                     int q = skinPart[i] == a ? a : skinPart[i] == b ? b : -1;
                     if (q < 0) continue;
-                    float c = Vector3.Dot(world[i], measurePlanes[q]) - measurePlanes[q].w;
+                    SquashFrame(q, out var centre, out var facing, out float reach, out _, out _, out float press);
+                    float c = Vector3.Dot(world[i], facing) - (Vector3.Dot(facing, centre) + reach - press);
                     if (q == a) crossA = Mathf.Max(crossA, c); else crossB = Mathf.Max(crossB, c);
                 }
                 if (crossA + crossB > planeCrossed)

@@ -83,7 +83,11 @@ namespace AvatarBridge.Regression
                 var report = BridgeConverter.Convert(descriptor, new BridgeSettings { cloneAvatar = true });
                 var avatar = report.ConvertedRoot != null ? report.ConvertedRoot.GetComponent<CVRAvatar>() : null;
                 if (avatar == null) throw new Exception("conversion made nothing");
+#if AVATARBRIDGE_YAPS
+                Debug.Log("[Squash] " + (Array.IndexOf(Environment.GetCommandLineArgs(), "-squashShader") >= 0 ? AddShader(avatar) : Add(avatar)));
+#else
                 Debug.Log("[Squash] " + Add(avatar));
+#endif
                 EditorSceneManager.SaveScene(scene, Arg("-squashOut"), true);
                 AssetDatabase.SaveAssets();
                 Debug.Log("[Squash] saved " + Arg("-squashOut"));
@@ -127,14 +131,11 @@ namespace AvatarBridge.Regression
 
         static bool Sided(Transform t) => Soft.IsMatch(t.name) && Side.IsMatch(t.name);
 
-        public static string Add(CVRAvatar avatar)
+        // Skinned chain roots naming a side, paired by name with the side taken out. Skinned,
+        // so a cloth or collider object named after its chain does not pair up as well; a side,
+        // so a root both parts hang from is not taken for one of them.
+        static List<List<Transform>> Pairs(Transform root, out string none)
         {
-            var root = avatar.transform;
-            Strip(root);
-
-            // Skinned chain roots naming a side, paired by name with the side taken out. Skinned,
-            // so a cloth or collider object named after its chain does not pair up as well; a side,
-            // so a root both parts hang from is not taken for one of them.
             var skinned = new HashSet<Transform>(root.GetComponentsInChildren<SkinnedMeshRenderer>(true).SelectMany(r => r.bones).Where(t => t != null));
             var found = skinned
                 .Where(t => Sided(t) && (t.parent == null || !Sided(t.parent)))
@@ -142,7 +143,19 @@ namespace AvatarBridge.Regression
                 .Where(g => g.Count() == 2)
                 .Select(g => g.OrderBy(t => root.InverseTransformPoint(t.position).x).ToList())
                 .ToList();
-            if (found.Count == 0) return "no soft pair found by name among " + string.Join(", ", skinned.Where(t => Soft.IsMatch(t.name)).Select(t => t.name + "<" + t.parent?.name));
+            none = found.Count > 0 ? null : "no soft pair found by name among " + string.Join(", ", skinned.Where(t => Soft.IsMatch(t.name)).Select(t => t.name + "<" + t.parent?.name));
+            return found;
+        }
+
+        public static string Add(CVRAvatar avatar)
+        {
+            var root = avatar.transform;
+            Strip(root);
+#if AVATARBRIDGE_YAPS
+            StripShader(root);
+#endif
+            var found = Pairs(root, out string none);
+            if (none != null) return none;
 
             var squash = new GameObject(RootName).transform;
             squash.SetParent(root, false);
@@ -540,6 +553,220 @@ namespace AvatarBridge.Regression
             cube.localScale = Vector3.one * (Diagnostic ? 0.1f : 0.04f) / squash.lossyScale.x;
             cube.GetComponent<MeshRenderer>().sharedMaterial = material;
         }
+#if AVATARBRIDGE_YAPS
+
+        // The squash in the YAPS-patched body shader instead: every layer over a part takes the
+        // same move, worked out on the GPU from where the parts are. A material data provider
+        // writes each part's follow (a plain child of its top carrying bone, at its centre) into
+        // the materials every frame, on every client, with nothing synced and no camera.
+        //
+        // What the in-game test answers: does the provider run on remote copies, do the client's
+        // materials take what it writes, and does the squash look right. A shader the patcher
+        // refuses is reported and its layer left as it was.
+        const string ShaderHostName = "YAPS squash (shader)", FollowName = "YAPS squash follow";
+
+        [MenuItem("Tools/YAPS/Dev/Add the squash test (shader)")]
+        static void ShaderMenu()
+        {
+            var avatar = Selection.activeGameObject != null ? Selection.activeGameObject.GetComponentInParent<CVRAvatar>() : null;
+            Debug.Log(avatar == null ? "[Squash] select a converted avatar first" : "[Squash] " + AddShader(avatar));
+        }
+
+        public static string AddShader(CVRAvatar avatar)
+        {
+            var root = avatar.transform;
+            Strip(root);
+            StripShader(root);
+            var found = Pairs(root, out string none);
+            if (none != null) return none;
+
+            var parts = new List<Part>();
+            var log = new List<string>();
+            var reach = Vector4.zero;
+            var pair = new Vector4(0f, 0.5f, 0f, 0.5f);
+            // The shader has room for two pairs.
+            foreach (var bones in found.Take(2))
+            {
+                var measured = Measure(root, bones);
+                if (measured == null) { log.Add($"{bones[0].name}/{bones[1].name}: too little skin"); continue; }
+                var (a, b) = (measured[0], measured[1]);
+                var axis = (b.centre - a.centre).normalized;
+                a.reach = Reach(a, axis);
+                b.reach = Reach(b, -axis);
+                float start = Mathf.Min(Vector3.Distance(a.centre, b.centre), a.reach + b.reach);
+                float share = a.volume + b.volume > 0f ? a.volume / (a.volume + b.volume) : 0.5f;
+                int i = parts.Count;
+                foreach (var p in measured)
+                {
+                    p.follow = Child(p.top, FollowName);
+                    p.follow.position = p.centre;
+                    reach[parts.Count] = p.reach / Unit(p.follow);
+                    parts.Add(p);
+                }
+                pair[i] = start / Unit(a.follow);
+                pair[i + 1] = share;
+                log.Add($"{a.root.name}/{b.root.name}: start {start * 100f:0.0} cm, reach {a.reach * 100f:0.0} + {b.reach * 100f:0.0}, share {share:0.00}");
+            }
+            if (parts.Count == 0) return string.Join("; ", log);
+
+            var copies = new List<Material>();
+            var patched = new Dictionary<Material, Shader>();
+            foreach (var (smr, own) in Shares(root, parts.Select(p => p.root).ToList(), avatar.name))
+            {
+                var mats = smr.sharedMaterials;
+                for (int slot = 0; slot < mats.Length; slot++)
+                {
+                    var source = mats[slot];
+                    if (source == null) continue;
+                    if (!patched.TryGetValue(source, out var shader))
+                    {
+                        patched[source] = shader = YapsShaderPatcher.Patch(source, Folder, null, out string refusal, out _);
+                        if (shader == null) log.Add($"left \"{source.name}\" as it was: {refusal}");
+                    }
+                    if (shader == null) continue;
+                    var copy = new Material(source) { shader = shader };
+                    copy.SetFloat("_YAPS_DentPower", 1f);
+                    copy.SetTexture("_YAPS_DentOwn", own);
+                    copy.SetVector("_YAPS_SquashReach", reach);
+                    copy.SetVector("_YAPS_SquashPair", pair);
+                    copy.SetVector("_YAPS_SquashShape", new Vector4(Flattest, Overfill, Fullest, 1f));
+                    Asset(copy, $"{avatar.name} {smr.name} {slot}.mat");
+                    // Where it came from, for StripShader to put back.
+                    AssetImporter.GetAtPath(AssetDatabase.GetAssetPath(copy)).userData = GlobalObjectId.GetGlobalObjectIdSlow(source).ToString();
+                    copies.Add(copy);
+                    mats[slot] = copy;
+                }
+                smr.sharedMaterials = mats;
+            }
+
+            // Off the root: the client works out whose avatar it is from the parent up.
+            var host = Child(root, ShaderHostName).gameObject;
+            var provider = host.AddComponent<CVRMaterialDataProvider>();
+            provider.materials = copies.ToArray();
+            provider.dataMode = CVRMaterialDataProvider.DataMode.TransformLocalToWorld;
+            provider.transforms = parts.Select(p => p.follow).ToArray();
+            provider.shaderPropertyName = "_YAPS_SquashFollow";
+            host.AddComponent<CVRRenderController>().cvrRenderComponents.Add(provider);
+
+            AssetDatabase.SaveAssets();
+            EditorUtility.SetDirty(avatar.gameObject);
+            EditorSceneManager.MarkSceneDirty(avatar.gameObject.scene);
+            return $"{parts.Count / 2} pair(s) through the shader on {avatar.name}, {copies.Count} material(s) in {Folder}: " + string.Join("; ", log);
+        }
+
+        static float Unit(Transform follow) => ((Vector3)follow.localToWorldMatrix.GetColumn(0)).magnitude;
+
+        // Each skinned renderer's share of every part per vertex, in r, g, b, a: the weight the
+        // part's bones carry. A layer riding bones of its own takes the share of the nearest skin
+        // vertex within 3 cm, or the skin would squash out from under it.
+        static List<(SkinnedMeshRenderer smr, Texture2D own)> Shares(Transform root, List<Transform> parts, string name)
+        {
+            var sets = parts.Select(b => new HashSet<Transform>(b.GetComponentsInChildren<Transform>(true))).ToList();
+            var meshes = new List<(SkinnedMeshRenderer smr, Vector3[] at, Vector4[] share, int owned)>();
+            foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var mesh = smr.sharedMesh;
+                if (mesh == null) continue;
+                var rb = smr.bones;
+                var owner = rb.Select(t => t == null ? -1 : sets.FindIndex(s => s.Contains(t))).ToArray();
+                var weights = mesh.boneWeights;
+                var verts = mesh.vertices;
+                var bind = mesh.bindposes;
+                var skin = rb.Select((t, i) => t != null && i < bind.Length ? t.localToWorldMatrix * bind[i] : Matrix4x4.zero).ToArray();
+                int count = Mathf.Min(weights.Length, verts.Length);
+                var at = new Vector3[count];
+                var share = new Vector4[count];
+                int owned = 0;
+                for (int v = 0; v < count; v++)
+                {
+                    var w = weights[v];
+                    int[] index = { w.boneIndex0, w.boneIndex1, w.boneIndex2, w.boneIndex3 };
+                    float[] weight = { w.weight0, w.weight1, w.weight2, w.weight3 };
+                    for (int q = 0; q < 4; q++)
+                    {
+                        at[v] += skin[index[q]].MultiplyPoint3x4(verts[v]) * weight[q];
+                        if (weight[q] > 0f && owner[index[q]] >= 0) share[v][owner[index[q]]] += weight[q];
+                    }
+                    if (Mathf.Max(share[v].x, share[v].y, share[v].z, share[v].w) >= 0.5f) owned++;
+                }
+                meshes.Add((smr, at, share, owned));
+            }
+
+            // The skin is the renderer carrying the most of the parts, found through a 2 cm grid.
+            var body = meshes.OrderByDescending(m => m.owned).FirstOrDefault();
+            if (body.smr == null || body.owned == 0) return new List<(SkinnedMeshRenderer, Texture2D)>();
+            const float Cell = 0.02f, Near = 0.03f;
+            var grid = new Dictionary<Vector3Int, List<int>>();
+            Vector3Int Key(Vector3 p) => new Vector3Int(Mathf.FloorToInt(p.x / Cell), Mathf.FloorToInt(p.y / Cell), Mathf.FloorToInt(p.z / Cell));
+            for (int v = 0; v < body.at.Length; v++)
+            {
+                if (body.share[v] == Vector4.zero) continue;
+                var k = Key(body.at[v]);
+                if (!grid.TryGetValue(k, out var list)) grid[k] = list = new List<int>();
+                list.Add(v);
+            }
+            var result = new List<(SkinnedMeshRenderer, Texture2D)>();
+            foreach (var m in meshes)
+            {
+                if (m.smr != body.smr)
+                    for (int v = 0; v < m.at.Length; v++)
+                    {
+                        var k = Key(m.at[v]);
+                        int best = -1;
+                        float bestD = Near * Near;
+                        for (int x = -2; x <= 2; x++)
+                            for (int y = -2; y <= 2; y++)
+                                for (int z = -2; z <= 2; z++)
+                                {
+                                    if (!grid.TryGetValue(k + new Vector3Int(x, y, z), out var list)) continue;
+                                    foreach (int s in list)
+                                    {
+                                        float d = (body.at[s] - m.at[v]).sqrMagnitude;
+                                        if (d < bestD) { bestD = d; best = s; }
+                                    }
+                                }
+                        if (best >= 0) m.share[v] = body.share[best];
+                    }
+                if (m.share.All(x => x == Vector4.zero)) continue;
+                int width = 1024, height = Mathf.Max(1, (m.at.Length + width - 1) / width);
+                var pixels = new Color32[width * height];
+                for (int v = 0; v < m.at.Length; v++)
+                {
+                    var s = m.share[v];
+                    pixels[v] = new Color32((byte)(s.x * 255f + 0.5f), (byte)(s.y * 255f + 0.5f), (byte)(s.z * 255f + 0.5f), (byte)(s.w * 255f + 0.5f));
+                }
+                // Linear and point-sampled: a share is a number, not a colour.
+                var tex = new Texture2D(width, height, TextureFormat.RGBA32, false, true) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
+                tex.SetPixels32(pixels);
+                tex.Apply(false);
+                result.Add((m.smr, Asset(tex, $"{name} {m.smr.name} shares.asset")));
+            }
+            return result;
+        }
+
+        // An earlier shader build off again: each layer back on the material it was copied from.
+        public static void StripShader(Transform root)
+        {
+            foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var mats = smr.sharedMaterials;
+                bool any = false;
+                for (int i = 0; i < mats.Length; i++)
+                {
+                    string path = AssetDatabase.GetAssetPath(mats[i]);
+                    if (mats[i] == null || !path.StartsWith(Folder + "/")) continue;
+                    if (!GlobalObjectId.TryParse(AssetImporter.GetAtPath(path)?.userData, out var id)) continue;
+                    var source = GlobalObjectId.GlobalObjectIdentifierToObjectSlow(id) as Material;
+                    if (source == null) continue;
+                    mats[i] = source;
+                    any = true;
+                }
+                if (any) smr.sharedMaterials = mats;
+            }
+            foreach (var t in root.GetComponentsInChildren<Transform>(true).Where(t => t.name == FollowName || t.name == ShaderHostName).ToList())
+                if (t != null) UnityEngine.Object.DestroyImmediate(t.gameObject);
+        }
+#endif
     }
 }
 #endif
