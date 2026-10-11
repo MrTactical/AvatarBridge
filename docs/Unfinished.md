@@ -1385,8 +1385,15 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     hands as spheres from the `_CVR_PlayerLeftHandPositions` / `_CVR_PlayerRightHandPositions`
     globals (slots 1 and up, set every LateUpdate, no camera, no sync); sag from the follow's
     orientation. Depth camera and GPU soft-body only after those hold.
+    First upload (Kar), 2026-10-11: no squash in game at all. Likely cause, from the build log
+    and the probe: the follows sat on the chain roots (Breast_L carries 43%, Breast1_L 55%), and
+    the cloth holds a chain root still, so the gap between follows never closed. The probe hid it
+    by moving the parts kinematically. Follows now go on the heaviest carrier below the root; the
+    diagnostic build starts pressing a sixth further out, so a working provider shows as a slight
+    squash at rest. Not yet confirmed in game.
     Open: an unpatchable shader over a part (fall back to the bone stack), shadow and outline
-    passes, the provider on remote copies (A2), the globals in stable.
+    passes, the provider on remote copies (A2), the globals in stable, the probe moving parts by
+    hand instead of through the cloth.
   Open: remote copies (the Cameras content filter defaults to never blocked, so not that),
   the measurement probe (camera cost, controller
   cost, readback latency, replacement universality), then the staged build above, tuning, and

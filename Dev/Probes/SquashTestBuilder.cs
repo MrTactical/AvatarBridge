@@ -565,6 +565,13 @@ namespace AvatarBridge.Regression
         // refuses is reported and its layer left as it was.
         const string ShaderHostName = "YAPS squash (shader)", FollowName = "YAPS squash follow";
 
+        [MenuItem("Tools/YAPS/Dev/Add the squash test (shader, diagnostic)")]
+        static void ShaderDiagnosticMenu()
+        {
+            Diagnostic = true;
+            try { ShaderMenu(); } finally { Diagnostic = false; }
+        }
+
         [MenuItem("Tools/YAPS/Dev/Add the squash test (shader)")]
         static void ShaderMenu()
         {
@@ -598,14 +605,19 @@ namespace AvatarBridge.Regression
                 int i = parts.Count;
                 foreach (var p in measured)
                 {
-                    p.follow = Child(p.top, FollowName);
+                    // On the bone the cloth moves most. The chain root is held still by the
+                    // cloth, so a follow on it never saw the pair close in game.
+                    var mover = p.carriers.Where(c => c.bone != p.root).OrderByDescending(c => c.weight).Select(c => c.bone).FirstOrDefault() ?? p.top;
+                    p.follow = Child(mover, FollowName);
                     p.follow.position = p.centre;
                     reach[parts.Count] = p.reach / Unit(p.follow);
                     parts.Add(p);
                 }
-                pair[i] = start / Unit(a.follow);
+                // Diagnostic: pressing starts a sixth further out, so the pair sits a little
+                // squashed at rest whenever the provider is writing.
+                pair[i] = start * (Diagnostic ? 1.15f : 1f) / Unit(a.follow);
                 pair[i + 1] = share;
-                log.Add($"{a.root.name}/{b.root.name}: start {start * 100f:0.0} cm, reach {a.reach * 100f:0.0} + {b.reach * 100f:0.0}, share {share:0.00}");
+                log.Add($"{a.root.name}/{b.root.name} on {a.follow.parent.name}/{b.follow.parent.name}: start {start * 100f:0.0} cm, reach {a.reach * 100f:0.0} + {b.reach * 100f:0.0}, share {share:0.00}");
             }
             if (parts.Count == 0) return string.Join("; ", log);
 
