@@ -1377,10 +1377,16 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     In game, to answer: does the provider run on remote copies (A2); does the client's material
     take the array (if the client instances renderer materials, the provider writes the asset and
     nothing moves); does it look right.
-    Open: an unpatchable shader over a part (fall back to the bone stack), two copies sharing a
-    material (each skips vertices farther than four reaches from its part, so the last writer
-    squashes and the other copy stays still), shadow and outline passes, the provider on remote
-    copies (A2).
+    Resolved by decompile (beta client): the client instances the provider's materials and the
+    renderers' through one per-copy cache (`SharedFilter.ProcessRenderer`,
+    `HandleRenderTextureForMaterialDataProvider`), so the provider reaches that copy's renderers
+    and two wearers of one avatar never share a material. The four-reach guard stays as a net.
+    Next, in order: own hands and forearms as capsules through the same provider; other players'
+    hands as spheres from the `_CVR_PlayerLeftHandPositions` / `_CVR_PlayerRightHandPositions`
+    globals (slots 1 and up, set every LateUpdate, no camera, no sync); sag from the follow's
+    orientation. Depth camera and GPU soft-body only after those hold.
+    Open: an unpatchable shader over a part (fall back to the bone stack), shadow and outline
+    passes, the provider on remote copies (A2), the globals in stable.
   Open: remote copies (the Cameras content filter defaults to never blocked, so not that),
   the measurement probe (camera cost, controller
   cost, readback latency, replacement universality), then the staged build above, tuning, and
