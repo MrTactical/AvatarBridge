@@ -195,6 +195,7 @@ namespace AvatarBridge.Regression
             SessionState.SetInt(K + "index", 0);
             SessionState.SetInt(K + "stage", 0);
             SessionState.SetString(K + "gravityScale", Arg("-abGravityScale") ?? "");
+            SessionState.SetString(K + "tune", Arg("-abTune") ?? "");
             SessionState.SetString(K + "capture", Arg("-abCapture") ?? "");
             SessionState.SetInt(K + "bake", Array.IndexOf(Environment.GetCommandLineArgs(), "-abBake") >= 0 ? 1 : 0);
             SessionState.SetInt(K + "softShots", Array.IndexOf(Environment.GetCommandLineArgs(), "-abSoftShots") >= 0 ? 1 : 0);
@@ -362,6 +363,28 @@ namespace AvatarBridge.Regression
                 foreach (var cloth in converted.GetComponentsInChildren<MagicaCloth>(true)) cloth.SerializeData.gravity *= gravityScale;
                 Debug.Log($"[PhysicsAb] gravity scaled by {gravityScale}");
             }
+            // -abTune "Breast|Butt;damping=0.9;worldInertia=0.5": a sweep sets these on the copy's
+            // cloths whose name matches, flat over the chain.
+            var tune = SessionState.GetString(K + "tune", "").Split(';');
+            if (tune.Length > 1)
+                foreach (var cloth in converted.GetComponentsInChildren<MagicaCloth>(true))
+                {
+                    if (!System.Text.RegularExpressions.Regex.IsMatch(cloth.name, tune[0])) continue;
+                    var sd = cloth.SerializeData;
+                    foreach (var kv in tune.Skip(1).Select(t => t.Split('=')))
+                    {
+                        float v = float.Parse(kv[1], CultureInfo.InvariantCulture);
+                        switch (kv[0])
+                        {
+                            case "damping": sd.damping.SetValue(v); break;
+                            case "worldInertia": sd.inertiaConstraint.worldInertia = v; break;
+                            case "anchorInertia": sd.inertiaConstraint.anchorInertia = v; break;
+                            case "restoration": sd.angleRestorationConstraint.stiffness.SetValue(v); break;
+                            default: throw new ArgumentException("-abTune: no " + kv[0]);
+                        }
+                    }
+                    Debug.Log($"[PhysicsAb] tuned {cloth.name}: {string.Join(";", tune.Skip(1))}");
+                }
             // -abLayered a;b: these chains on the copy get the joint spike layered on MagicaCloth2.
             var layered = (Arg("-abLayered") ?? "").Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
             foreach (var bone in converted.GetComponentsInChildren<Transform>(true).Where(t => layered.Contains(t.name)).ToList())
