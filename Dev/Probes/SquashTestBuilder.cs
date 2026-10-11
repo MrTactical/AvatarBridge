@@ -739,7 +739,14 @@ namespace AvatarBridge.Regression
                 var tex = new Texture2D(width, height, TextureFormat.RGBA32, false, true) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
                 tex.SetPixels32(pixels);
                 tex.Apply(false);
-                result.Add((m.smr, Asset(tex, $"{name} {m.smr.name} shares.asset")));
+                Asset(tex, $"{name} {m.smr.name} shares.asset");
+                // What the CCK's upload checks ask of an avatar texture. The asset keeps its
+                // pixels either way; readable only adds a CPU copy, and with no mips nothing streams.
+                var flags = new SerializedObject(tex);
+                flags.FindProperty("m_IsReadable").boolValue = false;
+                flags.FindProperty("m_StreamingMipmaps").boolValue = true;
+                flags.ApplyModifiedPropertiesWithoutUndo();
+                result.Add((m.smr, tex));
             }
             return result;
         }
