@@ -1390,9 +1390,15 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     the cloth holds a chain root still, so the gap between follows never closed. The probe hid it
     by moving the parts kinematically. Follows now go on the heaviest carrier below the root; the
     diagnostic build adds `_YAPS_SquashPulse`: the pair squeezes and lets go every few seconds
-    with nobody moving it, which needs the provider writing the follows. Not yet confirmed in game.
+    with nobody moving it, which needs the provider writing the follows.
+    VERIFIED in game 2026-10-11 (Kar, diagnostic build): it pulses on the wearer's view AND remote
+    users see it. A2 is closed: `CVRMaterialDataProvider` runs on remote copies, the client's
+    per-copy material instances take the matrices, and the patched shader deforms in the client.
+    What is left is the press: nothing in normal play pushes the follows together reliably.
+    Next: the press as a sum of sources (pair gap; bone pushed off its rest by any cloth
+    collider; own hand bones; other players' hands from the globals), all through the same rule.
     Open: an unpatchable shader over a part (fall back to the bone stack), shadow and outline
-    passes, the provider on remote copies (A2), the globals in stable, the probe moving parts by
+    passes, the globals in stable, the probe moving parts by
     hand instead of through the cloth.
   Open: remote copies (the Cameras content filter defaults to never blocked, so not that),
   the measurement probe (camera cost, controller
