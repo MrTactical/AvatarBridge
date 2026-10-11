@@ -17,6 +17,7 @@
 //   no -quit: it walks the list, in and out of Play mode, and exits itself.
 #if CVR_CCK_EXISTS && AVATARBRIDGE_MAGICA && VRC_SDK_VRCSDK3
 using System;
+using ABI.CCK.Components;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -933,6 +934,7 @@ namespace AvatarBridge.Regression
             public string skinErrorNote;
             public Transform followTop;
             public Vector3 followLocal;
+            public SquashDriver driver;
             public string deepestNote;
         }
         static List<DentPart> dentParts;
@@ -1008,9 +1010,10 @@ namespace AvatarBridge.Regression
                     if (i == 0 && Time.frameCount % 10 == 0) MeasureThrough(0, 1, Time.frameCount);
                     if (Squash)
                     {
-                        if (a.follow == null) { BuildSquash(a, ha); BuildSquash(b, hb); }
-                        UpdateSquash(a, b, press * share);
-                        UpdateSquash(b, a, press * (1f - share));
+                        if (a.follow == null) { BuildSquash(a, ha); BuildSquash(b, hb); if (Driver) BuildDriver(a, b, share, i / 2); }
+                        if (Driver) ReadBox(a.driver, press);
+                        UpdateSquash(a, b, press * share, !Driver);
+                        UpdateSquash(b, a, press * (1f - share), !Driver);
                         axes[i].w = axes[i + 1].w = 0f;
                     }
                 }
@@ -1037,7 +1040,7 @@ namespace AvatarBridge.Regression
         // cannot part; the physics bones never see the scale. Each vertex moved on its own tore
         // the skin and parted it from the top over it; the main bone alone left the chain
         // root's 43% of the part unsquashed, and it slid past its partner.
-        static bool Squash => Array.IndexOf(Environment.GetCommandLineArgs(), "-abSquash") >= 0;
+        static bool Squash => Array.IndexOf(Environment.GetCommandLineArgs(), "-abSquash") >= 0 || Driver;
         static float FlagF(string name, float fallback) =>
             float.TryParse(Arg(name), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : fallback;
         // How much it grows across per unit it flattens. Overfilled reads as full: a breast
@@ -1055,7 +1058,7 @@ namespace AvatarBridge.Regression
         {
             p.restReach = reach;
             p.follow = new GameObject(p.name + " squash").transform;
-            p.follow.SetParent(dstBody.avatar, false);
+            p.follow.SetParent(SquashRoot(), false);
             int Depth(Transform t) { int d = 0; for (; t != null; t = t.parent) d++; return d; }
             var carriers = p.anchors.Where(x => x.weight >= 0.03f).OrderBy(x => Depth(x.bone)).ToList();
             var top = carriers[0].bone;
@@ -1120,10 +1123,18 @@ namespace AvatarBridge.Regression
             Debug.Log($"[PhysicsAb] squash {p.name}: {string.Join(", ", p.skins.Select(x => x.bone.name))} skin through its stack on {swapped} renderer(s)");
         }
 
-        // Only the scale is set here, standing in for the animator; everything else is constraints.
         // Flattened along the press so its facing side moves back by its share of the press while
-        // its far side stays, and grown across by the overfill.
-        static void UpdateSquash(DentPart p, DentPart partner, float pushed)
+        // its far side stays, and grown across by the overfill. Piecewise linear in the press, so a
+        // 1D blend tree keyed at the bends reproduces it exactly.
+        static (Vector3 scale, float back) Squashed(DentPart p, float pushed)
+        {
+            float along = Mathf.Clamp(1f - pushed / (2f * p.restReach), Flattest, 1f);
+            float across = Mathf.Min(1f + Overfill * (1f - along), 1.5f);
+            return (new Vector3(across, across, along), -p.restReach * (1f - along) / p.follow.lossyScale.x);
+        }
+
+        // Without -abDriver the scale is set here, standing in for the animator; everything else is constraints.
+        static void UpdateSquash(DentPart p, DentPart partner, float pushed, bool write)
         {
             if (p.aim.GetComponent<UnityEngine.Animations.AimConstraint>() == null)
             {
@@ -1156,11 +1167,123 @@ namespace AvatarBridge.Regression
                 if (atRest) p.skinErrorRest = Mathf.Max(p.skinErrorRest, error);
                 else if (error > p.skinError) { p.skinError = error; p.skinErrorNote = $"{bone.name} at frame {Time.frameCount}"; }
             }
-            float along = Mathf.Clamp(1f - pushed / (2f * p.restReach), Flattest, 1f);
-            float across = Mathf.Min(1f + Overfill * (1f - along), 1.5f);
-            p.flattest = Mathf.Min(p.flattest, along);
-            p.scale.localScale = new Vector3(across, across, along);
-            p.scale.localPosition = new Vector3(0f, 0f, -p.restReach * (1f - along) / p.follow.lossyScale.x);
+            if (write)
+            {
+                var (scale, back) = Squashed(p, pushed);
+                p.scale.localScale = scale;
+                p.scale.localPosition = new Vector3(0f, 0f, back);
+            }
+            p.flattest = Mathf.Min(p.flattest, p.scale.localScale.z);
+        }
+
+        // -abDriver: the squash as ChilloutVR runs it, with no C# of ours in the loop. A box
+        // trigger on one part's aim reads a pointer on its partner's follow, so the box's z runs
+        // down the line between them: one synced float per pair, 0 where the surfaces meet at rest
+        // and 1 with the centres together. An animator blend tree sets both scales from it. The
+        // client is the one thing emulated, from its decompiled box read. Triggers are evaluated
+        // after constraints and the animator reads the value next frame, as here. The press comes
+        // from rest reaches and a rest share, not the skin each frame.
+        static bool Driver => Array.IndexOf(Environment.GetCommandLineArgs(), "-abDriver") >= 0;
+        static Transform squashRoot;
+        static Animator squashAnimator;
+        static UnityEditor.Animations.AnimatorController squashController;
+
+        sealed class SquashDriver
+        {
+            public string name, param;
+            public CVRAdvancedAvatarSettingsTrigger box;
+            public CVRPointer pointer;
+            public float start, value, peak, worst;
+            public string worstNote;
+            public int keys;
+        }
+        static readonly List<SquashDriver> drivers = new List<SquashDriver>();
+
+        static Transform SquashRoot()
+        {
+            if (squashRoot != null) return squashRoot;
+            squashRoot = new GameObject("YAPS squash").transform;
+            squashRoot.SetParent(dstBody.avatar, false);
+            return squashRoot;
+        }
+
+        static void BuildDriver(DentPart a, DentPart b, float share, int pair)
+        {
+            var d = a.driver = new SquashDriver { name = a.name + "/" + b.name, param = "YAPS/Squash" + pair };
+            drivers.Add(d);
+            d.start = Mathf.Min(a.restGap, a.restReach + b.restReach);
+            d.pointer = new GameObject("squash pointer").AddComponent<CVRPointer>();
+            d.pointer.transform.SetParent(b.follow, false);
+            d.pointer.type = d.param;
+            float unit = a.aim.lossyScale.x;
+            d.box = a.aim.gameObject.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
+            d.box.areaSize = Vector3.one * (d.start / unit);
+            d.box.areaOffset = new Vector3(0f, 0f, 0.5f * d.start / unit);
+            d.box.useAdvancedTrigger = true;
+            d.box.isNetworkInteractable = false;
+            d.box.allowedPointer.Add(d.pointer);
+            d.box.allowedTypes = new[] { d.param };
+            d.box.sampleDirection = CVRAdvancedAvatarSettingsTrigger.SampleDirection.ZNegative;
+            d.box.stayTasks.Add(new CVRAdvancedAvatarSettingsTriggerTaskStay
+                { settingName = d.param, minValue = 0f, maxValue = 1f, updateMethod = CVRAdvancedAvatarSettingsTriggerTaskStay.UpdateMethod.SetFromPosition });
+            d.box.exitTasks.Add(new CVRAdvancedAvatarSettingsTriggerTask { settingName = d.param, settingValue = 0f });
+
+            // Keyed at 0, 1 and wherever either part stops flattening or growing.
+            var keys = new List<float> { 0f, 1f };
+            foreach (var (p, s) in new[] { (a, share), (b, 1f - share) })
+                foreach (float bend in new[] { 1f - Flattest, 0.5f / Overfill })
+                {
+                    float v = bend * 2f * p.restReach / (d.start * s);
+                    if (v > 0f && v < 1f) keys.Add(v);
+                }
+            keys = keys.Distinct().OrderBy(v => v).ToList();
+            d.keys = keys.Count;
+            var tree = new UnityEditor.Animations.BlendTree
+                { name = d.param, blendParameter = d.param, blendType = UnityEditor.Animations.BlendTreeType.Simple1D, useAutomaticThresholds = false };
+            foreach (float v in keys)
+            {
+                var clip = new AnimationClip { name = $"{d.param} {v:0.000}" };
+                foreach (var (p, s) in new[] { (a, share), (b, 1f - share) })
+                {
+                    var (scale, back) = Squashed(p, v * d.start * s);
+                    string path = AnimationUtility.CalculateTransformPath(p.scale, squashRoot);
+                    void Key(string prop, float x) =>
+                        AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(path, typeof(Transform), prop), AnimationCurve.Constant(0f, 1f / 60f, x));
+                    Key("m_LocalScale.x", scale.x);
+                    Key("m_LocalScale.y", scale.y);
+                    Key("m_LocalScale.z", scale.z);
+                    Key("m_LocalPosition.z", back);
+                }
+                tree.AddChild(clip, v);
+            }
+            if (squashController == null)
+            {
+                squashController = new UnityEditor.Animations.AnimatorController { name = "YAPS squash" };
+                squashAnimator = squashRoot.gameObject.AddComponent<Animator>();
+                squashAnimator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+            }
+            squashController.AddParameter(d.param, AnimatorControllerParameterType.Float);
+            var machine = new UnityEditor.Animations.AnimatorStateMachine { name = d.param };
+            machine.AddState(d.param).motion = tree;
+            squashController.AddLayer(new UnityEditor.Animations.AnimatorControllerLayer { name = d.param, stateMachine = machine, defaultWeight = 1f });
+            squashAnimator.runtimeAnimatorController = squashController;
+            Debug.Log($"[PhysicsAb] driver {d.name}: box {d.start * 100f:0.0} cm deep on {a.name}'s aim, pointer on {b.name}, {d.keys} keys");
+        }
+
+        // The client's box read: the pointer in the box's frame, normalised to its half size;
+        // the stay task writes (axis + 1) / 2 on the sampled axis, the exit task writes 0.
+        static void ReadBox(SquashDriver d, float press)
+        {
+            var t = d.box.transform;
+            var at = t.InverseTransformPoint(d.pointer.transform.position) - d.box.areaOffset;
+            var n = new Vector3(at.x / d.box.areaSize.x, at.y / d.box.areaSize.y, at.z / d.box.areaSize.z) * 2f;
+            bool inside = Mathf.Abs(n.x) <= 1f && Mathf.Abs(n.y) <= 1f && Mathf.Abs(n.z) <= 1f;
+            d.value = inside ? (1f - n.z) * 0.5f : 0f;
+            d.peak = Mathf.Max(d.peak, d.value);
+            squashAnimator.SetFloat(d.param, d.value);
+            // Against the skin-measured press the rest of the probe uses.
+            float off = Mathf.Abs(d.value * d.start - press);
+            if (off > d.worst) { d.worst = off; d.worstNote = $"frame {Time.frameCount}, box {d.value * d.start * 100f:0.0} cm, skin {press * 100f:0.0} cm"; }
         }
 
         // A flesh-sized sphere on the part's lag body that meets only its partner's, so the pair
@@ -1712,9 +1835,13 @@ namespace AvatarBridge.Regression
                 Debug.Log($"[PhysicsAb] pair {dentParts[i].name}/{dentParts[i + 1].name} deepest: {(Squash ? $"flattest {dentParts[i].flattest:0.00} / {dentParts[i + 1].flattest:0.00}, " : "")}{dentParts[i].deepestNote ?? $"never pressed, nearest {dentParts[i].nearest * 100f:0.0} cm (rest {dentParts[i].restGap * 100f:0.0}, reach {dentParts[i].nearestReach * 100f:0.0})"}");
             if (flesh.Count >= 2)
                 Debug.Log($"[PhysicsAb] flesh spheres sank {fleshSank * 100f:0.0} cm into each other at most");
-                foreach (var dp in dentParts.Where(x => x.skins != null))
+                foreach (var dp in dentParts?.Where(x => x.skins != null) ?? Enumerable.Empty<DentPart>())
                     Debug.Log($"[PhysicsAb] squash {dp.name}: skin off the exact stack by {dp.skinErrorRest * 100f:0.00} cm at rest, {dp.skinError * 100f:0.00} cm squashed ({dp.skinErrorNote})");
                 Debug.Log($"[PhysicsAb] skin of the first pair passed through {skinThrough * 100f:0.0} cm at most {skinThroughNote}, {skinThroughCount} vertices at most");
+            foreach (var d in drivers)
+                Debug.Log($"[PhysicsAb] driver {d.name}: peaked at {d.peak:0.00}, press off the skin's by {d.worst * 100f:0.0} cm at most ({d.worstNote})");
+            drivers.Clear();
+            squashRoot = null; squashAnimator = null; squashController = null;
             dentParts = null;
             flesh.Clear();
             fleshSank = 0f;

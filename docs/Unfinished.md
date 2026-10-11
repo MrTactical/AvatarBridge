@@ -1201,9 +1201,16 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     one avatar, 7.9 cm on another, under 0.3 cm where the press is small. Looks the same on film.
   - Probe: `PhysicsAbProbe -abSquash`. Verified in batch Play mode on three avatars, breasts and
     butt. Not seen in game.
-  Open: the driver. Plan: a box trigger per part with SetFromPosition and a pointer on the
-  partner, one synced float per part into the animator, which drives the scale node's scale and
-  pivot. Then tuning (overfill, flattest, spring-back) and the converter (add-on only).
+  - Driver, built and run in the probe (`-abDriver`): a CCK box trigger on one part's aim
+    (SetFromPosition, sampled on -Z, exit task writes 0) reads a pointer on the partner's
+    follow, so the box's z runs down the line between them. One synced float per pair: 0 where
+    the surfaces meet at rest, 1 with the centres together. A generated 1D blend tree keyed at
+    the squash's bends (6 keys) sets both parts' scale and pivot, so no C# touches the squash;
+    only the client's box read is emulated. Matches the C#-driven squash on film (flattest 0.85
+    against 0.86). The press comes from rest reaches, so it reads up to 9 cm off the press
+    measured from the skin each frame; not visible on film.
+  Open: test in game (one synced float per pair, the trigger's own-avatar pointer), tuning
+  (overfill, flattest, spring-back), then the converter (add-on only).
 ## MagicaCloth2 settings: measured against the originals and fixed, 2026-10-06. ON DEV, not in game
 
 **Measured.** `Dev/Probes/PhysicsAbProbe.cs` converts a scene with a new user's defaults, keeps the
