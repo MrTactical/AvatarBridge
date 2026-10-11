@@ -715,9 +715,12 @@ namespace AvatarBridge.Regression
             skin.receiveShadows = false;
             int stride = mesh.GetVertexBufferStride(0);
             foreach (var copy in copies) copy.SetVector("_YAPS_SquashHands", new Vector4(1f, 0.05f, 1f, stride));
+            // The client disposes the skinned buffer it fetched right after binding it, before
+            // anything draws, and the shader then read zeros. The previous-buffer mode binds a
+            // copy the provider owns, one frame older.
             var skinned = host.AddComponent<CVRMaterialDataProvider>();
             skinned.materials = copies.ToArray();
-            skinned.dataMode = CVRMaterialDataProvider.DataMode.SkinnedMeshRendererVertexBuffer;
+            skinned.dataMode = CVRMaterialDataProvider.DataMode.SkinnedMeshRendererPreviousVertexBuffer;
             skinned.smr = skin;
             skinned.shaderPropertyName = "_YAPS_SquashSkin";
             log.Add($"skin stride {stride}");

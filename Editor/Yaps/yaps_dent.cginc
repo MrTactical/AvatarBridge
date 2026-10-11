@@ -62,10 +62,29 @@ float4 _CVR_PlayerRightHandPositions[255];
 ByteAddressBuffer _YAPS_SquashSkin;
 #endif
 
+// Where the slots come from, set once per vertex: 1 the skinned buffer, 2 it reads empty, 3 it
+// reads somewhere the first rest slot is not, 0 no helper. Anything but 1 reads the matrices,
+// so a buffer that never arrives costs the cloth push and nothing else.
+static int yapsSkin;
+
+int YapsSkinState()
+{
+#if SHADER_TARGET >= 45
+    if (_YAPS_SquashHands.w <= 0) return 0;
+    float3 s = asfloat(_YAPS_SquashSkin.Load3(4 * (uint) _YAPS_SquashHands.w));
+    if (all(s == 0)) return 2;
+    // The rest slot rides a bone no cloth moves, so the two agree but for a frame of motion.
+    float3 d = s - _YAPS_SquashFollow[4]._m03_m13_m23;
+    return dot(d, d) < 0.25 ? 1 : 3;
+#else
+    return 0;
+#endif
+}
+
 float3 YapsSlot(int i)
 {
 #if SHADER_TARGET >= 45
-    if (_YAPS_SquashHands.w > 0) return asfloat(_YAPS_SquashSkin.Load3(i * (uint) _YAPS_SquashHands.w));
+    if (yapsSkin == 1) return asfloat(_YAPS_SquashSkin.Load3(i * (uint) _YAPS_SquashHands.w));
 #endif
     return _YAPS_SquashFollow[i]._m03_m13_m23;
 }
@@ -149,6 +168,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
     float partShare = saturate(own.r + own.g + own.b + own.a);
     if (partShare <= 0) return;
     float shares[4] = { own.r, own.g, own.b, own.a };
+    yapsSkin = YapsSkinState();
 
     // A skinned mesh arrives in world space under an identity matrix, a plain
     // mesh in its own; going through the matrix serves both.
@@ -189,7 +209,11 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
             float first = m < 2 ? _YAPS_SquashPair.y : _YAPS_SquashPair.w;
             // Both parts in the first one's units, so each is pushed back to the same plane.
             float start = (m < 2 ? _YAPS_SquashPair.x : _YAPS_SquashPair.z) * YapsUnit(m & 2);
-            float pulse = _YAPS_SquashPulse * start * (0.5 - 0.5 * cos(_Time.y * 2));
+            // Test builds show where the slots came from by where the pulse plays: both pairs
+            // for the skinned buffer, the first pair alone when it reads empty, the second when
+            // it reads wrong.
+            bool shown = yapsSkin <= 1 || (yapsSkin == 2) == (m < 2);
+            float pulse = shown ? _YAPS_SquashPulse * start * (0.5 - 0.5 * cos(_Time.y * 2)) : 0;
             float press = (max(start - length(toward), 0) + pulse) * ((m & 1) == 0 ? first : 1 - first);
             pressing = axis * press;
             squashAxis[m] = axis;

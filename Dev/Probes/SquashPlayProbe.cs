@@ -67,7 +67,7 @@ namespace AvatarBridge.Regression
             Directory.CreateDirectory(outDir);
             var providers = UnityEngine.Object.FindObjectsOfType<CVRMaterialDataProvider>();
             provider = providers.First(p => p.dataMode == CVRMaterialDataProvider.DataMode.TransformLocalToWorld);
-            skin = providers.Where(p => p.dataMode == CVRMaterialDataProvider.DataMode.SkinnedMeshRendererVertexBuffer).Select(p => p.smr).FirstOrDefault();
+            skin = providers.Where(p => p.dataMode == CVRMaterialDataProvider.DataMode.SkinnedMeshRendererPreviousVertexBuffer).Select(p => p.smr).FirstOrDefault();
             animator = provider.GetComponentInParent<CVRAvatar>().GetComponent<Animator>();
             rows = new List<string> { "frame\tpart\toff_rest_cm\tpush_cm\tprovider_writes\tend_of_frame_off_rest_cm\tskin_off_rest_cm\tskin_vs_last_end_cm\tskin_worst_slot_vs_last_end_cm" };
             Time.captureFramerate = Fps;

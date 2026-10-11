@@ -1445,8 +1445,19 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
       pair's shape constants, flattest 0.6 and fullest 1.5, cap it). Gains in
       `_YAPS_SquashHands` x (own) and z (others), live. Two hands from opposite sides cancel in
       the one press vector: a known limit.
-    Test: Add the squash test (shader), upload, try the own hands in VR; a second player's hand
-    for the globals.
+    In game 2026-10-11: NOTHING moved, wearer or remote copy, while editor Play mode worked. The
+    client's `CVRRenderController.DoRenderLoop` disposes every buffer `GetVertexBuffer()` handed
+    out right after `Execute` binds it, before anything draws; the CCK's editor loop never
+    disposes. Suspected: the binding dies with it, the shader reads zeros, every slot sits at the
+    world origin and every part skips itself as too far away. Changed the same day, NOT YET IN
+    GAME: the skin provider uses `SkinnedMeshRendererPreviousVertexBuffer` (the client copies
+    into two buffers it owns and binds those, two frames old), and the shader checks the first
+    rest slot against its matrix once per vertex and reads the matrices when the buffer is empty
+    or wrong. The diagnostic build reports which: the pulse on both pairs means the skinned
+    buffer arrives, the first pair alone that it reads empty, the second alone that it reads
+    wrong.
+    Test: Add the squash test (shader, diagnostic), upload, watch which pair pulses; then the
+    plain build for the own hands in VR and a second player's hand for the globals.
     Next: other players' hands from the globals, sag.
     Open: an unpatchable shader over a part (fall back to the bone stack), shadow passes using
     Unity's own caster, the globals in stable, the probe moving parts by hand instead of through
