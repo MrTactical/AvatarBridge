@@ -1505,13 +1505,33 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     - A layer whose shader cannot be patched, over 5% of a part's skin: the pair holds still
       (its reaches baked 0) and the build log names the layer, since squashing the skin under a
       layer that cannot follow pushes the skin through it.
+    Heavy, not a water balloon (Joe, same day: "they need mass, lots of mass ... better indent?
+    and heft"), NOT YET IN EDITOR OR GAME. A uniform volume-kept squash is what a water balloon
+    does: one finger flattens the whole part. Hands now DENT first: up to `Tune.w` (0.35) of the
+    reach toward the hand, eased in, as a bowl as wide as the hand plus the depth with a rim of
+    (1 - s^2) e^(-s^2) around it, moved along the line from the part's centre (on a ball that
+    keeps the volume exactly: area in chord distance is 2 pi c dc and the profile integrates to
+    0). Only what the dent cannot take squashes the whole part; past both the hand goes in and
+    the capsules carry the skin, so nothing squashes without limit. The bend is taken off each
+    hand before its dent. Hands are kept as four slots: both own arms and the two deepest other
+    hands. Python mirror (closed meshes, 2562 vertices): volume 1.000 to 0.997 on every case,
+    0.982 at a 14 cm press; an 8 cm front press dents 4.5 cm, rims 16 mm and moves the far side
+    11 mm, where the water-balloon form moves it 31 mm; no folds. Along the hand's line instead
+    of the centre's, the rim slid round the sides unseen and a deep dent lost 6%. The dent's
+    normal checked against finite differences (2000 points, 0.0000 degrees).
+    Shadows: a ShadowCaster pass on Unity's own `vertShadowCaster` is now wrapped, not skipped.
+    The wrapper's signature is read from the editor's `UnityStandardShadow.cginc` (2022.3
+    returns a `VertexOutput`, older versions an out position), takes `SV_VertexID` beside the
+    input, runs the same deform calls (one `DeformCalls` list for both routes) and calls
+    Unity's. Compiled with fxc against 2022.3's CGIncludes in five variants (depth, cube,
+    cutout, parallax, stereo instancing). Kar's Poiyomi 7 caster is its own, already patched.
+    Still unsquashed: a caster from anywhere else outside the shader, and shaders with no caster
+    that lean on a Fallback.
     Test: the plain build in editor Play mode (hands in, lying back), then in game; which pairs
     pulse in the diagnostic build is still unread.
-    Next: other players' hands from the globals, measured against the soft-body original if Joe
-    means that by "look at actual squish".
-    Open: shadow passes using Unity's own caster (and shaders with a Fallback only) cast the
-    shadow unsquashed; a generated caster pass that calls the patched deform is the fix. The
-    globals in stable; the probe moving parts by hand instead of through the cloth.
+    Next: Marshmallow PB's own settings for the heft in motion (MagicaCloth2's side), other
+    players' hands from the globals.
+    Open: the globals in stable; the probe moving parts by hand instead of through the cloth.
   Open: remote copies,
   the measurement probe (camera cost, controller
   cost, readback latency, replacement universality), then the staged build above, tuning, and

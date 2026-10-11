@@ -685,7 +685,7 @@ namespace AvatarBridge.Regression
                     {
                         patched[source] = shader = YapsShaderPatcher.Patch(source, Folder, null, out string refusal, out int shadows);
                         if (shader == null) log.Add($"left \"{source.name}\" as it was: {refusal}");
-                        // Unity's own shadow caster cannot be patched, so that shadow stays unsquashed.
+                        // Unity's standard caster is wrapped; a caster from anywhere else cannot be reached.
                         else if (shadows > 0) log.Add($"\"{source.name}\" casts its shadow unsquashed");
                     }
                     if (shader == null)
@@ -709,8 +709,8 @@ namespace AvatarBridge.Regression
                     copy.SetVector("_YAPS_SquashIn", inward);
                     copy.SetVector("_YAPS_SquashSideA", sideA);
                     copy.SetVector("_YAPS_SquashSideB", sideB);
-                    // Lying-back weight, strength, bend give.
-                    copy.SetVector("_YAPS_SquashTune", new Vector4(0.25f, 1f, 0.35f, 0f));
+                    // Lying-back weight, strength, bend give, deepest dent.
+                    copy.SetVector("_YAPS_SquashTune", new Vector4(0.25f, 1f, 0.35f, 0.35f));
                     copy.SetVector("_YAPS_SquashPair", pair);
                     // Volume kept whole: the overfill made a squashed part a third bigger.
                     copy.SetVector("_YAPS_SquashShape", new Vector4(Flattest, 1f, Fullest, 1f));

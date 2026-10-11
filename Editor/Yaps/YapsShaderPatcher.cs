@@ -122,7 +122,7 @@ namespace AvatarBridge
         _YAPS_SquashLimbL (""YAPS squash left arm radii: upper, lower, hand"", Vector) = (0.2,0.18,0.25,0)
         _YAPS_SquashLimbR (""YAPS squash right arm radii: upper, lower, hand"", Vector) = (0.2,0.18,0.25,0)
         _YAPS_SquashHands (""YAPS squash hands: own gain, others radius, others gain, skin stride"", Vector) = (1,0.05,1,0)
-        _YAPS_SquashTune (""YAPS squash: lying-back weight, strength, bend give"", Vector) = (0.25,1,0.35,0)
+        _YAPS_SquashTune (""YAPS squash: lying-back weight, strength, bend give, deepest dent"", Vector) = (0.25,1,0.35,0.35)
 ";
 
         // The name the patch of `original` would carry if it were made now.
@@ -430,10 +430,10 @@ namespace AvatarBridge
                       "Simple Lit carries both."
                     : "")
                 + (skippedShadowPasses > 0
-                    ? $" {skippedShadowPasses} shadow pass(es) use Unity's own shadow-caster " +
-                      "function, which lives in Unity's includes rather than in this shader, so " +
-                      "there is nothing of the avatar's to edit there: the shadow will not " +
-                      "follow the bend. Cosmetic, and the alternative was no deform at all."
+                    ? $" {skippedShadowPasses} shadow pass(es) take their vertex stage from outside " +
+                      "this shader and Unity's standard caster, so there is nothing of the avatar's to " +
+                      "edit there: the shadow will not follow the bend. Cosmetic, and the " +
+                      "alternative was no deform at all."
                     : ""));
             return patched;
         }
@@ -532,10 +532,17 @@ namespace AvatarBridge
                 {
                     // A shadow caster is allowed to be out of reach. Unity's own
                     // vertShadowCaster lives in its CGIncludes, not in the shader's source
-                    // unit, so there is nothing here to edit. The shadow is cosmetic,
-                    // the deform is the feature.
+                    // unit, so it is wrapped instead; any other is left. The shadow is
+                    // cosmetic, the deform is the feature.
                     if (IsShadowCasterPass(shaderFile.Text, block.Index))
                     {
+                        if (vertName == "vertShadowCaster"
+                            && unit.Any(f => f.Text.Contains("UnityStandardShadow.cginc"))
+                            && WrapUnityShadowCaster(shaderFile, yaps, start, start + end.Index))
+                        {
+                            patched++;
+                            continue;
+                        }
                         skippedShadowPasses++;
                         continue;
                     }
@@ -706,10 +713,7 @@ namespace AvatarBridge
             // The alternative was a socket-mode patcher, which means two emitted
             // bodies to keep in step. Every expensive bug on this feature has come
             // from two things that had to agree and quietly stopped agreeing.
-            body.AppendLine($"    YapsDeform(yapsPosition, yapsNormal, yapsTangent, {idExpression});");
-            body.AppendLine(
-                $"    YapsSocketDeform(yapsPosition, yapsNormal, yapsTangent, {idExpression});");
-            body.AppendLine($"    YapsDentDeform(yapsPosition, yapsNormal, yapsTangent, {idExpression});");
+            body.Append(DeformCalls(idExpression));
             body.AppendLine($"    {parameterName}.{positionField}.xyz = yapsPosition;");
             if (normalField != null)
             {
@@ -729,6 +733,58 @@ namespace AvatarBridge
             file.Text = file.Text.Insert(head.Index, "\n" + yaps + "\n");
             return true;
         }
+
+        // The one list of deforms, for the patched vertex functions and the shadow wrapper alike.
+        static string DeformCalls(string id) =>
+            $"    YapsDeform(yapsPosition, yapsNormal, yapsTangent, {id});\n" +
+            $"    YapsSocketDeform(yapsPosition, yapsNormal, yapsTangent, {id});\n" +
+            $"    YapsDentDeform(yapsPosition, yapsNormal, yapsTangent, {id});\n";
+
+        // Unity's own caster: a wrapper with its exact signature deforms the input, then calls
+        // it. The signature is read from the editor's own copy, the one the shader compiles
+        // against: 2022.3 returns the position in a struct where older versions had an out
+        // parameter. No tangent, so a skinned plug's shadow stays straight; the dent needs none.
+        static bool WrapUnityShadowCaster(ShaderSpiPatcher.SourceFile file, string yaps,
+            int blockStart, int blockEnd)
+        {
+            string include = Path.Combine(EditorApplication.applicationContentsPath, "CGIncludes",
+                "UnityStandardShadow.cginc");
+            if (!File.Exists(include))
+            {
+                return false;
+            }
+            var head = Regex.Match(File.ReadAllText(include),
+                @"(\w+)\s+vertShadowCaster\s*\(\s*VertexInput\s+v\b([^)]*)\)");
+            var pragma = new Regex(@"#pragma\s+vertex\s+vertShadowCaster\b")
+                .Match(file.Text, blockStart, blockEnd - blockStart);
+            if (!head.Success || !pragma.Success)
+            {
+                return false;
+            }
+            string returns = head.Groups[1].Value, parameters = head.Groups[2].Value;
+            // Each parameter passed on by name, under the same #ifdefs as its declaration.
+            string arguments = Regex.Replace(parameters, @",\s*out\s+\w+\s+(\w+)(\s*:\s*\w+)?", ", $1");
+            var wrapper = new StringBuilder();
+            wrapper.AppendLine();
+            wrapper.AppendLine(yaps);
+            wrapper.AppendLine($"{returns} yapsVertShadowCaster (VertexInput v, uint yapsVertexId : SV_VertexID{parameters})");
+            wrapper.AppendLine("{");
+            wrapper.AppendLine("    UNITY_SETUP_INSTANCE_ID(v);");
+            wrapper.AppendLine("    float3 yapsPosition = v.vertex.xyz;");
+            wrapper.AppendLine("    float3 yapsNormal = v.normal;");
+            wrapper.AppendLine(NoTangent);
+            wrapper.Append(DeformCalls("yapsVertexId"));
+            wrapper.AppendLine("    v.vertex.xyz = yapsPosition;");
+            wrapper.AppendLine("    v.normal = yapsNormal;");
+            wrapper.AppendLine($"    {(returns == "void" ? "" : "return ")}vertShadowCaster(v{arguments});");
+            wrapper.AppendLine("}");
+            // The end first, so the pragma's offset still holds.
+            file.Text = file.Text.Insert(blockEnd, wrapper.ToString());
+            file.Text = file.Text.Remove(pragma.Index, pragma.Length)
+                .Insert(pragma.Index, "#pragma vertex yapsVertShadowCaster");
+            return true;
+        }
+
 
         const string NoNormal = "    float3 yapsNormal = float3(0,0,0);";
         const string NoTangent = "    float3 yapsTangent = float3(0,0,0);";
