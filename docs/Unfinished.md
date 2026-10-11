@@ -1395,11 +1395,28 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     users see it. A2 is closed: `CVRMaterialDataProvider` runs on remote copies, the client's
     per-copy material instances take the matrices, and the patched shader deforms in the client.
     What is left is the press: nothing in normal play pushes the follows together reliably.
-    Next: the press as a sum of sources (pair gap; bone pushed off its rest by any cloth
-    collider; own hand bones; other players' hands from the globals), all through the same rule.
-    Open: an unpatchable shader over a part (fall back to the bone stack), shadow and outline
-    passes, the globals in stable, the probe moving parts by
-    hand instead of through the cloth.
+    Press sources, 2026-10-11, NOT YET TESTED in editor or game. `_YAPS_SquashFollow` grows to
+    16 slots: 0-3 follows, 4-7 rests (a plain node per part on the bone above its chain, at the
+    part's centre, which the cloth never moves), 8-15 the humanoid upper arm, lower arm, hand
+    and middle finger per side; empty slots hold a node scaled to zero. Bone push: follow minus
+    rest, downward left out so settled sag is not a press, ignored below a share of the reach,
+    pressed from the push side and summed with the pair gap into one press per part.
+    `_YAPS_SquashPush` holds gain, deadzone, capsule edge and arms on, tweakable live. Own arms:
+    a capsule per bone, radius measured from the skin the bone carries
+    (`_YAPS_SquashLimbL`/`R`, share of the bone's length); skin inside is eased out radially
+    and tops out at half the radius, since a hand meets no resistance and following it scooped
+    a tunnel. The old sphere and pair dents, `_YAPS_DentSoftness` and `_YAPS_DentBulge` are gone
+    from the shader; the probe's dent and sphere modes now drive nothing and its `-abBulge` sets
+    a property that no longer exists. The builder logs any layer whose shadow pass is Unity's
+    own caster, which stays unsquashed. Compiled: fxc vs_5_0 (about 1180 slots, most behind
+    the early exit for vertices outside the parts) and the editor assembly through Unity's
+    Roslyn with the project's references.
+    Test: Add the squash test (shader), Play, move an arm or hand into a part, and drag a part's
+    cloth bone off rest. Then in game with the own hands.
+    Next: other players' hands from the globals, sag.
+    Open: an unpatchable shader over a part (fall back to the bone stack), shadow passes using
+    Unity's own caster, the globals in stable, the probe moving parts by hand instead of through
+    the cloth, cloth settling sideways off rest reading as a press.
   Open: remote copies (the Cameras content filter defaults to never blocked, so not that),
   the measurement probe (camera cost, controller
   cost, readback latency, replacement universality), then the staged build above, tuning, and
