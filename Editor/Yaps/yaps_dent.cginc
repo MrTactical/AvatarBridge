@@ -54,6 +54,7 @@ float4x4 _YAPS_SquashFollow[4];
 float4 _YAPS_SquashReach;   // how far each part reaches toward its partner, in its follow's units
 float4 _YAPS_SquashPair;    // pair 0: x where pressing starts (follow gap, part 0's units), y part 0's share; pair 1: z, w
 float4 _YAPS_SquashShape;   // x flattest, y overfill, z fullest, w contact plane on
+float _YAPS_SquashPulse;    // test builds: a press that comes and goes on its own, as a share of the start
 
 void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tangent, uint vertexId)
 {
@@ -101,7 +102,9 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         float first = m < 2 ? _YAPS_SquashPair.y : _YAPS_SquashPair.w;
         float share = (m & 1) == 0 ? first : 1 - first;
         // Both parts in the first one's units, so each is pushed back to the same plane.
-        float press = max(start * length(_YAPS_SquashFollow[m & 2]._m00_m10_m20) - length(toward), 0) * share;
+        float startWorld = start * length(_YAPS_SquashFollow[m & 2]._m00_m10_m20);
+        float pulse = _YAPS_SquashPulse * startWorld * (0.5 - 0.5 * cos(_Time.y * 2));
+        float press = (max(startWorld - length(toward), 0) + pulse) * share;
         float along = clamp(1 - press / (2 * reach), _YAPS_SquashShape.x, 1);
         float across = min(1 + _YAPS_SquashShape.y * (1 - along), _YAPS_SquashShape.z);
         float t = dot(d, axis);

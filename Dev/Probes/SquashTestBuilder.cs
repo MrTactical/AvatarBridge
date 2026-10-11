@@ -613,9 +613,7 @@ namespace AvatarBridge.Regression
                     reach[parts.Count] = p.reach / Unit(p.follow);
                     parts.Add(p);
                 }
-                // Diagnostic: pressing starts a sixth further out, so the pair sits a little
-                // squashed at rest whenever the provider is writing.
-                pair[i] = start * (Diagnostic ? 1.15f : 1f) / Unit(a.follow);
+                pair[i] = start / Unit(a.follow);
                 pair[i + 1] = share;
                 log.Add($"{a.root.name}/{b.root.name} on {a.follow.parent.name}/{b.follow.parent.name}: start {start * 100f:0.0} cm, reach {a.reach * 100f:0.0} + {b.reach * 100f:0.0}, share {share:0.00}");
             }
@@ -642,6 +640,9 @@ namespace AvatarBridge.Regression
                     copy.SetVector("_YAPS_SquashReach", reach);
                     copy.SetVector("_YAPS_SquashPair", pair);
                     copy.SetVector("_YAPS_SquashShape", new Vector4(Flattest, Overfill, Fullest, 1f));
+                    // Diagnostic: the pair squeezes and lets go every few seconds with nobody
+                    // moving it, which only happens if the provider is writing the follows.
+                    copy.SetFloat("_YAPS_SquashPulse", Diagnostic ? 0.3f : 0f);
                     Asset(copy, $"{avatar.name} {smr.name} {slot}.mat");
                     // Where it came from, for StripShader to put back.
                     AssetImporter.GetAtPath(AssetDatabase.GetAssetPath(copy)).userData = GlobalObjectId.GetGlobalObjectIdSlow(source).ToString();

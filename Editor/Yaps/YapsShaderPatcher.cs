@@ -114,6 +114,7 @@ namespace AvatarBridge
         _YAPS_SquashReach (""YAPS squash reach per part, follow units"", Vector) = (0,0,0,0)
         _YAPS_SquashPair (""YAPS squash pairs: start, first share; start, first share"", Vector) = (0,0.5,0,0.5)
         _YAPS_SquashShape (""YAPS squash: flattest, overfill, fullest, contact"", Vector) = (0.6,2.33,1.5,1)
+        _YAPS_SquashPulse (""YAPS squash test pulse"", Float) = 0
 ";
 
         // The name the patch of `original` would carry if it were made now.

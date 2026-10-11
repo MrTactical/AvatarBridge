@@ -1389,8 +1389,8 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     and the probe: the follows sat on the chain roots (Breast_L carries 43%, Breast1_L 55%), and
     the cloth holds a chain root still, so the gap between follows never closed. The probe hid it
     by moving the parts kinematically. Follows now go on the heaviest carrier below the root; the
-    diagnostic build starts pressing a sixth further out, so a working provider shows as a slight
-    squash at rest. Not yet confirmed in game.
+    diagnostic build adds `_YAPS_SquashPulse`: the pair squeezes and lets go every few seconds
+    with nobody moving it, which needs the provider writing the follows. Not yet confirmed in game.
     Open: an unpatchable shader over a part (fall back to the bone stack), shadow and outline
     passes, the provider on remote copies (A2), the globals in stable, the probe moving parts by
     hand instead of through the cloth.
