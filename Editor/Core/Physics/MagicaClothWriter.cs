@@ -1483,6 +1483,7 @@ namespace AvatarBridge
         }
 
         const float StandInRestoration = 1f;
+        const float StandInWorldInertia = 0.4f;
 
         static readonly HashSet<string> SoftBodyClasses = new HashSet<string>
         {
@@ -1548,6 +1549,7 @@ namespace AvatarBridge
             // A stand-in for an add-on is the opposite case: marshmallow PB moves the bone itself,
             // about its own length under a squeeze, and bends it 6 to 8 degrees where this cloth
             // bent 38. So its root keeps the preset's slide and its bending is held near rest.
+            bool inertia = false;
             bool pinned = !data.StandIn && GetFloat(sdata.springConstraint, "limitDistance") is float range && range > 0f
                 && TrySetMember(sdata.springConstraint, "limitDistance", 0f);
             if (data.StandIn)
@@ -1560,6 +1562,11 @@ namespace AvatarBridge
                 }
                 sdata.angleRestorationConstraint.useAngleRestoration = true;
                 sdata.angleRestorationConstraint.stiffness.SetValue(StandInRestoration);
+                // The add-on's position chain ignores the avatar's own movement (immobile 1); only
+                // its lag chain feels it. At full world inertia the stand-in swung three to five
+                // times as far on walks, jumps and shakes; 0.4 came closest over seven moves
+                // (Play-mode A/B, 2026-10-12). More damping made it worse: it slows the return too.
+                inertia = TrySetMember(sdata.inertiaConstraint, "worldInertia", StandInWorldInertia);
             }
 
             string collisionBone = collisionBones.Count > 0
@@ -1577,7 +1584,9 @@ namespace AvatarBridge
                 (pinned ? ". Its root stays put, as a PhysBone's does, so straps weighted to it stay on" : "") +
                 (data.StandIn ? ". It stands in for an add-on that slid the bone rather than swinging it, so its root " +
                     "may slide and its bending is held near rest, which reads as squish rather than swing" : "") +
-                ". Inertia stays at the preset's value.");
+                (inertia
+                    ? $". World inertia {StandInWorldInertia:0.##}: the add-on kept most of the avatar's own movement out of the bone"
+                    : ". Inertia stays at the preset's value."));
         }
 
         static List<Transform> ChooseCollisionBones(BridgeContext ctx, PhysBoneChainData data, out float radius)

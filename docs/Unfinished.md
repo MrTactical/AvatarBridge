@@ -1553,11 +1553,16 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     MagicaCloth2 stand-in is: position heavily damped with no spring overshoot, swing lag on
     rotation only, rest pose tilted by orientation. Needs the A/B probe (batch, GUI closed).
     Next: the stand-in's damping from those, other players' hands from the globals.
-    The heft sweep is queued, NOT RUN (stopped 2026-10-11 for the night): PhysicsAbProbe on
-    `Assets/BHFBunny/BHFBUNNY.unity` with `-abBake -abStripBrokenFury`, then `-abTune
-    "(?i)breast|butt|chest|boob;..."` at damping 0.9, worldInertia 0.5, both, and 0.97 with
-    0.25. Read the converter's report for anchored inertia first: there worldInertia is 1 and
-    the influence sits in anchorInertia. The jump to beat: stand-in 35 degrees, marshmallow 12.
+    Heft sweep DONE 2026-10-12 (PhysicsAbProbe on the marshmallow avatar, `-abTune`, both butt
+    chains; peaks in degrees, marshmallow / stand-in before / after): walk 2.0 / 11.0 / 4.3, jump
+    12.5 / 35.0 / 8.6, shake 10.1 / 37.3 / 15.7, lie 7.3 / 22.1 / 8.4, turn 8.7 / 8.4 / 3.4. Stand-ins
+    now get world inertia 0.4: the mean peak error fell from 1.27 to 0.79 (1.0 is twice or half).
+    0.5 matched the jump, 0.3 the shake and lie; 0.4 scored best of 0.3, 0.4, 0.5. Damping is the
+    wrong lever: 0.9 RAISED walk to 16 and lie to 30, because MagicaCloth2's damping slows the
+    return to rest as well. The prefab reading's "cannot bounce" is position only: measured, the
+    original swings back 0.86 of its jump peak (stand-in 0.3) and settles in 0.77 s (0.33 s).
+    Untouched by inertia: press angle 12.4 against 5.5 to 7.2, squeeze 14 against 10, turn now too
+    small. One avatar, one add-on version; a second marshmallow avatar would test the 0.4.
     Open: the globals in stable; the probe moving parts by hand instead of through the cloth.
   Open: remote copies,
   the measurement probe (camera cost, controller

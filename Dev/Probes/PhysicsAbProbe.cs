@@ -363,13 +363,14 @@ namespace AvatarBridge.Regression
                 foreach (var cloth in converted.GetComponentsInChildren<MagicaCloth>(true)) cloth.SerializeData.gravity *= gravityScale;
                 Debug.Log($"[PhysicsAb] gravity scaled by {gravityScale}");
             }
-            // -abTune "Breast|Butt;damping=0.9;worldInertia=0.5": a sweep sets these on the copy's
-            // cloths whose name matches, flat over the chain.
+            // -abTune "Breast,Butt;damping=0.9;worldInertia=0.5": a sweep sets these on the copy's
+            // cloths whose name holds one of the words, flat over the chain. Commas, not a regex: a
+            // launch through cmd reads "|" as a pipe.
             var tune = SessionState.GetString(K + "tune", "").Split(';');
             if (tune.Length > 1)
                 foreach (var cloth in converted.GetComponentsInChildren<MagicaCloth>(true))
                 {
-                    if (!System.Text.RegularExpressions.Regex.IsMatch(cloth.name, tune[0])) continue;
+                    if (!tune[0].Split(',').Any(t => cloth.name.IndexOf(t, StringComparison.OrdinalIgnoreCase) >= 0)) continue;
                     var sd = cloth.SerializeData;
                     foreach (var kv in tune.Skip(1).Select(t => t.Split('=')))
                     {
