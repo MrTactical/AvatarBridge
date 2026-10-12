@@ -643,8 +643,9 @@ namespace AvatarBridge
 
             // The source's own angle limit is the leash's job. A preset's MagicaCloth2 angle
             // limit bounds chains whose source had none, and it is the constraint that set
-            // converted chains vibrating before 3.7.0.
-            if (sdata.angleLimitConstraint.useAngleLimit)
+            // converted chains vibrating before 3.7.0. A stand-in's limit is not the preset's:
+            // ConfigureSoftBody sets it before this runs, to hold the bending to the add-on's.
+            if (sdata.angleLimitConstraint.useAngleLimit && !data.StandIn)
             {
                 sdata.angleLimitConstraint.useAngleLimit = false;
                 ctx.Report.Approximated(Category, data.Root.name,
@@ -1484,6 +1485,8 @@ namespace AvatarBridge
 
         const float StandInRestoration = 1f;
         const float StandInWorldInertia = 0.4f;
+        const float StandInSpringPower = 0.03f;
+        const float StandInLimitAngle = 10f;
 
         static readonly HashSet<string> SoftBodyClasses = new HashSet<string>
         {
@@ -1506,7 +1509,8 @@ namespace AvatarBridge
             // The floor applies to a dropped-in preset too: it shares the shipped file's name, so the
             // two cannot be told apart, and letting the shipped Breast preset's 0.01 through made
             // soft bodies six times floppier.
-            float power = Mathf.Max(presetPower, SoftBodySpringPower);
+            // A stand-in gives under a hand by sliding, as the add-on did, so its spring is softer.
+            float power = data.StandIn ? StandInSpringPower : Mathf.Max(presetPower, SoftBodySpringPower);
             spring &= TrySetMember(sdata.springConstraint, "springPower", power);
 
             var collisionBones = ChooseCollisionBones(ctx, data, out float collisionRadius);
@@ -1567,6 +1571,11 @@ namespace AvatarBridge
                 // times as far on walks, jumps and shakes; 0.4 came closest over seven moves
                 // (Play-mode A/B, 2026-10-12). More damping made it worse: it slows the return too.
                 inertia = TrySetMember(sdata.inertiaConstraint, "worldInertia", StandInWorldInertia);
+                // Pressed or squeezed, the add-on bent 6 to 10 degrees where this bent 12 to 14. A
+                // softer spring and a 10 degree cap brought press to 8.5, squeeze to 12, and shake
+                // and lying to within a degree; a 6 degree cap or a spring of 0.015 lost the swing.
+                sdata.angleLimitConstraint.useAngleLimit = true;
+                sdata.angleLimitConstraint.limitAngle.SetValue(StandInLimitAngle);
             }
 
             string collisionBone = collisionBones.Count > 0
@@ -1583,7 +1592,8 @@ namespace AvatarBridge
                     : ", though its collision bone could not be set on this MagicaCloth2 version") +
                 (pinned ? ". Its root stays put, as a PhysBone's does, so straps weighted to it stay on" : "") +
                 (data.StandIn ? ". It stands in for an add-on that slid the bone rather than swinging it, so its root " +
-                    "may slide and its bending is held near rest, which reads as squish rather than swing" : "") +
+                    $"may slide, its spring is softer and its bending is held near rest and capped at {StandInLimitAngle:0}°, " +
+                    "which reads as squish rather than swing" : "") +
                 (inertia
                     ? $". World inertia {StandInWorldInertia:0.##}: the add-on kept most of the avatar's own movement out of the bone"
                     : ". Inertia stays at the preset's value."));

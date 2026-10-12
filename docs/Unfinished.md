@@ -1561,8 +1561,17 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     wrong lever: 0.9 RAISED walk to 16 and lie to 30, because MagicaCloth2's damping slows the
     return to rest as well. The prefab reading's "cannot bounce" is position only: measured, the
     original swings back 0.86 of its jump peak (stand-in 0.3) and settles in 0.77 s (0.33 s).
-    Untouched by inertia: press angle 12.4 against 5.5 to 7.2, squeeze 14 against 10, turn now too
-    small. One avatar, one add-on version; a second marshmallow avatar would test the 0.4.
+    Press and squeeze DONE 2026-10-12: stand-ins get spring 0.03 and a 10 degree angle limit, error
+    0.79 to 0.63. Press 12.4 to 8.5 (add-on 5.5 to 7.2), squeeze 14.1 to 12.0 (9.7 to 10.8), shake
+    15.7 to 10.1 (10.1), lie 8.4 to 7.0 (7.3); jump fell 8.6 to 5.9 (12.5), walk 4.3 to 3.7 (2.0).
+    A 6 degree cap or a spring of 0.015 lost the swing. FitToPhysBone switched every angle limit
+    off AFTER the stand-in set it, so the first converter run scored 0.70; a no-op `-abTune *=1`
+    logged useAngleLimit 0 and found it. Out of MagicaCloth2's reach: turn 3.2 against 8.7, slide
+    0.78 against 1.5 (spring 0.015 reaches it and kills the swing; limitDistance, centrifugal and
+    normalLimitRatio did nothing), and the rest of press and squeeze. The add-on's split of a
+    position follow from a rotation lag has no MagicaCloth2 equivalent.
+    One avatar, one add-on version. The only other marshmallow avatar found, the BBL prefab, fails
+    to build: its setup plugin throws on a "marshmallow_PB" child that is already there.
     Open: the globals in stable; the probe moving parts by hand instead of through the cloth.
   Open: remote copies,
   the measurement probe (camera cost, controller
