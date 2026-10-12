@@ -190,7 +190,10 @@ namespace AvatarBridge.Regression
 
         public static void Run()
         {
-            SessionState.SetString(K + "scenes", Arg("-abScenes") ?? "");
+            // A prefab gets a scene of its own: the run reopens its scene by path across Play mode.
+            var scenes = (Arg("-abScenes") ?? "").Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(p => p.Trim().EndsWith(".prefab") ? SceneFor(p.Trim()) : p.Trim());
+            SessionState.SetString(K + "scenes", string.Join(";", scenes));
             SessionState.SetString(K + "out", Arg("-abOut") ?? Path.Combine(Path.GetTempPath(), "physics-ab"));
             SessionState.SetInt(K + "index", 0);
             SessionState.SetInt(K + "stage", 0);
@@ -243,6 +246,36 @@ namespace AvatarBridge.Regression
             }
             SessionState.SetInt(K + "index", index + 1);
             EditorApplication.delayCall += Next;
+        }
+
+        static string SceneFor(string prefab)
+        {
+            var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
+            PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(prefab) ?? throw new ArgumentException("no prefab " + prefab), scene);
+            Directory.CreateDirectory("Assets/AvatarBridgeOutput/PhysicsAb");
+            string path = "Assets/AvatarBridgeOutput/PhysicsAb/" + Path.GetFileNameWithoutExtension(prefab) + " (probe).unity";
+            EditorSceneManager.SaveScene(scene, path);
+            return path;
+        }
+
+        static string Tune(object target, string key, float v)
+        {
+            bool scale = key.EndsWith("*");
+            var path = key.TrimEnd('*').Split('.');
+            for (int i = 0; i < path.Length - 1; i++)
+                target = target.GetType().GetField(path[i])?.GetValue(target) ?? throw new ArgumentException("-abTune: no " + key);
+            var field = target.GetType().GetField(path[path.Length - 1]) ?? throw new ArgumentException("-abTune: no " + key);
+            var now = field.GetValue(target);
+            float was;
+            switch (now)
+            {
+                case float f: was = f; field.SetValue(target, scale ? f * v : v); break;
+                case bool b: was = b ? 1 : 0; field.SetValue(target, v != 0); break;
+                case CurveSerializeData c: was = c.value; c.SetValue(scale ? c.value * v : v); break;
+                case CheckSliderSerializeData c: was = c.value; c.value = scale ? c.value * v : v; c.use = true; break;
+                default: throw new ArgumentException("-abTune: cannot set " + key);
+            }
+            return $"{key.TrimEnd('*')} {was:0.###} -> {(scale ? was * v : v):0.###}";
         }
 
         static bool Prepare(string scenePath)
@@ -363,28 +396,19 @@ namespace AvatarBridge.Regression
                 foreach (var cloth in converted.GetComponentsInChildren<MagicaCloth>(true)) cloth.SerializeData.gravity *= gravityScale;
                 Debug.Log($"[PhysicsAb] gravity scaled by {gravityScale}");
             }
-            // -abTune "Breast,Butt;damping=0.9;worldInertia=0.5": a sweep sets these on the copy's
-            // cloths whose name holds one of the words, flat over the chain. Commas, not a regex: a
-            // launch through cmd reads "|" as a pipe.
+            // -abTune "Breast,Butt;damping=0.9;inertiaConstraint.worldInertia=0.5;springConstraint.limitDistance*=1.5":
+            // a sweep sets any serialized field on the copy's cloths whose name holds one of the
+            // words, flat over the chain; "*=" scales the converter's own value. Commas, not a
+            // regex: a launch through cmd reads "|" as a pipe.
             var tune = SessionState.GetString(K + "tune", "").Split(';');
             if (tune.Length > 1)
                 foreach (var cloth in converted.GetComponentsInChildren<MagicaCloth>(true))
                 {
                     if (!tune[0].Split(',').Any(t => cloth.name.IndexOf(t, StringComparison.OrdinalIgnoreCase) >= 0)) continue;
-                    var sd = cloth.SerializeData;
+                    var log = new List<string>();
                     foreach (var kv in tune.Skip(1).Select(t => t.Split('=')))
-                    {
-                        float v = float.Parse(kv[1], CultureInfo.InvariantCulture);
-                        switch (kv[0])
-                        {
-                            case "damping": sd.damping.SetValue(v); break;
-                            case "worldInertia": sd.inertiaConstraint.worldInertia = v; break;
-                            case "anchorInertia": sd.inertiaConstraint.anchorInertia = v; break;
-                            case "restoration": sd.angleRestorationConstraint.stiffness.SetValue(v); break;
-                            default: throw new ArgumentException("-abTune: no " + kv[0]);
-                        }
-                    }
-                    Debug.Log($"[PhysicsAb] tuned {cloth.name}: {string.Join(";", tune.Skip(1))}");
+                        log.Add(Tune(cloth.SerializeData, kv[0], float.Parse(kv[1], CultureInfo.InvariantCulture)));
+                    Debug.Log($"[PhysicsAb] tuned {cloth.name}: {string.Join("; ", log)}");
                 }
             // -abLayered a;b: these chains on the copy get the joint spike layered on MagicaCloth2.
             var layered = (Arg("-abLayered") ?? "").Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
