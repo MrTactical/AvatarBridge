@@ -475,6 +475,7 @@ namespace AvatarBridge.Regression
 
             var lines = new List<string>();
             var seenRoots = new HashSet<Transform>();
+            var pressedCloths = new HashSet<MagicaCloth>();
             pressParent = null;
             int skippedNoCloth = 0, skippedNoMatch = 0;
             var pbList = new StringBuilder();
@@ -520,19 +521,30 @@ namespace AvatarBridge.Regression
                 // hold: a PhysBone collider on the source chain, a MagicaCloth2 one on the copy's cloth.
                 float reach = tip == root ? root.TransformVector(endpoint).magnitude : Vector3.Distance(root.position, tip.position);
                 float pressRadius = Mathf.Max(0.01f, 0.2f * reach);
-                var srcPress = MakePress("PhysicsAb press", pressRadius);
-                var physCollider = srcPress.gameObject.AddComponent<VRCPhysBoneCollider>();
-                physCollider.radius = pressRadius;
-                pb.colliders.Add(physCollider);
-                var dstPress = MakePress("PhysicsAb press copy", pressRadius);
-                var magicaCollider = dstPress.gameObject.AddComponent<MagicaSphereCollider>();
-                magicaCollider.SetSize(pressRadius);
-                foreach (var cloth in converted.GetComponentsInChildren<MagicaCloth>(true))
+                var mine = converted.GetComponentsInChildren<MagicaCloth>(true)
+                    .Where(cloth => cloth.SerializeData.rootBones.Any(r => r != null && (Same(r, dRoot) || r.IsChildOf(dRoot) || dRoot.IsChildOf(r))))
+                    .ToList();
+                // A cloth holding grouped strands hears every press put on it, while each source
+                // PhysBone hears only its own, so a second press on one cloth would push the first
+                // strand on the copy alone. One press per cloth; the other strands skip the rows a
+                // press reaches.
+                Transform srcPress = null, dstPress = null;
+                if (!mine.Any(pressedCloths.Contains))
                 {
-                    if (!cloth.SerializeData.rootBones.Any(r => r != null && (Same(r, dRoot) || r.IsChildOf(dRoot) || dRoot.IsChildOf(r)))) continue;
-                    var collision = cloth.SerializeData.colliderCollisionConstraint;
-                    collision.colliderList.Add(magicaCollider);
-                    if (collision.mode == ColliderCollisionConstraint.Mode.None) collision.mode = ColliderCollisionConstraint.Mode.Point;
+                    pressedCloths.UnionWith(mine);
+                    srcPress = MakePress("PhysicsAb press", pressRadius);
+                    var physCollider = srcPress.gameObject.AddComponent<VRCPhysBoneCollider>();
+                    physCollider.radius = pressRadius;
+                    pb.colliders.Add(physCollider);
+                    dstPress = MakePress("PhysicsAb press copy", pressRadius);
+                    var magicaCollider = dstPress.gameObject.AddComponent<MagicaSphereCollider>();
+                    magicaCollider.SetSize(pressRadius);
+                    foreach (var cloth in mine)
+                    {
+                        var collision = cloth.SerializeData.colliderCollisionConstraint;
+                        collision.colliderList.Add(magicaCollider);
+                        if (collision.mode == ColliderCollisionConstraint.Mode.None) collision.mode = ColliderCollisionConstraint.Mode.Point;
+                    }
                 }
                 string pars = string.Format(CultureInfo.InvariantCulture,
                     (IsVersion10(pb) ? "v1.0 " : "v1.1 ") + "{0} pull={1:0.##} spring={2:0.##} stiff={3:0.##} grav={4:0.##}/{5:0.##} imm={6:0.##}({7}) limit={8}:{9:0}/{10:0} bones={11} radius={12:0.###} squish={13:0.##} stretch={14:0.##}",
@@ -2251,17 +2263,24 @@ namespace AvatarBridge.Regression
                 if (c.src.v.Count < End * Fps * 0.9f) continue;
                 var a = Measure(c.src);
                 var b = Measure(c.dst);
+                // Without a press of its own, a grouped strand's copy can still be reached by its
+                // sibling's, so nothing from the press on is compared.
+                bool pressed = c.src.press != null;
                 Row(c, "sag", a.sag, b.sag);
-                Row(c, "stretch", a.stretch, b.stretch);
+                if (pressed) Row(c, "stretch", a.stretch, b.stretch);
                 Row(c, "slide", a.slide, b.slide);
-                Row(c, "squeeze.shift", a.squeeze, b.squeeze);
+                if (pressed) Row(c, "squeeze.shift", a.squeeze, b.squeeze);
                 Row(c, "lie", a.lie, b.lie);
                 Row(c, "liehold", a.liehold, b.liehold);
-                Row(c, "press.ratio", a.pressRatio, b.pressRatio);
-                Row(c, "press.angle", a.pressAngle, b.pressAngle);
-                Row(c, "press.recover", a.pressRecover, b.pressRecover);
+                if (pressed)
+                {
+                    Row(c, "press.ratio", a.pressRatio, b.pressRatio);
+                    Row(c, "press.angle", a.pressAngle, b.pressAngle);
+                    Row(c, "press.recover", a.pressRecover, b.pressRecover);
+                }
                 foreach (var (name, _, _, _) in Phases)
                 {
+                    if (!pressed && name == "squeeze") continue;
                     var p = a.phase[name];
                     var q = b.phase[name];
                     // A head turn only reaches chains below the head.
