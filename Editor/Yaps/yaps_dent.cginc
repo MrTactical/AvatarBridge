@@ -69,10 +69,12 @@ float4 _YAPS_SquashPush;    // x push gain, y push ignored below this share of t
 float4 _YAPS_SquashLimbL;   // radius of the upper arm, lower arm and hand, each as a share of its own length
 float4 _YAPS_SquashLimbR;
 float _YAPS_SquashPulse;    // test builds: a press that comes and goes on its own, as a share of the start
-float4 _YAPS_SquashHands;   // x own arms' press gain, y other players' hand radius in metres, z their press gain, w skin stride in bytes (0 none)
+float4 _YAPS_SquashHands;   // x own arms' press gain, y other players' hand radius in metres at a 1.6 m viewpoint, z their press gain, w skin stride in bytes (0 none)
 float4 _YAPS_SquashTune;    // x lying-back weight, as a share of the reach out; y strength of every press; z bend give, as a share of the reach out; w deepest dent, as a share of the reach toward the hand
 float4 _CVR_PlayerLeftHandPositions[255];
 float4 _CVR_PlayerRightHandPositions[255];
+float4 _CVR_PlayerChestPositions[255];
+float4 _CVR_PlayerRootPositions[255];   // w the player's viewpoint height
 
 // The same slots again, from a helper mesh weighted one vertex to each and skinned. The provider
 // reads transforms in a script LateUpdate, before the cloth writes its bones and after it put
@@ -222,24 +224,34 @@ void YapsHandsPress(YapsPart p, inout float3 hv[4], inout float hr[4])
             if (dot(v, v) > dot(hv[k / 3], hv[k / 3])) { hv[k / 3] = v; hr[k / 3] = r; }
         }
     }
-    float r = _YAPS_SquashHands.y;
-    if (_YAPS_SquashHands.z > 0 && r > 0)
+    if (_YAPS_SquashHands.z > 0 && _YAPS_SquashHands.y > 0)
     {
         // Every player's hands, the wearer's among them, which the arms above already are: a
-        // hand by either own hand is skipped. Capped at 64 players for cost.
+        // hand by either own hand is skipped. Capped at 64 players for cost. The globals carry
+        // only the wrist, a palm's length out from the skin while the palm is on it, so a ball
+        // there never reached the part: the hand runs on from it, away from that player's chest,
+        // for a ninth of their viewpoint height.
+        // ponytail: the line from the chest stands in for the forearm, which the globals do not carry.
         float3 ownL = YapsSlot(10), ownR = YapsSlot(14);
-        float mine = 2.25 * r * r;
         int count = min((int) round(CVRGlobalParams1.y), 64);
         [loop]
         for (int i = 0; i < count; i++)
         {
+            float tall = _CVR_PlayerRootPositions[i].w;
+            tall = tall > 0.1 ? tall : 1.6;
+            float r = _YAPS_SquashHands.y * tall / 1.6;
+            float mine = 2.25 * r * r;
+            float3 chest = _CVR_PlayerChestPositions[i].xyz;
             float3 hands[2] = { _CVR_PlayerLeftHandPositions[i].xyz, _CVR_PlayerRightHandPositions[i].xyz };
             [unroll]
             for (int j = 0; j < 2; j++)
             {
                 float3 h = hands[j];
                 if (dot(h, h) < 1e-6 || dot(h - ownL, h - ownL) < mine || dot(h - ownR, h - ownR) < mine) continue;
-                float3 v = YapsPress(p, h, h, r) * _YAPS_SquashHands.z;
+                float3 arm = h - chest;
+                float3 tip = h;
+                if (dot(chest, chest) > 1e-6 && dot(arm, arm) > 1e-6) tip += normalize(arm) * max(0.11 * tall - r, 0);
+                float3 v = YapsPress(p, h, tip, r) * _YAPS_SquashHands.z;
                 float vv = dot(v, v);
                 if (vv > dot(hv[2], hv[2])) { hv[3] = hv[2]; hr[3] = hr[2]; hv[2] = v; hr[2] = r; }
                 else if (vv > dot(hv[3], hv[3])) { hv[3] = v; hr[3] = r; }

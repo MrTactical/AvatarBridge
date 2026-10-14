@@ -3,7 +3,10 @@
 // the arms off, and with the bone push off too. Per frame, how far each part's follow sits off
 // its rest and the press that makes, to see whether settled cloth reads as a press.
 //
-// -executeMethod AvatarBridge.Regression.SquashPlayProbe.Run -spScene <scene> -spOut <dir>
+// -executeMethod AvatarBridge.Regression.SquashPlayProbe.Run -spScene <scene> -spOut <dir> [-spOther]
+//
+// -spOther leaves the arms alone and presses with another player's hand instead, through the
+// client's player globals: first a palm on the skin with the wrist outside, then the wrist sunk in.
 //
 // Batch, never -nographics: the frames are rendered.
 
@@ -31,6 +34,8 @@ namespace AvatarBridge.Regression
         static readonly Dictionary<int, float> late = new Dictionary<int, float>();
 
         static int frame;
+        static float power = -1f;
+        static Vector4 tune;
         static Animator animator;
         static CVRMaterialDataProvider provider;
         static SkinnedMeshRenderer skin;
@@ -51,6 +56,7 @@ namespace AvatarBridge.Regression
         {
             SessionState.SetString(K + "out", Arg("-spOut"));
             SessionState.SetInt(K + "on", 1);
+            SessionState.SetInt(K + "other", Environment.GetCommandLineArgs().Contains("-spOther") ? 1 : 0);
             var scene = EditorSceneManager.OpenScene(Arg("-spScene"), OpenSceneMode.Single);
             foreach (var r in scene.GetRootGameObjects())
                 if (r.GetComponentInChildren<CVRAvatar>(true) == null && r.GetComponentInChildren<Animator>(true) != null) r.SetActive(false);
@@ -120,21 +126,61 @@ namespace AvatarBridge.Regression
                 Shoot("rest_animated");
             }
             if (frame == Bend - 1) Shoot("rest");
-            if (frame >= Bend && frame <= Bent) Reach(Mathf.SmoothStep(0f, 1f, (frame - Bend) / (float)(Bent - Bend)));
-            if (frame > Bent) Reach(1f);
+            if (SessionState.GetInt(K + "other", 0) == 1)
+            {
+                if (frame >= Bend) Other(frame < End - 15 ? 0.15f : 0f);
+                if (frame == End - 21 || frame == End - 11) Debug.Log($"[SquashPlay] other: params1 {Shader.GetGlobalVector("CVRGlobalParams1")} " +
+                    $"hand1 {(Vector3)Shader.GetGlobalVectorArray("_CVR_PlayerLeftHandPositions")[1]} target {target} part {slots[0].position} {slots[1].position} " +
+                    $"wrists {slots[10].position} {slots[14].position} hands {mats[0].GetVector("_YAPS_SquashHands")} power {mats[0].GetFloat("_YAPS_DentPower")}");
+                if (frame == End - 20) Shoot("other_palm");
+                if (frame == End - 10) Shoot("other_wrist_in");
+                // The same press with less bend and a deeper dent, then none and deeper still.
+                if (frame == End - 9) { tune = mats[0].GetVector("_YAPS_SquashTune"); foreach (var m in mats) m.SetVector("_YAPS_SquashTune", new Vector4(tune.x, tune.y, 0.1f, 0.6f)); }
+                if (frame == End - 7) Shoot("other_wrist_in_bend10_dent60");
+                if (frame == End - 6) foreach (var m in mats) m.SetVector("_YAPS_SquashTune", new Vector4(tune.x, tune.y, 0f, 0.9f));
+                if (frame == End - 5) { Shoot("other_wrist_in_bend0_dent90"); foreach (var m in mats) m.SetVector("_YAPS_SquashTune", tune); frame = End - 4; }
+            }
+            else
+            {
+                if (frame >= Bend && frame <= Bent) Reach(Mathf.SmoothStep(0f, 1f, (frame - Bend) / (float)(Bent - Bend)));
+                if (frame > Bent) Reach(1f);
+            }
             if (frame == End - 20) Shoot("hand_all");
             if (frame == End - 15) Set(mats, push => new Vector4(push.x, push.y, push.z, 0f));
             if (frame == End - 10) Shoot("hand_no_arms");
             if (frame == End - 9) Set(mats, push => new Vector4(0f, push.y, push.z, 0f));
             if (frame == End - 4) Shoot("hand_nothing");
+            // The shader off entirely, so what is left is the cloth and the arm.
+            if (frame == End - 3) { power = mats[0].GetFloat("_YAPS_DentPower"); foreach (var m in mats) m.SetFloat("_YAPS_DentPower", 0f); }
+            if (frame == End - 1) Shoot("hand_shader_off");
             if (frame == End)
             {
+                if (power >= 0f) foreach (var m in mats) m.SetFloat("_YAPS_DentPower", power);
                 Set(mats, push => new Vector4(1f, push.y, push.z, 1f));
                 File.WriteAllLines(Path.Combine(outDir, "push.tsv"), rows);
                 SessionState.SetInt(K + "on", 0);
                 Debug.Log("[SquashPlay] done " + outDir);
                 EditorApplication.Exit(0);
             }
+        }
+
+        // Another player, 1.7 m tall, reaching in from the front: the globals carry only a wrist,
+        // set `back` metres out from where the own-arm test sinks its wrist, and the chest behind it.
+        static void Other(float back)
+        {
+            var forward = animator.transform.forward;
+            var wristAt = target + forward * back;
+            var hands = new Vector4[255];
+            var chests = new Vector4[255];
+            var roots = new Vector4[255];
+            hands[1] = wristAt;
+            chests[1] = wristAt + forward * 0.45f;
+            roots[1] = new Vector4(chests[1].x, 0f, chests[1].z, 1.7f);
+            Shader.SetGlobalVectorArray("_CVR_PlayerLeftHandPositions", hands);
+            Shader.SetGlobalVectorArray("_CVR_PlayerRightHandPositions", new Vector4[255]);
+            Shader.SetGlobalVectorArray("_CVR_PlayerChestPositions", chests);
+            Shader.SetGlobalVectorArray("_CVR_PlayerRootPositions", roots);
+            Shader.SetGlobalVector("CVRGlobalParams1", new Vector4(0f, 2f, 0f, 0f));
         }
 
         // The wrist toward the target: the elbow bends until the shoulder to wrist distance

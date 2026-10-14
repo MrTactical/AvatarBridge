@@ -1575,6 +1575,28 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     One avatar, one add-on version. The only other marshmallow avatar found, the BBL prefab, fails
     to build: its setup plugin throws on a "marshmallow_PB" child that is already there.
     Open: the globals in stable; the probe moving parts by hand instead of through the cloth.
+    Other players' hands, 2026-10-14. In game (Joe): own hands squash, other players' hands never
+    did. The client's globals were right (decompile: each player's hand bone in world space,
+    `CVRGlobalParams1.y` = network players + 1, set every frame); the shader was not. It took
+    another player's hand as a 5 cm ball at the WRIST, which is the hand bone's origin, a palm's
+    length out from the skin while the palm is on it. SquashPlayProbe `-spOther` feeds a fake
+    player through the same globals: wrist 7 cm past the surface, nothing moved (797 samples
+    changed against rest, the same as no press at all); a 30 cm ball at the same wrist did move
+    it, so the globals reach the shader. Changed the same day, NOT YET IN GAME: the hand runs on
+    from the wrist, away from that player's chest (`_CVR_PlayerChestPositions`), for 0.11 of
+    their viewpoint height (`_CVR_PlayerRootPositions` w, 1.6 when missing), its radius scaled
+    from a 1.6 m viewpoint. Same press: 9582 samples changed. The line from the chest stands in
+    for the forearm, which the globals do not carry. The test avatar needs `-squashShader` on
+    SquashTestBuilder, or it builds the old bone-scale test.
+    Joe, same day: "denting it shouldn't move it that badly ... a dent can have a bit of
+    compression", and the volume should read as kept. A press bends the part (up to bend give
+    0.35 of its out reach), dents it (up to 0.35 of its reach toward the hand) and moves the whole
+    part by whatever is left. Probe A/B, same press: bend 0.10 with dent 0.60 kept the part near
+    its rest outline with the dent showing; bend 0 with dent 0.90 nearer still. Not chosen yet.
+    Volume: the dent's rim holds exactly what the bowl moved, but peaks at 13% of the depth,
+    1.4 bowl widths out, so it never shows and a dent reads as lost volume. Next: a higher,
+    tighter rim. A lobe below the hand in the front renders was the part itself, hidden at rest
+    by the hanging arm: it is there with the shader off.
   Open: remote copies,
   the measurement probe (camera cost, controller
   cost, readback latency, replacement universality), then the staged build above, tuning, and
