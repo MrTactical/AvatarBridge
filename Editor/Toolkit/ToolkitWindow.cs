@@ -101,7 +101,7 @@ namespace AvatarBridge
             var avatarHere = _target != null ? _target.GetComponent<CVRAvatar>() : null;
             if (tester != null && avatarHere != null)
             {
-                pick.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Open in the CCK Animator Tester",
+                pick.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Open in the Avatar Tester",
                     () => tester.GetMethod("OpenFor", BindingFlags.NonPublic | BindingFlags.Static)?.Invoke(null, new object[] { avatarHere }),
                     "Opens the tester already pointed at this avatar: gestures, menu, face, physics, played the way the game does.")));
             }
@@ -157,8 +157,8 @@ namespace AvatarBridge
                 Item("YAPS, a separate 18+ add-on, adds penetration to any avatar or prop.",
                     BridgeElements.ExternalLink("Get the YAPS add-on", BridgeLinks.YapsRepo));
             if (typeof(ToolkitPanel).Assembly.GetType("AvatarBridge.CckAnimatorTester", false) != null)
-                Item("CCK Animator Tester plays an avatar as the game does.", BridgeElements.Btn("CCK Animator Tester",
-                    () => EditorApplication.ExecuteMenuItem("Tools/Avatar Bridge/CCK Animator Tester")));
+                Item("Avatar Tester plays an avatar as the game does.", BridgeElements.Btn("Avatar Tester",
+                    () => EditorApplication.ExecuteMenuItem("Tools/Avatar Bridge/Avatar Tester")));
             return card;
         }
 

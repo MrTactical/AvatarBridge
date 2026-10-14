@@ -706,8 +706,8 @@ namespace AvatarBridge
                     $"{looping.Count} layer(s) may thrash on OTHER players' screens right after the " +
                     "avatar loads",
                     string.Join("; ", looping) + ": at default parameter values they never settle. You won't see " +
-                    "it yourself. Give those parameters defaults that park them, or the loop an exit time. The CCK " +
-                    "Animator Tester's Remote view reproduces it.");
+                    "it yourself. Give those parameters defaults that park them, or the loop an exit time. The " +
+                    "Avatar Tester's Remote view reproduces it.");
             }
         }
 

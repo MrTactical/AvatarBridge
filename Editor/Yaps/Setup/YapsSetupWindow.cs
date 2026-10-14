@@ -323,11 +323,12 @@ namespace AvatarBridge
                 "Drop a test socket in front of the camera and every baked plug in the scene bends toward it. " +
                 "Nothing here ships."));
             make.Body.Add(BridgeElements.ButtonRow(
-                BridgeElements.Btn("Test hole (previews)", () => TestSocket(YapsSocket.SocketKind.Hole)),
-                BridgeElements.Btn("Test ring (previews)", () => TestSocket(YapsSocket.SocketKind.Ring)),
+                BridgeElements.Btn("Test hole (previews)", () => YapsPreview.DropTestSocket(YapsSocket.SocketKind.Hole)),
+                BridgeElements.Btn("Test ring (previews)", () => YapsPreview.DropTestSocket(YapsSocket.SocketKind.Ring)),
                 BridgeElements.Btn("Test plug", () => YapsNativeBuilder.BuildTestPlug())));
             make.Body.Add(BridgeElements.Hint(
-                "The socket lands previewing; move it around your plug. No plug? Test plug drops a baked capsule."));
+                "The socket lands previewing; move it around your plug. Stopping its preview takes it away. No plug? " +
+                "Test plug drops a baked capsule."));
             _pages.Add(make);
 
             var props = new BridgeElements.Card("Props and prefabs", null, false);
@@ -361,16 +362,6 @@ namespace AvatarBridge
             string said = YapsShaderPatcher.SweepProject();
             EditorUtility.DisplayDialog("YAPS", said, "OK");
             Debug.Log("[AvatarBridge] " + said);
-        }
-
-        // A test socket in front of the camera, previewing at once: every
-        // baked plug in the scene bends toward it, and a test plug is
-        // dropped when there is none.
-        void TestSocket(YapsSocket.SocketKind kind)
-        {
-            var socket = AddSocket(kind, atCamera: true);
-            if (socket == null) return;
-            YapsPreview.Set(socket, true, spawnPlugIfNone: false);
         }
 
         // --- behaviour -----------------------------------------------------------
@@ -890,70 +881,47 @@ namespace AvatarBridge
         }
 
         // Under the selected bone, else in a YAPS folder on the avatar.
-        YapsSocket AddSocket(YapsSocket.SocketKind kind, bool atCamera = false)
+        YapsSocket AddSocket(YapsSocket.SocketKind kind)
         {
             string name = kind == YapsSocket.SocketKind.Hole ? "YAPS Hole" : "YAPS Ring";
             var go = new GameObject(name);
 
-            if (atCamera)
+            // The selected bone; and the avatar's own root for the YAPS
+            // folder when nothing is selected.
+            var candidate = Candidate();
+            var selected = candidate != null ? candidate.transform : null;
+            var avatarRoot = _target != null ? YapsSocketEditor.AvatarRootOf(_target.transform)
+                : selected != null ? YapsSocketEditor.AvatarRootOf(selected) : null;
+            if (avatarRoot == null && _target != null) avatarRoot = _target.transform;
+            bool onBone = selected != null && avatarRoot != null && selected != avatarRoot
+                          && IsBone(selected, avatarRoot);
+            Transform parent;
+            if (onBone)
             {
-                // Beside a baked plug when there is one: just past its tip,
-                // a little above the axis, entrance facing the base, so the
-                // plug bends into it at once. Else in front of the camera.
-                if (YapsPreview.FirstBakedPlugFrame(out var origin, out var forward, out var up, out float length))
+                parent = selected;
+            }
+            else if (avatarRoot != null)
+            {
+                parent = avatarRoot.Find("YAPS");
+                if (parent == null)
                 {
-                    go.transform.position = origin + forward * (length * 0.85f) + up * (length * 0.35f);
-                    go.transform.rotation = Quaternion.LookRotation(-forward, up);
-                }
-                else
-                {
-                    var cam = SceneView.lastActiveSceneView != null ? SceneView.lastActiveSceneView.camera : null;
-                    if (cam != null)
-                    {
-                        go.transform.position = cam.transform.position + cam.transform.forward * 0.6f;
-                        go.transform.rotation = Quaternion.LookRotation(-cam.transform.forward);
-                    }
+                    var folder = new GameObject("YAPS");
+                    folder.transform.SetParent(avatarRoot, false);
+                    Undo.RegisterCreatedObjectUndo(folder, "YAPS folder");
+                    parent = folder.transform;
                 }
             }
             else
             {
-                // The selected bone; and the avatar's own root for the YAPS
-                // folder when nothing is selected.
-                var candidate = Candidate();
-                var selected = candidate != null ? candidate.transform : null;
-                var avatarRoot = _target != null ? YapsSocketEditor.AvatarRootOf(_target.transform)
-                    : selected != null ? YapsSocketEditor.AvatarRootOf(selected) : null;
-                if (avatarRoot == null && _target != null) avatarRoot = _target.transform;
-                bool onBone = selected != null && avatarRoot != null && selected != avatarRoot
-                              && IsBone(selected, avatarRoot);
-                Transform parent;
-                if (onBone)
-                {
-                    parent = selected;
-                }
-                else if (avatarRoot != null)
-                {
-                    parent = avatarRoot.Find("YAPS");
-                    if (parent == null)
-                    {
-                        var folder = new GameObject("YAPS");
-                        folder.transform.SetParent(avatarRoot, false);
-                        Undo.RegisterCreatedObjectUndo(folder, "YAPS folder");
-                        parent = folder.transform;
-                    }
-                }
-                else
-                {
-                    parent = selected;
-                }
-                if (parent != null) go.transform.SetParent(parent, false);
-                if (!onBone && parent != null)
-                {
-                    // Unique names in the folder.
-                    int n = 1;
-                    foreach (Transform c in parent) if (c.name.StartsWith(name)) n++;
-                    if (n > 1) go.name = $"{name} {n}";
-                }
+                parent = selected;
+            }
+            if (parent != null) go.transform.SetParent(parent, false);
+            if (!onBone && parent != null)
+            {
+                // Unique names in the folder.
+                int n = 1;
+                foreach (Transform c in parent) if (c.name.StartsWith(name)) n++;
+                if (n > 1) go.name = $"{name} {n}";
             }
 
             var socket = go.AddComponent<YapsSocket>();
@@ -962,7 +930,7 @@ namespace AvatarBridge
             Undo.RegisterCreatedObjectUndo(go, "Add YAPS socket");
             Selection.activeGameObject = go;
             EditorGUIUtility.PingObject(go);
-            if (!atCamera) Rescan();
+            Rescan();
             return socket;
         }
 

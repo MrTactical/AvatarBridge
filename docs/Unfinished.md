@@ -37,7 +37,7 @@ or TPS marker lights reported as kept, one Converted line, measured on VaponnyPC
 in both profiles). Every other line matches, so the opt-out run's drift since 4.5.0 is the drift
 each YAPS-on baseline already accepted. 4.5.0's kept in `Baseline-pre-413-20261002`.
 
-**A Physics card in the CCK Animator Tester. BUILT 2026-10-02, unreleased: Joe tries it first.**
+**A Physics card in the CCK Animator Tester (now the Avatar Tester's Interaction lab, below). BUILT 2026-10-02, unreleased: Joe tries it first.**
 Asked for by Joe (motion presets, grab and fling, overlay; not the side-by-side with VRChat). A
 card of its own, `Editor/CckAnimatorTester.Physics.cs`, behind `AVATARBRIDGE_MAGICA`, wired through
 partial methods so the tester builds without MagicaCloth2. Play mode only. *Walk*, *Run* (circles
@@ -60,6 +60,38 @@ compiled by neither until it is deployed; run `check-defines.sh` against the pro
 **Gap closed 2026-10-03:** `compile-check.sh` now also compiles `CVR_CCK_EXISTS` with
 `AVATARBRIDGE_MAGICA` and no SDK, and `check-defines.sh` compiles the repo (Editor, Runtime, and the
 Dev harness by name), not the deployed copy, so the workaround above is no longer needed.
+
+**The Interaction lab: squash, plugs and sockets tested beside the motion. BUILT 2026-10-14 on dev,
+compiled in every combination, NOT YET OPENED by anyone.** Joe 2026-10-14: put the squash in the
+tester's physics zone, rename it to something universal, and move plug and socket testing there
+too. Designed by a five-agent workflow and critiqued; names approved by Joe. The window is now the
+**Avatar Tester** (display strings, menu path, Toolkit buttons, report wording; the class and file
+keep their names, since deploy copies and never deletes and a renamed file would leave a duplicate
+type), and the Physics card is the **Interaction lab** (the old Remember key kept). The public
+package names nothing of the add-on: a public `TesterSections` registry, filled from
+`YapsTesterSections` by name through reflection, so the add-on installed alone still builds. Its
+sections are nested folds: **Squash** (the component's own preview controls, extracted into
+`YapsSquashPreview.Controls`; in Play mode Squeeze and Bounce hide, since the cloth is real, and
+only the test hand is written) and **Plugs and sockets** (Preview and Drop a test plug per socket,
+Into a hole and Through a ring per baked plug, the avatar's and any outside an avatar). Every
+defect the critique found is fixed: Preview in Play mode sets the socket's play-mode flag for that
+session (it did nothing before); one test-socket path (`YapsPreview.DropTestSocket(kind)`, used by
+the window's Test it page too, so every test socket has the one name and any surface can remove
+it); a test plug in Play mode only from the prop prefab (one built there leaked its mesh, material
+and bake), with the button disabled when there is none; sections get a rebuild call and add a
+fingerprint (sockets, plugs, preview state) so changes made elsewhere rebuild the window; the
+window rebuilds a frame after a play-mode change, so the squash preview has stopped before the
+card reads it; the hand handle draws from `SceneView.duringSceneGui`, kept in the avatar's space so
+it walks with the avatar; Stop clears the four player arrays as well as the count; the registry is
+public with explicit binding flags, logs an error if the tester is there without `Add`, and the
+smoke test asserts both sections registered (none without the add-on); registration rebuilds
+open windows a frame later and replaces by name; the lab's header lists its sections, not only
+the physics summary; sections append after `SafeCard`, so a physics failure leaves them working;
+`compile-check.sh` gains `addon:`, the add-on's own file list compiled alone (the list moved to
+`Dev/Build/yaps-files.sh`, shared with `build-package.sh`); it passes. Open: open it in the GUI,
+edit mode and Play mode, on a converted avatar with a squash and a socket, and on a prop; that a
+Play-mode Preview stops on exit; that the hand follows Walk and Jump; the public package's tester
+files still name nothing of the add-on (grep is clean now).
 **Round two 2026-10-04, after Joe tried it** ("pulling from a bone but not the correct one"; wanted
 the solver's settings overlaid, and to select, edit live and keep). The grab took the nearest bone
 in screen space, roots included, and a MagicaCloth root never moves, so the pull anchored there at

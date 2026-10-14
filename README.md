@@ -108,7 +108,7 @@ Unity**: the Animator window, blend trees, the `CVRAvatar` component.
 Every run writes a `ConversionReport.md` you're **expected to read**: act on each *Warning*,
 *Approximated* and *Skipped* entry, alongside a `Diagnostics.md` you don't need to read at all
 unless something's wrong, and should attach to any bug report. Every conversion should be **tested
-in ChilloutVR** before you call it done. The CCK Animator Tester previews gestures and physics,
+in ChilloutVR** before you call it done. The Avatar Tester previews gestures and physics,
 but only the game shows gestures, contacts, synced parameters and physics actually running.
 
 ## Highlights
@@ -175,11 +175,11 @@ but only the game shows gestures, contacts, synced parameters and physics actual
   a project without the source avatar's folders, where a clip left behind would play as stillness
   with no error. (The CCK's own clips stay referenced: uploading requires the CCK, so they're always
   present.)
-- **A play-mode tester that drives avatars the way the game does**: *Tools ▸ Avatar Bridge ▸ CCK
-  Animator Tester*: gestures, stances, visemes, emotes, face tracking and the whole Advanced
+- **A play-mode tester that drives avatars the way the game does**: *Tools ▸ Avatar Bridge ▸ Avatar
+  Tester*: gestures, stances, visemes, emotes, face tracking and the whole Advanced
   Settings menu, plus a live Animator-layers readout with weights, masks and playing clips. Its
   **Remote view** card snaps every `#` local parameter to its default: what other players' clients
-  hold forever, so you can see remote-only flickering before you upload. Its **Physics** card
+  hold forever, so you can see remote-only flickering before you upload. Its **Interaction lab** card
   (MagicaCloth2 and DynamicBone) walks, runs, turns, hops and shakes the avatar the way a player
   would, so its chains swing, or sits it so they settle in the seated pose; **Stop** puts it back
   where it started. It is a preview: only ChilloutVR can judge physics. **Grab chains in the
@@ -209,7 +209,7 @@ but only the game shows gestures, contacts, synced parameters and physics actual
   standalone cards: check what the game will break, say what the avatar does and what it costs
   (and trim what can go), clear out empty layers and unused parameters, patch stereo shaders,
   wire visemes and blink, clamp audio, fix mesh bounds, add the height slider, write the
-  description, and merge animators. **Open in the CCK Animator Tester** hands the picked avatar
+  description, and merge animators. **Open in the Avatar Tester** hands the picked avatar
   straight to the tester.
 
 *(No VRChat SDK installed? The tool still runs in [Setup mode](#setup-mode) and prepares any
@@ -638,8 +638,8 @@ scale 1. `m_Force` is added after that cancellation and is only ever multiplied 
 behaves identically at any size. The cost is `gravityFalloff`, which existed only as `m_Gravity`'s
 cancellation and can't come along; the report names each chain that had one.
 
-> ⚠️ **Physics can only be judged in game.** Nothing steps a cloth solver in edit mode. The CCK
-> Animator Tester's **Physics** card is the closest preview: in Play mode it moves the avatar the
+> ⚠️ **Physics can only be judged in game.** Nothing steps a cloth solver in edit mode. The Avatar
+> Tester's **Interaction lab** card is the closest preview: in Play mode it moves the avatar the
 > way a player would, so the chains swing. Dragging the avatar root around by hand proves nothing:
 > MagicaCloth2's speed limits make a chain follow rigidly the moment they're exceeded, so a fast
 > shake looks still whatever the settings say.
@@ -1374,7 +1374,10 @@ real flesh (a small stretch, small swings ignored), to 1, like anime (a long str
 squash on every bounce). **See it work ▸ Preview** shows it in the editor: **Squeeze** pushes the
 pair together, **Bounce** swings each part as a jump would, and **Test hand** puts another
 player's open hand in front of it, dragged with the handle in the Scene view. The editor runs no
-physics, so the preview stands in for them; in game the same knobs answer the real thing. Its
+physics, so the preview stands in for them; in game the same knobs answer the real thing. The
+Avatar Tester's **Interaction lab** carries the same preview beside the avatar's motion, and in
+Play mode the cloth there is real: **Jump** or **Shake** swings it, and **Test hand** presses it
+and moves with the avatar. Its
 **Build** card builds, rebuilds and removes the squash (the knobs stay on the component), and
 **Animate it** lists the material properties to key. The component on a VRChat avatar carries
 into its conversion, knobs and regions alike, and ChilloutVR strips it at upload.
@@ -1416,12 +1419,19 @@ again (or the avatar reconverted) to notice its socket, and to stretch in motion
   of it. Every knob on the plug shows live. Wriggle and pumping are time-driven; the scene view
   repaints while a plug is selected so they move. A socket's shapes follow the preview plug's tip
   while it runs, and **Test depth** moves them from a slider without any plug at all.
-- **In Play mode, if you ask for it.** The preview stands down when you press Play so it cannot
+- **In Play mode, press Preview there.** The preview stands down when you press Play so it cannot
   race whatever else is writing to the material, which is right until you notice that most avatars
   hide the plug until a toggle brings it in, so Play mode is the only state where there is
-  anything to look at. **Keep previewing in Play Mode**, on the socket, turns it back on. It is
-  also the only way to watch a POSED avatar: edit mode holds the rest pose, where every part of a
-  plug agrees about which way it faces.
+  anything to look at. **Preview** pressed in Play mode runs until Play ends (it ticks the socket's
+  **Keep previewing in Play Mode** for that session). It is also the only way to watch a POSED
+  avatar: edit mode holds the rest pose, where every part of a plug agrees about which way it
+  faces. A test plug dropped in Play mode is the plug prop prefab, so make that first (*Create a
+  plug prop prefab*); one built there would leave its files behind.
+- **In the Avatar Tester**, the **Interaction lab** card lists the avatar's sockets and plugs, and
+  any on props in the scene, under **Plugs and sockets**: **Preview** and **Drop a test plug** per
+  socket, **Into a hole** and **Through a ring** per baked plug, beside the motion that moves the
+  avatar. The test socket and plug it drops are the same ones the inspectors and *Setup ▸ Test it*
+  drop, so any of them can take them away.
 - **Contacts still do not exist in Play mode.** ChilloutVR's triggers and contacts are the game's,
   not Unity's, so a socket whose shapes go through a contact does nothing there: drive its
   `YAPS/<socket>/Depth` parameter by hand in the Animator window if you want to see the layer
@@ -1640,7 +1650,7 @@ in a ChilloutVR project and these cards work on their own; see [Installation](#i
 | **Store description** | Writes the [description](#store-description) from what the avatar has, types it into the upload page when that window is open and its Description box is empty, and copies it to the clipboard either way |
 | **Merge animators** | Any sources into a target: layers and parameters copied (clips and masks are shared, not duplicated), layers after the target's own, same-named layers renamed, a parameter present in both with different types named and the target's type kept. A synced layer is left out and named, since a copy of one would play nothing. Written to a copy beside the target by default; sources are never edited |
 
-With a ChilloutVR avatar picked, **Open in the CCK Animator Tester** opens the tester already
+With a ChilloutVR avatar picked, **Open in the Avatar Tester** opens the tester already
 pointed at it. The **Also in this package** card links to the tester, to the converter (from the
 Toolkit's own window) and to YAPS, a separate 18+ add-on: its window when it is installed, and
 where to get it when it is not.
@@ -2148,7 +2158,7 @@ that renames the shapes themselves. If yours is one, that's worth
 
 Expected, up to a point: **the editor only approximates cloth.** Nothing steps the solver in edit
 mode, and in Play mode the avatar stands still unless something moves it, while in game it walks and
-head-tracks constantly. The CCK Animator Tester's **Physics** card narrows that gap: it walks, runs,
+head-tracks constantly. The Avatar Tester's **Interaction lab** card narrows that gap: it walks, runs,
 turns, hops, shakes or sits the avatar so the chains swing, and **Draw every chain** shows how each
 one is set up. Dragging the root around by hand isn't a valid test: MagicaCloth2's speed limits make
 a chain follow rigidly once exceeded. Judge the final feel in game.
@@ -2312,7 +2322,7 @@ Two fixes, either works:
   the avatar look right during the seconds before your values arrive.
 - **Give the looping transition an exit time**, so it can't fire twice in one frame.
 
-The CCK Animator Tester's **Remote view** card reproduces part of it: **Snap "#" locals to their
+The Avatar Tester's **Remote view** card reproduces part of it: **Snap "#" locals to their
 defaults** puts every `#` local parameter at its default, where other players' clients hold it
 forever. Synced parameters keep your live values there, so the seconds before they replicate are
 not reproduced. One cause was the conversion's own and is fixed in 3.5.26: if you converted
@@ -2402,7 +2412,7 @@ them, and names each one in the report. Layers that deliberately animate the **b
 alone and warned about instead: silently overruling those would be the converter second-guessing
 the author.
 
-To check in Play mode, open the CCK Animator Tester's **Animator layers** card: a layer above the
+To check in Play mode, open the Avatar Tester's **Animator layers** card: a layer above the
 hand layers whose mask lets it write fingers gets a ⚠ before its name (the card's **⚠ conflict**
 key), and the card's header counts how many may overwrite gestures even while it is folded.
 
@@ -2915,8 +2925,8 @@ every entry at the cost of regenerating the controller.
 
 ## Reporting a bug
 
-Hit **Report an issue** at the foot of the AvatarBridge window (the ChilloutVR Toolkit, the CCK
-Animator Tester and *Tools ▸ YAPS ▸ Setup* carry it too): it opens a pre-filled GitHub issue with
+Hit **Report an issue** at the foot of the AvatarBridge window (the ChilloutVR Toolkit, the Avatar
+Tester and *Tools ▸ YAPS ▸ Setup* carry it too): it opens a pre-filled GitHub issue with
 your versions and detected packages already in it. After a conversion the window's link adds the
 run's counts, and **Copy diagnostics** under the report puts the same text on your clipboard. A bug
 somebody hit while wearing an avatar comes before any other open work.

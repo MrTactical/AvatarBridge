@@ -262,7 +262,40 @@ namespace AvatarBridge
             SceneView.RepaintAll();
         }
 
+        // One with no plug to place it by: beside the first baked plug, just past its tip, a
+        // little above the axis, entrance facing the base, so the plug bends in at once. Else in
+        // front of the scene camera. The window and the tester both drop it here, under the one
+        // name, so either can take it away.
+        public static void DropTestSocket(YapsSocket.SocketKind kind)
+        {
+            RemoveTestSocket();
+            var go = YapsSocketBuilder.BuildPreviewSocket(SocketName, kind);
+            if (go == null) return;
+            if (FirstBakedPlugFrame(out var origin, out var forward, out var up, out float length))
+            {
+                go.transform.SetPositionAndRotation(origin + forward * (length * 0.85f) + up * (length * 0.35f),
+                    Quaternion.LookRotation(-forward, up));
+            }
+            else
+            {
+                var cam = SceneView.lastActiveSceneView != null ? SceneView.lastActiveSceneView.camera : null;
+                if (cam != null)
+                    go.transform.SetPositionAndRotation(cam.transform.position + cam.transform.forward * 0.6f,
+                        Quaternion.LookRotation(-cam.transform.forward));
+            }
+            Undo.RegisterCreatedObjectUndo(go, "YAPS preview socket");
+            Selection.activeGameObject = go;
+            EditorGUIUtility.PingObject(go);
+            var socket = go.GetComponent<YapsSocket>();
+            if (socket != null) Set(socket, true, spawnPlugIfNone: false);
+        }
+
         public static bool TestSocketInScene => GameObject.Find(SocketName) != null;
+
+        // In Play mode only the plug prop prefab: a test plug built there writes a mesh, a
+        // material and a bake that outlive the session.
+        public static bool CanDropTestPlug =>
+            !Application.isPlaying || AssetDatabase.LoadAssetAtPath<GameObject>(YapsSocketBuilder.PlugPropPrefabPath) != null;
 
         public static void RemoveTestSocket()
         {
@@ -296,6 +329,8 @@ namespace AvatarBridge
         {
             if (socket == null) return;
             socket.preview = on;
+            // Asked for in Play mode, so it runs there. A Play-mode edit, gone when Play ends.
+            if (on && Application.isPlaying) socket.previewInPlayMode = true;
             // A plug on the far side of the scene is no use to look at, so
             // the test one arrives unless a real plug is already close.
             if (on && spawnPlugIfNone && CountBakedPlugsNear(socket, NearEnough) == 0) Spawn(socket);
@@ -426,6 +461,13 @@ namespace AvatarBridge
                     _fromPrefab = true;
                     Undo.RegisterCreatedObjectUndo(go, "YAPS preview plug");
                 }
+            }
+            if (go == null && !CanDropTestPlug)
+            {
+                EditorUtility.DisplayDialog("YAPS preview",
+                    "In Play mode the test plug comes from the plug prop prefab, and this project has none. " +
+                    "Create it under Tools ▸ YAPS ▸ Setup ▸ Test it, or drop the test plug before pressing Play.", "OK");
+                return;
             }
             // Keep the socket selected; its inspector holds the stop button.
             if (go == null) go = YapsNativeBuilder.BuildTestPlug(null, select: false, length: length);

@@ -147,7 +147,7 @@ namespace AvatarBridge.Regression
             {
                 // A plug light from below, its shaft up through the socket between the pair: short of
                 // the socket, then a third and two thirds of its length through.
-                var shots = new (float through, string name)[] { (-0.05f, "plug_short"), (0.07f, "plug_in"), (0.14f, "plug_deep") };
+                var shots = new (float through, string name)[] { (-0.05f, "plug_short"), (0.10f, "plug_in"), (0.20f, "plug_deep") };
                 int at = frame - (End - 30);
                 var s = shots[Mathf.Clamp(at, 0, shots.Length - 1)];
                 if (frame >= Bend) Plug(slots[18], slots[0], slots[1], s.through);
@@ -202,8 +202,10 @@ namespace AvatarBridge.Regression
         }
 
         static Light plug;
+        // Long enough to read on a large pair: the shader sizes the shaft from the length alone.
+        const float PlugLength = 0.30f;
 
-        // A plug's protocol light: black, range ending in 8, intensity its 0.21 m length, at its base.
+        // A plug's protocol light: black, range ending in 8, intensity its length, at its base.
         static void Plug(Transform socket, Transform a, Transform b, float through)
         {
             if (plug == null)
@@ -213,14 +215,14 @@ namespace AvatarBridge.Regression
                 plug.color = Color.black;
                 plug.renderMode = LightRenderMode.ForceVertex;
                 plug.range = 0.483f;
-                plug.intensity = 0.21f;
+                plug.intensity = PlugLength;
                 // Where the pair meets, as a socket placed in the cleavage would be. The provider
                 // reads the transform live, so moving it here is what the shader sees.
                 socket.position = 0.5f * (a.position + b.position);
                 Debug.Log($"[SquashPlay] plug: socket {socket.name} at {socket.position}, scale {socket.lossyScale.x}");
             }
             var dir = (Vector3.up + animator.transform.forward * 0.3f).normalized;
-            plug.transform.position = socket.position - dir * (0.21f - through);
+            plug.transform.position = socket.position - dir * (PlugLength - through);
         }
 
         // Each case rendered 40 times at 1920x1080, the first five dropped, a pixel read back after
@@ -491,7 +493,12 @@ namespace AvatarBridge.Regression
             var frontQ = Surface(Q + mirrored + f * 0.4f, -f, Q + mirrored - f * 0.07f);
             var top = Surface(P + up * 0.35f + f * 0.05f, -up, P + up * reach * 0.6f);
             var spots = new[] { On((f + up * 0.8f).normalized), On((outP + f * 0.4f).normalized), On((f * 0.5f - up).normalized), On((f + up * 0.5f - outP * 0.5f).normalized) };
-            Action<float, float> Front(float g, float deep) => (s, u) => Press(Tip(front, -f, g, Mathf.Lerp(-0.04f, deep, s)));
+            // Pressed in, then swept side to side while held: two sweeps a shot, wider as it goes in.
+            Action<float, float> Front(float g, float deep) => (s, u) =>
+            {
+                var (wrist, dir, shape) = Tip(front, -f, g, Mathf.Lerp(-0.04f, deep, s));
+                Press((wrist + outP * (0.07f * s * Mathf.Sin(4f * Mathf.PI * u)), dir, shape));
+            };
             // Five hops, landing hard, with the motion knobs set as named. Once a hop in the
             // anime one, the same frame rendered with the stretch off as well.
             Action<float, float> Hops(bool stretch, float style, string tag) => (s, u) =>
@@ -511,7 +518,7 @@ namespace AvatarBridge.Regression
                     knobs.stretchInMotion = true; YapsSquash.Apply(root);
                 }
             };
-            float shaft = Mathf.Clamp(0.1f * 0.21f, 0.012f, 0.035f);
+            float shaft = Mathf.Clamp(0.1f * PlugLength, 0.012f, 0.035f);
             film = new List<Shot>
             {
                 new Shot { name = "Hopping: the physics alone", frames = 240, at = mid + f * 0.05f + up * 0.06f, width = 1f, profile = true, pose = Hops(false, 0f, null) },
@@ -520,16 +527,16 @@ namespace AvatarBridge.Regression
                 new Shot { name = "A plug in a socket between them", frames = 300, at = mid + f * 0.05f, width = 0.8f, pose = (s, u) =>
                 {
                     root.position = standing;
-                    Plug(slots[18], slots[0], slots[1], Mathf.Lerp(-0.05f, 0.14f, s));
+                    Plug(slots[18], slots[0], slots[1], Mathf.Lerp(-0.05f, 0.20f, s));
                     plug.enabled = true;
                     var dir = (Vector3.up + f * 0.3f).normalized;
                     ghost[0].gameObject.SetActive(true);
-                    Capsule(ghost[0], plug.transform.position, plug.transform.position + dir * 0.21f, shaft);
+                    Capsule(ghost[0], plug.transform.position, plug.transform.position + dir * PlugLength, shaft);
                 } },
-                new Shot { name = "Another player: open hand", frames = 180, pose = Front(-1f, 0.05f), at = front, width = 0.45f, profile = true },
-                new Shot { name = "Another player: fist", frames = 180, pose = Front(1f, 0.05f), at = front, width = 0.45f, profile = true },
-                new Shot { name = "Another player: pointing finger", frames = 180, pose = Front(4f, 0.07f), at = front, width = 0.45f, profile = true },
-                new Shot { name = "Another player: two fingers", frames = 180, pose = Front(5f, 0.07f), at = front, width = 0.45f, profile = true },
+                new Shot { name = "Another player: open hand", frames = 180, pose = Front(-1f, 0.10f), at = front, width = 0.45f, profile = true },
+                new Shot { name = "Another player: fist", frames = 180, pose = Front(1f, 0.10f), at = front, width = 0.45f, profile = true },
+                new Shot { name = "Another player: pointing finger", frames = 180, pose = Front(4f, 0.12f), at = front, width = 0.45f, profile = true },
+                new Shot { name = "Another player: two fingers", frames = 180, pose = Front(5f, 0.12f), at = front, width = 0.45f, profile = true },
                 new Shot { name = "Poking around it: top, outside, underneath, inside", frames = 360, at = P + f * 0.04f, width = 0.6f, pose = (s, u) =>
                 {
                     int k = Mathf.Min((int)(u * 4f), 3);
@@ -537,7 +544,7 @@ namespace AvatarBridge.Regression
                     Press(Tip(spots[k], -n, 4f, Mathf.Lerp(-0.04f, 0.06f, Beats(u * 4f - k, 1))));
                 } },
                 new Shot { name = "Quick pokes", frames = 180, at = front, width = 0.45f, profile = true, pose = (s, u) => Press(Tip(front, -f, 4f, Mathf.Lerp(-0.03f, 0.05f, Beats(u, 5)))) },
-                new Shot { name = "A deep poke", frames = 240, pose = Front(4f, 0.11f), at = front, width = 0.45f, profile = true },
+                new Shot { name = "A deep poke", frames = 240, pose = Front(4f, 0.16f), at = front, width = 0.45f, profile = true },
                 new Shot { name = "A finger between them", frames = 210, at = between, width = 0.6f, pose = (s, u) => Press(Tip(between, -f, 4f, Mathf.Lerp(-0.04f, 0.09f, s))) },
                 new Shot { name = "Two players poking at once", frames = 240, at = mid + f * 0.05f, width = 0.9f, pose = (s, u) =>
                     Press(Tip(front, -f, 4f, Mathf.Lerp(-0.03f, 0.06f, Beats(u, 3))), Tip(frontQ, -f, 4f, Mathf.Lerp(-0.03f, 0.06f, Beats(u + 1f / 6f, 3)))) },

@@ -13,6 +13,9 @@ content that is already out there, not only with itself.
 - *Tools ▸ YAPS ▸ Create universal socket prefabs* writes drag-and-drop `YAPS Hole` and
   `YAPS Ring` prefabs, and *Create a plug prop prefab* writes a spawnable plug you can upload as
   a prop on its own.
+- With AvatarBridge installed as well, its *Avatar Tester* gains **Squash** and **Plugs and
+  sockets** in its **Interaction lab** card: preview a socket, drop a test plug or socket, or press
+  the squash with a test hand, beside the avatar's motion in Play mode.
 
 **The ChilloutVR Toolkit** (*Tools ▸ Avatar Bridge ▸ ChilloutVR Toolkit*) is a set of utilities that work on any
 ChilloutVR avatar: merging animator controllers, tidying an avatar before upload, adding face

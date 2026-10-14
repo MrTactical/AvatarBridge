@@ -8855,7 +8855,7 @@ namespace AvatarBridge
             ctx.Report.Converted(Category,
                 $"Kept the avatar's own face tracking rig: {kept.Count} parameter(s) came through",
                 $"{string.Join(", ", shown)}{(kept.Count > 6 ? ", …" : "")}. Merged unchanged; try them in the " +
-                "CCK Animator Tester.");
+                "Avatar Tester.");
         }
 
         // Serialized guid sets of the source controllers, captured before any merging.

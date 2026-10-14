@@ -15,9 +15,10 @@ using UnityEngine.UIElements;
 
 namespace AvatarBridge
 {
-    // The physics card: moves the avatar the way a player would, lets a chain
-    // be dragged and let go, draws every chain at once with its settings, and
-    // carries an Inspector edit made in Play mode out of it on request.
+    // The Interaction lab card: moves the avatar the way a player would, lets a
+    // chain be dragged and let go, draws every chain at once with its settings,
+    // and carries an Inspector edit made in Play mode out of it on request.
+    // Other packages add their own sections below it through TesterSections.
     // MagicaCloth2 and DynamicBone each sit behind their own define, so the
     // card builds with either, both or neither. Members newer than a solver's
     // first release are reached by name, so an older install still compiles
@@ -210,7 +211,17 @@ namespace AvatarBridge
 
         partial void AddPhysicsCard(VisualElement scroll, CVRAvatar avatar, bool live)
         {
-            scroll.Add(SafeCard("Physics", () => BuildPhysicsCard(avatar, live)));
+            var lab = SafeCard("Interaction lab", () => BuildPhysicsCard(avatar, live));
+            scroll.Add(lab);
+            // After, and onto the failure card too, so broken physics leaves the rest of the lab working.
+            if (lab is BridgeElements.Card card)
+                TesterSections.AddTo(card, avatar != null ? avatar.gameObject : null, live, RebuildLater);
+        }
+
+        // Every open tester, once the current event is done.
+        internal static void RebuildAll()
+        {
+            foreach (var window in Resources.FindObjectsOfTypeAll<CckAnimatorTester>()) window.RebuildLater();
         }
 
         static readonly string[] MotionNames = { "Walk", "Run", "Turn", "Jump", "Shake", "Sit" };
@@ -236,24 +247,25 @@ namespace AvatarBridge
             _selectedHealth = null;
             _editedRows = null;
 
-            var card = new BridgeElements.Card("Physics", expanded: true).Remember("Tester.Physics");
+            // The old key, so a card folded shut stays shut.
+            var card = new BridgeElements.Card("Interaction lab", expanded: true).Remember("Tester.Physics");
             if (Solvers == null)
             {
-                card.SetSummary("no package");
+                card.SetSummary("no physics package");
                 card.Body.Add(BridgeElements.Empty("No physics package",
-                    "This card reads MagicaCloth2 and DynamicBone, and neither is installed in this project."));
+                    "The physics tools read MagicaCloth2 and DynamicBone, and neither is installed in this project."));
                 return card;
             }
             if (avatar == null)
             {
-                card.SetSummary("none");
+                card.SetSummary("no avatar");
                 card.Body.Add(BridgeElements.Empty("No avatar", "Pick a ChilloutVR avatar in the Avatar card."));
                 return card;
             }
             var chains = Chains(avatar);
             if (chains.Count == 0)
             {
-                card.SetSummary("none");
+                card.SetSummary("no chains");
                 card.Body.Add(BridgeElements.Empty("No physics on this avatar",
                     $"\"{avatar.name}\" has no {Solvers} components."));
                 return card;
@@ -1681,6 +1693,63 @@ namespace AvatarBridge
 
         static void SetMember(object o, string name, object value) =>
             o?.GetType().GetField(name, BindingFlags.Public | BindingFlags.Instance)?.SetValue(o, value);
+    }
+
+    // Sections other packages add to the Interaction lab. Reached by name through reflection, so
+    // the tester names nothing of theirs and they build without it.
+    public static class TesterSections
+    {
+        // A section is built from the resolved avatar (null for none), whether Play mode is
+        // driving it, and a call that rebuilds the window. It returns null to stay out. Its
+        // fingerprint joins the window's, so a change made elsewhere rebuilds it.
+        static readonly List<(string name, System.Func<GameObject, bool, System.Action, VisualElement> build, System.Func<GameObject, int> fingerprint)> All =
+            new List<(string, System.Func<GameObject, bool, System.Action, VisualElement>, System.Func<GameObject, int>)>();
+
+        public static IEnumerable<string> Names => All.Select(s => s.name);
+
+        // By name, so a second registration after a reload replaces the first.
+        public static void Add(string name, System.Func<GameObject, bool, System.Action, VisualElement> build,
+            System.Func<GameObject, int> fingerprint)
+        {
+            All.RemoveAll(s => s.name == name);
+            All.Add((name, build, fingerprint));
+            // A window built before this load hook ran picks the section up.
+            CckAnimatorTester.RebuildAll();
+        }
+
+        internal static int Fingerprint(GameObject avatar)
+        {
+            unchecked
+            {
+                int hash = 0;
+                foreach (var s in All) hash = hash * 31 + (s.fingerprint?.Invoke(avatar) ?? 0);
+                return hash;
+            }
+        }
+
+        internal static void AddTo(BridgeElements.Card card, GameObject avatar, bool live, System.Action refresh)
+        {
+            var shown = new List<string>();
+            foreach (var s in All)
+            {
+                VisualElement part;
+                try
+                {
+                    part = s.build(avatar, live, refresh);
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogException(e);
+                    part = BridgeElements.Hint($"{s.name} failed to build: {e.GetType().Name}: {e.Message}");
+                }
+                if (part == null) continue;
+                card.Body.Add(part);
+                shown.Add(s.name);
+            }
+            // The header says what is in the lab, not only what the physics found.
+            if (shown.Count > 0)
+                card.SetSummary(string.Join(" · ", new[] { card.Summary }.Concat(shown).Where(t => !string.IsNullOrEmpty(t))));
+        }
     }
 }
 #endif

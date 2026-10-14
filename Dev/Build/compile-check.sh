@@ -54,11 +54,17 @@ done
 fail=0
 # MagicaCloth2 without the SDK is the toolkit's audience. check-defines.sh
 # varies the physics defines only in a project that has the SDK.
+. "$REPO/Dev/Build/yaps-files.sh"
+# "addon:" is the add-on installed alone: its own file list and nothing else. 4.1.0 and 4.1.1
+# shipped unable to compile that way, and the closure check alone is not a compiler.
 for defines in "CVR_CCK_EXISTS" \
                "CVR_CCK_EXISTS;AVATARBRIDGE_MAGICA" \
                "CVR_CCK_EXISTS;AVATARBRIDGE_YAPS" \
+               "addon:CVR_CCK_EXISTS;AVATARBRIDGE_YAPS" \
                "CVR_CCK_EXISTS;VRC_SDK_VRCSDK3" \
                "CVR_CCK_EXISTS;VRC_SDK_VRCSDK3;AVATARBRIDGE_YAPS"; do
+    shape="$defines"
+    defines="${defines#addon:}"
     rsp="$WORK/build.rsp"
     dll="$WORK/out.dll"
     rm -f "$dll"
@@ -112,13 +118,14 @@ for defines in "CVR_CCK_EXISTS" \
     # combination that keeps Runtime is not a shape any user has. Compiling
     # it was the same blind spot the YAPS closure check exists for, in the
     # other direction: a shipped file reaching a type that stayed behind.
-    case "$defines" in
+    case "$shape" in
+        addon:*)             (cd "$REPO" && yaps_files | tr '\0' '\n' | grep '\.cs$' | sed "s|^|$REPO/|") ;;
         *AVATARBRIDGE_YAPS*) find "${sources[@]}" -name '*.cs' ;;
         *)                   find "${sources[@]}" -name '*.cs' -not -path '*/Editor/Yaps/*' -not -path '*/Runtime/*' ;;
     esac |
         while read -r f; do echo "\"$(cygpath -w "$f")\"" >> "$rsp"; done
 
-    echo "--- $defines"
+    echo "--- $shape"
     "$MONO" "$CSC" "@$(cygpath -w "$rsp")" 2>&1 | grep -E "error CS" | head -20
 
     if [ -f "$dll" ]; then

@@ -18,19 +18,19 @@ namespace AvatarBridge
     // client writes, coerced by declared type like the client.
     public partial class CckAnimatorTester : EditorWindow
     {
-        // The physics card lives in its own file, each solver it reads behind
-        // that solver's own define.
+        // The Interaction lab card lives in its own file, each solver it reads
+        // behind that solver's own define.
         partial void EnablePhysics();
         partial void DisablePhysics();
         partial void PhysicsPlayModeChanged(PlayModeStateChange change);
         partial void PhysicsSelectionChanged();
         partial void AddPhysicsCard(VisualElement scroll, CVRAvatar avatar, bool live);
 
-        [MenuItem("Tools/Avatar Bridge/CCK Animator Tester")]
+        [MenuItem("Tools/Avatar Bridge/Avatar Tester")]
         static void Open()
         {
             var window = GetWindow<CckAnimatorTester>();
-            window.titleContent = new GUIContent("CCK Animator Tester");
+            window.titleContent = new GUIContent("Avatar Tester");
             window.minSize = new Vector2(360, 420);
         }
 
@@ -153,8 +153,14 @@ namespace AvatarBridge
         void OnPlayModeChanged(PlayModeStateChange change)
         {
             PhysicsPlayModeChanged(change);
-            Rebuild();
+            // Later, so whatever else stops on the same change has stopped before the cards read it.
+            RebuildLater();
         }
+
+        void RebuildLater() => EditorApplication.delayCall += () =>
+        {
+            if (this != null) Rebuild();
+        };
 
         // A click inside the same avatar resolves to it again, and a rebuild
         // would reset the face it is holding and rescan every blend tree.
@@ -197,6 +203,7 @@ namespace AvatarBridge
                 var animator = avatar != null ? avatar.GetComponentInChildren<Animator>(true) : null;
                 var controller = animator != null ? animator.runtimeAnimatorController : null;
                 hash = hash * 31 + (controller != null ? controller.GetInstanceID() : 0);
+                hash = hash * 31 + TesterSections.Fingerprint(avatar != null ? avatar.gameObject : null);
                 foreach (var name in ControllerParameterList(avatar))
                 {
                     hash = hash * 31 + name.GetHashCode();
@@ -415,7 +422,7 @@ namespace AvatarBridge
         void Build()
         {
             var root = rootVisualElement;
-            root.Add(BridgeElements.Banner("CCK Animator Tester",
+            root.Add(BridgeElements.Banner("Avatar Tester",
                 "drive a ChilloutVR avatar the way the game does", "v" + BridgeDefines.Version,
                 BridgeTheme.Span.Cvr));
 

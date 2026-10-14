@@ -488,7 +488,7 @@ namespace AvatarBridge.Regression
             foreach (var (name, menu) in new[]
             {
                 ("Window > VRChat to ChilloutVR Converter", "Tools/Avatar Bridge/VRChat to ChilloutVR Converter"),
-                ("Window > CCK Animator Tester", "Tools/Avatar Bridge/CCK Animator Tester"),
+                ("Window > Avatar Tester", "Tools/Avatar Bridge/Avatar Tester"),
                 ("Window > ChilloutVR Toolkit", "Tools/Avatar Bridge/ChilloutVR Toolkit"),
                 ("Window > YAPS Setup", "Tools/YAPS/Setup"),
             })
@@ -510,7 +510,20 @@ namespace AvatarBridge.Regression
 
             // The tester's controls write animator parameters and need Play mode;
             // that half is a manual check. Its window building is covered above.
-            Results.Add(("CCK Animator Tester > drive gestures/visemes/menu", true, "MANUAL: needs Play mode with a CVR avatar"));
+            Results.Add(("Avatar Tester > drive gestures/visemes/menu", true, "MANUAL: needs Play mode with a CVR avatar"));
+
+            // The add-on reaches the tester by name, so a rename there drops its sections with
+            // nothing failing to compile.
+            Step("Avatar Tester > add-on sections registered", () =>
+            {
+                var names = TesterSections.Names.ToList();
+#if AVATARBRIDGE_YAPS
+                Check(names.Contains("Squash") && names.Contains("Plugs and sockets"),
+                    "squash and plug sections registered, got: " + string.Join(", ", names));
+#else
+                Check(names.Count == 0, "no sections without the add-on, got: " + string.Join(", ", names));
+#endif
+            });
         }
 
         // A tiny skinned shaft: eight vertices in two submeshes, one weighted

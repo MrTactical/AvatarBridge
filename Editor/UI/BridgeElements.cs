@@ -196,6 +196,8 @@ namespace AvatarBridge
 
             public string Title => _title.text;
 
+            public string Summary => _summary.text;
+
             // Programmatic: Remember writes back only what the user toggles.
             public bool Open
             {
