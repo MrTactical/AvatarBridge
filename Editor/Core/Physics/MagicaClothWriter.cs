@@ -920,7 +920,7 @@ namespace AvatarBridge
             return longest;
         }
 
-        static List<float> SimulatedPathFrom(Transform root, PhysBoneChainData data)
+        internal static List<float> SimulatedPathFrom(Transform root, PhysBoneChainData data)
         {
             if (!IgnoresBranching(data))
             {

@@ -75,7 +75,7 @@ namespace AvatarBridge
         // strand by strand is one component per strand; MagicaCloth2 takes
         // any number of roots per component, and every component saved is a
         // proxy mesh and a solver team. Only merges chains that match on
-        // settings, colliders, parent and kind.
+        // settings, colliders, parent, kind and length.
         public bool groupIdenticalPhysBones = true;
         // Start each cloth from the MagicaCloth2 preset that fits the
         // chain. Structure comes from the PhysBone either way.

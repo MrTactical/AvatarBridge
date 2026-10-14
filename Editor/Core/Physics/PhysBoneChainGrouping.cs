@@ -16,7 +16,7 @@ namespace AvatarBridge
     //
     // The bar for merging is "the two components would have been identical
     // anyway": same settings, same colliders, same on/off state, same
-    // parent, same classified kind. Anything a merge could not express
+    // parent, same classified kind, same length. Anything a merge could not express
     // (an ignore list, a PhysBone parameter, a per-chain toggle) keeps its
     // own component.
     public static class PhysBoneChainGrouping
@@ -68,9 +68,10 @@ namespace AvatarBridge
             {
                 int groups = buckets.Values.Count(c => c.MergedRoots.Count > 0);
                 ctx.Report.Converted(Category,
-                    $"{folded + groups} identical chain(s) simulated by {groups} cloth(s)",
+                    $"{BridgeElements.Count(folded + groups, "identical chain", "identical chains")} simulated by " +
+                    BridgeElements.Count(groups, "cloth", "cloths"),
                     "These PhysBones were separate components with the same settings, the same " +
-                    "colliders and the same parent: a hairstyle built one strand at a time, a pair " +
+                    "colliders, the same parent and the same length: a hairstyle built one strand at a time, a pair " +
                     "of ears, a row of charms. One MagicaCloth2 component simulates any number of " +
                     "independent root bones, and each component it saves is a proxy mesh and a " +
                     "solver team the avatar no longer pays for. The chains still move separately: " +
@@ -134,6 +135,13 @@ namespace AvatarBridge
                 return null;
             }
 
+            // Gravity and the swing bound are solved from the path one cloth bends, so a
+            // longer or shorter strand would hang differently than it did in VRChat. Same
+            // bone count, and the length to within 5%.
+            var path = MagicaClothWriter.SimulatedPathFrom(data.Root, data);
+            float reach = path.Sum();
+            string shape = path.Count + "x" + (reach > 1e-6f ? Mathf.RoundToInt(Mathf.Log(reach) / Mathf.Log(1.05f)).ToString() : "0");
+
             var colliders = string.Join(",", data.Colliders
                 .Where(c => c != null)
                 .Select(c => c.GetInstanceID().ToString())
@@ -141,6 +149,7 @@ namespace AvatarBridge
 
             return string.Join("|",
                 cls.Name,
+                shape,
                 rootParent.GetInstanceID().ToString(),
                 sourceParent.GetInstanceID().ToString(),
                 colliders,

@@ -37,7 +37,7 @@ namespace AvatarBridge
         public string Label => MergedRoots.Count == 0 || Root == null
             ? (Root != null ? Root.name : "chain")
             : (Root.parent != null ? Root.parent.name : Root.name)
-              + $" (+{MergedRoots.Count} chain(s))";
+              + $" (+{BridgeElements.Count(MergedRoots.Count, "chain", "chains")})";
         public bool Synthesized;
         // Put in for a physics add-on that moved this bone through constraints rather than as a
         // chain (marshmallow PB): it slides the flesh more than it bends it.
