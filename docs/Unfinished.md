@@ -2089,12 +2089,19 @@ which is false for `isControlledByCurve` (read from the client 2026-10-14). The 
   YAPS socket tally skip them now (`CvrParameterNames.CurveDriven`); the report's CCK-count line
   says its number includes them, and the README has a troubleshooting entry.
 
-Two smaller findings from the same folder, both open:
+Two smaller findings from the same folder, both FIXED ON DEV 2026-10-14 (overnight):
 
-- **A 59 MB VRCFury FX controller was rehomed and nothing references it.** Find out why the
-  rehoming takes it, and skip anything unreferenced.
-- **The survey lists the scaler's own `#AvatarScaler/One` and `#AvatarScaler/StepSize` as dead
-  features.** They are this tool's own constants; exclude them like the never-fed names.
+- **A 59 MB VRCFury FX controller was rehomed.** "Nothing references it" was WRONG, withdrawn:
+  four rehomed materials point at textures stored inside it. That bake kept four textures (two
+  4096 and two 2048, DXT1, not readable) as sub-assets of its FX controller, and the texture
+  rescue copied a texture's whole container, so the controller came along; most of the 59 MB is
+  those textures as hex text, the rest the controller's own layers and 305 clips. Now a container
+  of nothing but textures is still copied whole, and a texture inside anything else is cloned on
+  its own. The 2026-09 rescue avoided cloning on the grounds that a non-readable texture would
+  clone blank; measured, it does not: `TextureRehomeTest` reloads both copies from disk and
+  compares them with the originals on the GPU, 0 of 4096 pixels differ.
+- **The survey listed the scaler's own `#AvatarScaler/One` and `#AvatarScaler/StepSize` as dead
+  features.** The survey's scaffolding pattern now takes the `#AvatarScaler/` prefix.
 
 ### README audited against the code, 2026-10-06. Both loose ends FIXED the same day
 

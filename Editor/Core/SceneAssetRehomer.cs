@@ -229,11 +229,17 @@ namespace AvatarBridge
             }
         }
 
-        // Fury packs its baked textures as sub-assets of one container, so the container is
-        // copied once and each texture's counterpart found in the copy.
+        // Fury packs its baked textures as sub-assets of one container, so a file of nothing but
+        // textures is copied once, byte for byte, and each texture's counterpart found in the
+        // copy. A texture inside anything else comes out alone: one bake kept four inside its FX
+        // controller, and copying that carried the whole controller into the output for them.
         static Texture CopyTexture(BridgeContext ctx, Texture texture, string dir)
         {
             string source = AssetDatabase.GetAssetPath(texture);
+            if (!OnlyTextures(source))
+            {
+                return CloneTexture(texture, dir);
+            }
             var containers = StateOf(ctx).Containers;
             if (!containers.TryGetValue(source, out string copyPath))
             {
@@ -248,6 +254,25 @@ namespace AvatarBridge
                 return texture;
             }
             return Counterpart(texture, source, copyPath) as Texture ?? texture;
+        }
+
+        static bool OnlyTextures(string path)
+        {
+            foreach (var o in AssetDatabase.LoadAllAssetsAtPath(path))
+            {
+                if (o != null && !(o is Texture)) return false;
+            }
+            return true;
+        }
+
+        // Instantiate keeps the pixels of a texture no script can read: measured on the GPU
+        // against the original (TextureRehomeTest).
+        static Texture CloneTexture(Texture texture, string dir)
+        {
+            var copy = UnityEngine.Object.Instantiate(texture);
+            copy.name = texture.name;
+            AssetDatabase.CreateAsset(copy, OutputAssetPaths.Claim($"{dir}/{OutputAssetPaths.SafeFileName(texture.name)}.asset"));
+            return copy;
         }
 
         static UnityEngine.Object Counterpart(UnityEngine.Object original, string source, string copyPath)

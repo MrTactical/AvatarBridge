@@ -730,7 +730,7 @@ namespace AvatarBridge
         // writes, what a PhysBone used to write. Normal, and not findings.
         static readonly System.Text.RegularExpressions.Regex Scaffolding =
             new System.Text.RegularExpressions.Regex(
-                @"^#?(Go/|AB_Ready_|YAPS\d|VF\d+_|VF_\d+_)|_(IsGrabbed|Stretch|Squish|Angle|IsPosed)$",
+                @"^#?(Go/|AB_Ready_|AvatarScaler/|YAPS\d|VF\d+_|VF_\d+_)|_(IsGrabbed|Stretch|Squish|Angle|IsPosed)$",
                 System.Text.RegularExpressions.RegexOptions.Compiled);
 
         static bool Internal(string name) =>
