@@ -18,7 +18,9 @@ namespace AvatarBridge.Regression
     // The textures are made the way Fury's arrive: compressed, and not readable, after a reload
     // from disk. A non-readable texture has no pixels a script can read, and an earlier fix
     // avoided cloning on the grounds that the clone would come out blank, so the pixels are
-    // compared on the GPU, original against copy.
+    // compared on the GPU, original against copy. A bake run in the same session hands over
+    // live textures that were never reloaded, so one of those goes through too, made unreadable
+    // the way a script makes it.
     public static class TextureRehomeTest
     {
         const string Temp = "Packages/com.vrcfury.temp/__ABTextureRehomeTest";
@@ -35,6 +37,7 @@ namespace AvatarBridge.Regression
             }
 
             Clean();
+            OutputAssetPaths.Reset();
             GameObject avatar = null;
             try
             {
@@ -47,6 +50,9 @@ namespace AvatarBridge.Regression
                 controller.AddMotion(new AnimationClip { name = "Some clip" });
                 var inController = MakeTexture("In controller", 1);
                 AssetDatabase.AddObjectToAsset(inController, controller);
+                var live = MakeTexture("Live", 4);
+                live.Apply(false, true);
+                AssetDatabase.AddObjectToAsset(live, controller);
 
                 string otherPath = Temp + "/Probe Other.asset";
                 var mainOther = MakeTexture("Other main", 2);
@@ -75,6 +81,7 @@ namespace AvatarBridge.Regression
                 var material = new Material(Shader.Find("Standard")) { name = "Probe material" };
                 material.SetTexture("_MainTex", inController);
                 material.SetTexture("_DetailAlbedoMap", subOther);
+                material.SetTexture("_EmissionMap", live);
                 AssetDatabase.CreateAsset(material, Temp + "/Probe material.mat");
 
                 avatar = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -95,20 +102,26 @@ namespace AvatarBridge.Regression
                     rescued != null && AssetDatabase.GetAssetPath(rescued).StartsWith(Output));
                 var mainTex = rescued != null ? rescued.GetTexture("_MainTex") : null;
                 var detail = rescued != null ? rescued.GetTexture("_DetailAlbedoMap") : null;
+                var liveCopy = rescued != null ? rescued.GetTexture("_EmissionMap") : null;
                 string mainPath = AssetDatabase.GetAssetPath(mainTex);
                 string detailPath = AssetDatabase.GetAssetPath(detail);
+                string livePath = AssetDatabase.GetAssetPath(liveCopy);
                 // From disk, not the clone still in memory: a blank save would only show here.
                 AssetDatabase.SaveAssets();
                 if (mainTex != null) Resources.UnloadAsset(mainTex);
                 if (detail != null) Resources.UnloadAsset(detail);
+                if (liveCopy != null) Resources.UnloadAsset(liveCopy);
                 mainTex = Load(mainPath, "In controller");
                 detail = Load(detailPath, "Other sub");
+                liveCopy = Load(livePath, "Live");
                 Debug.Log($"[TextureRehomeTest] _MainTex at {mainPath}, _DetailAlbedoMap at {detailPath}");
 
                 fail += Check("the controller's texture is out of temp", mainPath.StartsWith(Output));
                 fail += Check("no controller was copied",
                     !Directory.GetFiles(Output, "*.controller", SearchOption.AllDirectories).Any());
                 fail += Check("the controller's texture keeps its pixels", Same(inController, mainTex));
+                fail += Check("the live texture is out of temp", livePath.StartsWith(Output));
+                fail += Check("the live texture keeps its pixels", Same(live, liveCopy));
                 fail += Check("the controller's texture stays not readable",
                     mainTex is Texture2D t2 && !t2.isReadable);
 
@@ -154,10 +167,18 @@ namespace AvatarBridge.Regression
         static Texture2D Load(string path, string name) =>
             AssetDatabase.LoadAllAssetsAtPath(path).OfType<Texture2D>().FirstOrDefault(t => t.name == name);
 
-        // Drawn through the GPU, since neither side may be read from a script.
+        // Drawn through the GPU, since neither side may be read from a script. The top mip only;
+        // the rest must at least match in count.
         static bool Same(Texture a, Texture b)
         {
             if (a == null || b == null) return false;
+            if (a is Texture2D ta && b is Texture2D tb
+                && (ta.format != tb.format || ta.mipmapCount != tb.mipmapCount
+                    || ta.filterMode != tb.filterMode || ta.wrapMode != tb.wrapMode))
+            {
+                Debug.Log($"[TextureRehomeTest] {a.name}: {ta.format}/{ta.mipmapCount} became {tb.format}/{tb.mipmapCount}");
+                return false;
+            }
             var pa = Pixels(a);
             var pb = Pixels(b);
             int differ = 0;

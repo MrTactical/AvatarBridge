@@ -2096,12 +2096,16 @@ Two smaller findings from the same folder, both FIXED ON DEV 2026-10-14 (overnig
   4096 and two 2048, DXT1, not readable) as sub-assets of its FX controller, and the texture
   rescue copied a texture's whole container, so the controller came along; most of the 59 MB is
   those textures as hex text, the rest the controller's own layers and 305 clips. Now a container
-  of nothing but textures is still copied whole, and a texture inside anything else is cloned on
-  its own. The 2026-09 rescue avoided cloning on the grounds that a non-readable texture would
-  clone blank; measured, it does not: `TextureRehomeTest` reloads both copies from disk and
-  compares them with the originals on the GPU, 0 of 4096 pixels differ.
+  of nothing but textures is still copied whole, and a 2D texture inside anything else is cloned
+  on its own; other kinds (cubemaps, arrays) still take the whole copy, since only a 2D clone has
+  been measured. The 2026-09 rescue avoided cloning on the grounds that a non-readable texture
+  would clone blank; measured, it does not: `TextureRehomeTest` reloads both copies from disk and
+  compares them with the originals on the GPU, 0 of 4096 pixels differ, for a texture reloaded
+  from disk and for a live one made unreadable in the same session and never reloaded; format,
+  mip count, filter and wrap match too, and the clone stays not readable.
 - **The survey listed the scaler's own `#AvatarScaler/One` and `#AvatarScaler/StepSize` as dead
-  features.** The survey's scaffolding pattern now takes the `#AvatarScaler/` prefix.
+  features.** The survey's scaffolding pattern now takes the `#AvatarScaler/` prefix, with the
+  `#` required, so an avatar's own `AvatarScaler/...` parameter is still surveyed.
 
 ### README audited against the code, 2026-10-06. Both loose ends FIXED the same day
 
