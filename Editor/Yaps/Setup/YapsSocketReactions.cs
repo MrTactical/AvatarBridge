@@ -229,9 +229,13 @@ namespace AvatarBridge
             {
                 // (current overrides, after autogeneration): two totals for
                 // the same avatar, not two halves. The CCK gates on the
-                // second, so this does too.
+                // second, so this does too, less the floats a clip drives: the
+                // CCK counts them and the client never syncs them.
                 var usage = avatar.GetParameterSyncUsage();
                 int used = usage.Item2;
+                if (avatar.avatarSettings?.baseController is AnimatorController based)
+                    used -= 32 * CvrParameterNames.CurveDriven(based)
+                        .Count(n => !n.StartsWith("#") && !CvrParameterNames.Core.Contains(n));
                 if (used >= 3200)
                     return $"; ⚠ THE AVATAR IS AT THE 3200-BIT SYNC CAP ({used}), so ChilloutVR will not register this " +
                            "parameter and only the wearer will see the shapes: free some bits and build again";

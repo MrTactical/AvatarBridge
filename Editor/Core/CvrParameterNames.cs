@@ -157,6 +157,29 @@ namespace AvatarBridge
                    || StreamFed.Contains(bare)
                    || GestureMap.GestureWeightParameters.Contains(bare);
         }
+
+        // Floats a clip in the controller writes. The client marks these read-only and never
+        // syncs them or spends bits on them, whatever their name, so counting one as synced
+        // reports a budget the avatar does not use.
+        internal static HashSet<string> CurveDriven(UnityEditor.Animations.AnimatorController controller)
+        {
+            var floats = new HashSet<string>(controller.parameters
+                .Where(p => p.type == UnityEngine.AnimatorControllerParameterType.Float)
+                .Select(p => p.name));
+            var driven = new HashSet<string>();
+            foreach (var clip in controller.animationClips.Where(c => c != null).Distinct())
+            {
+                foreach (var b in UnityEditor.AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (b.type == typeof(UnityEngine.Animator) && string.IsNullOrEmpty(b.path)
+                        && floats.Contains(b.propertyName))
+                    {
+                        driven.Add(b.propertyName);
+                    }
+                }
+            }
+            return driven;
+        }
     }
 }
 #endif

@@ -2654,6 +2654,13 @@ A moved pose keeps its own **height** and its **orientation**, both moved into t
 the root, since ChilloutVR discards root motion. Travel across the floor still goes. The turn is
 [desktop-only](#transforming-avatars-desktop-only-turn).
 
+### The CCK says the avatar is over 3200 sync bits
+
+The CCK inspector's count includes every float an animation drives. ChilloutVR never syncs those,
+so they cost nothing in game, and an avatar with many of them can read over the limit when it is
+not. The report's sync budget entry in Diagnostics counts the way the game does. It is only an
+error when real parameters will stop reaching other players, and then it names them.
+
 ### Two near-identical menu controls, and only one works
 
 **Reconvert on a current release.** A synced parameter with no menu control gets one created: the

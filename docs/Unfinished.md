@@ -2023,6 +2023,28 @@ with `SaveAsPrefabAsset`, which leaves the scene copy unconnected.
 - **C, not wanted:** nested prefabs inside the avatar (outfits, props) staying prefab instances in the
   converted copy. Same Instantiate and bake limits as B.
 
+### "Kinda converted but didn't": a false sync Error, 2026-10-14. FIXED ON DEV, not in game
+
+A user's output folder: the conversion completed, and its one Error said 65 parameters were past
+the 3200-bit cap (4856 counted). 63 of them were floats a clip drives (classID 95 curves). The
+client never spends a bit on those: `CreateParameterDefinition` allocates only when `IsSynced`,
+which is false for `isControlledByCurve` (read from the client 2026-10-14). The real tally was
+2840, so nothing was dropped in game. Two causes, both fixed:
+
+- The compressor strip's restore took every animator parameter, clip-driven floats included. It
+  takes expression parameters only now, and never a clip-driven one (`CompressorSlotTest`, 3 new
+  cases, all 8 pass in batch).
+- Our budget check counted clip-driven floats, and so does the CCK's. `CheckSyncBudget` and the
+  YAPS socket tally skip them now (`CvrParameterNames.CurveDriven`); the report's CCK-count line
+  says its number includes them, and the README has a troubleshooting entry.
+
+Two smaller findings from the same folder, both open:
+
+- **A 59 MB VRCFury FX controller was rehomed and nothing references it.** Find out why the
+  rehoming takes it, and skip anything unreferenced.
+- **The survey lists the scaler's own `#AvatarScaler/One` and `#AvatarScaler/StepSize` as dead
+  features.** They are this tool's own constants; exclude them like the never-fed names.
+
 ### README audited against the code, 2026-10-06. Both loose ends FIXED the same day
 
 Every section was checked against the code by one auditor each, plus sweeps for labels, defaults,

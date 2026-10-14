@@ -381,14 +381,15 @@ namespace AvatarBridge
                 int used = usage.Item2; // base controller + menu entries = actual sync
                 string cckNote = "In the CCK inspector this is the SECOND number of \"(0, N) of 3200\". The first is the " +
                     "override controller, which AvatarBridge doesn't use, so \"0\" there is expected, not a problem.";
-                // Not an Error: the CCK rounds bools up to whole bytes and the client checks the
-                // budget before each parameter, so a few bits over can still all sync. The
-                // diagnostics entry counts the client's way and names any that won't.
+                // Not an Error: the CCK rounds bools up to whole bytes, counts floats a clip drives,
+                // which the client never syncs, and the client checks the budget before each
+                // parameter. The diagnostics entry counts the client's way and names any that won't.
                 if (used > 3200)
                 {
                     ctx.Report.Warning("Sync", $"{used} of 3200 sync bits used, over the limit",
-                        "Parameters past the limit work for you and never reach anyone else. The sync budget " +
-                        "entry in Diagnostics names them, if any. " + cckNote);
+                        "Parameters past the limit work for you and never reach anyone else. This count includes " +
+                        "floats an animation drives, which never sync and cost nothing in game, so the sync budget " +
+                        "entry in Diagnostics is the real count and names any that won't sync. " + cckNote);
                 }
                 else
                 {

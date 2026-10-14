@@ -785,7 +785,7 @@ namespace AvatarBridge
             }
 
             // Mirrors are not always there. When the compressor is
-            // detected at all, every declared parameter that is not its
+            // detected at all, every expression parameter that is not its
             // own artefact is treated as really synced. "Not synced" is
             // not trustworthy on a compressed avatar; de-syncing is
             // what the compressor does. Restoring sync costs 32 bits;
@@ -794,10 +794,19 @@ namespace AvatarBridge
             // the built-ins: the compressor never touched those, and
             // preserving one kept a frozen local synced and alive past
             // the prune after its layers were stripped.
+            //
+            // Only expression parameters: the compressor only ever de-synced
+            // those. Taking every animator parameter also took dozens of
+            // clip-driven floats, which can never sync, and the budget check
+            // counted them until it reported an avatar thousands of bits over.
             var furyOwn = new System.Text.RegularExpressions.Regex(@"^VF\d+_");
-            foreach (var p in master.parameters)
+            var expressions = ctx.SourceDescriptor != null ? ctx.SourceDescriptor.expressionParameters : null;
+            var curveDriven = CvrParameterNames.CurveDriven(master);
+            foreach (var p in expressions != null && expressions.parameters != null
+                         ? expressions.parameters : new VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters.Parameter[0])
             {
-                if (!string.IsNullOrEmpty(p.name) && !furyOwn.IsMatch(p.name) && !IsCompressor(p.name)
+                if (p != null && !string.IsNullOrEmpty(p.name) && declared.Contains(p.name)
+                    && !furyOwn.IsMatch(p.name) && !IsCompressor(p.name) && !curveDriven.Contains(p.name)
                     && !CvrParameterNames.NeverFed(p.name) && !CvrParameterNames.IsGameDriven(p.name))
                 {
                     ctx.PreserveParameters.Add(p.name);

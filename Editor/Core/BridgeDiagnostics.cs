@@ -1063,12 +1063,15 @@ namespace AvatarBridge
             int used = 0;
             int floats = 0, ints = 0, bools = 0;
             var dropped = new List<string>();
+            // The client skips clip-driven floats before it spends a bit, so they never use any.
+            var curveDriven = CvrParameterNames.CurveDriven(master);
 
             foreach (var param in master.parameters)
             {
                 if (param.name.StartsWith("#")
                     || param.type == AnimatorControllerParameterType.Trigger
-                    || ClientCoreParameters.Contains(param.name))
+                    || ClientCoreParameters.Contains(param.name)
+                    || curveDriven.Contains(param.name))
                 {
                     continue;
                 }
