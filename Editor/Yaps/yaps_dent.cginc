@@ -232,6 +232,10 @@ void YapsHandsPress(YapsPart p, inout float3 hv[4], inout float hr[4])
         // only the wrist, a palm's length out from the skin while the palm is on it, so a ball
         // there never reached the part: the hand runs on from it, away from that player's chest,
         // for a ninth of their viewpoint height.
+        // The gesture rides in each hand's w, the numbers an avatar's GestureLeft reads: -1 open,
+        // 0 to 1 a fist closing, 2 thumbs up, 3 finger gun, 4 point, 5 victory, 6 rock and roll.
+        // A fist ends at the knuckles; a finger out runs on, thin, to where the fingertips are.
+        // Which way the palm faces is not carried, so two fingers out are one thicker one.
         // ponytail: the line from the chest stands in for the forearm, which the globals do not carry.
         float3 ownL = YapsSlot(10), ownR = YapsSlot(14);
         int count = min((int) round(CVRGlobalParams1.y), 64);
@@ -243,19 +247,27 @@ void YapsHandsPress(YapsPart p, inout float3 hv[4], inout float hr[4])
             float r = _YAPS_SquashHands.y * tall / 1.6;
             float mine = 2.25 * r * r;
             float3 chest = _CVR_PlayerChestPositions[i].xyz;
-            float3 hands[2] = { _CVR_PlayerLeftHandPositions[i].xyz, _CVR_PlayerRightHandPositions[i].xyz };
+            float4 hands[2] = { _CVR_PlayerLeftHandPositions[i], _CVR_PlayerRightHandPositions[i] };
             [unroll]
             for (int j = 0; j < 2; j++)
             {
-                float3 h = hands[j];
+                float3 h = hands[j].xyz;
+                float g = hands[j].w;
                 if (dot(h, h) < 1e-6 || dot(h - ownL, h - ownL) < mine || dot(h - ownR, h - ownR) < mine) continue;
                 float3 arm = h - chest;
-                float3 tip = h;
-                if (dot(chest, chest) > 1e-6 && dot(arm, arm) > 1e-6) tip += normalize(arm) * max(0.11 * tall - r, 0);
-                float3 v = YapsPress(p, h, tip, r) * _YAPS_SquashHands.z;
+                float3 dir = dot(chest, chest) > 1e-6 && dot(arm, arm) > 1e-6 ? normalize(arm) : 0;
+                float fist = g > 1.5 ? 1 : saturate(g);
+                float3 v = YapsPress(p, h, h + dir * max(lerp(0.11, 0.06, fist) * tall - r, 0), r) * _YAPS_SquashHands.z;
+                float vr = r;
+                if (g > 2.5)
+                {
+                    float rf = (g > 4.5 && g < 5.5 ? 0.35 : 0.2) * r;
+                    float3 f = YapsPress(p, h + dir * (0.06 * tall), h + dir * max(0.11 * tall - rf, 0.06 * tall), rf) * _YAPS_SquashHands.z;
+                    if (dot(f, f) > dot(v, v)) { v = f; vr = rf; }
+                }
                 float vv = dot(v, v);
-                if (vv > dot(hv[2], hv[2])) { hv[3] = hv[2]; hr[3] = hr[2]; hv[2] = v; hr[2] = r; }
-                else if (vv > dot(hv[3], hv[3])) { hv[3] = v; hr[3] = r; }
+                if (vv > dot(hv[2], hv[2])) { hv[3] = hv[2]; hr[3] = hr[2]; hv[2] = v; hr[2] = vr; }
+                else if (vv > dot(hv[3], hv[3])) { hv[3] = v; hr[3] = vr; }
             }
         }
     }

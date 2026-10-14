@@ -1618,11 +1618,31 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     the hand, but say if it reads too sharp. Left out on purpose: sending part of the volume
     to the far side of the part when the tissue under the hand is thick, which is what physics
     says. Spread that thin, it is invisible, which is the complaint.
-    Idea, Joe same day: other players' FINGERS. The client gives shaders only wrist, chest, hip
-    and root per player, so an unpatched player can only ever be a hand capsule. Between two
-    patched avatars it could work: the presser's own hand shader knows where its fingers are and
-    could write finger segments into the cross-avatar GrabPass atlas the sockets already use
-    (protocol 7, proven in game), at roughly ten slots a player. Not started.
+    Idea, Joe same day: other players' FINGERS. The client gives shaders only wrist, chest, hip,
+    head, feet and root per player, so finger bones never reach another avatar's shader. But the
+    decompile (`BetterPlayerShaderPositionsProvider.UpdatePlayerPositions`, and `PlayerSetup` for
+    the local player at index 0) puts each player's GESTURE in the hand's w, the same number the
+    animator's GestureLeft/Right gets and synced like it: -1 open, 0 to 1 fist, 2 thumbs up, 3
+    finger gun, 4 point, 5 victory, 6 rock and roll (`CVRXRModule`). Done the same day, NOT YET
+    IN GAME, for every player, patched or not: a fist ends at the knuckles (0.06 of viewpoint
+    height from the wrist instead of 0.11); gestures 3 to 6 add a finger capsule from the
+    knuckles to the fingertips at a fifth of the hand's radius (victory: a third, two fingers as
+    one, since the palm's facing is not carried); the deeper of hand and finger is the press.
+    Probe, same wrist 8.7 cm out: open hand 4217 samples changed against rest, fist 107 (falls
+    short), point 3185 and victory 3350 (a narrow poke), fist with the wrist at the target 5051.
+    Exact fingers would still need the patched-to-patched route: the presser's hand shader
+    writing finger segments into the cross-avatar GrabPass atlas (protocol 7, proven in game),
+    about ten slots a player. Not started.
+    A third player, Joe same day: does someone watching see A press B? By construction yes,
+    nothing synced beyond what the client already sends. Every client fills the arrays itself:
+    index 0 its own player, then EVERY network player with a puppet master, from that remote
+    avatar's bones after net IK (`NetIKController.UpdateNetIk`, human avatars with IK applied).
+    So on the watcher's machine A's hands are in the arrays, B's part runs the shader on B's
+    remote copy (its own slots come through the material data provider, which works on remote
+    copies), and B's own hands are skipped by distance from B's own slots. Probe `third_palm`
+    lays the arrays out as the watcher has them (its own player far off at 0, the presser at 1,
+    the wearer's own hands at 2, count 3): identical to the two-player shot, 0 samples differ.
+    Needs three clients to prove in game.
   Open: remote copies,
   the measurement probe (camera cost, controller
   cost, readback latency, replacement universality), then the staged build above, tuning, and

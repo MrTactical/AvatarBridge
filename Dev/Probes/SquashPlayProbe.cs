@@ -6,7 +6,8 @@
 // -executeMethod AvatarBridge.Regression.SquashPlayProbe.Run -spScene <scene> -spOut <dir> [-spOther]
 //
 // -spOther leaves the arms alone and presses with another player's hand instead, through the
-// client's player globals: first a palm on the skin with the wrist outside, then the wrist sunk in.
+// client's player globals: one shot per hand shape (open, fist, pointing, two fingers), the palm
+// again as a third client lays the arrays out, then the wrist sunk in.
 //
 // Batch, never -nographics: the frames are rendered.
 
@@ -35,7 +36,6 @@ namespace AvatarBridge.Regression
 
         static int frame;
         static float power = -1f;
-        static Vector4 tune;
         static Animator animator;
         static CVRMaterialDataProvider provider;
         static SkinnedMeshRenderer skin;
@@ -128,17 +128,25 @@ namespace AvatarBridge.Regression
             if (frame == Bend - 1) Shoot("rest");
             if (SessionState.GetInt(K + "other", 0) == 1)
             {
-                if (frame >= Bend) Other(frame < End - 15 ? 0.15f : 0f);
-                if (frame == End - 21 || frame == End - 11) Debug.Log($"[SquashPlay] other: params1 {Shader.GetGlobalVector("CVRGlobalParams1")} " +
-                    $"hand1 {(Vector3)Shader.GetGlobalVectorArray("_CVR_PlayerLeftHandPositions")[1]} target {target} part {slots[0].position} {slots[1].position} " +
+                // One shot per hand shape, the gesture in the hand's w as the client sends it. The
+                // third-player shot repeats the palm as a third client sees it: its own hands far
+                // off at index 0, the wearer's own hands at index 2, which must change nothing.
+                var shots = new (float back, float gesture, bool third, string name)[]
+                {
+                    // The skin sits about 7 cm past the target: 8.7 cm out, an open hand or a finger
+                    // is 3 cm in and a fist falls short; with the wrist at the target the fist is in.
+                    (0.087f, -1f, false, "other_palm"), (0.087f, -1f, true, "third_palm"), (0.087f, 1f, false, "other_fist"),
+                    (0.087f, 4f, false, "other_point"), (0.087f, 5f, false, "other_victory"), (0f, 1f, false, "other_fist_in"),
+                    (0f, -1f, false, "other_wrist_in"),
+                };
+                int at = frame - (End - 30);
+                var s = shots[Mathf.Clamp(at, 0, shots.Length - 1)];
+                if (frame >= Bend) Other(s.back, s.gesture, s.third);
+                if (at == 0) Debug.Log($"[SquashPlay] other: params1 {Shader.GetGlobalVector("CVRGlobalParams1")} " +
+                    $"hand1 {Shader.GetGlobalVectorArray("_CVR_PlayerLeftHandPositions")[1]} target {target} part {slots[0].position} {slots[1].position} " +
                     $"wrists {slots[10].position} {slots[14].position} hands {mats[0].GetVector("_YAPS_SquashHands")} power {mats[0].GetFloat("_YAPS_DentPower")}");
-                if (frame == End - 20) Shoot("other_palm");
-                if (frame == End - 10) Shoot("other_wrist_in");
-                // The same press with less bend and a deeper dent, then none and deeper still.
-                if (frame == End - 9) { tune = mats[0].GetVector("_YAPS_SquashTune"); foreach (var m in mats) m.SetVector("_YAPS_SquashTune", new Vector4(tune.x, tune.y, 0.1f, 0.6f)); }
-                if (frame == End - 7) Shoot("other_wrist_in_bend10_dent60");
-                if (frame == End - 6) foreach (var m in mats) m.SetVector("_YAPS_SquashTune", new Vector4(tune.x, tune.y, 0f, 0.9f));
-                if (frame == End - 5) { Shoot("other_wrist_in_bend0_dent90"); foreach (var m in mats) m.SetVector("_YAPS_SquashTune", tune); frame = End - 4; }
+                if (at >= 0 && at < shots.Length) Shoot(s.name);
+                if (at == shots.Length - 1) frame = End - 21;
             }
             else
             {
@@ -166,21 +174,34 @@ namespace AvatarBridge.Regression
 
         // Another player, 1.7 m tall, reaching in from the front: the globals carry only a wrist,
         // set `back` metres out from where the own-arm test sinks its wrist, and the chest behind it.
-        static void Other(float back)
+        // `third` lays the arrays out as a third client has them, where the wearer is a remote
+        // player too: that client's own player first, far off, and the wearer after the presser.
+        static void Other(float back, float gesture, bool third)
         {
             var forward = animator.transform.forward;
             var wristAt = target + forward * back;
-            var hands = new Vector4[255];
+            var left = new Vector4[255];
+            var right = new Vector4[255];
             var chests = new Vector4[255];
             var roots = new Vector4[255];
-            hands[1] = wristAt;
+            left[1] = new Vector4(wristAt.x, wristAt.y, wristAt.z, gesture);
             chests[1] = wristAt + forward * 0.45f;
             roots[1] = new Vector4(chests[1].x, 0f, chests[1].z, 1.7f);
-            Shader.SetGlobalVectorArray("_CVR_PlayerLeftHandPositions", hands);
-            Shader.SetGlobalVectorArray("_CVR_PlayerRightHandPositions", new Vector4[255]);
+            if (third)
+            {
+                var far = animator.transform.position + Vector3.right * 10f;
+                left[0] = far + Vector3.up; right[0] = far + Vector3.up + Vector3.right * 0.4f;
+                chests[0] = far + Vector3.up * 1.3f; roots[0] = new Vector4(far.x, far.y, far.z, 1.6f);
+                Vector3 l = animator.GetBoneTransform(HumanBodyBones.LeftHand).position, r = animator.GetBoneTransform(HumanBodyBones.RightHand).position;
+                left[2] = new Vector4(l.x, l.y, l.z, -1f); right[2] = new Vector4(r.x, r.y, r.z, -1f);
+                var chest = (animator.GetBoneTransform(HumanBodyBones.Chest) ?? animator.GetBoneTransform(HumanBodyBones.Spine)).position;
+                chests[2] = chest; roots[2] = new Vector4(animator.transform.position.x, animator.transform.position.y, animator.transform.position.z, 1.6f);
+            }
+            Shader.SetGlobalVectorArray("_CVR_PlayerLeftHandPositions", left);
+            Shader.SetGlobalVectorArray("_CVR_PlayerRightHandPositions", right);
             Shader.SetGlobalVectorArray("_CVR_PlayerChestPositions", chests);
             Shader.SetGlobalVectorArray("_CVR_PlayerRootPositions", roots);
-            Shader.SetGlobalVector("CVRGlobalParams1", new Vector4(0f, 2f, 0f, 0f));
+            Shader.SetGlobalVector("CVRGlobalParams1", new Vector4(0f, third ? 3f : 2f, 0f, 0f));
         }
 
         // The wrist toward the target: the elbow bends until the shoulder to wrist distance
