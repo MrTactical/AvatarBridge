@@ -1015,6 +1015,21 @@ the same bones but different mesh thickness collide at one size.
 four of them anchored volumes, none groupable. The reporter has been asked which avatar it is.
 Merge to `dev` only once the PC avatar converts and the result is checked in game.
 
+**2026-10-14 (overnight): branch `physbone-grouping-2`**, the old branch merged onto dev,
+reviewed twice and fixed (its own Unfinished record lists what). New hold-outs: a chain the
+animator switches by itself (one cloth has one enabled flag), and bones differing in length by
+more than 5% each (gravity and the swing bound are solved from one strand's path). Measured, not
+worn:
+- Corpus subset of four avatars against dev: cloths 112 to 71 on the one built a strand at a
+  time, 148 to 146, 50 to 48 and 49 to 48 on the others (mirrored pairs: ears, long hair, hat
+  ornaments). Toggle sweep identical on all four; warnings identical; converted and approximated
+  item counts drop because a grouped cloth reports once.
+- Physics A/B on the 112-chain avatar: single strands unchanged; grouped strands' free motion a
+  wash (mean peak error 33.80 to 33.65, sag 0.92 to 0.90), collision level or better (press
+  angle 58.7 to 53.1, recover 0.547 to 0.534). The first A/B said collision got worse; that was
+  the probe pressing every strand of a grouped cloth at once, fixed in the probe the same night.
+Still open: one collision radius per group, not visible on this avatar.
+
 ### Freeze rotation axes, VRChat vs Unity (issue #6)
 
 Reported as the axis flags behaving differently after conversion. **Measured, and they do not.**
@@ -2217,7 +2232,7 @@ clips carry only `m_IsActive` on paths already missing in VRChat and no object-r
   working off. The hoist pass keeps the old test. `TreeToggleRestoreTest` covers three: an off
   half on dead paths gets the current value; one on a renamed path, and one on a live material
   property, are left alone. Subset runs 416v and 416w (after the review fixes) on
-  VaponnyPC: stuck 5 to 0 (Anus, Butt, Nipple, Pregnant, Vagina), responded 9 to 10, the five
+  VaponnyPC: stuck 5 to 0 (five body toggles), responded 9 to 10, the five
   off slots now restore clips, nothing else in the controller moved but the number on one
   existing restore clip. Not worn in ChilloutVR.
 - **One is the other shape** (now reported as unstable at rest): a slider's two children each animate a
