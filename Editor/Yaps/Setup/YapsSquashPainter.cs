@@ -1,5 +1,5 @@
 // Tools > YAPS > Squash regions. Paints which skin squashes, for a body whose bones do not name
-// its soft parts, or to trim what the names found. Kept on the avatar as a YAPS Squash Regions
+// its soft parts, or to trim what the names found. Kept on the avatar's YAPS Squash
 // component, which the squash build reads in place of the bone names.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
@@ -61,7 +61,7 @@ namespace AvatarBridge
 
         void CreateGUI() => Rebuild();
 
-        YapsSquashRegions Regions => _avatar != null ? _avatar.GetComponentInChildren<YapsSquashRegions>(true) : null;
+        YapsSquashSettings Regions => YapsSquash.SettingsOf(_avatar != null ? _avatar.transform : null);
 
         void Pick(GameObject avatar)
         {
@@ -179,7 +179,14 @@ namespace AvatarBridge
             seed.Body.Add(BridgeElements.Hint("Then Add squash in Tools ▸ YAPS ▸ Setup, or convert with the squash opt-in. Remove the regions to go back to the bone names."));
             seed.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Remove the regions", () =>
             {
-                if (Regions != null) Undo.DestroyObjectImmediate(Regions);
+                // The component keeps its knobs; only the regions go.
+                if (Regions != null)
+                {
+                    Undo.RecordObject(Regions, "Remove squash regions");
+                    Regions.pairs.Clear();
+                    Regions.body = null;
+                    EditorUtility.SetDirty(Regions);
+                }
                 Load();
                 Say("Regions removed. The squash finds the parts by bone name again.", Tone.Info);
             })));
@@ -241,12 +248,9 @@ namespace AvatarBridge
         void Save(string action)
         {
             var regions = Regions;
-            if (regions == null)
-            {
-                regions = Undo.AddComponent<YapsSquashRegions>(_avatar);
-                regions.body = _body;
-            }
+            if (regions == null) regions = Undo.AddComponent<YapsSquashSettings>(_avatar);
             else Undo.RecordObject(regions, action);
+            regions.body = _body;
             var mesh = _body.sharedMesh;
             regions.vertexCount = mesh.vertexCount;
             regions.fingerprint = YapsSquash.Fingerprint(mesh);
@@ -328,7 +332,7 @@ namespace AvatarBridge
             if (Regions != null && Regions.pairs.Count >= 2) { Say("Two pairs at most: the shader has room for four parts.", Tone.Warn); return; }
             Save("Add squash pair");
             var regions = Regions;
-            regions.pairs.Add(new YapsSquashRegions.Pair { name = regions.pairs.Count == 0 ? "Chest" : "Seat" });
+            regions.pairs.Add(new YapsSquashSettings.Pair { name = regions.pairs.Count == 0 ? "Chest" : "Seat" });
             _pair = regions.pairs.Count - 1;
             Save("Add squash pair");
             Rebuild();
@@ -361,7 +365,7 @@ namespace AvatarBridge
             var regions = Regions;
             Undo.RecordObject(regions, "Squash regions from bone names");
             regions.pairs.Clear();
-            foreach (var name in names) regions.pairs.Add(new YapsSquashRegions.Pair { name = name });
+            foreach (var name in names) regions.pairs.Add(new YapsSquashSettings.Pair { name = name });
             Save("Squash regions from bone names");
             _pair = 0;
             Recolour();

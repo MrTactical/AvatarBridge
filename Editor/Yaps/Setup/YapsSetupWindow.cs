@@ -181,7 +181,8 @@ namespace AvatarBridge
             var squash = new BridgeElements.Card("Squash", "soft parts that press together and dent", false).Remember("Yaps.Squash");
             squash.Body.Add(BridgeElements.Hint(
                 "Breasts and butt flatten against each other and dent under anyone's hand, in the body shader. " +
-                "No sync cost. Found by bone name, or from regions you paint."));
+                "No sync cost. Found by bone name, or from regions you paint. Tune and preview it on the YAPS Squash " +
+                "component the build adds to the avatar."));
             squash.Body.Add(BridgeElements.ButtonRow(
                 BridgeElements.Btn("Add squash", AddSquash,
                     "Builds it on the avatar picked in step 1: from its painted regions if it has them, else by bone name. " +
@@ -202,12 +203,10 @@ namespace AvatarBridge
                 _squashStatus.Set("Pick an avatar in step 1 first.", Tone.Warn);
                 return;
             }
-            var root = _target.transform;
-            string folder = YapsNativeBuilder.OutputRoot + "/Squash";
-            string said = YapsSquash.Add(root, folder, out bool built);
-            if (built) said += " " + YapsSquash.FollowSwaps(root, YapsSwapFollow.RunnableClips(root), folder, null);
-            _squashStatus.Set(said.Trim(), built ? Tone.Good : Tone.Warn);
-            Debug.Log("[YAPS] Squash: " + said);
+            string said = YapsSquash.Build(_target.transform, out bool built);
+            _squashStatus.Set(said, built ? Tone.Good : Tone.Warn);
+            // The knobs live on the component the build added, so it opens there.
+            if (built) Selection.activeObject = YapsSquash.SettingsOf(_target.transform);
         }
 
         void RemoveSquash()

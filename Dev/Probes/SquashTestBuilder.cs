@@ -653,12 +653,13 @@ namespace AvatarBridge.Regression
                 .OrderByDescending(r => r.sharedMesh.vertexCount).First();
             var shares = YapsSquash.NamedShares(root, body, out var names, out string none);
             if (shares == null) return none;
-            var regions = avatar.gameObject.AddComponent<AvatarBridge.Yaps.YapsSquashRegions>();
+            var regions = YapsSquash.SettingsOf(root) ?? avatar.gameObject.AddComponent<AvatarBridge.Yaps.YapsSquashSettings>();
+            regions.pairs.Clear();
             regions.body = body;
             regions.vertexCount = body.sharedMesh.vertexCount;
             regions.fingerprint = YapsSquash.Fingerprint(body.sharedMesh);
             for (int k = 0; k < names.Count; k++)
-                regions.pairs.Add(new AvatarBridge.Yaps.YapsSquashRegions.Pair
+                regions.pairs.Add(new AvatarBridge.Yaps.YapsSquashSettings.Pair
                 {
                     name = names[k],
                     a = shares.Select(x => (byte)Mathf.RoundToInt(Mathf.Clamp01(x[2 * k]) * 255f)).ToArray(),

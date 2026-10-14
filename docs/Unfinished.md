@@ -1698,7 +1698,7 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     followed (`YapsSquash.FollowSwaps`): a clip putting the original back points at the squashed
     copy, an alternate gets a copy of its own with the slot's squash values and joins both
     providers' material lists; Strip with clips points every key back. The region tool (Tools >
-    YAPS > Squash regions, `YapsSquashRegions` on the avatar, bytes per vertex, refused when the
+    YAPS > Squash regions, `YapsSquashRegions` on the avatar, renamed `YapsSquashSettings` 2026-10-14, bytes per vertex, refused when the
     mesh's vertex count or position fingerprint changed): a brush that spreads over the welded
     surface (Dijkstra, so it never crosses a gap), Ctrl erases, strokes never paint past their
     strength, grow, shrink, smooth, X-mirror, and seeds from the bone names, a selected bone's
@@ -1763,6 +1763,73 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     first: a CRT counting frames on an avatar, read by its own material, watched by a second
     client. A plug's base velocity from its protocol light and a socket's depth velocity are the
     impulses for sockets and plugs once the spike holds.
+    Researched 2026-10-14 (decompile of Joe's client, Unity's player loop, prior art): ROUTE 1 AS
+    WRITTEN IS REFUTED, and a blitter replaces it. The client does clone every RenderTexture per
+    avatar copy, a CRT included, so per-copy state is possible; but it clones the CRT and not the
+    CRT's update material, and the material data providers write only to cloned materials, so a
+    CRT update pass sees its own buffer, the global shader values and shared constants, never the
+    slots or the skin. It cannot know where the part is, so it cannot feel a press. Recommended
+    instead: a 5x4 float RenderTexture (point filtered, linear) updated by a CVRBlitter blitting it
+    onto itself, inside the avatar's existing render controller after the two providers. A blitter's
+    material and textures ARE cloned per copy, a provider can write into that material, and a
+    blitter with `_Time` already ran in game on this repo, remote copies included. The drive is the
+    per-frame change of each part's summed press, so players joining or leaving do not tear it;
+    the step is the exact damped-oscillator solution with a clamped dt; the body reads about six
+    texels per owned vertex. Plug and socket impulses cannot ride it (marker lights exist only when
+    drawing), so their bounce needs another feed. Nobody has shipped per-part spring state on an
+    avatar on either platform. Unknown and only answerable in game: self-feedback on a cloned float
+    RT, `_Time` and the slots inside that blit, and whether a Realtime CRT ticks on a CVR avatar at
+    all (VRChat's CRTs freeze after an avatar switch). Next: one spike upload in stages (a counter,
+    the slots read in the blit, self-feedback, a remote viewer, a switch-and-back) before any build.
+    COST, measured 2026-10-14, batch Unity with graphics, one 1920x1080 render plus a one-pixel
+    readback so the GPU finishes, 35 renders kept, median ms (fastest), this machine's GPU:
+    one avatar: none 0.22 (0.19), squash shader off 0.74 (0.58), on 0.99 (0.84), with 16 players
+    out of reach 0.96 (0.84), 64 out of reach 1.17 (1.01), 64 hands all on one part 1.87 (1.69).
+    Ten copies: none 0.23, off 1.67, on 2.15, 16 far 2.19, 64 far 2.43, 64 hands on one 3.09.
+    So in a crowd the squash adds about 0.05 ms per avatar on top of about 0.1 for drawing it, a
+    full room of 64 players adds a quarter of a millisecond for the loop over their hands, and the
+    worst case (every hand in the room on one part) is under a millisecond. ponytail: one view, no
+    shadows; VR draws each eye's vertices and a shadow-casting light draws them again, so expect
+    two to three times this in game. CPU side (the providers' per-frame matrix and skin copies) is
+    the client's and was not measured here.
+    Joe 2026-10-14: A TUNING PANEL, "similar to how sockets and plugs work", for the converted
+    squash and the native one alike. DONE ON DEV, compiled in every combination, inspector NOT
+    YET OPENED by anyone. `YapsSquashRegions` became `YapsSquashSettings` (git mv, the meta's GUID
+    kept, so painted regions on avatars survive), menu YAPS/YAPS Squash, the regions hidden and the
+    knobs in four [Header] folds (how it gives, the pair, in motion, what presses it), defaults
+    equal to the old hard-coded values. The build adds the component when the avatar has none and
+    `YapsSquash.Apply` writes the knobs to every material both providers list, alternates included,
+    so a knob needs no rebuild; `WriteKnobs` keeps the skin stride in the hands' w. The converter's
+    clone carries a component set on the VRChat avatar. The painter's Remove clears the regions and
+    keeps the knobs. `YapsSquashEditor`: See it work (Preview, then Squeeze, Bounce, Test hand),
+    Parts (painted or by name, Paint regions), How it feels, Build (Build/Rebuild, Remove), Animate
+    it. The preview writes `_YAPS_SquashFollow` itself each editor update from the provider's
+    transforms (arrays are not serialised; Stop writes zeros back): Squeeze moves the follows toward
+    each other, Bounce moves the rests the opposite way so the part stays where its skin is, Test
+    hand is player 1's open left hand through CVR's globals with a scene handle, and
+    CVRGlobalParams1 is put back on Stop, Play and reload. The Setup card's Add squash selects the
+    component when it builds. Open: open the inspector and run the preview on a real avatar; that
+    edit mode draws the squash at all with the skin buffer unbound (it should fall back to the
+    matrices, state 2).
+    User suggestion via Joe 2026-10-14: SQUASH AND STRETCH IN MOTION. "a bone chain can't really
+    recreate the squish/stretch structured fat sacks have while in motion", with the slider "At low
+    end, maximum realism. High end, maximum Gainax." DONE ON DEV, shader only, the cloth untouched.
+    The swing is the follow minus its rest, which for a spring is the push the motion gives it, so
+    it rings as long as the physics do and needs no memory. Each rest node is turned so its up axis
+    points toward where the part hangs from (the chain root by name, the top of the loose chain
+    when painted) plus the avatar's up, so a drop stretches it as well as a pull away from the
+    body; the shader reads that axis from the rest's matrix. Along the swing the part stretches by
+    -dot(swing, hang) per reach, about its side toward where it hangs, and thins across by
+    rsqrt(stretch), so the volume holds; normals take the inverse-transpose. Motion Style lerps
+    the gain 0.6 to 3.5, the swing ignored 0.1 to 0.03 of the reach, the longest 1.12 to 1.8.
+    ponytail: the ignored swing stands in for the sag the physics settle into, which the edit-mode
+    rest never saw; a slow average of the swing would need memory (the CRT route). Needs a rebuild
+    for the rest rotation. Plug press gain is a knob too (`_YAPS_SquashPlug`), and the others'
+    hands loop now skips a hand out of reach before pressing (3 reaches plus a hand plus its
+    radius). Seen in batch Play mode 2026-10-14 on the socket test avatar, hopping 12 cm: stretch
+    on against off changes 8600 pixels at Motion Style 0 and 66100 at 1, side view. Open: in game,
+    whether real physics swing a part enough to see at 0 and too much at 1; whether the "plus up"
+    hang is right for butt pairs.
   Open: remote copies,
   the measurement probe (camera cost, controller
   cost, readback latency, replacement universality), then the staged build above, tuning, and

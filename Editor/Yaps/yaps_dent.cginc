@@ -50,7 +50,8 @@ float4 _YAPS_DentOwn_TexelSize;
 // Slots, as the provider writes them. One with nothing in it holds a node scaled to zero,
 // which reads as absent.
 //   0-3   each part's follow: a plain child of the bone the cloth moves most, at the part's centre
-//   4-7   each part's rest: the same point on the bone above the chain, which the cloth never moves
+//   4-7   each part's rest: the same point on the bone above the chain, which the cloth never moves;
+//         its up axis points from the part's centre to where the part hangs from
 //   8-11  left upper arm, lower arm, hand, middle finger; 12-15 the same on the right
 //   16-17 each pair's back: a node on the rest bone behind the pair, so the pair's middle
 //         minus it points out of the body, level when the avatar stands
@@ -73,6 +74,8 @@ float4 _YAPS_SquashLimbR;
 float _YAPS_SquashPulse;    // test builds: a squeeze from the outside that comes and goes on its own, as a share of the start
 float4 _YAPS_SquashHands;   // x own arms' press gain, y other players' hand radius in metres at a 1.6 m viewpoint, z their press gain, w skin stride in bytes (0 none)
 float4 _YAPS_SquashTune;    // x lying-back weight, as a share of the reach out; y strength of every press; z bend give, as a share of the reach out; w deepest dent, as a share of the reach toward the hand
+float4 _YAPS_SquashMotion;  // x stretch per reach of swing, y swing ignored below this share of the reach, z longest stretch, w unused
+float _YAPS_SquashPlug;     // a plug's press gain
 float4 _CVR_PlayerLeftHandPositions[255];
 float4 _CVR_PlayerRightHandPositions[255];
 float4 _CVR_PlayerChestPositions[255];
@@ -254,6 +257,10 @@ void YapsHandsPress(YapsPart p, inout float3 hv[4], inout float hr[4])
             {
                 float3 h = hands[j].xyz;
                 float g = hands[j].w;
+                // Most hands in a full room are nowhere near: out past the part's reach, a hand's
+                // length and its radius, it cannot press. Saves the press for the ones that can.
+                float near = 3 * p.reach + 0.11 * tall + r;
+                if (dot(h - p.centre, h - p.centre) > near * near) continue;
                 if (dot(h, h) < 1e-6 || dot(h - ownL, h - ownL) < mine || dot(h - ownR, h - ownR) < mine) continue;
                 float3 arm = h - chest;
                 float3 dir = dot(chest, chest) > 1e-6 && dot(arm, arm) > 1e-6 ? normalize(arm) : 0;
@@ -278,7 +285,7 @@ void YapsHandsPress(YapsPart p, inout float3 hv[4], inout float hr[4])
     // reaches the socket, so a plug merely near the pair parts nothing.
     // ponytail: the radius is a share of the length, since the light carries none.
     int socket = 18 + (p.m >> 1);
-    if (_YAPS_SquashHands.z > 0 && YapsUnit(socket) > 0)
+    if (_YAPS_SquashPlug > 0 && YapsUnit(socket) > 0)
     {
         float3 at = YapsSlot(socket);
         [unroll]
@@ -292,7 +299,7 @@ void YapsHandsPress(YapsPart p, inout float3 hv[4], inout float hr[4])
             float d = distance(at, base);
             if (len <= 0.0001 || d >= len || d <= 1e-4) continue;
             float r = clamp(0.1 * len, 0.012, 0.035);
-            float3 v = YapsPress(p, base, base + (at - base) / d * len, r) * _YAPS_SquashHands.z;
+            float3 v = YapsPress(p, base, base + (at - base) / d * len, r) * _YAPS_SquashPlug;
             float vv = dot(v, v);
             if (vv > dot(hv[2], hv[2])) { hv[3] = hv[2]; hr[3] = hr[2]; hv[2] = v; hr[2] = r; }
             else if (vv > dot(hv[3], hv[3])) { hv[3] = v; hr[3] = r; }
@@ -477,13 +484,47 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
             shift = rFront * (1 - k) - pFront;
         }
         bool dented = dentDepth[0] + dentDepth[1] + dentDepth[2] + dentDepth[3] > 0;
-        if (pressAll <= 0 && dot(bend, bend) <= 0 && !dented) continue;
+
+        // In motion: the physics swing the part off its rest, and the flesh stretches away from
+        // where it hangs and squashes back toward it, keeping its volume. A bone chain only
+        // swings it rigid. The swing is how far the follow is off the rest, which for a spring
+        // is the push the motion gives it, so it rings as long as the physics do. Sideways
+        // swings bend it and are the physics' own. About the side it hangs from, which stays.
+        // ponytail: small swings stand in for the sag the physics settle into, which the edit
+        // mode rest never saw; a slow average of the swing needs memory an avatar has not got.
+        float stretch = 1;
+        float3 stretchW = 0, hangAt = 0;
+        float3 hang = _YAPS_SquashFollow[4 + m]._m01_m11_m21;
+        if (_YAPS_SquashMotion.x > 0 && YapsUnit(4 + m) > 0 && dot(hang, hang) > 1e-10)
+        {
+            hang = normalize(hang);
+            float3 swing = p.centre - YapsSlot(4 + m);
+            float sl = length(swing);
+            float off = sl - _YAPS_SquashMotion.y * reach;
+            if (off > 0)
+            {
+                stretchW = swing / sl;
+                float by = _YAPS_SquashMotion.x * off / reach * -dot(stretchW, hang);
+                stretch = clamp(1 + by, 1 / _YAPS_SquashMotion.z, _YAPS_SquashMotion.z);
+                hangAt = hang * YapsExtent(p, hang);
+            }
+        }
+        if (pressAll <= 0 && dot(bend, bend) <= 0 && !dented && stretch == 1) continue;
+        float3 nmS = n;
+        if (stretch != 1)
+        {
+            float thin = rsqrt(stretch);
+            float3 r0 = d - hangAt;
+            float along = dot(r0, stretchW);
+            d = hangAt + stretchW * along * stretch + (r0 - stretchW * along) * thin;
+            if (hasNormal) nmS = normalize(n + stretchW * dot(stretchW, n) * (thin / stretch - 1));
+        }
 
         // The bend leans the squashed shape, so it keeps the volume the squash kept.
         float3 squashed = across * d + (k - across) * x * dot(d, x) + x * shift;
         float lean = saturate((dot(squashed, p.o) + bendFrom) / bendSpan);
         float3 moved = p.centre + squashed + bend * lean;
-        float3 nm = n;
+        float3 nm = nmS;
         if (hasNormal)
         {
             if (pressAll > 0) nm = normalize(nm + x * dot(x, nm) * (across / k - 1));

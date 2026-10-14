@@ -10,10 +10,15 @@
 // again as a third client lays the arrays out, then the wrist sunk in.
 //
 // -spVideo films one continuous run instead, three views a frame at 30 fps into <dir>/frames,
-// with segments.tsv naming each segment's first frame: another player's hand in each shape,
+// with segments.tsv naming each segment's first frame: the avatar hopping with the stretch in
+// motion off, as real flesh and as anime, a plug parting the pair, another player's hand in each shape,
 // pokes round the part, quick and deep, two players at once, hands between, squeezing and
 // grabbing, a hand from below, the own arm, then the pair pulse. Other players' hands are drawn
 // as glass capsules the size the shader presses with.
+//
+// -spCost times the view rendered with the squash off, on with nobody near, with 64 players far
+// off and with 64 players' hands on the part, alone and among nine copies of the avatar, into
+// <dir>/cost.tsv.
 //
 // Batch, never -nographics: the frames are rendered.
 
@@ -24,6 +29,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using ABI.CCK.Components;
+using AvatarBridge.Yaps;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -65,6 +71,7 @@ namespace AvatarBridge.Regression
             SessionState.SetInt(K + "other", Environment.GetCommandLineArgs().Contains("-spOther") ? 1 : 0);
             SessionState.SetInt(K + "video", Environment.GetCommandLineArgs().Contains("-spVideo") ? 1 : 0);
             SessionState.SetInt(K + "plug", Environment.GetCommandLineArgs().Contains("-spPlug") ? 1 : 0);
+            SessionState.SetInt(K + "cost", Environment.GetCommandLineArgs().Contains("-spCost") ? 1 : 0);
             var scene = EditorSceneManager.OpenScene(Arg("-spScene"), OpenSceneMode.Single);
             foreach (var r in scene.GetRootGameObjects())
                 if (r.GetComponentInChildren<CVRAvatar>(true) == null && r.GetComponentInChildren<Animator>(true) != null) r.SetActive(false);
@@ -133,6 +140,7 @@ namespace AvatarBridge.Regression
                 SetUpCameras(part.position, reach);
                 Shoot("rest_animated");
             }
+            if (SessionState.GetInt(K + "cost", 0) == 1) { if (frame == Bend) Cost(slots, mats); return; }
             if (SessionState.GetInt(K + "video", 0) == 1) { if (frame >= Bend) Film(slots, mats); return; }
             if (frame == Bend - 1) Shoot("rest");
             if (SessionState.GetInt(K + "plug", 0) == 1)
@@ -215,6 +223,96 @@ namespace AvatarBridge.Regression
             plug.transform.position = socket.position - dir * (0.21f - through);
         }
 
+        // Each case rendered 40 times at 1920x1080, the first five dropped, a pixel read back after
+        // each so the GPU has finished: wall time for culling, the draws and the GPU together.
+        static void Cost(Transform[] slots, Material[] mats)
+        {
+            var root = animator.transform;
+            var cam = new GameObject("SquashPlay cost").AddComponent<Camera>();
+            cam.enabled = false;
+            cam.targetTexture = new RenderTexture(1920, 1080, 24);
+            cam.transform.position = root.position + root.forward * 5f + Vector3.up * 1.3f;
+            cam.transform.LookAt(root.position + Vector3.up);
+            var probe = new Texture2D(1, 1, TextureFormat.RGBA32, false);
+            var part = slots[0].position;
+            float power = mats[0].GetFloat("_YAPS_DentPower");
+            var renderers = root.GetComponentsInChildren<Renderer>();
+            var copies = new List<GameObject>();
+            var lines = new List<string> { "avatars	case	median_ms	fastest_ms" };
+            int verts = root.GetComponentsInChildren<SkinnedMeshRenderer>().Where(r => r.sharedMaterials.Any(mats.Contains)).Sum(r => r.sharedMesh.vertexCount);
+
+            void Players(int n, bool near)
+            {
+                var hands = new Vector4[255];
+                var chests = new Vector4[255];
+                var feet = new Vector4[255];
+                for (int i = 1; i <= n; i++)
+                {
+                    float a = i * 2.4f;
+                    var at = near ? part + root.forward * 0.04f + new Vector3(Mathf.Cos(a), Mathf.Sin(a), 0f) * 0.03f
+                                  : root.position + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * (4f + 0.1f * i) + Vector3.up;
+                    hands[i] = new Vector4(at.x, at.y, at.z, -1f);
+                    chests[i] = at + root.forward * 0.45f;
+                    feet[i] = new Vector4(chests[i].x, 0f, chests[i].z, 1.7f);
+                }
+                Shader.SetGlobalVectorArray("_CVR_PlayerLeftHandPositions", hands);
+                Shader.SetGlobalVectorArray("_CVR_PlayerRightHandPositions", hands);
+                Shader.SetGlobalVectorArray("_CVR_PlayerChestPositions", chests);
+                Shader.SetGlobalVectorArray("_CVR_PlayerRootPositions", feet);
+                Shader.SetGlobalVector("CVRGlobalParams1", new Vector4(0f, n + 1, 0f, 0f));
+            }
+            void Time(string name)
+            {
+                var ms = new List<double>();
+                for (int k = 0; k < 40; k++)
+                {
+                    var w = System.Diagnostics.Stopwatch.StartNew();
+                    cam.Render();
+                    RenderTexture.active = cam.targetTexture;
+                    probe.ReadPixels(new Rect(0, 0, 1, 1), 0, 0);
+                    RenderTexture.active = null;
+                    w.Stop();
+                    if (k >= 5) ms.Add(w.Elapsed.TotalMilliseconds);
+                }
+                ms.Sort();
+                string row = $"{1 + copies.Count}	{name}	{ms[ms.Count / 2].ToString("0.000", CultureInfo.InvariantCulture)}	{ms[0].ToString("0.000", CultureInfo.InvariantCulture)}";
+                lines.Add(row);
+                Debug.Log("[SquashPlay] cost " + row);
+            }
+            void Cases()
+            {
+                foreach (var r in renderers) r.enabled = false;
+                foreach (var c in copies) c.SetActive(false);
+                Players(0, false);
+                Time("no avatar");
+                foreach (var r in renderers) r.enabled = true;
+                foreach (var c in copies) c.SetActive(true);
+                foreach (var m in mats) m.SetFloat("_YAPS_DentPower", 0f);
+                Time("squash off");
+                foreach (var m in mats) m.SetFloat("_YAPS_DentPower", power);
+                Time("squash on, nobody else");
+                Players(16, false);
+                Time("16 players, far off");
+                Players(64, false);
+                Time("64 players, far off");
+                Players(64, true);
+                Time("64 players' hands on one part");
+            }
+
+            Cases();
+            // A room: nine more copies behind and beside it, sharing its materials.
+            for (int k = 0; k < 9; k++)
+                copies.Add(UnityEngine.Object.Instantiate(root.gameObject,
+                    root.position + root.right * ((k % 3 - 1) * 1.1f) - root.forward * (1.2f + 1.2f * (k / 3)), root.rotation));
+            Cases();
+            lines.Add($"squashed vertices per avatar	{verts}");
+            File.WriteAllLines(Path.Combine(outDir, "cost.tsv"), lines);
+            Players(0, false);
+            SessionState.SetInt(K + "on", 0);
+            Debug.Log("[SquashPlay] cost done " + outDir);
+            EditorApplication.Exit(0);
+        }
+
         // Another player, 1.7 m tall, reaching in from the front: the globals carry only a wrist,
         // set `back` metres out from where the own-arm test sinks its wrist, and the chest behind it.
         // `third` lays the arrays out as a third client has them, where the wearer is a remote
@@ -260,6 +358,10 @@ namespace AvatarBridge.Regression
         static Vector3 outside;
         static Material[] glass;
         static float pulseWas;
+        static YapsSquashSettings knobs;
+        static bool stretchWas;
+        static float styleWas;
+        static Vector3 standing;
 
         // Each shot eases in over its first third, holds, and eases out, so s runs 0, 1, 0.
         static void Film(Transform[] slots, Material[] mats)
@@ -273,6 +375,9 @@ namespace AvatarBridge.Regression
                 // The pulse shot set it on the material assets, which outlive Play mode: the
                 // build it filmed was left pulsing a little in game.
                 foreach (var m in mats) m.SetFloat("_YAPS_SquashPulse", pulseWas);
+                if (knobs != null) { knobs.stretchInMotion = stretchWas; knobs.motionStyle = styleWas; YapsSquash.Apply(animator.transform); }
+                animator.transform.position = standing;
+                File.WriteAllLines(Path.Combine(outDir, "push.tsv"), rows);
                 AssetDatabase.SaveAssets();
                 SessionState.SetInt(K + "on", 0);
                 Debug.Log($"[SquashPlay] filmed {filmed} frames into {outDir}");
@@ -291,6 +396,7 @@ namespace AvatarBridge.Regression
             float u = (frame - shotStart) / (float)shot.frames;
             float s = u < 0.35f ? Mathf.SmoothStep(0f, 1f, u / 0.35f) : u < 0.65f ? 1f : Mathf.SmoothStep(1f, 0f, (u - 0.65f) / 0.35f);
             Press();
+            if (plug != null) plug.enabled = false;
             shot.pose(s, u);
             if ((frame - Bend) % 2 != 0) return;
             for (int v = 0; v < 3; v++)
@@ -309,6 +415,9 @@ namespace AvatarBridge.Regression
         {
             Directory.CreateDirectory(Path.Combine(outDir, "frames"));
             pulseWas = mats.Length > 0 ? mats[0].GetFloat("_YAPS_SquashPulse") : 0f;
+            knobs = YapsSquash.SettingsOf(animator.transform);
+            if (knobs != null) { stretchWas = knobs.stretchInMotion; styleWas = knobs.motionStyle; }
+            standing = animator.transform.position;
             segments = new List<string>();
             shotStart = Bend;
             sheet = new Texture2D(1920, 640, TextureFormat.RGB24, false);
@@ -383,8 +492,40 @@ namespace AvatarBridge.Regression
             var top = Surface(P + up * 0.35f + f * 0.05f, -up, P + up * reach * 0.6f);
             var spots = new[] { On((f + up * 0.8f).normalized), On((outP + f * 0.4f).normalized), On((f * 0.5f - up).normalized), On((f + up * 0.5f - outP * 0.5f).normalized) };
             Action<float, float> Front(float g, float deep) => (s, u) => Press(Tip(front, -f, g, Mathf.Lerp(-0.04f, deep, s)));
+            // Five hops, landing hard, with the motion knobs set as named. Once a hop in the
+            // anime one, the same frame rendered with the stretch off as well.
+            Action<float, float> Hops(bool stretch, float style, string tag) => (s, u) =>
+            {
+                if (knobs != null && (knobs.stretchInMotion != stretch || knobs.motionStyle != style))
+                {
+                    knobs.stretchInMotion = stretch;
+                    knobs.motionStyle = style;
+                    YapsSquash.Apply(root);
+                }
+                root.position = standing + up * (0.12f * Mathf.Abs(Mathf.Sin(Mathf.PI * u * 5f)));
+                if (tag != null && knobs != null && (frame - shotStart) % 48 == 24)
+                {
+                    Shoot($"{tag}_{frame}");
+                    knobs.stretchInMotion = false; YapsSquash.Apply(root);
+                    Shoot($"{tag}_{frame}_off");
+                    knobs.stretchInMotion = true; YapsSquash.Apply(root);
+                }
+            };
+            float shaft = Mathf.Clamp(0.1f * 0.21f, 0.012f, 0.035f);
             film = new List<Shot>
             {
+                new Shot { name = "Hopping: the physics alone", frames = 240, at = mid + f * 0.05f + up * 0.06f, width = 1f, profile = true, pose = Hops(false, 0f, null) },
+                new Shot { name = "Hopping: stretch in motion, real flesh", frames = 240, at = mid + f * 0.05f + up * 0.06f, width = 1f, profile = true, pose = Hops(true, 0f, "real") },
+                new Shot { name = "Hopping: stretch in motion, anime", frames = 240, at = mid + f * 0.05f + up * 0.06f, width = 1f, profile = true, pose = Hops(true, 1f, "anime") },
+                new Shot { name = "A plug in a socket between them", frames = 300, at = mid + f * 0.05f, width = 0.8f, pose = (s, u) =>
+                {
+                    root.position = standing;
+                    Plug(slots[18], slots[0], slots[1], Mathf.Lerp(-0.05f, 0.14f, s));
+                    plug.enabled = true;
+                    var dir = (Vector3.up + f * 0.3f).normalized;
+                    ghost[0].gameObject.SetActive(true);
+                    Capsule(ghost[0], plug.transform.position, plug.transform.position + dir * 0.21f, shaft);
+                } },
                 new Shot { name = "Another player: open hand", frames = 180, pose = Front(-1f, 0.05f), at = front, width = 0.45f, profile = true },
                 new Shot { name = "Another player: fist", frames = 180, pose = Front(1f, 0.05f), at = front, width = 0.45f, profile = true },
                 new Shot { name = "Another player: pointing finger", frames = 180, pose = Front(4f, 0.07f), at = front, width = 0.45f, profile = true },

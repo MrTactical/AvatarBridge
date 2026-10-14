@@ -3,6 +3,9 @@
 // follow (a plain child of the bone the cloth moves most, at the part's centre) into the
 // materials every frame, on every client, with nothing synced and no camera.
 //
+// How it feels comes from the avatar's YAPS Squash component, added on the first build. Its
+// knobs write straight to the materials, so tuning needs no rebuild.
+//
 // Two ways to say where the parts are. Regions painted with the squash region tool, when the
 // avatar carries them; otherwise bones found by name (breast, boob, butt, booty, glute, one each
 // side), each vertex's share the skin weight its part's bones carry. Two pairs at most either
@@ -28,7 +31,6 @@ namespace AvatarBridge
         const string ShaderHostName = "YAPS squash (shader)", FollowName = "YAPS squash follow", RestName = "YAPS squash rest", BackName = "YAPS squash back";
         // On each copy's importer, before the material it was copied from, for Strip to put back.
         const string Mark = "squash:";
-        const float Flattest = 0.6f, Fullest = 1.5f;
         static readonly Regex Soft = new Regex("breast|boob|butt|booty|glute", RegexOptions.IgnoreCase);
         static readonly Regex Side = new Regex(@"left|right|[._ ]?[lr](?=$|[._ ])", RegexOptions.IgnoreCase);
 
@@ -38,7 +40,7 @@ namespace AvatarBridge
             "_YAPS_DentPower", "_YAPS_DentOwn", "_YAPS_SquashReach", "_YAPS_SquashAway", "_YAPS_SquashOut",
             "_YAPS_SquashIn", "_YAPS_SquashSideA", "_YAPS_SquashSideB", "_YAPS_SquashTune", "_YAPS_SquashPair",
             "_YAPS_SquashShape", "_YAPS_SquashPulse", "_YAPS_SquashPush", "_YAPS_SquashLimbL", "_YAPS_SquashLimbR",
-            "_YAPS_SquashHands",
+            "_YAPS_SquashHands", "_YAPS_SquashMotion", "_YAPS_SquashPlug", "_YAPS_DentSpill",
         };
 
         sealed class Part
@@ -49,6 +51,8 @@ namespace AvatarBridge
             public List<(Transform bone, float weight)> carriers;
             public List<Vector3> points;
             public Vector3 centre;
+            // Where the part hangs from: the top of its chain, which the physics hold still.
+            public Vector3 hangsFrom;
             public float reach, volume;
         }
 
@@ -85,12 +89,74 @@ namespace AvatarBridge
         // Whether the avatar carries a squash build.
         public static bool Has(Transform root) => root != null && root.Find(ShaderHostName) != null;
 
+        public static YapsSquashSettings SettingsOf(Transform root) => root != null ? root.GetComponentInChildren<YapsSquashSettings>(true) : null;
+
+        // The knobs onto one squash material. The skin stride in the hands' w is the build's.
+        public static void WriteKnobs(YapsSquashSettings s, Material m)
+        {
+            var hands = m.GetVector("_YAPS_SquashHands");
+            m.SetVector("_YAPS_SquashTune", new Vector4(s.lyingBack, s.strength, s.bendGive, s.deepestDent));
+            m.SetVector("_YAPS_SquashShape", new Vector4(s.flattest, s.volumeKept, s.widest, s.meet ? 1f : 0f));
+            m.SetFloat("_YAPS_DentSpill", s.spill);
+            // The push's dead zone and the arms' soft edge are not knobs.
+            m.SetVector("_YAPS_SquashPush", new Vector4(s.clothPush, 0.03f, 0.25f, s.ownArms > 0f ? 1f : 0f));
+            m.SetVector("_YAPS_SquashHands", new Vector4(s.ownArms, s.handSize, s.othersHands, hands.w));
+            m.SetFloat("_YAPS_SquashPlug", s.plugs);
+            // From real flesh to anime: the stretch per reach of swing, the swing ignored as the
+            // sag the physics settle into, and the longest it gets.
+            float t = s.motionStyle;
+            m.SetVector("_YAPS_SquashMotion", s.stretchInMotion
+                ? new Vector4(Mathf.Lerp(0.6f, 3.5f, t), Mathf.Lerp(0.1f, 0.03f, t), Mathf.Lerp(1.12f, 1.8f, t), 0f)
+                : Vector4.zero);
+        }
+
+        // Every material the build's providers write, alternates included.
+        public static List<Material> Materials(Transform root)
+        {
+            var host = root != null ? root.Find(ShaderHostName) : null;
+            if (host == null) return new List<Material>();
+            return host.GetComponents<CVRMaterialDataProvider>().SelectMany(p => p.materials ?? new Material[0])
+                .Where(m => m != null && m.HasProperty("_YAPS_DentOwn")).Distinct().ToList();
+        }
+
+        // The component's knobs onto the build, without rebuilding. How many materials took them.
+        public static int Apply(Transform root)
+        {
+            var s = SettingsOf(root);
+            var mats = s != null ? Materials(root) : new List<Material>();
+            foreach (var m in mats)
+            {
+                WriteKnobs(s, m);
+                EditorUtility.SetDirty(m);
+            }
+            return mats.Count;
+        }
+
+        // The slots as the provider writes them in game, for the edit mode preview.
+        public static Transform[] Slots(Transform root)
+        {
+            var host = root != null ? root.Find(ShaderHostName) : null;
+            var provider = host != null ? host.GetComponents<CVRMaterialDataProvider>()
+                .FirstOrDefault(p => p.dataMode == CVRMaterialDataProvider.DataMode.TransformLocalToWorld) : null;
+            return provider != null ? provider.transforms : null;
+        }
+
+        // The YAPS tool's build: the squash, then the toggles' swaps pointed at it.
+        public static string Build(Transform root, out bool built)
+        {
+            string folder = YapsNativeBuilder.OutputRoot + "/Squash";
+            string said = Add(root, folder, out built);
+            if (built) said += " " + FollowSwaps(root, YapsSwapFollow.RunnableClips(root), folder, null);
+            Debug.Log("[YAPS] Squash: " + said);
+            return said.Trim();
+        }
+
         // The regions to use, or null for parts by bone name. `refusal` says why regions the
         // avatar carries cannot be used; they are never quietly swapped for the name search.
-        public static YapsSquashRegions RegionsOf(Transform root, out string refusal)
+        public static YapsSquashSettings RegionsOf(Transform root, out string refusal)
         {
             refusal = null;
-            var regions = root.GetComponentInChildren<YapsSquashRegions>(true);
+            var regions = SettingsOf(root);
             if (regions == null || regions.pairs.Count == 0) return null;
             var mesh = regions.body != null ? regions.body.sharedMesh : null;
             if (mesh == null) refusal = "the squash regions name no body mesh";
@@ -227,6 +293,10 @@ namespace AvatarBridge
                     // nothing pushes the part.
                     var rest = Child(p.restOn, RestName);
                     rest.position = p.centre;
+                    // Its up axis for the stretch in motion: toward where the part hangs from,
+                    // and up, as a soft part hangs under its weight too. A drop stretches it as
+                    // well as a pull away from the body.
+                    rest.rotation = Quaternion.FromToRotation(Vector3.up, (p.hangsFrom - p.centre).normalized + root.up);
                     rests.Add(rest);
                     float unit = Unit(p.follow);
                     var toward = p == a ? axis : -axis;
@@ -309,16 +379,10 @@ namespace AvatarBridge
                     copy.SetVector("_YAPS_SquashIn", inward);
                     copy.SetVector("_YAPS_SquashSideA", sideA);
                     copy.SetVector("_YAPS_SquashSideB", sideB);
-                    // Lying-back weight, strength, bend give, deepest dent.
-                    copy.SetVector("_YAPS_SquashTune", new Vector4(0.25f, 1f, 0.35f, 0.35f));
                     copy.SetVector("_YAPS_SquashPair", pair);
-                    // Volume kept whole: the overfill made a squashed part a third bigger.
-                    copy.SetVector("_YAPS_SquashShape", new Vector4(Flattest, 1f, Fullest, 1f));
                     // A test build's pulse: the pair squeezes and lets go every few seconds with
                     // nobody moving it, which only happens if the provider is writing the follows.
                     copy.SetFloat("_YAPS_SquashPulse", pulse);
-                    // Bone push off: every swing of the cloth read as a press.
-                    copy.SetVector("_YAPS_SquashPush", new Vector4(0f, 0.03f, 0.25f, 1f));
                     copy.SetVector("_YAPS_SquashLimbL", limbs[0]);
                     copy.SetVector("_YAPS_SquashLimbR", limbs[1]);
                     Save(copy, source, folder, $"{root.name} {smr.name} {slot}.mat");
@@ -383,6 +447,9 @@ namespace AvatarBridge
             controller.cvrRenderComponents.Add(provider);
             controller.cvrRenderComponents.Add(skinned);
 
+            // The knobs, from the avatar's component; a first build adds one with the defaults.
+            if (SettingsOf(root) == null) root.gameObject.AddComponent<YapsSquashSettings>();
+            Apply(root);
             AssetDatabase.SaveAssets();
             EditorUtility.SetDirty(root.gameObject);
             if (root.gameObject.scene.IsValid()) EditorSceneManager.MarkSceneDirty(root.gameObject.scene);
@@ -534,7 +601,7 @@ namespace AvatarBridge
         {
             if (!from.HasProperty(name) || !to.HasProperty(name)) return;
             if (name == "_YAPS_DentOwn") to.SetTexture(name, from.GetTexture(name));
-            else if (name == "_YAPS_DentPower" || name == "_YAPS_SquashPulse") to.SetFloat(name, from.GetFloat(name));
+            else if (name == "_YAPS_DentPower" || name == "_YAPS_SquashPulse" || name == "_YAPS_SquashPlug" || name == "_YAPS_DentSpill") to.SetFloat(name, from.GetFloat(name));
             else to.SetVector(name, from.GetVector(name));
         }
 
@@ -769,6 +836,7 @@ namespace AvatarBridge
                     // cloth, so a follow on it never saw the pair close in game.
                     p.mover = p.carriers.Where(c => c.bone != root).OrderByDescending(c => c.weight).Select(c => c.bone).FirstOrDefault() ?? top;
                     p.restOn = root.parent != null ? root.parent : root;
+                    p.hangsFrom = root.position;
                 }
                 else
                 {
@@ -787,8 +855,14 @@ namespace AvatarBridge
                         var chain = p.mover;
                         while (chain.parent != null && own.Contains(chain.parent)) chain = chain.parent;
                         p.restOn = chain.parent != null ? chain.parent : chain;
+                        p.hangsFrom = chain.position;
                     }
-                    else p.mover = p.restOn = p.carriers.OrderByDescending(c => c.weight).First().bone;
+                    else
+                    {
+                        // Follow and rest ride one bone, so it never swings: the hang goes unused.
+                        p.mover = p.restOn = p.carriers.OrderByDescending(c => c.weight).First().bone;
+                        p.hangsFrom = p.mover.position;
+                    }
                 }
                 p.volume = Mathf.Sqrt(Mathf.Max(Det(p.points, p.centre), 0f));
                 return p;
@@ -835,7 +909,8 @@ namespace AvatarBridge
                 ctx.Report.Warning(Category, "Squash not built", said);
                 return;
             }
-            ctx.Report.Converted(Category, "Soft parts squash against each other and against hands", said);
+            ctx.Report.Converted(Category, "Soft parts squash against each other and against hands",
+                said + ". Tune it, and preview it, on the YAPS Squash component on the converted avatar");
             if (ctx.MergedController != null) FollowSwaps(root, ctx.MergedController.animationClips, folder, ctx.Report);
         }
 #endif

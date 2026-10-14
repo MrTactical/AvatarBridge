@@ -881,7 +881,8 @@ namespace AvatarBridge
             optIns.Add(BridgeElements.SubHeading("Soft parts"));
             optIns.Add(BridgeElements.Bind("Squash breasts and butt against each other and hands",
                 "In the body shader: pressed together they flatten and meet, anyone's hand dents them, and a plug in a socket between them parts them. " +
-                "Found by bone name, or by regions painted with Tools ▸ YAPS ▸ Squash regions. No sync cost.",
+                "As the physics swing them they stretch and squash too. Found by bone name, or by regions painted with " +
+                "Tools ▸ YAPS ▸ Squash regions; tuned on the YAPS Squash component the build adds. No sync cost.",
                 settings.squashSoftParts, v => { settings.squashSoftParts = v; ScheduleRebuild(); }));
             if (settings.squashSoftParts)
             {
