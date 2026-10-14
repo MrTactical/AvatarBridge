@@ -813,7 +813,9 @@ version and still cross. Every tester has to be on the same build for the atlas.
 - Stripping contacts from the transport, which is planned, removes the channel latch further
   down this file, and leaves the owner id as the one self guard that does not rest on geometry.
 
-## An avatar floated, and folded up after full-body calibration. FIXED ON DEV 2026-10-11, not in game
+## An avatar floated, and folded up after full-body calibration. FIXED ON DEV 2026-10-11, works in game
+
+Reconverted and reported working by Joe, 2026-10-14. Desktop and FBT were not confirmed separately.
 
 Field report 2026-10-11: feet off the floor on desktop, the body collapsing after FBT calibration,
 the hips looking wrong; on the floor in edit mode, floating in editor Play mode too. The armature
