@@ -254,8 +254,7 @@ namespace AvatarBridge.Regression
             if ((frame - Bend) % 2 != 0) return;
             for (int v = 0; v < 3; v++)
             {
-                // Faint where it would hide the dent, plain from above. A colour changed between two
-                // renders in one frame is ignored, so the material itself is swapped.
+                // Faint where it would hide the dent, plain from above.
                 foreach (var g in ghost) g.GetComponent<Renderer>().sharedMaterial = glass[v == 2 ? 1 : 0];
                 views[v].Render();
                 RenderTexture.active = views[v].targetTexture;
