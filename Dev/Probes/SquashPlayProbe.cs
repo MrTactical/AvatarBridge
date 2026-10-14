@@ -9,6 +9,11 @@
 // client's player globals: one shot per hand shape (open, fist, pointing, two fingers), the palm
 // again as a third client lays the arrays out, then the wrist sunk in.
 //
+// -spVideo films one continuous run instead, three views a frame at 30 fps into <dir>/frames,
+// with segments.tsv naming each segment's first frame: another player's hand in each shape,
+// a hand between the parts, two hands squeezing, a hand from below, the own arm, then the pair
+// pulse. The other player's hands are drawn as glass capsules the size the shader presses with.
+//
 // Batch, never -nographics: the frames are rendered.
 
 #if AVATARBRIDGE_YAPS
@@ -57,6 +62,7 @@ namespace AvatarBridge.Regression
             SessionState.SetString(K + "out", Arg("-spOut"));
             SessionState.SetInt(K + "on", 1);
             SessionState.SetInt(K + "other", Environment.GetCommandLineArgs().Contains("-spOther") ? 1 : 0);
+            SessionState.SetInt(K + "video", Environment.GetCommandLineArgs().Contains("-spVideo") ? 1 : 0);
             var scene = EditorSceneManager.OpenScene(Arg("-spScene"), OpenSceneMode.Single);
             foreach (var r in scene.GetRootGameObjects())
                 if (r.GetComponentInChildren<CVRAvatar>(true) == null && r.GetComponentInChildren<Animator>(true) != null) r.SetActive(false);
@@ -125,6 +131,7 @@ namespace AvatarBridge.Regression
                 SetUpCameras(part.position, reach);
                 Shoot("rest_animated");
             }
+            if (SessionState.GetInt(K + "video", 0) == 1) { if (frame >= Bend) Film(slots, mats); return; }
             if (frame == Bend - 1) Shoot("rest");
             if (SessionState.GetInt(K + "other", 0) == 1)
             {
@@ -202,6 +209,209 @@ namespace AvatarBridge.Regression
             Shader.SetGlobalVectorArray("_CVR_PlayerChestPositions", chests);
             Shader.SetGlobalVectorArray("_CVR_PlayerRootPositions", roots);
             Shader.SetGlobalVector("CVRGlobalParams1", new Vector4(0f, third ? 3f : 2f, 0f, 0f));
+        }
+
+        const float Tall = 1.7f;
+        struct Shot { public string name; public int frames; public Action<float, float> pose; public Vector3 at; public float width; public bool profile; }
+        static List<Shot> film;
+        static List<string> segments;
+        static Camera[] views;
+        static Transform[] ghost;
+        static Texture2D sheet;
+        static MeshCollider body;
+        static int shotIndex, shotStart, filmed;
+        static float handRadius;
+        static Vector3 outside;
+        static Material[] glass;
+
+        // Each shot eases in over its first third, holds, and eases out, so s runs 0, 1, 0.
+        static void Film(Transform[] slots, Material[] mats)
+        {
+            if (film == null) StartFilm(slots, mats);
+            bool cut = frame == Bend;
+            while (shotIndex < film.Count && frame - shotStart >= film[shotIndex].frames) { shotStart += film[shotIndex++].frames; cut = true; }
+            if (shotIndex == film.Count)
+            {
+                File.WriteAllLines(Path.Combine(outDir, "segments.tsv"), segments);
+                SessionState.SetInt(K + "on", 0);
+                Debug.Log($"[SquashPlay] filmed {filmed} frames into {outDir}");
+                EditorApplication.Exit(0);
+                return;
+            }
+            var shot = film[shotIndex];
+            if (cut)
+            {
+                segments.Add($"{filmed}\t{shot.name}");
+                float away = shot.width / 2f / Mathf.Tan(15f * Mathf.Deg2Rad);
+                var root = animator.transform;
+                var from = new[] { shot.profile ? outside : root.forward, (root.forward - root.right).normalized, (root.forward * 0.75f + root.up * 0.66f).normalized };
+                for (int v = 0; v < 3; v++) { views[v].transform.position = shot.at + from[v] * away; views[v].transform.LookAt(shot.at); }
+            }
+            float u = (frame - shotStart) / (float)shot.frames;
+            float s = u < 0.35f ? Mathf.SmoothStep(0f, 1f, u / 0.35f) : u < 0.65f ? 1f : Mathf.SmoothStep(1f, 0f, (u - 0.65f) / 0.35f);
+            Hands(Vector4.zero, Vector4.zero, Vector3.zero);
+            shot.pose(s, u);
+            if ((frame - Bend) % 2 != 0) return;
+            for (int v = 0; v < 3; v++)
+            {
+                // Faint where it would hide the dent, plain from above. A colour changed between two
+                // renders in one frame is ignored, so the material itself is swapped.
+                foreach (var g in ghost) g.GetComponent<Renderer>().sharedMaterial = glass[v == 2 ? 1 : 0];
+                views[v].Render();
+                RenderTexture.active = views[v].targetTexture;
+                sheet.ReadPixels(new Rect(0, 0, 640, 640), v * 640, 0);
+            }
+            RenderTexture.active = null;
+            File.WriteAllBytes(Path.Combine(outDir, "frames", $"f_{filmed++:00000}.jpg"), sheet.EncodeToJPG(92));
+        }
+
+        static void StartFilm(Transform[] slots, Material[] mats)
+        {
+            Directory.CreateDirectory(Path.Combine(outDir, "frames"));
+            segments = new List<string>();
+            shotStart = Bend;
+            sheet = new Texture2D(1920, 640, TextureFormat.RGB24, false);
+            handRadius = mats[0].GetVector("_YAPS_SquashHands").y;
+            var root = animator.transform;
+            Vector3 f = root.forward, up = root.up;
+            views = Enumerable.Range(0, 3).Select(_ =>
+            {
+                var cam = new GameObject("SquashPlay view").AddComponent<Camera>();
+                cam.enabled = false;
+                cam.nearClipPlane = 0.01f;
+                cam.fieldOfView = 30f;
+                cam.clearFlags = CameraClearFlags.SolidColor;
+                cam.backgroundColor = new Color(0.2f, 0.2f, 0.25f);
+                cam.targetTexture = new RenderTexture(640, 640, 24);
+                return cam;
+            }).ToArray();
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
+            // The latex reads black under one light: a key from either front side as well.
+            RenderSettings.ambientLight = new Color(1f, 1f, 1f);
+            foreach (var (from, power) in new[] { (f - root.right, 1f), (f + root.right, 0.7f) })
+            {
+                var fill = new GameObject("SquashPlay fill").AddComponent<Light>();
+                fill.type = LightType.Directional;
+                fill.intensity = power;
+                fill.transform.rotation = Quaternion.LookRotation(-from + Vector3.down * 0.4f);
+            }
+            // The camera renders HDR under four lights, so the faint one is dimmed as well.
+            glass = new[] { new Color(0.15f, 0.27f, 0.35f, 0.12f), new Color(0.45f, 0.8f, 1f, 0.3f) }
+                .Select(c => new Material(Shader.Find("Legacy Shaders/Transparent/Diffuse")) { color = c }).ToArray();
+            ghost = Enumerable.Range(0, 6).Select(_ =>
+            {
+                var go = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                UnityEngine.Object.DestroyImmediate(go.GetComponent<Collider>());
+                go.SetActive(false);
+                return go.transform;
+            }).ToArray();
+
+            // The rest surface to press from, read off a baked copy of the body. The squash is in the
+            // shader alone, so the bake is the shape before any press.
+            var smr = animator.GetComponentsInChildren<SkinnedMeshRenderer>().FirstOrDefault(r => r.sharedMaterials.Any(m => mats.Contains(m)));
+            if (smr != null)
+            {
+                var baked = new Mesh();
+                smr.BakeMesh(baked);
+                var go = new GameObject("SquashPlay body");
+                go.transform.SetPositionAndRotation(smr.transform.position, smr.transform.rotation);
+                body = go.AddComponent<MeshCollider>();
+                body.sharedMesh = baked;
+            }
+            Debug.Log($"[SquashPlay] film body {(smr != null ? smr.name : "none")}");
+
+            int p = (slots[0].position - target).sqrMagnitude < (slots[1].position - target).sqrMagnitude ? 0 : 1;
+            Vector3 P = slots[p].position, Q = slots[1 - p].position, mid = (P + Q) / 2f;
+            float reach = mats[0].GetVector("_YAPS_SquashReach")[p] * slots[p].lossyScale.x;
+            var outP = Vector3.ProjectOnPlane(P - Q, up).normalized;
+            outside = outP;
+            var front = Surface(target + f * 0.4f, -f, target - f * 0.07f);
+            var between = Surface(mid + f * 0.4f, -f, mid + f * reach * 0.5f);
+            var sideP = Surface(P + f * 0.02f + outP * 0.6f, -outP, P + outP * reach);
+            var sideQ = Surface(Q + f * 0.02f - outP * 0.6f, outP, Q - outP * reach);
+            var under = Surface(P + f * 0.06f - up * 0.6f, up, P - up * reach);
+            float r = handRadius * Tall / 1.6f, hand = 0.11f * Tall, fist = 0.06f * Tall;
+
+            // Another player's hand from the front, its tip from 4 cm off the skin to `deep` in.
+            Action<float, float> Front(float g, float length, float deep) => (s, u) =>
+            {
+                var w = front + f * (length + Mathf.Lerp(0.04f, -deep, s));
+                Hands(new Vector4(w.x, w.y, w.z, g), Vector4.zero, w + f * 0.45f);
+            };
+            film = new List<Shot>
+            {
+                new Shot { name = "Another player: open hand", frames = 180, pose = Front(-1f, hand, 0.05f), at = front, width = 0.45f, profile = true },
+                new Shot { name = "Another player: fist", frames = 180, pose = Front(1f, fist, 0.05f), at = front, width = 0.45f, profile = true },
+                new Shot { name = "Another player: pointing finger", frames = 180, pose = Front(4f, hand, 0.06f), at = front, width = 0.45f, profile = true },
+                new Shot { name = "Another player: two fingers", frames = 180, pose = Front(5f, hand, 0.06f), at = front, width = 0.45f, profile = true },
+                new Shot { name = "A hand pushed in between them", frames = 210, at = between, width = 0.7f, pose = (s, u) =>
+                {
+                    var w = between + f * (hand + Mathf.Lerp(0.06f, -0.08f, s));
+                    Hands(new Vector4(w.x, w.y, w.z, -1f), Vector4.zero, w + f * 0.45f);
+                } },
+                new Shot { name = "Two hands squeezing them together", frames = 240, at = mid + f * 0.05f, width = 1.1f, pose = (s, u) =>
+                {
+                    var a = sideP + f * 0.1f + outP * (r + Mathf.Lerp(0.03f, -0.06f, s));
+                    var b = sideQ + f * 0.1f - outP * (r + Mathf.Lerp(0.03f, -0.06f, s));
+                    Hands(new Vector4(a.x, a.y, a.z, -1f), new Vector4(b.x, b.y, b.z, -1f), (a + b) / 2f + f * 2.5f);
+                } },
+                new Shot { name = "A hand lifting from below", frames = 210, at = under + up * 0.05f, width = 0.5f, pose = (s, u) =>
+                {
+                    var w = under + f * 0.12f - up * (r + Mathf.Lerp(0.03f, -0.05f, s));
+                    Hands(new Vector4(w.x, w.y, w.z, -1f), Vector4.zero, w + f * 0.45f - up * 0.1f);
+                } },
+                new Shot { name = "Own hand", frames = 240, at = front, width = 0.6f, profile = true, pose = (s, u) => Reach(s) },
+                new Shot { name = "The two pressing into each other (test pulse)", frames = 420, at = mid + f * 0.05f, width = 0.9f, pose = (s, u) =>
+                {
+                    foreach (var m in mats) m.SetFloat("_YAPS_SquashPulse", 0.5f * Mathf.Clamp01(Mathf.Min(u, 1f - u) / 0.12f));
+                } },
+            };
+        }
+
+        static Vector3 Surface(Vector3 from, Vector3 dir, Vector3 fallback)
+        {
+            var h = default(RaycastHit);
+            bool hit = body != null && body.Raycast(new Ray(from, dir), out h, 2f);
+            Debug.Log($"[SquashPlay] surface from {from:F3} along {dir:F2}: {(hit ? h.point.ToString("F3") : "missed, using " + fallback.ToString("F3"))}");
+            return hit ? h.point : fallback;
+        }
+
+        // One other player with up to two hands, drawn as the capsules the shader presses with.
+        static void Hands(Vector4 l, Vector4 r, Vector3 chest)
+        {
+            var left = new Vector4[255];
+            var right = new Vector4[255];
+            var chests = new Vector4[255];
+            var roots = new Vector4[255];
+            left[1] = l; right[1] = r; chests[1] = chest;
+            roots[1] = new Vector4(chest.x, 0f, chest.z, Tall);
+            Shader.SetGlobalVectorArray("_CVR_PlayerLeftHandPositions", left);
+            Shader.SetGlobalVectorArray("_CVR_PlayerRightHandPositions", right);
+            Shader.SetGlobalVectorArray("_CVR_PlayerChestPositions", chests);
+            Shader.SetGlobalVectorArray("_CVR_PlayerRootPositions", roots);
+            Shader.SetGlobalVector("CVRGlobalParams1", new Vector4(0f, 2f, 0f, 0f));
+            for (int i = 0; i < 2; i++)
+            {
+                var h = i == 0 ? l : r;
+                Vector3 at = h;
+                bool on = at != Vector3.zero;
+                for (int k = 0; k < 3; k++) ghost[i * 3 + k].gameObject.SetActive(on && (k != 1 || h.w > 2.5f));
+                if (!on) continue;
+                var dir = (at - chest).normalized;
+                float rad = handRadius * Tall / 1.6f, fist = h.w > 1.5f ? 1f : Mathf.Clamp01(h.w);
+                float rf = (h.w > 4.5f && h.w < 5.5f ? 0.35f : 0.2f) * rad;
+                Capsule(ghost[i * 3], at, at + dir * Mathf.Max(Mathf.Lerp(0.11f, 0.06f, fist) * Tall - rad, 0f), rad);
+                Capsule(ghost[i * 3 + 1], at + dir * (0.06f * Tall), at + dir * Mathf.Max(0.11f * Tall - rf, 0.06f * Tall), rf);
+                Capsule(ghost[i * 3 + 2], at, at - dir * 0.25f, rad * 0.7f);
+            }
+        }
+
+        static void Capsule(Transform t, Vector3 a, Vector3 b, float r)
+        {
+            var d = b - a;
+            t.position = (a + b) / 2f;
+            t.rotation = d.sqrMagnitude > 1e-10f ? Quaternion.FromToRotation(Vector3.up, d) : Quaternion.identity;
+            t.localScale = new Vector3(2f * r, d.magnitude / 2f + r, 2f * r);
         }
 
         // The wrist toward the target: the elbow bends until the shoulder to wrist distance
