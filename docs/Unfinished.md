@@ -2180,7 +2180,7 @@ sweeps them, and an avatar with nothing to sweep says so. Still open: one avatar
 `ScaleFactorInverse` where it refused `EyeHeightAsMeters`; both are game-driven, and the scaler change
 explains the swap, so it reads as expected but has not been traced line by line.
 
-### Corpus 415: tree toggles whose "off" child animates only dead paths. MEASURED 2026-10-04, open
+### Corpus 415: tree toggles whose "off" child animates only dead paths. The five FIXED ON DEV 2026-10-14, one shape open
 
 VaponnyPC swept for the first time (it threw before) and reported 9 stuck. None is a regression: its
 controller matches the baseline except for the no-muscles mask on three renamed toggle layers, whose
@@ -2194,6 +2194,20 @@ clips carry only `m_IsActive` on paths already missing in VRChat and no object-r
   animates only dead paths. `IsCurveless` sees curves, so `CollectToggleTrees` never offers that child
   to `FillEmptyTreeSlotsWithRestoreClips`, and in CVR the shape stays where the on child left it.
   Candidate fix: count a child as empty for that pass when no binding resolves on the target.
+  **FIXED ON DEV 2026-10-14 (overnight).** For the restore pass, `CollectToggleTrees` counts an
+  off child as empty when every binding is dead in VRChat: missing on the avatar (by animation
+  path, `FindByAnimationPath`, so slash-named objects count as present) and missing in the source
+  too, or removed with a stripped system, the test `AuditClipBindings` uses. A path the
+  conversion renamed waits for `RepairClipPaths`, and an object whose component a converter
+  replaced (a PhysBone's enable curve) for `RewirePhysicsToggles`, so neither counts; nor do
+  hashed paths or Animator bindings. By path, never by reading values: a live material property
+  reads as missing through the value API, and treating that half as empty would replace a
+  working off. The hoist pass keeps the old test. `TreeToggleRestoreTest` covers three: an off
+  half on dead paths gets the current value; one on a renamed path, and one on a live material
+  property, are left alone. Subset runs 416v and 416w (after the review fixes) on
+  VaponnyPC: stuck 5 to 0 (Anus, Butt, Nipple, Pregnant, Vagina), responded 9 to 10, the five
+  off slots now restore clips, nothing else in the controller moved but the number on one
+  existing restore clip. Not worn in ChilloutVR.
 - **One is the other shape** (now reported as unstable at rest): a slider's two children each animate a
   property the other does not. No pass covers it, and the restore passes exempt tree-driven bindings
   by design, so it needs a decision first.
