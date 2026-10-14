@@ -607,6 +607,17 @@ namespace AvatarBridge
                 "Names converted physics objects so Kafe's GrabbyBones mod drives the avatar's " +
                 "_IsGrabbed / _Angle grab-reactive logic.",
                 settings.grabbyBonesSupport, v => settings.grabbyBonesSupport = v));
+            if (settings.physicsTarget == PhysicsTarget.MagicaCloth2)
+            {
+                // Only the cloth writer groups chains.
+                b.Add(BridgeElements.Bind("Group identical PhysBone chains",
+                    "A VRChat PhysBone holds one chain, so a hairstyle built strand by strand is " +
+                    "one component per strand. MagicaCloth2 simulates any number of chains in one " +
+                    "component, and each one saved is a solver the avatar stops paying for. Only " +
+                    "chains with the same settings, colliders, parent and kind are grouped, and " +
+                    "they still move independently. Turn off for one component per chain.",
+                    settings.groupIdenticalPhysBones, v => settings.groupIdenticalPhysBones = v));
+            }
             b.Add(BridgeElements.Bind("Delete PhysBones after converting",
                 "Leave on: once converted, the PhysBones do nothing in ChilloutVR.",
                 settings.deleteConvertedPhysBones, v => settings.deleteConvertedPhysBones = v));

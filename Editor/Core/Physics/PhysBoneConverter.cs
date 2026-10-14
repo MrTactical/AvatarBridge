@@ -341,6 +341,9 @@ namespace AvatarBridge
                     var writtenCloths = new List<(PhysBoneChainData, MagicaCloth2.MagicaCloth)>();
                     var skinnedM = SkinnedBones(ctx);
                     var drivenM = ConstraintDriven(ctx);
+                    // Read every chain before writing any: grouping compares chains
+                    // against each other, so it cannot run inside the write loop.
+                    var readChains = new List<PhysBoneChainData>();
                     foreach (var pb in physBones)
                     {
                         var chain = PhysBoneChainData.Read(pb, ctx.TargetAnimator, !ctx.Settings.convertToePhysBones);
@@ -350,6 +353,10 @@ namespace AvatarBridge
                         {
                             continue;
                         }
+                        readChains.Add(chain);
+                    }
+                    foreach (var chain in PhysBoneChainGrouping.Merge(ctx, readChains))
+                    {
                         writtenCloths.Add((chain, MagicaClothWriter.Write(ctx, chain, magicaColliderCache)));
                     }
                     // Runs last: every collider the avatar defines has to exist before a chain can

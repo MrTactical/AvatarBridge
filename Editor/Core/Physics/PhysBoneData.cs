@@ -14,6 +14,30 @@ namespace AvatarBridge
         public VRCPhysBone Source;
         public GameObject SourceGameObject;
         public Transform Root;
+        // Roots folded in from other PhysBones with the same settings under the same parent.
+        // One solver per hair strand is what the source avatar had, not what it needs: both
+        // MagicaCloth2 and DynamicBone simulate any number of independent roots in one
+        // component, and each extra component is its own proxy mesh and its own team.
+        public List<Transform> MergedRoots = new List<Transform>();
+        public List<GameObject> MergedSources = new List<GameObject>();
+        public IEnumerable<Transform> AllRoots
+        {
+            get
+            {
+                yield return Root;
+                foreach (var extra in MergedRoots)
+                {
+                    yield return extra;
+                }
+            }
+        }
+        // What the report calls this chain. A merged group is several chains
+        // in one component, so naming it after the first root would credit
+        // one strand with the whole hairstyle's conversion.
+        public string Label => MergedRoots.Count == 0 || Root == null
+            ? (Root != null ? Root.name : "chain")
+            : (Root.parent != null ? Root.parent.name : Root.name)
+              + $" (+{MergedRoots.Count} chain(s))";
         public bool Synthesized;
         // Put in for a physics add-on that moved this bone through constraints rather than as a
         // chain (marshmallow PB): it slides the flesh more than it bends it.

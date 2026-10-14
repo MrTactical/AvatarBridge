@@ -1,5 +1,6 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS && AVATARBRIDGE_MAGICA
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using VRC.SDK3.Dynamics.PhysBone.Components;
 using MagicaCloth2;
@@ -44,8 +45,11 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                var bones = CollectChainBones(data);
-                if (bones.Count < 2)
+                // One list per root: a merged group is independent chains in one cloth,
+                // and a collider any one of them starts inside would eject that chain.
+                var strands = data.AllRoots.Select(root => CollectChainBones(data, root))
+                    .Where(bones => bones.Count >= 2).ToList();
+                if (strands.Count == 0)
                 {
                     continue;
                 }
@@ -70,12 +74,13 @@ namespace AvatarBridge
                     }
                     // A collider riding on this chain's own bones travels with it.
                     var owner = pbCollider.rootTransform != null ? pbCollider.rootTransform : pbCollider.transform;
-                    if (owner == null || bones.Contains(owner) || IsDescendantOf(owner, data.Root))
+                    if (owner == null || strands.Any(bones => bones.Contains(owner))
+                        || data.AllRoots.Any(root => IsDescendantOf(owner, root)))
                     {
                         continue;
                     }
 
-                    if (TryReach(magica, bones, out float clearance))
+                    if (TryReachAny(magica, strands, out float clearance))
                     {
                         if (sdata.colliderCollisionConstraint.colliderList.Count == 0)
                         {
@@ -90,7 +95,7 @@ namespace AvatarBridge
                 if (added.Count > 0)
                 {
                     chainsTouched++;
-                    ctx.Report.Approximated(Category, data.Root.name,
+                    ctx.Report.Approximated(Category, data.Label,
                         $"Auto-assigned {BridgeElements.Count(added.Count, "nearby collider", "nearby colliders")}: {string.Join(", ", added)}. " +
                         "The original PhysBone didn't list these, so this is a deliberate improvement on the " +
                         "source rather than a faithful copy: remove any that make the chain behave oddly.");
@@ -104,6 +109,27 @@ namespace AvatarBridge
                     "Each chain was given the avatar's own colliders that it starts clear of and could swing " +
                     "into. Colliders a chain begins inside are skipped, since those would push it out.");
             }
+        }
+
+        // Every strand must start outside the collider; one strand within reach is enough.
+        static bool TryReachAny(ColliderComponent collider, List<List<Transform>> strands, out float clearance)
+        {
+            clearance = float.MaxValue;
+            bool reachable = false;
+            foreach (var bones in strands)
+            {
+                bool reached = TryReach(collider, bones, out float distance);
+                clearance = Mathf.Min(clearance, distance);
+                if (reached)
+                {
+                    reachable = true;
+                }
+                else if (distance < 0f)
+                {
+                    return false;
+                }
+            }
+            return reachable;
         }
 
         static bool TryReach(ColliderComponent collider, List<Transform> bones, out float clearance)
@@ -166,7 +192,7 @@ namespace AvatarBridge
             return lengthSq < 1e-8f ? 0f : Mathf.Clamp01(Vector3.Dot(point - a, ab) / lengthSq);
         }
 
-        static List<Transform> CollectChainBones(PhysBoneChainData data)
+        static List<Transform> CollectChainBones(PhysBoneChainData data, Transform root)
         {
             var bones = new List<Transform>();
             void Walk(Transform t)
@@ -181,7 +207,7 @@ namespace AvatarBridge
                     Walk(t.GetChild(i));
                 }
             }
-            Walk(data.Root);
+            Walk(root);
             return bones;
         }
 
