@@ -163,6 +163,9 @@ namespace AvatarBridge
         // Keep each socket's depth parameter synced, so the author's own
         // depth reactions play for the room. Two per socket, 32 bits each.
         public bool syncSocketDepthForOthers = false;
+        // Breasts and butt squash against each other and against hands, in the body shader.
+        // Needs the YAPS add-on, not converted penetration. Off: the parts swing as before.
+        public bool squashSoftParts = false;
         // Comma-separated. Matched as parameter prefixes and
         // layer-name substrings.
         public string extraStripKeywords = "";

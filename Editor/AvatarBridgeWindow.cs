@@ -835,8 +835,7 @@ namespace AvatarBridge
 #if AVATARBRIDGE_YAPS
             // Opt-ins live here, not beside the choice they qualify: a
             // feature nobody can find is a feature nobody turns on. All of
-            // them act on a converted penetration system, and without the
-            // add-on there is none, so no tick here could ever act.
+            // them need the add-on, so without it no tick here could ever act.
             card.Section("Opt-ins");
             var optIns = BridgeElements.Indent(
                 BridgeElements.Hint("Off unless you switch them on, and each says what it costs."));
@@ -877,6 +876,17 @@ namespace AvatarBridge
             {
                 optIns.Add(BridgeElements.Notice(Tone.Warn,
                     "32 bits per depth parameter, and over 3200 nothing syncs. The report's sync budget says where it landed."));
+            }
+
+            optIns.Add(BridgeElements.SubHeading("Soft parts"));
+            optIns.Add(BridgeElements.Bind("Squash breasts and butt against each other and hands",
+                "In the body shader: pressed together they flatten and meet, and anyone's hand dents them. " +
+                "Found by bone name, or by regions painted with Tools ▸ YAPS ▸ Squash regions. No sync cost.",
+                settings.squashSoftParts, v => { settings.squashSoftParts = v; ScheduleRebuild(); }));
+            if (settings.squashSoftParts)
+            {
+                optIns.Add(BridgeElements.Hint(
+                    "A layer whose shader cannot be patched holds its pair still, and the report names it."));
             }
 #endif
 

@@ -1690,10 +1690,32 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     every share texture came out byte-identical to the build before. Copies are marked on their
     importer (`squash:` before the source's id) so Strip finds them in any folder. Found on the way:
     the video probe's pulse shot set the pulse on the material ASSETS and left 0.006 on the build it
-    filmed; it now puts the build's own value back. Next: the converter opt-in (a pass after the
-    YAPS one, copies repointed in swap clips the way the YAPS ones are, or a toggle swapping the
-    unsquashed original back leaves its layer behind the skin), the YAPS tool's button, then the
-    custom selection.
+    filmed; it now puts the build's own value back.
+    Steps 2 to 4 DONE, 2026-10-14, ON DEV, editor-proven only, NOT YET IN GAME. The converter
+    opt-in (`squashSoftParts`, off; one pass, "Squash soft parts", after "Point material swaps at
+    the baked material" so YAPS finds its own bakes on the mesh and the copies are of what the
+    avatar ends up wearing). The YAPS tool's Squash card (Add, Paint regions, Remove). Swaps
+    followed (`YapsSquash.FollowSwaps`): a clip putting the original back points at the squashed
+    copy, an alternate gets a copy of its own with the slot's squash values and joins both
+    providers' material lists; Strip with clips points every key back. The region tool (Tools >
+    YAPS > Squash regions, `YapsSquashRegions` on the avatar, bytes per vertex, refused when the
+    mesh's vertex count or position fingerprint changed): a brush that spreads over the welded
+    surface (Dijkstra, so it never crosses a gap), Ctrl erases, strokes never paint past their
+    strength, grow, shrink, smooth, X-mirror, and seeds from the bone names, a selected bone's
+    subtree and a shape key's delta split down the middle; seam copies take one weight. A
+    painted part rides the most weighted bone of its own that hangs from another (the cloth holds
+    a chain's root still), its rest on what the chain hangs from; with no bone of its own, follow
+    and rest share the dominant bone, so only a press moves it. Proof, Kar in batch: the name path
+    rebuilt byte-identical (shares and materials); the converter's opt-in made the same textures;
+    regions seeded from the names gave identical materials and body shares, and clothing differs
+    only off the skin, where the painted path copies nothing past 3 cm and the name path keeps the
+    layer's own bone weights (README says so); a synthetic swap clip (original back, plus an
+    alternate) followed and stripped cleanly. Not built from Tier 1: the bulge finder (the shape
+    key seed covers the case it was for) and a separate click-to-grow (the brush is it).
+    Each rebuild leaves the previous build's copies in the folder.
+    Open: the Scene view brush and overlay have only compiled, nobody has painted with them;
+    a clothing toggle while squashing, in game; whether the client's per-copy material cache
+    feeds a material that arrives by animation (the alternates' copies depend on it).
     Idea, Joe 2026-10-14: SQUASH MEETS A PLUG. Today it does not: the squash reads only hands (the
     wearer's arms through the provider, other players' through CVR's player globals), the cloth and
     the partner, so a plug passes straight through a part, and one bent into a socket between a pair
@@ -1705,6 +1727,24 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     depth, so a socket placed between the pair gives the shaft's line (base to socket) and the pair's
     shader reading the same light could part them along it with no new transport; only where such a
     socket sits, and the four light slots are shared.
+    Idea, Joe 2026-10-14: FORCE AND BOUNCE. A press that arrives fast should land as an impact: a
+    wave out from where a hand (or a plug, or another part) hit, the part bouncing a little after
+    a hard push, on any part pressed by any other, with sockets and plugs. NOT STARTED. The squash
+    is stateless (every frame is a function of where things are now), so it cannot ring after the
+    hand leaves; motion that outlives its cause needs memory. Routes: (1) a CustomRenderTexture,
+    double buffered, holding a damped spring per part (offset and velocity) and the last positions
+    of every press source, updated on the GPU with no script, the hand's speed from its last
+    position, the impulse its speed into the part; the squash reads the spring as one more move,
+    and a wave is the impact point and its age in the same texture, a ring travelling out over the
+    part's ellipsoid and fading. (2) The cloth itself, which already bounces: an impulse through
+    the texture parser into a synced float that animates a pose offset, which costs sync and a
+    frame of lag. (3) MagicaCloth2 colliders, which only ever see the wearer's own body. Route 1
+    is the one that reaches other players' hands and costs nothing synced, but nothing proves a
+    CustomRenderTexture updates on a ChilloutVR avatar at all, on remote copies, or per copy (two
+    wearers of one avatar would share one texture, the same trap as the shared materials). Spike
+    first: a CRT counting frames on an avatar, read by its own material, watched by a second
+    client. A plug's base velocity from its protocol light and a socket's depth velocity are the
+    impulses for sockets and plugs once the spike holds.
   Open: remote copies,
   the measurement probe (camera cost, controller
   cost, readback latency, replacement universality), then the staged build above, tuning, and

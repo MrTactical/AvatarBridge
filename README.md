@@ -1348,6 +1348,42 @@ this project**, the same as their *Tools ▸ YAPS* menu items above.
 converted one: through the screen atlas, with marker lights where the atlas cannot answer. Build
 takes out a channel an earlier version wired onto the avatar, which frees its synced parameters.
 
+### Squash: soft parts that press together
+
+An opt-in in the YAPS add-on: breasts and butt flatten where they press against each other, and
+dent under a hand, instead of passing through. It is done in the body's shader, so every layer
+over the skin (a bra, a shirt, piercings) takes the same move and nothing comes through. It
+costs no synced parameters and uses no contacts. The wearer's own arms press it, and so do other
+players' hands, from the hand positions ChilloutVR hands every shader, so neither avatar needs
+anything set up for it. The physics are untouched: the parts still swing as their cloth makes
+them, and the squash works from where they swung to.
+
+**Two ways on.** Converting: *Manual options ▸ Opt-ins ▸ Soft parts ▸ Squash breasts and butt
+against each other and hands*. Already on ChilloutVR: *Tools ▸ YAPS ▸ Setup*, the **Squash**
+card, **Add squash**. Pressing it again rebuilds it; **Remove squash** puts every layer back on its
+own material, toggles included. The copies it makes go to `Assets/YAPS/Generated/Squash`.
+
+**Where the parts are.** By default, bones whose names say breast, boob, butt, booty or glute, one
+each side, each vertex taking the weight those bones carry, so the squash fades into the body the
+way the avatar was weight painted. Two pairs at most. A body whose bones don't say, or where the
+names take too much or too little, can have its regions painted: **Paint regions** on the same
+card, or *Tools ▸ YAPS ▸ Squash regions*. Pick the avatar, then start from **The bone names**,
+**The selected bone** or **The shape key** (a size slider for the part is usually exactly the
+right skin), and paint over it in the Scene view. The brush spreads over the skin, never across a
+gap, so an arm resting on the side is not painted with it; Ctrl erases. **Smooth** feathers the
+edge, so the squash fades out instead of tearing; **Mirror** copies one side onto the other. The
+regions are kept on the avatar as a **YAPS Squash Regions** component, which ChilloutVR strips at
+upload; while one is there, the converter and the Setup card both build from it instead of the
+bone names. Clothing follows the skin under it, within 3 cm.
+
+**Toggles keep working.** A toggle that swaps a material into a squashed slot, the original back
+or an alternate look, is pointed at a squashed copy of it, so the layer never drops behind the
+skin while it is on. A clip that lives in a package is not edited, and the report (or the card)
+names it.
+
+**If the body mesh changes** (re-imported, a different vertex count), painted regions are refused
+rather than read onto the wrong vertices, and the report says so. Paint them again.
+
 ### Testing it
 
 - **In the editor**: select a socket, click **Preview**, move it around the plug; or select a baked
@@ -1680,6 +1716,7 @@ settle. Leaving all of them alone converts fine.
 | **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
 | **Opt-ins ▸ OSC toys ▸ Keep the OGB / PCS haptics contacts** (YAPS add-on) | off | The toy-app contacts *Penetration* strips with the rest of the stack. Plugs and sockets work either way; these only drive a toy, and each one spends some of the instance's 512 contact pairs. Needs *Penetration* on *Convert to YAPS*; *Remove* strips them regardless. See [OSC toys](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
 | **Opt-ins ▸ OSC toys ▸ Keep OGB haptics synced (OSCGoesBrrr, Lovense)** (YAPS add-on) | off | Off, the kept OGB haptics parameters are local (free); OSCGoesBrrr's automatic detection skips ChilloutVR's `#` names, but its manual avatar-parameter links read them, and the report lists the names. On, they stay synced and automatic detection works with no links to add (ChilloutVR still needs its `--osc-query-prefix=VRChat-Client` launch argument), at 32 sync bits each, about nine per plug and per socket; the report's sync budget entry says where the avatar landed. Needs the contacts above kept and *Penetration* on *Convert to YAPS* |
+| **Opt-ins ▸ Soft parts ▸ Squash breasts and butt against each other and hands** (YAPS add-on) | off | Off, the parts swing as their physics make them and pass through each other. On, the body shader flattens them where they press together and dents them under a hand, on every layer over the skin, at no sync cost; see [Squash](#squash-soft-parts-that-press-together). The parts are found by bone name, or from regions painted with *Tools ▸ YAPS ▸ Squash regions*. Works with *Penetration* on any answer |
 | **Opt-ins ▸ Penetration ▸ Show the avatar's OWN depth animations to other players** (YAPS add-on) | off | Not YAPS's socket shapes, which already play for everyone on a synced parameter. This is the bulges and winces the avatar's author animated in VRChat, which are contact-driven, and ChilloutVR runs an avatar's triggers on the wearer's machine alone. Off, each socket's depth parameter is local: free, and only the wearer sees the reaction. On, it syncs and the room sees it, at 32 bits per socket: one depth parameter each, six sockets is about 192 of 3200; a socket that kept several depth parameters as authored pays for each. Needs *Penetration* on *Convert to YAPS* |
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder: you must press **Create Controller** yourself |
 | **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of this avatar's measured height, centred on its original size. Parent-constrained props are re-anchored so they scale with you. Not added, with a warning, when the avatar already has its own parameter or menu entry called "Height": rename that one to get the slider |
@@ -1861,6 +1898,12 @@ Bipeds are unaffected by any of it.
 
 ### Converted with caveats
 
+- **Squash (opt-in).** A layer whose shader cannot be patched (a built-in shader with no source on
+  disk, a surface shader) cannot follow, so the pair under it holds still rather than coming
+  through it, and the report names the layer. A layer casting its shadow from anything but Unity's
+  standard caster casts it unsquashed. From painted regions, a layer more than 3 cm off the skin
+  holds still. How deep a hand dents and how two parts meet is tuned by eye: it can only be
+  judged in ChilloutVR.
 - **Action-layer emotes and features.** Only **Gesture** and **FX** convert by default: Base,
   Additive and Action are off, because CVR drives locomotion and emotes itself. **An avatar that
   transforms usually needs Action ticked**: a mech that folds into a vehicle keeps its menu toggle

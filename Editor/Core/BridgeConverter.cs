@@ -263,6 +263,9 @@ namespace AvatarBridge
                     // as the clips still spell it.
                     Pass("Point material swaps at the baked material",
                          YapsConverter.RepointSwappedMaterials, PassTraits.EditsClips),
+                    // After the bake's swaps point at the bake: the squash copies what the
+                    // avatar ends up wearing and points those swaps on again.
+                    Pass("Squash soft parts", YapsSquash.Run, PassTraits.EditsClips),
                     // DEAD LAST among the passes that touch a clip. It
                     // renames objects and rewrites every path naming them,
                     // so anything running after it that wrote a path would

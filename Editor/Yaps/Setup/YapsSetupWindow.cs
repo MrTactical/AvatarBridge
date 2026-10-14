@@ -39,7 +39,7 @@ namespace AvatarBridge
         VisualElement _legacy;
         // Each action reports under its own button. Results never go through the scan summary,
         // which every rescan rewrites.
-        BridgeElements.NoticeBox _next, _addStatus, _propStatus, _tidyStatus;
+        BridgeElements.NoticeBox _next, _addStatus, _propStatus, _tidyStatus, _squashStatus;
         Button _addHole, _addRing, _makePlug;
         BridgeElements.PrimaryButton _build;
         ObjectField _picker;
@@ -154,6 +154,7 @@ namespace AvatarBridge
             build.Body.Add(_buildLog);
             _pages.Add(build);
 
+            BuildSquashCard();
             BuildToolsCard();
 
             // Present, say where; absent, say where to get it.
@@ -172,6 +173,52 @@ namespace AvatarBridge
             _pages.Add(also);
 
             Pick(_target != null ? _target : Selection.activeGameObject);
+        }
+
+        // A build over the body's own materials, not a row like a plug or socket, so a card.
+        void BuildSquashCard()
+        {
+            var squash = new BridgeElements.Card("Squash", "soft parts that press together and dent", false).Remember("Yaps.Squash");
+            squash.Body.Add(BridgeElements.Hint(
+                "Breasts and butt flatten against each other and dent under anyone's hand, in the body shader. " +
+                "No sync cost. Found by bone name, or from regions you paint."));
+            squash.Body.Add(BridgeElements.ButtonRow(
+                BridgeElements.Btn("Add squash", AddSquash,
+                    "Builds it on the avatar picked in step 1: from its painted regions if it has them, else by bone name. " +
+                    "Pressing it again rebuilds it."),
+                BridgeElements.Btn("Paint regions", () => YapsSquashPainter.Open(_target),
+                    "Paint which skin squashes, for a body whose bones do not say."),
+                BridgeElements.Btn("Remove squash", RemoveSquash,
+                    "Puts every layer back on its own material, and points the toggles back too.")));
+            _squashStatus = Status();
+            squash.Body.Add(_squashStatus);
+            _pages.Add(squash);
+        }
+
+        void AddSquash()
+        {
+            if (_target == null)
+            {
+                _squashStatus.Set("Pick an avatar in step 1 first.", Tone.Warn);
+                return;
+            }
+            var root = _target.transform;
+            string folder = YapsNativeBuilder.OutputRoot + "/Squash";
+            string said = YapsSquash.Add(root, folder, out bool built);
+            if (built) said += " " + YapsSquash.FollowSwaps(root, YapsSwapFollow.RunnableClips(root), folder, null);
+            _squashStatus.Set(said.Trim(), built ? Tone.Good : Tone.Warn);
+            Debug.Log("[YAPS] Squash: " + said);
+        }
+
+        void RemoveSquash()
+        {
+            if (_target == null || !YapsSquash.Has(_target.transform))
+            {
+                _squashStatus.Set("Nothing to remove: the avatar picked in step 1 has no squash.", Tone.Info);
+                return;
+            }
+            YapsSquash.Strip(_target.transform, YapsSwapFollow.RunnableClips(_target.transform));
+            _squashStatus.Set("Squash removed. Every layer and toggle is back on its own material.", Tone.Good);
         }
 
         // Props, the legacy channel, the scene view and tidying: used now and then, so collapsed.

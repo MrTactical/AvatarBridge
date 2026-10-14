@@ -80,11 +80,17 @@ namespace AvatarBridge.Regression
                 foreach (var old in scene.GetRootGameObjects().Where(r => r.name.EndsWith(" (ChilloutVR)")))
                     UnityEngine.Object.DestroyImmediate(old);
                 var descriptor = scene.GetRootGameObjects().Select(r => r.GetComponentInChildren<VRCAvatarDescriptor>(true)).FirstOrDefault(d => d != null);
-                var report = BridgeConverter.Convert(descriptor, new BridgeSettings { cloneAvatar = true });
+                bool Has(string flag) => Array.IndexOf(Environment.GetCommandLineArgs(), flag) >= 0;
+                // -squashConvert: the converter's opt-in builds it, not this builder.
+                var report = BridgeConverter.Convert(descriptor, new BridgeSettings { cloneAvatar = true, squashSoftParts = Has("-squashConvert") });
                 var avatar = report.ConvertedRoot != null ? report.ConvertedRoot.GetComponent<CVRAvatar>() : null;
                 if (avatar == null) throw new Exception("conversion made nothing");
 #if AVATARBRIDGE_YAPS
-                Debug.Log("[Squash] " + (Array.IndexOf(Environment.GetCommandLineArgs(), "-squashShader") >= 0 ? AddShader(avatar) : Add(avatar)));
+                if (Has("-squashConvert"))
+                    Debug.Log("[Squash] converter: " + string.Join(" | ", report.Entries.Where(e => e.Category == YapsSquash.Category).Select(e => $"{e.Status} {e.Subject}: {e.Detail}")));
+                else if (Has("-squashPaint")) Debug.Log("[Squash] " + Painted(avatar));
+                else if (Has("-squashSwap")) Debug.Log("[Squash] " + AddShader(avatar) + " || " + SwapTest(avatar.transform));
+                else Debug.Log("[Squash] " + (Has("-squashShader") ? AddShader(avatar) : Add(avatar)));
 #else
                 Debug.Log("[Squash] " + Add(avatar));
 #endif
@@ -581,10 +587,67 @@ namespace AvatarBridge.Regression
         public static string AddShader(CVRAvatar avatar)
         {
             Strip(avatar.transform);
-            return YapsSquash.Add(avatar, Folder, null, Diagnostic ? 0.3f : 0f);
+            return YapsSquash.Add(avatar.transform, Folder, out _, null, Diagnostic ? 0.3f : 0f);
         }
 
         public static void StripShader(Transform root) => YapsSquash.Strip(root);
+
+        // A toggle swapping a squashed slot back to its original and to an alternate: both keys must
+        // land on squashed copies the providers write, and Strip with the clip must hand them back.
+        static string SwapTest(Transform root)
+        {
+            var smr = root.GetComponentsInChildren<SkinnedMeshRenderer>(true).First(r => r.sharedMaterials.Any(m => m != null && m.HasProperty("_YAPS_DentOwn")));
+            var copy = smr.sharedMaterials.First(m => m != null && m.HasProperty("_YAPS_DentOwn"));
+            int slot = Array.IndexOf(smr.sharedMaterials, copy);
+            var original = AssetDatabase.LoadAssetAtPath<Material>(AssetDatabase.GetAssetPath(copy)) == null ? null : (Material)GlobalObjectId.GlobalObjectIdentifierToObjectSlow(
+                GlobalObjectId.TryParse(AssetImporter.GetAtPath(AssetDatabase.GetAssetPath(copy)).userData.Substring("squash:".Length), out var id) ? id : default);
+            var alternate = new Material(original) { name = "Swap test alternate" };
+            AssetDatabase.CreateAsset(alternate, AssetDatabase.GenerateUniqueAssetPath(Folder + "/Swap test alternate.mat"));
+            var clip = new AnimationClip { name = "Swap test" };
+            AssetDatabase.CreateAsset(clip, AssetDatabase.GenerateUniqueAssetPath(Folder + "/Swap test.anim"));
+            var binding = EditorCurveBinding.PPtrCurve(AnimationUtility.CalculateTransformPath(smr.transform, root), typeof(SkinnedMeshRenderer), $"m_Materials.Array.data[{slot}]");
+            AnimationUtility.SetObjectReferenceCurve(clip, binding, new[]
+            {
+                new ObjectReferenceKeyframe { time = 0f, value = original },
+                new ObjectReferenceKeyframe { time = 1f, value = alternate },
+            });
+            var clips = new List<AnimationClip> { clip };
+            string said = YapsSquash.FollowSwaps(root, clips, Folder, null);
+            var keys = AnimationUtility.GetObjectReferenceCurve(clip, binding);
+            var providers = root.Find("YAPS squash (shader)").GetComponents<CVRMaterialDataProvider>();
+            var k1 = keys[1].value as Material;
+            bool ok = keys[0].value == copy && k1 != null && k1 != alternate && k1.HasProperty("_YAPS_DentOwn")
+                      && k1.GetTexture("_YAPS_DentOwn") == copy.GetTexture("_YAPS_DentOwn")
+                      && k1.GetVector("_YAPS_SquashReach") == copy.GetVector("_YAPS_SquashReach")
+                      && providers.All(p => p.materials.Contains(k1));
+            YapsSquash.Strip(root, clips);
+            keys = AnimationUtility.GetObjectReferenceCurve(clip, binding);
+            bool back = keys[0].value == original && keys[1].value == alternate && smr.sharedMaterials[slot] == original;
+            return $"swap test on {smr.name} slot {slot}: follow {(ok ? "ok" : "FAILED")}, strip {(back ? "ok" : "FAILED")} ({said})";
+        }
+
+        // Regions seeded from the bone names, as the region tool's first button does, then built
+        // from them: the painted path, measured against the one it should nearly match.
+        static string Painted(CVRAvatar avatar)
+        {
+            var root = avatar.transform;
+            var body = root.GetComponentsInChildren<SkinnedMeshRenderer>(true).Where(r => r.sharedMesh != null)
+                .OrderByDescending(r => r.sharedMesh.vertexCount).First();
+            var shares = YapsSquash.NamedShares(root, body, out var names, out string none);
+            if (shares == null) return none;
+            var regions = avatar.gameObject.AddComponent<AvatarBridge.Yaps.YapsSquashRegions>();
+            regions.body = body;
+            regions.vertexCount = body.sharedMesh.vertexCount;
+            regions.fingerprint = YapsSquash.Fingerprint(body.sharedMesh);
+            for (int k = 0; k < names.Count; k++)
+                regions.pairs.Add(new AvatarBridge.Yaps.YapsSquashRegions.Pair
+                {
+                    name = names[k],
+                    a = shares.Select(x => (byte)Mathf.RoundToInt(Mathf.Clamp01(x[2 * k]) * 255f)).ToArray(),
+                    b = shares.Select(x => (byte)Mathf.RoundToInt(Mathf.Clamp01(x[2 * k + 1]) * 255f)).ToArray(),
+                });
+            return YapsSquash.Add(root, Folder, out _);
+        }
 #endif
     }
 }
