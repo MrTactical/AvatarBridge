@@ -1752,10 +1752,17 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     sweep's first frame, 39 mm in the committed shader as well, which is the arm switching on.
     Ceiling, measured: where two squeezes come nearly level the exact lines still swing round
     each other fast (80 degrees over five frames, 25 at the most, strengths 78 and 69), and the
-    flatten changes with them, since how a press splits front and back and how far the part
-    reaches both depend on the line; 29 mm in one frame of a five-frame ramp, the same order as
-    the over-the-top ramp. Continuous now, not a flip; making the flatten blind to the line
-    inside a nearly level pair would take it further.
+    flatten changed with them, since each line read its own strength and its own width of the
+    part. FIXED ON DEV 2026-10-14 (overnight): toward level (the weaker within 30 % of the
+    stronger) the pair shares one strength and one width, wholly when exactly level, which no turn
+    of the lines in their plane can change; each line keeps how far off centre the part reaches.
+    Sweep: the one frame it reaches, on the fourth path, 36.9 to 24.9 mm, now spread over two
+    frames (at 60 %, 23.3: not worth twice the zone where unequal presses are averaged); every
+    other frame of every path within 1 mm, and the four `-spLook` shots pixel-identical. That
+    path's worst is now 36 mm at another frame, an arm-contact frame that stays with the flatten
+    cut out. WRONG, withdrawn: "29 mm in one frame of a five-frame ramp" from the flatten. The
+    third path's 29 mm is 28 mm with the flatten cut out, so it is not the flatten, and the
+    blend leaves it as it was. Needs Add squash again (the include is inlined). Not seen in game.
     Cleavage: `-spLook` renders the pair lit over a lightened texture (a black top hid the shape)
     from the front, above and close, at rest and squeezed. The plane where the two meet let a
     fifth of the overshoot through, so both sides crossed into each other lying nearly flat. Now
@@ -2108,12 +2115,16 @@ Two smaller findings from the same folder, both FIXED ON DEV 2026-10-14 (overnig
   4096 and two 2048, DXT1, not readable) as sub-assets of its FX controller, and the texture
   rescue copied a texture's whole container, so the controller came along; most of the 59 MB is
   those textures as hex text, the rest the controller's own layers and 305 clips. Now a container
-  of nothing but textures is still copied whole, and a texture inside anything else is cloned on
-  its own. The 2026-09 rescue avoided cloning on the grounds that a non-readable texture would
-  clone blank; measured, it does not: `TextureRehomeTest` reloads both copies from disk and
-  compares them with the originals on the GPU, 0 of 4096 pixels differ.
+  of nothing but textures is still copied whole, and a 2D texture inside anything else is cloned
+  on its own; other kinds (cubemaps, arrays) still take the whole copy, since only a 2D clone has
+  been measured. The 2026-09 rescue avoided cloning on the grounds that a non-readable texture
+  would clone blank; measured, it does not: `TextureRehomeTest` reloads both copies from disk and
+  compares them with the originals on the GPU, 0 of 4096 pixels differ, for a texture reloaded
+  from disk and for a live one made unreadable in the same session and never reloaded; format,
+  mip count, filter and wrap match too, and the clone stays not readable.
 - **The survey listed the scaler's own `#AvatarScaler/One` and `#AvatarScaler/StepSize` as dead
-  features.** The survey's scaffolding pattern now takes the `#AvatarScaler/` prefix.
+  features.** The survey's scaffolding pattern now takes the `#AvatarScaler/` prefix, with the
+  `#` required, so an avatar's own `AvatarScaler/...` parameter is still surveyed.
 
 ### README audited against the code, 2026-10-06. Both loose ends FIXED the same day
 
@@ -2181,7 +2192,7 @@ sweeps them, and an avatar with nothing to sweep says so. Still open: one avatar
 `ScaleFactorInverse` where it refused `EyeHeightAsMeters`; both are game-driven, and the scaler change
 explains the swap, so it reads as expected but has not been traced line by line.
 
-### Corpus 415: tree toggles whose "off" child animates only dead paths. MEASURED 2026-10-04, open
+### Corpus 415: tree toggles whose "off" child animates only dead paths. The five FIXED ON DEV 2026-10-14, one shape open
 
 VaponnyPC swept for the first time (it threw before) and reported 9 stuck. None is a regression: its
 controller matches the baseline except for the no-muscles mask on three renamed toggle layers, whose
@@ -2195,6 +2206,20 @@ clips carry only `m_IsActive` on paths already missing in VRChat and no object-r
   animates only dead paths. `IsCurveless` sees curves, so `CollectToggleTrees` never offers that child
   to `FillEmptyTreeSlotsWithRestoreClips`, and in CVR the shape stays where the on child left it.
   Candidate fix: count a child as empty for that pass when no binding resolves on the target.
+  **FIXED ON DEV 2026-10-14 (overnight).** For the restore pass, `CollectToggleTrees` counts an
+  off child as empty when every binding is dead in VRChat: missing on the avatar (by animation
+  path, `FindByAnimationPath`, so slash-named objects count as present) and missing in the source
+  too, or removed with a stripped system, the test `AuditClipBindings` uses. A path the
+  conversion renamed waits for `RepairClipPaths`, and an object whose component a converter
+  replaced (a PhysBone's enable curve) for `RewirePhysicsToggles`, so neither counts; nor do
+  hashed paths or Animator bindings. By path, never by reading values: a live material property
+  reads as missing through the value API, and treating that half as empty would replace a
+  working off. The hoist pass keeps the old test. `TreeToggleRestoreTest` covers three: an off
+  half on dead paths gets the current value; one on a renamed path, and one on a live material
+  property, are left alone. Subset runs 416v and 416w (after the review fixes) on
+  VaponnyPC: stuck 5 to 0 (Anus, Butt, Nipple, Pregnant, Vagina), responded 9 to 10, the five
+  off slots now restore clips, nothing else in the controller moved but the number on one
+  existing restore clip. Not worn in ChilloutVR.
 - **One is the other shape** (now reported as unstable at rest): a slider's two children each animate a
   property the other does not. No pass covers it, and the restore passes exempt tree-driven bindings
   by design, so it needs a decision first.

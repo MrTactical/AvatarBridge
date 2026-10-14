@@ -1,4 +1,5 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
+using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 using UnityEditor.Animations;
@@ -22,7 +23,11 @@ namespace AvatarBridge.Regression
     //     Direct parent sums its children rather than letting the top one win: the toggle
     //     switched ON would write 0, the sibling's restore would write 1, and the sum reads on;
     //   - Animator-type bindings are never snapshotted. Fury's AAP trees wear this exact shape
-    //     and pinning one would freeze a value the math exists to compute.
+    //     and pinning one would freeze a value the math exists to compute;
+    //   - an off half that animates only paths already dead in VRChat is as empty as a missing
+    //     one; one on a path the conversion renamed is not, since the path repair puts it back
+    //     later, and nor is one that animates a live material property, though the value reads
+    //     as missing to a script.
     public static class TreeToggleRestoreTest
     {
         [MenuItem("Tools/AvatarBridge Dev/Test: blend-tree toggle restore")]
@@ -44,7 +49,7 @@ namespace AvatarBridge.Regression
             try
             {
                 avatar = new GameObject("__TreeToggleRestoreTest");
-                foreach (var name in new[] { "Hat", "Shirt", "Dress", "Boots" })
+                foreach (var name in new[] { "Hat", "Shirt", "Dress", "Boots", "Scarf", "Skirt", "Cape" })
                 {
                     var go = new GameObject(name);
                     go.transform.SetParent(avatar.transform, false);
@@ -97,9 +102,31 @@ namespace AvatarBridge.Regression
                 var bothEmpty = Tree("BothEmpty", BlendTreeType.Simple1D, "EmptyP", null);
                 var directPair = Tree("DirectPair", BlendTreeType.Direct, "DirectP", Off("BootsOff", "Boots"));
 
+                // Off halves authored for another body, and one that only a renderer can read.
+                var scarf = Tree("Scarf", BlendTreeType.Simple1D, "HatP", Off("ScarfOn", "Scarf"));
+                var kids = scarf.children;
+                kids[0].motion = Off("ScarfGhost", "Old Body/Scarf");
+                scarf.children = kids;
+                avatar.transform.Find("Skirt").gameObject.AddComponent<MeshRenderer>();
+                var tint = new AnimationClip { name = "SkirtTint" };
+                AnimationUtility.SetEditorCurve(tint,
+                    new EditorCurveBinding { path = "Skirt", type = typeof(MeshRenderer), propertyName = "material._Color.r" },
+                    AnimationCurve.Constant(0f, 0f, 0.5f));
+                AssetDatabase.AddObjectToAsset(tint, controller);
+                var skirt = Tree("Skirt", BlendTreeType.Simple1D, "ShirtP", Off("SkirtOff", "Skirt"));
+                kids = skirt.children;
+                kids[0].motion = tint;
+                skirt.children = kids;
+
+                var cape = Tree("Cape", BlendTreeType.Simple1D, "EmptyP", Off("CapeOn", "Cape"));
+                kids = cape.children;
+                var renamed = Off("CapeRenamed", "Old Cape");
+                kids[0].motion = renamed;
+                cape.children = kids;
+
                 var root = new BlendTree { name = "Direct", blendType = BlendTreeType.Direct };
                 AssetDatabase.AddObjectToAsset(root, controller);
-                root.children = new[] { hat, shirt, preset, aap, bothEmpty, directPair }
+                root.children = new[] { hat, shirt, preset, aap, bothEmpty, directPair, scarf, skirt, cape }
                     .Select(t => new ChildMotion { motion = t, timeScale = 1f, directBlendParameter = "Weight" })
                     .ToArray();
 
@@ -112,6 +139,7 @@ namespace AvatarBridge.Regression
                     Report = new BridgeReport(),
                     Settings = new BridgeSettings(),
                     OutputDir = dir,
+                    SourcePaths = new HashSet<string> { "Old Cape" },
                 };
                 AnimatorMerger.FillEmptyTreeSlotsWithRestoreClipsForTest(controller, ctx);
 
@@ -141,6 +169,12 @@ namespace AvatarBridge.Regression
                     bothEmpty.children[0].motion == null && bothEmpty.children[1].motion == null);
                 fail += Check("Direct tree: not a toggle, left alone (children are summed, not blended)",
                     directPair.children[0].motion == null);
+                fail += Check("off half on missing paths: filled with the current value (Scarf active = 1)",
+                    Mathf.Approximately(Restored(scarf, "Scarf"), 1f));
+                fail += Check("off half on a live material property: left as it was",
+                    skirt.children[0].motion == tint);
+                fail += Check("off half on a path the conversion renamed: left as it was",
+                    cape.children[0].motion == renamed);
                 fail += Check("report names the toggle it repaired",
                     ctx.Report.Entries.Any(e => e.Status == ReportStatus.Converted
                         && e.Subject != null && e.Subject.Contains("blend-tree toggle")

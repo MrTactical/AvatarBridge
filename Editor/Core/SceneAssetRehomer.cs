@@ -231,14 +231,15 @@ namespace AvatarBridge
 
         // Fury packs its baked textures as sub-assets of one container, so a file of nothing but
         // textures is copied once, byte for byte, and each texture's counterpart found in the
-        // copy. A texture inside anything else comes out alone: one bake kept four inside its FX
-        // controller, and copying that carried the whole controller into the output for them.
+        // copy. A 2D texture inside anything else comes out alone: one bake kept four inside its
+        // FX controller, and copying that carried the whole controller into the output for them.
+        // Other kinds keep the whole copy, since only a 2D clone has been measured.
         static Texture CopyTexture(BridgeContext ctx, Texture texture, string dir)
         {
             string source = AssetDatabase.GetAssetPath(texture);
-            if (!OnlyTextures(source))
+            if (texture is Texture2D flat && !OnlyTextures(source))
             {
-                return CloneTexture(texture, dir);
+                return CloneTexture(flat, dir);
             }
             var containers = StateOf(ctx).Containers;
             if (!containers.TryGetValue(source, out string copyPath))
@@ -256,18 +257,19 @@ namespace AvatarBridge
             return Counterpart(texture, source, copyPath) as Texture ?? texture;
         }
 
+        // Something that will not load could be anything, so it counts against.
         static bool OnlyTextures(string path)
         {
             foreach (var o in AssetDatabase.LoadAllAssetsAtPath(path))
             {
-                if (o != null && !(o is Texture)) return false;
+                if (!(o is Texture)) return false;
             }
             return true;
         }
 
         // Instantiate keeps the pixels of a texture no script can read: measured on the GPU
         // against the original (TextureRehomeTest).
-        static Texture CloneTexture(Texture texture, string dir)
+        static Texture CloneTexture(Texture2D texture, string dir)
         {
             var copy = UnityEngine.Object.Instantiate(texture);
             copy.name = texture.name;

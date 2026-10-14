@@ -7015,7 +7015,7 @@ namespace AvatarBridge
                     {
                         if (child.state != null)
                         {
-                            CollectToggleTrees(child.state.motion, seen, candidates);
+                            CollectToggleTrees(child.state.motion, seen, candidates, ctx);
                         }
                     }
                 });
@@ -7170,7 +7170,12 @@ namespace AvatarBridge
         internal static void FillEmptyTreeSlotsWithRestoreClipsForTest(AnimatorController master,
             BridgeContext ctx) => FillEmptyTreeSlotsWithRestoreClips(master, ctx, new HashSet<string>());
 
-        static void CollectToggleTrees(Motion motion, HashSet<BlendTree> seen, List<ToggleTree> into)
+        // With ctx, an off half that animates only paths already dead in VRChat counts as empty
+        // too: authored for another body, it asserts nothing here, and in CVR the shape stayed
+        // where the on half left it. By path, not by reading values: a live material property
+        // reads as missing, and taking that half for empty would replace a working off.
+        static void CollectToggleTrees(Motion motion, HashSet<BlendTree> seen, List<ToggleTree> into,
+            BridgeContext ctx = null)
         {
             if (!(motion is BlendTree tree) || !seen.Add(tree))
             {
@@ -7187,7 +7192,8 @@ namespace AvatarBridge
                 bool multipleEmpty = false;
                 for (int i = 0; i < children.Length; i++)
                 {
-                    if (children[i].motion == null || IsCurveless(children[i].motion, null))
+                    if (children[i].motion == null || IsCurveless(children[i].motion, null)
+                        || AnimatesOnlyDeadPaths(children[i].motion, ctx))
                     {
                         // More than one empty child: there is no single "off" to repair, and the
                         // shape is structural rather than a toggle or selector.
@@ -7225,8 +7231,36 @@ namespace AvatarBridge
             }
             foreach (var child in children)
             {
-                CollectToggleTrees(child.motion, seen, into);
+                CollectToggleTrees(child.motion, seen, into, ctx);
             }
+        }
+
+        // Dead means missing here and in the source too, or removed with a stripped system. A path
+        // the conversion renamed waits for RepairClipPaths, and an object whose component a
+        // converter replaced (a PhysBone's enable curve) waits for RewirePhysicsToggles, so
+        // neither counts. Hashed paths cannot be looked up by name.
+        static bool AnimatesOnlyDeadPaths(Motion motion, BridgeContext ctx)
+        {
+            if (ctx == null || ctx.Target == null || !(motion is AnimationClip clip) || clip.humanMotion)
+            {
+                return false;
+            }
+            var bindings = AnimationUtility.GetCurveBindings(clip)
+                .Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip)).ToList();
+            if (bindings.Count == 0)
+            {
+                return false;
+            }
+            foreach (var binding in bindings)
+            {
+                if (binding.type == typeof(Animator) || IsHashedPath(binding.path)
+                    || BridgeContext.FindByAnimationPath(ctx.Target.transform, binding.path) != null
+                    || (ctx.ResolvedInSource(binding.path) && !ctx.RemovedOnPurpose(binding.path)))
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         static void CollectOutsideToggles(Motion motion, HashSet<BlendTree> toggles,
