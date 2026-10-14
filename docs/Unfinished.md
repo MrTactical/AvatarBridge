@@ -1740,10 +1740,17 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     sweep's first frame, 39 mm in the committed shader as well, which is the arm switching on.
     Ceiling, measured: where two squeezes come nearly level the exact lines still swing round
     each other fast (80 degrees over five frames, 25 at the most, strengths 78 and 69), and the
-    flatten changes with them, since how a press splits front and back and how far the part
-    reaches both depend on the line; 29 mm in one frame of a five-frame ramp, the same order as
-    the over-the-top ramp. Continuous now, not a flip; making the flatten blind to the line
-    inside a nearly level pair would take it further.
+    flatten changed with them, since each line read its own strength and its own width of the
+    part. FIXED ON DEV 2026-10-14 (overnight): toward level (the weaker within 30 % of the
+    stronger) the pair shares one strength and one width, wholly when exactly level, which no turn
+    of the lines in their plane can change; each line keeps how far off centre the part reaches.
+    Sweep: the one frame it reaches, on the fourth path, 36.9 to 24.9 mm, now spread over two
+    frames (at 60 %, 23.3: not worth twice the zone where unequal presses are averaged); every
+    other frame of every path within 1 mm, and the four `-spLook` shots pixel-identical. That
+    path's worst is now 36 mm at another frame, an arm-contact frame that stays with the flatten
+    cut out. WRONG, withdrawn: "29 mm in one frame of a five-frame ramp" from the flatten. The
+    third path's 29 mm is 28 mm with the flatten cut out, so it is not the flatten, and the
+    blend leaves it as it was. Needs Add squash again (the include is inlined). Not seen in game.
     Cleavage: `-spLook` renders the pair lit over a lightened texture (a black top hid the shape)
     from the front, above and close, at rest and squeezed. The plane where the two meet let a
     fifth of the overshoot through, so both sides crossed into each other lying nearly flat. Now

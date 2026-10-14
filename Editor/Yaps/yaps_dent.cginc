@@ -45,6 +45,9 @@
 // skin near the plane opens a slot that wide between the two: at the tenth above it read as a
 // gap down the middle.
 #define YAPS_SQUASH_MEET 0.03
+// How close two squeezes count as level, as a share of the stronger: within it their lines
+// share the flattening, wholly when exactly level.
+#define YAPS_SQUASH_LEVEL 0.3
 #define YAPS_DENT_SPAN 2.4494897   // the dent's shoulder, in t; root 6 makes it hold what the bowl moved
 
 float _YAPS_DentPower;
@@ -533,15 +536,36 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         // press lies on a line, a squeeze putting half on each side. Grown along the others by
         // just enough to keep the volume. Grown faster, the old overfill made a squashed part a
         // third bigger than it started.
+        // Two squeezes nearly level leave their lines free to swing round each other in a few
+        // frames, and each line read its own width of the part, so the flattening swung with
+        // them. Toward level, the pair shares one strength and one width, which no turn of the
+        // lines within their plane can change; each keeps how far off centre the part reaches.
         float flat[3], grow[3], shift[3], along[3];
+        float onL[3], wide[3], off[3];
+        [unroll]
+        for (int b0 = 0; b0 < 3; b0++)
+        {
+            onL[b0] = dot(ax[b0], mul(M, ax[b0]));
+            float rF = YapsExtent(p, ax[b0]), rB = YapsExtent(p, -ax[b0]);
+            wide[b0] = rF + rB;
+            off[b0] = 0.5 * (rF - rB);
+        }
+        float u01 = 1 - saturate((onL[0] - onL[1]) / (YAPS_SQUASH_LEVEL * max(onL[0], 1e-9)));
+        float u12 = 1 - saturate((onL[1] - onL[2]) / (YAPS_SQUASH_LEVEL * max(onL[1], 1e-9)));
+        float2 o01 = lerp(float2(onL[0], onL[1]), 0.5 * (onL[0] + onL[1]), u01);
+        float2 w01 = lerp(float2(wide[0], wide[1]), 0.5 * (wide[0] + wide[1]), u01);
+        onL[0] = o01.x; onL[1] = o01.y; wide[0] = w01.x; wide[1] = w01.y;
+        float2 o12 = lerp(float2(onL[1], onL[2]), 0.5 * (onL[1] + onL[2]), u12);
+        float2 w12 = lerp(float2(wide[1], wide[2]), 0.5 * (wide[1] + wide[2]), u12);
+        onL[1] = o12.x; onL[2] = o12.y; wide[1] = w12.x; wide[2] = w12.y;
         float pressAll = 0;
         [unroll]
         for (int b = 0; b < 3; b++)
         {
-            float onLine = dot(ax[b], mul(M, ax[b])), net = dot(S, ax[b]);   // both 0 with no press
+            float onLine = onL[b], net = dot(S, ax[b]);   // both 0 with no press
             float pFront = max(0.5 * (onLine + net), 0);
             float pBack = max(0.5 * (onLine - net), 0);
-            float rFront = YapsExtent(p, ax[b]), rBack = YapsExtent(p, -ax[b]);
+            float rFront = 0.5 * wide[b] + off[b], rBack = 0.5 * wide[b] - off[b];
             float pressed = pFront + pBack;
             flat[b] = 1;
             grow[b] = 1;
