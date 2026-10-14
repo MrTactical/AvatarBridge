@@ -1658,6 +1658,30 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     reads. ON DEV, editor-proven only (`-spVideo`: both the squeeze and the pulse close the
     cleavage into a flat seam and let go), NOT YET IN GAME. Re-make the diagnostic build to see
     it; a shipped build's pulse is 0.
+    Idea, Joe 2026-10-14: MESH-BASED SELECTION. PROPOSED, not started, Joe picks the tier. Today
+    parts are found by bone name (breast, boob, butt, booty, glute), at most two pairs, the share
+    per vertex is the skin weight to those bones, and only the dev test builder sets any of it
+    up: no bones, no squash; no belly, thigh or cheek; sloppy weights bleed it into the chest.
+    The selection is the user path the converter step below needs. Tier 1: Scene view tools
+    (click to grow by surface distance, brush with falloff, grow, shrink, smooth, X-mirror that
+    makes the pair) with seeds from bone weights, from shape key deltas (what a size key moves,
+    its delta as the falloff) and from a bulge finder (what sticks out of a heavily smoothed copy
+    of the body); always feathered, since hard per-vertex guesses tore the skin; baked into the
+    existing share texture, four regions, no shader change; a region with no bone gets a generated
+    anchor under its dominant bone, one with a physics bone follows its tip. Tier 2: any number of
+    regions (top two per vertex, id and weight in one texel, so the cost stays two per vertex),
+    region settings in a small texture because material arrays are never saved and an avatar
+    runs no script, single regions and rests-on contacts beside pairs, flesh presets, weights
+    carried to every clothing layer by nearest surface (or the layers part and the skin comes
+    through in stripes, the old bug), and poking it with the mouse in the Scene view through the
+    same player globals. Tier 3: the press per region out through the texture parser to drive
+    reactions (parser proven on the wearer, remote copies unproven), a stateless pressure tint
+    (a fading print needs memory an avatar has not got), rigid islands for jewellery, and the
+    same tool painting YAPS plug and socket masks, the override the masks entry above says is
+    missing. Tier 4: jiggle anywhere, a generated bone and cloth per region on a re-skinned mesh
+    copy. Unknowns: how many slots the material data provider carries, and keying by vertex index
+    (store the selection by position and UV, re-bake at build, refuse a mismatch). Both builders
+    need it.
   Open: remote copies,
   the measurement probe (camera cost, controller
   cost, readback latency, replacement universality), then the staged build above, tuning, and
