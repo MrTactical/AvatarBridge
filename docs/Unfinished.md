@@ -1828,6 +1828,22 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     RT, `_Time` and the slots inside that blit, and whether a Realtime CRT ticks on a CVR avatar at
     all (VRChat's CRTs freeze after an avatar switch). Next: one spike upload in stages (a counter,
     the slots read in the blit, self-feedback, a remote viewer, a switch-and-back) before any build.
+    STAGE 1 BUILT 2026-10-14, editor-proven, NOT YET UPLOADED: `Dev/Probes/BounceSpikeBuilder`
+    (`Build`, or `Verify -bounceOut <dir>`) makes `Assets/AvatarBridge_Bounce/Bounce_Stage1.prefab`
+    in the dev project, with a README and a preview scene. Two blitters each rewrite a 2x1
+    ARGBFloat texture from itself (origin == destination, the client's own temp-and-copy route,
+    read in the decompile): one in a CVRRenderController, the production placement, one off the
+    camera as the control. Texel 0 holds sums decayed by 0.99 a run (runs, unity_DeltaTime,
+    _Time.y's steps between runs, the last _Time.y), so runs over time is the tick rate and frame
+    times over time passed is runs per frame; texel 1 wraps a counter for a sweep. A billboard
+    readout (single-pass instanced macros, ZTest Always) shows both rows. So the one upload
+    covers the counter, self-feedback, `_Time` and `unity_DeltaTime` inside the blit, and the
+    remote viewer and switch-and-back as things to look at; stage 2, the providers' slots read in
+    the blit, is what remains. Batch Play at a fixed 60 fps, 600 frames: both rows 60 runs a
+    second, 1.0000 runs per frame, readout rendered as designed. The editor cannot show the
+    client's per-copy clones, so the readout's textures are DECLARED properties: the client
+    re-points an instanced material's render textures by walking `GetTexturePropertyNameIDs`,
+    and an undeclared one would read the uncloned asset, which nothing writes.
     COST, measured 2026-10-14, batch Unity with graphics, one 1920x1080 render plus a one-pixel
     readback so the GPU finishes, 35 renders kept, median ms (fastest), this machine's GPU:
     one avatar: none 0.22 (0.19), squash shader off 0.74 (0.58), on 0.99 (0.84), with 16 players
