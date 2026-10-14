@@ -41,6 +41,7 @@
 #define YAPS_DENT_KEEP 0.2
 // How far before the contact plane the squash starts to give, as a share of the reach.
 #define YAPS_SQUASH_SOFT 0.1
+#define YAPS_DENT_SPAN 2.4494897   // the dent's shoulder, in t; root 6 makes it hold what the bowl moved
 
 float _YAPS_DentPower;
 float _YAPS_DentSpill;
@@ -344,14 +345,37 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         float hr[4] = { 0, 0, 0, 0 };
         YapsHandsPress(p, hv, hr);
 
-        // Pressed from one side, the part bends away first, swinging about where it meets the
-        // body, and each hand is that much less far in. Squeezed from both sides it has
-        // nowhere to bend. Its partner never bends it: the pair's gap is where the cloth put it.
+        // Each hand dents the part first, up to the deepest dent, easing in: soft tissue takes a
+        // light touch where it lands. Bent away first, a touch swung the whole part. Past both
+        // the dent and the moves below, the hand goes in and the capsules carry the skin.
+        float3 dentW[4];
+        float dentDepth[4], dentR[4], spare[4];
+        float3 F = 0;
+        [unroll]
+        for (int h = 0; h < 4; h++)
+        {
+            dentW[h] = 0;
+            dentDepth[h] = 0;
+            dentR[h] = hr[h];
+            spare[h] = 0;
+            float in0 = length(hv[h]) * strength;
+            if (in0 <= 1e-6) continue;
+            float3 w = hv[h] / length(hv[h]);
+            float deepest = _YAPS_SquashTune.w * YapsExtent(p, w);
+            float local = deepest > 0 ? deepest * (1 - exp(-in0 / deepest)) : 0;
+            dentW[h] = w;
+            dentDepth[h] = local;
+            spare[h] = in0 - local;
+            F += w * spare[h];
+        }
+        // What the dents leave, from one side, bends the part away, swinging about where it
+        // meets the body, and each hand is that much less far in. Squeezed from both sides it
+        // has nowhere to bend. Its partner never bends it: the pair's gap is where the cloth put
+        // it. The rest moves the whole part.
         float3 bend = 0, bendDir = 0;
         float bendBy = 0, bendFrom = 0, bendSpan = 1;
         if (p.framed && _YAPS_SquashTune.z > 0)
         {
-            float3 F = (hv[0] + hv[1] + hv[2] + hv[3]) * strength;
             float3 side = F - p.o * dot(F, p.o);
             float sl = length(side);
             float outE = _YAPS_SquashOut[m] * unit;
@@ -365,26 +389,9 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
                 bendSpan = bendFrom + outE;
             }
         }
-        // Each hand dents the part up to the deepest dent, easing in; what is left moves the
-        // whole part. Past both, the hand goes in and the capsules below carry the skin.
-        float3 dentW[4];
-        float dentDepth[4], dentR[4];
         [unroll]
-        for (int h = 0; h < 4; h++)
-        {
-            dentW[h] = 0;
-            dentDepth[h] = 0;
-            dentR[h] = hr[h];
-            float in0 = length(hv[h]) * strength;
-            if (in0 <= 1e-6) continue;
-            float3 w = hv[h] / length(hv[h]);
-            float in1 = max(in0 - bendBy * max(dot(w, bendDir), 0), 0);
-            float deepest = _YAPS_SquashTune.w * YapsExtent(p, w);
-            float local = deepest > 0 ? deepest * (1 - exp(-in1 / deepest)) : 0;
-            YapsAdd(S, M, w * (in1 - local));
-            dentW[h] = w;
-            dentDepth[h] = local;
-        }
+        for (int hl = 0; hl < 4; hl++)
+            YapsAdd(S, M, dentW[hl] * max(spare[hl] - bendBy * max(dot(dentW[hl], bendDir), 0), 0));
 
         float total = M[0][0] + M[1][1] + M[2][2];
         // The squeeze line, M's strongest direction, found starting from the sum.
@@ -431,30 +438,34 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
             if (pressAll > 0) nm = normalize(nm + x * dot(x, nm) * (across / k - 1));
             if (lean > 0 && lean < 1) nm = normalize(nm - p.o * dot(bend / bendSpan, nm));
         }
-        // Each dent, centred where the hand meets the part at rest: a bowl as wide as the hand
-        // and as deep as the dent, ringed by a low rim that holds what the bowl moved,
-        // (1 - s^2) e^(-s^2) of the depth s bowl-widths out. Both move along the line from the
-        // part's centre, which keeps the volume exactly on a ball and within a few parts in a
-        // thousand on these shapes; moved along the hand's line instead, the rim slid round the
-        // sides unseen and a deep dent lost 6%. Never narrower than one and a half depths: the
-        // slope stays under 1 and the skin cannot fold.
+        // Each dent, centred where the hand meets the part at rest. Inside, the skin lies on the
+        // hand: a bowl as deep as the dent and as wide as a ball of the hand's size pressed that
+        // deep, (1 - t) of the depth at t = (distance / width)^2. Round its edge what the bowl
+        // moved rises into a shoulder, (1 - t) o^2 with o falling from 1 to 0, a third of the
+        // depth high at 1.35 widths and back to rest by 1.86: tissue does not compress, and the
+        // old low rim spread the same volume out to three widths, too thin to see, so the dent
+        // read as lost volume. Both move along the line from the part's centre, which keeps the
+        // volume exactly on a ball; moved along the hand's line instead, the rim slid round the
+        // sides unseen and a deep dent lost 6%. Never narrower than one and a half depths, or
+        // the skin could fold.
         [unroll]
         for (int e = 0; e < 4; e++)
         {
             float depth = dentDepth[e];
             if (depth <= 0) continue;
             float3 w = dentW[e];
-            float wide = max(dentR[e] + depth, 1.5 * depth);
+            float wide = max(sqrt(2 * dentR[e] * min(depth, dentR[e])), 1.5 * depth);
             float reachW = YapsExtent(p, w);
             float3 q = d - w * reachW;
-            float s2 = dot(q, q) / (wide * wide);
-            if (s2 > 9) continue;
-            float fall = exp(-s2);
-            float sink = depth * (1 - s2) * fall / reachW;
+            float t = dot(q, q) / (wide * wide);
+            if (t >= 1 + YAPS_DENT_SPAN) continue;
+            float o = saturate((1 + YAPS_DENT_SPAN - t) / YAPS_DENT_SPAN);
+            float sink = depth * (1 - t) * o * o / reachW;
+            float slope = t > 1 ? -o * (o + 2 * (1 - t) / YAPS_DENT_SPAN) : -1;
             moved -= d * sink;
             if (hasNormal)
             {
-                float3 g = q * (-2 * depth * (2 - s2) * fall / (wide * wide * reachW));
+                float3 g = q * (2 * depth * slope / (wide * wide * reachW));
                 nm = normalize(nm + g * dot(d, nm) / max(1 - sink - dot(g, d), 0.1));
             }
         }

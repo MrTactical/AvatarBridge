@@ -1594,9 +1594,35 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     part by whatever is left. Probe A/B, same press: bend 0.10 with dent 0.60 kept the part near
     its rest outline with the dent showing; bend 0 with dent 0.90 nearer still. Not chosen yet.
     Volume: the dent's rim holds exactly what the bowl moved, but peaks at 13% of the depth,
-    1.4 bowl widths out, so it never shows and a dent reads as lost volume. Next: a higher,
-    tighter rim. A lobe below the hand in the front renders was the part itself, hidden at rest
-    by the hanging arm: it is there with the shader off.
+    1.4 bowl widths out, so it never shows and a dent reads as lost volume. A lobe below the
+    hand in the front renders was the part itself, hidden at rest by the hanging arm: it is
+    there with the shader off.
+    Rebuilt on how tissue behaves, same day, NOT YET IN GAME. Breast tissue and fat are nearly
+    incompressible (Poisson's ratio about 0.49), so a dent's volume has to show somewhere; skin
+    is about ten times stiffer than the tissue under it, so it lies on the hand and rounds the
+    edge rather than creasing; tissue stiffens fast with strain, so a light touch stays local
+    and only a firm one moves the whole part; the part is held at its base and slides over the
+    chest, so it swings about the base. Two changes follow. The dent comes FIRST and the bend
+    takes only what the dent leaves (it used to bend first, so a 2 cm touch from the side swung
+    the whole part 1.5 cm). And the dent's profile: inside, the skin lies on a ball of the hand's
+    radius pressed that deep, `1 - t`; round its edge, the same volume rises into a shoulder a
+    third of the depth high at 1.35 contact radii, back to rest by 1.86, instead of the old
+    rim out to three widths. Volume-neutral on a ball (cap area is pi times the chord squared,
+    so a profile neutral in t = chord^2 / width^2 is exact). Python mirror of the part (scratch,
+    the test avatar's measured reaches), shipped vs new: volume 1.000 vs 1.000 to 1.004 in every
+    case; rim 0.08 to 0.49 cm vs 0.32 to 1.17 cm; side press 2 cm: whole part moved 0.8 vs 0.2
+    cm, bend 1.5 vs 0.4 cm; from below 3 cm: 1.0 vs 0.3 cm; no folded faces in either. Probe on
+    the rebuilt test avatar: the old dent showed as a small dimple with the outline shifted; the
+    new one as a hand-sized dent with a visible lip, outline at rest. The lip's edge, where the
+    curvature turns, catches a highlight ring on a glossy material: that is where skin leaves
+    the hand, but say if it reads too sharp. Left out on purpose: sending part of the volume
+    to the far side of the part when the tissue under the hand is thick, which is what physics
+    says. Spread that thin, it is invisible, which is the complaint.
+    Idea, Joe same day: other players' FINGERS. The client gives shaders only wrist, chest, hip
+    and root per player, so an unpatched player can only ever be a hand capsule. Between two
+    patched avatars it could work: the presser's own hand shader knows where its fingers are and
+    could write finger segments into the cross-avatar GrabPass atlas the sockets already use
+    (protocol 7, proven in game), at roughly ten slots a player. Not started.
   Open: remote copies,
   the measurement probe (camera cost, controller
   cost, readback latency, replacement universality), then the staged build above, tuning, and
