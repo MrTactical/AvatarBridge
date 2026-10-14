@@ -138,9 +138,11 @@
 }
 
 /* Component inspectors are built from the same elements as the windows. The inspector already
- * insets its content; pull the banner back out to the edges. */
+ * insets its content, 15 px left and 6 px right; pull the banner back out to the edges. A -15 on
+ * the right ran everything 9 px past the edge, clipping the cards' right border and the banner's
+ * status pill. */
 .ab-inspector {
-    margin: -4px -15px 0 -15px;
+    margin: -4px -6px 0 -15px;
 }
 
 /* -------------------------------------------------------------- banner ---- */

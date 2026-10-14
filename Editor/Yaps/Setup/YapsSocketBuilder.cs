@@ -304,10 +304,10 @@ namespace AvatarBridge
         public static string LightCapNote(YapsSocket socket)
         {
             if (socket == null || !socket.emitLights || WithinLightCap(socket)) return null;
-            var kept = Lit(socket).Take(StartLit).Select(s => s.name);
+            var kept = Lit(socket).Take(StartLit).Select(s => $"\"{s.name}\"").ToList();
             // Four vertex light slots per mesh: a socket takes two and the
             // entering tracker a third, so a second lit socket evicts a hole's root.
-            return $"marker lights start dark: only {string.Join(", ", kept)} start lit. The " +
+            return $"marker lights start dark: only {string.Join(", ", kept)} {(kept.Count == 1 ? "starts" : "start")} lit. The " +
                    "\"Marker lights\" menu entry lights one socket at a time. Only DPS plugs need " +
                    "them; YAPS plugs find this socket through the screen atlas.";
         }

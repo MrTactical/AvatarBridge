@@ -6,7 +6,7 @@
 //
 // Run: Unity.exe -batchmode -projectPath <p> -executeMethod AvatarBridge.Regression.UiOffscreenProbe.Run
 //        -captureOut <dir> [-captureScene <Assets/...unity>] [-capturePrefab <Assets/...prefab>]
-//        [-captureWindows converter,toolkit,tester,yaps] [-captureHeight 2600] [-capturePlay]
+//        [-captureWindows converter,toolkit,tester,yaps,painter] [-captureHeight 2600] [-capturePlay]
 //        [-captureInspectors <full type name>,...]
 // Each render is cropped to its content and cut into tiles about 1000 px tall, so a long
 // window reads at full size. -capturePlay then enters Play mode and renders the tester live.
@@ -37,8 +37,10 @@ namespace AvatarBridge.Regression
             // pending bindings throw on the dead serialized object.
             void CreateGUI()
             {
+                // The real host: its inset is what the inspector styles pull back out of, so without
+                // it every row slides 15 px off the left edge.
                 var editor = Editor.CreateEditor(Target);
-                var ui = editor.CreateInspectorGUI() ?? new IMGUIContainer(editor.OnInspectorGUI);
+                var ui = new UnityEditor.UIElements.InspectorElement(editor);
                 // The Inspector binds as it shows; the panel here repaints before its scheduler would.
                 UnityEditor.UIElements.BindingExtensions.Bind(ui, editor.serializedObject);
                 rootVisualElement.Add(ui);
@@ -59,6 +61,7 @@ namespace AvatarBridge.Regression
             ("toolkit", "AvatarBridge.ToolkitWindow", true),
             ("tester", "AvatarBridge.CckAnimatorTester", true),
             ("yaps", "AvatarBridge.YapsSetupWindow", true),
+            ("painter", "AvatarBridge.YapsSquashPainter", true),
         };
 
         const BindingFlags Any = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
@@ -232,6 +235,14 @@ namespace AvatarBridge.Regression
                     }),
                 }).ToArray();
             }
+            // The setup window's second tab, and the painter, which draws nothing until handed an avatar.
+            if (key == "yaps")
+                return empty.Concat(new (string, Action<EditorWindow>)[]
+                {
+                    ("-test", w => { var mode = type.GetField("_mode", Any); mode.SetValue(w, Enum.ToObject(mode.FieldType, 1)); }),
+                }).ToArray();
+            if (key == "painter" && converted != null)
+                return new (string, Action<EditorWindow>)[] { ("", w => type.GetMethod("Pick", Any).Invoke(w, new object[] { converted })) };
             if (descriptor == null) return empty;
             void Pick(EditorWindow w) => field.SetValue(w, descriptor);
             return empty.Concat(new (string, Action<EditorWindow>)[]

@@ -159,10 +159,12 @@ namespace AvatarBridge
             scroll.Add(paint);
 
             var seed = new BridgeElements.Card("Start from");
+            var removePair = BridgeElements.Btn("Remove this pair", RemovePair);
+            removePair.SetEnabled(pairs > 0);
             seed.Body.Add(BridgeElements.ButtonRow(
                 BridgeElements.Btn("The bone names", FromNames, "What the squash finds on its own: breast, boob, butt, booty, glute bones, a pair each. Replaces every region."),
                 BridgeElements.Btn("Add a pair", AddPair, "Two at most."),
-                BridgeElements.Btn("Remove this pair", RemovePair)));
+                removePair));
             if (pairs > 0)
             {
                 seed.Body.Add(BridgeElements.ButtonRow(
@@ -177,7 +179,7 @@ namespace AvatarBridge
                 }
             }
             seed.Body.Add(BridgeElements.Hint("Then Add squash in Tools ▸ YAPS ▸ Setup, or convert with the squash opt-in. Remove the regions to go back to the bone names."));
-            seed.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Remove the regions", () =>
+            var removeAll = BridgeElements.Btn("Remove the regions", () =>
             {
                 // The component keeps its knobs; only the regions go.
                 if (Regions != null)
@@ -189,7 +191,9 @@ namespace AvatarBridge
                 }
                 Load();
                 Say("Regions removed. The squash finds the parts by bone name again.", Tone.Info);
-            })));
+            });
+            removeAll.SetEnabled(pairs > 0);
+            seed.Body.Add(BridgeElements.ButtonRow(removeAll));
             scroll.Add(seed);
         }
 
