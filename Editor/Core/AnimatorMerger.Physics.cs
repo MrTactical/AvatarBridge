@@ -47,7 +47,8 @@ namespace AvatarBridge
             // shared-rider test.
             var activatedByClip = new Dictionary<AnimationClip, HashSet<EditorCurveBinding>>();
             var offSafe = new Dictionary<EditorCurveBinding, bool>();
-            var chainByTarget = new Dictionary<EditorCurveBinding, BridgeContext.ConvertedPhysicsChain>();
+            // Every chain a binding reaches: grouped strands share one cloth's enabled flag.
+            var chainByTarget = new Dictionary<EditorCurveBinding, List<BridgeContext.ConvertedPhysicsChain>>();
             var physicslessStyles = new HashSet<Transform>();
             // Chains left running when their style hides, because a mesh outside the toggled
             // object rides them. Named in the report so "this cloth never stops" is explained
@@ -299,7 +300,14 @@ namespace AvatarBridge
                         }
                         // Which chain a binding belongs to, so a later pass
                         // can ask what rides it.
-                        chainByTarget[target] = chain;
+                        if (!chainByTarget.TryGetValue(target, out var reached))
+                        {
+                            chainByTarget[target] = reached = new List<BridgeContext.ConvertedPhysicsChain>();
+                        }
+                        if (!reached.Contains(chain))
+                        {
+                            reached.Add(chain);
+                        }
                         bool alreadyDriven = false;
                         foreach (var have in existing)
                         {
@@ -332,7 +340,10 @@ namespace AvatarBridge
                                 offSafe[target] = false;
                                 continue;
                             }
-                            deactivationsMirrored++;
+                            if (additions == null || !additions.ContainsKey(target))
+                            {
+                                deactivationsMirrored++;
+                            }
                         }
                         else
                         {
@@ -556,7 +567,7 @@ namespace AvatarBridge
             // this state hides too. So the question is asked per state.
             bool HidesEveryRider(EditorCurveBinding target, AnimationClip clip)
             {
-                if (!chainByTarget.TryGetValue(target, out var chain)) return false;
+                if (!chainByTarget.TryGetValue(target, out var chains)) return false;
                 var hidden = new List<string>();
                 foreach (var binding in AnimationUtility.GetCurveBindings(clip))
                 {
@@ -566,7 +577,7 @@ namespace AvatarBridge
                 }
                 if (hidden.Count == 0) return false;
 
-                foreach (var rider in RidersOf(chain))
+                foreach (var rider in chains.SelectMany(RidersOf))
                 {
                     string path = AnimationUtility.CalculateTransformPath(rider, root);
                     bool covered = false;

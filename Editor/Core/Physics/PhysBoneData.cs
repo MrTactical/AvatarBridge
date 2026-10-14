@@ -15,9 +15,7 @@ namespace AvatarBridge
         public GameObject SourceGameObject;
         public Transform Root;
         // Roots folded in from other PhysBones with the same settings under the same parent.
-        // One solver per hair strand is what the source avatar had, not what it needs: both
-        // MagicaCloth2 and DynamicBone simulate any number of independent roots in one
-        // component, and each extra component is its own proxy mesh and its own team.
+        // MagicaCloth2 only (PhysBoneChainGrouping).
         public List<Transform> MergedRoots = new List<Transform>();
         public List<GameObject> MergedSources = new List<GameObject>();
         public IEnumerable<Transform> AllRoots

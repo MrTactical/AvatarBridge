@@ -181,30 +181,34 @@ namespace AvatarBridge
                 }
             }
 
+            // By cloth: grouped strands share one ratio, so one animated strand keeps it for all.
             var grounded = new List<string>();
-            foreach (var chain in ctx.ConvertedPhysicsChains)
+            foreach (var cloth in ctx.ConvertedPhysicsChains
+                         .Where(c => c.Physics != null && c.Root != null).GroupBy(c => c.Physics))
             {
-                if (chain.Physics == null || chain.Root == null) continue;
-                var sdata = chain.Physics.GetType().GetProperty("SerializeData")?.GetValue(chain.Physics);
+                var sdata = cloth.Key.GetType().GetProperty("SerializeData")?.GetValue(cloth.Key);
                 var field = sdata?.GetType().GetField("animationPoseRatio");
                 if (field == null || !(field.GetValue(sdata) is float ratio) || ratio <= 0.001f)
                 {
                     continue;
                 }
 
-                // Animated if the chain root, or anything under it, carries a curve.
-                string root = BridgeContext.RelativePath(ctx.Target.transform, chain.Root);
-                bool drives = animated.Any(p => p == root
-                    || (p.Length > root.Length && p.StartsWith(root, System.StringComparison.Ordinal)
-                        && p[root.Length] == '/'));
+                // Animated if a chain root, or anything under it, carries a curve.
+                bool drives = cloth.Any(chain =>
+                {
+                    string root = BridgeContext.RelativePath(ctx.Target.transform, chain.Root);
+                    return animated.Any(p => p == root
+                        || (p.Length > root.Length && p.StartsWith(root, System.StringComparison.Ordinal)
+                            && p[root.Length] == '/'));
+                });
                 if (drives)
                 {
                     continue;
                 }
 
                 field.SetValue(sdata, 0f);
-                EditorUtility.SetDirty(chain.Physics);
-                grounded.Add(chain.Root.name);
+                EditorUtility.SetDirty(cloth.Key);
+                grounded.AddRange(cloth.Select(c => c.Root.name));
             }
 
             if (grounded.Count > 0)

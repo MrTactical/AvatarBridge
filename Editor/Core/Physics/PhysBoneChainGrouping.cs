@@ -1,7 +1,11 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS && AVATARBRIDGE_MAGICA
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEditor;
 using UnityEngine;
+using VRC.SDK3.Avatars.Components;
+using VRC.SDK3.Dynamics.PhysBone.Components;
 
 namespace AvatarBridge
 {
@@ -16,9 +20,9 @@ namespace AvatarBridge
     //
     // The bar for merging is "the two components would have been identical
     // anyway": same settings, same colliders, same on/off state, same
-    // parent, same classified kind, same length. Anything a merge could not express
-    // (an ignore list, a PhysBone parameter, a per-chain toggle) keeps its
-    // own component.
+    // parent, same classified kind, same segment lengths. Anything a merge could not
+    // express (an ignore list, a PhysBone parameter, a toggle on one chain) keeps
+    // its own component.
     public static class PhysBoneChainGrouping
     {
         const string Category = "PhysBones -> MagicaCloth2";
@@ -30,6 +34,7 @@ namespace AvatarBridge
                 return chains;
             }
 
+            var toggled = ToggledPaths(ctx);
             var result = new List<PhysBoneChainData>();
             var buckets = new Dictionary<string, PhysBoneChainData>();
             int folded = 0;
@@ -37,7 +42,7 @@ namespace AvatarBridge
 
             foreach (var chain in chains)
             {
-                string key = KeyFor(chain);
+                string key = KeyFor(chain, ctx.Target.transform, toggled);
                 if (key == null)
                 {
                     result.Add(chain);
@@ -71,7 +76,7 @@ namespace AvatarBridge
                     $"{BridgeElements.Count(folded + groups, "identical chain", "identical chains")} simulated by " +
                     BridgeElements.Count(groups, "cloth", "cloths"),
                     "These PhysBones were separate components with the same settings, the same " +
-                    "colliders, the same parent and the same length: a hairstyle built one strand at a time, a pair " +
+                    "colliders, the same parent and the same bone lengths: a hairstyle built one strand at a time, a pair " +
                     "of ears, a row of charms. One MagicaCloth2 component simulates any number of " +
                     "independent root bones, and each component it saves is a proxy mesh and a " +
                     "solver team the avatar no longer pays for. The chains still move separately: " +
@@ -84,9 +89,16 @@ namespace AvatarBridge
         }
 
         // Null means "keep this one on its own".
-        static string KeyFor(PhysBoneChainData data)
+        static string KeyFor(PhysBoneChainData data, Transform avatar, HashSet<string> toggled)
         {
             if (data.Root == null || data.SourceGameObject == null || data.Synthesized)
+            {
+                return null;
+            }
+            // A cloth has one enabled flag. A strand the animator switches by itself, through
+            // its own object, its root or its PhysBone, would stop every strand it shared with.
+            if (toggled.Contains(BridgeContext.RelativePath(avatar, data.SourceGameObject.transform))
+                || toggled.Contains(BridgeContext.RelativePath(avatar, data.Root)))
             {
                 return null;
             }
@@ -125,9 +137,9 @@ namespace AvatarBridge
             {
                 return null;
             }
-            // Same parent on both the bone and the component's own object:
-            // a toggle that hides one of these hides all of them, which is
-            // what lets them share a component's enabled flag.
+            // Same parent on both the bone and the component's own object: with
+            // neither switched on its own (above), a toggle that hides one of these
+            // hides all of them, which is what lets them share an enabled flag.
             var rootParent = data.Root.parent;
             var sourceParent = data.SourceGameObject.transform.parent;
             if (rootParent == null || sourceParent == null)
@@ -136,11 +148,11 @@ namespace AvatarBridge
             }
 
             // Gravity and the swing bound are solved from the path one cloth bends, so a
-            // longer or shorter strand would hang differently than it did in VRChat. Same
-            // bone count, and the length to within 5%.
-            var path = MagicaClothWriter.SimulatedPathFrom(data.Root, data);
-            float reach = path.Sum();
-            string shape = path.Count + "x" + (reach > 1e-6f ? Mathf.RoundToInt(Mathf.Log(reach) / Mathf.Log(1.05f)).ToString() : "0");
+            // longer or shorter strand would hang differently than it did in VRChat. Every
+            // segment to within 5%, which keeps the profile as well as the length.
+            // ponytail: hard bucket edges split strands a hair apart; cluster if groups fragment.
+            string shape = string.Join(",", MagicaClothWriter.SimulatedPathFrom(data.Root, data)
+                .Select(s => s > 1e-6f ? Mathf.RoundToInt(Mathf.Log(s) / Mathf.Log(1.05f)).ToString() : "0"));
 
             var colliders = string.Join(",", data.Colliders
                 .Where(c => c != null)
@@ -169,6 +181,41 @@ namespace AvatarBridge
         }
 
         static bool HasCurve(AnimationCurve curve) => curve != null && curve.length > 0;
+
+        // Paths the animator switches: an object's active flag, or any curve on a PhysBone or a
+        // base of it (its enabled flag is the Behaviour's). Read from the source's own
+        // controllers, since this pass runs before the merge.
+        static HashSet<string> ToggledPaths(BridgeContext ctx)
+        {
+            var controllers = new List<RuntimeAnimatorController>();
+            var descriptor = ctx.SourceDescriptor;
+            if (descriptor != null)
+            {
+                foreach (var layer in (descriptor.baseAnimationLayers ?? new VRCAvatarDescriptor.CustomAnimLayer[0])
+                             .Concat(descriptor.specialAnimationLayers ?? new VRCAvatarDescriptor.CustomAnimLayer[0]))
+                {
+                    if (layer.animatorController != null) controllers.Add(layer.animatorController);
+                }
+            }
+            foreach (var animator in ctx.Target.GetComponentsInChildren<Animator>(true))
+            {
+                if (animator.runtimeAnimatorController != null) controllers.Add(animator.runtimeAnimatorController);
+            }
+            var paths = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var clip in controllers.SelectMany(c => c.animationClips).Where(c => c != null).Distinct())
+            {
+                foreach (var binding in AnimationUtility.GetCurveBindings(clip)
+                             .Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip)))
+                {
+                    if ((binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive")
+                        || (binding.type != null && binding.type.IsAssignableFrom(typeof(VRCPhysBone))))
+                    {
+                        paths.Add(binding.path);
+                    }
+                }
+            }
+            return paths;
+        }
 
         // Rounded, because two strands of one hairstyle are authored by
         // copying a component and the odd float differs in the last bit.

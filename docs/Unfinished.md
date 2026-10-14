@@ -999,6 +999,18 @@ given a collision bone per side), a chain with a PhysBone parameter (the holder 
 GrabbyBones parameter), an ignore list (expressed as a root set), and any per-chain curve
 (sampled by normalised depth, so length changes what it reads).
 
+**2026-10-14 (overnight), branch `physbone-grouping-2`**, the old branch merged onto dev and
+reviewed twice. Also held out now: a chain whose own object, root or PhysBone the animator
+switches by itself (a cloth has one enabled flag, so one strand's toggle stopped the whole
+group), and any chain whose bones differ in length by more than 5% each (gravity and the swing
+bound are solved from the path one cloth bends, and the merge took them from the longest
+strand). Fixed with it: the rider check before asserting a grouped cloth off reads every
+strand's riders, the mirrored-off count counts the cloth once, the pose-ratio grounding asks
+whether ANY strand of a cloth is animated, the store description counts chains, not cloths.
+Still open, measured only through the Physics A/B probe at best: a group shares one collision
+radius (the mesh fit pools every strand, and the spacing cap takes the tightest), so strands of
+the same bones but different mesh thickness collide at one size.
+
 **Untested against the avatar that reported it.** The variant to hand is the Quest one, 8 chains,
 four of them anchored volumes, none groupable. The reporter has been asked which avatar it is.
 Merge to `dev` only once the PC avatar converts and the result is checked in game.
