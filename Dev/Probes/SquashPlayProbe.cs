@@ -224,6 +224,7 @@ namespace AvatarBridge.Regression
         static float handRadius;
         static Vector3 outside;
         static Material[] glass;
+        static float pulseWas;
 
         // Each shot eases in over its first third, holds, and eases out, so s runs 0, 1, 0.
         static void Film(Transform[] slots, Material[] mats)
@@ -234,6 +235,10 @@ namespace AvatarBridge.Regression
             if (shotIndex == film.Count)
             {
                 File.WriteAllLines(Path.Combine(outDir, "segments.tsv"), segments);
+                // The pulse shot set it on the material assets, which outlive Play mode: the
+                // build it filmed was left pulsing a little in game.
+                foreach (var m in mats) m.SetFloat("_YAPS_SquashPulse", pulseWas);
+                AssetDatabase.SaveAssets();
                 SessionState.SetInt(K + "on", 0);
                 Debug.Log($"[SquashPlay] filmed {filmed} frames into {outDir}");
                 EditorApplication.Exit(0);
@@ -268,6 +273,7 @@ namespace AvatarBridge.Regression
         static void StartFilm(Transform[] slots, Material[] mats)
         {
             Directory.CreateDirectory(Path.Combine(outDir, "frames"));
+            pulseWas = mats.Length > 0 ? mats[0].GetFloat("_YAPS_SquashPulse") : 0f;
             segments = new List<string>();
             shotStart = Bend;
             sheet = new Texture2D(1920, 640, TextureFormat.RGB24, false);

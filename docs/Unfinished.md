@@ -1682,6 +1682,29 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     copy. Unknowns: how many slots the material data provider carries, and keying by vertex index
     (store the selection by position and UV, re-bake at build, refuse a mismatch). Both builders
     need it.
+    Joe 2026-10-14, "go ahead" on Tier 1, and: make squash a FEATURE the user opts into, a toggle
+    in the conversion and in the YAPS tool, either what the converter would have done (parts by
+    bone name) or custom (the selection). Off unless switched on. Step 1 DONE: the setup moved out
+    of the dev test builder into the add-on (`YapsSquash.Add(avatar, folder, report, pulse)`,
+    `YapsSquash.Strip`), the test builder now a thin caller; rebuilt the test avatar through it and
+    every share texture came out byte-identical to the build before. Copies are marked on their
+    importer (`squash:` before the source's id) so Strip finds them in any folder. Found on the way:
+    the video probe's pulse shot set the pulse on the material ASSETS and left 0.006 on the build it
+    filmed; it now puts the build's own value back. Next: the converter opt-in (a pass after the
+    YAPS one, copies repointed in swap clips the way the YAPS ones are, or a toggle swapping the
+    unsquashed original back leaves its layer behind the skin), the YAPS tool's button, then the
+    custom selection.
+    Idea, Joe 2026-10-14: SQUASH MEETS A PLUG. Today it does not: the squash reads only hands (the
+    wearer's arms through the provider, other players' through CVR's player globals), the cloth and
+    the partner, so a plug passes straight through a part, and one bent into a socket between a pair
+    leaves the pair as it was. Routes, cheapest first: (1) the wearer's own plug through the provider
+    slots like the arms, a capsule per baked segment; (2) another player's plug needs a transport,
+    and the atlas is the one already crossing avatars, but today only sockets write it, so plugs
+    writing their shaft is a new kind and a protocol bump (mixed builds blind to each other); (3) a
+    plug already announces its base and length in a protocol light, which is how a socket knows its
+    depth, so a socket placed between the pair gives the shaft's line (base to socket) and the pair's
+    shader reading the same light could part them along it with no new transport; only where such a
+    socket sits, and the four light slots are shared.
   Open: remote copies,
   the measurement probe (camera cost, controller
   cost, readback latency, replacement universality), then the staged build above, tuning, and
