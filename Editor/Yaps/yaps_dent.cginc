@@ -54,8 +54,9 @@ float4 _YAPS_DentOwn_TexelSize;
 //   8-11  left upper arm, lower arm, hand, middle finger; 12-15 the same on the right
 //   16-17 each pair's back: a node on the rest bone behind the pair, so the pair's middle
 //         minus it points out of the body, level when the avatar stands
+//   18-19 each pair's socket, when one sits between the pair: the shaft a plug runs through it
 // Parts 0 and 1 are a pair, 2 and 3 another.
-float4x4 _YAPS_SquashFollow[18];
+float4x4 _YAPS_SquashFollow[20];
 // Reaches per part, in its follow's units: toward the partner, away from it, out of the body,
 // into it, and along cross(toward, out) either way.
 float4 _YAPS_SquashReach;
@@ -269,6 +270,32 @@ void YapsHandsPress(YapsPart p, inout float3 hv[4], inout float hr[4])
                 if (vv > dot(hv[2], hv[2])) { hv[3] = hv[2]; hr[3] = hr[2]; hv[2] = v; hr[2] = vr; }
                 else if (vv > dot(hv[3], hv[3])) { hv[3] = v; hr[3] = vr; }
             }
+        }
+    }
+    // A plug in the socket between the pair, anyone's, from the light it announces itself with:
+    // its base and its length. The light gives no direction, so the shaft runs from the base
+    // through the socket for the plug's length, and presses like another hand. Only while it
+    // reaches the socket, so a plug merely near the pair parts nothing.
+    // ponytail: the radius is a share of the length, since the light carries none.
+    int socket = 18 + (p.m >> 1);
+    if (_YAPS_SquashHands.z > 0 && YapsUnit(socket) > 0)
+    {
+        float3 at = YapsSlot(socket);
+        [unroll]
+        for (uint i = 0; i < 4; i++)
+        {
+            if (dot(unity_LightColor[i].rgb, unity_LightColor[i].rgb) > 0.0001) continue;
+            int digit = YapsLightDigit(i);
+            if (digit != 8 && digit != 9) continue;
+            float len = unity_LightColor[i].a;
+            float3 base = YapsLightPosition(i);
+            float d = distance(at, base);
+            if (len <= 0.0001 || d >= len || d <= 1e-4) continue;
+            float r = clamp(0.1 * len, 0.012, 0.035);
+            float3 v = YapsPress(p, base, base + (at - base) / d * len, r) * _YAPS_SquashHands.z;
+            float vv = dot(v, v);
+            if (vv > dot(hv[2], hv[2])) { hv[3] = hv[2]; hr[3] = hr[2]; hv[2] = v; hr[2] = r; }
+            else if (vv > dot(hv[3], hv[3])) { hv[3] = v; hr[3] = r; }
         }
     }
 }

@@ -173,6 +173,9 @@ namespace AvatarBridge
             var parts = new List<Part>();
             var rests = new List<Transform>();
             var backs = new List<Transform>();
+            // The socket between each pair, if any: a plug entering it parts the pair.
+            var sockets = root.GetComponentsInChildren<YapsSocket>(true).Select(x => x.transform).ToList();
+            var between = new List<Transform>();
             var kept = new List<int>();
             var log = new List<string>();
             var reach = Vector4.zero;
@@ -209,6 +212,13 @@ namespace AvatarBridge
                 var back = Child(restBone, BackName);
                 back.position = mid - o * a.reach;
                 backs.Add(back);
+                // In the gap the pair parts around: near the line from the body to the pair's
+                // middle. Distance to the middle alone missed a socket at the skin between large
+                // parts and could take one in the mouth above them.
+                float Gap(Transform x) => HandleUtility.DistancePointLine(x.position, back.position, mid);
+                var socket = sockets.Where(x => Gap(x) < Mathf.Min(a.reach, b.reach)).OrderBy(Gap).FirstOrDefault();
+                between.Add(socket);
+                if (socket != null) log.Add($"{label}: a plug in \"{socket.name}\" parts it");
                 foreach (var p in measured)
                 {
                     p.follow = Child(p.mover, FollowName);
@@ -331,10 +341,11 @@ namespace AvatarBridge
             // The slots yaps_dent.cginc reads; a node scaled to zero for each one with nothing in it.
             var empty = Child(host.transform, "empty");
             empty.localScale = Vector3.zero;
-            var slots = Enumerable.Repeat(empty, 18).ToArray();
+            var slots = Enumerable.Repeat(empty, 20).ToArray();
             for (int i = 0; i < parts.Count; i++) { slots[i] = parts[i].follow; slots[4 + i] = rests[i]; }
             for (int i = 0; i < 8; i++) slots[8 + i] = arms[i / 4][i % 4] ?? empty;
             for (int i = 0; i < backs.Count; i++) slots[16 + i] = backs[i];
+            for (int i = 0; i < between.Count; i++) slots[18 + i] = between[i] ?? empty;
             provider.transforms = slots;
             provider.shaderPropertyName = "_YAPS_SquashFollow";
 

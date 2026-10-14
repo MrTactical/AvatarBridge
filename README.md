@@ -1384,6 +1384,14 @@ names it.
 **If the body mesh changes** (re-imported, a different vertex count), painted regions are refused
 rather than read onto the wrong vertices, and the report says so. Paint them again.
 
+**Plugs.** A YAPS socket placed between a pair (between the breasts, say) parts them: once a plug
+is inside it, the pair is pressed apart along the shaft, from the plug's base through the socket,
+whether it is the wearer's own plug or another player's. It reads the length light a YAPS plug
+already carries, or any plug that announces itself the same way, so it costs nothing synced; that
+light shares the four vertex-light slots with everything else that uses them. Without a socket
+between the pair, a plug still passes through the parts. A squash built by an earlier version
+needs **Add squash** pressed again (or the avatar reconverted) to notice its socket.
+
 ### Testing it
 
 - **In the editor**: select a socket, click **Preview**, move it around the plug; or select a baked
@@ -1716,7 +1724,7 @@ settle. Leaving all of them alone converts fine.
 | **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
 | **Opt-ins ▸ OSC toys ▸ Keep the OGB / PCS haptics contacts** (YAPS add-on) | off | The toy-app contacts *Penetration* strips with the rest of the stack. Plugs and sockets work either way; these only drive a toy, and each one spends some of the instance's 512 contact pairs. Needs *Penetration* on *Convert to YAPS*; *Remove* strips them regardless. See [OSC toys](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
 | **Opt-ins ▸ OSC toys ▸ Keep OGB haptics synced (OSCGoesBrrr, Lovense)** (YAPS add-on) | off | Off, the kept OGB haptics parameters are local (free); OSCGoesBrrr's automatic detection skips ChilloutVR's `#` names, but its manual avatar-parameter links read them, and the report lists the names. On, they stay synced and automatic detection works with no links to add (ChilloutVR still needs its `--osc-query-prefix=VRChat-Client` launch argument), at 32 sync bits each, about nine per plug and per socket; the report's sync budget entry says where the avatar landed. Needs the contacts above kept and *Penetration* on *Convert to YAPS* |
-| **Opt-ins ▸ Soft parts ▸ Squash breasts and butt against each other and hands** (YAPS add-on) | off | Off, the parts swing as their physics make them and pass through each other. On, the body shader flattens them where they press together and dents them under a hand, on every layer over the skin, at no sync cost; see [Squash](#squash-soft-parts-that-press-together). The parts are found by bone name, or from regions painted with *Tools ▸ YAPS ▸ Squash regions*. Works with *Penetration* on any answer |
+| **Opt-ins ▸ Soft parts ▸ Squash breasts and butt against each other and hands** (YAPS add-on) | off | Off, the parts swing as their physics make them and pass through each other. On, the body shader flattens them where they press together, dents them under a hand and parts them around a plug in a socket between them, on every layer over the skin, at no sync cost; see [Squash](#squash-soft-parts-that-press-together). The parts are found by bone name, or from regions painted with *Tools ▸ YAPS ▸ Squash regions*. Works with *Penetration* on any answer |
 | **Opt-ins ▸ Penetration ▸ Show the avatar's OWN depth animations to other players** (YAPS add-on) | off | Not YAPS's socket shapes, which already play for everyone on a synced parameter. This is the bulges and winces the avatar's author animated in VRChat, which are contact-driven, and ChilloutVR runs an avatar's triggers on the wearer's machine alone. Off, each socket's depth parameter is local: free, and only the wearer sees the reaction. On, it syncs and the room sees it, at 32 bits per socket: one depth parameter each, six sockets is about 192 of 3200; a socket that kept several depth parameters as authored pays for each. Needs *Penetration* on *Convert to YAPS* |
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder: you must press **Create Controller** yourself |
 | **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of this avatar's measured height, centred on its original size. Parent-constrained props are re-anchored so they scale with you. Not added, with a warning, when the avatar already has its own parameter or menu entry called "Height": rename that one to get the slider |

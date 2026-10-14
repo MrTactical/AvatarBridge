@@ -64,6 +64,7 @@ namespace AvatarBridge.Regression
             SessionState.SetInt(K + "on", 1);
             SessionState.SetInt(K + "other", Environment.GetCommandLineArgs().Contains("-spOther") ? 1 : 0);
             SessionState.SetInt(K + "video", Environment.GetCommandLineArgs().Contains("-spVideo") ? 1 : 0);
+            SessionState.SetInt(K + "plug", Environment.GetCommandLineArgs().Contains("-spPlug") ? 1 : 0);
             var scene = EditorSceneManager.OpenScene(Arg("-spScene"), OpenSceneMode.Single);
             foreach (var r in scene.GetRootGameObjects())
                 if (r.GetComponentInChildren<CVRAvatar>(true) == null && r.GetComponentInChildren<Animator>(true) != null) r.SetActive(false);
@@ -134,7 +135,19 @@ namespace AvatarBridge.Regression
             }
             if (SessionState.GetInt(K + "video", 0) == 1) { if (frame >= Bend) Film(slots, mats); return; }
             if (frame == Bend - 1) Shoot("rest");
-            if (SessionState.GetInt(K + "other", 0) == 1)
+            if (SessionState.GetInt(K + "plug", 0) == 1)
+            {
+                // A plug light from below, its shaft up through the socket between the pair: short of
+                // the socket, then a third and two thirds of its length through.
+                var shots = new (float through, string name)[] { (-0.05f, "plug_short"), (0.07f, "plug_in"), (0.14f, "plug_deep") };
+                int at = frame - (End - 30);
+                var s = shots[Mathf.Clamp(at, 0, shots.Length - 1)];
+                if (frame >= Bend) Plug(slots[18], slots[0], slots[1], s.through);
+                // The same frame again without the light, so the cloth cannot tell them apart.
+                if (at >= 0 && at < shots.Length) { Shoot(s.name); plug.enabled = false; Shoot(s.name + "_off"); plug.enabled = true; }
+                if (at == shots.Length - 1) frame = End - 21;
+            }
+            else if (SessionState.GetInt(K + "other", 0) == 1)
             {
                 // One shot per hand shape, the gesture in the hand's w as the client sends it. The
                 // third-player shot repeats the palm as a third client sees it: its own hands far
@@ -178,6 +191,28 @@ namespace AvatarBridge.Regression
                 Debug.Log("[SquashPlay] done " + outDir);
                 EditorApplication.Exit(0);
             }
+        }
+
+        static Light plug;
+
+        // A plug's protocol light: black, range ending in 8, intensity its 0.21 m length, at its base.
+        static void Plug(Transform socket, Transform a, Transform b, float through)
+        {
+            if (plug == null)
+            {
+                plug = new GameObject("Test plug light").AddComponent<Light>();
+                plug.type = LightType.Point;
+                plug.color = Color.black;
+                plug.renderMode = LightRenderMode.ForceVertex;
+                plug.range = 0.483f;
+                plug.intensity = 0.21f;
+                // Where the pair meets, as a socket placed in the cleavage would be. The provider
+                // reads the transform live, so moving it here is what the shader sees.
+                socket.position = 0.5f * (a.position + b.position);
+                Debug.Log($"[SquashPlay] plug: socket {socket.name} at {socket.position}, scale {socket.lossyScale.x}");
+            }
+            var dir = (Vector3.up + animator.transform.forward * 0.3f).normalized;
+            plug.transform.position = socket.position - dir * (0.21f - through);
         }
 
         // Another player, 1.7 m tall, reaching in from the front: the globals carry only a wrist,

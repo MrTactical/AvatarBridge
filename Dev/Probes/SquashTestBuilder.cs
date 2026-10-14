@@ -90,7 +90,12 @@ namespace AvatarBridge.Regression
                     Debug.Log("[Squash] converter: " + string.Join(" | ", report.Entries.Where(e => e.Category == YapsSquash.Category).Select(e => $"{e.Status} {e.Subject}: {e.Detail}")));
                 else if (Has("-squashPaint")) Debug.Log("[Squash] " + Painted(avatar));
                 else if (Has("-squashSwap")) Debug.Log("[Squash] " + AddShader(avatar) + " || " + SwapTest(avatar.transform));
-                else Debug.Log("[Squash] " + (Has("-squashShader") ? AddShader(avatar) : Add(avatar)));
+                else
+                {
+                    // -squashSocket: a socket between the first pair, for a plug to part it.
+                    if (Has("-squashSocket")) TestSocket(avatar.transform);
+                    Debug.Log("[Squash] " + (Has("-squashShader") ? AddShader(avatar) : Add(avatar)));
+                }
 #else
                 Debug.Log("[Squash] " + Add(avatar));
 #endif
@@ -591,6 +596,19 @@ namespace AvatarBridge.Regression
         }
 
         public static void StripShader(Transform root) => YapsSquash.Strip(root);
+
+        // On the chest, between the pair nearest it, a little in front of their roots.
+        static void TestSocket(Transform root)
+        {
+            var animator = root.GetComponent<Animator>();
+            var chest = animator.GetBoneTransform(HumanBodyBones.UpperChest) ?? animator.GetBoneTransform(HumanBodyBones.Chest);
+            var pair = Pairs(root, out _).OrderBy(x => Vector3.Distance(x[0].position + x[1].position, 2f * chest.position)).First();
+            var mid = 0.5f * (pair[0].position + pair[1].position);
+            var go = new GameObject("Test socket");
+            go.transform.SetParent(chest, false);
+            go.transform.position = mid + root.forward * 0.03f;
+            go.AddComponent<AvatarBridge.Yaps.YapsSocket>();
+        }
 
         // A toggle swapping a squashed slot back to its original and to an alternate: both keys must
         // land on squashed copies the providers write, and Strip with the clip must hand them back.

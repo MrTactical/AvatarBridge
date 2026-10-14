@@ -1727,6 +1727,24 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     depth, so a socket placed between the pair gives the shaft's line (base to socket) and the pair's
     shader reading the same light could part them along it with no new transport; only where such a
     socket sits, and the four light slots are shared.
+    Joe 2026-10-14, "all of it". Route 3 DONE, ON DEV, editor-proven only, NOT YET IN GAME: two
+    more provider slots (18 and 19), each pair's socket when a `YapsSocket` sits in the gap the
+    pair parts around (within the smaller reach of the line from the back node to the pair's
+    middle; distance to the middle alone missed a socket at the skin between large parts, 25.7 cm
+    off with 22 cm reach, and could have taken a mouth socket above them). The shader takes every
+    black light whose range digit is 8 or 9, base at the light, length in its alpha, and presses the
+    pair with a capsule from the base through the socket for the plug's length, only once the
+    socket is within that length; the capsule competes in the hand slots, so it wins only where it
+    presses hardest. Proof, Kar in batch Play mode (`SquashPlayProbe -spPlug`, each shot rendered
+    twice in one frame, light on and off, so the cloth cannot differ): 5 cm short of the socket, 0
+    pixels change; a third and two thirds through, about 4400 pixels at the meeting line, front
+    and side, nothing torn. A shaft run up the chest wall behind the parts changed nothing, as it
+    should; one aimed into a part pressed it (9230 pixels), which is how the light path itself was
+    proven. Route 1 needs no build of its own: the wearer's own plug light reaches their own body,
+    so route 3 covers it wherever a socket is. Route 2 (the atlas, a protocol bump) stays queued
+    for a plug that touches a part with no socket between the pair.
+    Open: in game, a plug through a socket between the pair, own and another player's; that the
+    four light slots hold with a plug, the socket's own lights and a world's lights together.
     Idea, Joe 2026-10-14: FORCE AND BOUNCE. A press that arrives fast should land as an impact: a
     wave out from where a hand (or a plug, or another part) hit, the part bouncing a little after
     a hard push, on any part pressed by any other, with sockets and plugs. NOT STARTED. The squash
