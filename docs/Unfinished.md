@@ -1643,6 +1643,21 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     lays the arrays out as the watcher has them (its own player far off at 0, the presser at 1,
     the wearer's own hands at 2, count 3): identical to the two-player shot, 0 samples differ.
     Needs three clients to prove in game.
+    Squeezed together, Joe 2026-10-14 after the first squish video: "the test pulse needs to
+    bring them together and the test hands squish too". Two shader gaps. (1) A hand on the outer
+    side bends the part toward its partner, but the contact plane only switched on when the
+    FOLLOWS were inside `start`, so two bent parts passed through each other. Now the plane
+    eases in with the bend toward the partner (full at a tenth of the reach) and sits midway
+    across the gap when the pair is apart, so a squeeze from outside makes them meet and
+    flatten against each other. A bend away from the partner never turns it on, and at rest
+    nothing moves. Ceiling: each part sees only its own bend, so one squeezed alone flattens
+    against its partner's rest surface without pushing the partner. (2) The test pulse added
+    to the pair press, which flattened each part where it stood and read as no contact. It is
+    now a squeeze from the outer side, through the same bend and flatten as a hand, so the pair
+    swings in and meets; still a share of the start, still on the same pairs the diagnostic
+    reads. ON DEV, editor-proven only (`-spVideo`: both the squeeze and the pulse close the
+    cleavage into a flat seam and let go), NOT YET IN GAME. Re-make the diagnostic build to see
+    it; a shipped build's pulse is 0.
   Open: remote copies,
   the measurement probe (camera cost, controller
   cost, readback latency, replacement universality), then the staged build above, tuning, and

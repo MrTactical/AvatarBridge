@@ -11,8 +11,9 @@
 //
 // -spVideo films one continuous run instead, three views a frame at 30 fps into <dir>/frames,
 // with segments.tsv naming each segment's first frame: another player's hand in each shape,
-// a hand between the parts, two hands squeezing, a hand from below, the own arm, then the pair
-// pulse. The other player's hands are drawn as glass capsules the size the shader presses with.
+// pokes round the part, quick and deep, two players at once, hands between, squeezing and
+// grabbing, a hand from below, the own arm, then the pair pulse. Other players' hands are drawn
+// as glass capsules the size the shader presses with.
 //
 // Batch, never -nographics: the frames are rendered.
 
@@ -249,7 +250,7 @@ namespace AvatarBridge.Regression
             }
             float u = (frame - shotStart) / (float)shot.frames;
             float s = u < 0.35f ? Mathf.SmoothStep(0f, 1f, u / 0.35f) : u < 0.65f ? 1f : Mathf.SmoothStep(1f, 0f, (u - 0.65f) / 0.35f);
-            Hands(Vector4.zero, Vector4.zero, Vector3.zero);
+            Press();
             shot.pose(s, u);
             if ((frame - Bend) % 2 != 0) return;
             for (int v = 0; v < 3; v++)
@@ -297,7 +298,7 @@ namespace AvatarBridge.Regression
             // The camera renders HDR under four lights, so the faint one is dimmed as well.
             glass = new[] { new Color(0.15f, 0.27f, 0.35f, 0.12f), new Color(0.45f, 0.8f, 1f, 0.3f) }
                 .Select(c => new Material(Shader.Find("Legacy Shaders/Transparent/Diffuse")) { color = c }).ToArray();
-            ghost = Enumerable.Range(0, 6).Select(_ =>
+            ghost = Enumerable.Range(0, 12).Select(_ =>
             {
                 var go = GameObject.CreatePrimitive(PrimitiveType.Capsule);
                 UnityEngine.Object.DestroyImmediate(go.GetComponent<Collider>());
@@ -331,41 +332,60 @@ namespace AvatarBridge.Regression
             var under = Surface(P + f * 0.06f - up * 0.6f, up, P - up * reach);
             float r = handRadius * Tall / 1.6f, hand = 0.11f * Tall, fist = 0.06f * Tall;
 
-            // Another player's hand from the front, its tip from 4 cm off the skin to `deep` in.
-            Action<float, float> Front(float g, float length, float deep) => (s, u) =>
-            {
-                var w = front + f * (length + Mathf.Lerp(0.04f, -deep, s));
-                Hands(new Vector4(w.x, w.y, w.z, g), Vector4.zero, w + f * 0.45f);
-            };
+            // A hand pointing along `dir` with its tip `tip` past the skin, short of it when negative.
+            // The fist presses with the knuckles, every other shape with the fingertips.
+            (Vector3, Vector3, float) Tip(Vector3 skin, Vector3 dir, float g, float tip) =>
+                (skin + dir * (tip - (g > 0.5f && g < 2.5f ? fist : hand)), dir, g);
+            Vector3 On(Vector3 n) => Surface(P + n * 0.35f, -n, P + n * reach * 0.5f);
+            var mirrored = target - P - 2f * outP * Vector3.Dot(target - P, outP);
+            var frontQ = Surface(Q + mirrored + f * 0.4f, -f, Q + mirrored - f * 0.07f);
+            var top = Surface(P + up * 0.35f + f * 0.05f, -up, P + up * reach * 0.6f);
+            var spots = new[] { On((f + up * 0.8f).normalized), On((outP + f * 0.4f).normalized), On((f * 0.5f - up).normalized), On((f + up * 0.5f - outP * 0.5f).normalized) };
+            Action<float, float> Front(float g, float deep) => (s, u) => Press(Tip(front, -f, g, Mathf.Lerp(-0.04f, deep, s)));
             film = new List<Shot>
             {
-                new Shot { name = "Another player: open hand", frames = 180, pose = Front(-1f, hand, 0.05f), at = front, width = 0.45f, profile = true },
-                new Shot { name = "Another player: fist", frames = 180, pose = Front(1f, fist, 0.05f), at = front, width = 0.45f, profile = true },
-                new Shot { name = "Another player: pointing finger", frames = 180, pose = Front(4f, hand, 0.06f), at = front, width = 0.45f, profile = true },
-                new Shot { name = "Another player: two fingers", frames = 180, pose = Front(5f, hand, 0.06f), at = front, width = 0.45f, profile = true },
-                new Shot { name = "A hand pushed in between them", frames = 210, at = between, width = 0.7f, pose = (s, u) =>
+                new Shot { name = "Another player: open hand", frames = 180, pose = Front(-1f, 0.05f), at = front, width = 0.45f, profile = true },
+                new Shot { name = "Another player: fist", frames = 180, pose = Front(1f, 0.05f), at = front, width = 0.45f, profile = true },
+                new Shot { name = "Another player: pointing finger", frames = 180, pose = Front(4f, 0.07f), at = front, width = 0.45f, profile = true },
+                new Shot { name = "Another player: two fingers", frames = 180, pose = Front(5f, 0.07f), at = front, width = 0.45f, profile = true },
+                new Shot { name = "Poking around it: top, outside, underneath, inside", frames = 360, at = P + f * 0.04f, width = 0.6f, pose = (s, u) =>
                 {
-                    var w = between + f * (hand + Mathf.Lerp(0.06f, -0.08f, s));
-                    Hands(new Vector4(w.x, w.y, w.z, -1f), Vector4.zero, w + f * 0.45f);
+                    int k = Mathf.Min((int)(u * 4f), 3);
+                    var n = (spots[k] - P).normalized;
+                    Press(Tip(spots[k], -n, 4f, Mathf.Lerp(-0.04f, 0.06f, Beats(u * 4f - k, 1))));
                 } },
-                new Shot { name = "Two hands squeezing them together", frames = 240, at = mid + f * 0.05f, width = 1.1f, pose = (s, u) =>
+                new Shot { name = "Quick pokes", frames = 180, at = front, width = 0.45f, profile = true, pose = (s, u) => Press(Tip(front, -f, 4f, Mathf.Lerp(-0.03f, 0.05f, Beats(u, 5)))) },
+                new Shot { name = "A deep poke", frames = 240, pose = Front(4f, 0.11f), at = front, width = 0.45f, profile = true },
+                new Shot { name = "A finger between them", frames = 210, at = between, width = 0.6f, pose = (s, u) => Press(Tip(between, -f, 4f, Mathf.Lerp(-0.04f, 0.09f, s))) },
+                new Shot { name = "Two players poking at once", frames = 240, at = mid + f * 0.05f, width = 0.9f, pose = (s, u) =>
+                    Press(Tip(front, -f, 4f, Mathf.Lerp(-0.03f, 0.06f, Beats(u, 3))), Tip(frontQ, -f, 4f, Mathf.Lerp(-0.03f, 0.06f, Beats(u + 1f / 6f, 3)))) },
+                new Shot { name = "A hand pushed in between them", frames = 210, at = between, width = 0.7f, pose = (s, u) => Press(Tip(between, -f, -1f, Mathf.Lerp(-0.06f, 0.08f, s))) },
+                new Shot { name = "Two hands squeezing them together", frames = 360, at = mid + f * 0.05f, width = 1f, pose = (s, u) =>
                 {
-                    var a = sideP + f * 0.1f + outP * (r + Mathf.Lerp(0.03f, -0.06f, s));
-                    var b = sideQ + f * 0.1f - outP * (r + Mathf.Lerp(0.03f, -0.06f, s));
-                    Hands(new Vector4(a.x, a.y, a.z, -1f), new Vector4(b.x, b.y, b.z, -1f), (a + b) / 2f + f * 2.5f);
+                    float b = Beats(u, 2);
+                    Press((sideP + f * 0.1f + outP * (r + Mathf.Lerp(0.03f, -0.13f, b)), -f, -1f), (sideQ + f * 0.1f - outP * (r + Mathf.Lerp(0.03f, -0.13f, b)), -f, -1f));
                 } },
+                new Shot { name = "Grabbed and squeezed, top and bottom", frames = 300, at = P + f * 0.05f, width = 0.6f, profile = true, pose = (s, u) =>
+                {
+                    float b = Beats(u, 2);
+                    Press((top + f * 0.1f + up * (r + Mathf.Lerp(0.03f, -0.09f, b)), -f, -1f), (under + f * 0.1f - up * (r + Mathf.Lerp(0.03f, -0.09f, b)), -f, -1f));
+                } },
+                new Shot { name = "Both hands on both", frames = 300, at = mid + f * 0.05f, width = 0.9f, pose = (s, u) =>
+                    Press(Tip(front, -f, -1f, Mathf.Lerp(-0.03f, 0.08f, Beats(u, 3))), Tip(frontQ, -f, -1f, Mathf.Lerp(-0.03f, 0.08f, Beats(u + 0.08f, 3)))) },
                 new Shot { name = "A hand lifting from below", frames = 210, at = under + up * 0.05f, width = 0.5f, pose = (s, u) =>
                 {
                     var w = under + f * 0.12f - up * (r + Mathf.Lerp(0.03f, -0.05f, s));
-                    Hands(new Vector4(w.x, w.y, w.z, -1f), Vector4.zero, w + f * 0.45f - up * 0.1f);
+                    Press((w, (-f * 0.45f + up * 0.1f).normalized, -1f));
                 } },
                 new Shot { name = "Own hand", frames = 240, at = front, width = 0.6f, profile = true, pose = (s, u) => Reach(s) },
-                new Shot { name = "The two pressing into each other (test pulse)", frames = 420, at = mid + f * 0.05f, width = 0.9f, pose = (s, u) =>
+                new Shot { name = "Test pulse: squeezed together from outside", frames = 480, at = mid + f * 0.05f, width = 0.9f, pose = (s, u) =>
                 {
-                    foreach (var m in mats) m.SetFloat("_YAPS_SquashPulse", 0.5f * Mathf.Clamp01(Mathf.Min(u, 1f - u) / 0.12f));
+                    foreach (var m in mats) m.SetFloat("_YAPS_SquashPulse", 0.3f * Mathf.Clamp01(Mathf.Min(u, 1f - u) / 0.1f));
                 } },
             };
         }
+
+        static float Beats(float u, int n) => Mathf.Pow(Mathf.Sin(Mathf.PI * Mathf.Repeat(u * n, 1f)), 2f);
 
         static Vector3 Surface(Vector3 from, Vector3 dir, Vector3 fallback)
         {
@@ -375,34 +395,35 @@ namespace AvatarBridge.Regression
             return hit ? h.point : fallback;
         }
 
-        // One other player with up to two hands, drawn as the capsules the shader presses with.
-        static void Hands(Vector4 l, Vector4 r, Vector3 chest)
+        // Other players' hands, a player each so each points its own way: the shader takes a
+        // hand's direction from its player's chest, set here behind the wrist. Drawn as the
+        // capsules the shader presses with.
+        static void Press(params (Vector3 wrist, Vector3 dir, float g)[] hands)
         {
             var left = new Vector4[255];
-            var right = new Vector4[255];
             var chests = new Vector4[255];
             var roots = new Vector4[255];
-            left[1] = l; right[1] = r; chests[1] = chest;
-            roots[1] = new Vector4(chest.x, 0f, chest.z, Tall);
-            Shader.SetGlobalVectorArray("_CVR_PlayerLeftHandPositions", left);
-            Shader.SetGlobalVectorArray("_CVR_PlayerRightHandPositions", right);
-            Shader.SetGlobalVectorArray("_CVR_PlayerChestPositions", chests);
-            Shader.SetGlobalVectorArray("_CVR_PlayerRootPositions", roots);
-            Shader.SetGlobalVector("CVRGlobalParams1", new Vector4(0f, 2f, 0f, 0f));
-            for (int i = 0; i < 2; i++)
+            for (int i = 0; i < ghost.Length / 3; i++)
             {
-                var h = i == 0 ? l : r;
-                Vector3 at = h;
-                bool on = at != Vector3.zero;
-                for (int k = 0; k < 3; k++) ghost[i * 3 + k].gameObject.SetActive(on && (k != 1 || h.w > 2.5f));
+                bool on = i < hands.Length;
+                for (int k = 0; k < 3; k++) ghost[i * 3 + k].gameObject.SetActive(on && (k != 1 || hands[i].g > 2.5f));
                 if (!on) continue;
-                var dir = (at - chest).normalized;
-                float rad = handRadius * Tall / 1.6f, fist = h.w > 1.5f ? 1f : Mathf.Clamp01(h.w);
-                float rf = (h.w > 4.5f && h.w < 5.5f ? 0.35f : 0.2f) * rad;
+                var (at, dir, g) = hands[i];
+                var chest = at - dir * 0.45f;
+                left[i + 1] = new Vector4(at.x, at.y, at.z, g);
+                chests[i + 1] = chest;
+                roots[i + 1] = new Vector4(chest.x, 0f, chest.z, Tall);
+                float rad = handRadius * Tall / 1.6f, fist = g > 1.5f ? 1f : Mathf.Clamp01(g);
+                float rf = (g > 4.5f && g < 5.5f ? 0.35f : 0.2f) * rad;
                 Capsule(ghost[i * 3], at, at + dir * Mathf.Max(Mathf.Lerp(0.11f, 0.06f, fist) * Tall - rad, 0f), rad);
                 Capsule(ghost[i * 3 + 1], at + dir * (0.06f * Tall), at + dir * Mathf.Max(0.11f * Tall - rf, 0.06f * Tall), rf);
                 Capsule(ghost[i * 3 + 2], at, at - dir * 0.25f, rad * 0.7f);
             }
+            Shader.SetGlobalVectorArray("_CVR_PlayerLeftHandPositions", left);
+            Shader.SetGlobalVectorArray("_CVR_PlayerRightHandPositions", new Vector4[255]);
+            Shader.SetGlobalVectorArray("_CVR_PlayerChestPositions", chests);
+            Shader.SetGlobalVectorArray("_CVR_PlayerRootPositions", roots);
+            Shader.SetGlobalVector("CVRGlobalParams1", new Vector4(0f, hands.Length + 1, 0f, 0f));
         }
 
         static void Capsule(Transform t, Vector3 a, Vector3 b, float r)

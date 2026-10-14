@@ -69,7 +69,7 @@ float4 _YAPS_SquashShape;   // x flattest, y volume kept (1 all, below 1 lets so
 float4 _YAPS_SquashPush;    // x push gain, y push ignored below this share of the reach, z capsule edge as a share of its radius, w arms on
 float4 _YAPS_SquashLimbL;   // radius of the upper arm, lower arm and hand, each as a share of its own length
 float4 _YAPS_SquashLimbR;
-float _YAPS_SquashPulse;    // test builds: a press that comes and goes on its own, as a share of the start
+float _YAPS_SquashPulse;    // test builds: a squeeze from the outside that comes and goes on its own, as a share of the start
 float4 _YAPS_SquashHands;   // x own arms' press gain, y other players' hand radius in metres at a 1.6 m viewpoint, z their press gain, w skin stride in bytes (0 none)
 float4 _YAPS_SquashTune;    // x lying-back weight, as a share of the reach out; y strength of every press; z bend give, as a share of the reach out; w deepest dent, as a share of the reach toward the hand
 float4 _CVR_PlayerLeftHandPositions[255];
@@ -294,15 +294,14 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
     float3 startN = n;
 
     float3 squashAxis[4], squashCentre[4];
-    float squashPlane[4], squashReach[4];
-    bool squashContact[4];
+    float squashPlane[4], squashReach[4], squashContact[4];
     float3 mapped = 0;
     float3 mappedN = n;
     [unroll]
     for (int m = 0; m < 4; m++)
     {
         squashPlane[m] = 0;
-        squashContact[m] = false;
+        squashContact[m] = 0;
         squashAxis[m] = 0;
         squashCentre[m] = 0;
         squashReach[m] = 0;
@@ -317,6 +316,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
 
         float3 S = 0;
         float3x3 M = 0;
+        float3 squeeze = 0;
         float strength = _YAPS_SquashTune.y;
         float3 toward = YapsSlot(m ^ 1) - p.centre;
         if (YapsUnit(m ^ 1) > 0 && length(toward) > 1e-6)
@@ -325,18 +325,23 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
             float first = m < 2 ? _YAPS_SquashPair.y : _YAPS_SquashPair.w;
             // Both parts in the first one's units, so each is pushed back to the same plane.
             float start = (m < 2 ? _YAPS_SquashPair.x : _YAPS_SquashPair.z) * YapsUnit(m & 2);
+            float share = (m & 1) == 0 ? first : 1 - first;
+            float over = start - length(toward);
+            float press = max(over, 0) * share;
+            YapsAdd(S, M, axis * press * strength);
             // Test builds show where the slots came from by where the pulse plays: both pairs
             // for the skinned buffer, the first pair alone when it reads empty, the second when
-            // it reads wrong.
+            // it reads wrong. It squeezes from the outside, as a share of the start, so the pair
+            // is seen to swing in and meet; flattened where it stood, it read as no contact.
             bool shown = yapsSkin <= 1 || (yapsSkin == 2) == (m < 2);
             float pulse = shown ? _YAPS_SquashPulse * start * (0.5 - 0.5 * cos(_Time.y * 2)) : 0;
-            float press = (max(start - length(toward), 0) + pulse) * ((m & 1) == 0 ? first : 1 - first);
-            YapsAdd(S, M, axis * press * strength);
+            squeeze = -axis * pulse * strength;
             squashAxis[m] = axis;
             squashCentre[m] = p.centre;
             squashReach[m] = reach;
-            squashPlane[m] = dot(axis, p.centre) + reach - press;
-            squashContact[m] = press > 0 && _YAPS_SquashShape.w > 0;
+            // Signed, so a pair apart meets midway across the gap.
+            squashPlane[m] = dot(axis, p.centre) + reach - over * share;
+            squashContact[m] = press > 0 && _YAPS_SquashShape.w > 0 ? 1 : 0;
         }
         // Pushed off its rest by anything its cloth collides with: pressed from the side the
         // push came from. Downward is left out, or the sag the cloth settles into would read
@@ -380,6 +385,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
             spare[h] = in0 - local;
             F += w * spare[h];
         }
+        F += squeeze;
         // What the dents leave, from one side, bends the part away, swinging about where it
         // meets the body, and each hand is that much less far in. Squeezed from both sides it
         // has nowhere to bend. Its partner never bends it: the pair's gap is where the cloth put
@@ -404,6 +410,12 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         [unroll]
         for (int hl = 0; hl < 4; hl++)
             YapsAdd(S, M, dentW[hl] * max(spare[hl] - bendBy * max(dot(dentW[hl], bendDir), 0), 0));
+        float sq = length(squeeze);
+        if (sq > 0) YapsAdd(S, M, squeeze * max(1 - bendBy * max(dot(squeeze, bendDir), 0) / (sq * sq), 0));
+        // Bent toward its partner, it meets it: without the plane the two passed through each
+        // other. Eased in with the bend, as the plane moves skin that is near it, not only past.
+        if (squashReach[m] > 0 && _YAPS_SquashShape.w > 0)
+            squashContact[m] = max(squashContact[m], saturate(dot(bend, squashAxis[m]) / (YAPS_SQUASH_SOFT * reach)));
 
         float total = M[0][0] + M[1][1] + M[2][2];
         // The squeeze line, M's strongest direction, found starting from the sum.
@@ -493,17 +505,18 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
     [unroll]
     for (int c = 0; c < 4; c++)
     {
-        if (!squashContact[c]) continue;
+        if (squashContact[c] <= 0) continue;
         float3 facing = squashAxis[c];
         float slope;
-        float back = YapsEase(dot(world, facing) - squashPlane[c], YAPS_SQUASH_SOFT * squashReach[c], slope) * shares[c];
+        float held = shares[c] * squashContact[c];
+        float back = YapsEase(dot(world, facing) - squashPlane[c], YAPS_SQUASH_SOFT * squashReach[c], slope) * held;
         if (back <= 0) continue;
         float3 q = world - squashCentre[c];
         float3 away = q - facing * dot(q, facing);
         away /= max(length(away), 0.5 * squashReach[c]);
         world += (away * _YAPS_DentSpill - facing) * back;
         if (hasNormal)
-            n = normalize(lerp(n, normalize(n + facing * dot(n, facing) * (1 / slope - 1)), shares[c]));
+            n = normalize(lerp(n, normalize(n + facing * dot(n, facing) * (1 / slope - 1)), held));
     }
 
     // The own arms and hands, a capsule per bone from one joint to the next. Skin inside is
