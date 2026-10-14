@@ -431,7 +431,7 @@ namespace AvatarBridge
             if (missingPrefabs.Count > 0)
             {
                 ctx.Report.Warning("Avatar",
-                    $"{missingPrefabs.Count} missing prefab(s) in the avatar's hierarchy",
+                    $"{BridgeElements.Count(missingPrefabs.Count, "missing prefab", "missing prefabs")} in the avatar's hierarchy",
                     $"{string.Join("; ", missingPrefabs)}: empty shells. Import their package and convert " +
                     "again if they matter.");
             }
@@ -440,7 +440,7 @@ namespace AvatarBridge
                 return;
             }
             ctx.Report.Warning("Avatar",
-                $"{missing} missing script(s) on the avatar, a package it was built with is not installed",
+                $"{BridgeElements.Count(missing, "missing script", "missing scripts")} on the avatar, a package it was built with is not installed",
                 $"On: {string.Join(", ", examples)}{(missing > examples.Count ? ", …" : "")}. If this " +
                 "avatar uses VRCFury or Modular Avatar, install them before converting, or what they build " +
                 "is silently missing.");

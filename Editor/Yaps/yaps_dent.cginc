@@ -283,7 +283,8 @@ void YapsHandsPress(YapsPart p, inout float3 hv[4], inout float hr[4])
     // its base and its length. The light gives no direction, so the shaft runs from the base
     // through the socket for the plug's length, and presses like another hand. Only while it
     // reaches the socket, so a plug merely near the pair parts nothing.
-    // ponytail: the radius is a share of the length, since the light carries none.
+    // ponytail: the radius is a tenth of the length, since the light carries none; 6 cm at most
+    // (3.5 cm drew a long thick plug thin). Real girth needs a channel the light does not have.
     int socket = 18 + (p.m >> 1);
     if (_YAPS_SquashPlug > 0 && YapsUnit(socket) > 0)
     {
@@ -298,7 +299,7 @@ void YapsHandsPress(YapsPart p, inout float3 hv[4], inout float hr[4])
             float3 base = YapsLightPosition(i);
             float d = distance(at, base);
             if (len <= 0.0001 || d >= len || d <= 1e-4) continue;
-            float r = clamp(0.1 * len, 0.012, 0.035);
+            float r = clamp(0.1 * len, 0.012, 0.06);
             float3 v = YapsPress(p, base, base + (at - base) / d * len, r) * _YAPS_SquashPlug;
             float vv = dot(v, v);
             if (vv > dot(hv[2], hv[2])) { hv[3] = hv[2]; hr[3] = hr[2]; hv[2] = v; hr[2] = r; }

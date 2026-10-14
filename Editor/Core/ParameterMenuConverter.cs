@@ -120,7 +120,7 @@ namespace AvatarBridge
                 if (resynced.Count > 0)
                 {
                     ctx.Report.Converted(Category,
-                        $"{resynced.Count} menu parameter(s) synced although VRChat marked them local",
+                        $"{BridgeElements.Count(resynced.Count, "menu parameter", "menu parameters")} synced although VRChat marked them local",
                         string.Join(", ", resynced.Take(12)) + (resynced.Count > 12 ? ", …" : "") +
                         ": a menu drives each, so others should see what it does.");
                 }
@@ -201,7 +201,7 @@ namespace AvatarBridge
 
             if (ftSkipped > 0)
             {
-                ctx.Report.Converted(Category, $"{ftSkipped} face-tracking parameter(s) left as-is",
+                ctx.Report.Converted(Category, $"{BridgeElements.Count(ftSkipped, "face-tracking parameter", "face-tracking parameters")} left as-is",
                     "Not exposed as menu toggles: the FT animator layers drive them.");
             }
 
@@ -302,7 +302,7 @@ namespace AvatarBridge
             {
                 return;
             }
-            ctx.Report.Warning(Category, $"{packed.Count} packed sync slot(s) must stay in the menu",
+            ctx.Report.Warning(Category, $"{BridgeElements.Count(packed.Count, "packed sync slot", "packed sync slots")} must stay in the menu",
                 $"{string.Join(", ", packed.Take(4))}{(packed.Count > 4 ? ", …" : "")}: they carry the real " +
                 "toggles to other players. Deleting them breaks that.");
         }

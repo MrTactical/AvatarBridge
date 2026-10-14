@@ -134,7 +134,7 @@ namespace AvatarBridge
             if (data.HumanoidExclusions.Count > 0)
             {
                 ctx.Report.Approximated(Category, data.Root.name,
-                    $"{data.HumanoidExclusions.Count} humanoid-mapped bone(s) excluded from simulation: " +
+                    $"{BridgeElements.Count(data.HumanoidExclusions.Count, "humanoid-mapped bone", "humanoid-mapped bones")} excluded from simulation: " +
                     $"{string.Join(", ", data.HumanoidExclusions.Take(4).Select(t => t.name))}" +
                     $"{(data.HumanoidExclusions.Count > 4 ? ", …" : "")}. The animator and IK own them; their " +
                     "other children still simulate.");
@@ -143,7 +143,7 @@ namespace AvatarBridge
             if (data.ToeExclusions.Count > 0)
             {
                 ctx.Report.Approximated(Category, data.Root.name,
-                    $"{data.ToeExclusions.Count} toe branch(es) excluded from simulation: " +
+                    $"{BridgeElements.Count(data.ToeExclusions.Count, "toe branch", "toe branches")} excluded from simulation: " +
                     $"{string.Join(", ", data.ToeExclusions.Take(4).Select(t => t.name))}" +
                     $"{(data.ToeExclusions.Count > 4 ? ", …" : "")} and below. Turn on \"Convert toe PhysBones\" " +
                     "if they are deliberate.");
@@ -170,7 +170,7 @@ namespace AvatarBridge
                 {
                     ctx.Report.Approximated(Category, data.Root.name,
                         $"Endpoint Position ({data.EndpointPosition.x:0.###}, {data.EndpointPosition.y:0.###}, " +
-                        $"{data.EndpointPosition.z:0.###}) realised as {tips} \"_End\" bone(s), so the tip can move.");
+                        $"{data.EndpointPosition.z:0.###}) realised as {BridgeElements.Count(tips, "\"_End\" bone", "\"_End\" bones")}, so the tip can move.");
                 }
             }
 
@@ -203,7 +203,7 @@ namespace AvatarBridge
                     sdata.radius.value = measured;   // direct, so any depth curve on it survives
                     ctx.Report.Converted(Category, data.Root.name,
                         $"Particle radius {before:0.###} → {measured:0.###}, measured from the mesh these " +
-                        $"bones move ({samples} vertex sample(s))." +
+                        $"bones move ({BridgeElements.Count(samples, "vertex sample", "vertex samples")})." +
                         (grownForReach ? " Measured with its sliders at full." : ""));
                 }
                 else
@@ -450,13 +450,13 @@ namespace AvatarBridge
                 }
                 var names = sdata.rootBones.Select(b => b.name).Take(6).ToList();
                 ctx.Report.Approximated(Category, data.Root.name,
-                    $"{data.Ignores.Count} Ignore Transform(s) honoured by rooting the cloth at " +
-                    $"{sdata.rootBones.Count} branch(es) instead: {string.Join(", ", names)}" +
+                    $"{BridgeElements.Count(data.Ignores.Count, "Ignore Transform", "Ignore Transforms")} honoured by rooting the cloth at " +
+                    $"{BridgeElements.Count(sdata.rootBones.Count, "branch", "branches")} instead: {string.Join(", ", names)}" +
                     $"{(sdata.rootBones.Count > names.Count ? ", …" : "")}. Each branch bends from its second " +
                     "joint, so it may feel stiff at the base." +
-                    (deadRoots.Count > 0 ? $" {deadRoots.Count} childless branch(es) dropped." : "") +
+                    (deadRoots.Count > 0 ? $" {BridgeElements.Count(deadRoots.Count, "childless branch", "childless branches")} dropped." : "") +
                     (unhonouredBranches.Count > 0
-                        ? $" {unhonouredBranches.Count} branch(es) simulate their excluded bones, or nothing of " +
+                        ? $" {BridgeElements.Count(unhonouredBranches.Count, "branch simulates its", "branches simulate their")} excluded bones, or nothing of " +
                           $"them would move: {string.Join(", ", unhonouredBranches.Select(b => b.name).Take(4))}" +
                           $"{(unhonouredBranches.Count > 4 ? ", …" : "")}."
                         : ""));
@@ -473,8 +473,8 @@ namespace AvatarBridge
                 // every frame; a dead chain is the safer of two wrong answers. The pinned roots
                 // stay so the cloth remains valid and inspectable.
                 ctx.Report.Warning(Category, data.Root.name,
-                    $"This cloth CANNOT move: honouring the {data.Ignores.Count} excluded transform(s) " +
-                    $"(including {data.HumanoidExclusions.Count} humanoid bone(s)) leaves nothing to move. Kept " +
+                    $"This cloth CANNOT move: honouring the {BridgeElements.Count(data.Ignores.Count, "excluded transform", "excluded transforms")} " +
+                    $"(including {BridgeElements.Count(data.HumanoidExclusions.Count, "humanoid bone", "humanoid bones")}) leaves nothing to move. Kept " +
                     "for inspection; delete it or fix the source PhysBone.");
                 return;
             }
@@ -482,10 +482,10 @@ namespace AvatarBridge
             sdata.rootBones.Clear();
             sdata.rootBones.Add(data.Root);
             ctx.Report.Warning(Category, data.Root.name,
-                $"{data.Ignores.Count} Ignore Transform(s) NOT honoured: MagicaCloth2 can only exclude " +
+                $"{BridgeElements.Count(data.Ignores.Count, "Ignore Transform", "Ignore Transforms")} NOT honoured: MagicaCloth2 can only exclude " +
                 "a bone by rooting below it, and " +
                 (costsTooMuch
-                    ? $"that would simulate only {kept} of {wholeChain} bone(s). "
+                    ? $"that would simulate only {kept} of {BridgeElements.Count(wholeChain, "bone", "bones")}. "
                     : "that would leave nothing to move. ") +
                 $"The whole tree simulates from \"{data.Root.name}\", so those bones jiggle where VRChat held them.");
         }
@@ -515,7 +515,7 @@ namespace AvatarBridge
                   "physics from the PhysBone\" to convert pull, spring and stiffness, or tune the cloth by hand.";
 
             ctx.Report.Converted(Category, data.Root.name,
-                $"BoneCloth on {baseline}, {data.Colliders.Count} collider(s). Source PhysBone was pull " +
+                $"BoneCloth on {baseline}, {BridgeElements.Count(data.Colliders.Count, "collider", "colliders")}. Source PhysBone was pull " +
                 $"{data.Pull:0.##}, spring {data.Spring:0.##}, stiffness {data.Stiffness:0.##}, gravity " +
                 $"{data.Gravity:0.##}, immobile {data.Immobile:0.##}, radius {data.Radius:0.###}. {fate}");
 
@@ -1587,7 +1587,7 @@ namespace AvatarBridge
                 (spring ? $" (power {power:0.###})" : " (spring settings unavailable on this MagicaCloth2 version)") +
                 (collision
                     ? $", and only \"{collisionBone}\" ({collisionBones.Count} of {data.Root.childCount} " +
-                      "branch(es)) is offered for collision" +
+                      "branches) is offered for collision" +
                       (sized ? $", sized {collisionRadius:0.###} from the mesh" : "")
                     : ", though its collision bone could not be set on this MagicaCloth2 version") +
                 (pinned ? ". Its root stays put, as a PhysBone's does, so straps weighted to it stay on" : "") +

@@ -56,7 +56,7 @@ namespace AvatarBridge
 
             if (senders.Length > 0 || receivers.Length > 0)
             {
-                ctx.Report.Converted(Category, $"{senders.Length} sender(s), {receivers.Length} receiver(s) converted");
+                ctx.Report.Converted(Category, $"{BridgeElements.Count(senders.Length, "sender", "senders")}, {BridgeElements.Count(receivers.Length, "receiver", "receivers")} converted");
             }
 
         }
@@ -96,7 +96,7 @@ namespace AvatarBridge
                 return;
             }
             ctx.Report.Approximated(Category,
-                $"{custom.Count} contact tag(s) only this avatar can trigger",
+                $"{BridgeElements.Count(custom.Count, "contact tag", "contact tags")} only this avatar can trigger",
                 $"\"{string.Join("\", \"", custom.Take(8))}\"" + (custom.Count > 8 ? ", …" : "") +
                 ". A contact fires when something sends a matching tag, and these aren't body parts " +
                 ": nothing any other player carries sends them. Between two copies of this avatar " +
@@ -410,7 +410,7 @@ namespace AvatarBridge
 
             if (held.Count == 0) return;
             ctx.Report.Approximated(Category,
-                $"{held.Count} contact(s) now hold their control on instead of tapping it",
+                $"{BridgeElements.Count(held.Count, "contact now holds its", "contacts now hold their")} control on instead of tapping it",
                 string.Join("; ", held) + ". On while touched, off when it leaves. The menu switch still latches.");
         }
 
@@ -527,13 +527,13 @@ namespace AvatarBridge
 
             if (repointed > 0 || mirrored > 0)
             {
-                ctx.Report.Converted(Category, $"{repointed + mirrored} contact animation(s) rewired",
+                ctx.Report.Converted(Category, $"{BridgeElements.Count(repointed + mirrored, "contact animation", "contact animations")} rewired",
                     "They now toggle or move the converted contact." +
                     (mirrored > 0 ? $" {mirrored} switched its parent object and now reach it too." : ""));
             }
             if (dropped.Count > 0)
             {
-                ctx.Report.Warning(Category, $"{dropped.Count} contact-animating curve(s) could not be carried",
+                ctx.Report.Warning(Category, $"{BridgeElements.Count(dropped.Count, "contact-animating curve", "contact-animating curves")} could not be carried",
                     string.Join("; ", dropped.Take(6)) + (dropped.Count > 6 ? ", …" : "") +
                     ": no equivalent on the converted contact, or it was not converted. Removed.");
             }
@@ -875,9 +875,9 @@ namespace AvatarBridge
             if (balanced > 0 || stripped > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"Contact zone ownership settled across {layersTouched} layer(s)",
-                    $"{stripped} curve(s) that only asserted a zone's resting state were removed and " +
-                    $"{balanced} restore(s) written in, so zones are neither stuck off after load nor held on over " +
+                    $"Contact zone ownership settled across {BridgeElements.Count(layersTouched, "layer", "layers")}",
+                    $"{BridgeElements.Count(stripped, "curve that only asserted a zone's resting state was", "curves that only asserted a zone's resting state were")} removed and " +
+                    $"{BridgeElements.Count(balanced, "restore", "restores")} written in, so zones are neither stuck off after load nor held on over " +
                     "their toggle.");
             }
         }
@@ -1178,7 +1178,7 @@ namespace AvatarBridge
             if (created > 0)
             {
                 ctx.Report.Converted(Category, "Built-in VRChat colliders",
-                    $"{created} CVRPointer(s) created for tags the avatar's receivers listen to.");
+                    $"{BridgeElements.Count(created, "CVRPointer", "CVRPointers")} created for tags the avatar's receivers listen to.");
             }
         }
 

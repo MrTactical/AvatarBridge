@@ -92,8 +92,8 @@ namespace AvatarBridge
                 else if (pair.Key is Texture) textures++;
             }
             ctx.Report.Converted(Category,
-                $"Re-homed {meshes} mesh(es), {materials} material(s), {shaders} shader(s), " +
-                $"{textures} texture(s) out of temp",
+                $"Re-homed {BridgeElements.Count(meshes, "mesh", "meshes")}, {BridgeElements.Count(materials, "material", "materials")}, {BridgeElements.Count(shaders, "shader", "shaders")}, " +
+                $"{BridgeElements.Count(textures, "texture", "textures")} out of temp",
                 "VRCFury deletes Packages/com.vrcfury.temp on its next build, leaving the avatar invisible, " +
                 "pink or missing textures. Saved to " + dir + ".");
         }

@@ -103,7 +103,7 @@ namespace AvatarBridge
 
             if (converted > 0)
             {
-                ctx.Report.Converted(Category, $"{converted} VRC constraint(s) -> Unity constraints");
+                ctx.Report.Converted(Category, $"{BridgeElements.Count(converted, "VRC constraint", "VRC constraints")} -> Unity constraints");
             }
             // Curve rewriting happens later, on owned copies.
             // See RepointCurvesOnOurCopies.
@@ -197,7 +197,7 @@ namespace AvatarBridge
                 return;
             }
             ctx.Report.Converted(Category,
-                $"{disabled.Count} unfollowable local-space constraint(s) disabled: their animation takes over",
+                $"{BridgeElements.Count(disabled.Count, "unfollowable local-space constraint", "unfollowable local-space constraints")} disabled: their animation takes over",
                 $"{string.Join(", ", disabled)}: local-space constraints Unity cannot match, also posed by an " +
                 "animation. The animation holds the bone; the live follow is lost.");
         }
@@ -345,7 +345,7 @@ namespace AvatarBridge
             if (protectedSources.Count > 0)
             {
                 ctx.Report.Warning(Category,
-                    $"{protectedSources.Count} clip(s) left untouched to protect your original files",
+                    $"{BridgeElements.Count(protectedSources.Count, "clip", "clips")} left untouched to protect your original files",
                     $"{string.Join(", ", System.Linq.Enumerable.Take(protectedSources, 6))}" +
                     $"{(protectedSources.Count > 6 ? ", …" : "")}: the avatar's own files, not copies. What they " +
                     "switch (limb lock, sit, flight) will not work. Convert from a baked copy to fix it.");
@@ -353,14 +353,14 @@ namespace AvatarBridge
             if (repointed > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"{repointed} animation curve(s) repointed at the Unity constraints",
+                    $"{BridgeElements.Count(repointed, "animation curve", "animation curves")} repointed at the Unity constraints",
                     "So limb-lock, sit and flight toggles still work." +
                     (followed > 0 ? $" {followed} followed their constraint to a new object." : ""));
             }
             if (dropped.Count > 0)
             {
                 ctx.Report.Approximated(Category,
-                    $"{dropped.Count} curve(s) drove a constraint property Unity doesn't have",
+                    $"{BridgeElements.Count(dropped.Count, "curve", "curves")} drove a constraint property Unity doesn't have",
                     "Dropped rather than left pointing at nothing: almost always 'Freeze To " +
                     "World', which has no Unity or ChilloutVR equivalent. A toggle relying on it " +
                     "will change the constraint but not pin anything in place: " +
@@ -369,7 +369,7 @@ namespace AvatarBridge
             if (droppedOffsets.Count > 0)
             {
                 ctx.Report.Approximated(Category,
-                    $"{droppedOffsets.Count} curve(s) animated a constraint offset, which is not carried over",
+                    $"{BridgeElements.Count(droppedOffsets.Count, "curve", "curves")} animated a constraint offset, which is not carried over",
                     "Dropped rather than left pointing at nothing. The constraint keeps the offset it was " +
                     "built with, so whatever the animation shifted stays at rest: " +
                     string.Join("; ", droppedOffsets) + ".");
@@ -377,21 +377,21 @@ namespace AvatarBridge
             if (droppedRest.Count > 0)
             {
                 ctx.Report.Approximated(Category,
-                    $"{droppedRest.Count} curve(s) animated a constraint's rest pose or axes, which is not carried over",
+                    $"{BridgeElements.Count(droppedRest.Count, "curve", "curves")} animated a constraint's rest pose or axes, which is not carried over",
                     "Dropped rather than left pointing at nothing. The constraint keeps the rest pose and axes " +
                     "it was built with: " + string.Join("; ", droppedRest) + ".");
             }
             if (unmappedSources.Count > 0)
             {
                 ctx.Report.Approximated(Category,
-                    $"{unmappedSources.Count} curve(s) animated a constraint source that was not carried over",
+                    $"{BridgeElements.Count(unmappedSources.Count, "curve", "curves")} animated a constraint source that was not carried over",
                     "Usually an empty source slot, which converts to nothing. Dropped rather than left " +
                     "driving a different source: " + string.Join("; ", unmappedSources) + ".");
             }
             if (lost.Count > 0)
             {
                 ctx.Report.Warning(Category,
-                    $"{lost.Count} curve(s) drove a constraint on an object that is now GONE",
+                    $"{BridgeElements.Count(lost.Count, "curve", "curves")} drove a constraint on an object that is now GONE",
                     "Objects removed with a stripped system are not counted here, so this is unexpected. " +
                     "Please report it: " +
                     string.Join("; ", lost) + ".");
@@ -399,7 +399,7 @@ namespace AvatarBridge
             if (movedByBake.Count > 0)
             {
                 ctx.Report.Warning(Category,
-                    $"{movedByBake.Count} curve(s) name a path the avatar's own build step didn't produce",
+                    $"{BridgeElements.Count(movedByBake.Count, "curve names", "curves name")} a path the avatar's own build step didn't produce",
                     "The object is under a different parent: a VRCFury or Modular Avatar bake stopped short. " +
                     "Get the source avatar building cleanly and convert again. Found: " +
                     string.Join("; ", movedByBake) + ".");
@@ -407,7 +407,7 @@ namespace AvatarBridge
             if (neverBuilt.Count > 0)
             {
                 ctx.Report.Warning(Category,
-                    $"{neverBuilt.Count} curve(s) drove a constraint that was never built",
+                    $"{BridgeElements.Count(neverBuilt.Count, "curve", "curves")} drove a constraint that was never built",
                     "Usually a VRCFury or Modular Avatar bake that errored partway. Build a test copy of the " +
                     "source avatar and check it completes: " + string.Join("; ", neverBuilt) + ".");
             }
@@ -577,7 +577,7 @@ namespace AvatarBridge
                 return;
             }
             ctx.Report.Warning(Category,
-                $"{mirrored.Count} constraint(s) sit under a mirrored parent and will be reflected",
+                $"{BridgeElements.Count(mirrored.Count, "constraint sits", "constraints sit")} under a mirrored parent and will be reflected",
                 "Unity's constraints do not correct for a negatively scaled parent. Un-mirror those bones " +
                 "and re-rig; no setting changes it.\n\n" +
                 string.Join("\n", mirrored));
@@ -954,7 +954,7 @@ namespace AvatarBridge
                 return;
             }
             ctx.Report.Warning(Category,
-                $"{crossChain.Count} constraint(s) relayed a bone from another chain in local space",
+                $"{BridgeElements.Count(crossChain.Count, "constraint", "constraints")} relayed a bone from another chain in local space",
                 "Unity solves constraints in world space only, so these will not follow their source. A gap " +
                 "in the conversion: please report the avatar.\n\n" +
                 string.Join("\n", crossChain));

@@ -498,6 +498,8 @@ namespace AvatarBridge
                 foreach (var (path, label, tip) in Settings(chain))
                 {
                     var field = BridgeElements.Bound(so, path, label, tip);
+                    // Three decimals, like the slider boxes: the solver's floats read 12.09532 otherwise.
+                    if (field is FloatField number) number.formatString = "0.###";
                     if (field != null) fields.Add(field);
                 }
                 fields.Bind(so);

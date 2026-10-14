@@ -279,7 +279,7 @@ namespace AvatarBridge
             if (grafts.Count > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"{grafts.Count} of the avatar's own locomotion animation(s) grafted into ChilloutVR's locomotion",
+                    $"{grafts.Count} of the avatar's own locomotion animations grafted into ChilloutVR's locomotion",
                     $"{string.Join("; ", grafts)}. Matched to ChilloutVR's locomotion by velocity, loops matched " +
                     "to their slot. A flight pose plays in ChilloutVR's own flight mode.");
             }
@@ -293,7 +293,7 @@ namespace AvatarBridge
             if (StrippedNames.Count > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"Movement baked into {StrippedNames.Count} animation(s) flattened, ChilloutVR moves you itself",
+                    $"Movement baked into {BridgeElements.Count(StrippedNames.Count, "animation", "animations")} flattened, ChilloutVR moves you itself",
                     $"{string.Join(", ", StrippedNames.Distinct())}. Root movement is held at its starting value, " +
                     "so the game moves you. Motion that returns home is untouched.");
             }

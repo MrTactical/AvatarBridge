@@ -261,8 +261,8 @@ namespace AvatarBridge
 
             if (refreshed > 0) AssetDatabase.SaveAssets();
             if (found == 0) return "No YAPS materials in this project.";
-            if (refreshed == 0 && failed == 0) return $"{found} YAPS material(s), all current.";
-            string said = $"Refreshed {refreshed} of {found} YAPS material(s).";
+            if (refreshed == 0 && failed == 0) return $"{BridgeElements.Count(found, "YAPS material", "YAPS materials")}, all current.";
+            string said = $"Refreshed {refreshed} of {BridgeElements.Count(found, "YAPS material", "YAPS materials")}.";
             // A failure is a material whose source shader is gone from the
             // project. Nothing can be rebuilt from a shader that is not
             // there, and saying so beats a count that quietly does not add up.
@@ -422,7 +422,7 @@ namespace AvatarBridge
 
             bool frameless = unit.Any(f => f.Text.Contains(NoNormal) || f.Text.Contains(NoTangent));
             report?.Converted(Category, material.name,
-                $"Deform patched into \"{material.shader.name}\" across {patchedPasses} pass(es). " +
+                $"Deform patched into \"{material.shader.name}\" across {BridgeElements.Count(patchedPasses, "pass", "passes")}. " +
                 "The original shader is untouched; a copy carrying YAPS was written beside the " +
                 "converted avatar and the material repointed at it."
                 + (frameless
@@ -432,7 +432,7 @@ namespace AvatarBridge
                       "Simple Lit carries both."
                     : "")
                 + (skippedShadowPasses > 0
-                    ? $" {skippedShadowPasses} shadow pass(es) take their vertex stage from outside " +
+                    ? $" {BridgeElements.Count(skippedShadowPasses, "shadow pass takes its", "shadow passes take their")} vertex stage from outside " +
                       "this shader and Unity's standard caster, so there is nothing of the avatar's to " +
                       "edit there: the shadow will not follow the bend. Cosmetic, and the " +
                       "alternative was no deform at all."

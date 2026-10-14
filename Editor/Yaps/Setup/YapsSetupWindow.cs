@@ -281,7 +281,7 @@ namespace AvatarBridge
                 var done = YapsRemover.Sweep(_target.transform);
                 _tidyStatus.Set(done.Count == 0
                     ? "Nothing left behind."
-                    : $"Cleaned up {done.Count} leftover(s): " + string.Join("; ", done) + ". One undo step.",
+                    : $"Cleaned up {BridgeElements.Count(done.Count, "leftover", "leftovers")}: " + string.Join("; ", done) + ". One undo step.",
                     Tone.Good);
                 foreach (var line in done) Debug.Log("[YAPS] Cleaned up " + line);
                 Rescan();
@@ -849,7 +849,7 @@ namespace AvatarBridge
             _buildLog.Add(BridgeElements.Notice(lines.Any(l => l.StartsWith("✗")) ? Tone.Warn : Tone.Good,
                 headline + (lines.Count == 0
                     ? " Nothing needed doing."
-                    : $" {lines.Count} note(s) below, and the same lines are in the Console.")));
+                    : $" {BridgeElements.Count(lines.Count, "note", "notes")} below, and the same lines are in the Console.")));
 
             var rows = new List<VisualElement>();
             foreach (var line in lines)

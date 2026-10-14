@@ -97,7 +97,7 @@ namespace AvatarBridge
             {
                 parts.Add($"{ints} to Int");
             }
-            ctx.Report.Converted(Category, $"{changed.Count} parameter(s) retyped from Float ({string.Join(", ", parts)})",
+            ctx.Report.Converted(Category, $"{BridgeElements.Count(changed.Count, "parameter", "parameters")} retyped from Float ({string.Join(", ", parts)})",
                 "VRCFury bakes menu parameters as floats, and a bool written into one does nothing. Each now " +
                 "matches its menu control and conditions.");
             ReportVetoes(ctx, vetoed);
@@ -109,7 +109,7 @@ namespace AvatarBridge
             {
                 return;
             }
-            ctx.Report.Approximated(Category, $"{vetoed.Count} parameter(s) kept as Float",
+            ctx.Report.Approximated(Category, $"{BridgeElements.Count(vetoed.Count, "parameter", "parameters")} kept as Float",
                 $"{string.Join(", ", vetoed.Take(6))}{(vetoed.Count > 6 ? ", …" : "")}: a blend tree, motion " +
                 "time or clip needs the values in between.");
         }
@@ -375,7 +375,7 @@ namespace AvatarBridge
             if (unreachableDropped > 0)
             {
                 ctx.Report.Approximated("Animator",
-                    $"{unreachableDropped} transition(s) dropped that could never fire",
+                    $"{BridgeElements.Count(unreachableDropped, "transition", "transitions")} dropped that could never fire",
                     $"{string.Join(", ", unreachableNotes)}{(unreachableDropped > unreachableNotes.Count ? ", …" : "")}" +
                     ": the parameter's range can never satisfy them, so they never fired in VRChat either.");
             }

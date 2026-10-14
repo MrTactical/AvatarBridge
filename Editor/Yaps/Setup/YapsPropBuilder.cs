@@ -174,7 +174,7 @@ namespace AvatarBridge
             o.Ok = broken == 0;
             o.Message = broken == 0
                 ? (repaired > 0 ? $"Prop verified; {repaired} repaired." : "Prop verified.")
-                : $"Prop has {broken} problem(s).";
+                : $"Prop has {BridgeElements.Count(broken, "problem", "problems")}.";
             return o;
         }
 

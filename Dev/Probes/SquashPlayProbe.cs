@@ -521,7 +521,7 @@ namespace AvatarBridge.Regression
                     knobs.stretchInMotion = true; YapsSquash.Apply(root);
                 }
             };
-            float shaft = Mathf.Clamp(0.1f * PlugLength, 0.012f, 0.035f);
+            float shaft = Mathf.Clamp(0.1f * PlugLength, 0.012f, 0.06f);
             film = new List<Shot>
             {
                 new Shot { name = "Hopping: the physics alone", frames = 240, at = mid + f * 0.05f + up * 0.06f, width = 1f, profile = true, pose = Hops(false, 0f, null) },

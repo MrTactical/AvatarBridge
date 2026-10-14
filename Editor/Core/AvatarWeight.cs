@@ -312,7 +312,7 @@ namespace AvatarBridge
             if (readable.Count > 0)
             {
                 long saved = readable.Sum(t => t.Bytes);
-                Add(r, saved, $"{readable.Count} texture(s) have Read/Write Enabled ticked, which keeps a second " +
+                Add(r, saved, $"{BridgeElements.Count(readable.Count, "texture has", "textures have")} Read/Write Enabled ticked, which keeps a second " +
                               "copy in system memory for the whole session. Nothing on an avatar reads pixels " +
                               "back. Untick it in the importer.");
             }
@@ -320,7 +320,7 @@ namespace AvatarBridge
             int costly = r.Dead.Count - r.DeadFreesNothing.Count;
             if (StripAdvised(r))
             {
-                Add(r, r.DeadBytes, $"{costly} renderer(s) are switched off and nothing in the animator can " +
+                Add(r, r.DeadBytes, $"{BridgeElements.Count(costly, "renderer is", "renderers are")} switched off and nothing in the animator can " +
                                     "switch them on, so their textures are downloaded and never seen. Either wire " +
                                     "them to a toggle or strip them.");
             }
@@ -335,7 +335,7 @@ namespace AvatarBridge
             // so none come back, and the mesh is still skinned every frame.
             if (r.DeadFreesNothing.Count > 0)
             {
-                Add(r, 0, $"{r.DeadFreesNothing.Count} more renderer(s) are switched off with nothing to switch " +
+                Add(r, 0, $"{BridgeElements.Count(r.DeadFreesNothing.Count, "more renderer is", "more renderers are")} switched off with nothing to switch " +
                           "them on. Their textures are shared with something visible, so none of that comes back, " +
                           "but the mesh is still carried and still skinned every frame.");
             }
@@ -396,7 +396,7 @@ namespace AvatarBridge
 
             if (r.Atlas.Count > 0)
             {
-                Add(r, 0, $"{r.Atlas.Count} set(s) of materials share a shader and are never animated apart: " +
+                Add(r, 0, $"{BridgeElements.Count(r.Atlas.Count, "set of materials shares a shader and is", "sets of materials share a shader and are")} never animated apart: " +
                           string.Join(", ", r.Atlas) + ". One texture each would cut draw calls. Reported only, " +
                           "because merging them rewrites UVs and breaks per-slot material animation.", 2);
             }
@@ -787,7 +787,7 @@ namespace AvatarBridge
               .Append(r.Triangles.ToString("N0")).Append(" tris, ").Append(r.SubMeshes).Append(" submeshes, ")
               .Append(r.Bones).Append(" bones\n");
             sb.Append("blendshapes ").Append(r.BlendShapes).Append(" (").Append(r.AnimatedBlendShapes).Append(" animated)\n");
-            sb.Append("materials  ").Append(r.Materials).Append(" on ").Append(r.Shaders.Count).Append(" shader(s)\n");
+            sb.Append("materials  ").Append(r.Materials).Append(" on ").Append(BridgeElements.Count(r.Shaders.Count, "shader", "shaders")).Append("\n");
             sb.Append("contacts   ").Append(r.Pointers + r.Triggers)
               .Append(" (").Append(r.Pointers).Append(" pointers, ").Append(r.Triggers)
               .Append(" triggers) against 512 overlapping pairs a frame for the whole instance\n");

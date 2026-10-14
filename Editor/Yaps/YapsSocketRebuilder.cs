@@ -84,9 +84,9 @@ namespace AvatarBridge
             if (lights + pointers + triggers > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"Stripped VRCFury's socket rig from {specs.Count} socket(s)",
-                    $"{lights} marker light(s), {pointers} pointer(s) and {triggers} depth " +
-                    "trigger(s) removed. Each is rebuilt by the YAPS toolkit's own code.");
+                    $"Stripped VRCFury's socket rig from {BridgeElements.Count(specs.Count, "socket", "sockets")}",
+                    $"{BridgeElements.Count(lights, "marker light", "marker lights")}, {BridgeElements.Count(pointers, "pointer", "pointers")} and {BridgeElements.Count(triggers, "depth trigger", "depth triggers")} " +
+                    "removed. Each is rebuilt by the YAPS toolkit's own code.");
             }
             return specs;
         }
@@ -125,7 +125,7 @@ namespace AvatarBridge
             }
             if (woken > 0)
             {
-                ctx.Report.Converted(Category, $"{woken} object(s) on the socket chains woken",
+                ctx.Report.Converted(Category, $"{BridgeElements.Count(woken, "object", "objects")} on the socket chains woken",
                     "VRCFury leaves the socket branch, its second head and \"Original Object\" " +
                     "switched off for its own enable service to sort out, and that service is " +
                     "deleted here. Anything a menu toggle can switch was left exactly as found.");
@@ -401,9 +401,9 @@ namespace AvatarBridge
             if (rebuilt > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"Rebuilt {rebuilt} socket(s) through the native builder",
+                    $"Rebuilt {BridgeElements.Count(rebuilt, "socket", "sockets")} through the native builder",
                     "The same rig the YAPS toolkit builds. " +
-                    (repointed > 0 ? $"{repointed} socket(s) had their depth reactions repointed. " : "") +
+                    (repointed > 0 ? $"{BridgeElements.Count(repointed, "socket", "sockets")} had their depth reactions repointed. " : "") +
                     (left.Count > 0 ? string.Join("; ", left) + ". " : ""));
             }
         }
@@ -444,7 +444,7 @@ namespace AvatarBridge
             if (removed > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"{removed} dead exclusivity layer(s) removed",
+                    $"{BridgeElements.Count(removed, "dead exclusivity layer", "dead exclusivity layers")} removed",
                     "VRCFury's socket exclusivity could never run here. The sockets have their own toggles.");
             }
         }

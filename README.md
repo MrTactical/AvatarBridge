@@ -1407,8 +1407,9 @@ rather than read onto the wrong vertices, and the report says so. Paint them aga
 is inside it, the pair is pressed apart along the shaft, from the plug's base through the socket,
 whether it is the wearer's own plug or another player's. It reads the length light a YAPS plug
 already carries, or any plug that announces itself the same way, so it costs nothing synced; that
-light shares the four vertex-light slots with everything else that uses them. Without a socket
-between the pair, a plug still passes through the parts. **Plugs**, under *What presses it*, sets
+light shares the four vertex-light slots with everything else that uses them. The light carries
+no thickness, so the shaft's radius is taken as a tenth of its length, between 1.2 and 6 cm.
+Without a socket between the pair, a plug still passes through the parts. **Plugs**, under *What presses it*, sets
 how hard; 0 leaves them out. A squash built by an earlier version needs **Add squash** pressed
 again (or the avatar reconverted) to notice its socket, and to stretch in motion.
 
@@ -2261,19 +2262,19 @@ and convert again.
 
 ### The report says VRCFury errored, or that files are missing
 
-**"VRCFury reported N error(s) during its own build"** is *Fury's own message, quoted verbatim*, so
+**"VRCFury reported N errors during its own build"** is *Fury's own message, quoted verbatim*, so
 Fury **is** installed and it **did** run. The fault is in what it was asked to build. The usual form
 is *"You're missing some files needed for this VRCFury asset"* followed by paths; the folder in the
 path names the package.
 
-The report also lists, before the bake, **"N VRCFury component(s) reference assets that aren't in this
+The report also lists, before the bake, **"N VRCFury components reference assets that aren't in this
 project"**: Fury's message says which files, this says which component wants them.
 
 **Either install the package, or delete that VRCFury component**, then convert again. Fury wraps each
 feature so a failure shows a dialog and the build *continues*, which is why a bake can "succeed" with
 half the avatar missing, and why this is an Error that says not to upload.
 
-**"N transition(s) in the avatar's own controllers test a parameter the controller never declares"**
+**"N transitions in the avatar's own controllers test a parameter the controller never declares"**
 is a Warning, not a Fury failure: Unity names the controller, state and parameter while Fury reads
 it. Declare that parameter on that controller if the transition should work.
 
@@ -2308,7 +2309,7 @@ before you spend an evening on it.
 
 ### Other people see my avatar flickering, cycling colours or thrashing: I don't
 
-Look for **"layer(s) may thrash on OTHER players' screens right after the avatar loads"** in the
+Look for **"layers may thrash on OTHER players' screens right after the avatar loads"** in the
 report: it names the layer and the state.
 
 Remote copies don't start with your parameter values; everything sits at its **serialized default**
@@ -2863,7 +2864,7 @@ socket detection skips. Three ways to the toy, cheapest first:
   2. **Turn OSC on in ChilloutVR's settings** and wear the converted avatar, so the game
      publishes its parameters.
   3. **Open `ConversionReport.md`** from `Assets/AvatarBridgeOutput/<avatar>/` and find the entry
-     *"N OGB haptics parameter(s), local and free"*. It lists every name in full, one per line,
+     *"N OGB haptics parameters, local and free"*. It lists every name in full, one per line,
      `#OGB/Pen/…` and `#OGB/Orf/…`.
   4. **In OSCGoesBrrr, add one link per device**: *Outputs* ▸ add ▸ **Avatar parameter**, then
      paste a name exactly as the report prints it, including the leading `#`. Nothing else needs

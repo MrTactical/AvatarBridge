@@ -456,7 +456,7 @@ namespace AvatarBridge
 
             var sample = eyes[0];
             ctx.Report.Converted(Category, "Eye movement",
-                $"{eyes.Count} eye(s) set up in Transform mode, gaze limits measured from the " +
+                $"{BridgeElements.Count(eyes.Count, "eye", "eyes")} set up in Transform mode, gaze limits measured from the " +
                 $"VRChat poses (up {sample.eyeAngleLimitUp:0.#}°, down {Mathf.Abs(sample.eyeAngleLimitDown):0.#}°, " +
                 $"in {Mathf.Abs(sample.eyeAngleLimitIn):0.#}°, out {sample.eyeAngleLimitOut:0.#}°).");
         }

@@ -84,16 +84,16 @@ namespace AvatarBridge
             if (enabled.Count > 0)
             {
                 ctx.Report.Converted("Particles",
-                    $"{enabled.Count} particle emitter(s) switched on so remote players can see them",
+                    $"{BridgeElements.Count(enabled.Count, "particle emitter", "particle emitters")} switched on so remote players can see them",
                     $"{string.Join(", ", enabled.Take(6))}{(enabled.Count > 6 ? ", …" : "")}: an animated emission " +
                     "module shows only to you, so the object's own on/off gates them now." +
-                    (stripped > 0 ? $" {stripped} module curve(s) that undid it removed." : ""));
+                    (stripped > 0 ? $" {BridgeElements.Count(stripped, "module curve", "module curves")} that undid it removed." : ""));
             }
             ReportDefaultParticleMaterials(ctx);
             if (otherModules.Count > 0)
             {
                 ctx.Report.Skipped("Particles",
-                    $"{otherModules.Count} animated particle module(s) left as they are",
+                    $"{BridgeElements.Count(otherModules.Count, "animated particle module left as it is", "animated particle modules left as they are")}",
                     $"{string.Join(", ", otherModules.Take(6))}{(otherModules.Count > 6 ? ", …" : "")}: " +
                     "if an effect looks right to you and wrong to others, drive it from the object's on/off instead.");
             }
@@ -137,7 +137,7 @@ namespace AvatarBridge
                 return;
             }
             ctx.Report.Warning("Particles",
-                $"{plain.Count} particle system(s) are using Unity's default material",
+                $"{BridgeElements.Count(plain.Count, "particle system is", "particle systems are")} using Unity's default material",
                 $"{string.Join(", ", plain.Take(6))}{(plain.Count > 6 ? ", …" : "")}: plain squares, as in VRChat. " +
                 "Turn off the Renderer of one that only spawns others.");
         }
@@ -210,7 +210,7 @@ namespace AvatarBridge
             if (grounded.Count > 0)
             {
                 ctx.Report.Converted("PhysBones -> MagicaCloth2",
-                    $"{grounded.Count} cloth chain(s) settled back to their built pose, nothing animates them",
+                    $"{BridgeElements.Count(grounded.Count, "cloth chain", "cloth chains")} settled back to their built pose, nothing animates them",
                     string.Join(", ", grounded) + ": \"Is Animated\" with nothing animating them would spin forever. " +
                     "If a slider should move these, its animation did not survive.");
             }
@@ -323,10 +323,10 @@ namespace AvatarBridge
             EditorUtility.SetDirty(controller);
             AssetDatabase.SaveAssets();
 
-            ctx.Report.Converted("Head chop", $"Rewired {cloned} head-chop toggle animation(s) to FPRExclusion",
+            ctx.Report.Converted("Head chop", $"Rewired {BridgeElements.Count(cloned, "head-chop toggle animation", "head-chop toggle animations")} to FPRExclusion",
                 "The toggles now drive each FPRExclusion's IsShown instead of the removed VRC Head Chop." +
                 (orphans > 0
-                    ? $" {orphans} superseded cop(ies) removed." : ""));
+                    ? $" {BridgeElements.Count(orphans, "superseded copy", "superseded copies")} removed." : ""));
         }
 
         static int RemoveUnreferencedSubAssets(AnimatorController controller,
@@ -543,7 +543,7 @@ namespace AvatarBridge
             {
                 var paths = stations.Take(4).Select(s => ctx.PathInTarget(s.transform));
                 ctx.Report.Skipped(category,
-                    $"{stations.Length} seat(s) removed: ChilloutVR avatars cannot host seats",
+                    $"{BridgeElements.Count(stations.Length, "seat", "seats")} removed: ChilloutVR avatars cannot host seats",
                     string.Join("; ", paths) + (stations.Length > 4 ? "; …" : "") +
                     ": ChilloutVR has no seat for avatars. The objects stay.");
             }
@@ -581,7 +581,7 @@ namespace AvatarBridge
             int remaining = leftovers.Count - kept;
             if (remaining > 0)
             {
-                ctx.Report.Warning(category, $"{remaining} VRC component(s) could not be removed",
+                ctx.Report.Warning(category, $"{BridgeElements.Count(remaining, "VRC component", "VRC components")} could not be removed",
                     "Remove them manually before uploading.");
             }
             else
@@ -590,7 +590,7 @@ namespace AvatarBridge
             }
             if (kept > 0)
             {
-                ctx.Report.Skipped(category, $"{kept} PhysBone component(s) kept",
+                ctx.Report.Skipped(category, $"{BridgeElements.Count(kept, "PhysBone component", "PhysBone components")} kept",
                     "\"Delete PhysBones after converting\" is off, so they stay on the avatar. " +
                     "ChilloutVR does nothing with them.");
             }
@@ -632,13 +632,13 @@ namespace AvatarBridge
             if (cameras > 0 || listeners > 0)
             {
                 ctx.Report.Converted(category,
-                    $"Removed {cameras} camera(s) and {listeners} audio listener(s)",
+                    $"Removed {BridgeElements.Count(cameras, "camera", "cameras")} and {BridgeElements.Count(listeners, "audio listener", "audio listeners")}",
                     "ChilloutVR deletes screen cameras, and a listener hijacks your ears. The objects stay." +
-                    (kept > 0 ? $" {kept} camera(s) rendering to a texture were kept." : ""));
+                    (kept > 0 ? $" {BridgeElements.Count(kept, "camera rendering to a texture was", "cameras rendering to a texture were")} kept." : ""));
             }
             else if (kept > 0)
             {
-                ctx.Report.Converted(category, $"{kept} render-texture camera(s) kept",
+                ctx.Report.Converted(category, $"{BridgeElements.Count(kept, "render-texture camera", "render-texture cameras")} kept",
                     "ChilloutVR supports a camera that renders into a RenderTexture and hands each " +
                     "copy of the avatar its own texture. Only screen-rendering cameras are removed.");
             }
@@ -654,7 +654,7 @@ namespace AvatarBridge
             }
             if (removed > 0)
             {
-                ctx.Report.Converted(category, $"Removed {removed} missing-script component(s)",
+                ctx.Report.Converted(category, $"Removed {BridgeElements.Count(removed, "missing-script component", "missing-script components")}",
                     "Empty/missing MonoBehaviour slots left over from VRChat components; CVR flags these on load.");
             }
         }

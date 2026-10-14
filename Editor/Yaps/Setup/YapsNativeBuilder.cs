@@ -93,7 +93,7 @@ namespace AvatarBridge
                 // the body.
                 int lost = plug.bakedSlots.Count(b => b != null && b.renderer == null);
                 if (lost > 0)
-                    o.Notes.Add($"{lost} baked slot record(s) name no mesh, or a mesh since deleted, so they " +
+                    o.Notes.Add($"{BridgeElements.Count(lost, "baked slot record names", "baked slot records name")} no mesh, or a mesh since deleted, so they " +
                                 "were not baked again.");
                 alsoSlots = RecordedSlots(plug, renderer);
                 if (alsoSlots.Count == 0)
@@ -293,7 +293,7 @@ namespace AvatarBridge
             int over = YapsTags.Dropped(plug.answers) + YapsTags.Dropped(plug.refuses);
             if (over > 0)
             {
-                o.Notes.Add($"{over} tag(s) past the first {YapsTags.PlugSlots} on each list were "
+                o.Notes.Add($"{BridgeElements.Count(over, "tag", "tags")} past the first {YapsTags.PlugSlots} on each list were "
                     + "not baked: that is all the plug has room for. Delete the ones you do not "
                     + "need, or put them on the socket instead, which has no limit.");
             }
@@ -308,7 +308,7 @@ namespace AvatarBridge
                 SwitchOffLegacyDeform(patched, legacy);
                 ReadKnobs(plug, patched);
                 EditorUtility.SetDirty(plug);
-                o.Notes.Add($"Upgraded from {legacy}: {carried.Count} setting(s) carried" +
+                o.Notes.Add($"Upgraded from {legacy}: {BridgeElements.Count(carried.Count, "setting", "settings")} carried" +
                             (unmapped.Count > 0 ? $"; no YAPS counterpart for {string.Join(", ", unmapped)}" : "") + ".");
             }
             WriteKnobs(plug, patched);
@@ -338,8 +338,8 @@ namespace AvatarBridge
             int alsoMats = MirrorToRenderers(plug, renderer, result, dir, report, out int alsoMeshes, meshes, size);
             if (alsoMeshes > 0)
             {
-                o.Notes.Add($"{alsoMeshes} other mesh(es) on this avatar are weighted to the plug's bone " +
-                            $"chain, so they were baked into it too ({alsoMats} material(s)), sharing this " +
+                o.Notes.Add($"{BridgeElements.Count(alsoMeshes, "other mesh on this avatar is weighted", "other meshes on this avatar are weighted")} to the plug's bone " +
+                            $"chain, so they were baked into it too ({BridgeElements.Count(alsoMats, "material", "materials")}), sharing this " +
                             "plug's frame and length. Left out they would have stayed rigid while the rest bent.");
             }
 
@@ -375,7 +375,7 @@ namespace AvatarBridge
 
             o.Ok = true;
             o.Message = $"Baked \"{renderer.name}\": {o.Length:0.###} m, {result.VertexCount} vertices, " +
-                        $"{result.Shapes.Count} shape(s), material \"{patched.name}\".";
+                        $"{BridgeElements.Count(result.Shapes.Count, "shape", "shapes")}, material \"{patched.name}\".";
             o.Notes.Add(YapsPropBuilder.IsProp(AvatarRoot(plug.transform).gameObject)
                 ? "This plug is on a prop; make it a prop again so the prop carries the new bake."
                 : "This plug finds sockets through the screen atlas, and by their marker lights where the " +
@@ -460,7 +460,7 @@ namespace AvatarBridge
             }
             if (switched > 0)
             {
-                o.Notes.Add($"{switched} clip(s) animate this component's own Enabled field, which does " +
+                o.Notes.Add($"{BridgeElements.Count(switched, "clip animates", "clips animate")} this component's own Enabled field, which does " +
                             "nothing in game: ChilloutVR strips the component. A matching curve on the " +
                             "material's _YAPS_Enabled was written beside each, so the animation now " +
                             "switches the deform the way it was meant to.");
@@ -472,14 +472,14 @@ namespace AvatarBridge
             }
             if (shapes + scaled > 0)
             {
-                o.Notes.Add($"Wired the plug's size into {shapes + scaled} of the avatar's own clip(s)" +
-                            (shapes > 0 ? $": {shapes} shape curve(s)" : "") +
-                            (scaled > 0 ? $"{(shapes > 0 ? "," : ":")} {scaled} bone scale curve(s)" : "") +
+                o.Notes.Add($"Wired the plug's size into {BridgeElements.Count(shapes + scaled, "curve", "curves")} of the avatar's own clips" +
+                            (shapes > 0 ? $": {BridgeElements.Count(shapes, "shape curve", "shape curves")}" : "") +
+                            (scaled > 0 ? $"{(shapes > 0 ? "," : ":")} {BridgeElements.Count(scaled, "bone scale curve", "bone scale curves")}" : "") +
                             ". A curve was added beside each, so a size slider or hyper toggle reaches the shader too.");
             }
             if (missed.Count > 0)
             {
-                o.Notes.Add($"{missed.Count} animated shape(s) that move the plug are not in the bake " +
+                o.Notes.Add($"{BridgeElements.Count(missed.Count, "animated shape that moves the plug is", "animated shapes that move the plug are")} not in the bake " +
                             $"({string.Join(", ", missed.Take(6))}); the bake holds the {YapsBaker.MaxShapes} that move it most.");
             }
         }
@@ -1059,7 +1059,7 @@ namespace AvatarBridge
             material.SetFloat("_YAPS_SocketNoSelfExclude",
                 OwnPlugRestsOn(socket) && !undecidable ? 0f : 1f);
             EditorUtility.SetDirty(material);
-            return $"✓ {socket.name}: {result.Shapes.Count} shape(s) staged on \"{renderer.name}\"";
+            return $"✓ {socket.name}: {BridgeElements.Count(result.Shapes.Count, "shape", "shapes")} staged on \"{renderer.name}\"";
         }
 
         // Whether this socket hangs off an arm or a leg.

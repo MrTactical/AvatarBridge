@@ -448,7 +448,7 @@ namespace AvatarBridge
             }
             if (pruned > 0)
             {
-                ctx.Report.Converted(Category, $"Pruned {pruned} stripped branch(es)/tree(s) from shared blend trees",
+                ctx.Report.Converted(Category, $"Pruned {BridgeElements.Count(pruned, "stripped branch or tree", "stripped branches or trees")} from shared blend trees",
                     "Removes leftover VRCFury parameter math for the stripped systems.");
             }
 
@@ -805,10 +805,10 @@ namespace AvatarBridge
             }
 
             ctx.Report.Converted(Category,
-                $"Removed VRCFury's parameter compressor: {doomed.Count} layer(s), " +
-                $"{mirrors.Count} mirrored and {slotNames.Count} slot parameter(s)",
+                $"Removed VRCFury's parameter compressor: {BridgeElements.Count(doomed.Count, "layer", "layers")}, " +
+                $"{mirrors.Count} mirrored and {BridgeElements.Count(slotNames.Count, "slot parameter", "slot parameters")}",
                 $"It worked around VRChat's limit and stopped values reaching anyone here. " +
-                $"{mirrors.Values.Distinct().Count()} parameter(s) now sync directly.");
+                $"{BridgeElements.Count(mirrors.Values.Distinct().Count(), "parameter", "parameters")} now sync directly.");
         }
 
 #if !AVATARBRIDGE_YAPS
@@ -919,7 +919,7 @@ namespace AvatarBridge
                 Delete(ctx, transform.gameObject);
                 removed++;
             }
-            ctx.Report.Converted(Category, $"Removed the avatar's VRChat face-tracking rig: {removed} object(s)",
+            ctx.Report.Converted(Category, $"Removed the avatar's VRChat face-tracking rig: {BridgeElements.Count(removed, "object", "objects")}",
                 $"{string.Join(", ", names)}{(doomed.Count > names.Count ? ", …" : "")}: the chosen face " +
                 "tracking mode provides its own, and two rigs driving the same blendshapes fight each other. " +
                 "Choose \"None\" if you want the original rig left in place.");
@@ -954,7 +954,7 @@ namespace AvatarBridge
             }
             if (removed > 0)
             {
-                ctx.Report.Converted(Category, $"Deleted {removed} SPS/PCS scene object tree(s)");
+                ctx.Report.Converted(Category, $"Deleted {BridgeElements.Count(removed, "SPS/PCS scene object tree", "SPS/PCS scene object trees")}");
             }
         }
 
@@ -981,7 +981,7 @@ namespace AvatarBridge
                         n.TrimStart('#').StartsWith(p, StringComparison.OrdinalIgnoreCase))));
             if (contacts == 0) return;
             ctx.Report.Converted(Category,
-                $"Removed {contacts} haptics contact(s): OGB, PCS and Wholesome",
+                $"Removed {BridgeElements.Count(contacts, "haptics contact", "haptics contacts")}: OGB, PCS and Wholesome",
                 "They spend the instance's 512 contact pairs. YAPS keeps its own two per plug. Tick \"Keep the " +
                 "OGB/PCS haptics contacts\" to drive a toy from them.");
         }
@@ -1033,7 +1033,7 @@ namespace AvatarBridge
             }
             if (removed > 0)
             {
-                ctx.Report.Converted(Category, $"Removed {removed} orphaned pointer/trigger/exclusion object(s)");
+                ctx.Report.Converted(Category, $"Removed {BridgeElements.Count(removed, "orphaned pointer/trigger/exclusion object", "orphaned pointer/trigger/exclusion objects")}");
             }
         }
 
@@ -1075,7 +1075,7 @@ namespace AvatarBridge
             int removed = before - settings.Count;
             if (removed > 0)
             {
-                ctx.Report.Converted(Category, $"Removed {removed} Advanced Avatar Settings entr(ies)",
+                ctx.Report.Converted(Category, $"Removed {BridgeElements.Count(removed, "Advanced Avatar Settings entry", "Advanced Avatar Settings entries")}",
                     "Their sync bits and menu slots are freed.");
             }
         }
@@ -1108,7 +1108,7 @@ namespace AvatarBridge
             if (removed > 0)
             {
                 master.parameters = kept;
-                ctx.Report.Converted(Category, $"Removed {removed} dead animator parameter(s)");
+                ctx.Report.Converted(Category, $"Removed {BridgeElements.Count(removed, "dead animator parameter", "dead animator parameters")}");
             }
         }
     }

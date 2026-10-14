@@ -275,7 +275,7 @@ namespace AvatarBridge
             {
                 WriteUndo(outputDir, undo);
                 report.BytesReclaimed += bytes;
-                report.Converted(Category, $"{changed.Count} texture(s) changed, {Mb(bytes)} off the graphics card",
+                report.Converted(Category, $"{BridgeElements.Count(changed.Count, "texture", "textures")} changed, {Mb(bytes)} off the graphics card",
                     string.Join("; ", changed.Take(8).Select(Describe)) +
                     (changed.Count > 8 ? $"; and {changed.Count - 8} more" : "") +
                     ". Import settings only; \"Put the textures back\" undoes it." +
@@ -345,7 +345,7 @@ namespace AvatarBridge
             }
 
             File.Delete(path);
-            report.Converted(Category, $"{done} texture(s) put back", "Their import sizes are what they were.");
+            report.Converted(Category, $"{BridgeElements.Count(done, "texture", "textures")} put back", "Their import sizes are what they were.");
         }
 
         static string UndoPath(string outputDir) =>
@@ -404,7 +404,7 @@ namespace AvatarBridge
 
             if (gone.Count == 0) return 0;
 
-            report.Converted(Category, $"{gone.Count} hidden renderer(s) stripped, {Mb(plan.StripBytes)} off the card",
+            report.Converted(Category, $"{BridgeElements.Count(gone.Count, "hidden renderer", "hidden renderers")} stripped, {Mb(plan.StripBytes)} off the card",
                 string.Join("; ", gone.Take(6)) + (gone.Count > 6 ? $"; and {gone.Count - 6} more" : "") +
                 ". No clip could switch them on. The objects stay; Ctrl+Z puts the renderers back.");
             return gone.Count;

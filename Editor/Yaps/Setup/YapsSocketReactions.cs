@@ -216,7 +216,7 @@ namespace AvatarBridge
                 EditorUtility.SetDirty(socket);
             }
             AssetDatabase.SaveAssets();
-            return $"✓ {socket.name}: {clips.Count} depth animation(s) in layer \"{layerName}\", driven by the " +
+            return $"✓ {socket.name}: {BridgeElements.Count(clips.Count, "depth animation", "depth animations")} in layer \"{layerName}\", driven by the " +
                    $"synced parameter {parameter}, depth 1 at {ReachOf(socket):0.00} m in" + AlsoNote(also);
         }
 
@@ -593,10 +593,10 @@ namespace AvatarBridge
             }
             AssetDatabase.SaveAssets();
 
-            string note = $"✓ {socket.name}: {stages.Count} shape(s) on \"{renderer.name}\" react to a plug's tip through a contact, " +
+            string note = $"✓ {socket.name}: {BridgeElements.Count(stages.Count, "shape", "shapes")} on \"{renderer.name}\" react to a plug's tip through a contact, " +
                           $"depth 1 at {ReachOf(socket):0.00} m in (layer \"{layerName}\", synced parameter {parameter}, 32 bits{SyncRoom(avatar)})" +
                           AlsoNote(also);
-            if (cleared > 0) note += $"; cleared {cleared} stale depth parameter(s) no layer read";
+            if (cleared > 0) note += $"; cleared {BridgeElements.Count(cleared, "stale depth parameter", "stale depth parameters")} no layer read";
             if (missing.Count > 0) note += $"; not on the mesh: {string.Join(", ", missing)}";
             return note;
         }

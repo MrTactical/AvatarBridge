@@ -63,9 +63,9 @@ namespace AvatarBridge
                 controller.AddParameter(Parameter, AnimatorControllerParameterType.Float);
             }
             AddLayer(root.transform, controller, targets);
-            return $"owner id on {targets.Count} renderer(s), from the parameter stream, synced (32 bits)"
+            return $"owner id on {BridgeElements.Count(targets.Count, "renderer", "renderers")}, from the parameter stream, synced (32 bits)"
                    + (unnumbered > 0
-                       ? $"; {unnumbered} socket(s) past the first {MaxSelfSockets} carry no number, so the plugs judge them by the hips alone"
+                       ? $"; {BridgeElements.Count(unnumbered, "socket", "sockets")} past the first {MaxSelfSockets} carry no number, so the plugs judge them by the hips alone"
                        : "");
         }
 

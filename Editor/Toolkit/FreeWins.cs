@@ -222,13 +222,13 @@ namespace AvatarBridge
         {
             if (layers > 0)
             {
-                report.Converted(Category, $"{layers} layer(s) with no states removed",
+                report.Converted(Category, $"{BridgeElements.Count(layers, "layer", "layers")} with no states removed",
                     string.Join(", ", plan.Layers) + ". A layer with no states has nothing to play, " +
                     "so nothing it did can be missed.");
             }
             if (parameters > 0)
             {
-                report.Converted(Category, $"{parameters} parameter(s) nothing touches removed",
+                report.Converted(Category, $"{BridgeElements.Count(parameters, "parameter", "parameters")} nothing touches removed",
                     string.Join(", ", plan.Parameters) + ". No clip writes them, no transition reads " +
                     "them, no driver, menu control or contact names them.");
             }
@@ -238,7 +238,7 @@ namespace AvatarBridge
             }
             if (plan.PlaceholderStates > 0)
             {
-                report.Warning(Category, $"{plan.PlaceholderStates} slot(s) still hold a placeholder clip",
+                report.Warning(Category, $"{BridgeElements.Count(plan.PlaceholderStates, "slot still holds", "slots still hold")} a placeholder clip",
                     "Not waste: an empty slot crashes Unity. Each means a motion never arrived, usually a " +
                     "missing asset or a skipped build step. Find out why before relying on it.");
             }

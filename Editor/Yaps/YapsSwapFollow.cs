@@ -220,7 +220,7 @@ namespace AvatarBridge.Yaps
             if (followed > 0 && report != null)
             {
                 report.Converted("YAPS",
-                    $"Baked {followed} alternate material(s) the animator swaps in",
+                    $"Baked {BridgeElements.Count(followed, "alternate material", "alternate materials")} the animator swaps in",
                     "So the plug still bends while an alternate skin is on.");
             }
             return repointed;
@@ -281,7 +281,7 @@ namespace AvatarBridge.Yaps
             if (refused.Count > 0 && report != null)
             {
                 report.Warning("YAPS",
-                    $"{refused.Count} swapped-in material(s) could not take the deform",
+                    $"{BridgeElements.Count(refused.Count, "swapped-in material", "swapped-in materials")} could not take the deform",
                     "Their shaders refused the deform, so the plug won't bend while they're on. Give them a " +
                     "shader with source and bake again: " + string.Join(", ", refused));
             }
@@ -363,7 +363,7 @@ namespace AvatarBridge.Yaps
             if (repointed > 0 && report != null)
             {
                 report.Converted("YAPS",
-                    $"Pointed {repointed} material swap(s) at the baked material",
+                    $"Pointed {BridgeElements.Count(repointed, "material swap", "material swaps")} at the baked material",
                     "Otherwise they would swap the unbaked material back in and the plug would straighten.");
             }
             return repointed;
@@ -373,7 +373,7 @@ namespace AvatarBridge.Yaps
         {
             if (skipped.Count == 0 || report == null) return;
             report.Warning("YAPS",
-                $"{skipped.Count} material swap(s) could not be repointed",
+                $"{BridgeElements.Count(skipped.Count, "material swap", "material swaps")} could not be repointed",
                 "They live in a package, so they were not edited, and playing one straightens the plug. Copy " +
                 "the clip into your project: " + string.Join(", ", skipped));
         }

@@ -87,18 +87,18 @@ namespace AvatarBridge
 
             EditorUtility.SetDirty(into);
             AssetDatabase.SaveAssets();
-            report.Converted(Category, $"Merged {layersAdded} layer(s) and {parametersAdded} parameter(s) into \"{into.name}\"",
+            report.Converted(Category, $"Merged {BridgeElements.Count(layersAdded, "layer", "layers")} and {BridgeElements.Count(parametersAdded, "parameter", "parameters")} into \"{into.name}\"",
                 (renamed.Count > 0 ? "Layers renamed to keep names unique: " + string.Join(", ", renamed) + ". " : "") +
                 "Layers keep their order after the target's own; masks and clips are shared, not copied.");
             if (clashes.Count > 0)
             {
-                report.Warning(Category, $"{clashes.Count} parameter(s) exist in both with different types",
+                report.Warning(Category, $"{BridgeElements.Count(clashes.Count, "parameter exists", "parameters exist")} in both with different types",
                     string.Join(", ", clashes) + ". The target's type was kept; transitions from the source that " +
                     "compare the other way will need retyping.");
             }
             if (syncedSkipped.Count > 0)
             {
-                report.Skipped(Category, $"{syncedSkipped.Count} synced layer(s) not merged",
+                report.Skipped(Category, $"{BridgeElements.Count(syncedSkipped.Count, "synced layer", "synced layers")} not merged",
                     string.Join(", ", syncedSkipped) + ". A synced layer has no state machine of its own, so a " +
                     "copy would play nothing.");
             }

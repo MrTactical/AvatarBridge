@@ -1786,6 +1786,10 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     proven. Route 1 needs no build of its own: the wearer's own plug light reaches their own body,
     so route 3 covers it wherever a socket is. Route 2 (the atlas, a protocol bump) stays queued
     for a plug that touches a part with no socket between the pair.
+    Thickness: the light carries none, so the shaft's radius is a tenth of its length. Capped at
+    3.5 cm at first, which drew any plug past 35 cm thinner than proportional; 6 cm from
+    2026-10-14. Real girth would need a channel: the tracker light is DPS's, so its colour must
+    stay black, and the atlas route (2) could carry it.
     Open: in game, a plug through a socket between the pair, own and another player's; that the
     four light slots hold with a plug, the socket's own lights and a world's lights together.
     Idea, Joe 2026-10-14: FORCE AND BOUNCE. A press that arrives fast should land as an impact: a

@@ -84,7 +84,7 @@ namespace AvatarBridge.Regression
                 fail += Check("the real de-synced parameter is preserved, not localised",
                     ctx.PreserveParameters.Contains("Accessories"));
                 fail += Check("all 8 slot spellings counted, not just SyncIndex",
-                    entry != null && entry.Subject.Contains("8 slot parameter(s)"));
+                    entry != null && entry.Subject.Contains("8 slot parameters"));
                 fail += Check("VRCFury's own working value is left alone",
                     !ctx.PreserveParameters.Contains("VF113_frameTime")
                     && controller.parameters.Any(p => p.name == "VF113_frameTime"));

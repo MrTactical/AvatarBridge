@@ -91,7 +91,7 @@ namespace AvatarBridge
                 {
                     chainsTouched++;
                     ctx.Report.Approximated(Category, data.Root.name,
-                        $"Auto-assigned {added.Count} nearby collider(s): {string.Join(", ", added)}. " +
+                        $"Auto-assigned {BridgeElements.Count(added.Count, "nearby collider", "nearby colliders")}: {string.Join(", ", added)}. " +
                         "The original PhysBone didn't list these, so this is a deliberate improvement on the " +
                         "source rather than a faithful copy: remove any that make the chain behave oddly.");
                 }
@@ -100,7 +100,7 @@ namespace AvatarBridge
             if (assignments > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"Auto-assigned {assignments} collider(s) across {chainsTouched} chain(s)",
+                    $"Auto-assigned {BridgeElements.Count(assignments, "collider", "colliders")} across {BridgeElements.Count(chainsTouched, "chain", "chains")}",
                     "Each chain was given the avatar's own colliders that it starts clear of and could swing " +
                     "into. Colliders a chain begins inside are skipped, since those would push it out.");
             }

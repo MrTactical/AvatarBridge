@@ -68,14 +68,14 @@ namespace AvatarBridge
             string list = string.Join("\n  ", names);
             if (synced)
             {
-                ctx.Report.Converted(Category, $"{names.Count} OGB haptics parameter(s) kept synced for OSC toys",
+                ctx.Report.Converted(Category, $"{BridgeElements.Count(names.Count, "OGB haptics parameter", "OGB haptics parameters")} kept synced for OSC toys",
                     "OSCGoesBrrr's automatic plug and socket detection reads these by name and needs no " +
                     "setup. Launch ChilloutVR with --osc-query-prefix=VRChat-Client so it finds the game. " +
                     $"They cost 32 sync bits each; the sync budget entry has the total.\n  {list}");
             }
             else
             {
-                ctx.Report.Converted(Category, $"{names.Count} OGB haptics parameter(s), local and free",
+                ctx.Report.Converted(Category, $"{BridgeElements.Count(names.Count, "OGB haptics parameter", "OGB haptics parameters")}, local and free",
                     "In OGB, add an avatar-parameter link per name below. Launch ChilloutVR with " +
                     "--osc-query-prefix=VRChat-Client and turn OSC on. \"Keep OGB haptics synced\" makes detection " +
                     $"automatic, at 32 bits each.\n  {list}");
@@ -93,7 +93,7 @@ namespace AvatarBridge
             var undeclared = usage.Keys.Where(k => !string.IsNullOrEmpty(k) && !declared.Contains(k)).ToList();
             if (undeclared.Count > 0)
             {
-                ctx.Report.Warning(Category, $"{undeclared.Count} parameter(s) used but never declared",
+                ctx.Report.Warning(Category, $"{BridgeElements.Count(undeclared.Count, "parameter", "parameters")} used but never declared",
                     $"{Join(undeclared)}: transitions and drivers reference these, but the animator has no " +
                     "such parameter. ChilloutVR drops those transitions, so whatever they gate never happens.");
             }
@@ -126,7 +126,7 @@ namespace AvatarBridge
                 .ToList();
             if (inert.Count > 0)
             {
-                ctx.Report.Approximated(Category, $"{inert.Count} parameter(s) declared but never read",
+                ctx.Report.Approximated(Category, $"{BridgeElements.Count(inert.Count, "parameter", "parameters")} declared but never read",
                     $"{Join(inert)}: nothing in the animator conditions on, blends with, drives or animates " +
                     "these. Usually a leftover from a layer that wasn't converted or was stripped.");
             }
@@ -157,7 +157,7 @@ namespace AvatarBridge
             }
             if (emptyCloths > 0)
             {
-                ctx.Report.Warning(Category, $"{emptyCloths} cloth component(s) have no root bones",
+                ctx.Report.Warning(Category, $"{BridgeElements.Count(emptyCloths, "cloth component has", "cloth components have")} no root bones",
                     "They will simulate nothing. Usually means the source PhysBone's root was removed by a " +
                     "strip pass after the cloth was created.");
             }
@@ -166,7 +166,7 @@ namespace AvatarBridge
             var dupLayers = master.layers.GroupBy(l => l.name).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
             if (dupLayers.Count > 0)
             {
-                ctx.Report.Warning(Category, $"{dupLayers.Count} duplicate layer name(s)",
+                ctx.Report.Warning(Category, $"{BridgeElements.Count(dupLayers.Count, "duplicate layer name", "duplicate layer names")}",
                     $"{Join(dupLayers)}: duplicated names make the animator ambiguous to read and to debug.");
             }
 
@@ -206,7 +206,7 @@ namespace AvatarBridge
             }
             if (mismatched.Count > 0)
             {
-                ctx.Report.Warning(Category, $"{mismatched.Count} menu entr(ies) disagree with their parameter's type",
+                ctx.Report.Warning(Category, $"{BridgeElements.Count(mismatched.Count, "menu entry disagrees with its", "menu entries disagree with their")} parameter's type",
                     $"{Join(mismatched)}: ChilloutVR writes menu values using the entry's own type, so a " +
                     "mismatch writes nothing and the control does nothing in game.");
             }
@@ -332,7 +332,7 @@ namespace AvatarBridge
             }
             sb.AppendLine("### Face mesh");
             sb.AppendLine();
-            sb.AppendLine($"- `{face.name}`: {face.sharedMesh.blendShapeCount} blendshape(s)");
+            sb.AppendLine($"- `{face.name}`: {BridgeElements.Count(face.sharedMesh.blendShapeCount, "blendshape", "blendshapes")}");
             var blink = new List<string>();
             for (int i = 0; i < face.sharedMesh.blendShapeCount; i++)
             {
@@ -703,7 +703,7 @@ namespace AvatarBridge
             if (looping.Count > 0)
             {
                 ctx.Report.Warning(Category,
-                    $"{looping.Count} layer(s) may thrash on OTHER players' screens right after the " +
+                    $"{BridgeElements.Count(looping.Count, "layer", "layers")} may thrash on OTHER players' screens right after the " +
                     "avatar loads",
                     string.Join("; ", looping) + ": at default parameter values they never settle. You won't see " +
                     "it yourself. Give those parameters defaults that park them, or the loop an exit time. The " +
@@ -832,7 +832,7 @@ namespace AvatarBridge
                 return;
             }
             ctx.Report.Warning("Animator",
-                $"{stuck.Count} state(s) can be entered but never left",
+                $"{BridgeElements.Count(stuck.Count, "state", "states")} can be entered but never left",
                 string.Join("; ", stuck.Take(8)) + (stuck.Count > 8 ? ", …" : "") +
                 ": no way out can fire, so what they switch on stays on. Check each exit's conditions against " +
                 "the entry's.");
@@ -935,7 +935,7 @@ namespace AvatarBridge
             }
             if (yaps > 0)
             {
-                ctx.Report.Converted(Category, $"{yaps} YAPS authoring component(s) kept for editing",
+                ctx.Report.Converted(Category, $"{BridgeElements.Count(yaps, "YAPS authoring component", "YAPS authoring components")} kept for editing",
                     "YapsSocket and YapsPlug hold what the YAPS tool needs to retune a socket or plug " +
                     "later. They do nothing in game and ChilloutVR removes them at upload; everything " +
                     "they describe is already built beside them.");
@@ -945,7 +945,7 @@ namespace AvatarBridge
                 return;
             }
             var listed = doomed.OrderByDescending(p => p.Value).ThenBy(p => p.Key, StringComparer.Ordinal).Select(p => $"{p.Key} ×{p.Value}");
-            ctx.Report.Error(Category, $"{doomed.Values.Sum()} component(s) ChilloutVR will delete on load",
+            ctx.Report.Error(Category, $"{BridgeElements.Count(doomed.Values.Sum(), "component", "components")} ChilloutVR will delete on load",
                 $"{Join(listed)}: not on ChilloutVR's avatar whitelist, so silently gone once loaded.");
 
             // The grounders deserve their own note. They are the FinalIK components most likely to
@@ -1005,7 +1005,7 @@ namespace AvatarBridge
                 return;
             }
             var listed = offenders.Select(kv => $"{kv.Key} ({Join(kv.Value, 4)})");
-            ctx.Report.Warning(Category, $"{offenders.Count} shader(s) may not render correctly in VR",
+            ctx.Report.Warning(Category, $"{BridgeElements.Count(offenders.Count, "shader", "shaders")} may not render correctly in VR",
                 // Short on purpose. The hand-edit lives in the README;
                 // the report says what breaks and what to press.
                 $"{Join(listed, 6)}: these draw into one eye only here, though they looked fine in VRChat. " +
@@ -1087,7 +1087,7 @@ namespace AvatarBridge
 
             if (dropped.Count > 0)
             {
-                ctx.Report.Error(Category, $"{dropped.Count} parameter(s) past ChilloutVR's sync limit",
+                ctx.Report.Error(Category, $"{BridgeElements.Count(dropped.Count, "parameter", "parameters")} past ChilloutVR's sync limit",
                     $"{Join(dropped)}: the avatar needs more than ChilloutVR's {AasBitBudget} sync bits " +
                     $"({floats} floats and {ints} ints at 32 bits each, {bools} bools at 1). These came last, so " +
                     "they work for the wearer and never reach anyone else, with no warning " +

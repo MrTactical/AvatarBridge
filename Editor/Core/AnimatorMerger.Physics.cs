@@ -686,18 +686,18 @@ namespace AvatarBridge
             if (clipsTouched > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"{curvesAdded} toggle curve(s) re-wired to generated physics in {clipsTouched} clip(s)",
+                    $"{BridgeElements.Count(curvesAdded, "toggle curve", "toggle curves")} re-wired to generated physics in {BridgeElements.Count(clipsTouched, "clip", "clips")}",
                     "Hair and outfit toggles now switch their physics too. " +
                     (deactivationsMirrored > 0
                         ? $"{deactivationsMirrored} switch it back off when the style hides."
                         : "No style here switches its physics back off.") +
-                    (offsAsserted > 0 ? $" {offsAsserted} resting state(s) now stop it explicitly." : ""));
+                    (offsAsserted > 0 ? $" {BridgeElements.Count(offsAsserted, "resting state", "resting states")} now stop it explicitly." : ""));
             }
 
             if (sharedChains.Count > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"{sharedChains.Count} chain(s) keep simulating while their style is hidden",
+                    $"{BridgeElements.Count(sharedChains.Count, "chain keeps simulating while its", "chains keep simulating while their")} style is hidden",
                     string.Join(", ", sharedChains) + ": another mesh shares their bones, so they keep running. " +
                     "Costs a little performance, shows nothing.");
             }
@@ -708,7 +708,7 @@ namespace AvatarBridge
                     .Select(entry => $"\"{entry.Key}\" (in {string.Join(", ", entry.Value)})")
                     .ToList();
                 ctx.Report.Warning(Category,
-                    $"{strandedToggles.Count} animation(s) switch a PhysBone that wasn't converted: " +
+                    $"{BridgeElements.Count(strandedToggles.Count, "animation switches", "animations switch")} a PhysBone that wasn't converted: " +
                     "those controls will do nothing",
                     string.Join("; ", lines) + ": the chain made no physics here. The PhysBones section says why " +
                     "for each; fix that and the toggle works.");

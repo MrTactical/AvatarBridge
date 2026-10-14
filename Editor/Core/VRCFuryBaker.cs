@@ -135,7 +135,7 @@ namespace AvatarBridge
             if (unityNotes.Count > 0)
             {
                 report.Warning(Category,
-                    $"{unityNotes.Count} transition(s) in the avatar's own controllers test a parameter the controller never declares",
+                    $"{BridgeElements.Count(unityNotes.Count, "transition in the avatar's own controllers tests", "transitions in the avatar's own controllers test")} a parameter the controller never declares",
                     string.Join(" | ", unityNotes.Take(4).Select(m => "\"" + Truncate(Flatten(m), 300) + "\"")) +
                     ": Unity's message, not a VRCFury failure. Declare that parameter on that controller if the " +
                     "transition should work.");
@@ -150,7 +150,7 @@ namespace AvatarBridge
                 {
                     quoted += $" | (+{furyMessages.Count - 4} more: see the Console)";
                 }
-                report.Error(Category, $"VRCFury reported {furyErrors} error(s) during its own build",
+                report.Error(Category, $"VRCFury reported {BridgeElements.Count(furyErrors, "error", "errors")} during its own build",
                     quoted + ": Fury ran, and those features are missing or half-built. If it names files you " +
                     "don't have, install their package or delete the component asking. Fix what errors in " +
                     "VRCFury > Build a Test Copy on the original, then convert again. Do not upload this one.");
@@ -202,14 +202,14 @@ namespace AvatarBridge
                     string path = AnimationUtility.CalculateTransformPath(
                         component.transform, avatar.transform);
                     broken.Add($"\"{(string.IsNullOrEmpty(path) ? avatar.name : path)}\" " +
-                        $"({component.GetType().Name}, {missing} missing reference(s))");
+                        $"({component.GetType().Name}, {BridgeElements.Count(missing, "missing reference", "missing references")})");
                 }
             }
 
             if (broken.Count > 0)
             {
                 report.Warning(Category,
-                    $"{broken.Count} VRCFury component(s) reference assets that aren't in this project",
+                    $"{BridgeElements.Count(broken.Count, "VRCFury component references", "VRCFury components reference")} assets that aren't in this project",
                     string.Join("; ", broken) + ": the cause of Fury's \"missing some files\" error, not a " +
                     "missing VRCFury. Install the package the files come from, or delete the component, then " +
                     "convert again.");

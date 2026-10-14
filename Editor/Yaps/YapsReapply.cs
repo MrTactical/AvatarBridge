@@ -92,7 +92,7 @@ namespace AvatarBridge
 
             AssetDatabase.SaveAssets();
 
-            string summary = $"[YAPS] Re-applied to {patched} of {materials.Count} material(s).";
+            string summary = $"[YAPS] Re-applied to {patched} of {BridgeElements.Count(materials.Count, "material", "materials")}.";
             if (refusals.Count > 0)
             {
                 summary += "\n" + string.Join("\n", refusals);

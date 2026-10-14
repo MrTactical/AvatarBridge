@@ -158,7 +158,7 @@ namespace AvatarBridge
                 $"Humanoid Jaw unmapped: it pointed at \"{jaw.name}\", which is not a jaw",
                 "Rebuilt without a Jaw, so your voice and visemes don't follow that object." +
                 (usedLiveSkeleton ? " Rebuilt from the current pose, since the rig's own was refused." : "") +
-                (orphans > 0 ? $" {orphans} old rig(s) removed." : ""));
+                (orphans > 0 ? $" {BridgeElements.Count(orphans, "old rig", "old rigs")} removed." : ""));
         }
 
         // Saved, because an Avatar built in memory does not survive the scene: the animator

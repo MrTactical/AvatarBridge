@@ -130,7 +130,7 @@ namespace AvatarBridge
             string layer = YapsSocketReactions.LayerName(socket);
             string parameter = YapsSocketReactions.Parameter(socket);
             int layers = RemoveLayer(controllers, layer, parameter);
-            if (layers > 0) done.Add($"layer \"{layer}\" out of {layers} controller(s)");
+            if (layers > 0) done.Add($"layer \"{layer}\" out of {BridgeElements.Count(layers, "controller", "controllers")}");
             if (!string.IsNullOrEmpty(socket.builtLayer) && socket.builtLayer != layer)
             {
                 int old = RemoveLayer(controllers, socket.builtLayer, socket.builtParameter);
@@ -140,7 +140,7 @@ namespace AvatarBridge
             // goes with whichever of the two layers is the last to read it.
             string played = YapsSocketReactions.AnimationsLayerName(socket);
             int playedOut = RemoveLayer(controllers, played, parameter);
-            if (playedOut > 0) done.Add($"layer \"{played}\" out of {playedOut} controller(s)");
+            if (playedOut > 0) done.Add($"layer \"{played}\" out of {BridgeElements.Count(playedOut, "controller", "controllers")}");
             if (!string.IsNullOrEmpty(socket.builtAnimations) && socket.builtAnimations != played)
                 RemoveLayer(controllers, socket.builtAnimations, parameter);
             RemoveIfUnused(controllers, YapsSocketReactions.One);
@@ -310,7 +310,7 @@ namespace AvatarBridge
                 if (avatar != null && sharing.Count == 0)
                 {
                     int stripped = StripWiring(avatar, renderer);
-                    if (stripped > 0) done.Add($"size wiring out of {stripped} clip(s)");
+                    if (stripped > 0) done.Add($"size wiring out of {BridgeElements.Count(stripped, "clip", "clips")}");
                 }
 
                 // Any other plug's readout on the same mesh, built again over
@@ -335,11 +335,11 @@ namespace AvatarBridge
                     back++;
                 }
                 mesh.sharedMaterials = mats;
-                if (back > 0) done.Add($"\"{mesh.name}\" back on its own {back} material(s)");
+                if (back > 0) done.Add($"\"{mesh.name}\" back on its own {BridgeElements.Count(back, "material", "materials")}");
                 if (avatar != null)
                 {
                     int stripped = StripWiring(avatar, mesh);
-                    if (stripped > 0) done.Add($"size wiring out of {stripped} clip(s) on \"{mesh.name}\"");
+                    if (stripped > 0) done.Add($"size wiring out of {BridgeElements.Count(stripped, "clip", "clips")} on \"{mesh.name}\"");
                 }
             }
 
@@ -382,7 +382,7 @@ namespace AvatarBridge
                 int cleared = YapsNativeChannel.Clear(avatar);
                 if (cleared > 0)
                 {
-                    done.Add($"the contact channel ({cleared} object(s), layer(s) and parameter(s)): no baked plug left to carry it");
+                    done.Add($"the contact channel ({BridgeElements.Count(cleared, "object, layer or parameter", "objects, layers and parameters")}): no baked plug left to carry it");
                 }
             }
 
@@ -513,7 +513,7 @@ namespace AvatarBridge
                 int cleared = YapsNativeChannel.Clear(avatar);
                 if (cleared > 0)
                 {
-                    done.Add($"the contact channel ({cleared} object(s), layer(s) and parameter(s)): no baked plug left to carry it");
+                    done.Add($"the contact channel ({BridgeElements.Count(cleared, "object, layer or parameter", "objects, layers and parameters")}): no baked plug left to carry it");
                 }
             }
 

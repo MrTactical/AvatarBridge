@@ -491,11 +491,11 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                rows.Add(Row($"`{pair.Key}`", $"{pair.Value} reference(s)"));
+                rows.Add(Row($"`{pair.Key}`", $"{BridgeElements.Count(pair.Value, "reference", "references")}"));
             }
             return rows.Count == 0
-                ? $"All {counts.Count} referenced GUID(s) in the saved controller resolve to assets in this project."
-                : $"{rows.Count} of {counts.Count} referenced GUID(s) resolve to nothing:\n\n"
+                ? $"All {BridgeElements.Count(counts.Count, "referenced GUID in the saved controller resolves", "referenced GUIDs in the saved controller resolve")} to assets in this project."
+                : $"{rows.Count} of {BridgeElements.Count(counts.Count, "referenced GUID resolves", "referenced GUIDs resolve")} to nothing:\n\n"
                   + Table(new[] { "GUID", "Times referenced" }, rows);
         }
 

@@ -128,7 +128,7 @@ namespace AvatarBridge
             if (swapsRepointed > 0)
             {
                 report.Converted(Category,
-                    $"{swapsRepointed} material-swap curve(s) repointed at a patched shader",
+                    $"{BridgeElements.Count(swapsRepointed, "material-swap curve", "material-swap curves")} repointed at a patched shader",
                     "Materials an animation swaps in now swap in the patched copy.");
             }
         }
@@ -194,13 +194,13 @@ namespace AvatarBridge
                 if (swaps)
                 {
                     report.Approximated(Category,
-                        $"{o.Repointed.Distinct().Count()} shader(s) patched for VR stereo, found only in animated swaps",
+                        $"{BridgeElements.Count(o.Repointed.Distinct().Count(), "shader", "shaders")} patched for VR stereo, found only in animated swaps",
                         $"{string.Join(", ", o.Repointed.Distinct())}: never on a renderer at rest, assigned by a " +
                         "toggle. Copied into RehomedAssets with the stereo macros added and the swap repointed.");
                 }
                 else
                 {
-                    report.Approximated(Category, $"{o.Repointed.Distinct().Count()} shader(s) patched for VR stereo",
+                    report.Approximated(Category, $"{BridgeElements.Count(o.Repointed.Distinct().Count(), "shader", "shaders")} patched for VR stereo",
                         $"{string.Join(", ", o.Repointed.Distinct())}: copied into RehomedAssets with the single-pass " +
                         "instanced macros added; originals untouched. They compile, the single-pass instanced " +
                         "variant included; check both eyes in VR.");
@@ -208,21 +208,21 @@ namespace AvatarBridge
             }
             if (o.PartlyPatched.Count > 0)
             {
-                report.Warning(Category, $"{o.PartlyPatched.Count} shader(s){where} patched in some passes only",
+                report.Warning(Category, $"{BridgeElements.Count(o.PartlyPatched.Count, "shader", "shaders")}{where} patched in some passes only",
                     $"{string.Join("; ", o.PartlyPatched)}: those passes are left as they were and still draw into " +
                     "one eye. The rest of each shader draws in both.");
             }
             if (o.GrabLimited.Count > 0)
             {
                 report.Warning(Category,
-                    $"{o.GrabLimited.Distinct().Count()} patched shader(s){where} grab the screen: the background they " +
+                    $"{BridgeElements.Count(o.GrabLimited.Distinct().Count(), "patched shader", "patched shaders")}{where} grab the screen: the background they " +
                     "refract comes from one eye",
                     $"{string.Join(", ", o.GrabLimited.Distinct())}: they draw in both eyes, but refraction shows one " +
                     "eye's view. Unfixable here; use a shader that doesn't grab the screen if it bothers you.");
             }
             if (o.Refused.Count > 0)
             {
-                report.Warning(Category, $"{o.Refused.Count} shader(s){where} could not be patched for VR stereo",
+                report.Warning(Category, $"{BridgeElements.Count(o.Refused.Count, "shader", "shaders")}{where} could not be patched for VR stereo",
                     $"{string.Join(", ", o.Refused)}: " + (swaps
                         ? "these still draw into one eye when the toggle assigns them."
                         : "these still won't draw correctly in both eyes. Patching is only attempted on plainly " +
@@ -234,7 +234,7 @@ namespace AvatarBridge
             if (o.AlreadyCorrect.Count > 0)
             {
                 report.Converted(Category,
-                    $"{o.AlreadyCorrect.Distinct().Count()} shader(s){where} already speak single-pass instanced: left untouched",
+                    $"{BridgeElements.Count(o.AlreadyCorrect.Distinct().Count(), "shader", "shaders")}{where} already speak single-pass instanced: left untouched",
                     $"{string.Join(", ", o.AlreadyCorrect.Distinct())}.");
             }
         }
@@ -869,7 +869,7 @@ namespace AvatarBridge
                 reason = "patched copy did not compile: " + errors +
                          (kept
                              ? $". The attempted source was kept in {dir} as {unit[0].OutputName}.failed.txt" +
-                               (unit.Count > 1 ? $" and {unit.Count - 1} include(s) beside it" : "") +
+                               (unit.Count > 1 ? $" and {BridgeElements.Count(unit.Count - 1, "include", "includes")} beside it" : "") +
                                ": attach them to a bug report"
                              : "");
                 return null;

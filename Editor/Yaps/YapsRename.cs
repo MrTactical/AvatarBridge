@@ -147,7 +147,7 @@ namespace AvatarBridge
                 // were counted and thrown away.
                 var sample = unresolved.Take(12).ToList();
                 ctx.Report.Warning(Category,
-                    $"{unresolved.Count} animation path(s) no longer point at anything",
+                    $"{BridgeElements.Count(unresolved.Count, "animation path no longer points", "animation paths no longer point")} at anything",
                     "Some rewritten paths name nothing on this avatar, so what they drove won't move. " +
                     "Please report it at the AvatarBridge repo; it is a bug in the rename. The first few:\n  " +
                     string.Join("\n  ", sample) +
@@ -155,8 +155,8 @@ namespace AvatarBridge
             }
 
             ctx.Report.Converted(Category,
-                $"Renamed {doomed.Count} object(s) to YAPS",
-                $"Named for what drives them now, with {rewritten} animation path(s) rewritten. Contact " +
+                $"Renamed {BridgeElements.Count(doomed.Count, "object", "objects")} to YAPS",
+                $"Named for what drives them now, with {BridgeElements.Count(rewritten, "animation path", "animation paths")} rewritten. Contact " +
                 "tags and marker light ranges are unchanged, so DPS, TPS and SPS plugs still find them.");
         }
 

@@ -575,21 +575,21 @@ namespace AvatarBridge
             var said = new List<string>();
             if (repointed > 0)
             {
-                string what = $"Pointed {repointed} material swap(s) at squashed copies";
+                string what = $"Pointed {BridgeElements.Count(repointed, "material swap", "material swaps")} at squashed copies";
                 string why = added.Count > 0 ? $"{added.Count} of them alternate looks, given the squash too." : "So a clothing toggle keeps its layer on the skin.";
                 report?.Converted(Category, what, why);
                 said.Add(what + ". " + why);
             }
             if (refused.Count > 0)
             {
-                string what = $"{refused.Count} swapped-in material(s) cannot squash";
+                string what = $"{BridgeElements.Count(refused.Count, "swapped-in material", "swapped-in materials")} cannot squash";
                 string why = "Their shaders refused the patch, so while one is on, the skin can come through that layer: " + string.Join(", ", refused) + ".";
                 report?.Warning(Category, what, why);
                 said.Add(what + ". " + why);
             }
             if (skipped.Count > 0)
             {
-                string what = $"{skipped.Count} material swap(s) left alone";
+                string what = $"{BridgeElements.Count(skipped.Count, "material swap", "material swaps")} left alone";
                 string why = "They live in a package, so they were not edited. Copy the clip into your project: " + string.Join(", ", skipped) + ".";
                 report?.Warning(Category, what, why);
                 said.Add(what + ". " + why);

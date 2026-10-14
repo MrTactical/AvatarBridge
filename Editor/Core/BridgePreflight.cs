@@ -75,7 +75,7 @@ namespace AvatarBridge
                 catch (IOException) { }
 
                 ctx.Report.Error(Category, $"{baker.Name} is installed but did not compile",
-                    $"\"{folder}\" exists ({files} file(s))" +
+                    $"\"{folder}\" exists ({BridgeElements.Count(files, "file", "files")})" +
                     (hasManifest ? "" : " and has NO package.json, which is why Unity ignored it") +
                     $", but no {baker.Name} assembly is loaded, so its components would be silently ignored. " +
                     "A package bundling its own copy does this. Reinstall " +

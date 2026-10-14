@@ -43,7 +43,7 @@ namespace AvatarBridge
                 int over = YapsTags.Dropped(plug.answers);
                 if (over > 0)
                 {
-                    notes.Add(YapsToggles.LabelFor(plug) + ": " + over + " tag(s) past the first "
+                    notes.Add(YapsToggles.LabelFor(plug) + ": " + BridgeElements.Count(over, "tag", "tags") + " past the first "
                               + YapsTags.PlugSlots + " have no row, and the bake did not keep them either");
                 }
                 if (tags.Count < 2)

@@ -629,7 +629,7 @@ namespace AvatarBridge
                 return;
             }
             report?.Warning(Category, label,
-                $"The readout could not carry {missing.Count} of the plug's setting(s): " +
+                $"The readout could not carry {missing.Count} of the plug's settings: " +
                 string.Join(", ", missing) + ". Cells that depend on them read as nothing rather " +
                 "than as their real value. The readout's shader needs the same property added.");
         }
@@ -730,7 +730,7 @@ namespace AvatarBridge
             layers.Add(new AnimatorControllerLayer { name = LayerName, defaultWeight = 1f, stateMachine = machine });
             controller.layers = layers.ToArray();
             EditorUtility.SetDirty(controller);
-            return $"readout toggle \"{MenuLabel}\" for {targets.Count} readout(s), off by default, synced (1 bit)";
+            return $"readout toggle \"{MenuLabel}\" for {BridgeElements.Count(targets.Count, "readout", "readouts")}, off by default, synced (1 bit)";
         }
 
         // A socket's readout, beside its atlas writer under the same parent,

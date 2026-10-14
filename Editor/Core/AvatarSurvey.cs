@@ -586,14 +586,14 @@ namespace AvatarBridge
                     // Not an unwired feature: something used to write this and
                     // the conversion removed the thing that did.
                     Add(model, "stopped working when converted", p.Name,
-                        $"{was}, so nothing writes it here. It drives {p.DrivesBindings} binding(s) " +
+                        $"{was}, so nothing writes it here. It drives {BridgeElements.Count(p.DrivesBindings, "binding", "bindings")} " +
                         $"and now sits at {p.Default}.");
                 }
                 else if (p.Writers.Count == 0 && p.DrivesBindings > 0)
                 {
                     // The author built the behaviour and never wired a way in.
                     Add(model, "unreachable feature", p.Name,
-                        $"{p.Readers.Count} layer(s) act on it and it drives {p.DrivesBindings} binding(s), " +
+                        $"{BridgeElements.Count(p.Readers.Count, "layer acts", "layers act")} on it and it drives {BridgeElements.Count(p.DrivesBindings, "binding", "bindings")}, " +
                         $"but nothing can change it: no menu control, no contact, no driver. Stuck at {p.Default}.");
                 }
                 else if (p.Writers.Count == 0)
@@ -755,25 +755,25 @@ namespace AvatarBridge
             switch (kind)
             {
                 case "unreachable feature":
-                    return $"{count} feature(s) nothing can switch on";
+                    return $"{BridgeElements.Count(count, "feature", "features")} nothing can switch on";
                 case "stopped working when converted":
-                    return $"{count} parameter(s) lost whatever used to drive them";
+                    return $"{BridgeElements.Count(count, "parameter lost whatever used to drive it", "parameters lost whatever used to drive them")}";
                 case "neutralised by a setting":
-                    return $"{count} parameter(s) frozen on purpose by a conversion setting";
+                    return $"{BridgeElements.Count(count, "parameter", "parameters")} frozen on purpose by a conversion setting";
                 case "contested binding":
-                    return $"{count} thing(s) more than one layer animates, where the higher layer quietly wins";
+                    return $"{BridgeElements.Count(count, "thing", "things")} more than one layer animates, where the higher layer quietly wins";
                 case "control that does nothing":
-                    return $"{count} menu control(s) nothing reads";
+                    return $"{BridgeElements.Count(count, "menu control", "menu controls")} nothing reads";
                 case "control with no parameter":
-                    return $"{count} menu control(s) naming a parameter the controller does not have";
+                    return $"{BridgeElements.Count(count, "menu control", "menu controls")} naming a parameter the controller does not have";
                 case "unused parameter":
-                    return $"{count} parameter(s) nothing reads or writes";
+                    return $"{BridgeElements.Count(count, "parameter", "parameters")} nothing reads or writes";
                 case "frozen parameter":
-                    return $"{count} parameter(s) read but never written";
+                    return $"{BridgeElements.Count(count, "parameter", "parameters")} read but never written";
                 case "write-only parameter":
-                    return $"{count} parameter(s) written and never read";
+                    return $"{BridgeElements.Count(count, "parameter", "parameters")} written and never read";
                 case "empty layer":
-                    return $"{count} layer(s) with no states";
+                    return $"{BridgeElements.Count(count, "layer", "layers")} with no states";
                 default:
                     return $"{count} × {kind}";
             }
@@ -816,15 +816,15 @@ namespace AvatarBridge
             int quiet = model.Findings.Count - worth.Count;
             if (quiet > 0)
             {
-                sb.Append("- ").Append(quiet).Append(" more finding(s) about names nobody chose: GoGo Loco's ")
+                sb.Append("- ").Append(BridgeElements.Count(quiet, "more finding", "more findings")).Append(" about names nobody chose: GoGo Loco's ")
                   .Append("parameters, this tool's own scaffolding, what ChilloutVR writes and nothing reads, ")
                   .Append("the grab and stretch parameters a PhysBone used to write. Listed in full below.\n");
             }
 
             if (model.Props.Count > 0)
             {
-                sb.Append("- **").Append(model.Props.Count)
-                  .Append(" object(s) could come off as props**: ")
+                sb.Append("- **").Append(BridgeElements.Count(model.Props.Count, "object", "objects"))
+                  .Append(" could come off as props**: ")
                   .Append(string.Join(", ", model.Props.Select(p => $"\"{p.Control}\"")))
                   .Append(". Each rides one bone chain, is switched by one control, and carries its own " +
                           "mesh and textures, so ChilloutVR could hold it as a prop instead of the avatar " +
@@ -864,13 +864,13 @@ namespace AvatarBridge
             foreach (var p in model.Props.OrderByDescending(p => p.TextureBytes))
             {
                 report.Add(ReportStatus.Approximated, "Survey", $"\"{p.Control}\" could come off as a prop",
-                    $"{p.Path} rides {p.Bone}, {p.Triangles} tris, {p.Materials} material(s), " +
+                    $"{p.Path} rides {p.Bone}, {p.Triangles} tris, {BridgeElements.Count(p.Materials, "material", "materials")}, " +
                     $"{(p.TextureBytes / 1048576f):0.0} MB of textures nothing else uses.");
             }
 
             if (quiet > 0)
             {
-                report.Add(ReportStatus.Converted, "Survey", $"{quiet} more finding(s) not worth your time",
+                report.Add(ReportStatus.Converted, "Survey", $"{BridgeElements.Count(quiet, "more finding", "more findings")} not worth your time",
                     "Names nobody chose and nothing anybody can act on: GoGo Loco's own parameters, the " +
                     "scaffolding this tool generates, the ones ChilloutVR writes and no layer reads, the grab " +
                     "and stretch parameters a PhysBone used to write. They are all in the report file if you " +
@@ -906,7 +906,7 @@ namespace AvatarBridge
                       .Append(" : on ").Append(p.Bone)
                       .Append(", switched by \"").Append(p.Control).Append("\", ")
                       .Append(p.Triangles).Append(" tris, ")
-                      .Append(p.Materials).Append(" material(s), ")
+                      .Append(BridgeElements.Count(p.Materials, "material", "materials")).Append(", ")
                       .Append((p.TextureBytes / 1048576f).ToString("0.0")).Append(" MB of textures nothing else uses\n");
                 }
                 sb.Append('\n');

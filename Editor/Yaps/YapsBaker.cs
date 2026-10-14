@@ -282,7 +282,7 @@ namespace AvatarBridge
                     positions, normals, tangents, out heldWeights);
                 if (held > 0)
                 {
-                    report?.Converted(Category, $"{renderer.name}: kept {held} blendshape(s) it holds",
+                    report?.Converted(Category, $"{renderer.name}: kept {BridgeElements.Count(held, "blendshape", "blendshapes")} it holds",
                         "They sit at a fixed value on the renderer, so the plug keeps them while it " +
                         "bends instead of snapping back to the unshaped mesh.");
                 }

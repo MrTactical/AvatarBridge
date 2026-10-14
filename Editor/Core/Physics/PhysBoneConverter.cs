@@ -187,13 +187,13 @@ namespace AvatarBridge
 
             if (repointed > 0 || mirrored > 0)
             {
-                ctx.Report.Converted(Category, $"{repointed + mirrored} collider on/off animation(s) rewired",
+                ctx.Report.Converted(Category, $"{BridgeElements.Count(repointed + mirrored, "collider on/off animation", "collider on/off animations")} rewired",
                     "They now toggle the converted collider's object." +
                     (mirrored > 0 ? $" {mirrored} switched its parent object and now reach it too." : ""));
             }
             if (dropped.Count > 0)
             {
-                ctx.Report.Warning(Category, $"{dropped.Count} collider-animating curve(s) could not be carried",
+                ctx.Report.Warning(Category, $"{BridgeElements.Count(dropped.Count, "collider-animating curve", "collider-animating curves")} could not be carried",
                     string.Join("; ", dropped.Take(6)) + (dropped.Count > 6 ? ", …" : "") +
                     ": no equivalent on the converted collider, or the collider was not converted. Removed.");
             }
@@ -246,7 +246,7 @@ namespace AvatarBridge
             {
                 string target = TargetName(ctx);
                 ctx.Report.Skipped(Category,
-                    $"{lost.Count} animated PhysBone parameter(s) have no converted equivalent",
+                    $"{BridgeElements.Count(lost.Count, "animated PhysBone parameter has", "animated PhysBone parameters have")} no converted equivalent",
                     string.Join("; ", lost.Select(kv => $"{kv.Key} (e.g. {string.Join(", ", kv.Value)})")) +
                     (target != null
                         ? $": {target} cannot animate these, so the chain keeps its converted values."
@@ -268,7 +268,7 @@ namespace AvatarBridge
                     continue;
                 }
                 ctx.Report.Warning(Category,
-                    $"The avatar already carries {home.childCount} converted cloth object(s)",
+                    $"The avatar already carries {BridgeElements.Count(home.childCount, "converted cloth object", "converted cloth objects")}",
                     $"\"{name}\" was on the avatar before this conversion started, so it arrived with " +
                     "the avatar: a conversion that copies the avatar never writes one onto the source. " +
                     "The known way in is converting once with \"Make a copy\" off. Anything this run " +
@@ -398,7 +398,7 @@ namespace AvatarBridge
 #endif
 
                 default:
-                    ctx.Report.Skipped(Category, $"{physBones.Length} PhysBone(s)",
+                    ctx.Report.Skipped(Category, $"{BridgeElements.Count(physBones.Length, "PhysBone", "PhysBones")}",
                         "Physics conversion disabled in settings.");
                     return;
             }
@@ -445,7 +445,7 @@ namespace AvatarBridge
                 return;
             }
             ctx.Report.Approximated(Category,
-                $"{grabbable.Count} chain(s) could be grabbed in VRChat; {target} can't be",
+                $"{BridgeElements.Count(grabbable.Count, "chain", "chains")} could be grabbed in VRChat; {target} can't be",
                 string.Join(", ", grabbable.Take(8)) + (grabbable.Count > 8 ? ", …" : "") +
                 ". Only players with the GrabbyBones mod can grab them. A chain that \"carries a contact\" " +
                 "may need grabbing to work at all.");

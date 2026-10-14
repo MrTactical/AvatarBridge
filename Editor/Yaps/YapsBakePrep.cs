@@ -163,7 +163,7 @@ namespace AvatarBridge
             if (shared.Count > 0)
             {
                 ctx.Report.Warning(Category,
-                    $"{shared.Count} object(s) carry two plugs or two sockets, so their own settings were not carried",
+                    $"{BridgeElements.Count(shared.Count, "object carries two plugs or two sockets, so its", "objects carry two plugs or two sockets, so their")} own settings were not carried",
                     "Once baked the two cannot be told apart. Each takes the defaults: a plug answers anything and " +
                     "may pass the socket, a socket keeps the shared tag. Give each its own object and convert " +
                     "again: " + string.Join(", ", shared));
@@ -206,14 +206,14 @@ namespace AvatarBridge
             if (prep._flipped.Count > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"Asked VRCFury not to patch {prep._flipped.Count} plug shader(s) before baking",
+                    $"Asked VRCFury not to patch {BridgeElements.Count(prep._flipped.Count, "plug shader", "plug shaders")} before baking",
                     "A shader carrying Fury's deform can't take ours. The rest of the bake is kept, and the " +
                     "plugs are set back once it finishes.");
             }
             if (prep._unswitchable.Count > 0)
             {
                 ctx.Report.Warning(Category,
-                    $"Could not ask VRCFury to leave {prep._unswitchable.Count} plug shader(s) alone",
+                    $"Could not ask VRCFury to leave {BridgeElements.Count(prep._unswitchable.Count, "plug shader", "plug shaders")} alone",
                     "This version of VRCFury has no switch this tool knows for turning its own plug deform " +
                     "off, so VRCFury may deform the plug and YAPS may deform it again, and the two fight. " +
                     "Check each plug in game before uploading. If one bends or stretches wrongly, this is " +

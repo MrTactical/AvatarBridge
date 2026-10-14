@@ -36,7 +36,7 @@ namespace AvatarBridge
             int cleared = Clear(avatar);
             if (cleared > 0)
             {
-                lines.Add($"✓ the old contact channel taken out ({cleared} object(s), layer(s) and parameter(s)): "
+                lines.Add($"✓ the old contact channel taken out ({BridgeElements.Count(cleared, "object, layer or parameter", "objects, layers and parameters")}): "
                           + "plugs find sockets through the screen atlas and marker lights, and its synced "
                           + "parameters are free again");
             }

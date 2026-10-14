@@ -159,7 +159,7 @@ namespace AvatarBridge
         {
             bool built = YapsSquash.Has(settings.transform);
             into.Add(Application.isPlaying
-                ? BridgeElements.Hint("The cloth is real in Play mode: move the avatar (the Avatar Tester's Jump or Shake) and it swings and stretches. The preview adds another player's open hand.",
+                ? BridgeElements.Hint("The cloth is real in Play mode: move the avatar (Jump or Shake in the Avatar Tester) and it swings and stretches. The preview adds another player's open hand.",
                     "Drag the hand with its handle in the scene view; it moves with the avatar.")
                 : BridgeElements.Hint("Squeezes, bounces and presses it in the scene view.",
                     "Edit mode runs no physics, so this stands in for them: the pair pushed together, the swing a bounce gives, " +

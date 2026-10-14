@@ -76,7 +76,7 @@ namespace AvatarBridge
             if (untraced.Count > 0)
             {
                 ctx.Report.Approximated(Category,
-                    $"{untraced.Count} plug(s) take the default tag and overrun settings",
+                    $"{BridgeElements.Count(untraced.Count, "plug takes", "plugs take")} the default tag and overrun settings",
                     "The SPS plug each was baked from could not be found, so its own settings are unknown. Each " +
                     "answers any socket and may pass through one, which is what an SPS plug does unless its " +
                     "author changed it: " + string.Join(", ", untraced));
@@ -150,7 +150,7 @@ namespace AvatarBridge
             if (socketRoots.Count > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"Kept the depth reactions on {socketRoots.Count} socket(s)",
+                    $"Kept the depth reactions on {BridgeElements.Count(socketRoots.Count, "socket", "sockets")}",
                     "Pointed at each rebuilt socket's depth trigger. Local, so only you see them, unless " +
                     "\"Show the avatar's OWN depth animations to other players\" is on (32 bits a socket).");
             }
@@ -369,7 +369,7 @@ namespace AvatarBridge
                 (extras.Count > 0
                     ? $" Also {string.Join(", ", extras.Select(e => $"\"{e.Renderer.name}\""))}, on the same frame."
                     : "") +
-                (skippedShadowPasses > 0 ? $" {skippedShadowPasses} shadow pass(es) cannot be patched and stay straight." : ""));
+                (skippedShadowPasses > 0 ? $" {BridgeElements.Count(skippedShadowPasses, "shadow pass cannot be patched and stays", "shadow passes cannot be patched and stay")} straight." : ""));
         }
 
         // One material slot of the plug's renderer: patch its shader,
@@ -472,7 +472,7 @@ namespace AvatarBridge
             {
                 var system = legacy;
                 ctx.Report.Converted(Category,
-                    $"Carried {carried.Count} {system} setting(s) onto the YAPS plug",
+                    $"Carried {carried.Count} {system} {(carried.Count == 1 ? "setting" : "settings")} onto the YAPS plug",
                     string.Join(", ", carried.ConvertAll(c => $"{c.From} → {c.To}")) +
                     (unmapped.Count > 0
                         ? $". No YAPS counterpart for: {string.Join(", ", unmapped)}"
@@ -582,7 +582,7 @@ namespace AvatarBridge
             if (unmatched.Count > 0)
             {
                 ctx.Report.Approximated(Category,
-                    $"{unmatched.Count} socket(s) carry only the shared tag",
+                    $"{BridgeElements.Count(unmatched.Count, "socket carries", "sockets carry")} only the shared tag",
                     "The SPS socket each was baked from could not be found, so its own tags are unknown. The " +
                     "shared tag is what an SPS socket has unless its author turned it off, so a plug that " +
                     "answered anything still answers these: " + string.Join(", ", unmatched));
@@ -599,12 +599,12 @@ namespace AvatarBridge
             if (over > 0)
             {
                 ctx.Report.Warning(Category,
-                    $"{over} tag(s) past the first {YapsTags.PlugSlots} on a list were not carried",
+                    $"{BridgeElements.Count(over, "tag", "tags")} past the first {YapsTags.PlugSlots} on a list were not carried",
                     $"Only {YapsTags.PlugSlots} fit per list; sockets past that are treated as unlisted. Shorten "
                     + "the list, or share one word across those sockets.");
             }
             ctx.Report.Converted(Category,
-                $"Carried the tags on {tagged} socket(s) and {plugs} plug rule list(s)",
+                $"Carried the tags on {BridgeElements.Count(tagged, "socket", "sockets")} and {BridgeElements.Count(plugs, "plug rule list", "plug rule lists")}",
                 "Words as written: " + (words.Count == 0 ? "none on the sockets here" : string.Join(", ", words))
                 + ". Tags match by fingerprint, so two names can rarely read as one.");
         }
@@ -890,7 +890,7 @@ namespace AvatarBridge
             }
             if (wired > 0)
             {
-                ctx.Report.Converted(Category, $"{wired} socket menu toggle(s) wired to their sockets",
+                ctx.Report.Converted(Category, $"{BridgeElements.Count(wired, "socket menu toggle", "socket menu toggles")} wired to their sockets",
                     "VRCFury's socket toggles drove its deleted atlas, so the menu looked right and " +
                     "did nothing. Each is now wired to its whole socket, lights, pointers and depth " +
                     "trigger together, so \"one socket at a time\" is the wearer's choice again.");
@@ -898,7 +898,7 @@ namespace AvatarBridge
             if (unwired.Count > 0)
             {
                 ctx.Report.Approximated(Category,
-                    $"{unwired.Count} socket(s) have no menu toggle and stay on",
+                    $"{BridgeElements.Count(unwired.Count, "socket has no menu toggle and stays", "sockets have no menu toggle and stay")} on",
                     string.Join(", ", unwired) + ". No menu entry matched them, so they are " +
                     "always active. The marker light budget still caps how many carry lights.");
             }
@@ -1173,20 +1173,20 @@ namespace AvatarBridge
             if (deformed > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"{deformed} socket(s) can now deform around a plug",
+                    $"{BridgeElements.Count(deformed, "socket", "sockets")} can now deform around a plug",
                     "Blendshapes staged by depth in the socket's shader, so DPS plugs open them too. " +
                     (alreadyAnimated > 0 ? $"{alreadyAnimated} keep their contact as well." : ""));
             }
             if (onBody > 0)
             {
                 ctx.Report.Approximated(Category,
-                    $"{onBody} socket(s) keep their reactions on the animator",
+                    $"{BridgeElements.Count(onBody, "socket keeps its", "sockets keep their")} reactions on the animator",
                     "Their mesh is the body, so they keep their contact-driven shapes, made local.");
             }
             if (noShapes > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"{noShapes} socket(s) have no blendshapes to deform",
+                    $"{BridgeElements.Count(noShapes, "socket has", "sockets have")} no blendshapes to deform",
                     "Nothing was changed for these. A socket deform reshapes the author's own " +
                     "blendshapes, so a socket built without any has nothing to open with; its " +
                     "contacts and marker lights work exactly as before.");
@@ -1194,7 +1194,7 @@ namespace AvatarBridge
             if (failures.Count > 0)
             {
                 ctx.Report.Warning(Category,
-                    $"{failures.Count} socket(s) could not be given a deform",
+                    $"{BridgeElements.Count(failures.Count, "socket", "sockets")} could not be given a deform",
                     "Everything else about them is untouched and they still work as sockets: " +
                     "they simply will not reshape around a plug. " + string.Join("; ", failures));
             }
@@ -1282,9 +1282,9 @@ namespace AvatarBridge
 
             string found = string.Join(", ", new[]
             {
-                lights > 0 ? $"{lights} marker light(s)" : null,
-                sockets > 0 ? $"{sockets} socket contact(s)" : null,
-                plugs > 0 ? $"{plugs} plug contact(s)" : null,
+                lights > 0 ? $"{BridgeElements.Count(lights, "marker light", "marker lights")}" : null,
+                sockets > 0 ? $"{BridgeElements.Count(sockets, "socket contact", "socket contacts")}" : null,
+                plugs > 0 ? $"{BridgeElements.Count(plugs, "plug contact", "plug contacts")}" : null,
             }.Where(s => s != null));
 
             if (plugs > 0)
@@ -1309,7 +1309,7 @@ namespace AvatarBridge
         {
             var dead = YapsToggles.DeadBindings(ctx.Target, ctx.MergedController);
             if (dead.Count == 0) return;
-            ctx.Report.Warning(Category, $"{dead.Count} penetration animation curve(s) change nothing",
+            ctx.Report.Warning(Category, $"{BridgeElements.Count(dead.Count, "penetration animation curve changes", "penetration animation curves change")} nothing",
                 "Unity cannot attach them to anything on the avatar, so the menu rows or size changes they " +
                 "belong to do nothing in game. Please report this with the conversion report. " +
                 string.Join("; ", dead.Take(10)) + (dead.Count > 10 ? $"; and {dead.Count - 10} more" : ""));
@@ -1355,7 +1355,7 @@ namespace AvatarBridge
             if (removed > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"Removed {removed} animation curve(s) that drove the screen atlas",
+                    $"Removed {BridgeElements.Count(removed, "animation curve", "animation curves")} that drove the screen atlas",
                     "The socket toggles also wrote each socket's identity, tags and shape into the " +
                     "atlas marker's material, so VRChat's shader could read them back off the " +
                     "screen. The marker is gone and those writes went to nothing.");
@@ -1511,13 +1511,13 @@ namespace AvatarBridge
             if (repointed > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"Pointed {repointed} material swap(s) at the baked material",
+                    $"Pointed {BridgeElements.Count(repointed, "material swap", "material swaps")} at the baked material",
                     "Otherwise they would swap the unbaked material back in and the plug would straighten.");
             }
             if (variantKeys > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"Baked {ctx.YapsVariantSwaps.Count} alternate material(s) the animator swaps in",
+                    $"Baked {BridgeElements.Count(ctx.YapsVariantSwaps.Count, "alternate material", "alternate materials")} the animator swaps in",
                     "So the plug still bends while an alternate skin is on.");
             }
         }
@@ -1590,7 +1590,7 @@ namespace AvatarBridge
             if (changed > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"Auto socket mode switches only for a clearly nearer socket ({changed} transition(s))",
+                    $"Auto socket mode switches only for a clearly nearer socket ({BridgeElements.Count(changed, "transition", "transitions")})",
                     $"A socket must be about {AutoModeMargin * 100:0} cm nearer to take over, so close sockets " +
                     "no longer flicker.");
             }
@@ -1639,18 +1639,18 @@ namespace AvatarBridge
 
             if (written > 0)
             {
-                ctx.Report.Converted(Category, $"Mirrored {written} blendshape curve(s) onto the plug",
+                ctx.Report.Converted(Category, $"Mirrored {BridgeElements.Count(written, "blendshape curve", "blendshape curves")} onto the plug",
                     "So the deform follows the plug's shapes, such as a size slider.");
             }
             if (scaled > 0)
             {
-                ctx.Report.Converted(Category, $"Mirrored {scaled} bone scale curve(s) onto the plug",
+                ctx.Report.Converted(Category, $"Mirrored {BridgeElements.Count(scaled, "bone scale curve", "bone scale curves")} onto the plug",
                     "So a size or hyper toggle that scales the bone scales the bend too.");
             }
             if (missed.Count > 0)
             {
                 ctx.Report.Warning(Category,
-                    $"{missed.Count} animated plug blendshape(s) are not in the bake",
+                    $"{BridgeElements.Count(missed.Count, "animated plug blendshape is", "animated plug blendshapes are")} not in the bake",
                     $"{string.Join(", ", missed.Take(8))}{(missed.Count > 8 ? ", …" : "")}: past the " +
                     $"{YapsBaker.MaxShapes} that move it most. The bend is slightly off while they are raised.");
             }
@@ -1677,7 +1677,7 @@ namespace AvatarBridge
                     removed++;
                 }
             }
-            ctx.Report.Converted(Category, $"Removed {removed} screen-atlas object(s)",
+            ctx.Report.Converted(Category, $"Removed {BridgeElements.Count(removed, "screen-atlas object", "screen-atlas objects")}",
                 "VRChat's version, which nothing here reads; left in, they draw into the view.");
         }
 

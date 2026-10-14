@@ -77,7 +77,7 @@ namespace AvatarBridge
             if (flattened > 0)
             {
                 ctx.Report.Converted("Audio",
-                    $"{flattened} flat (2D) audio source(s) made positional",
+                    $"{BridgeElements.Count(flattened, "flat (2D) audio source", "flat (2D) audio sources")} made positional",
                     $"On: {string.Join(", ", flat)}{(flattened > flat.Count ? ", …" : "")}: below fully 3D they can " +
                     "be silent for everyone else.");
             }
@@ -85,13 +85,13 @@ namespace AvatarBridge
             if (nearby.Count > 0)
             {
                 ctx.Report.Approximated("Audio",
-                    $"{nearby.Count} audio source(s) stop carrying within a few metres",
+                    $"{BridgeElements.Count(nearby.Count, "audio source stops", "audio sources stop")} carrying within a few metres",
                     $"{string.Join(", ", nearby)}: left as set. Raise Max Distance on any others should hear.");
             }
             if (clamped > 0)
             {
                 ctx.Report.Approximated("Audio",
-                    $"{clamped} audio source(s) clamped to VRChat's avatar audio limits",
+                    $"{BridgeElements.Count(clamped, "audio source", "audio sources")} clamped to VRChat's avatar audio limits",
                     $"On: {string.Join(", ", notes)}{(clamped > notes.Count ? ", …" : "")}: doppler 0, " +
                     "min distance at least 0.3 m, max at most 40 m, as VRChat enforced. Unclamped, min distance 0 " +
                     "can mute the whole game.");
@@ -167,7 +167,7 @@ namespace AvatarBridge
             if (changed > 0)
             {
                 ctx.Report.Converted("Meshes",
-                    $"{changed} skinned mesh bounding box(es) resized to the avatar: " +
+                    $"{BridgeElements.Count(changed, "skinned mesh bounding box", "skinned mesh bounding boxes")} resized to the avatar: " +
                     $"{envelope.size.x:0.##} × {envelope.size.y:0.##} × {envelope.size.z:0.##} m",
                     $"The avatar's volume plus {height * BoundsPaddingFraction:0.##} m, so meshes stop " +
                     "vanishing at the screen's edge.");

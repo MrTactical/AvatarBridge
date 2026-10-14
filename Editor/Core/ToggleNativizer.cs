@@ -109,7 +109,7 @@ namespace AvatarBridge
                 vrcLayers.Remove(layer);
                 nativizedParams.Add(param);
                 ctx.Report.Converted(Category, entry.name,
-                    $"{targets.Count} object(s) toggled natively by CVR; layer \"{layer.name}\" removed.");
+                    $"{BridgeElements.Count(targets.Count, "object", "objects")} toggled natively by CVR; layer \"{layer.name}\" removed.");
             }
 
             // Modern VRCFury merges many toggles as branches of shared direct blend
@@ -230,12 +230,12 @@ namespace AvatarBridge
             if (nativizedParams.Count > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"{nativizedParams.Count} toggle(s) handed to CVR's own animator builder");
+                    $"{BridgeElements.Count(nativizedParams.Count, "toggle", "toggles")} handed to CVR's own animator builder");
             }
             if (expandedLayers.Count > 0 || renamedLayers.Count > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"{expandedLayers.Count + renamedLayers.Count} toggle(s) given their own animator layer",
+                    $"{BridgeElements.Count(expandedLayers.Count + renamedLayers.Count, "toggle given its own", "toggles given their own")} animator layer",
                     "They work from the generated controller without running \"Create Controller\".");
             }
         }
@@ -261,7 +261,7 @@ namespace AvatarBridge
                         nativizedParams.Add(child.directBlendParameter);
                         changed = true;
                         ctx.Report.Converted(Category, entry.name,
-                            $"{targets.Count} object(s) toggled natively by CVR; branch removed from \"{layerName}\".");
+                            $"{BridgeElements.Count(targets.Count, "object", "objects")} toggled natively by CVR; branch removed from \"{layerName}\".");
                         continue; // drop this branch
                     }
                 }
@@ -303,7 +303,7 @@ namespace AvatarBridge
                         restore == null
                             ? "Expanded into a classic On/Off toggle layer (it animates more than object on/off)."
                             : "Expanded into a classic On/Off toggle layer, with an Off clip restoring the " +
-                              "original material(s), which Write Defaults never puts back.");
+                              "original materials, which Write Defaults never puts back.");
                     continue;
                 }
                 var keptChild = child;
@@ -772,7 +772,7 @@ namespace AvatarBridge
             if (refreshed > 0)
             {
                 EditorUtility.SetDirty(ctx.CvrAvatar);
-                ctx.Report.Converted(Category, $"{refreshed} native toggle target path(s) updated",
+                ctx.Report.Converted(Category, $"{BridgeElements.Count(refreshed, "native toggle target path", "native toggle target paths")} updated",
                     "Their objects moved or were renamed after the toggle was built.");
             }
         }

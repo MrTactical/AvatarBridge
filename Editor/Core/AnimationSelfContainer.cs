@@ -73,7 +73,7 @@ namespace AvatarBridge
                 AssetDatabase.SaveAssets();
                 copiedClips.Sort(StringComparer.Ordinal);
                 ctx.Report.Converted(Category,
-                    $"Controller made self-contained: {copiedClips.Count} clip(s), {copiedMasks} mask(s) copied into RehomedAssets",
+                    $"Controller made self-contained: {BridgeElements.Count(copiedClips.Count, "clip", "clips")}, {BridgeElements.Count(copiedMasks, "mask", "masks")} copied into RehomedAssets",
                     "A missing clip plays as stillness with no error, so all but the CCK's own now ship in the " +
                     "output folder. Copied: " + string.Join(", ", copiedClips) + ".");
             }
