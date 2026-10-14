@@ -454,7 +454,7 @@ namespace AvatarBridge
             EditorUtility.SetDirty(root.gameObject);
             if (root.gameObject.scene.IsValid()) EditorSceneManager.MarkSceneDirty(root.gameObject.scene);
             built = true;
-            return $"{parts.Count / 2} pair(s) {(regions != null ? "from painted regions" : "found by bone name")} on {root.name}, {copies.Count} material(s) in {folder}: " + string.Join("; ", log);
+            return $"{BridgeElements.Count(parts.Count / 2, "pair", "pairs")} {(regions != null ? "from painted regions" : "found by bone name")} on {root.name}, {BridgeElements.Count(copies.Count, "material", "materials")} in {folder}: " + string.Join("; ", log);
         }
 
         static List<HashSet<Transform>> Sets(List<List<Transform>> found) =>

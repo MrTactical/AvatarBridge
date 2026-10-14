@@ -62,7 +62,7 @@ compiled by neither until it is deployed; run `check-defines.sh` against the pro
 Dev harness by name), not the deployed copy, so the workaround above is no longer needed.
 
 **The Interaction lab: squash, plugs and sockets tested beside the motion. BUILT 2026-10-14 on dev,
-compiled in every combination, NOT YET OPENED by anyone.** Joe 2026-10-14: put the squash in the
+compiled in every combination, seen in offscreen renders, NOT YET OPENED by a person.** Joe 2026-10-14: put the squash in the
 tester's physics zone, rename it to something universal, and move plug and socket testing there
 too. Designed by a five-agent workflow and critiqued; names approved by Joe. The window is now the
 **Avatar Tester** (display strings, menu path, Toolkit buttons, report wording; the class and file
@@ -92,6 +92,17 @@ the physics summary; sections append after `SafeCard`, so a physics failure leav
 edit mode and Play mode, on a converted avatar with a squash and a socket, and on a prop; that a
 Play-mode Preview stops on exit; that the hand follows Walk and Jump; the public package's tester
 files still name nothing of the add-on (grep is clean now).
+Seen the same day in offscreen renders (edit mode and Play, a painted-squash scene and a socket
+scene; `UiOffscreenProbe` now takes `-captureInspectors <type>` and runs the panel's binding phase
+before painting, or bound sliders draw their low end). Fixed from looking: **Tune it** beside
+**Preview**; no "(s)" in the lab or the squash panel (`BridgeElements.Count`); the Animator layers
+legend shows a chip only for a kind present, since a red **conflict** chip on an avatar with none
+read as an error to fix. The renders also caught a stale `YapsSquashRegions.cs` in the test project,
+left by the rename (deploy copies, never deletes): it owned the settings' GUID, every deploy put the
+repo's meta back and Unity handed the real script a fresh random GUID, so a scene saved meanwhile
+pointed at a GUID that no longer exists, the knobs read as absent and the film's anime shots matched
+the real ones. A package import matches by GUID, so users cannot meet this; the film now warns when
+it finds no settings.
 **Round two 2026-10-04, after Joe tried it** ("pulling from a bone but not the correct one"; wanted
 the solver's settings overlaid, and to select, edit live and keep). The grab took the nearest bone
 in screen space, roots included, and a MagicaCloth root never moves, so the pull anchored there at

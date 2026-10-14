@@ -484,6 +484,9 @@ namespace AvatarBridge
         // A wrapping row of chips.
         public static VisualElement Chips(params VisualElement[] chips) => Container("ab-chips", chips);
 
+        // "1 plug", not "1 plug(s)": visible copy should not read like a template.
+        public static string Count(int n, string one, string many) => $"{n} {(n == 1 ? one : many)}";
+
         // ------------------------------------------------------------- buttons ----
 
         public static Button Btn(string text, Action onClick, string tooltip = null,

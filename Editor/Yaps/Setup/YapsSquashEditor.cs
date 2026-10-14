@@ -57,7 +57,7 @@ namespace AvatarBridge
             bool painted = settings.pairs.Count > 0;
 
             _root.Add(BridgeElements.Banner("Squash",
-                built ? $"built · {mats} material(s) · parts {(painted ? "painted" : "by bone name")}" : "not built yet: press Build at the bottom",
+                built ? $"built · {BridgeElements.Count(mats, "material", "materials")} · parts {(painted ? "painted" : "by bone name")}" : "not built yet: press Build at the bottom",
                 built ? "built" : "not built", BridgeTheme.Span.Cvr));
             var body = new VisualElement();
             body.AddToClassList("ab-scroll");
@@ -72,7 +72,7 @@ namespace AvatarBridge
             var parts = new BridgeElements.Card("Parts");
             body.Add(parts);
             parts.Body.Add(BridgeElements.Hint(painted
-                ? $"From {settings.pairs.Count} painted pair(s) on \"{(settings.body != null ? settings.body.name : "?")}\"."
+                ? $"From {BridgeElements.Count(settings.pairs.Count, "painted pair", "painted pairs")} on \"{(settings.body != null ? settings.body.name : "?")}\"."
                 : "Found by bone name: breast, boob, butt, booty or glute, one each side. Paint regions for a body whose bones do not say."));
             parts.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Paint regions", () => YapsSquashPainter.Open(root.gameObject),
                 "Paint which skin squashes. A rebuild picks them up.")));
@@ -154,7 +154,8 @@ namespace AvatarBridge
         static readonly Vector4[] NoOne = new Vector4[255];
 
         // The preview's controls, for the component's inspector and the Avatar Tester alike.
-        public static void Controls(VisualElement into, YapsSquashSettings settings, System.Action refresh)
+        // Returns the Preview button's row, so a caller can put its own buttons beside it.
+        public static VisualElement Controls(VisualElement into, YapsSquashSettings settings, System.Action refresh)
         {
             bool built = YapsSquash.Has(settings.transform);
             into.Add(Application.isPlaying
@@ -170,8 +171,9 @@ namespace AvatarBridge
                 refresh();
             }, built ? null : "Build first");
             preview.SetEnabled(built);
-            into.Add(BridgeElements.ButtonRow(preview));
-            if (!on) return;
+            var row = BridgeElements.ButtonRow(preview);
+            into.Add(row);
+            if (!on) return row;
             if (!Application.isPlaying)
             {
                 var squeeze = new Slider("Squeeze", 0f, 1f) { value = Squeeze, showInputField = true,
@@ -184,6 +186,7 @@ namespace AvatarBridge
             }
             into.Add(BridgeElements.Bind("Test hand", "Another player's open hand, dragged with the handle in the scene view.",
                 Hand, b => { Hand = b; SceneView.RepaintAll(); }));
+            return row;
         }
 
         public static void Start(YapsSquashSettings s)

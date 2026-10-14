@@ -369,7 +369,7 @@ namespace AvatarBridge
             Save("Squash regions from bone names");
             _pair = 0;
             Recolour();
-            Say($"Started from {names.Count} pair(s) found by name: {string.Join(", ", names)}.", Tone.Good);
+            Say($"Started from {BridgeElements.Count(names.Count, "pair", "pairs")} found by name: {string.Join(", ", names)}.", Tone.Good);
         }
 
         void FromBone()

@@ -904,10 +904,9 @@ namespace AvatarBridge
                 }
             }
 
-            card.Body.Add(BridgeElements.Chips(
-                BridgeElements.Chip("hand layer", Tone.Info, tooltip: "A layer that owns the hand pose"),
-                BridgeElements.Chip("⚠ conflict", Tone.Bad,
-                    tooltip: "Above the hand-pose layer, with a mask that lets it write finger muscles")));
+            // The legend goes in after the rows are counted: a red "conflict" chip on an avatar
+            // with none read as an error to fix.
+            int legendAt = card.Body.childCount;
 
             var header = new VisualElement();
             header.AddToClassList("ab-table-head");
@@ -979,6 +978,13 @@ namespace AvatarBridge
                 list.Add(row);
                 rows.Add((weight, playing));
             }
+
+            var legend = new List<VisualElement>();
+            if (handTop >= 0) legend.Add(BridgeElements.Chip("hand layer", Tone.Info, tooltip: "A layer that owns the hand pose"));
+            if (conflictCount > 0)
+                legend.Add(BridgeElements.Chip("⚠ conflict", Tone.Bad,
+                    tooltip: "Above the hand-pose layer, with a mask that lets it write finger muscles"));
+            if (legend.Count > 0) card.Body.Insert(legendAt, BridgeElements.Chips(legend.ToArray()));
 
             card.SetSummary(conflictCount > 0
                 ? $"live · {rows.Count} layers · {conflictCount} may overwrite gestures"

@@ -7,6 +7,7 @@
 // Run: Unity.exe -batchmode -projectPath <p> -executeMethod AvatarBridge.Regression.UiOffscreenProbe.Run
 //        -captureOut <dir> [-captureScene <Assets/...unity>] [-capturePrefab <Assets/...prefab>]
 //        [-captureWindows converter,toolkit,tester,yaps] [-captureHeight 2600] [-capturePlay]
+//        [-captureInspectors <full type name>,...]
 // Each render is cropped to its content and cut into tiles about 1000 px tall, so a long
 // window reads at full size. -capturePlay then enters Play mode and renders the tester live.
 // Explore() lists the internal panel API, for when a Unity upgrade moves it.
@@ -27,6 +28,22 @@ namespace AvatarBridge.Regression
     public static class UiOffscreenProbe
     {
         class Owner : ScriptableObject { }
+
+        // One object's inspector as a window, so Render draws it the way it draws the rest.
+        class Inspector : EditorWindow
+        {
+            public static UnityEngine.Object Target;
+            // The editor is left for the batch exit to free: destroyed with the window, its fields'
+            // pending bindings throw on the dead serialized object.
+            void CreateGUI()
+            {
+                var editor = Editor.CreateEditor(Target);
+                var ui = editor.CreateInspectorGUI() ?? new IMGUIContainer(editor.OnInspectorGUI);
+                // The Inspector binds as it shows; the panel here repaints before its scheduler would.
+                UnityEditor.UIElements.BindingExtensions.Bind(ui, editor.serializedObject);
+                rootVisualElement.Add(ui);
+            }
+        }
 
         const string PlayKey = "UiOffscreenProbe.play";
 
@@ -100,6 +117,18 @@ namespace AvatarBridge.Regression
                                 Debug.LogException(e);
                             }
                         }
+                    }
+                }
+                // By type name, so a type from a package this project lacks is skipped, not a compile error.
+                foreach (var typeName in (Arg("-captureInspectors") ?? "").Split(',').Where(s => s.Length > 0))
+                {
+                    var type = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(typeName, false)).FirstOrDefault(t => t != null);
+                    Inspector.Target = type != null ? UnityEngine.Object.FindObjectOfType(type, true) : null;
+                    if (Inspector.Target == null) { Log($"skip inspector {typeName}: none in the scene"); continue; }
+                    foreach (bool light in new[] { false, true })
+                    {
+                        try { Render(typeof(Inspector), Path.Combine(outDir, $"{type.Name}-{(light ? "light" : "dark")}.png"), width, height, light); }
+                        catch (Exception e) { failed++; Debug.LogException(e); }
                     }
                 }
             }
@@ -287,7 +316,10 @@ namespace AvatarBridge.Regression
             }
 
             var update = panel.GetType().GetMethod("UpdateForRepaint", Any) ?? panel.GetType().GetMethod("UpdateWithoutRepaint", Any);
-            for (int i = 0; i < 4; i++) update?.Invoke(panel, null);
+            // Bindings are a scheduler phase of their own, run for every panel after this one has
+            // painted, so a bound field would draw its slider's low end instead of the value.
+            var bind = panel.GetType().GetMethod("UpdateBindings", Any);
+            for (int i = 0; i < 4; i++) { bind?.Invoke(panel, null); update?.Invoke(panel, null); }
 
             var rt = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32);
             var was = RenderTexture.active;

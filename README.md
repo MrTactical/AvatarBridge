@@ -2413,8 +2413,8 @@ alone and warned about instead: silently overruling those would be the converter
 the author.
 
 To check in Play mode, open the Avatar Tester's **Animator layers** card: a layer above the
-hand layers whose mask lets it write fingers gets a ⚠ before its name (the card's **⚠ conflict**
-key), and the card's header counts how many may overwrite gestures even while it is folded.
+hand layers whose mask lets it write fingers gets a ⚠ before its name (and the card shows a
+**⚠ conflict** key, only when there is one), and the card's header counts how many may overwrite gestures even while it is folded.
 
 ### An emote's hand pose is wrong, or follows your gesture
 

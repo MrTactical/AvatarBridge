@@ -419,6 +419,9 @@ namespace AvatarBridge.Regression
             pulseWas = mats.Length > 0 ? mats[0].GetFloat("_YAPS_SquashPulse") : 0f;
             knobs = YapsSquash.SettingsOf(animator.transform);
             if (knobs != null) { stretchWas = knobs.stretchInMotion; styleWas = knobs.motionStyle; }
+            // A stale copy of a renamed script can own the settings' GUID, and the knob shots then
+            // film identical frames with nothing failing.
+            else Debug.LogWarning("[SquashPlay] no squash settings under the avatar: the stretch and style shots will look the same");
             standing = animator.transform.position;
             segments = new List<string>();
             shotStart = Bend;

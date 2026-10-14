@@ -41,9 +41,8 @@ namespace AvatarBridge
             if (settings == null) return null;
             bool on = YapsSquashPreview.On == settings;
             var fold = new BridgeElements.Card("Squash", on ? "previewing" : null, true).Nested().Remember("Tester.Squash");
-            YapsSquashPreview.Controls(fold.Body, settings, refresh);
-            fold.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Tune it", () => Selection.activeObject = settings,
-                "Selects the YAPS Squash component, where the knobs and Build are.")));
+            YapsSquashPreview.Controls(fold.Body, settings, refresh).Add(BridgeElements.Btn("Tune it", () => Selection.activeObject = settings,
+                "Selects the YAPS Squash component, where the knobs and Build are."));
             return fold;
         }
 
@@ -68,7 +67,7 @@ namespace AvatarBridge
             bool testSocket = YapsPreview.TestSocketInScene, testPlug = YapsPreview.TestPlugInScene;
             if (sockets.Count == 0 && plugs.Count == 0 && !testSocket && !testPlug) return null;
 
-            var fold = new BridgeElements.Card("Plugs and sockets", $"{sockets.Count} socket(s) · {plugs.Count} plug(s)", true)
+            var fold = new BridgeElements.Card("Plugs and sockets", $"{BridgeElements.Count(sockets.Count, "socket", "sockets")} · {BridgeElements.Count(plugs.Count, "plug", "plugs")}", true)
                 .Nested().Remember("Tester.Plugs and sockets");
             fold.Body.Add(BridgeElements.Hint(live
                 ? "Bends the baked plugs toward a socket, in Play mode too, where a plug a toggle brings in can be seen. It stops when Play ends."
