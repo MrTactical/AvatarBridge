@@ -492,24 +492,34 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         if (squashReach[m] > 0 && _YAPS_SquashShape.w > 0)
             squashContact[m] = max(squashContact[m], saturate(dot(bend, squashAxis[m]) / (YAPS_SQUASH_SOFT * reach)));
 
-        // The squeeze lines: M's strongest direction found starting from the sum, then the two
-        // across it solved exactly in their plane, so the three stay square. Flattened along the
-        // strongest alone, two presses at an angle swung the whole flattening over as one
-        // overtook the other. Found by iterating too, the second came from rounding noise under
-        // a single press, leaned onto the first, and the whole part jumped by a hand's width.
-        float total = M[0][0] + M[1][1] + M[2][2];
+        // The squeeze lines, solved exactly: M's largest eigenvalue in closed form, its line as
+        // the longest cross of two rows of M less that, then the two across it in their plane, so
+        // the three stay square. Flattened along the strongest alone, two presses at an angle
+        // swung the whole flattening over as one overtook the other. Iterated, a line was only as
+        // good as its start: the second grew from rounding noise and threw the part a hand's
+        // width; the first, from the sum, never turned up while presses from either side
+        // cancelled in it, and from the longest column it jumped when another grew longer with
+        // two squeezes nearly level. Each put the whole part on a wrong line for a frame. Which
+        // way a line points never matters: flattened along its reverse, front and back swap.
         float3 ax[3];
-        float3 x = S;
-        if (dot(x, x) < 1e-6 * max(total * total, 1e-16))
-            x = M[0][0] >= M[1][1] && M[0][0] >= M[2][2] ? M[0] : (M[1][1] >= M[2][2] ? M[1] : M[2]);
+        float3x3 I3 = float3x3(1, 0, 0, 0, 1, 0, 0, 0, 1);
+        float mean = (M[0][0] + M[1][1] + M[2][2]) / 3;
+        float3 dg = float3(M[0][0], M[1][1], M[2][2]) - mean;
+        float spread = sqrt((dot(dg, dg) + 2 * (M[0][1] * M[0][1] + M[0][2] * M[0][2] + M[1][2] * M[1][2])) / 6);
+        float c0 = dot(M[0], M[0]), c1 = dot(M[1], M[1]), c2 = dot(M[2], M[2]);
+        float3 x = c0 >= c1 && c0 >= c2 ? M[0] : (c1 >= c2 ? M[1] : M[2]);
+        if (spread > 1e-9)
+        {
+            float top = mean + 2 * spread * cos(acos(clamp(determinant((M - mean * I3) / spread) / 2, -1, 1)) / 3);
+            float3x3 A = M - top * I3;
+            float3 x01 = cross(A[0], A[1]), x02 = cross(A[0], A[2]), x12 = cross(A[1], A[2]);
+            float d01 = dot(x01, x01), d02 = dot(x02, x02), d12 = dot(x12, x12);
+            float3 c = d01 >= d02 && d01 >= d12 ? x01 : (d02 >= d12 ? x02 : x12);
+            // Two strongest exactly level leave A no line: any in their plane will do.
+            if (dot(c, c) > 1e-10 * spread * spread * spread * spread) x = c;
+        }
         if (dot(x, x) < 1e-20) x = float3(0, 1, 0);
         x = normalize(x);
-        [unroll]
-        for (int it = 0; it < 4; it++)
-        {
-            float3 y = mul(M, x);
-            if (dot(y, y) > 1e-16) x = normalize(y);
-        }
         ax[0] = x;
         float3 e1 = normalize(cross(x, abs(x.y) < 0.9 ? float3(0, 1, 0) : float3(1, 0, 0)));
         float3 e2 = cross(x, e1);

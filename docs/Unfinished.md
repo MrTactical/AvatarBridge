@@ -1720,15 +1720,30 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
       square lines, the second solved exactly in the plane across the first (iterated, it grew
       from rounding noise under a single press and threw the part a hand's width), the volume
       kept across all three, normals by the inverse scale.
+    - The first line was found by iterating from the sum of the presses, and presses from either
+      side cancel in the sum: on one frame it lay square to the strongest line (their dot about
+      1 mm), the iteration never found it, and the whole part flattened along a wrong line for
+      that frame, the farthest vertex out and back by 39 mm. Traced with readout copies of the
+      lines, their strengths and the shifts, logged for one vertex (`-spJumpVertex`). Started
+      from M's longest column instead, it jumped wherever two squeezes were nearly level (78 to
+      72, so six steps barely moved off the start) and another column grew longer: 37 mm on the
+      over-the-top path. Now solved exactly: the largest eigenvalue in closed form, its line as
+      the longest cross of two rows of M less it; checked against long power iteration on 20,000
+      random press sets in Python. Which way a line points never mattered, since flattening along
+      its reverse swaps front and back and the shift cancels exactly.
     - Presses merge, the deeper leading by depth to the fourth, instead of the deepest alone: per
       arm across its bones, and other players' hands into slots 2 and 3. An own hand eases out of
       the others' list instead of cutting, the plug's push eases out over the last fifth of its
       length, the pair's contact eases in over the last tenth of the gap.
-    Worst move per frame on each path, committed shader then now: 77/14, 53/39, 64/29, 133/36,
-    62/22 mm. Over the top is now a ramp over eight frames, not a flip. Left out of those: the
-    sweep's first frame, 39 mm in the committed shader as well, which is the arm switching on;
-    and still open, one vertex out and back by 39 mm for a single frame on the second path, gone
-    with the dent or the flatten cut out, not traced.
+    Worst move per frame on each path, committed shader then now: 77/14, 53/21, 64/29, 133/36,
+    62/19 mm. Over the top is now a ramp over eight frames, not a flip. Left out of those: the
+    sweep's first frame, 39 mm in the committed shader as well, which is the arm switching on.
+    Ceiling, measured: where two squeezes come nearly level the exact lines still swing round
+    each other fast (80 degrees over five frames, 25 at the most, strengths 78 and 69), and the
+    flatten changes with them, since how a press splits front and back and how far the part
+    reaches both depend on the line; 29 mm in one frame of a five-frame ramp, the same order as
+    the over-the-top ramp. Continuous now, not a flip; making the flatten blind to the line
+    inside a nearly level pair would take it further.
     Cleavage: `-spLook` renders the pair lit over a lightened texture (a black top hid the shape)
     from the front, above and close, at rest and squeezed. The plane where the two meet let a
     fifth of the overshoot through, so both sides crossed into each other lying nearly flat. Now

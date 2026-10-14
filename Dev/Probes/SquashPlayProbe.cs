@@ -25,7 +25,10 @@
 // which vertex. The read runs the project's own yaps_dent.cginc, not the patched copy, so an edit
 // to it is measured without rebuilding the avatar. A snap is a change far past the arm's own step.
 // The same sweep is read again with one stage at a time taken out of a copy of it, into
-// jump_<stage>.tsv, so whichever copy loses a snap names where it comes from.
+// jump_<stage>.tsv, so whichever copy loses a snap names where it comes from. Other copies read
+// a value out in place of the move, as each vertex's share of it: the press, the bend, the
+// shares, the dent's move, and the flatten's lines, amounts and pushes. -spJumpVertex N logs one
+// vertex's move in every copy each frame, into jump_vertex.tsv.
 //
 // -spLook draws the pair with the project's own yaps_dent.cginc too, lit from the camera over a
 // lightened texture so a black garment still shows its shape, from the front, from above and
@@ -616,6 +619,16 @@ namespace AvatarBridge.Regression
             ("nocapsule", new[] { "if (dist >= r + soft || dist < 1e-6) continue;", "continue;" }),
             ("press", new[] { "mapped += (moved - world) * shares[m];", "mapped += (hv[0] + hv[1] + hv[2] + hv[3]) * shares[m];", Stop, StopTo }),
             ("bend", new[] { "mapped += (moved - world) * shares[m];", "mapped += bend * shares[m];", Stop, StopTo }),
+            ("shares", new[] { "mapped += (moved - world) * shares[m];", "mapped += float3(m == 0, m == 1, m >= 2) * shares[m];", Stop, StopTo }),
+            ("dentmove", new[] { "float3 moved = p.centre + squashed + bend * lean;", "float3 moved = world;", Stop, StopTo }),
+            ("nodentmove", new[] { "            moved -= d * sink;\n", "" }),
+            ("ax0", new[] { "mapped += (moved - world) * shares[m];", "mapped += (ax[0]) * shares[m];", Stop, StopTo }),
+            ("ax1", new[] { "mapped += (moved - world) * shares[m];", "mapped += (ax[1]) * shares[m];", Stop, StopTo }),
+            ("along", new[] { "mapped += (moved - world) * shares[m];", "mapped += (float3(along[0], along[1], along[2])) * shares[m];", Stop, StopTo }),
+            ("shift", new[] { "mapped += (moved - world) * shares[m];", "mapped += (float3(shift[0], shift[1], shift[2])) * shares[m];", Stop, StopTo }),
+            ("sum", new[] { "mapped += (moved - world) * shares[m];", "mapped += (S) * shares[m];", Stop, StopTo }),
+            ("online", new[] { "mapped += (moved - world) * shares[m];", "mapped += (float3(dot(ax[0], mul(M, ax[0])), dot(ax[1], mul(M, ax[1])), dot(ax[2], mul(M, ax[2])))) * shares[m];", Stop, StopTo }),
+            ("lean", new[] { "mapped += (moved - world) * shares[m];", "mapped += (float3(lean, bendBy, 0)) * shares[m];", Stop, StopTo }),
         };
 
         static void WriteJumpShaders()
@@ -697,6 +710,9 @@ namespace AvatarBridge.Regression
         static Texture2D jumpTex;
         static Vector3[][] jumpWas;
         static Vector3 jumpFrom, jumpTo, jumpFront, jumpUp, wristWas, elbowWas;
+        // -spJumpVertex N: that vertex's move every frame in every copy, into jump_vertex.tsv.
+        static int jumpVertex = -1;
+        static List<string> jumpVertexRows;
         static float jumpReach;
         static List<string>[] jumpRows;
         static List<(float jump, int frame)>[] jumpWorst;
@@ -737,6 +753,10 @@ namespace AvatarBridge.Regression
                 jumpWas = new Vector3[JumpStages.Length][];
                 jumpRows = JumpStages.Select(_ => new List<string> { "frame\tpath\tjump_mm\tvertex\twas_mm\tnow_mm\tover_2mm\tmost_mm\twrist_step_mm\telbow_step_mm" }).ToArray();
                 jumpWorst = JumpStages.Select(_ => new List<(float, int)>()).ToArray();
+                var cli = Environment.GetCommandLineArgs();
+                int vi = Array.IndexOf(cli, "-spJumpVertex");
+                jumpVertex = vi >= 0 && vi + 1 < cli.Length ? int.Parse(cli[vi + 1], CultureInfo.InvariantCulture) : -1;
+                jumpVertexRows = new List<string> { "frame\tstage\tx_mm\ty_mm\tz_mm" };
                 foreach (var s in JumpStages)
                 {
                     var shader = Shader.Find($"Hidden/AvatarBridge/SquashJump_{s.name}");
@@ -753,6 +773,7 @@ namespace AvatarBridge.Regression
                     File.WriteAllLines(Path.Combine(outDir, s == 0 ? "jump.tsv" : $"jump_{JumpStages[s].name}.tsv"), jumpRows[s]);
                     Debug.Log($"[SquashPlay] jump worst {JumpStages[s].name}: " + string.Join(", ", jumpWorst[s].OrderByDescending(w => w.jump).Take(12).Select(w => $"{w.frame}:{w.jump:F1}")));
                 }
+                if (jumpVertex >= 0) File.WriteAllLines(Path.Combine(outDir, "jump_vertex.tsv"), jumpVertexRows);
                 SessionState.SetInt(K + "on", 0);
                 EditorApplication.Exit(0);
                 return;
@@ -789,6 +810,12 @@ namespace AvatarBridge.Regression
                 if (id < 0 || id >= moved.Length) continue;
                 moved[id] = new Vector3(c.r, c.g, c.b);
                 seen[id] = true;
+            }
+            if (jumpVertex >= 0 && jumpVertex < moved.Length && seen[jumpVertex])
+            {
+                string G(float x) => (x * 1000f).ToString("0.00", CultureInfo.InvariantCulture);
+                var v = moved[jumpVertex];
+                jumpVertexRows.Add(string.Join("\t", frame, JumpStages[s].name, G(v.x), G(v.y), G(v.z)));
             }
             if (jumpWas[s] != null)
             {
