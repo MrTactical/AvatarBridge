@@ -1849,8 +1849,8 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     so an uncapped desktop frame rate; the bar's scale tops out there). So on the wearer's client a
     float texture rewritten from itself inside a render controller keeps its state, ticks once a
     frame, and sees valid `_Time` and `unity_DeltaTime`, and the readout reads the copy's clone.
-    Still open: that the sweep moves (a still cannot show a frozen texture), a remote viewer,
-    switch-and-back, both eyes in VR.
+    The sweep moved (Joe, same session), so it was live, not a texture frozen after its start.
+    Still open: a remote viewer, switch-and-back, both eyes in VR.
     COST, measured 2026-10-14, batch Unity with graphics, one 1920x1080 render plus a one-pixel
     readback so the GPU finishes, 35 renders kept, median ms (fastest), this machine's GPU:
     one avatar: none 0.22 (0.19), squash shader off 0.74 (0.58), on 0.99 (0.84), with 16 players
