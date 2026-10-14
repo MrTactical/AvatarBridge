@@ -299,12 +299,17 @@ namespace AvatarBridge
             {
                 string safe = string.Concat(ctx.Target.name.Split(System.IO.Path.GetInvalidFileNameChars()));
                 string path = $"{ctx.OutputDir}/{safe}.prefab";
-                var prefab = PrefabUtility.SaveAsPrefabAsset(ctx.Target, path, out bool success);
+                bool linked = ctx.Settings.linkConvertedPrefab, success;
+                var prefab = linked
+                    ? PrefabUtility.SaveAsPrefabAssetAndConnect(ctx.Target, path, InteractionMode.AutomatedAction, out success)
+                    : PrefabUtility.SaveAsPrefabAsset(ctx.Target, path, out success);
                 if (success && prefab != null)
                 {
                     ctx.Report.Converted("Conversion", "Converted avatar saved as a prefab",
                         $"{path}: a crash or an unsaved scene can no longer lose the conversion; " +
-                        "drag the prefab back into the scene to continue where you left off.");
+                        (linked
+                            ? "the copy in the scene is linked to it, so edits made from here can be applied to the prefab."
+                            : "drag the prefab back into the scene to continue where you left off."));
                 }
                 else
                 {

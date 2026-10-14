@@ -1672,6 +1672,24 @@ draft was built first, then deleted unpublished when two tester changes landed a
 `v4.7.0` stays in history and that number was never shipped. Corpus 415 is the accepted YAPS baseline.
 Not verified in ChilloutVR; the records below say what only the game can settle.*
 
+### "Avoid unpacking the converted prefab": a user's request, 2026-10-14. A ON DEV, B and C asked
+
+Nothing unpacks explicitly. The link is lost three ways: the clone is `Object.Instantiate`, which
+never keeps one; a VRCFury or NDMF bake hands back a plain copy; and the output prefab was saved
+with `SaveAsPrefabAsset`, which leaves the scene copy unconnected.
+
+- **A, ON DEV:** *Keep the converted avatar a prefab* (Manual ▸ Menu & extras, off) saves with
+  `SaveAsPrefabAssetAndConnect`. Batch check on one avatar: the copy is an instance of the output
+  prefab with no overrides at all, so nothing after the save touches it. Off is unchanged.
+  Reconverting overwrites the prefab, so an older linked copy follows; that is why it is off.
+- **B, asked:** the converted avatar as a Variant of the user's ORIGINAL prefab. Never possible on a
+  VRCFury or Modular Avatar avatar (their bakes flatten). Needs a link-keeping duplicate (the Ctrl+D
+  route, not Instantiate), and Unity refuses to reparent inside a prefab instance: at least
+  `ConstraintConverter.cs:668` and `FuryHeadFlattener.cs:78` move existing bones. Probe which passes
+  refuse before building. A later VRChat component added to the original lands unconverted.
+- **C, asked:** nested prefabs inside the avatar (outfits, props) staying prefab instances in the
+  converted copy. Same Instantiate and bake limits as B.
+
 ### README audited against the code, 2026-10-06. Both loose ends FIXED the same day
 
 Every section was checked against the code by one auditor each, plus sweeps for labels, defaults,

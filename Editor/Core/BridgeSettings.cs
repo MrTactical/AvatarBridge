@@ -38,6 +38,10 @@ namespace AvatarBridge
         // Outside the tool's own folder. Deleting Assets/AvatarBridge
         // to update must never erase conversions.
         public string outputFolder = "Assets/AvatarBridgeOutput";
+        // The scene copy becomes an instance of the prefab saved in the output folder, so later
+        // edits can be applied to it. Off by default: converting again overwrites that prefab,
+        // and an older copy still linked to it would change with it.
+        public bool linkConvertedPrefab = false;
 
         [Header("Animator layers to merge")]
         // Merged masked off the humanoid body; custom walk, stance and

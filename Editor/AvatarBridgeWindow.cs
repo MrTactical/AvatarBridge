@@ -891,6 +891,10 @@ namespace AvatarBridge
                 "Comma separated parameter prefixes and layer names of other VRChat-only systems to remove.",
                 settings.extraStripKeywords, v => settings.extraStripKeywords = v));
             AddOutputFolder(b);
+            b.Add(BridgeElements.Bind("Keep the converted avatar a prefab",
+                "The copy in the scene stays linked to the prefab saved in the output folder, so later edits can be applied to it. " +
+                "Converting again overwrites that prefab, and any copy still linked to it changes too.",
+                settings.linkConvertedPrefab, v => settings.linkConvertedPrefab = v));
             return card;
         }
 
