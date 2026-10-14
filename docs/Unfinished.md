@@ -1701,6 +1701,42 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     reads. ON DEV, editor-proven only (`-spVideo`: both the squeeze and the pulse close the
     cleavage into a flat seam and let go), NOT YET IN GAME. Re-make the diagnostic build to see
     it; a shipped build's pulse is 0.
+    Snaps and the seam, Joe 2026-10-14: "if you move the avatar arm over, the breast snaps
+    violently, is there other instances of this occuring?", then "a nicer looking cleavage
+    squish". FIXED ON DEV, editor-measured, NOT YET IN GAME. `SquashPlayProbe -spJump` sweeps the
+    own arm past the pair on five paths (360 frames each, over the top among them) and reads every
+    vertex's move per frame; a snap is a move far past the arm's own step, about 7 mm a frame. It
+    reads the same sweep again from copies of the shader with one stage cut out, and with the
+    press or the bend read out in place of the move, so the copy that loses a snap names it. What
+    was found and what replaced it:
+    - An arm's press points from the part's centre to the arm's line. An arm passing near the
+      centre turned it right over in about six frames while it was at its deepest (260 mm), so the
+      whole part flipped from pressed above to pressed below, 130 mm in a frame. The press is now
+      never more than the line's distance from the centre, which holds the turn to the arm's own
+      speed. A fade toward the centre (smoothstep over half the extent) only halved it.
+    - The own-arm capsule push went opposite ways either side of the bone and flicked skin across
+      as the bone swept by; it fades to nothing at the bone. Most of the jitter on the other paths.
+    - One squeeze line swung the whole flattening over as one press overtook another: now three
+      square lines, the second solved exactly in the plane across the first (iterated, it grew
+      from rounding noise under a single press and threw the part a hand's width), the volume
+      kept across all three, normals by the inverse scale.
+    - Presses merge, the deeper leading by depth to the fourth, instead of the deepest alone: per
+      arm across its bones, and other players' hands into slots 2 and 3. An own hand eases out of
+      the others' list instead of cutting, the plug's push eases out over the last fifth of its
+      length, the pair's contact eases in over the last tenth of the gap.
+    Worst move per frame on each path, committed shader then now: 77/14, 53/39, 64/29, 133/36,
+    62/22 mm. Over the top is now a ramp over eight frames, not a flip. Left out of those: the
+    sweep's first frame, 39 mm in the committed shader as well, which is the arm switching on;
+    and still open, one vertex out and back by 39 mm for a single frame on the second path, gone
+    with the dent or the flatten cut out, not traced.
+    Cleavage: `-spLook` renders the pair lit over a lightened texture (a black top hid the shape)
+    from the front, above and close, at rest and squeezed. The plane where the two meet let a
+    fifth of the overshoot through, so both sides crossed into each other lying nearly flat. Now
+    each side stops just short and deeper layers stack behind. With the give at a tenth of the
+    reach that opened a slot 1 to 2 cm wide down the middle; at 3% the two meet in one thin line.
+    The jagged seam Joe saw in game never showed in these renders, so whether this is its fix is
+    open. Ceiling: an arm right through the middle now lets the part go rather than flip, as a
+    shader keeps no memory of the side it came from. Open: in game, after **Add squash** again.
     Idea, Joe 2026-10-14: MESH-BASED SELECTION. PROPOSED, not started, Joe picks the tier. Today
     parts are found by bone name (breast, boob, butt, booty, glute), at most two pairs, the share
     per vertex is the skin weight to those bones, and only the dev test builder sets any of it

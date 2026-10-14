@@ -20,6 +20,18 @@
 // off and with 64 players' hands on the part, alone and among nine copies of the avatar, into
 // <dir>/cost.tsv.
 //
+// -spJump sweeps the own arm across the pair at five depths and heights instead, and reads back
+// every vertex's squash move each frame, into <dir>/jump.tsv: the largest change in one frame, and
+// which vertex. The read runs the project's own yaps_dent.cginc, not the patched copy, so an edit
+// to it is measured without rebuilding the avatar. A snap is a change far past the arm's own step.
+// The same sweep is read again with one stage at a time taken out of a copy of it, into
+// jump_<stage>.tsv, so whichever copy loses a snap names where it comes from.
+//
+// -spLook draws the pair with the project's own yaps_dent.cginc too, lit from the camera over a
+// lightened texture so a black garment still shows its shape, from the front, from above and
+// close: at rest, then squeezed together from outside at two strengths, into
+// <dir>/look_<name>.png. For judging the shape where the pair meets.
+//
 // Batch, never -nographics: the frames are rendered.
 
 #if AVATARBRIDGE_YAPS
@@ -72,6 +84,14 @@ namespace AvatarBridge.Regression
             SessionState.SetInt(K + "video", Environment.GetCommandLineArgs().Contains("-spVideo") ? 1 : 0);
             SessionState.SetInt(K + "plug", Environment.GetCommandLineArgs().Contains("-spPlug") ? 1 : 0);
             SessionState.SetInt(K + "cost", Environment.GetCommandLineArgs().Contains("-spCost") ? 1 : 0);
+            SessionState.SetInt(K + "jump", Environment.GetCommandLineArgs().Contains("-spJump") ? 1 : 0);
+            SessionState.SetInt(K + "look", Environment.GetCommandLineArgs().Contains("-spLook") ? 1 : 0);
+            if (Environment.GetCommandLineArgs().Contains("-spLook"))
+            {
+                File.WriteAllText(LookPath, LookShader);
+                AssetDatabase.ImportAsset(LookPath, ImportAssetOptions.ForceUpdate);
+            }
+            if (Environment.GetCommandLineArgs().Contains("-spJump")) WriteJumpShaders();
             var scene = EditorSceneManager.OpenScene(Arg("-spScene"), OpenSceneMode.Single);
             foreach (var r in scene.GetRootGameObjects())
                 if (r.GetComponentInChildren<CVRAvatar>(true) == null && r.GetComponentInChildren<Animator>(true) != null) r.SetActive(false);
@@ -141,6 +161,8 @@ namespace AvatarBridge.Regression
                 Shoot("rest_animated");
             }
             if (SessionState.GetInt(K + "cost", 0) == 1) { if (frame == Bend) Cost(slots, mats); return; }
+            if (SessionState.GetInt(K + "jump", 0) == 1) { if (frame >= Bend) JumpPose(slots, mats); return; }
+            if (SessionState.GetInt(K + "look", 0) == 1) { if (frame >= Bend) LookPose(slots, mats); return; }
             if (SessionState.GetInt(K + "video", 0) == 1) { if (frame >= Bend) Film(slots, mats); return; }
             if (frame == Bend - 1) Shoot("rest");
             if (SessionState.GetInt(K + "plug", 0) == 1)
@@ -577,6 +599,347 @@ namespace AvatarBridge.Regression
             };
         }
 
+        const string JumpDir = "Assets/AvatarBridgeOutput/SquashTest/";
+        const string LiveDent = "Assets/AvatarBridge/Editor/Yaps/yaps_dent.cginc";
+        // Each stage the sweep is read without, by the lines that switch it off in a copy, in
+        // pairs of what to find and what to put. Press and bend read those vectors out instead,
+        // as each vertex's share of them.
+        const string Stop = "    world += mapped;\n";
+        const string StopTo = "    position = mul(unity_WorldToObject, float4(start + mapped, 1)).xyz;\n    return;\n";
+        static readonly (string name, string[] swaps)[] JumpStages =
+        {
+            ("full", new string[0]),
+            ("nodent", new[] { "float local = deepest > 0 ? deepest * (1 - exp(-in0 / deepest)) : 0;", "float local = 0;" }),
+            ("nobend", new[] { "if (p.framed && _YAPS_SquashTune.z > 0)", "if (false)" }),
+            ("noflat", new[] { "squashed += ax[c3] * (dot(d, ax[c3]) * along[c3] + shift[c3]);", "squashed += ax[c3] * dot(d, ax[c3]);" }),
+            ("noplane", new[] { "if (squashContact[c] <= 0) continue;", "continue;" }),
+            ("nocapsule", new[] { "if (dist >= r + soft || dist < 1e-6) continue;", "continue;" }),
+            ("press", new[] { "mapped += (moved - world) * shares[m];", "mapped += (hv[0] + hv[1] + hv[2] + hv[3]) * shares[m];", Stop, StopTo }),
+            ("bend", new[] { "mapped += (moved - world) * shares[m];", "mapped += bend * shares[m];", Stop, StopTo }),
+        };
+
+        static void WriteJumpShaders()
+        {
+            string live = File.ReadAllText(LiveDent);
+            foreach (var s in JumpStages)
+            {
+                string include = LiveDent;
+                if (s.swaps.Length > 0)
+                {
+                    string copy = live.Replace("\r\n", "\n");
+                    for (int i = 0; i < s.swaps.Length; i += 2)
+                    {
+                        if (!copy.Contains(s.swaps[i])) Debug.LogError($"[SquashPlay] jump stage {s.name}: line {i / 2} not found");
+                        copy = copy.Replace(s.swaps[i], s.swaps[i + 1]);
+                    }
+                    include = JumpDir + $"yaps_dent_{s.name}.cginc";
+                    File.WriteAllText(include, copy);
+                    AssetDatabase.ImportAsset(include, ImportAssetOptions.ForceUpdate);
+                }
+                string path = JumpDir + $"SquashJump_{s.name}.shader";
+                File.WriteAllText(path, JumpShader.Replace("SquashJump\"", $"SquashJump_{s.name}\"").Replace(LiveDent, include));
+                AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+            }
+        }
+
+        // Each vertex's move, drawn as one point at a pixel of its own, its index in alpha so the
+        // read needs no row order. Rendered as a replacement, so every material keeps its values.
+        const string JumpShader = @"Shader ""Hidden/AvatarBridge/SquashJump""
+{
+    SubShader
+    {
+        Pass
+        {
+            ZTest Always ZWrite Off Cull Off
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma geometry geom
+            #pragma fragment frag
+            #pragma target 5.0
+            #include ""UnityCG.cginc""
+            #include ""Assets/AvatarBridge/Editor/Yaps/yaps_socket.cginc""
+            #include ""Assets/AvatarBridge/Editor/Yaps/yaps_dent.cginc""
+            float _JumpWidth, _JumpHeight;
+            struct A { float4 vertex : POSITION; float3 normal : NORMAL; float4 tangent : TANGENT; uint id : SV_VertexID; };
+            struct V { float4 moved : TEXCOORD0; };
+            struct G { float4 pos : SV_POSITION; float4 moved : TEXCOORD0; };
+            V vert(A v)
+            {
+                float3 p = v.vertex.xyz, n = v.normal, t = v.tangent.xyz;
+                YapsDentDeform(p, n, t, v.id);
+                V o;
+                o.moved = float4(mul((float3x3)unity_ObjectToWorld, p - v.vertex.xyz), v.id + 1);
+                return o;
+            }
+            [maxvertexcount(3)]
+            void geom(triangle V i[3], inout PointStream<G> s)
+            {
+                [unroll] for (int k = 0; k < 3; k++)
+                {
+                    uint id = (uint) i[k].moved.w - 1, w = (uint) _JumpWidth;
+                    G o;
+                    o.pos = float4((float2(id % w, id / w) + 0.5) / float2(_JumpWidth, _JumpHeight) * 2 - 1, 0.5, 1);
+                    o.moved = i[k].moved;
+                    s.Append(o);
+                }
+            }
+            float4 frag(G i) : SV_Target { return i.moved; }
+            ENDCG
+        }
+    }
+}
+";
+        const int JumpWidth = 1024, JumpSegment = 360;
+        // Depth in front of the near part's centre and height above it, in reaches: shallow, half,
+        // deep, over the top, underneath.
+        static readonly (float depth, float height)[] JumpPaths = { (0.95f, 0f), (0.7f, 0f), (0.45f, 0f), (0.7f, 0.4f), (0.7f, -0.4f) };
+        static Camera jumpCam;
+        static Texture2D jumpTex;
+        static Vector3[][] jumpWas;
+        static Vector3 jumpFrom, jumpTo, jumpFront, jumpUp, wristWas, elbowWas;
+        static float jumpReach;
+        static List<string>[] jumpRows;
+        static List<(float jump, int frame)>[] jumpWorst;
+
+        // The left wrist from outside the near part, across its front, to past the far one's centre
+        // and back, once per path, the depth and height easing over between paths.
+        static void JumpPose(Transform[] slots, Material[] mats)
+        {
+            if (jumpCam == null)
+            {
+                int p = (slots[0].position - target).sqrMagnitude < (slots[1].position - target).sqrMagnitude ? 0 : 1;
+                Vector3 P = slots[p].position, Q = slots[1 - p].position;
+                var root = animator.transform;
+                jumpReach = mats[0].GetVector("_YAPS_SquashReach")[p] * slots[p].lossyScale.x;
+                var outP = Vector3.ProjectOnPlane(P - Q, Vector3.up).normalized;
+                jumpFrom = P + outP * 1.3f * jumpReach;
+                jumpTo = Q - outP * 0.3f * jumpReach;
+                jumpFront = root.forward;
+                jumpUp = root.up;
+                var smr = animator.GetComponentsInChildren<SkinnedMeshRenderer>().First(r => r.sharedMaterials.Any(m => mats.Contains(m)));
+                smr.gameObject.layer = 31;
+                smr.updateWhenOffscreen = true;
+                int height = (smr.sharedMesh.vertexCount + JumpWidth - 1) / JumpWidth;
+                Shader.SetGlobalFloat("_JumpWidth", JumpWidth);
+                Shader.SetGlobalFloat("_JumpHeight", height);
+                jumpCam = new GameObject("SquashJump camera").AddComponent<Camera>();
+                jumpCam.enabled = false;
+                jumpCam.cullingMask = 1 << 31;
+                jumpCam.clearFlags = CameraClearFlags.SolidColor;
+                jumpCam.backgroundColor = Color.clear;
+                jumpCam.allowHDR = false;
+                jumpCam.allowMSAA = false;
+                jumpCam.fieldOfView = 60f;
+                jumpCam.transform.position = P + jumpFront * 1.5f;
+                jumpCam.transform.LookAt(P);
+                jumpCam.targetTexture = new RenderTexture(JumpWidth, height, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear);
+                jumpTex = new Texture2D(JumpWidth, height, TextureFormat.RGBAFloat, false, true);
+                jumpWas = new Vector3[JumpStages.Length][];
+                jumpRows = JumpStages.Select(_ => new List<string> { "frame\tpath\tjump_mm\tvertex\twas_mm\tnow_mm\tover_2mm\tmost_mm\twrist_step_mm\telbow_step_mm" }).ToArray();
+                jumpWorst = JumpStages.Select(_ => new List<(float, int)>()).ToArray();
+                foreach (var s in JumpStages)
+                {
+                    var shader = Shader.Find($"Hidden/AvatarBridge/SquashJump_{s.name}");
+                    if (shader == null || ShaderUtil.ShaderHasError(shader))
+                        Debug.LogError($"[SquashPlay] jump shader {s.name}: " + (shader == null ? "missing" : string.Join(" | ", ShaderUtil.GetShaderMessages(shader).Select(m => m.message))));
+                }
+                Debug.Log($"[SquashPlay] jump: {smr.name}, {smr.sharedMesh.vertexCount} vertices, reach {jumpReach * 100f:F1} cm");
+            }
+            int t = frame - Bend, seg = t / JumpSegment;
+            if (seg >= JumpPaths.Length)
+            {
+                for (int s = 0; s < JumpStages.Length; s++)
+                {
+                    File.WriteAllLines(Path.Combine(outDir, s == 0 ? "jump.tsv" : $"jump_{JumpStages[s].name}.tsv"), jumpRows[s]);
+                    Debug.Log($"[SquashPlay] jump worst {JumpStages[s].name}: " + string.Join(", ", jumpWorst[s].OrderByDescending(w => w.jump).Take(12).Select(w => $"{w.frame}:{w.jump:F1}")));
+                }
+                SessionState.SetInt(K + "on", 0);
+                EditorApplication.Exit(0);
+                return;
+            }
+            float u = (t % JumpSegment) / (float)JumpSegment;
+            var was = JumpPaths[Mathf.Max(seg - 1, 0)];
+            var now = JumpPaths[seg];
+            float ease = Mathf.SmoothStep(0f, 1f, u / 0.15f);
+            float depth = Mathf.Lerp(was.depth, now.depth, ease), up = Mathf.Lerp(was.height, now.height, ease);
+            float across = 0.5f - 0.5f * Mathf.Cos(2f * Mathf.PI * u);
+            target = Vector3.Lerp(jumpFrom, jumpTo, across) + (jumpFront * depth + jumpUp * up) * jumpReach;
+            Reach(1f);
+        }
+
+        static void JumpRead()
+        {
+            for (int s = 0; s < JumpStages.Length; s++) JumpRead(s);
+            wristWas = wrist.position;
+            elbowWas = elbow.position;
+        }
+
+        static void JumpRead(int s)
+        {
+            jumpCam.RenderWithShader(Shader.Find($"Hidden/AvatarBridge/SquashJump_{JumpStages[s].name}"), "");
+            RenderTexture.active = jumpCam.targetTexture;
+            jumpTex.ReadPixels(new Rect(0, 0, jumpTex.width, jumpTex.height), 0, 0);
+            RenderTexture.active = null;
+            var px = jumpTex.GetPixels();
+            var moved = new Vector3[jumpTex.width * jumpTex.height];
+            var seen = new bool[moved.Length];
+            foreach (var c in px)
+            {
+                int id = Mathf.RoundToInt(c.a) - 1;
+                if (id < 0 || id >= moved.Length) continue;
+                moved[id] = new Vector3(c.r, c.g, c.b);
+                seen[id] = true;
+            }
+            if (jumpWas[s] != null)
+            {
+                float worst = 0f, most = 0f;
+                int at = -1, over = 0;
+                for (int i = 0; i < moved.Length; i++)
+                {
+                    if (!seen[i]) continue;
+                    float j = (moved[i] - jumpWas[s][i]).magnitude;
+                    most = Mathf.Max(most, moved[i].magnitude);
+                    if (j > 0.002f) over++;
+                    if (j > worst) { worst = j; at = i; }
+                }
+                float step = (wrist.position - wristWas).magnitude, elbowStep = (elbow.position - elbowWas).magnitude;
+                string F(float x) => (x * 1000f).ToString("0.00", CultureInfo.InvariantCulture);
+                jumpRows[s].Add(string.Join("\t", frame, (frame - Bend) / JumpSegment, F(worst), at, at < 0 ? "0" : F(jumpWas[s][at].magnitude),
+                    at < 0 ? "0" : F(moved[at].magnitude), over, F(most), F(step), F(elbowStep)));
+                jumpWorst[s].Add((worst * 1000f, frame));
+            }
+            jumpWas[s] = moved;
+        }
+
+        const string LookPath = "Assets/AvatarBridgeOutput/SquashTest/SquashLook.shader";
+        const string LookShader = @"Shader ""Hidden/AvatarBridge/SquashLook""
+{
+    SubShader
+    {
+        Pass
+        {
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #pragma target 5.0
+            #include ""UnityCG.cginc""
+            #include ""Assets/AvatarBridge/Editor/Yaps/yaps_socket.cginc""
+            #include ""Assets/AvatarBridge/Editor/Yaps/yaps_dent.cginc""
+            sampler2D _MainTex;
+            float4 _MainTex_ST;
+            struct A { float4 vertex : POSITION; float3 normal : NORMAL; float4 tangent : TANGENT; float2 uv : TEXCOORD0; uint id : SV_VertexID; };
+            struct V { float4 pos : SV_POSITION; float3 n : TEXCOORD0; float3 w : TEXCOORD1; float2 uv : TEXCOORD2; };
+            V vert(A v)
+            {
+                float3 p = v.vertex.xyz, n = v.normal, t = v.tangent.xyz;
+                YapsDentDeform(p, n, t, v.id);
+                V o;
+                o.pos = UnityObjectToClipPos(float4(p, 1));
+                o.w = mul(unity_ObjectToWorld, float4(p, 1)).xyz;
+                o.n = UnityObjectToWorldNormal(n);
+                o.uv = TRANSFORM_TEX(v.uv, _MainTex);
+                return o;
+            }
+            float4 frag(V i) : SV_Target
+            {
+                float3 n = normalize(i.n);
+                float3 l = normalize(normalize(_WorldSpaceCameraPos - i.w) + float3(0, 0.6, 0));
+                float k = 0.25 + 0.75 * saturate(dot(n, l));
+                return float4((0.55 + 0.45 * tex2D(_MainTex, i.uv).rgb) * k, 1);
+            }
+            ENDCG
+        }
+    }
+}
+";
+        // The squeeze from outside at each shot, and which part of its swing to shoot it at.
+        static readonly (string name, float pulse, float phase)[] LookShots =
+            { ("rest", 0f, 0f), ("squeeze_soft", 0.3f, 0.985f), ("squeeze_hard", 0.6f, 0.985f), ("squeeze_hard_half", 0.6f, 0.5f) };
+        static Camera[] lookCams;
+        static string lookShot;
+        static int lookAt;
+        static float lookWas;
+
+        // Every renderer the squash moves, on a layer of its own, and three cameras on the pair's
+        // middle. Each shot waits for the squeeze to reach its part of the swing, rising.
+        static void LookPose(Transform[] slots, Material[] mats)
+        {
+            if (lookCams == null)
+            {
+                var root = animator.transform;
+                Vector3 mid = 0.5f * (slots[0].position + slots[1].position);
+                float reach = mats[0].GetVector("_YAPS_SquashReach")[0] * slots[0].lossyScale.x;
+                foreach (var smr in animator.GetComponentsInChildren<SkinnedMeshRenderer>().Where(r => r.sharedMaterials.Any(m => mats.Contains(m))))
+                {
+                    smr.gameObject.layer = 31;
+                    smr.updateWhenOffscreen = true;
+                }
+                Camera Make(Vector3 from)
+                {
+                    var cam = new GameObject("SquashLook camera").AddComponent<Camera>();
+                    cam.enabled = false;
+                    cam.cullingMask = 1 << 31;
+                    cam.nearClipPlane = 0.01f;
+                    cam.fieldOfView = 30f;
+                    cam.clearFlags = CameraClearFlags.SolidColor;
+                    cam.backgroundColor = new Color(0.2f, 0.2f, 0.25f);
+                    cam.transform.position = from;
+                    cam.transform.LookAt(mid);
+                    var rt = new RenderTexture(700, 700, 24) { antiAliasing = 4 };
+                    cam.targetTexture = rt;
+                    return cam;
+                }
+                lookCams = new[]
+                {
+                    Make(mid + root.forward * reach * 6f),
+                    Make(mid + root.up * reach * 4f + root.forward * reach * 2.5f),
+                    Make(mid + root.forward * reach * 2.6f + root.up * reach * 0.8f - root.right * reach * 0.8f),
+                };
+                var shader = Shader.Find("Hidden/AvatarBridge/SquashLook");
+                if (shader == null || ShaderUtil.ShaderHasError(shader))
+                    Debug.LogError("[SquashPlay] look shader: " + (shader == null ? "missing" : string.Join(" | ", ShaderUtil.GetShaderMessages(shader).Select(m => m.message))));
+                lookAt = 0;
+                lookWas = -1f;
+                foreach (var m in mats) m.SetFloat("_YAPS_SquashPulse", LookShots[0].pulse);
+            }
+            if (lookAt >= LookShots.Length)
+            {
+                Debug.Log("[SquashPlay] look done " + outDir);
+                SessionState.SetInt(K + "on", 0);
+                EditorApplication.Exit(0);
+                return;
+            }
+            var shot = LookShots[lookAt];
+            float phase = 0.5f - 0.5f * Mathf.Cos(2f * Time.timeSinceLevelLoad);
+            bool due = shot.pulse <= 0f ? frame >= Bend + 30 : lookWas >= 0f && lookWas < shot.phase && phase >= shot.phase;
+            lookWas = phase;
+            if (!due) return;
+            lookShot = shot.name;
+            lookAt++;
+        }
+
+        static void LookShoot()
+        {
+            var shader = Shader.Find("Hidden/AvatarBridge/SquashLook");
+            var sheet = new Texture2D(700 * lookCams.Length, 700, TextureFormat.RGB24, false);
+            var one = new Texture2D(700, 700, TextureFormat.RGB24, false);
+            for (int c = 0; c < lookCams.Length; c++)
+            {
+                lookCams[c].RenderWithShader(shader, "");
+                RenderTexture.active = lookCams[c].targetTexture;
+                one.ReadPixels(new Rect(0, 0, 700, 700), 0, 0);
+                sheet.SetPixels(700 * c, 0, 700, 700, one.GetPixels());
+            }
+            RenderTexture.active = null;
+            File.WriteAllBytes(Path.Combine(outDir, $"look_{lookShot}.png"), sheet.EncodeToPNG());
+            UnityEngine.Object.DestroyImmediate(sheet);
+            UnityEngine.Object.DestroyImmediate(one);
+            Debug.Log($"[SquashPlay] look shot {lookShot}");
+            lookShot = null;
+            if (lookAt < LookShots.Length)
+                foreach (var m in provider.materials) m.SetFloat("_YAPS_SquashPulse", LookShots[lookAt].pulse);
+        }
+
         static float Beats(float u, int n) => Mathf.Pow(Mathf.Sin(Mathf.PI * Mathf.Repeat(u * n, 1f)), 2f);
 
         static Vector3 Surface(Vector3 from, Vector3 dir, Vector3 fallback)
@@ -651,6 +1014,8 @@ namespace AvatarBridge.Regression
             var slots = provider.transforms;
             for (int p = 0; p < 4; p++) late[p] = (slots[p].position - slots[4 + p].position).magnitude;
             lastEnd = slots.Select(t => t.position).ToArray();
+            if (jumpCam != null) JumpRead();
+            if (lookShot != null) LookShoot();
         }
 
         // What the skinned helper holds when the provider reads it: the last skinning pass.

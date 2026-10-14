@@ -1939,8 +1939,10 @@ Bipeds are unaffected by any of it.
   through it, and the report names the layer. A layer casting its shadow from anything but Unity's
   standard caster casts it unsquashed. From painted regions, a layer more than 3 cm off the skin
   holds still. How deep a hand dents and how two parts meet is tuned by eye: it can only be
-  judged in ChilloutVR. The stretch in motion reads the swing the avatar's own physics give, so
-  stiff physics show little of it, and the editor preview's bounce is a stand-in.
+  judged in ChilloutVR. An arm pushed right through the middle of a part lets it go rather than
+  pushing it aside, since the shader cannot remember which side the arm came in from. The stretch
+  in motion reads the swing the avatar's own physics give, so stiff physics show little of it, and
+  the editor preview's bounce is a stand-in.
 - **Action-layer emotes and features.** Only **Gesture** and **FX** convert by default: Base,
   Additive and Action are off, because CVR drives locomotion and emotes itself. **An avatar that
   transforms usually needs Action ticked**: a mech that folds into a vehicle keeps its menu toggle

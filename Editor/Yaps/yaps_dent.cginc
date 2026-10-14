@@ -41,6 +41,10 @@
 #define YAPS_DENT_KEEP 0.2
 // How far before the contact plane the squash starts to give, as a share of the reach.
 #define YAPS_SQUASH_SOFT 0.1
+// Where the pair meets, how far before the plane each side gives. Each stops short of it, so
+// skin near the plane opens a slot that wide between the two: at the tenth above it read as a
+// gap down the middle.
+#define YAPS_SQUASH_MEET 0.03
 #define YAPS_DENT_SPAN 2.4494897   // the dent's shoulder, in t; root 6 makes it hold what the bowl moved
 
 float _YAPS_DentPower;
@@ -198,6 +202,9 @@ void YapsAdd(inout float3 S, inout float3x3 M, float3 v)
 }
 
 // A capsule from a to b of radius r reaching into a part: the press toward it, by how far.
+// Never more than the line is from the part's centre: an arm passing through turns the line to
+// it right over in a few frames, and pressed full depth there the whole part flipped from one
+// side to the other. Held to that, the turn moves the skin no faster than the arm.
 float3 YapsPress(YapsPart p, float3 a, float3 b, float r)
 {
     float3 ab = b - a;
@@ -205,19 +212,51 @@ float3 YapsPress(YapsPart p, float3 a, float3 b, float r)
     float3 to = a + ab * saturate(dot(p.centre - a, ab) / max(len2, 1e-10)) - p.centre;
     float dist = length(to);
     if (dist <= 1e-6) return 0;
-    float press = YapsExtent(p, to / dist) + r - dist;
+    float press = min(YapsExtent(p, to / dist) + r - dist, dist);
     return press > 0 ? to / dist * press : 0;
 }
 
+// Two presses as one, each weighted by its depth to the fourth: the deeper leads, and one
+// overtaking the other eases across. Taking the deeper alone jumped the dent from one to the
+// other the moment it overtook, and the part swung with it.
+void YapsMerge(inout float3 v, inout float r, float3 v2, float r2)
+{
+    float a = dot(v, v), b = dot(v2, v2);
+    if (b <= 0) return;
+    if (a <= 0) { v = v2; r = r2; return; }
+    float wa = a * a, wb = b * b;
+    float3 dir = v * (a * sqrt(a)) + v2 * (b * sqrt(b));
+    float l = length(dir);
+    float depth = (sqrt(a) * wa + sqrt(b) * wb) / max(wa + wb, 1e-36);
+    v = l > 1e-6 * (wa + wb) ? dir / l * depth : (wa >= wb ? v : v2);
+    r = (r * wa + r2 * wb) / max(wa + wb, 1e-36);
+}
+
+// Into the slots others share, 2 and 3: the deepest press, and the rest merged into the other.
+// With two presses that is both as they are; a third eases into the shallower instead of one
+// dropping out whole as another overtook it.
+void YapsKeep(inout float3 hv[4], inout float hr[4], float3 v, float r)
+{
+    if (dot(v, v) > dot(hv[2], hv[2]))
+    {
+        float3 tv = hv[2];
+        float tr = hr[2];
+        hv[2] = v;
+        hr[2] = r;
+        v = tv;
+        r = tr;
+    }
+    YapsMerge(hv[3], hr[3], v, r);
+}
+
 // The hands reaching into the part, as presses toward each hand by how far it is in, with its
-// radius: both own arms first, then the two deepest other hands.
-// ponytail: a third hand from others is dropped; keep more slots if crowds touch at once.
+// radius: both own arms first, then other hands, the deepest and the rest merged.
 void YapsHandsPress(YapsPart p, inout float3 hv[4], inout float hr[4])
 {
     if (_YAPS_SquashPush.w > 0 && _YAPS_SquashHands.x > 0)
     {
-        // Per arm, its deepest bone: upper arm, forearm and hand overlap at the joints, and
-        // adding all three pressed one forearm in twice.
+        // Per arm, its bones merged, the deepest leading: upper arm, forearm and hand overlap at
+        // the joints, and adding all three pressed one forearm in twice.
         [unroll]
         for (uint k = 0; k < 6; k++)
         {
@@ -225,8 +264,7 @@ void YapsHandsPress(YapsPart p, inout float3 hv[4], inout float hr[4])
             if (YapsUnit(a) <= 0 || YapsUnit(a + 1) <= 0) continue;
             float3 pa = YapsSlot(a), pb = YapsSlot(a + 1);
             float r = (k < 3 ? _YAPS_SquashLimbL : _YAPS_SquashLimbR)[k % 3] * length(pb - pa);
-            float3 v = YapsPress(p, pa, pb, r) * _YAPS_SquashHands.x;
-            if (dot(v, v) > dot(hv[k / 3], hv[k / 3])) { hv[k / 3] = v; hr[k / 3] = r; }
+            YapsMerge(hv[k / 3], hr[k / 3], YapsPress(p, pa, pb, r) * _YAPS_SquashHands.x, r);
         }
     }
     if (_YAPS_SquashHands.z > 0 && _YAPS_SquashHands.y > 0)
@@ -261,28 +299,30 @@ void YapsHandsPress(YapsPart p, inout float3 hv[4], inout float hr[4])
                 // length and its radius, it cannot press. Saves the press for the ones that can.
                 float near = 3 * p.reach + 0.11 * tall + r;
                 if (dot(h - p.centre, h - p.centre) > near * near) continue;
-                if (dot(h, h) < 1e-6 || dot(h - ownL, h - ownL) < mine || dot(h - ownR, h - ownR) < mine) continue;
+                if (dot(h, h) < 1e-6) continue;
+                // Eased out by either own hand rather than cut, since the globals and the slots
+                // are read at different moments and a quick own hand would flicker in as another's.
+                float own = saturate(min(dot(h - ownL, h - ownL), dot(h - ownR, h - ownR)) / mine - 1);
+                if (own <= 0) continue;
                 float3 arm = h - chest;
                 float3 dir = dot(chest, chest) > 1e-6 && dot(arm, arm) > 1e-6 ? normalize(arm) : 0;
                 float fist = g > 1.5 ? 1 : saturate(g);
-                float3 v = YapsPress(p, h, h + dir * max(lerp(0.11, 0.06, fist) * tall - r, 0), r) * _YAPS_SquashHands.z;
+                float3 v = YapsPress(p, h, h + dir * max(lerp(0.11, 0.06, fist) * tall - r, 0), r) * (_YAPS_SquashHands.z * own);
                 float vr = r;
                 if (g > 2.5)
                 {
                     float rf = (g > 4.5 && g < 5.5 ? 0.35 : 0.2) * r;
-                    float3 f = YapsPress(p, h + dir * (0.06 * tall), h + dir * max(0.11 * tall - rf, 0.06 * tall), rf) * _YAPS_SquashHands.z;
-                    if (dot(f, f) > dot(v, v)) { v = f; vr = rf; }
+                    YapsMerge(v, vr, YapsPress(p, h + dir * (0.06 * tall), h + dir * max(0.11 * tall - rf, 0.06 * tall), rf) * (_YAPS_SquashHands.z * own), rf);
                 }
-                float vv = dot(v, v);
-                if (vv > dot(hv[2], hv[2])) { hv[3] = hv[2]; hr[3] = hr[2]; hv[2] = v; hr[2] = vr; }
-                else if (vv > dot(hv[3], hv[3])) { hv[3] = v; hr[3] = vr; }
+                YapsKeep(hv, hr, v, vr);
             }
         }
     }
     // A plug in the socket between the pair, anyone's, from the light it announces itself with:
     // its base and its length. The light gives no direction, so the shaft runs from the base
     // through the socket for the plug's length, and presses like another hand. Only while it
-    // reaches the socket, so a plug merely near the pair parts nothing.
+    // reaches the socket, so a plug merely near the pair parts nothing, easing out over the last
+    // fifth of its length rather than letting go at once.
     // ponytail: the radius is a tenth of the length, since the light carries none; 6 cm at most
     // (3.5 cm drew a long thick plug thin). Real girth needs a channel the light does not have.
     int socket = 18 + (p.m >> 1);
@@ -300,10 +340,8 @@ void YapsHandsPress(YapsPart p, inout float3 hv[4], inout float hr[4])
             float d = distance(at, base);
             if (len <= 0.0001 || d >= len || d <= 1e-4) continue;
             float r = clamp(0.1 * len, 0.012, 0.06);
-            float3 v = YapsPress(p, base, base + (at - base) / d * len, r) * _YAPS_SquashPlug;
-            float vv = dot(v, v);
-            if (vv > dot(hv[2], hv[2])) { hv[3] = hv[2]; hr[3] = hr[2]; hv[2] = v; hr[2] = r; }
-            else if (vv > dot(hv[3], hv[3])) { hv[3] = v; hr[3] = r; }
+            float fade = saturate((len - d) / (0.2 * len));
+            YapsKeep(hv, hr, YapsPress(p, base, base + (at - base) / d * len, r) * (_YAPS_SquashPlug * fade), r);
         }
     }
 }
@@ -376,7 +414,9 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
             squashReach[m] = reach;
             // Signed, so a pair apart meets midway across the gap.
             squashPlane[m] = dot(axis, p.centre) + reach - over * share;
-            squashContact[m] = press > 0 && _YAPS_SquashShape.w > 0 ? 1 : 0;
+            // Eased in over the last of the gap: switched on at the touch, the skin by the plane
+            // jumped back onto it.
+            squashContact[m] = share > 0 && _YAPS_SquashShape.w > 0 ? saturate(1 + over / (YAPS_SQUASH_SOFT * reach)) : 0;
         }
         // Pushed off its rest by anything its cloth collides with: pressed from the side the
         // push came from. Downward is left out, or the sag the cloth settles into would read
@@ -452,11 +492,17 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         if (squashReach[m] > 0 && _YAPS_SquashShape.w > 0)
             squashContact[m] = max(squashContact[m], saturate(dot(bend, squashAxis[m]) / (YAPS_SQUASH_SOFT * reach)));
 
+        // The squeeze lines: M's strongest direction found starting from the sum, then the two
+        // across it solved exactly in their plane, so the three stay square. Flattened along the
+        // strongest alone, two presses at an angle swung the whole flattening over as one
+        // overtook the other. Found by iterating too, the second came from rounding noise under
+        // a single press, leaned onto the first, and the whole part jumped by a hand's width.
         float total = M[0][0] + M[1][1] + M[2][2];
-        // The squeeze line, M's strongest direction, found starting from the sum.
-        float3 x = total > 1e-8 ? S : float3(0, 1, 0);
-        if (total > 1e-8 && dot(x, x) < 1e-6 * total * total)
+        float3 ax[3];
+        float3 x = S;
+        if (dot(x, x) < 1e-6 * max(total * total, 1e-16))
             x = M[0][0] >= M[1][1] && M[0][0] >= M[2][2] ? M[0] : (M[1][1] >= M[2][2] ? M[1] : M[2]);
+        if (dot(x, x) < 1e-20) x = float3(0, 1, 0);
         x = normalize(x);
         [unroll]
         for (int it = 0; it < 4; it++)
@@ -464,26 +510,44 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
             float3 y = mul(M, x);
             if (dot(y, y) > 1e-16) x = normalize(y);
         }
-        // Exact when every press lies on that line: a squeeze puts half on each side.
-        float onLine = dot(x, mul(M, x)), net = dot(S, x);   // both 0 with no press
-        float pFront = max(0.5 * (onLine + net), 0);
-        float pBack = max(0.5 * (onLine - net), 0);
+        ax[0] = x;
+        float3 e1 = normalize(cross(x, abs(x.y) < 0.9 ? float3(0, 1, 0) : float3(1, 0, 0)));
+        float3 e2 = cross(x, e1);
+        float m11 = dot(e1, mul(M, e1)), m22 = dot(e2, mul(M, e2)), m12 = dot(e1, mul(M, e2));
+        float2 twice = float2(m11 - m22, 2 * m12);
+        float turn = dot(twice, twice) > 1e-20 ? 0.5 * atan2(twice.y, twice.x) : 0;
+        ax[1] = e1 * cos(turn) + e2 * sin(turn);
+        ax[2] = cross(ax[0], ax[1]);
 
-        // Flattened along x, each side moved in by the press from that side, and grown across
-        // by just enough to keep the volume. Grown faster, the old overfill made a squashed
-        // part a third bigger than it started.
-        float rFront = YapsExtent(p, x), rBack = YapsExtent(p, -x);
-        float pressAll = pFront + pBack;
-        float k = 1, across = 1, shift = 0;
-        if (pressAll > 0)
+        // Along each line, each side moved in by the press from that side: exact when every
+        // press lies on a line, a squeeze putting half on each side. Grown along the others by
+        // just enough to keep the volume. Grown faster, the old overfill made a squashed part a
+        // third bigger than it started.
+        float flat[3], grow[3], shift[3], along[3];
+        float pressAll = 0;
+        [unroll]
+        for (int b = 0; b < 3; b++)
         {
-            k = max(1 - pressAll / (rFront + rBack), _YAPS_SquashShape.x);
-            float kept = (1 - k) * (rFront + rBack) / pressAll;   // below 1 only at the flattest
-            pFront *= kept;
-            pBack *= kept;
-            across = min(pow(max(k, 1e-3), -0.5 * _YAPS_SquashShape.y), _YAPS_SquashShape.z);
-            shift = rFront * (1 - k) - pFront;
+            float onLine = dot(ax[b], mul(M, ax[b])), net = dot(S, ax[b]);   // both 0 with no press
+            float pFront = max(0.5 * (onLine + net), 0);
+            float pBack = max(0.5 * (onLine - net), 0);
+            float rFront = YapsExtent(p, ax[b]), rBack = YapsExtent(p, -ax[b]);
+            float pressed = pFront + pBack;
+            flat[b] = 1;
+            grow[b] = 1;
+            shift[b] = 0;
+            if (pressed > 0)
+            {
+                flat[b] = max(1 - pressed / (rFront + rBack), _YAPS_SquashShape.x);
+                pFront *= (1 - flat[b]) * (rFront + rBack) / pressed;   // below 1 only at the flattest
+                grow[b] = min(pow(max(flat[b], 1e-3), -0.5 * _YAPS_SquashShape.y), _YAPS_SquashShape.z);
+                shift[b] = rFront * (1 - flat[b]) - pFront;
+            }
+            pressAll += pressed;
         }
+        along[0] = flat[0] * min(grow[1] * grow[2], _YAPS_SquashShape.z);
+        along[1] = flat[1] * min(grow[0] * grow[2], _YAPS_SquashShape.z);
+        along[2] = flat[2] * min(grow[0] * grow[1], _YAPS_SquashShape.z);
         bool dented = dentDepth[0] + dentDepth[1] + dentDepth[2] + dentDepth[3] > 0;
 
         // In motion: the physics swing the part off its rest, and the flesh stretches away from
@@ -522,13 +586,16 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         }
 
         // The bend leans the squashed shape, so it keeps the volume the squash kept.
-        float3 squashed = across * d + (k - across) * x * dot(d, x) + x * shift;
+        float3 squashed = 0;
+        [unroll]
+        for (int c3 = 0; c3 < 3; c3++) squashed += ax[c3] * (dot(d, ax[c3]) * along[c3] + shift[c3]);
         float lean = saturate((dot(squashed, p.o) + bendFrom) / bendSpan);
         float3 moved = p.centre + squashed + bend * lean;
         float3 nm = nmS;
         if (hasNormal)
         {
-            if (pressAll > 0) nm = normalize(nm + x * dot(x, nm) * (across / k - 1));
+            if (pressAll > 0)
+                nm = normalize(ax[0] * (dot(ax[0], nm) / along[0]) + ax[1] * (dot(ax[1], nm) / along[1]) + ax[2] * (dot(ax[2], nm) / along[2]));
             if (lean > 0 && lean < 1) nm = normalize(nm - p.o * dot(bend / bendSpan, nm));
         }
         // Each dent, centred where the hand meets the part at rest. Inside, the skin lies on the
@@ -569,29 +636,37 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
     n = mappedN;
 
     // The map flattens the whole part, so the pair still overlapped where it reached past its
-    // reach. What crosses the plane where the two meet is eased back onto it, and what is
-    // pushed back spills away from the line between them.
+    // reach. What comes near the plane where the two meet is eased back toward it and never
+    // through: each side stops just short, deeper layers closer behind, so the two meet in a
+    // clean line. Letting a fifth through as the other surfaces do, both sides crossed into
+    // each other lying nearly flat, where two meshes can draw as a jagged seam. What is pushed
+    // back spills away from the line between them.
     [unroll]
     for (int c = 0; c < 4; c++)
     {
         if (squashContact[c] <= 0) continue;
         float3 facing = squashAxis[c];
-        float slope;
+        float soft = YAPS_SQUASH_MEET * squashReach[c];
+        float room = 0.95 * soft;
+        float u = dot(world, facing) - squashPlane[c] + soft;
+        if (u <= 0) continue;
         float held = shares[c] * squashContact[c];
-        float back = YapsEase(dot(world, facing) - squashPlane[c], YAPS_SQUASH_SOFT * squashReach[c], slope) * held;
-        if (back <= 0) continue;
+        // u mapped to room * u / (room + u): the same slope where it starts, and never past room.
+        float back = u * u / (room + u) * held;
+        float slope = room * room / ((room + u) * (room + u));
         float3 q = world - squashCentre[c];
         float3 away = q - facing * dot(q, facing);
         away /= max(length(away), 0.5 * squashReach[c]);
         world += (away * _YAPS_DentSpill - facing) * back;
         if (hasNormal)
-            n = normalize(lerp(n, normalize(n + facing * dot(n, facing) * (1 / slope - 1)), held));
+            n = normalize(lerp(n, normalize(n + facing * dot(n, facing) * (1 / max(slope, 1e-3) - 1)), held));
     }
 
     // The own arms and hands, a capsule per bone from one joint to the next. Skin inside is
     // eased out along the line from the bone. A hand meets no resistance and passes through a
     // body, so the move tops out smoothly at half the radius: following it all the way
-    // scooped a tunnel through the part.
+    // scooped a tunnel through the part. Near the bone it lets go, since skin either side of
+    // it went opposite ways and the bone sweeping past flicked it across.
     if (_YAPS_SquashPush.w > 0)
     {
         [unroll]
@@ -612,12 +687,13 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
             float back = YapsEase(r - dist, soft, slope);
             float cap = 0.5 * r;
             float held = exp(-back / cap);
-            back = cap * (1 - held) * partShare;
+            float near = saturate(dist / cap);
+            back = cap * (1 - held) * partShare * near;
             if (back <= 0) continue;
             float3 away = d / dist;
             world += away * back;
             if (hasNormal)
-                n = normalize(lerp(n, normalize(n + away * dot(n, away) * (1 / (1 - held * (1 - slope)) - 1)), partShare));
+                n = normalize(lerp(n, normalize(n + away * dot(n, away) * (1 / (1 - held * (1 - slope)) - 1)), partShare * near));
         }
     }
 
