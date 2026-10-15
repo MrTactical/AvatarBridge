@@ -1016,7 +1016,10 @@ worn:
   wash (mean peak error 33.80 to 33.65, sag 0.92 to 0.90), collision level or better (press
   angle 58.7 to 53.1, recover 0.547 to 0.534). The first A/B said collision got worse; that was
   the probe pressing every strand of a grouped cloth at once, fixed in the probe the same night.
-Still open: one collision radius per group, not visible on this avatar.
+One collision radius per group, closed on the branch 2026-10-15 (2c5128b): a strand groups only
+with a head of its own mesh thickness, within a quarter. It split real spreads (one hairstyle
+3.8 to 15.6 mm, a mirrored pair 9.5 and 22.7 mm); cloths 71 to 84 on the strand-at-a-time avatar,
+dev 112. The branch record has the A/B.
 
 ### Freeze rotation axes, VRChat vs Unity (issue #6)
 
