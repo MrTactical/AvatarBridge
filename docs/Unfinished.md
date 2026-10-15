@@ -3439,7 +3439,35 @@ a planning read trusts.
 | duplicate: the shaft showing in two places | the same range mapped twice | NOT built |
 
 A vertex shader cannot create geometry, so a "duplicate" is the existing shaft drawn at two
-frames rather than a second shaft. It costs nothing and it cannot be two different lengths.
+frames rather than a second shaft. It cannot be two different lengths. **"It costs nothing" was
+wrong** (corrected 2026-10-15): one vertex has one position per draw, so the second frame needs a
+second copy of every pass the plug's material has, shadow caster included. That is the plug
+drawn twice, which is cheap for one plug and not nothing.
+
+**Design, 2026-10-15, not built, needs Joe's decision.** Read off the shader as it stands:
+
+- **The deform half is small.** A portal is a link whose segment has zero length: the cascade
+  in `yaps_deform.cginc` (~798) already walks `fromWorld`/`fromForward` link to link, so a portal
+  link starts the next segment at the exit with the exit's outward facing instead of the
+  entrance. Triangles straddling the cut would stretch across the room, so the rings within a
+  short span either side of the cut collapse to the socket point. A triangle with two corners on
+  one point has no area and draws nothing. Inside the body anyway, so nothing visible is lost.
+- **The resolve half is the cost.** The plug finds sockets by scanning the atlas cells around
+  itself, about 1.2 plug lengths (`yaps-atlas-reach-is-the-grid`). An exit across the room is
+  never in that scan, so the ENTRANCE has to carry where its exit is. Today an octant is four
+  pixels (position, facing+kind, tags, owner) and every extra pixel per octant widens the rect by
+  eight per column. An exit position and facing is two more: six pixels, a wider rect, and a
+  protocol bump. **Protocol 9 shipped in 4.7.2**, so this is protocol 10, and a 4.7 wearer and a
+  5.0 wearer would be blind to each other until both update.
+- **The light tier cannot carry it at all**: one socket per light path is the whole budget.
+  Portals are atlas-only, and the README would have to say so.
+- **Authoring:** a socket field naming its exit socket, both on the same avatar, written by the
+  avatar's own atlas writer, which can see both bones. A portal between two people is out: neither
+  writer knows the other's exit.
+
+Questions for Joe: is a portal worth protocol 10 in 5.0.0 (the major is the cheapest moment for
+the break)? Is duplicate worth a doubled plug draw? Neither can be judged without two clients in
+ChilloutVR, so neither is built blind.
 
 **Multiple plugs per socket is a separate, much smaller job.** The bending already works:
 every plug resolves sockets in its own shader, so two plugs into one socket needs no change
