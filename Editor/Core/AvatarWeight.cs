@@ -552,6 +552,22 @@ namespace AvatarBridge
             {
                 foreach (var entry in settings) paths.UnionWith(AvatarSurvey.TargetPaths(entry));
             }
+            // An Animator on a child object runs its own controller, with paths
+            // from itself. Its layers never compete with the avatar's, so only
+            // what it switches is read, rebased onto the avatar.
+            foreach (var child in avatar.GetComponentsInChildren<Animator>(true))
+            {
+                if (child.gameObject == avatar.gameObject || child.runtimeAnimatorController == null) continue;
+                string at = AnimationUtility.CalculateTransformPath(child.transform, avatar.transform);
+                foreach (var clip in child.runtimeAnimatorController.animationClips.Where(c => c != null).Distinct())
+                {
+                    foreach (var b in AnimationUtility.GetCurveBindings(clip))
+                    {
+                        if (b.propertyName == "m_IsActive" || b.propertyName == "m_Enabled")
+                            paths.Add(string.IsNullOrEmpty(b.path) ? at : at + "/" + b.path);
+                    }
+                }
+            }
             return paths;
         }
 

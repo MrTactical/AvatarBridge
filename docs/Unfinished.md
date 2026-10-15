@@ -25,6 +25,9 @@ physics A/B probes and a corpus run. Decisions on the queue's open questions, sa
 - A plug with a size slider: baked at the slider's menu default, so editor and game agree.
 - The socket readout showing the wearer's own plug: left as it is.
 - Renderers only a child Animator switches on: the survey walks child Animators (one re-baseline).
+  (built: `AvatarWeight.SwitchedPaths` reads what each child Animator's clips switch, rebased onto
+  the avatar. Its layers stay out of the survey's, since they never compete with the avatar's, so
+  `Layer.Bindings` counts do not move; only a renderer that was wrongly Dead changes.)
 - Issues #6, #7 and #8: replies drafted, Joe posts them. GrabbyBones: a PR upstream first, drafted.
 - Corpus: subsets whenever needed, three full runs authorised for this job.
 - Squash shadows on layers with Unity's own caster or a Fallback-only shader: patch the casters.
@@ -2590,7 +2593,8 @@ ChilloutVR and not through the corpus.
   nor the speed limits. Code-only text change. Not done.
 - **Animators nested on child objects** are not walked by the survey, so a renderer only such an
   Animator switches on can read Dead and be stripped by *Fix it*. Author decision: it changes every
-  `Layer.Bindings` count.
+  `Layer.Bindings` count. FIXED 2026-10-15 without touching the counts: the Dead check reads what
+  child Animators switch, see Next up.
 - **AM1-10, the menu-name rename rule.** Whether `RenamePass` should trigger on
   `IllegalMenuNameChars` (`[^a-zA-Z0-9/\-_#]`) instead of its own list, leaving
   `VerifyMenuParameterNames` to assert. Author decision: it changes the names users get for menu
