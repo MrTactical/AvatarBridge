@@ -646,11 +646,14 @@ namespace AvatarBridge
                     }
                     else
                     {
+                        string cause = measured
+                            ? "the source changes its own rotation, so its parent cannot stand in for it"
+                            : "its offset could not be measured from the pose (the constraint is inactive, or has " +
+                              "more than one source or less than full weight), so its parent cannot stand in for the source";
                         ctx.Report.Approximated(Category, ctx.PathInTarget(constrained),
                             $"Solved in local space against \"{source.name}\", which Unity cannot do. Moving the " +
-                            "bone would take the bones it carries out of the physics chain it hangs from, and the " +
-                            "source changes its own rotation, so a fixed copy would not do either. Converted as a " +
-                            "world-space constraint; it will not follow correctly.");
+                            $"bone would take the bones it carries out of the physics chain it hangs from, and {cause}. " +
+                            "Converted as a world-space constraint; it will not follow correctly.");
                     }
                     continue;
                 }
@@ -912,6 +915,16 @@ namespace AvatarBridge
             if (!Get(vrc, "SolveInLocalSpace", false))
             {
                 return;
+            }
+            // A relay whose bone's parent stands in for the source was solved, and reported,
+            // when it was aligned. The stand-in's own parent is the grandparent, so the test
+            // below would call it a cross-chain relay.
+            foreach (var key in sourceStandIns.Keys)
+            {
+                if (ReferenceEquals(key.Item1, vrc))
+                {
+                    return;
+                }
             }
             // The Unity constraint may sit on TargetTransform instead.
             // Not "?? vrc.transform": an unassigned Transform is

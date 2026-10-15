@@ -20,6 +20,9 @@ namespace AvatarBridge.Regression
             failures = 0;
             var root = new GameObject("PreflightAvatar");
             var outside = new GameObject("Elsewhere");
+            // Avatars often sit under a group object; the root's parent link is not a lost reference.
+            var holder = new GameObject("Holder");
+            root.transform.SetParent(holder.transform, false);
             GameObject instance = null;
             try
             {
@@ -52,6 +55,7 @@ namespace AvatarBridge.Regression
                 Check(report.Entries.Any(e => e.Subject.Contains("not saved") && e.Detail.Contains("InMemory")), "names the unsaved mesh");
                 Check(report.Entries.Any(e => e.Subject.Contains("outside the avatar") && e.Detail.Contains("Elsewhere")), "names the outside reference");
                 Check(!report.Entries.Any(e => e.Subject.Contains("no Animator")), "an Animator on the root passes");
+                Check(!report.Entries.Any(e => e.Detail.Contains("Holder")), "the root's own parent is not outside the avatar");
 #if AVATARBRIDGE_YAPS
                 Check(report.Entries.Any(e => e.Subject.Contains("lost the YAPS shader") && e.Detail.Contains("Unlocked")), "names the material that lost its YAPS shader");
 #endif
@@ -77,6 +81,7 @@ namespace AvatarBridge.Regression
             {
                 Object.DestroyImmediate(root);
                 Object.DestroyImmediate(outside);
+                Object.DestroyImmediate(holder);
                 if (instance != null) Object.DestroyImmediate(instance);
                 AssetDatabase.DeleteAsset(Path);
             }

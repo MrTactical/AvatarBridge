@@ -85,6 +85,8 @@ namespace AvatarBridge
                     if (it.propertyType != SerializedPropertyType.ObjectReference) continue;
                     // A prefab instance's own bookkeeping points at a scene object that is no asset.
                     if (it.name == "m_PrefabInstance" || it.name == "m_PrefabAsset" || it.name == "m_CorrespondingSourceObject") continue;
+                    // So is the root's parent: the upload saves the avatar alone, and nothing reads it.
+                    if (it.name == "m_Father" && component.transform == root.transform) continue;
                     var value = it.objectReferenceValue;
                     if (value == null || EditorUtility.IsPersistent(value)) continue;
                     var go = value as GameObject ?? (value as Component)?.gameObject;

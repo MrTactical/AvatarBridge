@@ -84,7 +84,7 @@ namespace AvatarBridge
         // After the preset loads, apply what the PhysBone says about
         // gravity (converted to where the chain settles), immobile (as
         // inertia against the same frame) and wind (none), turn off the
-        // preset's own angle limit and depth inertia, and raise its four
+        // preset's own angle limit and depth inertia, and raise its five
         // speed limits.
         public bool fitToPhysBone = true;
         // Derive damping and angle restoration from the PhysBone's
@@ -173,7 +173,7 @@ namespace AvatarBridge
         // Needs keepHapticsContacts.
         public bool syncHapticsForOsc = false;
         // Keep each socket's depth parameter synced, so the author's own
-        // depth reactions play for the room. Two per socket, 32 bits each.
+        // depth reactions play for the room. 32 bits per depth parameter, usually one per socket.
         public bool syncSocketDepthForOthers = false;
         // Breasts and butt squash against each other and against hands, in the body shader.
         // Needs the YAPS add-on, not converted penetration. Off: the parts swing as before. Tuned

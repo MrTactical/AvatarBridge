@@ -43,9 +43,10 @@ namespace AvatarBridge.Regression
 
                 // Fury spelling, hand spelling, an innocent lookalike, and an unrelated layer.
                 // Then GoGo's flight layer, named for neither, and a creator's layer reading
-                // the same Go/ value with clips of its own.
+                // the same Go/ value with clips of its own. Then GoGo's flight scale layer,
+                // reading no Go/ value, and a creator's layer that borrowed one go_ clip.
                 foreach (var name in new[] { "[FX] Go/Beyond", "[FX] GoGo Locomotion", "Cargo/Rack", "Wardrobe",
-                             "[FX] [VF3] Flying", "Outfit Height" })
+                             "[FX] [VF3] Flying", "Outfit Height", "[FX] [VF3] Flying Scale", "Outfit Scale" })
                 {
                     controller.AddLayer(name);
                 }
@@ -65,6 +66,12 @@ namespace AvatarBridge.Regression
                         t.AddCondition(AnimatorConditionMode.Greater, 0f, "Go/Dash");
                         t.AddCondition(AnimatorConditionMode.Greater, 0f, "Keep/Me");
                         state.motion = new AnimationClip { name = flying ? "go_flying_off" : "outfit_tall" };
+                    }
+                    if (layers[i].name.EndsWith("Scale"))
+                    {
+                        state.motion = new AnimationClip { name = "go_flying_scale_up" };
+                        if (layers[i].name == "Outfit Scale")
+                            layers[i].stateMachine.AddState("own").motion = new AnimationClip { name = "outfit_wide" };
                     }
                 }
                 controller.layers = layers;
@@ -94,6 +101,10 @@ namespace AvatarBridge.Regression
                     !names.Any(n => n.Contains("Flying")));
                 fail += Check("a creator's layer reading Go/ with its own clips survives",
                     names.Any(n => n == "Outfit Height"));
+                fail += Check("GoGo's flight scale layer, reading no Go/ value, is stripped",
+                    !names.Any(n => n.Contains("Flying Scale")));
+                fail += Check("a creator's layer with one borrowed go_ clip survives",
+                    names.Any(n => n == "Outfit Scale"));
             }
             finally
             {

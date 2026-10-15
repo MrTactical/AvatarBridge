@@ -34,7 +34,9 @@ physics A/B probes and a corpus run. Decisions on the queue's open questions, sa
   (built: the opaque-Fallback case; Unity's own caster was already wrapped)
 - Thry's "Unlock all materials" taking YAPS materials back to a plain shader: detect it and offer
   a re-bake. (built: plug and socket inspectors say so beside Re-bake and Build, the upload check
-  lists every material by its saved `_YAPS_Enabled`; PreflightTest covers the check, NOT RUN YET)
+  lists every material by its saved `_YAPS_Enabled`; PreflightTest covers the check and passes,
+  2026-10-16. Its setup had used `SetFloat`, which never saves a property the shader lacks, so it
+  now writes the leftover entry the way a shader swap leaves it)
 - PhysBone-side squish (Bone Spring collision): dropped, the shader squash covers it.
 - Physics A/B videos for Discord: yes, test avatars may be shown, captions name none.
 - No player globals with the cameras content filter off: documented, no fallback.
@@ -59,7 +61,7 @@ physics A/B probes and a corpus run. Decisions on the queue's open questions, sa
 **Bug panel over the 5.0.0 diff, 2026-10-15: 14 findings, 13 kept and FIXED on dev, 1 refuted.**
 Readers per area, each finding then checked by a judge trying to refute it. Fixed, by area:
 - Squash: a Rebuild left an alternate look's copy out of the new providers, so that layer stopped
-  squashing while its toggle was on (SwapTest in `SquashTestBuilder` now rebuilds, NOT RUN YET);
+  squashing while its toggle was on (SwapTest in `SquashTestBuilder` now rebuilds; passes 2026-10-16);
   the own-arm capsule push ignored `_YAPS_SquashHands.x`, so animating own arms off left the push;
   the regions tool refused every other body after the last pair was removed.
 - Soft bodies: pressing the Toolkit card twice said "No two soft bodies sit close enough to meet".
@@ -72,9 +74,38 @@ Readers per area, each finding then checked by a judge trying to refute it. Fixe
 - YAPS: every shader whose caster got wrapped was told it takes no tangent; Remove's swap-key
   repointing had no undo.
 - Upload check: a prefab instance's own bookkeeping was listed as "not saved" (PreflightTest has a
-  prefab-instance case, NOT RUN YET); a curve binding with no type could throw.
+  prefab-instance case; passes 2026-10-16); a curve binding with no type could throw.
 - Conversion diff: a version-only change was headlined "only the counts moved", and a native setup's
   diff pointed at `ConversionReport.md`.
+
+**Second review over the changes since the panel, 2026-10-16: 11 findings, 9 kept and FIXED on dev,
+2 judged not defects (one fixed anyway).** Same shape: readers per area, a judge refuting each.
+- Physics: a relay whose bone's parent stands in for its source also raised "relayed a bone from
+  another chain", contradicting its own Converted line, since the stand-in's parent is the
+  grandparent. A relay whose offset could not be measured (inactive, several sources, partial
+  weight) was told its source rotates and that a fixed copy was tried; neither was true.
+- GoGo: its flight scale layer reads no `Go/` value at all, so the clip test never ran on it, and it
+  kept a scale feed alive. A layer reading no `Go/` value now goes when every clip it plays is
+  GoGo's own; one borrowed `go_` clip among the creator's keeps it (`GogoLayerStripTest`, both
+  cases). `CollectParameterRefs` skipped sub-machine exits, so a parameter read only there could be
+  deleted; it is shared by the strip, the nativizer and the face-tracking prune.
+- YAPS: a shader's own shadow caster without a tangent still set the "stays straight" note. The
+  note is now decided from the passes people see, per function, include functions included.
+- Upload check: an avatar under another scene object had that parent listed as outside the avatar.
+- Native setup: `Diagnostics.md` sent the reader to `ConversionReport.md`, which a setup never writes.
+- Docs: README's *Your call* sentence named two toggles of three; the depth-sync comment said two
+  parameters per socket; the fit comment said four speed limits of five (judged a comment-only
+  miscount, fixed anyway). Not acted on: a report line saying "Physics options", a wording nit.
+
+**SPS's own menu options, 2026-10-16: both left out, the plan's default applied.** SPS adds
+*Legacy Compatibility* and *Stealth Mode* to the menu, as `VF80_legacy` and `VF80_stealth` in every
+one of the 30 controllers of the GoGo subset. Read from that subset's 29 outputs and their 242
+rebuilt sockets: none has a Light under `WorldSpace/Lights`, so the first switches nothing, and 188
+carry an atlas writer outside the tree Stealth's clip switches, so the second hides lights and
+contacts while YAPS plugs still find the socket, and "invisible to others" would be false. Both
+names are stripped exactly (`VF80_` also prefixes the depth parameters, so never the prefix), a
+Skipped line says so, and README's SPS section explains. If Stealth is ever wanted, its clip would
+have to switch the atlas writer too.
 
 **Decided 2026-09-23 (Joe):** ship the next release first (one default corpus run authorised,
 release on his word), then the two items below. **It is 4.6.4** (Joe, same day): 4.6.3 is skipped,
@@ -549,7 +580,14 @@ falloff, one-way rings, the tag dropdown, multi-mesh plugs, the Mesh-to-None cle
    anything. README Troubleshooting "a plug bends twice or stretches" quotes the title. None of 31
    SPS-baked materials in the corpus project carries `_SPS_Enabled`, so `SwitchOffLegacyDeform`'s
    comment now says the SPS switch is for older bakes. `Dev/Probes/SpsPrebuiltProbe.cs` checks the
-   warning fires on a built copy and stays silent on the original; NOT YET RUN.
+   warning fires on a built copy and stays silent on the original. Passes 2026-10-16 against
+   VRCFury 1.1408.0: one material on the built copy, warned once; the original silent, and VRCFury
+   asked not to patch it. VRCFury logs a burst of its own `ErrorDialogBoundary` stack lines during
+   the bake; the copy builds anyway, so they are its noise. The properties that bake left on the
+   material, read from the output: `_SPS_Configured`, `_SPS_IdLow`/`_SPS_IdHigh`,
+   `_SPS_PlayerIdLow`/`_SPS_PlayerIdHigh`, `_SPS_BlendshapeVertCount`, `_SPS_BlendshapeCount`,
+   `_SPS_Blendshape0` to `15`, `_SPS_Bake`, `_SPS_Overrun`, `_SPS_DisableShadows`,
+   `_SPS_DisableDepth`. Not `_SPS_Enabled`.
 
    **A decision for Joe before going further:** a detection signature for SPS2, if one is ever
    wanted, would come from baking an SPS avatar on a newer VRCFury and reading the property names on
@@ -1708,7 +1746,8 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     beside a `CGINCLUDE`/`HLSLINCLUDE` (it can declare what UnityStandardShadow declares), not for
     surface shaders. The patcher is shared, so a Fallback-only plug shader's shadow bends too.
     `Dev/Tests/StandardCasterTest.cs` compiles the caster pass by hand (`ShaderUtil.CompilePass`),
-    since the caster variant otherwise compiles only when a shadow is drawn. NOT RUN YET. Still
+    since the caster variant otherwise compiles only when a shadow is drawn. Passes 2026-10-16, once
+    its input declared `SV_VertexID`: the patcher refuses any vertex input without one. Still
     unsquashed: casters from other shaders (`UsePass`), cutout Fallbacks.
     Strap bending at the shoulder (Joe, editor Play mode, same day). WITHDRAWN as a squash bug:
     the builder's grid did hold only skin WITH a share (every skin vertex goes in now, as the A/B
@@ -3454,7 +3493,7 @@ the shipped controller on it with every parameter at its default for a second, a
 size bone to the scale it lands at, with Undo. Both builders call it before `LargestSize`; the
 converter reports the move, the toolkit adds a note. No clip is touched and nothing of the
 avatar's runs. `BakeScaleCheck` gained four cases (motion time, a 1D tree, a bool left on in the
-scene, a resting state that animates nothing); NOT YET RUN. What remains, read from code, not
+scene, a resting state that animates nothing); all pass, 2026-10-16. What remains, read from code, not
 measured: away from rest the tracker light's intensity and the tip pointers still carry the rest
 length; the ratio is exact only for a uniform scale on the chain root; an IsLocal-gated size layer
 is sampled as a remote copy would load; a CVR profile restores a saved size by parameter name.

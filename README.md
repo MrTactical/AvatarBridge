@@ -1300,6 +1300,11 @@ SPS original, one an armature link merged into a bone, say, keeps only the share
 in the report. A plug it cannot trace takes the default tags and overrun, answering any socket, and
 is listed too.
 
+SPS's own menu options **Legacy Compatibility** and **Stealth Mode** are left out of the
+ChilloutVR menu, and the report says so. The converted sockets have no legacy lights for the
+first to switch, and the second would hide the lights and contacts while other plugs could still
+find the socket, so "invisible to others" would not be true.
+
 **Choosing at runtime.** A plug listing two or more tags gets a menu dropdown of its own, so the
 wearer can narrow it to one of them, widen it to *Anything*, or leave it on *As built*, which is
 what the author configured and what it starts on. *Anything* clears the answer list only; a socket
@@ -1824,8 +1829,8 @@ avatar decides, so it isn't buried with the settings that are.
 
 **Convert toe PhysBones** and **Size for the largest a slider makes the body** sit under these for
 both solvers. On MagicaCloth 2 the card adds *Advanced physics tuning*, folded away, and a **Your
-call** section with the two that depend on intent rather than measurement: **Add physics to toggled
-rigs that have none** and **Auto-assign nearby colliders**. All of them are in the
+call** section with the three that depend on intent rather than measurement: **Add physics to toggled
+rigs that have none**, **Auto-assign nearby colliders** and **Soft bodies push each other apart**. All of them are in the
 [physics table](#options) above and not repeated here.
 
 ### Manual options: what the avatar can't tell you

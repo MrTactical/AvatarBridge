@@ -76,7 +76,7 @@ namespace AvatarBridge
             // why a native setup never got them; neither needs it.
             try
             {
-                DiagnosticsWriter.Write(ctx);
+                DiagnosticsWriter.Write(ctx, reportName);
                 // The web report renders the same entries drawn. Written last
                 // so it can show everything, the two cards included.
                 HtmlReportWriter.Write(ctx);

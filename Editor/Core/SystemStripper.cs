@@ -54,10 +54,14 @@ namespace AvatarBridge
         static readonly string[] HapticsParamPrefixes = { "OGB", "pcs/", "WH_" };
         static readonly string[] HapticsPointerTypePrefixes = { "OGB", "PCS" };
 
+        // VF80 is SPS's own options under a fixed id, and VF80_ also prefixes the depth
+        // parameters, so only the two names go. Legacy switches lights the rebuilt
+        // socket no longer has; Stealth hides lights and contacts while the atlas
+        // still shows the socket, so "Invisible to others" would half work.
+        static readonly string[] SpsOptionParams = { "VF80_legacy", "VF80_stealth" };
+
         static readonly string[] OtherSpsParamPrefixes =
-        {
-            "VF77_", "VF23_", "VRCF_WSD"
-        };
+            new[] { "VF77_", "VF23_", "VRCF_WSD" }.Concat(SpsOptionParams).ToArray();
         // "wholesome" is the Wholesome SPS audio add-on. Do NOT match generic Fury helper
         // names like "FrameTime Counter" or "EITHER FIST" here: they also belong to the
         // face-gesture smoothing system, which must survive.
@@ -277,6 +281,13 @@ namespace AvatarBridge
                 // Scene objects are removed much earlier, by RemoveStrippedObjects.
                 RemoveOrphanedCvrComponents(ctx, IsStrippedParam);
             }
+            if (KeepingPenetration(ctx) && vrcParams != null && vrcParams.parameters != null
+                && vrcParams.parameters.Any(p => p != null && SpsOptionParams.Contains(p.name)))
+            {
+                ctx.Report.Skipped(Category, "SPS's Legacy Compatibility and Stealth Mode",
+                    "Not carried. The converted sockets have no legacy lights to switch, and Stealth would hide " +
+                    "the lights and contacts while other plugs still find the socket.");
+            }
             RemoveMenuEntries(ctx, IsStrippedParam);
 
             // Anything still referencing a stripped parameter keeps working, but the
@@ -362,12 +373,13 @@ namespace AvatarBridge
                     });
                 }
 
-                // GoGo's flight layer conditions mostly on the game's own parameters, so it
-                // never reaches the share above, and its name has no GoGo hint. Its clips are
-                // GoGo's own go_ clips, which a creator's layer reading a Go/ value is not.
+                // GoGo's flight layers condition mostly on the game's own parameters, so they
+                // never reach the share above, and their names have no GoGo hint. Their clips are
+                // GoGo's own go_ clips, which a creator's layer reading a Go/ value is not. The
+                // flight scale layer reads no Go/ value at all, so it has to play nothing else.
+                bool readsGo = refs.Any(r => isStripped(r) && r.TrimStart('#').StartsWith("Go/", StringComparison.OrdinalIgnoreCase));
                 bool gogoClipHit = !nameHit && !referenceHit && !locomotionHit && ctx.Settings.stripGogoLoco
-                    && refs.Any(r => isStripped(r) && r.TrimStart('#').StartsWith("Go/", StringComparison.OrdinalIgnoreCase))
-                    && PlaysMostlyGogoClips(layer.stateMachine);
+                    && PlaysGogoClips(layer.stateMachine, readsGo ? 0.6f : 1f);
 
                 if (nameHit || referenceHit || locomotionHit || gogoClipHit)
                 {
@@ -377,7 +389,7 @@ namespace AvatarBridge
                         nameHit ? "Matched a stripped system by name."
                         : referenceHit ? $"{strippedRefs}/{refs.Count} parameter references belong to a stripped system."
                         : locomotionHit ? "A locomotion layer using GoGo parameters; left in, it would half-override ChilloutVR's."
-                        : "Reads GoGo's parameters and plays GoGo's own clips; with GoGo's menu gone nothing drives it.");
+                        : "Plays GoGo's own clips; with GoGo gone nothing drives it.");
                 }
             }
 
@@ -574,7 +586,7 @@ namespace AvatarBridge
             return tree;
         }
 
-        static bool PlaysMostlyGogoClips(AnimatorStateMachine root)
+        static bool PlaysGogoClips(AnimatorStateMachine root, float share)
         {
             var clips = new HashSet<AnimationClip>();
             WalkMachines(root, machine =>
@@ -582,7 +594,7 @@ namespace AvatarBridge
                 foreach (var child in machine.states) AnimatorMerger.CollectClips(child.state.motion, clips);
             });
             return clips.Count > 0
-                && clips.Count(c => c.name.StartsWith("go_", StringComparison.OrdinalIgnoreCase)) >= clips.Count * 0.6f;
+                && clips.Count(c => c.name.StartsWith("go_", StringComparison.OrdinalIgnoreCase)) >= clips.Count * share;
         }
 
         static bool IsLayerInert(AnimatorControllerLayer layer)
@@ -701,6 +713,10 @@ namespace AvatarBridge
                 }
                 foreach (var child in m.stateMachines)
                 {
+                    // A sub-machine's way out is the parent's, and can be the only read of a parameter.
+                    if (child.stateMachine != null)
+                        foreach (var t in m.GetStateMachineTransitions(child.stateMachine))
+                            foreach (var c in t.conditions) AddRef(c.parameter);
                     Walk(child.stateMachine);
                 }
             }

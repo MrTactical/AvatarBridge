@@ -434,7 +434,7 @@ namespace AvatarBridge
                 PropertyBlock);
 
             int patchedPasses = PatchProgramBlocks(unit, yaps, out string blockRefusal,
-                out skippedShadowPasses);
+                out skippedShadowPasses, out bool frameless);
             if (patchedPasses == 0)
             {
                 refusal = blockRefusal ?? "no pass in it declares a vertex stage";
@@ -460,7 +460,6 @@ namespace AvatarBridge
                 return null;
             }
 
-            bool frameless = unit.Any(f => f.Text.Contains(NoNormal) || f.Text.Contains(NoTangent));
             report?.Converted(Category, material.name,
                 $"Deform patched into \"{material.shader.name}\" across {BridgeElements.Count(patchedPasses, "pass", "passes")}. " +
                 "The original shader is untouched; a copy carrying YAPS was written beside the " +
@@ -534,14 +533,16 @@ namespace AvatarBridge
         // declares its signature across a preprocessor conditional, which no
         // wrapper can reproduce. The parameter is a local copy anyway.
         static int PatchProgramBlocks(List<ShaderSpiPatcher.SourceFile> unit, string yaps,
-            out string refusal, out int skippedShadowPasses)
+            out string refusal, out int skippedShadowPasses, out bool frameless)
         {
             refusal = null;
             skippedShadowPasses = 0;
+            frameless = false;
             var shaderFile = unit[0];
             AddStandardCaster(shaderFile);
             int patched = 0;
-            var alreadyInjected = new HashSet<string>(StringComparer.Ordinal);
+            // Whether each include function patched so far lacked a normal or tangent.
+            var alreadyInjected = new Dictionary<string, bool>(StringComparer.Ordinal);
 
             var blocks = Regex.Matches(shaderFile.Text, @"(CGPROGRAM|HLSLPROGRAM)")
                 .Cast<Match>().Reverse().ToList();
@@ -571,7 +572,7 @@ namespace AvatarBridge
 
                 string vertName = vertPragma.Groups[1].Value;
                 if (!PatchOneVertexFunction(unit, yaps, vertName,
-                        start, start + end.Index, alreadyInjected, out string why))
+                        start, start + end.Index, alreadyInjected, out string why, out bool missingFrame))
                 {
                     // A shadow caster is allowed to be out of reach. Unity's own
                     // vertShadowCaster lives in its CGIncludes, not in the shader's source
@@ -592,6 +593,11 @@ namespace AvatarBridge
                     refusal = why;
                     return patched;
                 }
+                // Asked of the passes people see: casters routinely leave the tangent out.
+                if (missingFrame && !IsShadowCasterPass(shaderFile.Text, block.Index))
+                {
+                    frameless = true;
+                }
                 patched++;
             }
 
@@ -599,10 +605,12 @@ namespace AvatarBridge
         }
 
         static bool PatchOneVertexFunction(List<ShaderSpiPatcher.SourceFile> unit, string yaps,
-            string vertName, int blockStart, int blockEnd, HashSet<string> alreadyInjected,
-            out string refusal)
+            string vertName, int blockStart, int blockEnd, Dictionary<string, bool> alreadyInjected,
+            out string refusal, out bool missingFrame)
         {
             refusal = null;
+            missingFrame = false;
+            string injectedKey = null;
             var pattern = new Regex($@"(\w+)\s+{Regex.Escape(vertName)}\s*\(");
 
             // Look inside THIS program block first. A flattened shader repeats its
@@ -632,10 +640,12 @@ namespace AvatarBridge
                               "shader or its includes";
                     return false;
                 }
-                if (!alreadyInjected.Add(file.OriginalPath + "::" + vertName))
+                injectedKey = file.OriginalPath + "::" + vertName;
+                if (alreadyInjected.TryGetValue(injectedKey, out missingFrame))
                 {
                     return true;   // already done for another pass
                 }
+                alreadyInjected[injectedKey] = false;
             }
 
             int parenOpen = file.Text.IndexOf('(', head.Index);
@@ -692,6 +702,11 @@ namespace AvatarBridge
             members.TryGetValue("POSITION", out string positionField);
             members.TryGetValue("NORMAL", out string normalField);
             members.TryGetValue("TANGENT", out string tangentField);
+            missingFrame = normalField == null || tangentField == null;
+            if (injectedKey != null)
+            {
+                alreadyInjected[injectedKey] = missingFrame;
+            }
             members.TryGetValue("SV_VERTEXID", out string vertexIdField);
 
             string idExpression;
@@ -815,8 +830,7 @@ namespace AvatarBridge
             wrapper.AppendLine("    UNITY_SETUP_INSTANCE_ID(v);");
             wrapper.AppendLine("    float3 yapsPosition = v.vertex.xyz;");
             wrapper.AppendLine("    float3 yapsNormal = v.normal;");
-            // Not NoTangent itself: that line is what the frameless note looks for, and a caster
-            // lacking a tangent says nothing about the pass people see.
+            // Unity's caster input has no tangent. Zero, as NoTangent writes it.
             wrapper.AppendLine("    float3 yapsTangent = 0;");
             wrapper.Append(DeformCalls("yapsVertexId"));
             wrapper.AppendLine("    v.vertex.xyz = yapsPosition;");

@@ -31,7 +31,7 @@ namespace AvatarBridge
     // nothing precisely when it is needed most.
     public static class DiagnosticsWriter
     {
-        public static void Write(BridgeContext ctx)
+        public static void Write(BridgeContext ctx, string reportName = "ConversionReport.md")
         {
             var text = new StringBuilder();
             text.AppendLine($"# AvatarBridge diagnostics: {ctx.Target.name}");
@@ -40,7 +40,7 @@ namespace AvatarBridge
                             $"{DateTime.Now:yyyy-MM-dd HH:mm}*");
             text.AppendLine();
             text.AppendLine("Facts about this conversion, for attaching to a bug report. No advice here: ");
-            text.AppendLine("that's in ConversionReport.md. Nothing in this file leaves your machine unless ");
+            text.AppendLine($"that's in {reportName}. Nothing in this file leaves your machine unless ");
             text.AppendLine("you send it.");
             text.AppendLine();
 
