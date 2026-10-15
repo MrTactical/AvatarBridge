@@ -338,8 +338,34 @@ namespace AvatarBridge.Regression
                     Key = key, Type = typeof(UiOffscreenProbe.Inspector), Pass = "plain", Scene = scene,
                     Prepare = w => UiOffscreenProbe.Inspector.Target = Object.FindObjectOfType(type, true),
                 };
+#if AVATARBRIDGE_YAPS
+                // The plug as an unlock leaves it, so the lost-shader notice is drawn and pressed.
+                if (type == typeof(AvatarBridge.Yaps.YapsPlug))
+                    yield return new Target
+                    {
+                        Key = key, Type = typeof(UiOffscreenProbe.Inspector), Pass = "lost", Scene = scene,
+                        Prepare = w =>
+                        {
+                            var plug = Object.FindObjectOfType<AvatarBridge.Yaps.YapsPlug>(true);
+                            UiOffscreenProbe.Inspector.Target = plug;
+                            var b = plug.bakedSlots.FirstOrDefault();
+                            var r = b == null ? null : b.renderer != null ? b.renderer : plug.Target;
+                            if (r == null || b.slot >= r.sharedMaterials.Length) return;
+                            var plain = new Material(Shader.Find("Standard")) { name = "Smoke lost shader" };
+                            AssetDatabase.DeleteAsset(LostShaderAsset);
+                            AssetDatabase.CreateAsset(plain, LostShaderAsset);
+                            var mats = r.sharedMaterials;
+                            mats[b.slot] = plain;
+                            r.sharedMaterials = mats;
+                        },
+                    };
+#endif
             }
         }
+
+#if AVATARBRIDGE_YAPS
+        const string LostShaderAsset = YapsNativeBuilder.OutputRoot + "/Smoke lost shader.mat";
+#endif
 
         static string PassName(string suffix) => suffix.Length > 0 ? suffix.TrimStart('-') : "plain";
 
@@ -1287,6 +1313,9 @@ namespace AvatarBridge.Regression
 
         static void Finish(string outFile)
         {
+#if AVATARBRIDGE_YAPS
+            AssetDatabase.DeleteAsset(LostShaderAsset);
+#endif
             if (AllTouched.Count > 0) File.AppendAllLines(Path.ChangeExtension(outFile, ".assets.txt"), AllTouched.OrderBy(a => a));
             var lines = File.ReadAllLines(outFile).Skip(1).Select(l => l.Split('\t')).Where(p => p.Length >= 5).ToList();
             var bad = new[] { "ERROR", "NO HANDLER", "DEAD", "SELECT ONLY", "GONE" };
