@@ -362,14 +362,22 @@ namespace AvatarBridge
                     });
                 }
 
-                if (nameHit || referenceHit || locomotionHit)
+                // GoGo's flight layer conditions mostly on the game's own parameters, so it
+                // never reaches the share above, and its name has no GoGo hint. Its clips are
+                // GoGo's own go_ clips, which a creator's layer reading a Go/ value is not.
+                bool gogoClipHit = !nameHit && !referenceHit && !locomotionHit && ctx.Settings.stripGogoLoco
+                    && refs.Any(r => isStripped(r) && r.TrimStart('#').StartsWith("Go/", StringComparison.OrdinalIgnoreCase))
+                    && PlaysMostlyGogoClips(layer.stateMachine);
+
+                if (nameHit || referenceHit || locomotionHit || gogoClipHit)
                 {
                     removedMachines.Add(layer.stateMachine);
                     vrcLayers.Remove(layer);
                     ctx.Report.Converted(Category, $"Removed animator layer \"{layer.name}\"",
                         nameHit ? "Matched a stripped system by name."
                         : referenceHit ? $"{strippedRefs}/{refs.Count} parameter references belong to a stripped system."
-                        : "A locomotion layer using GoGo parameters; left in, it would half-override ChilloutVR's.");
+                        : locomotionHit ? "A locomotion layer using GoGo parameters; left in, it would half-override ChilloutVR's."
+                        : "Reads GoGo's parameters and plays GoGo's own clips; with GoGo's menu gone nothing drives it.");
                 }
             }
 
@@ -564,6 +572,17 @@ namespace AvatarBridge
             }
             tree.children = kept.ToArray();
             return tree;
+        }
+
+        static bool PlaysMostlyGogoClips(AnimatorStateMachine root)
+        {
+            var clips = new HashSet<AnimationClip>();
+            WalkMachines(root, machine =>
+            {
+                foreach (var child in machine.states) AnimatorMerger.CollectClips(child.state.motion, clips);
+            });
+            return clips.Count > 0
+                && clips.Count(c => c.name.StartsWith("go_", StringComparison.OrdinalIgnoreCase)) >= clips.Count * 0.6f;
         }
 
         static bool IsLayerInert(AnimatorControllerLayer layer)

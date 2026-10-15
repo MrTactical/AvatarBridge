@@ -3656,6 +3656,24 @@ Open:
   parameters are under the 0.6 share the FX test needs. Not yet known: what the idle clip
   animates, and whether the strip sees `Go/VRCEmote` with or without its `#`. Instrument before
   widening the FX test, which a creator's own layer reading a `Go/` parameter would also match.
+  **Answered and FIXED, 2026-10-16:** the strip runs before the local rename, so it sees bare
+  `Go/` names; the layer scores 2 of 6 references (the rest are `IsLocal`, `InStation`, `AFK`,
+  `VRMode`). Its clips animate GoGo's flight prefab (`Beyond Prefab/Fly`, a RotationConstraint,
+  a collider centre, `Chairs` active), whose stations and colliders are already gone from the
+  output, leaving bare transforms the idle layer holds. Every clip it plays at strip time is
+  `go_*` (the two "restore" clips are the merge's own placeholders, added later). New rule in
+  `RemoveLayers`: a layer reading a stripped `Go/` parameter whose clips are at least 0.6 `go_*`
+  goes too. `GogoLayerStripTest` pins it, with a creator layer reading the same `Go/` value
+  through clips of its own that must survive. Not yet run in batch; the empty `Beyond Prefab`
+  transforms stay, harmless.
+  Corpus subset `gogo1`, 2026-10-16, 29 of 29 changed against the 2026-10-04 baseline, every
+  change explained: GoGo layers, states and `go_*` clips gone, `EmoteN` slots named, the new
+  settings lines, local `#` renames, MagicaCloth roots split per branch, squash components and
+  warnings, report wording. One digest gained "threw while driving, writes lost:
+  ArgumentNullException": the stack is VRCFury's editor-only Harmony patch on
+  `Animator.SetInteger` (`FixAnimatorPreviewBreakingInPlayModeHook`) throwing when the CCK's
+  AnimatorDriver sets an integer during the sweep. Not AvatarBridge and not in game, but it
+  makes that avatar's sweep lose writes; the sweep should drop the patch or skip the avatar.
   **WITHDRAWN, the same day:** `[Additive] Idle` is VRChat's stock additive layer (`proxy_idle`,
   `TrackingType`), not GoGo's.
 - Which eight library poses, and their order: a choice, open to Joe.

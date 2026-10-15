@@ -9222,7 +9222,7 @@ namespace AvatarBridge
                    || AnimationUtility.GetObjectReferenceCurveBindings(clip).Length > 0;
         }
 
-        static void CollectClips(Motion motion, HashSet<AnimationClip> into)
+        internal static void CollectClips(Motion motion, HashSet<AnimationClip> into)
         {
             if (motion is BlendTree tree)
             {
