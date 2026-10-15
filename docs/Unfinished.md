@@ -27,8 +27,22 @@ physics A/B probes and a corpus run. Decisions on the queue's open questions, sa
 - Renderers only a child Animator switches on: the survey walks child Animators (one re-baseline).
 - Issues #6, #7 and #8: replies drafted, Joe posts them. GrabbyBones: a PR upstream first, drafted.
 - Corpus: subsets whenever needed, three full runs authorised for this job.
-- Joe wears it in ChilloutVR with a written checklist before 5.0.0 ships, and the release still
-  needs his word.
+- Squash shadows on layers with Unity's own caster or a Fallback-only shader: patch the casters.
+- Thry's "Unlock all materials" taking YAPS materials back to a plain shader: detect it and offer
+  a re-bake.
+- PhysBone-side squish (Bone Spring collision): dropped, the shader squash covers it.
+- Physics A/B videos for Discord: yes, test avatars may be shown, captions name none.
+- No player globals with the cameras content filter off: documented, no fallback.
+- Toy mods: an honest-length switch per plug, off by default, tested by Joe with a toy.
+- A per-plug menu toggle for answering its wearer's own sockets: built (one synced bool a plug).
+- A prop case in the corpus: added.
+- A slider whose two children animate different properties: covered by the restore pass.
+- Also in 5.0.0, Joe's picks from the rest of the queue: the remote twin, a diff between two
+  conversions for users, fast reconversion (skipped passes proven equal by the corpus), and YAPS
+  portal and duplicate.
+- No user reports since 4.7.2.
+- Joe wears it in ChilloutVR before 5.0.0 ships, with the full in-game checklist (all of it,
+  ordered by risk, paced over days), and the release still needs his word.
 
 **Decided 2026-09-23 (Joe):** ship the next release first (one default corpus run authorised,
 release on his word), then the two items below. **It is 4.6.4** (Joe, same day): 4.6.3 is skipped,
