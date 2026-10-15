@@ -2227,6 +2227,53 @@ clips carry only `m_IsActive` on paths already missing in VRChat and no object-r
   property the other does not. No pass covers it, and the restore passes exempt tree-driven bindings
   by design, so it needs a decision first.
 
+### Corpus 416, the first full run since 4.6.6: three side effects fixed on dev, 2026-10-15
+
+Run 416 (YAPS profile, dev 8ffe549) against the 4.6.6 baseline. The batch Unity crashed at avatar 74
+of 83, a native SIGSEGV in the allocator while a shader package's import hook searched the asset
+database during one of the converter's `CreateAsset` calls, at about 24 GB of process memory. The same
+avatar converts in a fresh process, so the eleven it never reached ran as a subset (416r).
+
+Every other changed shape traces to a commit on dev:
+- `#` on parameters only the animator reads, after the parameter compressor's layer is stripped
+  (0e633f8); contact parameters keep their sync through `ContactParameters`. The `_cvr` clip clones
+  follow from it, and so does one avatar losing its scale feed layer: the compressor had declared the
+  scale family, nothing read it (the feed's own driver was the only reference), and the restore no
+  longer keeps an animator parameter the menu does not list.
+- Cloth roots on each branch's first bone (1598869), the extra per-chain approximation lines (f9b7815),
+  the new settings lines, plural wording (04ac9df), the scaler survey warning gone, and sweep lines that
+  move where a parameter went local.
+- VRCFury's play-mode hook throws "The Playable is null" from every graph it walks; 415 had 4934 and
+  416 has 4887. It is editor state, and the sweep's "threw while driving" lines on four avatars come
+  with it while their counts stay the same.
+
+Three were side effects, all fixed and measured on subsets (416t, 416y):
+- **The Additive and Gesture layers vanished when the humanoid rig was rebuilt.** Two avatars lost the
+  stock additive idle, and one its `CVRParameterStream` with it (TrackingType was its only reader). A
+  probe (`LayerBakeProbe`) showed VRCFury's bake hands back all five layers; a per-pass trace showed
+  "Humanoid rig skeleton" (eb39f19) leave three. Both rig rebuilds set `animator.avatar = null` before
+  `BuildHumanAvatar`, and the descriptor's inspector (`EnforceAnimLayerSetup`) deletes the human-only
+  layers from an avatar with no humanoid rig, then re-adds them empty once it has one. The jaw unmap
+  has detached the same way since 4.0.3, so a released conversion that unmapped a jaw could lose both
+  layers too. `JawUnmapper.Detach`/`Reattach` keep the layers across the gap for both. After the fix,
+  all three test avatars keep five layers and the two that lost the idle match the baseline's layer
+  list, stream and sweep. The trace is gone; the probe stays.
+- **Texture costs counted slots the shader does not have.** 0a656ae read a material's textures by name
+  to avoid a crash, and `GetTexturePropertyNameIDs` lists every slot the material ever saved, under
+  any shader it had before or a shader that is missing from the project. Nineteen avatars' download
+  figure rose, one from 224 to 378 MB, and twenty dead renderers on a material whose shader is missing
+  went from "frees nothing" to "34.3 MB to reclaim". `TexturesOf` now skips ids the current shader
+  lacks (`HasTexture`), which keeps the crash fix. Every texture figure on the four retested avatars
+  is back to the baseline's.
+- **The YAPS readout warned it could not carry the squash block** ("could not carry 18 ...
+  `_YAPS_DentPower`") on fifteen avatars. The patch adds those properties to every shader and no
+  readout cell reads them, so `YapsDebugOverlayBuilder.Copy` drops them from the missing list. Gone on
+  the retested avatars, nothing else moved.
+
+An idea it raised, not measured: a material's leftover slots may still ship in the build, since a
+build follows every saved reference. If a build does carry them, the weight report undercounts and
+could offer clearing them as a saving. Measure with a real CCK build before claiming either way.
+
 ### The audit of 2026-10-03: about 210 findings fixed on dev, not verified in game
 
 **What was done.** A read of the whole codebase against its own claims, in four waves: 177 findings

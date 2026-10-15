@@ -35,7 +35,7 @@ namespace AvatarBridge
         static readonly Regex Side = new Regex(@"left|right|[._ ]?[lr](?=$|[._ ])", RegexOptions.IgnoreCase);
 
         // Every property the squash sets, so a swapped-in look can take the same values.
-        static readonly string[] Properties =
+        internal static readonly string[] Properties =
         {
             "_YAPS_DentPower", "_YAPS_DentOwn", "_YAPS_SquashReach", "_YAPS_SquashAway", "_YAPS_SquashOut",
             "_YAPS_SquashIn", "_YAPS_SquashSideA", "_YAPS_SquashSideB", "_YAPS_SquashTune", "_YAPS_SquashPair",

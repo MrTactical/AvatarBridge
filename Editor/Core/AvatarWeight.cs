@@ -768,6 +768,9 @@ namespace AvatarBridge
             // broken or recompiling shader reported more properties than it would hand out.
             foreach (int id in m.GetTexturePropertyNameIDs())
             {
+                // The list keeps slots saved under any shader the material ever had, so a
+                // missing shader or an old one's leftovers would count as rendered.
+                if (!m.HasTexture(id)) continue;
                 var tex = m.GetTexture(id);
                 if (tex != null) yield return tex;
             }

@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
+using VRC.SDK3.Avatars.Components;
 
 namespace AvatarBridge
 {
@@ -105,7 +106,7 @@ namespace AvatarBridge
             // description handed in. The description is the argument;
             // the assigned avatar should not get a vote.
             var previous = animator.avatar;
-            animator.avatar = null;
+            var layers = Detach(animator);
             var rebuilt = AvatarBuilder.BuildHumanAvatar(root, description);
 
             // Second attempt, from the live hierarchy: the baked skeleton
@@ -133,7 +134,7 @@ namespace AvatarBridge
 
             if (rebuilt == null || !rebuilt.isValid)
             {
-                animator.avatar = previous;   // put it back; a null rig is worse than a wrong jaw
+                Reattach(animator, previous, layers);   // put it back; a null rig is worse than a wrong jaw
                 if (rebuilt != null)
                 {
                     Object.DestroyImmediate(rebuilt);
@@ -151,7 +152,7 @@ namespace AvatarBridge
             // The name comes from "previous"; animator.avatar is null
             // here, cleared before the build.
             SaveRig(ctx, rebuilt, previous.name, "_NoJaw", out int orphans);
-            animator.avatar = rebuilt;
+            Reattach(animator, rebuilt, layers);
             EditorUtility.SetDirty(animator);
 
             ctx.Report.Converted(Category,
@@ -159,6 +160,30 @@ namespace AvatarBridge
                 "Rebuilt without a Jaw, so your voice and visemes don't follow that object." +
                 (usedLiveSkeleton ? " Rebuilt from the current pose, since the rig's own was refused." : "") +
                 (orphans > 0 ? $" {BridgeElements.Count(orphans, "old rig", "old rigs")} removed." : ""));
+        }
+
+        // The descriptor's inspector drops the Additive and Gesture layers from an avatar with
+        // no humanoid rig and adds them back empty once it has one, so a rig detached for a
+        // rebuild cost both layers their controllers. Detach and reattach through these.
+        internal static VRCAvatarDescriptor.CustomAnimLayer[] Detach(Animator animator)
+        {
+            var descriptor = animator.GetComponent<VRCAvatarDescriptor>();
+            var layers = descriptor != null && descriptor.baseAnimationLayers != null
+                ? (VRCAvatarDescriptor.CustomAnimLayer[])descriptor.baseAnimationLayers.Clone()
+                : null;
+            animator.avatar = null;
+            return layers;
+        }
+
+        internal static void Reattach(Animator animator, Avatar avatar, VRCAvatarDescriptor.CustomAnimLayer[] layers)
+        {
+            animator.avatar = avatar;
+            var descriptor = animator.GetComponent<VRCAvatarDescriptor>();
+            if (descriptor != null && layers != null)
+            {
+                descriptor.baseAnimationLayers = layers;
+                EditorUtility.SetDirty(descriptor);
+            }
         }
 
         // Saved, because an Avatar built in memory does not survive the scene: the animator
