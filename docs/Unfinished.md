@@ -30,7 +30,8 @@ physics A/B probes and a corpus run. Decisions on the queue's open questions, sa
 - Squash shadows on layers with Unity's own caster or a Fallback-only shader: patch the casters.
   (built: the opaque-Fallback case; Unity's own caster was already wrapped)
 - Thry's "Unlock all materials" taking YAPS materials back to a plain shader: detect it and offer
-  a re-bake.
+  a re-bake. (built: plug and socket inspectors say so beside Re-bake and Build, the upload check
+  lists every material by its saved `_YAPS_Enabled`; PreflightTest covers the check, NOT RUN YET)
 - PhysBone-side squish (Bone Spring collision): dropped, the shader squash covers it.
 - Physics A/B videos for Discord: yes, test avatars may be shown, captions name none.
 - No player globals with the cameras content filter off: documented, no fallback.

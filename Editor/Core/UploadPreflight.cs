@@ -52,6 +52,9 @@ namespace AvatarBridge
                 "Tick Load In Background in the import settings. " + FixInPanel);
 
             Unsaved(report, root);
+#if AVATARBRIDGE_YAPS
+            YapsNativeBuilder.ReportLostShaders(report, root);
+#endif
 
             if (report.Entries.Count == before)
                 report.Converted(Category, "Nothing the CCK's upload check refuses",

@@ -1341,6 +1341,62 @@ namespace AvatarBridge
                    && path.StartsWith(OutputRoot + "/", System.StringComparison.Ordinal);
         }
 
+        // Baked by its records, yet the slot no longer wears a YAPS shader, so
+        // nothing on it bends. Thry's "Unlock all materials" does this: it
+        // finds no original shader recorded on the material, guesses one by
+        // name and puts that plain shader back. Another bake patches it again.
+        internal static List<Material> LostShader(YapsPlug plug)
+        {
+            var lost = new List<Material>();
+            if (plug == null) return lost;
+            foreach (var b in plug.bakedSlots)
+            {
+                if (b == null) continue;
+                var r = b.renderer != null ? b.renderer : plug.Target;
+                var mats = r != null ? r.sharedMaterials : null;
+                if (mats == null || b.slot < 0 || b.slot >= mats.Length) continue;
+                var m = mats[b.slot];
+                if (m != null && m != b.was && IsGenerated(m) && !m.HasProperty("_YAPS_Bake")) lost.Add(m);
+            }
+            return lost.Distinct().ToList();
+        }
+
+        internal static Material LostShader(YapsSocket socket)
+        {
+            var r = socket != null ? socket.bakedRenderer : null;
+            if (r == null || socket.bakedFrom == null) return null;
+            var mats = r.sharedMaterials;
+            var m = socket.bakedSlot >= 0 && socket.bakedSlot < mats.Length ? mats[socket.bakedSlot] : null;
+            return m != null && m != socket.bakedFrom && IsGenerated(m) && !m.HasProperty("_YAPS_Bake") ? m : null;
+        }
+
+        // For the upload check, by the material alone, so a converted avatar
+        // and a squashed layer count as well as a toolkit plug: a material keeps
+        // the values of a shader it no longer wears, so a saved _YAPS_Enabled
+        // under a shader without one is a patch taken off.
+        internal static void ReportLostShaders(BridgeReport report, GameObject root)
+        {
+            var lost = root.GetComponentsInChildren<Renderer>(true).SelectMany(r => r.sharedMaterials)
+                .Where(m => m != null && !m.HasProperty("_YAPS_Enabled") && SavedFloat(m, "_YAPS_Enabled"))
+                .Select(m => m.name).Distinct().ToList();
+            if (lost.Count > 0)
+                report.Warning("Upload", $"{BridgeElements.Count(lost.Count, "material has", "materials have")} lost the YAPS shader, so nothing on them bends",
+                    $"{AvatarSurvey.Few(lost)}. " + LostShaderWhy + " Convert again for a converted avatar. Ignore this " +
+                    "where YAPS was removed on purpose.");
+        }
+
+        static bool SavedFloat(Material m, string name)
+        {
+            var floats = new SerializedObject(m).FindProperty("m_SavedProperties.m_Floats");
+            for (int i = 0; floats != null && i < floats.arraySize; i++)
+                if (floats.GetArrayElementAtIndex(i).FindPropertyRelative("first").stringValue == name) return true;
+            return false;
+        }
+
+        internal const string LostShaderWhy =
+            "Something put a plain shader back on it: Thry's Unlock all materials does this to materials " +
+            "it did not lock itself. Bake again to patch it back.";
+
         // What a slot held before the bake, so Remove can put each one back.
         // Keyed on the renderer as well as the number: a plug spanning meshes
         // has a slot 0 on each of them, and they are not the same slot.

@@ -30,6 +30,12 @@ namespace AvatarBridge.Regression
                 var skin = new GameObject("Skin").AddComponent<SkinnedMeshRenderer>();
                 skin.transform.SetParent(root.transform, false);
                 skin.rootBone = outside.transform;
+#if AVATARBRIDGE_YAPS
+                // What Thry's Unlock all leaves: the values of a shader the material no longer wears.
+                var unlocked = new Material(Shader.Find("Standard")) { name = "Unlocked" };
+                unlocked.SetFloat("_YAPS_Enabled", 1f);
+                skin.sharedMaterial = unlocked;
+#endif
 
                 var report = new BridgeReport();
                 UploadPreflight.Run(report, avatar);
@@ -37,6 +43,9 @@ namespace AvatarBridge.Regression
                 Check(report.Entries.Any(e => e.Subject.Contains("not saved") && e.Detail.Contains("InMemory")), "names the unsaved mesh");
                 Check(report.Entries.Any(e => e.Subject.Contains("outside the avatar") && e.Detail.Contains("Elsewhere")), "names the outside reference");
                 Check(!report.Entries.Any(e => e.Subject.Contains("no Animator")), "an Animator on the root passes");
+#if AVATARBRIDGE_YAPS
+                Check(report.Entries.Any(e => e.Subject.Contains("lost the YAPS shader") && e.Detail.Contains("Unlocked")), "names the material that lost its YAPS shader");
+#endif
 
                 var saved = PrefabUtility.SaveAsPrefabAsset(root, Path);
                 Check(saved.GetComponentInChildren<MeshFilter>().sharedMesh == null, "the saved prefab lost the unsaved mesh");

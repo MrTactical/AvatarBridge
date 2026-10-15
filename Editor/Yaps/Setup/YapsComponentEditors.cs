@@ -820,7 +820,10 @@ namespace AvatarBridge
             // says which is missing, and holds the only Build this socket.
             var current = rendererProp.objectReferenceValue as SkinnedMeshRenderer;
             bool contactRoute = current != null && YapsNativeBuilder.ShapesByContact(socket);
-            string unbuilt = !built ? "Not built yet: no plug can find it."
+            var lostShader = YapsNativeBuilder.LostShader(socket);
+            string unbuilt = lostShader != null
+                ? $"Built, but \"{lostShader.name}\" no longer wears the YAPS shader, so its shapes do nothing. " + YapsNativeBuilder.LostShaderWhy
+                : !built ? "Not built yet: no plug can find it."
                 : current != null && shapesProp.arraySize > 0
                   && !(contactRoute ? YapsSocketReactions.Exists(socket) : FindSocketMaterial(socket) != null)
                     ? "Not built yet: its shapes do nothing in game."
@@ -1486,7 +1489,13 @@ namespace AvatarBridge
             body.Add(BridgeElements.Notice(Tone.Info,
                 YapsInspectorStyle.InertComponentNote + " " + YapsInspectorStyle.PlugSwitchNote,
                 action: BridgeElements.Btn("Open YAPS Setup", YapsSetupWindow.Open)));
-            if (!isBaked) body.Add(BridgeElements.Notice(Tone.Warn, "Not baked yet. Set up the mesh, then press Bake at the bottom."));
+            var lost = YapsNativeBuilder.LostShader(plug);
+            if (lost.Count > 0)
+                body.Add(BridgeElements.Notice(Tone.Bad,
+                    lost.Count == 1 ? $"Baked, but \"{lost[0].name}\" no longer wears the YAPS shader, so the plug does not bend."
+                        : $"Baked, but {lost.Count} of its materials no longer wear the YAPS shader, so the plug does not bend: {AvatarSurvey.Few(lost.Select(m => m.name))}.",
+                    YapsNativeBuilder.LostShaderWhy + " Re-bake is at the bottom."));
+            else if (!isBaked) body.Add(BridgeElements.Notice(Tone.Warn, "Not baked yet. Set up the mesh, then press Bake at the bottom."));
 
             // Every knob is tagged with its system, and the filter shows one
             // system. Above every card, since it reaches all of them.
