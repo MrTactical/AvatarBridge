@@ -1148,7 +1148,7 @@ namespace AvatarBridge
 
         const float MinBoneWeight = 0.2f;
 
-        static float MeasureMesh(BridgeContext ctx, PhysBoneChainData data, out int sampled,
+        internal static float MeasureMesh(BridgeContext ctx, PhysBoneChainData data, out int sampled,
             out HashSet<Transform> meshBones, out bool grown)
         {
             grown = false;

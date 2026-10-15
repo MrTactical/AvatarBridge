@@ -1007,9 +1007,8 @@ bound are solved from the path one cloth bends, and the merge took them from the
 strand). Fixed with it: the rider check before asserting a grouped cloth off reads every
 strand's riders, the mirrored-off count counts the cloth once, the pose-ratio grounding asks
 whether ANY strand of a cloth is animated, the store description counts chains, not cloths.
-Still open, measured only through the Physics A/B probe at best: a group shares one collision
-radius (the mesh fit pools every strand, and the spacing cap takes the tightest), so strands of
-the same bones but different mesh thickness collide at one size.
+A group shared one collision radius (the mesh fit pooled every strand), so strands of the same
+bones but different mesh thickness collided at one size. Held out since (below).
 
 **Untested against the avatar that reported it.** The variant to hand is the Quest one, 8 chains,
 four of them anchored volumes, none groupable. The reporter has been asked which avatar it is.
@@ -1028,7 +1027,18 @@ worn:
   wash (mean peak error 33.80 to 33.65, sag 0.92 to 0.90), collision level or better (press
   angle 58.7 to 53.1, recover 0.547 to 0.534). The first A/B said collision got worse; that was
   the probe pressing every strand of a grouped cloth at once, fixed in the probe the same night.
-Still open: one collision radius per group, not visible on this avatar.
+- **Mesh thickness, 2026-10-15.** Each strand's own mesh radius is measured before the merge, and
+  a strand groups only with a head within a quarter of its size (no mesh only with no mesh). A
+  trace on the two avatars it changed found real spread: one hairstyle's strands measured 3.8 to
+  15.6 mm, and a mirrored pair 9.5 and 22.7 mm, which the pooled fit had given one size.
+  Cloths 71 to 84 on the strand-at-a-time avatar (dev 112), 48 to 49 on one other, the rest
+  unchanged. Physics A/B: the split strands return to dev's per-strand radius, so press angle on
+  them moves 53.1 (pooled) to 57.0, dev 58.7; free motion a wash; singles unchanged. The pooled
+  radius pressed closer on this avatar by luck of the average, not because grouping knew better:
+  the fit's own accuracy per strand is the mesh fit's question, not the merge's. The spacing cap
+  needs no hold-out, since the 5% segment rule already keeps grouped strands' spacing within 5%.
+  Its own commit, so it can be dropped if the cloth count matters more than the radius.
+  Open from it: a mirrored pair measuring 2.4x apart is worth a look at what the fit samples there.
 
 ### Freeze rotation axes, VRChat vs Unity (issue #6)
 

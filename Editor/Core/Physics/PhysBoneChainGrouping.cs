@@ -20,9 +20,9 @@ namespace AvatarBridge
     //
     // The bar for merging is "the two components would have been identical
     // anyway": same settings, same colliders, same on/off state, same
-    // parent, same classified kind, same segment lengths. Anything a merge could not
-    // express (an ignore list, a PhysBone parameter, a toggle on one chain) keeps
-    // its own component.
+    // parent, same classified kind, same segment lengths, same mesh thickness.
+    // Anything a merge could not express (an ignore list, a PhysBone parameter,
+    // a toggle on one chain) keeps its own component.
     public static class PhysBoneChainGrouping
     {
         const string Category = "PhysBones -> MagicaCloth2";
@@ -36,7 +36,7 @@ namespace AvatarBridge
 
             var toggled = ToggledPaths(ctx);
             var result = new List<PhysBoneChainData>();
-            var buckets = new Dictionary<string, PhysBoneChainData>();
+            var buckets = new Dictionary<string, List<(PhysBoneChainData Head, float Radius)>>();
             int folded = 0;
             var names = new SortedSet<string>(StableSampleOrder.Instance);
 
@@ -48,9 +48,21 @@ namespace AvatarBridge
                     result.Add(chain);
                     continue;
                 }
-                if (!buckets.TryGetValue(key, out var head))
+                // The mesh fit gives a cloth one radius from every strand's vertices, so a thick
+                // strand and a thin one would collide at one size. Measured before any merge, while
+                // the chain has only its own root.
+                float radius = ctx.Settings.fitRadiusToMesh
+                    ? MagicaClothWriter.MeasureMesh(ctx, chain, out _, out _, out _)
+                    : 0f;
+                if (!buckets.TryGetValue(key, out var heads))
                 {
-                    buckets[key] = chain;
+                    heads = new List<(PhysBoneChainData Head, float Radius)>();
+                    buckets[key] = heads;
+                }
+                var head = heads.FirstOrDefault(h => SameThickness(h.Radius, radius)).Head;
+                if (head == null)
+                {
+                    heads.Add((chain, radius));
                     result.Add(chain);
                     continue;
                 }
@@ -71,12 +83,12 @@ namespace AvatarBridge
 
             if (folded > 0)
             {
-                int groups = buckets.Values.Count(c => c.MergedRoots.Count > 0);
+                int groups = buckets.Values.SelectMany(h => h).Count(h => h.Head.MergedRoots.Count > 0);
                 ctx.Report.Converted(Category,
                     $"{BridgeElements.Count(folded + groups, "identical chain", "identical chains")} simulated by " +
                     BridgeElements.Count(groups, "cloth", "cloths"),
                     "These PhysBones were separate components with the same settings, the same " +
-                    "colliders, the same parent and the same bone lengths: a hairstyle built one strand at a time, a pair " +
+                    "colliders, the same parent, the same bone lengths and the same mesh thickness: a hairstyle built one strand at a time, a pair " +
                     "of ears, a row of charms. One MagicaCloth2 component simulates any number of " +
                     "independent root bones, and each component it saves is a proxy mesh and a " +
                     "solver team the avatar no longer pays for. The chains still move separately: " +
@@ -181,6 +193,18 @@ namespace AvatarBridge
         }
 
         static bool HasCurve(AnimationCurve curve) => curve != null && curve.length > 0;
+
+        // Within a quarter. Compared with the head, not bucketed, so strands either side of a
+        // bucket edge still group. No mesh only matches no mesh: the fit would hand that strand
+        // the other's size where it would have kept the preset's.
+        static bool SameThickness(float a, float b)
+        {
+            if (a <= 0f || b <= 0f)
+            {
+                return a <= 0f && b <= 0f;
+            }
+            return Mathf.Max(a, b) <= Mathf.Min(a, b) * 1.25f;
+        }
 
         // Paths the animator switches: an object's active flag, or any curve on a PhysBone or a
         // base of it (its enabled flag is the Behaviour's). Read from the source's own

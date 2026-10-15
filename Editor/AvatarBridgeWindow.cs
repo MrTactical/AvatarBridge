@@ -614,8 +614,8 @@ namespace AvatarBridge
                     "A VRChat PhysBone holds one chain, so a hairstyle built strand by strand is " +
                     "one component per strand. MagicaCloth2 simulates any number of chains in one " +
                     "component, and each one saved is a solver the avatar stops paying for. Only " +
-                    "chains with the same settings, colliders, parent, kind and bone lengths are grouped, and " +
-                    "they still move independently. Turn off for one component per chain.",
+                    "chains with the same settings, colliders, parent, kind, bone lengths and mesh thickness " +
+                    "are grouped, and they still move independently. Turn off for one component per chain.",
                     settings.groupIdenticalPhysBones, v => settings.groupIdenticalPhysBones = v));
             }
             b.Add(BridgeElements.Bind("Delete PhysBones after converting",
