@@ -489,6 +489,16 @@ namespace AvatarBridge
 
         // ------------------------------------------------------------- buttons ----
 
+        // Selecting alone shows nothing while the Inspector is a hidden tab, locked or closed, so
+        // a button that only selected read as dead. Its own window shows it whatever the layout.
+        public static void Reveal(UnityEngine.Object target)
+        {
+            if (target == null) return;
+            Selection.activeObject = target;
+            EditorGUIUtility.PingObject(target);
+            EditorUtility.OpenPropertyEditor(target);
+        }
+
         public static Button Btn(string text, Action onClick, string tooltip = null,
             ButtonKind kind = ButtonKind.Secondary)
         {

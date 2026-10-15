@@ -53,7 +53,8 @@ the rest pose captured as Play starts. Newer MagicaCloth2 members are reached by
 chain 5 mm, walking moves the avatar 1.43 m and swings chains 16.6 degrees against 0.0 standing,
 Stop puts it back, the overlay goes on and back to how each chain was. Only 2 of that avatar's 12
 cloths were running at rest; why the other 10 were not was not looked into. Not yet seen by eye:
-the Scene view drawing and the mouse grab, which a batch run cannot show. **Compile-check gap found
+the Scene view drawing and the mouse grab, which a batch run cannot show *(Joe used both on
+2026-10-04, round two below; since 2026-10-15 the button smoke probe draws and grabs in batch too)*. **Compile-check gap found
 on the way:** `compile-check.sh` never defines `AVATARBRIDGE_MAGICA`, and `check-defines.sh`
 compiles the deployed copy in a project, not the repo, so code behind both CCK and MagicaCloth is
 compiled by neither until it is deployed; run `check-defines.sh` against the project holding it.
@@ -2074,6 +2075,33 @@ everything since 4.6.6: the audit and its corpus-414 fixes, the UI redesign, the
 draft was built first, then deleted unpublished when two tester changes landed after it; its tag
 `v4.7.0` stays in history and that number was never shipped. Corpus 415 is the accepted YAPS baseline.
 Not verified in ChilloutVR; the records below say what only the game can settle.*
+
+### Every button pressed headless, 2026-10-15: one dead, one noisy. FIXED ON DEV
+
+Joe found **Tune it** did nothing. It and **Open material** now select the material, ping it and
+open it in a property editor (`BridgeElements.Reveal`); selection alone showed nothing with the
+Inspector locked or closed.
+
+`Dev/Probes/ButtonSmokeProbe.cs` with `button-smoke.sh` presses every button and toggle in every
+window and inspector, a fresh scene load per state, and judges each press by what changed: window
+text and state, scene hash, materials, selection, clipboard, notifications, and a before and after
+picture through an offscreen Scene view, so overlays a press turns on are in it. In Play mode it
+grabs chains with mouse events through the tester's own handler: four of four followed the drag and
+swung back. Pressing the converter windows converts per press and takes over an hour; run them alone.
+
+**Weigh it and Fix it flooded the console** (18 errors, 146 warnings, none from the avatar). The
+slimmer's "used elsewhere" check loaded every material in the project and read its textures, and
+the first read builds a material's property sheet, which logs every fault in it. It reads an
+asset-database dependency index now and loads only the materials that name the texture. Same answer
+as before on all 4471 textures it can ask about (two Unity built-ins have no importer and are never
+asked), in 3.5 s where the old sweep took 147 s cold. A texture inside a font or a controller counts:
+the index adds each file's own path, which `GetDependencies` leaves out. The shader errors that
+showed under **Patch shaders for VR stereo** were the same sweep's leftovers: a fresh process
+patching alone logs none, and the rerun has none. Toolkit after the fix: 65 OK, 0 errors; the one
+message left is a missing third-party drawer on the avatar's own material.
+
+Open: **Merge animators / clear** is disabled with no tooltip saying why. The paint stroke and the
+squash depth are not yet gestured.
 
 ### "Avoid unpacking the converted prefab": a user's request, 2026-10-14. A ON DEV, B PARKED
 

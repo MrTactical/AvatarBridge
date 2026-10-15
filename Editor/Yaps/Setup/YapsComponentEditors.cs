@@ -1204,7 +1204,7 @@ namespace AvatarBridge
                     });
                     opensHow.Body.Add(mm);
                 }
-                opensHow.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Open material", () => Selection.activeObject = bakedMat)));
+                opensHow.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Open material", () => BridgeElements.Reveal(bakedMat))));
                 body.Add(opensHow);
             }
 
