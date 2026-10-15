@@ -65,7 +65,9 @@ sources="$WORK/sources.rsp"
   find "$REPO/Editor" "$REPO/Runtime" -name '*.cs' | while read -r f; do echo "\"$(cygpath -w "$f")\""; done
   grep '^"Assets/AvatarBridge/Editor/DevTools/' "$RSP" | tr -d '"\r' | while read -r have; do
     src="$(find "$REPO/Dev" -name "$(basename "$have")" -type f -print -quit)"
-    echo "\"$(cygpath -w "${src:-$PROJ/$have}")\""
+    src="${src:-$PROJ/$have}"
+    # A scratch probe deleted since that compile is not a source any more.
+    [ -f "$src" ] && echo "\"$(cygpath -w "$src")\""
   done
 } > "$sources"
 

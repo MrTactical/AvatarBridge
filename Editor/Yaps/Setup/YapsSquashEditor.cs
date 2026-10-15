@@ -184,7 +184,7 @@ namespace AvatarBridge
                 into.Add(BridgeElements.Bind("Bounce", "Swings each part up and down under it, as a jump would, to show the stretch in motion.",
                     Bounce, b => Bounce = b));
             }
-            into.Add(BridgeElements.Bind("Test hand", "Another player's open hand, dragged with the handle in the scene view.",
+            into.Add(BridgeElements.Bind("Test hand", "Another player's open hand, dragged with the handle in the scene view. It presses the part nearest it.",
                 Hand, b => { Hand = b; SceneView.RepaintAll(); }));
             return row;
         }
@@ -235,7 +235,7 @@ namespace AvatarBridge
             if (slots == null || mats.Count == 0) { Stop(); return; }
             var m = slots.Select(t => t != null ? t.localToWorldMatrix : Matrix4x4.zero).ToArray();
             if (!Application.isPlaying) Stand(root, m, mats);
-            Press(root, (Vector3) m[0].GetColumn(3));
+            Press(root, Nearest(slots, root.TransformPoint(_wrist)));
             SceneView.RepaintAll();
         }
 
@@ -259,7 +259,13 @@ namespace AvatarBridge
             foreach (var mat in mats) mat.SetMatrixArray("_YAPS_SquashFollow", m);
         }
 
-        // Player 1's open left hand, reaching from a chest behind it toward the first part.
+        // The part the hand reaches for. The first part always was, so a hand dragged onto a
+        // second pair faced up toward the first and never pressed in.
+        static Vector3 Nearest(Transform[] slots, Vector3 wrist) =>
+            slots.Take(4).Where(t => t != null && t.lossyScale.sqrMagnitude > 0f).Select(t => t.position)
+                .OrderBy(p => (p - wrist).sqrMagnitude).DefaultIfEmpty(wrist + Vector3.forward).First();
+
+        // Player 1's open left hand, reaching from a chest behind it toward the part.
         static void Press(Transform root, Vector3 part)
         {
             var left = new Vector4[255];
@@ -286,7 +292,7 @@ namespace AvatarBridge
             if (slots == null || slots[0] == null) return;
             var root = On.transform;
             var wrist = root.TransformPoint(_wrist);
-            var aim = (slots[0].position - wrist).normalized;
+            var aim = (Nearest(slots, wrist) - wrist).normalized;
             float radius = On.handSize * 1.7f / 1.6f;
             Handles.color = YapsInspectorStyle.PlugColour;
             Handles.DrawWireDisc(wrist + aim * 0.06f, aim, radius);

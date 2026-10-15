@@ -1139,7 +1139,7 @@ namespace AvatarBridge
         {
             foreach (var layer in master.layers)
             {
-                string param = !IsHandLayer(layer.name) ? null
+                string param = !AvatarFeatureDetect.IsHandLayer(layer.name) ? null
                     : layer.name.StartsWith("Left", StringComparison.Ordinal) ? "GestureLeft" : "GestureRight";
                 if (param == null || layer.stateMachine == null)
                 {
@@ -6350,7 +6350,7 @@ namespace AvatarBridge
             int handTop = -1;
             for (int i = 0; i < layers.Length; i++)
             {
-                if (IsHandLayer(layers[i].name))
+                if (AvatarFeatureDetect.IsHandLayer(layers[i].name))
                 {
                     handTop = i;
                 }
@@ -7519,7 +7519,7 @@ namespace AvatarBridge
         {
             foreach (var layer in vrcLayers)
             {
-                if (IsHandLayer(layer.name))
+                if (AvatarFeatureDetect.IsHandLayer(layer.name))
                 {
                     continue; // hand pose layers are supposed to animate finger muscles
                 }
@@ -9150,11 +9150,6 @@ namespace AvatarBridge
                    || name == "Size" || name == "Linear Smoothing Layer"
                    || name.StartsWith("[FT] ");
         }
-
-        // A second gesture layer for the same hand is promoted too, and
-        // MakeUniqueLayerName numbers it "LeftHand 2".
-        static readonly Regex HandLayerName = new Regex(@"^(Left|Right)Hand( \d+)?$");
-        static bool IsHandLayer(string name) => name != null && HandLayerName.IsMatch(name);
 
         static bool LayerAnimatesNothing(AnimatorControllerLayer layer)
         {

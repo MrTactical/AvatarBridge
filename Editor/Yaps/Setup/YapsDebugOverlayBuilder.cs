@@ -623,6 +623,8 @@ namespace AvatarBridge
             }
             var missing = new List<string>();
             YapsNativeBuilder.CopyYapsProperties(from, to, missing);
+            // The patch gives every shader the squash block, and no cell reads it.
+            missing.RemoveAll(name => YapsSquash.Properties.Contains(name));
             EditorUtility.SetDirty(to);
             if (missing.Count == 0)
             {

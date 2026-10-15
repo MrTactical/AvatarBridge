@@ -297,6 +297,9 @@ namespace AvatarBridge
         public static bool CanDropTestPlug =>
             !Application.isPlaying || AssetDatabase.LoadAssetAtPath<GameObject>(YapsSocketBuilder.PlugPropPrefabPath) != null;
 
+        public const string NoPlugPrefab =
+            "In Play mode the test plug comes from the plug prop prefab; create it under Tools ▸ YAPS ▸ Setup ▸ Test it.";
+
         public static void RemoveTestSocket()
         {
             var existing = GameObject.Find(SocketName);
@@ -1109,8 +1112,8 @@ namespace AvatarBridge
             // Asked for outright, since guessing whether the avatar's own
             // plug is the one to watch gets it wrong on a body where
             // everything is within arm's reach of everything.
-            bool testPlug = YapsPreview.TestPlugInScene;
-            see.Body.Add(BridgeElements.ButtonRow(previewButton, BridgeElements.Btn(
+            bool testPlug = YapsPreview.TestPlugInScene, canDrop = testPlug || YapsPreview.CanDropTestPlug;
+            var dropButton = BridgeElements.Btn(
                 testPlug ? "Take the test plug away" : "Drop a test plug here",
                 () =>
                 {
@@ -1118,7 +1121,10 @@ namespace AvatarBridge
                     else { YapsPreview.Set(socket, true, spawnPlugIfNone: false); YapsPreview.DropTestPlug(socket); }
                     RebuildLater();
                 },
-                testPlug ? "Takes the test plug out of the scene." : "Drops a test plug in front of it, even with a baked one near.")));
+                testPlug ? "Takes the test plug out of the scene."
+                : canDrop ? "Drops a test plug in front of it, even with a baked one near." : YapsPreview.NoPlugPrefab);
+            dropButton.SetEnabled(canDrop);
+            see.Body.Add(BridgeElements.ButtonRow(previewButton, dropButton));
 
             // The plug mesh on most avatars only exists in Play Mode: it ships
             // switched off and a toggle brings it in. So the one state where you
@@ -1204,7 +1210,7 @@ namespace AvatarBridge
                     });
                     opensHow.Body.Add(mm);
                 }
-                opensHow.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Open material", () => Selection.activeObject = bakedMat)));
+                opensHow.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Open material", () => BridgeElements.Reveal(bakedMat))));
                 body.Add(opensHow);
             }
 

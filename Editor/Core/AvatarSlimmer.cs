@@ -67,7 +67,8 @@ namespace AvatarBridge
 
             // Built on first need: it loads every material in the project,
             // and only a texture worth changing asks. Usually none is.
-            Dictionary<Texture, string> elsewhere = null;
+            Dictionary<string, List<string>> users = null;
+            HashSet<Material> mine = null;
 
             foreach (var t in weight.Textures)
             {
@@ -148,13 +149,14 @@ namespace AvatarBridge
 
                 // The importer setting is global to the texture.
                 // A texture others use is left alone.
-                if (elsewhere == null)
+                if (users == null)
                 {
-                    var mine = OwnMaterials(avatar);
+                    mine = OwnMaterials(avatar);
                     if (alsoMine != null) mine.UnionWith(MaterialsOn(alsoMine));
-                    elsewhere = MaterialsUsingTexturesOutside(mine);
+                    users = MaterialsByDependency();
                 }
-                if (elsewhere.TryGetValue(t.Texture, out string user))
+                string user = MaterialOutsideUsing(t.Texture, users, mine);
+                if (user != null)
                 {
                     plan.Shared[t.Name] = user;
                     continue;
@@ -550,24 +552,51 @@ namespace AvatarBridge
             return mine;
         }
 
-        // Textures reachable from materials this avatar does not use.
-        // One pass over the project. Unapplied materials still count.
-        static Dictionary<Texture, string> MaterialsUsingTexturesOutside(HashSet<Material> mine)
+        // Every material in the project, by each asset it depends on. Read from the asset
+        // database, so no material is loaded: reading a material's textures builds its
+        // property sheet, which logs every fault in it (a cubemap in a 2D slot, a missing
+        // third-party drawer) to the console, and a project holds thousands that have nothing
+        // to do with this avatar. Direct dependencies only: a recursive list walks every
+        // shader's includes, 18 s against 3.5 s over 4600 materials, where loading them all
+        // took 150 s. Unapplied materials still count.
+        static Dictionary<string, List<string>> MaterialsByDependency()
         {
-            var outside = new Dictionary<Texture, string>();
+            var users = new Dictionary<string, List<string>>();
             foreach (string guid in AssetDatabase.FindAssets("t:Material"))
             {
                 string assetPath = AssetDatabase.GUIDToAssetPath(guid);
-                var material = AssetDatabase.LoadAssetAtPath<Material>(assetPath);
-                if (material == null || mine.Contains(material)) continue;
-                // The first one found is enough to name. Listing every
-                // material using a common texture is a wall, not an answer.
-                foreach (var tex in AvatarWeight.TexturesOf(material))
+                // Itself added: a font or a controller can hold a material and its texture in
+                // one file, and the list does not name the file.
+                foreach (string dependency in new HashSet<string>(AssetDatabase.GetDependencies(assetPath, false)) { assetPath })
                 {
-                    if (!outside.ContainsKey(tex)) outside[tex] = assetPath;
+                    if (!users.TryGetValue(dependency, out var list)) users[dependency] = list = new List<string>();
+                    list.Add(assetPath);
                 }
             }
-            return outside;
+            return users;
+        }
+
+        // The first material this avatar does not use that renders the texture, or null. The
+        // dependency list is a superset (it keeps slots from shaders a material used to have),
+        // so each candidate is read for what it really renders. The first one found is enough
+        // to name. Listing every material using a common texture is a wall, not an answer.
+        static string MaterialOutsideUsing(Texture texture, Dictionary<string, List<string>> users, HashSet<Material> mine)
+        {
+            string path = AssetDatabase.GetAssetPath(texture);
+            if (string.IsNullOrEmpty(path) || !users.TryGetValue(path, out var candidates)) return null;
+            // A variant depends on its parent, not on the textures it inherits through it.
+            var seen = new HashSet<string>();
+            var queue = new Queue<string>(candidates);
+            while (queue.Count > 0)
+            {
+                string assetPath = queue.Dequeue();
+                if (!seen.Add(assetPath)) continue;
+                if (users.TryGetValue(assetPath, out var variants)) foreach (string v in variants) queue.Enqueue(v);
+                var material = AssetDatabase.LoadAssetAtPath<Material>(assetPath);
+                if (material == null || mine.Contains(material)) continue;
+                if (AvatarWeight.TexturesOf(material).Contains(texture)) return assetPath;
+            }
+            return null;
         }
 
         static string Mb(long bytes) => (bytes / 1048576f).ToString("0.0") + " MB";

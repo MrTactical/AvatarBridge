@@ -14,6 +14,13 @@ namespace AvatarBridge
     // mode relies on them entirely.
     public static class AvatarFeatureDetect
     {
+        // ------------------------------------------------------- hand layers ----
+
+        // The gesture layers that own the hand pose. The merger numbers a second promoted one
+        // "LeftHand 2"; the tester reads the same names to find what can overwrite it.
+        static readonly Regex HandLayerName = new Regex(@"^(Left|Right)Hand( \d+)?$");
+        public static bool IsHandLayer(string name) => name != null && HandLayerName.IsMatch(name);
+
         // ------------------------------------------- face tracking parameters ----
 
         // The stripper's rule, so the tester and the kept-rig report see what a face tracking

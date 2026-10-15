@@ -43,6 +43,15 @@ namespace AvatarBridge
         {
             var o = new Outcome();
             if (root == null) { o.Message = "nothing selected"; return o; }
+            // An avatar's plugs and sockets ride the avatar; a spawnable on it or inside it
+            // never uploads as a prop and only leaves a collider on the body.
+            var avatar = root.GetComponentInParent<CVRAvatar>(true);
+            if (avatar != null)
+            {
+                o.Message = $"\"{root.name}\" is {(avatar.gameObject == root ? "an avatar" : $"part of the avatar \"{avatar.name}\"")}, " +
+                            "so it cannot be a prop. Select the top object of a plug or socket that stands on its own.";
+                return o;
+            }
             var plug = root.GetComponentInChildren<YapsPlug>(true);
             var socket = root.GetComponentInChildren<YapsSocket>(true);
             if (plug == null && socket == null)

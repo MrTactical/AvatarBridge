@@ -30,7 +30,7 @@ namespace AvatarBridge.Regression
         class Owner : ScriptableObject { }
 
         // One object's inspector as a window, so Render draws it the way it draws the rest.
-        class Inspector : EditorWindow
+        internal class Inspector : EditorWindow
         {
             public static UnityEngine.Object Target;
             // The editor is left for the batch exit to free: destroyed with the window, its fields'
@@ -55,7 +55,7 @@ namespace AvatarBridge.Regression
             if (pending.Length > 0) EditorApplication.delayCall += () => ResumeInPlay(pending);
         }
 
-        static readonly (string key, string type, bool converted)[] Windows =
+        internal static readonly (string key, string type, bool converted)[] Windows =
         {
             ("converter", "AvatarBridge.AvatarBridgeWindow", false),
             ("toolkit", "AvatarBridge.ToolkitWindow", true),
@@ -64,7 +64,7 @@ namespace AvatarBridge.Regression
             ("painter", "AvatarBridge.YapsSquashPainter", true),
         };
 
-        const BindingFlags Any = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
+        internal const BindingFlags Any = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
         static int tileRows = 1000;
 
         public static void Run()
@@ -213,7 +213,7 @@ namespace AvatarBridge.Regression
         // The converter ignores Selection, so the empty window is followed by one holding the
         // source avatar, one analysed, and one holding a report: the states a picked avatar
         // unlocks are the ones most likely to break.
-        static (string suffix, Action<EditorWindow> prepare)[] Passes(string key, Type type, GameObject source, GameObject converted)
+        internal static (string suffix, Action<EditorWindow> prepare)[] Passes(string key, Type type, GameObject source, GameObject converted)
         {
             var empty = new (string, Action<EditorWindow>)[] { ("", null) };
             var field = key == "converter" ? type.GetField("avatar", Any) : null;
@@ -283,7 +283,40 @@ namespace AvatarBridge.Regression
             return report;
         }
 
-        static void Render(Type windowType, string file, int width, int height, bool light, Action<EditorWindow> prepare = null)
+        // A window built into an editor panel of its own, the way a docked window's host holds it.
+        internal sealed class Mounted
+        {
+            public EditorWindow Window;
+            public object Panel;
+            public VisualElement Content;
+            public ScriptableObject Owner;
+
+            // Bindings are a scheduler phase of their own, run for every panel after this one has
+            // painted, so a bound field would draw its slider's low end instead of the value.
+            // The scheduler runs what a window queued with schedule.Execute.
+            public void Pump(int times = 4)
+            {
+                var type = Panel.GetType();
+                var update = type.GetMethod("UpdateForRepaint", Any) ?? type.GetMethod("UpdateWithoutRepaint", Any);
+                var bind = type.GetMethod("UpdateBindings", Any);
+                var scheduler = type.GetProperty("scheduler", Any)?.GetValue(Panel);
+                var tick = scheduler?.GetType().GetMethod("UpdateScheduledEvents", Any);
+                for (int i = 0; i < times; i++)
+                {
+                    tick?.Invoke(scheduler, null);
+                    bind?.Invoke(Panel, null);
+                    update?.Invoke(Panel, null);
+                }
+            }
+
+            public void Dispose()
+            {
+                if (Window != null) UnityEngine.Object.DestroyImmediate(Window);
+                if (Owner != null) UnityEngine.Object.DestroyImmediate(Owner);
+            }
+        }
+
+        internal static Mounted Mount(Type windowType, int width, int height, bool light, Action<EditorWindow> prepare = null)
         {
             var owner = ScriptableObject.CreateInstance<Owner>();
             var utility = typeof(VisualElement).Assembly.GetType("UnityEngine.UIElements.UIElementsUtility");
@@ -326,34 +359,40 @@ namespace AvatarBridge.Regression
                 }
             }
 
-            var update = panel.GetType().GetMethod("UpdateForRepaint", Any) ?? panel.GetType().GetMethod("UpdateWithoutRepaint", Any);
-            // Bindings are a scheduler phase of their own, run for every panel after this one has
-            // painted, so a bound field would draw its slider's low end instead of the value.
-            var bind = panel.GetType().GetMethod("UpdateBindings", Any);
-            for (int i = 0; i < 4; i++) { bind?.Invoke(panel, null); update?.Invoke(panel, null); }
+            return new Mounted { Window = window, Panel = panel, Content = content, Owner = owner };
+        }
 
+        static void Render(Type windowType, string file, int width, int height, bool light, Action<EditorWindow> prepare = null)
+        {
+            var mounted = Mount(windowType, width, height, light, prepare);
+            mounted.Pump();
+            var background = light ? new Color(0.784f, 0.784f, 0.784f) : new Color(0.22f, 0.22f, 0.22f);
+            Save(Capture(mounted.Panel, width, height, background), file, background);
+            mounted.Dispose();
+        }
+
+        // One repaint of the panel, read back. Rows are bottom-up, as ReadPixels gives them.
+        internal static Texture2D Capture(object panel, int width, int height, Color background, bool alpha = false)
+        {
             var rt = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32);
             var was = RenderTexture.active;
             RenderTexture.active = rt;
             GL.Viewport(new Rect(0, 0, width, height));
-            GL.Clear(true, true, light ? new Color(0.784f, 0.784f, 0.784f) : new Color(0.22f, 0.22f, 0.22f));
+            GL.Clear(true, true, background);
             panel.GetType().GetMethod("Repaint", Any, null, new[] { typeof(Event) }, null)
                 .Invoke(panel, new object[] { new Event { type = EventType.Repaint } });
-            var tex = new Texture2D(width, height, TextureFormat.RGB24, false);
+            var tex = new Texture2D(width, height, alpha ? TextureFormat.RGBA32 : TextureFormat.RGB24, false);
             tex.ReadPixels(new Rect(0, 0, width, height), 0, 0);
             tex.Apply();
             RenderTexture.active = was;
             rt.Release();
-
-            Save(tex, file, light ? new Color(0.784f, 0.784f, 0.784f) : new Color(0.22f, 0.22f, 0.22f));
-            UnityEngine.Object.DestroyImmediate(window);
-            UnityEngine.Object.DestroyImmediate(owner);
+            return tex;
         }
 
         // Rows are bottom-up in the texture. A band of more than 40 rows of one colour (the
         // empty part of a scroll view above a pinned footer, or the page below the content) is
         // cut to 16, so the tiles carry content; then the rest is cut into tiles from the top.
-        static void Save(Texture2D tex, string file, Color background)
+        internal static void Save(Texture2D tex, string file, Color background)
         {
             int w = tex.width, h = tex.height;
             var pixels = tex.GetPixels32();
@@ -395,7 +434,7 @@ namespace AvatarBridge.Regression
             Log($"wrote {stem}-00..{count - 1:00}.png ({w}x{used} in {count} tile(s), {h - used} plain rows dropped)");
         }
 
-        static GameObject FindSource()
+        internal static GameObject FindSource()
         {
             var descriptor = AppDomain.CurrentDomain.GetAssemblies()
                 .Select(a => a.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", false)).FirstOrDefault(t => t != null);

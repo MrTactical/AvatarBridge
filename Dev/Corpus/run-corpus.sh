@@ -21,6 +21,7 @@
 #   Dev/Corpus/run-corpus.sh --subset FILE   only the scenes FILE lists, one Assets/ path per line
 #   Dev/Corpus/run-corpus.sh --quick         the [quickset] from Regression/corpus.cfg
 #   Dev/Corpus/run-corpus.sh --dynbone       the DynamicBone fallback solver, into its own folder
+#   Dev/Corpus/run-corpus.sh --per-process N at most N conversions per Unity (default 30, 0 = one Unity)
 #
 # AVATARBRIDGE_YAPS=1 is what a user gets and what Regression/Yaps
 # compares against; unset measures convertYapsSystems false, which lands
@@ -38,11 +39,13 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 env_project="${AVATARBRIDGE_PROJECT:-}"
 env_unity="${AVATARBRIDGE_UNITY:-}"
 env_cores="${AVATARBRIDGE_CORES_TO_LEAVE:-}"
+env_per="${AVATARBRIDGE_PER_PROCESS:-}"
 # shellcheck source=/dev/null
 [ -f "$REPO/Dev/local.cfg" ] && . "$REPO/Dev/local.cfg"
 PROJECT="${env_project:-${AVATARBRIDGE_PROJECT:-}}"
 UNITY="${env_unity:-${AVATARBRIDGE_UNITY:-/c/Program Files/Unity/Hub/Editor/2022.3.22f1/Editor/Unity.exe}}"
 CORES_TO_LEAVE="${env_cores:-${AVATARBRIDGE_CORES_TO_LEAVE:-4}}"
+per_process="${env_per:-${AVATARBRIDGE_PER_PROCESS:-30}}"
 
 [ -n "$PROJECT" ] || {
     echo "set AVATARBRIDGE_PROJECT to the corpus project, in Dev/local.cfg or the environment" >&2
@@ -65,6 +68,7 @@ while [ $# -gt 0 ]; do
         --quick) scope=quick ;;
         --subset) shift; subset="${1:-}"; scope=subset ;;
         --label) shift; label="${1:-}" ;;
+        --per-process) shift; per_process="${1:-}" ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
     shift
@@ -76,6 +80,9 @@ if [ "$advisor" = "1" ] && [ "$dynbone" = "1" ]; then
     echo "--dynbone does not combine with --advisor: the advisor chooses the solver" >&2
     exit 2
 fi
+case "$per_process" in
+    ""|*[!0-9]*) echo "--per-process needs a whole number (0 for one Unity)" >&2; exit 2 ;;
+esac
 if [ "$scope" = "subset" ] && [ ! -f "$subset" ]; then
     echo "--subset needs a file of scene paths; no file at '$subset'" >&2
     exit 2
@@ -151,38 +158,82 @@ case "$scope" in
 esac
 
 echo "corpus: $suffix -> $log"
-"$UNITY" -batchmode -quit \
-    -projectPath "$PROJECT" \
-    -executeMethod "AvatarBridge.Regression.RegressionRunner.$method" \
-    -logFile "$log" &
-unity_pid=$!
 
-# Throttle the process just launched, by its Windows pid. Matching every
-# process named Unity also caught an editor open on another project, left it
-# slowed after the run, and could stop before the batch Unity was even up.
-# Helpers it spawns afterwards inherit both settings.
-winpid=$(cat "/proc/$unity_pid/winpid" 2>/dev/null || echo 0)
-powershell.exe -NoProfile -Command "
-  if ($winpid -lt 1) { Write-Output 'NOT throttled: no Windows pid for the launched Unity'; exit }
-  \$cores = (Get-CimInstance Win32_ComputerSystem).NumberOfLogicalProcessors
-  \$use = \$cores - $CORES_TO_LEAVE
-  if (\$use -lt 1) { Write-Output \"NOT throttled: leaving $CORES_TO_LEAVE cores of \$cores leaves none to run on\"; exit }
-  \$mask = [int64]0
-  for (\$i = 0; \$i -lt \$use; \$i++) { \$mask = \$mask -bor ([int64]1 -shl \$i) }
-  \$why = 'process $winpid never appeared'
-  for (\$try = 0; \$try -lt 30; \$try++) {
-    try {
-      \$p = Get-Process -Id $winpid -ErrorAction Stop
-      \$p.PriorityClass = 'BelowNormal'; \$p.ProcessorAffinity = [IntPtr]\$mask
-      Write-Output \"throttled: BelowNormal, \$use of \$cores cores\"; exit
-    } catch { \$why = \$_.Exception.Message }
-    Start-Sleep -Seconds 2
-  }
-  Write-Output \"NOT throttled: \$why\"
-" 2>/dev/null
+# One Unity converts at most this many avatars, then the next carries on from the digests
+# already written. A single process ran past about 70 at 24 GB and died in the native
+# allocator, losing the rest of the night; the same avatar converted fine in a fresh one.
+# It is one run, under one authorization: the parts share Current/ and the last one writes
+# the summary. 0 keeps the whole run in one process.
+export AVATARBRIDGE_PER_PROCESS="$per_process"
+unset AVATARBRIDGE_RESUME
 
-wait $unity_pid
-code=$?
+launch() {
+    "$UNITY" -batchmode -quit \
+        -projectPath "$PROJECT" \
+        -executeMethod "AvatarBridge.Regression.RegressionRunner.$method" \
+        -logFile "$1" &
+    local unity_pid=$!
+
+    # Throttle the process just launched, by its Windows pid. Matching every
+    # process named Unity also caught an editor open on another project, left it
+    # slowed after the run, and could stop before the batch Unity was even up.
+    # Helpers it spawns afterwards inherit both settings.
+    local winpid
+    winpid=$(cat "/proc/$unity_pid/winpid" 2>/dev/null || echo 0)
+    powershell.exe -NoProfile -Command "
+      if ($winpid -lt 1) { Write-Output 'NOT throttled: no Windows pid for the launched Unity'; exit }
+      \$cores = (Get-CimInstance Win32_ComputerSystem).NumberOfLogicalProcessors
+      \$use = \$cores - $CORES_TO_LEAVE
+      if (\$use -lt 1) { Write-Output \"NOT throttled: leaving $CORES_TO_LEAVE cores of \$cores leaves none to run on\"; exit }
+      \$mask = [int64]0
+      for (\$i = 0; \$i -lt \$use; \$i++) { \$mask = \$mask -bor ([int64]1 -shl \$i) }
+      \$why = 'process $winpid never appeared'
+      for (\$try = 0; \$try -lt 30; \$try++) {
+        try {
+          \$p = Get-Process -Id $winpid -ErrorAction Stop
+          \$p.PriorityClass = 'BelowNormal'; \$p.ProcessorAffinity = [IntPtr]\$mask
+          Write-Output \"throttled: BelowNormal, \$use of \$cores cores\"; exit
+        } catch { \$why = \$_.Exception.Message }
+        Start-Sleep -Seconds 2
+      }
+      Write-Output \"NOT throttled: \$why\"
+    " 2>/dev/null
+
+    wait $unity_pid
+}
+
+# Progress is digests written since the run began, wherever the profile files them.
+began="$REPO/Regression/.run-began"
+touch "$began"
+digests() { find "$REPO/Regression" -name '*.txt' -newer "$began" 2>/dev/null | wc -l; }
+
+part=1
+had=0
+while :; do
+    partlog="$log"
+    [ "$part" -gt 1 ] && partlog="${log%.log}.part$part.log"
+    launch "$partlog"
+    code=$?
+    if [ "$part" -gt 1 ]; then
+        cat "$partlog" >> "$log" && rm -f "$partlog"
+    fi
+    grep -q '^\[Regression/' "$log" 2>/dev/null && break
+    now=$(digests)
+    if [ "$code" = "4" ]; then
+        echo "part $part: stopped at its cap, $now digests so far; going on in a fresh Unity"
+    elif [ "$now" -gt "$had" ] && [ "$part" -lt 20 ]; then
+        # A crash after progress: the avatar it died on gets a fresh process, which is
+        # what converted it last time. One that never gets further stops the run below.
+        echo "part $part: Unity stopped (exit $code) without a summary after $now digests; resuming in a fresh Unity"
+    else
+        break
+    fi
+    had=$now
+    part=$((part + 1))
+    export AVATARBRIDGE_RESUME=1
+done
+rm -f "$began"
+
 # Unity exits 1 for its own failures too, so the code alone cannot say a
 # digest changed. The harness logs its summary as "[Regression/<scope>]";
 # without that line the run never got as far as comparing.
@@ -193,5 +244,6 @@ elif grep -q '^\[Regression/' "$log" 2>/dev/null; then
 else
     echo "corpus FAILED, exit $code: Unity stopped before the run reported. Not a digest change; read the log."
 fi
+[ "$part" -gt 1 ] && echo "ran in $part Unity processes"
 echo "log: $log"
 exit $code

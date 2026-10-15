@@ -999,9 +999,7 @@ unlock/edit/re-lock.
    up instead of hiding under the object you happened to pick.
 2. **What it has, and what to add.** One row per plug or socket the scan found, which systems can
    read it, whether it has an axis, what it lacks, and a warning when two sockets sit on the same
-   spot. **customise** takes you to its inspector; **preview** on a socket bends the baked plugs
-   toward it in the scene view, and on a plug drops a test socket ahead for it to bend into;
-   **remove** takes it out entire; a DPS, TPS or SPS row offers **upgrade to YAPS**, and a YAPS row
+   spot. **customise** takes you to its inspector, where its preview is; **remove** takes it out entire; a DPS, TPS or SPS row offers **upgrade to YAPS**, and a YAPS row
    with no component yet offers **make editable**. A mesh another plug carries gets a quiet
    *Part of* row instead: it bends with that plug, on its settings.
    Beneath: **Add a hole**, **Add a ring** (under the bone you have selected in the
@@ -1034,7 +1032,8 @@ moves to *YAPS Simple Lit* because Raliv's deform has no switch. Check the plug'
 skinned mesh before you Build. TPS upgrades are tested in game, on both props and avatars.
 
 **Make this a prop.** Select the top object of a plug or socket meant to be spawned in ChilloutVR
-and press **Make selected object a prop**, in the window's *Tools* card. It gains a CVR Spawnable,
+and press **Make selected object a prop**, in the window's *Tools* card. It refuses an avatar or
+anything inside one, since a prop has to stand on its own. It gains a CVR Spawnable,
 a pickup anyone can take and a collider to grab by, and nothing else. The collider is sized from
 the bake, sits on the prop's own object because that is where the game looks for it, and is a
 trigger so the prop passes through people instead of shoving them. It finds sockets through the
@@ -1383,7 +1382,8 @@ hands, plugs, and the physics' own colliders, off by default). **Motion Style** 
 real flesh (a small stretch, small swings ignored), to 1, like anime (a long stretch and a deep
 squash on every bounce). **See it work ▸ Preview** shows it in the editor: **Squeeze** pushes the
 pair together, **Bounce** swings each part as a jump would, and **Test hand** puts another
-player's open hand in front of it, dragged with the handle in the Scene view. The editor runs no
+player's open hand in front of it, dragged with the handle in the Scene view; it presses the part
+nearest it, so it reaches a second pair too. The editor runs no
 physics, so the preview stands in for them; in game the same knobs answer the real thing. The
 Avatar Tester's **Interaction lab** carries the same preview beside the avatar's motion, and in
 Play mode the cloth there is real: **Jump** or **Shake** swings it, and **Test hand** presses it
@@ -1398,12 +1398,17 @@ way the avatar was weight painted. Two pairs at most. A body whose bones don't s
 names take too much or too little, can have its regions painted: **Paint regions** on the same
 card, or *Tools ▸ YAPS ▸ Squash regions*. Pick the avatar, then start from **The bone names**,
 **The selected bone** or **The shape key** (a size slider for the part is usually exactly the
-right skin), and paint over it in the Scene view. The brush spreads over the skin, never across a
+right skin), and paint over it in the Scene view. A bone or a shape key starts whole where it
+reaches most and fades toward the edge, so a jiggle bone weighted at a tenth still squashes in
+full. The brush spreads over the skin, never across a
 gap, so an arm resting on the side is not painted with it; Ctrl erases. **Smooth** feathers the
 edge, so the squash fades out instead of tearing; **Mirror** copies one side onto the other. The
 regions are kept on the avatar's **YAPS Squash** component; while it holds any, the converter and
 the Setup card both build from them instead of the bone names. **Remove the regions** clears them
-and keeps the knobs. Clothing follows the skin under it, within 3 cm.
+and keeps the knobs. The parts are measured on one skin: of the meshes carrying every part, the
+one weighted to the most bones, so the body and not a dense piece of clothing with more vertices.
+**Squash regions** starts on the same mesh, and its **Body** field picks another. Clothing follows
+the skin under it, within 3 cm.
 
 **Toggles keep working.** A toggle that swaps a material into a squashed slot, the original back
 or an alternate look, is pointed at a squashed copy of it, so the layer never drops behind the
@@ -1439,9 +1444,9 @@ again (or the avatar reconverted) to notice its socket, and to stretch in motion
   faces. A test plug dropped in Play mode is the plug prop prefab, so make that first (*Create a
   plug prop prefab*); one built there would leave its files behind.
 - **In the Avatar Tester**, the **Interaction lab** card lists the avatar's sockets and plugs, and
-  any on props in the scene, under **Plugs and sockets**: **Preview** and **Drop a test plug** per
-  socket, **Into a hole** and **Through a ring** per baked plug, beside the motion that moves the
-  avatar. The test socket and plug it drops are the same ones the inspectors and *Setup ▸ Test it*
+  any on props in the scene, under **Plugs and sockets**: **Preview** and **Drop a test plug here**
+  per socket, **Preview into a hole** and **Preview through a ring** per baked plug, the same
+  buttons as the inspectors, beside the motion that moves the avatar. The test socket and plug it drops are the same ones the inspectors and *Setup ▸ Test it*
   drop, so any of them can take them away.
 - **Contacts still do not exist in Play mode.** ChilloutVR's triggers and contacts are the game's,
   not Unity's, so a socket whose shapes go through a contact does nothing there: drive its

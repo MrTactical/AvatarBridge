@@ -35,7 +35,7 @@ namespace AvatarBridge
         static readonly Regex Side = new Regex(@"left|right|[._ ]?[lr](?=$|[._ ])", RegexOptions.IgnoreCase);
 
         // Every property the squash sets, so a swapped-in look can take the same values.
-        static readonly string[] Properties =
+        internal static readonly string[] Properties =
         {
             "_YAPS_DentPower", "_YAPS_DentOwn", "_YAPS_SquashReach", "_YAPS_SquashAway", "_YAPS_SquashOut",
             "_YAPS_SquashIn", "_YAPS_SquashSideA", "_YAPS_SquashSideB", "_YAPS_SquashTune", "_YAPS_SquashPair",
@@ -474,6 +474,30 @@ namespace AvatarBridge
             }
         }
 
+        // The renderer the build measures the parts found by name on, for the region tool to start on.
+        public static SkinnedMeshRenderer NamedBody(Transform root)
+        {
+            var found = Pairs(root, out string none);
+            if (none != null) return null;
+            var skins = Skins(root);
+            var sets = Sets(found);
+            foreach (var s in skins) NameShares(s, sets);
+            return Body(skins)?.smr;
+        }
+
+        // The skin the parts are measured on: of the renderers carrying every part found, the one
+        // weighted to the most bones. Most part vertices was the rule, and dense clothing won it:
+        // shorts holding fourteen thousand vertices of the seat stood in for a body whose chest
+        // they never reach, and every layer copying its share off them lost the chest pair.
+        static Skin Body(List<Skin> skins)
+        {
+            int Carries(Skin s) => Enumerable.Range(0, 4).Count(c => s.share.Any(x => x[c] >= 0.5f));
+            int Spread(Skin s) => s.weights.SelectMany(w => new[] { (w.boneIndex0, w.weight0), (w.boneIndex1, w.weight1), (w.boneIndex2, w.weight2), (w.boneIndex3, w.weight3) })
+                .Where(b => b.Item2 > 0f).Select(b => b.Item1).Distinct().Count();
+            int most = skins.Count == 0 ? 0 : skins.Max(Carries);
+            return most == 0 ? null : skins.Where(s => Carries(s) == most).OrderByDescending(Spread).First();
+        }
+
         // What the name search would give one renderer, for the region tool to start from.
         public static Vector4[] NamedShares(Transform root, SkinnedMeshRenderer body, out List<string> names, out string none)
         {
@@ -682,12 +706,12 @@ namespace AvatarBridge
         }
 
         // Each renderer's texture of its shares, in r, g, b, a. The skin is the painted body, or
-        // the renderer carrying the most of the parts; a layer riding bones of its own takes the
+        // Body's pick; a layer riding bones of its own takes the
         // share of the nearest skin vertex within 3 cm, or the skin would squash out from under it.
         static List<(SkinnedMeshRenderer smr, Texture2D own, Vector4[] shares)> Shares(List<Skin> skins, Skin painted, string name, string folder)
         {
             int Owned(Skin s) => s.share.Count(x => Mathf.Max(x.x, x.y, x.z, x.w) >= 0.5f);
-            var body = painted ?? skins.OrderByDescending(Owned).FirstOrDefault();
+            var body = painted ?? Body(skins);
             if (body == null || Owned(body) == 0) return new List<(SkinnedMeshRenderer, Texture2D, Vector4[])>();
             const float Cell = 0.02f, Near = 0.03f;
             var grid = new Dictionary<Vector3Int, List<int>>();

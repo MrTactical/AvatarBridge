@@ -11,6 +11,39 @@ what SPS code may be looked at in `YAPS-CLEAN-ROOM.md`. Finished records are in 
 
 ## Next up
 
+**Decided 2026-10-15 (Joe): one big release, 5.0.0.** 4.8.0 never ships; everything on dev goes
+out as 5.0.0. Headlines: GoGoLoco poses, SPS2 in the converter (detected and carried from the
+property names a finished SPS2 bake leaves on a material, never from SPS2's code), a check before
+upload that proves the conversion, and the animator merger made visible. Also in it: the first
+squash build made fast, pairs found by bone name scaled to their peak like painted regions, the
+corpus building a squash, and the grouping branch (`physbone-grouping-2`, issue #7) merged after
+physics A/B probes and a corpus run. Decisions on the queue's open questions, same day:
+- Always Animate on avatars with toggles: measure the cost first, then decide.
+- Menu names with `.`, `!`, `&`, `+` or non-ASCII: left alone.
+- MagicaCloth2's gravity cap: find another lever (stiffness) and measure it against the original.
+- Several plugs on one mesh share one Deform toggle: documented, not built.
+- A plug with a size slider: baked at the slider's menu default, so editor and game agree.
+- The socket readout showing the wearer's own plug: left as it is.
+- Renderers only a child Animator switches on: the survey walks child Animators (one re-baseline).
+- Issues #6, #7 and #8: replies drafted, Joe posts them. GrabbyBones: a PR upstream first, drafted.
+- Corpus: subsets whenever needed, three full runs authorised for this job.
+- Squash shadows on layers with Unity's own caster or a Fallback-only shader: patch the casters.
+- Thry's "Unlock all materials" taking YAPS materials back to a plain shader: detect it and offer
+  a re-bake.
+- PhysBone-side squish (Bone Spring collision): dropped, the shader squash covers it.
+- Physics A/B videos for Discord: yes, test avatars may be shown, captions name none.
+- No player globals with the cameras content filter off: documented, no fallback.
+- Toy mods: an honest-length switch per plug, off by default, tested by Joe with a toy.
+- A per-plug menu toggle for answering its wearer's own sockets: built (one synced bool a plug).
+- A prop case in the corpus: added.
+- A slider whose two children animate different properties: covered by the restore pass.
+- Also in 5.0.0, Joe's picks from the rest of the queue: the remote twin, a diff between two
+  conversions for users, fast reconversion (skipped passes proven equal by the corpus), and YAPS
+  portal and duplicate.
+- No user reports since 4.7.2.
+- Joe wears it in ChilloutVR before 5.0.0 ships, with the full in-game checklist (all of it,
+  ordered by risk, paced over days), and the release still needs his word.
+
 **Decided 2026-09-23 (Joe):** ship the next release first (one default corpus run authorised,
 release on his word), then the two items below. **It is 4.6.4** (Joe, same day): 4.6.3 is skipped,
 its number spent on test builds, and the socket readout goes in with it. 4.6.4 shipped that day,
@@ -24,7 +57,7 @@ lost a Weight line because `NativeToggleProbe` had converted it in the corpus pr
 settings and slimmed six of its textures; put back with `AvatarSlimmer.Revert`. Lesson: a probe that
 converts in the corpus project must not slim, or must revert. Accepted as the YAPS baseline on Joe's
 word for the night (410 kept in `Baseline-pre-412-20261002`). The log is named 411 by mistake: that
-label was already 2026-09-24's run. Snugglin's digest in it carried the slimmed texture; a one-avatar
+label was already 2026-09-24's run. Avatar H's digest in it carried the slimmed texture; a one-avatar
 YAPS-on subset after the revert brought the Weight line back and nothing else, and that digest
 replaced it in the baseline.
 
@@ -33,7 +66,7 @@ baseline dated from 4.5.0 (2026-09-09), so all 83 changed against it. Explained 
 avatar with the accepted YAPS-on run instead: 53 are identical but for the `convertYapsSystems`
 stamp, and all 30 that differ carry a penetration system the two profiles treat differently (SPS
 and TPS layers stripped instead of converted, so layers renumber and pointers and triggers go; DPS
-or TPS marker lights reported as kept, one Converted line, measured on VaponnyPC by converting it
+or TPS marker lights reported as kept, one Converted line, measured on Avatar E by converting it
 in both profiles). Every other line matches, so the opt-out run's drift since 4.5.0 is the drift
 each YAPS-on baseline already accepted. 4.5.0's kept in `Baseline-pre-413-20261002`.
 
@@ -53,7 +86,8 @@ the rest pose captured as Play starts. Newer MagicaCloth2 members are reached by
 chain 5 mm, walking moves the avatar 1.43 m and swings chains 16.6 degrees against 0.0 standing,
 Stop puts it back, the overlay goes on and back to how each chain was. Only 2 of that avatar's 12
 cloths were running at rest; why the other 10 were not was not looked into. Not yet seen by eye:
-the Scene view drawing and the mouse grab, which a batch run cannot show. **Compile-check gap found
+the Scene view drawing and the mouse grab, which a batch run cannot show *(Joe used both on
+2026-10-04, round two below; since 2026-10-15 the button smoke probe draws and grabs in batch too)*. **Compile-check gap found
 on the way:** `compile-check.sh` never defines `AVATARBRIDGE_MAGICA`, and `check-defines.sh`
 compiles the deployed copy in a project, not the repo, so code behind both CCK and MagicaCloth is
 compiled by neither until it is deployed; run `check-defines.sh` against the project holding it.
@@ -276,7 +310,7 @@ light, a plug seen.
   from. Probe 3 of 3 (one test mesh exercises two slots: 2 readouts, 4 submeshes), tester 29 of 29
   x3, held shapes, smoke 34 of 34, `check-defines.sh` clean.
   - **The two-avatar conversion then found a pre-existing one, worse: a plug that never bent.**
-    Umbreon has two meshes of the same name, each with `SPS/BakedSpsPlug`, and the bake file was
+    Avatar I has two meshes of the same name, each with `SPS/BakedSpsPlug`, and the bake file was
     named for mesh, parent and plug only, so the second bake overwrote the first and the first
     plug's material was left with no bake at all (408 outputs: only this avatar). Readout files had
     the same flaw, by mesh name, and the readout materials by plug name, which is `BakedSpsPlug` for
@@ -414,6 +448,18 @@ falloff, one-way rings, the tag dropdown, multi-mesh plugs, the Mesh-to-None cle
    Poiyomi 9.3 in `Fixing The Flexing` with MockHMD. Deferred 2026-09-07 for want of a live case;
    MockHMD turning out to be enough for the atlas walk weakens that excuse.
 
+   **Compiled 2026-10-15, both theories that need no headset are out.** Poiyomi 8.1, 9.3 and 10.0
+   Toon, original and YAPS-patched, every pass's vertex stage in the plain and the
+   `STEREO_INSTANCING_ON` variant for D3D11: all compile, so the VR copy is not magenta or
+   fallen back. In 9.3 and 10.0 the patched EarlyZ, Base and Add vertex programs come out the same
+   size to the byte (816058 plain, 816894 stereo) with one YAPS block each, so the prepass deforms
+   exactly as the base pass does. EarlyZ also only exists unlocked or with *Early Z* on: it defaults
+   off and `//ifex _RenderingEarlyZEnabled==0` strips it at lock. Fragment stages were not compiled
+   (a minute per pass); YAPS does not edit them. What is left is runtime and only shows in a
+   headset, so it needs the user: desktop and VR screenshots of the same plug, whether the material
+   was locked before converting, and which Poiyomi features it uses (matcap, rim and specular all
+   read the normal YAPS rewrites against a per-eye view direction).
+
 4. **D2: does a named `GrabPass` reach a `CVRBlitter`?** Built and waiting on a run,
    `Dev/Probes/D2PrefabBuilder.cs`, staged into `Non Corpus Zone` and on the menu. It decides
    whether a value can be computed by geometry on the avatar (cheap, one blit) or needs a camera
@@ -474,7 +520,7 @@ falloff, one-way rings, the tag dropdown, multi-mesh plugs, the Mesh-to-None cle
    401, 2026-09-12, across 35 avatars**, up from the 131 this entry was written against. Read the
    sweep line carefully: its "(35)" header counts AVATARS and each bracket beside a name is that
    avatar's failures, so the total has to be summed. The biggest carriers are "open me" (17),
-   CowBotNSFW (16), CowBotSFW (15) and Umbreon Nsfw (13). The ten extra since the entry was written
+   Avatar J's two variants (16 and 15) and Avatar I (13). The ten extra since the entry was written
    are unexplained and worth a diff of which avatars moved, before anyone assumes they are still
    avatar-side. The prediction that Fury's wired socket toggles flip to "responded" is still to
    check.
@@ -537,8 +583,8 @@ falloff, one-way rings, the tag dropdown, multi-mesh plugs, the Mesh-to-None cle
     and told the user GoGo's walk was the avatar's own. **Fixed:** `SystemStripper.IsGogoLayer` is
     now the one test, name or any `Go/` reference, the same rule the stripper's locomotion check
     applies, and the advisor calls it with no `AvatarUsesGogo` gate. `AdvisorTest` 15/15. Expected in
-    the next advisor run: Base applied on 8 avatars, down from 29 (the 5 Sootie scenes and the 3
-    mixed Chimera/Rotormantid).
+    the next advisor run: Base applied on 8 avatars, down from 29 (the 5 Avatar D scenes and the 3
+    mixed Avatar K/Avatar L).
     **Advisor run 405 (2026-09-22, on 4.6.2, accepted as the first advisor baseline):** Base
     applied on 9, not 8. The ninth was a GoGo demo whose Base controller is GoGo's `Locomotion`
     (placeholders only) plus an EMPTY add-on layer. Probed in batch: the empty layer fails
@@ -937,7 +983,7 @@ flag.
 and says so in the report: one property, and it neutralises every clip carrying root movement
 rather than the proxies this avatar happened to have. **Corpus run 401 verified it, 2026-09-12:**
 83 avatars, 80 changed, every one by exactly the report tally `converted=N` to `N+1` and nothing
-else; the three unchanged had nothing to switch off (Filo's scene has all seven Animators at
+else; the three unchanged had nothing to switch off (Avatar M's scene has all seven Animators at
 `m_ApplyRootMotion: 0`; the other two keep their Animators in prefabs and were not read).
 
 **WITHDRAWN 2026-09-13: a second fix, the proxy-only Base skip.** It shipped on dev in `228d08b`
@@ -1086,19 +1132,19 @@ body is shrunk to 45% of the way to its neighbour and its sphere matches; measur
 slightly better (soft walk 20.7 to 18.8, sag 0.19 to 0.27). Off by default as decided.
 
 **Corpus (the one authorised run, label physics-1007): PARTIAL, not accepted.** Unity died natively
-(SIGSEGV in `Animator.Rebind`, called from ToggleSweep.Drive) on avatar 14 of 87, Abbess. The same
+(SIGSEGV in `Animator.Rebind`, called from ToggleSweep.Drive) on avatar 14 of 87, Avatar G. The same
 avatar alone, through the corpus settings and the sweep (`Dev/Probes/SweepCrashProbe.cs`), converts
 and sweeps cleanly with the baseline's result (12 stuck + 5 refused), so it is not that avatar and not
 deterministic; likely state accumulated over a long session. The 13 digests it wrote differ from the
 baseline only as expected: the new setting line, report counts, hand capsules turned spheres, Multi
-Child Ignore roots listed as each branch's first bone, and one fewer stuck toggle on the Adrina scenes.
+Child Ignore roots listed as each branch's first bone, and one fewer stuck toggle on one avatar's three scenes.
 **A full run needs Joe's word again** (one authorisation, one run).
 
 **Soft-body squish, 2026-10-07 (Joe asked: do they actually squish, like marshmallow PB?).** Not
 yet. The press test shows originals giving way 15 to 48 degrees or shortening where the copies barely
 react: a Bone Spring collides on one bone per side only, and squish is not mapped for soft bodies.
-Marshmallow PB could not be measured: both avatars carrying it in the corpus project (BHFBunny, Male
-BBL w/ MPB) have VRCFury setups referencing Dismay PCS generated files that project lacks, so Fury
+Marshmallow PB could not be measured: both avatars carrying it in the corpus project (Avatar N and
+another) have VRCFury setups referencing Dismay PCS generated files that project lacks, so Fury
 refuses to build them and marshmallow's physics never exists there, original or converted. Needs a
 project where they build. Two fixes found on the way: `ModularAvatarBaker` passed NDMF a null platform,
 which resolves to NDMF's ambient default (Generic, not VRChat), now asks for VRChat by name; the
@@ -1106,7 +1152,7 @@ probe's originals were being rebuilt by VRCFury's play-mode build (it builds eve
 NDMF plugins included), now skipped with Av3Emulator's "(ShadowClone)" name marker, and the probe
 bakes the original before converting.
 
-Measured since (2026-10-07, `-abForceSquish 0.5` on LanaCan and Kar, original and copy both
+Measured since (2026-10-07, `-abForceSquish 0.5` on Avatar B and Avatar A, original and copy both
 squishing): **Bone Cloth for a squishing soft body is WITHDRAWN.** It shortens about right (a butt at
 0.55 of its length against the original's 0.59) but bends 70 to 140 degrees away from a press where
 the original bends 18: median press-angle error 59 degrees, against 10 as Bone Spring. Bone Spring
@@ -1152,7 +1198,7 @@ each stage from the last. Wrong guesses this round, withdrawn: Buffer held by in
 (its limits are ordinary colliders), Buffer resting pressed into them (it is not). Also in the patch,
 unmeasured: inside-bounds colliders as a distance bound. Next attempt starts from the variance.
 
-**Still open: a belly flailing.** LanaCan's belly peaks at 160 to 170 degrees on the walk where the
+**Still open: a belly flailing.** Avatar B's belly peaks at 160 to 170 degrees on the walk where the
 original moves 3, and slides 0.36 even at limitDistance 0. Not investigated.
 
 **GrabbyBones:** research and a fork plan, private in `Regression/GrabbyBonesForkPlan.md` (it leans on
@@ -1171,7 +1217,7 @@ option ships **off**; GrabbyBones fork is **research and a written plan only**. 
 videos for Discord if the results hold up (captions name no avatar; the footage shows paid test
 avatars, so posting is his call).
 
-Found while he watched the live view: Sootie's breasts clipped. Two causes, both fixed: the
+Found while he watched the live view: Avatar D's breasts clipped. Two causes, both fixed: the
 soft-body spring floor had been bypassed for every `MC2_Preset_Bridge_*` preset (it was meant for
 user-saved ones, but those share the shipped file's name, so the floor is back for all), and the
 soft-body collision radius came from the chain measurement's narrowest cross-section, 2 mm on a
@@ -1317,7 +1363,7 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     each scale node's localScale and pivot from them (4 tasks per part). Every client measures
     its own copy against its own cloth, so nothing syncs. Probe emulates the client's parser
     from its decompile (8-bit read, lerp, reflection): within 0.0017 of the exact squash (one
-    8-bit step) on Kar, breasts and butt, and the film matches the trigger version frame for
+    8-bit step) on Avatar A, breasts and butt, and the film matches the trigger version frame for
     frame. The client reads a frame or two late; the probe reads the same frame.
   - In-game test rig: `Dev/Probes/SquashTestBuilder.cs` (menu Tools/YAPS/Dev/Add the squash
     test, or batch) puts the reader squash on a converted avatar, measured at rest in edit mode,
@@ -1362,7 +1408,7 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     off alpha, pixel (0,0) a and (1,0) b, r flattening and g widening, filling the top and bottom
     rows so a flipped target still reads; diagnostic cells moved to the middle rows. The probe
     gains `-abPortrait` (a Self Portrait stand-in swept 90 degrees either side) and counts reads
-    with any alpha as foreign draws. Run on Kar: within 0.0017 of the exact squash on all four parts,
+    with any alpha as foreign draws. Run on Avatar A: within 0.0017 of the exact squash on all four parts,
     and 0 foreign draws in 6302 reads both without and with the stand-in (logged as rendering on
     the head). So a camera alone does not reproduce it; what Self Portrait changes in game is still
     unknown, and needs the new diagnostic build in game.
@@ -1442,8 +1488,8 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     sync, no skin bones. Why this is not the old shader route: the dents moved each vertex by its
     own facing and collapsed layers onto one surface; a map of position alone moves every layer
     at a point together, which is what kept the bones clean. Probe `-abSquash -abAffine`, three
-    avatars: Kar and Lana match the bone films (mean pixel difference at most 1.6 and 0.2 of 255),
-    and the bones' 7 to 17 cm stack error is gone. Zombunny (a top over the skin): no skin through
+    avatars: Avatar A and Avatar B match the bone films (mean pixel difference at most 1.6 and 0.2 of 255),
+    and the bones' 7 to 17 cm stack error is gone. Avatar C (a top over the skin): no skin through
     the top. WITHDRAWN: "the top passes through itself at the cleavage". The slits read as that
     are stitched tears in the top, there at rest. The probe's "passed through" figure is capped
     by its 2 cm search cell (every run reads 2.0), so it measured nothing either.
@@ -1452,8 +1498,8 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     layers keep their order) and what is pushed back spills away from the line between the parts
     (`_YAPS_SquashPlane`). The map already moves the facing apex back by the press, so the plane
     adds no press of its own; it only catches what reaches past the reach. Measured as how far
-    the skin crosses the plane, both sides added, no radius cap: Kar 8.5 cm with the map alone,
-    2.3 cm with the plane (`-abNoContact` for the former). On Kar's dark shader the film shows
+    the skin crosses the plane, both sides added, no radius cap: Avatar A 8.5 cm with the map alone,
+    2.3 cm with the plane (`-abNoContact` for the former). On Avatar A's dark shader the film shows
     little; a lighter avatar with a deep press is the visual check still owed.
   - Follows only, 2026-10-11: the shader works the whole squash out from where the parts are.
     `_YAPS_SquashFollow[4]` holds each part's follow (a plain child of its top carrying bone, at
@@ -1462,13 +1508,13 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     map and the contact plane. `_YAPS_SquashTo`, `_YAPS_SquashFrom` and `_YAPS_SquashPlane` above
     are gone, and no camera, parser, stack or constraint is left in this route. The press is read
     in the first part's units, so both faces meet on one plane even when the two top bones are
-    scaled differently. Zombunny, probe feeding the follows: same deepest press as before
+    scaled differently. Avatar C, probe feeding the follows: same deepest press as before
     (12.9 cm), skin across the plane by 1.5 cm at most, the top stays over the skin.
     Build for the in-game test: Tools > YAPS > Dev > Add the squash test (shader). It puts a
     `CVRMaterialDataProvider` (TransformLocalToWorld) and its `CVRRenderController` on a child of
     the root (the client finds the wearer from the parent up), patched copies of every layer's
     materials with a share texture per renderer, and strips either earlier build. Batch-built on
-    Zombunny: 2 pairs, 9 materials, a built-in shader left alone. The CCK's `LateEventsManager`
+    Avatar C: 2 pairs, 9 materials, a built-in shader left alone. The CCK's `LateEventsManager`
     also runs in editor Play mode, so the real provider can be measured in batch (not done yet).
     In game, to answer: does the provider run on remote copies (A2); does the client's material
     take the array (if the client instances renderer materials, the provider writes the asset and
@@ -1481,13 +1527,13 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     hands as spheres from the `_CVR_PlayerLeftHandPositions` / `_CVR_PlayerRightHandPositions`
     globals (slots 1 and up, set every LateUpdate, no camera, no sync); sag from the follow's
     orientation. Depth camera and GPU soft-body only after those hold.
-    First upload (Kar), 2026-10-11: no squash in game at all. Likely cause, from the build log
+    First upload (Avatar A), 2026-10-11: no squash in game at all. Likely cause, from the build log
     and the probe: the follows sat on the chain roots (Breast_L carries 43%, Breast1_L 55%), and
     the cloth holds a chain root still, so the gap between follows never closed. The probe hid it
     by moving the parts kinematically. Follows now go on the heaviest carrier below the root; the
     diagnostic build adds `_YAPS_SquashPulse`: the pair squeezes and lets go every few seconds
     with nobody moving it, which needs the provider writing the follows.
-    VERIFIED in game 2026-10-11 (Kar, diagnostic build): it pulses on the wearer's view AND remote
+    VERIFIED in game 2026-10-11 (Avatar A, diagnostic build): it pulses on the wearer's view AND remote
     users see it. A2 is closed: `CVRMaterialDataProvider` runs on remote copies, the client's
     per-copy material instances take the matrices, and the patched shader deforms in the client.
     What is left is the press: nothing in normal play pushes the follows together reliably.
@@ -1507,7 +1553,7 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     own caster, which stays unsquashed. Compiled: fxc vs_5_0 (about 1180 slots, most behind
     the early exit for vertices outside the parts) and the editor assembly through Unity's
     Roslyn with the project's references.
-    Play check, 2026-10-11 (`Dev/Probes/SquashPlayProbe.cs`, Kar, batch): THE PROVIDER NEVER
+    Play check, 2026-10-11 (`Dev/Probes/SquashPlayProbe.cs`, Avatar A, batch): THE PROVIDER NEVER
     SEES THE CLOTH. MagicaCloth2 puts its bones back to rest at EarlyUpdate and simulates after
     the scripts' LateUpdate (`UpdateLocation.AfterLateUpdate`, the default, and the client's
     Assembly-CSharp never changes it); the CCK and the client both run the provider from a plain
@@ -1536,7 +1582,7 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
       player's hands (`_CVR_PlayerLeft/RightHandPositions`, `CVRGlobalParams1.y` players, capped
       at 64, a ball of `_YAPS_SquashHands.y` metres, any hand within 1.5 radii of an own hand
       skipped as the wearer's) press the part toward its side by how far they reach into it,
-      summed into the one press. Kar, wrist sunk 0.6 reach into the front: the part flattens and
+      summed into the one press. Avatar A, wrist sunk 0.6 reach into the front: the part flattens and
       bulges around the arm instead of the hand sinking in a groove; strong at that depth (the
       pair's shape constants, flattest 0.6 and fullest 1.5, cap it). Gains in
       `_YAPS_SquashHands` x (own) and z (others), live. Two hands from opposite sides cancel in
@@ -1606,7 +1652,7 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     returns a `VertexOutput`, older versions an out position), takes `SV_VertexID` beside the
     input, runs the same deform calls (one `DeformCalls` list for both routes) and calls
     Unity's. Compiled with fxc against 2022.3's CGIncludes in five variants (depth, cube,
-    cutout, parallax, stereo instancing). Kar's Poiyomi 7 caster is its own, already patched.
+    cutout, parallax, stereo instancing). Avatar A's Poiyomi 7 caster is its own, already patched.
     Still unsquashed: a caster from anywhere else outside the shader, and shaders with no caster
     that lean on a Fallback.
     Strap bending at the shoulder (Joe, editor Play mode, same day). WITHDRAWN as a squash bug:
@@ -1843,7 +1889,7 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     subtree and a shape key's delta split down the middle; seam copies take one weight. A
     painted part rides the most weighted bone of its own that hangs from another (the cloth holds
     a chain's root still), its rest on what the chain hangs from; with no bone of its own, follow
-    and rest share the dominant bone, so only a press moves it. Proof, Kar in batch: the name path
+    and rest share the dominant bone, so only a press moves it. Proof, Avatar A in batch: the name path
     rebuilt byte-identical (shares and materials); the converter's opt-in made the same textures;
     regions seeded from the names gave identical materials and body shares, and clothing differs
     only off the skin, where the painted path copies nothing past 3 cm and the name path keeps the
@@ -1873,7 +1919,7 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     black light whose range digit is 8 or 9, base at the light, length in its alpha, and presses the
     pair with a capsule from the base through the socket for the plug's length, only once the
     socket is within that length; the capsule competes in the hand slots, so it wins only where it
-    presses hardest. Proof, Kar in batch Play mode (`SquashPlayProbe -spPlug`, each shot rendered
+    presses hardest. Proof, Avatar A in batch Play mode (`SquashPlayProbe -spPlug`, each shot rendered
     twice in one frame, light on and off, so the cloth cannot differ): 5 cm short of the socket, 0
     pixels change; a third and two thirds through, about 4400 pixels at the meeting line, front
     and side, nothing torn. A shaft run up the chest wall behind the parts changed nothing, as it
@@ -2006,8 +2052,8 @@ source beside the copy, turns every Animator off (cullingMode AlwaysAnimate firs
 culling follows the Animator, and nothing is on screen in batch, so it culled every cloth) and drives
 both through one 90 fps timeline: walk, turn, a Head-bone turn, jump, shake, lie down and hold. Per
 chain it compares rest sag, swing peak, settle, overshoot, mid-chain share and where it hangs lying
-down; `-abGravityScale` sweeps gravity on the copy. Five avatars, 172 chains: Sootie (112, all
-PhysBone 1.1), LanaCan, Kar, Zombunny, agisynth (mostly 1.0). Scripts and runs in the session
+down; `-abGravityScale` sweeps gravity on the copy. Five avatars, 172 chains: Avatar D (112, all
+PhysBone 1.1), Avatar B, Avatar A, Avatar C, Avatar F (mostly 1.0). Scripts and runs in the session
 scratchpad (`physab/`: `ab.sh`, `compare.py`, `gravfit.py`).
 
 Median error, copy against original (peaks in log2, 1.0 = twice or half; hang in degrees):
@@ -2093,6 +2139,119 @@ everything since 4.6.6: the audit and its corpus-414 fixes, the UI redesign, the
 draft was built first, then deleted unpublished when two tester changes landed after it; its tag
 `v4.7.0` stays in history and that number was never shipped. Corpus 415 is the accepted YAPS baseline.
 Not verified in ChilloutVR; the records below say what only the game can settle.*
+
+### Every button pressed headless, 2026-10-15: one dead, one noisy. FIXED ON DEV
+
+Joe found **Tune it** did nothing. It and **Open material** now select the material, ping it and
+open it in a property editor (`BridgeElements.Reveal`); selection alone showed nothing with the
+Inspector locked or closed.
+
+`Dev/Probes/ButtonSmokeProbe.cs` with `button-smoke.sh` presses every button and toggle in every
+window and inspector, a fresh scene load per state, and judges each press by what changed: window
+text and state, scene hash, materials, selection, clipboard, notifications, and a before and after
+picture through an offscreen Scene view, so overlays a press turns on are in it. In Play mode it
+grabs chains with mouse events through the tester's own handler: four of four followed the drag and
+swung back. Pressing the converter windows converts per press and takes over an hour; run them alone.
+
+**Weigh it and Fix it flooded the console** (18 errors, 146 warnings, none from the avatar). The
+slimmer's "used elsewhere" check loaded every material in the project and read its textures, and
+the first read builds a material's property sheet, which logs every fault in it. It reads an
+asset-database dependency index now and loads only the materials that name the texture. Same answer
+as before on all 4471 textures it can ask about (two Unity built-ins have no importer and are never
+asked), in 3.5 s where the old sweep took 147 s cold. A texture inside a font or a controller counts:
+the index adds each file's own path, which `GetDependencies` leaves out. The shader errors that
+showed under **Patch shaders for VR stereo** were the same sweep's leftovers: a fresh process
+patching alone logs none, and the rerun has none. Toolkit after the fix: 65 OK, 0 errors; the one
+message left is a missing third-party drawer on the avatar's own material.
+
+**Repeated test buttons made to agree, the same day.** Joe asked whether the Toolkit and the Avatar
+Tester duplicate each other. They do not: the Toolkit writes, the tester plays, and the survey's
+contested bindings skip humanoid muscles, which is exactly what the tester's finger chip checks.
+The YAPS test buttons did repeat, in up to four places, each calling the one `YapsPreview`
+function, so only labels and states had drifted. The tester now uses the inspectors' labels
+(**Preview** stays Preview while lit, **Drop a test plug here**, **Preview into a hole** and
+**through a ring**, **Take the test socket away**); the socket inspector greys **Drop a test plug
+here** in Play mode with no plug prop prefab, as the tester did; the setup window's row **preview**
+chips (a third copy: hole only, no baked check) are gone. The hand-layer name check had a copy in
+the tester; both now read `AvatarFeatureDetect.IsHandLayer`, since the merger needs the VRChat SDK
+and the tester must build without it.
+
+**Blank result boxes in the setup window, shipped 4.7.0 to 4.7.2. FIXED ON DEV.** The last DEAD row,
+**Verify prop** after a tab switch, was the window, not the probe. Picking a new target cleared the
+add, prop and tidy result notices with `VisualElement.Clear()`, which removes the box's icon, body
+and label; every later **Make selected object a prop**, **Verify prop**, add or tidy result then
+coloured an empty box. Picking happens on the first selection, so it hit every session. They are
+hidden now. The probe missed the text because the notice line alone changed (2 lines where text
+makes 4); a DEAD row now lists the notices the probe sees.
+
+**Make selected object a prop** on an avatar root added a collider and a spawnable to the avatar
+(seen in the smoke's plain pass on a socket avatar). FIXED ON DEV: `MakeProp` refuses an avatar or
+anything under a `CVRAvatar`, for all four callers.
+
+Open: **Merge animators / clear** is disabled with no tooltip saying why. The paint stroke and the
+squash depth are not yet gestured.
+
+### A user's story played headless, 2026-10-15: three squash bugs and a false report line. FIXED ON DEV
+
+Joe had not used 4.8.0's new features by hand and asked for them used the way a user would: a
+custom jiggle on the thighs. `-bsStory thighs` (`Dev/Probes/ButtonSmokeProbe.Story.cs`) does that
+through the real windows on a VRChat avatar with jiggle PhysBones on its thighs: Analyse, turn on
+**Squash**, **Soft bodies push each other apart** and **Keep the converted avatar a prefab**,
+Convert; then **Squash regions**: **The bone names**, a second pair painted from the jiggle bones
+with **The selected bone**, **Smooth**, one brush stroke; the squash inspector's **Rebuild**,
+**Motion Style**, **Preview**, **Squeeze**, **Test hand** and **Bounce**; then Play mode through
+the tester: **Walk**, **Jump** and **Shake** filmed from the hips with the jiggle tip measured,
+and the lab's squash **Preview** and **Test hand**. It backs up and restores the converter's
+EditorPrefs, so it starts from a new user's defaults.
+
+**The squash measured its parts on clothing.** Build took the skin with the most part vertices and
+the region tool took the largest mesh. A dense piece of clothing over the seat won both, and since
+every layer copies its share from the nearest skin vertex, the chest pair came out empty. Now
+Build uses, of the skins carrying the most parts, the one weighted to the most bones
+(`YapsSquash.Body`), and the tool starts on the same skin (`NamedBody`). The same conversion built
+43 squashed materials before and 52 after, and the chest pair went from 0 to 1048 vertices a side.
+
+**A region painted from a jiggle bone was dropped at Build.** The jiggle bones carried the thigh at
+14.5% at most (1350 vertices weighted, none at 0.25). Build measures a part on the skin painted at
+half or more and drops a pair with fewer than 20 such vertices ("too little skin"). The shader
+moves each vertex by its share, so even a kept pair would have dented at a seventh. **The selected
+bone** now scales to its peak and doubles, as **The shape key** always did, and it refuses a bone
+that carries none of the body instead of leaving an empty side that fails only at Build. The
+story counts the skin at half or more after painting, and fails **Rebuild** on a dropped pair.
+
+**Test hand pressed only the first pair.** The hand aimed its palm at the first part wherever it
+was dragged, so on a thigh it faced up the leg toward the chest and never pressed in (0.1% of the
+picture moved). It reaches for the part nearest it now, in the inspector and in the tester's lab:
+laid mid-thigh, it moved 3.3% of the legs in the editor, all of it on that thigh, and in Play mode
+7.1% against 2.6% for the cloth's own sway over the same wait.
+
+**"No mesh vertices are weighted to these bones" was false** for the same chain. The particle
+radius samples only vertices that carry 20% or more on one bone (`MinBoneWeight`), so a lightly
+weighted chain had nothing to measure. The report now says that.
+
+Measured after the fixes: the thigh jiggle became two MagicaCloth chains and swung its tip 5 to
+10 cm on Walk, Jump and Shake (a 32 cm chain); the converted avatar stayed linked to its prefab and
+**Apply All** carried the painted regions and Motion Style onto it; the thighs painted 903 vertices
+a side at half or more, **Rebuild** built both pairs, and **Squeeze** and **Bounce** moved 13% of
+the thigh picture. The story lays the hand mid-thigh, since the chain's root sits in the hip
+crease where the region is barely painted, logs how far it is from each part, and judges the lab's
+press against the sway without it.
+
+Open:
+- **A first squash build took 20 to 30 minutes in a large project.** `YapsShaderPatcher` reuses an
+  identical patched shader already in the folder; otherwise it writes it, runs a full
+  `AssetDatabase.Refresh()` and imports it synchronously (lines 1036 to 1040), and in an
+  asset-heavy project each round pays about a minute in `UnloadImportedAssets`. A conversion
+  into a fresh output folder took 31 minutes, 27 of them on 23 shaders; the same conversion into
+  a folder already holding them took 3. **Rebuild** writes to `Assets/YAPS/Generated/Squash`, not
+  the conversion's folder, so it paid 19 rounds again. Write them all, then refresh once.
+- **Named pairs squash at their raw weights.** The bone-name path takes each vertex's share as
+  weight painted (a seat measured at 0.67 at most, 0.2 on average), so it dents at that fraction,
+  where a painted region now starts whole. Decide whether the name path should scale too.
+- **The corpus never builds a squash.** `CorpusSettings.squashSoftParts` is false, so none of the
+  above could have shown in a run.
+- `UiOffscreenProbe.FindSource()` picks either of two VRChat avatars in one scene from run to run,
+  and the story's output folder follows it: `--keep` both folders.
 
 ### "Avoid unpacking the converted prefab": a user's request, 2026-10-14. A ON DEV, B PARKED
 
@@ -2219,7 +2378,7 @@ explains the swap, so it reads as expected but has not been traced line by line.
 
 ### Corpus 415: tree toggles whose "off" child animates only dead paths. The five FIXED ON DEV 2026-10-14, one shape open
 
-VaponnyPC swept for the first time (it threw before) and reported 9 stuck. None is a regression: its
+Avatar E swept for the first time (it threw before) and reported 9 stuck. None is a regression: its
 controller matches the baseline except for the no-muscles mask on three renamed toggle layers, whose
 clips carry only `m_IsActive` on paths already missing in VRChat and no object-reference curve.
 - **Three were the sweep's own misreading** (VRCEmote, Collar, DPS). A 1D tree resting at 0.5 between
@@ -2242,12 +2401,69 @@ clips carry only `m_IsActive` on paths already missing in VRChat and no object-r
   working off. The hoist pass keeps the old test. `TreeToggleRestoreTest` covers three: an off
   half on dead paths gets the current value; one on a renamed path, and one on a live material
   property, are left alone. Subset runs 416v and 416w (after the review fixes) on
-  VaponnyPC: stuck 5 to 0 (five body toggles), responded 9 to 10, the five
+  Avatar E: stuck 5 to 0 (five body toggles), responded 9 to 10, the five
   off slots now restore clips, nothing else in the controller moved but the number on one
   existing restore clip. Not worn in ChilloutVR.
 - **One is the other shape** (now reported as unstable at rest): a slider's two children each animate a
   property the other does not. No pass covers it, and the restore passes exempt tree-driven bindings
   by design, so it needs a decision first.
+
+### Corpus 416, the first full run since 4.6.6: three side effects fixed on dev, 2026-10-15
+
+Run 416 (YAPS profile, dev 8ffe549) against the 4.6.6 baseline. The batch Unity crashed at avatar 74
+of 83, a native SIGSEGV in the allocator while a shader package's import hook searched the asset
+database during one of the converter's `CreateAsset` calls, at about 24 GB of process memory. The same
+avatar converts in a fresh process, so the eleven it never reached ran as a subset (416r).
+
+Every other changed shape traces to a commit on dev:
+- `#` on parameters only the animator reads, after the parameter compressor's layer is stripped
+  (0e633f8); contact parameters keep their sync through `ContactParameters`. The `_cvr` clip clones
+  follow from it, and so does one avatar losing its scale feed layer: the compressor had declared the
+  scale family, nothing read it (the feed's own driver was the only reference), and the restore no
+  longer keeps an animator parameter the menu does not list.
+- Cloth roots on each branch's first bone (1598869), the extra per-chain approximation lines (f9b7815),
+  the new settings lines, plural wording (04ac9df), the scaler survey warning gone, and sweep lines that
+  move where a parameter went local.
+- VRCFury's play-mode hook throws "The Playable is null" from every graph it walks; 415 had 4934 and
+  416 has 4887. It is editor state, and the sweep's "threw while driving" lines on four avatars come
+  with it while their counts stay the same.
+
+Three were side effects, all fixed and measured on subsets (416t, 416y):
+- **The Additive and Gesture layers vanished when the humanoid rig was rebuilt.** Two avatars lost the
+  stock additive idle, and one its `CVRParameterStream` with it (TrackingType was its only reader). A
+  probe (`LayerBakeProbe`) showed VRCFury's bake hands back all five layers; a per-pass trace showed
+  "Humanoid rig skeleton" (eb39f19) leave three. Both rig rebuilds set `animator.avatar = null` before
+  `BuildHumanAvatar`, and the descriptor's inspector (`EnforceAnimLayerSetup`) deletes the human-only
+  layers from an avatar with no humanoid rig, then re-adds them empty once it has one. The jaw unmap
+  has detached the same way since 4.0.3, so a released conversion that unmapped a jaw could lose both
+  layers too. `JawUnmapper.Detach`/`Reattach` keep the layers across the gap for both. After the fix,
+  all three test avatars keep five layers and the two that lost the idle match the baseline's layer
+  list, stream and sweep. The trace is gone; the probe stays.
+- **Texture costs counted slots the shader does not have.** 0a656ae read a material's textures by name
+  to avoid a crash, and `GetTexturePropertyNameIDs` lists every slot the material ever saved, under
+  any shader it had before or a shader that is missing from the project. Nineteen avatars' download
+  figure rose, one from 224 to 378 MB, and twenty dead renderers on a material whose shader is missing
+  went from "frees nothing" to "34.3 MB to reclaim". `TexturesOf` now skips ids the current shader
+  lacks (`HasTexture`), which keeps the crash fix. Every texture figure on the four retested avatars
+  is back to the baseline's.
+- **The YAPS readout warned it could not carry the squash block** ("could not carry 18 ...
+  `_YAPS_DentPower`") on fifteen avatars. The patch adds those properties to every shader and no
+  readout cell reads them, so `YapsDebugOverlayBuilder.Copy` drops them from the missing list. Gone on
+  the retested avatars, nothing else moved.
+
+An idea it raised, not measured: a material's leftover slots may still ship in the build, since a
+build follows every saved reference. If a build does carry them, the weight report undercounts and
+could offer clearing them as a saving. Measure with a real CCK build before claiming either way.
+
+**The crash answered with chunking, 2026-10-15. ON DEV.** `run-corpus.sh --per-process N` (default
+30, 0 for one Unity) caps each Unity's conversions; the runner exits 4 at the cap, and the launcher
+relaunches with `AVATARBRIDGE_RESUME=1`, which keeps `Current/` and reads back the digests already
+written. A Unity that dies after making progress is relaunched the same way, so the avatar it died
+on gets a fresh process; one that makes no progress stops the run. Parts append to the one log and
+the last writes the summary. Tested on four avatars at `--per-process 2` with a deliberate kill
+after the first digest: killed, resumed, stopped at its cap, finished in three processes with one
+summary and the partial marker cleared. Avatar O, converted in the resumed process, matches 416t exactly;
+the other three differ only by db7ade2's texture-slot fix, against digests made before it.
 
 ### The audit of 2026-10-03: about 210 findings fixed on dev, not verified in game
 

@@ -98,11 +98,11 @@ namespace AvatarBridge
 
             // Detached first, as in JawUnmapper, so the old rig does not validate the build.
             var previous = animator.avatar;
-            animator.avatar = null;
+            var layers = JawUnmapper.Detach(animator);
             var rebuilt = AvatarBuilder.BuildHumanAvatar(root.gameObject, description);
             if (rebuilt == null || !rebuilt.isValid)
             {
-                animator.avatar = previous;
+                JawUnmapper.Reattach(animator, previous, layers);
                 if (rebuilt != null)
                 {
                     Object.DestroyImmediate(rebuilt);
@@ -113,7 +113,7 @@ namespace AvatarBridge
                 return;
             }
             JawUnmapper.SaveRig(ctx, rebuilt, previous.name, "_Matched", out _);
-            animator.avatar = rebuilt;
+            JawUnmapper.Reattach(animator, rebuilt, layers);
             EditorUtility.SetDirty(animator);
 
             ctx.Report.Converted(Category, "Humanoid rig matched to the armature",

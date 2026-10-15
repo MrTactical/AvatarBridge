@@ -236,7 +236,8 @@ namespace AvatarBridge
                     Say(_propStatus, o.Ok ? Tone.Good : Tone.Warn, o.Message, o.Notes);
                 }, "Checks the selected prop's synced values and grab collider, and repairs what it can.")));
             tools.Body.Add(BridgeElements.Hint(
-                "Select a plug or socket's top object to make it a spawnable with a pickup and collider. " +
+                "Select the top object of a plug or socket that stands on its own, not one on an avatar, " +
+                "to make it a spawnable with a pickup and collider. " +
                 "Verify before uploading."));
             _propStatus = Status();
             tools.Body.Add(_propStatus);
@@ -371,12 +372,14 @@ namespace AvatarBridge
         void Pick(GameObject picked)
         {
             var top = picked != null ? YapsNativeBuilder.AvatarRoot(picked.transform).gameObject : null;
-            // Results about the last target say nothing about this one.
+            // Results about the last target say nothing about this one. Hidden, not
+            // cleared: Clear() takes the box's own text with it, and every later
+            // result showed as an empty box.
             if (top != _target)
             {
-                _addStatus?.Clear();
-                _propStatus?.Clear();
-                _tidyStatus?.Clear();
+                _addStatus?.Hide();
+                _propStatus?.Hide();
+                _tidyStatus?.Hide();
             }
             _target = top;
             if (_picker != null && _picker.value != top) _picker.SetValueWithoutNotify(top);
@@ -580,31 +583,8 @@ namespace AvatarBridge
                         if (did) RescanLater();
                     }, "Takes it out entire, after a dialog saying what goes. One undo step."));
                 }
-                if (sc != null)
-                {
-                    actions.Add(BridgeElements.Chip(sc.preview ? "previewing" : "preview", Tone.Good, sc.preview, () =>
-                    {
-                        // A reconvert can leave the chip holding a dead component.
-                        if (sc == null) { RescanLater(); return; }
-                        YapsPreview.Set(sc, !sc.preview);
-                        RescanLater();
-                    }, sc.preview ? "Previewing. Click again to stop." : "Bends baked plugs toward it in the scene view."));
-                }
-                else if (pc != null)
-                {
-                    // The plug's half of the same idea. A socket previews by dropping a
-                    // plug in front of it; a plug had no row chip at all, because there was
-                    // nothing for it to bend toward until the test socket existed.
-                    bool testing = YapsPreview.TestSocketInScene;
-                    actions.Add(BridgeElements.Chip(testing ? "previewing" : "preview", Tone.Good, testing, () =>
-                    {
-                        if (captured.Root == null) { RescanLater(); return; }
-                        if (YapsPreview.TestSocketInScene) YapsPreview.RemoveTestSocket();
-                        else YapsPreview.DropTestSocket(pc);
-                        RescanLater();
-                    }, testing ? "Click again to take the test socket away." : "Drops a test socket ahead and bends this plug into it."));
-                }
-                else if (f.Root != null)
+                // Preview lives in the inspector and the Avatar Tester, where the result is watched.
+                if (sc == null && pc == null && f.Root != null)
                 {
                     // No component yet. YAPS output adopts; DPS, TPS or SPS
                     // upgrades in place: adopt, then build or bake.

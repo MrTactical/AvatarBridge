@@ -57,7 +57,7 @@ and were never affected. **Where an instrument and the conversion reports disagr
 | VRCAnimatorLayerControl | 262 | converted | Action-layer live-window detection. Was 198 |
 | VRCAnimatorLocomotionControl | 152 | converted | → BodyControl Locomotion mask. Was 31 |
 | VRCPlayableLayerControl | 129 | converted | Action transplant. Was 11 |
-| VRCAnimatorPlayAudio | 132 | reported richly | own inventory naming state, source path, clips, looping (#29, done: lumar names 22). Approximation deliberately deferred: the enable-window play/stop trick interacts with Write Defaults and needs the off-state restore machinery; hand-wiring hint in the report (AudioSource Play On Awake, CVRAudioDriver animated index). Was 86 |
+| VRCAnimatorPlayAudio | 132 | reported richly | own inventory naming state, source path, clips, looping (#29, done: Avatar V names 22). Approximation deliberately deferred: the enable-window play/stop trick interacts with Write Defaults and needs the off-state restore machinery; hand-wiring hint in the report (AudioSource Play On Awake, CVRAudioDriver animated index). Was 86 |
 
 ## Descriptor, field level (complete 2026-08-03)
 
