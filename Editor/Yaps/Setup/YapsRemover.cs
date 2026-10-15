@@ -174,8 +174,11 @@ namespace AvatarBridge
                     && mats[bakedSlot].HasProperty("_YAPS_Bake") && mats[bakedSlot] != socket.bakedFrom)
                 {
                     Undo.RecordObject(baked, "Remove YAPS socket");
+                    var wasBaked = mats[bakedSlot];
                     mats[bakedSlot] = socket.bakedFrom;
                     baked.sharedMaterials = mats;
+                    // A toggle that swaps this slot still names the bake, and would put it back.
+                    YapsSwapFollow.Follow(baked, bakedSlot, wasBaked, socket.bakedFrom);
                     done.Add($"\"{baked.name}\" back on \"{socket.bakedFrom.name}\"");
                 }
             }
@@ -255,9 +258,16 @@ namespace AvatarBridge
                 {
                     var mats = renderer.sharedMaterials;
                     Undo.RecordObject(renderer, "Remove YAPS plug");
+                    var clips = YapsSwapFollow.RunnableClips(renderer.transform);
                     foreach (var (slot, back, _) in restores)
                     {
-                        if (back != null) { mats[slot] = back; continue; }
+                        if (back != null)
+                        {
+                            // A toggle that swaps this slot still names the bake, and would put it back.
+                            YapsSwapFollow.Follow(renderer, slot, mats[slot], back, null, clips);
+                            mats[slot] = back;
+                            continue;
+                        }
                         var m = mats[slot];
                         Undo.RecordObject(m, "Remove YAPS plug");
                         m.SetFloat("_YAPS_Enabled", 0f);
@@ -331,6 +341,7 @@ namespace AvatarBridge
                 {
                     if (b == null || b.renderer != mesh || b.was == null || b.slot >= mats.Length) continue;
                     if (mats[b.slot] == null || !mats[b.slot].HasProperty("_YAPS_Bake")) continue;
+                    YapsSwapFollow.Follow(mesh, b.slot, mats[b.slot], b.was);
                     mats[b.slot] = b.was;
                     back++;
                 }

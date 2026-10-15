@@ -214,6 +214,9 @@ namespace AvatarBridge
                     "so the bake and the length other sockets read now match it.");
             }
             float size = YapsBaker.LargestSize(YapsCurveMirror.ClipsOf(ctx.MergedController), sizeBones);
+            // A plain mesh moves onto a bounds copy in the bake; Remove needs the original.
+            var filter = renderer.GetComponent<MeshFilter>();
+            var unbounded = filter != null ? filter.sharedMesh : null;
             var result = YapsBaker.Bake(renderer, plugRoot, ctx.OutputDir + "/YAPS", ctx.Report,
                 out string bakeFailure, sizeScale: size);
             if (result == null)
@@ -356,6 +359,7 @@ namespace AvatarBridge
                 // head, so a toolkit re-bake reaches the same slots and meshes on
                 // the same frame, and the own-socket ticks and Remove reach them too.
                 adopted.converted = true;
+                if (filter != null && filter.sharedMesh != unbounded) adopted.boundsFrom = unbounded;
                 void Record(Renderer on, int slot)
                 {
                     if (adopted.bakedSlots.Any(b => b != null && b.slot == slot && b.renderer == on)) return;

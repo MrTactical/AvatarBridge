@@ -1375,9 +1375,9 @@ box fitted round its rest pose and reach, with **Update When Offscreen** off, an
 only shares keeps its own box, grown only where it fell short of the plug's reach. A plug on a plain
 mesh puts back the mesh it had before the bake, which widened the culling box on a copy, so a model
 was never edited. The copy stays while another plug on the same mesh still needs it, and a mesh
-that is an asset of its own keeps the wider box. A converted plug keeps the copy too, as does one
-baked by an earlier version: neither has a record of the original, so put that mesh back in the
-Mesh Filter by hand. A dialog lists exactly what will go first, and it is one undo step.
+that is an asset of its own keeps the wider box. One converted before 5.0.0, or baked by an earlier
+version, keeps the copy too: it has no record of the original, so put that mesh back in the Mesh
+Filter by hand, or convert again. A dialog lists exactly what will go first, and it is one undo step.
 The files it generated stay in `Assets/YAPS/Generated` for the next Bake, so an undo never points
 at a missing asset. If you delete one by hand instead, *Clean up leftovers* in the window finds
 what it left.

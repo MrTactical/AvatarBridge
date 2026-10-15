@@ -2578,19 +2578,20 @@ ChilloutVR and not through the corpus.
 - **Remove leaves the slot's material-swap keys on the bake.** `YapsRemover.RemoveSocket` and the
   plug restore put the original material back but never repoint the swap keys, so a toggle that
   swaps that slot brings the removed bake back. Unbake already reverses them with
-  `YapsSwapFollow.Follow(renderer, slot, baked, original)`; Remove should too. Not done.
+  `YapsSwapFollow.Follow(renderer, slot, baked, original)`; Remove should too. DONE 2026-10-15:
+  socket, plug and the plug's other meshes all repoint the swap keys as they restore.
 - **YC1-06b, a converted plain-mesh plug keeps the bounds copy after Remove.** `boundsFrom` has one
   writer, `YapsNativeBuilder.cs:73`. The converter bakes through `YapsBaker.Bake`
   (`YapsConverter.cs:201`), which makes the same `bounds.asset` copy, and `AdoptPlug` never sets the
   record; a later toolkit re-bake then reads the copy as the original. Fix: take
   `filter.sharedMesh` before that bake and set it on the adopted plug when the bake moved the
   filter, as the toolkit does. README "Taking things out again" says converted plugs keep the copy;
-  change it in the same commit. Needs a reconvert. Not done.
+  change it in the same commit. Needs a reconvert. DONE 2026-10-15, as described.
 - **The *Fit the preset to the PhysBone* tooltip and settings comment lag the code.**
   `FitToPhysBone` (`MagicaClothWriter.cs:622`) also raises the preset's four speed limits, and the
   README says so. The window tooltip (`AvatarBridgeWindow.cs:648`) names gravity, immobile and wind
   but not the speed limits; the `fitToPhysBone` comment (`BridgeSettings.cs:72`) names neither wind
-  nor the speed limits. Code-only text change. Not done.
+  nor the speed limits. Code-only text change. DONE 2026-10-15.
 - **Animators nested on child objects** are not walked by the survey, so a renderer only such an
   Animator switches on can read Dead and be stripped by *Fix it*. Author decision: it changes every
   `Layer.Bindings` count. FIXED 2026-10-15 without touching the counts: the Dead check reads what

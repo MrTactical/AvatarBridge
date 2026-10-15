@@ -75,8 +75,9 @@ namespace AvatarBridge
         public bool useMagicaPresets = true;
         // After the preset loads, apply what the PhysBone says about
         // gravity (converted to where the chain settles), immobile (as
-        // inertia against the same frame) and wind (none), and turn off
-        // the preset's own angle limit and depth inertia.
+        // inertia against the same frame) and wind (none), turn off the
+        // preset's own angle limit and depth inertia, and raise its four
+        // speed limits.
         public bool fitToPhysBone = true;
         // Derive damping and angle restoration from the PhysBone's
         // pull, spring and stiffness. Both solvers are position
