@@ -2120,8 +2120,9 @@ coloured an empty box. Picking happens on the first selection, so it hit every s
 hidden now. The probe missed the text because the notice line alone changed (2 lines where text
 makes 4); a DEAD row now lists the notices the probe sees.
 
-Open: **Make selected object a prop** on an avatar root adds a collider and a spawnable to the
-avatar (seen in the smoke's plain pass on a socket avatar). It should probably refuse an avatar.
+**Make selected object a prop** on an avatar root added a collider and a spawnable to the avatar
+(seen in the smoke's plain pass on a socket avatar). FIXED ON DEV: `MakeProp` refuses an avatar or
+anything under a `CVRAvatar`, for all four callers.
 
 Open: **Merge animators / clear** is disabled with no tooltip saying why. The paint stroke and the
 squash depth are not yet gestured.

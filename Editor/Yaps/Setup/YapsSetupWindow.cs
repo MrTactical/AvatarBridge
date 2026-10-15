@@ -236,7 +236,8 @@ namespace AvatarBridge
                     Say(_propStatus, o.Ok ? Tone.Good : Tone.Warn, o.Message, o.Notes);
                 }, "Checks the selected prop's synced values and grab collider, and repairs what it can.")));
             tools.Body.Add(BridgeElements.Hint(
-                "Select a plug or socket's top object to make it a spawnable with a pickup and collider. " +
+                "Select the top object of a plug or socket that stands on its own, not one on an avatar, " +
+                "to make it a spawnable with a pickup and collider. " +
                 "Verify before uploading."));
             _propStatus = Status();
             tools.Body.Add(_propStatus);

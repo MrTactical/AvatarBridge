@@ -1022,7 +1022,8 @@ moves to *YAPS Simple Lit* because Raliv's deform has no switch. Check the plug'
 skinned mesh before you Build. TPS upgrades are tested in game, on both props and avatars.
 
 **Make this a prop.** Select the top object of a plug or socket meant to be spawned in ChilloutVR
-and press **Make selected object a prop**, in the window's *Tools* card. It gains a CVR Spawnable,
+and press **Make selected object a prop**, in the window's *Tools* card. It refuses an avatar or
+anything inside one, since a prop has to stand on its own. It gains a CVR Spawnable,
 a pickup anyone can take and a collider to grab by, and nothing else. The collider is sized from
 the bake, sits on the prop's own object because that is where the game looks for it, and is a
 trigger so the prop passes through people instead of shoving them. It finds sockets through the
