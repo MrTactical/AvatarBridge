@@ -2329,6 +2329,16 @@ An idea it raised, not measured: a material's leftover slots may still ship in t
 build follows every saved reference. If a build does carry them, the weight report undercounts and
 could offer clearing them as a saving. Measure with a real CCK build before claiming either way.
 
+**The crash answered with chunking, 2026-10-15. ON DEV.** `run-corpus.sh --per-process N` (default
+30, 0 for one Unity) caps each Unity's conversions; the runner exits 4 at the cap, and the launcher
+relaunches with `AVATARBRIDGE_RESUME=1`, which keeps `Current/` and reads back the digests already
+written. A Unity that dies after making progress is relaunched the same way, so the avatar it died
+on gets a fresh process; one that makes no progress stops the run. Parts append to the one log and
+the last writes the summary. Tested on four avatars at `--per-process 2` with a deliberate kill
+after the first digest: killed, resumed, stopped at its cap, finished in three processes with one
+summary and the partial marker cleared. Rytu, converted in the resumed process, matches 416t exactly;
+the other three differ only by db7ade2's texture-slot fix, against digests made before it.
+
 ### The audit of 2026-10-03: about 210 findings fixed on dev, not verified in game
 
 **What was done.** A read of the whole codebase against its own claims, in four waves: 177 findings

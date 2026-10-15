@@ -206,14 +206,12 @@ namespace AvatarBridge.Regression
 
         public static void RunAllBatch()
         {
-            int changed = Run(AllAvatarScenes(), "all");
-            EditorApplication.Exit(changed == 0 ? 0 : 1);
+            Exit(Run(AllAvatarScenes(), "all"));
         }
 
         public static void RunQuickBatch()
         {
-            int changed = Run(QuickSet(), "quick");
-            EditorApplication.Exit(changed == 0 ? 0 : 1);
+            Exit(Run(QuickSet(), "quick"));
         }
 
         public static void RunSubsetBatch()
@@ -237,9 +235,16 @@ namespace AvatarBridge.Regression
                 EditorApplication.Exit(2);
                 return;
             }
-            int changed = Run(scenes, $"subset({scenes.Length})");
-            EditorApplication.Exit(changed == 0 ? 0 : 1);
+            Exit(Run(scenes, $"subset({scenes.Length})"));
         }
+
+        // One process ran past about 70 conversions at 24 GB and died in the native allocator,
+        // and the same avatar converted fine in a fresh one. So run-corpus.sh can cap a process
+        // (AVATARBRIDGE_PER_PROCESS) and relaunch it with AVATARBRIDGE_RESUME=1, which keeps
+        // Current/ and reads back the digests already in it. 4 means "stopped early, more to do".
+        static bool yielded;
+
+        static void Exit(int changed) => EditorApplication.Exit(yielded ? 4 : changed == 0 ? 0 : 1);
 
         static string[] AllAvatarScenes()
         {
@@ -277,10 +282,14 @@ namespace AvatarBridge.Regression
                     "  bash Dev/Corpus/run-corpus.sh   (--quick, --subset FILE or --dynbone as needed)");
             }
 
+            bool resume = Environment.GetEnvironmentVariable("AVATARBRIDGE_RESUME") == "1";
+            int.TryParse(Environment.GetEnvironmentVariable("AVATARBRIDGE_PER_PROCESS"), out int perProcess);
+            yielded = false;
+
             // Start from empty. A digest left behind by a previous, differently-scoped run is
             // indistinguishable from one this run produced, and would be compared and reported
-            // as though it were current.
-            if (Directory.Exists(CurrentDir))
+            // as though it were current. A resume is the same run, so it keeps them.
+            if (!resume && Directory.Exists(CurrentDir))
             {
                 foreach (var stale in Directory.GetFiles(CurrentDir, "*.txt")) File.Delete(stale);
             }
@@ -289,22 +298,32 @@ namespace AvatarBridge.Regression
 
             // Which build produced this run, kept OUT of the compared digests (see BuildDigest).
             // Not a .txt, so neither the comparison nor Accept picks it up.
-            File.WriteAllText(CurrentDir + "/_run.info",
-                $"bridge: {BridgeDefines.Version}\nunity: {Application.unityVersion}\n" +
-                $"started: {DateTime.Now:yyyy-MM-dd HH:mm}\n");
+            if (resume)
+            {
+                File.AppendAllText(CurrentDir + "/_run.info", $"resumed: {DateTime.Now:yyyy-MM-dd HH:mm}\n");
+            }
+            else
+            {
+                File.WriteAllText(CurrentDir + "/_run.info",
+                    $"bridge: {BridgeDefines.Version}\nunity: {Application.unityVersion}\n" +
+                    $"started: {DateTime.Now:yyyy-MM-dd HH:mm}\n");
+            }
 
             // Up before the first avatar. A crash or a kill never reaches the end of this
             // method, so writing it only on cancel left those runs unmarked.
-            File.WriteAllText(PartialMarker,
-                $"Started {DateTime.Now:yyyy-MM-dd HH:mm} and never finished: cancelled, crashed or killed.\n" +
-                "AcceptCurrent refuses while this file exists. Re-run to clear it.\n");
+            if (!resume || !File.Exists(PartialMarker))
+            {
+                File.WriteAllText(PartialMarker,
+                    $"Started {DateTime.Now:yyyy-MM-dd HH:mm} and never finished: cancelled, crashed or killed.\n" +
+                    "AcceptCurrent refuses while this file exists. Re-run to clear it.\n");
+            }
 
             var changes = new List<string>();
             var missing = new List<string>();
             var noAvatar = new List<string>();
             var sweep = new SweepTally();
             var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            int ran = 0, failed = 0;
+            int ran = 0, failed = 0, converted = 0, reused = 0;
             bool cancelled = false;
             var started = DateTime.Now;
 
@@ -334,28 +353,44 @@ namespace AvatarBridge.Regression
                         }
                     }
 
+                    string file = DigestName(scenePath);
+                    string kept = Path.Combine(CurrentDir, file);
                     string digest;
-                    try
+                    if (resume && File.Exists(kept))
                     {
-                        digest = ConvertAndDigest(scenePath);
-                        if (digest == null) { noAvatar.Add(scenePath); continue; }   // no avatar in this scene
+                        digest = File.ReadAllText(kept);
+                        if (digest.Contains("\n[harness]\nEXCEPTION ")) failed++;
+                        reused++;
                     }
-                    catch (Exception e)
+                    else
                     {
-                        // A thrown conversion is a result worth diffing.
-                        // Starting and stopping throwing both regress.
-                        digest = $"scene: {scenePath}\n\n[harness]\nEXCEPTION {e.GetType().Name}: {e.Message}\n";
-                        failed++;
+                        if (perProcess > 0 && converted >= perProcess)
+                        {
+                            yielded = true;
+                            break;
+                        }
+                        converted++;
+                        try
+                        {
+                            digest = ConvertAndDigest(scenePath);
+                            if (digest == null) { noAvatar.Add(scenePath); continue; }   // no avatar in this scene
+                        }
+                        catch (Exception e)
+                        {
+                            // A thrown conversion is a result worth diffing.
+                            // Starting and stopping throwing both regress.
+                            digest = $"scene: {scenePath}\n\n[harness]\nEXCEPTION {e.GetType().Name}: {e.Message}\n";
+                            failed++;
+                        }
                     }
 
                     ran++;
-                    string file = DigestName(scenePath);
                     // Belt and braces on the naming rule below: if two scenes ever collide again
                     // the run must say so, not silently cover one of them.
                     if (!written.Add(file))
                         Debug.LogError($"[Regression] digest name collision on '{file}': " +
                                        $"'{scenePath}' has overwritten an earlier scene's digest.");
-                    File.WriteAllText(Path.Combine(CurrentDir, file), digest);
+                    File.WriteAllText(kept, digest);
 
                     string baseline = Path.Combine(BaselineDir, file);
                     if (!File.Exists(baseline)) { missing.Add(name); TallySweep(sweep, name, digest, null); continue; }
@@ -372,6 +407,14 @@ namespace AvatarBridge.Regression
             {
                 System.Threading.Thread.CurrentThread.CurrentCulture = previousCulture;
                 if (!Application.isBatchMode) EditorUtility.ClearProgressBar();
+            }
+
+            if (yielded)
+            {
+                // No summary: the [Regression/...] line is what tells the launcher the run is over.
+                Debug.Log($"[Regression] stopping after {converted} conversion(s) in this process " +
+                          $"({ran} of {scenes.Count} scenes have digests); relaunch with AVATARBRIDGE_RESUME=1 to go on.");
+                return 0;
             }
 
             // An avatar that stops producing a digest is a change, not a silence. A descriptor
@@ -392,6 +435,7 @@ namespace AvatarBridge.Regression
 
             var sb = new StringBuilder();
             sb.AppendLine($"[Regression/{label}] {ran} avatar(s) in {(DateTime.Now - started).TotalSeconds:F0}s" +
+                          (reused > 0 ? $" ({reused} converted by earlier processes of this run)" : "") +
                           (failed > 0 ? $", {failed} threw" : ""));
             if (ran == 0)
                 sb.AppendLine("  NOTHING RAN: no scene yielded an avatar. This is not a pass.");
