@@ -3563,6 +3563,9 @@ assuming them, and nobody uploads an NSFW avatar untagged by accident.
 **Incremental reconversion.** Whole-avatar every time today. Keyed on source hashes, the
 passes whose inputs did not change could be skipped. Worth it only once the corpus can prove
 a skipped pass and a run pass produce the same output.
+Step one, 2026-10-15: every conversion logs `[AvatarBridge] Pass times (ms): ...` and `After the
+passes (ms): save N, report N` (log only, so digests do not move). The next full corpus run says
+which passes are worth skipping; nothing is skipped until then.
 
 ---
 

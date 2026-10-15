@@ -92,9 +92,12 @@ namespace AvatarBridge
                 DetachCrashingController(ctx);
                 WarnFastPlayMode(ctx);
                 ReportSyncUsage(ctx);
+                var clock = System.Diagnostics.Stopwatch.StartNew();
                 SaveConvertedPrefab(ctx);
+                long saved = clock.ElapsedMilliseconds;
                 // Last, so it validates and describes the avatar as it will actually ship.
                 BridgeFinish.Run(ctx, "ConversionReport.md", "Report");
+                Debug.Log($"[AvatarBridge] After the passes (ms): save {saved}, report {clock.ElapsedMilliseconds - saved}");
                 RebindAnimators(ctx);
                 Selection.activeGameObject = ctx.Target;
                 // The window resolves report subjects against this to offer "Show". Selection
