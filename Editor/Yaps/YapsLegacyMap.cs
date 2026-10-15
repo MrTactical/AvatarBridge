@@ -14,6 +14,13 @@ namespace AvatarBridge
 
         public enum Part { Plug, Socket }
 
+        // Said by both builders when a plug arrives with VRCFury's deform in its shader.
+        public const string SpsPrebuilt =
+            "VRCFury put its deform into this plug's shader before the conversion saw it: an avatar VRCFury " +
+            "already built, or a VRCFury version this tool could not ask. YAPS adds its own on top, and " +
+            "VRCFury's has no switch on the material, so the plug may bend twice. Convert the original avatar " +
+            "rather than a built copy, and check this plug in game.";
+
         // One carried value: where it came from, where it went, and what
         // was done to it on the way. Kept so the report can list them.
         public struct Carried

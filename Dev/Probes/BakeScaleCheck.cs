@@ -20,6 +20,7 @@
 using System.Collections.Generic;
 using System.Text;
 using UnityEditor;
+using UnityEditor.Animations;
 using UnityEngine;
 
 namespace AvatarBridge.Dev
@@ -38,6 +39,7 @@ namespace AvatarBridge.Dev
             ScaledBone();
             RestBone();
             ChildAxis();
+            RestPose();
 
             Log.AppendLine(_failed == 0 ? "all checks passed" : _failed + " check(s) FAILED");
             if (_failed == 0)
@@ -133,6 +135,74 @@ namespace AvatarBridge.Dev
                 Near("length from the child's y", length.Evaluate(1f), 4f);
                 Near("girth from the child's x", girth.Evaluate(1f), 2f);
             }
+        }
+
+        // A size slider rests at its menu default, so before the bake the bone is
+        // set to the scale the avatar's own animator gives it there.
+        static void RestPose()
+        {
+            Log.AppendLine("rest pose: a size bone set to where its slider starts");
+            Rest("motion time, default 0.25 over 0.4 to 1.2", 1f, 0.6f, c =>
+            {
+                c.AddParameter(new AnimatorControllerParameter { name = "Size", type = AnimatorControllerParameterType.Float, defaultFloat = 0.25f });
+                var state = c.layers[0].stateMachine.AddState("Size");
+                state.motion = Scale(0.4f, 1.2f);
+                state.timeParameterActive = true;
+                state.timeParameter = "Size";
+            });
+            Rest("1D tree, default 1, children 0.5 and 2", 1f, 2f, c =>
+            {
+                c.AddParameter(new AnimatorControllerParameter { name = "Size", type = AnimatorControllerParameterType.Float, defaultFloat = 1f });
+                var tree = new BlendTree { blendParameter = "Size", blendType = BlendTreeType.Simple1D, useAutomaticThresholds = false };
+                tree.AddChild(Scale(0.5f, 0.5f), 0f);
+                tree.AddChild(Scale(2f, 2f), 1f);
+                c.layers[0].stateMachine.AddState("Size").motion = tree;
+            });
+            Rest("bool off, the scene left at the on size", 2f, 1f, c =>
+            {
+                c.AddParameter("Hyper", AnimatorControllerParameterType.Bool);
+                var machine = c.layers[0].stateMachine;
+                var off = machine.AddState("Off");
+                off.motion = Scale(1f, 1f);
+                var on = machine.AddState("On");
+                on.motion = Scale(2f, 2f);
+                off.AddTransition(on).AddCondition(AnimatorConditionMode.If, 0f, "Hyper");
+            });
+            Rest("the resting state animates nothing", 1.5f, 1.5f, c =>
+            {
+                var machine = c.layers[0].stateMachine;
+                machine.AddState("Idle");
+                machine.AddState("Big").motion = Scale(2f, 2f);
+            });
+        }
+
+        static void Rest(string what, float scene, float want, System.Action<AnimatorController> build)
+        {
+            using (var rig = new Rig(Vector3.one * scene, Vector3.one, Quaternion.identity))
+            {
+                var controller = new AnimatorController();
+                controller.AddLayer("Base");
+                build(controller);
+                if (YapsRestPose.Apply(rig.Root, controller, rig.Bones) == null)
+                {
+                    Fail(what + ": the rest pose could not be read");
+                    return;
+                }
+                Near(what, rig.Bone.localScale.z, want);
+            }
+        }
+
+        static AnimationClip Scale(float from, float to)
+        {
+            var clip = new AnimationClip { name = "size" };
+            foreach (var axis in new[] { "x", "y", "z" })
+            {
+                AnimationUtility.SetEditorCurve(clip, new EditorCurveBinding
+                {
+                    path = "Bone", type = typeof(Transform), propertyName = "m_LocalScale." + axis,
+                }, AnimationCurve.Linear(0f, from, 1f, to));
+            }
+            return clip;
         }
 
         // Identity: the bake measured a shaft running along world +Z.

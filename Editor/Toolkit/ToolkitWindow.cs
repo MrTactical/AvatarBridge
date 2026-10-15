@@ -340,13 +340,15 @@ namespace AvatarBridge
                 rows.Add(BridgeElements.Hint(whenEmpty));
         }
 
-        BridgeElements.Card Check() => Tool("Check this avatar", ReadsOnly,
-            BridgeElements.Hint("What ChilloutVR will break without saying.",
-                "Stripped components, the sync budget, unwired parameters, one-eyed shaders and rootless cloth."),
+        BridgeElements.Card Check() => Tool("Check before upload", ReadsOnly,
+            BridgeElements.Hint("What the CCK will refuse to upload, then what ChilloutVR will break without saying.",
+                "Missing scripts, texture and sound import settings, anything the upload drops, stripped " +
+                "components, the sync budget, unwired parameters, one-eyed shaders and rootless cloth."),
             "Check", ButtonKind.Secondary, () =>
             {
                 var report = new BridgeReport();
                 var ctx = Context(report);
+                UploadPreflight.Run(report, ctx.CvrAvatar);
                 if (ctx.MergedController != null) BridgeDiagnostics.Run(ctx, ctx.MergedController);
                 else
                 {
@@ -358,8 +360,8 @@ namespace AvatarBridge
             }, "Nothing to report. That is the good outcome.");
 
         BridgeElements.Card Survey() => Tool("What this avatar does", ReadsOnly,
-            BridgeElements.Hint("Names features never wired up and layers fighting over the same thing.",
-                "Also menu controls nothing reads, and objects that could be props."),
+            BridgeElements.Hint("Names features never wired up and toggles a layer above always overrides.",
+                "Also states that can never play, menu controls nothing reads, and objects that could be props."),
             "Survey it", ButtonKind.Secondary, () =>
             {
                 var report = new BridgeReport();

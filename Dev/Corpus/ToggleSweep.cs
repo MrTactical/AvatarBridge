@@ -250,6 +250,10 @@ namespace AvatarBridge.Regression
                     // the converted physics at all".
                     Debug.Log($"[Sweep] MOVES \"{parameter}\": {string.Join("; ", whileOn.Take(6))}" +
                               (whileOn.Count > 6 ? $" (+{whileOn.Count - 6} more)" : ""));
+                    foreach (var held in watch.Holdings(before))
+                    {
+                        Debug.Log($"[Sweep]   {held}");
+                    }
                 }
 
                 // What the playing clips claim versus what the scene
@@ -521,6 +525,7 @@ namespace AvatarBridge.Regression
             readonly Renderer[] renderers;
             readonly Behaviour[] behaviours;
             readonly SkinnedMeshRenderer[] skins;
+            readonly Transform root;
             readonly int blendShapeTotal;
 
             public int Count => labels.Length;
@@ -530,6 +535,7 @@ namespace AvatarBridge.Regression
 
             public Watchlist(GameObject root)
             {
+                this.root = root.transform;
                 objects = root.GetComponentsInChildren<Transform>(true);
                 renderers = root.GetComponentsInChildren<Renderer>(true);
                 skins = root.GetComponentsInChildren<SkinnedMeshRenderer>(true);
@@ -605,6 +611,28 @@ namespace AvatarBridge.Regression
             }
 
             public List<string> Differences(Reading before) => Compare(before, false);
+
+            // What each object that switched on or off carries, so a flip can be
+            // read from the log without opening the scene. Light ranges hold the
+            // protocol digit in their third decimal.
+            public IEnumerable<string> Holdings(Reading before)
+            {
+                for (int i = 0; i < objects.Length; i++)
+                {
+                    var t = objects[i];
+                    if (t == null || before.Numbers[i] == (t.gameObject.activeSelf ? 1f : 0f))
+                    {
+                        continue;
+                    }
+                    var parts = t.GetComponentsInChildren<Component>(true).Where(c => c != null && !(c is Transform))
+                        .GroupBy(c => c is Light l ? $"Light {l.range:0.000}"
+                                    : c is Renderer m && m.sharedMaterial != null ? $"{c.GetType().Name} on {m.sharedMaterial.shader.name}"
+                                    : c.GetType().Name)
+                        .Select(g => g.Count() > 1 ? $"{g.Key} x{g.Count()}" : g.Key).ToList();
+                    yield return $"{AnimationUtility.CalculateTransformPath(t, root)} holds " +
+                                 (parts.Count == 0 ? "nothing" : string.Join(", ", parts.Take(12)) + (parts.Count > 12 ? $" (+{parts.Count - 12} more)" : ""));
+                }
+            }
 
             public List<string> ChangedLabels(Reading before) => Compare(before, true);
 

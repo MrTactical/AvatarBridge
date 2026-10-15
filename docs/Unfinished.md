@@ -14,7 +14,7 @@ what SPS code may be looked at in `YAPS-CLEAN-ROOM.md`. Finished records are in 
 **Decided 2026-10-15 (Joe): one big release, 5.0.0.** 4.8.0 never ships; everything on dev goes
 out as 5.0.0. Headlines: GoGoLoco poses, SPS2 in the converter (detected and carried from the
 property names a finished SPS2 bake leaves on a material, never from SPS2's code), a check before
-upload that proves the conversion, and the animator merger made visible. Also in it: the first
+upload that proves the conversion, and the animator merger made visible (built). Also in it: the first
 squash build made fast, pairs found by bone name scaled to their peak like painted regions, the
 corpus building a squash, and the grouping branch (`physbone-grouping-2`, issue #7) merged after
 physics A/B probes and a corpus run. Decisions on the queue's open questions, same day:
@@ -507,6 +507,17 @@ falloff, one-way rings, the tag dropdown, multi-mesh plugs, the Mesh-to-None cle
    **Known ceiling:** the lookup is by class name `VRCFuryHapticPlug`. If that is renamed, nothing
    matches, nothing is suppressed and nothing is warned. Catching it would mean counting the plugs
    VRCFury baked (`BakedSpsPlug`) against the ones suppressed and warning on a mismatch.
+
+   **The ceiling is CLOSED ON DEV 2026-10-15, at the detection point, not by a count.** A plug
+   material that reaches `YapsLegacyMap.Detect` as SPS with no `_SPS_Enabled` on it can only mean
+   VRCFury's deform got into the shader: the bake was asked not to patch, so this is an avatar
+   VRCFury already built, a VRCFury that could not be asked, or a renamed class. Both builders now
+   say so, once per material, from one constant (`YapsLegacyMap.SpsPrebuilt`): a warning in the
+   converter, a note in the toolkit's upgrade. It catches the renamed class without counting
+   anything. README Troubleshooting "a plug bends twice or stretches" quotes the title. None of 31
+   SPS-baked materials in the corpus project carries `_SPS_Enabled`, so `SwitchOffLegacyDeform`'s
+   comment now says the SPS switch is for older bakes. `Dev/Probes/SpsPrebuiltProbe.cs` checks the
+   warning fires on a built copy and stays silent on the original; NOT YET RUN.
 
    **A decision for Joe before going further:** a detection signature for SPS2, if one is ever
    wanted, would come from baking an SPS avatar on a newer VRCFury and reading the property names on
@@ -3372,6 +3383,17 @@ Still open in the same class, because a ratio only fixes the reference: a plug w
 holds a different value in game than the scene pose does in the editor is still two different
 plugs.
 
+**BUILT ON DEV 2026-10-15, editor only, NOT YET IN GAME** (Joe's call, line 25: bake at the
+slider's menu default). `YapsRestPose.Apply` builds a bare transform copy of the avatar, drives
+the shipped controller on it with every parameter at its default for a second, and sets each
+size bone to the scale it lands at, with Undo. Both builders call it before `LargestSize`; the
+converter reports the move, the toolkit adds a note. No clip is touched and nothing of the
+avatar's runs. `BakeScaleCheck` gained four cases (motion time, a 1D tree, a bool left on in the
+scene, a resting state that animates nothing); NOT YET RUN. What remains, read from code, not
+measured: away from rest the tracker light's intensity and the tip pointers still carry the rest
+length; the ratio is exact only for a uniform scale on the chain root; an IsLocal-gated size layer
+is sampled as a remote copy would load; a CVR profile restores a saved size by parameter name.
+
 ---
 
 ## YAPS 5: the plug follows a path, not a point
@@ -3475,9 +3497,15 @@ that moved for nobody, the toggle that never left the wearer's machine, the smoo
 that froze at its defaults. The Animator Tester already snaps `#` locals to their defaults
 for its Remote view; this is that idea given a body.
 
-**A conversion diff.** The regression harness writes a digest per avatar and compares runs.
+**A conversion diff.** *BUILT ON DEV 2026-10-15 (`ConversionDiff`).* The regression harness writes a digest per avatar and compares runs.
 Users get the same tool: convert, change a setting, convert again, and read what moved.
 "Reconverting on a new release" stops being an act of faith.
+What was built: every conversion writes `.last-conversion.txt` into its output folder (settings,
+version, status counts, every non-Converted report subject, layers with states, weight, blending
+and mask, parameters, menu entries, component counts) and the next one compares, with one
+*Changes* row and a *Since the last conversion* section. Converted subjects and all details are
+left out, since their wording churns; proven by `Dev/Tests/ConversionDiffTest.cs`. Not built:
+any per-object detail (which renderer, which clip), and the HTML report shows only the row.
 
 **A toggle sweep, shipped.** `Dev/Corpus/ToggleSweep.cs` flips every menu toggle on and off
 and reports anything that did not come back. It found real bugs. It should be a button in
@@ -3487,9 +3515,18 @@ the Toolkit rather than a thing only the harness runs.
 features you want, watch the bits, and let it name the cheapest thing to drop. Most avatars
 that go over do it by accident, in a menu they never counted.
 
-**An upload preflight.** One list, run before uploading: these diagnostics, the CCK's own
+**An upload preflight.** *BUILT ON DEV 2026-10-15 (`UploadPreflight`), NOT YET TRIED AGAINST A
+REAL UPLOAD.* One list, run before uploading: these diagnostics, the CCK's own
 validators, the texture flags, parameters past the cap, missing metas. Everything that
 currently fails at the last moment, in an order that says which to fix first.
+What was built: the five rules that hide the CCK panel's Upload button (missing scripts, no root
+Animator, max size above 8192, mipmaps without streaming, sound not loading in the background),
+each gathering exactly what the CCK gathers, run at the end of every conversion and first in the
+Toolkit's card, now *Check before upload*. "Missing metas" became the class that actually loses
+work: references to objects that are neither saved assets nor inside the avatar, which the
+prefab the upload saves drops (`Dev/Tests/PreflightTest.cs` saves one and looks). The parameter
+cap was already in the diagnostics. Left: the CCK's non-blocking warnings (viewpoint at zero,
+generic rig, legacy blendshape normals), and a Fix button of our own, since the panel has one.
 
 **Advanced Tagging, inferred.** Content tags are currently listed as "not converted, set
 them yourself". An avatar carrying YAPS knows what it is. Offer the tags rather than
@@ -3502,7 +3539,45 @@ a skipped pass and a run pass produce the same output.
 ---
 
 ## GoGoLoco's poses, through ChilloutVR's own front door
-*Status: planned, unstarted.*
+*Status: BUILT ON DEV 2026-10-15, editor and corpus only, NOT YET IN GAME.*
+
+**What was built.** `LocomotionGrafter.PlaceGogoEmotes` runs last in the merger, with every clip
+name final, and `FillGogoEmotes` writes the pairs into the override controller before
+`SaveOverride` copies them. Up to eight: the creator's own clips from GoGo's Action layers (a
+`VRCEmote` Equals condition, not stock, not `go_`, humanoid, on at most two values, which is what
+tells them from GoGo's placeholders), then a fixed eight of the poses GoGo ships and nothing in
+GoGo plays (`go_sit_crossed_leg`, `go_seiza`, `go_side_sit`, `go_long_sitting`, `go_kneeling`,
+`go_squat`, `go_laydown_side`, `go_laydown_chill_idle_long`), found beside the avatar's own
+`go_stand` so a project with several GoGo installs takes the right one. Copies keep only
+`Animator` curves (ChilloutVR never restores Write Defaults); a label shared with a locomotion clip
+gets " Pose" added; a loop or a pose of 0.1 s or less loses the condition-less exit-time
+transition on its `EmoteN` state, so it holds until movement cancels it. Setting `gogoEmotes`, on,
+offered only while GoGo is removed. The Action transplant now skips GoGo layers that the strip
+removes: with Action ticked it had moved GoGo's pose states into ChilloutVR's locomotion layer
+(`[AB] Prepare Emote`, `[AB] Hip Drift`, `[AB] Puppet`), where nothing drove them.
+
+**Corrections to the record below, found while building (withdrawn, not deleted):**
+- WITHDRAWN: "Sixteen, not fifty" and the toggle slots for held stances. The converted controller
+  keeps only `Locomotion/Emotes` and the two hand layers, so there is no Toggles layer, and the
+  CCK's Toggles mask moves no body part anyway. Eight emote slots; a pose is held by removing the
+  state's exit-time transition instead.
+- WITHDRAWN: "a user pressing Create Controller would wipe their locomotion". The CCK copies
+  `baseOverrideController` and re-points it, so the overrides survive.
+
+Open:
+- In game: the eight labels show in the wheel; a sit holds until the stick moves, on desktop and
+  in VR; hips on the floor; hands do not fight the pose; a second client sees it start and end;
+  after the CCK's Create Controller and an upload the labels survive.
+- Left behind on GoGo avatars by the strip: `[FX] [VF#] Flying`, checked 2026-10-15 on avatar
+  Q's digest, present in the baseline too. It plays `go_flying_*` clips on `Go/VRCEmote` 120 to
+  124 and `IsLocal`; with GoGo's menu gone nothing drives it, so it idles in its default state.
+  Not caught because the name has no GoGo hint, `[VF#]` is not a numbered Fury id, and GoGo's
+  parameters are under the 0.6 share the FX test needs. Not yet known: what the idle clip
+  animates, and whether the strip sees `Go/VRCEmote` with or without its `#`. Instrument before
+  widening the FX test, which a creator's own layer reading a `Go/` parameter would also match.
+  **WITHDRAWN, the same day:** `[Additive] Idle` is VRChat's stock additive layer (`proxy_idle`,
+  `TrackingType`), not GoGo's.
+- Which eight library poses, and their order: a choice, open to Joe.
 
 The most visible thing a converted avatar loses. GoGo is stripped because its layers assert body
 poses while ChilloutVR's locomotion is asserting them too, and two writers on one body is the
@@ -3556,33 +3631,19 @@ fill the toggle slots from the held ones and the emote slots from the rest, best
 sanitise the names; write the override controller. Report what landed where and what did not
 fit, because "which of my poses survived" is the first question anyone will ask.
 
-## The animator merger: make the invisible visible
-*Status: planned, unstarted.*
+## The animator merger: what is left after 5.0.0
+*Status: open. The rest of this record is in `archive/Closed-2026-10.md`.*
 
-Ten thousand lines, the most fragile thing in the package, and the place where a bug is
-hardest to see because nothing throws: the avatar simply behaves slightly wrongly.
-
-**A conflict map.** Which layers write the same binding, in what order, at what weight, and
-who wins. Half the toggle failures this project has fixed are two layers writing one
-property and nobody knowing. It would also have caught the strength bug on sight: a layer at
-weight 0.2 writing a blendshape *no other layer writes* creeps to full, because the value it
-blends from is its own last frame. That is a rule a map can check.
-
-**A weight audit.** Flag every partial-weight layer whose properties nothing else writes.
-That single check is worth writing on its own.
-
-**State-machine reachability.** States nothing can enter, transitions whose conditions can
-never be true, parameters read but never written. The pieces exist across the diagnostics;
-gathering them into one pass would name a class of bug that currently only shows up as "the
-toggle does nothing".
-
-**Explain a parameter.** Pick one and get its whole life: where it came from, what renamed
-it, whether it syncs and why, which layers read it, which clips write it. Debugging today
-means reading three report sections and inferring the join.
-
-**Deterministic ordering, stated.** Layer order decides who wins. The merger has rules for
-it; they should be visible in the report, so a surprising result can be traced to a rule
-rather than to luck.
+- **The weight audit.** A partial-weight layer writing a property nothing else writes was meant to
+  be flagged for creeping to full. Not built: whether it creeps in ChilloutVR, which restores no
+  Write Defaults, has never been measured there. Measure in game first, then write the rule.
+- **A fixture in the corpus.** The layer rules are proven on controllers built in memory
+  (`Dev/Tests/LayerWinnerTest.cs`). An avatar scene with one known hidden toggle and one parked
+  state would hold them in the corpus as well.
+- **Sub-machines.** A layer with a sub-state machine counts every state reachable, so it is never
+  reported. Following transitions into and out of sub-machines would close that.
+- **Transitions that can never fire** are used to prune what is reachable, but not reported on
+  their own.
 
 ---
 

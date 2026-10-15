@@ -336,7 +336,8 @@ namespace AvatarBridge
                     Setting = "Remove GoGo Loco (recommended)",
                     Finding = "GoGo Loco is on this avatar and will be removed. ChilloutVR ships its own " +
                               "locomotion, emotes, AFK and flight, and GoGo's layers fight them while " +
-                              "spending around fifteen synced parameters.",
+                              "spending around fifteen synced parameters." +
+                              (settings.gogoEmotes ? " Its sit and lie poses go into ChilloutVR's emote wheel." : ""),
                 }
                 : new Advice
                 {

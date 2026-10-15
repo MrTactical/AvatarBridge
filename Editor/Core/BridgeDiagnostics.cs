@@ -225,19 +225,33 @@ namespace AvatarBridge
                           $"fit to PhysBone: `{s.fitToPhysBone}` · cap radius: `{s.capParticleRadius}` · " +
                           $"bound swing: `{s.boundSwingToSourceLimit}` · mesh radius: `{s.fitRadiusToMesh}` · " +
                           $"auto colliders: `{s.autoAssignNearbyColliders}`");
-            sb.AppendLine($"- strip GoGo: `{s.stripGogoLoco}` · strip SPS: `{s.stripSpsSystems}` · " +
+            sb.AppendLine($"- strip GoGo: `{s.stripGogoLoco}` · GoGo emotes: `{s.gogoEmotes}` · strip SPS: `{s.stripSpsSystems}` · " +
                           $"convert YAPS: `{s.convertYapsSystems}` · " +
                           $"face tracking: `{s.faceTrackingMode}` · scaler: `{s.addAvatarScaler}`");
             sb.AppendLine();
 
             sb.AppendLine("### Animator layers");
             sb.AppendLine();
-            sb.AppendLine("| # | layer | states | weight |");
-            sb.AppendLine("|---|---|---|---|");
+            // Null means the merger did not run, and then this order is not its doing.
+            if (ctx.RenamedFrom != null)
+            {
+                sb.AppendLine("A higher layer wins over a lower one for whatever both animate. The order:");
+                sb.AppendLine();
+                sb.AppendLine("1. ChilloutVR's own layers: locomotion and emotes, then the hand layers unless your gesture layer takes their place.");
+                sb.AppendLine("2. Your VRChat controllers, in descriptor order, each keeping its own layer order and named `[FX]`, `[Gesture]` and so on.");
+                sb.AppendLine("3. Toggles split out of a shared layer.");
+                sb.AppendLine("4. A toggle lifted out of a blend tree, directly above the layer it came from.");
+                sb.AppendLine("5. Layers the converter adds, such as height scaling and face tracking.");
+                sb.AppendLine("6. If you press the CCK's Create Controller, its layer for each menu entry that switches objects itself goes above all of these and wins.");
+                sb.AppendLine();
+            }
+            sb.AppendLine("| # | layer | states | weight | blend | mask |");
+            sb.AppendLine("|---|---|---|---|---|---|");
             for (int i = 0; i < master.layers.Length; i++)
             {
                 var l = master.layers[i];
-                sb.AppendLine($"| {i} | `{l.name}` | {CountStates(l.stateMachine)} | {l.defaultWeight:0.##} |");
+                sb.AppendLine($"| {i} | `{l.name}` | {CountStates(l.stateMachine)} | {l.defaultWeight:0.##} | {l.blendingMode} | " +
+                              $"{(l.avatarMask != null ? $"`{l.avatarMask.name}`" : "none")} |");
             }
             sb.AppendLine();
 
@@ -724,7 +738,7 @@ namespace AvatarBridge
             }
         }
 
-        static int CountStates(AnimatorStateMachine machine)
+        internal static int CountStates(AnimatorStateMachine machine)
         {
             int n = 0;
             Walk(machine, m => n += m.states.Length);
@@ -838,7 +852,7 @@ namespace AvatarBridge
                 "the entry's.");
         }
 
-        static bool CanEverFire(AnimatorStateTransition transition,
+        internal static bool CanEverFire(AnimatorTransitionBase transition,
             Dictionary<string, AnimatorControllerParameter> declared)
         {
             var conditions = transition.conditions;

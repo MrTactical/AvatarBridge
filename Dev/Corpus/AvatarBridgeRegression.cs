@@ -940,6 +940,7 @@ namespace AvatarBridge.Regression
             convertToePhysBones = false,
 
             stripGogoLoco = true,
+            gogoEmotes = true,
             stripSpsSystems = true,
             extraStripKeywords = "",
             stripDeadMaterialAnimation = true,

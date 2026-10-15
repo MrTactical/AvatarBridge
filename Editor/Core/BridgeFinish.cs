@@ -14,9 +14,12 @@ namespace AvatarBridge
     {
         public static void Run(BridgeContext ctx, string reportName, string label)
         {
+            UploadPreflight.Run(ctx.Report, ctx.CvrAvatar);
             BridgeDiagnostics.Run(ctx, ctx.MergedController);
             ReadAvatar(ctx);
             ctx.Report.StoreDescription = AvatarDescription.Write(ctx);
+            // Last before writing, so it compares everything the report says.
+            ConversionDiff.Run(ctx);
             WriteReport(ctx, reportName, label);
             EditorUtility.SetDirty(ctx.CvrAvatar);
             AssetDatabase.SaveAssets();
@@ -34,6 +37,7 @@ namespace AvatarBridge
             try
             {
                 var survey = AvatarSurvey.Build(ctx.CvrAvatar);
+                survey.RenamedFrom = ctx.RenamedFrom;
                 if (ctx.Settings.surveyAvatar)
                 {
                     ctx.Report.SurveyCard = AvatarSurvey.Markdown(survey);

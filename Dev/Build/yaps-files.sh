@@ -18,7 +18,7 @@ AnimatorAssetSaver AnimatorDeepCopier AvatarScalerInjector OutputAssetPaths Avat
 AvatarHygiene BridgeDiagnostics CckDescriptionFiller CvrSetup AvatarFeatureDetect \
 FaceTrackingConverter FaceTrackingInjector MouthLocator UnifiedBlendshapes FaceTrackingPackages \
 FaceTrackingParameters CvrParameterNames GestureMap AvatarSurvey AvatarWeight AvatarSlimmer BridgeFinish DiagnosticsWriter HtmlReportWriter \
-YapsMarks"
+YapsMarks UploadPreflight ConversionDiff"
 
 yaps_files() {
   {

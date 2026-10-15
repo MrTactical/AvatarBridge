@@ -36,6 +36,7 @@ namespace AvatarBridge
             LoopClones.Clear();
             MotionStripped.Clear();
             StrippedNames.Clear();
+            GogoEmotes.Clear();
         }
 
         internal static AnimationClip WithoutRootMotion(AnimationClip clip, bool onlyIfTravels = false,
@@ -779,6 +780,222 @@ namespace AvatarBridge
                         cvrState.motion = use;
                         EditorUtility.SetDirty(cvrState);
                         grafts.Add($"{cvrStateName} ← \"{clip.name}\" (from \"{best.name}\")");
+                    }
+                }
+            }
+        }
+
+        // ------------------------------------------------------------- GoGo emotes ----
+
+        // ChilloutVR's eight emote slots, filled from a stripped GoGo: the avatar's own GoGo
+        // emotes first, then the sit and lie poses GoGo ships and never plays itself. The
+        // client names each wheel entry after the clip overriding Emote1 to Emote8, so they
+        // go into the override controller, not the master.
+        static readonly List<KeyValuePair<AnimationClip, AnimationClip>> GogoEmotes
+            = new List<KeyValuePair<AnimationClip, AnimationClip>>();
+
+        static readonly (string clip, string label)[] GogoLibrary =
+        {
+            ("go_sit_crossed_leg", "Sit Cross-Legged"), ("go_seiza", "Seiza"), ("go_side_sit", "Side Sit"),
+            ("go_long_sitting", "Sit Legs Out"), ("go_kneeling", "Kneel"), ("go_squat", "Squat"),
+            ("go_laydown_side", "Lie On Side"), ("go_laydown_chill_idle_long", "Lie Back"),
+        };
+
+        internal static void PlaceGogoEmotes(BridgeContext ctx, AnimatorController master)
+        {
+            GogoEmotes.Clear();
+            if (!ctx.Settings.stripGogoLoco || !ctx.Settings.gogoEmotes || !SystemStripper.AvatarUsesGogo(ctx))
+            {
+                return;
+            }
+            var layer = master.layers.FirstOrDefault(l => l.name == "Locomotion/Emotes");
+            var states = layer != null ? CollectStates(layer.stateMachine) : null;
+            if (states == null || !states.ContainsKey("Emote1"))
+            {
+                ctx.Report.Skipped(Category, "GoGo poses not placed", "ChilloutVR's emote states are missing from its locomotion layer.");
+                return;
+            }
+
+            var action = SourceController(ctx, VRCAvatarDescriptor.AnimLayerType.Action);
+            var byValue = new List<(int value, Motion motion)>();
+            if (action != null)
+            {
+                // GoGo's layers only: another dance system on Action is moved by the transplant.
+                foreach (var source in action.layers.Where(SystemStripper.IsGogoLayer))
+                {
+                    foreach (var t in Transitions(source.stateMachine))
+                    {
+                        if (t.destinationState == null || t.destinationState.motion == null)
+                        {
+                            continue;
+                        }
+                        foreach (var c in t.conditions)
+                        {
+                            if (c.mode == AnimatorConditionMode.Equals && c.threshold >= 1f && c.threshold <= 254f
+                                && (c.parameter == "VRCEmote" || c.parameter.EndsWith("/VRCEmote", StringComparison.Ordinal)))
+                            {
+                                byValue.Add(((int)c.threshold, t.destinationState.motion));
+                            }
+                        }
+                    }
+                }
+            }
+            int trees = byValue.Where(x => x.motion is BlendTree).Select(x => x.motion).Distinct().Count();
+            // GoGo's own placeholders fill a run of values with one clip; a creator's emote has one.
+            var picks = byValue.Where(x => x.motion is AnimationClip).GroupBy(x => (AnimationClip)x.motion)
+                .Where(g => !IsVrchatStock(g.Key) && !g.Key.name.StartsWith("go_", StringComparison.OrdinalIgnoreCase)
+                    && g.Key.humanMotion && g.Select(x => x.value).Distinct().Count() <= 2)
+                .OrderBy(g => g.Min(x => x.value)).Select(g => (clip: g.Key, label: g.Key.name)).ToList();
+            var library = GogoLibraryClips(ctx);
+            if (picks.Count + library.Count == 0)
+            {
+                ctx.Report.Skipped(Category, "GoGo poses not placed", "GoGo was found, but none of its poses are in this project.");
+                return;
+            }
+            picks.AddRange(library);
+            var left = picks.Skip(8).Select(p => p.label).ToList();
+            picks = picks.Take(8).ToList();
+
+            // A label shared with a locomotion clip would make the client take that clip for an emote.
+            var taken = new HashSet<string>(Motions(layer.stateMachine).Select(m => m.name), StringComparer.Ordinal);
+            string dir = ctx.OutputDir + "/RehomedAssets";
+            if (!AssetDatabase.IsValidFolder(dir))
+            {
+                OutputAssetPaths.EnsureFolder(dir);
+            }
+            var placed = new List<string>();
+            for (int i = 0; i < picks.Count; i++)
+            {
+                var (src, label) = picks[i];
+                if (!states.TryGetValue("Emote" + (i + 1), out var state) || !(state.motion is AnimationClip slot))
+                {
+                    continue;
+                }
+                var copy = UnityEngine.Object.Instantiate(WithoutRootMotion(src, onlyIfTravels: true, keepPose: true));
+                // Body only: ChilloutVR never restores Write Defaults, so a toggle or material
+                // curve in a pose would stick after the pose ended.
+                foreach (var b in AnimationUtility.GetCurveBindings(copy).Where(b => b.type != typeof(Animator)))
+                {
+                    AnimationUtility.SetEditorCurve(copy, b, null);
+                }
+                foreach (var b in AnimationUtility.GetObjectReferenceCurveBindings(copy))
+                {
+                    AnimationUtility.SetObjectReferenceCurve(copy, b, null);
+                }
+                while (!taken.Add(label))
+                {
+                    label += " Pose";
+                }
+                copy.name = label;
+                AssetDatabase.CreateAsset(copy, OutputAssetPaths.Claim($"{dir}/{OutputAssetPaths.SafeFileName(label)}.anim"));
+                // The emote states leave after one play. A pose or a loop is held until the
+                // player moves, which ends any emote.
+                bool hold = src.isLooping || src.length <= 0.1f;
+                if (hold)
+                {
+                    foreach (var t in state.transitions.Where(t => t.hasExitTime && t.conditions.Length == 0).ToList())
+                    {
+                        state.RemoveTransition(t);
+                    }
+                }
+                GogoEmotes.Add(new KeyValuePair<AnimationClip, AnimationClip>(slot, copy));
+                placed.Add($"Emote{i + 1} \"{label}\"" + (hold ? " (held until you move)" : ""));
+            }
+            if (placed.Count == 0)
+            {
+                return;
+            }
+            ctx.Report.Converted(Category, $"{BridgeElements.Count(placed.Count, "GoGo pose", "GoGo poses")} in ChilloutVR's emote wheel",
+                string.Join(", ", placed) + ". They replace ChilloutVR's stock emotes on this avatar, and they cost no synced " +
+                "parameters. GoGo's height, puppet and pose controls have no equivalent here.");
+            if (left.Count > 0)
+            {
+                ctx.Report.Skipped(Category, $"{BridgeElements.Count(left.Count, "GoGo pose", "GoGo poses")} did not fit",
+                    "The emote wheel holds eight: " + string.Join(", ", left) + ".");
+            }
+            if (trees > 0)
+            {
+                ctx.Report.Skipped(Category, $"{BridgeElements.Count(trees, "GoGo emote", "GoGo emotes")} left out",
+                    "A blend tree, which an emote slot cannot hold.");
+            }
+        }
+
+        internal static void FillGogoEmotes(AnimatorOverrideController overrides)
+        {
+            if (GogoEmotes.Count > 0)
+            {
+                overrides.ApplyOverrides(GogoEmotes);
+            }
+        }
+
+        // From the GoGo copy the avatar plays, found by its go_stand, so a project holding
+        // several GoGo installs takes the right one.
+        static List<(AnimationClip clip, string label)> GogoLibraryClips(BridgeContext ctx)
+        {
+            var stand = new[] { VRCAvatarDescriptor.AnimLayerType.Base, VRCAvatarDescriptor.AnimLayerType.Action }
+                .Select(t => SourceController(ctx, t)).Where(c => c != null)
+                .SelectMany(c => c.animationClips).FirstOrDefault(c => c != null && c.name == "go_stand");
+            string home = stand != null ? System.IO.Path.GetDirectoryName(AssetDatabase.GetAssetPath(stand)).Replace('\\', '/') : null;
+            var found = new List<(AnimationClip, string)>();
+            foreach (var (name, label) in GogoLibrary)
+            {
+                var clip = home != null ? AssetDatabase.LoadAssetAtPath<AnimationClip>($"{home}/{name}.anim") : null;
+                if (clip == null)
+                {
+                    clip = AssetDatabase.FindAssets(name + " t:AnimationClip").Select(AssetDatabase.GUIDToAssetPath)
+                        .Where(p => System.IO.Path.GetFileNameWithoutExtension(p) == name).OrderBy(p => p, StringComparer.Ordinal)
+                        .Select(AssetDatabase.LoadAssetAtPath<AnimationClip>).FirstOrDefault(c => c != null);
+                }
+                if (clip != null)
+                {
+                    found.Add((clip, label));
+                }
+            }
+            return found;
+        }
+
+        static IEnumerable<AnimatorStateTransition> Transitions(AnimatorStateMachine root)
+        {
+            var stack = new Stack<AnimatorStateMachine>();
+            var seen = new HashSet<AnimatorStateMachine>();
+            stack.Push(root);
+            while (stack.Count > 0)
+            {
+                var machine = stack.Pop();
+                if (machine == null || !seen.Add(machine))
+                {
+                    continue;
+                }
+                foreach (var t in machine.anyStateTransitions)
+                {
+                    yield return t;
+                }
+                foreach (var child in machine.states.Where(c => c.state != null))
+                {
+                    foreach (var t in child.state.transitions)
+                    {
+                        yield return t;
+                    }
+                }
+                foreach (var sub in machine.stateMachines)
+                {
+                    stack.Push(sub.stateMachine);
+                }
+            }
+        }
+
+        static IEnumerable<Motion> Motions(AnimatorStateMachine root)
+        {
+            var stack = new Stack<Motion>(AllStates(root).Select(s => s.motion).Where(m => m != null));
+            while (stack.Count > 0)
+            {
+                var motion = stack.Pop();
+                yield return motion;
+                if (motion is BlendTree tree)
+                {
+                    foreach (var child in tree.children.Where(c => c.motion != null))
+                    {
+                        stack.Push(child.motion);
                     }
                 }
             }

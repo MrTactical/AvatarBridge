@@ -75,6 +75,8 @@ namespace AvatarBridge
 
         public string SurveyCard;
 
+        public string ChangesCard;
+
         [System.NonSerialized] public GameObject ConvertedRoot;
 
         public void Add(ReportStatus status, string category, string subject, string detail = "")
@@ -145,6 +147,14 @@ namespace AvatarBridge
                     }
                     sb.AppendLine();
                 }
+                sb.AppendLine();
+            }
+
+            if (!string.IsNullOrEmpty(ChangesCard))
+            {
+                sb.AppendLine("## Since the last conversion");
+                sb.AppendLine();
+                sb.Append(ChangesCard);
                 sb.AppendLine();
             }
 

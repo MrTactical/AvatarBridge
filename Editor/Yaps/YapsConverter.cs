@@ -31,9 +31,13 @@ namespace AvatarBridge
         static readonly List<(Renderer renderer, int slot, YapsBaker.Result result, Material[] known)>
             PendingVariants = new List<(Renderer, int, YapsBaker.Result, Material[])>();
 
+        // Plug materials already warned about VRCFury's deform, once each per conversion.
+        static readonly HashSet<Material> PrebuiltSps = new HashSet<Material>();
+
         public static void Run(BridgeContext ctx)
         {
             PendingVariants.Clear();
+            PrebuiltSps.Clear();
             if (!ctx.Settings.convertYapsSystems)
             {
                 return;
@@ -196,8 +200,20 @@ namespace AvatarBridge
             // the bake wants the one underneath, and no readout slot to patch.
             YapsDebugOverlayBuilder.Restore(plugRoot.GetComponent<YapsPlug>());
             YapsDebugOverlayBuilder.Restore(renderer);
-            float size = YapsBaker.LargestSize(YapsCurveMirror.ClipsOf(ctx.MergedController),
-                SizeBones(ctx, ChainRootOf(renderer as SkinnedMeshRenderer, chainLevel, plugRoot)));
+            var sizeBones = SizeBones(ctx, ChainRootOf(renderer as SkinnedMeshRenderer, chainLevel, plugRoot));
+            var rest = YapsRestPose.Apply(ctx.Target.transform, ctx.MergedController, sizeBones);
+            if (rest == null)
+            {
+                ctx.Report.Warning(Category, $"The plug at {where} was baked at the size the scene shows",
+                    "The size its slider starts at could not be read. If this plug has a size slider, check it at rest in game.");
+            }
+            else if (rest.Count > 0)
+            {
+                ctx.Report.Converted(Category, $"The plug at {where} was baked at the size its slider starts at",
+                    $"{string.Join(", ", rest)}. The scene held it at another size; in game it loads at this one, " +
+                    "so the bake and the length other sockets read now match it.");
+            }
+            float size = YapsBaker.LargestSize(YapsCurveMirror.ClipsOf(ctx.MergedController), sizeBones);
             var result = YapsBaker.Bake(renderer, plugRoot, ctx.OutputDir + "/YAPS", ctx.Report,
                 out string bakeFailure, sizeScale: size);
             if (result == null)
@@ -402,6 +418,12 @@ namespace AvatarBridge
                 source = prior.from;
             }
             var legacy = YapsLegacyMap.Detect(source, out _);
+            // The bake is asked not to patch plug shaders, so this is a built copy or a VRCFury
+            // that could not be asked. With a switch, SwitchOffLegacyDeform below turns it off.
+            if (legacy == YapsLegacyMap.Origin.SPS && !source.HasProperty("_SPS_Enabled") && PrebuiltSps.Add(source))
+            {
+                ctx.Report.Warning(Category, $"\"{source.name}\" already carries VRCFury's own deform", YapsLegacyMap.SpsPrebuilt);
+            }
             var patchSource = source;
             Shader shader = null;
             string refusal = null;

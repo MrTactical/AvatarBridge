@@ -88,9 +88,11 @@ mid-2026:
 | Constraints that drive another transform (Avatar Limb Scaling et al.) | ✅ | - |
 | Custom locomotion, fall, sit and flight animations carried into CVR's own locomotion | ✅ | - |
 | A per-conversion report + diagnostics that know what ChilloutVR deletes on load | ✅ | - |
+| The CCK's upload rules run on the result, so a refused upload is named before you open its panel | ✅ | - |
+| Reconverting says what changed since the last conversion, setting by setting | ✅ | - |
 | What the avatar costs, measured and named: texture memory against the surface it covers, contacts against the instance's budget | ✅ | - |
 | One button that acts on it: textures resized by density, compressed, and given a format that fits what they hold: reversible | ✅ | - |
-| What the avatar *does*: features nothing can reach, bindings two layers fight over, controls nothing reads, props that could come off | ✅ | - |
+| What the avatar *does*: features nothing can reach, toggles a layer above always overrides, controls nothing reads, props that could come off | ✅ | - |
 | A play-mode tester that drives the converted avatar the way the game does | ✅ | - |
 | Store description generated and typed into the upload page | ✅ | - |
 
@@ -318,6 +320,13 @@ converter, and import the add-on too if you want penetration.
    object it names. When textures can come off with nothing visible changing,
    **Make it lighter: … MB to reclaim** opens the *Tools* tab on the converted avatar.
 
+   Converting the same avatar again says **what changed since the last conversion**: the settings
+   you changed, a new AvatarBridge version, and every report line, layer, parameter, menu entry and
+   component count that moved, listed under *Since the last conversion* in `ConversionReport.md`.
+   So reconverting on a new release, or after changing one setting, tells you what it did. The
+   comparison is kept in the output folder as `.last-conversion.txt`, which Unity never imports;
+   delete it to start over.
+
 ## What gets converted
 
 | VRChat | ChilloutVR | Notes |
@@ -413,11 +422,51 @@ weight on Override and read ChilloutVR's *own* `Sitting`, `Grounded` and `AFK`, 
 chair in game played GoGo's seat animation over ChilloutVR's station pose. If your seats look
 wrong on a Fury avatar, reconvert.
 
+**GoGo's poses go into ChilloutVR's emote wheel** (*Put GoGo poses in the emote wheel*, on by
+default, offered while GoGo is removed). Up to eight: the emotes the avatar's creator put into
+GoGo first, then the sit, kneel and lie poses GoGo ships with, each named in the wheel. They take
+the place of ChilloutVR's stock emotes on that avatar; untick it to keep those. A pose or a
+looping emote holds until you move, which ends any emote, and a one-shot plays once. They cost no
+synced parameters: the emote slots are the game's own. GoGo's height, puppet and pose controls
+have no equivalent, and a floor pose keeps a standing viewpoint, since ChilloutVR has no way to
+lower the camera with the body. Earlier versions, with *Action* ticked, left GoGo's pose states
+behind in ChilloutVR's locomotion layer with nothing to drive them; reconvert to lose them.
+
 **The VRCFury Parameter Compressor is removed.** It beats VRChat's 256-parameter ceiling by marking
 your real parameters *not synced* and rotating mirrors through a couple of slots twice a second.
 ChilloutVR has 3200 bits and syncs straight from the animator, so carried across it costs a
 per-frame blend tree and, because the originals stay marked not-synced, **the values reach
 nobody**. Removing it puts every affected parameter back to syncing natively.
+
+### How animator layers are ordered
+
+ChilloutVR runs one animator controller where VRChat runs several, so the conversion stacks every
+layer into one. Where two layers animate the same thing, the higher one wins. The order, bottom to top:
+
+1. ChilloutVR's own layers: locomotion and emotes, then the hand layers unless your gesture layer
+   takes their place.
+2. Your VRChat controllers in descriptor order, each keeping its own layer order and named `[FX]`,
+   `[Gesture]` and so on.
+3. Toggles split out of a shared layer.
+4. A toggle lifted out of a blend tree, directly above the layer it came from.
+5. Layers the conversion adds, such as height scaling and face tracking.
+6. If you press the CCK's **Create Controller**, its layer for each menu entry that switches objects
+   itself goes above all of these and wins.
+
+`Diagnostics.md` lists the finished stack, with each layer's weight, blending and mask. With **Say
+what this avatar does** on, the report names:
+
+- **a layer a layer above always hides**: the upper layer animates the same things in every state it
+  can reach, at full strength, through a mask that lets them through, so the lower one never shows.
+  Usually a toggle that does nothing on screen.
+- **an animator state that can never play**: nothing leads to it, and it is the only place anything
+  animates what it animates.
+- **things more than one layer animates**, with each layer's strength and states, and whether the
+  top one always wins or it depends on the states they are in. Informational: many avatars share
+  bindings on purpose.
+
+The report's survey also lists every parameter with its type, whether it syncs, its default, what
+writes and reads it, and the name it had before the conversion renamed it and why.
 
 ### Third-party prefabs
 
@@ -427,7 +476,7 @@ to be known about. Tested end to end and working in game:
 | Prefab | Notes |
 |---|---|
 | [Avatar Limb Scaling](https://github.com/xNanochip/VRC-Avatar-Limb-Scaling) | sliders scale the real bones; needs the *Target Transform* handling below |
-| [GoGo Loco](https://franadavrc.gumroad.com/l/gogoloco) | stripped by default: CVR has its own locomotion, emotes, AFK and flight, and GoGo relies on VRChat-only animator primitives. Keeping it is experimental; see [What gets converted](#what-gets-converted) |
+| [GoGo Loco](https://franadavrc.gumroad.com/l/gogoloco) | stripped by default: CVR has its own locomotion, emotes, AFK and flight, and GoGo relies on VRChat-only animator primitives. Its sit and lie poses, and the creator's own GoGo emotes, go into ChilloutVR's emote wheel. Keeping it is experimental; see [What gets converted](#what-gets-converted) |
 | VRCFaceTracking / ARKit rigs (Jerry's, Pawlygon…) | replaced by the chosen face-tracking mode, or converted whole with *Keep the avatar's own rig* (smoothing proxies go `#`-local, zero sync cost) |
 
 If a prefab's feature comes through inert (the menu control appears, moves, and does nothing),
@@ -1274,7 +1323,11 @@ or hyper toggle that scales the plug's root bone, or moves one of its baked blen
 matching curve written beside it at Bake (`_YAPS_BakeScale` / `_YAPS_BakeGirth` / the shape
 weights), so the deform is the size the mesh is drawn at. Those curves are written *relative to
 the size it was baked at*, so 1 always means "as baked": re-scale the bone and Bake again and the
-numbers still line up, in the editor and in game alike.
+numbers still line up, in the editor and in game alike. Before it measures, Bake (and a conversion)
+sets a root bone that a size slider or hyper toggle scales to the size it starts at in game, so the
+plug in the editor is the one people see when the avatar loads; the report or the Bake note says
+when it moved one, and Undo puts it back. A saved profile that remembers another size starts there
+instead.
 
 **Everything is named after what it is and where it is.** An avatar can carry a dozen sockets, and a
 menu of identical "YAPS Ring" entries tells you nothing about which one you are switching. The
@@ -1649,8 +1702,8 @@ in a ChilloutVR project and these cards work on their own; see [Installation](#i
 
 | card | does |
 |---|---|
-| **Check this avatar** | Reads only. Names the components ChilloutVR deletes on load, tallies the 3200-bit sync budget, lists parameters used but never declared and declared but never read, menu entries whose type disagrees with the animator's, shaders that draw into one eye, bone cloth with no root bones |
-| **What this avatar does** | Reads only. Reads the animator, the menu and the components into one model and names what the avatar can and cannot do: features its author built and never wired to anything, things two layers both animate where the higher one quietly wins, menu controls nothing reads, parameters that lost their driver in the conversion, and objects that could come off as ChilloutVR props. It answers by reading rather than by flipping switches, so a toggle a preset overrides is never mistaken for a dead one |
+| **Check before upload** | Reads only. Runs the CCK's own upload rules first, so it names what its Upload button will refuse and anything the upload would drop (see [no Upload button](#the-cck-shows-no-upload-button-or-the-uploaded-avatar-is-missing-something)). Then names the components ChilloutVR deletes on load, tallies the 3200-bit sync budget, lists parameters used but never declared and declared but never read, menu entries whose type disagrees with the animator's, shaders that draw into one eye, bone cloth with no root bones |
+| **What this avatar does** | Reads only. Reads the animator, the menu and the components into one model and names what the avatar can and cannot do: features its author built and never wired to anything, toggles a layer above always overrides (so switching them changes nothing), animator states nothing can ever reach, menu controls nothing reads, parameters that lost their driver in the conversion, and objects that could come off as ChilloutVR props. It answers by reading rather than by flipping switches, so a toggle a preset overrides is never mistaken for a dead one |
 | **What this avatar costs** | **Weigh it** reads only: texture memory against the surface each map actually covers, so a 2K texture on a fingernail is named as one and told what size it should be. Also contacts against the 512 overlapping pairs ChilloutVR gives the whole instance, triangles, cloth simulating N transforms, blendshapes nothing animates, materials each carrying their own locked shader copy, pointers by family, and sets of materials that could share one texture. **Fix it** then acts. Every map whose detail cannot reach the eye drops a size, and a PNG or JPG of the Default texture type changes format where its pixels allow: uncompressed gets compressed, and a linear mask holding one channel three times, or an alpha channel that is white everywhere, drops to a format half the size (other file types and crunched textures keep their format): import settings only, so no texture file is edited, and **Put the textures back** restores every original, a conversion's own resize included, even after Unity restarts. The card keeps its record in the same per-avatar output folder as the converter, a custom **Output folder** included. A texture a shader reads back exactly, point filtered with no mips, is left alone: those pixels are numbers rather than colour and compressing one rewrites them. Fix it also strips renderers switched off with nothing in any clip or menu toggle able to switch them on, unless you untick the card's **Also remove meshes nothing can show**. The component goes and the object stays, so anything parented to it keeps working, and Ctrl+Z puts it back |
 | **Free wins** | Removes only what is provably inert: layers with no states (a synced layer, which has none of its own, is kept), and parameters no clip writes, no transition reads, and no driver, menu control or contact names. Decided by reading the controller, never by flipping something and watching: an individual toggle that a preset overrides looks dead and is not. Parameters the game itself writes are kept and listed. Written to a copy of the controller; your original is not edited. The copy replaces the original everywhere the avatar wires it: the uploaded overrides, the Base Controller and the Animator. An avatar still running the CCK's own controller is left alone until it has its own |
 | **Stereo shaders** | Patches shaders without single-pass instanced support into copies that have it, and points the object's materials at them; see [Shaders that only draw into one eye](#shaders-that-only-draw-into-one-eye). Materials an animation swaps in are not followed here, because that would mean editing your clips; the converter does follow them, on its own copies |
@@ -1733,7 +1786,7 @@ Below the results, **What the report tells you** holds two ticks that only ever 
 | setting | default | what it does |
 |---|---|---|
 | **Say what this avatar costs (recommended)** | on | Adds texture memory, contacts, triangles and cloth to the report: the same measurement as the Toolkit's **What this avatar costs** card |
-| **Say what this avatar does (recommended)** | on | Adds unwired features, layers fighting over the same thing and possible props to the report |
+| **Say what this avatar does (recommended)** | on | Adds unwired features, toggles a layer above always overrides, states that can never play and possible props to the report |
 
 ### Physics: which solver, and how the chains feel
 
@@ -1781,6 +1834,7 @@ Analyse sets them to match. Open it to override a measurement deliberately, not 
 | **Work on a clone (recommended)** | on | Converts a copy named `<avatar> (ChilloutVR)` and leaves your original untouched, switched off in the scene. Turning it off edits the avatar in the scene, except on a VRCFury or Modular Avatar avatar: the bake always makes a copy, and the original is still switched off |
 | **Face tracking** | Native CVR Component | Native drives blendshapes through CVR's own `CVRFaceTracking`: self-contained, a bit stiff. *Unity Animator Blendtrees (DSR)* rebuilds DragonSkyRunner's rig onto the avatar: smoother, more expressive. *Keep the avatar's own rig* strips nothing. Both set-up modes replace any existing FT rig |
 | **Remove GoGo Loco (recommended)** | on | Strips GoGo Loco, whose locomotion VRChat needs and ChilloutVR provides natively. Keeping it is experimental: GoGo replaces ChilloutVR's locomotion, so Base, Additive and Action must all be ticked or there is none, and its poses don't lock movement |
+| **Put GoGo poses in the emote wheel** | on | Offered while GoGo is removed. Up to eight: the avatar's own GoGo emotes first, then GoGo's sit and lie poses. They replace ChilloutVR's stock emotes on this avatar, hold until you move, and cost no synced parameters |
 | **Penetration** | Convert to YAPS | One choice, three answers. *Convert to YAPS (recommended)* rebuilds the penetration system for ChilloutVR: a from-scratch deform, the author's own tuning carried across, sockets found through the screen atlas and DPS marker lights, readable by and reading every system on the platform. *Remove* takes it all out: every plug and socket goes, and the plug mesh stays, straight. *Leave as VRChat built it (won't work)* touches nothing, and functions nowhere. The OGB, PCS and Wholesome haptics stacks go with the first two: local, they cost no sync bits, but each is a contact, and ChilloutVR budgets 512 overlapping pairs a frame for the whole instance: a converted avatar carried over a hundred. *Opt-ins ▸ OSC toys* keeps them beside a converted system if you drive a toy from them. The choice needs the 18+ [YAPS add-on](#yaps-penetration-that-works-in-chilloutvr) installed; without it the penetration is removed and the report names the add-on |
 | **Remove animation that can't do anything (recommended)** | on | Drops curves pointing at material properties the shader doesn't have: dead in VRChat too, noisy in CVR |
 | **FX (toggles, expressions)** | on | The layer nearly every toggle lives in |
@@ -2027,8 +2081,8 @@ Find your symptom:
 | **Face, eyes, viewpoint** | [face tracking missing](#face-tracking-wasnt-set-up-and-the-avatar-definitely-has-it) · [blink problems](#your-eyes-stay-open-start-closed-or-lose-a-pupil) · [viewpoint off the head](#the-viewpoint-or-voice-position-is-nowhere-near-the-head) |
 | **Toggles, menus, contacts** | [toggle does nothing on screen](#a-toggle-switches-on-the-layer-plays-and-nothing-changes-on-screen) · [toggle never comes back](#a-toggle-switches-on-but-never-back-off) · [partial material swap](#a-material-swap-changes-only-some-parts) · [dead menu control](#a-menu-control-appears-moves-syncs-and-does-nothing) · [duplicate controls](#two-near-identical-menu-controls-and-only-one-works) · [dead contact](#a-contact-does-nothing-at-all-for-anyone-including-you) |
 | **What only others see (or don't)** | [flickering for others](#other-people-see-my-avatar-flickering-cycling-colours-or-thrashing-i-dont) · [rapid flicker](#an-animation-flickers-rapidly-often-only-on-other-players-screens) · [private sound](#a-sound-only-you-can-hear) · [private particles](#a-particle-effect-only-you-can-see) · [particle squares](#a-particle-effect-draws-as-plain-coloured-squares) · [one-eye effects](#an-effect-draws-in-one-eye-only-in-vr) |
-| **YAPS (penetration)** | [plug doesn't bend in game](#yaps-the-plug-does-not-bend-toward-a-socket-in-game) · [shader not patched](#yaps-could-not-patch-the-shader-or-the-test-plug-sits-there-straight) · [socket reads "not built"](#yaps-a-converted-socket-reads-not-built-or-the-windows-row-says-a-plug-is-not-baked) · [plug left alone](#yaps-a-plug-was-left-alone-because-its-chain-is-the-bodys-own) · [plain mesh jumps](#yaps-a-plain-mesh-plug-jumps-or-turns-the-moment-a-socket-engages-it) · [body-mesh socket won't open](#yaps-a-socket-on-the-body-mesh-does-not-open-around-a-plug) · [toggle greyed in the tester](#yaps-a-menu-toggle-the-tool-added-is-greyed-out-in-the-ccks-tester-or-shows-a-red-) · [OSC toy stays silent](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
-| **Uploading** | [object ID failure](#uploading-fails-with-failed-to-generate-new-object-id) |
+| **YAPS (penetration)** | [plug doesn't bend in game](#yaps-the-plug-does-not-bend-toward-a-socket-in-game) · [shader not patched](#yaps-could-not-patch-the-shader-or-the-test-plug-sits-there-straight) · [plug bends twice](#yaps-a-plug-bends-twice-or-stretches) · [socket reads "not built"](#yaps-a-converted-socket-reads-not-built-or-the-windows-row-says-a-plug-is-not-baked) · [plug left alone](#yaps-a-plug-was-left-alone-because-its-chain-is-the-bodys-own) · [plain mesh jumps](#yaps-a-plain-mesh-plug-jumps-or-turns-the-moment-a-socket-engages-it) · [body-mesh socket won't open](#yaps-a-socket-on-the-body-mesh-does-not-open-around-a-plug) · [toggle greyed in the tester](#yaps-a-menu-toggle-the-tool-added-is-greyed-out-in-the-ccks-tester-or-shows-a-red-) · [OSC toy stays silent](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
+| **Uploading** | [no Upload button](#the-cck-shows-no-upload-button-or-the-uploaded-avatar-is-missing-something) · [object ID failure](#uploading-fails-with-failed-to-generate-new-object-id) |
 
 ### Nothing compiles: `'ImageDownloader' does not contain a definition for 'GetImage'`
 
@@ -2295,6 +2349,11 @@ it. Declare that parameter on that controller if the transition should work.
 
 If the report says **"animated material property(ies) don't exist on the shader they target"**, this
 is **not the conversion**: the same animation does nothing in VRChat either.
+
+If the report names the toggle under **"layers a layer above always hides"**, a higher layer
+animates the same objects in every state it can reach, so whatever this toggle sets never shows.
+Take those objects out of one of the two layers' animations, or move the toggle's layer above the
+other in the source avatar; [How animator layers are ordered](#how-animator-layers-are-ordered) says where each lands.
 
 Two report lines cover the other version, and they mean opposite things:
 
@@ -2711,6 +2770,30 @@ Expected, and not caused by converting; see
 The VRChat Avatars SDK isn't installed, so the window shows only the **Set up any avatar**
 ([Setup mode](#setup-mode)) and **Tools** tabs, with a notice that converting needs the SDK.
 
+### The CCK shows no Upload button, or the uploaded avatar is missing something
+
+The CCK's Control Panel hides its Upload button while any of five rules fails, and three of them are
+texture and sound import settings that converting never touches. The report's **Upload** entries,
+and the Toolkit's **Check before upload** card, run the same five rules first:
+
+| The report says | Fix |
+|---|---|
+| an object has a **missing script** | Install the package it came from, or use the panel's Remove Missing Scripts once you know what it did |
+| **no Animator** on the avatar's root | Add one with the avatar's rig |
+| a texture is set to a max size **above 8192** | Max Size 8192 or lower in its import settings |
+| a texture has **mipmaps without Streaming Mipmaps** | Tick Streaming Mipmaps in its import settings |
+| a sound does **not load in the background** | Tick Load In Background in its import settings |
+
+The panel shows a **Fix Import Settings** button beside each of the last three.
+
+Two more entries are for things the panel never mentions. The upload saves the avatar as a prefab,
+and a prefab keeps nothing that is neither a saved asset nor part of the avatar:
+
+- **not saved, so the upload drops them**: a mesh, material or animation made in memory by some
+  tool and never saved. It shows in Unity and arrives in game as nothing.
+- **points outside the avatar**: a constraint, cloth collider or similar reference to an object
+  elsewhere in the scene. Move the object under the avatar.
+
 ### Uploading fails with "Failed to generate new object ID"
 
 Not AvatarBridge: that's the CCK. ChilloutVR's API refused a content slot, usually the account's
@@ -2832,6 +2915,16 @@ plug finds which way it points from those, so on that shader it stays straight, 
 its own mesh object still bends. The outcome says so; YAPS Simple Lit carries both.
 A plug still carrying VRChat's SPS is not refused: it keeps its shader with SPS switched off, the
 same upgrade in place as the YAPS tool's **upgrade to YAPS**.
+
+### YAPS: a plug bends twice or stretches
+
+If the report says **"<material>" already carries VRCFury's own deform**, VRCFury put its deform
+into that plug's shader before the conversion saw it. That happens when the avatar was already built
+by VRCFury, a copy left behind by a VRChat build or test, say, or with a VRCFury version this tool
+cannot ask to leave plug shaders alone, which the report calls **Could not ask VRCFury to leave
+... alone**. YAPS adds its own deform on top, and VRCFury's has no switch on the material, so the
+plug may bend twice. Convert the original avatar, the one that still has VRCFury's plug and socket
+components on it, rather than a built copy, and check the plug in game.
 
 ### YAPS: a converted socket reads "not built", or the window's row says a plug is not baked
 

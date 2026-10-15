@@ -688,8 +688,12 @@ namespace AvatarBridge
 
             card.Section("Remove VRChat-only systems");
             b.Add(BridgeElements.Bind("Remove GoGo Loco (recommended)",
-                "ChilloutVR has its own locomotion, flight and emotes, which GoGo fights. Untick to keep GoGo's poses.",
+                "ChilloutVR has its own locomotion, flight and emotes, which GoGo fights. Untick to keep GoGo itself (experimental).",
                 settings.stripGogoLoco, v => { settings.stripGogoLoco = v; ScheduleRebuild(); }));
+            if (settings.stripGogoLoco)
+                b.Add(BridgeElements.Bind("Put GoGo poses in the emote wheel",
+                    "Up to eight: the avatar's own GoGo emotes first, then GoGo's sit and lie poses. They replace ChilloutVR's stock emotes on this avatar, and moving ends one.",
+                    settings.gogoEmotes, v => settings.gogoEmotes = v));
             if (!settings.stripGogoLoco)
             {
                 // GoGo cannot fully function in CVR; it leans on
@@ -1066,7 +1070,7 @@ namespace AvatarBridge
                 "Adds texture memory, contacts, triangles and cloth to the report. Reads only.",
                 settings.weighAvatar, v => settings.weighAvatar = v));
             parent.Add(BridgeElements.Bind("Say what this avatar does (recommended)",
-                "Adds unwired features, layers fighting over the same thing and possible props to the report. Reads only.",
+                "Adds unwired features, toggles a layer above always overrides, states that can never play and possible props to the report. Reads only.",
                 settings.surveyAvatar, v => settings.surveyAvatar = v));
         }
 

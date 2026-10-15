@@ -65,8 +65,24 @@ namespace AvatarBridge
             // Every clip that can run, not only the ones WireSize may write to:
             // the box has to hold whatever resizes the bone.
             var top = AvatarRoot(plug.transform);
-            float size = YapsBaker.LargestSize(YapsSwapFollow.RunnableClips(top),
-                SizeBones(plug.rootBone, YapsSwapFollow.AnimationRootOf(top)));
+            var animRoot = YapsSwapFollow.AnimationRootOf(top);
+            var sizeBones = SizeBones(plug.rootBone, animRoot);
+            // What ChilloutVR ships, not the Animator's slot.
+            var cvr = top.GetComponentInParent<CVRAvatar>(true);
+            RuntimeAnimatorController shipped = cvr == null ? null
+                : cvr.overrides != null ? cvr.overrides : cvr.avatarSettings?.baseController;
+            var rest = YapsRestPose.Apply(animRoot, shipped, sizeBones);
+            if (rest == null)
+            {
+                o.Notes.Add("The size its slider starts at could not be read, so the bake takes the size the scene shows. " +
+                            "If this plug has a size slider, check it at rest in game.");
+            }
+            else if (rest.Count > 0)
+            {
+                o.Notes.Add($"Set the plug to the size its slider starts at ({string.Join(", ", rest)}), so the bake and " +
+                            "the length other sockets read match the plug as it loads. Undo puts it back; Bake again after.");
+            }
+            float size = YapsBaker.LargestSize(YapsSwapFollow.RunnableClips(top), sizeBones);
             var result = YapsBaker.Bake(renderer, chainRoot, dir, report, out string failure,
                 flipAxis: plug.flipAxis, sizeScale: size);
             // A plain mesh moved onto the bounds copy; a re-bake keeps the copy and the record.
@@ -310,6 +326,8 @@ namespace AvatarBridge
                 EditorUtility.SetDirty(plug);
                 o.Notes.Add($"Upgraded from {legacy}: {BridgeElements.Count(carried.Count, "setting", "settings")} carried" +
                             (unmapped.Count > 0 ? $"; no YAPS counterpart for {string.Join(", ", unmapped)}" : "") + ".");
+                if (legacy == YapsLegacyMap.Origin.SPS && !original.HasProperty("_SPS_Enabled"))
+                    o.Notes.Add(YapsLegacyMap.SpsPrebuilt);
             }
             WriteKnobs(plug, patched);
             EditorUtility.SetDirty(patched);
@@ -503,9 +521,9 @@ namespace AvatarBridge
 
         public const string SimpleLitName = "YAPS/Simple Lit";
 
-        // The old system's deform must not run beside YAPS. TPS and SPS have
-        // a switch; both are turned off, and any keyword carrying the
-        // system's name goes with it.
+        // The old system's deform must not run beside YAPS. TPS has a switch on
+        // the material. A finished SPS bake leaves none, so the SPS check is
+        // for older bakes, and any keyword carrying the system's name goes too.
         public static void SwitchOffLegacyDeform(Material m, YapsLegacyMap.Origin legacy)
         {
             string flag = legacy == YapsLegacyMap.Origin.TPS ? "_TPS_PenetratorEnabled"

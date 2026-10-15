@@ -186,7 +186,10 @@ namespace AvatarBridge
                         // The pose part is a platform wall; it is reported.
                         clone.defaultWeight = 0f;
                         actionLayersRested++;
-                        if (ActionLayerDrivesOwnFeature(clone, out string byWhat))
+                        // GoGo's own is stripped below, so its poses moved here would be left
+                        // behind with nothing driving them. They reach the emote wheel instead.
+                        if (!(ctx.Settings.stripGogoLoco && SystemStripper.IsGogoLayer(srcLayer))
+                            && ActionLayerDrivesOwnFeature(clone, out string byWhat))
                         {
                             // Poses move into CVR's locomotion layer.
                             // The clone stays at weight 0 so its drivers still fire.
@@ -329,6 +332,8 @@ namespace AvatarBridge
             AuditMaterialProperties(master, ctx);
             ReportKeptFaceTracking(master, ctx);
             AuditCurveControlledGameParameters(master, ctx);
+            // Last: every clip name in the master is final, and the labels must not repeat one.
+            LocomotionGrafter.PlaceGogoEmotes(ctx, master);
 
             master.name = SanitizeFileName(ctx.Target.name) + "_CVR";
 
@@ -360,6 +365,8 @@ namespace AvatarBridge
             // It must exist, not be left empty.
             var overrides = new AnimatorOverrideController(master) { name = master.name + "_Overrides" };
             string overridesPath = $"{ctx.OutputDir}/{overrides.name}.overrideController";
+            // Before the save, which copies the pairs into the asset.
+            LocomotionGrafter.FillGogoEmotes(overrides);
             overrides = AnimatorAssetSaver.SaveOverride(overrides, overridesPath);
 
             ctx.CvrAvatar.avatarSettings.baseController = master;
@@ -1994,6 +2001,9 @@ namespace AvatarBridge
             // before using the name in a file.
             var sanitizedNames = new Dictionary<string, string>();
             var takenNames = new HashSet<string>(master.parameters.Select(p => p.name));
+            var forcedKeys = new HashSet<string>();
+            // ponytail: renames by later passes are not recorded; add them if a report misleads.
+            ctx.RenamedFrom = ctx.RenamedFrom ?? new Dictionary<string, string>(StringComparer.Ordinal);
 
             // Renames from the menu build: a Joystick2D needs its exact
             // "-x"/"-y" axis names. Read before the core map, so these
@@ -2017,6 +2027,7 @@ namespace AvatarBridge
                     continue;
                 }
                 sanitizedNames[forced.Key] = forced.Value;
+                forcedKeys.Add(forced.Key);
                 takenNames.Add(forced.Value);
             }
             foreach (var entry in ctx.CvrAvatar.avatarSettings.settings)
@@ -2043,6 +2054,22 @@ namespace AvatarBridge
             }
 
             string Rename(string name)
+            {
+                string result = Renamed(name);
+                if (!string.IsNullOrEmpty(name) && result != name && !ctx.RenamedFrom.ContainsKey(result))
+                {
+                    string bare = result.TrimStart('#');
+                    string why = forcedKeys.Contains(name) ? "a menu control needs this name"
+                        : sanitizedNames.ContainsKey(name) ? "made safe for the CCK"
+                        : ParameterRenameMap.ContainsKey(name) ? "ChilloutVR's own name for it"
+                        : ctx.ForcesLocal(bare) ? "kept on the wearer: a contact or stream drives it"
+                        : "not synced in VRChat, so kept local";
+                    ctx.RenamedFrom[result] = $"\"{name}\" ({why})";
+                }
+                return result;
+            }
+
+            string Renamed(string name)
             {
                 if (string.IsNullOrEmpty(name))
                 {

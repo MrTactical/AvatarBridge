@@ -182,6 +182,10 @@ namespace AvatarBridge
 
         public Dictionary<string, string> ForcedRenames = new Dictionary<string, string>();
 
+        // Each parameter the merger renamed, by its new name: the old name and why.
+        // Null means the merger did not run.
+        public Dictionary<string, string> RenamedFrom;
+
         public HashSet<string> AutoExposedParameters = new HashSet<string>();
 
         // Prefixes forced "#" local. A contact-driven parameter must be local:

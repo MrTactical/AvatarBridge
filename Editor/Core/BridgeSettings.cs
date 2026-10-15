@@ -139,12 +139,15 @@ namespace AvatarBridge
         public bool weighAvatar = true;
         // Read the animator, the menu and the components into one model and
         // report what the avatar can and cannot do: features nothing can
-        // reach, bindings two layers fight over, what lost its driver in the
-        // conversion. Reads only.
+        // reach, toggles a layer above always overrides, states that can never
+        // play, what lost its driver in the conversion. Reads only.
         public bool surveyAvatar = true;
         // CVR provides locomotion and emotes natively. GoGo's layers
         // fight them while burning sync budget.
         public bool stripGogoLoco = true;
+        // GoGo's own emotes, then its sit and lie poses, fill ChilloutVR's eight emote
+        // slots in place of the stock eight. Only while GoGo is removed.
+        public bool gogoEmotes = true;
         // SPS/OGB/TPS, PCS and Wholesome are VRChat-specific.
         // Non-functional in CVR, and expensive in sync bits.
         public bool stripSpsSystems = true;
