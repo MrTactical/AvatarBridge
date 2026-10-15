@@ -33,8 +33,16 @@ namespace AvatarBridge.Regression
                 skin.rootBone = outside.transform;
 #if AVATARBRIDGE_YAPS
                 // What Thry's Unlock all leaves: the values of a shader the material no longer wears.
+                // SetFloat on a property the shader lacks is never saved, so the entry is written
+                // the way a shader swap leaves it.
                 var unlocked = new Material(Shader.Find("Standard")) { name = "Unlocked" };
-                unlocked.SetFloat("_YAPS_Enabled", 1f);
+                var leftover = new SerializedObject(unlocked);
+                var floats = leftover.FindProperty("m_SavedProperties.m_Floats");
+                floats.InsertArrayElementAtIndex(floats.arraySize);
+                var entry = floats.GetArrayElementAtIndex(floats.arraySize - 1);
+                entry.FindPropertyRelative("first").stringValue = "_YAPS_Enabled";
+                entry.FindPropertyRelative("second").floatValue = 1f;
+                leftover.ApplyModifiedPropertiesWithoutUndo();
                 skin.sharedMaterial = unlocked;
 #endif
 

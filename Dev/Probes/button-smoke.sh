@@ -19,8 +19,14 @@ keep=()
 while [ $# -gt 0 ] && [ "$1" = "--keep" ]; do keep+=("$2"); shift 2; done
 
 # Batch Unity dies on a project the GUI has open, and reads as a crash.
-if [ -e "$PROJECT/Temp/UnityLockfile" ] && tasklist //FI "IMAGENAME eq Unity.exe" | grep -qi unity.exe; then
-    echo "Unity has the project open; close it first"; exit 3
+# The lockfile outlives every editor, and Unity Hub runs a unity.exe of its
+# own, so the test is run-corpus.sh's: an open editor holds the lock.
+lock="$PROJECT/Temp/UnityLockfile"
+if [ -f "$lock" ]; then
+    powershell.exe -NoProfile -Command "
+      try { [IO.File]::Open('$(cygpath -w "$lock")', 'Open', 'ReadWrite', 'None').Close() }
+      catch [IO.IOException] { exit 3 }" >/dev/null 2>&1
+    if [ $? -eq 3 ]; then echo "Unity has the project open; close it first"; exit 3; fi
 fi
 mkdir -p "$OUT"
 IFS=';' read -ra scene_list <<< "$SCENES"
