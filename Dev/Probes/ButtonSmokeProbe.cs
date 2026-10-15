@@ -7,6 +7,7 @@
 // it wrote.
 //   Unity.exe -batchmode -projectPath <p> -executeMethod AvatarBridge.Regression.ButtonSmokeProbe.Run
 //     -bsScenes "Assets/a.unity;Assets/b.unity" -bsOut <file.tsv> [-bsWindows tester,yaps,...]
+//   -bsStory thighs: one user's story instead, see ButtonSmokeProbe.Story.cs.
 //     [-bsDanger] [-bsNoPlay] [-bsNoPictures] [-bsMinutes 120]
 // -bsWindows none -bsOnlyGrab goes straight to Play mode and does the grabs alone.
 // A link (text ending in an arrow) is never pressed: it opens a browser. A Danger button, or one
@@ -38,7 +39,7 @@ using Object = UnityEngine.Object;
 namespace AvatarBridge.Regression
 {
     [InitializeOnLoad]
-    public static class ButtonSmokeProbe
+    public static partial class ButtonSmokeProbe
     {
         const string PlayKey = "ButtonSmokeProbe.play";
         const int Width = 560, Height = 2600;
@@ -103,6 +104,9 @@ namespace AvatarBridge.Regression
             Application.logMessageReceived += OnLog;
             Setup(outFile);
             if (Directory.Exists(PicturesDir)) Directory.Delete(PicturesDir, true);
+#if AVATARBRIDGE_YAPS
+            if (Arg("-bsStory") != null) { Drive(StoryEdit(scenes[0], outFile)); return; }
+#endif
             Drive(EditPasses(scenes, only, Flag("-bsDanger"), !Flag("-bsNoPlay"), outFile));
         }
 

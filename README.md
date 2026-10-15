@@ -1372,7 +1372,8 @@ hands, plugs, and the physics' own colliders, off by default). **Motion Style** 
 real flesh (a small stretch, small swings ignored), to 1, like anime (a long stretch and a deep
 squash on every bounce). **See it work ▸ Preview** shows it in the editor: **Squeeze** pushes the
 pair together, **Bounce** swings each part as a jump would, and **Test hand** puts another
-player's open hand in front of it, dragged with the handle in the Scene view. The editor runs no
+player's open hand in front of it, dragged with the handle in the Scene view; it presses the part
+nearest it, so it reaches a second pair too. The editor runs no
 physics, so the preview stands in for them; in game the same knobs answer the real thing. The
 Avatar Tester's **Interaction lab** carries the same preview beside the avatar's motion, and in
 Play mode the cloth there is real: **Jump** or **Shake** swings it, and **Test hand** presses it
@@ -1387,12 +1388,17 @@ way the avatar was weight painted. Two pairs at most. A body whose bones don't s
 names take too much or too little, can have its regions painted: **Paint regions** on the same
 card, or *Tools ▸ YAPS ▸ Squash regions*. Pick the avatar, then start from **The bone names**,
 **The selected bone** or **The shape key** (a size slider for the part is usually exactly the
-right skin), and paint over it in the Scene view. The brush spreads over the skin, never across a
+right skin), and paint over it in the Scene view. A bone or a shape key starts whole where it
+reaches most and fades toward the edge, so a jiggle bone weighted at a tenth still squashes in
+full. The brush spreads over the skin, never across a
 gap, so an arm resting on the side is not painted with it; Ctrl erases. **Smooth** feathers the
 edge, so the squash fades out instead of tearing; **Mirror** copies one side onto the other. The
 regions are kept on the avatar's **YAPS Squash** component; while it holds any, the converter and
 the Setup card both build from them instead of the bone names. **Remove the regions** clears them
-and keeps the knobs. Clothing follows the skin under it, within 3 cm.
+and keeps the knobs. The parts are measured on one skin: of the meshes carrying every part, the
+one weighted to the most bones, so the body and not a dense piece of clothing with more vertices.
+**Squash regions** starts on the same mesh, and its **Body** field picks another. Clothing follows
+the skin under it, within 3 cm.
 
 **Toggles keep working.** A toggle that swaps a material into a squashed slot, the original back
 or an alternate look, is pointed at a squashed copy of it, so the layer never drops behind the

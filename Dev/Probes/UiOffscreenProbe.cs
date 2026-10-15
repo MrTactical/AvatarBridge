@@ -392,7 +392,7 @@ namespace AvatarBridge.Regression
         // Rows are bottom-up in the texture. A band of more than 40 rows of one colour (the
         // empty part of a scroll view above a pinned footer, or the page below the content) is
         // cut to 16, so the tiles carry content; then the rest is cut into tiles from the top.
-        static void Save(Texture2D tex, string file, Color background)
+        internal static void Save(Texture2D tex, string file, Color background)
         {
             int w = tex.width, h = tex.height;
             var pixels = tex.GetPixels32();

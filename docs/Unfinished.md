@@ -2139,6 +2139,68 @@ anything under a `CVRAvatar`, for all four callers.
 Open: **Merge animators / clear** is disabled with no tooltip saying why. The paint stroke and the
 squash depth are not yet gestured.
 
+### A user's story played headless, 2026-10-15: three squash bugs and a false report line. FIXED ON DEV
+
+Joe had not used 4.8.0's new features by hand and asked for them used the way a user would: a
+custom jiggle on the thighs. `-bsStory thighs` (`Dev/Probes/ButtonSmokeProbe.Story.cs`) does that
+through the real windows on a VRChat avatar with jiggle PhysBones on its thighs: Analyse, turn on
+**Squash**, **Soft bodies push each other apart** and **Keep the converted avatar a prefab**,
+Convert; then **Squash regions**: **The bone names**, a second pair painted from the jiggle bones
+with **The selected bone**, **Smooth**, one brush stroke; the squash inspector's **Rebuild**,
+**Motion Style**, **Preview**, **Squeeze**, **Test hand** and **Bounce**; then Play mode through
+the tester: **Walk**, **Jump** and **Shake** filmed from the hips with the jiggle tip measured,
+and the lab's squash **Preview** and **Test hand**. It backs up and restores the converter's
+EditorPrefs, so it starts from a new user's defaults.
+
+**The squash measured its parts on clothing.** Build took the skin with the most part vertices and
+the region tool took the largest mesh. A dense piece of clothing over the seat won both, and since
+every layer copies its share from the nearest skin vertex, the chest pair came out empty. Now
+Build uses, of the skins carrying the most parts, the one weighted to the most bones
+(`YapsSquash.Body`), and the tool starts on the same skin (`NamedBody`). The same conversion built
+43 squashed materials before and 52 after, and the chest pair went from 0 to 1048 vertices a side.
+
+**A region painted from a jiggle bone was dropped at Build.** The jiggle bones carried the thigh at
+14.5% at most (1350 vertices weighted, none at 0.25). Build measures a part on the skin painted at
+half or more and drops a pair with fewer than 20 such vertices ("too little skin"). The shader
+moves each vertex by its share, so even a kept pair would have dented at a seventh. **The selected
+bone** now scales to its peak and doubles, as **The shape key** always did, and it refuses a bone
+that carries none of the body instead of leaving an empty side that fails only at Build. The
+story counts the skin at half or more after painting, and fails **Rebuild** on a dropped pair.
+
+**Test hand pressed only the first pair.** The hand aimed its palm at the first part wherever it
+was dragged, so on a thigh it faced up the leg toward the chest and never pressed in (0.1% of the
+picture moved). It reaches for the part nearest it now, in the inspector and in the tester's lab:
+laid mid-thigh, it moved 3.3% of the legs in the editor, all of it on that thigh, and in Play mode
+7.1% against 2.6% for the cloth's own sway over the same wait.
+
+**"No mesh vertices are weighted to these bones" was false** for the same chain. The particle
+radius samples only vertices that carry 20% or more on one bone (`MinBoneWeight`), so a lightly
+weighted chain had nothing to measure. The report now says that.
+
+Measured after the fixes: the thigh jiggle became two MagicaCloth chains and swung its tip 5 to
+10 cm on Walk, Jump and Shake (a 32 cm chain); the converted avatar stayed linked to its prefab and
+**Apply All** carried the painted regions and Motion Style onto it; the thighs painted 903 vertices
+a side at half or more, **Rebuild** built both pairs, and **Squeeze** and **Bounce** moved 13% of
+the thigh picture. The story lays the hand mid-thigh, since the chain's root sits in the hip
+crease where the region is barely painted, logs how far it is from each part, and judges the lab's
+press against the sway without it.
+
+Open:
+- **A first squash build took 20 to 30 minutes in a large project.** `YapsShaderPatcher` reuses an
+  identical patched shader already in the folder; otherwise it writes it, runs a full
+  `AssetDatabase.Refresh()` and imports it synchronously (lines 1036 to 1040), and in an
+  asset-heavy project each round pays about a minute in `UnloadImportedAssets`. A conversion
+  into a fresh output folder took 31 minutes, 27 of them on 23 shaders; the same conversion into
+  a folder already holding them took 3. **Rebuild** writes to `Assets/YAPS/Generated/Squash`, not
+  the conversion's folder, so it paid 19 rounds again. Write them all, then refresh once.
+- **Named pairs squash at their raw weights.** The bone-name path takes each vertex's share as
+  weight painted (a seat measured at 0.67 at most, 0.2 on average), so it dents at that fraction,
+  where a painted region now starts whole. Decide whether the name path should scale too.
+- **The corpus never builds a squash.** `CorpusSettings.squashSoftParts` is false, so none of the
+  above could have shown in a run.
+- `UiOffscreenProbe.FindSource()` picks either of two VRChat avatars in one scene from run to run,
+  and the story's output folder follows it: `--keep` both folders.
+
 ### "Avoid unpacking the converted prefab": a user's request, 2026-10-14. A ON DEV, B PARKED
 
 The asker's answer: they meant B, so that re-exporting the FBX reaches the converted avatar, and

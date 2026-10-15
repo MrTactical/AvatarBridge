@@ -209,8 +209,9 @@ namespace AvatarBridge
                 else
                 {
                     ctx.Report.Skipped(Category, data.Root.name,
-                        "Particle radius left at the preset's value: no mesh vertices are weighted to " +
-                        "these bones (or the mesh could not be read), so there was nothing to measure. " +
+                        "Particle radius left at the preset's value: too little of the mesh is weighted to " +
+                        $"these bones (fewer than {MinMeshSamples} vertices carry {MinBoneWeight * 100f:0}% or more on one of them), " +
+                        "or the mesh could not be read, so there was nothing to measure. " +
                         "Set it on the cloth by hand if this chain collides at the wrong size.");
                 }
             }

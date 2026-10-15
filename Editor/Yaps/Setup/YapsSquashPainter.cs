@@ -67,9 +67,10 @@ namespace AvatarBridge
         {
             _avatar = avatar;
             var regions = Regions;
+            // The skin the build would use, not the biggest mesh: dense clothing outweighs a body.
             _body = regions != null && regions.body != null ? regions.body
                 : avatar == null ? null
-                : avatar.GetComponentsInChildren<SkinnedMeshRenderer>(true).Where(r => r.sharedMesh != null)
+                : YapsSquash.NamedBody(avatar.transform) ?? avatar.GetComponentsInChildren<SkinnedMeshRenderer>(true).Where(r => r.sharedMesh != null)
                     .OrderByDescending(r => r.sharedMesh.vertexCount).FirstOrDefault();
             _pair = _side = 0;
             Load();
@@ -168,7 +169,7 @@ namespace AvatarBridge
             if (pairs > 0)
             {
                 seed.Body.Add(BridgeElements.ButtonRow(
-                    BridgeElements.Btn("The selected bone", FromBone, "The skin the bone selected in the Hierarchy and the bones under it carry, onto this side.")));
+                    BridgeElements.Btn("The selected bone", FromBone, "The skin the bone selected in the Hierarchy and the bones under it carry, onto this side, whole where they carry most.")));
                 var mesh = _body.sharedMesh;
                 var shapes = Enumerable.Range(0, mesh.blendShapeCount).Select(mesh.GetBlendShapeName).ToArray();
                 if (shapes.Length > 0)
@@ -383,7 +384,7 @@ namespace AvatarBridge
             var under = new HashSet<Transform>(bone.GetComponentsInChildren<Transform>(true));
             var bones = _body.bones;
             var weights = _body.sharedMesh.boneWeights;
-            var w = _w[Channel];
+            var w = new float[weights.Length];
             for (int v = 0; v < weights.Length; v++)
             {
                 var b = weights[v];
@@ -395,6 +396,13 @@ namespace AvatarBridge
                 w[v] = Mathf.Clamp01(on);
             }
             bool Under(int i) => i >= 0 && i < bones.Length && bones[i] != null && under.Contains(bones[i]);
+            // Left as it was: an empty side reads as done and only fails at Build.
+            float most = w.Max();
+            if (most <= 0f) { Say($"\"{bone.name}\" carries none of \"{_body.name}\". Pick the mesh it moves under Body, or another bone.", Tone.Warn); return; }
+            // Scaled to its peak as a shape key is: a jiggle bone can carry a part at a tenth, and
+            // Build keeps only skin at half or more, so the raw weights dropped the pair.
+            for (int v = 0; v < w.Length; v++) w[v] = Mathf.Clamp01(2f * w[v] / most);
+            _w[Channel] = w;
             Settle(Channel, null);
             Save("Squash region from a bone");
             Recolour();
