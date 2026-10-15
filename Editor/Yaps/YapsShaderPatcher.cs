@@ -323,6 +323,46 @@ namespace AvatarBridge
             return (thry ? "Hidden/Locked/YAPS/" : "Hidden/YAPS/") + hash;
         }
 
+        // Writes the patched copies of many materials and imports them in two batches, includes
+        // then shaders, so a Patch after it finds each one already in place. Every import alone
+        // runs every installed package's import hooks, about a minute each in a large project,
+        // and a squash patches twenty. A copy that failed to compile is left to Patch, which
+        // writes it again and reports why.
+        public static void Prewrite(IEnumerable<Material> materials, string outputDir)
+        {
+            var list = materials.Where(m => m != null).Distinct().ToList();
+            if (list.Count == 0) return;
+            // A folder the AssetDatabase has not seen takes no imports into it.
+            if (!AssetDatabase.IsValidFolder(outputDir))
+            {
+                Directory.CreateDirectory(outputDir);
+                AssetDatabase.Refresh();
+            }
+            Deferred = new List<string>();
+            try
+            {
+                foreach (var m in list) Patch(m, outputDir, null, out _, out _);
+            }
+            finally
+            {
+                var written = Deferred;
+                Deferred = null;
+                foreach (bool shaders in new[] { false, true })
+                {
+                    AssetDatabase.StartAssetEditing();
+                    try
+                    {
+                        foreach (string path in written.Distinct().Where(p => p.EndsWith(".shader") == shaders))
+                            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+                    }
+                    finally { AssetDatabase.StopAssetEditing(); }
+                }
+            }
+        }
+
+        // Set while Prewrite runs: files are written and listed here, never imported one by one.
+        static List<string> Deferred;
+
         public static Shader Patch(Material material, string outputDir, BridgeReport report,
             out string refusal, out int skippedShadowPasses, bool allowSps = false)
         {
@@ -948,6 +988,7 @@ namespace AvatarBridge
             string dir, string hash, out string error)
         {
             error = null;
+            bool known = AssetDatabase.IsValidFolder(dir);
             Directory.CreateDirectory(dir);
 
             // The hash names the file as well as the shader. Two locked Poiyomi
@@ -1029,6 +1070,11 @@ namespace AvatarBridge
                 File.WriteAllText(path, file.Text);
                 written.Add(path);
             }
+            if (Deferred != null)
+            {
+                Deferred.AddRange(written);
+                return null;
+            }
 
             // Includes first: importing the shader is what compiles it, and
             // it fails on includes not yet in the AssetDatabase.
@@ -1036,7 +1082,10 @@ namespace AvatarBridge
             {
                 AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
             }
-            AssetDatabase.Refresh();
+            // Only for a folder made on disk just now, which the AssetDatabase has not seen. A
+            // refresh rescans the whole project, and once per shader it cost about a minute each
+            // in a large one.
+            if (!known) AssetDatabase.Refresh();
             AssetDatabase.ImportAsset(shaderPath, ImportAssetOptions.ForceSynchronousImport);
 
             var result = AssetDatabase.LoadAssetAtPath<Shader>(shaderPath);

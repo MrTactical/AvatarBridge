@@ -440,7 +440,11 @@ namespace AvatarBridge.Regression
                 .Select(a => a.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", false)).FirstOrDefault(t => t != null);
             if (descriptor == null) return null;
             // Inactive too: a scene often keeps its source avatar switched off beside the copy.
-            return Resources.FindObjectsOfTypeAll(descriptor).OfType<Component>().FirstOrDefault(c => c.gameObject.scene.IsValid())?.gameObject;
+            // FindObjectsOfTypeAll comes back in no fixed order, so with two avatars in a scene
+            // the pick, and the story's output folder with it, changed from run to run.
+            return Resources.FindObjectsOfTypeAll(descriptor).OfType<Component>().Where(c => c.gameObject.scene.IsValid())
+                .OrderByDescending(c => c.gameObject.activeInHierarchy).ThenBy(c => c.transform.root.GetSiblingIndex())
+                .ThenBy(c => AnimationUtility.CalculateTransformPath(c.transform, null)).FirstOrDefault()?.gameObject;
         }
 
         public static void Explore()

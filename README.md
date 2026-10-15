@@ -1359,46 +1359,52 @@ them, and the squash works from where they swung to. As they swing they also str
 where they hang and squash back toward it, keeping their volume, which a bone chain alone cannot
 do; how far is a knob, from real flesh to anime.
 
+**What other people see.** Each viewer's client works the squash out for itself from what the
+avatar draws, so nothing arrives late. A viewer with the **Cameras** content filter off sees none
+of it: ChilloutVR then removes the components that hand the shader where the parts swung to, and
+the body draws as it would without the squash. Nothing breaks, and there is no way around it.
+
 **Two ways on.** Converting: *Manual options ▸ Opt-ins ▸ Soft parts ▸ Squash breasts and butt
 against each other and hands*. Already on ChilloutVR: *Tools ▸ YAPS ▸ Setup*, the **Squash**
 card, **Add squash**. Pressing it again rebuilds it; **Remove squash** puts every layer back on its
-own material, toggles included. The copies it makes go to `Assets/YAPS/Generated/Squash`.
+own material, toggles included. The copies it makes go to `Assets/YAPS/Generated/Squash`; a
+rebuild goes back to the folder the last build used, a conversion's own included, so the
+patched shaders already there are reused instead of compiled again, and its own copies are
+written over rather than added to.
 
 **Tuning it.** The first build adds a **YAPS Squash** component to the avatar, and the Setup card
-selects it when it is done. Its knobs write straight to the materials as you move them, so
-nothing needs rebuilding: **How it feels** holds how flat a part presses and where the volume
-goes, how the pair meets, the stretch in motion, and what presses it (own arms, other players'
-hands, plugs, and the physics' own colliders, off by default). **Motion Style** runs from 0, like
-real flesh (a small stretch, small swings ignored), to 1, like anime (a long stretch and a deep
-squash on every bounce). **See it work ▸ Preview** shows it in the editor: **Squeeze** pushes the
-pair together, **Bounce** swings each part as a jump would, and **Test hand** puts another
-player's open hand in front of it, dragged with the handle in the Scene view; it presses the part
-nearest it, so it reaches a second pair too. The editor runs no
-physics, so the preview stands in for them; in game the same knobs answer the real thing. The
-Avatar Tester's **Interaction lab** carries the same preview beside the avatar's motion, and in
-Play mode the cloth there is real: **Jump** or **Shake** swings it, and **Test hand** presses it
-and moves with the avatar. Its
-**Build** card builds, rebuilds and removes the squash (the knobs stay on the component), and
-**Animate it** lists the material properties to key. The component on a VRChat avatar carries
-into its conversion, knobs and regions alike, and ChilloutVR strips it at upload.
+selects it when it is done. Its knobs write straight to the materials as you move them, so nothing
+needs rebuilding: **How it feels** holds how flat a part presses and where the volume goes, how the
+pair meets, the stretch in motion, and what presses it (own arms, other players' hands, plugs, and
+the physics' own colliders, off by default). **Motion Style** runs from 0, like real flesh (a small
+stretch, small swings ignored), to 1, like anime (a long stretch and a deep squash on every
+bounce). **See it work ▸ Preview** shows it in the editor: **Squeeze** pushes the pair together,
+**Bounce** swings each part as a jump would, and **Test hand** puts another player's open hand in
+front of it, dragged with the handle in the Scene view; it presses the part nearest it, so it
+reaches a second pair too. The editor runs no physics, so the preview stands in for them; in game
+the same knobs answer the real thing. The Avatar Tester's **Interaction lab** carries the same
+preview beside the avatar's motion, and in Play mode the cloth there is real: **Jump** or **Shake**
+swings it, and **Test hand** presses it and moves with the avatar. Its **Build** card builds,
+rebuilds and removes the squash (the knobs stay on the component), and **Animate it** lists the
+material properties to key. The component on a VRChat avatar carries into its conversion, knobs and
+regions alike, and ChilloutVR strips it at upload.
 
 **Where the parts are.** By default, bones whose names say breast, boob, butt, booty or glute, one
-each side, each vertex taking the weight those bones carry, so the squash fades into the body the
-way the avatar was weight painted. Two pairs at most. A body whose bones don't say, or where the
-names take too much or too little, can have its regions painted: **Paint regions** on the same
-card, or *Tools ▸ YAPS ▸ Squash regions*. Pick the avatar, then start from **The bone names**,
-**The selected bone** or **The shape key** (a size slider for the part is usually exactly the
-right skin), and paint over it in the Scene view. A bone or a shape key starts whole where it
-reaches most and fades toward the edge, so a jiggle bone weighted at a tenth still squashes in
-full. The brush spreads over the skin, never across a
-gap, so an arm resting on the side is not painted with it; Ctrl erases. **Smooth** feathers the
-edge, so the squash fades out instead of tearing; **Mirror** copies one side onto the other. The
-regions are kept on the avatar's **YAPS Squash** component; while it holds any, the converter and
-the Setup card both build from them instead of the bone names. **Remove the regions** clears them
-and keeps the knobs. The parts are measured on one skin: of the meshes carrying every part, the
-one weighted to the most bones, so the body and not a dense piece of clothing with more vertices.
-**Squash regions** starts on the same mesh, and its **Body** field picks another. Clothing follows
-the skin under it, within 3 cm.
+each side, each vertex taking the weight those bones carry, whole where they carry most and fading
+toward the edge, so the squash fades into the body the way the avatar was weight painted. Two pairs
+at most. A body whose bones don't say, or where the names take too much or too little, can have its
+regions painted: **Paint regions** on the same card, or *Tools ▸ YAPS ▸ Squash regions*. Pick the
+avatar, then start from **The bone names**, **The selected bone** or **The shape key** (a size
+slider for the part is usually exactly the right skin), and paint over it in the Scene view. Each
+starts whole where it reaches most and fades toward the edge, so a jiggle bone weighted at a tenth
+still squashes in full. The brush spreads over the skin, never across a gap, so an arm resting on
+the side is not painted with it; Ctrl erases. **Smooth** feathers the edge, so the squash fades out
+instead of tearing; **Mirror** copies one side onto the other. The regions are kept on the avatar's
+**YAPS Squash** component; while it holds any, the converter and the Setup card both build from
+them instead of the bone names. **Remove the regions** clears them and keeps the knobs. The parts
+are measured on one skin: of the meshes carrying every part, the one weighted to the most bones, so
+the body and not a dense piece of clothing with more vertices. **Squash regions** starts on the
+same mesh, and its **Body** field picks another. Clothing follows the skin under it, within 3 cm.
 
 **Toggles keep working.** A toggle that swaps a material into a squashed slot, the original back
 or an alternate look, is pointed at a squashed copy of it, so the layer never drops behind the
@@ -1412,10 +1418,10 @@ rather than read onto the wrong vertices, and the report says so. Paint them aga
 is inside it, the pair is pressed apart along the shaft, from the plug's base through the socket,
 whether it is the wearer's own plug or another player's. It reads the length light a YAPS plug
 already carries, or any plug that announces itself the same way, so it costs nothing synced; that
-light shares the four vertex-light slots with everything else that uses them. The light carries
-no thickness, so the shaft's radius is taken as a tenth of its length, between 1.2 and 6 cm.
-Without a socket between the pair, a plug still passes through the parts. **Plugs**, under *What presses it*, sets
-how hard; 0 leaves them out. A squash built by an earlier version needs **Add squash** pressed
+light shares the four vertex-light slots with everything else that uses them. The light carries no
+thickness, so the shaft's radius is taken as a tenth of its length, between 1.2 and 6 cm. Without a
+socket between the pair, a plug still passes through the parts. **Plugs**, under *What presses it*,
+sets how hard; 0 leaves them out. A squash built by an earlier version needs **Add squash** pressed
 again (or the avatar reconverted) to notice its socket, and to stretch in motion.
 
 ### Testing it

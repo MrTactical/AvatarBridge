@@ -144,9 +144,20 @@ namespace AvatarBridge
         // The YAPS tool's build: the squash, then the toggles' swaps pointed at it.
         public static string Build(Transform root, out bool built)
         {
-            string folder = YapsNativeBuilder.OutputRoot + "/Squash";
-            string said = Add(root, folder, out built);
-            if (built) said += " " + FollowSwaps(root, YapsSwapFollow.RunnableClips(root), folder, null);
+            // Back into the folder the last build used: a conversion's holds its patched shaders
+            // already, and any other folder compiles every one of them again.
+            string folder = root.GetComponentsInChildren<Renderer>(true).SelectMany(r => r.sharedMaterials)
+                .Where(m => SourceOf(m) != null).Select(m => System.IO.Path.GetDirectoryName(AssetDatabase.GetAssetPath(m)).Replace('\\', '/'))
+                .FirstOrDefault() ?? YapsNativeBuilder.OutputRoot + "/Squash";
+            var clips = YapsSwapFollow.RunnableClips(root);
+            Reuse = Owned(root, clips);
+            string said;
+            try
+            {
+                said = Add(root, folder, out built);
+                if (built) said += " " + FollowSwaps(root, clips, folder, null);
+            }
+            finally { Reuse = null; }
             Debug.Log("[YAPS] Squash: " + said);
             return said.Trim();
         }
@@ -214,10 +225,14 @@ namespace AvatarBridge
 
             var skins = Skins(root);
             int pairCount = Mathf.Min(regions != null ? regions.pairs.Count : found.Count, 2);
+            Skin named = null;
             if (regions == null)
             {
                 var sets = Sets(found);
                 foreach (var s in skins) NameShares(s, sets);
+                // Picked before scaling, which lifts every skin and could change the pick.
+                named = Body(skins);
+                Peak(skins, named);
             }
             else
             {
@@ -346,8 +361,10 @@ namespace AvatarBridge
             var copies = new List<Material>();
             var patched = new Dictionary<Material, Shader>();
             var still = new HashSet<int>();
-            var bodySkin = regions != null ? skins.First(s => s.smr == regions.body) : null;
-            foreach (var (smr, own, shares) in Shares(skins, bodySkin, root.name, folder))
+            var bodySkin = regions != null ? skins.First(s => s.smr == regions.body) : named;
+            var shared = Shares(skins, bodySkin, root.name, folder);
+            YapsShaderPatcher.Prewrite(shared.SelectMany(x => x.smr.sharedMaterials).Where(m => m != null && !m.HasProperty("_YAPS_DentOwn")), folder);
+            foreach (var (smr, own, shares) in shared)
             {
                 var mats = smr.sharedMaterials;
                 for (int slot = 0; slot < mats.Length; slot++)
@@ -385,7 +402,7 @@ namespace AvatarBridge
                     copy.SetFloat("_YAPS_SquashPulse", pulse);
                     copy.SetVector("_YAPS_SquashLimbL", limbs[0]);
                     copy.SetVector("_YAPS_SquashLimbR", limbs[1]);
-                    Save(copy, source, folder, $"{root.name} {smr.name} {slot}.mat");
+                    copy = Save(copy, source, folder, $"{root.name} {smr.name} {slot}.mat");
                     copies.Add(copy);
                     mats[slot] = copy;
                 }
@@ -422,9 +439,9 @@ namespace AvatarBridge
             mesh.boneWeights = Enumerable.Range(0, slots.Length).Select(i => new BoneWeight { boneIndex0 = i, weight0 = 1f }).ToArray();
             mesh.bindposes = skinBones.Select(b => b.worldToLocalMatrix * skin.transform.localToWorldMatrix).ToArray();
             mesh.triangles = Enumerable.Range(0, 3 * slots.Length).Select(i => i / 3).ToArray();
-            Asset(folder, mesh, $"{root.name} squash skin.asset");
+            mesh = Asset(folder, mesh, $"{root.name} squash skin.asset");
             var blank = new Material(Shader.Find("Standard")) { name = "YAPS squash skin" };
-            Asset(folder, blank, $"{root.name} squash skin.mat");
+            blank = Asset(folder, blank, $"{root.name} squash skin.mat");
             skin.sharedMesh = mesh;
             skin.bones = skinBones;
             skin.sharedMaterial = blank;
@@ -474,6 +491,20 @@ namespace AvatarBridge
             }
         }
 
+        // Each part scaled to its peak on the body, as a painted region is: a part's bones can
+        // carry it at a fraction (a seat at 0.67 at most), and it then dented at that fraction.
+        static void Peak(List<Skin> skins, Skin body)
+        {
+            if (body == null) return;
+            for (int c = 0; c < 4; c++)
+            {
+                float most = body.share.Max(x => x[c]);
+                if (most <= 0f) continue;
+                foreach (var s in skins)
+                    for (int v = 0; v < s.share.Length; v++) s.share[v][c] = Mathf.Clamp01(2f * s.share[v][c] / most);
+            }
+        }
+
         // The renderer the build measures the parts found by name on, for the region tool to start on.
         public static SkinnedMeshRenderer NamedBody(Transform root)
         {
@@ -506,6 +537,7 @@ namespace AvatarBridge
             var skin = none == null ? Skins(root).FirstOrDefault(s => s.smr == body) : null;
             if (skin == null) return null;
             NameShares(skin, Sets(found));
+            Peak(new List<Skin> { skin }, skin);
             return skin.share;
         }
 
@@ -520,10 +552,11 @@ namespace AvatarBridge
             return shader;
         }
 
-        static void Save(Material copy, Material source, string folder, string file)
+        static Material Save(Material copy, Material source, string folder, string file)
         {
-            Asset(folder, copy, file);
+            copy = Asset(folder, copy, file);
             AssetImporter.GetAtPath(AssetDatabase.GetAssetPath(copy)).userData = Mark + GlobalObjectId.GetGlobalObjectIdSlow(source);
+            return copy;
         }
 
         // The material a squash copy was made from, or null when it is not one.
@@ -562,6 +595,18 @@ namespace AvatarBridge
             var refused = new SortedSet<string>();
             var skipped = new SortedSet<string>();
             int repointed = 0;
+            // Patched in one batch first, as Add does: one at a time, each import cost about a
+            // minute in a large project.
+            var pending = new List<Material>();
+            foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                string path = AnimationUtility.CalculateTransformPath(smr.transform, root);
+                var mats = smr.sharedMaterials;
+                for (int slot = 0; slot < mats.Length; slot++)
+                    if (mats[slot] != null && SourceOf(mats[slot]) != null && mats[slot].HasProperty("_YAPS_DentOwn"))
+                        pending.AddRange(Keyed(clips, path, slot).Select(Original).Where(m => !m.HasProperty("_YAPS_DentOwn")));
+            }
+            YapsShaderPatcher.Prewrite(pending, folder);
             foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
                 var mats = smr.sharedMaterials;
@@ -582,7 +627,7 @@ namespace AvatarBridge
                             if (shader == null) { refused.Add(original.name); continue; }
                             to = new Material(original) { shader = shader };
                             foreach (string name in Properties) Carry(template, to, name);
-                            Save(to, original, folder, $"{root.name} {smr.name} {slot} {original.name}.mat");
+                            to = Save(to, original, folder, $"{root.name} {smr.name} {slot} {original.name}.mat");
                             copyOf[(smr, original)] = to;
                             added.Add(to);
                         }
@@ -758,7 +803,7 @@ namespace AvatarBridge
                 var tex = new Texture2D(width, height, TextureFormat.RGBA32, false, true) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
                 tex.SetPixels32(pixels);
                 tex.Apply(false);
-                Asset(folder, tex, $"{name} {m.smr.name} shares.asset");
+                tex = Asset(folder, tex, $"{name} {m.smr.name} shares.asset");
                 // What the CCK's upload checks ask of an avatar texture. The asset keeps its
                 // pixels either way; readable only adds a CPU copy, and with no mips nothing streams.
                 var flags = new SerializedObject(tex);
@@ -798,11 +843,44 @@ namespace AvatarBridge
             if (root.gameObject.scene.IsValid()) EditorSceneManager.MarkSceneDirty(root.gameObject.scene);
         }
 
+        // The asset to use in place of `asset`: the one already at its path when the last build
+        // made it, written over, so a rebuild neither numbers a duplicate of every copy nor
+        // strands what still points at the old ones, a prefab not applied since, say.
         static T Asset<T>(string folder, T asset, string file) where T : UnityEngine.Object
         {
             YapsNativeBuilder.EnsureFolderPublic(folder);
-            AssetDatabase.CreateAsset(asset, AssetDatabase.GenerateUniqueAssetPath(folder + "/" + file));
+            string path = folder + "/" + file;
+            if (Reuse != null && Reuse.Remove(path) && AssetDatabase.LoadAssetAtPath<T>(path) is T old)
+            {
+                EditorUtility.CopySerialized(asset, old);
+                EditorUtility.SetDirty(old);
+                return old;
+            }
+            AssetDatabase.CreateAsset(asset, AssetDatabase.GenerateUniqueAssetPath(path));
             return asset;
+        }
+
+        // Set while Build runs: paths of the squash's own assets on the avatar before it started.
+        // Only these are written over; a same-named avatar's in a shared folder never are.
+        static HashSet<string> Reuse;
+
+        // The squash's copies in the slots and in the clips that swap them, their shares and
+        // the slot skin.
+        static HashSet<string> Owned(Transform root, IList<AnimationClip> clips)
+        {
+            var mats = root.GetComponentsInChildren<Renderer>(true).SelectMany(r => r.sharedMaterials).ToList();
+            if (clips != null)
+                foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                {
+                    string path = AnimationUtility.CalculateTransformPath(smr.transform, root);
+                    for (int slot = 0; slot < smr.sharedMaterials.Length; slot++) mats.AddRange(Keyed(clips, path, slot));
+                }
+            var skin = root.Find(ShaderHostName + "/skin")?.GetComponent<SkinnedMeshRenderer>();
+            var from = mats.Where(m => SourceOf(m) != null).Cast<UnityEngine.Object>()
+                .Concat(new UnityEngine.Object[] { skin?.sharedMesh, skin?.sharedMaterial }).Where(o => o != null).ToArray();
+            return new HashSet<string>(EditorUtility.CollectDependencies(from)
+                .Where(o => !(o is Material m) || SourceOf(m) != null || (skin != null && o == skin.sharedMaterial)).Select(AssetDatabase.GetAssetPath)
+                .Where(p => p.EndsWith(".mat") || p.EndsWith(" shares.asset") || p.EndsWith(" squash skin.asset")));
         }
 
         // Pair `k` as the skin carries it, posed as it stands: points from the renderer carrying

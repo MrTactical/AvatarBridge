@@ -948,6 +948,8 @@ namespace AvatarBridge.Regression
             createDefaultColliderPointers = true,
             sizeContactZonesForLargest = true,
             patchNonSpiShaders = true,     // BETA: writes patched shader copies
+            // Off for a user. Patches the body shaders too, so it is the slowest pass in a run.
+            squashSoftParts = true,
 
             convertConstraints = true,
             convertHeadChop = true,

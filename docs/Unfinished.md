@@ -1877,7 +1877,8 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     layer's own bone weights (README says so); a synthetic swap clip (original back, plus an
     alternate) followed and stripped cleanly. Not built from Tier 1: the bulge finder (the shape
     key seed covers the case it was for) and a separate click-to-grow (the brush is it).
-    Each rebuild leaves the previous build's copies in the folder.
+    Each rebuild left the previous build's copies in the folder. FIXED ON DEV 2026-10-15: a
+    rebuild writes over the assets the last one made (see the story record below).
     Open: the Scene view brush and overlay have only compiled, nobody has painted with them;
     a clothing toggle while squashing, in game; whether the client's per-copy material cache
     feeds a material that arrives by animation (the alternates' copies depend on it).
@@ -2218,21 +2219,31 @@ the thigh picture. The story lays the hand mid-thigh, since the chain's root sit
 crease where the region is barely painted, logs how far it is from each part, and judges the lab's
 press against the sway without it.
 
-Open:
-- **A first squash build took 20 to 30 minutes in a large project.** `YapsShaderPatcher` reuses an
-  identical patched shader already in the folder; otherwise it writes it, runs a full
-  `AssetDatabase.Refresh()` and imports it synchronously (lines 1036 to 1040), and in an
-  asset-heavy project each round pays about a minute in `UnloadImportedAssets`. A conversion
-  into a fresh output folder took 31 minutes, 27 of them on 23 shaders; the same conversion into
-  a folder already holding them took 3. **Rebuild** writes to `Assets/YAPS/Generated/Squash`, not
-  the conversion's folder, so it paid 19 rounds again. Write them all, then refresh once.
-- **Named pairs squash at their raw weights.** The bone-name path takes each vertex's share as
-  weight painted (a seat measured at 0.67 at most, 0.2 on average), so it dents at that fraction,
-  where a painted region now starts whole. Decide whether the name path should scale too.
-- **The corpus never builds a squash.** `CorpusSettings.squashSoftParts` is false, so none of the
-  above could have shown in a run.
-- `UiOffscreenProbe.FindSource()` picks either of two VRChat avatars in one scene from run to run,
-  and the story's output folder follows it: `--keep` both folders.
+Left open by the story, all four done the same night, editor-measured:
+- **Done 2026-10-15: a first squash build took 20 to 30 minutes in a large project.** Each
+  patched shader paid a full `AssetDatabase.Refresh()` and its own import, and every import runs
+  every installed package's import hooks. Now the patcher writes every copy first and imports
+  them in two batches, includes and then shaders (`YapsShaderPatcher.Prewrite`, called from
+  `Add` and from `FollowSwaps`), and refreshes only for a folder it made on disk itself.
+  **Rebuild** goes back to the folder the last build used, a conversion's included. Measured on
+  the thighs story into a fresh folder: 24 shaders patched, 12 includes in one import and 19
+  shaders in a second, and 113 s of refresh across the whole run, against 130 s before for a run
+  that reused a folder and patched one.
+- **Done 2026-10-15: named pairs squash at their raw weights.** The bone-name path now scales
+  each part to its peak on the body, as a painted region is (`Peak`), so a part its bones carry
+  at 0.67 at most dents whole where they carry most. The body is picked before scaling, which
+  lifts every skin and could change the pick.
+- **Done 2026-10-15: the corpus never builds a squash.** `CorpusSettings.squashSoftParts` is on.
+- **Done 2026-10-15: a rebuild numbered a duplicate of every copy.** `Asset` took
+  `GenerateUniqueAssetPath`, so each **Rebuild** added a " 1" set beside the last, and with the
+  rebuild now going back into the conversion's folder they would have piled up there. A rebuild
+  now writes over the assets the squash had on the avatar before it started (`Owned`, then
+  `CopySerialized` onto the old asset), so anything still pointing at them, a prefab not applied
+  since, follows. Only those: a same-named avatar's copies in a shared folder are never touched.
+  The story's rebuild: 58 distinct squash assets against 124, no numbered shares, and the same
+  Squeeze, Bounce and hand numbers.
+- **Done 2026-10-15:** `UiOffscreenProbe.FindSource()` picked either of two VRChat avatars in one
+  scene from run to run. It now takes an active one first, then the first in the hierarchy.
 
 ### "Avoid unpacking the converted prefab": a user's request, 2026-10-14. A ON DEV, B PARKED
 
