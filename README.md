@@ -181,7 +181,11 @@ but only the game shows gestures, contacts, synced parameters and physics actual
   Tester*: gestures, stances, visemes, emotes, face tracking and the whole Advanced
   Settings menu, plus a live Animator-layers readout with weights, masks and playing clips. Its
   **Remote view** card snaps every `#` local parameter to its default: what other players' clients
-  hold forever, so you can see remote-only flickering before you upload. Its **Interaction lab** card
+  hold forever, so you can see remote-only flickering before you upload. **Show a copy as others see
+  it** puts a second copy beside yours that hears only what ChilloutVR sends to other players:
+  synced parameters within the sync budget, movement, gestures and voice, with `#` locals at their
+  defaults and `IsLocal` off. Anything that looks different on it looks different to everyone else.
+  Its **Interaction lab** card
   (MagicaCloth2 and DynamicBone) walks, runs, turns, hops and shakes the avatar the way a player
   would, so its chains swing, or sits it so they settle in the seated pose; **Stop** puts it back
   where it started. It is a preview: only ChilloutVR can judge physics. **Grab chains in the
@@ -2001,8 +2005,9 @@ Bipeds are unaffected by any of it.
 
 - **Squash (opt-in).** A layer whose shader cannot be patched (a built-in shader with no source on
   disk, a surface shader) cannot follow, so the pair under it holds still rather than coming
-  through it, and the report names the layer. A layer casting its shadow from anything but Unity's
-  standard caster casts it unsquashed. From painted regions, a layer more than 3 cm off the skin
+  through it, and the report names the layer. A layer casts its shadow unsquashed when the shadow
+  comes from somewhere the conversion cannot reach, such as another shader's caster or a Fallback
+  that cuts alpha; Unity's standard caster and an opaque Fallback bend with it. From painted regions, a layer more than 3 cm off the skin
   holds still. How deep a hand dents and how two parts meet is tuned by eye: it can only be
   judged in ChilloutVR. An arm pushed right through the middle of a part lets it go rather than
   pushing it aside, since the shader cannot remember which side the arm came in from. The stretch
@@ -2398,8 +2403,9 @@ Two fixes, either works:
 The Avatar Tester's **Remote view** card reproduces part of it: **Snap "#" locals to their
 defaults** puts every `#` local parameter at its default, where other players' clients hold it
 forever. Synced parameters keep your live values there, so the seconds before they replicate are
-not reproduced. One cause was the conversion's own and is fixed in 3.5.26: if you converted
-earlier, reconvert.
+not reproduced. **Show a copy as others see it** runs a second copy that receives only what syncs,
+so the wearer's copy and a remote one can be watched side by side. One cause was the conversion's
+own and is fixed in 3.5.26: if you converted earlier, reconvert.
 
 ### A toggle switches on but never back off
 

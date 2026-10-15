@@ -28,6 +28,7 @@ physics A/B probes and a corpus run. Decisions on the queue's open questions, sa
 - Issues #6, #7 and #8: replies drafted, Joe posts them. GrabbyBones: a PR upstream first, drafted.
 - Corpus: subsets whenever needed, three full runs authorised for this job.
 - Squash shadows on layers with Unity's own caster or a Fallback-only shader: patch the casters.
+  (built: the opaque-Fallback case; Unity's own caster was already wrapped)
 - Thry's "Unlock all materials" taking YAPS materials back to a plain shader: detect it and offer
   a re-bake.
 - PhysBone-side squish (Bone Spring collision): dropped, the shader squash covers it.
@@ -1647,6 +1648,14 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
     cutout, parallax, stereo instancing). Avatar A's Poiyomi 7 caster is its own, already patched.
     Still unsquashed: a caster from anywhere else outside the shader, and shaders with no caster
     that lean on a Fallback.
+    BUILT 2026-10-15: a shader with no caster of its own and an opaque `Fallback` gets Unity's
+    standard caster written into each SubShader (`AddStandardCaster`), which the wrapper above then
+    bends. Not when the Fallback cuts alpha (the caster would shadow the cut parts solid), not
+    beside a `CGINCLUDE`/`HLSLINCLUDE` (it can declare what UnityStandardShadow declares), not for
+    surface shaders. The patcher is shared, so a Fallback-only plug shader's shadow bends too.
+    `Dev/Tests/StandardCasterTest.cs` compiles the caster pass by hand (`ShaderUtil.CompilePass`),
+    since the caster variant otherwise compiles only when a shadow is drawn. NOT RUN YET. Still
+    unsquashed: casters from other shaders (`UsePass`), cutout Fallbacks.
     Strap bending at the shoulder (Joe, editor Play mode, same day). WITHDRAWN as a squash bug:
     the builder's grid did hold only skin WITH a share (every skin vertex goes in now, as the A/B
     probe's copy always did), but Joe's rebuild with that fix still bent. Read from the source
@@ -3490,7 +3499,15 @@ compositor and no reprojection. Measure one avatar both ways, keep the ratio, ap
 Belongs with the twin below: both exist so a bug or a cost shows up in the editor rather than
 in somebody's instance.
 
-**A remote twin.** The strongest idea on this page. Spawn a second copy of the converted
+**A remote twin.** *BUILT ON DEV 2026-10-15 (`CckAnimatorTester.Remote.cs`), compiled, NOT YET RUN
+in Play mode.* Remote view's *Show a copy as others see it* instantiates the live avatar beside
+itself, removes its parameter streams, sets `IsLocal` off, and every editor tick copies only what
+syncs: `BridgeDiagnostics.BudgetOrder`, now the one walk both the sync-budget diagnostic and the
+copy read, plus the game's core parameters bar the per-viewer three. Not built: contacts and
+`CVRAnimatorDriver` do nothing in the editor on either copy, so the driver clobbering remote
+copies is not shown; the copy's YAPS lights sit in the same scene as the wearer's sockets, so a
+socket within reach of the copy's plug can answer it; and a Play-mode probe for the copy.
+The strongest idea on this page. Spawn a second copy of the converted
 avatar beside the first, driven *only* by parameters that actually sync, and let the tester
 walk between them. Every wearer-only bug becomes visible in the editor: the socket shapes
 that moved for nobody, the toggle that never left the wearer's machine, the smoothing rig

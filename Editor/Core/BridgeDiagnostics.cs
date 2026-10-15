@@ -1064,7 +1064,7 @@ namespace AvatarBridge
         // ChilloutVR's own sync budget, from AvatarAnimatorManager.CreateParameterDefinition.
         const int AasBitBudget = 3200;
 
-        static readonly HashSet<string> ClientCoreParameters = new HashSet<string>
+        internal static readonly HashSet<string> ClientCoreParameters = new HashSet<string>
         {
             "MovementX", "MovementY", "Grounded", "Crouching", "Prone", "Flying", "Sitting",
             "GestureRight", "GestureLeft", "Toggle", "Emote", "CancelEmote", "IsLocal",
@@ -1072,14 +1072,14 @@ namespace AvatarBridge
             "IsFriend", "VelocityX", "VelocityY", "VelocityZ"
         };
 
-        static void CheckSyncBudget(BridgeContext ctx, AnimatorController master)
+        // Every parameter that spends sync bits, in the order the client spends
+        // them, and whether it still fit. The Avatar Tester's remote copy reads
+        // the same walk, so the two cannot disagree about what reaches others.
+        internal static IEnumerable<(AnimatorControllerParameter param, bool fits)> BudgetOrder(AnimatorController master)
         {
             int used = 0;
-            int floats = 0, ints = 0, bools = 0;
-            var dropped = new List<string>();
             // The client skips clip-driven floats before it spends a bit, so they never use any.
             var curveDriven = CvrParameterNames.CurveDriven(master);
-
             foreach (var param in master.parameters)
             {
                 if (param.name.StartsWith("#")
@@ -1091,6 +1091,23 @@ namespace AvatarBridge
                 }
                 if (used >= AasBitBudget)
                 {
+                    yield return (param, false);
+                    continue;
+                }
+                used += param.type == AnimatorControllerParameterType.Bool ? 1 : 32;
+                yield return (param, true);
+            }
+        }
+
+        static void CheckSyncBudget(BridgeContext ctx, AnimatorController master)
+        {
+            int used = 0;
+            int floats = 0, ints = 0, bools = 0;
+            var dropped = new List<string>();
+            foreach (var (param, fits) in BudgetOrder(master))
+            {
+                if (!fits)
+                {
                     dropped.Add(param.name);
                     continue;
                 }
@@ -1101,7 +1118,6 @@ namespace AvatarBridge
                     case AnimatorControllerParameterType.Bool: bools++; used += 1; break;
                 }
             }
-
             if (dropped.Count > 0)
             {
                 ctx.Report.Error(Category, $"{BridgeElements.Count(dropped.Count, "parameter", "parameters")} past ChilloutVR's sync limit",

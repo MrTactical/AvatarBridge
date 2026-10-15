@@ -539,6 +539,7 @@ namespace AvatarBridge
             refusal = null;
             skippedShadowPasses = 0;
             var shaderFile = unit[0];
+            AddStandardCaster(shaderFile);
             int patched = 0;
             var alreadyInjected = new HashSet<string>(StringComparer.Ordinal);
 
@@ -827,8 +828,57 @@ namespace AvatarBridge
             return true;
         }
 
+        // A shader with no caster of its own takes its shadow from its Fallback,
+        // which knows nothing of the deform, so a bent or squashed part throws a
+        // straight shadow. Unity's own caster goes into each SubShader instead,
+        // where WrapUnityShadowCaster reaches it. Not when the Fallback cuts
+        // alpha (this caster would shadow the cut parts solid), not beside a
+        // shared include block (it can declare what UnityStandardShadow
+        // declares), and not for surface shaders, whose lit passes the patcher
+        // never reaches, so only the shadow would bend.
+        internal static bool AddStandardCaster(ShaderSpiPatcher.SourceFile file)
+        {
+            string text = file.Text;
+            var fallback = Regex.Match(text, @"\bFallBack\s+""([^""]+)""", RegexOptions.IgnoreCase);
+            if (!fallback.Success
+                || Regex.IsMatch(fallback.Groups[1].Value, "Cutout|Transparent|Fade|Alpha|Particle", RegexOptions.IgnoreCase)
+                || Regex.IsMatch(text, @"""LightMode""\s*=\s*""ShadowCaster""", RegexOptions.IgnoreCase)
+                || Regex.IsMatch(text, @"\bUsePass\b", RegexOptions.IgnoreCase)
+                || Regex.IsMatch(text, @"\b(CGINCLUDE|HLSLINCLUDE|HLSLPROGRAM)\b")
+                || Regex.IsMatch(text, @"#pragma\s+surface\b"))
+            {
+                return false;
+            }
+            bool added = false;
+            foreach (var sub in Regex.Matches(text, @"\bSubShader\s*\{").Cast<Match>().Reverse())
+            {
+                int close = MatchBracket(text, sub.Index + sub.Length - 1, '{', '}');
+                if (close < 0) continue;
+                text = text.Insert(close, StandardCaster);
+                added = true;
+            }
+            file.Text = text;
+            return added;
+        }
 
-        const string NoNormal = "    float3 yapsNormal = float3(0,0,0);";
+        const string StandardCaster = @"
+        Pass
+        {
+            Name ""ShadowCaster""
+            Tags { ""LightMode"" = ""ShadowCaster"" }
+            ZWrite On ZTest LEqual
+            CGPROGRAM
+            #pragma target 4.5
+            #pragma multi_compile_shadowcaster
+            #pragma multi_compile_instancing
+            #pragma vertex vertShadowCaster
+            #pragma fragment fragShadowCaster
+            #include ""UnityStandardShadow.cginc""
+            ENDCG
+        }
+    ";
+
+        const string NoNormal ="    float3 yapsNormal = float3(0,0,0);";
         const string NoTangent = "    float3 yapsTangent = float3(0,0,0);";
 
         static int MatchBracket(string text, int open, char opening, char closing)

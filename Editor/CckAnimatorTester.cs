@@ -254,7 +254,7 @@ namespace AvatarBridge
             }
             var selected = Selection.activeGameObject;
             var fromSelection = selected != null ? selected.GetComponentInParent<CVRAvatar>() : null;
-            if (fromSelection != null)
+            if (fromSelection != null && !IsTwin(fromSelection))
             {
                 return fromSelection;
             }
@@ -264,6 +264,7 @@ namespace AvatarBridge
             int bestScore = -1;
             foreach (var candidate in FindObjectsOfType<CVRAvatar>(true))
             {
+                if (IsTwin(candidate)) continue;
                 var animator = candidate.GetComponentInChildren<Animator>(true);
                 bool usable = animator != null && animator.runtimeAnimatorController != null;
                 bool active = candidate.gameObject.activeInHierarchy;
@@ -711,6 +712,7 @@ namespace AvatarBridge
             card.Body.Add(BridgeElements.Hint(
                 "Puts every \"#\" local parameter at its default, as other players' clients hold it.",
                 "A layer that then cycles or changes state does so for everyone but you."));
+            var twinNote = BridgeElements.Hint(TwinNote());
             var snap = BridgeElements.Btn("Snap \"#\" locals to their defaults", () =>
             {
                 var a = LiveAnimator();
@@ -739,7 +741,17 @@ namespace AvatarBridge
                 }
             }, "How remote clients hold them");
             snap.SetEnabled(live);
-            card.Body.Add(BridgeElements.ButtonRow(snap));
+            Button twin = null;
+            twin = BridgeElements.Btn(_twin != null ? "Remove the copy" : "Show a copy as others see it", () =>
+            {
+                if (_twin != null) DropTwin();
+                else if (LiveAnimator() is Animator a) ShowTwin(a);
+                twin.text = _twin != null ? "Remove the copy" : "Show a copy as others see it";
+                twinNote.text = TwinNote();
+            }, "A second copy beside yours that hears only what ChilloutVR sends to other players");
+            twin.SetEnabled(live);
+            card.Body.Add(BridgeElements.ButtonRow(snap, twin));
+            card.Body.Add(twinNote);
             return card;
         }
 
