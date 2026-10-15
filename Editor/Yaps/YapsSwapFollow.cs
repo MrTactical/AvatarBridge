@@ -108,6 +108,8 @@ namespace AvatarBridge.Yaps
                     }
                     if (touched)
                     {
+                        // Remove promises one undo step, and clip assets record nothing on their own.
+                        Undo.RegisterCompleteObjectUndo(clip, "YAPS material swap");
                         AnimationUtility.SetObjectReferenceCurve(clip, binding, keys);
                         EditorUtility.SetDirty(clip);
                     }

@@ -83,6 +83,8 @@ namespace AvatarBridge
                 while (it.Next(true))
                 {
                     if (it.propertyType != SerializedPropertyType.ObjectReference) continue;
+                    // A prefab instance's own bookkeeping points at a scene object that is no asset.
+                    if (it.name == "m_PrefabInstance" || it.name == "m_PrefabAsset" || it.name == "m_CorrespondingSourceObject") continue;
                     var value = it.objectReferenceValue;
                     if (value == null || EditorUtility.IsPersistent(value)) continue;
                     var go = value as GameObject ?? (value as Component)?.gameObject;
@@ -122,7 +124,7 @@ namespace AvatarBridge
             foreach (var controller in Controllers(root))
                 foreach (var clip in controller.animationClips.Where(c => c != null))
                     foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
-                        if (binding.type.IsSubclassOf(typeof(Renderer)) && binding.propertyName.StartsWith("m_Material"))
+                        if (binding.type != null && binding.type.IsSubclassOf(typeof(Renderer)) && binding.propertyName.StartsWith("m_Material"))
                             materials.AddRange(AnimationUtility.GetObjectReferenceCurve(clip, binding).Select(k => k.value as Material));
             return materials.Where(m => m != null).Distinct()
                 .SelectMany(m => m.GetTexturePropertyNames().Select(m.GetTexture));

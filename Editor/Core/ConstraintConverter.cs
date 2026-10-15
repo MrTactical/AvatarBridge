@@ -627,19 +627,22 @@ namespace AvatarBridge
                 // in world space, and nothing moves.
                 if (constrained.childCount > 0 && Simulated(ctx, constrained.parent))
                 {
-                    if (StaticLocally(ctx, source, animatedPaths))
+                    // The bone's own parent stands in for the source, its offset measured from the
+                    // pose. A new object would land inside the simulated chain, and MagicaCloth2 takes
+                    // every transform under a root as a particle, so the copy would swing. Measured
+                    // only for one full-weight source, as ConvertRotation measures it.
+                    var only = ReadSources(component);
+                    bool measured = Get(component, "IsActive", true) && component.gameObject.activeInHierarchy
+                        && Mathf.Approximately(Get(component, "GlobalWeight", 1f), 1f)
+                        && only.Count == 1 && only[0].Weight >= 0.999f;
+                    if (measured && StaticLocally(ctx, source, animatedPaths))
                     {
-                        var standIn = new GameObject(source.name + " (local frame)").transform;
-                        standIn.SetParent(constrained.parent, false);
-                        standIn.localPosition = source.localPosition;
-                        standIn.localRotation = source.localRotation;
-                        standIn.localScale = source.localScale;
-                        sourceStandIns[(component, source)] = standIn;
+                        sourceStandIns[(component, source)] = constrained.parent;
                         ctx.Report.Converted(Category, ctx.PathInTarget(constrained),
-                            $"Local-space rotation relay from \"{source.name}\": a fixed copy of that source, " +
-                            $"\"{standIn.name}\", sits under this bone's own parent and drives it instead, so a " +
-                            "world-space constraint reproduces it exactly while the bone stays where it is, with " +
-                            "the bones it carries. The source never changes its own rotation, so the copy is exact.");
+                            $"Local-space rotation relay from \"{source.name}\": that source never changes its own " +
+                            $"rotation, so this bone's own parent (\"{constrained.parent.name}\") drives it instead, " +
+                            "and a world-space constraint reproduces it exactly while the bone stays where it is, " +
+                            "with the bones it carries.");
                     }
                     else
                     {
@@ -681,8 +684,8 @@ namespace AvatarBridge
             return moved;
         }
 
-        // A local-space relay's source, swapped per constraint for a fixed copy under the
-        // constrained bone's parent. Per conversion.
+        // A local-space relay's source, swapped per constraint for the constrained bone's
+        // parent. Per conversion.
         static readonly Dictionary<(object, Transform), Transform> sourceStandIns =
             new Dictionary<(object, Transform), Transform>();
 
@@ -722,10 +725,15 @@ namespace AvatarBridge
         }
 
         // Whether nothing ever changes this bone's rotation relative to its parent: no animation,
-        // no constraint writing it, no PhysBone simulating it.
+        // no constraint writing it, no PhysBone simulating it, and no humanoid mapping, since
+        // muscle curves bind at the root and tracking writes no curve at all.
         static bool StaticLocally(BridgeContext ctx, Transform t, HashSet<string> animatedPaths)
         {
             if (animatedPaths.Contains(ctx.PathInTarget(t)) || Simulated(ctx, t)) return false;
+            var animator = ctx.Target.GetComponent<Animator>();
+            if (animator != null && animator.isHuman)
+                for (var bone = HumanBodyBones.Hips; bone < HumanBodyBones.LastBone; bone++)
+                    if (animator.GetBoneTransform(bone) == t) return false;
             foreach (var c in ctx.Target.GetComponentsInChildren<Component>(true))
             {
                 if (c == null) continue;

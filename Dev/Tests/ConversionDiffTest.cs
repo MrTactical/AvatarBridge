@@ -39,6 +39,12 @@ namespace AvatarBridge.Regression
             ConversionDiff.Compare(report, before, before.ToList(), new DateTime(2026, 10, 15));
             Check(report.Entries.Single().Subject == "Nothing changed since the last conversion" && report.ChangesCard == null, "the same snapshot says nothing changed");
 
+            report = new BridgeReport();
+            var versionOnly = before.ToList();
+            versionOnly[0] = "version AvatarBridge = 5.0.0";
+            ConversionDiff.Compare(report, before, versionOnly, new DateTime(2026, 10, 15));
+            Check(report.Entries.Single().Subject == "Since the last conversion: only settings or the version changed", "a new version alone is not called a count change");
+
             Debug.Log(failures == 0 ? "[ConversionDiffTest] PASS" : $"[ConversionDiffTest] FAIL: {failures}");
             if (Application.isBatchMode) EditorApplication.Exit(failures == 0 ? 0 : 1);
         }

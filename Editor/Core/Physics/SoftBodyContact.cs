@@ -82,7 +82,7 @@ namespace AvatarBridge
                 }
             }
 
-            int links = 0;
+            int links = 0, meeting = 0;
             foreach (var a in bodies)
             {
                 var list = a.cloth.SerializeData.colliderCollisionConstraint.colliderList;
@@ -97,7 +97,13 @@ namespace AvatarBridge
                     {
                         // Near enough to meet: within a few radii of one of a's own collision bones.
                         bool near = a.bones.Any(boneA => Vector3.Distance(boneA.position, boneB.position) < 3f * (a.radius + b.radius));
-                        if (!near || list.Contains(spheres[boneB]))
+                        if (!near)
+                        {
+                            continue;
+                        }
+                        // Counted before the skip, so a second run on linked bodies is not told they never meet.
+                        meeting++;
+                        if (list.Contains(spheres[boneB]))
                         {
                             continue;
                         }
@@ -121,9 +127,13 @@ namespace AvatarBridge
                     $"Carries {b.bones.Count} sides on one cloth (\"{string.Join("\", \"", b.bones.Select(t => t.name))}\"), " +
                     "so those cannot push each other: MagicaCloth2 can only push a cloth with another cloth's collider.");
             }
-            if (links == 0)
+            if (meeting == 0)
             {
                 report.Skipped(Category, avatar.name, "No two soft bodies sit close enough to meet.");
+            }
+            else if (links == 0)
+            {
+                report.Skipped(Category, avatar.name, "Already linked: every soft body near another pushes it.");
             }
         }
 

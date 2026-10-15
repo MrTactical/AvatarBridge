@@ -23,6 +23,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using ABI.CCK.Components;
 using UnityEditor;
@@ -638,10 +639,24 @@ namespace AvatarBridge.Regression
                       && k1.GetTexture("_YAPS_DentOwn") == copy.GetTexture("_YAPS_DentOwn")
                       && k1.GetVector("_YAPS_SquashReach") == copy.GetVector("_YAPS_SquashReach")
                       && providers.All(p => p.materials.Contains(k1));
+            // The Rebuild button's path, YapsSquash.Build, with the test clip in place of the
+            // avatar's own: new providers, and the alternate's copy must reach them again.
+            var reuse = typeof(YapsSquash).GetField("Reuse", BindingFlags.NonPublic | BindingFlags.Static);
+            var owned = typeof(YapsSquash).GetMethod("Owned", BindingFlags.NonPublic | BindingFlags.Static);
+            reuse.SetValue(null, owned.Invoke(null, new object[] { root, clips }));
+            try
+            {
+                YapsSquash.Add(root, Folder, out _);
+                YapsSquash.FollowSwaps(root, clips, Folder, null);
+            }
+            finally { reuse.SetValue(null, null); }
+            keys = AnimationUtility.GetObjectReferenceCurve(clip, binding);
+            providers = root.Find("YAPS squash (shader)").GetComponents<CVRMaterialDataProvider>();
+            bool rebuilt = keys[1].value == k1 && providers.All(p => p.materials.Contains(k1));
             YapsSquash.Strip(root, clips);
             keys = AnimationUtility.GetObjectReferenceCurve(clip, binding);
             bool back = keys[0].value == original && keys[1].value == alternate && smr.sharedMaterials[slot] == original;
-            return $"swap test on {smr.name} slot {slot}: follow {(ok ? "ok" : "FAILED")}, strip {(back ? "ok" : "FAILED")} ({said})";
+            return $"swap test on {smr.name} slot {slot}: follow {(ok ? "ok" : "FAILED")}, rebuild {(rebuilt ? "ok" : "FAILED")}, strip {(back ? "ok" : "FAILED")} ({said})";
         }
 
         // Regions seeded from the bone names, as the region tool's first button does, then built

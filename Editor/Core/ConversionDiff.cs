@@ -24,7 +24,7 @@ namespace AvatarBridge
         const string FileName = ".last-conversion.txt";
         const string Category = "Changes";
 
-        public static void Run(BridgeContext ctx)
+        public static void Run(BridgeContext ctx, string reportName = "ConversionReport.md")
         {
             try
             {
@@ -41,7 +41,7 @@ namespace AvatarBridge
                         "The next conversion here will say what changed since this one.");
                     return;
                 }
-                Compare(ctx.Report, before, now, when);
+                Compare(ctx.Report, before, now, when, reportName);
             }
             catch (Exception e)
             {
@@ -81,7 +81,8 @@ namespace AvatarBridge
             return lines.Distinct().OrderBy(l => l, StringComparer.Ordinal).ToList();
         }
 
-        internal static void Compare(BridgeReport report, string[] before, List<string> now, DateTime when)
+        internal static void Compare(BridgeReport report, string[] before, List<string> now, DateTime when,
+            string reportName = "ConversionReport.md")
         {
             var was = Keyed(before);
             var isNow = Keyed(now);
@@ -108,10 +109,12 @@ namespace AvatarBridge
             var kinds = changed.Concat(gone).Concat(added).Select(l => l.Substring(0, l.IndexOf(' ')))
                 .Where(k => k != "setting" && k != "version" && k != "count")
                 .GroupBy(k => k).Select(g => BridgeElements.Count(g.Count(), Noun(g.Key, false), Noun(g.Key, true))).ToList();
-            string summary = kinds.Count > 0 ? string.Join(", ", kinds) + " changed" : "only the counts moved";
+            bool counts = changed.Concat(gone).Concat(added).Any(l => l.StartsWith("count ", StringComparison.Ordinal));
+            string summary = kinds.Count > 0 ? string.Join(", ", kinds) + " changed"
+                : counts ? "only the counts moved" : "only settings or the version changed";
             report.Converted(Category, $"Since the last conversion: {summary}",
                 (settings.Count > 0 ? $"You changed {string.Join("; ", settings)}. " : "") +
-                $"Compared with {since}. The full list is in ConversionReport.md, under Since the last conversion.");
+                $"Compared with {since}. The full list is in {reportName}, under Since the last conversion.");
 
             var sb = new StringBuilder();
             sb.AppendLine($"Compared with {since}.");

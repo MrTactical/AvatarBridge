@@ -20,6 +20,7 @@ namespace AvatarBridge.Regression
             failures = 0;
             var root = new GameObject("PreflightAvatar");
             var outside = new GameObject("Elsewhere");
+            GameObject instance = null;
             try
             {
                 root.AddComponent<Animator>();
@@ -51,6 +52,12 @@ namespace AvatarBridge.Regression
                 Check(saved.GetComponentInChildren<MeshFilter>().sharedMesh == null, "the saved prefab lost the unsaved mesh");
                 Check(saved.GetComponentInChildren<SkinnedMeshRenderer>().rootBone == null, "the saved prefab lost the outside reference");
 
+                // A prefab instance's own bookkeeping points at a scene object, and is not lost.
+                instance = (GameObject)PrefabUtility.InstantiatePrefab(saved);
+                report = new BridgeReport();
+                UploadPreflight.Run(report, instance.GetComponent<CVRAvatar>());
+                Check(!report.Entries.Any(e => e.Subject.Contains("not saved")), "a prefab instance has nothing unsaved");
+
                 Object.DestroyImmediate(root.GetComponent<CVRAvatar>());
                 Object.DestroyImmediate(root.GetComponent<Animator>());
                 var bare = root.AddComponent<CVRAvatar>();
@@ -62,6 +69,7 @@ namespace AvatarBridge.Regression
             {
                 Object.DestroyImmediate(root);
                 Object.DestroyImmediate(outside);
+                if (instance != null) Object.DestroyImmediate(instance);
                 AssetDatabase.DeleteAsset(Path);
             }
             Debug.Log(failures == 0 ? "[PreflightTest] PASS" : $"[PreflightTest] FAIL: {failures}");

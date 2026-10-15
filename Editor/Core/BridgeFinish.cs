@@ -19,7 +19,7 @@ namespace AvatarBridge
             ReadAvatar(ctx);
             ctx.Report.StoreDescription = AvatarDescription.Write(ctx);
             // Last before writing, so it compares everything the report says.
-            ConversionDiff.Run(ctx);
+            ConversionDiff.Run(ctx, reportName);
             WriteReport(ctx, reportName, label);
             EditorUtility.SetDirty(ctx.CvrAvatar);
             AssetDatabase.SaveAssets();

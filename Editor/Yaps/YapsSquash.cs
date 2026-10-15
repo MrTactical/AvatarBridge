@@ -619,7 +619,18 @@ namespace AvatarBridge
                     copyOf[(smr, Original(template))] = template;
                     foreach (var was in Keyed(clips, path, slot))
                     {
-                        if (was.HasProperty("_YAPS_DentOwn") && was.GetTexture("_YAPS_DentOwn") == own) continue;
+                        if (was.HasProperty("_YAPS_DentOwn") && was.GetTexture("_YAPS_DentOwn") == own)
+                        {
+                            // An alternate's copy from the last build. A rebuild makes new
+                            // providers from the slots alone, so it is handed over again.
+                            if (was != template && !added.Contains(was))
+                            {
+                                foreach (string name in Properties) Carry(template, was, name);
+                                EditorUtility.SetDirty(was);
+                                added.Add(was);
+                            }
+                            continue;
+                        }
                         var original = Original(was);
                         if (!copyOf.TryGetValue((smr, original), out var to))
                         {

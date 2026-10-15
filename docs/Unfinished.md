@@ -56,6 +56,26 @@ physics A/B probes and a corpus run. Decisions on the queue's open questions, sa
 - Joe wears it in ChilloutVR before 5.0.0 ships, with the full in-game checklist (all of it,
   ordered by risk, paced over days), and the release still needs his word.
 
+**Bug panel over the 5.0.0 diff, 2026-10-15: 14 findings, 13 kept and FIXED on dev, 1 refuted.**
+Readers per area, each finding then checked by a judge trying to refute it. Fixed, by area:
+- Squash: a Rebuild left an alternate look's copy out of the new providers, so that layer stopped
+  squashing while its toggle was on (SwapTest in `SquashTestBuilder` now rebuilds, NOT RUN YET);
+  the own-arm capsule push ignored `_YAPS_SquashHands.x`, so animating own arms off left the push;
+  the regions tool refused every other body after the last pair was removed.
+- Soft bodies: pressing the Toolkit card twice said "No two soft bodies sit close enough to meet".
+- Physics: a soft body with Multi Child Type Ignore was reported as split per branch when it is not
+  (README now says so); a local-space relay's fixed copy was parented inside a simulated chain, where
+  MagicaCloth2 takes every transform under a root as a particle, so the copy swung. The bone's own
+  parent stands in now, its offset measured from the pose, for one full-weight source only. This may
+  be part of the 4.6 cm left in the record below; unmeasured. A humanoid bone counted as never
+  rotating, since muscle curves bind at the root.
+- YAPS: every shader whose caster got wrapped was told it takes no tangent; Remove's swap-key
+  repointing had no undo.
+- Upload check: a prefab instance's own bookkeeping was listed as "not saved" (PreflightTest has a
+  prefab-instance case, NOT RUN YET); a curve binding with no type could throw.
+- Conversion diff: a version-only change was headlined "only the counts moved", and a native setup's
+  diff pointed at `ConversionReport.md`.
+
 **Decided 2026-09-23 (Joe):** ship the next release first (one default corpus run authorised,
 release on his word), then the two items below. **It is 4.6.4** (Joe, same day): 4.6.3 is skipped,
 its number spent on test builds, and the socket readout goes in with it. 4.6.4 shipped that day,

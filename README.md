@@ -526,8 +526,8 @@ to agree by moving the constrained bone under the source's own parent. That's no
 it turns a constraint Unity can't express into one it can, and it cascades down the chain. This is
 what makes [quadrupeds](#quadruped--finalik-avatars) work. One exception: a bone that carries bones of its own and hangs from
 a physics chain is never moved, because its children would stop following the chain. If its source
-never changes its own rotation, a fixed copy of that source is put under the bone's parent instead,
-which gives the same answer with nothing moved.
+never changes its own rotation, the bone's own parent drives it instead, which gives the same
+answer with nothing moved or added to the chain.
 
 Moving a bone is only safe when nothing depends on where it *is*: rotation-only relay, no mesh
 skinned to it, no animation addressing it (curves match by path), and nothing mirrored. Every move is
@@ -665,7 +665,8 @@ Squish* gets softer bones, so a collider can shorten them, and the cloth may shr
 its root. **Stretch** can't: MagicaCloth2 lets no chain stretch more than 3% however it is set, so
 *Max Stretch* is reported. **Multi Child Type** *Ignore*, the default, roots the cloth at each
 branch's first bone, so a skirt or a bunch of hair strands moves from where VRChat moves it rather
-than hinging at the waistband or hairline; *Average* turns the root toward its branches but can't
+than hinging at the waistband or hairline (a soft body stays rooted at the branching bone, held by
+its spring, and the report says so); *Average* turns the root toward its branches but can't
 carry them rigidly with it, and *First* has no equivalent. Angle limits become a distance bound
 while *Bound swing to the source's limit* is on, as it is by default; off, the chain swings without
 one.

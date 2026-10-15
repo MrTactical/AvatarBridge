@@ -701,7 +701,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
     // body, so the move tops out smoothly at half the radius: following it all the way
     // scooped a tunnel through the part. Near the bone it lets go, since skin either side of
     // it went opposite ways and the bone sweeping past flicked it across.
-    if (_YAPS_SquashPush.w > 0)
+    if (_YAPS_SquashPush.w > 0 && _YAPS_SquashHands.x > 0)
     {
         [unroll]
         for (uint k = 0; k < 6; k++)

@@ -815,7 +815,9 @@ namespace AvatarBridge
             wrapper.AppendLine("    UNITY_SETUP_INSTANCE_ID(v);");
             wrapper.AppendLine("    float3 yapsPosition = v.vertex.xyz;");
             wrapper.AppendLine("    float3 yapsNormal = v.normal;");
-            wrapper.AppendLine(NoTangent);
+            // Not NoTangent itself: that line is what the frameless note looks for, and a caster
+            // lacking a tangent says nothing about the pass people see.
+            wrapper.AppendLine("    float3 yapsTangent = 0;");
             wrapper.Append(DeformCalls("yapsVertexId"));
             wrapper.AppendLine("    v.vertex.xyz = yapsPosition;");
             wrapper.AppendLine("    v.normal = yapsNormal;");

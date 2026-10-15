@@ -537,8 +537,11 @@ namespace AvatarBridge
 
             if (data.RootHasMultipleChildren && !string.IsNullOrEmpty(data.MultiChildTypeName))
             {
+                bool softBody = chainClass != null && SoftBodyClasses.Contains(chainClass);
                 ctx.Report.Approximated(Category, data.Root.name, data.MultiChildTypeName == "Ignore"
-                    ? "Multi Child Type 'Ignore': each branch simulates from its own first bone, as in VRChat."
+                    ? softBody
+                        ? "Multi Child Type 'Ignore': a soft body stays rooted at the branching bone, held by its spring, rather than split per branch as VRChat does."
+                        : "Multi Child Type 'Ignore': each branch simulates from its own first bone, as in VRChat."
                     : data.MultiChildTypeName == "Average"
                         ? "Multi Child Type 'Average': the root turns toward the average of its branches, as in VRChat, but " +
                           "MagicaCloth2 cannot carry the other branches rigidly with it."

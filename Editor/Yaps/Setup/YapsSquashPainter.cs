@@ -99,7 +99,7 @@ namespace AvatarBridge
             pick.Body.Add(BridgeElements.ObjectPicker<GameObject>("Avatar", _avatar, Pick, "The avatar's top object."));
             pick.Body.Add(BridgeElements.ObjectPicker<SkinnedMeshRenderer>("Body", _body, b =>
             {
-                if (Regions != null && Regions.body != null && b != Regions.body)
+                if (Regions != null && Regions.body != null && Regions.pairs.Count > 0 && b != Regions.body)
                 {
                     Say("The regions are painted on \"" + Regions.body.name + "\". Remove them first to paint another mesh.", Tone.Warn);
                     return;
