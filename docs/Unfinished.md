@@ -49,7 +49,9 @@ physics A/B probes and a corpus run. Decisions on the queue's open questions, sa
 - A slider whose two children animate different properties: covered by the restore pass.
 - Also in 5.0.0, Joe's picks from the rest of the queue: the remote twin, a diff between two
   conversions for users, fast reconversion (skipped passes proven equal by the corpus), and YAPS
-  portal and duplicate.
+  portal and duplicate. (twin and diff built; fast reconversion logs each pass's time, the next full
+  run says which are worth skipping; portal and duplicate designed in the YAPS 5 record, NOT built:
+  a portal is protocol 10, so that is Joe's call)
 - No user reports since 4.7.2.
 - Joe wears it in ChilloutVR before 5.0.0 ships, with the full in-game checklist (all of it,
   ordered by risk, paced over days), and the release still needs his word.
