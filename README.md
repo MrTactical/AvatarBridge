@@ -692,6 +692,17 @@ scale 1. `m_Force` is added after that cancellation and is only ever multiplied 
 behaves identically at any size. The cost is `gravityFalloff`, which existed only as `m_Gravity`'s
 cancellation and can't come along; the report names each chain that had one.
 
+**One cloth can hold many chains.** A VRChat PhysBone simulates one root, so an author who
+wants twenty-six hair strands writes twenty-six components, and converting them one for one
+lands twenty-six solvers on the avatar. MagicaCloth2 takes any number of independent roots per
+component, so chains that would have been identical anyway are grouped into one: same settings,
+same colliders, same parent, same kind, the same bones at the same lengths (each within 5%), and
+the same mesh thickness where the chain starts (within a quarter).
+They still swing independently, and the report says what was grouped and under what. A chain
+with an ignore list, a PhysBone parameter, a curve on any setting, or a toggle of its own keeps
+its own component, and so does a breast, butt, belly or thigh, because none of those survive
+sharing one.
+
 > ⚠️ **Physics can only be judged in game.** Nothing steps a cloth solver in edit mode. The Avatar
 > Tester's **Interaction lab** card is the closest preview: in Play mode it moves the avatar the
 > way a player would, so the chains swing. Dragging the avatar root around by hand proves nothing:
@@ -1808,6 +1819,7 @@ avatar decides, so it isn't buried with the settings that are.
 |---|---|---|
 | **Convert PhysBones to** | MagicaCloth 2 | MagicaCloth 2 gives the best result in ChilloutVR; DynamicBone is the built-in fallback. **None** converts no physics, so the chains come across rigid. Analyse checks which is actually installed, and recommends **None** only when the avatar has no PhysBones and no VRCFury or Modular Avatar bake to bring some |
 | **GrabbyBones mod support** | on | Names each converted chain after its PhysBone's parameter, so the GrabbyBones mod, the closest thing CVR has to VRChat's bone grabbing, drives the avatar's own `_IsGrabbed` and `_Angle` logic, with those parameters kept synced. The mod can grab the chains either way; this is what makes the avatar react |
+| **Group identical PhysBone chains** | on | MagicaCloth 2 only. A VRChat PhysBone holds one chain, so a hairstyle built strand by strand ships one component per strand. MagicaCloth2 simulates any number of chains in one component, and each one saved is a solver team and a proxy mesh the avatar stops paying for. Only chains matching on settings, colliders, parent, kind, bone lengths and mesh thickness are grouped, and they still move independently. Off gives one component per chain, the way VRChat had them |
 | **Delete PhysBones after converting** | on | Removes the VRChat components once their replacements exist. Off leaves both: the converted physics still simulates, and ChilloutVR does nothing with the PhysBones |
 
 **Convert toe PhysBones** and **Size for the largest a slider makes the body** sit under these for
@@ -2168,7 +2180,8 @@ measured its bone lengths once, at the scale the avatar was converted at.
 ### Numbered cloth objects: MagicaCloth_Something, MagicaCloth_Something 2
 
 Every chain the conversion converts gets its own object under **MagicaCloth Phys**, named after the
-bone it hangs from. (With **GrabbyBones mod support** on, a PhysBone that has a parameter names its
+bone it hangs from, unless **Group identical PhysBone chains** put it in one cloth with its
+siblings: that cloth is named after the parent they share. (With **GrabbyBones mod support** on, a PhysBone that has a parameter names its
 object after that parameter instead, so the mod can find it; a repeat becomes `Name_2`.) Two chains
 rooted at bones with the same name give `MagicaCloth_Tail` and `MagicaCloth_Tail 2`, because two
 children of one object cannot share a name. **That numbering counts chains, not conversions.** It is

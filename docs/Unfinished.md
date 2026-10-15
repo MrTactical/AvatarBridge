@@ -1088,6 +1088,17 @@ given a collision bone per side), a chain with a PhysBone parameter (the holder 
 GrabbyBones parameter), an ignore list (expressed as a root set), and any per-chain curve
 (sampled by normalised depth, so length changes what it reads).
 
+**2026-10-14 (overnight), branch `physbone-grouping-2`**, the old branch merged onto dev and
+reviewed twice. Also held out now: a chain whose own object, root or PhysBone the animator
+switches by itself (a cloth has one enabled flag, so one strand's toggle stopped the whole
+group), and any chain whose bones differ in length by more than 5% each (gravity and the swing
+bound are solved from the path one cloth bends, and the merge took them from the longest
+strand). Fixed with it: the rider check before asserting a grouped cloth off reads every
+strand's riders, the mirrored-off count counts the cloth once, the pose-ratio grounding asks
+whether ANY strand of a cloth is animated, the store description counts chains, not cloths.
+A group shared one collision radius (the mesh fit pooled every strand), so strands of the same
+bones but different mesh thickness collided at one size. Held out since (below).
+
 **Untested against the avatar that reported it.** The variant to hand is the Quest one, 8 chains,
 four of them anchored volumes, none groupable. The reporter has been asked which avatar it is.
 Merge to `dev` only once the PC avatar converts and the result is checked in game.
@@ -1105,10 +1116,22 @@ worn:
   wash (mean peak error 33.80 to 33.65, sag 0.92 to 0.90), collision level or better (press
   angle 58.7 to 53.1, recover 0.547 to 0.534). The first A/B said collision got worse; that was
   the probe pressing every strand of a grouped cloth at once, fixed in the probe the same night.
-One collision radius per group, closed on the branch 2026-10-15 (2c5128b): a strand groups only
-with a head of its own mesh thickness, within a quarter. It split real spreads (one hairstyle
-3.8 to 15.6 mm, a mirrored pair 9.5 and 22.7 mm); cloths 71 to 84 on the strand-at-a-time avatar,
-dev 112. The branch record has the A/B.
+- **Mesh thickness, 2026-10-15.** Each strand's own mesh radius is measured before the merge, and
+  a strand groups only with a head within a quarter of its size (no mesh only with no mesh). A
+  trace on the two avatars it changed found real spread: one hairstyle's strands measured 3.8 to
+  15.6 mm, and a mirrored pair 9.5 and 22.7 mm, which the pooled fit had given one size.
+  Cloths 71 to 84 on the strand-at-a-time avatar (dev 112), 48 to 49 on one other, the rest
+  unchanged. Physics A/B: the split strands return to dev's per-strand radius, so press angle on
+  them moves 53.1 (pooled) to 57.0, dev 58.7; free motion a wash; singles unchanged. The pooled
+  radius pressed closer on this avatar by luck of the average, not because grouping knew better:
+  the fit's own accuracy per strand is the mesh fit's question, not the merge's. The spacing cap
+  needs no hold-out, since the 5% segment rule already keeps grouped strands' spacing within 5%.
+  Its own commit, so it can be dropped if the cloth count matters more than the radius.
+  Open from it: a mirrored pair measuring 2.4x apart is worth a look at what the fit samples there.
+- **Merged into dev 2026-10-16**, held local until the full corpus run that follows it is read:
+  that run is the corpus run Joe's 5.0.0 decision asks for. One conflict, the Multi Child report
+  line, which now carries both the group's label and the soft-body wording. Still not worn, and
+  still not checked against the reporter's PC avatar.
 
 ### Freeze rotation axes, VRChat vs Unity (issue #6)
 
