@@ -415,6 +415,18 @@ falloff, one-way rings, the tag dropdown, multi-mesh plugs, the Mesh-to-None cle
    Poiyomi 9.3 in `Fixing The Flexing` with MockHMD. Deferred 2026-09-07 for want of a live case;
    MockHMD turning out to be enough for the atlas walk weakens that excuse.
 
+   **Compiled 2026-10-15, both theories that need no headset are out.** Poiyomi 8.1, 9.3 and 10.0
+   Toon, original and YAPS-patched, every pass's vertex stage in the plain and the
+   `STEREO_INSTANCING_ON` variant for D3D11: all compile, so the VR copy is not magenta or
+   fallen back. In 9.3 and 10.0 the patched EarlyZ, Base and Add vertex programs come out the same
+   size to the byte (816058 plain, 816894 stereo) with one YAPS block each, so the prepass deforms
+   exactly as the base pass does. EarlyZ also only exists unlocked or with *Early Z* on: it defaults
+   off and `//ifex _RenderingEarlyZEnabled==0` strips it at lock. Fragment stages were not compiled
+   (a minute per pass); YAPS does not edit them. What is left is runtime and only shows in a
+   headset, so it needs the user: desktop and VR screenshots of the same plug, whether the material
+   was locked before converting, and which Poiyomi features it uses (matcap, rim and specular all
+   read the normal YAPS rewrites against a per-eye view direction).
+
 4. **D2: does a named `GrabPass` reach a `CVRBlitter`?** Built and waiting on a run,
    `Dev/Probes/D2PrefabBuilder.cs`, staged into `Non Corpus Zone` and on the menu. It decides
    whether a value can be computed by geometry on the avatar (cheap, one blit) or needs a camera
