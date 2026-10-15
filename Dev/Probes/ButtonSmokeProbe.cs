@@ -216,9 +216,9 @@ namespace AvatarBridge.Regression
                     yield return Settle(mounted);
                     Expand(mounted);
                     var controls = Controls(mounted.Content, out var sampledOut);
+                    Debug.Log($"[ButtonSmoke] {scene} {target.Key} {target.Pass}: {controls.Count} control(s)");
                     mounted.Dispose();
                     foreach (var dropped in sampledOut) Row(target, dropped, "SAMPLED", "");
-                    Debug.Log($"[ButtonSmoke] {scene} {target.Key} {target.Pass}: {controls.Count} control(s)");
 
                     foreach (var id in controls)
                     {
@@ -244,6 +244,9 @@ namespace AvatarBridge.Regression
                         // that state, so a control that only exists after another is covered too.
                         foreach (var next in revealed)
                         {
+                            // A press that rebuilt the page (a tab) folded its cards again, and a
+                            // control in a folded card reports into a body no one can see.
+                            Expand(mounted);
                             var second = Find(mounted.Content, next);
                             if (second == null || Unpressable(second, danger, out _, out _)) continue;
                             yield return PressAndJudge(target, mounted, second, id + "  >  " + next, null, null);
@@ -578,6 +581,7 @@ namespace AvatarBridge.Regression
             else verdict = "OK";
             var detail = new List<string>(changed);
             if (thrown != null) detail.Insert(0, "threw " + thrown);
+            if (verdict == "DEAD") detail.Add(before.Blind(after, noise));
             detail.AddRange(Logged.Distinct().Take(3).Select(l => "logged: " + l));
             if (wentToPlay) detail.Add("asked for Play mode");
             // The pair is kept wherever the picture moved, and wherever a person should look.
@@ -729,6 +733,7 @@ namespace AvatarBridge.Regression
             public sealed class Moving
             {
                 public int Ui;          // 0 still, 1 only digits move, 2 more than digits
+                public HashSet<string> UiLines;   // the lines that moved with no press
                 public bool Window;
                 public HashSet<string> Scene;
                 public HashSet<int> Materials;
@@ -736,15 +741,22 @@ namespace AvatarBridge.Regression
             }
 
             static readonly Regex Digits = new Regex("[0-9]+");
+            static string[] Lines(string text) => text.Split('\n');
 
             public static Moving Noise(Snapshot a, Snapshot b) => new Moving
             {
                 Ui = a.ui == b.ui ? 0 : Digits.Replace(a.ui, "#") == Digits.Replace(b.ui, "#") ? 1 : 2,
+                UiLines = Lines(a.ui).Except(Lines(b.ui)).Concat(Lines(b.ui).Except(Lines(a.ui))).ToHashSet(),
                 Window = a.window != b.window,
                 Scene = new HashSet<string>(a.scene.Where(p => !b.scene.TryGetValue(p.Key, out int h) || h != p.Value).Select(p => p.Key)),
                 Materials = new HashSet<int>(a.materials.Where(p => !b.materials.TryGetValue(p.Key, out int h) || h != p.Value).Select(p => p.Key)),
                 Pic = Picture.Moved(a.Pic, b.Pic, null),
             };
+
+            // Why a press read as dead: whether the window moved on its own, and by how much.
+            public string Blind(Snapshot after, Moving noise) =>
+                $"window moving alone: {noise.Ui}, lines the press changed: {LineDelta(ui, after.ui)}, notices: " +
+                string.Join(" // ", Lines(after.ui).Where(l => l.Contains("ab-notice")));
 
             public List<string> Diff(Snapshot after, List<string> assets, Moving noise)
             {
@@ -757,6 +769,14 @@ namespace AvatarBridge.Regression
                 if (noise.Ui == 0 && ui != after.ui) c.Add($"window UI ({LineDelta(ui, after.ui)} lines)");
                 if (noise.Ui == 1 && Digits.Replace(ui, "#") != Digits.Replace(after.ui, "#"))
                     c.Add($"window UI ({LineDelta(Digits.Replace(ui, "#"), Digits.Replace(after.ui, "#"))} lines beyond live numbers)");
+                // A page still settling (one a tab just rebuilt) moves on its own; a line the press
+                // brought that was not among those still counts.
+                if (noise.Ui == 2)
+                {
+                    var before = Lines(ui).ToHashSet();
+                    int fresh = Lines(after.ui).Count(l => !before.Contains(l) && !noise.UiLines.Contains(l));
+                    if (fresh > 0) c.Add($"window UI ({fresh} lines beyond what moved alone)");
+                }
                 if (!noise.Window && window != after.window) c.Add("window state");
                 if (windows != after.windows)
                 {

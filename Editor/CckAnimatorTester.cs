@@ -898,7 +898,7 @@ namespace AvatarBridge
             int handTop = -1;
             for (int i = 0; i < asset.layers.Length; i++)
             {
-                if (IsHandLayer(asset.layers[i].name))
+                if (AvatarFeatureDetect.IsHandLayer(asset.layers[i].name))
                 {
                     handTop = i;
                 }
@@ -937,7 +937,7 @@ namespace AvatarBridge
             for (int i = 0; i < animator.layerCount && i < asset.layers.Length; i++)
             {
                 var layer = asset.layers[i];
-                bool hand = IsHandLayer(layer.name);
+                bool hand = AvatarFeatureDetect.IsHandLayer(layer.name);
                 bool conflicts = i > handTop && handTop >= 0 && PermitsFingers(layer.avatarMask) && !hand;
                 if (conflicts)
                 {
@@ -1046,11 +1046,6 @@ namespace AvatarBridge
 
             return card;
         }
-
-        // The merger numbers a second promoted hand layer "LeftHand 2".
-        static readonly System.Text.RegularExpressions.Regex HandLayerName =
-            new System.Text.RegularExpressions.Regex(@"^(Left|Right)Hand( \d+)?$");
-        static bool IsHandLayer(string name) => name != null && HandLayerName.IsMatch(name);
 
         static bool PermitsFingers(AvatarMask mask)
         {

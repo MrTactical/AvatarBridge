@@ -78,19 +78,22 @@ namespace AvatarBridge
             foreach (var s in sockets)
             {
                 var socket = s;
-                var preview = BridgeElements.Btn(socket.preview ? "Stop" : "Preview", () =>
+                // The inspector's labels and states, so the one button reads the same in both.
+                bool near = YapsPreview.CountBakedPlugsNear(socket, YapsPreview.NearEnough) > 0;
+                var preview = BridgeElements.Btn("Preview", () =>
                 {
                     YapsPreview.Set(socket, !socket.preview);
                     refresh();
-                }, socket.preview ? "Previewing. Click again to stop." : "Bends the baked plugs near it toward this socket.");
+                }, socket.preview ? "Previewing. Click again to stop."
+                    : near ? "Bends the baked plugs near it toward this socket."
+                    : "No baked plug is near, so this drops a test one in front of it.");
                 preview.EnableInClassList("ab-on", socket.preview);
-                var drop = BridgeElements.Btn("Drop a test plug", () =>
+                var drop = BridgeElements.Btn("Drop a test plug here", () =>
                 {
                     YapsPreview.Set(socket, true, spawnPlugIfNone: false);
                     YapsPreview.DropTestPlug(socket);
                     refresh();
-                }, canDrop ? "A test plug in front of it, even with a baked one near."
-                    : "In Play mode the test plug comes from the plug prop prefab; create it under Tools ▸ YAPS ▸ Setup ▸ Test it.");
+                }, canDrop ? "Drops a test plug in front of it, even with a baked one near." : YapsPreview.NoPlugPrefab);
                 drop.SetEnabled(canDrop);
                 fold.Body.Add(Line(socket.name, preview, drop));
             }
@@ -102,7 +105,7 @@ namespace AvatarBridge
                 foreach (var kind in new[] { YapsSocket.SocketKind.Hole, YapsSocket.SocketKind.Ring })
                 {
                     var k = kind;
-                    var b = BridgeElements.Btn(k == YapsSocket.SocketKind.Hole ? "Into a hole" : "Through a ring", () =>
+                    var b = BridgeElements.Btn(k == YapsSocket.SocketKind.Hole ? "Preview into a hole" : "Preview through a ring", () =>
                     {
                         YapsPreview.DropTestSocket(plug, k);
                         refresh();
@@ -115,7 +118,7 @@ namespace AvatarBridge
                 fold.Body.Add(Line(plug.name, buttons.ToArray()));
             }
             var tidy = new List<VisualElement>();
-            if (testSocket) tidy.Add(BridgeElements.Btn("Remove the test socket", () => { YapsPreview.RemoveTestSocket(); refresh(); }));
+            if (testSocket) tidy.Add(BridgeElements.Btn("Take the test socket away", () => { YapsPreview.RemoveTestSocket(); refresh(); }));
             if (testPlug) tidy.Add(BridgeElements.Btn("Take the test plug away", () => { YapsPreview.RemoveTestPlug(); refresh(); }));
             if (tidy.Count > 0) fold.Body.Add(BridgeElements.ButtonRow(tidy.ToArray()));
             return fold;

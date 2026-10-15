@@ -2100,6 +2100,29 @@ showed under **Patch shaders for VR stereo** were the same sweep's leftovers: a 
 patching alone logs none, and the rerun has none. Toolkit after the fix: 65 OK, 0 errors; the one
 message left is a missing third-party drawer on the avatar's own material.
 
+**Repeated test buttons made to agree, the same day.** Joe asked whether the Toolkit and the Avatar
+Tester duplicate each other. They do not: the Toolkit writes, the tester plays, and the survey's
+contested bindings skip humanoid muscles, which is exactly what the tester's finger chip checks.
+The YAPS test buttons did repeat, in up to four places, each calling the one `YapsPreview`
+function, so only labels and states had drifted. The tester now uses the inspectors' labels
+(**Preview** stays Preview while lit, **Drop a test plug here**, **Preview into a hole** and
+**through a ring**, **Take the test socket away**); the socket inspector greys **Drop a test plug
+here** in Play mode with no plug prop prefab, as the tester did; the setup window's row **preview**
+chips (a third copy: hole only, no baked check) are gone. The hand-layer name check had a copy in
+the tester; both now read `AvatarFeatureDetect.IsHandLayer`, since the merger needs the VRChat SDK
+and the tester must build without it.
+
+**Blank result boxes in the setup window, shipped 4.7.0 to 4.7.2. FIXED ON DEV.** The last DEAD row,
+**Verify prop** after a tab switch, was the window, not the probe. Picking a new target cleared the
+add, prop and tidy result notices with `VisualElement.Clear()`, which removes the box's icon, body
+and label; every later **Make selected object a prop**, **Verify prop**, add or tidy result then
+coloured an empty box. Picking happens on the first selection, so it hit every session. They are
+hidden now. The probe missed the text because the notice line alone changed (2 lines where text
+makes 4); a DEAD row now lists the notices the probe sees.
+
+Open: **Make selected object a prop** on an avatar root adds a collider and a spawnable to the
+avatar (seen in the smoke's plain pass on a socket avatar). It should probably refuse an avatar.
+
 Open: **Merge animators / clear** is disabled with no tooltip saying why. The paint stroke and the
 squash depth are not yet gestured.
 

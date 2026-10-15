@@ -989,9 +989,7 @@ unlock/edit/re-lock.
    up instead of hiding under the object you happened to pick.
 2. **What it has, and what to add.** One row per plug or socket the scan found, which systems can
    read it, whether it has an axis, what it lacks, and a warning when two sockets sit on the same
-   spot. **customise** takes you to its inspector; **preview** on a socket bends the baked plugs
-   toward it in the scene view, and on a plug drops a test socket ahead for it to bend into;
-   **remove** takes it out entire; a DPS, TPS or SPS row offers **upgrade to YAPS**, and a YAPS row
+   spot. **customise** takes you to its inspector, where its preview is; **remove** takes it out entire; a DPS, TPS or SPS row offers **upgrade to YAPS**, and a YAPS row
    with no component yet offers **make editable**. A mesh another plug carries gets a quiet
    *Part of* row instead: it bends with that plug, on its settings.
    Beneath: **Add a hole**, **Add a ring** (under the bone you have selected in the
@@ -1429,9 +1427,9 @@ again (or the avatar reconverted) to notice its socket, and to stretch in motion
   faces. A test plug dropped in Play mode is the plug prop prefab, so make that first (*Create a
   plug prop prefab*); one built there would leave its files behind.
 - **In the Avatar Tester**, the **Interaction lab** card lists the avatar's sockets and plugs, and
-  any on props in the scene, under **Plugs and sockets**: **Preview** and **Drop a test plug** per
-  socket, **Into a hole** and **Through a ring** per baked plug, beside the motion that moves the
-  avatar. The test socket and plug it drops are the same ones the inspectors and *Setup ▸ Test it*
+  any on props in the scene, under **Plugs and sockets**: **Preview** and **Drop a test plug here**
+  per socket, **Preview into a hole** and **Preview through a ring** per baked plug, the same
+  buttons as the inspectors, beside the motion that moves the avatar. The test socket and plug it drops are the same ones the inspectors and *Setup ▸ Test it*
   drop, so any of them can take them away.
 - **Contacts still do not exist in Play mode.** ChilloutVR's triggers and contacts are the game's,
   not Unity's, so a socket whose shapes go through a contact does nothing there: drive its
