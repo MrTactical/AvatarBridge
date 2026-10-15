@@ -639,15 +639,18 @@ namespace AvatarBridge
             bool skinned = result != null && result.FromSkinnedMesh;
             var mesh = plug.Target != null ? plug.Target.transform : plug.transform;
             AnnouncePlug(plug.transform, skinned ? result.Origin : mesh.position, skinned ? result.Rotation : mesh.rotation,
-                length, radius, plug.emitTipLight, plug.emitPointers);
+                length, radius, plug.emitTipLight, plug.emitPointers,
+                plug.toyModLength ? OutputRoot + "/" + Sanitise(AvatarRoot(plug.transform).name) : null);
         }
 
         // Announces a plug to every socket family: tracker light at the base,
         // tip, root and width pointers. Null frame means the parent's transform.
         public static GameObject AnnouncePlug(Transform parent, Vector3? worldOrigin, Quaternion? worldRotation,
-            float length, float radius, bool tipLight = true, bool pointers = true)
+            float length, float radius, bool tipLight = true, bool pointers = true, string toyLengthDir = null)
         {
             var old = parent.Find(MarkersName);
+            var oldToy = old != null ? old.GetComponentsInChildren<MeshFilter>(true).Select(f => f.sharedMesh)
+                .FirstOrDefault(x => x != null && AssetDatabase.GetAssetPath(x).StartsWith(OutputRoot + "/", System.StringComparison.Ordinal)) : null;
             if (old != null) Object.DestroyImmediate(old.gameObject);
             var go = new GameObject(MarkersName);
             go.transform.SetParent(parent, false);
@@ -664,7 +667,9 @@ namespace AvatarBridge
                 // Raliv reads intensity as the length and measures from the base.
                 var l = YapsSocketBuilder.MarkerLight(m, "DPS Tracker", TrackerRange, Vector3.zero);
                 l.intensity = Mathf.Max(length, 0.01f);
+                if (toyLengthDir != null) { ToyModLength(l.transform, length, toyLengthDir, oldToy); oldToy = null; }
             }
+            if (oldToy != null) AssetDatabase.DeleteAsset(AssetDatabase.GetAssetPath(oldToy));
             if (pointers)
             {
                 // Tip and root as separate points. Only names not already announced;
@@ -687,6 +692,33 @@ namespace AvatarBridge
             }
             if (m.childCount == 0) { Object.DestroyImmediate(go); return null; }
             return go;
+        }
+
+        // Toy mods climb from the tip light to the first object with a mesh under it,
+        // take the mesh's furthest +Z vertex times that object's scale as the length,
+        // and measure from the mesh object's position. On an avatar that climb reaches
+        // a hat or the body. A mesh under the light itself, at the base, is found first.
+        // Inactive and with no material, it draws nothing; a hundred vertices, since
+        // the mod warns about fewer.
+        static void ToyModLength(Transform light, float length, string dir, Mesh reuse)
+        {
+            var go = new GameObject("Length for toy mods");
+            go.transform.SetParent(light, false);
+            go.SetActive(false);
+            float z = length / Mathf.Max(go.transform.TransformVector(Vector3.forward).magnitude, 1e-6f);
+            var mesh = reuse != null ? reuse : new Mesh();
+            mesh.Clear();
+            mesh.vertices = Enumerable.Range(0, 100).Select(i => new Vector3(0f, 0f, z * i / 99f)).ToArray();
+            mesh.RecalculateBounds();
+            if (reuse == null)
+            {
+                EnsureFolder(dir);
+                mesh.name = light.parent.parent.name + " toy length";
+                AssetDatabase.CreateAsset(mesh, AssetDatabase.GenerateUniqueAssetPath($"{dir}/{Sanitise(mesh.name)}.asset"));
+            }
+            else EditorUtility.SetDirty(mesh);
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            go.AddComponent<MeshRenderer>().enabled = false;
         }
 
         // The stage table on a socket material: sixteen starts and fades in

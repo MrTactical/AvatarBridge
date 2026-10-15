@@ -36,6 +36,11 @@ physics A/B probes and a corpus run. Decisions on the queue's open questions, sa
 - Physics A/B videos for Discord: yes, test avatars may be shown, captions name none.
 - No player globals with the cameras content filter off: documented, no fallback.
 - Toy mods: an honest-length switch per plug, off by default, tested by Joe with a toy.
+  (built: `YapsPlug.toyModLength`. From the mod's source: it climbs from the tip light to the first
+  object with a mesh beneath, takes max vertex Z times that object's forward scale as the length,
+  and measures from the mesh OBJECT's position, so off, even a current build measures from the body
+  or a hat. On, an inactive 100-vertex mesh sits under the tracker light at the base. Needs Joe's
+  toy test in game.)
 - A per-plug menu toggle for answering its wearer's own sockets: built (one synced bool a plug).
 - A prop case in the corpus: added.
 - A slider whose two children animate different properties: covered by the restore pass.

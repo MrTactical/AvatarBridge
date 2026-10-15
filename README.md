@@ -1186,6 +1186,12 @@ reached across a room; every DPS avatar in the room has that reach. Current buil
 stated length and engage on contact. Some earlier versions of the toolkit dodged the buzzing by
 authoring +0.003, which DPS reads and no toy mod does, so the wearer's own toys went quiet too.
 
+Even current builds measure from the wrong place: the mod takes the plug's position and length from
+the first mesh it finds above the tip light, and on an avatar that is usually the body or a hat. A
+plug's **Toy Mod Length** (its inspector, *How sockets find it*, off by default) puts a hidden mesh of
+the measured length at the base for the mod to find instead, so a toy responds to the plug itself,
+within one plug length. Bake again after ticking it.
+
 A dark socket still engages: a YAPS plug finds it through the screen atlas. What a dark socket
 loses is old DPS plugs, which carry lights and nothing else, and a YAPS plug in a view too small
 for the atlas, until the dropdown points at it. Untick **Emit marker lights** on a socket to keep

@@ -121,6 +121,13 @@ namespace AvatarBridge.Yaps
         [YapsFrom("DPS")]
         public bool emitTipLight = true;
 
+        [Tooltip("Toy mods measure a plug from the first mesh they find above its tip light, which on an " +
+                 "avatar is often another mesh entirely, so a toy can respond from the wrong place or the wrong " +
+                 "distance. On, the tip light carries a hidden mesh at the base, of the measured length, for them " +
+                 "to find. Needs the tip light; Bake again after changing it.")]
+        [YapsFrom("DPS")]
+        public bool toyModLength = false;
+
         [Tooltip("The tip pointers TPS and SPS sockets read.")]
         [YapsFrom("TPS · SPS")]
         public bool emitPointers = true;
