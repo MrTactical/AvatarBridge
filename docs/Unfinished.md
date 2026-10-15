@@ -11,6 +11,25 @@ what SPS code may be looked at in `YAPS-CLEAN-ROOM.md`. Finished records are in 
 
 ## Next up
 
+**Decided 2026-10-15 (Joe): one big release, 5.0.0.** 4.8.0 never ships; everything on dev goes
+out as 5.0.0. Headlines: GoGoLoco poses, SPS2 in the converter (detected and carried from the
+property names a finished SPS2 bake leaves on a material, never from SPS2's code), a check before
+upload that proves the conversion, and the animator merger made visible. Also in it: the first
+squash build made fast, pairs found by bone name scaled to their peak like painted regions, the
+corpus building a squash, and the grouping branch (`physbone-grouping-2`, issue #7) merged after
+physics A/B probes and a corpus run. Decisions on the queue's open questions, same day:
+- Always Animate on avatars with toggles: measure the cost first, then decide.
+- Menu names with `.`, `!`, `&`, `+` or non-ASCII: left alone.
+- MagicaCloth2's gravity cap: find another lever (stiffness) and measure it against the original.
+- Several plugs on one mesh share one Deform toggle: documented, not built.
+- A plug with a size slider: baked at the slider's menu default, so editor and game agree.
+- The socket readout showing the wearer's own plug: left as it is.
+- Renderers only a child Animator switches on: the survey walks child Animators (one re-baseline).
+- Issues #6, #7 and #8: replies drafted, Joe posts them. GrabbyBones: a PR upstream first, drafted.
+- Corpus: subsets whenever needed, three full runs authorised for this job.
+- Joe wears it in ChilloutVR with a written checklist before 5.0.0 ships, and the release still
+  needs his word.
+
 **Decided 2026-09-23 (Joe):** ship the next release first (one default corpus run authorised,
 release on his word), then the two items below. **It is 4.6.4** (Joe, same day): 4.6.3 is skipped,
 its number spent on test builds, and the socket readout goes in with it. 4.6.4 shipped that day,
