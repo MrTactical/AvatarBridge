@@ -99,7 +99,7 @@ Everything else is a threshold: contacts over 96 against the instance's 512, clo
 over 250k, unanimated blendshapes over 64, and a materials-to-shaders count that reveals per
 material locked shader copies.
 
-Measured against Abbess: 333.3 MB of texture across 229 maps, 93.4 MB of it recoverable without
+Measured against Avatar G: 333.3 MB of texture across 229 maps, 93.4 MB of it recoverable without
 anything visible changing.
 
 ## The survey: what the sweep becomes
@@ -129,7 +129,7 @@ and it is what Phase 1, the weight card and half the roadmap have all been quiet
 - **Dead controls.** A menu entry whose parameter nothing reads: it will always look broken.
 - **Conflicts.** Two layers writing one binding, in order, with the winner named. Half the toggle
   bugs this project has ever fixed were this.
-- **Subordination.** "This toggle does nothing while that preset is active": the Abbess case,
+- **Subordination.** "This toggle does nothing while that preset is active": the Avatar G case,
   stated instead of guessed.
 - **Unreachable states**, and transition conditions that can never be true.
 - **Plain words for every control**: *Hoodie switches 3 objects and 2 blendshapes.* That sentence
@@ -170,11 +170,11 @@ brings a stripped renderer back either way.
 visible also draws frees the mesh and the draw call and not one byte of texture. Of 106, eleven
 were in exactly that position, and an earlier version of the reading billed them anyway: it
 added and removed materials from one set as it walked the renderers, so a shared material
-counted as dead or not depending purely on which renderer the loop reached last. Frenni
-Fazclaire was quoted 16.0 MB that way. The real figure was 0.0 MB.
+counted as dead or not depending purely on which renderer the loop reached last. Avatar R
+Avatar R was quoted 16.0 MB that way. The real figure was 0.0 MB.
 
 **The sweep is a hint, never the criterion.** It flips a parameter and watches for an observable
-change, and there are three ordinary designs it reads as dead when they are not. Abbess carries
+change, and there are three ordinary designs it reads as dead when they are not. Avatar G carries
 259 driver behaviours and 232 timed transitions, two of them parked at `exit=True@100`:
 
 - **A preset overrides the individual toggle.** One synced int expands through drivers into a
@@ -189,21 +189,21 @@ change, and there are three ordinary designs it reads as dead when they are not.
 
 So removal is decided by STATIC analysis: no clip writes it, no transition reads it, no driver
 writes it, no menu entry names it, no trigger or parameter stream touches it. That is provable
-from the controller. "Nothing appeared to happen" is not, and an avatar like Abbess is exactly
+from the controller. "Nothing appeared to happen" is not, and an avatar like Avatar G is exactly
 where it would do damage. The sweep's job is to rank what a human looks at first, and the report
 should say WHY something looks dead: overridden by a driver, behind a wait, or genuinely unread.
 
 ### Built 2026-08-18, in the Toolkit
 
 `Editor/Toolkit/FreeWins.cs`, reached from the **Free wins** card. Toolkit first because the
-converter already removes both of these on the way through: Abbess converts with zero empty
+converter already removes both of these on the way through: Avatar G converts with zero empty
 layers and zero unused parameters, so the avatars that carry them are the native ones the
 Toolkit exists for. It writes a tidied COPY of the controller and repoints the avatar at it.
 
 **The placeholder clips are NOT removed, and this list was wrong to call them a free win.** Unity
 crashes when it builds a playable graph containing an empty motion slot, which is the only reason
 `FillEmptyMotionSlots` writes them. They are reported instead, because what they really mean is
-that a motion the author intended never arrived. Abbess carries 99.
+that a motion the author intended never arrived. Avatar G carries 99.
 
 Two guards, both learned the hard way in `Dev/Probes/FreeWinsProbe.cs`:
 
@@ -240,7 +240,7 @@ One socket, described five times over for five decoders, then doubled for a self
 **The twins are NOT duplicates, and collapsing them is off the table.** That was the plan here,
 and the corpus refused it. `[pointer families]` in the digest counts `twinOnly`: triggers that
 accept the twin and NOT the base. On the five pointer-heaviest avatars it is never zero:
-Obsidian 4, Abbess 6, Deathclaw 4, Umbreon 4, Sally 4, and the listeners are always the same
+Avatar Q 4, Avatar G 6, Avatar S 4, Avatar I 4, Avatar P 4, and the listeners are always the same
 shape:
 
 ```
@@ -251,7 +251,7 @@ TWIN ONLY  TPS_Pen_Root_SelfNotOnHips        on CVRTrigger_VF80_Anal/Self/Contac
 A socket's own `Self` trigger listens for the twin ALONE, because the twin IS the self channel.
 The base tag says "a plug is here" and the twin says "a plug is here and the hip rule does not
 apply", which is exactly what an avatar needs to accept its own plug. Collapse the pair and self
-interaction stops working, on every avatar that has any. Sally is a stock SPS avatar carrying no
+interaction stops working, on every avatar that has any. Avatar P is a stock SPS avatar carrying no
 edits, so this is the shipped shape rather than one author's quirk.
 
 What is left of the idea is per avatar, not global: `twinOnly=0` means nothing on THAT avatar
@@ -347,7 +347,7 @@ first, never binds at all. Aeromorph is the shape of it: 10 solvers under a sing
 
 The cause is the conversion doing the right thing. Each solver is tuned from its source
 PhysBone individually, particle radius included, measured per chain from the mesh it moves:
-Lanacan's report shows `0.02 → 0.021` off a 10,676-vertex sample. Chains measured individually
+Avatar B's report shows `0.02 → 0.021` off a 10,676-vertex sample. Chains measured individually
 do not fingerprint alike, so they cannot share one settings block.
 
 And 17% of the solver COUNT is not 17% of the cost. This section already said the number that
