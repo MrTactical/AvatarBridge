@@ -57,13 +57,14 @@ namespace AvatarBridge.Regression
                     // Every layer reads Sitting, so nothing here is removed for referencing
                     // stripped parameters; the NAME is what has to decide.
                     t.AddCondition(AnimatorConditionMode.If, 0f, "Sitting");
-                    if (i >= 4)
+                    bool flying = layers[i].name.EndsWith("Flying");
+                    if (flying || layers[i].name == "Outfit Height")
                     {
                         // One Go/ read in three references is under the share test, so the
                         // clips decide.
                         t.AddCondition(AnimatorConditionMode.Greater, 0f, "Go/Dash");
                         t.AddCondition(AnimatorConditionMode.Greater, 0f, "Keep/Me");
-                        state.motion = new AnimationClip { name = i == 4 ? "go_flying_off" : "outfit_tall" };
+                        state.motion = new AnimationClip { name = flying ? "go_flying_off" : "outfit_tall" };
                     }
                 }
                 controller.layers = layers;
