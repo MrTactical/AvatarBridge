@@ -70,14 +70,8 @@ namespace AvatarBridge
 
         // Directory plus a full Refresh, as both callers always did. CreateFolder would skip the
         // Refresh, and with it the import of anything earlier passes wrote straight to disk.
-        // Only for a folder the AssetDatabase does not know: the Refresh rescans the whole
-        // project, and a folder already on disk but never imported still gets it.
         internal static void EnsureFolder(string dir)
         {
-            if (AssetDatabase.IsValidFolder(dir))
-            {
-                return;
-            }
             Directory.CreateDirectory(Path.GetFullPath(Path.Combine(UnityEngine.Application.dataPath, "..", dir)));
             AssetDatabase.Refresh();
         }

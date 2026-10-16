@@ -73,8 +73,8 @@ namespace AvatarBridge
             {
                 controller.layers = layers;
             }
-            Debug.Log($"[AvatarBridge] Self-contain: {made} copies made in one batch ({materialized} materialized), {stale} old files deleted in one call; " +
-                      $"controller saves: {(made > 0 ? 1 : 0)} kept, up to {repoints} removed (one per repoint a copy used to follow)");
+            Debug.Log($"[AvatarBridge] Self-contain: {made} copies made in one batch ({materialized} materialized), " +
+                      $"{stale} old files listed for one delete, {repoints} repoints");
 
             if (copiedClips.Count > 0 || copiedMasks > 0)
             {
