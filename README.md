@@ -9,7 +9,7 @@ finish by hand.
 
 > ## ✅ It actually works
 >
-> **80 avatars converted, uploaded and worn in ChilloutVR**: by the author and by independent
+> **150+ avatars converted, uploaded and worn in ChilloutVR**: by the author and by independent
 > testers, on other people's models, not just tidy test cases. Heavy ones too: 400k-triangle
 > avatars with 56 material slots, full VRCFury rigs, face tracking, the lot.
 >
