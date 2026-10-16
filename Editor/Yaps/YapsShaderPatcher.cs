@@ -367,15 +367,6 @@ namespace AvatarBridge
                 }
                 Timing.ImportMs += clock.ElapsedMilliseconds;
             }
-            try
-            {
-                CompileTogether(written.Distinct().Where(p => p.EndsWith(".shader")).ToList());
-            }
-            catch (Exception e)
-            {
-                // Only ever a head start for the check, which compiles whatever this did not.
-                Debug.Log("[AvatarBridge] Compiling the YAPS copies together failed: " + e.Message);
-            }
         }
 
         // Set while Prewrite runs: files are written and listed here, never imported one by one.
@@ -389,77 +380,18 @@ namespace AvatarBridge
         static string TransformKey(string shaderName, string yaps, List<ShaderSpiPatcher.SourceFile> unit) =>
             Hash(shaderName + "\0" + yaps + string.Concat(unit.Select(f => "\0" + f.OriginalPath + "\0" + f.Text.Length + "\0" + f.Text)), 32);
 
-        // Every pass of the copies Prewrite just wrote, compiled at once. Checked one by one, a
-        // shader keeps only a few compiler processes busy and the next one waits for it. The
-        // check still runs as before on each; nothing here decides or reports anything.
-        static void CompileTogether(List<string> shaderPaths)
-        {
-            if (shaderPaths.Count == 0) return;
-            var materials = new List<Material>();
-            var asked = new List<(Material material, int pass)>();
-            bool wasAsync = ShaderUtil.allowAsyncCompilation;
-            var clock = System.Diagnostics.Stopwatch.StartNew();
-            try
-            {
-                ShaderUtil.allowAsyncCompilation = true;
-                bool synchronous = false;
-                foreach (string path in shaderPaths)
-                {
-                    var shader = synchronous ? null : AssetDatabase.LoadAssetAtPath<Shader>(path);
-                    if (shader == null) continue;
-                    var material = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };
-                    materials.Add(material);
-                    for (int pass = 0; pass < material.passCount && !synchronous; pass++)
-                    {
-                        long before = clock.ElapsedMilliseconds;
-                        ShaderUtil.CompilePass(material, pass, false);
-                        asked.Add((material, pass));
-                        // A request that held the thread compiled in place. More would only be
-                        // serial compiles the check might not reuse.
-                        synchronous = clock.ElapsedMilliseconds - before > 2000 && !ShaderUtil.anythingCompiling;
-                    }
-                }
-                long start = clock.ElapsedMilliseconds, progress = start;
-                Timing.AskMs += start;
-                // Spun, as nothing else here can wait. Bounded by progress: if results only land
-                // between editor frames, one stall window is lost rather than the whole compile.
-                int ready = 0;
-                string stopped = synchronous ? "synchronous" : "done";
-                while (!synchronous && ShaderUtil.anythingCompiling)
-                {
-                    int now = asked.Count(a => ShaderUtil.IsPassCompiled(a.material, a.pass));
-                    if (now > ready) { ready = now; progress = clock.ElapsedMilliseconds; }
-                    if (ready == asked.Count) break;
-                    if (clock.ElapsedMilliseconds - progress > 90000) { stopped = "stalled"; break; }
-                    if (clock.ElapsedMilliseconds - start > 1800000) { stopped = "cap"; break; }
-                    System.Threading.Thread.Sleep(100);
-                }
-                Timing.WaitMs += clock.ElapsedMilliseconds - start;
-                Timing.Ready += asked.Count(a => ShaderUtil.IsPassCompiled(a.material, a.pass));
-                Timing.Stopped = stopped;
-            }
-            finally
-            {
-                ShaderUtil.allowAsyncCompilation = wasAsync;
-                Timing.Asked += asked.Count;
-                foreach (var m in materials) UnityEngine.Object.DestroyImmediate(m);
-            }
-        }
-
         // --- what it costs, for the log only --------------------------
 
         // Never the report: its lines must not move between two runs of the same avatar.
         sealed class Timings
         {
-            public long ErrorMs, MessagesMs, ImportMs, AskMs, WaitMs;
-            public int ErrorCalls, MessagesCalls, Imported, Patches, Reused, Loads, Asked, Ready;
-            public string Stopped = "-";
+            public long ErrorMs, MessagesMs, ImportMs;
+            public int ErrorCalls, MessagesCalls, Imported, Patches, Reused, Loads;
             public bool Any => Patches + Loads + Imported > 0;
 
             public override string ToString() =>
                 $"error check {ErrorMs} ({ErrorCalls} calls), messages {MessagesMs} ({MessagesCalls} calls), " +
-                $"prewrite import {ImportMs} ({Imported} files), compile together: asking {AskMs}, waiting {WaitMs} " +
-                $"({Ready} of {Asked} passes ready, stopped {Stopped}), patches {Patches} ({Reused} from Prewrite), " +
+                $"prewrite import {ImportMs} ({Imported} files), patches {Patches} ({Reused} from Prewrite), " +
                 $"YAPS source loads {Loads}";
         }
 
