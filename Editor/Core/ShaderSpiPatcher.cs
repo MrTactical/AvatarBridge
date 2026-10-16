@@ -977,11 +977,10 @@ namespace AvatarBridge
 
             AssetDatabase.ImportAsset(outPath, ImportAssetOptions.ForceSynchronousImport);
 
-            // Text proven in another folder compiles the same here: its includes
-            // are the copies beside it, by the names hashed with it.
+            // Checked even when the same text passed in another folder: an include
+            // left as text can resolve differently beside a different copy.
             var result = AssetDatabase.LoadAssetAtPath<Shader>(outPath);
             string errors = result == null ? "copy failed to import"
-                : proven ? null
                 : ShaderUtil.ShaderHasError(result) ? ShaderErrors(result)
                 : StereoVariantError(result);
             if (errors != null)
