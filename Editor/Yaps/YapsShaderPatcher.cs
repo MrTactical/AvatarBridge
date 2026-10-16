@@ -24,6 +24,13 @@ namespace AvatarBridge
     {
         const string Category = "YAPS";
 
+        // Every patched shader, from every conversion and build, in one folder. Its name hashes
+        // everything it is made from, so the same source patched for another avatar, a variant,
+        // or a conversion whose folder was deleted finds the copy already compiled. A folder per
+        // output compiled the same text again in each, about a minute a shader: the include paths
+        // are compiled in, so an identical copy elsewhere misses the cache.
+        public const string SharedFolder = "Assets/YAPS/Generated/Shaders";
+
         // What the emitted code IS, never a number somebody has to change when
         // it moves. A constant like that was forgotten twice in one day: a
         // property was added to the block below and every already-patched
@@ -201,14 +208,14 @@ namespace AvatarBridge
         // Re-patch a material that has fallen behind, in place. Its values
         // survive the swap and a property the old code never had arrives at
         // the default its block declares.
-        public static bool Refresh(Material patched, string outputDir, BridgeReport report)
+        public static bool Refresh(Material patched, BridgeReport report)
         {
             var original = OriginalShaderOf(patched);
             if (original == null) return false;
             var stand = new Material(original) { name = patched.name };
             try
             {
-                var current = Patch(stand, outputDir, report, out _, out _, allowSps: true);
+                var current = Patch(stand, report, out _, out _, allowSps: true);
                 if (current == null) return false;
                 patched.shader = current;
                 return true;
@@ -227,10 +234,6 @@ namespace AvatarBridge
         // positioned and tuned. Avatars in scenes nobody opened and anything
         // imported from someone else's package are the same blind spot in two
         // more shapes.
-        //
-        // The new shader is written BESIDE the one it replaces, so a prop's
-        // shader stays with the prop rather than moving into this tool's own
-        // output folder, where a later cleanup would take it.
         public static string SweepProject()
         {
             var guids = AssetDatabase.FindAssets("t:Material");
@@ -253,7 +256,7 @@ namespace AvatarBridge
                     if (YapsMarks.IsReadoutMaterial(material)) continue;
                     found++;
                     if (!IsStale(material)) continue;
-                    if (Refresh(material, Beside(material), null))
+                    if (Refresh(material, null))
                     {
                         refreshed++;
                         EditorUtility.SetDirty(material);
@@ -272,15 +275,6 @@ namespace AvatarBridge
             // there, and saying so beats a count that quietly does not add up.
             return failed == 0 ? said
                 : said + $" {failed} could not be: their original shader is no longer in the project.";
-        }
-
-        // The folder the patched shader already lives in, or this tool's
-        // output root when it has none.
-        static string Beside(Material patched)
-        {
-            string at = patched.shader == null ? null : AssetDatabase.GetAssetPath(patched.shader);
-            string dir = string.IsNullOrEmpty(at) ? null : Path.GetDirectoryName(at);
-            return string.IsNullOrEmpty(dir) ? "Assets/YAPS/Generated" : dir.Replace('\\', '/');
         }
 
         // What the patched shader is called, and it is not cosmetic.
@@ -332,21 +326,21 @@ namespace AvatarBridge
         // runs every installed package's import hooks, about a minute each in a large project,
         // and a squash patches twenty. A copy that failed to compile is left to Patch, which
         // writes it again and reports why.
-        public static void Prewrite(IEnumerable<Material> materials, string outputDir)
+        public static void Prewrite(IEnumerable<Material> materials)
         {
             var list = materials.Where(m => m != null).Distinct().ToList();
             if (list.Count == 0) return;
             // A folder the AssetDatabase has not seen takes no imports into it.
-            if (!AssetDatabase.IsValidFolder(outputDir))
+            if (!AssetDatabase.IsValidFolder(SharedFolder))
             {
-                Directory.CreateDirectory(outputDir);
+                Directory.CreateDirectory(SharedFolder);
                 AssetDatabase.Refresh();
             }
             var written = Deferred = new List<string>();
             Prewritten = new Dictionary<string, (string[], int, string, int, bool)>();
             try
             {
-                foreach (var m in list) Patch(m, outputDir, null, out _, out _);
+                foreach (var m in list) Patch(m, null, out _, out _);
             }
             finally
             {
@@ -445,7 +439,7 @@ namespace AvatarBridge
             }
         }
 
-        public static Shader Patch(Material material, string outputDir, BridgeReport report,
+        public static Shader Patch(Material material, BridgeReport report,
             out string refusal, out int skippedShadowPasses, bool allowSps = false)
         {
             refusal = null;
@@ -562,7 +556,7 @@ namespace AvatarBridge
                 return null;
             }
 
-            var patched = WriteAndVerify(unit, sourcePath, outputDir, hash, out string compileError);
+            var patched = WriteAndVerify(unit, sourcePath, SharedFolder, hash, out string compileError);
             if (patched == null)
             {
                 refusal = "the patched shader did not compile: " + compileError;
@@ -571,8 +565,8 @@ namespace AvatarBridge
 
             report?.Converted(Category, material.name,
                 $"Deform patched into \"{material.shader.name}\" across {BridgeElements.Count(patchedPasses, "pass", "passes")}. " +
-                "The original shader is untouched; a copy carrying YAPS was written beside the " +
-                "converted avatar and the material repointed at it."
+                $"The original shader is untouched; a copy carrying YAPS was written to {SharedFolder}, " +
+                "shared by everything patched from the same shader, and the material repointed at it."
                 + (frameless
                     ? " Its vertex input takes no normal or no tangent from the mesh, and a skinned " +
                       "plug finds which way it points from those, so a skinned plug on this shader " +
@@ -1289,8 +1283,8 @@ namespace AvatarBridge
                 error = messages.Length > 0
                     ? string.Join("; ", messages.Take(3).Select(m => $"line {m.line}: {m.message}"))
                     : "the compiler reported an error but no message";
-                // Keep the failing source next to the avatar so the error
-                // can be read against real line numbers.
+                // Keep the failing source so the error can be read against
+                // real line numbers.
                 File.WriteAllText(shaderPath + ".failed.txt", shaderFile.Text);
                 CleanUp(created, null);
                 return null;

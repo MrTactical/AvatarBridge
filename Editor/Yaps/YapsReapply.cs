@@ -53,7 +53,7 @@ namespace AvatarBridge
                     continue;
                 }
                 string folder = Path.GetDirectoryName(assetPath).Replace('\\', '/');
-                // A material inside a package is not the toolkit's to write beside.
+                // A material inside a package is read only, so it cannot be repointed.
                 // The asset path, not the folder: a material directly in Assets
                 // has the folder "Assets", which has no slash after it.
                 if (!assetPath.StartsWith("Assets/", System.StringComparison.OrdinalIgnoreCase))
@@ -66,8 +66,7 @@ namespace AvatarBridge
                 // property is one of the moments Unity may drop it.
                 var saved = Capture(material);
 
-                var shader = YapsShaderPatcher.Patch(material, folder, null,
-                    out string refusal, out _);
+                var shader = YapsShaderPatcher.Patch(material, null, out string refusal, out _);
                 if (shader == null)
                 {
                     refusals.Add($"{material.name}: {refusal}");

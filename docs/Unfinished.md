@@ -167,6 +167,23 @@ copy's main asset. The test covers it, and fails with the old rehomer. Still to 
   inside one run can reach. The same probe measured it: the identical text in a second folder
   compiled again in full, about 140 s for the three, where the same folder reused is free (the
   reconvert case, squash 319 s to 15 s in the speed subset).
+  **DONE on dev 2026-10-16, not yet run in a conversion:** every YAPS patch, converted or built,
+  goes to `Assets/YAPS/Generated/Shaders` (`YapsShaderPatcher.SharedFolder`); the name already
+  hashed the source path, its text and the YAPS version, so nothing else had to change, and the
+  output-folder argument is gone from `Patch`, `Prewrite` and `Refresh`. The project sweep no longer
+  writes beside the old copy either. Corpus digests that list output paths change once. Follow-ups,
+  neither done: the copies are never pruned, so each YAPS version leaves the last set behind (as it
+  did per folder before), and an explicit cleanup could remove what no material uses; and deleting
+  the folder turns every YAPS avatar in the project magenta until each is converted again (README
+  Troubleshooting says so). Writing each copy's `.meta` with a GUID derived from its hash would let
+  one reconvert relink the rest; left out until somebody hits it. The stereo patcher's copies could
+  share the same way, but their verify depends on the folder (see above), so not without a probe.
+- Squash slots that store no share keep their own material. **DONE on dev 2026-10-16:** the shader
+  returns at once on a zero share, so such a slot drew the same, and its copy only cost a compile
+  and a material for the providers to write. Judged on the stored byte (`YapsSquash.Moves`), in
+  `Prewrite` as well as the slot loop, since the import is where the compile cost lands.
+  `SquashSlotTest` covers rounding, unused vertices and a slot past the last submesh: PASS, with
+  `StandardCasterTest` and `TextureRehomeTest` on the shared folder.
 - The per-slot `.mat` saves in the squash pass (about 35 s), batched: unprobed, because the importer
   and GUID may not exist until the batch stops.
 - `RestorePartialOffStates` and `AssertOwnedBindingsEverywhere` still claim, delete and create one
@@ -2349,6 +2366,17 @@ makes 4); a DEAD row now lists the notices the probe sees.
 **Make selected object a prop** on an avatar root added a collider and a spawnable to the avatar
 (seen in the smoke's plain pass on a socket avatar). FIXED ON DEV: `MakeProp` refuses an avatar or
 anything under a `CVRAvatar`, for all four callers.
+
+**Full rerun, 2026-10-16:** 648 presses on the squash socket scene, 501 OK, 15 for a look, and the
+only fix was a log level. The three prop ERROR rows were the refusal above working, logged as an
+error while the window says it as a warning; it logs a warning now. The rest: Analyse found
+everything already matched; **Grow**, **Shrink**, **Smooth** and **Mirror** right after **Add a
+pair** had no painted skin to act on; **Paint in the Scene view** logged Unity's own `Handles.Repaint
+called outside an editor OnGUI`, from the IMGUI container ending its handles during the offscreen
+draw, with nothing of this package on the stack, so most likely the batch harness (not checked in a
+GUI editor); and six SELECT ONLY rows are buttons whose job is selecting: the report's **Show** on a
+squash part, and **customise** on a socket just added. The previous run died before reporting; this
+one took an hour.
 
 Open: **Merge animators / clear** is disabled with no tooltip saying why. The paint stroke and the
 squash depth are not yet gestured.

@@ -1078,7 +1078,8 @@ unlock/edit/re-lock.
    finished avatar, but only this button does the lot and checks it. The line under it counts
    what it will bake and verify. Afterwards *What Build did* lists the result, the same lines go
    to the Console, and **Show me the files** selects `Assets/YAPS/Generated/<avatar>`, where the
-   generated materials, bakes and clips go.
+   generated materials, bakes and clips go. Patched shaders go to `Assets/YAPS/Generated/Shaders`,
+   one folder for every avatar, so a shader another avatar already patched is not compiled again.
 
 **Upgrade in place.** An avatar that never went through the converter but carries DPS, TPS or SPS
 becomes YAPS on the same mesh. A socket gains the markers it lacks so every plug family reads it.
@@ -1448,10 +1449,11 @@ the body draws as it would without the squash. Nothing breaks, and there is no w
 **Two ways on.** Converting: *Manual options ▸ Opt-ins ▸ Soft parts ▸ Squash breasts and butt
 against each other and hands*. Already on ChilloutVR: *Tools ▸ YAPS ▸ Setup*, the **Squash**
 card, **Add squash**. Pressing it again rebuilds it; **Remove squash** puts every layer back on its
-own material, toggles included. The copies it makes go to `Assets/YAPS/Generated/Squash`; a
-rebuild goes back to the folder the last build used, a conversion's own included, so the
-patched shaders already there are reused instead of compiled again, and its own copies are
-written over rather than added to.
+own material, toggles included. Only a layer that lies over a soft part gets a copy; the rest keep
+their own material and cost nothing. The copies go to `Assets/YAPS/Generated/Squash`; a rebuild
+goes back to the folder the last build used, a conversion's own included, so they are written over
+rather than added to. Their shaders live in the shared `Assets/YAPS/Generated/Shaders`, where a
+shader another avatar already patched is reused instead of compiled again.
 
 **Tuning it.** The first build adds a **YAPS Squash** component to the avatar, and the Setup card
 selects it when it is done. Its knobs write straight to the materials as you move them, so nothing
@@ -2318,6 +2320,10 @@ Five cases are deliberately left alone, and the report names each:
 A material or shader the avatar points at no longer exists: almost always VRCFury's temp folder,
 which Fury deletes on its next build. So it appears *after* a later bake, on an avatar that converted
 fine. **Convert again**; if it persists, that's worth an issue.
+
+On a YAPS avatar it can also be `Assets/YAPS/Generated/Shaders`: the patched shaders of every
+avatar in the project live there, so deleting it turns all their YAPS materials magenta. Convert
+again to bring them back.
 
 ### A mesh renders white, washed out, or loses its eyes
 

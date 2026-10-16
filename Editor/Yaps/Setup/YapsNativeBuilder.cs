@@ -225,12 +225,12 @@ namespace AvatarBridge
             else
             {
                 shader = legacy == YapsLegacyMap.Origin.DPS ? null
-                    : YapsShaderPatcher.Patch(source, dir, report, out refusal, out _, allowSps: legacy == YapsLegacyMap.Origin.SPS);
+                    : YapsShaderPatcher.Patch(source, report, out refusal, out _, allowSps: legacy == YapsLegacyMap.Origin.SPS);
                 if (shader == null)
                 {
                     var plain = OnSimpleLit(source, out string why);
                     if (plain == null) { o.Message = "could not patch the shader: " + refusal + "; and " + why; return o; }
-                    shader = YapsShaderPatcher.Patch(plain, dir, report, out string plainRefusal, out _);
+                    shader = YapsShaderPatcher.Patch(plain, report, out string plainRefusal, out _);
                     if (shader == null) { o.Message = "could not patch the shader: " + refusal + "; and YAPS Simple Lit refused too: " + plainRefusal; return o; }
                     o.Notes.Add(legacy == YapsLegacyMap.Origin.DPS
                         ? "A DPS shader has no switch for its own deform, so the plug now wears YAPS Simple Lit " +
@@ -281,7 +281,7 @@ namespace AvatarBridge
                 // it replaces so a session of re-bakes does not leave a twelve-megabyte
                 // asset per click behind. The shader too, when this version emits
                 // something the patch on it predates.
-                if (YapsShaderPatcher.IsStale(patched)) YapsShaderPatcher.Refresh(patched, dir, report);
+                if (YapsShaderPatcher.IsStale(patched)) YapsShaderPatcher.Refresh(patched, report);
                 var previous = patched.GetTexture("_YAPS_Bake");
                 // THE SAME CALL A FRESH BAKE MAKES, never a hand-copied subset of it.
                 // This listed five of the seven fields and left out _YAPS_BakeScale and
@@ -1052,7 +1052,7 @@ namespace AvatarBridge
                 // property the old code never had arrives at its declared default,
                 // which the writes below then set. Without this a rebuild refreshes the
                 // bake and leaves the deform on whatever code shipped that day.
-                if (YapsShaderPatcher.IsStale(material)) YapsShaderPatcher.Refresh(material, dir, report);
+                if (YapsShaderPatcher.IsStale(material)) YapsShaderPatcher.Refresh(material, report);
                 var previous = material.GetTexture("_YAPS_Bake");
                 // The same call the fresh bake below makes, as the plug's re-bake
                 // does. Three fields copied by hand left the length, the rest
@@ -1064,11 +1064,11 @@ namespace AvatarBridge
             }
             else
             {
-                var shader = YapsShaderPatcher.Patch(source, dir, report, out string refusal, out _);
+                var shader = YapsShaderPatcher.Patch(source, report, out string refusal, out _);
                 if (shader == null)
                 {
                     var plain = OnSimpleLit(source, out string why);
-                    shader = plain != null ? YapsShaderPatcher.Patch(plain, dir, report, out refusal, out _) : null;
+                    shader = plain != null ? YapsShaderPatcher.Patch(plain, report, out refusal, out _) : null;
                     if (shader == null) return $"✗ {socket.name}: could not patch the shader: {refusal}";
                     source = plain;
                 }
@@ -1274,7 +1274,7 @@ namespace AvatarBridge
                 {
                     // Generated here, with its shader reverted by a previous Remove.
                     // Re-patch in place rather than cloning a clone.
-                    var again = YapsShaderPatcher.Patch(was, dir, report, out _, out _);
+                    var again = YapsShaderPatcher.Patch(was, report, out _, out _);
                     if (again != null)
                     {
                         was.shader = again;
@@ -1290,14 +1290,14 @@ namespace AvatarBridge
                     // as the slot's original. Recording it makes Remove put a patched
                     // material back and call that a restore.
                     target = was;
-                    if (YapsShaderPatcher.IsStale(target)) YapsShaderPatcher.Refresh(target, dir, report);
+                    if (YapsShaderPatcher.IsStale(target)) YapsShaderPatcher.Refresh(target, report);
                     CopyYapsProperties(primary, target);
                     EditorUtility.SetDirty(target);
                     done++;
                     continue;
                 }
                 {
-                    var shader = YapsShaderPatcher.Patch(was, dir, report, out string refusal, out _);
+                    var shader = YapsShaderPatcher.Patch(was, report, out string refusal, out _);
                     if (shader == null)
                     {
                         // Leave a material that cannot be patched alone and say so:
@@ -1570,7 +1570,7 @@ namespace AvatarBridge
                 bool ours = was.HasProperty("_YAPS_Bake") || IsGenerated(was);
                 var shader = was.HasProperty("_YAPS_Bake")
                     ? was.shader
-                    : YapsShaderPatcher.Patch(was, dir, report, out _, out _);
+                    : YapsShaderPatcher.Patch(was, report, out _, out _);
                 if (shader == null)
                 {
                     report?.Warning("YAPS", $"\"{was.name}\" keeps its own shader",
@@ -1582,7 +1582,7 @@ namespace AvatarBridge
                 if (ours)
                 {
                     target = was;
-                    if (YapsShaderPatcher.IsStale(target)) YapsShaderPatcher.Refresh(target, dir, report);
+                    if (YapsShaderPatcher.IsStale(target)) YapsShaderPatcher.Refresh(target, report);
                     else target.shader = shader;
                     YapsBaker.Apply(result, target, true);
                 }

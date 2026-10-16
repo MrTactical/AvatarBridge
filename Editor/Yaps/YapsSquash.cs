@@ -144,8 +144,8 @@ namespace AvatarBridge
         // The YAPS tool's build: the squash, then the toggles' swaps pointed at it.
         public static string Build(Transform root, out bool built)
         {
-            // Back into the folder the last build used: a conversion's holds its patched shaders
-            // already, and any other folder compiles every one of them again.
+            // Back into the folder the last build used, so a rebuild writes over its own copies
+            // and anything pointing at them keeps pointing, instead of leaving a second set.
             string folder = root.GetComponentsInChildren<Renderer>(true).SelectMany(r => r.sharedMaterials)
                 .Where(m => SourceOf(m) != null).Select(m => System.IO.Path.GetDirectoryName(AssetDatabase.GetAssetPath(m)).Replace('\\', '/'))
                 .FirstOrDefault() ?? YapsNativeBuilder.OutputRoot + "/Squash";
@@ -367,17 +367,19 @@ namespace AvatarBridge
             var still = new HashSet<int>();
             var bodySkin = regions != null ? skins.First(s => s.smr == regions.body) : named;
             var shared = Shares(skins, bodySkin, root.name, folder);
-            YapsShaderPatcher.Prewrite(shared.SelectMany(x => x.smr.sharedMaterials).Where(m => m != null && !m.HasProperty("_YAPS_DentOwn")), folder);
+            YapsShaderPatcher.Prewrite(shared.SelectMany(x => x.smr.sharedMaterials
+                    .Where((m, slot) => m != null && Moves(x.smr.sharedMesh, slot, x.shares)))
+                .Where(m => !m.HasProperty("_YAPS_DentOwn")));
             foreach (var (smr, own, shares) in shared)
             {
                 var mats = smr.sharedMaterials;
                 for (int slot = 0; slot < mats.Length; slot++)
                 {
                     var source = mats[slot];
-                    if (source == null) continue;
+                    if (source == null || !Moves(smr.sharedMesh, slot, shares)) continue;
                     if (!patched.TryGetValue(source, out var shader))
                     {
-                        patched[source] = shader = ShaderFor(source, folder, report, log);
+                        patched[source] = shader = ShaderFor(source, report, log);
                     }
                     if (shader == null)
                     {
@@ -546,10 +548,10 @@ namespace AvatarBridge
         }
 
         // A material already carrying YAPS has the squash in it; anything else is patched.
-        static Shader ShaderFor(Material source, string folder, BridgeReport report, List<string> log)
+        static Shader ShaderFor(Material source, BridgeReport report, List<string> log)
         {
             if (source.HasProperty("_YAPS_DentOwn")) return source.shader;
-            var shader = YapsShaderPatcher.Patch(source, folder, report, out string refusal, out int shadows);
+            var shader = YapsShaderPatcher.Patch(source, report, out string refusal, out int shadows);
             if (shader == null) log?.Add($"left \"{source.name}\" as it was: {refusal}");
             // Unity's standard caster is wrapped; a caster from anywhere else cannot be reached.
             else if (shadows > 0) log?.Add($"\"{source.name}\" casts its shadow unsquashed");
@@ -610,7 +612,7 @@ namespace AvatarBridge
                     if (mats[slot] != null && SourceOf(mats[slot]) != null && mats[slot].HasProperty("_YAPS_DentOwn"))
                         pending.AddRange(Keyed(clips, path, slot).Select(Original).Where(m => !m.HasProperty("_YAPS_DentOwn")));
             }
-            YapsShaderPatcher.Prewrite(pending, folder);
+            YapsShaderPatcher.Prewrite(pending);
             foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
                 var mats = smr.sharedMaterials;
@@ -638,7 +640,7 @@ namespace AvatarBridge
                         var original = Original(was);
                         if (!copyOf.TryGetValue((smr, original), out var to))
                         {
-                            var shader = ShaderFor(original, folder, report, null);
+                            var shader = ShaderFor(original, report, null);
                             if (shader == null) { refused.Add(original.name); continue; }
                             to = new Material(original) { shader = shader };
                             foreach (string name in Properties) Carry(template, to, name);
@@ -809,11 +811,7 @@ namespace AvatarBridge
                 if (m.share.All(x => x == Vector4.zero)) continue;
                 int width = 1024, height = Mathf.Max(1, (m.at.Length + width - 1) / width);
                 var pixels = new Color32[width * height];
-                for (int v = 0; v < m.at.Length; v++)
-                {
-                    var s = m.share[v];
-                    pixels[v] = new Color32((byte)(s.x * 255f + 0.5f), (byte)(s.y * 255f + 0.5f), (byte)(s.z * 255f + 0.5f), (byte)(s.w * 255f + 0.5f));
-                }
+                for (int v = 0; v < m.at.Length; v++) pixels[v] = Stored(m.share[v]);
                 // Linear and point-sampled: a share is a number, not a colour.
                 var tex = new Texture2D(width, height, TextureFormat.RGBA32, false, true) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
                 tex.SetPixels32(pixels);
@@ -828,6 +826,26 @@ namespace AvatarBridge
                 result.Add((m.smr, tex, m.share));
             }
             return result;
+        }
+
+        // A share as the texture holds it, so a slot is judged by what the shader will read.
+        static Color32 Stored(Vector4 s) =>
+            new Color32((byte)(s.x * 255f + 0.5f), (byte)(s.y * 255f + 0.5f), (byte)(s.z * 255f + 0.5f), (byte)(s.w * 255f + 0.5f));
+
+        // Whether any vertex of the slot carries a share once stored. The dent returns at once on
+        // a zero share, so a slot with none draws the same on its own material, and a copy would
+        // only cost a shader compile and one more material for the providers to write. A slot past
+        // the last submesh draws the last one again.
+        internal static bool Moves(Mesh mesh, int slot, Vector4[] shares)
+        {
+            if (mesh == null || mesh.subMeshCount == 0) return false;
+            foreach (int v in mesh.GetIndices(Mathf.Min(slot, mesh.subMeshCount - 1)))
+            {
+                if (v >= shares.Length) continue;
+                var c = Stored(shares[v]);
+                if (c.r > 0 || c.g > 0 || c.b > 0 || c.a > 0) return true;
+            }
+            return false;
         }
 
         // An earlier build off again: each layer back on the material it was copied from, and

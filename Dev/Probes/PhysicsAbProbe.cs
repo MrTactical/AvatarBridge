@@ -431,7 +431,7 @@ namespace AvatarBridge.Regression
                         if (mats[i] == null) continue;
                         if (!done.TryGetValue(mats[i], out var dented))
                         {
-                            var shader = YapsShaderPatcher.Patch(mats[i], "Assets/PhysicsAbDent", null, out string refusal, out _);
+                            var shader = YapsShaderPatcher.Patch(mats[i], null, out string refusal, out _);
                             dented = shader == null ? null : new Material(mats[i]) { shader = shader };
                             if (dented != null) { dented.SetFloat("_YAPS_DentPower", 1f); dentMaterials.Add(dented); }
                             // -abBulge x: the ring's height, for A/B against the default.

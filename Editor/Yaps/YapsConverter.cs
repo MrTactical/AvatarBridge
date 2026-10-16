@@ -440,7 +440,7 @@ namespace AvatarBridge
                 }
                 else
                 {
-                    shader = YapsShaderPatcher.Patch(plain, ctx.OutputDir + "/YAPS", ctx.Report,
+                    shader = YapsShaderPatcher.Patch(plain, ctx.Report,
                         out refusal, out skippedShadowPasses);
                     if (shader != null)
                     {
@@ -454,8 +454,8 @@ namespace AvatarBridge
             }
             else
             {
-                shader = YapsShaderPatcher.Patch(source, ctx.OutputDir + "/YAPS",
-                    ctx.Report, out refusal, out skippedShadowPasses, allowSps: legacy == YapsLegacyMap.Origin.SPS);
+                shader = YapsShaderPatcher.Patch(source, ctx.Report, out refusal, out skippedShadowPasses,
+                    allowSps: legacy == YapsLegacyMap.Origin.SPS);
             }
 
             // A shader that will not take the deform is not the end of it:
@@ -555,7 +555,7 @@ namespace AvatarBridge
                 refusal += "; and " + why;
                 return null;
             }
-            var shader = YapsShaderPatcher.Patch(plain, ctx.OutputDir + "/YAPS", ctx.Report,
+            var shader = YapsShaderPatcher.Patch(plain, ctx.Report,
                 out string plainRefusal, out skippedShadowPasses);
             if (shader == null)
             {
@@ -1135,8 +1135,7 @@ namespace AvatarBridge
                         continue;
                     }
                     var patchSource = materials[slot];
-                    var patched = YapsShaderPatcher.Patch(patchSource, ctx.OutputDir + "/YAPS",
-                        ctx.Report, out string refusal, out _);
+                    var patched = YapsShaderPatcher.Patch(patchSource, ctx.Report, out string refusal, out _);
                     // The mesh is the socket's own, so Simple Lit repaints only the
                     // socket, as the toolkit does. A body never reaches here.
                     if (patched == null)

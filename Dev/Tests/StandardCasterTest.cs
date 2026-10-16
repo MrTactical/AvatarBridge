@@ -68,6 +68,12 @@ namespace AvatarBridge.Regression
             finally
             {
                 AssetDatabase.DeleteAsset(Dir);
+                // The patched copies land in the shared folder, named after these sources.
+                string shared = YapsShaderPatcher.SharedFolder;
+                foreach (string file in Directory.Exists(shared) ? Directory.GetFiles(shared, "Caster*_YAPS_*") : new string[0])
+                {
+                    if (!file.EndsWith(".meta")) AssetDatabase.DeleteAsset(file.Replace('\\', '/'));
+                }
             }
             Debug.Log(failures == 0 ? "[StandardCasterTest] PASS" : $"[StandardCasterTest] FAIL: {failures}");
             if (Application.isBatchMode) EditorApplication.Exit(failures == 0 ? 0 : 1);
@@ -79,7 +85,7 @@ namespace AvatarBridge.Regression
             File.WriteAllText(path, $"Shader \"Test/{name}\"\n{{{Body}    Fallback \"{fallback}\"\n}}\n");
             AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
             var material = new Material(AssetDatabase.LoadAssetAtPath<Shader>(path));
-            var result = YapsShaderPatcher.Patch(material, $"{Dir}/Out", null, out string refusal, out skipped);
+            var result = YapsShaderPatcher.Patch(material, null, out string refusal, out skipped);
             if (refusal != null) Debug.Log($"[StandardCasterTest]   {name} refused: {refusal}");
             string written = result != null ? AssetDatabase.GetAssetPath(result) : null;
             text = written != null && File.Exists(written) ? File.ReadAllText(written) : "";

@@ -768,7 +768,8 @@ namespace AvatarBridge
         void MakeProp(GameObject root, BridgeElements.NoticeBox status)
         {
             var o = YapsPropBuilder.MakeProp(root);
-            if (!o.Ok) Debug.LogError("[YAPS] " + o.Message);
+            // A refusal here is the wrong selection, said as a warning in the window too.
+            if (!o.Ok) Debug.LogWarning("[YAPS] " + o.Message);
             if (o.Ok && _target == null) Pick(root);
             Rescan();
             Say(status, o.Ok ? Tone.Good : Tone.Warn, o.Message, o.Notes);

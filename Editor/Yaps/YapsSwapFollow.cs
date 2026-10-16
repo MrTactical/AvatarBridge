@@ -256,13 +256,13 @@ namespace AvatarBridge.Yaps
                 // patched; Simple Lit carries the look instead. Same rule the plug's
                 // own material follows.
                 var shader = legacy == YapsLegacyMap.Origin.DPS ? null
-                    : YapsShaderPatcher.Patch(source, dir, report, out _, out _,
+                    : YapsShaderPatcher.Patch(source, report, out _, out _,
                                               allowSps: legacy == YapsLegacyMap.Origin.SPS);
                 if (shader == null)
                 {
                     var plain = YapsNativeBuilder.OnSimpleLit(source, out _);
                     shader = plain != null
-                        ? YapsShaderPatcher.Patch(plain, dir, report, out _, out _)
+                        ? YapsShaderPatcher.Patch(plain, report, out _, out _)
                         : null;
                     if (shader != null) source = plain;
                 }
