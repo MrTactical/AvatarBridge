@@ -2649,7 +2649,13 @@ Regressions:
   copy's area, so the "across X m²" figure covers one share and the reclaim advice falls (one avatar
   6.07 to 2.61 m², another's reclaim 29.4 to 22.4 MB). Nothing on the avatar changes; the card and the
   report misstate it. Fix: merge the area of materials with the same textures and scale before the
-  density, in Core, since `Editor/Yaps` is pruned from the public package. Open, after the gate.
+  density, in Core, since `Editor/Yaps` is pruned from the public package. **FIXED on dev
+  2026-10-16, not yet run:** `Densities` sums the area of every material drawing the same maps
+  (data textures left out of the key, so a bake one copy gained does not split it) at the same
+  tiling, then measures. `TextureDensityTest` pins two uneven copies as one surface (512 per
+  metre over 2 m², where the old code read 324 over 1) and a second tiling kept apart. It changes
+  the Weight lines of every avatar where two materials share maps and tiling, squash or not, so
+  the next corpus shows it beyond the squash avatars.
 
 Time: across all 83 conversions squash took 79% of all pass time (27,468 of 34,587 s; median
 conversion 280 s, longest 2,559 s). Next were the animator merge 5%, YAPS 5% and self-contained clips
@@ -3824,7 +3830,15 @@ Open:
   **WITHDRAWN, the same day:** `[Additive] Idle` is VRChat's stock additive layer (`proxy_idle`,
   `TrackingType`), not GoGo's.
 - Which eight library poses, and their order: a choice, open to Joe.
-- **NOT BUILT: the names are not sanitised** (constraint 2 below), found 2026-10-16 while writing
+- **WITHDRAWN 2026-10-16, not needed: "the names are not sanitised"** (constraint 2 below). The
+  client was decompiled again to build it. `AvatarAnimatorManager.IsLegacyEmotePlaying` tests the
+  clip on `Locomotion/Emotes` with `name.Contains("Emote") || _legacyOverrideEmoteNames.Contains(name)`,
+  and `FindLegacyEmotesAndToggles` fills that list with the name of whatever overrides `Emote1` to
+  `Emote8`, keeping the stock name only for a slot left alone. So every clip placed in a slot counts
+  as an emote by its slot, whatever it is called, and mutes both hand layers while it plays: the
+  library poses as much as a creator's "Dance". That is what a held pose wants anyway. The one name
+  that matters is a locomotion clip sharing a label, which `taken` and the " Pose" loop already
+  handle. The original finding, kept for the record: found 2026-10-16 while writing
   the in-game checklist. A creator's clip keeps its own name as the label (`PlaceGogoEmotes`, the
   `picks` query), so one named "Dance" or "Wave Emote" lands as is and would mute both hand layers
   while it plays. The library labels are safe. Fix: rename a label containing "Emote" or equal to
@@ -3875,13 +3889,15 @@ because grafting CVR's locomotion is what puts those slots on the controller in 
 2. **Names are load-bearing twice.** A clip whose name contains "Emote", or matches the stock
    eight (Wave, Bow, Die, Backflip, Point, Sad, Salute, Dance), makes the client mute both hand
    layers while it plays. The harvested names must be sanitised even though they are also the
-   labels the wearer sees.
+   labels the wearer sees. **WITHDRAWN 2026-10-16:** a clip in an `EmoteN` slot is matched by
+   that slot whatever its name, so every placed pose mutes the hands and renaming changes nothing;
+   see the withdrawn "not sanitised" item above.
 3. **An emote ends when you move.** Right for a dance, wrong for a sit somebody wants to hold:
    those belong in the toggle slots, which is also how to tell the two apart when harvesting.
 
 **Order to build it in:** identify GoGo's pose clips and classify each as held or momentary;
 fill the toggle slots from the held ones and the emote slots from the rest, best-known first;
-sanitise the names; write the override controller. Report what landed where and what did not
+sanitise the names (withdrawn, see above); write the override controller. Report what landed where and what did not
 fit, because "which of my poses survived" is the first question anyone will ask.
 
 ## The animator merger: what is left after 5.0.0

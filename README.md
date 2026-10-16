@@ -430,7 +430,8 @@ wrong on a Fury avatar, reconvert.
 default, offered while GoGo is removed). Up to eight: the emotes the avatar's creator put into
 GoGo first, then the sit, kneel and lie poses GoGo ships with, each named in the wheel. They take
 the place of ChilloutVR's stock emotes on that avatar; untick it to keep those. A pose or a
-looping emote holds until you move, which ends any emote, and a one-shot plays once. They cost no
+looping emote holds until you move, which ends any emote, and a one-shot plays once. While one
+plays, ChilloutVR mutes your hand gestures, as it does for every emote. They cost no
 synced parameters: the emote slots are the game's own. GoGo's height, puppet and pose controls
 have no equivalent, and a floor pose keeps a standing viewpoint, since ChilloutVR has no way to
 lower the camera with the body. Earlier versions, with *Action* ticked, left GoGo's pose states

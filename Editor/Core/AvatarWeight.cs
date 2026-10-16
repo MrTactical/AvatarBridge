@@ -46,7 +46,7 @@ namespace AvatarBridge
             public long DiskBytes;
             public int Materials;
 
-            // Lowest density among the materials using it, never the
+            // Lowest density among the surfaces using it, never the
             // average: the use with the fewest texels per metre needs every
             // one it has, so it decides. Highest let a button shrink a shirt.
             public float Density;
@@ -114,7 +114,7 @@ namespace AvatarBridge
                 new Dictionary<string, string>(System.StringComparer.Ordinal);
         }
 
-        class Area
+        internal class Area
         {
             public double World;
             public double Uv;
@@ -446,24 +446,42 @@ namespace AvatarBridge
 
         // ---- density ------------------------------------------------------
 
-        static void Densities(Dictionary<Texture, TextureUse> textures, Dictionary<Material, Area> areas)
+        internal static void Densities(Dictionary<Texture, TextureUse> textures, Dictionary<Material, Area> areas)
         {
+            // One surface per set of maps at one tiling, however many materials draw it. A pass
+            // that gives every slot its own copy of a material would otherwise leave each copy
+            // one slot's share of the area, and the texture covering a fraction of its surface.
+            var surfaces = new Dictionary<string, (List<Texture> maps, Vector2 scale, Area area)>();
             foreach (var pair in areas)
             {
-                var area = pair.Value;
+                var scale = pair.Key.HasProperty("_MainTex") ? pair.Key.mainTextureScale : Vector2.one;
+                // A data texture, a bake or a lookup, is read value by value and never spread
+                // over a surface. It has no density, and fewer texels would be fewer numbers,
+                // so it is never offered smaller, and the texture pass never resizes it. It is
+                // left out of the key too, so a bake one copy gained does not split the surface.
+                var maps = TexturesOf(pair.Key)
+                    .Where(t => textures.TryGetValue(t, out var u) && !u.Data)
+                    .Distinct()
+                    .OrderBy(t => t.GetInstanceID())
+                    .ToList();
+                if (maps.Count == 0) continue;
+                string key = $"{scale.x:R},{scale.y:R}|{string.Join(",", maps.Select(t => t.GetInstanceID()))}";
+                if (!surfaces.TryGetValue(key, out var surface)) surfaces[key] = surface = (maps, scale, new Area());
+                surface.area.World += pair.Value.World;
+                surface.area.Uv += pair.Value.Uv;
+            }
+
+            foreach (var surface in surfaces.Values)
+            {
+                var area = surface.area;
                 if (area.World <= 0.0001 || area.Uv <= 0.0001) continue;
 
                 // Tiling repeats the map, so it multiplies coverage.
-                var scale = pair.Key.HasProperty("_MainTex") ? pair.Key.mainTextureScale : Vector2.one;
-                double uv = area.Uv * Mathf.Max(0.01f, Mathf.Abs(scale.x) * Mathf.Abs(scale.y));
+                double uv = area.Uv * Mathf.Max(0.01f, Mathf.Abs(surface.scale.x) * Mathf.Abs(surface.scale.y));
 
-                foreach (var tex in TexturesOf(pair.Key))
+                foreach (var tex in surface.maps)
                 {
-                    // A data texture, a bake or a lookup, is read value by
-                    // value and never spread over a surface. It has no density,
-                    // and fewer texels would be fewer numbers, so it is never
-                    // offered smaller, and the texture pass never resizes it.
-                    if (!textures.TryGetValue(tex, out var use) || use.Data) continue;
+                    var use = textures[tex];
                     double texels = (double)use.Width * use.Height * uv;
                     float density = (float)System.Math.Sqrt(texels / area.World);
                     if (use.Density > 0f && density >= use.Density) continue;
