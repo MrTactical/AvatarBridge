@@ -254,25 +254,8 @@ namespace AvatarBridge
 
             bool IsStrippedParam(string name) => MatchesAny(paramPrefixes, name);
 
-            // VRCFury tags every generated layer with its component id ("[VF77] ...").
-            // If a component's synced parameters are stripped, all its layers go too.
-            var strippedFuryIds = new HashSet<string>();
             var vrcParams = ctx.SourceDescriptor.expressionParameters;
-            if (vrcParams != null && vrcParams.parameters != null)
-            {
-                foreach (var p in vrcParams.parameters)
-                {
-                    if (string.IsNullOrEmpty(p.name) || !IsStrippedParam(p.name))
-                    {
-                        continue;
-                    }
-                    var match = System.Text.RegularExpressions.Regex.Match(p.name, @"^VF(\d+)_");
-                    if (match.Success)
-                    {
-                        strippedFuryIds.Add(match.Groups[1].Value);
-                    }
-                }
-            }
+            var strippedFuryIds = StrippedFuryIds(vrcParams?.parameters?.Select(p => p?.name), IsStrippedParam);
 
             RemoveLayers(ctx, master, vrcLayers, layerHints, strippedFuryIds, IsStrippedParam);
             PruneDirectBlendTrees(ctx, master, vrcLayers, IsStrippedParam);
@@ -300,6 +283,28 @@ namespace AvatarBridge
         }
 
         // ------------------------------------------------------------------ layers ----
+
+        // VRCFury tags every generated layer with its component id ("[VF77] ..."). If a
+        // component's synced parameters are stripped, all its layers go too. SPS's option rows
+        // go by exact name and must not take id 80 with them: the depth animations, auto mode,
+        // Init Behaviours and sometimes the shared FrameTime Counter carry it too.
+        internal static HashSet<string> StrippedFuryIds(IEnumerable<string> names, Func<string, bool> isStripped)
+        {
+            var ids = new HashSet<string>();
+            foreach (var name in names ?? Enumerable.Empty<string>())
+            {
+                if (string.IsNullOrEmpty(name) || !isStripped(name) || SpsOptionParams.Contains(name))
+                {
+                    continue;
+                }
+                var match = System.Text.RegularExpressions.Regex.Match(name, @"^VF(\d+)_");
+                if (match.Success)
+                {
+                    ids.Add(match.Groups[1].Value);
+                }
+            }
+            return ids;
+        }
 
         internal static void RemoveLayersForTest(BridgeContext ctx, AnimatorController master,
             List<AnimatorControllerLayer> vrcLayers)
