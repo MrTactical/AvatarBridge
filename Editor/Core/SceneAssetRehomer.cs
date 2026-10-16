@@ -349,6 +349,12 @@ namespace AvatarBridge
 
         static UnityEngine.Object Counterpart(UnityEngine.Object original, string source, string copyPath)
         {
+            // The import names a file's main object after the file, so a copy's main object can
+            // differ in name from a source still named as it was made.
+            if (AssetDatabase.IsMainAsset(original))
+            {
+                return AssetDatabase.LoadMainAssetAtPath(copyPath);
+            }
             int index = 0;
             foreach (var candidate in AssetDatabase.LoadAllAssetsAtPath(source))
             {

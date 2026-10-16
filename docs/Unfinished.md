@@ -137,8 +137,21 @@ of it run in Unity yet:
   and YapsRename's remap is memoised once settled.
 
 Before 5.0.0: a corpus subset after 417 finishes, with identical digests to 417 required, and its
-timings against 417's. Then `TextureRehomeTest` extended to a mesh and a second material slot, and
-run, since the rehome batch is the one change no test reaches. Still to do, in order of size:
+timings against 417's. **DONE 2026-10-16, subset `speed1`:** eight avatars chosen to reach every
+changed path (an SPS fixture, squash, the stereo patcher heavy ones, rehome, contacts, many
+self-contained clips), all eight digests byte for byte identical to 417's. Pass time for the eight
+went from 1240 s to 234 s, throttled the same way. Read it carefully: most of that is squash
+(319 to 15 s) and YAPS (440 to 9 s) finding 417's compiled shaders still in place, which is the
+reconvert case, not a cold compile. The passes the new code touched, measured fairly: animator merge
+182 to 81 s, stereo patch 116 to 29 s, self-contained clips 90 to 32 s, contacts 54 to 41 s, rehome
+13 to 6 s. Then `TextureRehomeTest` extended to a mesh and a second material slot (13e91a9), and
+run, since the rehome batch is the one change no test reaches. **DONE 2026-10-16, PASS**, after
+one fix in the test: the import renames a file's main object after the file, so the test's own
+lookup by the name it made lost the main texture. Running it turned up a real miss beside that: two
+texture files of the same name from different folders are copied as `X.asset` and `X 1.asset`, the
+import renames the second's main texture to `X 1`, and the name match found nothing, so that texture
+stayed in temp and went missing when Fury cleared it. The counterpart of a main asset is now the
+copy's main asset. The test covers it, and fails with the old rehomer. Still to do, in order of size:
 - Compiling a material's passes together was written and pulled: compiling the shadow caster with
   the rest can change which shaders are refused, and waiting for it spun. It comes back only after
   a probe of what the error check costs per pass, alone and in parallel.
@@ -2638,7 +2651,8 @@ Regressions:
   smoothing needs. Seventeen avatars in the first 60, three more in the last 23; the restore filler's
   warning moving on them (C2) is the same cause. **FIXED on branch `fix-417` (97d6b6a), not
   compiled**: the harvest skips the option rows, `SpsOptionStripTest` pins both sides. Merges after
-  the speed subset matches 417, since the subset holds an SPS fixture.
+  the speed subset matches 417, since the subset holds an SPS fixture. **Merged into dev
+  2026-10-16** once that subset matched, compiled in all six combinations.
   The runner's one sweep verdict marked WORSE, avatar J "+refused EmissionBody", is probably this
   too, not a converter change: that avatar's sweep throws in VRCFury's Animator hook in both runs
   ("threw while driving, writes lost"), its refused count is 15 in both, and C1 took three parameters

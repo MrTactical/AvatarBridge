@@ -25,6 +25,10 @@ namespace AvatarBridge.Regression
     // Meshes and materials are written in one batch, with one delete for what a previous run
     // left. So a mesh and a second material slot go through too, and the conversion runs twice
     // into one folder: the second must replace the first's files in place, not number new ones.
+    //
+    // A second texture file of the same name, from another folder, is copied under a numbered
+    // name, and the import renames its main texture to match. That one is found as the main
+    // asset, since no name in the copy matches the source any more.
     public static class TextureRehomeTest
     {
         const string Temp = "Packages/com.vrcfury.temp/__ABTextureRehomeTest";
@@ -77,10 +81,19 @@ namespace AvatarBridge.Regression
                 Resources.UnloadAsset(mainOther);
                 Resources.UnloadAsset(subOther);
                 inController = Load(Temp + "/Probe FX.controller", "In controller");
-                mainOther = Load(otherPath, "Other main");
+                // By main asset, not by name: the import renames a file's main object after the file.
+                mainOther = AssetDatabase.LoadMainAssetAtPath(otherPath) as Texture2D;
                 subOther = Load(otherPath, "Other sub");
+                string twinPath = Temp + "/Twin/Probe Other.asset";
+                Directory.CreateDirectory(Temp + "/Twin");
+                AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+                AssetDatabase.CreateAsset(MakeTexture("Twin main", 5), twinPath);
+                AssetDatabase.SaveAssets();
+                Resources.UnloadAsset(AssetDatabase.LoadMainAssetAtPath(twinPath));
+                var twin = AssetDatabase.LoadMainAssetAtPath(twinPath) as Texture2D;
                 fail += Check("the source textures reload not readable",
-                    inController != null && subOther != null && !inController.isReadable && !subOther.isReadable);
+                    inController != null && mainOther != null && subOther != null
+                    && !inController.isReadable && !mainOther.isReadable && !subOther.isReadable);
 
                 var material = new Material(Shader.Find("Standard")) { name = "Probe material" };
                 material.SetTexture("_MainTex", inController);
@@ -89,6 +102,7 @@ namespace AvatarBridge.Regression
                 AssetDatabase.CreateAsset(material, Temp + "/Probe material.mat");
                 var secondMaterial = new Material(Shader.Find("Standard")) { name = "Probe material B" };
                 secondMaterial.SetTexture("_MainTex", mainOther);
+                secondMaterial.SetTexture("_DetailAlbedoMap", twin);
                 AssetDatabase.CreateAsset(secondMaterial, Temp + "/Probe material B.mat");
 
                 avatar = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -155,6 +169,10 @@ namespace AvatarBridge.Regression
                 fail += Check("the second slot comes out of temp", Saved(second));
                 fail += Check("the second slot's texture is in the one container copy",
                     Saved(secondTex) && AssetDatabase.GetAssetPath(secondTex) == detailPath);
+                string twinCopy = AssetDatabase.GetAssetPath(second != null ? second.GetTexture("_DetailAlbedoMap") : null);
+                Debug.Log($"[TextureRehomeTest] the same-named file's texture at {twinCopy}");
+                fail += Check("a same-named texture file comes out under its own name",
+                    twinCopy.StartsWith(Output) && twinCopy.EndsWith("Probe Other 1.asset"));
                 string meshPath = AssetDatabase.GetAssetPath(filter.sharedMesh);
                 fail += Check("the mesh comes out of temp", Saved(filter.sharedMesh));
                 Resources.UnloadAsset(filter.sharedMesh);
