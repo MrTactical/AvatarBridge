@@ -107,6 +107,19 @@ names are stripped exactly (`VF80_` also prefixes the depth parameters, so never
 Skipped line says so, and README's SPS section explains. If Stealth is ever wanted, its clip would
 have to switch the atlas writer too.
 
+**Squash costs minutes per avatar, 2026-10-16. OPEN, measured in corpus 417, not yet explained.**
+The first corpus run with squash on (`CorpusSettings` forces it; a user's default is off) spends
+25 minutes in *Squash soft parts* on each of the five fixture avatars and 7 to 10 on the next two,
+against under 2 for every other pass combined. During it all 16 shader compilers are busy with
+`compileSnippet` on `YAPS/Squash/Hidden/Locked/YAPS/<hash>` passes of about 250 KB each: the
+synchronous import compiles every patched pass. The five fixtures share one body and still pay full
+price each time, so nothing is reused between conversions; the patched shaders live under each
+output folder, and import results are keyed by asset, not content. The same run's report step takes
+16 to 50 seconds against 10 without squash. Next: time the pass's sub-steps before choosing a fix.
+A candidate is one content-addressed folder of patched shaders shared by every conversion, which
+would also make a reconvert skip the compile. A user who opts in waits this long today, so it
+belongs in 5.0.0 if the fix is small, and in the release notes if not.
+
 **Decided 2026-09-23 (Joe):** ship the next release first (one default corpus run authorised,
 release on his word), then the two items below. **It is 4.6.4** (Joe, same day): 4.6.3 is skipped,
 its number spent on test builds, and the socket readout goes in with it. 4.6.4 shipped that day,
