@@ -35,7 +35,11 @@ namespace AvatarBridge
             ClaimedThisRun.Clear();
         }
 
-        internal static string Claim(string desiredPath)
+        internal static string Claim(string desiredPath) => Claim(desiredPath, null);
+
+        // deleteLater: the caller deletes what a previous run left, in one batch with others,
+        // before writing to any of the paths.
+        internal static string Claim(string desiredPath, List<string> deleteLater)
         {
             string normalised = desiredPath.Replace('\\', '/');
             string dir = Path.GetDirectoryName(normalised)?.Replace('\\', '/') ?? "";
@@ -54,7 +58,14 @@ namespace AvatarBridge
             // loading the old asset to test the path deserialised a whole mesh just to delete it.
             if (!string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(candidate, AssetPathToGUIDOptions.OnlyExistingAssets)))
             {
-                AssetDatabase.DeleteAsset(candidate);
+                if (deleteLater != null)
+                {
+                    deleteLater.Add(candidate);
+                }
+                else
+                {
+                    AssetDatabase.DeleteAsset(candidate);
+                }
             }
             return candidate;
         }
