@@ -8,7 +8,7 @@
 //   Unity.exe -batchmode -projectPath <p> -executeMethod AvatarBridge.Regression.ButtonSmokeProbe.Run
 //     -bsScenes "Assets/a.unity;Assets/b.unity" -bsOut <file.tsv> [-bsWindows tester,yaps,...]
 //   -bsStory thighs: one user's story instead, see ButtonSmokeProbe.Story.cs.
-//     [-bsDanger] [-bsNoPlay] [-bsNoPictures] [-bsMinutes 120]
+//     [-bsDanger] [-bsNoPlay] [-bsNoPictures] [-bsMinutes 120] [-bsPasses report,...]
 // -bsWindows none -bsOnlyGrab goes straight to Play mode and does the grabs alone.
 // A link (text ending in an arrow) is never pressed: it opens a browser. A Danger button, or one
 // that removes, clears or reverts, is listed but pressed only with -bsDanger, since batch Unity
@@ -312,6 +312,7 @@ namespace AvatarBridge.Regression
         static IEnumerable<Target> Targets(string scene, string[] only)
         {
             Load(scene, out var source, out var converted);
+            var passes = (Arg("-bsPasses") ?? "").Split(',').Where(s => s.Length > 0).ToArray();
             foreach (var (key, typeName, wantsConverted) in UiOffscreenProbe.Windows)
             {
                 if (only.Length > 0 && !only.Contains(key)) continue;
@@ -319,6 +320,8 @@ namespace AvatarBridge.Regression
                 if (type == null) continue;
                 foreach (var (suffix, prepare) in UiOffscreenProbe.Passes(key, type, source, converted))
                 {
+                    // To resume a run that died part way, without pressing the states it finished.
+                    if (passes.Length > 0 && !passes.Contains(PassName(suffix))) continue;
                     yield return new Target
                     {
                         Key = key, Type = type, Pass = PassName(suffix),
