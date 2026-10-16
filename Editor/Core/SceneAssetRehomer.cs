@@ -90,10 +90,15 @@ namespace AvatarBridge
                     RehomeMaterials(ctx, r);
                 }
             }
-            finally
+            catch
             {
-                WritePending(state);
+                // The renderers already point at the copies, so they are written either way,
+                // and a failure writing them must not hide the one that stopped the loop.
+                try { WritePending(state); }
+                catch (System.Exception e) { Debug.LogException(e); }
+                throw;
             }
+            WritePending(state);
             AssetDatabase.SaveAssets();
 
             int meshes = 0, materials = 0, shaders = 0, textures = 0;
@@ -200,25 +205,31 @@ namespace AvatarBridge
             var stale = state.Stale;
             state.Pending = null;
             state.Stale = null;
-            if (stale.Count > 0)
-            {
-                AssetDatabase.DeleteAssets(stale.ToArray(), new List<string>());
-            }
-            if (pending.Count == 0)
-            {
-                return;
-            }
-            AssetDatabase.StartAssetEditing();
             try
             {
-                foreach (var (copy, path) in pending)
+                if (stale.Count > 0)
                 {
-                    AssetDatabase.CreateAsset(copy, path);
+                    AssetDatabase.DeleteAssets(stale.ToArray(), new List<string>());
                 }
             }
             finally
             {
-                AssetDatabase.StopAssetEditing();
+                // A failed delete still writes: an unwritten copy is lost at the scene save.
+                if (pending.Count > 0)
+                {
+                    AssetDatabase.StartAssetEditing();
+                    try
+                    {
+                        foreach (var (copy, path) in pending)
+                        {
+                            AssetDatabase.CreateAsset(copy, path);
+                        }
+                    }
+                    finally
+                    {
+                        AssetDatabase.StopAssetEditing();
+                    }
+                }
             }
         }
 
