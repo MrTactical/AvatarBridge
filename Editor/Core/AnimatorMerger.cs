@@ -6636,6 +6636,7 @@ namespace AvatarBridge
             }
             BuildRestoreOwnership(layers, out var owner, out var allClips, out var treeDriven, out _);
             var bindingCounts = new Dictionary<AnimationClip, (int floats, int objects)>();
+            var pending = new List<(AnimationClip clip, string path)>();
 
             // Every layer of the finished controller, not the merged-layer
             // list. A layer is still the avatar's toggle after
@@ -6791,7 +6792,7 @@ namespace AvatarBridge
                     continue;
                 }
 
-                WriteRestoreClip(clip, dir, writtenPaths);
+                WriteRestoreClip(clip, dir, writtenPaths, pending);
                 foreach (var state in empties)
                 {
                     state.motion = clip;
@@ -6800,6 +6801,7 @@ namespace AvatarBridge
                 layersTouched++;
                 names.Add(layer.name);
             }
+            CreateRestoreClips(dir, pending);
 
             if (filled == 0)
             {
@@ -7025,6 +7027,7 @@ namespace AvatarBridge
             }
             BuildRestoreOwnership(layers, out var owner, out var allClips, out _, out var anyOwner);
             var bindingCounts = new Dictionary<AnimationClip, (int floats, int objects)>();
+            var pending = new List<(AnimationClip clip, string path)>();
 
             foreach (var layer in layers)
             {
@@ -7155,7 +7158,7 @@ namespace AvatarBridge
                     }
                     else
                     {
-                        WriteRestoreClip(clip, dir, writtenPaths);
+                        WriteRestoreClip(clip, dir, writtenPaths, pending);
                         restore = clip;
                     }
 
@@ -7167,6 +7170,7 @@ namespace AvatarBridge
                     names.Add(label);
                 }
             }
+            CreateRestoreClips(dir, pending);
 
             if (filled == 0)
             {
@@ -7324,19 +7328,77 @@ namespace AvatarBridge
 
         // A stable name per clip, uniquified only against this run's registry.
         // Folder-wide uniquifying stacks numbered copies on every reconversion.
-        static void WriteRestoreClip(AnimationClip clip, string dir, HashSet<string> writtenPaths)
+        // Only named here; CreateRestoreClips writes a filler's clips together.
+        static void WriteRestoreClip(AnimationClip clip, string dir, HashSet<string> writtenPaths,
+            List<(AnimationClip clip, string path)> pending)
         {
-            EnsureAssetFolder(dir);
             string path = $"{dir}/{clip.name}.anim";
             for (int n = 2; !writtenPaths.Add(path); n++)
             {
                 path = $"{dir}/{clip.name} {n}.anim";
             }
-            if (AssetDatabase.LoadAssetAtPath<AnimationClip>(path) != null)
+            pending.Add((clip, path));
+        }
+
+        // One at a time, each clip cost a delete refresh and a create refresh. The deletes go
+        // first, in one call outside the batch: CreateAsset over an existing asset replaces the
+        // object and leaves other states holding null motions. Called before its filler returns,
+        // so every clip is an asset before the controller save embeds whatever is not.
+        static void CreateRestoreClips(string dir, List<(AnimationClip clip, string path)> pending)
+        {
+            if (pending.Count == 0)
             {
-                AssetDatabase.DeleteAsset(path);
+                return;
             }
-            AssetDatabase.CreateAsset(clip, path);
+            EnsureAssetFolder(dir);
+            // writtenPaths is case-sensitive and Windows is not, so two layers named apart only by
+            // case share one file. Those keep the one-at-a-time order, whatever it made of that.
+            var distinct = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (!pending.TrueForAll(p => distinct.Add(p.path)))
+            {
+                foreach (var (clip, path) in pending)
+                {
+                    if (AssetDatabase.LoadAssetAtPath<AnimationClip>(path) != null)
+                    {
+                        AssetDatabase.DeleteAsset(path);
+                    }
+                    AssetDatabase.CreateAsset(clip, path);
+                }
+                pending.Clear();
+                return;
+            }
+            var doomed = new List<string>();
+            foreach (var (_, path) in pending)
+            {
+                if (AssetDatabase.LoadAssetAtPath<AnimationClip>(path) != null)
+                {
+                    doomed.Add(path);
+                }
+            }
+            if (doomed.Count > 0)
+            {
+                AssetDatabase.DeleteAssets(doomed.ToArray(), new List<string>());
+            }
+            AssetDatabase.StartAssetEditing();
+            try
+            {
+                foreach (var (clip, path) in pending)
+                {
+                    AssetDatabase.CreateAsset(clip, path);
+                }
+            }
+            finally
+            {
+                AssetDatabase.StopAssetEditing();
+            }
+            foreach (var (clip, path) in pending)
+            {
+                if (!AssetDatabase.Contains(clip))
+                {
+                    Debug.Log($"[AvatarBridge] Restore clip {path} did not persist from its batch");
+                }
+            }
+            pending.Clear();
         }
 
         // CreateFolder, not a project-wide Refresh in the middle of a conversion. It needs a
@@ -7365,7 +7427,7 @@ namespace AvatarBridge
             {
                 return 0;
             }
-            int removed = 0;
+            var stale = new List<string>();
             foreach (var guid in AssetDatabase.FindAssets("t:AnimationClip", new[] { dir }))
             {
                 string path = AssetDatabase.GUIDToAssetPath(guid);
@@ -7385,12 +7447,16 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                if (AssetDatabase.DeleteAsset(path))
-                {
-                    removed++;
-                }
+                stale.Add(path);
             }
-            return removed;
+            if (stale.Count == 0)
+            {
+                return 0;
+            }
+            // One call: a DeleteAsset each was a refresh each.
+            var failed = new List<string>();
+            AssetDatabase.DeleteAssets(stale.ToArray(), failed);
+            return stale.Count - failed.Count;
         }
 
         static bool IsPassThroughState(AnimatorState state)

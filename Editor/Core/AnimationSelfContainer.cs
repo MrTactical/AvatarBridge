@@ -26,6 +26,10 @@ namespace AvatarBridge
     {
         const string Category = "Animator";
 
+        // Log only: how often the walk dirtied the controller, and how many planned copies were
+        // not byte copies (a CopyAsset refused inside the batch lands there too).
+        static int repoints, materialized;
+
         public static void Run(BridgeContext ctx)
         {
             var controller = ctx.MergedController;
@@ -51,6 +55,9 @@ namespace AvatarBridge
             int copiedMasks = 0;
 
             var layers = controller.layers;
+            int made = CopyAll(layers, controller, controllerPath, ctx.OutputDir, dir, map, maskMap,
+                copiedClips, ref copiedMasks, out int stale);
+            repoints = 0;
             bool layersChanged = false;
             for (int i = 0; i < layers.Length; i++)
             {
@@ -66,6 +73,8 @@ namespace AvatarBridge
             {
                 controller.layers = layers;
             }
+            Debug.Log($"[AvatarBridge] Self-contain: {made} copies made in one batch ({materialized} materialized), " +
+                      $"{stale} old files listed for one delete, {repoints} repoints");
 
             if (copiedClips.Count > 0 || copiedMasks > 0)
             {
@@ -82,6 +91,161 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category, "Controller already self-contained",
                     "Every clip and mask it references lives in the output folder, inside the controller itself, " +
                     "or ships with the CCK.");
+            }
+        }
+
+        // Every copy is made before anything is repointed. One at a time, each cost a delete
+        // refresh, a copy refresh and a save of the controller the last repoint dirtied. Planned
+        // in the order the walk meets them, so Claim hands out the same names, then copied in
+        // one batch. A copy cannot be loaded inside it, so loading and editing wait for the Stop,
+        // and the walk afterwards finds every copy already in the maps.
+        static int CopyAll(AnimatorControllerLayer[] layers, AnimatorController controller, string controllerPath,
+            string outputDir, string dir, Dictionary<Motion, Motion> map, Dictionary<AvatarMask, AvatarMask> maskMap,
+            List<string> copied, ref int copiedMasks, out int staleCount)
+        {
+            var jobs = new List<(UnityEngine.Object source, string src, string dst)>();
+            var stale = new List<string>();
+            var seen = new HashSet<UnityEngine.Object>();
+            materialized = 0;
+            foreach (var layer in layers)
+            {
+                var mask = layer.avatarMask;
+                if (mask != null && NeedsCopy(AssetDatabase.GetAssetPath(mask), outputDir, controllerPath) && seen.Add(mask))
+                {
+                    jobs.Add((mask, AssetDatabase.GetAssetPath(mask),
+                        OutputAssetPaths.Claim($"{dir}/{OutputAssetPaths.SafeFileName(mask.name)}.mask", stale)));
+                }
+                PlanMachine(layer.stateMachine, controllerPath, outputDir, dir, seen, jobs, stale);
+            }
+            staleCount = stale.Count;
+            if (jobs.Count == 0)
+            {
+                return 0;
+            }
+            // Outside the batch: CopyAsset refuses a destination that is still occupied.
+            if (stale.Count > 0)
+            {
+                AssetDatabase.DeleteAssets(stale.ToArray(), new List<string>());
+            }
+
+            var made = new UnityEngine.Object[jobs.Count];
+            AssetDatabase.StartAssetEditing();
+            try
+            {
+                for (int i = 0; i < jobs.Count; i++)
+                {
+                    var (source, src, dst) = jobs[i];
+                    // A standalone .anim or .mask copies byte-perfectly; one living inside an FBX
+                    // or another controller has to be materialized into its own asset instead.
+                    string extension = source is AvatarMask ? ".mask" : ".anim";
+                    if (!(AssetDatabase.IsMainAsset(source)
+                          && src.EndsWith(extension, StringComparison.OrdinalIgnoreCase)
+                          && AssetDatabase.CopyAsset(src, dst)))
+                    {
+                        made[i] = Materialize(source, dst);
+                        materialized++;
+                    }
+                }
+            }
+            finally
+            {
+                AssetDatabase.StopAssetEditing();
+            }
+
+            var clips = new List<AnimationClip>();
+            for (int i = 0; i < jobs.Count; i++)
+            {
+                var (source, _, dst) = jobs[i];
+                var copy = AssetDatabase.LoadAssetAtPath(dst, source.GetType()) ?? made[i];
+                if (copy == null)
+                {
+                    copy = Materialize(source, dst); // copied, but the copy would not load
+                }
+                if (source is AvatarMask mask)
+                {
+                    maskMap[mask] = (AvatarMask)copy;
+                    copiedMasks++;
+                }
+                else
+                {
+                    map[(Motion)source] = (Motion)copy;
+                    copied.Add(source.name);
+                    clips.Add((AnimationClip)copy);
+                }
+            }
+            foreach (var clip in clips)
+            {
+                CarryAdditivePose(clip, controller, controllerPath, outputDir, dir, map, copied);
+            }
+            return jobs.Count;
+        }
+
+        static UnityEngine.Object Materialize(UnityEngine.Object source, string dst)
+        {
+            var copy = UnityEngine.Object.Instantiate(source);
+            copy.name = source.name;
+            AssetDatabase.CreateAsset(copy, dst);
+            return copy;
+        }
+
+        static void PlanMachine(AnimatorStateMachine sm, string controllerPath, string outputDir, string dir,
+            HashSet<UnityEngine.Object> seen, List<(UnityEngine.Object, string, string)> jobs, List<string> stale)
+        {
+            if (sm == null)
+            {
+                return;
+            }
+            foreach (var child in sm.states)
+            {
+                if (child.state != null)
+                {
+                    Plan(child.state.motion, controllerPath, outputDir, dir, seen, jobs, stale);
+                }
+            }
+            foreach (var child in sm.stateMachines)
+            {
+                PlanMachine(child.stateMachine, controllerPath, outputDir, dir, seen, jobs, stale);
+            }
+        }
+
+        // Fix's order and dedupe, without its edits; a pose claims its name right after its clip,
+        // as CarryAdditivePose does.
+        static void Plan(Motion motion, string controllerPath, string outputDir, string dir,
+            HashSet<UnityEngine.Object> seen, List<(UnityEngine.Object, string, string)> jobs, List<string> stale)
+        {
+            if (motion == null || !seen.Add(motion))
+            {
+                return;
+            }
+            if (motion is BlendTree tree)
+            {
+                foreach (var child in tree.children)
+                {
+                    Plan(child.motion, controllerPath, outputDir, dir, seen, jobs, stale);
+                }
+                return;
+            }
+            if (!(motion is AnimationClip clip))
+            {
+                return;
+            }
+            string path = AssetDatabase.GetAssetPath(clip);
+            bool copy = NeedsCopy(path, outputDir, controllerPath);
+            if (copy)
+            {
+                jobs.Add((clip, path,
+                    OutputAssetPaths.Claim($"{dir}/{OutputAssetPaths.SafeFileName(clip.name)}.anim", stale)));
+            }
+            else if (!Ours(path, outputDir, controllerPath))
+            {
+                return;
+            }
+            // A copy carries its source's settings, so the source answers for it.
+            var settings = AnimationUtility.GetAnimationClipSettings(clip);
+            if (settings.hasAdditiveReferencePose && settings.additiveReferencePoseClip != null
+                && NeedsCopy(AssetDatabase.GetAssetPath(settings.additiveReferencePoseClip), outputDir, controllerPath))
+            {
+                Plan(settings.additiveReferencePoseClip, controllerPath, outputDir, dir, seen, jobs, stale);
             }
         }
 
@@ -104,6 +268,7 @@ namespace AvatarBridge
                 {
                     state.motion = fixedMotion;
                     EditorUtility.SetDirty(state);
+                    repoints++;
                 }
             }
             foreach (var child in sm.stateMachines)
@@ -206,6 +371,7 @@ namespace AvatarBridge
                     }
                     tree.children = children;
                     EditorUtility.SetDirty(tree);
+                    repoints++;
                 }
                 return tree;
             }
