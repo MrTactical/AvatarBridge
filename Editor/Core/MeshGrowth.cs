@@ -116,22 +116,32 @@ namespace AvatarBridge
                     continue;
                 }
 
+                // Once per bone, not per vertex: the same multiply on the same
+                // inputs, so the same bits, without a native getter per vertex.
+                // Per call, not per conversion: a pass between two calls may
+                // have moved a bone.
+                int boneCount = Mathf.Min(bones.Length, binds.Length);
+                var toWorlds = new Matrix4x4[boneCount];
+                var placed = new bool[boneCount];
+                for (int b = 0; b < boneCount; b++)
+                {
+                    if (bones[b] != null)
+                    {
+                        toWorlds[b] = bones[b].localToWorldMatrix * binds[b];
+                        placed[b] = true;
+                    }
+                }
+
                 int stride = Mathf.Max(1, rest.Length / SampleTarget);
                 for (int i = 0; i < rest.Length; i += stride)
                 {
                     var w = weights[i];
                     if (w.weight0 < MinBoneWeight || w.boneIndex0 < 0
-                        || w.boneIndex0 >= bones.Length || w.boneIndex0 >= binds.Length)
+                        || w.boneIndex0 >= boneCount || !placed[w.boneIndex0])
                     {
                         continue;
                     }
-                    var bone = bones[w.boneIndex0];
-                    if (bone == null)
-                    {
-                        continue;
-                    }
-                    var bind = binds[w.boneIndex0];
-                    Matrix4x4 toWorld = bone.localToWorldMatrix * bind;
+                    Matrix4x4 toWorld = toWorlds[w.boneIndex0];
                     Vector3 atRest = toWorld.MultiplyPoint3x4(rest[i]);
                     float restDistance = Vector3.Distance(atRest, worldCentre);
                     if (restDistance > captureRadius)
