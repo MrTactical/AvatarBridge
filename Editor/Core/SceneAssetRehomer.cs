@@ -32,6 +32,10 @@ namespace AvatarBridge
             // avatar's output folder, and reusing them on the next avatar would hand it the
             // previous one's pictures.
             internal readonly Dictionary<string, string> Containers = new Dictionary<string, string>();
+            // Set only while Run walks the renderers, whose mesh and material copies are written
+            // in one batch at its end. Null for a later caller, which may load its copy at once.
+            internal List<(UnityEngine.Object Copy, string Path)> Pending;
+            internal List<string> Stale;
         }
 
         static readonly ConditionalWeakTable<BridgeContext, Rescued> PerConversion =
@@ -66,20 +70,35 @@ namespace AvatarBridge
             string dir = ctx.OutputDir.TrimEnd('/') + "/RehomedAssets";
             OutputAssetPaths.EnsureFolder(dir);
 
-            foreach (var smr in skinned)
+            var state = StateOf(ctx);
+            state.Pending = new List<(UnityEngine.Object, string)>();
+            state.Stale = new List<string>();
+            try
             {
-                var m = (Mesh)Rehome(ctx, smr.sharedMesh);
-                if (m != smr.sharedMesh) { smr.sharedMesh = m; EditorUtility.SetDirty(smr); }
+                foreach (var smr in skinned)
+                {
+                    var m = (Mesh)Rehome(ctx, smr.sharedMesh);
+                    if (m != smr.sharedMesh) { smr.sharedMesh = m; EditorUtility.SetDirty(smr); }
+                }
+                foreach (var mf in filters)
+                {
+                    var m = (Mesh)Rehome(ctx, mf.sharedMesh);
+                    if (m != mf.sharedMesh) { mf.sharedMesh = m; EditorUtility.SetDirty(mf); }
+                }
+                foreach (var r in renderers)
+                {
+                    RehomeMaterials(ctx, r);
+                }
             }
-            foreach (var mf in filters)
+            catch
             {
-                var m = (Mesh)Rehome(ctx, mf.sharedMesh);
-                if (m != mf.sharedMesh) { mf.sharedMesh = m; EditorUtility.SetDirty(mf); }
+                // The renderers already point at the copies, so they are written either way,
+                // and a failure writing them must not hide the one that stopped the loop.
+                try { WritePending(state); }
+                catch (System.Exception e) { Debug.LogException(e); }
+                throw;
             }
-            foreach (var r in renderers)
-            {
-                RehomeMaterials(ctx, r);
-            }
+            WritePending(state);
             AssetDatabase.SaveAssets();
 
             int meshes = 0, materials = 0, shaders = 0, textures = 0;
@@ -131,7 +150,7 @@ namespace AvatarBridge
             UnityEngine.Object copy;
             switch (value)
             {
-                case Mesh mesh: copy = CopyMesh(mesh, dir); break;
+                case Mesh mesh: copy = CopyMesh(ctx, mesh, dir); break;
                 case Material material: copy = CopyMaterial(ctx, material, dir); break;
                 case Shader shader: copy = CopyShader(shader, dir); break;
                 case Texture texture: copy = CopyTexture(ctx, texture, dir); break;
@@ -155,12 +174,63 @@ namespace AvatarBridge
             return false;
         }
 
-        static Mesh CopyMesh(Mesh mesh, string dir)
+        static Mesh CopyMesh(BridgeContext ctx, Mesh mesh, string dir)
         {
             var copy = UnityEngine.Object.Instantiate(mesh);
             copy.name = mesh.name;
-            AssetDatabase.CreateAsset(copy, OutputAssetPaths.Claim($"{dir}/{OutputAssetPaths.SafeFileName(mesh.name)}.asset"));
+            Create(ctx, copy, $"{dir}/{OutputAssetPaths.SafeFileName(mesh.name)}.asset");
             return copy;
+        }
+
+        // Claimed now, so names come out in the same order, and written later when Run is
+        // collecting. Only copies finished before they are written come through here: nothing
+        // loads one by path until the batch stops.
+        static void Create(BridgeContext ctx, UnityEngine.Object copy, string desiredPath)
+        {
+            var state = StateOf(ctx);
+            if (state.Pending == null)
+            {
+                AssetDatabase.CreateAsset(copy, OutputAssetPaths.Claim(desiredPath));
+                return;
+            }
+            state.Pending.Add((copy, OutputAssetPaths.Claim(desiredPath, state.Stale)));
+        }
+
+        // One delete and one import for the pass, where each copy cost a full refresh for its
+        // delete and another for its write. Meshes name nothing, and every asset a material
+        // names was imported before the batch, so no write here depends on another.
+        static void WritePending(Rescued state)
+        {
+            var pending = state.Pending;
+            var stale = state.Stale;
+            state.Pending = null;
+            state.Stale = null;
+            try
+            {
+                if (stale.Count > 0)
+                {
+                    AssetDatabase.DeleteAssets(stale.ToArray(), new List<string>());
+                }
+            }
+            finally
+            {
+                // A failed delete still writes: an unwritten copy is lost at the scene save.
+                if (pending.Count > 0)
+                {
+                    AssetDatabase.StartAssetEditing();
+                    try
+                    {
+                        foreach (var (copy, path) in pending)
+                        {
+                            AssetDatabase.CreateAsset(copy, path);
+                        }
+                    }
+                    finally
+                    {
+                        AssetDatabase.StopAssetEditing();
+                    }
+                }
+            }
         }
 
         static void RehomeMaterials(BridgeContext ctx, Renderer r)
@@ -203,7 +273,7 @@ namespace AvatarBridge
             // untextured quad. Nothing about it is particle-specific; particles are simply where
             // a missing texture is unmistakable rather than merely wrong.
             RehomeTextures(ctx, copy);
-            AssetDatabase.CreateAsset(copy, OutputAssetPaths.Claim($"{dir}/{OutputAssetPaths.SafeFileName(mat.name)}.mat"));
+            Create(ctx, copy, $"{dir}/{OutputAssetPaths.SafeFileName(mat.name)}.mat");
             return copy;
         }
 
