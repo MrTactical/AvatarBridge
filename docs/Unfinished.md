@@ -2616,22 +2616,34 @@ the other three differ only by db7ade2's texture-slot fix, against digests made 
 
 ### Corpus 417, the 5.0.0 run: two regressions, one fixed on a branch, 2026-10-16
 
-Run 417 (YAPS profile, dev 045f987, parts of 30, unthrottled) against 416. Read so far: 60 of 88; the
-rest once the run ends. `CorpusSettings` turns squash on for the first time (e8ec36f), so every squash
-line in it is new from the flip, not from squash code. Explained by commits: three new settings lines,
-two more Converted entries on every avatar (the changes list and the upload check), the squash
-components, textures and 20-triangle helper mesh where it built, GoGo's flight scale layer gone, fewer
-cloth solvers from grouping, and SPS's option rows out.
+Run 417 (YAPS profile, dev 045f987, parts of 30, unthrottled) against 416 (`Current-416` with
+`Current-416r` over it). Read in full: 83 converted, 5 scenes with no avatar. The runner's own summary
+compares against `Baseline`, which is still the 4.6.6 run of 2026-10-04, so its "83 changed" and its
+sweep verdicts measure all of 5.0.0, not 416 to 417. `CorpusSettings` turns squash on for the first
+time (e8ec36f), so every squash line in it is new from the flip, not from squash code. Explained by
+commits: three new settings lines, two more Converted entries on every avatar (the changes list and
+the upload check), the squash components, textures and 20-triangle helper mesh where it built, GoGo's
+flight scale layer gone, fewer cloth solvers from grouping, and SPS's option rows out. The last 23 add
+three more, all by design: on ten GoGo avatars the Action transplant no longer carries GoGo's pose
+layers, so `[AB] Action&AFK Arming`, `[AB] Hip Drift`, `[AB] Puppet` and their Ready-gate parameters
+go while the eight poses land in the emote wheel (fd87f1d); the rebuilt survey adds "a layer above
+always hides" findings (fd87f1d); and the readout's "could not carry" warning is gone from two SPS
+avatars (db7ade2).
 
 Regressions:
 - **C1: SPS's option rows took the whole SPS layer family.** 045f987 strips `VF80_legacy` and
   `VF80_stealth` by name, and the fury-id harvest took id 80 from them, so every `[VF80]` layer went:
   the creator's depth animations, auto mode (and its AAS entry), Init Behaviours, Auto Socket
   Comparison, Socket Exclusivity, and on five avatars the shared FrameTime Counter that face-gesture
-  smoothing needs. Seventeen avatars; the restore filler's warning moving on them (C2) is the same
-  cause. **FIXED on branch `fix-417` (97d6b6a), not compiled**: the harvest skips the option rows,
-  `SpsOptionStripTest` pins both sides. Merges after the speed subset matches 417, since the subset
-  holds an SPS fixture.
+  smoothing needs. Seventeen avatars in the first 60, three more in the last 23; the restore filler's
+  warning moving on them (C2) is the same cause. **FIXED on branch `fix-417` (97d6b6a), not
+  compiled**: the harvest skips the option rows, `SpsOptionStripTest` pins both sides. Merges after
+  the speed subset matches 417, since the subset holds an SPS fixture.
+  The runner's one sweep verdict marked WORSE, avatar J "+refused EmissionBody", is probably this
+  too, not a converter change: that avatar's sweep throws in VRCFury's Animator hook in both runs
+  ("threw while driving, writes lost"), its refused count is 15 in both, and C1 took three parameters
+  out of the sweep order ahead of the throw, so different parameters land after it. Check once
+  `fix-417` is in: the refusal should go back to 416's list.
 - **C5: the texture advice shrinks when squash is on.** Squash copies a material per renderer slot.
   `AvatarWeight.Densities` keys area by material and keeps a texture's lowest density with that one
   copy's area, so the "across X m²" figure covers one share and the reclaim advice falls (one avatar
@@ -2639,8 +2651,9 @@ Regressions:
   report misstate it. Fix: merge the area of materials with the same textures and scale before the
   density, in Core, since `Editor/Yaps` is pruned from the public package. Open, after the gate.
 
-Time: across the first 60 conversions squash took 81% of all pass time (22,718 of about 28,150 s;
-median conversion 291 s, longest 2,559 s). Compiling its shaders together is the lever above.
+Time: across all 83 conversions squash took 79% of all pass time (27,468 of 34,587 s; median
+conversion 280 s, longest 2,559 s). Next were the animator merge 5%, YAPS 5% and self-contained clips
+4%. Compiling squash's shaders together is the lever above.
 
 ### The audit of 2026-10-03: about 210 findings fixed on dev, not verified in game
 
