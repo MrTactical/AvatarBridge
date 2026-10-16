@@ -3783,6 +3783,13 @@ Open:
   **WITHDRAWN, the same day:** `[Additive] Idle` is VRChat's stock additive layer (`proxy_idle`,
   `TrackingType`), not GoGo's.
 - Which eight library poses, and their order: a choice, open to Joe.
+- **NOT BUILT: the names are not sanitised** (constraint 2 below), found 2026-10-16 while writing
+  the in-game checklist. A creator's clip keeps its own name as the label (`PlaceGogoEmotes`, the
+  `picks` query), so one named "Dance" or "Wave Emote" lands as is and would mute both hand layers
+  while it plays. The library labels are safe. Fix: rename a label containing "Emote" or equal to
+  one of the stock eight, before the " Pose" loop so the result stays unique, and say so in the
+  report. It changes output, so it waits until the speed-merge subset matches corpus 417. Checklist
+  item S3.4 tests it in game.
 
 The most visible thing a converted avatar loses. GoGo is stripped because its layers assert body
 poses while ChilloutVR's locomotion is asserting them too, and two writers on one body is the
