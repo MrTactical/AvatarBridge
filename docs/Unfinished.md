@@ -681,6 +681,14 @@ falloff, one-way rings, the tag dropdown, multi-mesh plugs, the Mesh-to-None cle
    say. On 2026-09-13 a search for the term turned up VRCFury source files by name; none were
    opened.
 
+   **Answered and read, 2026-10-16.** Joe approved the download, and the read stayed on output
+   only. VRCFury 1.1434.0, the newest stable, went into the corpus project for one
+   `SpsPrebuiltProbe` run, then 1.1408.0 went back, byte for byte, and a batch launch compiled
+   against it. The bake left the same 27 `_SPS` properties as 1.1408.0 did, with no `_SPS_Enabled`.
+   The probe passed: VRCFury still accepts the request not to patch, the built copy warns once, and
+   the original is silent. So the material carries no new name to detect SPS2 by in these versions,
+   and `Detect` needs nothing. The corpus project stays on 1.1408.0 so its digests stay comparable.
+
 7. **The sweep's carried toggle failures**: triaged as avatar-side, no tool signature. **141 in run
    401, 2026-09-12, across 35 avatars**, up from the 131 this entry was written against. Read the
    sweep line carefully: its "(35)" header counts AVATARS and each bracket beside a name is that
