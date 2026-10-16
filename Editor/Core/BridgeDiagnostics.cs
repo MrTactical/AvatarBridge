@@ -133,7 +133,11 @@ namespace AvatarBridge
 
             CheckSyncBudget(ctx, master);
             CheckComponentWhitelist(ctx);
+            var stereoClock = System.Diagnostics.Stopwatch.StartNew();
             CheckStereoShaders(ctx);
+            // Log only, never the report: the whole conversion's stereo work.
+            Debug.Log($"[AvatarBridge] Stereo shader times (ms): {ShaderSpiPatcher.TimingSummary()}, " +
+                      $"report check {stereoClock.ElapsedMilliseconds}");
 
             // A cloth with nothing to simulate.
             int emptyCloths = 0;
@@ -979,6 +983,10 @@ namespace AvatarBridge
 
         internal static void CheckStereoShaders(BridgeContext ctx)
         {
+            // By path for this call only, to read each file once. The verdicts
+            // themselves are kept by content in ShaderSpiPatcher, so a shader the
+            // patch pass or an earlier avatar judged is not planned again, and a
+            // copy patched since is judged on its final text.
             var missingCache = new Dictionary<string, List<string>>();
             var offenders = new SortedDictionary<string, SortedSet<string>>(StringComparer.Ordinal);
 

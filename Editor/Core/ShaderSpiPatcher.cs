@@ -60,10 +60,36 @@ namespace AvatarBridge
         // good copy still included.
         static readonly HashSet<string> Claimed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        // Written text, file names included, whose copy passed both compile
+        // checks this session. The variant compile costs seconds a pass.
+        static readonly HashSet<string> CompiledCopies = new HashSet<string>();
+
+        // Log-only timings for one conversion, reset by Run. Never the report.
+        static class Times
+        {
+            internal static int Judged, SameText, Patched, Reused, VariantChecks;
+            internal static readonly System.Diagnostics.Stopwatch Planning = new System.Diagnostics.Stopwatch(),
+                Patching = new System.Diagnostics.Stopwatch(), Variants = new System.Diagnostics.Stopwatch();
+
+            internal static void Reset()
+            {
+                Judged = SameText = Patched = Reused = VariantChecks = 0;
+                Planning.Reset();
+                Patching.Reset();
+                Variants.Reset();
+            }
+        }
+
+        internal static string TimingSummary() =>
+            $"judged {Times.Judged} ({Times.SameText} by text seen before, planning {Times.Planning.ElapsedMilliseconds}), " +
+            $"TryPatch {Times.Patched} in {Times.Patching.ElapsedMilliseconds} ({Times.Reused} copies reused, " +
+            $"StereoVariantError {Times.VariantChecks} in {Times.Variants.ElapsedMilliseconds})";
+
         public static void Run(BridgeContext ctx)
         {
             _patched = null;
             _clones = null;
+            Times.Reset();
             if (!ctx.Settings.patchNonSpiShaders)
             {
                 return;
@@ -159,14 +185,34 @@ namespace AvatarBridge
             // Engine shaders have no source on disk and ship stereo-correct.
             if (source != null)
             {
-                if (DeclaresStereo(source))
+                // One read and at most one plan: the patch follows the plan the
+                // verdict came from instead of reading and planning it again. A
+                // throw goes on to the patch, which reads again and refuses it by name.
+                List<SourceFile> unit = null;
+                StereoPlan plan = null;
+                bool correct;
+                try
+                {
+                    unit = ReadUnit(source);
+                    correct = StereoProblems(unit, out plan).Count == 0;
+                }
+                catch
+                {
+                    unit = null;
+                    plan = null;
+                    correct = false;
+                }
+                if (correct)
                 {
                     outcome.AlreadyCorrect.Add(shader.name);
                 }
                 else
                 {
-                    result = TryPatch(source, shader.name, dir, out string reason, out bool grabbed,
+                    Times.Patched++;
+                    Times.Patching.Start();
+                    result = TryPatch(source, shader.name, dir, unit, plan, out string reason, out bool grabbed,
                         out var passesLeft);
+                    Times.Patching.Stop();
                     if (result == null)
                     {
                         outcome.Refused.Add($"{shader.name} ({reason})");
@@ -321,21 +367,64 @@ namespace AvatarBridge
         // locked Poiyomi Pro names every macro in every pass and still declares
         // a plain depth texture for optional features, and counting it sent
         // most Poiyomi materials to be copied (SpiSweepProbe).
-        internal static List<string> StereoProblems(string path)
+        internal static List<string> StereoProblems(string path) => StereoProblems(ReadUnit(path), out _);
+
+        // Verdicts by the text they came from, for the editor session. The
+        // advisor, the patch pass and the report each judge the same shaders,
+        // on every avatar wearing them, and one plan can take seconds. Keyed
+        // by content, never path: a patched copy is rewritten in place.
+        static readonly Dictionary<string, List<string>> ProblemsByContent = new Dictionary<string, List<string>>();
+
+        // The plan comes back only when this call made it.
+        static List<string> StereoProblems(List<SourceFile> unit, out StereoPlan plan)
         {
-            var unit = ReadUnit(path);
-            var plan = PlanStereo(unit);
-            var problems = new List<string>();
-            if (plan.Passes == 0 && plan.SurfaceOnly)
+            plan = null;
+            Times.Judged++;
+            string key = ContentKey(unit, false);
+            if (ProblemsByContent.TryGetValue(key, out var known))
             {
-                return problems;
+                Times.SameText++;
+                return new List<string>(known);
             }
-            // A pass it cannot read is judged the old way, by the macros
-            // being named anywhere in the unit.
-            var missing = StereoMacros.Where(m => plan.Adds.Contains(m)
-                || ((plan.Passes == 0 || plan.Left.Count > 0) && !unit.Any(f => f.Text.Contains(m)))).ToList();
-            if (missing.Count > 0) problems.Add("missing " + string.Join(", ", missing));
+            Times.Planning.Start();
+            var made = PlanStereo(unit);
+            Times.Planning.Stop();
+            plan = made;
+            var problems = new List<string>();
+            if (!(made.Passes == 0 && made.SurfaceOnly))
+            {
+                // A pass it cannot read is judged the old way, by the macros
+                // being named anywhere in the unit.
+                var missing = StereoMacros.Where(m => made.Adds.Contains(m)
+                    || ((made.Passes == 0 || made.Left.Count > 0) && !unit.Any(f => f.Text.Contains(m)))).ToList();
+                if (missing.Count > 0) problems.Add("missing " + string.Join(", ", missing));
+            }
+            ProblemsByContent[key] = new List<string>(problems);
             return problems;
+        }
+
+        // Every file of a unit in order, with the names written when they
+        // decide what an include finds. A length goes first so two files
+        // never read as one. UTF-8 is exact: decoded text holds no lone surrogate.
+        static string ContentKey(List<SourceFile> unit, bool names)
+        {
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+            {
+                void Feed(string text)
+                {
+                    var bytes = System.Text.Encoding.UTF8.GetBytes(text ?? "");
+                    var length = BitConverter.GetBytes(bytes.Length);
+                    sha.TransformBlock(length, 0, length.Length, null, 0);
+                    sha.TransformBlock(bytes, 0, bytes.Length, null, 0);
+                }
+                foreach (var file in unit)
+                {
+                    if (names) Feed(file.OutputName);
+                    Feed(file.Text);
+                }
+                sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+                return Convert.ToBase64String(sha.Hash);
+            }
         }
 
         // Every edit a shader's stereo patch needs, found on the text as read
@@ -391,10 +480,33 @@ namespace AvatarBridge
             // POI_INITIALIZE_VERTEX_OUTPUT_STEREO, a #define holding Unity's.
             // Reading names literally sent every Poiyomi material to be patched
             // a second time (SpiSweepProbe), so a #define or a called function
-            // that holds the macro counts, one level deep.
+            // that holds the macro counts, one level deep. One scan for every
+            // #define, not one per macro.
+            var defines = unit.SelectMany(f => DefineLine.Matches(f.Text).Cast<Match>())
+                .Select(d => (name: d.Groups[1].Value, body: d.Groups[2].Value)).ToList();
             var wrappers = StereoMacros.Concat(new[] { EyeIndexMacro }).ToDictionary(m => m, m =>
-                unit.SelectMany(f => DefineLine.Matches(f.Text).Cast<Match>())
-                    .Where(d => d.Groups[2].Value.Contains(m)).Select(d => d.Groups[1].Value).Distinct().ToList());
+                defines.Where(d => d.body.Contains(m)).Select(d => d.name).Distinct().ToList());
+
+            // A called name's definition bodies, one per file that has one, found
+            // once per plan: every pass calls the same helpers, and each search
+            // scans the whole unit. A file without the name cannot match.
+            var helpers = new Dictionary<string, List<string>>();
+            List<string> HelpersOf(string callee)
+            {
+                if (helpers.TryGetValue(callee, out var found)) return found;
+                found = new List<string>();
+                var definition = new Regex($@"\b\w+\s+{Regex.Escape(callee)}\s*\([^;{{)]*\)\s*\{{");
+                foreach (var f in unit)
+                {
+                    if (f.Text.IndexOf(callee, StringComparison.Ordinal) < 0) continue;
+                    var d = definition.Match(f.Text);
+                    if (!d.Success) continue;
+                    int open = d.Index + d.Length - 1, close = MatchBrace(f.Text, open);
+                    found.Add(close > open ? f.Text.Substring(open, close - open) : "");
+                }
+                helpers[callee] = found;
+                return found;
+            }
             bool Has(string code, string macro)
             {
                 if (code.Contains(macro) || wrappers[macro].Any(w => Regex.IsMatch(code, $@"\b{Regex.Escape(w)}\b")))
@@ -404,13 +516,8 @@ namespace AvatarBridge
                 foreach (string callee in Regex.Matches(code, @"\b([A-Za-z_]\w*)\s*\(").Cast<Match>()
                              .Select(c => c.Groups[1].Value).Distinct())
                 {
-                    var definition = new Regex($@"\b\w+\s+{Regex.Escape(callee)}\s*\([^;{{)]*\)\s*\{{");
-                    foreach (var f in unit)
+                    foreach (string helper in HelpersOf(callee))
                     {
-                        var d = definition.Match(f.Text);
-                        if (!d.Success) continue;
-                        int open = d.Index + d.Length - 1, close = MatchBrace(f.Text, open);
-                        string helper = close > open ? f.Text.Substring(open, close - open) : "";
                         if (helper.Contains(macro) || wrappers[macro].Any(w => Regex.IsMatch(helper, $@"\b{Regex.Escape(w)}\b")))
                         {
                             return true;
@@ -432,14 +539,21 @@ namespace AvatarBridge
                 }
             }
 
+            // Built once per name, not per file. The look-behind only skips
+            // starts inside a word, where the leftmost match never begins, and
+            // retrying there cost the square of every word's length.
+            var vertSignatures = vertNames.ToDictionary(n => n,
+                n => new Regex($@"(?<!\w)(\w+)\s+{Regex.Escape(n)}\s*\(\s*(\w+)\s+(\w+)\s*\)"));
+            var fragSignatures = fragNames.ToDictionary(n => n,
+                n => new Regex($@"\b\w+\s+{Regex.Escape(n)}\s*\(\s*(\w+)\s+(\w+)"));
+
             var outputTypes = new HashSet<string>();
             var defined = new HashSet<string>();
             foreach (var file in unit)
             {
                 foreach (string vertName in vertNames)
                 {
-                    var signature = new Regex($@"(\w+)\s+{Regex.Escape(vertName)}\s*\(\s*(\w+)\s+(\w+)\s*\)");
-                    foreach (Match sig in signature.Matches(file.Text))
+                    foreach (Match sig in vertSignatures[vertName].Matches(file.Text))
                     {
                         int open = BodyOpen(file.Text, sig.Index + sig.Length);
                         if (open < 0) continue; // a call or a prototype, not the definition
@@ -501,8 +615,7 @@ namespace AvatarBridge
             {
                 foreach (string fragName in fragNames)
                 {
-                    var signature = new Regex($@"\b\w+\s+{Regex.Escape(fragName)}\s*\(\s*(\w+)\s+(\w+)");
-                    foreach (Match sig in signature.Matches(file.Text))
+                    foreach (Match sig in fragSignatures[fragName].Matches(file.Text))
                     {
                         if (!outputTypes.Contains(sig.Groups[1].Value) || !OnPc(file, sig.Index)) continue;
                         int paren = file.Text.IndexOf('(', sig.Index + sig.Groups[0].Value.IndexOf(fragName, StringComparison.Ordinal));
@@ -705,20 +818,23 @@ namespace AvatarBridge
             return null;
         }
 
-        static Shader TryPatch(string sourcePath, string shaderName, string dir, out string reason,
-            out bool grabPassLimited, out List<string> passesLeft)
+        // The unit and plan the judge made, or null to make them here.
+        static Shader TryPatch(string sourcePath, string shaderName, string dir, List<SourceFile> unit,
+            StereoPlan plan, out string reason, out bool grabPassLimited, out List<string> passesLeft)
         {
             grabPassLimited = false;
             passesLeft = new List<string>();
-            List<SourceFile> unit;
-            try
+            if (unit == null)
             {
-                unit = ReadUnit(sourcePath);
-            }
-            catch (Exception e)
-            {
-                reason = "source unreadable: " + e.Message;
-                return null;
+                try
+                {
+                    unit = ReadUnit(sourcePath);
+                }
+                catch (Exception e)
+                {
+                    reason = "source unreadable: " + e.Message;
+                    return null;
+                }
             }
             if (unit.Count == 0)
             {
@@ -732,7 +848,7 @@ namespace AvatarBridge
             // inconsistent endings on import and blame AvatarBridge for it. An include can easily
             // disagree with its shader, so this can't be decided once for the whole unit.
 
-            var plan = PlanStereo(unit);
+            plan = plan ?? PlanStereo(unit);
             if (plan.Passes == 0)
             {
                 reason = plan.SurfaceOnly
@@ -788,6 +904,7 @@ namespace AvatarBridge
             // Name every file, then repoint the #include lines at the copies. Flattened into one
             // folder, so an include written as "sub/foo.cginc" becomes just "foo_SPI.cginc", and
             // named apart from every other file this run writes there.
+            bool known = AssetDatabase.IsValidFolder(dir) && Directory.Exists(dir);
             Directory.CreateDirectory(dir);
             foreach (var file in unit)
             {
@@ -825,6 +942,20 @@ namespace AvatarBridge
                 }
             }
 
+            // A reconvert into the same folder writes the same text again, and a
+            // rewritten file is reimported and recompiled for nothing. Only text
+            // proven this session, and only byte for byte what is already there.
+            string key = ContentKey(unit, true);
+            bool proven = CompiledCopies.Contains(key);
+            string outPath = dir + "/" + shaderFile.OutputName;
+            if (proven && unit.All(f => Unchanged(dir + "/" + f.OutputName, f.Text))
+                && AssetDatabase.LoadAssetAtPath<Shader>(outPath) is Shader existing)
+            {
+                Times.Reused++;
+                reason = null;
+                return existing;
+            }
+
             var written = new List<string>();
             foreach (var file in unit)
             {
@@ -840,11 +971,14 @@ namespace AvatarBridge
             {
                 AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
             }
-            AssetDatabase.Refresh();
+            // Only for a folder made on disk just now, which the AssetDatabase has
+            // not seen. A refresh rescans the whole project, and ran once per shader.
+            if (!known) AssetDatabase.Refresh();
 
-            string outPath = written[0];
             AssetDatabase.ImportAsset(outPath, ImportAssetOptions.ForceSynchronousImport);
 
+            // Checked even when the same text passed in another folder: an include
+            // left as text can resolve differently beside a different copy.
             var result = AssetDatabase.LoadAssetAtPath<Shader>(outPath);
             string errors = result == null ? "copy failed to import"
                 : ShaderUtil.ShaderHasError(result) ? ShaderErrors(result)
@@ -874,8 +1008,17 @@ namespace AvatarBridge
                              : "");
                 return null;
             }
+            CompiledCopies.Add(key);
             reason = null;
             return result;
+        }
+
+        // Exactly what WriteAllText would put there: UTF-8 with no byte order mark.
+        static bool Unchanged(string path, string text)
+        {
+            if (!File.Exists(path)) return false;
+            var bytes = System.Text.Encoding.UTF8.GetBytes(text);
+            return new FileInfo(path).Length == bytes.Length && File.ReadAllBytes(path).SequenceEqual(bytes);
         }
 
         // A file name in the output folder nothing else this run has taken.
@@ -909,6 +1052,8 @@ namespace AvatarBridge
         // (SpiFactsProbe). Null when every pass compiles.
         static string StereoVariantError(Shader shader)
         {
+            Times.VariantChecks++;
+            Times.Variants.Start();
             var data = ShaderUtil.GetShaderData(shader);
             var keywords = new[] { "STEREO_INSTANCING_ON" };
             for (int s = 0; s < data.SubshaderCount; s++)
@@ -934,10 +1079,12 @@ namespace AvatarBridge
                             .Select(m => m.line > 0 ? $"{m.message} at line {m.line}" : m.message)
                             .FirstOrDefault() ?? "no message";
                         string passName = string.IsNullOrEmpty(pass.Name) ? $"pass {p}" : $"pass \"{pass.Name}\"";
+                        Times.Variants.Stop();
                         return $"its single-pass instanced {stage.ToString().ToLowerInvariant()} variant fails in {passName}: {first}";
                     }
                 }
             }
+            Times.Variants.Stop();
             return null;
         }
 
