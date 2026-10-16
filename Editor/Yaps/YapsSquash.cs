@@ -157,7 +157,11 @@ namespace AvatarBridge
                 said = Add(root, folder, out built);
                 if (built) said += " " + FollowSwaps(root, clips, folder, null);
             }
-            finally { Reuse = null; }
+            finally
+            {
+                Reuse = null;
+                YapsShaderPatcher.EndPass(null, null);
+            }
             Debug.Log("[YAPS] Squash: " + said);
             return said.Trim();
         }
@@ -1013,18 +1017,24 @@ namespace AvatarBridge
         // of what the avatar ends up wearing, and YAPS still finds its own materials on the mesh.
         public static void Run(BridgeContext ctx)
         {
+            // The YAPS passes before this one patch shaders too and cannot log it themselves.
+            YapsShaderPatcher.EndPass("up to squash", ctx.Report);
             if (!ctx.Settings.squashSoftParts) return;
-            var root = ctx.Target.transform;
-            string folder = ctx.OutputDir + "/YAPS/Squash";
-            string said = Add(root, folder, out bool built, ctx.Report);
-            if (!built)
+            try
             {
-                ctx.Report.Warning(Category, "Squash not built", said);
-                return;
+                var root = ctx.Target.transform;
+                string folder = ctx.OutputDir + "/YAPS/Squash";
+                string said = Add(root, folder, out bool built, ctx.Report);
+                if (!built)
+                {
+                    ctx.Report.Warning(Category, "Squash not built", said);
+                    return;
+                }
+                ctx.Report.Converted(Category, "Soft parts squash against each other and against hands",
+                    said + ". Tune it, and preview it, on the YAPS Squash component on the converted avatar");
+                if (ctx.MergedController != null) FollowSwaps(root, ctx.MergedController.animationClips, folder, ctx.Report);
             }
-            ctx.Report.Converted(Category, "Soft parts squash against each other and against hands",
-                said + ". Tune it, and preview it, on the YAPS Squash component on the converted avatar");
-            if (ctx.MergedController != null) FollowSwaps(root, ctx.MergedController.animationClips, folder, ctx.Report);
+            finally { YapsShaderPatcher.EndPass("squash", ctx.Report); }
         }
 #endif
     }
