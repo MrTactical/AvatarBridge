@@ -107,7 +107,7 @@ names are stripped exactly (`VF80_` also prefixes the depth parameters, so never
 Skipped line says so, and README's SPS section explains. If Stealth is ever wanted, its clip would
 have to switch the atlas writer too.
 
-**Squash costs minutes per avatar, 2026-10-16. OPEN: first fixes on dev (d96bd83), not yet measured.**
+**Squash costs minutes per avatar, 2026-10-16. Fixes on dev and measured (subsets `speed1`, `speed2`); the full run's numbers are still to read.**
 The first corpus run with squash on (`CorpusSettings` forces it; a user's default is off) spends
 25 minutes in *Squash soft parts* on each of the five fixture avatars and 7 to 10 on the next two,
 against under 2 for every other pass combined. During it all 16 shader compilers are busy with
@@ -184,6 +184,19 @@ copy's main asset. The test covers it, and fails with the old rehomer. Still to 
   `Prewrite` as well as the slot loop, since the import is where the compile cost lands.
   `SquashSlotTest` covers rounding, unused vertices and a slot past the last submesh: PASS, with
   `StandardCasterTest` and `TextureRehomeTest` on the shared folder.
+- Measured cold, subset `speed2` (2026-10-16, throttled), against 417 (the first run with squash,
+  unthrottled), the same eight avatars: 1240 s to 728 s, squash 319 to 148 s, YAPS 440 to 354 s. The
+  shared folder started empty, so this is the first conversion after updating, which compiles each
+  shader once; `speed1`'s 234 s was the warm case, reusing 417's per-folder copies. On the avatar
+  with the most layers the squash patched 16 materials where it patched 26. Digests: four identical
+  to 417, and the four SPS avatars changed only by the `fix-417` merge, their Auto Mode rows and
+  Auto Socket layers back to 416's counts exactly, plus the C5 texture figure.
+- **Found by `speed2`, FIXED ON DEV:** the converter's squash numbered a new set beside the last on
+  every reconvert (`Body shares 1`, `2`, `3`), since only the YAPS tool's Build writes over its
+  own copies; one avatar's folder held 52 files after four conversions. The pass now empties its
+  folder first, in one call: the folder is this avatar's, and the fresh copy carries no squash, so
+  nothing in it is reused. Reconverted once (subset `sqfolder`): 12 files, one set, digest as before.
+  Squash has not shipped, so no user ever had it.
 - The per-slot `.mat` saves in the squash pass (about 35 s), batched: unprobed, because the importer
   and GUID may not exist until the batch stops.
 - `RestorePartialOffStates` and `AssertOwnedBindingsEverywhere` still claim, delete and create one

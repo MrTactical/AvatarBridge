@@ -1042,6 +1042,10 @@ namespace AvatarBridge
             {
                 var root = ctx.Target.transform;
                 string folder = ctx.OutputDir + "/YAPS/Squash";
+                // The folder is this avatar's alone, and the copy being built starts with none of
+                // the squash on it, so nothing in it is reused: emptied in one call, where numbering
+                // beside the last set left a whole set of materials and textures per reconvert.
+                AssetDatabase.DeleteAsset(folder);
                 string said = Add(root, folder, out bool built, ctx.Report);
                 if (!built)
                 {
