@@ -2614,6 +2614,34 @@ after the first digest: killed, resumed, stopped at its cap, finished in three p
 summary and the partial marker cleared. Avatar O, converted in the resumed process, matches 416t exactly;
 the other three differ only by db7ade2's texture-slot fix, against digests made before it.
 
+### Corpus 417, the 5.0.0 run: two regressions, one fixed on a branch, 2026-10-16
+
+Run 417 (YAPS profile, dev 045f987, parts of 30, unthrottled) against 416. Read so far: 60 of 88; the
+rest once the run ends. `CorpusSettings` turns squash on for the first time (e8ec36f), so every squash
+line in it is new from the flip, not from squash code. Explained by commits: three new settings lines,
+two more Converted entries on every avatar (the changes list and the upload check), the squash
+components, textures and 20-triangle helper mesh where it built, GoGo's flight scale layer gone, fewer
+cloth solvers from grouping, and SPS's option rows out.
+
+Regressions:
+- **C1: SPS's option rows took the whole SPS layer family.** 045f987 strips `VF80_legacy` and
+  `VF80_stealth` by name, and the fury-id harvest took id 80 from them, so every `[VF80]` layer went:
+  the creator's depth animations, auto mode (and its AAS entry), Init Behaviours, Auto Socket
+  Comparison, Socket Exclusivity, and on five avatars the shared FrameTime Counter that face-gesture
+  smoothing needs. Seventeen avatars; the restore filler's warning moving on them (C2) is the same
+  cause. **FIXED on branch `fix-417` (97d6b6a), not compiled**: the harvest skips the option rows,
+  `SpsOptionStripTest` pins both sides. Merges after the speed subset matches 417, since the subset
+  holds an SPS fixture.
+- **C5: the texture advice shrinks when squash is on.** Squash copies a material per renderer slot.
+  `AvatarWeight.Densities` keys area by material and keeps a texture's lowest density with that one
+  copy's area, so the "across X m²" figure covers one share and the reclaim advice falls (one avatar
+  6.07 to 2.61 m², another's reclaim 29.4 to 22.4 MB). Nothing on the avatar changes; the card and the
+  report misstate it. Fix: merge the area of materials with the same textures and scale before the
+  density, in Core, since `Editor/Yaps` is pruned from the public package. Open, after the gate.
+
+Time: across the first 60 conversions squash took 81% of all pass time (22,718 of about 28,150 s;
+median conversion 291 s, longest 2,559 s). Compiling its shaders together is the lever above.
+
 ### The audit of 2026-10-03: about 210 findings fixed on dev, not verified in game
 
 **What was done.** A read of the whole codebase against its own claims, in four waves: 177 findings
