@@ -21,6 +21,10 @@ namespace AvatarBridge.Regression
     // compared on the GPU, original against copy. A bake run in the same session hands over
     // live textures that were never reloaded, so one of those goes through too, made unreadable
     // the way a script makes it.
+    //
+    // Meshes and materials are written in one batch, with one delete for what a previous run
+    // left. So a mesh and a second material slot go through too, and the conversion runs twice
+    // into one folder: the second must replace the first's files in place, not number new ones.
     public static class TextureRehomeTest
     {
         const string Temp = "Packages/com.vrcfury.temp/__ABTextureRehomeTest";
@@ -83,21 +87,36 @@ namespace AvatarBridge.Regression
                 material.SetTexture("_DetailAlbedoMap", subOther);
                 material.SetTexture("_EmissionMap", live);
                 AssetDatabase.CreateAsset(material, Temp + "/Probe material.mat");
+                var secondMaterial = new Material(Shader.Find("Standard")) { name = "Probe material B" };
+                secondMaterial.SetTexture("_MainTex", mainOther);
+                AssetDatabase.CreateAsset(secondMaterial, Temp + "/Probe material B.mat");
 
                 avatar = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 avatar.name = "__ABTextureRehomeTest";
-                avatar.GetComponent<MeshRenderer>().sharedMaterial = material;
+                var filter = avatar.GetComponent<MeshFilter>();
+                var renderer = avatar.GetComponent<MeshRenderer>();
+                var mesh = Object.Instantiate(filter.sharedMesh);
+                mesh.name = "Probe mesh";
+                AssetDatabase.CreateAsset(mesh, Temp + "/Probe mesh.asset");
+                AssetDatabase.SaveAssets();
 
-                var ctx = new BridgeContext
+                void Convert()
                 {
-                    Report = new BridgeReport(),
-                    Settings = new BridgeSettings(),
-                    Target = avatar,
-                    OutputDir = Output,
-                };
-                SceneAssetRehomer.Run(ctx);
+                    // Back to the originals in temp: after a run the avatar wears the copies.
+                    filter.sharedMesh = mesh;
+                    renderer.sharedMaterials = new[] { material, secondMaterial };
+                    OutputAssetPaths.Reset();
+                    SceneAssetRehomer.Run(new BridgeContext
+                    {
+                        Report = new BridgeReport(),
+                        Settings = new BridgeSettings(),
+                        Target = avatar,
+                        OutputDir = Output,
+                    });
+                }
+                Convert();
 
-                var rescued = avatar.GetComponent<MeshRenderer>().sharedMaterial;
+                var rescued = renderer.sharedMaterial;
                 fail += Check("the material comes out of temp",
                     rescued != null && AssetDatabase.GetAssetPath(rescued).StartsWith(Output));
                 var mainTex = rescued != null ? rescued.GetTexture("_MainTex") : null;
@@ -130,6 +149,30 @@ namespace AvatarBridge.Regression
                     detailPath.EndsWith("Probe Other.asset")
                     && AssetDatabase.LoadAllAssetsAtPath(detailPath).OfType<Texture2D>().Count() == 2);
                 fail += Check("the texture file's sub texture keeps its pixels", Same(subOther, detail));
+
+                var second = renderer.sharedMaterials.Length > 1 ? renderer.sharedMaterials[1] : null;
+                var secondTex = second != null ? second.GetTexture("_MainTex") : null;
+                fail += Check("the second slot comes out of temp", Saved(second));
+                fail += Check("the second slot's texture is in the one container copy",
+                    Saved(secondTex) && AssetDatabase.GetAssetPath(secondTex) == detailPath);
+                string meshPath = AssetDatabase.GetAssetPath(filter.sharedMesh);
+                fail += Check("the mesh comes out of temp", Saved(filter.sharedMesh));
+                Resources.UnloadAsset(filter.sharedMesh);
+                var meshOnDisk = AssetDatabase.LoadAssetAtPath<Mesh>(meshPath);
+                fail += Check("the mesh copy keeps its vertices on disk",
+                    meshOnDisk != null && meshOnDisk.vertexCount == mesh.vertexCount);
+
+                var firstFiles = Written();
+                Convert();
+                var secondFiles = Written();
+                Debug.Log($"[TextureRehomeTest] first run wrote {string.Join(", ", firstFiles)}");
+                Debug.Log($"[TextureRehomeTest] second run left {string.Join(", ", secondFiles)}");
+                fail += Check("a second run replaces the files in place", firstFiles.SequenceEqual(secondFiles));
+                fail += Check("a second run rescues both slots and the mesh again",
+                    Saved(renderer.sharedMaterials[0]) && Saved(renderer.sharedMaterials[1]) && Saved(filter.sharedMesh));
+                fail += Check("a second run's material keeps its textures",
+                    Saved(renderer.sharedMaterials[0].GetTexture("_MainTex"))
+                    && AssetDatabase.GetAssetPath(renderer.sharedMaterials[1].GetTexture("_MainTex")) == detailPath);
             }
             finally
             {
@@ -138,7 +181,7 @@ namespace AvatarBridge.Regression
             }
 
             Debug.Log(fail == 0
-                ? "[TextureRehomeTest] PASS: textures leave temp alone, pixels intact."
+                ? "[TextureRehomeTest] PASS: textures, meshes and materials leave temp, pixels intact, a rerun replaces in place."
                 : $"[TextureRehomeTest] FAIL: {fail} case(s) wrong.");
             if (Application.isBatchMode) EditorApplication.Exit(fail == 0 ? 0 : 1);
         }
@@ -148,6 +191,15 @@ namespace AvatarBridge.Regression
             AssetDatabase.DeleteAsset(Output);
             AssetDatabase.DeleteAsset(Temp);
         }
+
+        // Contains as well as the path: a copy written in a batch that never persisted still has
+        // its object, and only the database can say it is not an asset.
+        static bool Saved(Object o) =>
+            o != null && AssetDatabase.Contains(o) && AssetDatabase.GetAssetPath(o).StartsWith(Output);
+
+        static string[] Written() =>
+            Directory.GetFiles(Output + "/RehomedAssets").Where(f => !f.EndsWith(".meta"))
+                .Select(Path.GetFileName).OrderBy(f => f, System.StringComparer.Ordinal).ToArray();
 
         static Texture2D MakeTexture(string name, int seed)
         {
