@@ -109,6 +109,33 @@ namespace AvatarBridge.Regression
                     TimeVertex(shaders);
                     break;
                 }
+                case "broken":
+                {
+                    // An undeclared name in the default variant, and one only a keyword reaches.
+                    string folder = Root + "/broken";
+                    Directory.CreateDirectory(folder);
+                    foreach (var (name, body) in new[]
+                    {
+                        ("Default", "return probeUndeclared;"),
+                        ("Keyword", "#ifdef PROBE_ON\n return probeUndeclared;\n #endif\n return 1;"),
+                    })
+                    {
+                        File.WriteAllText($"{folder}/{name}.shader",
+                            $"Shader \"Hidden/ABProbe/Broken{name}\" {{ SubShader {{ Pass {{\nCGPROGRAM\n" +
+                            "#pragma vertex vert\n#pragma fragment frag\n#pragma multi_compile _ PROBE_ON\n" +
+                            "#include \"UnityCG.cginc\"\n" +
+                            "float4 vert(float4 v : POSITION) : SV_POSITION { return UnityObjectToClipPos(v); }\n" +
+                            $"fixed4 frag() : SV_Target {{\n {body}\n}}\nENDCG\n}} }} }}\n");
+                    }
+                    AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+                    foreach (var shader in Existing(folder))
+                    {
+                        var messages = ShaderUtil.GetShaderMessages(shader);
+                        Log($"broken: {shader.name} ShaderHasError {ShaderUtil.ShaderHasError(shader)}, " +
+                            $"{messages.Length} message(s){(messages.Length > 0 ? ": " + messages[0].message : "")}");
+                    }
+                    break;
+                }
                 default:
                     Log($"unknown mode {mode}");
                     break;

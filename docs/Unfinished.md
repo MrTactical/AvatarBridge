@@ -154,9 +154,19 @@ stayed in temp and went missing when Fury cleared it. The counterpart of a main 
 copy's main asset. The test covers it, and fails with the old rehomer. Still to do, in order of size:
 - Compiling a material's passes together was written and pulled: compiling the shadow caster with
   the rest can change which shaders are refused, and waiting for it spun. It comes back only after
-  a probe of what the error check costs per pass, alone and in parallel.
+  a probe of what the error check costs per pass, alone and in parallel. **Probed 2026-10-16
+  (`ShaderVerifyCostProbe`, three patched shaders out of one squash output): not worth bringing
+  back.** `ShaderHasError` itself takes 1 ms; the compile happens in the asset database, and every
+  pass of all three queued at once with `CompilePass` (16 compiler processes) took 146 s against
+  147 s for the path the pass takes now, so Unity already compiles in parallel. The vertex stage
+  alone through `CompileVariant`, the cheaper verify that was considered, took 387 s, so that is out
+  too. The check does catch a real fault: an HLSL error in the default variant reports as an error
+  with its message, while one only a keyword reaches does not, which is the known gap the stereo
+  and caster checks already cover.
 - The shared content-addressed folder above, the fix for the cross-conversion cost, which no memo
-  inside one run can reach.
+  inside one run can reach. The same probe measured it: the identical text in a second folder
+  compiled again in full, about 140 s for the three, where the same folder reused is free (the
+  reconvert case, squash 319 s to 15 s in the speed subset).
 - The per-slot `.mat` saves in the squash pass (about 35 s), batched: unprobed, because the importer
   and GUID may not exist until the batch stops.
 - `RestorePartialOffStates` and `AssertOwnedBindingsEverywhere` still claim, delete and create one
