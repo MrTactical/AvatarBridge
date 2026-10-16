@@ -35,7 +35,9 @@ namespace AvatarBridge
             ClaimedThisRun.Clear();
         }
 
-        internal static string Claim(string desiredPath)
+        // With stale, the previous run's file is listed instead of deleted, for a caller that
+        // deletes them all in one call: each DeleteAsset is a refresh of its own.
+        internal static string Claim(string desiredPath, List<string> stale = null)
         {
             string normalised = desiredPath.Replace('\\', '/');
             string dir = Path.GetDirectoryName(normalised)?.Replace('\\', '/') ?? "";
@@ -54,15 +56,28 @@ namespace AvatarBridge
             // loading the old asset to test the path deserialised a whole mesh just to delete it.
             if (!string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(candidate, AssetPathToGUIDOptions.OnlyExistingAssets)))
             {
-                AssetDatabase.DeleteAsset(candidate);
+                if (stale != null)
+                {
+                    stale.Add(candidate);
+                }
+                else
+                {
+                    AssetDatabase.DeleteAsset(candidate);
+                }
             }
             return candidate;
         }
 
         // Directory plus a full Refresh, as both callers always did. CreateFolder would skip the
         // Refresh, and with it the import of anything earlier passes wrote straight to disk.
+        // Only for a folder the AssetDatabase does not know: the Refresh rescans the whole
+        // project, and a folder already on disk but never imported still gets it.
         internal static void EnsureFolder(string dir)
         {
+            if (AssetDatabase.IsValidFolder(dir))
+            {
+                return;
+            }
             Directory.CreateDirectory(Path.GetFullPath(Path.Combine(UnityEngine.Application.dataPath, "..", dir)));
             AssetDatabase.Refresh();
         }
