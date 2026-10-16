@@ -160,8 +160,12 @@ namespace AvatarBridge
 
         sealed class NameCacheReset : AssetPostprocessor
         {
-            static void OnPostprocessAllAssets(string[] imported, string[] deleted, string[] moved, string[] movedFrom) =>
+            static void OnPostprocessAllAssets(string[] imported, string[] deleted, string[] moved, string[] movedFrom)
+            {
                 NameCache.Clear();
+                YapsFolder = null;
+                YapsRead = null;
+            }
         }
 
         // The source TEXT is in it, not only the path. Updating or re-locking a
@@ -338,36 +342,183 @@ namespace AvatarBridge
                 Directory.CreateDirectory(outputDir);
                 AssetDatabase.Refresh();
             }
-            Deferred = new List<string>();
+            var written = Deferred = new List<string>();
+            Prewritten = new Dictionary<string, (string[], int, string, int, bool)>();
             try
             {
                 foreach (var m in list) Patch(m, outputDir, null, out _, out _);
             }
             finally
             {
-                var written = Deferred;
                 Deferred = null;
+                var clock = System.Diagnostics.Stopwatch.StartNew();
                 foreach (bool shaders in new[] { false, true })
                 {
                     AssetDatabase.StartAssetEditing();
                     try
                     {
                         foreach (string path in written.Distinct().Where(p => p.EndsWith(".shader") == shaders))
+                        {
                             AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+                            Timing.Imported++;
+                        }
                     }
                     finally { AssetDatabase.StopAssetEditing(); }
                 }
+                Timing.ImportMs += clock.ElapsedMilliseconds;
+            }
+            try
+            {
+                CompileTogether(written.Distinct().Where(p => p.EndsWith(".shader")).ToList());
+            }
+            catch (Exception e)
+            {
+                // Only ever a head start for the check, which compiles whatever this did not.
+                Debug.Log("[AvatarBridge] Compiling the YAPS copies together failed: " + e.Message);
             }
         }
 
         // Set while Prewrite runs: files are written and listed here, never imported one by one.
         static List<string> Deferred;
 
+        // From a Prewrite to the end of the pass: each patch's edited text, for the second Patch
+        // of the same material in the slot loop. Keyed on everything the edits read, so it cannot
+        // go stale, and dropped at the pass's end because a squash's copies run to megabytes.
+        static Dictionary<string, (string[] Texts, int Passes, string Refusal, int Shadows, bool Frameless)> Prewritten;
+
+        static string TransformKey(string shaderName, string yaps, List<ShaderSpiPatcher.SourceFile> unit) =>
+            Hash(shaderName + "\0" + yaps + string.Concat(unit.Select(f => "\0" + f.OriginalPath + "\0" + f.Text.Length + "\0" + f.Text)), 32);
+
+        // Every pass of the copies Prewrite just wrote, compiled at once. Checked one by one, a
+        // shader keeps only a few compiler processes busy and the next one waits for it. The
+        // check still runs as before on each; nothing here decides or reports anything.
+        static void CompileTogether(List<string> shaderPaths)
+        {
+            if (shaderPaths.Count == 0) return;
+            var materials = new List<Material>();
+            var asked = new List<(Material material, int pass)>();
+            bool wasAsync = ShaderUtil.allowAsyncCompilation;
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                ShaderUtil.allowAsyncCompilation = true;
+                bool synchronous = false;
+                foreach (string path in shaderPaths)
+                {
+                    var shader = synchronous ? null : AssetDatabase.LoadAssetAtPath<Shader>(path);
+                    if (shader == null) continue;
+                    var material = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };
+                    materials.Add(material);
+                    for (int pass = 0; pass < material.passCount && !synchronous; pass++)
+                    {
+                        long before = clock.ElapsedMilliseconds;
+                        ShaderUtil.CompilePass(material, pass, false);
+                        asked.Add((material, pass));
+                        // A request that held the thread compiled in place. More would only be
+                        // serial compiles the check might not reuse.
+                        synchronous = clock.ElapsedMilliseconds - before > 2000 && !ShaderUtil.anythingCompiling;
+                    }
+                }
+                long start = clock.ElapsedMilliseconds, progress = start;
+                Timing.AskMs += start;
+                // Spun, as nothing else here can wait. Bounded by progress: if results only land
+                // between editor frames, one stall window is lost rather than the whole compile.
+                int ready = 0;
+                string stopped = synchronous ? "synchronous" : "done";
+                while (!synchronous && ShaderUtil.anythingCompiling)
+                {
+                    int now = asked.Count(a => ShaderUtil.IsPassCompiled(a.material, a.pass));
+                    if (now > ready) { ready = now; progress = clock.ElapsedMilliseconds; }
+                    if (ready == asked.Count) break;
+                    if (clock.ElapsedMilliseconds - progress > 90000) { stopped = "stalled"; break; }
+                    if (clock.ElapsedMilliseconds - start > 1800000) { stopped = "cap"; break; }
+                    System.Threading.Thread.Sleep(100);
+                }
+                Timing.WaitMs += clock.ElapsedMilliseconds - start;
+                Timing.Ready += asked.Count(a => ShaderUtil.IsPassCompiled(a.material, a.pass));
+                Timing.Stopped = stopped;
+            }
+            finally
+            {
+                ShaderUtil.allowAsyncCompilation = wasAsync;
+                Timing.Asked += asked.Count;
+                foreach (var m in materials) UnityEngine.Object.DestroyImmediate(m);
+            }
+        }
+
+        // --- what it costs, for the log only --------------------------
+
+        // Never the report: its lines must not move between two runs of the same avatar.
+        sealed class Timings
+        {
+            public long ErrorMs, MessagesMs, ImportMs, AskMs, WaitMs;
+            public int ErrorCalls, MessagesCalls, Imported, Patches, Reused, Loads, Asked, Ready;
+            public string Stopped = "-";
+            public bool Any => Patches + Loads + Imported > 0;
+
+            public override string ToString() =>
+                $"error check {ErrorMs} ({ErrorCalls} calls), messages {MessagesMs} ({MessagesCalls} calls), " +
+                $"prewrite import {ImportMs} ({Imported} files), compile together: asking {AskMs}, waiting {WaitMs} " +
+                $"({Ready} of {Asked} passes ready, stopped {Stopped}), patches {Patches} ({Reused} from Prewrite), " +
+                $"YAPS source loads {Loads}";
+        }
+
+        static Timings Timing = new Timings();
+
+        // The conversion the counts belong to. A Patch reporting to another one starts afresh.
+        static BridgeReport TimedFor;
+
+        static void CountPatch(BridgeReport report)
+        {
+            if (report != null && report != TimedFor)
+            {
+                TimedFor = report;
+                Timing = new Timings();
+                Prewritten = null;
+            }
+            Timing.Patches++;
+        }
+
+        // Logs the patcher's work since the last call, then starts over and drops what Prewrite
+        // kept. A pass that cannot log its own is logged by the next one that can, so work left
+        // by anything but `report`'s conversion is dropped unlogged. No `pass`, no line.
+        public static void EndPass(string pass, BridgeReport report)
+        {
+            if (pass != null && report == TimedFor && Timing.Any)
+                Debug.Log($"[AvatarBridge] YAPS shader timing (ms): {pass}: {Timing}");
+            TimedFor = report;
+            Timing = new Timings();
+            Prewritten = null;
+        }
+
+        static bool HasError(Shader shader)
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            try { return ShaderUtil.ShaderHasError(shader); }
+            finally
+            {
+                Timing.ErrorMs += clock.ElapsedMilliseconds;
+                Timing.ErrorCalls++;
+            }
+        }
+
+        static ShaderMessage[] Messages(Shader shader)
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            try { return ShaderUtil.GetShaderMessages(shader); }
+            finally
+            {
+                Timing.MessagesMs += clock.ElapsedMilliseconds;
+                Timing.MessagesCalls++;
+            }
+        }
+
         public static Shader Patch(Material material, string outputDir, BridgeReport report,
             out string refusal, out int skippedShadowPasses, bool allowSps = false)
         {
             refusal = null;
             skippedShadowPasses = 0;
+            CountPatch(report);
             if (material == null || material.shader == null)
             {
                 refusal = "the material has no shader";
@@ -422,19 +573,50 @@ namespace AvatarBridge
             // Before any edit below: the name is taken from the source as it is on disk.
             string hash = NameHash(sourcePath, unit, yaps);
 
-            // Properties first: the block is in the shader file, and later
-            // edits work on offsets that this would otherwise shift.
-            var properties = Regex.Match(shaderFile.Text, @"Properties\s*\{");
-            if (!properties.Success)
+            // A squash patches each material in Prewrite and again in its slot loop, and the
+            // edits below come out the same both times.
+            string key = Prewritten == null ? null : TransformKey(material.shader.name, yaps, unit);
+            int patchedPasses;
+            string blockRefusal;
+            bool frameless;
+            if (key != null && Prewritten.TryGetValue(key, out var done))
             {
-                refusal = "it has no Properties block to add the YAPS properties to";
-                return null;
+                Timing.Reused++;
+                if (done.Texts != null)
+                    for (int i = 0; i < unit.Count; i++) unit[i].Text = done.Texts[i];
+                patchedPasses = done.Passes;
+                blockRefusal = done.Refusal;
+                skippedShadowPasses = done.Shadows;
+                frameless = done.Frameless;
             }
-            shaderFile.Text = shaderFile.Text.Insert(properties.Index + properties.Length,
-                PropertyBlock);
+            else
+            {
+                // Properties first: the block is in the shader file, and later
+                // edits work on offsets that this would otherwise shift.
+                var properties = Regex.Match(shaderFile.Text, @"Properties\s*\{");
+                if (!properties.Success)
+                {
+                    refusal = "it has no Properties block to add the YAPS properties to";
+                    return null;
+                }
+                shaderFile.Text = shaderFile.Text.Insert(properties.Index + properties.Length,
+                    PropertyBlock);
 
-            int patchedPasses = PatchProgramBlocks(unit, yaps, out string blockRefusal,
-                out skippedShadowPasses, out bool frameless);
+                patchedPasses = PatchProgramBlocks(unit, yaps, out blockRefusal,
+                    out skippedShadowPasses, out frameless);
+                bool whole = patchedPasses > 0 && blockRefusal == null;
+                if (whole)
+                {
+                    string newName = PatchedName(shaderFile.Text, hash);
+                    shaderFile.Text = ShaderSpiPatcher.Rename(shaderFile.Text, newName);
+                    InstallShaderGui(shaderFile, material.shader.name);
+                }
+                if (key != null)
+                {
+                    Prewritten[key] = (whole ? unit.Select(f => f.Text).ToArray() : null,
+                        patchedPasses, blockRefusal, skippedShadowPasses, frameless);
+                }
+            }
             if (patchedPasses == 0)
             {
                 refusal = blockRefusal ?? "no pass in it declares a vertex stage";
@@ -447,11 +629,6 @@ namespace AvatarBridge
                 refusal = blockRefusal;
                 return null;
             }
-
-            string newName = PatchedName(shaderFile.Text, hash);
-            shaderFile.Text = ShaderSpiPatcher.Rename(shaderFile.Text, newName);
-
-            InstallShaderGui(shaderFile, material.shader.name);
 
             var patched = WriteAndVerify(unit, sourcePath, outputDir, hash, out string compileError);
             if (patched == null)
@@ -994,10 +1171,18 @@ namespace AvatarBridge
 
         // --- the YAPS source, inlined ---------------------------------
 
+        // The folder, kept until anything imports, moves or is deleted, as FindAssets searches the
+        // whole project. The files are read on every call and joined again only when they changed.
+        static string YapsFolder;
+        static string[] YapsRead;
+        static string YapsJoined;
+
         static string LoadYapsSource(out string failure)
         {
             failure = null;
-            string folder = FindYapsFolder();
+            Timing.Loads++;
+            string folder = YapsFolder != null && File.Exists(YapsFolder + "/yaps_deform.cginc")
+                ? YapsFolder : YapsFolder = FindYapsFolder();
             if (folder == null)
             {
                 failure = "the YAPS shader includes could not be found in the project";
@@ -1016,23 +1201,28 @@ namespace AvatarBridge
                 "yaps_props.cginc", "yaps_atlas.cginc", "yaps_resolve.cginc", "yaps_deform.cginc",
                 "yaps_socket.cginc", "yaps_dent.cginc",
             };
-            var sb = new StringBuilder();
-            foreach (string name in names)
+            var read = new string[names.Length];
+            for (int i = 0; i < names.Length; i++)
             {
-                string path = folder + "/" + name;
+                string path = folder + "/" + names[i];
                 if (!File.Exists(path))
                 {
-                    failure = $"\"{name}\" is missing from the YAPS includes";
+                    failure = $"\"{names[i]}\" is missing from the YAPS includes";
                     return null;
                 }
-                string text = File.ReadAllText(path);
+                read[i] = File.ReadAllText(path);
+            }
+            if (YapsRead != null && read.SequenceEqual(YapsRead)) return YapsJoined;
+            var sb = new StringBuilder();
+            foreach (string text in read)
+            {
                 // Strip the includes of each other: everything is being
                 // concatenated, so those lines would look for files that
                 // will not exist beside the patched shader.
-                text = Regex.Replace(text, @"#include\s+""yaps_\w+\.cginc""\s*", "");
-                sb.AppendLine(text);
+                sb.AppendLine(Regex.Replace(text, @"#include\s+""yaps_\w+\.cginc""\s*", ""));
             }
-            return sb.ToString();
+            YapsRead = read;
+            return YapsJoined = sb.ToString();
         }
 
         static string FindYapsFolder()
@@ -1120,7 +1310,7 @@ namespace AvatarBridge
                     return File.Exists(path) && File.ReadAllText(path) == f.Text;
                 })
                 && AssetDatabase.LoadAssetAtPath<Shader>(shaderPath) is Shader existing
-                && !ShaderUtil.ShaderHasError(existing))
+                && !HasError(existing))
             {
                 return existing;
             }
@@ -1161,9 +1351,9 @@ namespace AvatarBridge
                 CleanUp(created, shaderPath);
                 return null;
             }
-            if (ShaderUtil.ShaderHasError(result))
+            if (HasError(result))
             {
-                var messages = ShaderUtil.GetShaderMessages(result);
+                var messages = Messages(result);
                 error = messages.Length > 0
                     ? string.Join("; ", messages.Take(3).Select(m => $"line {m.line}: {m.message}"))
                     : "the compiler reported an error but no message";
@@ -1187,12 +1377,12 @@ namespace AvatarBridge
             }
         }
 
-        internal static string Hash(string input)
+        internal static string Hash(string input, int bytes = 6)
         {
             using (var sha = System.Security.Cryptography.SHA256.Create())
             {
-                var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(input));
-                return BitConverter.ToString(bytes, 0, 6).Replace("-", "").ToLowerInvariant();
+                var digest = sha.ComputeHash(Encoding.UTF8.GetBytes(input));
+                return BitConverter.ToString(digest, 0, bytes).Replace("-", "").ToLowerInvariant();
             }
         }
     }
