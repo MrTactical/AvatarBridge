@@ -107,7 +107,7 @@ names are stripped exactly (`VF80_` also prefixes the depth parameters, so never
 Skipped line says so, and README's SPS section explains. If Stealth is ever wanted, its clip would
 have to switch the atlas writer too.
 
-**Squash costs minutes per avatar, 2026-10-16. OPEN, measured in corpus 417, not yet explained.**
+**Squash costs minutes per avatar, 2026-10-16. OPEN: first fixes on dev (d96bd83), not yet measured.**
 The first corpus run with squash on (`CorpusSettings` forces it; a user's default is off) spends
 25 minutes in *Squash soft parts* on each of the five fixture avatars and 7 to 10 on the next two,
 against under 2 for every other pass combined. During it all 16 shader compilers are busy with
@@ -119,6 +119,37 @@ output folder, and import results are keyed by asset, not content. The same run'
 A candidate is one content-addressed folder of patched shaders shared by every conversion, which
 would also make a reconvert skip the compile. A user who opts in waits this long today, so it
 belongs in 5.0.0 if the fix is small, and in the release notes if not.
+
+The same log shows the rest of a conversion's overhead: about 400 asset refreshes per avatar at a
+quarter second each, every one running every package's postprocessors, and the controller imported
+35 to 105 times. Landed on dev at d96bd83, compiled in every SDK and define combination, and none
+of it run in Unity yet:
+- *YAPS shader patcher:* a pass's patched text is memoised by a hash of its input, and the source
+  read once per run. Each sub-step is timed in a `YAPS shader timing (ms)` log line.
+- *Stereo patcher:* plans judged once, regexes cached, verdicts cached by content, and a copy whose
+  bytes did not change skips its write and refresh. An equivalence check over 1934 shader units
+  found no change in output and halved planning, 261 s to 137 s. Logs `Stereo shader times (ms)`.
+  The verify after a copy still runs in every folder, because an include left as text can resolve
+  differently beside a different copy.
+- *Batched writes:* self-contained clips and masks, restore clips, and rehomed meshes and materials
+  each go in one batch with one delete for the stale files, where each file cost two refreshes.
+- *Smaller:* report step timings, MeshGrowth reads each bone's matrix once instead of per vertex,
+  and YapsRename's remap is memoised once settled.
+
+Before 5.0.0: a corpus subset after 417 finishes, with identical digests to 417 required, and its
+timings against 417's. Then `TextureRehomeTest` extended to a mesh and a second material slot, and
+run, since the rehome batch is the one change no test reaches. Still to do, in order of size:
+- Compiling a material's passes together was written and pulled: compiling the shadow caster with
+  the rest can change which shaders are refused, and waiting for it spun. It comes back only after
+  a probe of what the error check costs per pass, alone and in parallel.
+- The shared content-addressed folder above, the fix for the cross-conversion cost, which no memo
+  inside one run can reach.
+- The per-slot `.mat` saves in the squash pass (about 35 s), batched: unprobed, because the importer
+  and GUID may not exist until the batch stops.
+- `RestorePartialOffStates` and `AssertOwnedBindingsEverywhere` still claim, delete and create one
+  clip per state.
+- Stereo copies written in one batch, a verified marker that survives a restart, and judging in
+  parallel.
 
 **Decided 2026-09-23 (Joe):** ship the next release first (one default corpus run authorised,
 release on his word), then the two items below. **It is 4.6.4** (Joe, same day): 4.6.3 is skipped,
