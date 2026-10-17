@@ -2763,7 +2763,43 @@ animator merge 1,870 to 1,087, YAPS 1,630 to 986, self-contained clips 1,495 to 
 earlier one compiled converts in seconds (599 s to 16 s, 365 s to 25 s). Squash is still 78% of the
 total, and ten avatars are 57% of that: the first avatar on a heavy shader pays the compile once,
 up to 23 minutes. The levers left are the ones above (a GUID per hash so a reconvert relinks, pruning)
-and the Poiyomi lock probe (`PoiyomiLockProbe`, written, not yet run).
+and what the Poiyomi lock probe found, next.
+
+### Poiyomi's lock, measured 2026-10-17: the lock is cheap, and an unlocked source broke the upload. FIXED ON DEV
+
+Three guesses about why Poiyomi makes conversion slow, tested with `PoiyomiLockProbe` (Dev/Probes) in a
+throwaway copy of the corpus project, Thry editor 2.71.2, batch Unity throttled. Two were wrong; the third
+found a bug.
+- *Locking avatars one at a time compiles the same materials again: WRONG.* Across 21 avatars (424
+  materials, 380 lockable once unlocked), Poiyomi's own settings hash gives 347 shaders locking one avatar
+  at a time and 346 all at once. It already shares inside one call (70 materials, 56 shaders on one
+  avatar), and avatars that share a body share the material files, which a later lock skips.
+- *Where the lock's time goes:* nowhere much. 66 shaders over four avatars lock in 33 to 41 s one avatar
+  at a time and 16.8 s all at once (ABBA, two reps each), about half importing and half Thry's text work
+  and refreshes; the gap is a fixed 5 s or so per call, not more shaders. The import does not compile
+  variants: that happens when a material is drawn or the bundle builds, which is the wait a user sees.
+- *The conversion causes a second lock: RIGHT, and it broke the shader.* Converting with the source
+  unlocked (two avatars, one SPS with squash, one squash-heavy), YAPS patched the unlocked Poiyomi, and the
+  ChilloutVR upload's lock took 6 and 15 of the patches and locked them again into
+  `Hidden/Locked/Hidden/Locked/YAPS/...`: 336 shader errors over three patches ("'float4' already
+  defined as a type", the YAPS declarations baked into constants). Thry 2.7x decides "locked" by the
+  lock button property defaulting to 1, for the upload lock and the build strip alike, so the
+  `Hidden/Locked/` name the 2026-08-26 answer relied on no longer protects anything; without the lock,
+  the strip would have left the patch out of the bundle. A patch of a LOCKED source inherits the 1, so
+  locked sources relock nothing, which is why no corpus run saw it: every corpus source is locked.
+  **Fixed on dev:** the patch writes the default as 1 (`MarkLocked` in `YapsShaderPatcher`), pinned by
+  `ThryLockMarkTest`. Rerun of the same probe: the upload locks only the plain source materials (5 and
+  14), 0 shader errors, 0 locked twice, 0 left for the strip. Not seen in game: an unlocked-source plug
+  or squash uploaded and worn.
+
+Speed, from the same runs: the unlocked source converted in 100 s and 109 s, locked first in 360 s and
+216 s. The unlocked materials share one shader file, so one patch serves all of them; each locked
+material has a shader of its own, so each gets its own patch and compile. The rerun's 46 to 64 s are
+warm (the first run's patches still in place). The cost does not vanish: an unlocked patch ships the
+uber shader, and the upload compiles its variants for each material's keywords, the compile that once
+crashed the editor on an unlocked Poiyomi Pro. **Open, for Joe:** leave unlocked sources patched as they
+are (faster conversion, heavier upload, matches what the editor shows) or lock the copy through Thry
+before patching (what Poiyomi itself ships, and per-material compiles). Nothing changes until he picks.
 
 ### The audit of 2026-10-03: about 210 findings fixed on dev, not verified in game
 
@@ -3385,7 +3421,9 @@ the "IT BROKE, my fur!!!" failure of 2026-08-25 exactly, one level up.
    a Runtime change cannot be validated there: the documented blind spot. Needs a real Unity
    compile and a bake on an avatar with a second weighted mesh.
 
-3. **Poiyomi's auto-lock: ANSWERED 2026-08-26, and the pink fix had already closed it.**
+3. **Poiyomi's auto-lock: ANSWERED 2026-08-26, and the pink fix had already closed it. WITHDRAWN for
+   Thry 2.7x, 2026-10-17:** it reads the lock button default now, not the name, and an unlocked
+   source's patch was relocked and broke. See "Poiyomi's lock, measured" under Corpus 418.
    Read out of `ShaderOptimizer.SetLockedForAllMaterials` rather than guessed. The sweep takes
    every material whose shader uses the optimizer and is not already locked, and its test for
    "already locked" is `shader.name.StartsWith("Hidden/Locked/")`: the exact prefix the pink fix

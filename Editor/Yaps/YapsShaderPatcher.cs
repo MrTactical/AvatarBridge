@@ -291,7 +291,8 @@ namespace AvatarBridge
         //
         // The name does a second job. Auto-lock-on-upload takes every material
         // whose shader uses the optimizer and is not already locked, and its
-        // test for "already locked" is this exact prefix. Swept into a lock,
+        // test for "already locked" is this exact prefix, before Thry 2.7x (see
+        // MarkLocked for what 2.7x reads instead). Swept into a lock,
         // THESE properties resolve to constants, and those are the ones animation
         // drives, so the deform would freeze at whatever the material held.
         //
@@ -320,6 +321,16 @@ namespace AvatarBridge
                             || Regex.IsMatch(sourceText, @"Shader\s+""Hidden/Locked/"));
             return (thry ? "Hidden/Locked/YAPS/" : "Hidden/YAPS/") + hash;
         }
+
+        // Thry 2.7x no longer reads the name: both the upload lock and the build strip ask
+        // whether the lock button property defaults to 1, which only Thry's own lock writes.
+        // A patch of a locked Poiyomi inherits the 1. A patch of an UNLOCKED one kept 0, so the
+        // upload locked it again into "Hidden/Locked/Hidden/Locked/YAPS/...", whose baked
+        // properties do not compile, and a build without that lock would strip it.
+        static readonly Regex LockButtonDefault = new Regex(
+            @"(\[ThryShaderOptimizerLockButton\][^\r\n]*\)\s*=\s*)0\b");
+
+        static string MarkLocked(string text) => LockButtonDefault.Replace(text, "${1}1");
 
         // Writes the patched copies of many materials and imports them in two batches, includes
         // then shaders, so a Patch after it finds each one already in place. Every import alone
@@ -534,7 +545,7 @@ namespace AvatarBridge
                 if (whole)
                 {
                     string newName = PatchedName(shaderFile.Text, hash);
-                    shaderFile.Text = ShaderSpiPatcher.Rename(shaderFile.Text, newName);
+                    shaderFile.Text = MarkLocked(ShaderSpiPatcher.Rename(shaderFile.Text, newName));
                     InstallShaderGui(shaderFile, material.shader.name);
                 }
                 if (key != null)
