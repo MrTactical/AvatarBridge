@@ -368,6 +368,7 @@ namespace AvatarBridge
             var still = new HashSet<int>();
             var bodySkin = regions != null ? skins.First(s => s.smr == regions.body) : named;
             var shared = Shares(skins, bodySkin, root.name, folder);
+            Hold();
             YapsShaderPatcher.Prewrite(shared.SelectMany(x => x.smr.sharedMaterials
                     .Where((m, slot) => m != null && Moves(x.smr.sharedMesh, slot, x.shares)))
                 .Where(m => !m.HasProperty("_YAPS_DentOwn")));
@@ -473,6 +474,7 @@ namespace AvatarBridge
 
             // The knobs, from the avatar's component; a first build adds one with the defaults.
             if (SettingsOf(root) == null) root.gameObject.AddComponent<YapsSquashSettings>();
+            Flush();
             Apply(root);
             AssetDatabase.SaveAssets();
             EditorUtility.SetDirty(root.gameObject);
@@ -562,9 +564,49 @@ namespace AvatarBridge
         static Material Save(Material copy, Material source, string folder, string file)
         {
             YapsLock.Stamp(copy);
-            copy = Asset(folder, copy, file);
-            AssetImporter.GetAtPath(AssetDatabase.GetAssetPath(copy)).userData = Mark + GlobalObjectId.GetGlobalObjectIdSlow(source);
+            if (Held == null)
+            {
+                copy = Asset(folder, copy, file);
+                Remember(copy, source);
+                return copy;
+            }
+            // Claimed now, so the names come out as one at a time would have made them.
+            YapsNativeBuilder.EnsureFolderPublic(folder);
+            string path = AssetDatabase.GenerateUniqueAssetPath(folder + "/" + file);
+            for (int n = 1; !Claimed.Add(path); n++)
+                path = AssetDatabase.GenerateUniqueAssetPath($"{folder}/{System.IO.Path.GetFileNameWithoutExtension(file)} {n}.mat");
+            Held.Add((copy, source, path));
             return copy;
+        }
+
+        static void Remember(Material copy, Material source) =>
+            AssetImporter.GetAtPath(AssetDatabase.GetAssetPath(copy)).userData = Mark + GlobalObjectId.GetGlobalObjectIdSlow(source);
+
+        // Each CreateAsset was an import of its own, one per slot. Held and written in one batch
+        // instead, never over a rebuild's own files, which are written in place.
+        static List<(Material copy, Material source, string path)> Held;
+        static HashSet<string> Claimed;
+
+        static void Hold()
+        {
+            Held = Reuse == null ? new List<(Material, Material, string)>() : null;
+            Claimed = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+        }
+
+        // Before anything asks a copy for its path or its source, and before the save.
+        static void Flush()
+        {
+            var held = Held;
+            Held = null;
+            if (held == null || held.Count == 0) return;
+            AssetDatabase.StartAssetEditing();
+            try
+            {
+                foreach (var (copy, _, path) in held) AssetDatabase.CreateAsset(copy, path);
+            }
+            finally { AssetDatabase.StopAssetEditing(); }
+            // The importer exists only once the batch has imported.
+            foreach (var (copy, source, _) in held) Remember(copy, source);
         }
 
         // The material a squash copy was made from, or null when it is not one.
@@ -606,6 +648,7 @@ namespace AvatarBridge
             // Patched in one batch first, as Add does: one at a time, each import cost about a
             // minute in a large project.
             var pending = new List<Material>();
+            Hold();
             foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
                 string path = AnimationUtility.CalculateTransformPath(smr.transform, root);
@@ -654,6 +697,7 @@ namespace AvatarBridge
                     }
                 }
             }
+            Flush();
             foreach (var p in providers)
             {
                 p.materials = p.materials.Concat(added).Distinct().ToArray();
@@ -1059,7 +1103,12 @@ namespace AvatarBridge
                     said + ". Tune it, and preview it, on the YAPS Squash component on the converted avatar");
                 if (ctx.MergedController != null) FollowSwaps(root, ctx.MergedController.animationClips, folder, ctx.Report);
             }
-            finally { YapsShaderPatcher.EndPass("squash", ctx.Report); }
+            finally
+            {
+                // A pass that threw still writes what it made, or the scene saves them inline.
+                Flush();
+                YapsShaderPatcher.EndPass("squash", ctx.Report);
+            }
         }
 #endif
     }

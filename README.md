@@ -1128,6 +1128,11 @@ the avatar. This walks every material in the project instead, so it also reaches
 you have not opened and anything you were sent. Upload the prop again afterwards, since the copy
 already on the platform is the one it went up with.
 
+Each update also names its patched shaders afresh, so `Assets/YAPS/Generated/Shaders` keeps the last
+version's set beside the new one. *Tools ▸ YAPS ▸ Remove unused patched shaders* moves every shader
+no material or scene in the project uses to the trash, with its includes, and asks first. A shader
+still in use stays.
+
 **A ring-and-socket prop prefab**: *Tools ▸ YAPS ▸ Create a ring-and-socket prop prefab* writes
 `YAPS Ring and Socket Prop` to `Assets/YAPS/Prefabs` too: the plug prop's other half, a spawnable
 carrying a ring to pass through above and a hole to enter below, facing opposite ways so one prop
@@ -1434,8 +1439,9 @@ socket just past the tip of a baked plug in the scene, or in front of the scene 
 is none, and it arrives with Preview on: every baked plug in the scene bends toward it while you
 move it. **Test plug** drops a baked capsule in front of the camera. **Make the selected test object
 a prop** does the rest; upload each from the CCK and try them with a second person. The tab's
-*Props and prefabs* card also carries the three prefab buttons and **Update every YAPS shader in
-this project**, the same as their *Tools ▸ YAPS* menu items above.
+*Props and prefabs* card also carries the three prefab buttons, **Update every YAPS shader in
+this project** and **Remove unused patched shaders**, the same as their *Tools ▸ YAPS* menu items
+above.
 
 **No contact channel is built.** A plug finds a socket you placed by hand the way it finds a
 converted one: through the screen atlas, with marker lights where the atlas cannot answer. Build
@@ -2347,7 +2353,8 @@ fine. **Convert again**; if it persists, that's worth an issue.
 
 On a YAPS avatar it can also be `Assets/YAPS/Generated/Shaders`: the patched shaders of every
 avatar in the project live there, so deleting it turns all their YAPS materials magenta. Convert
-again to bring them back.
+again to bring them back. To tidy the folder, use *Tools ▸ YAPS ▸ Remove unused patched shaders*
+instead: it keeps every shader something still uses.
 
 ### A mesh renders white, washed out, or loses its eyes
 

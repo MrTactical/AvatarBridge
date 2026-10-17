@@ -277,6 +277,50 @@ namespace AvatarBridge
                 : said + $" {failed} could not be: their original shader is no longer in the project.";
         }
 
+        // The tag every patched file carries, the shader and its includes alike.
+        static readonly Regex GeneratedTag = new Regex(@"_YAPS_([0-9a-f]{8})(?:_\d+)?\.[A-Za-z0-9]+$");
+
+        // Every patched shader nothing in the project uses, with its includes, to the trash.
+        // Each YAPS version names its copies afresh, so the shared folder keeps every set before
+        // it. A material or a scene naming the shader keeps it; so does one loaded and unsaved.
+        // It reads the whole project, so it is a button, never part of a pass.
+        public static string PruneUnused(Func<int, bool> confirm = null, string folder = SharedFolder)
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling || EditorApplication.isUpdating)
+                return "Not while Unity is playing, compiling or importing. Try again once it is done.";
+            AssetDatabase.Refresh();
+            if (!AssetDatabase.IsValidFolder(folder)) return "No patched shaders in this project.";
+            var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var guids = AssetDatabase.FindAssets("t:Material").Concat(AssetDatabase.FindAssets("t:Scene")).Distinct().ToArray();
+            try
+            {
+                for (int i = 0; i < guids.Length; i++)
+                {
+                    if (EditorUtility.DisplayCancelableProgressBar("YAPS", $"Checking what uses each shader ({i + 1} of {guids.Length})",
+                            (i + 1) / (float) guids.Length)) return "Stopped. Nothing was removed.";
+                    used.UnionWith(AssetDatabase.GetDependencies(AssetDatabase.GUIDToAssetPath(guids[i]), false));
+                }
+            }
+            finally { EditorUtility.ClearProgressBar(); }
+            foreach (var m in Resources.FindObjectsOfTypeAll<Material>())
+                if (m != null && m.shader != null) used.Add(AssetDatabase.GetAssetPath(m.shader));
+
+            var groups = Directory.GetFiles(folder).Select(f => f.Replace('\\', '/'))
+                .Select(f => (path: f, tag: GeneratedTag.Match(Path.GetFileName(f))))
+                .Where(f => f.tag.Success).GroupBy(f => f.tag.Groups[1].Value, f => f.path).ToList();
+            // A set goes whole or not at all: its includes belong to its shader alone.
+            var unused = groups.Where(g => !g.Any(p => p.EndsWith(".shader", StringComparison.OrdinalIgnoreCase) && used.Contains(p))).ToList();
+            int shaders = unused.Sum(g => g.Count(p => p.EndsWith(".shader", StringComparison.OrdinalIgnoreCase)));
+            int kept = groups.Count - unused.Count;
+            if (unused.Count == 0) return $"Nothing to remove: {BridgeElements.Count(kept, "patched shader is", "patched shaders are")} in use.";
+            if (confirm != null && !confirm(shaders)) return "Nothing was removed.";
+            var failed = new List<string>();
+            AssetDatabase.MoveAssetsToTrash(unused.SelectMany(g => g).ToArray(), failed);
+            return $"Moved {BridgeElements.Count(shaders, "unused patched shader", "unused patched shaders")} to the trash, " +
+                   $"with {(shaders == 1 ? "its" : "their")} includes; {kept} in use kept." +
+                   (failed.Count > 0 ? $" {BridgeElements.Count(failed.Count, "file", "files")} could not be moved: {string.Join(", ", failed.Take(3).Select(Path.GetFileName))}." : "");
+        }
+
         // What the patched shader is called, and it is not cosmetic.
         //
         // Poiyomi strips a shader from the BUILD when it carries Thry's two

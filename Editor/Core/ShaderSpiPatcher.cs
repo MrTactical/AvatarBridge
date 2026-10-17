@@ -118,7 +118,12 @@ namespace AvatarBridge
             Outcome outcome)
         {
             int swapsRepointed = 0;
-            foreach (var clip in ClipsOf(controller))
+            var clips = ClipsOf(controller).ToList();
+            Prepared = Prejudge(clips.SelectMany(c => AnimationUtility.GetObjectReferenceCurveBindings(c)
+                    .SelectMany(b => AnimationUtility.GetObjectReferenceCurve(c, b) ?? Array.Empty<ObjectReferenceKeyframe>()))
+                .Select(k => k.value is Material m && m != null ? m.shader : null)
+                .Where(s => s != null && !patched.ContainsKey(s)));
+            foreach (var clip in clips)
             {
                 foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
                 {
@@ -151,6 +156,7 @@ namespace AvatarBridge
                     }
                 }
             }
+            Prepared = null;
             if (swapsRepointed > 0)
             {
                 report.Converted(Category,
@@ -193,8 +199,12 @@ namespace AvatarBridge
                 bool correct;
                 try
                 {
-                    unit = ReadUnit(source);
+                    // Planned beside the others by Prejudge, the plan made for this very unit.
+                    if (Prepared == null || !Prepared.TryGetValue(source, out var ready)) ready = (ReadUnit(source), null);
+                    Prepared?.Remove(source);
+                    unit = ready.unit;
                     correct = StereoProblems(unit, out plan).Count == 0;
+                    plan = plan ?? ready.plan;
                 }
                 catch
                 {
@@ -295,7 +305,9 @@ namespace AvatarBridge
             var clones = new Dictionary<Material, Material>();
             var outcome = new Outcome();
 
-            foreach (var renderer in target.GetComponentsInChildren<Renderer>(true))
+            var renderers = target.GetComponentsInChildren<Renderer>(true);
+            Prepared = Prejudge(renderers.SelectMany(r => r.sharedMaterials).Where(m => m != null).Select(m => m.shader));
+            foreach (var renderer in renderers)
             {
                 var materials = renderer.sharedMaterials;
                 bool changed = false;
@@ -319,6 +331,7 @@ namespace AvatarBridge
                     renderer.sharedMaterials = materials;
                 }
             }
+            Prepared = null;
 
             // Materials that arrive by animated swap sit on no renderer
             // right now, invisible to the loop above, and draw into one
@@ -390,6 +403,13 @@ namespace AvatarBridge
             var made = PlanStereo(unit);
             Times.Planning.Stop();
             plan = made;
+            var problems = Verdict(unit, made);
+            ProblemsByContent[key] = new List<string>(problems);
+            return problems;
+        }
+
+        static List<string> Verdict(List<SourceFile> unit, StereoPlan made)
+        {
             var problems = new List<string>();
             if (!(made.Passes == 0 && made.SurfaceOnly))
             {
@@ -399,8 +419,44 @@ namespace AvatarBridge
                     || ((made.Passes == 0 || made.Left.Count > 0) && !unit.Any(f => f.Text.Contains(m)))).ToList();
                 if (missing.Count > 0) problems.Add("missing " + string.Join(", ", missing));
             }
-            ProblemsByContent[key] = new List<string>(problems);
             return problems;
+        }
+
+        // Set while a pass judges: each shader's unit as read, with its plan when Prejudge made one.
+        static Dictionary<string, (List<SourceFile> unit, StereoPlan plan)> Prepared;
+
+        // Every shader a pass is about to judge, planned at once on the thread pool: one plan can
+        // take seconds, and they ran one after another. Planning is string work on text already
+        // read; reading stays here, since the AssetDatabase answers only on the main thread. The
+        // verdicts land in ProblemsByContent, so the judging after it never plans these again.
+        internal static Dictionary<string, (List<SourceFile> unit, StereoPlan plan)> Prejudge(IEnumerable<Shader> shaders)
+        {
+            var units = new Dictionary<string, (List<SourceFile> unit, StereoPlan plan)>();
+            foreach (var shader in shaders.Where(s => s != null).Distinct())
+            {
+                string path = SourcePathOf(shader);
+                if (path == null || units.ContainsKey(path)) continue;
+                // One that throws is read again by Judge, which refuses it by name.
+                try { units[path] = (ReadUnit(path), null); }
+                catch { }
+            }
+            var fresh = units.Select(u => (path: u.Key, u.Value.unit, key: ContentKey(u.Value.unit, false)))
+                .Where(u => !ProblemsByContent.ContainsKey(u.key)).GroupBy(u => u.key).Select(g => g.First()).ToList();
+            var plans = new StereoPlan[fresh.Count];
+            Times.Planning.Start();
+            System.Threading.Tasks.Parallel.For(0, fresh.Count, i =>
+            {
+                try { plans[i] = PlanStereo(fresh[i].unit); }
+                catch { }
+            });
+            Times.Planning.Stop();
+            for (int i = 0; i < fresh.Count; i++)
+            {
+                if (plans[i] == null) continue;
+                ProblemsByContent[fresh[i].key] = Verdict(fresh[i].unit, plans[i]);
+                units[fresh[i].path] = (fresh[i].unit, plans[i]);
+            }
+            return units;
         }
 
         // Every file of a unit in order, with the names written when they
@@ -943,14 +999,17 @@ namespace AvatarBridge
             }
 
             // A reconvert into the same folder writes the same text again, and a
-            // rewritten file is reimported and recompiled for nothing. Only text
-            // proven this session, and only byte for byte what is already there.
+            // rewritten file is reimported and recompiled for nothing. Only byte for
+            // byte what is already there; text not proven this session, after a
+            // restart, is checked where it lies, and written again only if that fails.
             string key = ContentKey(unit, true);
             bool proven = CompiledCopies.Contains(key);
             string outPath = dir + "/" + shaderFile.OutputName;
-            if (proven && unit.All(f => Unchanged(dir + "/" + f.OutputName, f.Text))
-                && AssetDatabase.LoadAssetAtPath<Shader>(outPath) is Shader existing)
+            if (unit.All(f => Unchanged(dir + "/" + f.OutputName, f.Text))
+                && AssetDatabase.LoadAssetAtPath<Shader>(outPath) is Shader existing
+                && (proven || Verify(existing) == null))
             {
+                CompiledCopies.Add(key);
                 Times.Reused++;
                 reason = null;
                 return existing;
@@ -967,10 +1026,16 @@ namespace AvatarBridge
             // Includes first, shader last. Importing the shader is what
             // compiles it, and it fails on includes not yet in the
             // AssetDatabase.
-            foreach (string path in written.Skip(1))
+            // One batch: each import alone ran every package's import hooks.
+            AssetDatabase.StartAssetEditing();
+            try
             {
-                AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+                foreach (string path in written.Skip(1))
+                {
+                    AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+                }
             }
+            finally { AssetDatabase.StopAssetEditing(); }
             // Only for a folder made on disk just now, which the AssetDatabase has
             // not seen. A refresh rescans the whole project, and ran once per shader.
             if (!known) AssetDatabase.Refresh();
@@ -980,9 +1045,7 @@ namespace AvatarBridge
             // Checked even when the same text passed in another folder: an include
             // left as text can resolve differently beside a different copy.
             var result = AssetDatabase.LoadAssetAtPath<Shader>(outPath);
-            string errors = result == null ? "copy failed to import"
-                : ShaderUtil.ShaderHasError(result) ? ShaderErrors(result)
-                : StereoVariantError(result);
+            string errors = Verify(result);
             if (errors != null)
             {
                 // Keep the failed source, as .txt so Unity never tries to compile it, every file
@@ -1012,6 +1075,10 @@ namespace AvatarBridge
             reason = null;
             return result;
         }
+
+        static string Verify(Shader copy) => copy == null ? "copy failed to import"
+            : ShaderUtil.ShaderHasError(copy) ? ShaderErrors(copy)
+            : StereoVariantError(copy);
 
         // Exactly what WriteAllText would put there: UTF-8 with no byte order mark.
         static bool Unchanged(string path, string text)

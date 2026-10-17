@@ -56,8 +56,8 @@ physics A/B probes and a corpus run. Decisions on the queue's open questions, sa
   a portal is protocol 10, so that is Joe's call. *Revised 2026-10-17: the plan in the YAPS 5
   record keeps protocol 9, so a portal no longer has to ride 5.0.0; decisions D1 to D7 are Joe's*)
 - No user reports since 4.7.2.
-- `BridgeDefines.Version` is 5.0.0 on dev from 2026-10-17, for Joe's in-game test build (Kar in Attempt
-  Conversion, every option on, through `Dev/Probes/ConvertForWearProbe`). Nothing is tagged.
+- `BridgeDefines.Version` is 5.0.0 on dev from 2026-10-17, for Joe's in-game test build (one avatar
+  converted with every option on, through `Dev/Probes/ConvertForWearProbe`). Nothing is tagged.
 - Joe wears it in ChilloutVR before 5.0.0 ships, with the full in-game checklist (all of it,
   ordered by risk, paced over days), and the release still needs his word.
 
@@ -174,9 +174,12 @@ copy's main asset. The test covers it, and fails with the old rehomer. Still to 
   goes to `Assets/YAPS/Generated/Shaders` (`YapsShaderPatcher.SharedFolder`); the name already
   hashed the source path, its text and the YAPS version, so nothing else had to change, and the
   output-folder argument is gone from `Patch`, `Prewrite` and `Refresh`. The project sweep no longer
-  writes beside the old copy either. Corpus digests that list output paths change once. Follow-ups,
-  neither done: the copies are never pruned, so each YAPS version leaves the last set behind (as it
-  did per folder before), and an explicit cleanup could remove what no material uses; and deleting
+  writes beside the old copy either. Corpus digests that list output paths change once. Follow-ups:
+  ~~the copies are never pruned, so each YAPS version leaves the last set behind~~ **DONE on dev
+  2026-10-17:** *Remove unused patched shaders* (Setup, Props and prefabs card, and the Tools ▸ YAPS
+  menu; `YapsShaderPatcher.PruneUnused`) trashes every tagged set whose shader no material or scene
+  depends on directly and no loaded material uses, asking first; `Dev/Tests/PruneShadersTest` 6/6 in
+  a folder of its own. Generated/Locked is not covered. Not done: deleting
   the folder turns every YAPS avatar in the project magenta until each is converted again (README
   Troubleshooting says so). Writing each copy's `.meta` with a GUID derived from its hash would let
   one reconvert relink the rest; left out until somebody hits it. The stereo patcher's copies could
@@ -200,12 +203,23 @@ copy's main asset. The test covers it, and fails with the old rehomer. Still to 
   folder first, in one call: the folder is this avatar's, and the fresh copy carries no squash, so
   nothing in it is reused. Reconverted once (subset `sqfolder`): 12 files, one set, digest as before.
   Squash has not shipped, so no user ever had it.
-- The per-slot `.mat` saves in the squash pass (about 35 s), batched: unprobed, because the importer
-  and GUID may not exist until the batch stops.
+- ~~The per-slot `.mat` saves in the squash pass, batched.~~ **DONE on dev 2026-10-17:** the
+  converter's copies are held (`YapsSquash.Hold`) and written in one StartAssetEditing batch before
+  anything asks one for its path, with the importer mark set after the Stop, where the importer
+  exists. Names are claimed as they are made, so they come out as before; a rebuild's own files are
+  still written in place. One-avatar subset A/B (`sqfolder`) in a project copy: digest identical. The time is not
+  measured cleanly: run B had the shader cache run A warmed (squash 79 s to 3 s).
 - `RestorePartialOffStates` and `AssertOwnedBindingsEverywhere` still claim, delete and create one
   clip per state.
 - Stereo copies written in one batch, a verified marker that survives a restart, and judging in
-  parallel.
+  parallel. **Mostly DONE on dev 2026-10-17:** every shader a pass, the swap pass or the report check
+  is about to judge is planned at once on the thread pool (`ShaderSpiPatcher.Prejudge`; reading stays
+  on the main thread), and Judge takes the plan made for its unit, so nothing plans twice. Each copy's
+  includes import in one batch. After a restart a byte-identical copy is verified where it lies and
+  rewritten only if that fails, in place of the in-memory marker; no file marker. Same A/B: planning
+  3.3 s to 2.5 s, report check 1.4 s to 0.9 s, digest identical; SpiPatcherProbe 34/34 and
+  SpiIncludeProbe 5/5. Not done: one write batch across shaders, which only saves per-import
+  overhead (the compile is paid either way) and needs staging: every include in one batch, then every shader, then each verified in order.
 
 **Decided 2026-09-23 (Joe):** ship the next release first (one default corpus run authorised,
 release on his word), then the two items below. **It is 4.6.4** (Joe, same day): 4.6.3 is skipped,

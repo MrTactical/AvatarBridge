@@ -349,10 +349,12 @@ namespace AvatarBridge
                 "Socket prefabs go to Assets/YAPS/Prefabs; drag one under a bone. The plug prop is a ready spawnable."));
             props.Section("After an update");
             props.Body.Add(BridgeElements.ButtonRow(
-                BridgeElements.Btn("Update every YAPS shader in this project", RefreshShaders)));
+                BridgeElements.Btn("Update every YAPS shader in this project", RefreshShaders),
+                BridgeElements.Btn("Remove unused patched shaders", PruneShaders)));
             props.Body.Add(BridgeElements.Hint(
                 "A prop keeps the shader it was built with. This updates every YAPS material in the project; " +
-                "upload old props again after."));
+                "upload old props again after. Each update leaves the last set of patched shaders behind: " +
+                "removing the ones no material uses moves them to the trash."));
             _pages.Add(props);
         }
 
@@ -361,6 +363,17 @@ namespace AvatarBridge
         static void RefreshShaders()
         {
             string said = YapsShaderPatcher.SweepProject();
+            EditorUtility.DisplayDialog("YAPS", said, "OK");
+            Debug.Log("[AvatarBridge] " + said);
+        }
+
+        // The sets earlier versions left in the shared folder, which nothing uses any more.
+        [MenuItem("Tools/YAPS/Remove unused patched shaders")]
+        static void PruneShaders()
+        {
+            string said = YapsShaderPatcher.PruneUnused(n => EditorUtility.DisplayDialog("YAPS",
+                $"Move {BridgeElements.Count(n, "patched shader", "patched shaders")} that no material in this project uses " +
+                "to the trash, with their includes?", "Move to trash", "Cancel"));
             EditorUtility.DisplayDialog("YAPS", said, "OK");
             Debug.Log("[AvatarBridge] " + said);
         }

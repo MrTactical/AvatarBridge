@@ -993,7 +993,10 @@ namespace AvatarBridge
             // The materials a toggle swaps in as well as the ones worn at rest, as the advisor
             // and the patcher both reach them.
             var materials = ctx.Target.GetComponentsInChildren<Renderer>(true).SelectMany(r => r.sharedMaterials)
-                .Concat(SwappedMaterials(ctx.MergedController));
+                .Concat(SwappedMaterials(ctx.MergedController)).ToList();
+            // Planned side by side first; the loop then finds every verdict made.
+            ShaderSpiPatcher.Prejudge(materials.Where(m => m != null && m.shader != null && !IsKnownStereoShader(m.shader.name))
+                .Select(m => m.shader));
             foreach (var material in materials)
             {
                 var shader = material != null ? material.shader : null;
