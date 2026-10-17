@@ -69,7 +69,7 @@ point of comparison**: the [original](https://github.com/imagitama/vrc3cvr) was 
 2023, and Narazaka's is the maintained CCK4-era fork. If you want a smaller, focused converter,
 it's a good tool.
 
-The two overlap less than the names suggest. What differs, from Narazaka's documentation as of
+The two overlap less than the names suggest. What differs, from Narazaka's documentation and source as of
 mid-2026:
 
 | | AvatarBridge | vrc3cvr (Narazaka) |
@@ -78,6 +78,7 @@ mid-2026:
 | The settings picked *from your avatar* rather than from its documentation | ✅ [Analyse](#analyse-this-avatar) measures and offers each one | - |
 | PhysBones → DynamicBone | ✅ built in | via the external [PhysBone-to-DynamicBone](https://github.com/FACS01-01/PhysBone-to-DynamicBone) |
 | PhysBones → **MagicaCloth2**, feel derived from both solvers' decompiled source ([the derivation](docs/SolverCalibration.md)) | ✅ | - |
+| PhysBones still on an avatar already on ChilloutVR | ✅ converted in place by the Toolkit's [PhysBones to cloth](#chilloutvr-toolkit) card, its animations rewired | deleted from the output by default; the external [PhysBone-to-DynamicBone](https://github.com/FACS01-01/PhysBone-to-DynamicBone) is a step you run on its own |
 | **Modular Avatar** | ✅ baked automatically | ✅ via its own component + manual bake |
 | **VRCFury** (toggles, linked clothing, merged armatures survive) | ✅ baked automatically | manual |
 | VRCFury's sync workarounds removed instead of carried across broken | ✅ | - |
@@ -98,7 +99,7 @@ mid-2026:
 
 Every ✅ in the AvatarBridge column is documented on this page, and most are confirmed in game;
 see the banner above for what that means here. The right-hand column is read from vrc3cvr's own
-documentation, not from testing it; if anything there is wrong or has since changed,
+documentation and source, not from testing it; if anything there is wrong or has since changed,
 [open an issue](https://github.com/MrTactical/AvatarBridge/issues) and it gets corrected.
 
 ## It's a head start, not a magic button
@@ -214,8 +215,8 @@ but only the game shows gestures, contacts, synced parameters and physics actual
 - **A [Toolkit](#chilloutvr-toolkit) for any ChilloutVR avatar**: the converter's passes as
   standalone cards: check what the game will break, say what the avatar does and what it costs
   (and trim what can go), clear out empty layers and unused parameters, patch stereo shaders,
-  wire visemes and blink, clamp audio, fix mesh bounds, add the height slider, write the
-  description, and merge animators. **Open in the Avatar Tester** hands the picked avatar
+  wire visemes and blink, clamp audio, fix mesh bounds, turn leftover PhysBones into cloth, let
+  soft bodies push apart, add the height slider, write the description, and merge animators. **Open in the Avatar Tester** hands the picked avatar
   straight to the tester.
 
 *(No VRChat SDK installed? The tool still runs in [Setup mode](#setup-mode) and prepares any
@@ -545,6 +546,9 @@ when the parent's scale has a negative axis; Unity's constraints don't, and Chil
 that does. Constraints under such a parent land reflected, and the report names every one.
 
 ## PhysBones → MagicaCloth2
+
+Already on ChilloutVR with the PhysBones still on? The Toolkit's **PhysBones to cloth** card runs
+this conversion alone, in place; see [ChilloutVR Toolkit](#chilloutvr-toolkit).
 
 **Structure transfers:** which bone the chain hangs from, which colliders it collides with (whole
 bones against them, as VRChat does, rather than only the joints), which transforms to leave out,
@@ -1736,7 +1740,9 @@ the avatar, and after a run it counts the errors and warnings it found. A button
 `CVRAvatar` on the root stays greyed out until the object has one.
 
 The Toolkit ships in the converter's own package and needs no VRChat SDK: install AvatarBridge
-in a ChilloutVR project and these cards work on their own; see [Installation](#installation).
+in a ChilloutVR project and these cards work on their own; see [Installation](#installation). The
+one exception is **PhysBones to cloth**, shown only where the VRChat SDK is installed, since
+without it a PhysBone is a missing script with nothing to read.
 
 | card | does |
 |---|---|
@@ -1748,6 +1754,7 @@ in a ChilloutVR project and these cards work on their own; see [Installation](#i
 | **Face: visemes and blink** | Finds the face mesh and wires the standard viseme and blink blendshapes onto the CVRAvatar. A face mesh already set there is kept unless the visemes are found on another one. Touches nothing else on it |
 | **Audio limits** | Clamps every audio source to settings ChilloutVR handles: doppler off, distance floors and caps, fully 3D. One `minDistance 0` source on a wearer can mute the whole game |
 | **Mesh bounds** | Resizes skinned mesh bounds to the avatar's own volume plus clearance, so meshes stop vanishing at the screen's edge |
+| **PhysBones to cloth** | For an avatar already on ChilloutVR that still carries its PhysBones, a port that kept its VRChat descriptor included. Converts them in place to MagicaCloth2 or DynamicBone with the Convert tab's [Physics options](#physics-which-solver-and-how-the-chains-feel), all but **Add physics to toggled rigs that have none**: the converter's own physics pass, colliders and grouping included. Animations that switch or animate a PhysBone or a collider, and toggles that hide a part with physics, are rewired as a conversion rewires them, into a copy of the avatar's controller (and of its override controller) in its output folder; its own controller and clips are never edited. Refused on a VRChat avatar (a VRChat descriptor and no CVRAvatar), which converts in the Convert tab instead, and while the avatar already carries converted cloth, since a second set fights the first. When its override controller swaps in a clip that drives physics, animations are left as they are and the report says which. Helper-rig chains get no physics, and **Size for the largest a slider makes the body** measures the mesh as it stands. Ctrl+Z undoes the whole run; the copy stays in the folder, unused |
 | **Soft bodies** | MagicaCloth2 only. Lets soft bodies that sit near each other, like the two breasts or thighs, push apart instead of passing through: a sphere on each one's collision bone, given to the others. Neither VRChat nor MagicaCloth2 does this on its own, so it improves on the original. A soft body carrying both sides on one cloth is named, since those two cannot push each other. Running it twice changes nothing |
 | **Height slider** | Adds the quick-menu Height slider (0.25×–4×, centred on the original size) to the controller ChilloutVR uploads (the one under the avatar's override controller, else its base controller) and to its advanced settings. Its menu entry goes first in the Advanced Settings list, where people look for it. Refused, with a warning, while that controller is the CCK's own stock one, since layers added there would reach every avatar in the project. Not added, with a warning, when the avatar already has its own parameter or menu entry called "Height" |
 | **Store description** | Writes the [description](#store-description) from what the avatar has, types it into the upload page when that window is open and its Description box is empty, and copies it to the clipboard either way |
@@ -1829,7 +1836,8 @@ Below the results, **What the report tells you** holds two ticks that only ever 
 ### Physics: which solver, and how the chains feel
 
 A card of its own, above Manual and Automated: which solver to convert into isn't something the
-avatar decides, so it isn't buried with the settings that are.
+avatar decides, so it isn't buried with the settings that are. The Toolkit's **PhysBones to
+cloth** card uses these same options, all but **Add physics to toggled rigs that have none**.
 
 | setting | default | what it does |
 |---|---|---|
@@ -2038,6 +2046,12 @@ Bipeds are unaffected by any of it.
 
 ### Converted with caveats
 
+- **PhysBones to cloth, the Toolkit card.** It rewires animations into a copy of the controller
+  ChilloutVR uploads, and points the CVRAvatar's base controller at the copy when it was that same
+  controller. When the base controller is a different one, the CCK's **Create Controller** rebuilds
+  from it and drops the rewiring, and the report says so: press Ctrl+Z on the card first, then
+  Create Controller, then the card again. When the override controller swaps in a clip that drives
+  physics, the animations are left as they are and named in the report.
 - **Squash (opt-in).** A layer whose shader cannot be patched (a built-in shader with no source on
   disk, a surface shader) cannot follow, so the pair under it holds still rather than coming
   through it, and the report names the layer. A layer casts its shadow unsquashed when the shadow

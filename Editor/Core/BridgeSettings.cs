@@ -137,7 +137,9 @@ namespace AvatarBridge
         // Invents physics the author never made. A toggled style with
         // its own rig and mesh but no PhysBone gets a synthesized
         // MagicaCloth, preset by classification. Off because some
-        // rigged props are rigid on purpose. MagicaCloth2 only.
+        // rigged props are rigid on purpose. MagicaCloth2 only. The
+        // Toolkit's PhysBones card leaves it off: it cannot see cloth
+        // placed by hand.
         public bool addPhysicsToRiggedStyles = false;
 
         [Header("VRChat-only system stripping")]

@@ -2475,7 +2475,7 @@ Left open by the story, all four done the same night, editor-measured:
 - **Done 2026-10-15:** `UiOffscreenProbe.FindSource()` picked either of two VRChat avatars in one
   scene from run to run. It now takes an active one first, then the first in the hierarchy.
 
-### "Convert just one part, like only PhysBones": a user's request, 2026-10-17. PLAN, NOT BUILT
+### "Convert just one part, like only PhysBones": a user's request, 2026-10-17. SLICES 1-2 BUILT
 
 From the 5.0.0 video: a way to convert one system at a time instead of the one-click Convert, for
 example only PhysBones to MagicaCloth2. Read of the pipeline, settings and in-place tools, one judge.
@@ -2504,9 +2504,49 @@ is that PhysBones has no card.
   Play-mode reload kills it, cancel leaves a half clone), any mode switch or new tab.
 - Docs when built: README `#chilloutvr-toolkit` row (and its "needs no VRChat SDK" line gets an
   exception), `#physbones--magicacloth2`, the vrc3cvr table, Known limitations for the toggle gap.
-- **Open, for Joe:** accept a VRChat avatar too (default no: refuse on a `VRCAvatarDescriptor` and
-  point at Convert); ship slice 1 before toggles (default yes, report names the clips); card settings
-  from the Convert tab's Physics options (default yes).
+- Joe, 2026-10-17: "defaults are fine", then "fix" on the three caveats. So: a port that kept its
+  VRChat descriptor beside a CVRAvatar is accepted (a VRChat descriptor and no CVRAvatar is refused),
+  slice 2 was built rather than shipping the clip-naming rows, settings are the Convert tab's.
+
+*Built, 2026-10-17 (Dev/Tests/PhysBonesInPlaceTest 29/29 in batch):*
+- `Editor/Core/Physics/PhysBonesInPlace.cs`, hooked into `ToolkitPanel.ConvertPhysBones` (the add-on
+  ships the Toolkit without `Core/Physics`). `addPhysicsToRiggedStyles` forced off: its synthesizer
+  cannot see cloth placed by hand. `NotePhysicslessStyle` is silent under `Standalone` for the same
+  reason.
+- Slice 2: `CopyAsset` of the shipped controller into the avatar's output folder, `Own` clones every
+  clip a pass would edit (and any foreign blend tree above one), then `RewirePhysicsToggles` (now
+  internal), `EmbedLayer`, `RepointColliderEnableCurves`, `ReportAnimatedPhysBoneProperties`. The
+  override controller is copied and retargeted, never edited: Free wins retargets the user's in
+  place, which reaches every avatar sharing it. A swap the copy would lose is measured (live swap
+  count before and after), not assumed; unrelated swaps survive, tested.
+- Refusals, rows kept and copies deleted: an override swapping in a physics clip, an override of an
+  override, touched clips only a synced layer plays, a copy that fails.
+- Undo: one Ctrl+Z puts back the PhysBones, removes the cloth and points the avatar back at its own
+  controller; the copy stays on disk, unused, and a re-press numbers the next one.
+- A port still carrying a VRChat descriptor gets a warning that its VRChat upload loses the PhysBones,
+  only when the run deleted some.
+- Review the same day, 14 findings confirmed and fixed, 1 refuted (CVR native toggle targets: they
+  become clips through Create Controller, so the card sees clips). The fixes: `Wire` also swaps
+  `avatarSettings.animator`/`overrides`, or the CCK offers "Attach Created Override" and puts the
+  unrewired override back; it returns false when no slot held the controller, which now refuses.
+  Rows of a thrown-away rewire wait in a `Quiet` report and never reach the console. The rewire
+  gate counts the override's own clips, so a swapped-in physics clip refuses instead of being
+  missed. `toggleStyle` pinned to clips so a collider's host follows it. The shared converter's
+  stacked-root pass no longer disables variants when the target converts nothing (`converts`
+  gate, both paths). The Convert window saves its settings on losing focus, since the card reads
+  them. README Highlights and the Create Controller caveat corrected.
+
+*Still open (card):*
+- The CCK's Create Controller rebuilds the upload from `baseController`, which the card leaves alone
+  when it is not the shipped controller, so it drops the rewiring. Reported, not prevented. Writing
+  the rewire into the base too is the fix; the public package cannot reuse `YapsOwner.Targets`.
+- Override swaps and synced layers are refused rather than handled.
+- A toggle above a PhysBone's `rootTransform` that does not hold the component is not rewired, the
+  same gap a conversion has (`RewirePhysicsToggles` matches `chain.Source` only).
+- Free wins (`FreeWins.Retarget`, FreeWins.cs:200-219) retargets a shared override controller in
+  place. Same fix as the card: copy it.
+- Not yet seen in the GUI or in game: the in-game half (toggles switching the cloth) is only
+  falsifiable in ChilloutVR.
 
 ### "Avoid unpacking the converted prefab": a user's request, 2026-10-14. A ON DEV, B PARKED
 
@@ -2890,7 +2930,11 @@ designs, one judge. Chosen: lock STAND-INS, never the user's materials.
   9.65 s for six in one call). It is Unity compiling each fresh patched shader's default passes, Base, Add
   and ShadowCaster, synchronously in batch, on the FIRST material created on it: `new Material(shader)`
   took 89.9 s in the trigger probe and every later step milliseconds; the squash's first copy 445 s, the
-  second 71 s, the rest about 200 ms. **Open:** whether the GUI editor waits the same or compiles async.
+  second 71 s, the rest about 200 ms. *The GUI editor waits the same:* one patch (the 4 MB unlocked-Poiyomi
+  one), same probe, throttled alike: `new Material(shader)` 20.1 s in the GUI against 22.8 s in batch, and
+  setting it on a copy 8.2 s against 10.1 s. Asynchronous shader compilation does not cover it, so a user
+  converting in the window sees the same first-convert wait. **Open:** whether anything avoids it short
+  of fewer patches (one shader shared by more materials).
 - *Measured:* `ThryLockFirstTest` 13/13 against Poiyomi in the copy project. End to end, converting the
   squash avatar from unlocked sources: 663 s, all 6 YAPS materials patched from a locked stand-in, the
   upload lock took only the 5 plain materials, 0 shader errors, 0 locked twice, 0 left unlocked, no

@@ -15,7 +15,7 @@ namespace AvatarBridge
 {
     public static partial class AnimatorMerger
     {
-        static void RewirePhysicsToggles(AnimatorController master, BridgeContext ctx)
+        internal static void RewirePhysicsToggles(AnimatorController master, BridgeContext ctx)
         {
             var chains = ctx.ConvertedPhysicsChains;
             // Zero chains still matters when style synthesis is on: an avatar whose ONLY
@@ -191,8 +191,9 @@ namespace AvatarBridge
             void NotePhysicslessStyle(Transform container)
             {
                 // With no chain converted at all, "never had physics" cannot be told
-                // apart from "its PhysBones failed to convert", so say nothing.
-                if (chains.Count == 0 && !ctx.Settings.addPhysicsToRiggedStyles)
+                // apart from "its PhysBones failed to convert", so say nothing. The Toolkit's card
+                // cannot see cloth placed by hand, so "nothing simulated" is not its to say.
+                if (ctx.Standalone || (chains.Count == 0 && !ctx.Settings.addPhysicsToRiggedStyles))
                 {
                     return;
                 }

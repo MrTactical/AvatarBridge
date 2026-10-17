@@ -225,6 +225,9 @@ namespace AvatarBridge
             {
                 if (animator.runtimeAnimatorController != null) controllers.Add(animator.runtimeAnimatorController);
             }
+            // The Toolkit's card has no descriptor, and an unbuilt avatar's Animator slot is often
+            // empty. The converter has no merged controller yet at this point.
+            if (ctx.MergedController != null) controllers.Add(ctx.MergedController);
             var paths = new HashSet<string>(StringComparer.Ordinal);
             foreach (var clip in controllers.SelectMany(c => c.animationClips).Where(c => c != null).Distinct())
             {

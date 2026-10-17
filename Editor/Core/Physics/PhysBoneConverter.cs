@@ -295,12 +295,23 @@ namespace AvatarBridge
 
             ReportGrabbableChains(ctx, physBones);
 
+            // The branches below that return convert nothing, so nothing is switched off either:
+            // the Toolkit's card would leave the user's own variants disabled.
+            bool converts =
+#if AVATARBRIDGE_MAGICA
+                ctx.Settings.physicsTarget == PhysicsTarget.MagicaCloth2 ||
+#endif
+#if AVATARBRIDGE_DYNBONE
+                ctx.Settings.physicsTarget == PhysicsTarget.DynamicBone ||
+#endif
+                false;
+
             // Stacked systems (e.g. cake PB) put several PhysBones on the same root and let the
             // animator switch between them. All get converted so nothing is lost, but at most
             // one is left driving the chain; see below for why, and why none are deleted.
             foreach (var group in physBones
                 .GroupBy(pb => pb.rootTransform != null ? pb.rootTransform : pb.transform)
-                .Where(g => g.Count() > 1))
+                .Where(g => converts && g.Count() > 1))
             {
                 var enabled = group.Where(pb => pb.isActiveAndEnabled).ToList();
                 if (enabled.Count == 0)
@@ -374,8 +385,9 @@ namespace AvatarBridge
                     // break unreachable and earns CS0162 in every project that picked DynamicBone.
                     // A warning naming AvatarBridge is the first thing someone checks when they
                     // suspect the tool.
-                    ctx.Report.Error(Category, "MagicaCloth2 is not installed",
-                        "Import MagicaCloth2 (or choose the DynamicBone target) and convert again.");
+                    ctx.Report.Error(Category, "MagicaCloth2 is not installed", ctx.Standalone
+                        ? "Import MagicaCloth2, or choose DynamicBone in the Convert tab's Physics options, and press again."
+                        : "Import MagicaCloth2 (or choose the DynamicBone target) and convert again.");
                     return;
 #endif
 
@@ -400,13 +412,15 @@ namespace AvatarBridge
 #else
                     // Same shape as the MagicaCloth2 branch above, and the same reason.
                     ctx.Report.Error(Category, "DynamicBone is not installed",
-                        "Import DynamicBone or the VRLabs Dynamic-Bones-Stub, or choose MagicaCloth2.");
+                        "Import DynamicBone or the VRLabs Dynamic-Bones-Stub, or choose MagicaCloth2" +
+                        (ctx.Standalone ? " in the Convert tab's Physics options." : "."));
                     return;
 #endif
 
                 default:
                     ctx.Report.Skipped(Category, $"{BridgeElements.Count(physBones.Length, "PhysBone", "PhysBones")}",
-                        "Physics conversion disabled in settings.");
+                        ctx.Standalone ? "Physics is set to None in the Convert tab's Physics options."
+                            : "Physics conversion disabled in settings.");
                     return;
             }
         }
@@ -417,13 +431,19 @@ namespace AvatarBridge
         static void DeleteConverted(BridgeContext ctx, VRCPhysBone[] physBones)
         {
             if (!ctx.Settings.deleteConvertedPhysBones) return;
+            // The Toolkit's card edits the user's own avatar, so Ctrl+Z must bring them back.
+            void Destroy(Object o)
+            {
+                if (ctx.Standalone) UnityEditor.Undo.DestroyObjectImmediate(o);
+                else Object.DestroyImmediate(o);
+            }
             foreach (var pb in physBones)
             {
-                Object.DestroyImmediate(pb);
+                Destroy(pb);
             }
             foreach (var collider in ctx.Target.GetComponentsInChildren<VRCPhysBoneCollider>(true))
             {
-                Object.DestroyImmediate(collider);
+                Destroy(collider);
             }
         }
 
@@ -498,9 +518,12 @@ namespace AvatarBridge
             // no mesh either, and HelperRigCleanup deletes what it is handed.
             if (HelperRigCleanup.HoldsContent(chain.Root)) return false;
 
-            ctx.Report.Skipped(Category, ctx.PathInTarget(chain.Root),
-                "A helper stage that skins no mesh. If a constraint carried its motion onto a bone, a later " +
-                "pass puts one chain there.");
+            // The later pass is the converter's alone.
+            ctx.Report.Skipped(Category, ctx.PathInTarget(chain.Root), ctx.Standalone
+                ? "A helper stage that skins no mesh, left without physics here. A conversion from the VRChat " +
+                  "avatar puts one chain on the bone a constraint carried its motion onto."
+                : "A helper stage that skins no mesh. If a constraint carried its motion onto a bone, a later " +
+                  "pass puts one chain there.");
             ctx.HelperRigChains.Add(new BridgeContext.HelperRigChain
             {
                 Root = chain.Root,

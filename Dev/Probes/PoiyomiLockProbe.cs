@@ -441,7 +441,8 @@ namespace AvatarBridge.Regression
             string dir = Arg("-poiOut") ?? Path.GetTempPath();
             Directory.CreateDirectory(dir);
             File.WriteAllText(Path.Combine(dir, $"PoiLock-{stage}.txt"), Out.ToString());
-            if (Application.isBatchMode) EditorApplication.Exit(code);
+            // -poiQuit closes a GUI run too, which times what the editor window does.
+            if (Application.isBatchMode || Environment.GetCommandLineArgs().Contains("-poiQuit")) EditorApplication.Exit(code);
         }
 
         static IEnumerable<string> Scenes()

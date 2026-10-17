@@ -68,6 +68,10 @@ namespace AvatarBridge
 
         const string OutputRoot = "Assets/AvatarBridgeOutput";
 
+        // The converter's physics pass, handed in from there: the add-on's package carries this
+        // panel without it, and without the VRChat SDK a PhysBone is a missing script anyway.
+        internal static System.Func<GameObject, BridgeSettings, System.Func<BridgeReport, string>, BridgeReport> ConvertPhysBones;
+
         GameObject _target;
         AnimatorController _mergeTarget;
         readonly List<AnimatorController> _mergeSources = new List<AnimatorController>();
@@ -116,6 +120,7 @@ namespace AvatarBridge
             _pages.Add(Face());
             _pages.Add(Audio());
             _pages.Add(Bounds());
+            if (ConvertPhysBones != null) _pages.Add(PhysBones());
 #if AVATARBRIDGE_MAGICA
             _pages.Add(SoftBodies());
 #endif
@@ -267,12 +272,14 @@ namespace AvatarBridge
         // The converter window's Output folder, kept in its saved settings
         // (CvrSetup.SettingsPrefsKey), and refused the way the converter
         // refuses it. The default where that window never ran.
-        static string SavedOutputFolder()
+        static string SavedOutputFolder() => CvrSetup.CheckedOutputFolder(SavedSettings().outputFolder) ?? OutputRoot;
+
+        static BridgeSettings SavedSettings()
         {
             var saved = new BridgeSettings();
             try { JsonUtility.FromJsonOverwrite(EditorPrefs.GetString(CvrSetup.SettingsPrefsKey, "{}"), saved); }
-            catch (System.Exception) { return OutputRoot; }
-            return CvrSetup.CheckedOutputFolder(saved.outputFolder) ?? OutputRoot;
+            catch (System.Exception) { return new BridgeSettings(); }
+            return saved;
         }
 
         const string ReadsOnly = "reads only";
@@ -502,6 +509,20 @@ namespace AvatarBridge
                 AvatarHygiene.NormalizeSkinnedBounds(Context(report));
                 return report;
             }, "Bounds were already right.");
+
+        // The Convert tab's Physics options, read when pressed: the hint is only as fresh as the card.
+        BridgeElements.Card PhysBones()
+        {
+            var target = SavedSettings().physicsTarget;
+            return Tool("PhysBones to cloth", Changes,
+                BridgeElements.Hint(target == PhysicsTarget.None
+                        ? "Physics is set to None in the Convert tab, so this converts nothing until it is set again."
+                        : $"Converts the PhysBones still on it to {(target == PhysicsTarget.DynamicBone ? "DynamicBone" : "MagicaCloth2")}, in place, with the Convert tab's Physics options.",
+                    "For an avatar already on ChilloutVR. Animations that switch its PhysBones are rewired in a copy " +
+                    "of its controller, never its own. A VRChat avatar is converted in the Convert tab instead. Ctrl+Z undoes it."),
+                "Convert PhysBones", ButtonKind.Strong, () => ConvertPhysBones(_target, SavedSettings(), WriteFolder),
+                "No PhysBones on it.");
+        }
 
 #if AVATARBRIDGE_MAGICA
         BridgeElements.Card SoftBodies() => Tool("Soft bodies", Changes,

@@ -79,6 +79,9 @@ namespace AvatarBridge
 
         [System.NonSerialized] public GameObject ConvertedRoot;
 
+        // Rows that may yet be thrown away stay off the console until kept.
+        [System.NonSerialized] public bool Quiet;
+
         public void Add(ReportStatus status, string category, string subject, string detail = "")
         {
             Entries.Add(new ReportEntry { Status = status, Category = category, Subject = subject, Detail = detail });
@@ -91,7 +94,7 @@ namespace AvatarBridge
             // entries, one per cloth chain, parameter and menu control; wrote tens of thousands
             // of stack frames into the editor log and pushed it past 38 MB. Skipped in particular
             // was a warning, and a conversion legitimately skips a great deal.
-            if (status != ReportStatus.Error && status != ReportStatus.Warning)
+            if (Quiet || (status != ReportStatus.Error && status != ReportStatus.Warning))
             {
                 return;
             }

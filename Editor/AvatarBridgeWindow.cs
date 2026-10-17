@@ -121,6 +121,10 @@ namespace AvatarBridge
             SaveSettings();
         }
 
+        // The Toolkit window's PhysBones card reads the saved Physics options, and pressing it
+        // takes the focus from here first.
+        void OnLostFocus() => SaveSettings();
+
         // Also before every run: a crash mid-conversion skips OnDisable, and
         // the next session would quietly restore older settings.
         void SaveSettings()
@@ -221,6 +225,8 @@ namespace AvatarBridge
 
         void BuildToolsFlow()
         {
+            // The PhysBones card reads the Physics options from the saved settings.
+            SaveSettings();
             // Embedded: the window already owns the scroll and the footer.
             // A new pick drops the handed-over source, or the next rebuild pairs it with the wrong avatar.
             new ToolkitPanel(toolsTarget, true, toolsSource, t => { toolsTarget = t; toolsSource = null; })
