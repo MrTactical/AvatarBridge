@@ -4766,6 +4766,17 @@ rebuild.
 duplicate** (opt-in per plug, off by default, "fork into the next socket after copy 1's path"); D7
 is **in 5.0.0**, which waits for both to pass in game.
 
+**S1, 2026-10-17 (`85323b1`, branch `portal-spike`): the line gate FAILED, and was replaced.**
+- Passed: temps 52 against a limit of 52. Locked Poiyomi, six families, has no message the shipped shader lacks [M].
+- Failed: the deform listing is 3755 lines on a 3527 baseline, +6.46% against a +3% limit [M].
+- Cost by part [M]: props +1, tracker +28, lookup +133, cut +66.
+- The tracker as planned (`holeD`/`holeKey`) cost 55 temps. The spike carries the hole key in the sort kind's float bits instead, exact, with the sort macros unchanged.
+- **Why the gate was replaced:** the 3% was never a limit. It was the draft's own estimate (+17 lines) plus a margin, and the draft underestimated the lookup eightfold. Static lines also count code the GPU skips when no portal is in reach.
+- **The replacement gate** is GPU time, measured the `YapsResolvePerf` way:
+  - with no portal in reach, within noise of the baseline;
+  - with a portal live, no more than 21.6 us extra, the cost the second atlas read was accepted at.
+- "Zero messages" on Poiyomi could not be met as written: the shipped shader already has 33 to 115. The gate counts only the messages the spike adds.
+
 Asked for by Joe ("start mapping out a plan for the YAPS portal and duplicate"). Made by a workflow:
 four readers mapped the deform, the atlas and protocol, the authoring side and the plug's draw;
 three plans were written from different angles (compatibility, risk and verification, the user);
