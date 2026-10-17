@@ -208,14 +208,36 @@ copy's main asset. The test covers it, and fails with the old rehomer. Still to 
   converter's copies are held (`YapsSquash.Hold`) and written in one StartAssetEditing batch before
   anything asks one for its path, with the importer mark set after the Stop, where the importer
   exists. Names are claimed as they are made, so they come out as before; a rebuild's own files are
-  still written in place. One-avatar subset A/B (`sqfolder`) in a project copy: digest identical. The time is not
-  measured cleanly: run B had the shader cache run A warmed (squash 79 s to 3 s).
+  still written in place. One-avatar subset A/B in the probe project (`sqab-a` old, `sqab-b` new;
+  ~~`sqfolder`~~ was the reconvert run above, in the corpus project): digest identical.
+  ~~The time is not measured cleanly~~ **Bounded from the logs 2026-10-17:** the batch only removes
+  each copy's own import refresh. Warm, one avatar's five (0.944 s, `sqfolder`) became one (0.189 s,
+  `sqab-b`), 0.755 s saved; in 418 every per-copy refresh together is 187.5 s, 1.4% of squash, so the
+  batch saves about 165-178 s a full run. The 79 s to 3 s was the shader cache: the YAPS pass fell
+  77.7 to 1.2 s in the same pair, and Hold never touches it.
+- **Next squash target, unlocated:** in 418 the cold squash time outside every import refresh is
+  12,505 s of 13,402 s (94%) and tracks the number of NEW patched shaders (r 0.991), about 52.6 s
+  each, not the copies saved. Untimed blocks in `YapsSquash.Add`: Shares, Prewrite as a whole, the
+  slot loop, Flush, Apply, SaveAssets, FollowSwaps. Timers there (log only), then one cold one-avatar
+  run, would find the call. Warm 42-copy avatars also spend ~13 s outside refreshes, same timers.
 - `RestorePartialOffStates` and `AssertOwnedBindingsEverywhere` still claim, delete and create one
-  clip per state.
+  clip per state. **Measured 2026-10-17 from 418, the biggest cost in Animator merge:** the 418
+  digests hold about 2,679 Assert clips (`{layer} {state} restore`) on 59 avatars, and each write
+  costs one asset refresh (median 0.183 s, many with no "Start importing" line), so Assert is about
+  496 s of the 1,086.5 s merge total (inferred seconds, measured counts). RestorePartialOffStates is
+  at most about 12 s. Fix: claim each name with a listing instead of a delete, drop the
+  `LoadAssetAtPath`/`DeleteAsset` guards, and write both through the fillers' `CreateRestoreClips`
+  batch; about 465 s a full run, 27 of 33 s on the most toggle-heavy avatar. A/B subset: the four
+  heaviest Assert avatars plus one squash avatar as control, back to back (names in the commit).
+- **Latent, not hit in 418:** `WriteRestoreClip` registers its names only in `writtenPaths`, never
+  where `OutputAssetPaths.Claim` looks, so an Assert name `{A} {B} restore` equal to a filler's
+  `{A B} restore` is claimed as free and the filler's fresh file deleted, leaving its states with no
+  motion. Fix: Claim skips `writtenPaths`; an EditMode test in the style of TreeToggleRestoreTest.
 - Stereo copies written in one batch, a verified marker that survives a restart, and judging in
   parallel. **DONE on dev 2026-10-17:** every shader a pass, the swap pass or the report check
   is about to judge is planned at once on the thread pool (`ShaderSpiPatcher.Prejudge`; reading stays
-  on the main thread), and Judge takes the plan made for its unit, so nothing plans twice. Each copy's
+  on the main thread), and Judge takes the plan made for its unit, so nothing plans twice (~~nothing~~:
+  Stage plans again a shader whose verdict an earlier avatar cached). Each copy's
   includes import in one batch. After a restart a byte-identical copy is verified where it lies and
   rewritten only if that fails, in place of the in-memory marker; no file marker. Same A/B: planning
   3.3 s to 2.5 s, report check 1.4 s to 0.9 s, digest identical; SpiPatcherProbe 34/34 and
@@ -230,8 +252,24 @@ copy's main asset. The test covers it, and fails with the old rehomer. Still to 
   of the batch still imports and reports. SpiIncludeProbe checks it fresh and on a reconvert.
   Timed on the old code over three avatars with a warm cache: the copies took 52, 39 and 173 ms
   in all, 35, 31 and 160 of it verifying, so the batch saves at most 8 to 17 ms an avatar there.
-  The time is in planning (0.07, 10.2 and 4.2 s, every shader's text already seen) and the report
-  check (to 5.9 s): the next place to look. SpiPatcherProbe 34/34, SpiIncludeProbe 15/15.
+  The time is in planning (0.07, 10.2 and 4.2 s, ~~every shader's text already seen~~ **WITHDRAWN:**
+  Prejudge stores each verdict before StereoProblems asks, so "by text seen before" equals "judged"
+  by construction; these were cold plans) and the report check (to 5.9 s). SpiPatcherProbe 34/34,
+  SpiIncludeProbe 15/15.
+- **Stereo planning, read 2026-10-17.** The time is PlanStereo's own whole-text regex work, not
+  Unity's. The report check's cold text is mostly YAPS shader copies, written after the stereo pass,
+  so it is the only judge that sees them: in 418 the 68 YAPS avatars spent 166.8 s of its 167.3 s.
+  Where the text really was seen, it is about 4 ms a shader (read and SHA-256, twice per path).
+  Ranked, all exact by the code and identical on all 1,415 project shader units in a Python port:
+  (1) judge with a verdict-only plan (the fragment eye-index search and depth flags feed only the
+  patch; Verdict reads Passes, SurfaceOnly, Adds, Left), Stage plans fully; (2) literal guards before
+  the costly regexes (`_renderers` before OffPcPrograms, the function name before each signature
+  scan). Together 59-68% of planning in the port, about 208-240 s a full run (Mono unmeasured);
+  small next to squash, but 14-24% of a small avatar's whole conversion. (3) The advisor plans one
+  shader at a time inline when an avatar is selected, untimed, on the DEFAULT path (patching off):
+  Prejudge there first. (4) The report check reuses the units Prejudge read, not a second read.
+  (5) Log plans made, not cache hits. Proof: SpiPatcherProbe, SpiIncludeProbe, SpiSweepProbe lines
+  byte-identical before and after, and a subset whose `[Shaders]` and stereo diagnostics lines hold.
 
 **User report 2026-10-17 (4.7.2): the avatar held a pose in the floor. FIXED on dev.** Two FX
 hand-gesture layers whose clips carry body or root curves sat above Locomotion/Emotes, Override,
@@ -4357,6 +4395,16 @@ a skipped pass and a run pass produce the same output.
 Step one, 2026-10-15: every conversion logs `[AvatarBridge] Pass times (ms): ...` and `After the
 passes (ms): save N, report N` (log only, so digests do not move). The next full corpus run says
 which passes are worth skipping; nothing is skipped until then.
+**Answered from 418, 2026-10-17, no new run: no pass is worth skipping on its own.** 418 mostly
+measures first conversions: the 37 whose squash wrote new patched shaders hold 91.3% of all pass
+time. The reconvert win is the content-keyed shared shader folder, already on dev: one avatar 165-174 s
+cold against 19-20 s warm, the eight speed avatars 728 s against 261 s. What a warm reconvert still
+pays is mostly the animator chain (Animator merge to Audit serialized references, 73.4% of the warm
+eight), skippable only as one unit keyed on nearly the whole avatar, every setting and the version;
+VRCFury rebakes new source files every build, and the digest cannot prove a skipped chain equal (it
+records report lines and counts, not curves or masks). Recommendation: do not build pass skipping;
+time Animator merge's sub-steps (log only) and speed the chain itself, starting with the restore
+writers above. Contacts on the largest avatar (191 of 428 s corpus-wide) wants the same timers.
 
 ---
 
