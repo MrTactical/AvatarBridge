@@ -23,6 +23,9 @@ desktop.ini
 # Development spike and probes; local only.
 /Dev/Spikes/
 
+# Release drafts and the in-game checklist; local only, they name test avatars.
+/Dev/Release/
+
 # Superseded local builds.
 *.unitypackage.superseded-*
 survey.md

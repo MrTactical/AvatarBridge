@@ -21,6 +21,15 @@ Lookup order, first hit wins:
 MagicaCloth2 writes exactly the JSON AvatarBridge reads, so there's no conversion step, and it
 takes effect on the next conversion.
 
+Two of its numbers are not taken as saved:
+
+- **Soft-body spring power has a floor of 0.06.** A `Breast`, `Butt`, `Belly` or `Thigh` preset
+  saved lower is raised to it, the shipped ones included (they carry 0.01 to 0.03): at 0.01 a soft
+  body came out about six times floppier.
+- **Damping and angle restoration come from the PhysBone** while *Derive physics from the
+  PhysBone* is on, which it is by default. The preset's damping only sets a floor, and so does its
+  restoration on a soft body; turn the option off to keep the preset's own.
+
 *(The names start with `MC2_Preset` on purpose: that's the prefix MagicaCloth2's dropdown
 searches for. `Bridge_` keeps them from ever colliding with one of its own.)*
 

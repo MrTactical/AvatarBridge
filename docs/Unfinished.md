@@ -47,20 +47,38 @@ physics A/B probes and a corpus run. Decisions on the queue's open questions, sa
   or a hat. On, an inactive 100-vertex mesh sits under the tracker light at the base. Needs Joe's
   toy test in game.)
 - A per-plug menu toggle for answering its wearer's own sockets: built (one synced bool a plug).
-- A prop case in the corpus: added.
+- ~~A prop case in the corpus: added.~~ **Corrected 2026-10-17: not added.** Nothing under
+  `Dev/Corpus` or `Dev/Probes/FixtureBuilder.cs` builds a prop; outside the tool itself, only
+  `Dev/Tests/AvatarBridgeSmokeTest.cs` calls `MakeProp`, so the prop path has a smoke test and no regression cover (as the prop channel
+  records further down say). Building the prop case is the open item.
 - A slider whose two children animate different properties: covered by the restore pass.
 - Also in 5.0.0, Joe's picks from the rest of the queue: the remote twin, a diff between two
   conversions for users, fast reconversion (skipped passes proven equal by the corpus), and YAPS
-  portal and duplicate. (twin and diff built; fast reconversion logs each pass's time, the next full
-  run says which are worth skipping; portal and duplicate designed in the YAPS 5 record, NOT built:
+  portal and duplicate. (twin and diff built; fast reconversion logs each pass's time, ~~the next full
+  run says which are worth skipping~~ **answered 2026-10-17 from run 418 with no new run (a7ea62b):
+  no pass is worth skipping on its own; see "Answered from 418" under Incremental reconversion in
+  the converter-proof record**; portal and duplicate designed in the YAPS 5 record, NOT built:
   a portal is protocol 10, so that is Joe's call. *Revised 2026-10-17: the plan in the YAPS 5
   record keeps protocol 9, so a portal no longer has to ride 5.0.0; decisions D1 to D7 are Joe's*)
+- **Decided 2026-10-17 (Joe): 5.0.0 waits for SPS2 tags and portal/duplicate, worn in game.**
+  - The number stays 5.0.0: nothing has shipped under it, and the release film keeps its card.
+  - Portal and duplicate: the plan's defaults for D1 to D3, D5 and D6, with **D4 = build duplicate**
+    (opt-in per plug, off by default) and **D7 = in 5.0.0**. Protocol stays 9.
+  - SPS2 in the converter means **carrying SPS2's tags**: socket tags, plug include and exclude, the
+    `Self`/`Others` modifiers, into the `YapsTags` the atlas already carries. The field names come
+    from a test avatar tagged through VRCFury's own inspector and read from what it saves, never
+    from VRCFury's source (the clean-room rule of item 6 below).
+  - Ship gate: both packages ship together, after SPS2 tags and portal/duplicate pass in game.
+  - The ChilloutVR Toolkit becomes its own package **after 5.0.0**, for people already on
+    ChilloutVR who do not need the converter. Plan in its own record.
 - One user report on 4.7.2, 2026-10-17: the avatar held a pose in the floor. Fixed on dev (record
   under the speed items); its line goes in the 5.0.0 notes. No hotfix (Joe, same day): 5.0.0 carries it.
 - `BridgeDefines.Version` is 5.0.0 on dev from 2026-10-17, for Joe's in-game test build (one avatar
   converted with every option on, through `Dev/Probes/ConvertForWearProbe`). Nothing is tagged.
 - Joe wears it in ChilloutVR before 5.0.0 ships, with the full in-game checklist (all of it,
-  ordered by risk, paced over days), and the release still needs his word.
+  ordered by risk, paced over days), and the release still needs his word. The checklist and the
+  release notes draft are `Dev/Release/ingame-checklist-5.0.0.md` and `Dev/Release/release-5.0.0.md`
+  (gitignored, local only).
 
 **Bug panel over the 5.0.0 diff, 2026-10-15: 14 findings, 13 kept and FIXED on dev, 1 refuted.**
 Readers per area, each finding then checked by a judge trying to refute it. Fixed, by area:
@@ -793,6 +811,11 @@ falloff, one-way rings, the tag dropdown, multi-mesh plugs, the Mesh-to-None cle
    the original is silent. So the material carries no new name to detect SPS2 by in these versions,
    and `Detect` needs nothing. The corpus project stays on 1.1408.0 so its digests stay comparable.
 
+   **Decided 2026-10-17 (Joe): carry SPS2's tags in 5.0.0.** Not a detection signature: the tags
+   a VRCFury socket or plug component saves on the avatar (socket tags, plug include and exclude,
+   `Self`/`Others`), read from a test avatar tagged through VRCFury's own inspector, mapped into
+   `YapsTags`. Same clean-room footing as reading a bake's material output.
+
 7. **The sweep's carried toggle failures**: triaged as avatar-side, no tool signature. **141 in run
    401, 2026-09-12, across 35 avatars**, up from the 131 this entry was written against. Read the
    sweep line carefully: its "(35)" header counts AVATARS and each bracket beside a name is that
@@ -918,6 +941,34 @@ falloff, one-way rings, the tag dropdown, multi-mesh plugs, the Mesh-to-None cle
     measured off the avatar in the scene and the runner converts a clone. And it is another full
     run's worth of wall clock per use, so it is a profile to run before a release that touches
     advice, not on every run.
+
+## Squash against the world: an idea, 2026-10-17. NOT STARTED, after 5.0.0
+
+Joe's idea: a soft part pressed flat against a world surface, a pane of glass for example, from any
+world object with a plain Unity collider. He says Poiyomi already has a shader-only version; this
+would reach further. Thinking so far, nothing built:
+- PhysX is the only way an avatar can feel a world collider without a script. Rigidbody,
+  ConfigurableJoint and colliders are on the avatar whitelist. Contacts and pointers never see a
+  world collider, and the hands the squash reads today come from the client's shader globals, which
+  carry players only.
+- Shape: one lag body per soft part (a sphere collider, no gravity, continuous speculative
+  collision) on a spring to a kinematic target at the part's rest place, the layering the PhysBone
+  parity record ("Layered on MagicaCloth2") built and measured in batch Play mode. A wall stops the
+  body where the part would go through it, so the body's offset from its target is the contact, a
+  normal and a depth. That goes to the shader as one more provider slot per part, and the shader
+  flattens every vertex past the plane onto it and spreads the volume sideways, as the pair squash
+  does.
+- Nothing to sync: every client simulates its own copy against the same world colliders.
+- Gates, in order: (1) which layer the client puts avatar colliders on, and whether that layer
+  collides with world geometry, for the wearer and for remote copies (the client processes avatar
+  colliders: content filters, layers, an added kinematic body; read that code first); (2) whether
+  the body fights the wearer's own player capsule, which it sits inside; (3) content filters
+  removing avatar colliders for some viewers; (4) slots: all 20 `_YAPS_SquashFollow` slots are in
+  use; (5) invisible world colliders (boundary walls, ramp hulls) would flatten the part against
+  nothing, so it wants a menu toggle; (6) glass usually has a collider, and rarely writes depth,
+  which is why this route and not a depth-buffer one (depth is also per viewer's camera).
+- Cost: the joint spike measured about 15 us a chain per avatar past the first, at 90 Hz.
+- Not in 5.0.0. It starts with a read-only look at gates 1 to 3 in the client.
 
 ## The atlas: what has never been worn, and what phase D is for
 
@@ -1313,9 +1364,13 @@ An avatar built one PhysBone per hair strand converts to one MagicaCloth compone
 94 components, 35 of them a single strand of the same hairstyle. Faithful to the source and the
 wrong shape for MagicaCloth2, which simulates any number of independent roots per component.
 
-**Grouping is written and compiles, on the `physbone-grouping` branch, and is deliberately NOT
-on `dev`.** It is untested against the avatar that reported it, so it must not reach a release
-until it converts that avatar correctly. Chains that would have received identical settings are
+~~**Grouping is written and compiles, on the `physbone-grouping` branch, and is deliberately NOT
+on `dev`.**~~ **Corrected 2026-10-17: merged into dev from `physbone-grouping-2` in eab6d24
+(2026-10-16).** It is untested against the avatar that reported it, so ~~it must not reach a release
+until it converts that avatar correctly~~ **superseded 2026-10-17: Joe's 5.0.0 decision of
+2026-10-15 merges it after physics A/B probes and a corpus run, and it is on dev since eab6d24
+(see "Merged into dev" below). Still open: it has not been checked against the reporter's PC
+avatar.** Chains that would have received identical settings are
 folded into one multi-root cloth: same classified kind, same parent on both the bone and the
 component's object, same colliders, same numbers. Held out are anchored volumes (measured and
 given a collision bone per side), a chain with a PhysBone parameter (the holder name IS the
@@ -1335,7 +1390,9 @@ bones but different mesh thickness collided at one size. Held out since (below).
 
 **Untested against the avatar that reported it.** The variant to hand is the Quest one, 8 chains,
 four of them anchored volumes, none groupable. The reporter has been asked which avatar it is.
-Merge to `dev` only once the PC avatar converts and the result is checked in game.
+~~Merge to `dev` only once the PC avatar converts and the result is checked in game.~~
+**Superseded 2026-10-17 by Joe's 5.0.0 decision (2026-10-15): merged in eab6d24. The PC avatar
+check stays open, and so does the in-game one.**
 
 **2026-10-14 (overnight): branch `physbone-grouping-2`**, the old branch merged onto dev,
 reviewed twice and fixed (its own Unfinished record lists what). New hold-outs: a chain the
@@ -1362,8 +1419,10 @@ worn:
   needs no hold-out, since the 5% segment rule already keeps grouped strands' spacing within 5%.
   Its own commit, so it can be dropped if the cloth count matters more than the radius.
   Open from it: a mirrored pair measuring 2.4x apart is worth a look at what the fit samples there.
-- **Merged into dev 2026-10-16**, held local until the full corpus run that follows it is read:
-  that run is the corpus run Joe's 5.0.0 decision asks for. One conflict, the Multi Child report
+- **Merged into dev 2026-10-16**, ~~held local until the full corpus run that follows it is read~~
+  **(corrected 2026-10-17: dev is not held local; it has been pushed since Joe's word of
+  2026-09-12, and eab6d24 is on `origin/dev`)**:
+  the full corpus run that follows it is the corpus run Joe's 5.0.0 decision asks for. One conflict, the Multi Child report
   line, which now carries both the group's label and the soft-body wording. Still not worn, and
   still not checked against the reporter's PC avatar.
 
@@ -3271,7 +3330,7 @@ before changing anything; if it is metres, the tip's local position is the value
 lossy scale, and the leash follows. The same report's Play-mode collapse, meshes pulled into lines
 while edit mode looked right, was the user's own setup and not this.
 
-### Menu toggles did nothing on a plug whose material was not its mesh's first. FIXED ON DEV 2026-09-23, for 4.6.4, not verified in game
+### Menu toggles did nothing on a plug whose material was not its mesh's first. FIXED ON DEV 2026-09-23, ~~for 4.6.4~~ **SHIPPED IN 4.6.4** (841a6ff is in `v4.6.4`, checked 2026-10-17), not verified in game
 
 Found by the readout probe: the readout sits in slot 1 or 2, and through a real Animator it never
 showed. Unity's list of what can be animated on the renderer (`GetAnimatableBindings`) holds
@@ -3329,7 +3388,7 @@ plug for the chooser check were baked into the converted plug materials and the 
 saved into the controllers, and the tester then failed 10 checks on untagged sockets refused. It
 now puts the authored tags back and bakes again at the end, which removed both.
 
-### Blendshapes a plug renderer holds came undone mid-bend. ROOT CAUSE FIXED ON DEV 2026-09-23, for 4.6.4
+### Blendshapes a plug renderer holds came undone mid-bend. ROOT CAUSE FIXED ON DEV 2026-09-23, ~~for 4.6.4~~ **SHIPPED IN 4.6.4** (044cb3d and the root-cause fix 020e88b are both in `v4.6.4`, checked 2026-10-17)
 
 Field report on 4.6.2, with the output folder: near a socket the plug grew torn translucent pieces
 and black shards, and a ring appeared at the tip; at rest it looked right. The plug renderer held
@@ -3424,7 +3483,7 @@ their normal size when the plug is baked. Measured on the output folder:
   the texture pass alike. `Dev/Probes/WeighDataProbe.cs` on the reporter's avatar. Not in corpus
   408 (deployed before), and the corpus runs with the texture pass off.
 
-### An accessory riding the shaft stayed rigid while the plug bent. FIXED ON DEV 2026-09-22, for 4.6.4
+### An accessory riding the shaft stayed rigid while the plug bent. FIXED ON DEV 2026-09-22, ~~for 4.6.4~~ **SHIPPED IN 4.6.4** (b2644ed is in `v4.6.4`, checked 2026-10-17)
 
 Joe, from the reporter: the torn part is one of the accessories. The converter folded another mesh
 into the plug only when MORE than half of it rode the plug's bones, silently, so a harness whose
@@ -4060,7 +4119,11 @@ remain, and the cascade would have to learn to express a gap first. The converte
 author's reactions onto YAPS's own depth, once last on this list, shipped in 4.3.0 with the
 rebuild.
 
-### Portal and duplicate: the plan, 2026-10-17. NOT STARTED, waiting on Joe's D1 to D7
+### Portal and duplicate: the plan, 2026-10-17. NOT STARTED, ~~waiting on Joe's D1 to D7~~ DECIDED, for 5.0.0
+
+**Joe's answers, 2026-10-17:** the defaults below for D1, D2, D3, D5 and D6; D4 is **build
+duplicate** (opt-in per plug, off by default, "fork into the next socket after copy 1's path"); D7
+is **in 5.0.0**, which waits for both to pass in game.
 
 Asked for by Joe ("start mapping out a plan for the YAPS portal and duplicate"). Made by a workflow:
 four readers mapped the deform, the atlas and protocol, the authoring side and the plug's draw;
@@ -4306,7 +4369,11 @@ Tags: **[M]** measured or written down; **[R]** reasoned, not measured; **[GAME]
 ---
 
 ## The converter: prove it before the instance does
-*Status: planned, unstarted.*
+~~*Status: planned, unstarted.*~~ **Corrected 2026-10-17: partly built.** On dev since
+2026-10-15: the remote twin (`Editor/CckAnimatorTester.Remote.cs`), the conversion diff
+(`Editor/Core/ConversionDiff.cs`) and the upload check (`Editor/Core/UploadPreflight.cs`), each
+with its own status below; the toggle sweep shipped earlier. Not built: the bench, the budget planner and inferred Advanced Tagging.
+Pass skipping is declined from run 418 (below).
 
 Everything here comes from the same observation: the expensive bugs are the ones nobody can
 see in the editor, and every one this month was found by a person wearing the avatar.
@@ -4894,7 +4961,8 @@ still exists. It does on VRCFury 1.1408.0, and a missing switch now warns. Next 
 evidence, the ceiling, and the clean-room question still open for a property signature.
 
 Still wanted, if SPS2 ever needs carrying rather than just not fighting: a carry map for whatever
-its knobs are called, which does need a real SPS2 bake to read.
+its knobs are called, which does need a real SPS2 bake to read. **Decided 2026-10-17: the tags are
+carried in 5.0.0** (Next up item 6).
 
 One thing it confirms rather than threatens: "The plug mesh must be straight / fully extended in
 the editor" is their constraint too. The bake measures a rest pose because the technique requires

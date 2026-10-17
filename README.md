@@ -145,6 +145,9 @@ but only the game shows gestures, contacts, synced parameters and physics actual
   sitting animations are grafted into ChilloutVR's locomotion layer, matched by blend-tree
   position; emotes move into the one layer that can both pose the body and hand it back; a flight
   pose rides CVR's **native** flight. The game moves you, with your avatar's art.
+- **GoGo's poses land in the emote wheel**: with GoGo Loco removed, up to eight of the avatar's own
+  GoGo emotes and GoGo's sit, kneel and lie poses go into ChilloutVR's
+  [emote wheel](#what-gets-converted), each named, at no sync cost.
 - **Penetration comes across working**, with the 18+ [YAPS](#yaps-penetration-that-works-in-chilloutvr)
   add-on installed: DPS, TPS and SPS become YAPS, the plug bends into sockets and sockets
   open, in game, for everyone, with the author's tuning carried over, and it reads and is read by
@@ -297,8 +300,10 @@ package: import the converter over such an install and the old penetration syste
 sitting there beside it.
 
 Deleting the folder costs nothing. **Your converted avatars are in `Assets/AvatarBridgeOutput`**,
-a sibling folder, and nothing here writes into them. Delete `Assets/AvatarBridge`, import the
-converter, and import the add-on too if you want penetration.
+a sibling folder, and nothing here writes into them. A chain preset you saved into
+`Assets/AvatarBridge/Presets` is the one exception: move it anywhere else in `Assets` first, it is
+found wherever it is. Delete `Assets/AvatarBridge`, import the converter, and import the add-on too
+if you want penetration.
 
 ## Usage
 
@@ -1419,8 +1424,11 @@ Poiyomi's panel entire.
 that locked shader. Your material stays unlocked and untouched. The upload then carries what a lock
 by hand would, with YAPS on top, rather than every Poiyomi feature, and the upload's own lock leaves
 it alone. Properties your animations drive stay live through the lock. The copy is reused until the
-material's settings change, so converting again locks nothing new. Where Poiyomi can't lock it, the
-report says so: see [Poiyomi's unlocked shader ships under YAPS](#yaps-the-report-says-poiyomis-unlocked-shader-ships-under-yaps).
+material's settings change, so converting again locks nothing new. A change of settings adds a new
+copy and the old one stays, so the folder only grows; it is safe to delete whenever you like, since
+every patched shader is a complete copy of its own in `Assets/YAPS/Generated/Shaders` and nothing
+built points back at it, and the next conversion or bake just locks again. Where Poiyomi can't lock
+it, the report says so: see [Poiyomi's unlocked shader ships under YAPS](#yaps-the-report-says-poiyomis-unlocked-shader-ships-under-yaps).
 
 **YAPS Simple Lit.** A plain lit shader (metallic workflow through Unity's own BRDF) that the tool
 falls back to when a mesh's own shader cannot be patched (Unity's Standard and everything else
