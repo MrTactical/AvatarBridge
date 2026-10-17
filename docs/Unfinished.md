@@ -108,7 +108,7 @@ names are stripped exactly (`VF80_` also prefixes the depth parameters, so never
 Skipped line says so, and README's SPS section explains. If Stealth is ever wanted, its clip would
 have to switch the atlas writer too.
 
-**Squash costs minutes per avatar, 2026-10-16. Fixes on dev and measured (subsets `speed1`, `speed2`); the full run's numbers are still to read.**
+**Squash costs minutes per avatar, 2026-10-16. Fixes on dev and measured (subsets `speed1`, `speed2`, then full run 418: squash 27,468 s to 13,402 s, all passes 34,587 s to 17,181 s).**
 The first corpus run with squash on (`CorpusSettings` forces it; a user's default is off) spends
 25 minutes in *Squash soft parts* on each of the five fixture avatars and 7 to 10 on the next two,
 against under 2 for every other pass combined. During it all 16 shader compilers are busy with
@@ -2717,7 +2717,10 @@ Regressions:
   too, not a converter change: that avatar's sweep throws in VRCFury's Animator hook in both runs
   ("threw while driving, writes lost"), its refused count is 15 in both, and C1 took three parameters
   out of the sweep order ahead of the throw, so different parameters land after it. Check once
-  `fix-417` is in: the refusal should go back to 416's list.
+  `fix-417` is in: the refusal should go back to 416's list. **Checked in 418: not back to 416's list,
+  and that is by design.** The family is back, but the two option rows stay stripped, so `VF#_legacy`
+  and `VF#_stealth` leave the sweep order, and two others, `EmissionBody` one of them, land after the same throw
+  instead. Refused is 15 in 416, 417 and 418.
 - **C5: the texture advice shrinks when squash is on.** Squash copies a material per renderer slot.
   `AvatarWeight.Densities` keys area by material and keeps a texture's lowest density with that one
   copy's area, so the "across X m²" figure covers one share and the reclaim advice falls (one avatar
@@ -2734,6 +2737,33 @@ Regressions:
 Time: across all 83 conversions squash took 79% of all pass time (27,468 of 34,587 s; median
 conversion 280 s, longest 2,559 s). Next were the animator merge 5%, YAPS 5% and self-contained clips
 4%. Compiling squash's shaders together is the lever above.
+
+### Corpus 418, the re-baseline after the speed merge and fix-417: clean, 2026-10-17
+
+Run 418 (YAPS profile, dev 44b07f2, throttled) against 417. 48 of 84 digests changed, every line traced
+to a commit, so 418 is now `Baseline`; the 4.6.6 baseline is kept as `Baseline-pre-418-20261017` and
+the run as `Current-418-20261017`. What moved:
+- *fix-417 (97d6b6a):* the SPS layer family is back. Against 416, each SPS avatar is short only the
+  by-design layers: `SPS - Stealth` (the option row) and, on GoGo avatars, `Action&AFK Arming`
+  (fd87f1d). The `_cvr` clip copies of the depth AAPs return to 416's count (21 of 21 on one avatar).
+- *The VRCFury update (1.1434.0) on the sources:* new `Time`, `DBT` and `Remote trap` layers, `VRCF Init
+  Behaviours` with the `SPS_PLAYER_ID` random ints, an empty-slot warning on 22 avatars, one more
+  sweep parameter on the SPS ones.
+- *C5 (8e0a0bf):* texture advice is back to the full surface, the exact figures the C5 record named
+  (6.07 m2, 29.4 MB).
+- *Squash copies only the layers over a part (0452e5a):* converted counts fall by 1 to 14 on 46
+  avatars (fewer materials patched), "sets of materials share a shader" counts fall with them, and the
+  "swapped-in material cannot squash" warning 417 added on two avatars is gone, since that material is
+  not over a part.
+- Errors: four avatars report VRCFury's own missing-files error, the same four as 417.
+
+Time against 417, all 83 conversions: total pass time 34,587 s to 17,181 s. Squash 27,468 to 13,402,
+animator merge 1,870 to 1,087, YAPS 1,630 to 986, self-contained clips 1,495 to 526, SPI patch 868 to
+295, contacts 594 to 428, rehome 177 to 78, stereo repoint 172 to 45. A second avatar on shaders an
+earlier one compiled converts in seconds (599 s to 16 s, 365 s to 25 s). Squash is still 78% of the
+total, and ten avatars are 57% of that: the first avatar on a heavy shader pays the compile once,
+up to 23 minutes. The levers left are the ones above (a GUID per hash so a reconvert relinks, pruning)
+and the Poiyomi lock probe (`PoiyomiLockProbe`, written, not yet run).
 
 ### The audit of 2026-10-03: about 210 findings fixed on dev, not verified in game
 
