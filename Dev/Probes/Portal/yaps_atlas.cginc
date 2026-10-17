@@ -300,11 +300,30 @@ bool YapsAtlasFits()
 // the entrance, so the cell protocol stays 9 and an older reader never looks.
 // Four pixels an entry: position fraction and tag, facing and number, the
 // cell index, the owner. Its own version salts the tag alone.
+//
+// Four is the floor at D5's reach and precision: the key is 28 bits, the
+// pose 72 (a 24-bit cell index, three 8-bit fractions, three 8-bit facing
+// components), 100 bits against three pixels' 96.
 #define YAPS_ATLAS_DIR_VERSION 1
 #define YAPS_ATLAS_DIR_ROWS    8
 #define YAPS_ATLAS_DIR_PX      4
-// The exit's cell edge for an 8-bit cell index per axis: +-41 m.
+// The exit's cell edge for an 8-bit cell index per axis: an exit within
+// +-41 m of its entrance, unwrapped there, so anywhere in the world.
 #define YAPS_ATLAS_DIR_CELL    0.32
+
+// How a key finds its slot. All three keep the match (tag, number and the
+// whole owner) and the four pixels; they differ in arithmetic only.
+//   0  the S1 design: two homes, a hash each, slots by modulo
+//   1  one home, S1's hashing
+//   2  two homes; the tag's own hash places home A, a second hash home B
+//      only on a miss, and slots come by multiply and shift, never a divide
+// 1 is the default: 30 listing lines under 0, no GPU time apart from either,
+// and an entry takes one slot instead of two. The price is availability: an
+// entry sharing its only slot with a later-drawn one is a plain hole in that
+// view, where two homes need both shared.
+#ifndef PORTAL_LOOKUP
+#define PORTAL_LOOKUP 1
+#endif
 
 int3 YapsDirKey(int owner, int n)
 {
@@ -318,20 +337,36 @@ uint YapsDirPerRow()
     return max((uint) YapsAtlasWidthPx() / YAPS_ATLAS_DIR_PX, 1u);
 }
 
-// Two homes, as a cell has, so a clash needs both.
-void YapsDirHomes(int owner, int n, out uint a, out uint b)
+uint YapsDirWord(int owner, int n)
 {
-    int3 k = YapsDirKey(owner, n);
-    uint total = YAPS_ATLAS_DIR_ROWS * YapsDirPerRow();
-    a = YapsAtlasMix(k, 0x68E31DA4u) % total;
-    b = (a + YapsAtlasMix(k, 0xB5297A4Du) % max(total - 1, 1u) + 1) % total;
+    return YapsAtlasMix(YapsDirKey(owner, n), 0x1B56C4E9u + YAPS_ATLAS_DIR_VERSION * 0x27D4EB2Fu);
 }
 
 // Odd numerators, for the 8-bit reason YapsAtlasTag gives.
 float YapsDirTag(int owner, int n)
 {
-    uint h = YapsAtlasMix(YapsDirKey(owner, n), 0x1B56C4E9u + YAPS_ATLAS_DIR_VERSION * 0x27D4EB2Fu);
-    return (1 + 2 * (h >> 25)) / 255.0;
+    return (1 + 2 * (YapsDirWord(owner, n) >> 25)) / 255.0;
+}
+
+// Where home 0 or 1 of (owner, n) starts: column in pixels, row from the top.
+// Writer and reader must address it bit for bit alike.
+void YapsDirHome(int owner, int n, int home, out uint px, out uint row)
+{
+    uint perRow = YapsDirPerRow();
+#if PORTAL_LOOKUP == 2
+    // 16 bits of column against at most 233 slots a row, so the multiply
+    // stays inside 32 bits and every slot is as likely as another.
+    uint h = home == 0 ? YapsDirWord(owner, n) : YapsAtlasMix(YapsDirKey(owner, n), 0xB5297A4Du);
+    px = (((h & 0xFFFF) * perRow) >> 16) * YAPS_ATLAS_DIR_PX;
+    row = (h >> 16) & (YAPS_ATLAS_DIR_ROWS - 1);
+#else
+    int3 k = YapsDirKey(owner, n);
+    uint total = YAPS_ATLAS_DIR_ROWS * perRow;
+    uint slot = YapsAtlasMix(k, 0x68E31DA4u) % total;
+    if (home != 0) slot = (slot + YapsAtlasMix(k, 0xB5297A4Du) % max(total - 1, 1u) + 1) % total;
+    px = (slot % perRow) * YAPS_ATLAS_DIR_PX;
+    row = slot / perRow;
+#endif
 }
 
 // Is this directory pixel the entry for (owner, n)? Alpha 0 is empty, and the
@@ -341,73 +376,68 @@ bool YapsDirTagged(float4 p0, float tagWant)
     return p0.a >= 0.5 && abs((p0.a - 0.5) * 2 - tagWant) <= 0.001;
 }
 
+// The writer's pixel i of the entry. The cell index keeps only its low byte
+// per axis; the reader puts back the rest from the entrance.
+float4 YapsDirEncode(int owner, int n, float3 at, float3 fwd, int i)
+{
+    float3 s = at / YAPS_ATLAS_DIR_CELL;
+    int3 c = int3(floor(s)) & 0xFF;
+    return i == 0 ? float4(frac(s), 0.5 + 0.5 * YapsDirTag(owner, n))
+         : i == 1 ? float4(fwd * 0.5 + 0.5, (1 + n) / (float) YAPS_ATLAS_OWNERMAX)
+         : i == 2 ? YapsOwnerEncode(c.x | (c.y << 8) | (c.z << 16))
+         : YapsOwnerEncode(owner);
+}
+
+// The three pixels after a tagged one. Number and owner must match too.
+// The cell is the one nearest the entrance with that low byte, so the reach
+// is +-41 m from the entrance, anywhere in the world.
+bool YapsDirRead(uint px, int py, int owner, int n, float4 p0, inout float3 exitAt, inout float3 exitFwd)
+{
+    float4 p1 = YAPS_ATLAS_LOAD(px + 1, py);
+    float3 f = p1.rgb * 2 - 1;
+    // No facing, no exit: a shaft leaving along nothing is a NaN.
+    bool ok = abs(p1.a * YAPS_ATLAS_OWNERMAX - (1 + n)) <= 0.5 && dot(f, f) >= 0.25;
+    if (ok) ok = YapsOwnerDecode(YAPS_ATLAS_LOAD(px + 3, py)) == owner;
+    if (ok)
+    {
+        int c = YapsOwnerDecode(YAPS_ATLAS_LOAD(px + 2, py));
+        int3 near = int3(floor(exitAt / YAPS_ATLAS_DIR_CELL));
+        int3 cell = near + ((((int3(c, c >> 8, c >> 16) - near) & 0xFF) ^ 0x80) - 0x80);
+        exitAt = (float3(cell) + p0.rgb) * YAPS_ATLAS_DIR_CELL;
+        exitFwd = normalize(f);
+    }
+    return ok;
+}
+
 // Where the exit of the hole keyed `key` (owner << 4 | number) is, from the
 // margin. One tap a home, then three on the home that answers. Tag, number
 // and the whole owner must all match, so a clash fails safe to a plain hole
-// and never to a wrong exit. inout, and written only on a hit.
+// and never to a wrong exit. exitAt comes in as the entrance; both are
+// written only on a hit.
+//
+// Home B only when A carries another tag. A tag that matches with the
+// wrong owner stops there too: one more way to fail safe, 1 in 128.
+// One return, not several: fxc reads an early one as a value that may
+// never be set, a warning on every host.
 bool YapsPortalExit(int key, inout float3 exitAt, inout float3 exitFwd)
 {
     int owner = key >> 4;
     int n = key & 15;
     float tagWant = YapsDirTag(owner, n);
-    uint a, b;
-    YapsDirHomes(owner, n, a, b);
-    uint perRow = YapsDirPerRow();
-#if PORTAL_BRANCHLESS
-    float4 pa = YAPS_ATLAS_LOAD((a % perRow) * YAPS_ATLAS_DIR_PX, YapsAtlasRow(a / perRow));
-    float4 pb = YAPS_ATLAS_LOAD((b % perRow) * YAPS_ATLAS_DIR_PX, YapsAtlasRow(b / perRow));
-    bool hitA = YapsDirTagged(pa, tagWant);
-    uint slot = hitA ? a : b;
-    float4 p0 = hitA ? pa : pb;
-    int px = (slot % perRow) * YAPS_ATLAS_DIR_PX;
-    int py = YapsAtlasRow(slot / perRow);
-    float4 p1 = YAPS_ATLAS_LOAD(px + 1, py);
-    float3 f = p1.rgb * 2 - 1;
-    bool ok = YapsDirTagged(p0, tagWant)
-        && abs(p1.a * YAPS_ATLAS_OWNERMAX - (1 + n)) <= 0.5 && dot(f, f) >= 0.25
-        && YapsOwnerDecode(YAPS_ATLAS_LOAD(px + 3, py)) == owner;
-    int c = YapsOwnerDecode(YAPS_ATLAS_LOAD(px + 2, py));
-    int3 cell = ((int3(c, c >> 8, c >> 16) & 0xFF) ^ 0x80) - 0x80;
-    if (ok)
-    {
-        exitAt = (float3(cell) + p0.rgb) * YAPS_ATLAS_DIR_CELL;
-        exitFwd = normalize(f);
-    }
-    return ok;
-#else
-    // Home B only when A carries another tag. A tag that matches with the
-    // wrong owner stops here too: one more way to fail safe, 1 in 128.
-    // One return, not several: fxc reads an early one as a value that may
-    // never be set, a warning on every host.
-    uint slot = a;
-    float4 p0 = YAPS_ATLAS_LOAD((a % perRow) * YAPS_ATLAS_DIR_PX, YapsAtlasRow(a / perRow));
+    uint px, row;
+    YapsDirHome(owner, n, 0, px, row);
+    float4 p0 = YAPS_ATLAS_LOAD(px, YapsAtlasRow(row));
     bool ok = YapsDirTagged(p0, tagWant);
+#if PORTAL_LOOKUP != 1
     if (!ok)
     {
-        slot = b;
-        p0 = YAPS_ATLAS_LOAD((b % perRow) * YAPS_ATLAS_DIR_PX, YapsAtlasRow(b / perRow));
+        YapsDirHome(owner, n, 1, px, row);
+        p0 = YAPS_ATLAS_LOAD(px, YapsAtlasRow(row));
         ok = YapsDirTagged(p0, tagWant);
     }
-    if (ok)
-    {
-        int px = (slot % perRow) * YAPS_ATLAS_DIR_PX;
-        int py = YapsAtlasRow(slot / perRow);
-        float4 p1 = YAPS_ATLAS_LOAD(px + 1, py);
-        float3 f = p1.rgb * 2 - 1;
-        // No facing, no exit: a shaft leaving along nothing is a NaN.
-        ok = abs(p1.a * YAPS_ATLAS_OWNERMAX - (1 + n)) <= 0.5 && dot(f, f) >= 0.25;
-        if (ok) ok = YapsOwnerDecode(YAPS_ATLAS_LOAD(px + 3, py)) == owner;
-        if (ok)
-        {
-            // 24 bits in the owner packing, a signed byte per axis.
-            int c = YapsOwnerDecode(YAPS_ATLAS_LOAD(px + 2, py));
-            int3 cell = ((int3(c, c >> 8, c >> 16) & 0xFF) ^ 0x80) - 0x80;
-            exitAt = (float3(cell) + p0.rgb) * YAPS_ATLAS_DIR_CELL;
-            exitFwd = normalize(f);
-        }
-    }
-    return ok;
 #endif
+    if (ok) ok = YapsDirRead(px, YapsAtlasRow(row), owner, n, p0, exitAt, exitFwd);
+    return ok;
 }
 
 // Outside the cube, so the clipper drops it.
