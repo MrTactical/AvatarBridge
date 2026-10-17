@@ -9,8 +9,14 @@
 #
 # What it CANNOT tell you: anything about the result. It proves the code
 # compiles, never that a plug bends. That still only happens in game.
+#
+#   yaps-fxc.sh [spike-dir]   includes found in spike-dir win over Editor/Yaps
+# Each target also prints its listing's temps, lines and slots, the budget a
+# change is judged against. YAPS_FXC_FLAGS reaches fxc, for -D switches.
 set -u
 YAPS="$(cd "$(dirname "$0")/../../../Editor/Yaps" && pwd -W)"
+SPIKE=()
+[ -n "${1:-}" ] && SPIKE=(-I "$(cd "$1" && pwd -W)")
 FXC="$(ls "/c/Program Files (x86)/Windows Kits/10/bin"/*/x64/fxc.exe 2>/dev/null | tail -1)"
 [ -z "$FXC" ] && { echo "fxc.exe not found (Windows SDK)"; exit 1; }
 
@@ -79,13 +85,18 @@ fail=0
 for t in plug writer deform; do
     # X3556 is a note about integer modulus being slow, and X4008 a division
     # the stubs fold to zero. Neither is a defect in the shader.
-    out="$("$FXC" -nologo -T vs_5_0 -E main -I "$YAPS" -I "$TMP" \
-           "$TMP/$t.hlsl" -Fo "$TMP/$t.cso" 2>&1 | grep -vE "X3556|X4008|^compilation object save succeeded")"
+    out="$("$FXC" -nologo -T vs_5_0 -E main ${YAPS_FXC_FLAGS:-} "${SPIKE[@]}" -I "$YAPS" -I "$TMP" \
+           "$TMP/$t.hlsl" -Fo "$TMP/$t.cso" -Fc "$TMP/$t.asm" 2>&1 \
+           | grep -vE "X3556|X4008|^compilation (object|code) save succeeded")"
     if echo "$out" | grep -q "error"; then
         echo "--- $t FAILED"; echo "$out"; fail=1
     else
         echo "--- $t ok"
         [ -n "$out" ] && echo "$out"
+        echo "stats $t temps $(grep -m1 -oE "dcl_temps [0-9]+" "$TMP/$t.asm" | cut -d' ' -f2)" \
+             "lines $(grep -c "" "$TMP/$t.asm")" \
+             "slots $(grep -m1 -oE "Approximately [0-9]+" "$TMP/$t.asm" | cut -d' ' -f2)" \
+             "indexable $(grep -c "dcl_indexableTemp" "$TMP/$t.asm")"
     fi
 done
 exit $fail
