@@ -4766,6 +4766,12 @@ rebuild.
 duplicate** (opt-in per plug, off by default, "fork into the next socket after copy 1's path"); D7
 is **in 5.0.0**, which waits for both to pass in game.
 
+**Joe, before the overnight of 2026-10-17 to 18, every row his default:**
+- **Production at risk.** Phases 5 to 7 and the duplicate's production work are built ahead of G2 and DG1. If G2 kills the transport (K1), they are reverted.
+- **Fallbacks.** If K2 or K3 fires, take the plan's fallback: the portal moves to the duplicate's copy-2 draw. Logged as a decision he can undo.
+- **Corpus.** The S4 span survey run, plus one full run once production lands. The full run is the job's fourth.
+- **Landing.** Once the editor gates and the full run are clean, merge `portal-spike` into `dev` and push, so the one in-game test build carries everything. If G2 kills the portal, revert it on `dev`. `main` is untouched.
+
 **S1, 2026-10-17 (`85323b1`, branch `portal-spike`): the line gate FAILED, and was replaced.**
 - Passed: temps 52 against a limit of 52. Locked Poiyomi, six families, has no message the shipped shader lacks [M].
 - Failed: the deform listing is 3755 lines on a 3527 baseline, +6.46% against a +3% limit [M].
