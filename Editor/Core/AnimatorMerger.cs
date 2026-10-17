@@ -39,6 +39,16 @@ namespace AvatarBridge
 
         public static void Run(BridgeContext ctx)
         {
+            // Log only, so digests do not move. Steps under 10 ms go into "rest".
+            var times = new List<string>();
+            long rest = 0;
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            void Lap(string step)
+            {
+                long ms = clock.ElapsedMilliseconds;
+                if (ms >= 10) times.Add($"{step} {ms}"); else rest += ms;
+                clock.Restart();
+            }
             CheckNamingTables(ctx);
             var vrcControllers = GetSelectedVrcControllers(ctx);
             ReportSkippedLayers(ctx);
@@ -241,9 +251,11 @@ namespace AvatarBridge
             }
 
             master.layers = masterLayers.ToArray();
+            Lap("Merge layers");
 
             _gestureConditionsRedirected = 0;
             GesturePass(master, vrcLayers, ctx);
+            Lap("GesturePass");
             // The CCK's kept hand layers already use gesture floats. Left alone.
             if (_gestureConditionsRedirected > 0)
             {
@@ -254,91 +266,128 @@ namespace AvatarBridge
                     "Tracking\" on in ChilloutVR's settings.");
             }
             RebuildAnalogFist(master, ctx);
+            Lap("RebuildAnalogFist");
             BehaviourPass(master, vrcLayers, ctx);
+            Lap("BehaviourPass");
             SystemStripper.Run(ctx, master, vrcLayers);
+            Lap("SystemStripper.Run");
             // After the stripper, before any renames. Reads the source
             // controllers, which still carry VRChat parameter names.
             LocomotionGrafter.Run(ctx, master);
+            Lap("LocomotionGrafter.Run");
             StripExistingFaceTracking(master, vrcLayers, ctx);
+            Lap("StripExistingFaceTracking");
             ReplaceAnimatorBlink(master, ctx);
+            Lap("ReplaceAnimatorBlink");
             ToggleNativizer.Run(ctx, master, vrcLayers);
+            Lap("ToggleNativizer.Run");
             // Before RenamePass, so menu machineNames still match.
             // Before CompactIntDropdowns, which needs the Ints in place.
             ParameterTypeInference.Run(master, ctx);
+            Lap("ParameterTypeInference.Run");
             RenamePass(master, vrcLayers, ctx);
+            Lap("RenamePass");
             ApplyParameterDefaults(master, ctx);
+            Lap("ApplyParameterDefaults");
             ReconcileAasInputTypes(master, ctx);
+            Lap("ReconcileAasInputTypes");
             // Before CreateParameterStreams, which must see the
             // EyeHeightAsMeters declaration this can add.
             FeedScaleParameters(master, ctx);
+            Lap("FeedScaleParameters");
             CreateParameterStreams(master, ctx);
+            Lap("CreateParameterStreams");
             FeedVelocityMagnitude(master, ctx);
+            Lap("FeedVelocityMagnitude");
             RehomeVolatileAssets(master, vrcLayers, ctx);
+            Lap("RehomeVolatileAssets");
             DeduplicateLayers(master, ctx);
+            Lap("DeduplicateLayers");
             DropStateMachinelessLayers(master, ctx);
+            Lap("DropStateMachinelessLayers");
             MaskMergedLayers(master, vrcLayers, ctx);
+            Lap("MaskMergedLayers");
             // Before the empty-state filler. Their preconditions are
             // mutually exclusive, so this order cannot reprocess its output.
             // Before the restore passes, so hoisted layers join ownership.
             HoistContestedTreeToggles(master, ctx);
-            // Shared registry of every restore clip this conversion writes.
-            // The state filler's sweep spares only clips it knows about.
-            // Also stops the passes overwriting each other's clip names.
-            var restoreClipPaths = new HashSet<string>();
-            RestorePartialOffStates(master, ctx, restoreClipPaths);
-            FillEmptyStatesWithRestoreClips(master, ctx, restoreClipPaths);
-            // After the state pass, whose sweep would delete these clips.
-            // Before FillEmptyMotionSlots, so off halves are still holes.
-            FillEmptyTreeSlotsWithRestoreClips(master, ctx, restoreClipPaths);
-            // After both fillers, topping only what is still missing.
-            // CVR never restores Write Defaults, so every binding
-            // must be asserted by real animation.
-            AssertOwnedBindingsEverywhere(master, ctx);
+            Lap("HoistContestedTreeToggles");
+            WriteRestoreClips(master, ctx);
+            Lap("WriteRestoreClips");
             // After the filler; its added motions are what can strobe.
             SuppressAnyStateSelfRestarts(master, ctx);
+            Lap("SuppressAnyStateSelfRestarts");
             UnlatchImpulsePingPongs(master, ctx);
+            Lap("UnlatchImpulsePingPongs");
             WarnLocomotionOverrides(master, vrcLayers, ctx);
+            Lap("WarnLocomotionOverrides");
             FaceTrackingInjector.Inject(master, ctx);
+            Lap("FaceTrackingInjector.Inject");
             AvatarScalerInjector.Inject(master, ctx);
+            Lap("AvatarScalerInjector.Inject");
             // After every layer exists. The stack checked is the one the game runs.
             AuditHandPoseConflicts(master, ctx);
+            Lap("AuditHandPoseConflicts");
             // After every pass that can hand out a mask. A masked layer
             // applies only the first object-reference binding, so a
             // masked material swap loses every slot but one.
             UnmaskObjectSwapLayers(master, ctx);
+            Lap("UnmaskObjectSwapLayers");
             // Run last. CVR silently drops transitions whose comparison
             // does not match the parameter's final type.
             ReconcileConditionModes(master, ctx);
+            Lap("ReconcileConditionModes");
             SyncDriverParameterTypes(master, ctx);
+            Lap("SyncDriverParameterTypes");
             RepairUnconditionalDriverStates(master, ctx);
+            Lap("RepairUnconditionalDriverStates");
             VerifyMenuParameterNames(master, ctx);
+            Lap("VerifyMenuParameterNames");
             PruneDeadMenuEntries(master, ctx);
+            Lap("PruneDeadMenuEntries");
             WithdrawSelfDrivenExposures(master, ctx);
+            Lap("WithdrawSelfDrivenExposures");
             CompactIntDropdowns(master, ctx);
+            Lap("CompactIntDropdowns");
             // After the menu is final. A parameter kept only for a menu
             // entry pruned above would stay declared and cost sync bits.
             // Before pruning, while every reference is still visible.
             RepairPrefixedReferences(master, ctx);
+            Lap("RepairPrefixedReferences");
             DeclareDanglingParameters(master, ctx);
+            Lap("DeclareDanglingParameters");
             DefaultUnsupportedBuiltIns(master, ctx);
+            Lap("DefaultUnsupportedBuiltIns");
             PruneOrphanedParameters(master, ctx);
+            Lap("PruneOrphanedParameters");
             // After pruning, which would throw these parameters away.
             SafeguardBlendParameters(master, ctx);
+            Lap("SafeguardBlendParameters");
 
             ReviveWeightGatedLayers(master, ctx);
+            Lap("ReviveWeightGatedLayers");
             BalanceMenuTreeActives(master, ctx);
+            Lap("BalanceMenuTreeActives");
 
             // Right before saving: animations that toggled a converted
             // PhysBone must reach the generated physics too.
             RewirePhysicsToggles(master, ctx);
+            Lap("RewirePhysicsToggles");
             AuditSizeBlendshapes(master, ctx);
+            Lap("AuditSizeBlendshapes");
             RepairClipPaths(master, ctx);
+            Lap("RepairClipPaths");
             AuditClipBindings(master, ctx);
+            Lap("AuditClipBindings");
             AuditMaterialProperties(master, ctx);
+            Lap("AuditMaterialProperties");
             ReportKeptFaceTracking(master, ctx);
+            Lap("ReportKeptFaceTracking");
             AuditCurveControlledGameParameters(master, ctx);
+            Lap("AuditCurveControlledGameParameters");
             // Last: every clip name in the master is final, and the labels must not repeat one.
             LocomotionGrafter.PlaceGogoEmotes(ctx, master);
+            Lap("LocomotionGrafter.PlaceGogoEmotes");
 
             master.name = SanitizeFileName(ctx.Target.name) + "_CVR";
 
@@ -350,11 +399,13 @@ namespace AvatarBridge
             // Any loss is an Error in the report.
             int motionsBeforeSave = CountMotionReferences(master);
             master = AnimatorAssetSaver.Save(master, controllerPath);
+            Lap("AnimatorAssetSaver.Save");
             // Before the filler, which plugs the very holes a failed save
             // leaves and drops counted curveless slider children.
             int motionsAfterSave = CountMotionReferences(master);
             // After the save. AddObjectToAsset needs a persisted asset.
             FillEmptyMotionSlots(ctx, master);
+            Lap("FillEmptyMotionSlots");
             // The serialized-guid audit runs later, from BridgeConverter,
             // so it judges the final file.
             if (motionsAfterSave < motionsBeforeSave)
@@ -477,6 +528,8 @@ namespace AvatarBridge
                 }
             }
             EditorUtility.SetDirty(ctx.CvrAvatar);
+            Lap("Overrides");
+            Debug.Log($"[AvatarBridge] Animator merge steps (ms): {string.Join(", ", times)}, rest {rest}");
         }
 
         static HashSet<string> SliderParameterNames(BridgeContext ctx)
@@ -2394,11 +2447,33 @@ namespace AvatarBridge
                 "nothing and flooded the console.");
         }
 
+        static void WriteRestoreClips(AnimatorController master, BridgeContext ctx)
+        {
+            // Shared registry of every restore clip this conversion writes.
+            // The state filler's sweep spares only clips it knows about.
+            // Also stops the passes overwriting each other's clip names.
+            var restoreClipPaths = new HashSet<string>();
+            RestorePartialOffStates(master, ctx, restoreClipPaths);
+            FillEmptyStatesWithRestoreClips(master, ctx, restoreClipPaths);
+            // After the state pass, whose sweep would delete these clips.
+            // Before FillEmptyMotionSlots, so off halves are still holes.
+            FillEmptyTreeSlotsWithRestoreClips(master, ctx, restoreClipPaths);
+            // After both fillers, topping only what is still missing.
+            // CVR never restores Write Defaults, so every binding
+            // must be asserted by real animation.
+            AssertOwnedBindingsEverywhere(master, ctx);
+        }
+
+        internal static void WriteRestoreClipsForTest(AnimatorController master, BridgeContext ctx)
+            => WriteRestoreClips(master, ctx);
+
         static void RestorePartialOffStates(AnimatorController master, BridgeContext ctx,
             HashSet<string> writtenPaths)
         {
             var topped = new List<string>();
             int curvesAdded = 0;
+            string dir = $"{ctx.OutputDir}/RehomedAssets";
+            var pending = new List<(AnimationClip clip, string path)>();
 
             // Which layer owns each property. A binding two layers
             // animate belongs to neither: dual restores fight, and the
@@ -2522,18 +2597,10 @@ namespace AvatarBridge
                 }
 
                 // Same home and claiming rule as every other generated clip, so reconversion
-                // replaces it instead of stacking "restore 2", "restore 3", ...
-                string target = OutputAssetPaths.Claim(
-                    $"{ctx.OutputDir}/RehomedAssets/{SanitizeFileName(filled.name)}.anim");
-                EnsureAssetFolder(System.IO.Path.GetDirectoryName(target).Replace('\\', '/'));
-                // Delete anything already at the path first. CreateAsset
-                // over an existing asset replaces the object and leaves
-                // other states holding null motions.
-                if (AssetDatabase.LoadAssetAtPath<AnimationClip>(target) != null)
-                {
-                    AssetDatabase.DeleteAsset(target);
-                }
-                AssetDatabase.CreateAsset(filled, target);
+                // replaces it instead of stacking "restore 2", "restore 3", ... Listed, not
+                // deleted: CreateRestoreClips clears the old files in one call.
+                string target = OutputAssetPaths.Claim($"{dir}/{SanitizeFileName(filled.name)}.anim", new List<string>());
+                pending.Add((filled, target));
                 // Register with the shared sweep-survivor list, or the
                 // filler's stale-clip sweep deletes this file.
                 writtenPaths.Add(target);
@@ -2542,6 +2609,8 @@ namespace AvatarBridge
                 curvesAdded += added;
                 topped.Add($"\"{layer.name}\" ({added})");
             }
+            // Before the fillers run, whose sweep and batch expect these on disk.
+            CreateRestoreClips(dir, pending);
 
             if (topped.Count > 0)
             {
@@ -2556,6 +2625,8 @@ namespace AvatarBridge
         {
             // master.layers copies every layer per read; snapshot once.
             var layers = master.layers;
+            string dir = $"{ctx.OutputDir}/RehomedAssets";
+            var pending = new List<(AnimationClip clip, string path)>();
             BuildRestoreOwnership(layers, out var owner, out _, out var treeDriven, out _);
 
             int curvesAddedTotal = 0;
@@ -2687,16 +2758,10 @@ namespace AvatarBridge
                         continue;
                     }
 
-                    // Same home, claiming and delete-first rules as the other restore writers, so
-                    // reconversion replaces cleanly instead of stacking numbered copies.
-                    string target = OutputAssetPaths.Claim(
-                        $"{ctx.OutputDir}/RehomedAssets/{copy.name}.anim");
-                    EnsureAssetFolder(System.IO.Path.GetDirectoryName(target).Replace('\\', '/'));
-                    if (AssetDatabase.LoadAssetAtPath<AnimationClip>(target) != null)
-                    {
-                        AssetDatabase.DeleteAsset(target);
-                    }
-                    AssetDatabase.CreateAsset(copy, target);
+                    // Same home, claiming and batch as the other restore writers, so reconversion
+                    // replaces cleanly instead of stacking numbered copies. One file each was a
+                    // refresh each, near half the merge on a toggle-heavy avatar.
+                    pending.Add((copy, OutputAssetPaths.Claim($"{dir}/{copy.name}.anim", new List<string>())));
                     state.motion = copy;
                     EditorUtility.SetDirty(state);
                     addedThisLayer += added;
@@ -2708,6 +2773,7 @@ namespace AvatarBridge
                     touched.Add($"\"{layer.name}\" ({addedThisLayer})");
                 }
             }
+            CreateRestoreClips(dir, pending);
 
             if (touched.Count > 0)
             {
@@ -7377,11 +7443,13 @@ namespace AvatarBridge
         // A stable name per clip, uniquified only against this run's registry.
         // Folder-wide uniquifying stacks numbered copies on every reconversion.
         // Only named here; CreateRestoreClips writes a filler's clips together.
+        // Reserved where Claim looks too: the assertion pass's "{layer} {state} restore" can
+        // spell a filler's "{layer} restore", and claiming it as free deleted the filler's file.
         static void WriteRestoreClip(AnimationClip clip, string dir, HashSet<string> writtenPaths,
             List<(AnimationClip clip, string path)> pending)
         {
             string path = $"{dir}/{clip.name}.anim";
-            for (int n = 2; !writtenPaths.Add(path); n++)
+            for (int n = 2; !writtenPaths.Add(path) || !OutputAssetPaths.Reserve(path); n++)
             {
                 path = $"{dir}/{clip.name} {n}.anim";
             }
@@ -7399,22 +7467,7 @@ namespace AvatarBridge
                 return;
             }
             EnsureAssetFolder(dir);
-            // writtenPaths is case-sensitive and Windows is not, so two layers named apart only by
-            // case share one file. Those keep the one-at-a-time order, whatever it made of that.
-            var distinct = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            if (!pending.TrueForAll(p => distinct.Add(p.path)))
-            {
-                foreach (var (clip, path) in pending)
-                {
-                    if (AssetDatabase.LoadAssetAtPath<AnimationClip>(path) != null)
-                    {
-                        AssetDatabase.DeleteAsset(path);
-                    }
-                    AssetDatabase.CreateAsset(clip, path);
-                }
-                pending.Clear();
-                return;
-            }
+            // Every path here was claimed or reserved case-insensitively, so no two share a file.
             var doomed = new List<string>();
             foreach (var (_, path) in pending)
             {

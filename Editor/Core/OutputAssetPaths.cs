@@ -68,6 +68,13 @@ namespace AvatarBridge
             return candidate;
         }
 
+        // For a writer that picks its own names: a later Claim of the same path must see it
+        // taken, or it deletes the file this run just wrote. False when it already was.
+        internal static bool Reserve(string path)
+        {
+            return ClaimedThisRun.Add(path.Replace('\\', '/'));
+        }
+
         // Directory plus a full Refresh, as both callers always did. CreateFolder would skip the
         // Refresh, and with it the import of anything earlier passes wrote straight to disk.
         internal static void EnsureFolder(string dir)

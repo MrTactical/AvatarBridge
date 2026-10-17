@@ -60,7 +60,7 @@ fail=0
 for defines in "CVR_CCK_EXISTS" \
                "CVR_CCK_EXISTS;AVATARBRIDGE_MAGICA" \
                "CVR_CCK_EXISTS;AVATARBRIDGE_YAPS" \
-               "addon:CVR_CCK_EXISTS;AVATARBRIDGE_YAPS" \
+               "addon:CVR_CCK_EXISTS;AVATARBRIDGE_YAPS"                "addon:CVR_CCK_EXISTS;AVATARBRIDGE_YAPS;AVATARBRIDGE_MAGICA" \
                "CVR_CCK_EXISTS;VRC_SDK_VRCSDK3" \
                "CVR_CCK_EXISTS;VRC_SDK_VRCSDK3;AVATARBRIDGE_YAPS"; do
     shape="$defines"

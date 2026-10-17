@@ -648,7 +648,9 @@ namespace AvatarBridge
             // The materials a toggle swaps in as well as the ones worn at rest: the
             // patcher reaches both, and a swap-only one-eyed shader never raised this.
             var materials = root.GetComponentsInChildren<Renderer>(true).SelectMany(r => r.sharedMaterials)
-                .Concat(SwappedMaterials(root.GetComponent<VRCAvatarDescriptor>()));
+                .Concat(SwappedMaterials(root.GetComponent<VRCAvatarDescriptor>())).ToList();
+            // Planned on the thread pool first; the loop below then reads cached verdicts.
+            ShaderSpiPatcher.Prejudge(materials.Select(m => m != null ? m.shader : null), forPatch: false);
             foreach (var material in materials)
             {
                 var shader = material != null ? material.shader : null;

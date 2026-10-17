@@ -208,6 +208,14 @@ namespace AvatarBridge
 
         public static string Add(Transform root, string folder, out bool built, BridgeReport report = null, float pulse = 0f)
         {
+            // Log only, for a conversion: 94% of a first squash was outside every timed call.
+            var times = new List<string>();
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            void Lap(string step)
+            {
+                times.Add($"{step} {clock.ElapsedMilliseconds}");
+                clock.Restart();
+            }
             built = false;
             Strip(root);
             var regions = RegionsOf(root, out string refusal);
@@ -218,6 +226,7 @@ namespace AvatarBridge
                 found = Pairs(root, out string none);
                 if (none != null) return none;
             }
+            Lap("Find");
 
             var animator = root.GetComponent<Animator>();
             var humanoid = new HashSet<Transform>();
@@ -256,6 +265,7 @@ namespace AvatarBridge
                 }
             }
 
+            Lap("Skins");
             var parts = new List<Part>();
             var rests = new List<Transform>();
             var backs = new List<Transform>();
@@ -335,6 +345,7 @@ namespace AvatarBridge
                         $"out {outward[i] * Unit(a.follow) * 100f:0.0}, in {inward[i] * Unit(a.follow) * 100f:0.0}, share {share:0.00}");
             }
             if (parts.Count == 0) return string.Join("; ", log);
+            Lap("Measure");
 
             // A pair with too little skin is dropped, and the ones after it move up a slot.
             foreach (var s in skins)
@@ -367,11 +378,16 @@ namespace AvatarBridge
             var patched = new Dictionary<Material, Shader>();
             var still = new HashSet<int>();
             var bodySkin = regions != null ? skins.First(s => s.smr == regions.body) : named;
+            Lap("Arms");
             var shared = Shares(skins, bodySkin, root.name, folder);
+            Lap("Shares");
             Hold();
             YapsShaderPatcher.Prewrite(shared.SelectMany(x => x.smr.sharedMaterials
                     .Where((m, slot) => m != null && Moves(x.smr.sharedMesh, slot, x.shares)))
                 .Where(m => !m.HasProperty("_YAPS_DentOwn")));
+            Lap("Prewrite");
+            var shaderFor = new System.Diagnostics.Stopwatch();
+            var saving = new System.Diagnostics.Stopwatch();
             foreach (var (smr, own, shares) in shared)
             {
                 var mats = smr.sharedMaterials;
@@ -381,7 +397,9 @@ namespace AvatarBridge
                     if (source == null || !Moves(smr.sharedMesh, slot, shares)) continue;
                     if (!patched.TryGetValue(source, out var shader))
                     {
+                        shaderFor.Start();
                         patched[source] = shader = ShaderFor(source, report, log);
+                        shaderFor.Stop();
                     }
                     if (shader == null)
                     {
@@ -410,7 +428,9 @@ namespace AvatarBridge
                     copy.SetFloat("_YAPS_SquashPulse", pulse);
                     copy.SetVector("_YAPS_SquashLimbL", limbs[0]);
                     copy.SetVector("_YAPS_SquashLimbR", limbs[1]);
+                    saving.Start();
                     copy = Save(copy, source, folder, $"{root.name} {smr.name} {slot}.mat");
+                    saving.Stop();
                     copies.Add(copy);
                     mats[slot] = copy;
                 }
@@ -421,6 +441,7 @@ namespace AvatarBridge
                 foreach (int m in still) { reach[m] = 0f; reach[m + 1] = 0f; }
                 foreach (var copy in copies) copy.SetVector("_YAPS_SquashReach", reach);
             }
+            Lap($"Slots (ShaderFor {shaderFor.ElapsedMilliseconds}, Save {saving.ElapsedMilliseconds}, {copies.Count} copies)");
 
             // Off the root: the client works out whose avatar it is from the parent up.
             var host = Child(root, ShaderHostName).gameObject;
@@ -471,14 +492,19 @@ namespace AvatarBridge
             var controller = host.AddComponent<CVRRenderController>();
             controller.cvrRenderComponents.Add(provider);
             controller.cvrRenderComponents.Add(skinned);
+            Lap("Providers");
 
             // The knobs, from the avatar's component; a first build adds one with the defaults.
             if (SettingsOf(root) == null) root.gameObject.AddComponent<YapsSquashSettings>();
             Flush();
+            Lap("Flush");
             Apply(root);
+            Lap("Apply");
             AssetDatabase.SaveAssets();
+            Lap("SaveAssets");
             EditorUtility.SetDirty(root.gameObject);
             if (root.gameObject.scene.IsValid()) EditorSceneManager.MarkSceneDirty(root.gameObject.scene);
+            if (report != null) Debug.Log("[AvatarBridge] Squash build steps (ms): " + string.Join(", ", times));
             built = true;
             return $"{BridgeElements.Count(parts.Count / 2, "pair", "pairs")} {(regions != null ? "from painted regions" : "found by bone name")} on {root.name}, {BridgeElements.Count(copies.Count, "material", "materials")} in {folder}: " + string.Join("; ", log);
         }
@@ -1084,6 +1110,13 @@ namespace AvatarBridge
             // The YAPS passes before this one patch shaders too and cannot log it themselves.
             YapsShaderPatcher.EndPass("up to squash", ctx.Report);
             if (!ctx.Settings.squashSoftParts) return;
+            var times = new List<string>();
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            void Lap(string step)
+            {
+                times.Add($"{step} {clock.ElapsedMilliseconds}");
+                clock.Restart();
+            }
             try
             {
                 var root = ctx.Target.transform;
@@ -1092,8 +1125,11 @@ namespace AvatarBridge
                 // the squash on it, so nothing in it is reused: emptied in one call, where numbering
                 // beside the last set left a whole set of materials and textures per reconvert.
                 AssetDatabase.DeleteAsset(folder);
+                Lap("Delete");
                 YapsLock.Animate(root, ctx.MergedController?.animationClips);
+                Lap("Animate");
                 string said = Add(root, folder, out bool built, ctx.Report);
+                Lap("Add");
                 if (!built)
                 {
                     ctx.Report.Warning(Category, "Squash not built", said);
@@ -1102,12 +1138,16 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category, "Soft parts squash against each other and against hands",
                     said + ". Tune it, and preview it, on the YAPS Squash component on the converted avatar");
                 if (ctx.MergedController != null) FollowSwaps(root, ctx.MergedController.animationClips, folder, ctx.Report);
+                Lap("FollowSwaps");
             }
             finally
             {
                 // A pass that threw still writes what it made, or the scene saves them inline.
                 Flush();
+                Lap("Flush");
                 YapsShaderPatcher.EndPass("squash", ctx.Report);
+                Lap("EndPass");
+                Debug.Log("[AvatarBridge] Squash pass steps (ms): " + string.Join(", ", times));
             }
         }
 #endif

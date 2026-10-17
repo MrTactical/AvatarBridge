@@ -68,6 +68,16 @@ physics A/B probes and a corpus run. Decisions on the queue's open questions, sa
     `Self`/`Others` modifiers, into the `YapsTags` the atlas already carries. The field names come
     from a test avatar tagged through VRCFury's own inspector and read from what it saves, never
     from VRCFury's source (the clean-room rule of item 6 below).
+    **Found 2026-10-17: already built, and shipped in 4.6.0.** `YapsBakePrep.ReadTags` (1d7b6cb,
+    Self/Others in aaece36) reads socket `tags` and `useSharedTag` (SPS2's "Global" tag), plug
+    `includeTags`/`excludeTags` with each rule's `tag`, `allowSelf` and `allowOthers`, and
+    `useHipAvoidance`. The corpus fixture `Fixture_TaggedPair` sets them through SerializedObject, as
+    the inspector does, and its digest's `[yaps tags]` block holds them every run (418: plug
+    +fixturehole, plug -fixturebar, socket fixturehole). New `Dev/Probes/VrcFuryContractProbe.cs`
+    checks every field the converter reads, with its type, and logs what Unity saves for both
+    components: PASS on 1.1408.0 and on 1.1434.0, the newest, in a bare scratch project. The saved
+    field lists differ by two socket fields only (`legacyOffsetLocal`, `offsetsInLocalUnits`), so
+    nothing tags read moved. Left for 5.0.0: the in-game check (checklist S23).
   - Ship gate: both packages ship together, after SPS2 tags and portal/duplicate pass in game.
   - The ChilloutVR Toolkit becomes its own package **after 5.0.0**, for people already on
     ChilloutVR who do not need the converter. Plan in its own record.
@@ -238,6 +248,11 @@ copy's main asset. The test covers it, and fails with the old rehomer. Still to 
   each, not the copies saved. Untimed blocks in `YapsSquash.Add`: Shares, Prewrite as a whole, the
   slot loop, Flush, Apply, SaveAssets, FollowSwaps. Timers there (log only), then one cold one-avatar
   run, would find the call. Warm 42-copy avatars also spend ~13 s outside refreshes, same timers.
+  **Located 2026-10-17, A/B subset `ab5`** (timers in `YapsSquash.Add` and its pass, log only).
+  On the heaviest of the five, 47.7 s: Add 42.2 s, of which Shares 16.9, Prewrite 11.2, Slots 5.5
+  (ShaderFor 1.0, Save 0.02, 33 copies), SaveAssets 5.3, Flush 1.8; FollowSwaps 5.1 outside Add.
+  Shares and Prewrite are the targets now, on every squash avatar (Shares 1.8 to 3.8 s on the
+  small ones). After 5.0.0.
 - `RestorePartialOffStates` and `AssertOwnedBindingsEverywhere` still claim, delete and create one
   clip per state. **Measured 2026-10-17 from 418, the biggest cost in Animator merge:** the 418
   digests hold about 2,679 Assert clips (`{layer} {state} restore`) on 59 avatars, and each write
@@ -247,10 +262,23 @@ copy's main asset. The test covers it, and fails with the old rehomer. Still to 
   `LoadAssetAtPath`/`DeleteAsset` guards, and write both through the fillers' `CreateRestoreClips`
   batch; about 465 s a full run, 27 of 33 s on the most toggle-heavy avatar. A/B subset: the four
   heaviest Assert avatars plus one squash avatar as control, back to back (names in the commit).
+  **DONE on dev 2026-10-17, A/B measured.** Both write through `CreateRestoreClips`, claiming each
+  name against a throwaway listing. Subset `ab5` (the four heaviest Assert avatars plus a squash
+  control), run A on the old code and B on the new, back to back: **all five digests identical**,
+  Animator merge 291.7 s to 85.8 s (159.9 to 44.9, 66.6 to 13.5, 37.0 to 10.0, 16.4 to 6.6, 11.8
+  to 10.8). The merge's own timers (log only) now name what is left: `WriteRestoreClips` 14.6 and
+  10.4 s on the two heaviest, `RehomeVolatileAssets` 12.3 s on one, GoGo's `PlaceGogoEmotes` 6.0 s,
+  `AnimatorAssetSaver.Save` to 4.6 s. After 5.0.0.
 - **Latent, not hit in 418:** `WriteRestoreClip` registers its names only in `writtenPaths`, never
   where `OutputAssetPaths.Claim` looks, so an Assert name `{A} {B} restore` equal to a filler's
   `{A B} restore` is claimed as free and the filler's fresh file deleted, leaving its states with no
   motion. Fix: Claim skips `writtenPaths`; an EditMode test in the style of TreeToggleRestoreTest.
+  **FIXED on dev 2026-10-17.** `WriteRestoreClip` also reserves each name through
+  `OutputAssetPaths.Reserve`, so a later Claim of the same spelling numbers past it.
+  `Dev/Tests/RestoreClipBatchTest.cs` builds the collision (a filler's "Hat Off restore" against
+  the assertion copy of layer Hat, state Off), plus a partial-off topping, and checks four saved
+  files, values at conversion time, and the same four after a reconvert: PASS, and
+  TreeToggleRestoreTest still PASS.
 - Stereo copies written in one batch, a verified marker that survives a restart, and judging in
   parallel. **DONE on dev 2026-10-17:** every shader a pass, the swap pass or the report check
   is about to judge is planned at once on the thread pool (`ShaderSpiPatcher.Prejudge`; reading stays
@@ -288,6 +316,17 @@ copy's main asset. The test covers it, and fails with the old rehomer. Still to 
   Prejudge there first. (4) The report check reuses the units Prejudge read, not a second read.
   (5) Log plans made, not cache hits. Proof: SpiPatcherProbe, SpiIncludeProbe, SpiSweepProbe lines
   byte-identical before and after, and a subset whose `[Shaders]` and stereo diagnostics lines hold.
+  **(1), (2), (3) and (5) DONE on dev 2026-10-17; (4) not done.** The judge plans verdict-only
+  (`PlanStereo(forPatch: false)`, a `Full` flag so a verdict plan never reaches the patch);
+  Prejudge plans a full one beside it only where the verdict sends the shader to the patch; literal
+  guards before OffPcPrograms and each signature scan; the advisor Prejudges before its loop; the
+  log counts verdict and full plans. SpiPatcherProbe 34/34, SpiIncludeProbe 15/15, SpiSweepProbe's
+  843 lines byte-identical before and after. Subset `ab5`: digests identical, Shader SPI patch
+  12.4 s to 8.3 s over the five.
+- **Contacts: zones grown is the biggest single cost left, found 2026-10-17 by the new timers**
+  (`ContactsConverter.Run`, log only). On one avatar with 212 contacts, 282.8 s of the pass's
+  283.0 s is growing zones; hosts 11 ms, rest states 4 ms. 112 contacts elsewhere took 1.2 s, so it
+  is not linear in contacts: read what one zone's growth costs before guessing. After 5.0.0.
 
 **User report 2026-10-17 (4.7.2): the avatar held a pose in the floor. FIXED on dev.** Two FX
 hand-gesture layers whose clips carry body or root curves sat above Locomotion/Emotes, Override,
@@ -969,6 +1008,608 @@ would reach further. Thinking so far, nothing built:
   which is why this route and not a depth-buffer one (depth is also per viewer's camera).
 - Cost: the joint spike measured about 15 us a chain per avatar past the first, at 90 Hz.
 - Not in 5.0.0. It starts with a read-only look at gates 1 to 3 in the client.
+
+## Three plans from Joe's ideas of 2026-10-17. NOT STARTED, after 5.0.0
+
+Joe, 2026-10-17: grabbed clothing driving a blendshape ("_Stretch is the one we need to fix. Everything
+else can be the GrabbyBones mod"), Blender's avatar edits inside Unity for the Toolkit (blendshapes,
+visemes, a smooth brush "mesh fixer"), and the Toolkit as its own download for people already on
+ChilloutVR. His rule for all three: adopt a modern tool that already does it, build only what nothing
+covers. Each plan ends in a Decisions table.
+
+**Decided 2026-10-17 (Joe): the recommended default on every row of all three tables.** For grab, the
+rows that left it to him take the precedent: converter default **off** (as `syncSocketDepthForOthers`),
+package **public**, release behaviour after the spike. Toolkit row 7 stands: after 5.0.0. All three
+wait until 5.0.0 ships.
+
+## PhysBone `_Stretch` on ChilloutVR: grab clothing to drive a blendshape. PLAN 2026-10-17, NOT STARTED, after 5.0.0
+
+Joe's brief: `_Stretch` is the one to fix. GrabbyBones covers the rest. Tags: **[M]** measured, or read in code or a record. **[R]** reasoned. **[GAME]** only settled in ChilloutVR.
+
+**Existing tools, checked first.** Nothing found ships `_Stretch`, `_Squish` or `_IsPosed` on ChilloutVR [M, as far as searched].
+- GrabbyBones exposes `_IsGrabbed` and `_Angle` only, plus their `#` local twins. Its README lists pose as "Waiting on the modding network". In `GrabbyBones/Data.cs`, `GrabState` has `// Pose,` commented out and defines only the `_Angle` and `_IsGrabbed` suffixes (https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones, https://raw.githubusercontent.com/kafeijao/Kafe_CVR_Mods/master/GrabbyBones/Data.cs) [M].
+- No match turned up in NAK's mods, vrc3cvr, CVR-Conversion-Tools, Intermediate-Avatar or the CCK docs. A web search on 2026-10-17 also found no CVR mod reading grab-stretch [M].
+- CVR has no stock avatar-part grab component. The core parameter page lists 24 parameters, matching `CvrParameterNames.Core` (`Editor/Core/CvrParameterNames.cs:77-84`), and none is grab, touch or stretch (https://docs.chilloutvr.net/cck/avatar/animator-core-parameters/) [M]. A native grab *rig* can be built, an aim driven by the `grab` tag, at about 97 bits per chain, and Joe rejected it (`docs/Unfinished.md:1559-1562`, from a decompile of the beta client, "unverified unless noted", `:1558`) [M].
+- So this is built here. It reuses the stock trigger, not a new transport.
+
+### 1. What each source parameter becomes
+
+| Source | On CVR | Who sees it | Sync | Stock, no mod? |
+|---|---|---|---|---|
+| `_IsGrabbed` | GrabbyBones, as today (`Editor/Core/Physics/GrabbyBonesSupport.cs:22-35`, preserved at `:32-33`) [M] | Everyone, when the wearer runs the mod [M] | 1 bit | No |
+| `_Angle` | GrabbyBones, as today [M]. The fork plan says upstream measures the parent bone, only while held, and 0 on release (`Regression/GrabbyBonesForkPlan.md:74`). The repo's own comment says "bend of the end bone" (`GrabbyBonesSupport.cs:9`). The two disagree | Same | 32 | No |
+| `_Squish`, `_IsPosed` | Proposed for a GrabbyBones upstream PR (`ForkPlan.md:72,76-77`; `Unfinished.md:1528-1530`) [M] | Modded only | 0 to 33 | No |
+| **`_Stretch`** | **Ranked routes below** | | | |
+
+**`_Stretch` is not only a grab output.** In VRChat it reads "how close the bones are to maximum stretch length", and **Stretch Motion** lets movement change bone length. Only at 0 do bones stretch purely "from grabbing or collisions" (https://creators.vrchat.com/common-components/physbones/) [M]. Gauge chains read `_Stretch`/`_Squish` from motion: Marshmallow PB drives a scale clip from a gauge PB, with stretch at 1.2 long (`Unfinished.md:2004-2010`; `memory/marshmallow-pb-mechanism.md`) [M]. A hand-position trigger is the wrong writer for those [R]. Every route below targets **grab-driven** `_Stretch` only.
+
+**`_Stretch` routes, ranked**
+
+1. **Stock trigger reading the hand's position along the pull axis. Recommended.**
+   - Build: a `CVRAdvancedAvatarSettingsTrigger` box with a `SetFromPosition` stay task writing `<P>_Stretch`. This is the build in `YapsSocketReactions.EnsureTrigger` (`Editor/Yaps/Setup/YapsSocketReactions.cs:627-674`): `sampleDirection = ZNegative`, min 0 / max 1, an exit task writing 0, and local and network interaction both forced on [M].
+   - The value is `(penetration.axis + 1) / 2` across the **whole** box: 0 at one face, 0.5 at the centre, 1 at the other. It is read in box-local space only for a Box, never a Sphere. A trigger with no Collider defaults to Box (`memory/cvr-trigger-reports-a-position.md`) [M].
+   - It runs on the wearer's machine only (`memory/cvr-contacts-are-wearer-only.md`) [M]. Strangers' hand pointers reach receivers (README 812-822). `ContactsConverter.cs:225-226` maps `allowSelf`/`allowOthers` onto `isLocalInteractable`/`isNetworkInteractable` [M].
+   - The wearer's client writes a synced float, so remote copies receive it. The YAPS doc puts the rate at "ten times a second" (`docs/YAPS5.md:27-28`). That is a doc statement, not a measurement here [M]. The "~1 mm" figure in that doc describes the YAPS channel's scale. For a 32-bit float the trigger record says "no quantisation worry" (`memory/cvr-trigger-reports-a-position.md`), so no step size is claimed.
+   - Cost: 32 bits per chain out of 3200 [M].
+   - The bone itself does not move. The blendshape is the only effect.
+   - Fits the grab-handle build. `PhysBoneConverter.cs:551-554` records grab-and-stretch handles that skin no mesh and whose stretch "drives the animator" [M]. One sourced tutorial uses a chain of empty objects under Spine, with Grab Movement 1 and Max Stretch 1, and Motion Time on `<P>_Stretch` to scrub a shape key. The author flags it as partly outdated (https://note.com/marenatu/n/n0f8dd8193926) [M]. Calling that "the common build" is [R].
+   - Limits: one volume samples one axis (`YAPS5.md:44-46`) [M]. VRChat stretch follows the hand in any direction, and the hand can grab anywhere on the chain, so this is Approximated [R].
+2. **GrabbyBones upstream stretch.** After FABRIK, the fork plan scales bone offsets by `clamp(dist/reach, 1, 1+maxStretch)` (`ForkPlan.md:70`). The plan reports `_Stretch` as chain length against rest, normalised by maxStretch (`:75`) [M].
+   - The bone really moves, but only for modded clients.
+   - The plan recommends `_Stretch` as `#`-local, which costs 0 bits and is seen by modded clients only. Synced, it costs 32 bits and needs the wearer to run the mod (`ForkPlan.md:84-87`) [M].
+   - It depends on Kafe's timeline. It complements route 1 and does not replace it [R].
+3. **Shader or texture-parser route through squash. Last.**
+   - Squash is vertex displacement in the shader. The hand press is `YapsHandsPress` (`Editor/Yaps/yaps_dent.cginc:255-323`) [M], and a shader writes no animator parameter [R].
+   - Blendshape weights are unreachable from the parser. The chain from parser to `CVRAnimatorDriver` to parameter (`D1Pump.anim`) was "not yet run in game" (`YAPS5.md:205-211`) [M].
+   - Viewers with the Cameras filter off lose it (`Unfinished.md:1928-1931`) [M].
+   - The shader is stateless, so it cannot know a grab started without a blitter self-update loop (`memory/cvr-blitter-self-update.md`) [R].
+   - It lives in the 18+ add-on, while clothing pull is a general feature [R].
+   - Joe is right that it "technically works" for a push look. It is the wrong tool for a pull that drives the animator [R].
+4. **Others, ruled out for now.**
+   - A `CVRParameterStream` reading bone length would read near 0, because MC2's tether caps stretch at a compiled-in 3% (`Unfinished.md:1566-1569`) [M][R].
+   - PhysX joints stretch bones for real: 1.12 against plain MC2's 1.05 in batch, built for the add-on (`Unfinished.md:1576-1610`) [M]. What stays open is whether CVR gives hands a physics collider that touches avatar bodies (`:1603-1604`) [GAME]. A push is not a pull, so a joint gives no grab even if it does [R].
+   - The native `grab`-tag aim rig costs about 97 bits per chain and Joe rejected it (`Unfinished.md:1559-1562`) [M].
+
+### 2. Converter side
+
+**Today** [M]
+- `<P>_Stretch` is not in `PreserveParameters`. `AnimatorMerger` renames it `#<P>_Stretch` ("not synced in VRChat, so kept local") when `preserveParameterSyncState` is on, which is the default (`AnimatorMerger.cs:2124-2127,2150-2159`; `BridgeSettings.cs:61`). Nothing writes it, so it sits at its default.
+- A chain whose only job was stretch or squish gets no cloth (`PhysBoneConverter.cs:540-576`).
+- Report lines: MagicaCloth2 gives an Approximated line ("_Stretch/_Squish/_IsPosed have no equivalent"), or "no CVR equivalent" with GrabbyBones off (`MagicaClothWriter.cs:584-590`). DynamicBone gives Approximated, or **Skipped** with GrabbyBones off, plus "Max Stretch is not converted" (`DynamicBoneWriter.cs:200-217`). `ReportGrabbableChains` says chains "could be grabbed in VRChat; {target} can't be … Only players with the GrabbyBones mod can grab them" (`PhysBoneConverter.cs:450-478`).
+- The survey files an unwritten `_Stretch` that drives bindings as "stopped working when converted" (`AvatarSurvey.cs:670-676,840-852`). The `Scaffolding` regex then hides it from the user's findings (`AvatarSurvey.cs:902-905,912-921`). The user is not told that a reveal broke. The survey already counts trigger stay tasks as writers (`AvatarSurvey.cs:434-445`).
+- Order: `PhysBones` → `Contacts` → `Animator merge` → `Hold rewired contacts` (`BridgeConverter.cs:172-177`). PhysBones are destroyed at the end of the PhysBone pass when `deleteConvertedPhysBones` is on, which is the default (`PhysBoneConverter.cs:431-447`; `BridgeSettings.cs:69`).
+
+**Would do** [R]
+1. **Pick the chains.** For each PhysBone with parameter `P`, act only when a source layer reads `<P>_Stretch`, and when the chain is grab-driven: `allowGrabbing != False`, read as today in `PhysBoneConverter.cs:457`. Exclude motion-driven gauges such as Stretch Motion > 0 with gravity or pull, the Marshmallow case. Report those instead. The exact discriminator is open, and a corpus sweep should count both kinds before it is fixed.
+   - The reference check must run on the **source** controllers. The merger's `CollectReferencedParameters` (`AnimatorMerger.cs:5008`, private, used by `PruneOrphanedParameters` at `:4980`) reads the merged master, which does not exist at PhysBone time.
+2. **Read the grab filter fields** (`grabFilter`, plus `allowPosing`/`poseFilter` for section 4). `PhysBoneData.cs:86-120` reads none of them, though `allowGrabbing` is already read directly at `PhysBoneConverter.cs:457` [M]. The field names come from the fork plan (`ForkPlan.md:12,98`) and still need a compile check (`ForkPlan.md:106`).
+3. **Capture in the PhysBone pass, before the PhysBones are destroyed.** Add `<P>_Stretch` to `PreserveParameters` (or `ContactParameters`, which the merger also preserves and prune keeps, at `AnimatorMerger.cs:2153` and `:4991`) so the merger keeps the synced name. Build the trigger then or in the Contacts pass.
+4. **Build one box per chain**, each on its own child object, since one trigger per object. Parent it to the chain root's parent so it follows the body, not the chain.
+   - Near face at the rest tip.
+   - Depth: rest length × `maxStretch`. VRChat defines Max Stretch as a multiple of the original bone length [M].
+   - Axis: root to tip at rest. `sampleDirection` chosen so the near face reads 0, as `ZNegative` does in YAPS.
+   - Lateral size: generous, a setting. A hand entering from the side mid-depth jumps straight to a partial value.
+   - Exit task: decided by section 4.
+   - `isLocalInteractable` and `isNetworkInteractable` mirror the PhysBone's grab filter.
+5. **Budget.** `SyncRoom` (`YapsSocketReactions.cs:225-240`) only appends a warning to a report and never skips. The real tally runs after the merge (`BridgeConverter.cs:379-400`; `BridgeDiagnostics.cs:1076`). Bits go in declaration order with a check before each add, so the client itself drops past the cap (`memory/cvr-aas-sync-requires-menu-entry.md`). "Skip if short" needs a new pre-merge estimate, or it becomes a post-merge report line.
+6. The avatar's layers keep reading the same name, so no layer is rewritten. A threshold-transition use (`_Stretch` at 0.5 and 0.2) also works.
+7. **Survey.** Once written, `_Stretch` stops being "stopped working" through the trigger writer (`AvatarSurvey.cs:434-445`). Taking `_Stretch` out of `Scaffolding` would also surface every unwritten gauge `_Stretch` as a user finding. Decide whether that is wanted. Update the `LostItsDriver` wording (`:844-852`).
+8. **Report.** Replace the "no equivalent" lines in both writers, and update `ReportGrabbableChains` (`PhysBoneConverter.cs:474-478`). New wording: Approximated, one axis, the wearer computes, synced.
+
+The shared trigger helper belongs in Core. `EnsureTrigger` is add-on only (`Editor/Yaps`), so a generalised copy in Core can serve both this pass and YAPS. A **new Core file must be added to `YAPS_CORE` in `Dev/Build/yaps-files.sh:16-20`**. The add-on ships a hand-written Core subset plus all of `Editor/Toolkit`, and a missing type is how 4.1.0 and 4.1.1 shipped broken (`Dev/Build/build-package.sh:119-123`) [M]. The second builder is the Toolkit's "PhysBones to cloth" card: `PhysBonesInPlace` runs `PhysBoneConverter.Run` in place (`Editor/Core/Physics/PhysBonesInPlace.cs:5-14,85`). It runs after no merger, so it needs its own handling of preserve and rename (`memory/avatarbridge-two-builders-diverge.md`).
+
+### 3. Toolkit authoring tool (ships in both packages)
+
+One card in `ToolkitPanel.Build` (`Editor/Toolkit/ToolkitWindow.cs:81-131`; the card list is at `:111-124`), built with the `Tool()` helper (`:292-329`). Its `option` slot can hold the pickers [M]. The window gates on `CVR_CCK_EXISTS` only (`ToolkitWindow.cs:4`; `memory/toolkit-stands-alone.md`) [M].
+
+1. **Pick the clothing.** `BridgeElements.ObjectPicker` for the SkinnedMeshRenderer (`Editor/UI/BridgeElements.cs:683`) [M].
+2. **Pick the blendshape.** Version 1 picks an existing shape only. "Make a shape" waits for the mesh kit's pose-to-shape step: BakeMesh with weights zeroed, minus rest, then `AddBlendShapeFrame` on an `.asset` copy saved through `OutputAssetPaths.Claim` (`OutputAssetPaths.cs:40`). No pose-to-shape code exists today. The pieces sit in the add-on only: `AddBlendShapeFrame` in `YapsDebugOverlayBuilder.cs:553` and `BakeMesh` in `YapsSquashPainter.cs:445` [M].
+3. **Place the grab volume.** Create a child GameObject holding the trigger. The user moves and scales it with Unity's own tools, and the CCK draws the box. A custom handle waits for need [R].
+4. **Write the layer.**
+   - Synced float.
+   - 1D blend tree over `blendShape.<name>` curves. This is the pattern in `YapsSocketReactions.cs:494-584`: authored-weight floor, `writeDefaultValues = true`, embedded through `AnimatorAssetSaver.EmbedLayer` [M]. Copy it into Core. Do not reference it from the add-on.
+   - Target the controller CVR ships. `AvatarSurvey.ShippedController` (`Editor/Core/AvatarSurvey.cs:178-187`, overrides then base then Animator slot) and `CvrSetup.SharedController` (`Editor/Core/CvrSetup.cs:384`) already exist in Core and in `YAPS_CORE` [M]. A tool-built channel once went into a controller CVR never uploads and did nothing in game (`YAPS5.md:33-36`; `memory/cvr-which-controller-ships.md`) [M].
+5. **One option, "Stays open when let go"**, whose default comes from section 4.
+
+### 4. Lift and hold
+
+- A stay task writes only while a pointer is inside. The converter adds an exit task because "the parameter keeps its last reading after" (`ContactsConverter.cs:254-256`) [M].
+- In VRChat, Grab Movement 0 reaches the grab point through pull and spring, and 1 moves there at once. Pulling the trigger while holding poses the bones, gated by Allow Posing (VRChat PhysBones docs) [M]. Springing back on an unposed release is [R]: the docs do not state it for avatars.
+- **Out of the box.** The hand must stay inside the box. The box must contain the whole pull path, which is why it is sized by `maxStretch`. The hand must also grab near the tip, where in VRChat any bone would do [R].
+- **Release with exit = 0.** The garment snaps shut when the hand leaves. This matches an unposed VRChat release only when the hand leaves at release time [R].
+- **Release with no exit task.** The value holds at the last sample. Leaving sideways holds partway. Leaving back through the near face reads near 0, so it closes naturally. Leaving through the far face holds at 1 [R].
+  - Closing needs a push back through the near face, or a menu toggle.
+  - The source's `allowPosing` is the natural default for "Stays open when let go" [R].
+  - `HoldUnlatchedContacts` (`ContactsConverter.cs:405-439`) is **not** a precedent. It turns an OnEnter pulse into "on while touched, off when it leaves", the opposite of holding after release [M].
+- **Grip gating. The sources disagree.** The CCK docs call `grab` a **legacy** pointer, "Active on the hand that is currently grabbing an object" (https://docs.chilloutvr.net/cck/avatar/autogenerated-pointers/) [M]. The beta decompile says the tag "starts on at load until the player's first fist" (`Unfinished.md:1564`) [M]. Whether a bare fist with no pickup counts is [GAME].
+  - If `grab` switches off when the fist opens inside the box, the trigger may never see it leave, and the value holds [GAME]. The same mechanism held a plug bent (`YAPS5.md:19-21`) [M].
+  - Holding on release may come for free. It might also be unreliable [GAME].
+- **Passing hands.** With `allowedTypes` limited to `grab`, a hand passing through without gripping does nothing [R][GAME]. With `Hand`, `LeftHand` or `RightHand`, any touch opens it. Converted `Hand` receivers already also listen for `grab` (README 824-828) [M].
+- **Interplay with cloth.** On a chain that also keeps an MC2 cloth, the hand inside the box also pushes that cloth, since CVR adds hand colliders to every cloth (README 784-788) [R].
+
+### 5. Gates only ChilloutVR can settle
+
+| # | Question | Why it matters |
+|---|---|---|
+| G1 | Does a box with `SetFromPosition` follow another player's hand smoothly with `isNetworkInteractable` on? [GAME] | Route 1 for others |
+| G2 | Is the `grab` pointer present for a bare fist, only while gripping, or only while holding a pickup? [GAME] | Gating, and the hold default |
+| G3 | When `grab` switches off inside the box, does the exit task fire? [GAME] | Snap or hold |
+| G4 | Are latency and update rate acceptable to the person pulling? The path is their hand, then the wearer, then AAS, then back to them [GAME] | Feel |
+| G5 | Does the wearer's own grab pointer fire it with `isLocalInteractable` on? [GAME] | Self-pull |
+| G6 | Does the stable client behave like Joe's beta? The decompile notes come from the beta [M] | Shipping claim |
+| G7 | Crowds: 512 sticky pairs, so a new touch can fail silently (`memory/cvr-trigger-reports-a-position.md`) [M][GAME] | Known limitation text |
+
+### Decisions for Joe
+
+| Decision | Options | Recommendation |
+|---|---|---|
+| `_Stretch` route | Stock trigger / GrabbyBones only / squash | Stock trigger now. GrabbyBones stretch later, for modded bone motion |
+| Which chains | Grab-driven only / every reader of `_Stretch` | Grab-driven only. Gauge chains such as Marshmallow get a report line, not a box |
+| Converter default | On / off, new setting | Your call. Precedent: `syncSocketDepthForOthers`, also 32 synced bits per contact-driven value, defaults **off** (`BridgeSettings.cs:177-179`). "On" spends bits only on parameters a grab-driven chain's layers already read |
+| Release behaviour | Snap shut / hold / follow G3 / mirror `allowPosing` | Decide after the spike |
+| Pointer types | `grab` / any hand | `grab`, if G2 holds for a bare fist |
+| Who can pull | Mirror the PhysBone grab filter / wearer only / setting | Mirror the PhysBone, as `ContactsConverter.cs:225-226` does for receivers |
+| Package | Public / 18+ add-on | Public. Clothing pull is not penetration, but a reveal may read as adult, so this is your call |
+| Name ownership if GrabbyBones adds stretch | Trigger owns synced `<P>_Stretch`, mod writes `#` / mod owns it | Trigger owns the synced name. The fork plan already recommends `#` for the mod's `_Stretch` (`ForkPlan.md:85`) |
+| `_Squish` by reversed box | Now / later / GrabbyBones only | GrabbyBones only, per the brief |
+| Toolkit version 1 scope | Pick shape / also make shape | Pick only. Make shape lands with the mesh kit |
+
+### First spike
+
+- **Build.** One test avatar, built by hand, with no converter changes. The build is one box trigger, a Box with no Collider, under a chest bone:
+  - `allowedTypes = grab`;
+  - `SetFromPosition`, `sampleDirection` Z with 0 at the near face, 0 to 1;
+  - no exit task;
+  - writes a synced float `Spike_Stretch`;
+  - a 1D blend tree drives one existing clothing blendshape, in the controller `ShippedController` returns.
+- **Variant B.** Same build with `allowedTypes = Hand` and an exit task writing 0.
+- **Test.** Joe in game, with a second client he runs as the remote player (`memory/no-ai-driven-cvr-client.md`). The remote player makes a bare fist and pulls along Z, then repeats while holding a pickup. They open the fist inside the box, then leave sideways and through the near face. The wearer pulls their own.
+- **Read off:** G1 to G5, the value on the wearer against a remote copy, and whether a passing open hand opens it.
+- **Done when** G1 to G5 each have an answer. The release decision and the converter pass follow from it.
+
+**Docs to move with the converter pass.**
+- README:
+  - Not converted (2049).
+  - The parameter table (357).
+  - The GrabbyBones section (777-810), whose line "That's as far as any converter can go: **grabbing is a client mod**" (796-799) becomes untrue for stretch.
+  - Options and Known limitations.
+- Window text: `AvatarBridgeWindow.cs:611-615`, plus any new setting.
+- `BridgeSettings` comment.
+- Report lines: `MagicaClothWriter.cs:584-590`, `DynamicBoneWriter.cs:200-217`, `PhysBoneConverter.cs:474-478`.
+- Survey wording: `AvatarSurvey.cs:844-852`.
+- Build list: `Dev/Build/yaps-files.sh` `YAPS_CORE` for any new Core file.
+- `docs/Unfinished.md` record.
+
+---
+
+### Judge's corrections
+
+1. **Missed: `_Stretch` is also motion-driven.** VRChat's Stretch Motion makes bones stretch from movement (VRChat PhysBones docs). Marshmallow PB reads a gauge PB's `_Squish`/`_Stretch` from motion (`Unfinished.md:2004-2010`). The original step 1 ("act when the animator reads `<P>_Stretch`") would have put grab boxes and 32 bits on gauge chains. Added a grab-driven filter, a decision row and a survey caveat.
+2. **Wrong order: the merger's reference set does not exist when it is needed.** PhysBones runs before the merge (`BridgeConverter.cs:172-174`) and destroys the PhysBones (`PhysBoneConverter.cs:431-447`). `AnimatorMerger.cs:4980-4994` is `PruneOrphanedParameters` working on the merged master. The helper is `CollectReferencedParameters` at `:5008`. Rewrote steps 1 and 3: check the source controllers, and capture the data before the PhysBones are destroyed.
+3. **"Grab fields are not read today" was half wrong.** `allowGrabbing` is already read at `PhysBoneConverter.cs:457`. Only `PhysBoneData` skips it. Also corrected the `PhysBoneData.cs:72-76` citation, which points at the MaxStretch/Parameter fields, not a reader.
+4. **`HoldUnlatchedContacts` is not a hold-after-release pattern.** It makes a pulse "on while touched, off when it leaves" (`ContactsConverter.cs:399-439`). Corrected.
+5. **`SyncRoom` never skips.** It only appends a report warning (`YapsSocketReactions.cs:225-240`), and the true tally exists only after the merge. Reworded the budget step.
+6. **Missed: the add-on package's Core list.** A new Core helper must be added to `YAPS_CORE` (`Dev/Build/yaps-files.sh:16-20`; `build-package.sh:119-123`), or the add-on fails to compile on its own, as in 4.1.0 and 4.1.1.
+7. **Missed: the second builder.** `PhysBonesInPlace` (the Toolkit "PhysBones to cloth" card) runs `PhysBoneConverter.Run` with no merger, so it needs its own preserve handling.
+8. **Missed: existing Core helpers for the shipped controller.** `AvatarSurvey.ShippedController` and `CvrSetup.SharedController` already exist in Core and in `YAPS_CORE`.
+9. **The `grab` pointer is contested.** The CCK docs call it legacy and active "on the hand that is currently grabbing an object". The beta decompile says "until the player's first fist". Widened G2 and added a pickup case to the spike.
+10. **Dropped the "~1 mm steps".** That figure describes the YAPS channel. The trigger record says 32-bit floats carry "no quantisation worry". The 10 Hz figure is kept and labelled a doc statement.
+11. **Core parameter count is 24, not 22**, per both the docs page and `CvrParameterNames.cs:77-84`.
+12. **Data.cs claim re-sourced.** The cited tree URL does not show `Data.cs`. The raw file confirms `// Pose,` in `GrabState`. Also noted that `_Angle` is described two different ways (`GrabbyBonesSupport.cs:9` against `ForkPlan.md:74`).
+13. **Report surfaces were incomplete.** Added `ReportGrabbableChains` (`PhysBoneConverter.cs:474-478`), DynamicBone's **Skipped** line with GrabbyBones off and "Max Stretch is not converted", and the README line saying grabbing is mod-only.
+14. **Survey detail.** Stay tasks already count as writers (`AvatarSurvey.cs:434-445`), so a written `_Stretch` clears the finding on its own. Removing `_Stretch` from `Scaffolding` would also surface gauge chains. Flagged.
+15. **The PhysX-joint route was understated.** Joints really stretch bones (add-on, `Unfinished.md:1576-1610`). What stays open is a hand physics collider, which is [GAME], not "nothing grabs". It stays ruled out for pull.
+16. **Converter default precedent.** `syncSocketDepthForOthers`, the same 32-bit contact-to-synced trade, defaults off. The "On" recommendation is now Joe's call, with that precedent shown.
+17. **Smaller fixes.**
+    - The trigger value spans the whole box, from face to face, Box shape only.
+    - `EnsureTrigger` uses `ZNegative` and forces interaction on, so mirroring the filter is new code.
+    - Corrected line ranges: `GrabbyBonesSupport` path, `EnsureTrigger :627-674`, `YAPS5 :19-21, :33-36`, `AvatarSurvey :902-905`, `BridgeElements` path.
+    - The note.com article is flagged by its author as outdated, so "common build" is [R].
+    - VRChat "springs back on release" is not stated in the docs, so it is [R].
+    - Added `allowPosing` as the natural default for "Stays open when let go".
+
+Sources:
+- [GrabbyBones](https://github.com/kafeijao/Kafe_CVR_Mods/tree/master/GrabbyBones)
+- [GrabbyBones Data.cs](https://raw.githubusercontent.com/kafeijao/Kafe_CVR_Mods/master/GrabbyBones/Data.cs)
+- [CVR animator core parameters](https://docs.chilloutvr.net/cck/avatar/animator-core-parameters/)
+- [CVR autogenerated pointers](https://docs.chilloutvr.net/cck/avatar/autogenerated-pointers/)
+- [VRChat PhysBones](https://creators.vrchat.com/common-components/physbones/)
+- [Marenatu tutorial](https://note.com/marenatu/n/n0f8dd8193926)
+- [VRChat PhysBones (search result)](https://creators.vrchat.com/avatars/avatar-dynamics/physbones)
+- [_Stretch reactive on teleport](https://feedback.vrchat.com/avatar-30/p/physbones-stretch-parameter-is-extremely-reactive-when-the-avatar-teleports-or-r)
+- [ShockOSC](https://github.com/OpenShock/ShockOSC)
+
+## Mesh tools in the Toolkit, so common edits never need Blender. PLANNED 2026-10-17, NOT STARTED, after 5.0.0
+
+Joe's request, 2026-10-17: Blender-style mesh edits inside Unity for avatars already on ChilloutVR. The list is pose to blendshape, a sculpt/move brush, a smooth/relax "mesh fixer" brush for lumps (in the style of the squash region painter), split/combine blendshapes, and a viseme maker. His rule: if a modern tool already does it easier and better, use that, and build only what nothing covers.
+
+Tags: [M] means sourced to a file:line or a URL. [R] means reasoned or inferred, not yet measured. "Not found" means not found in the searches made on 2026-10-17. It does not prove absence.
+
+### Build or adopt, per feature
+
+| Feature | Best existing tool | Verdict |
+|---|---|---|
+| Pose to blendshape | No in-Unity tool found that turns a bone pose into a shape (searches 2026-10-17) [M]. **PoseMesh** (¥880, V2.3 2026-10-13, tested on 2022.3.22f1) is a corrective sculpt tool: you brush in a pose, in Edit or Play mode, and it saves a new mesh with the corrective shape. It does not convert a pose, it saves no bone pose, and it states no licence (https://booth.pm/en/items/8385426) [M]. Cats has Pose to Shape Key, but in Blender (https://github.com/absolute-quantum/cats-blender-plugin, MIT) [M]. | **Build.** It is a gap [M, searches]. Smallest feature. Its core is shared by every later one [R]. |
+| Sculpt/move brush | **VRCMeshDeformer**, ¥250, verified on 2022.3. Move, Push/Pull, Smooth, X mirror, works on SkinnedMeshRenderer, "Save as BlendShape", states no VRChat SDK dependency. Redistribution and bundling are prohibited (https://booth.pm/en/items/8588415) [M]. **Easy Mesh Editor**, ¥1,990, Unity 2019.4 to 6. Pull, Smooth, Flatten, Gather and Inflate brushes, sculpts new or existing shape keys, makes mirrored keys (https://booth.pm/en/items/8616338) [M]. **Lattice Deformation Tool**, free, MIT. Brush with Move and Smooth, lattice, BlendShape output. Its package.json depends only on NDMF >=1.9.0, with no VRChat SDK (https://github.com/32ba/VRC-lattice-deformation-tool, package.json) [M]. On CVR, NDMF runs through Chillaxins at upload, and Chillaxins lists only Starmesh, FaceTra Shape Creator and Prefabulous Universal as known working (https://docs.hai-vr.dev/docs/products/chillaxins) [M]. **Polybrush** is Unity's own free package, with Sculpt and Smooth modes. It is deprecated from 6000.3, and its skinned-mesh support is undocumented beyond "Fix compatibility issues with SkinnedMeshRenderer" in 1.0.0-preview.9 (https://docs.unity3d.com/Packages/com.unity.polybrush@1.2/manual/faq.html, https://docs.unity3d.com/Packages/com.unity.polybrush@1.1/changelog/CHANGELOG.html) [M]. | **Adopt by default.** Cheap or free tools cover it and need no SDK [M]. None is tested on CVR here [R]. Build last, and only if Joe wants it free and in the Toolkit. |
+| Smooth/relax brush | Every tool in the row above has Smooth, and PoseMesh smooths in a pose [M]. The free options are Lattice (NDMF, CVR untested) and Polybrush (skinned support unknown) [M]. | **Build, if Joe wants the painter feel.** It reuses the painter's welded graph and geodesic dab (see Rules) [M for those existing, R for the reuse]. Otherwise adopt, as for sculpt. Worth one manual check of Polybrush on a posed skinned body before building [R]. |
+| Split/combine | **BlendShapeEditor**, free, 2022.3.62f2: rename, merge (合成), concatenate, delete, left/right split, masking. No licence stated (https://booth.pm/ja/items/4662982) [M]. "SmoothRange" is not on the page [M]. **Blend Shape Modifier**, MIT, NDMF >=1.13.0, no VRChat SDK in package.json: merge, filter, intermediate frames (https://github.com/nekobako/BlendShapeModifier, Packages/net.nekobako.blend-shape-modifier/package.json) [M]. Easy Mesh Editor makes mirrored keys [M]. | **Adopt by default, or build small (a Decision).** A free in-Unity tool covers it, and an unstated licence only blocks bundling, not users using it [M for the tool, R for the reading]. If built, it is about 100 lines on the ShapeWriter that pose capture needs anyway [R]. |
+| Viseme maker | **LipSincGenerator** (free) only copies existing shapes into VRChat slots. It prohibits redistribution (https://booth.pm/en/items/8798437) [M]. **MorphMixer** (€18.40, v1.2.0 2022-02-11, Unity 2019.4.34 listed) mixes shapes into new ones according to a search summary; its store page lists no features (https://assetstore.unity.com/packages/tools/animation/morphmixer-111278) [M for the page, R for the feature]. **CVR has its own fallbacks**: the lip sync modes `Visemes`, `SingleBlendshape` and `JawBone` (CCK CVRAvatar.cs:20, default `Visemes` at :192) [M]. An avatar with only a mouth-open shape or a jaw bone already lip-syncs without 15 visemes [R]. | **Build, but only for avatars with a few mouth shapes and no visemes.** It turns 3 shapes into 15. The README should point jaw-only and single-shape avatars at the CCK's own modes [R]. 15 named slots: CVRAvatar.cs:194, `string[15]` [M]. |
+| Grab clothing to drive a shape | Every tool found needs PhysBones and the VRChat SDK. On CVR only GrabbyBones mod users see a grab (README.md:798-803) [M]. | **Do not build.** Out of scope [R]. |
+
+### Rules every card follows
+
+- **Source assets are never edited.** The card copies the mesh with `Object.Instantiate`, as in `SceneAssetRehomer.CopyMesh` (Editor/Core/SceneAssetRehomer.cs:177-183) [M]. The copy is saved under the Toolkit's avatar folder (`WriteFolder`, Editor/Toolkit/ToolkitWindow.cs:253-258; `AvatarFolder`, :209-236) [M].
+- **The first save and re-runs need different routes.**
+  - A first save may take a name through `OutputAssetPaths.Claim` (Editor/Core/OutputAssetPaths.cs:40-69). The entry point must call `OutputAssetPaths.Reset()` first (:31-36) [M].
+  - **A re-run must not use Claim.** Claim deletes whatever sits at the path, and the comment there says "The GUID changes" (:53-66) [M].
+  - A re-run `CopySerialized`s into the existing asset instead: `SaveInPlace`, Editor/Yaps/YapsBaker.cs:1289-1305 [M]. That method is private and in the add-on, so it is rewritten in the Toolkit, about 15 lines [R].
+- **A second capture edits the copy, not the source again.** When the renderer already wears a mesh that is a main `.asset` of its own, it is edited in place. That is the test at YapsBaker.cs:1205-1206 ("A mesh asset of its own keeps the edit") [M]. Re-copying from the FBX would drop the first captured shape [R].
+- **FBX sub-assets cannot hold edits.** A model's sub-asset "drops the edit on the next restart" (YapsBaker.cs:1200-1201) [M].
+- **Only the chosen renderer changes.** It gets the copy under `Undo.RecordObject(renderer)`. Other renderers sharing the source mesh keep it [R].
+- **Put back needs a small change to `Tool()`.** The `putBack` slot exists (ToolkitWindow.cs:292-329), but its label is fixed to "Put the textures back" (:322). `canPutBack` is called unguarded whenever `putBack` is set (:309, :323) [M]. So `Tool()` needs a label argument, and the mesh card must pass `canPutBack` [R].
+- **Shape names and order are kept.**
+  - Clips bind `blendShape.<name>` (Editor/Core/AvatarWeight.cs:156, :184) [M], and CVR visemes are stored by name (CVRAvatar.cs:194) [M].
+  - The renderer stores weights by index [R].
+  - New shapes are appended at the end, so existing indices and animations stay valid [R].
+- **No add-on dependency.** Everything lives in Editor/Toolkit [M].
+  - Editor/Toolkit ships in both packages: the public build prunes only Editor/Yaps and Runtime (Dev/Build/build-package.sh:237-250), and the add-on takes Editor/Toolkit whole (Dev/Build/yaps-files.sh:26) [M].
+  - **The add-on carries only the Core files listed in `YAPS_CORE`** (yaps-files.sh:16-21) [M]. Any Core file a card calls must be on that list, or the add-on package stops compiling.
+  - Every callee named below is on the list: OutputAssetPaths, CvrSetup, AvatarFeatureDetect, UnifiedBlendshapes, MouthLocator and AvatarWeight [M].
+  - New shared code goes in Editor/Toolkit, so no list edit is needed [R].
+- **No VRChat SDK dependency.** The Toolkit is `#if CVR_CCK_EXISTS` only (ToolkitWindow.cs:4) [M].
+  - So it must not call `MeshGrowth` (`VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS`, Editor/Core/MeshGrowth.cs:1) or `SceneAssetRehomer` (same gate, SceneAssetRehomer.cs:1) [M]. Their patterns are copied, not called [R].
+  - `OutputAssetPaths` is ungated [M]. `CvrSetup`, `AvatarFeatureDetect`, `UnifiedBlendshapes`, `MouthLocator` and `AvatarWeight` are gated on `CVR_CCK_EXISTS` only (line 1 of each, AvatarWeight.cs:11) [M].
+- **Add-on code is reimplemented, not moved.** That covers `YapsSquashPainter` (Editor/Yaps/Setup/YapsSquashPainter.cs), `YapsSquash.Welds`/`Fingerprint` (Editor/Yaps/YapsSquash.cs:188-207), `YapsDebugOverlayBuilder.WithReadout` (Editor/Yaps/Setup/YapsDebugOverlayBuilder.cs:397) and `YapsShapeSim` (Editor/Yaps/Setup/YapsComponentEditors.cs:536) [M].
+  - The add-on painter could later call the Toolkit brush core. Both packages contain Editor/Toolkit, and the repo has no asmdef, so the code compiles together in either install [M for both facts, R for the conclusion].
+
+### Shared core, built once
+
+1. **`SkinFrame`.** For each vertex, M = Σ wᵢ · boneᵢ.localToWorld · bindposeᵢ, plus its inverse [R].
+   - The once-per-bone `bones[b].localToWorldMatrix * binds[b]` pattern is MeshGrowth.cs:121-130 [M].
+   - Weights come from `GetAllBoneWeights`/`GetBonesPerVertex`, not `mesh.boneWeights`. The legacy view keeps only four influences per vertex (Editor/Core/AnimatorMerger.Physics.cs:749-753) [M]. Whether BakeMesh honours the renderer's bone-count quality is unverified, so the test includes a vertex with more than four influences [R].
+   - **M must be evaluated in the pose the shape will play in** (the rest pose after reset), not the captured pose. Linear skinning gives posed = M·(v + d), so d = M_rest⁻¹·P − v [R].
+   - BakeMesh skins on the CPU, and its result is relative to the renderer transform. `useScale` defaults to false, which bakes "without using the scale value" (https://docs.unity3d.com/2022.3/Documentation/ScriptReference/SkinnedMeshRenderer.BakeMesh.html) [M].
+   - **The repo's two BakeMesh callers disagree on the flag.** The painter uses `BakeMesh(_baked, true)` and maps to the world with `TRS(position, rotation, one)` (YapsSquashPainter.cs:445-453). The probe uses `BakeMesh(baked, false)` with `position + rotation * v` (Dev/Probes/HeldShapeFrameProbe.cs:186-193) [M]. At most one of them can be right on a scaled renderer [R]. The spike settles it.
+   - This is the main technical risk, and the first spike tests it.
+2. **`ShapeWriter`.**
+   - **Append** a new shape directly with `AddBlendShapeFrame` [R].
+   - **Replace** or reorder a shape by rewriting the set: copy every frame with `GetBlendShapeFrameVertices`, `ClearBlendShapes`, then re-add [R].
+   - The rules behind this: frames go only on a new shape or the last one, in increasing weight order, and delta arrays must equal `vertexCount`. A name that already exists is not created anew (https://docs.unity3d.com/ScriptReference/Mesh.AddBlendShapeFrame.html) [M].
+   - So a clashing name is refused up front, or the frames land on the existing shape [R].
+   - The template is the frame-copy loop at Editor/Yaps/Setup/YapsDebugOverlayBuilder.cs:546-556 [M]. That loop extends the arrays for added vertices, which the Toolkit does not need [M].
+   - `deltaNormals` and `deltaTangents` may be null (same URL) [M].
+3. **`Welds`.** Groups vertices on a 1e-5 grid of mesh-space position (the copies a UV seam splits a point into), after YapsSquash.cs:201-207 [M].
+   - The painter already builds the welded one-ring adjacency from it (`_rep`, `_near`, YapsSquashPainter.cs:210-222) [M]. That is the smoothing graph.
+   - Rounding to a grid can leave two near-identical points in neighbouring cells unwelded [R].
+
+### Order, smallest useful first
+
+1. **Pose to blendshape card.** Pick a renderer, pose bones in the Scene view, name the shape, press Capture.
+   - Zero all blendshape weights, BakeMesh, then restore the weights. That is the pattern at HeldShapeFrameProbe.cs:186-197 [M].
+   - Delta = SkinFrame_rest⁻¹(P) − v [R].
+   - Normals: transform with M_rest⁻¹'s 3x3 and renormalise before subtracting the unit rest normal. Tangents are handled the same way, keeping w [R].
+   - Why the renormalising matters: a normal delta left at import scale against unit rest normals was the 4.6.2-4.6.4 torn-plug bug. `DirectionDelta` divides by the rest vector's transformed length (YapsBaker.cs:928-932) [M].
+   - Skinned normals come from BakeMesh, so seams stay consistent with no recalculation [R].
+   - Then reset the pose, recorded as one undo group [R].
+   - A target pose other than rest (the shape plays while a bone also moves) is a Decision.
+2. **Viseme maker card.** Choose three existing mouth shapes (A, O, CH), or capture them with step 1 from a posed jaw. Build the missing slots as linear mixes.
+   - Cats' table takes those three inputs. Each viseme is one or two of them at fixed ratios, created with `from_mix`, and an intensity scales every ratio (cats-blender-plugin tools/viseme.py:97-99, 103-180, 258-284; MIT) [M]. Porting the ratios is [R].
+   - **Always write new shapes, never point a slot at an input shape.** The CVR docs warn visemes do not work if an animation uses the same blendshapes (https://docs.chilloutvr.net/cck/components/cvr-avatar/) [M].
+   - Name them `v_<slot>`. Both lookups find that name: `DetectVisemes`' candidate list, case-insensitive and exact (Editor/Core/AvatarFeatureDetect.cs:189), and the CCK's Auto Select, a substring match (project CCK, Assets/CVR.CCK/Scripts/Editor/GUI/Components/CCK_CVRAvatarEditor/CCK_CVRAvatarEditor.cs:461-477) [M].
+   - Fill the slots in CVR order (sil, PP, FF, TH, DD, kk, CH, SS, nn, RR, aa, E, ih, oh, ou: AvatarFeatureDetect.cs:162-166; the CCK's own list at CCK_CVRAvatarEditor.cs:34-35) [M].
+   - **`CvrSetup.WireFace` (Editor/Core/CvrSetup.cs:275-308) does more than fill slots.** It may change `bodyMesh` through `PickFaceMesh` (:312-326) and rewires blink (`WireBlink`) [M]. The Toolkit's existing "Face: visemes and blink" card already calls it (ToolkitWindow.cs:488-490) [M]. So either call it and say so in the rows, or write `visemeBlendshapes` directly [R].
+   - **`visemeMode` must be checked.** WireFace sets `useVisemeLipsync` and never writes `visemeMode` (CvrSetup.cs:297-298) [M]. On an avatar set to `SingleBlendshape` or `JawBone`, the new visemes would be ignored. So the card sets `Visemes`, or warns [R].
+   - Shapes go on the mesh that ends up as `bodyMesh` [R].
+   - Edit-mode preview reuses the hold-and-release idea of `YapsShapeSim` (YapsComponentEditors.cs:536-620), reimplemented [M]. That includes releasing on assembly reload, on leaving Edit mode, and on `sceneSaving` (:549-556). Without the last, a save would keep the preview weights as the author's [M].
+3. **Split/combine card** (if built).
+   - **Split** multiplies each frame's deltas by a smoothstep across a blend width on avatar-local x. The side test is the painter's: `root.InverseTransformPoint(baked world position).x < 0` is left (YapsSquashPainter.cs:427, positions from :445-447) [M]. It needs the posed bake, not SkinFrame [R].
+   - **Combine** sums deltas frame by frame. Shapes with differing frame weights are refused rather than resampled [R].
+   - L/R names use a plain Left/Right suffix [R].
+   - `UnifiedBlendshapes`' table cannot be reused without a Core edit. It is private (Editor/Core/UnifiedBlendshapes.cs:34), only `BuildPlan` is public (:123), and it holds face-tracking names only [M].
+4. **Smooth/relax brush.** A Scene-view window reimplementing the painter's mechanics [M]:
+   - Control id, ray, `DrawWireDisc`, hotControl stroke (YapsSquashPainter.cs:489-522).
+   - **A geodesic dab**: Dijkstra over the welded graph within the radius, "never across a gap", so an arm resting on the side is not caught (:524-555).
+   - Quartic falloff `(1-x²)²` (:560).
+   - Overlay through `DrawMeshNow` with `Hidden/Internal-Colored` (:476-487).
+   - Each dab: welded Laplacian, `p += s·f·(avg(neighbours) − p)`, worked out in posed space and turned into a bind-space delta through SkinFrame⁻¹ [R].
+   - The posed positions and the overlay are rebaked after every dab. The painter bakes once per stroke because its edits never move vertices (:500) [M for the painter, R for the need].
+   - Target: the base mesh, or one shape's deltas (Decision).
+   - Raycasts stay brute force, Möller-Trumbore over every triangle, as the painter does (:566-595) [M]. A BVH and a `// ponytail:` mark come only if a measured large body is slow [R].
+5. **Move/sculpt brush.** Only if Joe declines adopting. Same window with Move, Push/Pull and Inflate, and the same bind-space conversion [R].
+
+### Hard parts
+
+- **Bind vs posed.** The scene pose is rarely the bind pose. Armatures scaled 100x, import-scaled renderers (lossy 0.07 has occurred, per the torn-plug fix) and rotated renderers are common [R]. SkinFrame⁻¹ evaluated at the play pose handles all of it, or nothing works. That is why it is spike one [R].
+- **Held weights.** Every capture zeroes held blendshape weights first and restores them after (HeldShapeFrameProbe.cs:186-197) [M]. The Unity docs do not mention blendshapes in BakeMesh [M].
+- **Normals after a brush edit.** Recompute area-weighted normals on the welded graph for the touched region and its one-ring, before and after. Apply the change as a delta to the authored normal, so custom and hard normals survive [R]. Tangents get the minimal rotation from the old normal to the new one [R].
+- **Seams.** Every weld group moves as one, and its shape deltas stay identical, or the mesh tears along UV seams [R]. Positions are compared after the edit in the test.
+- **Mirror.** A 1 cm spatial hash in avatar-local space, taking the nearest match within 2 cm of flipped x (YapsSquashPainter.cs:304-332) [M]. The painter writes 0 to an unmatched vertex (:329) [M]. Here unmatched vertices are listed in the report rows instead [R].
+- **Multi-frame shapes.** `ShapeWriter` keeps every frame. The add-on's last-frame-only fold (YapsBaker.cs:941-972, marked `ponytail:` at :941) is not copied [M].
+- **Undo size.** `Undo.RegisterCompleteObjectUndo(mesh)` once per stroke, not per dab [R]. The memory cost on a large mesh is unmeasured [R].
+- **Avatar cost.** `AvatarWeight` counts every shape and calls one "animated" only if a clip binds it (AvatarWeight.cs:149-184). It warns past 64 shapes nothing animates (:410-414) [M]. Corrective and viseme shapes are driven by no clip, so they count toward that warning [M for the rule, R for the effect].
+
+### Tests (Dev/Tests, headless, gated `CVR_CCK_EXISTS` only; fixtures built like Dev/Probes/FixtureBuilder.cs:368-369)
+
+- **SkinFrame / pose capture.** Two-bone cylinder with a 100x armature, a rotated **and scaled** renderer, and one vertex with more than four influences. Pose, capture, reset the pose, set weight 100, BakeMesh. Posed positions must match within 1e-4 and normals within 1e-3, through whichever `useScale` mapping the test proves [R].
+- **Non-destructive.** The source mesh's own hash of positions plus every shape frame is unchanged after every card. `YapsSquash.Fingerprint` covers positions only (YapsSquash.cs:188-196) [M], so a new hash is needed [R]. The swapped renderer restores with Put back [R].
+- **Re-run identity.** A second capture keeps the asset's GUID and the first captured shape [R].
+- **ShapeWriter.** Round trip of a multi-frame mesh: every frame's weight and deltas are identical. The new shape is last, existing indices are unchanged, and a clashing name is refused [R].
+- **Split/combine.** L at 100 plus R at 100 equals the source. The centre line is half. Combine equals the sum [R].
+- **Visemes.** All 15 slots are non-null in CVR order, and `visemeMode` is `Visemes`. `DetectVisemes` returns non-null once 7 of 15 match (AvatarFeatureDetect.cs:200), so non-null alone proves little [M for the threshold, R for the test].
+- **Smooth.** A noisy plane with a duplicated seam. After a dab, weld groups have identical positions, Laplacian energy drops, and vertices outside the radius are bit-identical [R].
+- **Packaging.** `compile-check.sh` passes all five combinations: with and without the VRChat SDK, each with and without the add-on, plus MagicaCloth2 without the SDK (Dev/Build/compile-check.sh:10-11) [M for the script]. The add-on build compiles from `YAPS_CORE` plus Editor/Toolkit [R].
+
+### Decisions for Joe
+
+| Question | Options | Suggested |
+|---|---|---|
+| Sculpt/move brush | Adopt (README pointer to VRCMeshDeformer, Easy Mesh Editor or Lattice, no code) or build | Adopt |
+| Smooth "mesh fixer" brush | Build (painter feel, free) or adopt like sculpt | Build, after cards 1-2. Check Polybrush on a posed skinned body first |
+| Split/combine | Adopt (pointer to the free BlendShapeEditor) or build small | Adopt. Build only if it should sit in the Toolkit |
+| What the smooth brush edits | Base mesh, one blendshape's deltas, or both | Both: base by default, with a shape picker |
+| Pose capture target | Shape plays from rest pose, or relative to a held pose | Rest only |
+| Viseme mix ratios | Port Cats' three-input table (MIT, credited) or derive our own | Port and credit |
+| Viseme wiring | Call `WireFace` (may change face mesh and blink) or write the slots directly | Write directly. Leave the Face card for the rest |
+| Where the cards live | Toolkit cards (both packages) or a separate menu window | Cards in the Toolkit, brushes in one Scene-view window it opens |
+| Docs | README section "Mesh tools", plus pointers to the adopted tools and to CVR's JawBone/SingleBlendshape modes | Same commit as each card |
+
+### First spike
+
+Build `SkinFrame` and the pose-capture test only, in Dev/Tests, with no UI.
+- Fixture: a two-bone cylinder under a 100x scaled armature. The renderer is rotated 90° and scaled 0.07. One vertex has five influences, and a held blendshape sits at 50.
+- Steps: pose bone two by 45°, capture, return to rest, set the new shape to 100, BakeMesh.
+- Pass: positions within 1e-4 and normals within 1e-3 of the posed bake. The held shape is back at 50 afterwards.
+- It also records which BakeMesh `useScale` mapping is right on a scaled renderer. The painter and the probe disagree today [M].
+- If it passes, card 1 is UI over a proven core. If it fails, the inverse-skinning approach is wrong, and every later card needs a different frame [R].
+
+The plan reuses repo code only where it compiles without the VRChat SDK and the 18+ add-on.
+- **Called directly:** `OutputAssetPaths` (first save only), `AvatarFeatureDetect.VisemeOrder`/`DetectVisemes`, optionally `CvrSetup.WireFace`, and the Toolkit `Tool()` card (after a small label change).
+- **Copied as patterns, not called:** `SceneAssetRehomer.CopyMesh`, `MeshGrowth`'s per-bone matrices, `YapsBaker.SaveInPlace`/`DirectionDelta`, `YapsSquashPainter`, `YapsSquash.Welds`, `YapsDebugOverlayBuilder` and `YapsShapeSim`.
+  - SceneAssetRehomer and MeshGrowth need the SDK.
+  - The rest are add-on code.
+
+
+### Judge's corrections
+
+1. **Re-run GUID conflict.** The plan saved through `OutputAssetPaths.Claim` and also promised that re-runs keep the GUID. Claim deletes the file at the path, and its own comment says "The GUID changes" (OutputAssetPaths.cs:53-66). Claim is now first-save only, re-runs go through the SaveInPlace pattern, and the required `Reset()` call is added (:31-36).
+2. **The add-on's file list was missing.** The add-on carries Editor/Toolkit but only the `YAPS_CORE` Core files (yaps-files.sh:16-21). Added the rule that every callee must be on that list, and checked that the named ones are.
+3. **Wrong reason for the add-on calling the brush core.** "The add-on depends on the public package and never the reverse" is wrong: the add-on contains Editor/Toolkit itself (yaps-files.sh:26), and there is no asmdef. The conclusion stands, with the right reason.
+4. **Put back is not ready to use.** `Tool()`'s putBack label is hard-coded to "Put the textures back" (ToolkitWindow.cs:322), and `canPutBack` is called unguarded (:309, :323). A small change to `Tool()` is needed.
+5. **SkinFrame was underspecified, in four places:**
+   - The matrix must be evaluated at the play (rest) pose. "SkinFrame⁻¹(posed)" was ambiguous.
+   - Weights must come from `GetAllBoneWeights` (AnimatorMerger.Physics.cs:749-753).
+   - The repo's two BakeMesh callers disagree on `useScale` (YapsSquashPainter.cs:445-453 vs HeldShapeFrameProbe.cs:186-193), so the spike fixture now includes a scaled renderer and a vertex with more than four influences.
+   - Normal deltas must be renormalised against unit rest normals, the 4.6.2-4.6.4 torn-plug lesson (`DirectionDelta`, YapsBaker.cs:928-932). "Rotation × normal" alone is wrong under scale.
+6. **Split/combine verdict reversed to adopt by default.** BlendShapeEditor (free) does merge, concatenate and L/R split. An unstated licence blocks bundling, not users using it. Joe's rule points to adopt. "SmoothRange" is not on its page, so that claim was dropped.
+7. **Blend Shape Modifier corrected.** "NDMF-only" holds (NDMF >=1.13.0), and package.json has no VRChat SDK dependency. Its README does not list a split feature.
+8. **More existing tools added.** Lattice's Move and Smooth brushes and BlendShape output, with its package.json showing no SDK. Polybrush (free, official, deprecated from 6000.3, skinned support unclear). VRCMeshDeformer's "Save as BlendShape" and its no-bundling terms. Easy Mesh Editor's mirrored keys. MorphMixer. Chillaxins' short known-working list. Starmesh was checked: CVR-tested, but it has no pose capture or split.
+9. **PoseMesh restated.** It is a corrective sculpt in a pose, not a pose-to-shape converter. The "no pose capture" claim is now marked as search-based.
+10. **The CVR viseme facts were incomplete:**
+    - The CCK has `SingleBlendshape` and `JawBone` lip sync modes (CVRAvatar.cs:20), which are an existing fallback.
+    - WireFace never writes `visemeMode` and can change `bodyMesh` and blink (CvrSetup.cs:297-298, 312-326).
+    - The Toolkit already has a Face card that calls it (ToolkitWindow.cs:488-490).
+    - The CVR docs warn that visemes fail if an animation uses the same shapes, so the card always writes new shapes.
+    - `DetectVisemes` needs only 7 of 15 (:200), so the test now checks all 15.
+11. **Cats details.** Its inputs are exactly A, O and CH. Each viseme is a one- or two-input linear mix scaled by an intensity (tools/viseme.py:97-99, 103-180, 258-284), not "up to three". Cats is MIT.
+12. **UnifiedBlendshapes cannot offer L/R names without a Core edit.** Its table is private (:34), only `BuildPlan` is public (:123), and it holds face-tracking names only. Plain suffixes are used instead.
+13. **Split simplified.** It uses the painter's posed bake (:427, :445-447). SkinFrame is not needed there.
+14. **Painter mechanics completed.** The dab is geodesic Dijkstra over the welded graph (:524-555), which is the painter feel. The welded adjacency already exists (`_near`, :210-222), so it is [M], not [R]. A position brush must rebake per dab. Citations corrected: weld folding :210-222, OnScene :489-522.
+15. **ShapeWriter simplified.** Appending needs no clear-and-rewrite; only replacing a shape does. A clashing name must be refused, because AddBlendShapeFrame does not create a new shape for an existing name.
+16. **Path and line fixes.**
+    - Paths: YapsDebugOverlayBuilder, YapsComponentEditors and YapsSquashPainter are under Editor/Yaps/Setup. CCK_CVRAvatarEditor.cs is in the project's CCK, not the repo.
+    - Lines: the frame loop is :546-556; the held-weight pattern is :186-197; the GrabbyBones text is README.md:798-803; the last-frame fold is :941-972; WriteFolder is :253-258.
+17. **Avatar cost note added.** AvatarWeight counts only clip-bound shapes as animated (:149-184) and warns past 64 unanimated ones (:410-414). Corrective and viseme shapes count toward that warning.
+18. **Tests changed.**
+    - Fingerprint: `YapsSquash.Fingerprint` hashes positions only, so the non-destructive test needs its own hash.
+    - Added a re-run identity test.
+    - Packaging: compile-check runs five combinations (:10-11), and a passing compile there now covers the add-on's file list.
+    - Test gate: `CVR_CCK_EXISTS` only.
+19. **Decisions added.** Two new rows: split/combine adopt-or-build, and how visemes are wired.
+
+## ChilloutVR Toolkit as its own package: plan 2026-10-17. NOT STARTED, after 5.0.0 (Joe); its add-on defect FIXED ON DEV
+
+Legend: **[M]** means I read it this round in a file, in a command's output or on a web page. **[R]** means it is reasoned or inferred and was not checked. Line numbers are against the `dev` working tree on 2026-10-17.
+
+**Goal.** Ship the Toolkit as a download for anyone with a ChilloutVR avatar, whether or not the avatar came from VRChat. It sits beside the converter package and the 18+ add-on.
+
+### Existing tools first
+
+- **The CCK's own validator** runs 13 checks, and six of them have auto-fixes. [M] https://docs.chilloutvr.net/cck/validations/
+  - The six auto-fixes are Potential Depth Light, Requires Streaming Mipmaps, Unsupported Streaming Mipmaps, Texture Too Large, Non Legacy Blendshape Normals and Missing Scripts.
+  - Loud Audio, Long Range Audio and Potentially Non SPI Shaders only warn and have no fix. The SPI check "does not block building".
+  - Overlap with the Toolkit, and what that means:
+    - "Audio limits" and "Stereo shaders" fix things the CCK only warns about. "The CCK warns, this card fixes it" is true for these two. [M same page, `ToolkitWindow.cs:465,493`]
+    - "Check before upload" refuses missing scripts, textures over 8192 and mipmaps without streaming [M `UploadPreflight.cs:45-50`]. The CCK auto-fixes all three itself. The card adds nothing there beyond reporting them. [M]
+    - The validator has no survey, weight, free-wins, height or face-wiring step. [M same page]
+- **CCK Enhancement** (MIT) merges controllers into the CVR base controller and generates property clips and AAS entries. It overlaps only "Merge animators". [M] https://github.com/milchzocker/cck-enhancement
+- **NDMF Merge** (MIT) merges outfits at build time. It needs NDMF and Chillaxins. It is a different job from every card. [M] https://github.com/milchzocker/ndmf-merge
+- **NDMF Avatar Optimisation** (MIT, same author, for ChilloutVR) works non-destructively at build time on a clone. [M] https://github.com/MilchZocker/NDMF-Avatar-Optimization
+  - It removes unused bones and blendshapes, merges vertices, atlases materials and compresses and deduplicates textures.
+  - Its README calls mesh simplification "a provisional experiment".
+  - It partly overlaps "What this avatar costs" (unused blendshapes, texture sizes) and "Free wins" [M `ToolkitWindow.cs:385-388,442`]. The approach differs: the Toolkit edits the avatar in place, with undo; NDMF works on an upload-time clone. [R]
+  - It covers nothing for audio, bounds, stereo, face wiring, height or the description.
+- **Chillaxins** (hai-vr) makes NDMF tools and the platform-agnostic Modular Avatar components work on ChilloutVR. It installs as a `.unitypackage` or via ALCOM, and its page says UPM and tarball installs are not supported. [M] https://docs.hai-vr.dev/docs/products/chillaxins
+- **The CCK** installs as a `.unitypackage` into `Assets/`. The setup page does not mention UPM or VPM. [M] https://docs.chilloutvr.net/cck/setup/
+- **d4rkAvatarOptimizer** is VRChat-only. Search found no evidence of ChilloutVR support. [M] https://github.com/d4rkc0d3r/d4rkAvatarOptimizer
+- **Upshot:**
+  - No tool found does the Toolkit's job as a whole, so the work is to package what exists, not to write a new tool. [R]
+  - A ChilloutVR optimizer does exist. Card text and the README should name NDMF Avatar Optimisation as the build-time alternative for weight, rather than claim the field is empty. [R]
+  - Card text should not repeat what the CCK already says or fixes. [R]
+
+### Does a third package need to exist?
+
+- The public package already works in a ChilloutVR-only project.
+  - `compile-check.sh:60` compiles the whole public tree, minus `Editor/Yaps` and `Runtime`, with `CVR_CCK_EXISTS` alone. [M `:60,124`]
+  - `README.md:1756` already tells users so. [M]
+- So the gap is not what the code can do. It is three things. [R]
+  - Discoverability: a ChilloutVR-only user does not look for a VRChat converter.
+  - Size: 69,920 lines of `Editor` C#, against 15,197 in the Toolkit closure. [M `wc -l`]
+  - Wording: the package reads as a converter.
+- **Option 0:** build nothing new. Give the Toolkit its own README section and a release line pointing to the public package. This is the cheapest option. It is decision 1. [R]
+
+### How three packages can share a project
+
+Unity's importer adds and replaces files and never removes them [M `Dev/Build/README-yaps.md:43-45`]. Destination paths and GUIDs are shared, so installing two packages overlays files rather than duplicating them [M `yaps-files.sh:14-15`]. Whichever package is imported last wins a shared file. [R]
+
+| Option | Verdict |
+|---|---|
+| A. A common core package, plus three thin ones | Four downloads, and nothing compiles without the core. It follows the same overlay rules as C and gains nothing over it. Rejected. [R] |
+| B. One package with modules | Not possible across the 18+ line: the public package must hold no penetration [M `build-package.sh:237-251`]. That already means two downloads. Rejected. [R] |
+| C. The Toolkit as a subset that every package carries, at the same paths and GUIDs under `Assets/AvatarBridge` | This is the model the add-on already uses, and the add-on already ships `Editor/Toolkit` whole [M `yaps-files.sh:26`]. Code import order does not matter while all three come from one commit. `README.md` is the exception: each package swaps in its own text at one GUID, so the last import decides what the project's README says. That is cosmetic, but `README-toolkit.md` should say it. [M `build-package.sh:226-229`, R] **Recommended.** |
+| D. UPM or VPM install into `Packages/` | An update would replace the folder whole, so no stale files would be left behind [R]. **Blocked.** [M] The CCK at `Assets/CVR.CCK` has one asmdef, `OpenXR_Configurator` [M, local project]. So `ABI.CCK.Components` compiles into Assembly-CSharp [R], and a package asmdef cannot reference Assembly-CSharp [R, Unity rule]. The ChilloutVR UPM packages that do exist bear this out: NDMF Avatar Optimisation's asmdef references only NDMF and its own runtime, and it finds `ABI.CCK.Components.CVRAvatar` by reflection (`CVRAvatarOptimizerPlugin.cs:185`) [M, GitHub]. The Toolkit uses CCK types directly (`ToolkitWindow.cs:8`), so D means rewriting it around reflection [M]. The MagicaCloth2 deadlock in `avatarbridge-vcc-distribution.md` applies as well [M]. Dead unless the CCK ships asmdefs. |
+
+**Version skew** is the remaining risk.
+
+- An older package imported over a newer one reverts the shared files. The 4.1.0 and 4.1.1 add-ons shipped uncompilable through this kind of shared-subset drift. [M `build-package.sh:117-123`]
+- Mitigation: one `BridgeDefines.Version` for all three packages (`BridgeDefines.cs:26`), built from one commit and released together. The rule "delete `Assets/AvatarBridge`, then reimport every package you use" covers all three. [R]
+
+### What the Toolkit package ships
+
+- **The file list:** `toolkit_files()` = today's `yaps_files()` minus `Editor/Yaps` and `Runtime`, plus `Editor/Core/Physics/SoftBodyContact.cs` **and the `Editor/Core/Physics` folder entry**. [M emulated in scratch: 191 entries]
+  - Without the folder entry, Unity would make that folder with a fresh GUID. A later import of the public package would then bring the real GUID for the same path. [R]
+  - That leaves:
+    - `Editor/Toolkit` and `Editor/UI`
+    - the 31 `YAPS_CORE` files
+    - `BridgeDefines.cs`, `BridgeLinks.cs` and `LICENSE.md`
+    - `AvatarScaler/` (70 KB, which the Height card reaches through `AvatarScalerInjector`)
+    - `FaceTracking/` (940 KB) [M `yaps-files.sh:16-29`, `du`]
+  - `yaps_files()` then becomes `toolkit_files()` plus `Editor/Yaps` and `Runtime`. One list means the two cannot drift. [R]
+- **README:** `README.md` is swapped for `Dev/Build/README-toolkit.md` at the same path and GUID, the same way yaps mode does it. [M `build-package.sh:226-229`]
+- **FaceTracking:** the folder holds no code [M `find`]. `FaceTrackingPackages` loads it at run time, and only `FaceTrackingConverter` and `FaceTrackingInjector` reach that [M `FaceTrackingConverter.cs:59`, `FaceTrackingInjector.cs:57`].
+  - Those two are called from `CvrSetup.Run` (`CvrSetup.cs:56-57`) and from the converter. `CvrSetup.Run`'s only caller is `AvatarBridgeWindow.cs:1047` [M `grep`].
+  - So in a Toolkit-only package, and in the add-on today, the folder can never be loaded. Dropping it from `toolkit_files()` needs no `CvrSetup` split: the code compiles without the assets. Decision 3. [M call graph by grep; reflection callers not ruled out, R]
+- **Avatar Tester:** 3 files, 3,455 lines.
+  - Its textual closure against the Toolkit list is clean. [M emulated]
+  - It has `AVATARBRIDGE_DYNBONE` blocks (`CckAnimatorTester.Physics.cs:32,55,…`), so shipping it needs a DynamicBone compile shape too. [M]
+  - The Toolkit already shows its button only when the type exists. [M `ToolkitWindow.cs:164`] Decision 4.
+- **Cut:**
+  - `Editor/Core/Physics` except `SoftBodyContact.cs` (5,138 lines in all) [M]
+  - `Editor/Yaps` and `Runtime`
+  - `AvatarBridgeWindow.cs` and the converter pipeline and converters
+  - `Presets/`, `Dev/`, `docs/` and `Regression/`
+  - `CLAUDE.md`, `AGENTS.md` and `Review.md`
+
+### Menu, window, wording
+
+- **Folder:** stays `Assets/AvatarBridge`. The overlay depends on that path. [M `ROOT_GUID` at `build-package.sh:32`] `README-toolkit.md` explains it, the way `README-yaps.md` does under "Why this folder says AvatarBridge" (`:29`). [M]
+- **Menu:** today it is `Tools/Avatar Bridge/ChilloutVR Toolkit`. [M `ToolkitWindow.cs:689`]
+  - A second `MenuItem` at a root without the AvatarBridge name would make it easier to find. Decision 5.
+  - Renaming the existing path instead would break the smoke test's menu entry [M `Dev/Tests/AvatarBridgeSmokeTest.cs:492`] and any other probe or doc that names the path [R].
+- **"Convert tab" hints** (`:518-522`) are on the PhysBones card.
+  - That card exists only when `ConvertPhysBones` is set [M `:123`]. Only `PhysBonesInPlace`'s static constructor sets it [M `PhysBonesInPlace.cs:22`].
+  - So a Toolkit-only install never shows them. [M]
+- **"Also in this package":**
+  - It already hides links whose menu is absent, and offers YAPS as an external link. [M `:145-167`]
+  - It detects the converter by `AvatarBridge.AvatarBridgeWindow` [M `BridgeLinks.cs:27-29`], so its YAPS line and its converter check both read correctly in the Toolkit package. [R]
+  - It has no "Get AvatarBridge" link when the converter is absent. Decision 6.
+
+### What needs the VRChat SDK
+
+- Only "PhysBones to cloth". It is gated through the delegate, and `PhysBonesInPlace.cs:1` is `#if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS`. [M]
+- The Toolkit package does not ship that file, so the card stays absent even where the SDK is installed. That is accepted: converting PhysBones belongs to the converter. [R]
+- Nothing else in the closure needs the SDK. [R; the `toolkit:` compile shape is the proof] Without the CCK, the Toolkit window compiles to nothing. [M `ToolkitWindow.cs:4`]
+
+### Build and verification changes
+
+- **`build-package.sh --toolkit`:**
+  - Sets `MODE=toolkit`. It cannot be combined with `--yaps` or `--dev`. `--test TAG` is allowed.
+  - Output is `ChilloutVR-Toolkit-<v>-toolkit.unitypackage`, or another labelled name, because every mode carries a label. [M `:22`] The exact name is decision 2.
+- **Closure check:** generalise `check_yaps_closure` into `check_closure` and run it on the toolkit list.
+  - It is textual and ignores `#if` [M `:141-175`]. **On the toolkit list it aborts today on a false positive:** `UploadPreflight.cs:56` calls `YapsNativeBuilder.ReportLostShaders` inside `#if AVATARBRIDGE_YAPS`, and `Editor/Yaps` is absent. [M emulated in scratch]
+  - Fix: in toolkit mode, leave `Editor/Yaps` out of the absent-type scan. Those references only compile where the add-on, which brings the types, defines `AVATARBRIDGE_YAPS`. [R]
+  - The scan reads only `find Editor` (`:153`), so a reference to a `Runtime` type is never checked. The `toolkit:` compile shape is what covers it. [M]
+  - The abort text says "YAPS package" (`:164,170-171`) and needs the mode's name. [M]
+- **`verify_package` after packing:** one check per mode, over the staged `pathname` entries. [R]
+  - Public: no `Editor/Yaps`, no `Runtime`.
+  - Toolkit: no `Editor/Yaps`, no `Runtime`, no `Core/Physics` except `SoftBodyContact.cs`, no `AvatarBridgeWindow.cs`, no `Presets`. `ToolkitWindow.cs` must be present.
+  - Add-on: no converter.
+  - This turns the manual "extract both and check the split" step in CLAUDE.md into a hard failure.
+- **New `compile-check.sh` shapes:**
+  - `toolkit:CVR_CCK_EXISTS`
+  - `toolkit:CVR_CCK_EXISTS;AVATARBRIDGE_MAGICA`
+  - `toolkit:CVR_CCK_EXISTS;AVATARBRIDGE_MAGICA;AVATARBRIDGE_DYNBONE`, if the tester ships
+  - `addon:CVR_CCK_EXISTS;AVATARBRIDGE_YAPS;AVATARBRIDGE_MAGICA`. No shape covers that combination today. [M `:60-65`]
+  - Each `toolkit:` shape needs its prefix stripped beside `addon:` (`:67`) and its own file-list case beside `addon:*` (`:122`). [M]
+
+### Existing defect. FIXED ON DEV 2026-10-17
+
+- `ToolkitWindow.cs:533` calls `SoftBodyContact.Link` under `#if AVATARBRIDGE_MAGICA`. `SoftBodyContact.cs` is not in `YAPS_CORE`. [M `:527-537`, `yaps-files.sh:16-21`]
+- Two consequences:
+  - `build-package.sh --yaps` aborts at the closure check. [M: the check's logic, emulated read-only in scratch, flags it; the build itself was not run]
+  - The add-on fails to compile wherever MagicaCloth2 is installed. [R; no compile shape covers it]
+- Commit `1598869` is in no tag (`git tag --contains` is empty), so no shipped package has the defect. 5.0.0 must not ship it. [M]
+- **Fix:**
+  - Add `Editor/Core/Physics/SoftBodyContact.cs` to the add-on list by its path, and add `Editor/Core/Physics` to the folder entries at `yaps-files.sh:27`. It lives in `Editor/Core/Physics`, and `YAPS_CORE` only holds files directly under `Editor/Core`. [M `yaps-files.sh:29`]
+  - It needs only `BridgeReport` and MagicaCloth2, so nothing else follows it in. [M `SoftBodyContact.cs`]
+- **Done 2026-10-17.** `yaps-files.sh` lists `SoftBodyContact.cs` and the `Editor/Core/Physics` folder entry, and `compile-check.sh` gained the shape `addon:CVR_CCK_EXISTS;AVATARBRIDGE_YAPS;AVATARBRIDGE_MAGICA`. [M]
+  - Before the list change that shape failed with CS1503 at `ToolkitWindow.cs:533`: `SoftBodyContact` bound out of the deployed assembly, which is CS0103 in a user's project. After it, all seven shapes pass. [M]
+  - A `build-package.sh --yaps --test` build passes the closure check, carries the file, carries the folder at the public package's GUID (`c3160ec0...`) and no converter. [M, extracted]
+
+### README and release notes
+
+- **`README.md`:**
+  - Installation (`:243`): add a "Which package" table with the converter, the Toolkit and the 18+ add-on.
+  - Toolkit section (`:1756`): "ships in the converter's own package" is already incomplete, since the add-on also carries it. It becomes "ships in every package, and on its own". [M]
+  - Mention NDMF Avatar Optimisation, with Chillaxins, as the build-time alternative for weight. [R]
+  - Run the anchor check after editing. [M CLAUDE.md]
+- **`Dev/Build/README-toolkit.md`:** new file. Cover what is in it, why the folder is named AvatarBridge, the delete-then-reimport-everything rule, and that the README shown is whichever package was imported last. [R]
+- **Release notes:** a release gains one asset. The public body gets a single line: "ChilloutVR-only? The Toolkit is its own download." The YAPS dropdown rule does not change. [R]
+- **`bug_report.yml`:** has no package field. [M grep] A "which package" dropdown is optional. YAGNI until reports get mixed up. [R]
+
+### Order of work
+
+1. ~~Fix the `SoftBodyContact` add-on defect (file and folder entry) and add the add-on plus Magica gate. This is needed with or without this plan, before 5.0.0.~~ DONE 2026-10-17.
+2. Joe decides 1 to 7.
+3. The first spike, below.
+4. `toolkit_files`, `--toolkit`, `check_closure` with the `Editor/Yaps` exclusion, `verify_package` and the gates, in one commit.
+5. `README-toolkit.md`, the README Installation and Toolkit sections, and this record moved to `docs/archive/` once shipped, all in the same commit as step 4 or the next one.
+6. Ship it with 5.0.0 or a later minor, all three packages built from one commit.
+
+### Decisions for Joe
+
+| # | Question | Default if unanswered |
+|---|---|---|
+| 1 | A third package, or Option 0: point ChilloutVR-only users at the public package? | A third package (option C) |
+| 2 | Package file name | `ChilloutVR-Toolkit-<v>-toolkit.unitypackage` |
+| 3 | Drop `FaceTracking/` (940 KB of assets nothing in the package can load) from the Toolkit list? No code split is needed. | Drop it |
+| 4 | Include the Avatar Tester (3 files; adds a DynamicBone compile shape)? | Yes, it suits the same audience |
+| 5 | Add a menu root without the AvatarBridge name, beside today's path? | No. Keep `Tools/Avatar Bridge/ChilloutVR Toolkit` |
+| 6 | A "Get AvatarBridge" link in "Also in this package" when the converter is absent? | Yes, one external link, like YAPS |
+| 7 | With 5.0.0, or after it? | After it. 5.0.0 only gets the defect fix. **Joe, 2026-10-17: after 5.0.0.** |
+
+### First spike
+
+1. In a scratch branch, add `toolkit_files()` and the `toolkit:` shapes to `compile-check.sh`. Run only those shapes.
+2. Run `build-package.sh --toolkit --test spike`. Extract it and list its `pathname` entries against the forbidden list.
+3. In a fresh project with only CCK 4 installed, import it, open the window and press every card on one avatar.
+4. Import the public package over it, then the add-on. Then repeat in the reverse order in a second fresh project.
+
+**Passes when:**
+
+- Every compile is clean.
+- The closure check passes without the false positive.
+- The forbidden list is empty.
+- Every card runs.
+- Neither import order logs CS0101 (duplicate type) or a GUID conflict, including on the `Editor/Core/Physics` folder.
+- `BridgeDefines.Version` is the same in every case.
+
+**Needs Joe's go-ahead:** it runs csc, a build and Unity.
+
+---
+
+### Judge's corrections
+
+1. **The claim that no ChilloutVR optimizer exists was wrong.** NDMF Merge's README points to NDMF Avatar Optimisation (MilchZocker, MIT, ChilloutVR, build-time, non-destructive). It partly overlaps the weight and free-wins cards. I also added Chillaxins, which brings NDMF and Modular Avatar to ChilloutVR. I added d4rkAvatarOptimizer as VRChat-only. Sources: github.com/MilchZocker/NDMF-Avatar-Optimization, docs.hai-vr.dev/docs/products/chillaxins, github.com/d4rkc0d3r/d4rkAvatarOptimizer.
+2. **"The CCK warns, this card fixes it" was only partly true.** The CCK itself auto-fixes missing scripts, oversized textures and streaming mipmaps, which are three of the things "Check before upload" refuses (`UploadPreflight.cs:45-50`). The line holds only for audio and stereo shaders.
+3. **The plan's closure check would abort the Toolkit build on a false positive.** `UploadPreflight.cs:56` names `YapsNativeBuilder` inside `#if AVATARBRIDGE_YAPS`. I confirmed this by running the check's logic on a copy in scratch, without running the build. The plan treated the check's blindness to `#if` as harmless. I added the fix (leave `Editor/Yaps` out of the absent-type scan in toolkit mode) and noted that the check never looks at `Runtime` types (`build-package.sh:153`).
+4. **The SoftBodyContact defect is now shown, not just reasoned.** The same scratch run flags `SoftBodyContact` for the add-on list, and `git tag --contains 1598869` is empty. The fix also needs the `Editor/Core/Physics` folder entry. Otherwise that folder gets a GUID that clashes with the public package's (inferred).
+5. **FaceTracking (decision 3) does not need `CvrSetup` split.** The folder has no code. Its only route in is `CvrSetup.Run`, whose only caller is `AvatarBridgeWindow.cs:1047`, which the Toolkit package cuts. So the default flips to "drop it". The add-on carries it today with no way to load it either.
+6. **The Avatar Tester needs a DynamicBone shape.** It has `AVATARBRIDGE_DYNBONE` blocks, so I added a `toolkit:` shape for it. Its textual closure is clean, so it now counts as checked, not just a reader finding.
+7. **Option D's blocker now has outside evidence.** The existing ChilloutVR UPM package references only NDMF in its asmdef and reaches `CVRAvatar` by reflection. The Toolkit uses `using ABI.CCK.Components` directly.
+8. **"Import order does not matter" was not true for README.md.** Each package swaps in its own text at the same GUID, so the last import decides what the project shows. I added this to C and to the contents of `README-toolkit.md`.
+9. **The menu-rename cite was wrong.** `:157-166` are other menus' `ExecuteMenuItem` strings. The Toolkit's own path is used at `Dev/Tests/AvatarBridgeSmokeTest.cs:492`.
+10. **Several line numbers were off.** compile-check's CCK-only shape is `:60` (not `:61`). The 4.1.x history is `build-package.sh:117-123` (not `:123-127`). The README-yaps "never removes" text is `:43-45`. The `toolkit:` shapes also need edits at compile-check `:67` and `:122`.
+11. **Some tags were upgraded from [R] or reader finding to [M].** The `ConvertPhysBones` setter (`PhysBonesInPlace.cs:22`), the `PhysBonesInPlace.cs:1` guard and the `HasAvatarBridge` check (`BridgeLinks.cs:27-29`) were all read directly. The line counts (69,920 and 15,197) were measured. The README's "ships in the converter's own package" was already incomplete, since the add-on carries the Toolkit too.
 
 ## The atlas: what has never been worn, and what phase D is for
 
@@ -4962,7 +5603,8 @@ evidence, the ceiling, and the clean-room question still open for a property sig
 
 Still wanted, if SPS2 ever needs carrying rather than just not fighting: a carry map for whatever
 its knobs are called, which does need a real SPS2 bake to read. **Decided 2026-10-17: the tags are
-carried in 5.0.0** (Next up item 6).
+carried in 5.0.0** (Next up item 6). *They already were, from 4.6.0; the field contract was checked
+on VRCFury 1.1434.0 the same day (see the Joe decisions bullet in Next up).*
 
 One thing it confirms rather than threatens: "The plug mesh must be straight / fully extended in
 the editor" is their constraint too. The bake measures a rest pose because the technique requires

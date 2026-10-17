@@ -28,6 +28,10 @@ namespace AvatarBridge
 
             var senders = ctx.Target.GetComponentsInChildren<VRCContactSender>(true);
             var receivers = ctx.Target.GetComponentsInChildren<VRCContactReceiver>(true);
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            Grow.Reset();
+            Host.Reset();
+            Rest.Reset();
 
             var listenedTags = new HashSet<string>();
             foreach (var receiver in receivers)
@@ -47,12 +51,16 @@ namespace AvatarBridge
                 ConvertReceiver(ctx, receiver);
             }
 
+            long converted = clock.ElapsedMilliseconds;
             ReportUnreachableTags(ctx, listenedTags);
 
             if (ctx.Settings.createDefaultColliderPointers && listenedTags.Count > 0)
             {
                 CreateDefaultColliderPointers(ctx, listenedTags);
             }
+            Debug.Log($"[AvatarBridge] Contacts steps (ms): {senders.Length + receivers.Length} contacts in {converted} " +
+                $"(zones grown {Grow.ElapsedMilliseconds}, hosts {Host.ElapsedMilliseconds}, rest states {Rest.ElapsedMilliseconds}), " +
+                $"after {clock.ElapsedMilliseconds - converted}");
 
             if (senders.Length > 0 || receivers.Length > 0)
             {
@@ -60,6 +68,10 @@ namespace AvatarBridge
             }
 
         }
+
+        // Log only: one avatar spent 191 s here and nothing said where.
+        static readonly System.Diagnostics.Stopwatch Grow = new System.Diagnostics.Stopwatch(),
+            Host = new System.Diagnostics.Stopwatch(), Rest = new System.Diagnostics.Stopwatch();
 
         static void ConvertSender(BridgeContext ctx, VRCContactSender sender)
         {
@@ -75,9 +87,15 @@ namespace AvatarBridge
                     sender.shapeType, sender.radius, sender.position, sender.height, sender.rotation);
                 var pointer = contactObject.AddComponent<CVRPointer>();
                 pointer.type = tag;
+                Grow.Start();
                 GrowZoneForSliders(ctx, contactObject, PathOf(ctx, sender.transform));
+                Grow.Stop();
+                Host.Start();
                 RecordHost(ctx, sender, isSender: true, contactObject);
+                Host.Stop();
+                Rest.Start();
                 MatchRestState(ctx, sender, contactObject);
+                Rest.Stop();
             }
             ctx.Report.Converted(Category, PathOf(ctx, sender.transform),
                 $"Sender -> CVRPointer ({string.Join(", ", sender.collisionTags)})");
@@ -192,9 +210,15 @@ namespace AvatarBridge
 
             var contactObject = CreateContactObject(AnchorOf(receiver), "CVRTrigger_" + receiver.parameter,
                 receiver.shapeType, receiver.radius, receiver.position, receiver.height, receiver.rotation);
+            Grow.Start();
             GrowZoneForSliders(ctx, contactObject, PathOf(ctx, receiver.transform));
+            Grow.Stop();
+            Host.Start();
             RecordHost(ctx, receiver, isSender: false, contactObject);
+            Host.Stop();
+            Rest.Start();
             MatchRestState(ctx, receiver, contactObject);
+            Rest.Stop();
 
             var trigger = contactObject.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
             trigger.useAdvancedTrigger = true;

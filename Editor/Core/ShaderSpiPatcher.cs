@@ -67,13 +67,13 @@ namespace AvatarBridge
         // Log-only timings for one conversion, reset by Run. Never the report.
         static class Times
         {
-            internal static int Judged, SameText, Patched, Reused, VariantChecks;
+            internal static int Judged, SameText, Patched, Reused, VariantChecks, VerdictPlans, FullPlans;
             internal static readonly System.Diagnostics.Stopwatch Planning = new System.Diagnostics.Stopwatch(),
                 Patching = new System.Diagnostics.Stopwatch(), Variants = new System.Diagnostics.Stopwatch();
 
             internal static void Reset()
             {
-                Judged = SameText = Patched = Reused = VariantChecks = 0;
+                Judged = SameText = Patched = Reused = VariantChecks = VerdictPlans = FullPlans = 0;
                 Planning.Reset();
                 Patching.Reset();
                 Variants.Reset();
@@ -81,7 +81,8 @@ namespace AvatarBridge
         }
 
         internal static string TimingSummary() =>
-            $"judged {Times.Judged} ({Times.SameText} by text seen before, planning {Times.Planning.ElapsedMilliseconds}), " +
+            $"judged {Times.Judged} ({Times.SameText} from the cache, planning {Times.Planning.ElapsedMilliseconds}: " +
+            $"{Times.VerdictPlans} verdict plans, {Times.FullPlans} full), " +
             $"Patched {Times.Patched} in {Times.Patching.ElapsedMilliseconds} ({Times.Reused} copies reused, " +
             $"StereoVariantError {Times.VariantChecks} in {Times.Variants.ElapsedMilliseconds})";
 
@@ -453,7 +454,7 @@ namespace AvatarBridge
                 return new List<string>(known);
             }
             Times.Planning.Start();
-            var made = PlanStereo(unit);
+            var made = PlanStereo(unit, forPatch: false);
             Times.Planning.Stop();
             plan = made;
             var problems = Verdict(unit, made);
@@ -482,7 +483,9 @@ namespace AvatarBridge
         // take seconds, and they ran one after another. Planning is string work on text already
         // read; reading stays here, since the AssetDatabase answers only on the main thread. The
         // verdicts land in ProblemsByContent, so the judging after it never plans these again.
-        internal static Dictionary<string, (List<SourceFile> unit, StereoPlan plan)> Prejudge(IEnumerable<Shader> shaders)
+        // With forPatch, a shader the verdict sends to the patch gets its full plan here too.
+        internal static Dictionary<string, (List<SourceFile> unit, StereoPlan plan)> Prejudge(IEnumerable<Shader> shaders,
+            bool forPatch = true)
         {
             var units = new Dictionary<string, (List<SourceFile> unit, StereoPlan plan)>();
             foreach (var shader in shaders.Where(s => s != null).Distinct())
@@ -496,17 +499,23 @@ namespace AvatarBridge
             var fresh = units.Select(u => (path: u.Key, u.Value.unit, key: ContentKey(u.Value.unit, false)))
                 .Where(u => !ProblemsByContent.ContainsKey(u.key)).GroupBy(u => u.key).Select(g => g.First()).ToList();
             var plans = new StereoPlan[fresh.Count];
+            var verdicts = new List<string>[fresh.Count];
             Times.Planning.Start();
             System.Threading.Tasks.Parallel.For(0, fresh.Count, i =>
             {
-                try { plans[i] = PlanStereo(fresh[i].unit); }
-                catch { }
+                try
+                {
+                    plans[i] = PlanStereo(fresh[i].unit, forPatch: false);
+                    verdicts[i] = Verdict(fresh[i].unit, plans[i]);
+                    if (forPatch && verdicts[i].Count > 0) plans[i] = PlanStereo(fresh[i].unit);
+                }
+                catch { plans[i] = null; }
             });
             Times.Planning.Stop();
             for (int i = 0; i < fresh.Count; i++)
             {
                 if (plans[i] == null) continue;
-                ProblemsByContent[fresh[i].key] = Verdict(fresh[i].unit, plans[i]);
+                ProblemsByContent[fresh[i].key] = verdicts[i];
                 units[fresh[i].path] = (fresh[i].unit, plans[i]);
             }
             return units;
@@ -553,18 +562,24 @@ namespace AvatarBridge
             public bool Depth;              // reads _CameraDepthTexture as a plain texture
             public bool DepthRewritable;    // and every such read takes only the depth value
             public bool SurfaceOnly;
+            public bool Full;               // carries the fragment edits and depth flags a patch needs
         }
 
-        internal static StereoPlan PlanStereo(List<SourceFile> unit)
+        // Without forPatch, only what Verdict reads (passes, macros to add, passes left): the
+        // fragment eye-index search and the depth flags feed only the patch, and were about
+        // half of every plan the judges made.
+        internal static StereoPlan PlanStereo(List<SourceFile> unit, bool forPatch = true)
         {
-            var plan = new StereoPlan();
+            if (forPatch) System.Threading.Interlocked.Increment(ref Times.FullPlans);
+            else System.Threading.Interlocked.Increment(ref Times.VerdictPlans);
+            var plan = new StereoPlan { Full = forPatch };
             var offPc = unit.ToDictionary(f => f, f => OffPcPrograms(f.Text));
             bool OnPc(SourceFile f, int at) => !offPc[f].Any(r => at >= r.from && at < r.to);
             var vertNames = unit.SelectMany(f => VertexPragma.Matches(f.Text).Cast<Match>().Where(m => OnPc(f, m.Index)))
                 .Select(m => m.Groups[1].Value).Distinct().ToList();
-            var fragNames = unit.SelectMany(f => FragmentPragma.Matches(f.Text).Cast<Match>().Where(m => OnPc(f, m.Index)))
+            var fragNames = !forPatch ? new List<string>() : unit.SelectMany(f => FragmentPragma.Matches(f.Text).Cast<Match>().Where(m => OnPc(f, m.Index)))
                 .Select(m => m.Groups[1].Value).Distinct().ToList();
-            plan.Depth = unit.Any(f => DepthRead.IsMatch(f.Text));
+            plan.Depth = forPatch && unit.Any(f => DepthRead.IsMatch(f.Text));
             plan.DepthRewritable = plan.Depth && unit.All(f => DepthRead.Matches(f.Text).Cast<Match>().All(m =>
             {
                 int shut = MatchParen(f.Text, m.Index + m.Value.IndexOf('('));
@@ -662,6 +677,7 @@ namespace AvatarBridge
             {
                 foreach (string vertName in vertNames)
                 {
+                    if (file.Text.IndexOf(vertName, StringComparison.Ordinal) < 0) continue;
                     foreach (Match sig in vertSignatures[vertName].Matches(file.Text))
                     {
                         int open = BodyOpen(file.Text, sig.Index + sig.Length);
@@ -724,6 +740,7 @@ namespace AvatarBridge
             {
                 foreach (string fragName in fragNames)
                 {
+                    if (file.Text.IndexOf(fragName, StringComparison.Ordinal) < 0) continue;
                     foreach (Match sig in fragSignatures[fragName].Matches(file.Text))
                     {
                         if (!outputTypes.Contains(sig.Groups[1].Value) || !OnPc(file, sig.Index)) continue;
@@ -750,7 +767,9 @@ namespace AvatarBridge
         static readonly Regex ExcludeRenderers = new Regex(@"#pragma[ \t]+exclude_renderers\b([^\r\n]*)");
         static readonly Regex D3D11 = new Regex(@"\bd3d11\b");
 
+        // Both pragmas spell "_renderers", and a text without it was still split into programs.
         static List<(int from, int to)> OffPcPrograms(string text) =>
+            text.IndexOf("_renderers", StringComparison.Ordinal) < 0 ? new List<(int from, int to)>() :
             Program.Matches(text).Cast<Match>().Where(p =>
             {
                 var only = OnlyRenderers.Match(p.Groups[1].Value);
@@ -968,7 +987,7 @@ namespace AvatarBridge
             // inconsistent endings on import and blame AvatarBridge for it. An include can easily
             // disagree with its shader, so this can't be decided once for the whole unit.
 
-            plan = plan ?? PlanStereo(unit);
+            if (plan == null || !plan.Full) plan = PlanStereo(unit);
             if (plan.Passes == 0)
             {
                 reason = plan.SurfaceOnly
