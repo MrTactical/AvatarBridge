@@ -56,7 +56,7 @@ physics A/B probes and a corpus run. Decisions on the queue's open questions, sa
   a portal is protocol 10, so that is Joe's call. *Revised 2026-10-17: the plan in the YAPS 5
   record keeps protocol 9, so a portal no longer has to ride 5.0.0; decisions D1 to D7 are Joe's*)
 - One user report on 4.7.2, 2026-10-17: the avatar held a pose in the floor. Fixed on dev (record
-  under the speed items); its line goes in the 5.0.0 notes. A 4.7.3 hotfix off `main` is Joe's call.
+  under the speed items); its line goes in the 5.0.0 notes. No hotfix (Joe, same day): 5.0.0 carries it.
 - `BridgeDefines.Version` is 5.0.0 on dev from 2026-10-17, for Joe's in-game test build (one avatar
   converted with every option on, through `Dev/Probes/ConvertForWearProbe`). Nothing is tagged.
 - Joe wears it in ChilloutVR before 5.0.0 ships, with the full in-game checklist (all of it,
@@ -254,7 +254,8 @@ release notes:** the avatar held one pose or lay in the floor; reconvert. Fixtur
 layers on one clip keying every non-finger muscle and `RootT.y`, one unmasked, one with an all-on
 authored mask. One-scene subset in the probe project: they come out `AvatarBridge_NoMuscles` and
 `Fix_AllOn_NoMuscles` (saved in the controller, every part off), listed under the new line, no
-body warning for either. Not yet in the main corpus project, and not tested in game.
+body warning for either. In the main corpus project too since the same day (built there, one-scene
+subset, digest accepted as its baseline), so every full run carries it. Not tested in game.
 
 **Decided 2026-09-23 (Joe):** ship the next release first (one default corpus run authorised,
 release on his word), then the two items below. **It is 4.6.4** (Joe, same day): 4.6.3 is skipped,
