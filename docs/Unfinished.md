@@ -232,6 +232,29 @@ copy's main asset. The test covers it, and fails with the old rehomer. Still to 
   The time is in planning (0.07, 10.2 and 4.2 s, every shader's text already seen) and the report
   check (to 5.9 s): the next place to look. SpiPatcherProbe 34/34, SpiIncludeProbe 15/15.
 
+**User report 2026-10-17 (4.7.2): the avatar held a pose in the floor. FIXED on dev.** Two FX
+hand-gesture layers whose clips carry body or root curves sat above Locomotion/Emotes, Override,
+weight 1, with no mask: `MaskMergedLayers` skipped any layer whose clips animate the body as
+"deliberate body animation", FX included, though VRChat's FX playable never drives muscles. FX
+layers (by machine, `AnimatorMerger.FxMachines`, which the toggle pass extends with the branches it
+splits out of FX) are now masked whatever their clips hold and listed under *FX layers kept off the
+body, as in VRChat*. An FX layer whose own mask lets the body through gets a copy of that mask with
+every humanoid part off and its transforms as written. `WarnLocomotionOverrides` reads the live
+layers now, not the detached merge copies that never saw a later mask or rename, and skips a layer
+whose mask cannot reach the body, which also drops the stale warning on a masked `[Base]` layer.
+Known cost: a masked layer applies only the first slot of a material swap, so an FX layer that both
+poses the body and swaps several slots loses the rest (warned, as for `[Base]`). The faithful fix
+would drop the muscle curves from copied clips and leave the layer unmasked; not done until a user
+hits it. The clips themselves were never seen (the avatar
+is not on this machine), so the pose is inferred from the controller and the report's own
+body-curve warning. Corpus digests with FX or masked Base body layers change once. **For the
+release notes:** the avatar held one pose or lay in the floor; reconvert. Fixture
+`Fixture_FxBodyPose` (`FixtureBuilder.RunFxPoseOnly`, from the corpus fixture source): two FX hand
+layers on one clip keying every non-finger muscle and `RootT.y`, one unmasked, one with an all-on
+authored mask. One-scene subset in the probe project: they come out `AvatarBridge_NoMuscles` and
+`Fix_AllOn_NoMuscles` (saved in the controller, every part off), listed under the new line, no
+body warning for either. Not yet in the main corpus project, and not tested in game.
+
 **Decided 2026-09-23 (Joe):** ship the next release first (one default corpus run authorised,
 release on his word), then the two items below. **It is 4.6.4** (Joe, same day): 4.6.3 is skipped,
 its number spent on test builds, and the socket readout goes in with it. 4.6.4 shipped that day,

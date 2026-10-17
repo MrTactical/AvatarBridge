@@ -2138,7 +2138,7 @@ Find your symptom:
 | **Project setup & compiling** | [ImageDownloader](#nothing-compiles-imagedownloader-does-not-contain-a-definition-for-getimage) · [Poiyomi's ABI scripts](#nothing-compiles-poiyomis-abiautoanchorcs--abiautolockcs-abi-could-not-be-found) · [VRCFury didn't compile](#vrcfury-is-installed-but-did-not-compile-conversion-refuses-to-start) · [no Convert tab](#theres-no-convert-a-vrchat-avatar-tab) · [extra recompile](#one-extra-recompile-after-importing) |
 | **Converting** | [Unity crashes on Convert](#unity-crashes-when-you-press-convert) · [VRCFury errored](#the-report-says-vrcfury-errored-or-that-files-are-missing) · [protected clips](#a-limb-lock-sit-or-flight-toggle-does-nothing-and-the-report-mentions-protected-clips) · [conversions broke after updating](#converted-avatars-broke-after-updating-avatarbridge-missing-controllers-pink-particles) |
 | **In the editor afterwards** | [crashes on Play](#unity-crashes-when-you-press-play-or-the-avatar-renders-with-the-wrong-materials-there) · [console floods](#the-console-floods-in-play-mode-statemachine-for-layer-is-missing-or-parameter-type-does-not-match) · [magenta](#something-is-bright-magenta) · [white mesh](#a-mesh-renders-white-washed-out-or-loses-its-eyes) · [fingers snap](#converted-fingers-snap-to-a-pose-nobody-authored) |
-| **Body & animation in game** | [bicycle pose](#the-avatar-stands-in-a-bent-rest-pose-only-the-head-and-hands-follow-me) · [floats or folds up](#the-avatar-floats-above-the-floor-or-folds-up-after-full-body-calibration) · [sitting pose](#sitting-in-a-chair-plays-the-wrong-pose-or-the-legs-pedal) · [movement doesn't animate](#movement-doesnt-animate-and-airborne--flying--sitting--swimming-do-nothing) · [spins after landing](#the-avatar-spins-on-the-spot-usually-after-landing-and-only-in-vr) · [gestures freeze](#gestures-freeze-in-game-or-on-another-pc) · [wrong hand pose](#gestures-play-the-wrong-pose-or-a-hand-sits-in-a-fist-at-rest) · [emote hands](#an-emotes-hand-pose-is-wrong-or-follows-your-gesture) · [emote replays](#an-emote-replays-forever-instead-of-playing-once) · [movement speed](#i-move-slower-or-faster-than-i-expect-and-nothing-in-the-avatar-does-that) · [drifting props](#a-hat-or-held-item-drifts-off-when-i-resize-myself) |
+| **Body & animation in game** | [bicycle pose](#the-avatar-stands-in-a-bent-rest-pose-only-the-head-and-hands-follow-me) · [holds one pose / in the floor](#the-avatar-holds-one-pose-all-the-time-or-lies-in-the-floor) · [floats or folds up](#the-avatar-floats-above-the-floor-or-folds-up-after-full-body-calibration) · [sitting pose](#sitting-in-a-chair-plays-the-wrong-pose-or-the-legs-pedal) · [movement doesn't animate](#movement-doesnt-animate-and-airborne--flying--sitting--swimming-do-nothing) · [spins after landing](#the-avatar-spins-on-the-spot-usually-after-landing-and-only-in-vr) · [gestures freeze](#gestures-freeze-in-game-or-on-another-pc) · [wrong hand pose](#gestures-play-the-wrong-pose-or-a-hand-sits-in-a-fist-at-rest) · [emote hands](#an-emotes-hand-pose-is-wrong-or-follows-your-gesture) · [emote replays](#an-emote-replays-forever-instead-of-playing-once) · [movement speed](#i-move-slower-or-faster-than-i-expect-and-nothing-in-the-avatar-does-that) · [drifting props](#a-hat-or-held-item-drifts-off-when-i-resize-myself) |
 | **Physics in game** | [broken chain](#a-bone-chain-hangs-broken-or-magicacloth-throws-in-the-scene-view) · [floating hair](#hair-or-a-tail-floats-upward-in-game-and-im-using-dynamicbone) · [moves differently than Unity](#a-chain-moves-differently-in-game-than-in-unity) · [numbered cloth objects](#numbered-cloth-objects-magicacloth_something-magicacloth_something-2) |
 | **Face, eyes, viewpoint** | [face tracking missing](#face-tracking-wasnt-set-up-and-the-avatar-definitely-has-it) · [blink problems](#your-eyes-stay-open-start-closed-or-lose-a-pupil) · [viewpoint off the head](#the-viewpoint-or-voice-position-is-nowhere-near-the-head) |
 | **Toggles, menus, contacts** | [toggle does nothing on screen](#a-toggle-switches-on-the-layer-plays-and-nothing-changes-on-screen) · [toggle never comes back](#a-toggle-switches-on-but-never-back-off) · [partial material swap](#a-material-swap-changes-only-some-parts) · [dead menu control](#a-menu-control-appears-moves-syncs-and-does-nothing) · [duplicate controls](#two-near-identical-menu-controls-and-only-one-works) · [dead contact](#a-contact-does-nothing-at-all-for-anyone-including-you) |
@@ -2171,7 +2171,29 @@ Merged layers are always masked off the humanoid rig now. VRChat keeps FX on its
 where it physically can't write muscles; ChilloutVR runs one controller, so an unmasked merged layer
 fights locomotion for the body. Layers that animate the body on purpose are left alone, except
 those merged from VRChat's Base playable layer: above ChilloutVR's locomotion they could only
-replace it, never add to it, so they are masked too and the report names them.
+replace it, never add to it, so they are masked too and the report names them. FX layers are
+masked whatever their animations hold, as [the next section](#the-avatar-holds-one-pose-all-the-time-or-lies-in-the-floor) explains.
+
+### The avatar holds one pose all the time, or lies in the floor
+
+**Reconvert on a current release.**
+
+Some avatars keep animations in their FX layer that pose the whole body, for example a layer whose
+clips were recorded with the whole rig keyed. In VRChat those curves never
+showed, because the FX layer there cannot drive humanoid muscles at all. Converted, everything lands
+in one animator, where they can, and earlier releases left such a layer unmasked because its clips
+looked like deliberate body animation. Above ChilloutVR's locomotion at full weight, it held the
+body in its recorded pose every frame, and root curves in its clips could put the avatar into the
+floor.
+
+FX layers are now masked off the humanoid rig whatever their animations hold, as VRChat treats them;
+the report lists the ones that posed the body under *FX layers kept off the body, as in VRChat*.
+Toggles and blendshapes in them still work. A masked layer applies only the first slot of a
+material swap, so one that also swaps several slots is warned about; see
+[A material swap changes only some parts](#a-material-swap-changes-only-some-parts). Converted on
+an older release and can't reconvert? Create an Avatar Mask with every humanoid part off and nothing
+in its Transform list, and set it on each FX layer the report said "animates body muscles or root
+motion".
 
 ### The avatar floats above the floor, or folds up after full-body calibration
 
@@ -2552,7 +2574,9 @@ every threshold look wrong. The real layer had been correct all along.
 Conversion now masks fingers off any layer above the hand-pose layers that would otherwise write
 them, and names each one in the report. Layers that deliberately animate the **body** are left
 alone and warned about instead: silently overruling those would be the converter second-guessing
-the author.
+the author. FX layers are the exception, since VRChat never let them move the body: they are kept
+off it entirely, as [The avatar holds one pose all the time, or lies in the floor](#the-avatar-holds-one-pose-all-the-time-or-lies-in-the-floor)
+explains.
 
 To check in Play mode, open the Avatar Tester's **Animator layers** card: a layer above the
 hand layers whose mask lets it write fingers gets a ⚠ before its name (and the card shows a

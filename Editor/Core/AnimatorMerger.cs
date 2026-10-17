@@ -71,6 +71,7 @@ namespace AvatarBridge
             DroppedPoseSpace.Clear();
             DroppedPoseSpaceCount = 0;
             MergedLayerMachines.Clear();
+            FxMachines.Clear();
             CapturedLayerControls.Clear();
             LayerControlGoals.Clear();
 
@@ -171,6 +172,10 @@ namespace AvatarBridge
                             "Replaces the CCK's hand-pose layer, with an equivalent copy of its VRChat hand mask.");
                     }
                     MergedLayerMachines[$"{id}:{srcIndex}"] = clone.stateMachine;
+                    if (id == VRCAvatarDescriptor.AnimLayerType.FX)
+                    {
+                        FxMachines.Add(clone.stateMachine);
+                    }
                     if (srcIndex == 0)
                     {
                         // Unity forces a controller's first layer to weight 1; once merged it
@@ -292,7 +297,7 @@ namespace AvatarBridge
             // After the filler; its added motions are what can strobe.
             SuppressAnyStateSelfRestarts(master, ctx);
             UnlatchImpulsePingPongs(master, ctx);
-            WarnLocomotionOverrides(vrcLayers, ctx);
+            WarnLocomotionOverrides(master, vrcLayers, ctx);
             FaceTrackingInjector.Inject(master, ctx);
             AvatarScalerInjector.Inject(master, ctx);
             // After every layer exists. The stack checked is the one the game runs.
@@ -1392,6 +1397,9 @@ namespace AvatarBridge
         // machine, not its name: later passes rename toggle layers.
         static readonly Dictionary<string, AnimatorStateMachine> MergedLayerMachines =
             new Dictionary<string, AnimatorStateMachine>();
+        // Machines of the layers that came from FX, so they are kept off the body. The toggle
+        // pass adds the layers it splits out of them.
+        internal static readonly HashSet<AnimatorStateMachine> FxMachines = new HashSet<AnimatorStateMachine>();
         static readonly List<(string key, float goal)> CapturedLayerControls =
             new List<(string, float)>();
         // Max goal weight per state that carried a control; the states
@@ -6218,13 +6226,37 @@ namespace AvatarBridge
             // ToggleNativizer renames toggle layers after the merge.
             var vrcMachines = new HashSet<AnimatorStateMachine>(vrcLayers.Select(l => l.stateMachine));
             var layers = master.layers;
-            int masked = 0, handed = 0;
+            int masked = 0, handed = 0, stripped = 0;
             var maskedBaseBody = new SortedSet<string>(StableSampleOrder.Instance);
+            var maskedFxBody = new SortedSet<string>(StableSampleOrder.Instance);
+            var noMuscles = new Dictionary<AvatarMask, AvatarMask>();
 
             foreach (var layer in layers)
             {
-                if (!vrcMachines.Contains(layer.stateMachine) || layer.avatarMask != null)
+                if (!vrcMachines.Contains(layer.stateMachine))
                 {
+                    continue;
+                }
+                bool fxLayer = FxMachines.Contains(layer.stateMachine);
+                if (layer.avatarMask != null)
+                {
+                    // An authored mask that lets the body through changes nothing on FX: VRChat
+                    // never applied the pose either way. Its transforms stay as written.
+                    if (fxLayer && MaskReachesBody(layer.avatarMask))
+                    {
+                        InspectLayerCurves(layer, out bool posed, out _);
+                        if (posed)
+                        {
+                            var mask = layer.avatarMask;
+                            if (!noMuscles.TryGetValue(mask, out var copy))
+                            {
+                                noMuscles[mask] = copy = WithoutMuscles(mask);
+                            }
+                            layer.avatarMask = copy;
+                            maskedFxBody.Add(layer.name);
+                            stripped++;
+                        }
+                    }
                     continue;
                 }
                 InspectLayerCurves(layer, out bool body, out bool fingers);
@@ -6234,14 +6266,18 @@ namespace AvatarBridge
                 // locomotion, never supplement it. Masked, the layer
                 // keeps everything it can actually deliver and CVR's
                 // locomotion stays authoritative.
+                // So is an FX layer: VRChat's FX playable cannot drive muscles, so a pose in its
+                // clips never showed there. Unmasked here, it held the body in that pose over the
+                // locomotion, and root curves pinned it into the floor. By machine, since toggle
+                // layers are renamed after the merge.
                 bool baseLayer = layer.name.StartsWith("[Base]", StringComparison.Ordinal);
-                if (body && !baseLayer)
+                if (body && !baseLayer && !fxLayer)
                 {
                     continue; // deliberate body animation; reported separately
                 }
                 if (body)
                 {
-                    maskedBaseBody.Add(layer.name);
+                    (fxLayer ? maskedFxBody : maskedBaseBody).Add(layer.name);
                 }
                 // Finger curves are blocked with the rest. VRChat's FX
                 // playable cannot drive muscles, so those curves never
@@ -6255,14 +6291,17 @@ namespace AvatarBridge
                 }
             }
 
-            if (masked == 0)
+            if (masked == 0 && stripped == 0)
             {
                 return;
             }
             master.layers = layers;
-            ctx.Report.Converted(Category, $"{BridgeElements.Count(masked, "merged layer", "merged layers")} masked off the humanoid rig",
-                "FX could not move the body in VRChat. Toggles, blendshapes and materials are unaffected." +
-                (handed > 0 ? $" {handed} had finger curves, blocked so gestures still work." : ""));
+            if (masked > 0)
+            {
+                ctx.Report.Converted(Category, $"{BridgeElements.Count(masked, "merged layer", "merged layers")} masked off the humanoid rig",
+                    "FX could not move the body in VRChat. Toggles, blendshapes and materials are unaffected." +
+                    (handed > 0 ? $" {handed} had finger curves, blocked so gestures still work." : ""));
+            }
 
             if (maskedBaseBody.Count > 0)
             {
@@ -6271,6 +6310,15 @@ namespace AvatarBridge
                     $"{string.Join(", ", maskedBaseBody)}: above ChilloutVR's locomotion they would replace it. " +
                     "Everything else in them still converts. Clearing a layer's mask lets it drive the body and " +
                     "stops the stances.");
+            }
+            if (maskedFxBody.Count > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{BridgeElements.Count(maskedFxBody.Count, "FX layer", "FX layers")} kept off the body, as in VRChat",
+                    $"{string.Join(", ", maskedFxBody.Take(6))}{(maskedFxBody.Count > 6 ? ", …" : "")}: their animations " +
+                    "pose the body, which VRChat's FX layer never applies. Unmasked, they would hold the avatar in " +
+                    "that pose over its locomotion. Toggles and blendshapes in them still work; one that also " +
+                    "swaps materials across several slots gets its own warning.");
             }
         }
 
@@ -7608,13 +7656,25 @@ namespace AvatarBridge
             }
         }
 
-        static void WarnLocomotionOverrides(List<AnimatorControllerLayer> vrcLayers, BridgeContext ctx)
+        static void WarnLocomotionOverrides(AnimatorController master, List<AnimatorControllerLayer> vrcLayers, BridgeContext ctx)
         {
-            foreach (var layer in vrcLayers)
+            // The live layers: vrcLayers are detached copies, blind to the masks and names
+            // given since the merge.
+            var vrcMachines = new HashSet<AnimatorStateMachine>(vrcLayers.Select(l => l.stateMachine));
+            foreach (var layer in master.layers)
             {
+                if (layer.stateMachine == null || !vrcMachines.Contains(layer.stateMachine))
+                {
+                    continue;
+                }
                 if (AvatarFeatureDetect.IsHandLayer(layer.name))
                 {
                     continue; // hand pose layers are supposed to animate finger muscles
+                }
+                // A layer masked off the body cannot override anything, whatever its clips hold.
+                if (!MaskReachesBody(layer.avatarMask))
+                {
+                    continue;
                 }
                 InspectLayerCurves(layer, out bool animatesBody, out _);
                 if (animatesBody)
@@ -9500,6 +9560,42 @@ namespace AvatarBridge
         static AvatarMask GetHandsOnlyMask() =>
             _handsOnlyMask = _handsOnlyMask != null ? _handsOnlyMask
                 : BuildMask("AvatarBridge_HandsOnly", AvatarMaskBodyPart.LeftFingers, AvatarMaskBodyPart.RightFingers);
+
+        // Every humanoid part off, the transform list as authored. Saved with the controller.
+        static AvatarMask WithoutMuscles(AvatarMask mask)
+        {
+            var copy = new AvatarMask { name = mask.name + "_NoMuscles" };
+            for (int part = 0; part < (int)AvatarMaskBodyPart.LastBodyPart; part++)
+            {
+                copy.SetHumanoidBodyPartActive((AvatarMaskBodyPart)part, false);
+            }
+            copy.transformCount = mask.transformCount;
+            for (int t = 0; t < mask.transformCount; t++)
+            {
+                copy.SetTransformPath(t, mask.GetTransformPath(t));
+                copy.SetTransformActive(t, mask.GetTransformActive(t));
+            }
+            return copy;
+        }
+
+        // No mask, or one that lets any part but the fingers through.
+        static bool MaskReachesBody(AvatarMask mask)
+        {
+            if (mask == null)
+            {
+                return true;
+            }
+            for (int i = 0; i < (int)AvatarMaskBodyPart.LastBodyPart; i++)
+            {
+                var part = (AvatarMaskBodyPart)i;
+                if (part != AvatarMaskBodyPart.LeftFingers && part != AvatarMaskBodyPart.RightFingers
+                    && mask.GetHumanoidBodyPartActive(part))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
 
         static AvatarMask GetNoMuscleMask(BridgeContext ctx)
         {

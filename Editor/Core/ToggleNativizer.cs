@@ -141,6 +141,7 @@ namespace AvatarBridge
             var expandedParams = new HashSet<string>();
             foreach (var layer in vrcLayers)
             {
+                int before = expandedLayers.Count;
                 SystemStripper.WalkMachines(layer.stateMachine, machine =>
                 {
                     foreach (var child in machine.states)
@@ -151,6 +152,14 @@ namespace AvatarBridge
                         }
                     }
                 });
+                // A branch split out of FX is still FX, so it is kept off the body like its layer.
+                if (AnimatorMerger.FxMachines.Contains(layer.stateMachine))
+                {
+                    for (int i = before; i < expandedLayers.Count; i++)
+                    {
+                        AnimatorMerger.FxMachines.Add(expandedLayers[i].stateMachine);
+                    }
+                }
             }
             if (expandedLayers.Count > 0)
             {
