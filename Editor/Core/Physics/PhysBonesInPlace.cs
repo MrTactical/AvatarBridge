@@ -176,43 +176,45 @@ namespace AvatarBridge
         {
             var report = ctx.Report;
             string name = folder(report) + "/" + CvrSetup.SafeFolderName(ctx.Target.name) + " cloth";
-            var copy = Copy(shipped, name + ".controller");
-            if (copy == null) return "Its controller could not be copied.";
-            string copyPath = AssetDatabase.GetAssetPath(copy);
+            var made = new List<Object>();
+            AnimatorController copy = null, baseCopy = null;
             AnimatorOverrideController overCopy = null;
+            string baseLeft = null;
+            var settings = ctx.CvrAvatar != null ? ctx.CvrAvatar.avatarSettings : null;
+            // Create Controller casts it, so an override there never rebuilds anything.
+            var based = settings != null ? settings.baseController as AnimatorController : null;
             var rows = ctx.Report = new BridgeReport { Quiet = true };
             bool wired = false;
             try
             {
-                var owned = new Dictionary<Motion, Motion>();
-                foreach (var layer in copy.layers) Own(layer.stateMachine, copyPath, touches, owned);
-                // A synced layer keeps its own motions, which the walk does not reach, so they
-                // would be edited where they lie.
-                var missed = copy.animationClips.Where(c => touches(c) && AssetDatabase.Contains(c)
-                    && AssetDatabase.GetAssetPath(c) != copyPath).Select(c => c.name).Distinct().ToList();
-                if (missed.Count > 0) return $"{Sample(missed)} play from a synced layer, which this card does not copy.";
-
-                ctx.MergedController = copy;
-                AnimatorMerger.ResetMaskCache();
-                AnimatorMerger.RewirePhysicsToggles(copy, ctx);
-                foreach (var layer in copy.layers) AnimatorAssetSaver.EmbedLayer(layer, copy);
-                PhysBoneConverter.RepointColliderEnableCurves(ctx);
-                PhysBoneConverter.ReportAnimatedPhysBoneProperties(ctx);
-                foreach (var clip in copy.animationClips.Where(c => c != null && AssetDatabase.GetAssetPath(c) == copyPath))
-                    EditorUtility.SetDirty(clip);
-                EditorUtility.SetDirty(copy);
-
+                copy = Rewired(ctx, shipped, touches, name + ".controller", made, out string why);
+                if (copy == null) return why;
                 var swaps = new Dictionary<Object, Object> { [shipped] = copy };
                 if (over != null)
                 {
                     overCopy = Copy(over, name + ".overrideController");
                     if (overCopy == null) return "Its override controller could not be copied.";
+                    made.Add(overCopy);
                     overCopy.runtimeAnimatorController = copy;
                     EditorUtility.SetDirty(overCopy);
                     // Measured, not assumed: a swap keyed on a clip the copy replaced is gone.
                     if (Live(overCopy) != Live(over))
                         return "Its override controller swaps clips that a copy of the controller would lose.";
                     swaps[over] = overCopy;
+                }
+                // Create Controller copies the base into the upload, so a base left as it was drops
+                // all of this on the next rebuild. Its rows repeat the upload's, so they stay quiet.
+                if (based != null && based != shipped)
+                {
+                    baseLeft = BaseRefusal(settings.baseOverrideController as AnimatorOverrideController, touches);
+                    if (baseLeft == null)
+                    {
+                        ctx.Report = new BridgeReport { Quiet = true };
+                        baseCopy = Rewired(ctx, based, touches, name + " base.controller", made, out baseLeft);
+                        ctx.Report = rows;
+                        ctx.MergedController = copy;
+                        if (baseCopy != null) swaps[based] = baseCopy;
+                    }
                 }
                 AssetDatabase.SaveAssets();
                 if (!Wire(ctx.Target, swaps)) return "No slot on the avatar holds its controller itself.";
@@ -227,25 +229,88 @@ namespace AvatarBridge
                 }
                 else
                 {
-                    AssetDatabase.DeleteAsset(copyPath);
-                    if (overCopy != null) AssetDatabase.DeleteAsset(AssetDatabase.GetAssetPath(overCopy));
+                    foreach (var asset in made) AssetDatabase.DeleteAsset(AssetDatabase.GetAssetPath(asset));
                 }
             }
 
-            report.Converted(Category, "Animations rewired in a copy of the controller", copyPath +
+            report.Converted(Category, "Animations rewired in a copy of the controller", AssetDatabase.GetAssetPath(copy) +
                 (overCopy != null ? $", and {AssetDatabase.GetAssetPath(overCopy)} around it" : "") +
-                ". The avatar now runs the copy. Its own controller and clips are as they were: Ctrl+Z " +
-                "points it back at them and leaves the copy unused in that folder.");
-            var settings = ctx.CvrAvatar != null ? ctx.CvrAvatar.avatarSettings : null;
-            var based = settings != null ? BridgeContext.Underlying(settings.baseController) : null;
-            if (based != null && based != copy)
+                (baseCopy != null ? $", and the base controller in {AssetDatabase.GetAssetPath(baseCopy)}, which Create Controller rebuilds from" : "") +
+                ". The avatar now runs the copy. Its own controllers and clips are as they were: Ctrl+Z " +
+                "points it back at them and leaves the copies unused in that folder.");
+            const string Again = " To rebuild it, press Ctrl+Z here first, then Create Controller, then this card again.";
+            if (baseLeft != null)
             {
-                report.Approximated(Category, "Create Controller would undo the rewiring",
-                    "The CVRAvatar's Create Controller rebuilds the uploaded controller from the base " +
-                    "controller, which this card left as it was. To rebuild it, press Ctrl+Z here first, " +
-                    "then Create Controller, then this card again.");
+                report.Approximated(Category, "Create Controller would undo the rewiring", baseLeft +
+                    " The CVRAvatar's Create Controller rebuilds the uploaded controller from the base " +
+                    "controller, which this card left as it was." + Again);
+            }
+            else if (baseCopy != null)
+            {
+                // The menu's own toggles are written afresh by every Create Controller.
+                var kept = new HashSet<string>(baseCopy.animationClips.Where(c => c != null).Select(c => c.name));
+                var fresh = shipped.animationClips.Where(c => touches(c) && !kept.Contains(c.name))
+                    .Select(c => c.name).Distinct().ToList();
+                if (fresh.Count > 0)
+                {
+                    report.Approximated(Category, "Create Controller would undo part of the rewiring",
+                        "Create Controller writes the CVRAvatar's menu toggles afresh, so these would stop " +
+                        $"switching the cloth: {Sample(fresh)}." + Again);
+                }
             }
             return null;
+        }
+
+        // A copy of `source` with every clip the passes edit owned and rewired, or null and why,
+        // with that copy gone. The copy joins `made` only once it is whole.
+        static AnimatorController Rewired(BridgeContext ctx, AnimatorController source, System.Func<AnimationClip, bool> touches,
+            string path, List<Object> made, out string why)
+        {
+            why = null;
+            var copy = Copy(source, path);
+            if (copy == null)
+            {
+                why = "Its controller could not be copied.";
+                return null;
+            }
+            string copyPath = AssetDatabase.GetAssetPath(copy);
+            var owned = new Dictionary<Motion, Motion>();
+            foreach (var layer in copy.layers) Own(layer.stateMachine, copyPath, touches, owned);
+            // A synced layer keeps its own motions, which the walk does not reach, so they
+            // would be edited where they lie.
+            var missed = copy.animationClips.Where(c => touches(c) && AssetDatabase.Contains(c)
+                && AssetDatabase.GetAssetPath(c) != copyPath).Select(c => c.name).Distinct().ToList();
+            if (missed.Count > 0)
+            {
+                AssetDatabase.DeleteAsset(copyPath);
+                why = $"{Sample(missed)} play from a synced layer, which this card does not copy.";
+                return null;
+            }
+            made.Add(copy);
+
+            ctx.MergedController = copy;
+            AnimatorMerger.ResetMaskCache();
+            AnimatorMerger.RewirePhysicsToggles(copy, ctx);
+            foreach (var layer in copy.layers) AnimatorAssetSaver.EmbedLayer(layer, copy);
+            PhysBoneConverter.RepointColliderEnableCurves(ctx);
+            PhysBoneConverter.ReportAnimatedPhysBoneProperties(ctx);
+            foreach (var clip in copy.animationClips.Where(c => c != null && AssetDatabase.GetAssetPath(c) == copyPath))
+                EditorUtility.SetDirty(clip);
+            EditorUtility.SetDirty(copy);
+            return copy;
+        }
+
+        // Create Controller copies this override around the rebuilt controller as it is, so a swap
+        // keyed on a clip the base copy replaced is lost, and one swapping in a physics clip is
+        // never rewired.
+        static string BaseRefusal(AnimatorOverrideController over, System.Func<AnimationClip, bool> touches)
+        {
+            if (over == null) return null;
+            var pairs = new List<KeyValuePair<AnimationClip, AnimationClip>>();
+            over.GetOverrides(pairs);
+            var hit = pairs.Where(p => p.Value != null && (touches(p.Key) || touches(p.Value)))
+                .Select(p => p.Key.name).Distinct().ToList();
+            return hit.Count == 0 ? null : $"Its base override controller swaps {Sample(hit)}, which this card does not rewire.";
         }
 
         // The folder exists by now (WriteFolder made it), so CopyAsset can land in it.

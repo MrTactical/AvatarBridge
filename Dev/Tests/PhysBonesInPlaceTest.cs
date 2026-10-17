@@ -139,6 +139,43 @@ namespace AvatarBridge.Regression
                 Check(swapped.GetComponent<CVRAvatar>().overrides == swapper && Cloths(swapped) == 1,
                     "and still converts, on the user's own override");
 
+                // Built by Create Controller: the upload is a copy of the base plus the menu's own
+                // layers, and the next Create Controller rebuilds it from the base.
+                var aas = Fixture("AasAvatar");
+                made.Add(aas);
+                var baseCtl = AnimatorController.CreateAnimatorControllerAtPath(Dir + "/Base.controller");
+                var baseDrive = Clip("Base physics off", "Hips/Hair_root", typeof(VRCPhysBone), "m_Enabled", 0f);
+                baseCtl.AddMotion(baseDrive);
+                AssetDatabase.SaveAssets();
+                AssetDatabase.CopyAsset(Dir + "/Base.controller", Dir + "/Base_aas.controller");
+                var aasCtl = AssetDatabase.LoadAssetAtPath<AnimatorController>(Dir + "/Base_aas.controller");
+                aasCtl.AddMotion(Clip("Menu hair toggle", "Hips/Hair_root", typeof(GameObject), "m_IsActive", 0f));
+                var aasOver = new AnimatorOverrideController(aasCtl) { name = "Base_aas" };
+                AssetDatabase.CreateAsset(aasOver, Dir + "/Base_aas.overrideController");
+                var aasCvr = aas.GetComponent<CVRAvatar>();
+                aasCvr.overrides = aasOver;
+                aas.GetComponent<Animator>().runtimeAnimatorController = aasOver;
+                aasCvr.avatarSettings = new ABI.CCK.Scripts.CVRAdvancedAvatarSettings
+                {
+                    baseController = baseCtl, animator = aasCtl, overrides = aasOver,
+                };
+                AssetDatabase.SaveAssets();
+                string baseText = File.ReadAllText(Dir + "/Base.controller");
+                var rebuilt = PhysBonesInPlace.Run(aas, settings, _ => Dir);
+                Log(rebuilt);
+                AssetDatabase.SaveAssets();
+                var baseCopy = aasCvr.avatarSettings.baseController as AnimatorController;
+                var baseDrove = baseCopy != null ? baseCopy.animationClips.FirstOrDefault(c => c != null && c.name == baseDrive.name) : null;
+                Check(baseCopy != null && baseCopy != baseCtl && AssetDatabase.GetAssetPath(baseCopy).StartsWith(Dir + "/")
+                      && baseDrove != null && Bindings(baseDrove).Any(b => b.type.Name == "MagicaCloth" && b.propertyName == "m_Enabled"),
+                    "a base controller Create Controller rebuilds from is rewired in its own copy");
+                Check(File.ReadAllText(Dir + "/Base.controller") == baseText, "and the user's base is byte-identical");
+                Check(rebuilt.Entries.Any(e => e.Subject == "Create Controller would undo part of the rewiring" && e.Detail.Contains("Menu hair toggle"))
+                      && !rebuilt.Entries.Any(e => e.Subject == "Create Controller would undo the rewiring"),
+                    "only the menu's own toggle is named as lost to a rebuild");
+                Undo.PerformUndo();
+                Check(aasCvr.avatarSettings.baseController == baseCtl && aasCvr.overrides == aasOver, "undo points the base back too");
+
                 var vrchat = Fixture("VrcAvatar", false);
                 made.Add(vrchat);
                 vrchat.AddComponent<VRCAvatarDescriptor>();

@@ -178,44 +178,59 @@ namespace AvatarBridge
             // Everywhere the old one is wired. ChilloutVR uploads the overrides,
             // the CCK's Create Controller copies the base, and the editor plays
             // the slot. Swapping the slot alone left the upload untidied and the
-            // next survey offering the same removals.
-            Retarget(avatar.overrides, plan.Controller, into, null);
-            if (avatar.avatarSettings != null && avatar.avatarSettings.baseController == plan.Controller)
+            // next survey offering the same removals. The CCK's own two slots
+            // too: left on the old override, it offers to attach that again.
+            var copies = new Dictionary<AnimatorOverrideController, AnimatorOverrideController>();
+            RuntimeAnimatorController Swap(RuntimeAnimatorController held) =>
+                Rewired(held, plan.Controller, into, savePath, copies, 0);
+            Undo.RecordObject(avatar, "Tidy animator");
+            avatar.overrides = (AnimatorOverrideController)Swap(avatar.overrides);
+            if (avatar.avatarSettings != null)
             {
-                Undo.RecordObject(avatar, "Tidy animator");
-                avatar.avatarSettings.baseController = into;
-                EditorUtility.SetDirty(avatar);
+                avatar.avatarSettings.baseController = Swap(avatar.avatarSettings.baseController);
+                avatar.avatarSettings.baseOverrideController = Swap(avatar.avatarSettings.baseOverrideController);
+                avatar.avatarSettings.overrides = (AnimatorOverrideController)Swap(avatar.avatarSettings.overrides);
             }
+            EditorUtility.SetDirty(avatar);
             var animator = avatar.GetComponent<Animator>();
-            if (animator != null) Retarget(animator.runtimeAnimatorController, plan.Controller, into, animator);
+            if (animator != null)
+            {
+                Undo.RecordObject(animator, "Tidy animator");
+                animator.runtimeAnimatorController = Swap(animator.runtimeAnimatorController);
+                EditorUtility.SetDirty(animator);
+            }
+            AssetDatabase.SaveAssets();
 
             Fill(report, plan, layers, parameters, into);
+            foreach (var copy in copies.Values)
+            {
+                report.Converted(Category, "Override controller copied", AssetDatabase.GetAssetPath(copy) +
+                    ", around the tidied controller. The original is untouched, so other avatars using it keep theirs.");
+            }
             return into;
         }
 
-        // An override wrapping the old controller is swapped one level down:
-        // assigning over it would throw away every clip mapping in it. When
-        // the slot holds the overrides already swapped, the walk finds `to`
-        // and stops.
-        static void Retarget(RuntimeAnimatorController held, AnimatorController from, AnimatorController to, Animator slot)
+        // An override wrapping the old controller is copied with its copy
+        // wrapping `to`, one level down: assigning over it would throw away
+        // every clip mapping in it, and retargeting it in place would reach
+        // every other avatar sharing it. Removed layers have no states, so no
+        // clip a swap names goes with them.
+        static RuntimeAnimatorController Rewired(RuntimeAnimatorController held, AnimatorController from,
+            AnimatorController to, string beside, Dictionary<AnimatorOverrideController, AnimatorOverrideController> copies, int depth)
         {
-            for (int guard = 0; held is AnimatorOverrideController over && guard < 8; guard++)
-            {
-                if (over.runtimeAnimatorController == from)
-                {
-                    Undo.RecordObject(over, "Tidy animator");
-                    over.runtimeAnimatorController = to;
-                    EditorUtility.SetDirty(over);
-                    return;
-                }
-                held = over.runtimeAnimatorController;
-            }
-            if (slot != null && held == from)
-            {
-                Undo.RecordObject(slot, "Tidy animator");
-                slot.runtimeAnimatorController = to;
-                EditorUtility.SetDirty(slot);
-            }
+            if (held == from) return to;
+            if (!(held is AnimatorOverrideController over) || depth >= 8) return held;
+            if (copies.TryGetValue(over, out var made)) return made;
+            var inner = Rewired(over.runtimeAnimatorController, from, to, beside, copies, depth + 1);
+            if (inner == over.runtimeAnimatorController) return held;
+            // Instantiate, not CopyAsset: an override saved inside another file copies that whole file.
+            var copy = Object.Instantiate(over);
+            copy.name = over.name;
+            copy.runtimeAnimatorController = inner;
+            AssetDatabase.CreateAsset(copy, AssetDatabase.GenerateUniqueAssetPath(
+                System.IO.Path.ChangeExtension(beside, ".overrideController")));
+            copies[over] = copy;
+            return copy;
         }
 
         public static void Fill(BridgeReport report, Plan plan, int layers, int parameters, AnimatorController into)

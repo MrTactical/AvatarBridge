@@ -2537,14 +2537,20 @@ is that PhysBones has no card.
   them. README Highlights and the Create Controller caveat corrected.
 
 *Still open (card):*
-- The CCK's Create Controller rebuilds the upload from `baseController`, which the card leaves alone
-  when it is not the shipped controller, so it drops the rewiring. Reported, not prevented. Writing
-  the rewire into the base too is the fix; the public package cannot reuse `YapsOwner.Targets`.
+- ~~Create Controller drops the rewiring.~~ **FIXED ON DEV 2026-10-17:** the base controller is
+  rewired in its own copy (`Rewired`, the same passes, rows quiet) and `baseController` points at
+  it, so a rebuild copies the rewired base. What a rebuild still loses: the toggles the CCK writes
+  for its own menu entries, generated afresh each time; the report names them (touched clips of
+  the upload whose names the base copy lacks). A base override that keys or swaps in a touched clip
+  leaves the base alone, reported. `PhysBonesInPlaceTest` has a Create Controller avatar, 33/33.
 - Override swaps and synced layers are refused rather than handled.
 - A toggle above a PhysBone's `rootTransform` that does not hold the component is not rewired, the
   same gap a conversion has (`RewirePhysicsToggles` matches `chain.Source` only).
-- Free wins (`FreeWins.Retarget`, FreeWins.cs:200-219) retargets a shared override controller in
-  place. Same fix as the card: copy it.
+- ~~Free wins retargets a shared override controller in place.~~ **FIXED ON DEV 2026-10-17:** every
+  override around the old controller is copied (`Object.Instantiate` plus `CreateAsset`, so one saved
+  inside another file copies alone) beside the tidied controller, its copy wrapping one level down,
+  and all five slots point at the copies under one Undo, the CCK's own two included.
+  `Dev/Tests/FreeWinsTest` (two avatars sharing one override) 8/8.
 - Not yet seen in the GUI or in game: the in-game half (toggles switching the cloth) is only
   falsifiable in ChilloutVR.
 
