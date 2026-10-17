@@ -2797,9 +2797,47 @@ Speed, from the same runs: the unlocked source converted in 100 s and 109 s, loc
 material has a shader of its own, so each gets its own patch and compile. The rerun's 46 to 64 s are
 warm (the first run's patches still in place). The cost does not vanish: an unlocked patch ships the
 uber shader, and the upload compiles its variants for each material's keywords, the compile that once
-crashed the editor on an unlocked Poiyomi Pro. **Open, for Joe:** leave unlocked sources patched as they
-are (faster conversion, heavier upload, matches what the editor shows) or lock the copy through Thry
-before patching (what Poiyomi itself ships, and per-material compiles). Nothing changes until he picks.
+crashed the editor on an unlocked Poiyomi Pro. ~~**Open, for Joe:** leave unlocked sources patched as they
+are or lock the copy through Thry before patching.~~ **Joe picked, 2026-10-17: the result must be locked**
+("the end result should be locked but as fast as possible, with patched YAPS"). `MarkLocked` stays as the
+fallback, it is not the answer.
+
+**Plan for lock-first, 2026-10-17. NOT BUILT.** Read of Thry 2.71.2, the YAPS call sites and the CCK, three
+designs, one judge. Chosen: lock STAND-INS, never the user's materials.
+- For each unlocked Poiyomi source a patch is about to read, one stand-in at
+  `Assets/YAPS/Generated/Locked/<hash(sourcePath+localId)> <name>.mat`, tagged `<Prop>Animated = 1` for every
+  property the avatar's clips animate (never overwrite a tag, strip `.r/.x`, map `_ST`/`_TexelSize` to the
+  texture, `thry_rename_suffix` = source name), TPS off, then ONE Thry `LockMaterials` call per batch point.
+  `Patch`, `YapsBaker.Generated` and the squash copy sites read through `YapsLock.Basis(source)`.
+- Fingerprint tag on the stand-in (source `.mat` bytes, sorted animated set, a version constant): a match
+  that is still locked and still loads makes no Thry call, so a reconvert relocks nothing and the patch text
+  is byte-identical (warm, about 46 to 59 s).
+- Relock = `CopySerialized` the source over the stand-in and lock again. Never delete a Thry folder: a
+  grouped peer's shader lives in the leader's folder. Orphans are the known cost; queue a sweep.
+- Lock state from Unity's API only (the `ThryShaderOptimizerLockButton` property defaulting to 1);
+  reflection for the lock call alone (`Thry.ThryEditor.ShaderOptimizer` or `Thry.ShaderOptimizer`,
+  `LockMaterials`, else the obsolete `SetLockedForAllMaterials`); nothing binds = MarkLocked plus a Warning,
+  only when the avatar has a Thry shader. Never inside StartAssetEditing or while Prewrite is deferred.
+  `SaveAssets` after the call, since Thry's own save waits for an editor update batch may never reach.
+- After the lock, a stand-in that no longer `HasProperty` something the clips animate raises one Warning
+  (the merge audit runs on unlocked materials and stays silent).
+- Clear the inherited `AllLockedGUIDS` on YAPS copies: Thry's Unlock of one copy follows it to sources that
+  never wore the patch and trashes the shared patch (Thry Unity.cs:404, ShaderOptimizer.cs 2585-2603). Against item 3's
+  "impersonating another tool's bookkeeping", but it removes a false record, it does not invent one.
+- `Core/AvatarWeight.cs` (:350-355) drops "Unlock" from its advice: under 2.7x an unlocked shader is stripped.
+- Cold convert from an unlocked source costs what a locked source costs today (360 s and 216 s measured, plus
+  6 to 9 s of lock). Per extra patch it is 68 s on one avatar and 9 s on the other, so it is not the text
+  transform (6 s and 14 s warm). P0 finds where it goes.
+- Probes first, in the copy project: P0 stopwatches over each squash step against `shadercompiler-*.log`;
+  P1 whether `new Material`/`CopyPropertiesFromMaterial`/`CopySerialized` carry override tags; P2 lock the
+  same stand-ins in two calls and other company, diff the text; P3 how many compiles a line-1-blind
+  `NameHash` would save over the 21 probe avatars (build it only if at least one per avatar); P4 Thry
+  Unlock on a copy sharing a patch, tag kept vs cleared; P5 a forced Thry exception, does the
+  StartAssetEditing block stay open.
+- Refuted on the way: locking after the patch with `[DoNotLock]` (the relock path that made 336 errors);
+  "one extra StopAssetEditing closes Thry's block"; "line 1 is the only per-call text" (grouped stand-ins
+  take the leader's GUID and folder); Prewrite for plugs and sockets (0.17 to 0.29 s, nothing to save).
+- Locking non-YAPS Poiyomi at conversion stays with the upload lock, as today; a separate public idea.
 
 ### The audit of 2026-10-03: about 210 findings fixed on dev, not verified in game
 
