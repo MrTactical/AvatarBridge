@@ -1405,6 +1405,14 @@ what it left.
 component, and hands everything else to the shader's own editor: a Poiyomi material keeps
 Poiyomi's panel entire.
 
+**Unlocked Poiyomi is locked first.** A Poiyomi material that isn't locked gets a copy in
+`Assets/YAPS/Generated/Locked`, locked through Poiyomi's own lock, and the deform is patched into
+that locked shader. Your material stays unlocked and untouched. The upload then carries what a lock
+by hand would, with YAPS on top, rather than every Poiyomi feature, and the upload's own lock leaves
+it alone. Properties your animations drive stay live through the lock. The copy is reused until the
+material's settings change, so converting again locks nothing new. Where Poiyomi can't lock it, the
+report says so: see [Poiyomi's unlocked shader ships under YAPS](#yaps-the-report-says-poiyomis-unlocked-shader-ships-under-yaps).
+
 **YAPS Simple Lit.** A plain lit shader (metallic workflow through Unity's own BRDF) that the tool
 falls back to when a mesh's own shader cannot be patched (Unity's Standard and everything else
 built in has no source on disk, and a surface shader has no vertex function of its own), with the
@@ -2113,7 +2121,7 @@ Find your symptom:
 | **Face, eyes, viewpoint** | [face tracking missing](#face-tracking-wasnt-set-up-and-the-avatar-definitely-has-it) · [blink problems](#your-eyes-stay-open-start-closed-or-lose-a-pupil) · [viewpoint off the head](#the-viewpoint-or-voice-position-is-nowhere-near-the-head) |
 | **Toggles, menus, contacts** | [toggle does nothing on screen](#a-toggle-switches-on-the-layer-plays-and-nothing-changes-on-screen) · [toggle never comes back](#a-toggle-switches-on-but-never-back-off) · [partial material swap](#a-material-swap-changes-only-some-parts) · [dead menu control](#a-menu-control-appears-moves-syncs-and-does-nothing) · [duplicate controls](#two-near-identical-menu-controls-and-only-one-works) · [dead contact](#a-contact-does-nothing-at-all-for-anyone-including-you) |
 | **What only others see (or don't)** | [flickering for others](#other-people-see-my-avatar-flickering-cycling-colours-or-thrashing-i-dont) · [rapid flicker](#an-animation-flickers-rapidly-often-only-on-other-players-screens) · [private sound](#a-sound-only-you-can-hear) · [private particles](#a-particle-effect-only-you-can-see) · [particle squares](#a-particle-effect-draws-as-plain-coloured-squares) · [one-eye effects](#an-effect-draws-in-one-eye-only-in-vr) |
-| **YAPS (penetration)** | [plug doesn't bend in game](#yaps-the-plug-does-not-bend-toward-a-socket-in-game) · [shader not patched](#yaps-could-not-patch-the-shader-or-the-test-plug-sits-there-straight) · [plug bends twice](#yaps-a-plug-bends-twice-or-stretches) · [socket reads "not built"](#yaps-a-converted-socket-reads-not-built-or-the-windows-row-says-a-plug-is-not-baked) · [stopped bending after unlocking materials](#yaps-a-plug-stopped-bending-after-unlocking-materials) · [plug left alone](#yaps-a-plug-was-left-alone-because-its-chain-is-the-bodys-own) · [plain mesh jumps](#yaps-a-plain-mesh-plug-jumps-or-turns-the-moment-a-socket-engages-it) · [body-mesh socket won't open](#yaps-a-socket-on-the-body-mesh-does-not-open-around-a-plug) · [toggle greyed in the tester](#yaps-a-menu-toggle-the-tool-added-is-greyed-out-in-the-ccks-tester-or-shows-a-red-) · [OSC toy stays silent](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
+| **YAPS (penetration)** | [plug doesn't bend in game](#yaps-the-plug-does-not-bend-toward-a-socket-in-game) · [shader not patched](#yaps-could-not-patch-the-shader-or-the-test-plug-sits-there-straight) · [plug bends twice](#yaps-a-plug-bends-twice-or-stretches) · [socket reads "not built"](#yaps-a-converted-socket-reads-not-built-or-the-windows-row-says-a-plug-is-not-baked) · [stopped bending after unlocking materials](#yaps-a-plug-stopped-bending-after-unlocking-materials) · [unlocked Poiyomi warning](#yaps-the-report-says-poiyomis-unlocked-shader-ships-under-yaps) · [plug left alone](#yaps-a-plug-was-left-alone-because-its-chain-is-the-bodys-own) · [plain mesh jumps](#yaps-a-plain-mesh-plug-jumps-or-turns-the-moment-a-socket-engages-it) · [body-mesh socket won't open](#yaps-a-socket-on-the-body-mesh-does-not-open-around-a-plug) · [toggle greyed in the tester](#yaps-a-menu-toggle-the-tool-added-is-greyed-out-in-the-ccks-tester-or-shows-a-red-) · [OSC toy stays silent](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
 | **Uploading** | [no Upload button](#the-cck-shows-no-upload-button-or-the-uploaded-avatar-is-missing-something) · [object ID failure](#uploading-fails-with-failed-to-generate-new-object-id) |
 
 ### Nothing compiles: `'ImageDownloader' does not contain a definition for 'GetImage'`
@@ -2978,11 +2986,20 @@ release does the same.
 ### YAPS: a plug stopped bending after unlocking materials
 
 Thry's **Unlock all materials** (Poiyomi's material menu) takes every locked-looking material back
-to its original shader. A YAPS material never recorded one with it, so it guesses one by name and
-puts the plain shader back, and the patch is gone. The plug's inspector says *no longer wears the
+to its original shader, which for a YAPS material is the plain one without the deform, so the patch
+is gone. The plug's inspector says *no longer wears the
 YAPS shader*, the socket's says the same, and **Check before upload** lists every material it
 happened to. **Bake** the plug again (**Build this socket** for a socket, or convert again for a
 converted avatar) and it is patched back.
+
+### YAPS: the report says Poiyomi's unlocked shader ships under YAPS
+
+YAPS locks an unlocked Poiyomi material through Poiyomi before patching it, and this one could not
+be: it's a material variant (Poiyomi locks a variant through its parent), it isn't saved as an asset,
+or Poiyomi's lock failed or isn't in the project, and the warning says which. YAPS patched the
+unlocked shader instead and marked it locked so the upload leaves it alone. It works in game, but
+every Poiyomi feature uploads with it. Lock the material (or the variant's parent) in Poiyomi and
+convert or bake again.
 
 ### YAPS: a plug "was left alone" because its chain is the body's own
 

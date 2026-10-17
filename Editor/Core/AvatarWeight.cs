@@ -351,7 +351,7 @@ namespace AvatarBridge
             {
                 Add(r, 0, $"{r.Materials} materials on {r.Shaders.Count} distinct shaders, which means every " +
                           "material carries its own locked copy. The client compiles them one by one on first " +
-                          "sight of you. Unlock, or lock once and share.", 2);
+                          "sight of you. Lock them together in one go, so materials set alike share one shader.", 2);
             }
 
             if (r.ClothParticles > 900)

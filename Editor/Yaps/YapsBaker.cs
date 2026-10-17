@@ -605,22 +605,26 @@ namespace AvatarBridge
         public static Material Generated(Material source, Shader patched, string path)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path));
+            // The values Poiyomi's lock left, when the patch came from its locked stand-in.
+            var basis = YapsLock.Basis(source);
             var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
             if (existing != null && existing != source)
             {
-                existing.CopyPropertiesFromMaterial(source);
+                existing.CopyPropertiesFromMaterial(basis);
                 if (patched != null)
                 {
                     existing.shader = patched;
                 }
+                YapsLock.Stamp(existing);
                 EditorUtility.SetDirty(existing);
                 return existing;
             }
-            var made = new Material(source) { name = source.name + " (YAPS)" };
+            var made = new Material(basis) { name = source.name + " (YAPS)" };
             if (patched != null)
             {
                 made.shader = patched;
             }
+            YapsLock.Stamp(made);
             AssetDatabase.CreateAsset(made, path);
             return made;
         }

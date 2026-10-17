@@ -150,6 +150,7 @@ namespace AvatarBridge
                 .Where(m => SourceOf(m) != null).Select(m => System.IO.Path.GetDirectoryName(AssetDatabase.GetAssetPath(m)).Replace('\\', '/'))
                 .FirstOrDefault() ?? YapsNativeBuilder.OutputRoot + "/Squash";
             var clips = YapsSwapFollow.RunnableClips(root);
+            YapsLock.Animate(null, clips);
             Reuse = Owned(root, clips);
             string said;
             try
@@ -393,7 +394,7 @@ namespace AvatarBridge
                                     log.Add($"\"{source.name}\" on {smr.name} cannot follow, so {parts[m & ~1].name}/{parts[m | 1].name} does not squash");
                         continue;
                     }
-                    var copy = new Material(source) { shader = shader };
+                    var copy = new Material(YapsLock.Basis(source)) { shader = shader, name = source.name };
                     copy.SetFloat("_YAPS_DentPower", 1f);
                     copy.SetTexture("_YAPS_DentOwn", own);
                     copy.SetVector("_YAPS_SquashReach", reach);
@@ -560,6 +561,7 @@ namespace AvatarBridge
 
         static Material Save(Material copy, Material source, string folder, string file)
         {
+            YapsLock.Stamp(copy);
             copy = Asset(folder, copy, file);
             AssetImporter.GetAtPath(AssetDatabase.GetAssetPath(copy)).userData = Mark + GlobalObjectId.GetGlobalObjectIdSlow(source);
             return copy;
@@ -642,7 +644,7 @@ namespace AvatarBridge
                         {
                             var shader = ShaderFor(original, report, null);
                             if (shader == null) { refused.Add(original.name); continue; }
-                            to = new Material(original) { shader = shader };
+                            to = new Material(YapsLock.Basis(original)) { shader = shader, name = original.name };
                             foreach (string name in Properties) Carry(template, to, name);
                             to = Save(to, original, folder, $"{root.name} {smr.name} {slot} {original.name}.mat");
                             copyOf[(smr, original)] = to;
@@ -1046,6 +1048,7 @@ namespace AvatarBridge
                 // the squash on it, so nothing in it is reused: emptied in one call, where numbering
                 // beside the last set left a whole set of materials and textures per reconvert.
                 AssetDatabase.DeleteAsset(folder);
+                YapsLock.Animate(root, ctx.MergedController?.animationClips);
                 string said = Add(root, folder, out bool built, ctx.Report);
                 if (!built)
                 {

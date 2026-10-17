@@ -2475,6 +2475,39 @@ Left open by the story, all four done the same night, editor-measured:
 - **Done 2026-10-15:** `UiOffscreenProbe.FindSource()` picked either of two VRChat avatars in one
   scene from run to run. It now takes an active one first, then the first in the hierarchy.
 
+### "Convert just one part, like only PhysBones": a user's request, 2026-10-17. PLAN, NOT BUILT
+
+From the 5.0.0 video: a way to convert one system at a time instead of the one-click Convert, for
+example only PhysBones to MagicaCloth2. Read of the pipeline, settings and in-place tools, one judge.
+No mode name: the Tools tab already runs the converter's passes one card each, and the missing piece
+is that PhysBones has no card.
+- Unticking a system on Convert does not leave it alone: `MiscConverter.DeleteVrcComponents`
+  (:562-577) strips every `VRC*` component afterwards, PhysBones alone spared by
+  `deleteConvertedPhysBones`. Descriptor, menu, merge and self-contain always run. So grouping the
+  existing gates as "only these systems" would mislead; not that.
+- Chosen: a **PhysBones to cloth** card in the main window's Tools tab, run in place on a ChilloutVR
+  avatar that still carries VRC PhysBones (a vrc3cvr port is the case). `PhysBoneConverter.Run` reads
+  only `Target`, `TargetAnimator`, `Settings`, `Report` and `PathInTarget`, so it runs on a
+  Toolkit-shaped context with the window's live settings, then `MagicaClothWriter.ReleaseCaches()`.
+  Not under `Editor/Toolkit`: the add-on package ships that folder and leaves out `Core/Physics`, so
+  the build's closure check would fail. Needs the VRChat SDK (the PhysBone types) and a solver.
+- Slice 1, ships alone: components only; `PhysBoneChainGrouping.ToggledPaths` also reads
+  `ctx.MergedController` (else a toggled strand can group with an untoggled one); standalone report
+  wording; refuse while a `MagicaCloth Phys`/`DynamicBone Phys` root has children (a second run with
+  Delete off adds cloth that fights the first); Undo measured in the GUI (the writers record none,
+  `DeleteConverted` uses DestroyImmediate; YapsRemover's grouped Undo is the proven pattern); a
+  report row naming every clip that animates a PhysBone, since toggles are not rewired yet.
+- Slice 2: toggle rewiring on a copy of the shipped controller, as Free wins does, with
+  `RewirePhysicsToggles` made internal (it already clones what it touches), then the collider-curve
+  and animated-property passes on owned clips. Slice 3: Contacts and Constraints cards.
+- Left out: a step-by-step Convert that pauses between passes (state lives on `ctx` in memory, a
+  Play-mode reload kills it, cancel leaves a half clone), any mode switch or new tab.
+- Docs when built: README `#chilloutvr-toolkit` row (and its "needs no VRChat SDK" line gets an
+  exception), `#physbones--magicacloth2`, the vrc3cvr table, Known limitations for the toggle gap.
+- **Open, for Joe:** accept a VRChat avatar too (default no: refuse on a `VRCAvatarDescriptor` and
+  point at Convert); ship slice 1 before toggles (default yes, report names the clips); card settings
+  from the Convert tab's Physics options (default yes).
+
 ### "Avoid unpacking the converted prefab": a user's request, 2026-10-14. A ON DEV, B PARKED
 
 The asker's answer: they meant B, so that re-exporting the FBX reaches the converted avatar, and
@@ -2802,7 +2835,7 @@ are or lock the copy through Thry before patching.~~ **Joe picked, 2026-10-17: t
 ("the end result should be locked but as fast as possible, with patched YAPS"). `MarkLocked` stays as the
 fallback, it is not the answer.
 
-**Plan for lock-first, 2026-10-17. NOT BUILT.** Read of Thry 2.71.2, the YAPS call sites and the CCK, three
+**Plan for lock-first, 2026-10-17. BUILT on dev, see below; not seen in game.** Read of Thry 2.71.2, the YAPS call sites and the CCK, three
 designs, one judge. Chosen: lock STAND-INS, never the user's materials.
 - For each unlocked Poiyomi source a patch is about to read, one stand-in at
   `Assets/YAPS/Generated/Locked/<hash(sourcePath+localId)> <name>.mat`, tagged `<Prop>Animated = 1` for every
@@ -2838,6 +2871,31 @@ designs, one judge. Chosen: lock STAND-INS, never the user's materials.
   "one extra StopAssetEditing closes Thry's block"; "line 1 is the only per-call text" (grouped stand-ins
   take the leader's GUID and folder); Prewrite for plugs and sockets (0.17 to 0.29 s, nothing to save).
 - Locking non-YAPS Poiyomi at conversion stays with the upload lock, as today; a separate public idea.
+
+**Built, 2026-10-17** (`Editor/Yaps/YapsLock.cs`). Where it left the plan:
+- *Content-addressed, never relocked.* The stand-in is `Assets/YAPS/Generated/Locked/<key>.mat`, key =
+  hash of a version constant, the source's serialized JSON, the sorted animated set and the shader's
+  dependency hash. Changed settings make a new key and a new stand-in; nothing is ever relocked, so the
+  fingerprint tag and the `CopySerialized` relock are gone. Orphans pile up: **open**, a sweep of
+  `Generated/Locked`.
+- *No batch points beyond Prewrite.* `Prewrite` prepares its whole list in one Thry call; a lone `Patch`
+  prepares its own material. ConvertSockets and RepointSwappedMaterials stay one call per material.
+- *Skipped sources, each with the Warning:* unsaved materials, material variants (Poiyomi locks a variant
+  through its parent), VRCFury-deform (SPS/DPS/YAPS-detected) shaders, Poiyomi's editor absent or without a
+  lock, and a lock that threw or left the stand-in unlocked. All fall back to `MarkLocked`.
+- *Not built:* the post-lock `HasProperty` Warning; texture import settings are not in the key.
+- `AllLockedGUIDS` cleared on every YAPS copy (`YapsLock.Stamp`), P4 not probed. The animated set comes
+  from the squash and converter clips, the setup tool's plug and socket objects, and Reapply's scene avatars.
+- *P0, where the cold convert goes:* not the patcher (about 8 s) and not Thry (5.6 s for one stand-in,
+  9.65 s for six in one call). It is Unity compiling each fresh patched shader's default passes, Base, Add
+  and ShadowCaster, synchronously in batch, on the FIRST material created on it: `new Material(shader)`
+  took 89.9 s in the trigger probe and every later step milliseconds; the squash's first copy 445 s, the
+  second 71 s, the rest about 200 ms. **Open:** whether the GUI editor waits the same or compiles async.
+- *Measured:* `ThryLockFirstTest` 13/13 against Poiyomi in the copy project. End to end, converting the
+  squash avatar from unlocked sources: 663 s, all 6 YAPS materials patched from a locked stand-in, the
+  upload lock took only the 5 plain materials, 0 shader errors, 0 locked twice, 0 left unlocked, no
+  fallback Warning. P2, P3 and P5 not run.
+- **Not seen in game:** an unlocked-source plug or squash uploaded and worn, toggles that recolour it.
 
 ### The audit of 2026-10-03: about 210 findings fixed on dev, not verified in game
 

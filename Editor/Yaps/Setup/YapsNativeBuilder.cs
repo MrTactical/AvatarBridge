@@ -38,6 +38,7 @@ namespace AvatarBridge
         // short puts back the ones whose plugs still own their materials.
         public static Outcome Bake(YapsPlug plug)
         {
+            if (plug != null && plug.Target != null) YapsLock.Animate(plug.Target.transform);
             var o = BakeOnce(plug);
             if (!o.Ok && plug != null) YapsDebugOverlayBuilder.Build(plug.Target, null);
             return o;
@@ -986,6 +987,7 @@ namespace AvatarBridge
             if (socket == null) return null;
             socket.builtBy = BridgeDefines.Version;
             var renderer = socket.renderer;
+            if (renderer != null) YapsLock.Animate(renderer.transform);
             var stages = socket.shapes.Where(s => s != null && !string.IsNullOrEmpty(s.blendshape)).ToList();
             // Nothing to open any more. Emptying the list is an instruction,
             // not nothing to do: the depth animations have always read it that

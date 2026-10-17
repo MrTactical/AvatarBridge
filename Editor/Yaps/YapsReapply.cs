@@ -41,6 +41,9 @@ namespace AvatarBridge
         static void Run()
         {
             var materials = Selected();
+            // Which properties the scenes' avatars animate, for a material worn unlocked.
+            YapsLock.Animate(null, Object.FindObjectsOfType<ABI.CCK.Components.CVRAvatar>(true)
+                .SelectMany(a => AvatarBridge.Yaps.YapsSwapFollow.RunnableClips(a.transform)));
             int patched = 0;
             var refusals = new List<string>();
 

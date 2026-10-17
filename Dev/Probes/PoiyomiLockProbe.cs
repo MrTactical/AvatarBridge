@@ -12,10 +12,13 @@
 //   from the unlocked state: one avatar at a time, then all at once (ABBA with two reps), unlocking
 //   and deleting what each lock wrote in between. Each lock is split into the imports of the files
 //   it wrote and everything else, which is Poiyomi's own text work and its refreshes.
-// Convert: -executeMethod AvatarBridge.Regression.PoiyomiLockProbe.Convert -poiScenes <file> -poiOut <dir>
+// Convert: -executeMethod AvatarBridge.Regression.PoiyomiLockProbe.Convert -poiScenes <file> -poiOut <dir> [-poiPasses locked|unlocked]
 //   converts each avatar unlocked with the corpus profile, sorts the converted materials by where
 //   they live and whether they are locked, and locks them the way the ChilloutVR upload does. Then
 //   locks the source, converts again and locks again.
+// Trigger: -executeMethod AvatarBridge.Regression.PoiyomiLockProbe.Trigger -poiOut <dir>
+//   copies the largest YAPS patch of Poiyomi to a new path, so nothing of it is cached, and times
+//   each step a squash copy takes on it, to find the one that waits for the shader to compile.
 #if CVR_CCK_EXISTS && VRC_SDK_VRCSDK3
 using System;
 using System.Collections.Generic;
@@ -163,7 +166,8 @@ namespace AvatarBridge.Regression
                 .Invoke(null, null);
             foreach (string scene in Scenes())
             {
-                foreach (bool lockFirst in new[] { false, true })
+                // -poiPasses locked (or unlocked) runs one of the two.
+                foreach (bool lockFirst in new[] { false, true }.Where(l => Arg("-poiPasses") is string only ? only == (l ? "locked" : "unlocked") : true))
                 {
                     var descriptor = Open(scene);
                     if (descriptor == null) { Say($"{scene}: no avatar"); break; }
@@ -372,6 +376,53 @@ namespace AvatarBridge.Regression
             settingsHash = optimizer.GetMethod("MaterialToShaderPropertyHash", any, null, new[] { typeof(Material) }, null);
             return lockMaterials != null && unlockMaterials != null && isLocked != null && usesOptimizer != null && settingsHash != null;
         }
+
+        public static void Trigger() => Batch("trigger", () =>
+        {
+            var from = Directory.GetFiles(YapsShaderPatcher.SharedFolder, "Poiyomi*_YAPS_*.shader")
+                .OrderByDescending(f => new FileInfo(f).Length).FirstOrDefault();
+            var source = AssetDatabase.FindAssets("t:Material").Select(AssetDatabase.GUIDToAssetPath)
+                .Select(AssetDatabase.LoadAssetAtPath<Material>)
+                .FirstOrDefault(m => m != null && m.shader != null && m.shader.name.StartsWith("Hidden/Locked/.poiyomi"));
+            if (from == null || source == null) { Say($"nothing to time: shader {from}, material {source}"); return; }
+            string stamp = DateTime.Now.Ticks.ToString("x");
+            string path = $"{YapsShaderPatcher.SharedFolder}/Probe_{stamp}.shader";
+            // A new name and path: the cache keys on the text, and the path is in it.
+            string text = System.Text.RegularExpressions.Regex.Replace(File.ReadAllText(from),
+                @"^(\s*Shader\s+)""[^""]+""", $"$1\"Hidden/Locked/YAPS/probe{stamp}\"",
+                System.Text.RegularExpressions.RegexOptions.Multiline);
+            Say($"shader {from} ({text.Length} chars), material {source.name} on {source.shader.name}");
+            var clock = Stopwatch.StartNew();
+            void Step(string what) { Say($"{what}: {clock.ElapsedMilliseconds} ms"); clock.Restart(); }
+            File.WriteAllText(path, text);
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+            Step("import");
+            var shader = AssetDatabase.LoadAssetAtPath<Shader>(path);
+            Step($"load ({shader?.name})");
+            bool error = ShaderUtil.ShaderHasError(shader);
+            Step($"has error ({error})");
+            var bare = new Material(shader);
+            Step("new Material(shader)");
+            var copy = new Material(source);
+            Step("new Material(source)");
+            copy.shader = shader;
+            Step("copy.shader = patched");
+            copy.SetFloat("_YAPS_DentPower", 1f);
+            copy.SetVector("_YAPS_SquashReach", Vector4.one);
+            Step("set properties");
+            string matPath = $"{YapsShaderPatcher.SharedFolder}/Probe_{stamp}.mat";
+            AssetDatabase.CreateAsset(copy, matPath);
+            Step("create asset");
+            AssetDatabase.SaveAssets();
+            Step("save assets");
+            var second = new Material(source) { shader = shader };
+            Step("second copy");
+            UnityEngine.Object.DestroyImmediate(bare);
+            UnityEngine.Object.DestroyImmediate(second);
+            AssetDatabase.DeleteAsset(matPath);
+            AssetDatabase.DeleteAsset(path);
+            Step("cleaned up");
+        });
 
         static void Batch(string stage, Action body)
         {

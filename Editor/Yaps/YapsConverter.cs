@@ -52,6 +52,7 @@ namespace AvatarBridge
             }
 
             RemoveAtlasJunk(ctx);
+            YapsLock.Animate(ctx.Target.transform, ctx.MergedController?.animationClips);
             // Sockets on this avatar: its own plugs check ownership first.
             float selfFlag = socketRoots.Count > 0 ? 1f : -1f;
 

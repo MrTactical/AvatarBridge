@@ -341,6 +341,7 @@ namespace AvatarBridge
         {
             var list = materials.Where(m => m != null).Distinct().ToList();
             if (list.Count == 0) return;
+            YapsLock.Prepare(list);
             // A folder the AssetDatabase has not seen takes no imports into it.
             if (!AssetDatabase.IsValidFolder(SharedFolder))
             {
@@ -461,6 +462,12 @@ namespace AvatarBridge
                 refusal = "the material has no shader";
                 return null;
             }
+            // An unlocked Poiyomi is patched from its locked stand-in. Prewrite prepares a batch
+            // in one lock; a lone patch prepares its own.
+            if (Deferred == null) YapsLock.Prepare(new[] { material });
+            var asked = material;
+            material = YapsLock.Basis(material);
+            YapsLock.WarnIfUnlocked(asked, material, report);
 
             string sourcePath = ShaderSpiPatcher.SourcePathOf(material.shader);
             if (string.IsNullOrEmpty(sourcePath))
@@ -574,8 +581,10 @@ namespace AvatarBridge
                 return null;
             }
 
-            report?.Converted(Category, material.name,
-                $"Deform patched into \"{material.shader.name}\" across {BridgeElements.Count(patchedPasses, "pass", "passes")}. " +
+            report?.Converted(Category, asked.name,
+                $"Deform patched into \"{asked.shader.name}\"" +
+                (asked != material ? ", locked through Poiyomi first," : "") +
+                $" across {BridgeElements.Count(patchedPasses, "pass", "passes")}. " +
                 $"The original shader is untouched; a copy carrying YAPS was written to {SharedFolder}, " +
                 "shared by everything patched from the same shader, and the material repointed at it."
                 + (frameless
