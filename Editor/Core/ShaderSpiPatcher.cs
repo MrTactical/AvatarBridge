@@ -82,7 +82,7 @@ namespace AvatarBridge
 
         internal static string TimingSummary() =>
             $"judged {Times.Judged} ({Times.SameText} by text seen before, planning {Times.Planning.ElapsedMilliseconds}), " +
-            $"TryPatch {Times.Patched} in {Times.Patching.ElapsedMilliseconds} ({Times.Reused} copies reused, " +
+            $"Patched {Times.Patched} in {Times.Patching.ElapsedMilliseconds} ({Times.Reused} copies reused, " +
             $"StereoVariantError {Times.VariantChecks} in {Times.Variants.ElapsedMilliseconds})";
 
         public static void Run(BridgeContext ctx)
@@ -119,10 +119,12 @@ namespace AvatarBridge
         {
             int swapsRepointed = 0;
             var clips = ClipsOf(controller).ToList();
-            Prepared = Prejudge(clips.SelectMany(c => AnimationUtility.GetObjectReferenceCurveBindings(c)
+            var swapped = clips.SelectMany(c => AnimationUtility.GetObjectReferenceCurveBindings(c)
                     .SelectMany(b => AnimationUtility.GetObjectReferenceCurve(c, b) ?? Array.Empty<ObjectReferenceKeyframe>()))
                 .Select(k => k.value is Material m && m != null ? m.shader : null)
-                .Where(s => s != null && !patched.ContainsKey(s)));
+                .Where(s => s != null && !patched.ContainsKey(s)).ToList();
+            Prepared = Prejudge(swapped);
+            Prepare(swapped, dir, patched, outcome);
             foreach (var clip in clips)
             {
                 foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
@@ -182,64 +184,95 @@ namespace AvatarBridge
         // into the outcome.
         static Shader Judge(Shader shader, string dir, Dictionary<Shader, Shader> patched, Outcome outcome)
         {
-            if (patched.TryGetValue(shader, out var known))
+            if (!patched.ContainsKey(shader)) Prepare(new[] { shader }, dir, patched, outcome);
+            return patched[shader];
+        }
+
+        // One shader on its way through Prepare.
+        sealed class Weighed
+        {
+            public Shader Shader, Result;
+            public bool Correct, Tried, Grabbed;
+            public string Reason;
+            public List<string> Left;
+            public Staged Staged;
+        }
+
+        // Every shader not judged yet, in the order met. Each copy is written first, then all of
+        // them import in one batch, then each is checked and reported in that same order, so the
+        // names, the outcome and the report come out as one at a time made them. One at a time,
+        // each copy cost its own imports and every package's import hooks with them.
+        static void Prepare(IEnumerable<Shader> shaders, string dir, Dictionary<Shader, Shader> patched, Outcome outcome)
+        {
+            var weighed = new List<Weighed>();
+            foreach (var shader in shaders.Where(s => s != null && !patched.ContainsKey(s)).Distinct())
             {
-                return known;
-            }
-            Shader result = null;
-            string source = SourcePathOf(shader);
-            // Engine shaders have no source on disk and ship stereo-correct.
-            if (source != null)
-            {
+                var w = new Weighed { Shader = shader };
+                weighed.Add(w);
+                string source = SourcePathOf(shader);
+                // Engine shaders have no source on disk and ship stereo-correct.
+                if (source == null) continue;
                 // One read and at most one plan: the patch follows the plan the
                 // verdict came from instead of reading and planning it again. A
                 // throw goes on to the patch, which reads again and refuses it by name.
-                List<SourceFile> unit = null;
-                StereoPlan plan = null;
-                bool correct;
+                List<SourceFile> unit;
+                StereoPlan plan;
                 try
                 {
                     // Planned beside the others by Prejudge, the plan made for this very unit.
                     if (Prepared == null || !Prepared.TryGetValue(source, out var ready)) ready = (ReadUnit(source), null);
                     Prepared?.Remove(source);
                     unit = ready.unit;
-                    correct = StereoProblems(unit, out plan).Count == 0;
+                    w.Correct = StereoProblems(unit, out plan).Count == 0;
                     plan = plan ?? ready.plan;
                 }
                 catch
                 {
                     unit = null;
                     plan = null;
-                    correct = false;
+                    w.Correct = false;
                 }
-                if (correct)
-                {
-                    outcome.AlreadyCorrect.Add(shader.name);
-                }
-                else
-                {
-                    Times.Patched++;
-                    Times.Patching.Start();
-                    result = TryPatch(source, shader.name, dir, unit, plan, out string reason, out bool grabbed,
-                        out var passesLeft);
-                    Times.Patching.Stop();
-                    if (result == null)
-                    {
-                        outcome.Refused.Add($"{shader.name} ({reason})");
-                    }
-                    else
-                    {
-                        outcome.Repointed.Add(shader.name);
-                        if (grabbed) outcome.GrabLimited.Add(shader.name);
-                        if (passesLeft.Count > 0)
-                        {
-                            outcome.PartlyPatched.Add($"{shader.name}: {string.Join(", ", passesLeft)}");
-                        }
-                    }
-                }
+                if (w.Correct) continue;
+                w.Tried = true;
+                Times.Patched++;
+                Times.Patching.Start();
+                w.Staged = Stage(source, shader.name, dir, unit, plan, out w.Reason, out w.Grabbed, out w.Left, out w.Result);
+                Times.Patching.Stop();
             }
-            patched[shader] = result;
-            return result;
+
+            Times.Patching.Start();
+            Import(weighed.Where(w => w.Staged != null).Select(w => w.Staged).ToList());
+            var doomed = new List<string>();
+            foreach (var w in weighed.Where(w => w.Staged != null))
+            {
+                w.Result = Finish(w.Staged, doomed, out w.Reason);
+            }
+            // Every file of a failed copy goes, not just the shader: no orphaned
+            // include copies in the output folder.
+            if (doomed.Count > 0) AssetDatabase.DeleteAssets(doomed.ToArray(), new List<string>());
+            Times.Patching.Stop();
+
+            foreach (var w in weighed)
+            {
+                if (w.Correct)
+                {
+                    outcome.AlreadyCorrect.Add(w.Shader.name);
+                }
+                else if (w.Tried && w.Result == null)
+                {
+                    outcome.Refused.Add($"{w.Shader.name} ({w.Reason})");
+                }
+                else if (w.Tried)
+                {
+                    outcome.Repointed.Add(w.Shader.name);
+                    if (w.Grabbed) outcome.GrabLimited.Add(w.Shader.name);
+                    if (w.Left.Count > 0)
+                    {
+                        outcome.PartlyPatched.Add($"{w.Shader.name}: {string.Join(", ", w.Left)}");
+                    }
+                }
+                patched[w.Shader] = w.Result;
+            }
         }
 
         static void Report(BridgeReport report, Outcome o, bool swaps)
@@ -306,7 +339,9 @@ namespace AvatarBridge
             var outcome = new Outcome();
 
             var renderers = target.GetComponentsInChildren<Renderer>(true);
-            Prepared = Prejudge(renderers.SelectMany(r => r.sharedMaterials).Where(m => m != null).Select(m => m.shader));
+            var worn = renderers.SelectMany(r => r.sharedMaterials).Where(m => m != null).Select(m => m.shader).ToList();
+            Prepared = Prejudge(worn);
+            Prepare(worn, dir, patched, outcome);
             foreach (var renderer in renderers)
             {
                 var materials = renderer.sharedMaterials;
@@ -874,11 +909,22 @@ namespace AvatarBridge
             return null;
         }
 
-        // The unit and plan the judge made, or null to make them here.
-        static Shader TryPatch(string sourcePath, string shaderName, string dir, List<SourceFile> unit,
-            StereoPlan plan, out string reason, out bool grabPassLimited, out List<string> passesLeft)
+        // A copy written and waiting for its import and its checks.
+        sealed class Staged
+        {
+            public List<SourceFile> Unit;
+            public string Key, OutPath, Dir;
+            public List<string> Written;
+        }
+
+        // Everything up to the import: the plan applied, the files named and written. Null with
+        // `reused` set for a copy already in place, or with the reason it was refused. The unit
+        // and plan are the judge's, or null to make them here.
+        static Staged Stage(string sourcePath, string shaderName, string dir, List<SourceFile> unit,
+            StereoPlan plan, out string reason, out bool grabPassLimited, out List<string> passesLeft, out Shader reused)
         {
             grabPassLimited = false;
+            reused = null;
             passesLeft = new List<string>();
             if (unit == null)
             {
@@ -960,8 +1006,14 @@ namespace AvatarBridge
             // Name every file, then repoint the #include lines at the copies. Flattened into one
             // folder, so an include written as "sub/foo.cginc" becomes just "foo_SPI.cginc", and
             // named apart from every other file this run writes there.
-            bool known = AssetDatabase.IsValidFolder(dir) && Directory.Exists(dir);
-            Directory.CreateDirectory(dir);
+            // A folder the AssetDatabase has not seen takes no imports, so it is made and seen
+            // before the first write, while nothing of this batch is in it. A refresh rescans
+            // the whole project, so only once.
+            if (!(AssetDatabase.IsValidFolder(dir) && Directory.Exists(dir)))
+            {
+                Directory.CreateDirectory(dir);
+                AssetDatabase.Refresh();
+            }
             foreach (var file in unit)
             {
                 file.OutputName = Claim(dir, Path.GetFileNameWithoutExtension(file.OriginalPath) + "_SPI",
@@ -1012,7 +1064,8 @@ namespace AvatarBridge
                 CompiledCopies.Add(key);
                 Times.Reused++;
                 reason = null;
-                return existing;
+                reused = existing;
+                return null;
             }
 
             var written = new List<string>();
@@ -1023,28 +1076,38 @@ namespace AvatarBridge
                 written.Add(path);
             }
 
-            // Includes first, shader last. Importing the shader is what
-            // compiles it, and it fails on includes not yet in the
-            // AssetDatabase.
-            // One batch: each import alone ran every package's import hooks.
-            AssetDatabase.StartAssetEditing();
-            try
+            reason = null;
+            return new Staged { Unit = unit, Key = key, OutPath = outPath, Dir = dir, Written = written };
+        }
+
+        // Includes first, shaders last. Importing a shader is what compiles it, and it fails on
+        // includes not yet in the AssetDatabase. One batch each, for every copy at once.
+        static void Import(List<Staged> staged)
+        {
+            if (staged.Count == 0) return;
+            foreach (bool shaders in new[] { false, true })
             {
-                foreach (string path in written.Skip(1))
+                AssetDatabase.StartAssetEditing();
+                try
                 {
-                    AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+                    foreach (var s in staged)
+                    {
+                        foreach (string path in shaders ? new List<string> { s.OutPath } : s.Written.Skip(1).ToList())
+                        {
+                            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+                        }
+                    }
                 }
+                finally { AssetDatabase.StopAssetEditing(); }
             }
-            finally { AssetDatabase.StopAssetEditing(); }
-            // Only for a folder made on disk just now, which the AssetDatabase has
-            // not seen. A refresh rescans the whole project, and ran once per shader.
-            if (!known) AssetDatabase.Refresh();
+        }
 
-            AssetDatabase.ImportAsset(outPath, ImportAssetOptions.ForceSynchronousImport);
-
+        // The imported copy, checked, or null and why. A failed copy's files join `doomed`.
+        static Shader Finish(Staged s, List<string> doomed, out string reason)
+        {
             // Checked even when the same text passed in another folder: an include
             // left as text can resolve differently beside a different copy.
-            var result = AssetDatabase.LoadAssetAtPath<Shader>(outPath);
+            var result = AssetDatabase.LoadAssetAtPath<Shader>(s.OutPath);
             string errors = Verify(result);
             if (errors != null)
             {
@@ -1052,26 +1115,21 @@ namespace AvatarBridge
                 // of it: the edits often land in an include, and keeping the shader alone kept
                 // nothing of the line that failed.
                 bool kept = true;
-                foreach (var file in unit)
+                foreach (var file in s.Unit)
                 {
-                    try { File.WriteAllText(dir + "/" + file.OutputName + ".failed.txt", file.Text); }
+                    try { File.WriteAllText(s.Dir + "/" + file.OutputName + ".failed.txt", file.Text); }
                     catch { kept = false; }
                 }
-                // Every file of the unit goes, not just the shader.
-                // No orphaned include copies in the output folder.
-                foreach (string path in written)
-                {
-                    AssetDatabase.DeleteAsset(path);
-                }
+                doomed.AddRange(s.Written);
                 reason = "patched copy did not compile: " + errors +
                          (kept
-                             ? $". The attempted source was kept in {dir} as {unit[0].OutputName}.failed.txt" +
-                               (unit.Count > 1 ? $" and {BridgeElements.Count(unit.Count - 1, "include", "includes")} beside it" : "") +
+                             ? $". The attempted source was kept in {s.Dir} as {s.Unit[0].OutputName}.failed.txt" +
+                               (s.Unit.Count > 1 ? $" and {BridgeElements.Count(s.Unit.Count - 1, "include", "includes")} beside it" : "") +
                                ": attach them to a bug report"
                              : "");
                 return null;
             }
-            CompiledCopies.Add(key);
+            CompiledCopies.Add(s.Key);
             reason = null;
             return result;
         }

@@ -212,14 +212,18 @@ copy's main asset. The test covers it, and fails with the old rehomer. Still to 
 - `RestorePartialOffStates` and `AssertOwnedBindingsEverywhere` still claim, delete and create one
   clip per state.
 - Stereo copies written in one batch, a verified marker that survives a restart, and judging in
-  parallel. **Mostly DONE on dev 2026-10-17:** every shader a pass, the swap pass or the report check
+  parallel. **DONE on dev 2026-10-17:** every shader a pass, the swap pass or the report check
   is about to judge is planned at once on the thread pool (`ShaderSpiPatcher.Prejudge`; reading stays
   on the main thread), and Judge takes the plan made for its unit, so nothing plans twice. Each copy's
   includes import in one batch. After a restart a byte-identical copy is verified where it lies and
   rewritten only if that fails, in place of the in-memory marker; no file marker. Same A/B: planning
   3.3 s to 2.5 s, report check 1.4 s to 0.9 s, digest identical; SpiPatcherProbe 34/34 and
-  SpiIncludeProbe 5/5. Not done: one write batch across shaders, which only saves per-import
-  overhead (the compile is paid either way) and needs staging: every include in one batch, then every shader, then each verified in order.
+  SpiIncludeProbe 5/5. Then the write batch across shaders (`ShaderSpiPatcher.Prepare`): every
+  shader a renderer pass or the swap pass meets is staged first (planned, named, written), every
+  include of every copy imports in one batch, then every shader in a second, then each is verified
+  and reported in the order met, so names and the report match one at a time; failed copies are
+  deleted in one call. SpiPatcherProbe 34/34 (collisions and a failing copy among them) and
+  SpiIncludeProbe 5/5 again. Saves per-import overhead only; the compile is paid either way.
 
 **Decided 2026-09-23 (Joe):** ship the next release first (one default corpus run authorised,
 release on his word), then the two items below. **It is 4.6.4** (Joe, same day): 4.6.3 is skipped,
