@@ -53,7 +53,8 @@ physics A/B probes and a corpus run. Decisions on the queue's open questions, sa
   conversions for users, fast reconversion (skipped passes proven equal by the corpus), and YAPS
   portal and duplicate. (twin and diff built; fast reconversion logs each pass's time, the next full
   run says which are worth skipping; portal and duplicate designed in the YAPS 5 record, NOT built:
-  a portal is protocol 10, so that is Joe's call)
+  a portal is protocol 10, so that is Joe's call. *Revised 2026-10-17: the plan in the YAPS 5
+  record keeps protocol 9, so a portal no longer has to ride 5.0.0; decisions D1 to D7 are Joe's*)
 - No user reports since 4.7.2.
 - Joe wears it in ChilloutVR before 5.0.0 ships, with the full in-game checklist (all of it,
   ordered by risk, paced over days), and the release still needs his word.
@@ -3675,7 +3676,7 @@ does once found.*
 **This entry said "planned, unstarted" until 2026-09-12, months after the thing it asks for
 shipped.** The ask was an ordered list of sockets with arc-length ranges instead of one socket,
 and that is `YapsChain` in `yaps_resolve.cginc`: `position`, `forward`, `kind` and a cumulative
-`arc`, filled nearest-first, a hole ending the path, with `yaps_deform.cginc` selecting the link
+`arc` *(WITHDRAWN 2026-10-17: there is no arc field, `yaps_resolve.cginc:45-63`)*, filled nearest-first, a hole ending the path, with `yaps_deform.cginc` selecting the link
 per vertex by how far along the shaft it sits. Joe caught the stale status by knowing the feature
 existed. A status line nobody rereads is worse than no status line, because it is the one thing
 a planning read trusts.
@@ -3689,7 +3690,8 @@ a planning read trusts.
 A vertex shader cannot create geometry, so a "duplicate" is the existing shaft drawn at two
 frames rather than a second shaft. It cannot be two different lengths. **"It costs nothing" was
 wrong** (corrected 2026-10-15): one vertex has one position per draw, so the second frame needs a
-second copy of every pass the plug's material has, shadow caster included. That is the plug
+second copy of every pass the plug's material has, shadow caster included *(only if the passes are
+doubled inside the shader, 2026-10-17: a second draw of the shaft gets every pass from Unity)*. That is the plug
 drawn twice, which is cheap for one plug and not nothing.
 
 **Design, 2026-10-15, not built, needs Joe's decision.** Read off the shader as it stands:
@@ -3706,11 +3708,15 @@ drawn twice, which is cheap for one plug and not nothing.
   pixels (position, facing+kind, tags, owner) and every extra pixel per octant widens the rect by
   eight per column. An exit position and facing is two more: six pixels, a wider rect, and a
   protocol bump. **Protocol 9 shipped in 4.7.2**, so this is protocol 10, and a 4.7 wearer and a
-  5.0 wearer would be blind to each other until both update.
+  5.0 wearer would be blind to each other until both update. *(WITHDRAWN 2026-10-17, twice over:
+  protocol 9 shipped in 4.6.4, read off the tags; and protocol 10 follows only if the exit rides
+  in the octant. The plan below puts it in the atlas margin, which no reader draws or reads, and
+  keeps protocol 9.)*
 - **The light tier cannot carry it at all**: one socket per light path is the whole budget.
   Portals are atlas-only, and the README would have to say so.
 - **Authoring:** a socket field naming its exit socket, both on the same avatar, written by the
-  avatar's own atlas writer, which can see both bones. A portal between two people is out: neither
+  avatar's own atlas writer, which can see both bones *(at build time only: at draw time a
+  writer knows its own matrix alone, `YapsAtlasSocket.shader:78`, so the exit needs a writer of its own)*. A portal between two people is out: neither
   writer knows the other's exit.
 
 Questions for Joe: is a portal worth protocol 10 in 5.0.0 (the major is the cheapest moment for
@@ -3749,6 +3755,249 @@ than the deepest. The socket list is built and shipped. Portal and duplicate as 
 remain, and the cascade would have to learn to express a gap first. The converter repointing an
 author's reactions onto YAPS's own depth, once last on this list, shipped in 4.3.0 with the
 rebuild.
+
+### Portal and duplicate: the plan, 2026-10-17. NOT STARTED, waiting on Joe's D1 to D7
+
+Asked for by Joe ("start mapping out a plan for the YAPS portal and duplicate"). Made by a workflow:
+four readers mapped the deform, the atlas and protocol, the authoring side and the plug's draw;
+three plans were written from different angles (compatibility, risk and verification, the user);
+a judge checked each plan's load-bearing claims against the code, dropped the wrong ones, and
+merged them. Two of its claims rechecked by hand the same night: protocol 9 is in every tag from
+v4.6.4 to v4.7.2 (v4.6.2 is 7), and `YAPS_ATLAS_ORIGIN` 8 is the only thing that touches the margin,
+so rows and columns 0 to 7 are never drawn or read. Wrong claims it caught and dropped: `far` is
+2.56 plug lengths (`yaps_resolve.cginc:471`), not the reach; an exit cannot be atlas kind 2, which
+is the one-way ring; numbering is reassigned from seven call sites, so an exit key stored at build
+time goes stale and must be set inside `YapsOwner.NumberWriters`; and the slot split moves every
+triangle touching a plug vertex, so a duplicate must keep only triangles whose three corners are
+all active. Line numbers below are as of `44b07f2`. [M] is measured or read in the code, [R]
+reasoned, [GAME] only settled in ChilloutVR.
+
+#### Summary
+
+- **Portal:** the exit publishes its own pose into the atlas's unused top 8 rows, keyed by (owner, entrance number). The entrance stays a plain protocol-9 hole, byte for byte.
+- No cell-protocol bump, so 4.6.4 to 4.7.x avatars and 5.0 avatars still see each other's ordinary sockets. An older plug sees the entrance as an ordinary hole.
+- The plug cuts its shaft at the entrance, collapses a baked band either side of the cut to two points inside the bodies, and carries the rest of the shaft out of the exit. This is one draw, a vertex-shader change only.
+- **Duplicate** is a second draw of the same shaft bent into the next socket after copy 1's path. It costs about 2x the plug's vertex work, opt-in per plug, and waits on a user story.
+- Nothing ships until an editor gate and a two-client in-game gate pass. Margin survival in every CVR view is the one gate that can kill the transport.
+
+#### Decisions for Joe
+
+| # | Decision | Default | If he says no |
+|---|---|---|---|
+| D1 | Protocol | Cell protocol stays 9. Add `YAPS_ATLAS_DIR_VERSION 1`, which salts only directory tags, and rewrite the `:6` rule to "bump when an older reader would misread" (precedent `:209-211`) | Protocol 10: every 4.6.4-4.7.x avatar and every 5.0 avatar are blind to each other for **all** sockets until re-upload (`resolve:527`); it must ride 5.0.0; the README protocol paragraph and release notes need a warning. It buys nothing technically, since the exit still cannot live in the octant |
+| D2 | Portal shape | One-way field on the entrance, holes only. Two-way means setting the field on both sockets | Two-way mirrored field: about +3 h of editor sync. Ring entrances: the codes 49-63 flag, at most 5 per avatar, bucket clash with numbers 8 and 1-4, renumbering |
+| D3 | Bounds | Keep the tight plug box (`YapsBaker.cs:1173`). The emerging part blinks out when the plug's base region leaves the view; documented | Per-plug opt-in "portal reach" box, at a light-slot cost measured by S5. Wider boxes everywhere risk the marker-light tier |
+| D4 | Duplicate | Shelve until the second frame is named. If yes: "fork into the next socket after copy 1's path", opt-in per plug, off by default | Nothing is built; the duplicate record is marked withdrawn |
+| D5 | Exit reach and precision | S = 0.32 m cell for the 8-bit cell index: ±41 m, about 1.3 mm worst case on an 8-bit target, about 0.2 mm on half [R arithmetic] | S = 0.08: ±10 m, 0.3 mm |
+| D6 | Probe permissions | Batch Unity on a project neither open in the GUI nor D:/UnityVRCCrap; one S4 span survey run (corpus project, one authorisation per run); two-client sessions | Without S3/S4 the coarse-mesh threshold ships as a guess |
+| D7 | Release vehicle | Portal no longer needs 5.0.0. Ship when G2 passes, 5.0.0 or a 5.x minor | Holding it for 5.0.0 adds its checklist to the already long 5.0 checklist (`Unfinished.md:58-59`) |
+
+#### Portal
+
+**Design.** A same-avatar pair. The plug can be anyone's but must be built with 5.0. The entrance is a Hole. The exit is any socket on the same CVRAvatar and stays enterable as an ordinary socket.
+
+Non-goals for v1:
+- cross-avatar portals (no rendezvous key except the owner, and it can be spoofed)
+- props (owner is 0)
+- a chain continuing past the exit
+- exit reactions
+- lit or contact routes
+
+**Transport: the margin directory.**
+- New writer `Editor/Yaps/YapsAtlasExit.shader`: one pass, queue Background-945, `ZTest Always`.
+  - Two quads, home A and home B, at `hash(owner,n)` mod capacity.
+  - Goes nowhere when `!YapsAtlasFits()`, when owner is 0, or when `n` is outside 1-15.
+- Placement: rows 0-7, x from 0 to `YapsAtlasWidthPx()`, 4 px per entry.
+- Capacity [R arithmetic]: about 1,860 slots at the full rect, about 470 at the 239 px floor.
+
+| Pixel | RGB | Alpha |
+|---|---|---|
+| px0 | `frac(p/S)` | `0.5 + tag/2`. Tag is 7 bits from `YapsAtlasMix(int3(owner&0xFFF, owner>>12, n), DIR_SALT + DIR_VERSION*K)`, odd numerators as `yaps_atlas.cginc:188-197` |
+| px1 | exit +Z `*0.5+0.5`, with the zero-scale guard of `YapsAtlasSocket.shader:109-112` | `(1+n)/63` |
+| px2 | `floor(p/S)&0xFF` per axis, 24 bits at 6 bits per channel (`YapsOwnerEncode` packing) | (part of the same packing) |
+| px3 | `YapsOwnerEncode(owner)` | (part of the owner packing) |
+
+- Matching requires the tag, `n` and the full owner to all match exactly. A clash therefore fails safe to a plain hole and never gives a wrong exit, short of a 24-bit owner collision.
+- An empty slot has alpha 0, so it is gated out. The RGB margin is never cleared, which is fine because the alpha gate comes first.
+
+**Resolve** (`yaps_resolve.cginc`):
+1. After the SAME test (`:618-619`) and before the sort, track the nearest admitted hole: `holeD` and `holeKey = owner!=0 && ownIndex>0 ? owner<<4|ownIndex : 0`. That is two registers; the sort macros are unchanged.
+2. After `:667`, set `chain.portal = holeKey` when the last live entry is a hole whose `sockD` equals `holeD`. Pick the last index by literal inside an `[unroll]` loop.
+3. The directory read happens only in the deform branch:
+   - 1 tap per home on a miss
+   - up to 4 taps on a hit
+   - for comparison, the cell scan costs about 54 header taps today [R]
+
+**Deform** (`yaps_deform.cginc`, between the walk `:882` and the taper `:884`) [R, not compiled]:
+
+```hlsl
+if (leftOver > 0 && socket.tier > 2.5 && socket.chain.portal != 0
+    && link == socket.chain.count - 1 && linkKind > 0.5
+    && _YAPS_Enabled >= 1 && socket.engaged >= 0.999 && engage >= 0.999 && _YAPS_PortalSpan > 0
+    && YapsPortalExit(socket.chain.portal, p3, exitAt, exitFwd))
+{
+    float w = _YAPS_PortalSpan * worldLength * (1 + pumpTerm);
+    float3 PA = p3 + frame.forward * w, PB = exitAt - exitFwd * w;
+    if (leftOver < 2*w) { collapsed = true; P = leftOver < w ? PA : PB; }
+    else { frame.position = exitAt; frame.forward = exitFwd;
+           frame.up = YapsPerpendicular(exitFwd, frame.up); leftOver -= 2*w; portalled = true; }
+}
+```
+
+- **Collapsed vertices.**
+  - Assign the position, never lerp it, because `lerp(a,b,1)` can be one ulp off per vertex.
+  - Set normal and tangent to `normalize(PB-PA)`. Any host offset along the normal, outline width masks included, then stays on line AB and has zero area [R; S3 proves it].
+  - Offsets along other vectors (vertex colour, smoothed normals stored in UV) stay a risk. Kill criterion K2 covers it.
+- **Portalled vertices.**
+  - Skip the hole taper (`:890-905`) and the overrun switch (`:914`).
+  - Squeeze uses `entry = leftOver` from B's mouth.
+  - Exit roll comes from the arrival up vector. It is approximate.
+- **Coherence.** Every gate term is plug-wide in this regime:
+  - `_YAPS_Enabled` is a material property.
+  - `engage` and `socket.engaged` are 1 wherever `leftOver > 0` (a vertex past A has gap < L).
+  - Per-vertex root scatter is absorbed by the margin built into `w`.
+- **Bake.**
+  - `YapsBaker` stores the largest z-span of any all-active triangle, divided by the rest length, times 1.25.
+  - Above 0.2 it writes −1: the plug treats entrances as holes, and the build says so on the plug.
+  - New `_YAPS_PortalSpan` in `yaps_props.cginc` and the patcher PropertyBlock (`YapsShaderPatcher.cs:44-135`). `EmittedVersion` changes, so every patched shader recompiles once.
+
+**Authoring.**
+- Field: `public YapsSocket portalExit` on `Runtime/Yaps/YapsSocket.cs`, outside `#if` (`:119-120`). No file rename.
+- Hidden `builtExit` record, following the `builtLayer` pattern (`:97-107`).
+- Inspector:
+  - field in the socket card ("What it is", `YapsComponentEditors.cs:846-882`)
+  - Kind and One way lock to Hole while the field is set
+  - dotted gizmo line from entrance to exit (`:1316-1356`)
+  - tooltip: "A plug that goes into this hole comes out of the exit. Screen atlas only: by marker light, and to plugs built before 5.0, this is an ordinary hole."
+- Build notes, modelled on `LightCapNote` (`YapsSocketBuilder.cs:304-313`):
+  - exit missing, on another avatar, or the socket itself: link refused
+  - entrance unnumbered (16th socket or later): plain hole
+  - on a prop: plain hole
+  - marker lights: plain hole
+
+**Both builder paths.**
+- Exit writer lifecycle sits in `YapsSocketBuilder.Build(entrance)`:
+  - It deletes the old `builtExit`.
+  - It creates a stable-named "Atlas Exit (from \<entrance\>)" under the exit, outside the `Replace` folders.
+  - The name must be stable so the owner layer's path binding survives rebuilds.
+- The key `n` is set inside `YapsOwner.NumberWriters`: after numbering, each `builtExit`'s material is set to `YAPS Atlas Exit #n`. NumberWriters runs from Build, from `Wire` (native `:862`, channel `:46`, converter `:137`, Remover) and from the inspector, so renumbering can never leave a stale key.
+- Owner wiring is automatic: `Wire` targets every renderer whose material declares `_YAPS_Owner` (`YapsOwner.cs:47-49`).
+- Remove deletes `builtExit`.
+- The converter never sets the field. A link authored on a converted avatar is lost on reconvert; document it. Grep `ConvertSockets` and `YapsSocketRebuilder.Finish` to confirm the field is never touched.
+
+**Light and contact tiers.** No change. By marker light the entrance is an ordinary hole. Exit depth reactions never fire, because depth is measured from the plug's base light (`yaps_socket.cginc:76-110`, per the readers). Mirroring the entrance's depth onto the exit's reactions is a later, optional item.
+
+#### Duplicate (only if D4 is yes)
+
+- **Draw: option f.** Append copies of the active plug vertices, with their triangles, to the plug's own submesh.
+  - Copy attributes, bone weights and blendshape deltas using the readout's `Extend` (`YapsDebugOverlayBuilder.cs:436-554`). Switch to UInt32 indices when needed.
+  - Keep only triangles whose three corners are all active.
+  - Order: split, then duplicate, then bake, then readout. The bake's bone mask picks up the copies by themselves [R].
+  - Rebuild from a `dupFrom` mesh so copies never compound. Remove restores `dupFrom`.
+- **Why f and not a2.**
+  - f keeps one slot, so material swaps, `MirrorToSlots`, `CopyYapsProperties`, squash, the `Generated` name key and Remove's `+1` guard are all untouched.
+  - a2 touches about 8 slot-plumbing points across two builders.
+  - The readout is the in-game precedent for appended vertices.
+  - a2 (a shared-index second submesh plus a clone material with `_YAPS_Copy`) is the fallback if f fails DS1 or DG1.
+- **Copy 2 selection.**
+  - `vertexId >= _YAPS_CopyStart`.
+  - Copy 2 uses the chain from entry `count` onward (entries past the hole are kept, `resolve:688-690`) as its own path, with `engaged` recomputed.
+  - Copy 2 is atlas-only.
+  - With no target, or at any early return (`:475, 476, 479, 489, 654-660`), copy 2 collapses to one point with a fixed normal and tangent. That gives no doubled alpha on transparent hosts and no outline speck.
+- **Cost** [R, derived from `Unfinished.md:3211-3213`]:
+  - For a 6433-vertex plug on an RTX 4080, the whole resolve is about 5 us (empty atlas) to 32 us (full) per pass, and copy 2 repeats it.
+  - The rest of the deform is about 48% of the listing [M, fxc proxy].
+  - Copy 2 pays this even while hidden. Skinning also doubles for plug vertices.
+  - Multiply by passes and cameras. DS2 must give a number.
+- **Authoring.** "Two at once" bool on `YapsPlug`, default off, in the plug fold (`YapsComponentEditors.cs:1553-1585`). It must never be animated, because a renderer-wide block reaches every slot [M, memory].
+
+#### Phases
+
+| # | Step | Hours | Files | Gate |
+|---|---|---|---|---|
+| 0 | D1-D7 | 0 | none | Joe's answers |
+| 1 | S1 fxc budget: tracker, lookup and cut on scratch copies; then PoiyomiHeadroom | 2 | scratch, `Dev/Probes/Hlsl/yaps-fxc.sh`, `Dev/Probes/Atlas/PoiyomiHeadroom.cs` | temps ≤ 52; raw listing ≤ +3% over 3515; locked Poiyomi compiles with zero messages (lock headless) |
+| 2 | S2 directory probe; extend `atlas-layout.py` | 5 | new `Dev/Probes/Atlas/PortalDirectoryProbe.cs` and probe shaders | at 239², 256², 512², 932×596, 1024², 1920×1080 on 8-bit and half targets: owner and `n` exact; position ≤ S/255 + 0.1 mm; facing ≤ 0.5°; 0 false exits in 10k random keys with 20 live; **cell reads bit-identical with and without entries**; directory inside the clear span at every size |
+| 3 | S3 slivers and corridor; S4 span survey | 12 + 1 run | `Dev/Tester/YapsBendTester.cs`, `YapsBendCapture.shader`, new `Dev/Probes/PortalSpanProbe.cs` | over a 50-pose sweep on Standard, YAPS Simple Lit, locked Poiyomi with outline and width mask, lilToon with outline, HDR and 8-bit cameras, `_YAPS_Enabled` swept 0→1: 0 corridor pixels; exit vertices ≤ 0.5 mm from analytic; seams 0.00 mm. Real plugs: median 2w ≤ 0.2 L |
+| G1 | Editor gate (S1-S3 pass) | | | K1, K2, K3 or K6 fires: see risks |
+| 4 | Hand-wired test avatar plus Joe's session | 3 + Joe 1-2 | new `Dev/Probes/Atlas/PortalSpikeBuilder.cs` | **G2 [GAME]:** margin survives desktop, VR both eyes, mirrors, portrait, CVR camera and the remote client; a 4.6.4-4.7.2 plug sees a hole |
+| 5 | Production shader | 10 | `yaps_atlas.cginc` (directory, `DIR_VERSION`, `:6` and `:20` comments), new `YapsAtlasExit.shader`, `yaps_resolve.cginc`, `yaps_deform.cginc`, `yaps_props.cginc`, `YapsShaderPatcher.cs` | S0: `git diff v4.7.2` empty on `YapsAtlasSocket/Clear/Grab.shader`; `yaps_atlas.cginc` additions only; S1-S3 re-run |
+| 6 | Build side | 10 | `YapsSocket.cs`, `YapsSocketBuilder.cs`, `YapsOwner.cs` (NumberWriters), `YapsAtlas.cs`, `YapsBaker.cs`, `YapsRemover.cs`, `YapsComponentEditors.cs`, `YapsDebugOverlay.shader` (link-state cell: none, owner 0, no entry, placed); converter grep only | round trip passes: build, add a socket that renumbers, the key follows, reconvert, Remove, stale exit cleaned; `compile-check.sh` with and without the SDK; `check-defines.sh`; extracted public package has no `Editor/Yaps` |
+| 7 | Docs | 3 | see the docs section | README anchor check empty; labels verbatim |
+| 8 | In-game acceptance plus fix buffer | 4 + Joe | none | portal checklist all green |
+| D | Duplicate: DS1 f spike 6, DS2 perf 2, DG1 game 2 + Joe, production 12, docs 2 | about 24 | `YapsBaker.Bake` funnel, `YapsDebugOverlayBuilder.cs` (`Extend`), `yaps_deform.cginc`, `YapsShaderPatcher.cs:899-902`, `YapsPlug.cs`, `YapsRemover.cs`, `AvatarWeight.cs` | DS1: copies bake, seams 0.00, hidden copy shows 0 pixels on transparent and outline hosts; DS2 gives a number for D4; DG1 in game |
+
+- Portal total is about 49 agent hours plus about 4 of Joe's.
+- All of it on a spike branch off `dev`, never `main`. Home PC only.
+- No corpus run without an explicit order.
+
+#### In-game checklist (two clients, the second run by Joe as a real remote user)
+
+**Portal**
+1. Own plug into own pair: comes out of the exit in the wearer's view and on the remote client.
+2. Another avatar's 5.0 plug into the entrance: same result on both clients.
+3. Mixed builds:
+   - a 4.6.4-4.7.2 plug at a 5.0 entrance is a hole with its taper
+   - 4.7 and 5.0 ordinary sockets still work both ways
+4. Views: desktop, VR both eyes, small and large mirror, portrait (look for corner specks), CVR camera, and a view under 240 px (plain hole).
+5. Late join: plain hole until the owner syncs, then the portal. Time the gap.
+6. Two players in the same linked avatar, each entered: a plug never comes out of the other player's exit.
+7. Camera with HDR off: exit placement holds at 8 bits.
+8. Slow in and out, and `_YAPS_Enabled` toggled mid-insertion, on an outline host: no streak between A and B.
+9. Exit framed with the plug's base off screen: behaviour as D3 chose. Note the blink-out distance.
+10. Shadows: the emerging part casts one and the collapsed band does not. A Unity-caster host stays straight, as today.
+11. Viewer with shaders blocked, a DPS plug, and a lights-only view: plain hole.
+12. Coarse plug: the build note fires and the plug stops at the entrance.
+13. Two plugs into one entrance: both come out.
+14. Rough frame time: portal plug against a plain plug.
+
+**Duplicate**
+1. Two sockets in reach: two copies on both clients, with shadows, in the mirror and in the portrait.
+2. One socket only: no ghost on a transparent plug or an outline host.
+3. `_YAPS_Enabled` off: one plug, no doubled alpha.
+4. A material-swap toggle swaps both copies.
+5. Frame time with and without the duplicate, mirror on.
+6. Remote copy and late join.
+7. Viewer with shaders blocked: copies coincide and read as one plug.
+
+#### Docs surfaces (same commit as each change)
+
+- **README.md**
+  - add-on feature list (`:271`)
+  - a Portals subsection under The YAPS tool (`:1048`)
+  - transport table (`:937`): atlas only
+  - protocol paragraph (`:944-950`): ordinary sockets still cross 4.6.4-4.7.x; a portal needs a 5.0 plug and a 5.0 socket avatar
+  - atlas paragraph (`:963-978`): the corner block also carries exits; "932 by 596" stays true
+  - Known limitations (`:1895`): same avatar only, culling per D3, hidden length about 2w, roll, straight shadows on Unity's caster, coarse meshes, lost on reconvert
+  - new troubleshooting entry near `:2852`: "a plug stops at a portal entrance"
+  - run the anchor check afterwards
+- **Inspector text:** socket card field and tooltip; banner `YapsComponentEditors.cs:792-793`; plug fold "Two at once". README labels must match verbatim.
+- **Report strings:** portal notes in `YapsSocketBuilder`; span refusal in `YapsBaker`. Single funnels, so both builders share them.
+- **`AvatarDescription.cs` and `BridgeSettings.cs`:** no change. No menu rows and no settings are added; verify `CountMenu` is unaffected.
+- **Code comments:** `yaps_atlas.cginc:6` (the rule), `:20` (the margin is the directory); `YapsOwner.cs:72-73`.
+- **`docs/Unfinished.md`:** the six withdrawn claims from section 1; status; `:54-56`. Finished records go to `docs/archive/`.
+- **`docs/YAPS5.md`:** `:622` and `:678`, plus a new "Portal directory" section with the measurements.
+- **Release notes:** a one-line pointer in the public body. Everything else in the YAPS dropdown at the bottom: the class of the feature, "rebuild both the plug's and the socket's avatars", "older plugs see an ordinary hole". No avatar names, no body parts, no internal tooling.
+
+#### Risks and open questions
+
+Tags: **[M]** measured or written down; **[R]** reasoned, not measured; **[GAME]** can only be settled in ChilloutVR.
+
+| Risk | Status | Response |
+|---|---|---|
+| Margin rows have never been drawn in a CVR view, and nothing records why ORIGIN is 8. Cells 8 px away are proven in VR and mirrors (`YAPS5.md:501, 790`) | [GAME] | K1/G2: on main or VR view, kill the transport; on a mirror or portrait, document it as a known limit. Do not fall back to OCTPX 6 |
+| Host offsets not along the normal (UV-stored outline normals, vertex noise) re-open the collapsed band | [R] | S3 measures it. K2: portal moves to the copy-2 path of f (no cross-room band, about 2x vertex cost, needs Joe's yes) |
+| Real plugs' triangle spans are unmeasured | [R] | K3: per-vertex baked extents (a bake-format change, not a protocol change) or the copy-2 path |
+| Bounds against the marker-light tier, "Not verified in ChilloutVR" (`YapsBaker.cs:1168`) | [M] code / [GAME] | D3 |
+| Owner sync timing on remote copies; until then the entrance is a plain hole (`YapsOwner.cs:7-11`) | [GAME] | test 5 |
+| 8-bit versus half grab per camera; the design assumes 8-bit | [M] half on main view and mirror (`YAPS5.md:248-251, 1331-1335`) / [GAME] other cameras | test 7 |
+| Exit lighting comes from the plug renderer's probes and 4 vertex lights, so it can be wrong across a room | [R] | document |
+| Roll at the exit is approximate | [R] | document; a walked arrival frame is the upgrade |
+| An exit writer created by an inspector-only build may lack its owner curve until the next full build, as any new writer may today | [R] | verify in the phase 6 round trip |
+| Recompile of every patched shader once (`EmittedVersion`) | [M] mechanism | accepted cost |
+| Duplicate's real GPU cost and whether appended vertices survive upload. The readout precedent is a different mesh | [GAME] | DS2, DG1 |
+| Two builders diverge | [M] memory note | socket side is one funnel plus NumberWriters, plug side is one bake funnel; still grep both before calling it done |
+| Open: does a user story for duplicate exist (D4)? Must portals survive reconversion? | open | Joe |
 
 ---
 
