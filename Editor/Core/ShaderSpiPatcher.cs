@@ -205,13 +205,25 @@ namespace AvatarBridge
         static void Prepare(IEnumerable<Shader> shaders, string dir, Dictionary<Shader, Shader> patched, Outcome outcome)
         {
             var weighed = new List<Weighed>();
-            foreach (var shader in shaders.Where(s => s != null && !patched.ContainsKey(s)).Distinct())
+            // A throw still imports and reports every copy written before it, as one at a time
+            // did: written and never imported, they turned up unchecked at the next refresh.
+            try
             {
-                var w = new Weighed { Shader = shader };
-                weighed.Add(w);
-                string source = SourcePathOf(shader);
-                // Engine shaders have no source on disk and ship stereo-correct.
-                if (source == null) continue;
+                foreach (var shader in shaders.Where(s => s != null && !patched.ContainsKey(s)).Distinct())
+                {
+                    weighed.Add(Weigh(shader, dir));
+                }
+            }
+            finally { Settle(weighed, patched, outcome); }
+        }
+
+        static Weighed Weigh(Shader shader, string dir)
+        {
+            var w = new Weighed { Shader = shader };
+            string source = SourcePathOf(shader);
+            // Engine shaders have no source on disk and ship stereo-correct.
+            if (source != null)
+            {
                 // One read and at most one plan: the patch follows the plan the
                 // verdict came from instead of reading and planning it again. A
                 // throw goes on to the patch, which reads again and refuses it by name.
@@ -232,14 +244,20 @@ namespace AvatarBridge
                     plan = null;
                     w.Correct = false;
                 }
-                if (w.Correct) continue;
-                w.Tried = true;
-                Times.Patched++;
-                Times.Patching.Start();
-                w.Staged = Stage(source, shader.name, dir, unit, plan, out w.Reason, out w.Grabbed, out w.Left, out w.Result);
-                Times.Patching.Stop();
+                if (!w.Correct)
+                {
+                    w.Tried = true;
+                    Times.Patched++;
+                    Times.Patching.Start();
+                    try { w.Staged = Stage(source, shader.name, dir, unit, plan, out w.Reason, out w.Grabbed, out w.Left, out w.Result); }
+                    finally { Times.Patching.Stop(); }
+                }
             }
+            return w;
+        }
 
+        static void Settle(List<Weighed> weighed, Dictionary<Shader, Shader> patched, Outcome outcome)
+        {
             Times.Patching.Start();
             Import(weighed.Where(w => w.Staged != null).Select(w => w.Staged).ToList());
             var doomed = new List<string>();
@@ -1069,11 +1087,33 @@ namespace AvatarBridge
             }
 
             var written = new List<string>();
-            foreach (var file in unit)
+            var before = new Dictionary<string, byte[]>();
+            try
             {
-                string path = dir + "/" + file.OutputName;
-                File.WriteAllText(path, file.Text);
-                written.Add(path);
+                foreach (var file in unit)
+                {
+                    string path = dir + "/" + file.OutputName;
+                    before[path] = File.Exists(path) ? File.ReadAllBytes(path) : null;
+                    File.WriteAllText(path, file.Text);
+                    written.Add(path);
+                }
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+            {
+                // Nothing of it is imported yet, so putting the disk back is the whole undo: what
+                // this copy made goes and what it overwrote gets its old bytes, so a reconvert's
+                // half copy never turns up mixed with the last one at the next refresh.
+                foreach (var old in before)
+                {
+                    try
+                    {
+                        if (old.Value == null) File.Delete(old.Key);
+                        else File.WriteAllBytes(old.Key, old.Value);
+                    }
+                    catch { }
+                }
+                reason = "the copy could not be written: " + e.Message;
+                return null;
             }
 
             reason = null;

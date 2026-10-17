@@ -7,6 +7,7 @@
 //
 // Run: -executeMethod AvatarBridge.Regression.SpiIncludeProbe.Run [-spiShader "<name>"]
 // The optional shader is patched too and only has to come out as its (SPI) copy.
+// Then a copy that cannot be written all the way, beside one that can, in one batch.
 #if CVR_CCK_EXISTS
 using System;
 using System.IO;
@@ -31,11 +32,14 @@ namespace AvatarBridge.Regression
                 Directory.CreateDirectory(Root + "/Shader");
                 File.WriteAllText(Root + "/Includes/ProbeBase.cginc", Include);
                 File.WriteAllText(Root + "/Shader/Probe.shader", ShaderText);
+                File.WriteAllText(Root + "/Shader/ProbeLone.shader", LoneText);
                 AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
                 Try("Hidden/SpiIncludeProbe", true);
                 var args = Environment.GetCommandLineArgs();
                 int at = Array.IndexOf(args, "-spiShader");
                 if (at >= 0 && at + 1 < args.Length) Try(args[at + 1], false);
+                Locked(false);
+                Locked(true);
             }
             catch (Exception e)
             {
@@ -77,6 +81,68 @@ float4 _Color;
 v2f vert(appdata v) { v2f o; o.pos = UnityObjectToClipPos(v.vertex); return o; }
 fixed4 frag(v2f i) : SV_Target { return _Color; }
 ";
+
+        const string LoneText = @"Shader ""Hidden/SpiIncludeProbeLone""
+{
+    SubShader
+    {
+        Pass
+        {
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #include ""UnityCG.cginc""
+            struct appdata { float4 vertex : POSITION; };
+            struct v2f { float4 pos : SV_POSITION; };
+            v2f vert(appdata v) { v2f o; o.pos = UnityObjectToClipPos(v.vertex); return o; }
+            fixed4 frag(v2f i) : SV_Target { return 1; }
+            ENDCG
+        }
+    }
+}
+";
+
+        // The include's copy is held read-only, so that copy fails partway, after its shader
+        // file is written. It must be refused by name with nothing of it left for the next
+        // refresh, the held file untouched, and the other copy in the batch still made. As a
+        // reconvert, the shader file it overwrote must get its last text back.
+        static void Locked(bool reconvert)
+        {
+            string out_ = Root + (reconvert ? "/Out relocked" : "/Out locked"), held = out_ + "/ProbeBase_SPI.cginc";
+            string copy = out_ + "/Probe_SPI.shader", last = LoneText.Replace("SpiIncludeProbeLone", "SpiIncludeProbeLast");
+            Directory.CreateDirectory(out_);
+            File.WriteAllText(held, "// held");
+            File.SetAttributes(held, FileAttributes.ReadOnly);
+            if (reconvert) File.WriteAllText(copy, last);
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+            var go = new GameObject("SpiIncludeProbe locked");
+            try
+            {
+                var materials = new[] { "Hidden/SpiIncludeProbe", "Hidden/SpiIncludeProbeLone" }.Select((n, i) =>
+                {
+                    var m = new Material(Shader.Find(n)) { name = $"probe {(reconvert ? "relocked" : "locked")} {i}" };
+                    AssetDatabase.CreateAsset(m, Root + "/" + m.name + ".mat");
+                    return m;
+                }).ToArray();
+                var renderer = go.AddComponent<MeshRenderer>();
+                renderer.sharedMaterials = materials;
+                var report = new BridgeReport();
+                ShaderSpiPatcher.Patch(go, out_, null, report);
+                var now = renderer.sharedMaterials;
+                Check(now[0].shader.name == "Hidden/SpiIncludeProbe", $"a copy that cannot be written stays on its original ({now[0].shader.name})");
+                Check(report.Entries.Any(e => (e.Subject + " " + e.Detail).Contains("could not be written")), "and is refused by name, saying why");
+                Check(reconvert ? File.ReadAllText(copy) == last : !File.Exists(copy),
+                    reconvert ? "the shader file it overwrote has its last text back" : "with no half copy left on disk");
+                Check(File.Exists(held) && File.ReadAllText(held) == "// held", "and the file held there before untouched");
+                Check(now[1].shader.name == "Hidden/SpiIncludeProbeLone (SPI)", $"the other copy in the batch is still made ({now[1].shader.name})");
+                foreach (var e in report.Entries) Log($"  report: {e.Status} {e.Subject}: {e.Detail}");
+            }
+            finally
+            {
+                File.SetAttributes(held, FileAttributes.Normal);
+                UnityEngine.Object.DestroyImmediate(go);
+            }
+        }
 
         static void Try(string shaderName, bool synthetic)
         {

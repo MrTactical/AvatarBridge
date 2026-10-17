@@ -224,6 +224,13 @@ copy's main asset. The test covers it, and fails with the old rehomer. Still to 
   and reported in the order met, so names and the report match one at a time; failed copies are
   deleted in one call. SpiPatcherProbe 34/34 (collisions and a failing copy among them) and
   SpiIncludeProbe 5/5 again. Saves per-import overhead only; the compile is paid either way.
+  A copy that cannot be written (a locked or read-only file) puts the disk back as it found it,
+  deleting what it made and restoring what it overwrote, and is refused with the reason; the rest
+  of the batch still imports and reports. SpiIncludeProbe checks it fresh and on a reconvert.
+  Timed on the old code over three avatars with a warm cache: the copies took 52, 39 and 173 ms
+  in all, 35, 31 and 160 of it verifying, so the batch saves at most 8 to 17 ms an avatar there.
+  The time is in planning (0.07, 10.2 and 4.2 s, every shader's text already seen) and the report
+  check (to 5.9 s): the next place to look. SpiPatcherProbe 34/34, SpiIncludeProbe 15/15.
 
 **Decided 2026-09-23 (Joe):** ship the next release first (one default corpus run authorised,
 release on his word), then the two items below. **It is 4.6.4** (Joe, same day): 4.6.3 is skipped,
