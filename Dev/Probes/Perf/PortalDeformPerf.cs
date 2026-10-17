@@ -12,9 +12,11 @@
 // never matches, and every directory slot holding an entry nobody asks for.
 //
 // A hole sits a hundredth of a length ahead of the root and every vertex is
-// baked past it, so all of them take the end of the path. Three contents:
+// baked past it, so all of them take the end of the path. Four contents:
+//   none     no hole drawn, so nothing in reach                     (b)
 //   keyless  the hole has no owner, so chain.portal is 0             (b)
-//   miss     owner and number, no entry: any 5.0 hole that is no portal
+//   miss     owner and number, no entry: any 5.0 hole that is no portal,
+//            and the one no-portal case that pays the lookup        (b)
 //   portal   owner, number and an entry, so every vertex is cut     (c)
 // The cases of one content are timed render by render in turn, so clock
 // drift lands on all of them alike; the gate reads medians over repeats.
@@ -24,9 +26,9 @@
 // exit is from the one written. A case that did not take the path it names
 // fails the run rather than timing the wrong thing.
 //
-// Gates, per variant and fill: keyless within max(1 us, baseline spread) of
-// the baseline; portal at most 21.6 us over it, what the second atlas read
-// was accepted at. The miss case is reported against the same noise bound.
+// Gates, per variant and fill: none, keyless and miss each within
+// max(1 us, that case's baseline spread) of the baseline; portal at most
+// 21.6 us over it, what the second atlas read was accepted at.
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -58,7 +60,7 @@ namespace AvatarBridge.Regression
         static readonly Vector3 ExitFwd = new Vector3(0.6f, 0.2f, -0.77f).normalized;
         const double GateNoise = 1.0, GatePortal = 21.6;
 
-        enum Content { Keyless, Miss, Portal }
+        enum Content { None, Keyless, Miss, Portal }
 
         [MenuItem("Tools/AvatarBridge Dev/Probe: Portal deform perf")]
         public static void Run()
@@ -144,8 +146,11 @@ namespace AvatarBridge.Regression
                 cb.ClearRenderTarget(false, true, new Color(0, 0, 0, full ? 1f / 255f : 0f));
                 if (full) cb.DrawProcedural(Matrix4x4.identity, spikeMat, 4, MeshTopology.Triangles, 6);
                 var socketAt = Matrix4x4.TRS(Entrance, Quaternion.LookRotation(Vector3.back), Vector3.one);
-                cb.DrawMesh(quads, socketAt, socket, 0, 0);
-                cb.DrawMesh(quads, socketAt, socket, 0, 1);
+                if (content != Content.None)
+                {
+                    cb.DrawMesh(quads, socketAt, socket, 0, 0);
+                    cb.DrawMesh(quads, socketAt, socket, 0, 1);
+                }
                 if (content == Content.Portal && shaderIndex > 0)
                 {
                     spikeMat.SetFloat("_PerfHome", full && lookup != 1 ? 1 : 0);
@@ -226,8 +231,10 @@ namespace AvatarBridge.Regression
                 }
                 bool spiked = si > 0, hitWanted = spiked && content == Content.Portal;
                 float hit = s0.a - 10;
-                bool ok = vertices == Plug && s0.r == 3 && s0.g == 1
-                    && (!spiked || s0.b == (content == Content.Keyless ? 0 : 1))
+                // Nothing in reach: no tier, no link, the rest pose.
+                bool none = content == Content.None;
+                bool ok = vertices == Plug && s0.r == (none ? 0 : 3) && s0.g == (none ? 0 : 1)
+                    && (!spiked || s0.b == (none || content == Content.Keyless ? 0 : 1))
                     && hit == (hitWanted ? 1 : 0)
                     && atExit == (hitWanted ? Plug : 0) && atEntrance == (hitWanted ? 0 : Plug);
                 string exitNote = "";
@@ -290,22 +297,19 @@ namespace AvatarBridge.Regression
                     foreach (bool full in new[] { false, true })
                     {
                         string fill = full ? "full" : "empty";
-                        var a0 = times[(0, Content.Keyless, full)];
-                        var a1 = times[(0, Content.Miss, full)];
-                        var a2 = times[(0, Content.Portal, full)];
-                        var sb = times[(si, Content.Keyless, full)];
-                        var sm = times[(si, Content.Miss, full)];
-                        var sc = times[(si, Content.Portal, full)];
-                        double noise0 = Math.Max(GateNoise, Spread(a0)), noise1 = Math.Max(GateNoise, Spread(a1));
-                        double b = Median(sb) - Median(a0), miss = Median(sm) - Median(a1), c = Median(sc) - Median(a2);
-                        bool passB = b <= noise0, passC = c <= GatePortal;
-                        all &= passB && passC;
-                        Log($"{(passB ? "PASS" : "FAIL")} {shaders[si].name} {fill} no portal: {b:+0.00;-0.00} us over the baseline, " +
-                            $"bound {noise0:0.00} (baseline spread {Spread(a0):0.00}, spike spread {Spread(sb):0.00}); {Paired(sb, a0)}");
-                        Log($"{(passC ? "PASS" : "FAIL")} {shaders[si].name} {fill} portal: {c:+0.00;-0.00} us over the baseline, " +
-                            $"bound {GatePortal}; {Paired(sc, a2)}");
-                        Log($"{(miss <= noise1 ? "within" : "OVER")} {shaders[si].name} {fill} owned hole, no entry: {miss:+0.00;-0.00} us, " +
-                            $"noise bound {noise1:0.00} (not gated); {Paired(sm, a1)}");
+                        foreach (Content c in Enum.GetValues(typeof(Content)))
+                        {
+                            var a = times[(0, c, full)];
+                            var s = times[(si, c, full)];
+                            bool portal = c == Content.Portal;
+                            double bound = portal ? GatePortal : Math.Max(GateNoise, Spread(a));
+                            double d = Median(s) - Median(a);
+                            bool pass = d <= bound;
+                            all &= pass;
+                            Log($"{(pass ? "PASS" : "FAIL")} {shaders[si].name} {fill} {c}: {d:+0.00;-0.00} us over the baseline, " +
+                                $"bound {bound:0.00} ({(portal ? "the second atlas read" : "max of 1 and the baseline spread")}; " +
+                                $"baseline {Median(a):0.00} us, spread {Spread(a):0.00}; spike spread {Spread(s):0.00}); {Paired(s, a)}");
+                        }
                     }
                 return all;
             }

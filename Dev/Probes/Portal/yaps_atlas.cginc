@@ -317,12 +317,12 @@ bool YapsAtlasFits()
 //   1  one home, S1's hashing
 //   2  two homes; the tag's own hash places home A, a second hash home B
 //      only on a miss, and slots come by multiply and shift, never a divide
-// 1 is the default: 30 listing lines under 0, no GPU time apart from either,
-// and an entry takes one slot instead of two. The price is availability: an
-// entry sharing its only slot with a later-drawn one is a plain hole in that
-// view, where two homes need both shared.
+// GPU time cannot tell the three apart, so availability decides. An entry
+// whose only slot a later draw takes is a plain hole in that view: with 20
+// live, one home loses 0.5% of entries at 1864 slots and 2.0% at 472, two
+// homes 0.02% and 0.23% (simulated). 2 is the default, as 0 without the divide.
 #ifndef PORTAL_LOOKUP
-#define PORTAL_LOOKUP 1
+#define PORTAL_LOOKUP 2
 #endif
 
 int3 YapsDirKey(int owner, int n)

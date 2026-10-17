@@ -9,10 +9,18 @@
 // for the spike copies. Both folders stay outside Assets, so the patcher's own
 // search for yaps_deform never meets a second copy.
 //
-// PASS is the spike copy importing with no error, the vertex stage of every
-// pass compiling for D3D, and no message the baseline copy lacks: Poiyomi and
-// the shipped includes already warn, so a plain count is never zero. The bytecode sizes
-// say what the spike costs in Unity's own compile rather than fxc's listing.
+// PASS is the spike copy importing with no error, every stage of every pass
+// compiling for D3D with no keywords, the vertex stage also single-pass
+// instanced, and no message the baseline copy lacks: Poiyomi and the shipped
+// includes already warn, so a plain count is never zero. The vertex bytecode
+// says what the spike costs in Unity's own compile rather than fxc's listing;
+// the other stages' bytecode, equal or not, says whether it reaches them.
+//
+// Only the explicit compiles are compared. The importer's own messages depend
+// on what the shader cache already held: the same baseline text gave 36, 33,
+// 1 and 0 of them in different runs, so they are reported and never judged.
+// The variants it compiled are not all here; the spike's own code branches
+// only on stereo instancing.
 //
 // Locked shaders only, and headless: an unlocked Poiyomi Pro kills the editor
 // mid-compile.
@@ -73,16 +81,20 @@ namespace AvatarBridge.Regression
                 var spiked = Check(name, "spike", i, swapped);
                 // Poiyomi and the shipped includes already warn, so a message is
                 // the spike's only when the baseline has no such message on the
-                // same source line. A set, since a cached import repeats a
-                // compile's messages in one copy and not the other.
-                var known = new HashSet<string>(baseline.Keys);
-                var added = spiked.Keys.Where(k => !known.Contains(k)).ToList();
+                // same source line, counted: a pass that newly warns on a line
+                // another pass already warned on is still one more.
+                var left = baseline.Keys.GroupBy(k => k).ToDictionary(g => g.Key, g => g.Count());
+                var added = new List<string>();
+                foreach (var k in spiked.Keys)
+                    if (left.TryGetValue(k, out int n) && n > 0) left[k] = n - 1; else added.Add(k);
                 bool pass = !spiked.Error && spiked.Failed == 0 && added.Count == 0;
                 Debug.Log(Tag + $"{(pass ? "PASS" : "FAIL")} {name}: spike error {spiked.Error}, " +
-                    $"{spiked.Failed} of {spiked.Stages} vertex stages failed, import messages {spiked.Imported} " +
-                    $"(baseline {baseline.Imported}), compile messages {spiked.Keys.Count} (baseline {baseline.Keys.Count}), " +
-                    $"{added.Count} added by the spike, bytecode {spiked.Bytes} vs {baseline.Bytes} " +
-                    $"({(baseline.Bytes > 0 ? (spiked.Bytes - baseline.Bytes) * 100.0 / baseline.Bytes : 0):+0.00;-0.00}%)");
+                    $"{spiked.Failed} of {spiked.Stages} stages failed, compile messages {spiked.Keys.Count} " +
+                    $"(baseline {baseline.Keys.Count}), {added.Count} added by the spike, vertex bytecode {spiked.Bytes} vs {baseline.Bytes} " +
+                    $"({Growth(spiked.Bytes, baseline.Bytes)}), stereo {spiked.StereoBytes} vs {baseline.StereoBytes} " +
+                    $"({Growth(spiked.StereoBytes, baseline.StereoBytes)}), " +
+                    $"other stages {spiked.OtherBytes} vs {baseline.OtherBytes} ({(spiked.OtherBytes == baseline.OtherBytes ? "equal" : "differ")}); " +
+                    $"import messages {spiked.Imported} (baseline {baseline.Imported}, not gated)");
                 foreach (var g in added.GroupBy(k => k).Take(8))
                     Debug.Log(Tag + $"  added x{g.Count()}: {g.Key}");
                 all &= pass && !baseline.Error && baseline.Failed == 0;
@@ -108,7 +120,10 @@ namespace AvatarBridge.Regression
             return text;
         }
 
-        struct Result { public bool Error; public int Stages, Failed, Imported; public long Bytes; public List<string> Keys; }
+        struct Result { public bool Error; public int Stages, Failed, Imported; public long Bytes, StereoBytes, OtherBytes; public List<string> Keys; }
+
+        static readonly ShaderType[] Stages = { ShaderType.Vertex, ShaderType.Fragment, ShaderType.Geometry, ShaderType.Hull, ShaderType.Domain };
+        static readonly string[] Plain = new string[0], Stereo = { "STEREO_INSTANCING_ON" };
 
         static Result Check(string name, string variant, int index, string text)
         {
@@ -121,11 +136,10 @@ namespace AvatarBridge.Regression
             var shader = AssetDatabase.LoadAssetAtPath<Shader>(path);
             if (shader == null) throw new InvalidOperationException("no shader imported at " + path);
 
-            // Import messages are what the inspector shows; the vertex compile
-            // is the real D3D compile of every pass the plug draws in.
-            var imported = ShaderUtil.GetShaderMessages(shader);
-            var r = new Result { Error = ShaderUtil.ShaderHasError(shader), Imported = imported.Length, Keys = new List<string>() };
-            var messages = new List<ShaderMessage>(imported);
+            // The real D3D compile of every stage of every pass, which never
+            // answers from the cache; the import count is for the record.
+            var r = new Result { Error = ShaderUtil.ShaderHasError(shader), Imported = ShaderUtil.GetShaderMessages(shader).Length, Keys = new List<string>() };
+            var messages = new List<ShaderMessage>();
             var data = ShaderUtil.GetShaderData(shader);
             for (int s = 0; s < data.SubshaderCount; s++)
             {
@@ -133,13 +147,23 @@ namespace AvatarBridge.Regression
                 for (int p = 0; p < sub.PassCount; p++)
                 {
                     var pass = sub.GetPass(p);
-                    if (!pass.HasShaderStage(ShaderType.Vertex)) continue;
-                    var info = pass.CompileVariant(ShaderType.Vertex, new string[0],
-                        ShaderCompilerPlatform.D3D, BuildTarget.StandaloneWindows64);
-                    r.Stages++;
-                    if (!info.Success) r.Failed++;
-                    r.Bytes += info.ShaderData?.Length ?? 0;
-                    if (info.Messages != null) messages.AddRange(info.Messages);
+                    foreach (var stage in Stages)
+                    {
+                        if (!pass.HasShaderStage(stage)) continue;
+                        // The vertex stage twice: single-pass instanced, as CVR
+                        // draws in VR, reads the atlas as an array, its own branch.
+                        foreach (var keys in stage == ShaderType.Vertex ? new[] { Plain, Stereo } : new[] { Plain })
+                        {
+                            var info = pass.CompileVariant(stage, keys, ShaderCompilerPlatform.D3D, BuildTarget.StandaloneWindows64);
+                            r.Stages++;
+                            if (!info.Success) r.Failed++;
+                            long bytes = info.ShaderData?.Length ?? 0;
+                            if (stage != ShaderType.Vertex) r.OtherBytes += bytes;
+                            else if (keys == Stereo) r.StereoBytes += bytes;
+                            else r.Bytes += bytes;
+                            if (info.Messages != null) messages.AddRange(info.Messages);
+                        }
+                    }
                 }
             }
             // Keyed by the source line's text, not its number, which the spike shifts.
@@ -150,10 +174,13 @@ namespace AvatarBridge.Regression
                     : $"{Path.GetFileName(m.file)}:{m.line}";
                 r.Keys.Add($"{m.severity} {m.message} @ {(at.Length > 90 ? at.Substring(0, 90) : at)}");
             }
-            Debug.Log(Tag + $"{variant} {name}: error {r.Error}, {r.Stages} vertex stages, {r.Failed} failed, " +
-                $"{r.Imported} import and {r.Keys.Count} total messages, {r.Bytes} bytes, {clock.ElapsedMilliseconds} ms");
+            Debug.Log(Tag + $"{variant} {name}: error {r.Error}, {r.Stages} stages, {r.Failed} failed, " +
+                $"{r.Keys.Count} compile messages ({r.Imported} on import, not counted), vertex {r.Bytes} bytes, " +
+                $"stereo vertex {r.StereoBytes} bytes, other stages {r.OtherBytes} bytes, {clock.ElapsedMilliseconds} ms");
             return r;
         }
+
+        static string Growth(long a, long b) => b > 0 ? ((a - b) * 100.0 / b).ToString("+0.00;-0.00") + "%" : "n/a";
 
         // As YapsShaderPatcher inlines it: the include lines go, the rest stays.
         static string Part(string dir, string name) =>
