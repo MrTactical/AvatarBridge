@@ -6,7 +6,8 @@
 // Every point lands behind the far plane, so nothing rasterises, but its
 // position depends on the answer, so the work cannot be compiled out. Pass 2
 // writes each deformed vertex to its own pixel and pass 3 what the resolve
-// and the lookup answered, so the probe can say which path it timed. Passes
+// and the lookup answered, and where the hole decoded, so the probe can say
+// which path it timed. Passes
 // 4 and 5 fill and write the margin directory.
 //
 // Lives in Assets/AvatarBridge/Editor/DevTools when deployed, hence the
@@ -71,7 +72,8 @@ Shader "Hidden/PortalDeformPerf"
             float3 p = PerfDeform(id, n, t);
             v2c o;
             o.pos = PerfPixel(float2(id % 128, id / 128));
-            o.value = float4(mul(unity_ObjectToWorld, float4(p, 1)).xyz, 1);
+            // The vertex id in alpha, so the probe never depends on which way a readback runs.
+            o.value = float4(mul(unity_ObjectToWorld, float4(p, 1)).xyz, 100 + id);
             return o;
         }
 
@@ -92,7 +94,7 @@ Shader "Hidden/PortalDeformPerf"
             v2c o;
             o.pos = PerfPixel(float2(id, 60));
             o.value = id == 0 ? float4(s.tier, s.chain.count, portal, 10 + hit)
-                    : id == 1 ? float4(at, 20) : float4(f, 30);
+                    : id == 1 ? float4(at, 20) : id == 2 ? float4(f, 30) : float4(s.position, 40);
             return o;
         }
 

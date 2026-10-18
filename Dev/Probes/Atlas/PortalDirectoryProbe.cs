@@ -26,8 +26,14 @@
 //   - 0 false exits in 10,000 random keys;
 //   - every pixel outside the directory bit-identical in A, B and C, and D
 //     identical to A everywhere;
-//   - every directory pixel inside the clear's span, so alpha 0 in A.
+//   - every directory pixel alpha 0 in A, and every pixel of rows 0-7 past
+//     the clear's span (the rect and 4 px) the scene's, so the check can see;
+//   - the layout fits at every size but 238, and the 20 live entries are all
+//     found with none lost to a clash.
 // Below the smallest layout (238 square) nothing may change at all.
+// At 239 and 932 wide the rect is the whole target, so nothing past it exists
+// to be seen; the padded sizes keep the same layout, short of a cell column
+// wider, and give the alpha check pixels past the rect to look at.
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -46,7 +52,9 @@ namespace AvatarBridge.Regression
         const double Cell = 0.32, PosBound = Cell / 255 * 1000 + 0.1, FwdBound = 0.5;   // mm, degrees
         const int Strangers = 10000, SocketCount = 40, DirRows = 8, TooSmall = 238;
         static readonly (int w, int h)[] Sizes =
-            { (239, 239), (256, 256), (512, 512), (932, 596), (1024, 1024), (1920, 1080), (TooSmall, TooSmall) };
+            { (239, 239), (239 + Pad, 239), (256, 256), (512, 512), (932, 596), (932 + Pad, 596), (1024, 1024), (1920, 1080), (TooSmall, TooSmall) };
+        const int Pad = 16;   // under a cell column, 33 px
+        const int ClearPad = 4;   // YAPS/Atlas Clear covers the rect and 4 px more
         static readonly (string name, RenderTextureFormat format)[] Formats =
             { ("8-bit", RenderTextureFormat.ARGB32), ("half", RenderTextureFormat.ARGBHalf) };
         static readonly Color Scene = new Color(0.3f, 0.6f, 0.9f, 1);
@@ -196,16 +204,32 @@ namespace AvatarBridge.Regression
                             Log($"{at}: fits {fits}, rect {s0.y}x{s0.z}, directory {perRow} slots a row, {perRow * DirRows} in all, " +
                                 $"x 0-{span - 1} of rows 0-{DirRows - 1}; readbacks {(atlasTop ? "top" : "bottom")} first");
 
+                            {
+                                bool pass = fits == (w != TooSmall);
+                                all &= pass;
+                                Log($"{(pass ? "PASS" : "FAIL")} {at} layout: fits {fits}, wanted {w != TooSmall}");
+                            }
                             if (fits)
                             {
-                                int uncleared = 0;
+                                // Rows 0-7 over the whole target, not just the span: the
+                                // clear must reach every directory pixel, and past its own
+                                // span the scene's alpha must still be there to see.
+                                int rect = (int) s0.y, uncleared = 0, sceneKept = 0;
+                                var odd = new List<string>();
                                 for (int y = 0; y < DirRows; y++)
-                                    for (int x = 0; x < span; x++)
-                                        if (Px(a, atlasTop, y * w + x).w != 0) uncleared++;
-                                bool pass = uncleared == 0 && span <= s0.y;
+                                    for (int x = 0; x < w; x++)
+                                    {
+                                        float alpha = Px(a, atlasTop, y * w + x).w;
+                                        if (x < span && alpha != 0) uncleared++;
+                                        if (x >= rect + ClearPad && alpha == Scene.a) sceneKept++;
+                                        else if ((x < span ? alpha != 0 : x >= rect + ClearPad) && odd.Count < 6) odd.Add($"({x},{y}) {Px(a, atlasTop, y * w + x)}");
+                                    }
+                                int past = Math.Max(w - rect - ClearPad, 0) * DirRows;
+                                bool pass = uncleared == 0 && sceneKept == past && span <= rect;
                                 all &= pass;
                                 Log($"{(pass ? "PASS" : "FAIL")} {at} clear span: {uncleared} of {span * DirRows} directory pixels kept alpha " +
-                                    $"after the clear and the sockets; directory {span} px wide against a rect of {s0.y}");
+                                    $"after the clear and the sockets; {sceneKept} of {past} pixels past the clear kept the scene's; " +
+                                    $"directory {span} px wide against a rect of {rect}" + (pass ? "" : "; first off: " + string.Join(", ", odd)));
                             }
                             {
                                 int diff = Diff(a, d, w, h, atlasTop, (x, y) => false, out _);
@@ -282,7 +306,8 @@ namespace AvatarBridge.Regression
                                             if (wrong++ < 8) Log($"  FAIL {run} entry {i} owner {e.owner} number {e.n}: {why}");
                                         }
                                     }
-                                    bool entries = wrong == 0;
+                                    // The sparse set must lose nothing: 20 among 472 or more slots.
+                                    bool entries = wrong == 0 && (!fits || live.Count != 20 || (found == 20 && lost == 0));
                                     all &= entries;
                                     Log($"{(entries ? "PASS" : "FAIL")} {run} entries: {found} found ({fromB} from home B), {lost} " +
                                         $"{(fits ? "lost to clashes" : "unpublished below the floor")} as predicted, {wrong} wrong; " +
@@ -316,7 +341,7 @@ namespace AvatarBridge.Regression
                             output.Release();
                         }
                     }
-                Log($"worst over the six sizes: 8-bit {worstPos8:0.000} mm, {worstFwd8:0.000} deg; half {worstPosHalf:0.000} mm, " +
+                Log($"worst over the sizes: 8-bit {worstPos8:0.000} mm, {worstFwd8:0.000} deg; half {worstPosHalf:0.000} mm, " +
                     $"{worstFwdHalf:0.000} deg; false exits with 20 live {falseTotal}; {taggedTotal} random keys past the tag; " +
                     $"{fromBTotal} entries read from home B, {lostTotal} lost to clashes (both sets)");
                 return all;

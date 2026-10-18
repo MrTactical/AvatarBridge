@@ -12,23 +12,28 @@
 // never matches, and every directory slot holding an entry nobody asks for.
 //
 // A hole sits a hundredth of a length ahead of the root and every vertex is
-// baked past it, so all of them take the end of the path. Four contents:
+// baked past it, so all of them take the end of the path. Five contents:
 //   none     no hole drawn, so nothing in reach                     (b)
 //   keyless  the hole has no owner, so chain.portal is 0             (b)
 //   miss     owner and number, no entry: any 5.0 hole that is no portal,
 //            and the one no-portal case that pays the lookup        (b)
 //   portal   owner, number and an entry, so every vertex is cut     (c)
+//   partial  the same with the hole half a length in, so one draw holds
+//            vertices walked, collapsed into the band and portalled
 // The cases of one content are timed render by render in turn, so clock
 // drift lands on all of them alike; the gate reads medians over repeats.
 //
 // Before timing, every case is checked: what the resolve and lookup
 // answered, where each deformed vertex ended up, and how far the decoded
 // exit is from the one written. A case that did not take the path it names
-// fails the run rather than timing the wrong thing.
+// fails the run rather than timing the wrong thing. Partial must collapse
+// whole rings, between the walked ones and the portalled ones, each side
+// onto one point bit for bit, at the band's ends as the decoded hole and
+// exit put them.
 //
 // Gates, per variant and fill: none, keyless and miss each within
-// max(1 us, that case's baseline spread) of the baseline; portal at most
-// 21.6 us over it, what the second atlas read was accepted at.
+// max(1 us, that case's baseline spread) of the baseline; portal and partial
+// at most 21.6 us over it, what the second atlas read was accepted at.
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -56,11 +61,12 @@ namespace AvatarBridge.Regression
         // Past 41 m from the origin, so a cell index decoded as absolute shows.
         static readonly Vector3 Root = new Vector3(60.3f, 1.0f, 20.2f);
         static readonly Vector3 Entrance = Root + new Vector3(0, 0, 0.01f * Length);
+        static readonly Vector3 HalfIn = Root + new Vector3(0, 0, 0.5f * Length);
         static readonly Vector3 Exit = Root + new Vector3(1.3f, 0.4f, -0.9f);
         static readonly Vector3 ExitFwd = new Vector3(0.6f, 0.2f, -0.77f).normalized;
         const double GateNoise = 1.0, GatePortal = 21.6;
 
-        enum Content { None, Keyless, Miss, Portal }
+        enum Content { None, Keyless, Miss, Portal, Partial }
 
         [MenuItem("Tools/AvatarBridge Dev/Probe: Portal deform perf")]
         public static void Run()
@@ -145,13 +151,13 @@ namespace AvatarBridge.Regression
                 var cb = new CommandBuffer();
                 cb.ClearRenderTarget(false, true, new Color(0, 0, 0, full ? 1f / 255f : 0f));
                 if (full) cb.DrawProcedural(Matrix4x4.identity, spikeMat, 4, MeshTopology.Triangles, 6);
-                var socketAt = Matrix4x4.TRS(Entrance, Quaternion.LookRotation(Vector3.back), Vector3.one);
+                var socketAt = Matrix4x4.TRS(content == Content.Partial ? HalfIn : Entrance, Quaternion.LookRotation(Vector3.back), Vector3.one);
                 if (content != Content.None)
                 {
                     cb.DrawMesh(quads, socketAt, socket, 0, 0);
                     cb.DrawMesh(quads, socketAt, socket, 0, 1);
                 }
-                if (content == Content.Portal && shaderIndex > 0)
+                if ((content == Content.Portal || content == Content.Partial) && shaderIndex > 0)
                 {
                     spikeMat.SetFloat("_PerfHome", full && lookup != 1 ? 1 : 0);
                     cb.DrawProcedural(Matrix4x4.identity, spikeMat, 5, MeshTopology.Points, 4);
@@ -204,7 +210,7 @@ namespace AvatarBridge.Regression
                 Write(content, full, si);
                 var cb = new CommandBuffer();
                 cb.DrawProcedural(plugAt, mats[si], 2, MeshTopology.Points, Plug);
-                cb.DrawProcedural(plugAt, mats[si], 3, MeshTopology.Points, 3);
+                cb.DrawProcedural(plugAt, mats[si], 3, MeshTopology.Points, 4);
                 Render(check, CameraClearFlags.SolidColor, cb);
                 cb.Release();
                 var read = new Texture2D(Size, Size, TextureFormat.RGBAFloat, false, true);
@@ -215,28 +221,31 @@ namespace AvatarBridge.Regression
                 Object.DestroyImmediate(read);
 
                 int vertices = 0, atExit = 0, atEntrance = 0;
-                Color s0 = default, s1 = default, s2 = default;
+                Color s0 = default, s1 = default, s2 = default, s3 = default;
+                var drawn = new Vector3[Plug];
                 foreach (var c in px)
-                {
-                    if (c.a == 1)
-                    {
-                        vertices++;
-                        var p = new Vector3(c.r, c.g, c.b);
-                        if ((p - Exit).magnitude <= Length * 1.05f) atExit++;
-                        else if ((p - Entrance).magnitude <= Length * 1.05f) atEntrance++;
-                    }
-                    else if (c.a >= 10 && c.a < 12) s0 = c;
+                    if (c.a >= 10 && c.a < 12) s0 = c;
                     else if (c.a == 20) s1 = c;
                     else if (c.a == 30) s2 = c;
+                    else if (c.a == 40) s3 = c;
+                var hole = content == Content.Partial ? HalfIn : Entrance;
+                foreach (var c in px)
+                {
+                    if (c.a < 100 || c.a >= 100 + Plug) continue;
+                    vertices++;
+                    var p = drawn[(int) c.a - 100] = new Vector3(c.r, c.g, c.b);
+                    if ((p - Exit).magnitude <= Length * 1.05f) atExit++;
+                    else if ((p - hole).magnitude <= Length * 1.05f) atEntrance++;
                 }
-                bool spiked = si > 0, hitWanted = spiked && content == Content.Portal;
+                bool spiked = si > 0, partial = content == Content.Partial;
+                bool hitWanted = spiked && (content == Content.Portal || partial);
                 float hit = s0.a - 10;
                 // Nothing in reach: no tier, no link, the rest pose.
                 bool none = content == Content.None;
                 bool ok = vertices == Plug && s0.r == (none ? 0 : 3) && s0.g == (none ? 0 : 1)
                     && (!spiked || s0.b == (none || content == Content.Keyless ? 0 : 1))
-                    && hit == (hitWanted ? 1 : 0)
-                    && atExit == (hitWanted ? Plug : 0) && atEntrance == (hitWanted ? 0 : Plug);
+                    && hit == (hitWanted ? 1 : 0);
+                if (!(hitWanted && partial)) ok &= atExit == (hitWanted ? Plug : 0) && atEntrance == (hitWanted ? 0 : Plug);
                 string exitNote = "";
                 if (hitWanted)
                 {
@@ -246,9 +255,52 @@ namespace AvatarBridge.Regression
                     ok &= dPos <= DirCell / 255 * 1000 + 0.1f && dFwd <= 0.5f;
                     exitNote = $", exit decoded {dPos:0.000} mm and {dFwd:0.000} deg off";
                 }
+                if (hitWanted && partial) { ok &= Band(drawn, s1, s2, s3, out string band); exitNote += band; }
                 Debug.Log(Tag + $"{(ok ? "PASS" : "FAIL")} check {shaders[si].name}, {content}, {(full ? "full" : "empty")}: " +
                     $"tier {s0.r}, links {s0.g}, portal key {(spiked ? s0.b.ToString() : "n/a")}, exit found {hit}, " +
                     $"{vertices} vertices, {atExit} at the exit, {atEntrance} at the entrance{exitNote}");
+                return ok;
+            }
+
+            // Which rings the partial pose collapsed. The band's ends from the
+            // decoded hole and exit: A a span past the hole along the axis,
+            // B a span short of the exit along its facing.
+            bool Band(Vector3[] drawn, Color s1, Color s2, Color s3, out string note)
+            {
+                float w = Span * Length;
+                var exitAt = new Vector3(s1.r, s1.g, s1.b);
+                var pa = new Vector3(s3.r, s3.g, s3.b) + Vector3.forward * w;
+                var pb = exitAt - new Vector3(s2.r, s2.g, s2.b).normalized * w;
+                int rings = (Plug + 63) / 64;
+                // 0 walked, 1 band end A, 2 band end B, 3 out of the exit, 4 none, 5 a ring split between kinds
+                var kind = new int[rings];
+                Vector3? firstA = null, firstB = null;
+                int splitA = 0, splitB = 0;
+                double offA = 0, offB = 0;
+                for (int i = 0; i < Plug; i++)
+                {
+                    var p = drawn[i];
+                    int k = (p - pb).magnitude < 1e-4f ? 2 : (p - pa).magnitude < 1e-4f ? 1
+                          : (p - exitAt).magnitude <= Length * 1.05f ? 3
+                          : (p - HalfIn).magnitude <= Length * 0.55f ? 0 : 4;
+                    if (k == 1) { firstA = firstA ?? p; if (!Same(p, firstA.Value)) splitA++; offA = Math.Max(offA, (p - pa).magnitude * 1000.0); }
+                    if (k == 2) { firstB = firstB ?? p; if (!Same(p, firstB.Value)) splitB++; offB = Math.Max(offB, (p - pb).magnitude * 1000.0); }
+                    int r = i / 64;
+                    kind[r] = i % 64 == 0 || kind[r] == k ? k : 5;
+                }
+                int Count(int k) => kind.Count(x => x == k);
+                int Last(int k) => Array.LastIndexOf(kind, k);
+                int First(int k) => Array.IndexOf(kind, k);
+                int walked = Count(0), a = Count(1), b = Count(2), outside = Count(3), stray = Count(4) + Count(5);
+                // Contiguous and in order along the shaft: walked, A, B, out of the exit.
+                bool order = walked > 0 && a > 0 && b > 0 && outside > 0 && stray == 0
+                    && Last(0) < First(1) && Last(1) < First(2) && Last(2) < First(3)
+                    && Last(0) - First(0) + 1 == walked && Last(1) - First(1) + 1 == a
+                    && Last(2) - First(2) + 1 == b && Last(3) - First(3) + 1 == outside;
+                bool ok = order && splitA == 0 && splitB == 0;
+                note = $"; band rings: {walked} walked, {a} at end A, {b} at end B, {outside} out of the exit, {stray} stray or split, " +
+                    $"in order {order}; {splitA + splitB} band vertices off their end's first, bit for bit; " +
+                    $"end A {offA:0.0000} mm from the hole plus a span, end B {offB:0.0000} mm from the exit less one";
                 return ok;
             }
 
@@ -301,7 +353,7 @@ namespace AvatarBridge.Regression
                         {
                             var a = times[(0, c, full)];
                             var s = times[(si, c, full)];
-                            bool portal = c == Content.Portal;
+                            bool portal = c == Content.Portal || c == Content.Partial;
                             double bound = portal ? GatePortal : Math.Max(GateNoise, Spread(a));
                             double d = Median(s) - Median(a);
                             bool pass = d <= bound;
@@ -390,6 +442,11 @@ namespace AvatarBridge.Regression
             mesh.bounds = new Bounds(Vector3.zero, Vector3.one * 1000);
             return mesh;
         }
+
+        static bool Same(Vector3 x, Vector3 y) =>
+            BitConverter.SingleToInt32Bits(x.x) == BitConverter.SingleToInt32Bits(y.x)
+            && BitConverter.SingleToInt32Bits(x.y) == BitConverter.SingleToInt32Bits(y.y)
+            && BitConverter.SingleToInt32Bits(x.z) == BitConverter.SingleToInt32Bits(y.z);
 
         static double Median(List<double> xs)
         {
