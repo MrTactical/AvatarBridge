@@ -77,6 +77,12 @@ namespace AvatarBridge
         public const string CoarseNote = "This plug's triangles are too long along its shaft for a portal to cut " +
             "it, so it stops at a portal entrance as at any hole. Add loops along the shaft and bake again.";
 
+        // A second mesh cuts at the first one's band or not at all, so one
+        // coarser than the first stops while the rest of the plug goes through.
+        public const string CoarseExtraNote = "This mesh is baked into the plug, and its triangles are longer along " +
+            "the shaft than the plug's main mesh's, so the rest of the plug goes through a portal and this mesh " +
+            "stops at the entrance. Add loops along its shaft and bake again.";
+
         // wantedShapes: a socket names its stages; a plug takes the shapes
         // that move it most. objectFrame: a socket's shader adds the shape
         // deltas in the mesh's own frame, so a socket bake stays in it.
@@ -287,7 +293,8 @@ namespace AvatarBridge
             // of the exit shifted against it by twice the difference.
             if (shared) portalSpan = portalSpan >= 0f && portalSpan <= shareFrameWith.PortalSpan ? shareFrameWith.PortalSpan : -1f;
             if (portalSpan < 0f)
-                report?.Approximated(Category, $"\"{renderer.name}\" stops at a portal entrance", CoarseNote);
+                report?.Approximated(Category, $"\"{renderer.name}\" stops at a portal entrance",
+                    shared && shareFrameWith.PortalSpan >= 0f ? CoarseExtraNote : CoarseNote);
 
             // The mesh reaching the vertex shader has blendshapes applied and
             // the bake is the rest pose; the deltas let the shader rebuild it.

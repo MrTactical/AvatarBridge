@@ -1482,8 +1482,12 @@ card under the field says why:
 - *its portal exit is itself* or *is not on this avatar*: the link is refused, and the hole stays
   ordinary. An exit is another socket on the same avatar.
 - *its portal exit is gone*: the exit was deleted. Pick the exit again, or clear the field.
-- *is an ordinary hole for now*: only an avatar's first 15 sockets carry a number, in hierarchy
-  order, and a portal is found by its entrance's number.
+- *a ring cannot be a portal entrance*: something other than the inspector, which locks **Kind** to
+  *Hole* while the field is set, made the entrance a ring. Set **Kind** to *Hole*, or clear the field.
+- *is an ordinary hole for now*: only an avatar's first 15 sockets carry a number, and a portal is
+  found by its entrance's number. They are counted by their path in the hierarchy, sorted letter by
+  letter with capitals before small letters, so dragging a socket up the Hierarchy window changes
+  nothing: rename it, or move it under another object.
 - *a portal on a prop stays an ordinary hole*: a prop has no wearer to key its exit by.
 - *the portal is not built yet: press Build*: the entrance has not been built since the field was
   set, or was renamed or copied since.
@@ -1492,7 +1496,9 @@ card under the field says why:
 cut folds away inside each body, and the rest comes out of the exit. That stretch is the plug's
 longest triangle along the shaft, with a quarter added. Past a fifth of the plug's length the bake
 says the plug *stops at a portal entrance* and the plug treats every portal as an ordinary hole.
-Add loops along the shaft and bake again.
+Add loops along the shaft and bake again. A plug of several meshes cuts them all in one place, the
+main mesh's, so another mesh baked into it whose triangles are longer stops at the entrance while
+the rest goes through; the bake names that mesh.
 
 **Not yet confirmed in game.** The plug's [readout](#yaps-the-plug-does-not-bend-toward-a-socket-in-game)
 has a cell for it, and [a plug stops at a portal entrance](#yaps-a-plug-stops-at-a-portal-entrance)
@@ -2126,7 +2132,9 @@ Bipeds are unaffected by any of it.
   the YAPS tool on a converted avatar is lost when that avatar is converted again, so set it after
   the last conversion. The part that comes out of the exit is drawn only while the plug is: Unity
   culls by the plug's own bounds, which stay around the plug, so with the plug's base out of view
-  the exit side can blink out. The plug's roll as it leaves the exit is approximate, a short
+  the exit side can blink out. A plug too coarse along its shaft to cut stops at the entrance as at
+  any hole, and so does any mesh baked into a plug that is coarser than its main mesh, while the rest
+  goes through; the bake says which. The plug's roll as it leaves the exit is approximate, a short
   stretch either side of the cut is hidden inside the bodies, and a plug whose shadow stays
   straight keeps a straight shadow. A crowded view can lose an exit's place in the atlas; the
   entrance is then an ordinary hole in that view, never a way out of the wrong socket. Someone
@@ -3074,9 +3082,12 @@ instead of coming out of the exit. In order:
    **Portal exit** says whether it works; *the portal is not built yet: press Build* means just
    that. Then upload again.
 3. **Did the bake say the plug *stops at a portal entrance*?** Its triangles are too long along the
-   shaft for a portal to cut. Add loops along the shaft and bake again.
+   shaft for a portal to cut. Add loops along the shaft and bake again. When it names one mesh of
+   several, only that mesh stops: add loops to it.
 4. **Is the entrance one of the avatar's first 15 sockets?** Past those it *is an ordinary hole
-   for now*: reorder the hierarchy so it comes earlier, or remove a socket.
+   for now*. Sockets are counted by their path, letter by letter with capitals first, not by where
+   they sit in the Hierarchy window: rename the entrance or move it under another object so its path
+   sorts earlier, or remove a socket.
 5. **Was it found by marker light?** A view under about 240 pixels square, a viewer with custom
    shaders off, and a DPS plug all see an ordinary hole.
 6. **Just joined?** Someone else's copy of the avatar is an ordinary hole until the wearer's owner

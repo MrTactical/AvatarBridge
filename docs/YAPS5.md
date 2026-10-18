@@ -1651,7 +1651,8 @@ of any triangle whose three corners are all active, over the length, times 1.25,
 straddles the cut and stretches between the two bodies. Above 0.2 the plug is too coarse and bakes
 -1, which reads as no portal. A second mesh baked on the same chain takes the primary's span so
 both leave the exit together; one coarser than the primary bakes -1 and stops at the entrance
-while the primary goes through [R].
+while the primary goes through [R]. Both builders name that mesh: the converter's report, and the
+toolkit's build card, which shows no report of its own.
 
 Measured [M]:
 - The directory at 239^2, 256^2, 512^2, 932x596, 1024^2 and 1920x1080, on 8-bit linear and half

@@ -89,8 +89,6 @@ namespace AvatarBridge
             // A plain mesh moved onto the bounds copy; a re-bake keeps the copy and the record.
             if (filter != null && filter.sharedMesh != unbounded) { plug.boundsFrom = unbounded; EditorUtility.SetDirty(plug); }
             if (result == null) { o.Message = "could not bake: " + failure; return o; }
-            // The report is not shown from here, so the note is.
-            if (result.PortalSpan < 0f) o.Notes.Add(YapsBaker.CoarseNote);
             // A plain mesh bakes in its own units; the markers and the
             // report want metres.
             float toMetres = result.FromSkinnedMesh ? 1f : Mathf.Abs(renderer.transform.lossyScale.z);
@@ -357,6 +355,12 @@ namespace AvatarBridge
             // a bake each.
             var meshes = new List<(Renderer, YapsBaker.Result)> { (renderer, result) };
             int alsoMats = MirrorToRenderers(plug, renderer, result, dir, report, out int alsoMeshes, meshes, size);
+            // The report is not shown from here, so the notes are. A coarse
+            // first mesh stops every mesh; a coarse second one stops alone.
+            if (result.PortalSpan < 0f) o.Notes.Add(YapsBaker.CoarseNote);
+            else
+                foreach (var (r, baked) in meshes)
+                    if (baked.PortalSpan < 0f) o.Notes.Add($"\"{r.name}\" stops at a portal entrance. {YapsBaker.CoarseExtraNote}");
             if (alsoMeshes > 0)
             {
                 o.Notes.Add($"{BridgeElements.Count(alsoMeshes, "other mesh on this avatar is weighted", "other meshes on this avatar are weighted")} to the plug's bone " +
@@ -832,6 +836,16 @@ namespace AvatarBridge
             bool recorded = socket.bakedRenderer == renderer ? socket.bakedSlot == slot
                 : socket.bakedRenderer == null && socket.bakedFrom != null;
             return recorded || m.HasProperty("_YAPS_SocketPower") && m.GetFloat("_YAPS_SocketPower") > 0f;
+        }
+
+        // The markers alone, for the doors that build nothing else. The owner
+        // layer still has to reach any writer the build added or renamed: a
+        // portal writer it misses publishes for nobody in game.
+        public static void RebuildMarkers(YapsSocket socket)
+        {
+            if (socket == null) return;
+            YapsSocketBuilder.Build(socket);
+            YapsOwner.Wire(socket.GetComponentInParent<CVRAvatar>(true));
         }
 
         // Everything Build does for one socket: its markers, its shapes,

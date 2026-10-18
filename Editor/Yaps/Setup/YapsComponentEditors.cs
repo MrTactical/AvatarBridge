@@ -863,8 +863,9 @@ namespace AvatarBridge
                     Undo.CollapseUndoOperations(group);
                     RebuildLater();
                 });
-            // The cut runs only where a path ends in a hole.
-            kindChoice.SetEnabled(!portal);
+            // The cut runs only where a path ends in a hole. A ring a script
+            // made an entrance stays free, so it can be set back.
+            kindChoice.SetEnabled(!portal || !hole);
             what.Body.Add(kindChoice);
             if (!hole)
             {
@@ -1264,7 +1265,7 @@ namespace AvatarBridge
                 BridgeElements.Btn(built ? "Rebuild markers" : "Build markers", () =>
                 {
                     Undo.RegisterFullObjectHierarchyUndo(socket.gameObject, "Rebuild YAPS socket");
-                    YapsSocketBuilder.Build(socket);
+                    YapsNativeBuilder.RebuildMarkers(socket);
                     RebuildLater();
                 }),
                 BridgeElements.Btn("Open YAPS Setup", YapsSetupWindow.Open)));

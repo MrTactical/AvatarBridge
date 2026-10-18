@@ -174,15 +174,15 @@ namespace AvatarBridge
         }
 
         // Each portal exit keyed by its entrance's number, here because every
-        // door that renumbers comes through. A writer no entrance owns goes to
-        // 0, which publishes nothing: left keyed, it would send plugs out of
-        // whichever socket inherited the number.
+        // door that renumbers comes through. A writer no entrance leads to goes
+        // to 0, which publishes nothing: left keyed, it would send plugs out of
+        // whichever socket inherited the number, or out of an old exit.
         static void KeyExits(GameObject root, Dictionary<YapsSocket, int> numbers)
         {
             var keyed = new Dictionary<Renderer, int>();
             foreach (var kv in numbers)
             {
-                if (!YapsSocketBuilder.Owns(kv.Key, kv.Key.builtExit)) continue;
+                if (!YapsSocketBuilder.Leads(kv.Key, kv.Key.builtExit)) continue;
                 var r = kv.Key.builtExit.GetComponent<MeshRenderer>();
                 if (r != null) keyed[r] = kv.Value;
             }

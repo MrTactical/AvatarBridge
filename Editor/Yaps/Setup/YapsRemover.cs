@@ -49,6 +49,12 @@ namespace AvatarBridge
             var baked = socket.bakedRenderer != null ? socket.bakedRenderer : socket.renderer;
             if (baked != null && socket.bakedFrom != null)
                 lines.Add($"the socket bake on \"{baked.name}\": its material goes back to \"{socket.bakedFrom.name}\"");
+            // Remove takes both ends of a portal, and one of them lives under another socket.
+            if (YapsSocketBuilder.Owns(socket, socket.builtExit))
+                lines.Add($"its portal writer under \"{socket.builtExit.transform.parent.name}\"");
+            foreach (Transform c in socket.transform)
+                if (YapsSocketBuilder.IsExitWriter(c))
+                    lines.Add($"\"{c.name}\" under it, so that entrance becomes an ordinary hole");
             return lines;
         }
 
@@ -559,8 +565,7 @@ namespace AvatarBridge
             foreach (var t in top.GetComponentsInChildren<Transform>(true).ToList())
             {
                 if (t == null || !YapsSocketBuilder.IsExitWriter(t)) continue;
-                if (sockets.Any(s => s != null && YapsSocketBuilder.Owns(s, t.gameObject)
-                                     && s.portalExit != null && t.parent == s.portalExit.transform)) continue;
+                if (sockets.Any(s => s != null && YapsSocketBuilder.Leads(s, t.gameObject))) continue;
                 done.Add($"\"{t.name}\" under \"{t.parent.name}\": no entrance leads there any more");
                 Undo.DestroyObjectImmediate(t.gameObject);
             }

@@ -419,6 +419,11 @@ namespace AvatarBridge
         public static bool Owns(YapsSocket entrance, GameObject writer) =>
             entrance != null && writer != null && entrance.builtExit == writer && writer.name == ExitName(entrance);
 
+        // Owned and still under the exit the entrance names. One retargeted
+        // without a rebuild, by a script, still sits under the old exit.
+        public static bool Leads(YapsSocket entrance, GameObject writer) =>
+            Owns(entrance, writer) && entrance.portalExit != null && writer.transform.parent == entrance.portalExit.transform;
+
         // Why a link builds no writer. Null when it builds one.
         static string Refused(YapsSocket socket, CVRAvatar avatar)
         {
@@ -431,6 +436,9 @@ namespace AvatarBridge
                     ? "its portal exit is gone, so it is an ordinary hole. Pick the exit again, or clear the field"
                     : null;
             }
+            // Only a hole cuts. The inspector locks Kind; a script or a conversion does not.
+            if (socket.kind != YapsSocket.SocketKind.Hole)
+                return "a ring cannot be a portal entrance, only a hole can. Set Kind to Hole, or clear the field";
             if (exit == socket) return "its portal exit is itself, so it is an ordinary hole. Pick another socket";
             if (avatar == null) return null;
             if (exit.GetComponentInParent<CVRAvatar>(true) != avatar)
@@ -479,7 +487,7 @@ namespace AvatarBridge
             if (exit == null) return null;
             if (avatar == null)
                 return "⚠ a portal on a prop stays an ordinary hole: a prop has no wearer to key its exit by.";
-            if (!Owns(socket, socket.builtExit))
+            if (!Leads(socket, socket.builtExit))
                 return "⚠ the portal is not built yet: press Build.";
             string twin = exit.transform.Cast<Transform>().Count(c => c.name == ExitName(socket)) > 1
                 ? $" Another entrance called \"{socket.name}\" leads there too, and only one of them can: rename one and build both."
