@@ -6,7 +6,8 @@
 // nothing else: each vertex to its own pixel, its world position, and its id
 // plus 100 in alpha. _DupDump swaps the position for what the resolver handed
 // the first copy: 1 chain entry id % 4, 2 its kind with the count and tier,
-// 3 engagement with the atlas hits and headers, 4 the socket aimed at.
+// 3 engagement with the atlas hits and headers, 4 the socket aimed at, 5 the
+// vertex's own recovered root. Without YAPS_DUPLICATE only positions.
 Shader "Hidden/DuplicateCapture"
 {
     SubShader
@@ -35,6 +36,7 @@ Shader "Hidden/DuplicateCapture"
                 v2c o;
                 o.pos = float4(YapsAtlasToClip(float2(v.id % w, v.id / w) + 0.5), UNITY_NEAR_CLIP_VALUE, 1);
                 float3 value = mul(unity_ObjectToWorld, float4(p, 1)).xyz;
+#ifdef YAPS_DUPLICATE
                 YapsChain c = yapsDump.chain;
                 uint e = v.id % 4;
                 if (_DupDump > 0.5 && _DupDump < 1.5)
@@ -43,8 +45,11 @@ Shader "Hidden/DuplicateCapture"
                     value = float3(e == 0 ? c.kind[0] : e == 1 ? c.kind[1] : e == 2 ? c.kind[2] : c.kind[3], c.count, yapsDump.tier);
                 else if (_DupDump < 3.5 && _DupDump > 0.5)
                     value = float3(c.engaged, c.hits, c.headers);
-                else if (_DupDump > 0.5)
+                else if (_DupDump < 4.5 && _DupDump > 0.5)
                     value = yapsDump.position;
+                else if (_DupDump > 0.5)
+                    value = yapsDumpRoot;
+#endif
                 o.value = float4(value, 100 + v.id);
                 return o;
             }
