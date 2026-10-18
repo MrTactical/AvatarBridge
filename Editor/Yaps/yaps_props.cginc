@@ -205,4 +205,9 @@ inline float YapsShapeWeight(uint index)
     return slot == 0 ? pack.x : slot == 1 ? pack.y : slot == 2 ? pack.z : pack.w;
 }
 
+// The band a portal collapses either side of its cut, as a
+// fraction of rest length: the widest triangle span along the shaft, with a
+// margin. -1 when the mesh is too coarse to cut, so entrances stay holes.
+float _YAPS_PortalSpan;
+
 #endif

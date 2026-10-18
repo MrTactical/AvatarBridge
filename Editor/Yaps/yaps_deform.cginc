@@ -881,13 +881,55 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         frame = YapsWalk(p0, p1, p2, p3, zAlong, rootUp, rootForward, leftOver);
     }
 
+    // THE PORTAL. A path ending in a hole that publishes an exit cuts
+    // the shaft there. A band either side of the cut collapses to a point
+    // inside each body, and what is left over comes out of the exit.
+    //
+    // Every gate term is plug-wide here, so the whole shaft takes one branch
+    // and no triangle spans the room. A portal implies the atlas tier and a
+    // hole as the last link, so neither is asked. Each of engaged and engage
+    // is at most 1, so their product at 0.999 asks both. Nested rather than
+    // one &&: HLSL runs both sides, and the read belongs to this branch alone.
+    bool portalled = false;
+    bool collapsed = false;
+    if (leftOver > 0 && socket.chain.portal != 0 && link == socket.chain.count - 1
+        && _YAPS_Enabled >= 1 && socket.engaged * engage >= 0.999 && _YAPS_PortalSpan > 0)
+    {
+        float3 exitAt = p3;
+        float3 exitFwd = frame.forward;
+        if (YapsPortalExit(socket.chain.portal, exitAt, exitFwd))
+        {
+            // The margin covers the pump, which moves a vertex up to its
+            // strength in lengths.
+            float w = _YAPS_PortalSpan * worldLength * (1 + max(_YAPS_PumpStrength, 0));
+            float3 PA = p3 + frame.forward * w;
+            float3 PB = exitAt - exitFwd * w;
+            collapsed = leftOver < 2 * w;
+            portalled = !collapsed;
+            // The band rides the main path below as a point on line AB with
+            // no offsets, its normal and tangent along AB, so a host offset
+            // along either stays on the line and the band has no area.
+            frame.position = collapsed ? (leftOver < w ? PA : PB) : exitAt;
+            frame.forward = collapsed ? YapsSafeNormalize(PB - PA, exitFwd) : exitFwd;
+            // Roll from the arrival, approximate.
+            frame.up = YapsPerpendicular(frame.forward, frame.up);
+            leftOver = collapsed ? 0 : leftOver - 2 * w;
+            if (collapsed)
+            {
+                baked.position.xy = 0;
+                baked.normal = float3(0, 0, 1);
+                baked.tangent = float3(0, 0, 1);
+            }
+        }
+    }
+
     // Past the end of the curve. A hole swallows the remainder and tapers
     // the tip, a ring lets it carry straight on through.
     float radius = 1;
     // The link this vertex is inside, which past the first is not the one
     // socket.isHole names. Only the last link can leave anything over.
     bool isHole = linkKind > 0.5;
-    if (leftOver > 0 && isHole)
+    if (leftOver > 0 && isHole && !portalled)
     {
         // How far past the hole a vertex travels before narrowing, and
         // before it closes. Fractions of plug length, so big and small
@@ -911,7 +953,7 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     // A ring gets no clamp either, since the clamp is the hole's taper
     // distance. So a ring near the base sent every vertex past it its full
     // remaining length at once, the same flat ribbon by another door.
-    if (_YAPS_Overrun < 0.5)
+    if (_YAPS_Overrun < 0.5 && !portalled)
     {
         leftOver = 0;
     }
@@ -925,7 +967,8 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     //
     // Only while engaged, and faded by engagement, so an idle plug is
     // never pinched by a socket that is not there.
-    float entry = baked.position.z - gripAt;
+    // Out of a portal the grip is the exit's mouth.
+    float entry = portalled ? leftOver : baked.position.z - gripAt;
     float grip = engage * step(0.5, enabled);
 
     if (_YAPS_Squeeze > 0)
@@ -970,7 +1013,11 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     float3 deformed = frame.position
         + right * (baked.position.x * radius)
         + frame.up * (baked.position.y * radius);
-    position = lerp(restPosition, mul(unity_WorldToObject, float4(deformed, 1)).xyz, blend);
+    float3 drawn = mul(unity_WorldToObject, float4(deformed, 1)).xyz;
+    // Assigned, never lerped, on the collapsed band: lerp(a, b, 1) can be an
+    // ulp off per vertex, and that is a sliver across the room.
+    position = collapsed ? drawn : lerp(restPosition, drawn, blend);
+    if (collapsed) blend = 1;
 
     if (!YapsIsZero(baked.normal))
     {
