@@ -19,13 +19,15 @@ namespace AvatarBridge.Regression
     public static class PortalRoundTripTest
     {
         const string Tag = "[PortalRoundTripTest]";
-        const string ControllerPath = "Assets/YAPS/PortalRoundTripTest.controller";
+        // At the root: Assets/YAPS is only made by the first build, after this.
+        const string ControllerPath = "Assets/__PortalRoundTripTest.controller";
         static int failures;
 
         [MenuItem("Tools/AvatarBridge Dev/Test: portal round trip")]
         public static void Run()
         {
             failures = 0;
+            AssetDatabase.DeleteAsset(ControllerPath);
             var root = new GameObject("PortalTestAvatar");
             try
             {
