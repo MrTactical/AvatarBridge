@@ -474,10 +474,13 @@ void YapsRestShape(inout YapsVertex v, float idle, float worldLength)
 // --- the second copy (DUPLICATE SPIKE) -------------------------------
 
 // Every test below answers per vertex, from the root that vertex recovers.
-// Weighted as their originals, a bent plug spreads the roots by centimetres
-// and near an edge a triangle hides one corner at a time, a wedge to the eye.
-// Bound wholly to one bone, every copy vertex recovers the same root and each
-// test answers once for the copy.
+// Weighted as their originals, a bent plug spread the roots by up to 119 mm
+// and near an edge a triangle hid one corner at a time, a wedge to the eye.
+// So the copy is built on ONE point, the bake's origin, wholly on the root's
+// bone, with the root's own forward and up for tangent and normal: every copy
+// vertex skins the same numbers, reads that point as its root bit for bit,
+// and every test answers once for the whole copy. Its shape comes from its
+// original's bake entry alone, and a viewer without the deform sees a point.
 
 // Hidden, every vertex of the copy goes to one point a metre behind the eye,
 // with one normal and one tangent. Its triangles have no area, an offset a
@@ -560,8 +563,8 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     // marks its vertices active, and every one of them ran the whole resolve
     // for an answer the enabled test threw away. The views still answer.
 #ifdef YAPS_DUPLICATE
-    // Hidden through a fade too: easing back to rest, the copy drew a second
-    // straight shaft, and on its original a doubled alpha.
+    // Hidden through a fade too, so a toggle on its way out is one plug and
+    // the copy reads nothing for it.
     if (copy2 && _YAPS_Enabled < 1) { YapsCopyHide(position, normal, tangent); return; }
 #endif
     if (_YAPS_Enabled <= 0 && _YAPS_Debug < 0.5) return;
@@ -569,9 +572,9 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
 
     YapsVertex baked = YapsReadBaked(vertexId);
 #ifdef YAPS_DUPLICATE
-    // An inactive copy waits for the copy's answer: drawn, it rests on its
-    // original as that one does; hidden, it goes with the rest. Returned
-    // here, it stayed while the copy hid, a triangle from the base to the eye.
+    // An inactive copy waits for the copy's answer: drawn, it stays on the
+    // copy's point; hidden, it goes with the rest. Returned here, it stayed
+    // while the copy hid, a triangle from the base to the eye.
     if (baked.active <= 0 && !copy2) return;
 #else
     if (baked.active <= 0) return;
@@ -582,9 +585,6 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     float3 originalTangent = tangent;
 
     YapsRoot root = YapsRecoverRoot(baked, originalPosition, originalNormal, originalTangent);
-#if defined(YAPS_DUPLICATE) && defined(YAPS_DUP_DUMP)
-    yapsDumpRoot = root.position;
-#endif
     // No frame, no deform. The renderer's own frame is the avatar root,
     // so falling back to it bent the vertex from the world origin. A host
     // with no tangent input hands over zero here, never a stand-in. The
@@ -596,6 +596,18 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     float3 rootForward = root.forward;
     float3 rootUp = root.up;
     float worldLength = root.worldLength;
+#ifdef YAPS_DUPLICATE
+    // The copy's vertex IS its root, its tangent and normal the root's axes.
+    if (copy2)
+    {
+        rootWorld = mul(unity_ObjectToWorld, float4(originalPosition, 1)).xyz;
+        rootForward = YapsSafeNormalize(mul((float3x3) unity_ObjectToWorld, originalTangent), float3(0, 0, 1));
+        rootUp = YapsPerpendicular(rootForward, mul((float3x3) unity_ObjectToWorld, originalNormal));
+    }
+#ifdef YAPS_DUP_DUMP
+    yapsDumpRoot = rootWorld;
+#endif
+#endif
 
     // Everything platform-specific happens in here. A plug only ever
     // bends toward a SOCKET, never toward a body.
@@ -758,6 +770,11 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     YapsVertex rest = baked;
     YapsRestShape(rest, 1, worldLength);
     float restWeight = baked.active * saturate(_YAPS_Enabled);
+#ifdef YAPS_DUPLICATE
+    // The copy rests on its point, so it grows out of the root as it engages
+    // rather than standing up beside the first as a second straight shaft.
+    if (copy2) restWeight = 0;
+#endif
     float3 restRight = cross(rootUp, rootForward);
     float3 moved = rest.position - baked.position;
     float3 restPosition = originalPosition + mul((float3x3) unity_WorldToObject,
@@ -817,8 +834,8 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
 
     float engage = 1 - YapsRamp(gap, worldLength * 1.2, worldLength * 1.6);
 #ifdef YAPS_DUPLICATE
-    // Unengaged the copy rests on its original, drawn twice: doubled alpha on
-    // a transparent host, and a second straight shaft beside a bent first.
+    // Unengaged the copy sits on its point, which a host widening outlines
+    // from vertex colour opens in view.
     if (copy2 && engage <= 0)
     {
         YapsCopyHide(position, normal, tangent);

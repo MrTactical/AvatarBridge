@@ -15,8 +15,12 @@ Shader "Hidden/DuplicateCapture"
         ZTest Always ZWrite Off Cull Off
         Pass
         {
+            // ForwardBase, so the marker-light case reaches the resolve: a
+            // vertex light is handed to no other pass.
+            Tags { "LightMode" = "ForwardBase" }
             CGPROGRAM
             #pragma target 5.0
+            #pragma multi_compile _ VERTEXLIGHT_ON
             #pragma vertex vert
             #pragma fragment frag
             #include "UnityCG.cginc"

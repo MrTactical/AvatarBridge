@@ -11,26 +11,27 @@
 //       [-dupFrames <file>]                a hash of every frame drawn with _YAPS_CopyStart 0
 //       [-dupNoDefine -dupCompare <file>]  props WITHOUT the define: the same frames, compared;
 //       [-dupCompareAlso <file>]           another file, reported and not gated
-//       [-dupRigid]                        copies wholly on one bone, the measured alternative
 //       [-dupNoStereo]                     skip the single-pass instanced compiles, minutes per host
 //
 // Build is the builder: a copy of every corner of the plug submesh's
 // triangles whose three corners are all on the plug and carry a frame,
-// appended after every vertex with its attributes, bone weights and
-// blendshape deltas, as the readout extends a mesh, and those triangles added
-// to the same submesh over the copies. Always from the mesh under it, so
-// copies never compound. The deform tells the copy apart by _YAPS_CopyStart,
-// the original vertex count.
+// appended after every vertex, and those triangles added to the same submesh
+// over the copies. Always from the mesh under it, so copies never compound.
+// The deform tells the copy apart by _YAPS_CopyStart, the original vertex
+// count.
 //
-// Weighted as their originals, a bent plug's copy vertices recover roots
-// spread by centimetres, so near where the second copy starts drawing a
-// triangle can hide one corner at a time. -dupRigid binds every copy wholly
-// to the plug root's bone instead: one root, every hide test answered once,
-// but a viewer without the deform sees the copy at rest beside a swaying
-// original. The edge sweeps are gated only under -dupRigid.
+// ANCHORED, not weighted as their originals. With the originals' weights a
+// bent plug's copy vertices recovered roots spread by up to 119 mm, and near
+// where the copy starts drawing a triangle hid one corner at a time. So every
+// copy sits on one point, the bake's origin, wholly on the root's bone, its
+// normal and tangent the root's up and forward, no blendshape deltas, colours
+// and UVs its original's. Every copy vertex skins the same numbers, so every
+// test the deform makes answers once for the whole copy, and a viewer without
+// the deform sees nothing. Its shape is its original's bake entry: dupFrom's
+// bake, extended, never a bake over the copies, which would measure a point.
 //
-// The probe makes a skinned plug with a body behind it and runs the plan's
-// order: split, duplicate, bake, readout. Then, through the scratch deform
+// The probe makes a skinned plug with a body behind it and runs: split, bake,
+// duplicate, the bake extended, readout. Then, through the scratch deform
 // with YAPS_DUPLICATE on, with sockets drawn into a screen atlas in several
 // arrangements, on Simple Lit and Poiyomi and lilToon hosts, HDR, 8-bit and
 // an 8-bit sRGB atlas, under a shadowing light and a pixel point light:
@@ -41,13 +42,17 @@
 //   seams 0.00 mm in both copies
 //   the toggle fading: hidden below 1, on every host
 //   sweeps of the second hole across where the copy starts drawing, bent
-//     and turned: no step with part of the copy hidden, no triangle split
-//     between hidden and drawn corners, no pixel thrown outside the plug
-//     (reported and not gated with the originals' weights)
-// Off the GPU: the originals' bake entries equal dupFrom's own bake bit for
-// bit, UInt32 indices past 65535 vertices, a rebuild that does not
-// compound, the readout after the copies, removal back to dupFrom, and every
-// vertex stage compiled single-pass instanced.
+//     and turned, and from beside the base to behind it: every copy vertex
+//     on one root bit for bit, no step with part of the copy hidden, no
+//     triangle split between hidden and drawn corners, no pixel thrown
+//     outside the plug
+//   the marker-light tier: the copy hidden, the first copy in the light
+//   every pass a host has drawn: its shadow and its point light seen
+//   no deform, a transparent host: the copy changes no pixel
+// Off the GPU: the copies on one point bit for bit, the extended bake, UInt32
+// indices past 65535 vertices, a rebuild that does not compound, the readout
+// after the copies, removal back to dupFrom, and every vertex stage compiled
+// single-pass instanced.
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -72,10 +77,10 @@ namespace AvatarBridge.Regression
         // --- the builder ----------------------------------------------
 
         // from: which original each copy copies, in order; copy i is vertex
-        // dupFrom.vertexCount + i. rigid binds every copy wholly to one bone
-        // instead of its original's weights, the alternative measured beside the plan's.
+        // dupFrom.vertexCount + i. origin and rotation are the plug's frame from
+        // dupFrom's bake, in world space, at the pose the bones hold now.
         public static Mesh Build(Mesh dupFrom, int submesh, Transform[] bones, Transform root,
-            out int[] from, out string why, bool rigid = false)
+            Vector3 origin, Quaternion rotation, out int[] from, out string why)
         {
             from = null;
             why = null;
@@ -91,19 +96,21 @@ namespace AvatarBridge.Regression
             var tangents = dupFrom.tangents;
             // The deform recovers its frame from both, so without them the plug never bends.
             if (normals.Length != n || tangents.Length != n) { why = "it has no normals or no tangents, so the deform recovers no frame"; return null; }
-            // Weighted as their originals, a bent plug spreads the copies' roots
-            // by centimetres and a triangle can hide one corner at a time. On one
-            // bone they share a root: the plug root's, or the nearest above it.
+            // The plug root's bone, or the nearest above it.
             int bone = -1;
-            for (var t = root; rigid && t != null && bone < 0; t = t.parent) bone = Array.IndexOf(bones, t);
-            if (rigid && bone < 0) { why = "neither the plug root nor anything above it is one of its bones"; return null; }
+            for (var t = root; t != null && bone < 0; t = t.parent) bone = Array.IndexOf(bones, t);
+            if (bone < 0) { why = "neither the plug root nor anything above it is one of its bones"; return null; }
+            // The bake's frame in mesh space, through that bone's bind.
+            var toMesh = (bones[bone].localToWorldMatrix * dupFrom.bindposes[bone]).inverse;
+            var anchor = toMesh.MultiplyPoint3x4(origin);
+            var forward = toMesh.MultiplyVector(rotation * Vector3.forward).normalized;
+            var up = toMesh.MultiplyVector(rotation * Vector3.up).normalized;
             var plugBones = new HashSet<int>();
             for (int b = 0; b < bones.Length; b++)
                 if (bones[b] != null && bones[b].IsChildOf(root)) plugBones.Add(b);
-            // Any weight at all, as the bake marks a vertex active. A corner off
-            // the plug holds the copy's triangle to the body wherever it goes.
-            // A corner with no frame of its own would hide alone, the one test
-            // a shared bone cannot make agree.
+            // Any weight at all, as the bake marks a vertex active, so the copy
+            // is the plug's triangles. A corner with no frame in its bake entry
+            // would hide alone: the deform still asks the entry for one.
             bool On(int v)
             {
                 if (YapsBaker.WeightOnPlug(weights[v], plugBones) <= 0) return false;
@@ -134,9 +141,9 @@ namespace AvatarBridge.Regression
                 // A copy past 65535 has no 16-bit index.
                 indexFormat = total > 65535 ? IndexFormat.UInt32 : dupFrom.indexFormat,
             };
-            mesh.vertices = Extend(dupFrom.vertices, from);
-            mesh.normals = Extend(normals, from);
-            mesh.tangents = Extend(tangents, from);
+            mesh.vertices = Extend(dupFrom.vertices, from.Length, anchor);
+            mesh.normals = Extend(normals, from.Length, up);
+            mesh.tangents = Extend(tangents, from.Length, new Vector4(forward.x, forward.y, forward.z, 1));
             mesh.colors = Extend(dupFrom.colors, from);
             var uv = new List<Vector4>();
             for (int channel = 0; channel < 8; channel++)
@@ -150,26 +157,19 @@ namespace AvatarBridge.Regression
                 mesh.SetUVs(channel, uv);
             }
 
-            // The full weight list, as the readout extends it: a mesh imported
-            // with more than four influences keeps them.
+            // The originals keep their full weight lists, more than four included.
             var perVertex = dupFrom.GetBonesPerVertex();
             var all = dupFrom.GetAllBoneWeights();
-            var starts = new int[n];
-            for (int v = 1; v < n; v++) starts[v] = starts[v - 1] + perVertex[v - 1];
-            int added = rigid ? from.Length : from.Sum(v => (int) perVertex[v]);
             var perOut = new NativeArray<byte>(total, Allocator.Temp);
-            var allOut = new NativeArray<BoneWeight1>(all.Length + added, Allocator.Temp);
+            var allOut = new NativeArray<BoneWeight1>(all.Length + from.Length, Allocator.Temp);
             try
             {
                 NativeArray<byte>.Copy(perVertex, perOut, n);
                 NativeArray<BoneWeight1>.Copy(all, allOut, all.Length);
-                int at = all.Length;
                 for (int i = 0; i < from.Length; i++)
                 {
-                    int count = rigid ? 1 : perVertex[from[i]];
-                    perOut[n + i] = (byte) count;
-                    for (int k = 0; k < count; k++)
-                        allOut[at++] = rigid ? new BoneWeight1 { boneIndex = bone, weight = 1 } : all[starts[from[i]] + k];
+                    perOut[n + i] = 1;
+                    allOut[all.Length + i] = new BoneWeight1 { boneIndex = bone, weight = 1 };
                 }
                 mesh.SetBoneWeights(perOut, allOut);
             }
@@ -195,8 +195,10 @@ namespace AvatarBridge.Regression
                 for (int f = 0; f < dupFrom.GetBlendShapeFrameCount(s); f++)
                 {
                     dupFrom.GetBlendShapeFrameVertices(s, f, dv, dn, dt);
+                    // None on a copy: a delta would open its point.
                     mesh.AddBlendShapeFrame(dupFrom.GetBlendShapeName(s), dupFrom.GetBlendShapeFrameWeight(s, f),
-                        Extend(dv, from), Extend(dn, from), Extend(dt, from));
+                        Extend(dv, from.Length, Vector3.zero), Extend(dn, from.Length, Vector3.zero),
+                        Extend(dt, from.Length, Vector3.zero));
                 }
             mesh.bounds = dupFrom.bounds;
             return mesh;
@@ -216,6 +218,37 @@ namespace AvatarBridge.Regression
             var to = new T[source.Length + from.Length];
             Array.Copy(source, to, source.Length);
             for (int i = 0; i < from.Length; i++) to[source.Length + i] = source[from[i]];
+            return to;
+        }
+
+        static T[] Extend<T>(T[] source, int count, T value)
+        {
+            var to = new T[source.Length + count];
+            Array.Copy(source, to, source.Length);
+            for (int i = 0; i < count; i++) to[source.Length + i] = value;
+            return to;
+        }
+
+        // dupFrom's bake grown to the duplicate: an original's entry as it was,
+        // a copy's its original's marked active, every shape block laid out
+        // again for the new count. Padded to whole rows as the baker pads.
+        public static float[] ExtendBake(float[] floats, int n, int[] from, int shapes, int width)
+        {
+            int total = n + from.Length;
+            int used = 1 + total * 10 + shapes * total * 9;
+            var to = new float[width * Math.Max(1, (used + width - 1) / width)];
+            Array.Copy(floats, to, 1 + n * 10);
+            for (int i = 0; i < from.Length; i++)
+            {
+                Array.Copy(floats, 1 + from[i] * 10, to, 1 + (n + i) * 10, 9);
+                to[1 + (n + i) * 10 + 9] = 1;
+            }
+            for (int s = 0; s < shapes; s++)
+            {
+                int was = 1 + n * 10 + s * n * 9, now = 1 + total * 10 + s * total * 9;
+                Array.Copy(floats, was, to, now, n * 9);
+                for (int i = 0; i < from.Length; i++) Array.Copy(floats, was + from[i] * 9, to, now + (n + i) * 9, 9);
+            }
             return to;
         }
 
@@ -264,7 +297,7 @@ namespace AvatarBridge.Regression
             public string name;
             public Sock[] socks = new Sock[0];
             public float enabled = 1, debug, bend, turn;
-            public bool preview;
+            public bool preview, light;   // light: a marker light at B, the atlas off
             public string first, second;   // the sockets each copy lands in; second null when hidden
         }
 
@@ -290,6 +323,7 @@ namespace AvatarBridge.Regression
             new Case { name = "two holes, bent, off", socks = new[] { A, B }, enabled = 0, bend = 20 },
             new Case { name = "two holes, a view", socks = new[] { A, B }, debug = 1 },
             new Case { name = "two holes, preview socket, atlas off", socks = new[] { A, B }, preview = true, first = "B" },
+            new Case { name = "two holes, marker light, atlas off", socks = new[] { A, B }, light = true, first = "B" },
             new Case { name = "second hole unengaged", socks = new[] { A, Far }, first = "A" },
             new Case { name = "ring then hole", socks = new[] { R, A }, first = "A" },
             new Case { name = "the second hole alone", socks = new[] { B }, first = "B" },
@@ -324,7 +358,7 @@ namespace AvatarBridge.Regression
             if (Application.isBatchMode) EditorApplication.Exit(code);
         }
 
-        static bool all, Rigid;
+        static bool all;
 
         static void Check(bool ok, string line)
         {
@@ -344,7 +378,6 @@ namespace AvatarBridge.Regression
             Rings = int.Parse(Arg("-dupRings") ?? "72", inv);
             Sides = int.Parse(Arg("-dupSides") ?? "24", inv);
             bool noDefine = Environment.GetCommandLineArgs().Contains("-dupNoDefine");
-            Rigid = Environment.GetCommandLineArgs().Contains("-dupRigid");
             string framesOut = Arg("-dupFrames"), compareTo = Arg("-dupCompare"), compareAlso = Arg("-dupCompareAlso");
             if (noDefine && compareTo == null) throw new ArgumentException("-dupNoDefine only draws to compare: give -dupCompare");
             bool Wanted(string name) => only == null || name == "Simple Lit" || name.Contains(only);
@@ -409,58 +442,64 @@ namespace AvatarBridge.Regression
             skin.lightProbeUsage = LightProbeUsage.Off;
             skin.reflectionProbeUsage = ReflectionProbeUsage.Off;
 
-            // Split, duplicate, bake, readout.
+            // Split, bake, duplicate, the bake extended, readout.
             var plain = hosts[0].mat;
             int slot = YapsSlotSplit.Split(skin, plugRoot, 0, YapsSlotSplit.Mask(skin, plugRoot), plain, Folder, out string why);
             Check(slot == 1, $"split: the plug's triangles on slot {slot} ({why ?? "ok"}), {skin.sharedMesh.subMeshCount} submeshes");
             if (slot < 0) return false;
             var dupFrom = skin.sharedMesh;
             int n = dupFrom.vertexCount;
-            var dup = Made(Build(dupFrom, slot, bones, plugRoot, out int[] from, out why, Rigid));
-            if (dup == null) { Check(false, "duplicate: " + why); return false; }
-            int total = dup.vertexCount;
-            int rigid = Array.IndexOf(bones, plugRoot);
-            var copyOf = new Dictionary<int, int>();
-            for (int i = 0; i < from.Length; i++) copyOf[from[i]] = n + i;
-            int origTris = dupFrom.GetTriangles(slot).Length / 3, copyTris = dup.GetTriangles(slot).Length / 3 - origTris;
-            Log($"duplicate: {n} vertices, {from.Length} copied ({total} in all, index format {dup.indexFormat}), " +
-                $"{copyTris} of the plug slot's {origTris} triangles copied, " +
-                (Rigid ? $"the copies wholly on bone {rigid} ({bones[rigid].name})" : "the copies weighted as their originals"));
-            if (!noDefine)
-            {
-                AttributesCheck(dupFrom, dup, from, rigid);
-                FrameCheck(dupFrom, slot, bones, plugRoot, copyTris);
-                var again = Made(Build(dupFrom, slot, bones, plugRoot, out int[] from2, out _, Rigid));
-                bool sameAgain = again != null && again.vertexCount == total && from2.SequenceEqual(from)
-                                 && Enumerable.Range(0, dup.subMeshCount).All(s => again.GetIndices(s).SequenceEqual(dup.GetIndices(s)))
-                                 && again.vertices.SequenceEqual(dup.vertices);
-                var compounded = Build(dup, slot, bones, plugRoot, out _, out string refused, Rigid);
-                Check(sameAgain && compounded == null, $"rebuild from dupFrom: identical {sameAgain}, {again?.vertexCount} vertices; " +
-                    $"built on the duplicate itself: {(compounded == null ? "refused (" + refused + ")" : compounded.vertexCount + " vertices")}");
-            }
-
-            // The mesh as it was, baked under another name so the asset is its own.
+            // dupFrom's bake gives the copies their point and their entries, so it
+            // comes first. Under another name, so its asset is its own.
             bodyGo.name = "BodyPlain";
             var plainBake = YapsBaker.Bake(skin, plugRoot, Folder, report, out string failure, new[] { "Thick" });
             if (plainBake == null) { Check(false, "bake of dupFrom: " + failure); return false; }
             var plainFloats = Floats(plainBake.Bake);
+            var dup = Made(Build(dupFrom, slot, bones, plugRoot, plainBake.Origin, plainBake.Rotation, out int[] from, out why));
+            if (dup == null) { Check(false, "duplicate: " + why); return false; }
+            int total = dup.vertexCount;
+            int anchorBone = dup.boneWeights[n].boneIndex0;
+            var copyOf = new Dictionary<int, int>();
+            for (int i = 0; i < from.Length; i++) copyOf[from[i]] = n + i;
+            int origTris = dupFrom.GetTriangles(slot).Length / 3, copyTris = dup.GetTriangles(slot).Length / 3 - origTris;
+            Log($"duplicate: {n} vertices, {from.Length} copied ({total} in all, index format {dup.indexFormat}), " +
+                $"{copyTris} of the plug slot's {origTris} triangles copied, the copies on one point wholly on bone {anchorBone} ({bones[anchorBone].name})");
+            if (!noDefine)
+            {
+                AttributesCheck(dupFrom, dup, from, bones, plainBake);
+                FrameCheck(dupFrom, slot, bones, plugRoot, copyTris, plainBake);
+                var again = Made(Build(dupFrom, slot, bones, plugRoot, plainBake.Origin, plainBake.Rotation, out int[] from2, out _));
+                bool sameAgain = again != null && again.vertexCount == total && from2.SequenceEqual(from)
+                                 && Enumerable.Range(0, dup.subMeshCount).All(s => again.GetIndices(s).SequenceEqual(dup.GetIndices(s)))
+                                 && again.vertices.SequenceEqual(dup.vertices);
+                var compounded = Build(dup, slot, bones, plugRoot, plainBake.Origin, plainBake.Rotation, out _, out string refused);
+                Check(sameAgain && compounded == null, $"rebuild from dupFrom: identical {sameAgain}, {again?.vertexCount} vertices; " +
+                    $"built on the duplicate itself: {(compounded == null ? "refused (" + refused + ")" : compounded.vertexCount + " vertices")}");
+            }
+
+            // What a bake over the copies would measure, for the order the builder needs.
             skin.sharedMesh = dup;
-            // Measured over the copies as well, as the baker does today.
             bodyGo.name = "BodyOwn";
             var own = YapsBaker.Bake(skin, plugRoot, Folder, report, out failure, new[] { "Thick" });
             if (own == null) { Check(false, "bake of the duplicate, its own frame: " + failure); return false; }
-            // The frame from the originals, as the production baker must take it.
+            // dupFrom baked again as the plug's own, then extended over the copies.
+            skin.sharedMesh = dupFrom;
             bodyGo.name = "Body";
-            var result = YapsBaker.Bake(skin, plugRoot, Folder, report, out failure, new[] { "Thick" }, shareFrameWith: plainBake);
-            if (result == null) { Check(false, "bake of the duplicate: " + failure); return false; }
+            var result = YapsBaker.Bake(skin, plugRoot, Folder, report, out failure, new[] { "Thick" });
+            if (result == null) { Check(false, "bake of dupFrom as the plug: " + failure); return false; }
+            skin.sharedMesh = dup;
+            var grown = ExtendBake(Floats(result.Bake), n, from, result.Shapes.Count, result.Bake.width);
+            var extended = new Texture2D(result.Bake.width, grown.Length / result.Bake.width, TextureFormat.RGBA32, false, true)
+            {
+                name = "YAPS Bake", filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, anisoLevel = 0,
+            };
+            extended.SetPixelData(grown, 0);
+            extended.Apply(false, false);
+            AssetDatabase.CreateAsset(extended, Folder + "/BodyExtended.asset");
+            result.Bake = extended;
+            result.VertexCount = total;
             var baked = Floats(result.Bake);
             if (!noDefine) BakeCheck(baked, plainFloats, result, plainBake, own, from, n, total);
-            // The baker picks these over the copies too, and a copy wholly on the
-            // root's bone is the lowest solid vertex; the readout wants an original.
-            Log($"INFO the duplicate's own anchor {result.AnchorVertex} tip {result.TipVertex}; the readout takes dupFrom's, " +
-                $"anchor {plainBake.AnchorVertex} tip {plainBake.TipVertex}");
-            result.AnchorVertex = plainBake.AnchorVertex;
-            result.TipVertex = plainBake.TipVertex;
 
             if (!noDefine)
             {
@@ -557,6 +596,8 @@ namespace AvatarBridge.Regression
             light.shadows = LightShadows.Hard;
             light.renderMode = LightRenderMode.ForcePixel;
             light.cullingMask = 1 << Layer;
+            // Dim, so a host that caps its lighting at 1 still shows the point light.
+            light.intensity = 0.4f;
             var pointGo = Go("__DupPointLight");
             pointGo.transform.position = origin + new Vector3(0.25f, 0.25f, 0.1f);
             var point = pointGo.AddComponent<Light>();
@@ -567,6 +608,19 @@ namespace AvatarBridge.Regression
             point.shadows = LightShadows.None;
             point.renderMode = LightRenderMode.ForcePixel;
             point.cullingMask = 1 << Layer;
+            // A legacy marker light: black, a hole by its range, vertex lit, so
+            // only a ForwardBase pass sees it. On only in the case that names it.
+            var markerGo = Go("__DupMarkerLight");
+            markerGo.transform.position = origin + B.offset;
+            var marker = markerGo.AddComponent<Light>();
+            marker.type = LightType.Point;
+            marker.range = 0.41f;
+            marker.intensity = 1;
+            marker.color = Color.black;
+            marker.shadows = LightShadows.None;
+            marker.renderMode = LightRenderMode.ForceVertex;
+            marker.cullingMask = (1 << Layer) | (1 << CaptureLayer);
+            marker.enabled = false;
             var floor = Made(GameObject.CreatePrimitive(PrimitiveType.Quad));
             floor.hideFlags = HideFlags.DontSave;
             floor.layer = Layer;
@@ -737,7 +791,8 @@ namespace AvatarBridge.Regression
                         DrawAtlas(c.socks);
                         block.SetFloat("_YAPS_Enabled", c.enabled);
                         block.SetFloat("_YAPS_Debug", c.debug);
-                        block.SetFloat("_YAPS_UseAtlas", c.preview ? 0 : 1);
+                        block.SetFloat("_YAPS_UseAtlas", c.preview || c.light ? 0 : 1);
+                        marker.enabled = c.light;
                         var b = origin + B.offset;
                         block.SetVector("_YAPS_SocketFlags", c.preview ? new Vector4(1, 1, 0, 0) : Vector4.zero);
                         block.SetVector("_YAPS_SocketPos", c.preview ? new Vector4(b.x, b.y, b.z, 1) : Vector4.zero);
@@ -894,11 +949,43 @@ namespace AvatarBridge.Regression
                                 if (on[i] != unshadowed[i]) h.shadowPixels++;
                                 if (lit[i] != unlit[i]) h.addPixels++;
                             }
-                            Log($"passes {h.name}: the shadows change {h.shadowPixels} pixels, the point light {h.addPixels} with the floor off");
+                            // A pass the host has must have drawn, or its zero above proves nothing.
+                            var modes = Enumerable.Range(0, h.mat.passCount)
+                                .Select(i => h.mat.shader.FindPassTagValue(i, new ShaderTagId("LightMode")).name).ToList();
+                            // Unity hands the tag back upper case.
+                            bool wantAdd = modes.Contains("ForwardAdd", StringComparer.OrdinalIgnoreCase) && h.mat.GetShaderPassEnabled("ForwardAdd");
+                            bool wantShadow = h.mat.renderQueue < 2500 && modes.Contains("ShadowCaster", StringComparer.OrdinalIgnoreCase)
+                                              && h.mat.GetShaderPassEnabled("ShadowCaster");
+                            // ForwardAdd alone, the base passes off and no shadow: an outline
+                            // drawn over the whole plug hides the point light in the frame
+                            // above, and the copy still has to hide in this pass.
+                            long addAlone = 0, addHidden = 0, addShown = 0;
+                            if (wantAdd)
+                            {
+                                h.mat.SetShaderPassEnabled("ForwardBase", false);
+                                light.shadows = LightShadows.None;
+                                floor.SetActive(false);
+                                skin.sharedMesh = lone;
+                                var alone = Frame();
+                                point.enabled = false;
+                                var dark = Frame();
+                                point.enabled = true;
+                                for (int i = 0; i < px.Length; i++) if (alone[i] != dark[i]) addAlone++;
+                                Pose(Cases.First(x => x.name == "one hole"));
+                                addHidden = CopyDiff(h, dup, lone, out _, out _);
+                                Pose(Cases.First(x => x.name == "two holes"));
+                                addShown = CopyDiff(h, dup, lone, out _, out _);
+                                light.shadows = LightShadows.Hard;
+                                floor.SetActive(true);
+                                h.mat.SetShaderPassEnabled("ForwardBase", true);
+                            }
+                            Check((!wantAdd || (addAlone > 0 && addHidden == 0 && addShown > 0)) && (!wantShadow || h.shadowPixels > 0),
+                                $"passes {h.name} (queue {h.mat.renderQueue}; {string.Join(" ", modes.Select(x => x.Length > 0 ? x : "untagged"))}): " +
+                                $"the shadows change {h.shadowPixels} pixels{(wantShadow ? "" : " (not asked: transparent or no caster)")}, " +
+                                $"the point light {h.addPixels} with the floor off; " +
+                                (wantAdd ? $"ForwardAdd alone: the point light draws {addAlone} pixels, the copy changes {addHidden} hidden (one hole) " +
+                                           $"and {addShown} drawn (two holes)" : "no ForwardAdd"));
                         }
-                        Check(hosts[0].shadowPixels > 0 && hosts[0].addPixels > 0, $"passes drawn: shadows on {hosts.Count(h => h.shadowPixels > 0)} " +
-                            $"of {hosts.Count} hosts, the point light on {hosts.Count(h => h.addPixels > 0)}; Simple Lit, which has both, " +
-                            $"{hosts[0].shadowPixels} and {hosts[0].addPixels} pixels");
 
                         // The toggle fading out and in: the copy hidden all the way to 1.
                         var levels = new[] { 0f, 0.02f, 0.25f, 0.5f, 0.75f, 0.98f, 0.999f, 1f };
@@ -942,6 +1029,22 @@ namespace AvatarBridge.Regression
                         Check(flatHidden == total - n && flatDiff == 0 && flatDrawn > 0 && flatWorst <= 0.01,
                             $"no tangent: {flatHidden} of {total - n} copy vertices hidden, the copy changes {flatDiff} pixels on Simple Lit " +
                             $"({flatDrawn} drawn), the first copy {flatWorst:0.0000} mm from its skinned place");
+
+                        // A viewer without the deform: the copy skins onto one point, so
+                        // even a transparent host, where a second plug would show through
+                        // the first, draws nothing more.
+                        var fallback = Made(new Material(Shader.Find("Standard")) { color = new Color(1, 1, 1, 0.5f) });
+                        fallback.SetFloat("_Mode", 2);
+                        fallback.SetOverrideTag("RenderType", "Transparent");
+                        fallback.SetInt("_SrcBlend", (int) BlendMode.SrcAlpha);
+                        fallback.SetInt("_DstBlend", (int) BlendMode.OneMinusSrcAlpha);
+                        fallback.SetInt("_ZWrite", 0);
+                        fallback.EnableKeyword("_ALPHABLEND_ON");
+                        fallback.renderQueue = 3000;
+                        Pose(Cases.First(x => x.name == "two holes, bent"));
+                        long fallbackDiff = CopyDiff(new Host { name = "Standard Fade", mat = fallback }, dup, lone, out long fallbackDrawn, out _);
+                        Check(fallbackDiff == 0 && fallbackDrawn > 0, $"no deform, Standard Fade at half alpha, two holes bent 20 deg: " +
+                            $"the copy changes {fallbackDiff} pixels ({fallbackDrawn} drawn)");
                     }
 
                     // Across where the second copy starts drawing, bent and turned, and
@@ -957,6 +1060,9 @@ namespace AvatarBridge.Regression
                             new Sweep { name = "bent 30, root turned 25, hole to the side", bend = 30, turn = 25,
                                 dir = new Vector3(0.55f, 0.25f, 0.8f).normalized, from = sweepFrom, to = sweepTo, edge = true },
                             new Sweep { name = "bent 10, past the first hole", bend = 10, dir = B.offset.normalized, from = 0.55f, to = 0.95f },
+                            // Beside the base and on behind it, where the resolve drops a socket.
+                            new Sweep { name = "bent 10, the hole moving behind the base", bend = 10,
+                                dir = new Vector3(0.8f, 0, -0.6f).normalized, from = 0.3f, to = 1.0f, edge = true },
                         };
                         int tip = Rings * Columns;
                         foreach (var s in sweeps)
@@ -967,8 +1073,9 @@ namespace AvatarBridge.Regression
                             double spread1 = Spread(roots, from.Where(v => baked[1 + v * 10 + 2] >= 0));
                             double spread2 = Spread(roots, Enumerable.Range(n, total - n));
                             rootSpread = Math.Max(rootSpread, spread2);
+                            int apartRoots = Enumerable.Range(n, total - n).Count(v => !roots[v].Equals(roots[n]));
 
-                            var steps = new List<(float d, int hidden, int mixed, long stray, long diff, double apart)>();
+                            var steps = new List<(float d, int hidden, int mixed, long stray, long diff, double apart, double span)>();
                             void Step(float d)
                             {
                                 Pose(new Case { bend = s.bend, turn = s.turn,
@@ -1007,15 +1114,18 @@ namespace AvatarBridge.Regression
                                     if (x < x0 - margin || x > x1 + margin || y < y0 - margin || y > y1 + margin) stray++;
                                 }
                                 // Tip to tip, where the copy draws: how far from the first it appears.
-                                double apart = 0;
+                                // And how far the copy reaches from its root, so a copy grown
+                                // to nothing reads as nothing rather than as drawn.
+                                double apart = 0, span = 0;
                                 if (hiddenCount == 0)
                                 {
                                     var t1 = Vector3.zero;
                                     var t2 = Vector3.zero;
                                     for (int j = 0; j < Sides; j++) { t1 += got[tip + j]; t2 += got[copyOf[tip + j]]; }
                                     apart = (t1 - t2).magnitude / Sides * 1000;
+                                    for (int v = n; v < total; v++) span = Math.Max(span, (got[v] - roots[n]).magnitude * 1000);
                                 }
-                                steps.Add((d, hiddenCount, mixed, stray, diff, apart));
+                                steps.Add((d, hiddenCount, mixed, stray, diff, apart, span));
                                 if (mixed > 0 || (hiddenCount > 0 && hiddenCount < total - n))
                                     Log($"  sweep {s.name} {d / L:0.000000} L: {hiddenCount} of {total - n} copy vertices hidden, {mixed} mixed triangles, " +
                                         $"{diff} pixels differ, {stray} outside the plug");
@@ -1034,18 +1144,18 @@ namespace AvatarBridge.Regression
                             var drawnAt = steps.Where(x => x.hidden == 0).Select(x => x.d / L).ToList();
                             var hiddenAt = steps.Where(x => x.hidden == total - n).Select(x => x.d / L).ToList();
                             var lastDrawn = steps.Where(x => x.hidden == 0).OrderBy(x => x.d).LastOrDefault();
-                            bool ok = partial == 0 && mixedMax == 0 && strayMax == 0 && drawnAt.Count > 0
+                            double reachMax = steps.Where(x => x.hidden == 0).Select(x => x.span).DefaultIfEmpty(0).Max();
+                            bool ok = apartRoots == 0 && partial == 0 && mixedMax == 0 && strayMax == 0 && drawnAt.Count > 0
                                       && (s.edge ? hiddenAt.Count > 0 && drawnAt.Max() < hiddenAt.Min() : hiddenAt.Count == 0);
                             string line = $"sweep {s.name}, the second hole {s.from} to {s.to} L, {steps.Count} steps" +
                                 $"{(edge > 0 ? $" (40 of them inside {steps[edge - 1].d / L:0.0000} to {steps[edge].d / L:0.0000} L)" : "")}: " +
                                 $"{partial} with part of the copy hidden, at most {mixedMax} mixed triangles and {strayMax} pixels outside the plug; " +
                                 $"drawn out to {(drawnAt.Count > 0 ? drawnAt.Max().ToString("0.00000", inv) : "-")} L, hidden from " +
-                                $"{(hiddenAt.Count > 0 ? hiddenAt.Min().ToString("0.00000", inv) : "-")} L; roots spread {spread2:0.0000} mm " +
-                                $"over the copy, {spread1:0.000} mm over the first copy; tips {lastDrawn.apart:0.0} mm apart at the copy's last drawn step";
-                            // Not the plan's gate: with its originals' weights the copy's
-                            // roots spread, and only one bone gathers them.
-                            if (Rigid || !s.edge) Check(ok, line);
-                            else Log($"NOT GATED {(ok ? "pass" : "fail")} {line}");
+                                $"{(hiddenAt.Count > 0 ? hiddenAt.Min().ToString("0.00000", inv) : "-")} L; {apartRoots} of {total - n} copy " +
+                                $"vertices off the copy's one root (spread {spread2:0.0000} mm), {spread1:0.000} mm over the first copy; " +
+                                $"at the copy's last drawn step its tip {lastDrawn.apart:0.0} mm from the first's, its reach {lastDrawn.span:0.0} mm " +
+                                $"(at most {reachMax:0.0} mm over the sweep)";
+                            Check(ok, line);
                         }
                         Lights(true);
                     }
@@ -1117,64 +1227,61 @@ namespace AvatarBridge.Regression
             Check(captureFails == 0, $"captures: {captureFails} failed; landing within {worstLanding:0.000} mm, bound {LandBound * 1000:0.000}");
             Check(seamSplits == 0 && worstSeam == 0, $"seams: {seamSplits} split, at most {worstSeam:0.0000} mm, both copies");
             Check(worstSkinning <= 0.01, $"skinning ran: the first copy within {worstSkinning:0.0000} mm of BakeMesh while off");
-            if (sweep > 0) Log($"INFO the copy's recovered roots spread at most {rootSpread:0.0000} mm over the sweeps' poses; a float ulp " +
+            if (sweep > 0) Log($"INFO the copy's roots spread at most {rootSpread:0.0000} mm over the sweeps' poses; a float ulp " +
                 $"at the avatar's {At.magnitude:0} m from the world origin is {Ulp(At.magnitude) * 1000:0.0000} mm");
             return all;
         }
 
-        // Copies carry their originals' every attribute, the full weight list
-        // included; under -dupRigid the weights are wholly the root's bone.
-        static void AttributesCheck(Mesh src, Mesh dup, int[] from, int rigid)
+        // Every copy on one point bit for bit, wholly on the root's bone, with
+        // no deltas and its original's colour and uv; that point skins onto the
+        // bake's origin with the bake's axes, to the rounding of a bind at the
+        // avatar's distance from the world origin.
+        static void AttributesCheck(Mesh src, Mesh dup, int[] from, Transform[] bones, YapsBaker.Result plain)
         {
-            int n = src.vertexCount, bad = 0, unbound = 0;
+            int n = src.vertexCount, apart = 0, unlike = 0, unbound = 0, deltas = 0;
             var sv = src.vertices; var dv = dup.vertices;
-            var sn = src.normals; var dn = dup.normals;
-            var st = src.tangents; var dt = dup.tangents;
+            var dn = dup.normals; var dt = dup.tangents;
             var sc = src.colors; var dc = dup.colors;
             var su = new List<Vector2>(); var du = new List<Vector2>();
             src.GetUVs(0, su); dup.GetUVs(0, du);
             var sw = src.boneWeights; var dw = dup.boneWeights;
             var per = dup.GetBonesPerVertex();
-            var sper = src.GetBonesPerVertex();
-            var sall = src.GetAllBoneWeights();
-            var dall = dup.GetAllBoneWeights();
-            var sstart = new int[n];
-            for (int v = 1; v < n; v++) sstart[v] = sstart[v - 1] + sper[v - 1];
-            int dstart = sall.Length;
-            var sd = new Vector3[n]; var sdn = new Vector3[n]; var sdt = new Vector3[n];
-            var dd = new Vector3[dup.vertexCount]; var ddn = new Vector3[dup.vertexCount]; var ddt = new Vector3[dup.vertexCount];
-            src.GetBlendShapeFrameVertices(0, 0, sd, sdn, sdt);
-            dup.GetBlendShapeFrameVertices(0, 0, dd, ddn, ddt);
+            int bone = dw[n].boneIndex0;
             for (int i = 0; i < from.Length; i++)
             {
                 int o = from[i], c = n + i;
-                if (dv[c] != sv[o] || dn[c] != sn[o] || dt[c] != st[o] || dc[c] != sc[o] || du[c] != su[o]
-                    || dd[c] != sd[o] || ddn[c] != sdn[o] || ddt[c] != sdt[o]) bad++;
-                if (Rigid)
-                {
-                    if (per[c] != 1 || dw[c].boneIndex0 != rigid || dw[c].weight0 != 1) unbound++;
-                    continue;
-                }
-                bool same = per[c] == sper[o];
-                for (int k = 0; same && k < per[c]; k++)
-                    same = dall[dstart + k].boneIndex == sall[sstart[o] + k].boneIndex
-                           && BitConverter.SingleToInt32Bits(dall[dstart + k].weight) == BitConverter.SingleToInt32Bits(sall[sstart[o] + k].weight);
-                dstart += per[c];
-                if (!same) unbound++;
+                if (!dv[c].Equals(dv[n]) || !dn[c].Equals(dn[n]) || !dt[c].Equals(dt[n])) apart++;
+                if ((sc.Length > 0 && !dc[c].Equals(sc[o])) || !du[c].Equals(su[o])) unlike++;
+                if (per[c] != 1 || dw[c].boneIndex0 != bone || dw[c].weight0 != 1) unbound++;
             }
-            bool originals = Enumerable.Range(0, n).All(v => dv[v] == sv[v] && dw[v].Equals(sw[v]));
+            var dd = new Vector3[dup.vertexCount]; var ddn = new Vector3[dup.vertexCount]; var ddt = new Vector3[dup.vertexCount];
+            for (int s = 0; s < dup.blendShapeCount; s++)
+                for (int f = 0; f < dup.GetBlendShapeFrameCount(s); f++)
+                {
+                    dup.GetBlendShapeFrameVertices(s, f, dd, ddn, ddt);
+                    for (int c = n; c < dup.vertexCount; c++)
+                        if (!dd[c].Equals(Vector3.zero) || !ddn[c].Equals(Vector3.zero) || !ddt[c].Equals(Vector3.zero)) deltas++;
+                }
+            var toWorld = bones[bone].localToWorldMatrix * src.bindposes[bone];
+            float off = (toWorld.MultiplyPoint3x4(dv[n]) - plain.Origin).magnitude;
+            float turn = Math.Max((toWorld.MultiplyVector(dt[n]).normalized - plain.Rotation * Vector3.forward).magnitude,
+                (toWorld.MultiplyVector(dn[n]).normalized - plain.Rotation * Vector3.up).magnitude);
+            bool originals = Enumerable.Range(0, n).All(v => dv[v].Equals(sv[v]) && dw[v].Equals(sw[v]));
             var wantFormat = dup.vertexCount > 65535 ? IndexFormat.UInt32 : IndexFormat.UInt16;
-            Check(bad == 0 && unbound == 0 && originals && dup.blendShapeCount == src.blendShapeCount && dup.bindposes.SequenceEqual(src.bindposes)
-                  && dup.indexFormat == wantFormat,
-                $"attributes: {bad} of {from.Length} copies differ from their originals (position, normal, tangent, colour, uv, " +
-                $"blendshape deltas), {unbound} {(Rigid ? $"not wholly on bone {rigid}" : "with weights not their original's, bit for bit")}; " +
-                $"originals untouched {originals}; {dup.blendShapeCount} shapes; " +
-                $"index format {dup.indexFormat} at {dup.vertexCount} vertices");
+            // Five ulps at the avatar's distance; an axis as a chord, which is the angle in radians this small.
+            float offBound = 5 * Ulp(At.magnitude), turnBound = 1e-5f;
+            Check(apart == 0 && unlike == 0 && unbound == 0 && deltas == 0 && off <= offBound && turn <= turnBound && originals
+                  && dup.blendShapeCount == src.blendShapeCount && dup.bindposes.SequenceEqual(src.bindposes) && dup.indexFormat == wantFormat,
+                $"attributes: {apart} of {from.Length} copies off the copy point (position, normal, tangent, bit for bit), " +
+                $"{unlike} with another colour or uv than their original's, {unbound} not wholly on bone {bone} ({bones[bone].name}), " +
+                $"{deltas} copy deltas not zero; the point skins {off * 1000:0.000000} mm from the bake's origin (bound {offBound * 1000:0.000000}), " +
+                $"its axes {turn:0.0E+0} off the bake's (bound {turnBound:0.0E+0}); originals untouched {originals}; " +
+                $"{dup.blendShapeCount} shapes; index format {dup.indexFormat} at {dup.vertexCount} vertices");
         }
 
         // A corner whose tangent runs along its normal recovers no frame, so
         // its triangles stay single; a mesh with no tangents is refused.
-        static void FrameCheck(Mesh dupFrom, int slot, Transform[] bones, Transform root, int copied)
+        static void FrameCheck(Mesh dupFrom, int slot, Transform[] bones, Transform root, int copied, YapsBaker.Result plain)
         {
             var bent = Object.Instantiate(dupFrom);
             var bare = Object.Instantiate(dupFrom);
@@ -1189,11 +1296,11 @@ namespace AvatarBridge.Regression
                 int touching = 0;
                 for (int t = 0; t + 2 < tris.Length; t += 3)
                     if (tris[t] == v || tris[t + 1] == v || tris[t + 2] == v) touching++;
-                var d = Build(bent, slot, bones, root, out int[] from, out string why, Rigid);
+                var d = Build(bent, slot, bones, root, plain.Origin, plain.Rotation, out int[] from, out string why);
                 int got = d != null ? d.GetTriangles(slot).Length / 3 - tris.Length / 3 : -1;
                 bool copiedV = from != null && from.Contains(v);
                 bare.tangents = new Vector4[0];
-                var none = Build(bare, slot, bones, root, out _, out string refused, Rigid);
+                var none = Build(bare, slot, bones, root, plain.Origin, plain.Rotation, out _, out string refused);
                 Check(got == copied - touching && !copiedV && none == null,
                     $"frames: tangent along the normal at vertex {v}: {got} of {copied} triangles copied, its {touching} left single " +
                     $"({why ?? "built"}), the vertex copied {copiedV}; no tangents: " +
@@ -1208,15 +1315,12 @@ namespace AvatarBridge.Regression
             }
         }
 
-        // The frame shared from dupFrom's own bake, so every original's entry is
-        // its plain bake's bit for bit, and a copy's is its original's: bit for
-        // bit with its weights, and under -dupRigid up to the rounding of a
-        // blended placement, with its whole weight on the plug.
+        // The extended bake: every original's entry as dupFrom's first bake has
+        // it, a copy's its original's, bit for bit, the copy marked active.
         static void BakeCheck(float[] baked, float[] plainFloats, YapsBaker.Result result, YapsBaker.Result plain,
             YapsBaker.Result own, int[] from, int n, int total)
         {
-            int shapes = result.Shapes.Count, origBad = 0, activeBad = 0;
-            double worst = 0;
+            int shapes = result.Shapes.Count, origBad = 0, copyBad = 0, activeBad = 0;
             int Base(int v) => 1 + v * 10;
             int Shape(int s, int v, int count) => 1 + count * 10 + s * count * 9 + v * 9;
             bool Bits(float[] x, int a, float[] y, int b, int len)
@@ -1234,20 +1338,18 @@ namespace AvatarBridge.Regression
             for (int i = 0; i < from.Length; i++)
             {
                 int o = from[i], c = n + i;
-                for (int k = 0; k < 9; k++) worst = Math.Max(worst, Math.Abs(baked[Base(c) + k] - baked[Base(o) + k]));
-                for (int s = 0; s < shapes; s++)
-                    for (int k = 0; k < 9; k++) worst = Math.Max(worst, Math.Abs(baked[Shape(s, c, total) + k] - baked[Shape(s, o, total) + k]));
-                if (Rigid ? baked[Base(c) + 9] != 1f : !Bits(baked, Base(c) + 9, baked, Base(o) + 9, 1)) activeBad++;
+                bool same = Bits(baked, Base(c), plainFloats, Base(o), 9);
+                for (int s = 0; s < shapes; s++) same &= Bits(baked, Shape(s, c, total), plainFloats, Shape(s, o, n), 9);
+                if (!same) copyBad++;
+                if (BitConverter.SingleToInt32Bits(baked[Base(c) + 9]) != BitConverter.SingleToInt32Bits(1f)) activeBad++;
             }
-            double bound = Rigid ? 1e-5 : 0;
             bool sized = result.VertexCount == total && baked.Length >= 1 + total * 10 + shapes * total * 9
-                         && plain.VertexCount == n && plain.Shapes.Count == shapes;
-            Check(origBad == 0 && activeBad == 0 && worst <= bound && sized,
-                $"copies bake: {origBad} of {n} originals differ from dupFrom's own bake (10 floats and {shapes} shape block, bit for bit); " +
-                $"copies within {worst:0.0E+0} of their originals (bound {bound:0.0E+0}), {activeBad} of {from.Length} " +
-                $"{(Rigid ? "not wholly on the plug" : "with another activity than their original's")}; " +
-                $"{result.VertexCount} vertices baked");
-            Log($"INFO measured over the copies too, as the baker does today: origin {(own.Origin - plain.Origin).magnitude * 1000:0.000000} mm off, " +
+                         && plain.VertexCount == n && plain.Shapes.SequenceEqual(result.Shapes) && plain.Length == result.Length;
+            Check(origBad == 0 && copyBad == 0 && activeBad == 0 && sized,
+                $"copies bake: {origBad} of {n} originals differ from dupFrom's first bake (10 floats and {shapes} shape block, bit for bit); " +
+                $"{copyBad} of {from.Length} copies differ from their original's entry, {activeBad} not marked active; " +
+                $"{result.VertexCount} vertices in the extended bake");
+            Log($"INFO a bake over the copies, as the baker would run after the duplicate: origin {(own.Origin - plain.Origin).magnitude * 1000:0.000000} mm off, " +
                 $"axis {Quaternion.Angle(own.Rotation, plain.Rotation):0.000000} deg, length {(own.Length - plain.Length) * 1000:0.000000} mm, " +
                 $"anchor {own.AnchorVertex}{(own.AnchorVertex >= n ? " (a copy)" : "")}, tip {own.TipVertex}{(own.TipVertex >= n ? " (a copy)" : "")}");
         }
@@ -1278,13 +1380,12 @@ namespace AvatarBridge.Regression
                     tangents = Enumerable.Repeat(new Vector4(1, 0, 0, 1), count).ToArray(),
                 };
                 mesh.SetTriangles(tris, 0);
-                var dup = Build(mesh, 0, new[] { hips, root }, root, out int[] from, out string why, Rigid);
+                var dup = Build(mesh, 0, new[] { hips, root }, root, Vector3.zero, Quaternion.identity, out int[] from, out string why);
                 bool ok = dup != null && mesh.indexFormat == IndexFormat.UInt16 && dup.indexFormat == IndexFormat.UInt32;
                 int bad = 0, maxIndex = 0, added = 0;
                 if (dup != null)
                 {
                     var got = dup.GetIndices(0);
-                    var dv = dup.vertices;
                     added = got.Length - tris.Count;
                     for (int i = 0; i < tris.Count; i++) if (got[i] != tris[i]) bad++;
                     // The copied triangles, in order, are the all-plug ones of the source.
@@ -1296,7 +1397,7 @@ namespace AvatarBridge.Regression
                         {
                             int v = got[at++];
                             maxIndex = Math.Max(maxIndex, v);
-                            if (v < count || dv[v] != pos[tris[t + c]]) bad++;
+                            if (v != count + Array.BinarySearch(from, tris[t + c])) bad++;
                         }
                     }
                     ok &= dup.vertexCount == count + from.Length && at == got.Length && bad == 0 && maxIndex > 65535;
@@ -1489,21 +1590,25 @@ namespace AvatarBridge.Regression
                 ("lilToon outline, vector from vertex colour", m => m.SetFloat("_OutlineVertexR2Width", 2)),
                 ("lilToon outline, tilted vector texture", m => m.SetTexture("_OutlineVectorTex", tilt)),
             };
-            if (lilSets.Any(s => wanted(s.name)))
+            // Its drawing passes are UsePass into Hidden/ltspass_*, which the shipped
+            // patch leaves unpatched; the pass shader itself, with lilToon's own
+            // switches for the inputs the deform reads, is what draws here.
+            Shader Forced(string kind)
             {
-                // Its drawing passes are UsePass into Hidden/ltspass_opaque, which the
-                // shipped patch leaves unpatched; the pass shader itself, with lilToon's
-                // own switches for the inputs the deform reads, is what draws here.
-                var opaque = Shader.Find("Hidden/ltspass_opaque") ?? throw new InvalidOperationException("no Hidden/ltspass_opaque");
-                string opaquePath = AssetDatabase.GetAssetPath(opaque);
-                string forced = Regex.Replace(Lf(File.ReadAllText(opaquePath)), @"^(\s*)HLSLPROGRAM\s*$",
+                var found = Shader.Find("Hidden/ltspass_" + kind) ?? throw new InvalidOperationException("no Hidden/ltspass_" + kind);
+                string path = AssetDatabase.GetAssetPath(found);
+                string forced = Regex.Replace(Lf(File.ReadAllText(path)), @"^(\s*)HLSLPROGRAM\s*$",
                     m => m.Value + "\n#define LIL_REQUIRE_APP_NORMAL\n#define LIL_REQUIRE_APP_TANGENT\n#define LIL_REQUIRE_APP_VERTEXID",
                     RegexOptions.Multiline);
-                forced = new Regex("Shader\\s+\"[^\"]*\"").Replace(forced, "Shader \"Hidden/DupSpike/ltspass_opaque\"", 1);
-                string forcedPath = Path.GetDirectoryName(opaquePath).Replace('\\', '/') + "/DupSpike_ltspass_opaque.shader";
+                forced = new Regex("Shader\\s+\"[^\"]*\"").Replace(forced, $"Shader \"Hidden/DupSpike/ltspass_{kind}\"", 1);
+                string forcedPath = Path.GetDirectoryName(path).Replace('\\', '/') + $"/DupSpike_ltspass_{kind}.shader";
                 File.WriteAllText(forcedPath, forced);
                 AssetDatabase.ImportAsset(forcedPath, ImportAssetOptions.ForceSynchronousImport);
-                var pass = Compiled(AssetDatabase.LoadAssetAtPath<Shader>(forcedPath), forcedPath);
+                return Compiled(AssetDatabase.LoadAssetAtPath<Shader>(forcedPath), forcedPath);
+            }
+            if (lilSets.Any(s => wanted(s.name)))
+            {
+                var pass = Forced("opaque");
                 var patched = Patched(new Material(pass), "lilToon's opaque pass shader, inputs on");
                 foreach (var set in lilSets.Where(s => wanted(s.name)))
                 {
@@ -1515,6 +1620,15 @@ namespace AvatarBridge.Regression
                     set.set(m);
                     Add(set.name, m, patched);
                 }
+            }
+            // Half alpha over the pass shader's own blend: a copy drawn twice shows.
+            const string lilClear = "lilToon transparent, half alpha";
+            if (wanted(lilClear))
+            {
+                var pass = Forced("transparent");
+                var m = new Material(pass) { name = lilClear, renderQueue = 3000 };
+                m.SetColor("_Color", new Color(1, 1, 1, 0.5f));
+                Add(lilClear, m, Patched(new Material(pass), "lilToon's transparent pass shader, inputs on"));
             }
             return hosts;
         }
