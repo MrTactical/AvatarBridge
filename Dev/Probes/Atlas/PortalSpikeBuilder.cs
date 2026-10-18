@@ -228,6 +228,13 @@ namespace AvatarBridge.Regression
         [MenuItem("Tools/AvatarBridge Dev/Probe: Portal spike")]
         public static void Verify()
         {
+            // It opens an empty scene and deletes the build's own material folder, so in a real
+            // project one click would drop unsaved work and strip a built spike of its materials.
+            if (!Application.isBatchMode)
+            {
+                Debug.LogWarning(Tag + "batch mode only: it replaces the open scene and deletes " + Dir);
+                return;
+            }
             _fail = 0;
             var before = Files("Assets/YAPS");
             try { Measure(); }
