@@ -30,6 +30,12 @@ namespace AvatarBridge.Yaps
                  "bend. Empty for a mesh that is only the plug.")]
         public Transform rootBone;
 
+        [Tooltip("A second copy of the plug, drawn only while a second socket is in reach: the first copy " +
+                 "goes into one socket and the second into the next. Screen atlas only. Doubles the plug's " +
+                 "vertices and adds to its deform cost. Only when no other plug shares the mesh and the plug " +
+                 "sits on one material. Bake again after changing it.")]
+        public bool twoAtOnce;
+
         [Header("Measurement")]
         [Tooltip("Tick if the measured base is at the wrong end. Skinned meshes only; a plain mesh " +
                  "bends from its origin along +Z.")]
@@ -208,6 +214,11 @@ namespace AvatarBridge.Yaps
         // off a slot another plug's bake held, for Remove to put back.
         [HideInInspector]
         public Mesh splitFrom;
+
+        // The mesh the second copy was appended to, for a re-bake to build
+        // from and Remove to put back.
+        [HideInInspector]
+        public Mesh dupFrom;
 
         // A plain mesh before the bake widened its bounds on a copy, for
         // Remove to put back.

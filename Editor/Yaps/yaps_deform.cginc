@@ -464,19 +464,109 @@ void YapsRestShape(inout YapsVertex v, float idle, float worldLength)
     }
 }
 
+#ifdef YAPS_DUPLICATE
+// --- the second copy -------------------------------------------------
+
+// Every test below answers per vertex, from the root that vertex recovers.
+// Weighted as their originals, a bent plug spread the roots by up to 119 mm
+// and near an edge a triangle hid one corner at a time, a wedge to the eye.
+// So the copy is built on ONE point, the bake's origin, wholly on the root's
+// bone, with the root's own forward and up for tangent and normal: every copy
+// vertex skins the same numbers, reads that point as its root bit for bit,
+// and every test answers once for the whole copy. Its shape comes from its
+// original's bake entry alone, and a viewer without the deform sees a point.
+
+// Hidden, every vertex of the copy goes to one point a metre behind the eye,
+// with one normal and one tangent. Its triangles have no area, an offset a
+// host adds along either stays on one line, and a host that opens one anyway
+// opens it behind the camera. A point near the plug was the alternative: a
+// host widening outlines from vertex colour opens it in view.
+void YapsCopyHide(inout float3 position, inout float3 normal, inout float3 tangent)
+{
+    float3 back = UNITY_MATRIX_V[2].xyz;
+    position = mul(unity_WorldToObject, float4(_WorldSpaceCameraPos + back, 1)).xyz;
+    normal = mul((float3x3) unity_WorldToObject, back);
+    tangent = mul((float3x3) unity_WorldToObject, UNITY_MATRIX_V[0].xyz);
+}
+
+// The chain past the hole that ends the first copy's path, as a path of its
+// own. Atlas only: no other tier hands over more than one socket. False when
+// nothing live is left or it is out of reach.
+bool YapsCopyPath(inout YapsSocket socket, float3 root, float3 forward, float len)
+{
+    YapsChain c = socket.chain;
+    int k = c.count;
+    if (socket.tier < 2.5 || k < 1 || k >= YAPS_CHAIN_MAX) return false;
+    // One place at a time, so every subscript stays a literal.
+    [unroll] for (int s = 0; s < YAPS_CHAIN_MAX - 1; s++)
+    {
+        if (s < k)
+        {
+            c.position[0] = c.position[1]; c.position[1] = c.position[2]; c.position[2] = c.position[3];
+            c.forward[0] = c.forward[1]; c.forward[1] = c.forward[2]; c.forward[2] = c.forward[3];
+            c.kind[0] = c.kind[1]; c.kind[1] = c.kind[2]; c.kind[2] = c.kind[3]; c.kind[3] = -1;
+        }
+    }
+    // To the next hole, as the resolver counts the first path.
+    int n = 0;
+    bool ended = false;
+    [unroll] for (int i = 0; i < YAPS_CHAIN_MAX; i++)
+    {
+        bool live = c.kind[i] > -0.5 && !ended;
+        if (live) n++;
+        ended = ended || (live && c.kind[i] > 0.5);
+    }
+    if (n == 0) return false;
+    c.count = n;
+    // The key rode in the kind's bits, which the chain no longer carries.
+    c.portal = 0;
+    // The resolver's engagement and behind-the-base fade, for this socket.
+    c.engaged = 1 - smoothstep(len * YAPS_ATLAS_REACH, len * YAPS_ATLAS_REACH * 1.6,
+                               distance(c.position[0], root));
+    socket.chain = c;
+    socket.position = c.position[0];
+    socket.forward = c.forward[0];
+    socket.isHole = c.kind[0];
+    socket.engaged = c.engaged * smoothstep(-len * 0.5, -len * 0.05, dot(c.position[0] - root, forward));
+    return socket.engaged > 0;
+}
+
+#define YAPS_COPY_HIDE if (copy2) YapsCopyHide(position, normal, tangent);
+
+#else
+#define YAPS_COPY_HIDE
+#endif
+
 // --- the deform ------------------------------------------------------
 
 void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent, uint vertexId)
 {
+#ifdef YAPS_DUPLICATE
+    // Bounded above as well: the readout's quads come after the copies.
+    bool copy2 = _YAPS_CopyStart > 0 && vertexId >= (uint) _YAPS_CopyStart
+              && vertexId < (uint) max(_YAPS_VertexCount, 0);
+#endif
     // Off is the identity, so answer it before anything is read. A socket's
     // material carries the plug half switched off over a bake that still
     // marks its vertices active, and every one of them ran the whole resolve
     // for an answer the enabled test threw away. The views still answer.
+#ifdef YAPS_DUPLICATE
+    // Hidden through a fade too, so a toggle on its way out is one plug and
+    // the copy reads nothing for it.
+    if (copy2 && _YAPS_Enabled < 1) { YapsCopyHide(position, normal, tangent); return; }
+#endif
     if (_YAPS_Enabled <= 0 && _YAPS_Debug < 0.5) return;
     if (vertexId >= (uint) max(_YAPS_VertexCount, 0)) return;
 
     YapsVertex baked = YapsReadBaked(vertexId);
+#ifdef YAPS_DUPLICATE
+    // An inactive copy waits for the copy's answer: drawn, it stays on the
+    // copy's point; hidden, it goes with the rest. Returned here, it stayed
+    // while the copy hid, a triangle from the base to the eye.
+    if (baked.active <= 0 && !copy2) return;
+#else
     if (baked.active <= 0) return;
+#endif
 
     float3 originalPosition = position;
     float3 originalNormal = normal;
@@ -485,13 +575,24 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     YapsRoot root = YapsRecoverRoot(baked, originalPosition, originalNormal, originalTangent);
     // No frame, no deform. The renderer's own frame is the avatar root,
     // so falling back to it bent the vertex from the world origin. A host
-    // with no tangent input hands over zero here, never a stand-in.
-    if (root.recovered > 0.5 && root.recovered < 1.5) return;
+    // with no tangent input hands over zero here, never a stand-in. The
+    // builder copies no corner without a frame of its own, so for the copy
+    // this answers for the whole host, never one vertex.
+    if (root.recovered > 0.5 && root.recovered < 1.5) { YAPS_COPY_HIDE return; }
 
     float3 rootWorld = root.position;
     float3 rootForward = root.forward;
     float3 rootUp = root.up;
     float worldLength = root.worldLength;
+#ifdef YAPS_DUPLICATE
+    // The copy's vertex IS its root, its tangent and normal the root's axes.
+    if (copy2)
+    {
+        rootWorld = mul(unity_ObjectToWorld, float4(originalPosition, 1)).xyz;
+        rootForward = YapsSafeNormalize(mul((float3x3) unity_ObjectToWorld, originalTangent), float3(0, 0, 1));
+        rootUp = YapsPerpendicular(rootForward, mul((float3x3) unity_ObjectToWorld, originalNormal));
+    }
+#endif
 
     // Everything platform-specific happens in here. A plug only ever
     // bends toward a SOCKET, never toward a body.
@@ -624,8 +725,24 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
                   + rootUp * baked.position.y
                   + rootForward * (baked.position.z * shown);
         position = mul(unity_WorldToObject, float4(at, 1)).xyz;
+        // The views describe the first copy.
+        YAPS_COPY_HIDE
         return;
     }
+
+#ifdef YAPS_DUPLICATE
+    // Nested, never "copy2 && !YapsCopyPath(...)": HLSL does not short-circuit,
+    // so the call ran on the first copy too and its inout shift sent the first
+    // copy down the second's path.
+    if (copy2)
+    {
+        if (!YapsCopyPath(socket, rootWorld, rootForward, worldLength))
+        {
+            YapsCopyHide(position, normal, tangent);
+            return;
+        }
+    }
+#endif
 
     // THE SHAPE AT REST holds with no socket in reach. It used to sit behind
     // the return below, so a plug with nothing near stayed full size, still
@@ -635,6 +752,11 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     YapsVertex rest = baked;
     YapsRestShape(rest, 1, worldLength);
     float restWeight = baked.active * saturate(_YAPS_Enabled);
+#ifdef YAPS_DUPLICATE
+    // The copy rests on its point, so it grows out of the root as it engages
+    // rather than standing up beside the first as a second straight shaft.
+    if (copy2) restWeight = 0;
+#endif
     float3 restRight = cross(rootUp, rootForward);
     float3 moved = rest.position - baked.position;
     float3 restPosition = originalPosition + mul((float3x3) unity_WorldToObject,
@@ -656,6 +778,7 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         position = restPosition;
         normal = restNormal;
         tangent = restTangent;
+        YAPS_COPY_HIDE
         return;
     }
 
@@ -692,6 +815,15 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     }
 
     float engage = 1 - YapsRamp(gap, worldLength * 1.2, worldLength * 1.6);
+#ifdef YAPS_DUPLICATE
+    // Unengaged the copy sits on its point, which a host widening outlines
+    // from vertex colour opens in view.
+    if (copy2 && engage <= 0)
+    {
+        YapsCopyHide(position, normal, tangent);
+        return;
+    }
+#endif
 
     // THE SWEEP. Short of full engagement the curve aims at the socket
     // turned back toward the plug's own forward, about the root, by the part

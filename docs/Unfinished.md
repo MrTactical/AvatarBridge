@@ -4962,6 +4962,11 @@ if (leftOver > 0 && socket.tier > 2.5 && socket.chain.portal != 0
   - Copy 2 pays this even while hidden. Skinning also doubles for plug vertices.
   - Multiply by passes and cameras. DS2 must give a number.
 - **Authoring.** "Two at once" bool on `YapsPlug`, default off, in the plug fold (`YapsComponentEditors.cs:1553-1585`). It must never be animated, because a renderer-wide block reaches every slot [M, memory].
+- **Production, built 2026-10-18 at risk (portal-prod), from DS1's anchored design (38d1ea4, gate 74 PASS 0 FAIL).** Compiles offline; the Unity round trip and DG1 are still to run.
+  - `YapsPlug.twoAtOnce` (inspector label "Two At Once", the Skinned mesh card) and `dupFrom`. `YapsDuplicate.cs` holds the spike's `Build` and `ExtendBake` unchanged, plus `Add`, which extends the plain bake's own file in place (`YapsBaker.Result.Pixels`, kept only when asked, since the saved texture is not readable).
+  - Shader: `_YAPS_CopyStart` in the block, the readout's block and `yaps_props`. `YAPS_DUPLICATE` is defined only for a material whose `_YAPS_CopyStart` is above 0, as a shader of its own (fxc: 52 temps plain, 59 with it). `NameCache` is keyed by shader and copy, `Refresh` keeps the copy, and `CopyYapsProperties` refreshes a material whose copy turned on or off, so a swapped-in look gets the copy's shader.
+  - `BakeOnce`: the copy comes off before the bake, the plain bake keeps its floats, the copy goes on after the split and before the patch, and the material's shader is checked again once `_YAPS_CopyStart` is written. `YapsRemover` puts `dupFrom` back before the split's restore.
+  - **v1 limits**, in the README: skinned only, no other plug on the mesh, the plug on one material, the main mesh only (the bake says so), atlas only, lost on reconversion like a portal. The converter never sets it.
 
 #### Phases
 

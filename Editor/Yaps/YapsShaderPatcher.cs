@@ -51,6 +51,7 @@ namespace AvatarBridge
         _YAPS_BakeScale (""YAPS bake scale"", Float) = 1
         _YAPS_BakeGirth (""YAPS bake girth"", Float) = 1
         _YAPS_PortalSpan (""YAPS portal band (-1 too coarse)"", Float) = 0
+        _YAPS_CopyStart (""YAPS second copy's first vertex"", Float) = 0
         _YAPS_FrameFromVertex (""YAPS frame from vertex"", Range(0,1)) = 0
         _YAPS_SocketPos (""YAPS socket position"", Vector) = (0,0,0,0)
         _YAPS_SocketForward (""YAPS socket forward"", Vector) = (0,0,0,0)
@@ -146,7 +147,8 @@ namespace AvatarBridge
         {
             if (patchedOrOriginal == null || patchedOrOriginal.shader == null) return null;
             var shader = patchedOrOriginal.shader;
-            if (NameCache.TryGetValue(shader, out string cached)) return cached;
+            bool duplicate = Duplicate(patchedOrOriginal);
+            if (NameCache.TryGetValue((shader, duplicate), out string cached)) return cached;
             // A patched material names its own source; an unpatched one is
             // its own source.
             var from = OriginalShaderOf(patchedOrOriginal) ?? shader;
@@ -154,9 +156,9 @@ namespace AvatarBridge
             if (string.IsNullOrEmpty(sourcePath)) return null;
             var unit = ShaderSpiPatcher.ReadUnit(sourcePath);
             if (unit.Count == 0) return null;
-            string yaps = LoadYapsSource(out _);
+            string yaps = YapsSourceFor(duplicate, out _);
             if (yaps == null) return null;
-            return NameCache[shader] = PatchedName(unit[0].Text, NameHash(sourcePath, unit, yaps));
+            return NameCache[(shader, duplicate)] = PatchedName(unit[0].Text, NameHash(sourcePath, unit, yaps));
         }
 
         // The answer depends on the material's shader and on files in the
@@ -164,7 +166,7 @@ namespace AvatarBridge
         // material panel asks on every GUI event, and each answer read the
         // whole include closure and hashed it. Failures are never kept: a
         // read that failed once is tried again.
-        static readonly Dictionary<Shader, string> NameCache = new Dictionary<Shader, string>();
+        static readonly Dictionary<(Shader, bool), string> NameCache = new Dictionary<(Shader, bool), string>();
 
         sealed class NameCacheReset : AssetPostprocessor
         {
@@ -216,7 +218,7 @@ namespace AvatarBridge
             var stand = new Material(original) { name = patched.name };
             try
             {
-                var current = Patch(stand, report, out _, out _, allowSps: true);
+                var current = Patch(stand, report, out _, out _, allowSps: true, duplicate: Duplicate(patched));
                 if (current == null) return false;
                 patched.shader = current;
                 return true;
@@ -496,8 +498,10 @@ namespace AvatarBridge
             }
         }
 
+        // duplicate: the plug's second copy is drawn, which the material says
+        // by itself once its _YAPS_CopyStart is set.
         public static Shader Patch(Material material, BridgeReport report,
-            out string refusal, out int skippedShadowPasses, bool allowSps = false)
+            out string refusal, out int skippedShadowPasses, bool allowSps = false, bool duplicate = false)
         {
             refusal = null;
             skippedShadowPasses = 0;
@@ -511,6 +515,7 @@ namespace AvatarBridge
             // in one lock; a lone patch prepares its own.
             if (Deferred == null) YapsLock.Prepare(new[] { material });
             var asked = material;
+            duplicate |= Duplicate(asked);
             material = YapsLock.Basis(material);
             YapsLock.WarnIfUnlocked(asked, material, report);
 
@@ -553,7 +558,7 @@ namespace AvatarBridge
                 return null;
             }
 
-            string yaps = LoadYapsSource(out string loadFailure);
+            string yaps = YapsSourceFor(duplicate, out string loadFailure);
             if (yaps == null)
             {
                 refusal = loadFailure;
@@ -1167,6 +1172,19 @@ namespace AvatarBridge
         static string YapsFolder;
         static string[] YapsRead;
         static string YapsJoined;
+
+        // A plug drawing its second copy, by the value its material holds.
+        public static bool Duplicate(Material m) =>
+            m != null && m.HasProperty("_YAPS_CopyStart") && m.GetFloat("_YAPS_CopyStart") > 0;
+
+        // The copy's code costs every vertex registers (52 temps to 59 under
+        // fxc) whether or not a copy is there, so only a material that draws
+        // one gets it, as a shader of its own beside the plain one.
+        static string YapsSourceFor(bool duplicate, out string failure)
+        {
+            string yaps = LoadYapsSource(out failure);
+            return yaps != null && duplicate ? "#define YAPS_DUPLICATE\n" + yaps : yaps;
+        }
 
         static string LoadYapsSource(out string failure)
         {

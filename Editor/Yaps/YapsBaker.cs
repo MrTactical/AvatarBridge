@@ -65,6 +65,9 @@ namespace AvatarBridge
             // The portal's band, _YAPS_PortalSpan: 0 for a socket, -1 for a
             // mesh too coarse to cut.
             public float PortalSpan;
+            // The bake's floats as written, only when asked for: the second
+            // copy extends them, and the saved texture is no longer readable.
+            public float[] Pixels;
         }
 
         // Past this a band is a fifth of the plug: so much of it collapses
@@ -91,7 +94,7 @@ namespace AvatarBridge
         public static Result Bake(Renderer renderer, Transform plugRoot, string outputDir,
             BridgeReport report, out string failure, IList<string> wantedShapes = null,
             bool objectFrame = false, bool flipAxis = false, Result shareFrameWith = null,
-            float sizeScale = 1f)
+            float sizeScale = 1f, bool keepPixels = false)
         {
             failure = null;
             if (renderer == null || plugRoot == null)
@@ -317,7 +320,7 @@ namespace AvatarBridge
                 }
             }
 
-            var texture = WriteTexture(positions, normals, tangents, activeWeights, count, shapes);
+            var texture = WriteTexture(positions, normals, tangents, activeWeights, count, shapes, out var pixels);
             Directory.CreateDirectory(outputDir);
             // Named for the plug that wrote it, never numbered. A unique path is
             // the wrong answer here: the name it avoids belongs to the SAME plug
@@ -410,6 +413,7 @@ namespace AvatarBridge
                 AnchorVertex = anchor,
                 TipVertex = tip,
                 PortalSpan = portalSpan,
+                Pixels = keepPixels ? pixels : null,
             };
         }
 
@@ -1116,13 +1120,13 @@ namespace AvatarBridge
         // --- the texture ----------------------------------------------
 
         static Texture2D WriteTexture(Vector3[] positions, Vector3[] normals, Vector3[] tangents,
-            List<float> active, int count, List<Vector3[]> shapes)
+            List<float> active, int count, List<Vector3[]> shapes, out float[] pixels)
         {
             int floats = 1 + count * FloatsPerVertex + shapes.Count * count * FloatsPerShapeVertex;
             int height = Mathf.Max(1, Mathf.CeilToInt((float) floats / TextureWidth));
             // One float per RGBA32 pixel, uploaded as raw bytes: red is the
             // least significant byte, as the shader reads it.
-            var pixels = new float[TextureWidth * height];
+            pixels = new float[TextureWidth * height];
 
             int at = 0;
             Write(pixels, ref at, 0f);   // header
@@ -1157,10 +1161,15 @@ namespace AvatarBridge
                 }
             }
 
-            // Point filtering and no mips are load-bearing, not tidiness: the
-            // shader reassembles floats from raw bytes, so any interpolation
-            // corrupts the values.
-            var texture = new Texture2D(TextureWidth, height, TextureFormat.RGBA32, false, true)
+            return BakeTexture(pixels);
+        }
+
+        // Point filtering and no mips are load-bearing, not tidiness: the
+        // shader reassembles floats from raw bytes, so any interpolation
+        // corrupts the values.
+        internal static Texture2D BakeTexture(float[] pixels)
+        {
+            var texture = new Texture2D(TextureWidth, pixels.Length / TextureWidth, TextureFormat.RGBA32, false, true)
             {
                 name = "YAPS Bake",
                 filterMode = FilterMode.Point,
@@ -1336,7 +1345,7 @@ namespace AvatarBridge
         // creating it again destroys the object and the file's identity, and
         // the materials and mesh filters of every earlier conversion still
         // point at both.
-        static T SaveInPlace<T>(T made, string path) where T : UnityEngine.Object
+        internal static T SaveInPlace<T>(T made, string path) where T : UnityEngine.Object
         {
             var existing = AssetDatabase.LoadAssetAtPath<T>(path);
             if (existing == null)

@@ -294,6 +294,15 @@ namespace AvatarBridge
                     done.Add($"\"{renderer.name}\" with " + Describe(restores));
                 }
 
+                // The mesh from before the second copy, while the copy is on it.
+                if (plug.dupFrom != null && renderer is SkinnedMeshRenderer copied && YapsDuplicate.Is(copied.sharedMesh))
+                {
+                    Undo.RecordObject(copied, "Remove YAPS plug");
+                    copied.sharedMesh = plug.dupFrom;
+                    YapsDebugOverlayBuilder.Replaced(copied, plug.dupFrom);
+                    done.Add($"\"{renderer.name}\" back on the mesh from before its second copy");
+                }
+
                 // The mesh from before this plug's slot split off, while that
                 // split is still the last one made on it. A later one moved
                 // more triangles off the same copy, so it stays.

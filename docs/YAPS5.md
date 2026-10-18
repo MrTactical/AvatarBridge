@@ -620,7 +620,8 @@ of space looks identical to every other reason one does not bend.
 - No socket KIND in the payload, so a hole cannot be told from a ring, and the
   approach-flip above is only correct for rings.
 - ~~Portal~~: **built 2026-10-18** as the margin directory, see "Portal directory" at the end.
-  Duplicate is still a range on top of the list, unbuilt.
+  ~~Duplicate is still a range on top of the list, unbuilt.~~ **Built 2026-10-18** as a second
+  copy on the mesh, see "Two at once" at the end.
 - Radius 2 is 125 reads a vertex, measured only for 27. The tap harness exists.
 - The platform default for row order is right on D3D by construction and unverified in game.
   `_ForceRow` is kept as the one-click check.
@@ -677,7 +678,8 @@ two correctly reported past the tip rather than lost.
   when approached from behind. The facing read moved into the gather with it, which costs one
   read per socket FOUND rather than per cell searched and deleted the separate facing pass.
 - ~~Portal~~: **built 2026-10-18** as the margin directory, see "Portal directory" at the end.
-  Duplicate is still a range on top of the list, unbuilt.
+  ~~Duplicate is still a range on top of the list, unbuilt.~~ **Built 2026-10-18** as a second
+  copy on the mesh, see "Two at once" at the end.
 - 343 headers a vertex at radius 3 has not been benchmarked. The tap harness exists.
 - ~~NONE OF IT HAS BEEN IN GAME.~~ **CLOSED 2026-09-03, all four steps of pass 1.** Spike 1
   had proved only that a named GrabPass survives a ChilloutVR upload and returns what another
@@ -1673,3 +1675,27 @@ Measured [M]:
 
 Open [GAME]: all of it. Margin survival in every ChilloutVR view is the one gate that can kill the
 transport.
+
+## Two at once (2026-10-18)
+
+A plug drawn twice: the first copy takes the resolved path as before, the second the chain past the
+hole that ends it, to the next hole. A vertex shader cannot add geometry, so the copy is on the
+mesh: every vertex of a triangle wholly on the plug, copied once and appended, with those triangles
+added to the plug's slot over the copies. `_YAPS_CopyStart` is the first copy vertex.
+
+- **Anchored.** Every copy vertex sits on the bake's origin, wholly on the root's bone, its normal
+  and tangent the root's up and forward. Weighted as their originals, a bent plug's copies recovered
+  roots up to 119 mm apart and an edge triangle hid one corner at a time. On one point, each test
+  answers once for the whole copy, and a viewer without the deform sees nothing.
+- **Its shape is the plain bake, extended:** each copy reads its original's entry, marked active.
+  A bake over the copies would measure a point.
+- **Hidden** means every copy vertex on one point a metre behind the camera, so a transparent or
+  outline host draws nothing. It hides at every early return, while the toggle fades, and with no
+  live socket past the first copy's hole.
+- **Its own shader.** `YAPS_DUPLICATE` costs 52 to 59 temps under fxc, so only a material whose
+  `_YAPS_CopyStart` is above 0 is patched with it.
+- DS1, the editor gate: 74 PASS, 0 FAIL, on ten hosts, three atlas formats and 111-step sweeps
+  across where the copy starts drawing [M].
+
+Open [GAME]: DG1, whether the appended vertices survive upload and both copies show on a second
+client.

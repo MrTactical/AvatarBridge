@@ -76,6 +76,7 @@ Shader "YAPS/Debug Overlay"
         _YAPS_BakeScale ("YAPS bake scale", Float) = 1
         _YAPS_BakeGirth ("YAPS bake girth", Float) = 1
         _YAPS_PortalSpan ("YAPS portal band (-1 too coarse)", Float) = 0
+        _YAPS_CopyStart ("YAPS second copy's first vertex", Float) = 0
         _YAPS_FrameFromVertex ("YAPS frame from vertex", Range(0,1)) = 0
         _YAPS_SocketPos ("YAPS socket position", Vector) = (0,0,0,0)
         _YAPS_SocketForward ("YAPS socket forward", Vector) = (0,0,0,0)

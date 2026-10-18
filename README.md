@@ -1504,6 +1504,29 @@ the rest goes through; the bake names that mesh.
 has a cell for it, and [a plug stops at a portal entrance](#yaps-a-plug-stops-at-a-portal-entrance)
 goes through what to check.
 
+#### Two at once
+
+**One plug, two sockets.** Tick **Two At Once** in the plug's *Skinned mesh* settings and bake
+again, and the plug carries a second copy of itself. The first copy goes where the plug always
+would; the second goes on from where the first one's path ends, into the next hole the atlas lines
+up past it, through any rings on the way. With no second socket in reach the copy is hidden, and it
+is hidden too while the plug's toggle is fading. The copy is a second set of the plug's vertices on
+the mesh, and the plug's material pays the copy's extra deform work on every vertex it draws. The
+readout describes the first copy.
+
+**Screen atlas only.** The atlas is the only route that hands a plug more than one socket, so by
+marker light the plug is one plug.
+
+**Where it cannot be made**, the bake says *Two at once is ticked but there is no second copy*, and
+why:
+- *it needs a skinned mesh*: a plain mesh bends whole, from its own object.
+- *another plug shares its mesh*: the copy's vertices sit past every vertex the other plug's bake
+  describes.
+- *its triangles span several materials*: the copy is made from one material's triangles.
+
+A plug of several meshes copies its main mesh only, and the bake says so: the parts on the other
+meshes stay with the first copy. **Not yet confirmed in game.**
+
 ### Squash: soft parts that press together
 
 An opt-in in the YAPS add-on: breasts and butt flatten where they press against each other, and
@@ -2140,6 +2163,10 @@ Bipeds are unaffected by any of it.
   entrance is then an ordinary hole in that view, never a way out of the wrong socket. Someone
   else's copy of the avatar sees an ordinary hole until the wearer's owner id first syncs. Not yet
   confirmed in game.
+- **[Two at once](#two-at-once) (YAPS).** Screen atlas only, a skinned plug only, and only when no
+  other plug shares its mesh and its triangles sit on one material. A plug of several meshes copies
+  its main mesh alone. A conversion never ticks it, and converting the avatar again starts the plug
+  without it, so tick it after the last conversion. Not yet confirmed in game.
 - **Action-layer emotes and features.** Only **Gesture** and **FX** convert by default: Base,
   Additive and Action are off, because CVR drives locomotion and emotes itself. **An avatar that
   transforms usually needs Action ticked**: a mech that folds into a vehicle keeps its menu toggle
