@@ -4783,6 +4783,33 @@ is **in 5.0.0**, which waits for both to pass in game.
   - with a portal live, no more than 21.6 us extra, the cost the second atlas read was accepted at.
 - "Zero messages" on Poiyomi could not be met as written: the shipped shader already has 33 to 115. The gate counts only the messages the spike adds.
 
+**S1b, S2 and P4, the night of 2026-10-17 to 18 (branch `portal-spike`, `2c5e1d8`, `2dac4ae`, `0814646`): all PASS. Each was re-run by an adversarial verifier, who agreed.**
+- **S1b, GPU time** (`Dev/Probes/Perf/PortalDeformPerf`, RTX 4080, 6433 vertices, 7 interleaved repeats) [M]:
+  - With no portal in reach (no socket, a keyless hole, an owned hole with no entry), every delta is -0.15 to +0.15 us against a 1 us bound.
+  - With a live portal, every vertex taking the exit costs -0.07 to +0.22 us, against 21.6.
+  - Code in the untaken branch is not free: a deliberate 800-tap lookup cost +17 us on every vertex, even with no portal near [M]. So the lookup must stay small. The real one shows no such cost.
+  - Headroom compares explicit D3D compiles, because import message counts vary with the cache. Six Poiyomi families add 0 messages; vertex bytecode grows 1.3 to 1.5%, other stages are unchanged.
+  - Lines 3757 (+6.5%), temps 52 [M].
+  - Lookup kept at two homes. One home loses 0.5 to 2% of entries to clashes with 20 live, two homes 0.02 to 0.24% [R, simulated].
+- **S2, the directory** (`Dev/Probes/Atlas/PortalDirectoryProbe`) [M]:
+  - All six sizes, on 8-bit linear and half targets: owner and number exact, 20 of 20 found.
+  - Position worst 0.999 mm on 8-bit, 0.190 mm on half, against 1.355 mm. Facing worst 0.358 and 0.067 degrees, against 0.5.
+  - 0 false exits in 10,000 keys.
+  - Cell reads bit-identical, with the exits drawn either before or after the sockets.
+  - The directory lies inside the clear at every size, and `atlas-layout.py` asserts it over 232,142 sizes.
+  - A 200-entry crowd reaches home B 720 times; 304 entries are lost to clashes, all as predicted, none wrong.
+  - **Not covered:** an sRGB 8-bit target. By arithmetic it could reach about 1.4 mm [R]. The cells share that target, so it belongs to G2 test 7 (HDR off).
+  - **Probe gaps to close:** the probe never asserts that the gate sizes fit or that all 20 are found; the clear-span alpha check is blind where the target is exactly the rect's width.
+- **P4, the G2 spike avatar** (`Dev/Probes/Atlas/PortalSpikeBuilder`) [M]:
+  - The entrance is built through the production socket path, and its dump matches a plain hole line for line (7368 lines).
+  - The key is the production number. The owner layer drives the exit writer and the indicator.
+  - The indicator reads green in the main view, a mirror camera, HDR and at 240 px, and grey at 200 px.
+  - Controls: no owner shows yellow; writer off, 5 mm off and 2 degrees off each show red.
+  - The writer touches 8 margin pixels and nothing else.
+  - Joe's session: `Dev/Release/portal-g2-session.md` (local only).
+  - Its Verify menu now refuses to run outside batch mode (`001607a`): it replaces the open scene and deletes the build's material folder.
+  - "Portal spike: remove" was not run headless, so remove the spike only from a scene saved first.
+
 Asked for by Joe ("start mapping out a plan for the YAPS portal and duplicate"). Made by a workflow:
 four readers mapped the deform, the atlas and protocol, the authoring side and the plug's draw;
 three plans were written from different angles (compatibility, risk and verification, the user);
