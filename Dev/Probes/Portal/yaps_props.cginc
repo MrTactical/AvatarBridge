@@ -210,4 +210,10 @@ inline float YapsShapeWeight(uint index)
 // margin. -1 when the mesh is too coarse to cut, so entrances stay holes.
 float _YAPS_PortalSpan;
 
+#ifdef YAPS_DUPLICATE
+// DUPLICATE SPIKE. The first vertex of the plug's second copy, appended after
+// every original vertex; 0 when the mesh carries none.
+float _YAPS_CopyStart;
+#endif
+
 #endif

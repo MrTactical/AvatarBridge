@@ -12,7 +12,8 @@
 #
 #   yaps-fxc.sh [spike-dir]   includes found in spike-dir win over Editor/Yaps
 # Each target also prints its listing's temps, lines and slots, the budget a
-# change is judged against. YAPS_FXC_FLAGS reaches fxc, for -D switches.
+# change is judged against. YAPS_FXC_FLAGS reaches fxc, for -D switches, and
+# YAPS_FXC_KEEP names a folder the bytecode and listings are copied into.
 set -u
 YAPS="$(cd "$(dirname "$0")/../../../Editor/Yaps" && pwd -W)"
 SPIKE=()
@@ -34,6 +35,9 @@ float4 unity_LightColor[8];
 float4 unity_4LightPosX0, unity_4LightPosY0, unity_4LightPosZ0;
 float4x4 unity_ObjectToWorld, unity_WorldToObject;
 float4 _Time;
+float3 _WorldSpaceCameraPos;
+float4x4 unity_MatrixV;
+#define UNITY_MATRIX_V unity_MatrixV
 STUB
 
 emit() {
@@ -99,4 +103,5 @@ for t in plug writer deform; do
              "indexable $(grep -c "dcl_indexableTemp" "$TMP/$t.asm")"
     fi
 done
+[ -n "${YAPS_FXC_KEEP:-}" ] && mkdir -p "$YAPS_FXC_KEEP" && cp "$TMP"/*.cso "$TMP"/*.asm "$YAPS_FXC_KEEP"/
 exit $fail
