@@ -788,8 +788,10 @@ namespace AvatarBridge
             var avatarRoot = AvatarRootOf(socket.transform);
             bool hole = kindProp.enumValueIndex == (int) YapsSocket.SocketKind.Hole;
             bool built = IsBuilt(socket.transform);
+            var exitProp = so.FindProperty("portalExit");
+            bool portal = exitProp.objectReferenceValue != null;
 
-            _root.Add(BridgeElements.Banner((hole ? "Hole" : socket.oneWay ? "One-way ring" : "Ring") + " · " + YapsToggles.LabelFor(socket),
+            _root.Add(BridgeElements.Banner((portal ? "Portal entrance" : hole ? "Hole" : socket.oneWay ? "One-way ring" : "Ring") + " · " + YapsToggles.LabelFor(socket),
                 built ? "readable by DPS, TPS, SPS and YAPS plugs" : "not built: no plug can find it yet",
                 built ? "built" : "not built", BridgeTheme.Span.Cvr));
 
@@ -844,7 +846,7 @@ namespace AvatarBridge
 
             // What it is.
             var what = new BridgeElements.Card("What it is");
-            what.Body.Add(BridgeElements.Choice("Kind",
+            var kindChoice = BridgeElements.Choice("Kind",
                 "A hole closes around the plug and stops it: a mouth, a pussy, an anus. " +
                 "A ring lets the plug pass straight through: a hand, thighs, a foot.",
                 new[] { "Hole", "Ring" }, kindProp.enumValueIndex, i =>
@@ -860,7 +862,10 @@ namespace AvatarBridge
                     YapsSocketBuilder.ApplyKind(socket);
                     Undo.CollapseUndoOperations(group);
                     RebuildLater();
-                }));
+                });
+            // The cut runs only where a path ends in a hole.
+            kindChoice.SetEnabled(!portal);
+            what.Body.Add(kindChoice);
             if (!hole)
             {
                 // The kind rides the atlas writer's material, so the writer
@@ -876,6 +881,27 @@ namespace AvatarBridge
                 });
                 what.Body.Add(oneWay);
             }
+
+            var exitField = YapsInspectorStyle.Field(exitProp, type.GetField("portalExit"), "Portal exit");
+            exitField.TrackPropertyValue(exitProp, p =>
+            {
+                if (p.objectReferenceValue != null && kindProp.enumValueIndex != (int) YapsSocket.SocketKind.Hole)
+                {
+                    Undo.RegisterFullObjectHierarchyUndo(socket.gameObject, "YAPS portal");
+                    kindProp.enumValueIndex = (int) YapsSocket.SocketKind.Hole;
+                    so.ApplyModifiedProperties();
+                    YapsSocketBuilder.ApplyKind(socket);
+                }
+                // The whole build, not the writer alone: without the owner
+                // layer reaching it, the exit publishes for nobody in game.
+                if (built) Built("build", YapsNativeBuilder.BuildSocket(socket));
+                RebuildLater();
+            });
+            what.Body.Add(exitField);
+            string portalNote = YapsSocketBuilder.PortalNote(socket);
+            if (portalNote != null)
+                what.Body.Add(BridgeElements.Notice(portalNote.StartsWith("✓") ? Tone.Info : Tone.Warn,
+                    char.ToUpper(portalNote[2]) + portalNote.Substring(3)));
 
             what.Body.Add(YapsInspectorStyle.Field(so.FindProperty("tags"),
                 typeof(YapsSocket).GetField("tags"), "Tags"));
@@ -1352,6 +1378,12 @@ namespace AvatarBridge
             {
                 var label = new GUIStyle(EditorStyles.whiteMiniLabel) { fontSize = 11 };
                 Handles.Label(c + u * (r * 1.4f), (hole ? "hole" : "ring") + (built ? "" : ", not built"), label);
+            }
+            // Where a plug that goes in comes out.
+            if (socket.portalExit != null && socket.portalExit != socket)
+            {
+                Handles.color = colour;
+                Handles.DrawDottedLine(c, socket.portalExit.transform.position, 5f);
             }
         }
     }

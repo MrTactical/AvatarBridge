@@ -89,6 +89,8 @@ namespace AvatarBridge
             // A plain mesh moved onto the bounds copy; a re-bake keeps the copy and the record.
             if (filter != null && filter.sharedMesh != unbounded) { plug.boundsFrom = unbounded; EditorUtility.SetDirty(plug); }
             if (result == null) { o.Message = "could not bake: " + failure; return o; }
+            // The report is not shown from here, so the note is.
+            if (result.PortalSpan < 0f) o.Notes.Add(YapsBaker.CoarseNote);
             // A plain mesh bakes in its own units; the markers and the
             // report want metres.
             float toMetres = result.FromSkinnedMesh ? 1f : Mathf.Abs(renderer.transform.lossyScale.z);
@@ -845,6 +847,8 @@ namespace AvatarBridge
             YapsSocketBuilder.Build(socket);
             string capped = YapsSocketBuilder.LightCapNote(socket);
             if (capped != null) lines.Add($"✓ {YapsToggles.LabelFor(socket)}: {capped}");
+            string portal = YapsSocketBuilder.PortalNote(socket);
+            if (portal != null) lines.Add($"{portal.Substring(0, 2)}{YapsToggles.LabelFor(socket)}: {portal.Substring(2)}");
             string shapes = BakeSocket(socket);
             if (shapes != null) lines.Add(shapes);
             string played = YapsSocketReactions.BuildAnimations(socket);

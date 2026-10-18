@@ -72,10 +72,11 @@ namespace AvatarBridge
         // Numbers the atlas carries, 1 to 15. Must match YAPS_ATLAS_SOCKETMAX.
         public const int MaxSelfSockets = 15;
 
-        // Every socket of the avatar numbered on its atlas writer, and every
-        // plug told which of them it may enter, a bit per number. Materials
-        // only, nothing in the animator, so the inspector can run it on every
-        // click. Returns how many sockets were past the numbers.
+        // Every socket of the avatar numbered on its atlas writer, each portal
+        // exit keyed by its entrance's number, and every plug told which of
+        // them it may enter, a bit per number. Materials only, nothing in the
+        // animator, so the inspector can run it on every click. Returns how
+        // many sockets were past the numbers.
         //
         // Numbered by hierarchy path, so the order holds from build to build;
         // a plug's choices name sockets, not numbers, so a socket added in the
@@ -168,7 +169,31 @@ namespace AvatarBridge
                     r.sharedMaterial = numbered;
                 }
             }
+            KeyExits(root, numbers);
             return numbers;
+        }
+
+        // Each portal exit keyed by its entrance's number, here because every
+        // door that renumbers comes through. A writer no entrance owns goes to
+        // 0, which publishes nothing: left keyed, it would send plugs out of
+        // whichever socket inherited the number.
+        static void KeyExits(GameObject root, Dictionary<YapsSocket, int> numbers)
+        {
+            var keyed = new Dictionary<Renderer, int>();
+            foreach (var kv in numbers)
+            {
+                if (!YapsSocketBuilder.Owns(kv.Key, kv.Key.builtExit)) continue;
+                var r = kv.Key.builtExit.GetComponent<MeshRenderer>();
+                if (r != null) keyed[r] = kv.Value;
+            }
+            foreach (var r in root.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                if (!YapsAtlas.IsExit(r.sharedMaterial)) continue;
+                var m = YapsAtlas.Exit(keyed.TryGetValue(r, out int n) ? n : 0);
+                if (m == null || m == r.sharedMaterial) continue;
+                Undo.RecordObject(r, "YAPS own sockets");
+                r.sharedMaterial = m;
+            }
         }
 
         // string.GetHashCode is not promised to hold between runs.

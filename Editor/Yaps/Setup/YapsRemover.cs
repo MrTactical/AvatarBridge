@@ -183,7 +183,15 @@ namespace AvatarBridge
                 }
             }
 
-            // The objects.
+            // Its portal's writer, which lives under the exit.
+            if (socket.builtExit != null && YapsSocketBuilder.Owns(socket, socket.builtExit))
+            {
+                done.Add($"its portal writer under \"{socket.builtExit.transform.parent.name}\"");
+                Undo.DestroyObjectImmediate(socket.builtExit);
+            }
+
+            // The objects. Writers under it for entrances that lead here go
+            // with it, as the toolkit's own.
             var go = socket.gameObject;
             if (OwnObject(go, typeof(YapsSocket)))
             {
@@ -544,6 +552,17 @@ namespace AvatarBridge
                     done.Add($"the empty \"{shell.name}\"");
                     Undo.DestroyObjectImmediate(shell.gameObject);
                 }
+            }
+
+            // Portal writers no entrance owns: one deleted by hand, or aimed
+            // elsewhere by a script that never rebuilt.
+            foreach (var t in top.GetComponentsInChildren<Transform>(true).ToList())
+            {
+                if (t == null || !YapsSocketBuilder.IsExitWriter(t)) continue;
+                if (sockets.Any(s => s != null && YapsSocketBuilder.Owns(s, t.gameObject)
+                                     && s.portalExit != null && t.parent == s.portalExit.transform)) continue;
+                done.Add($"\"{t.name}\" under \"{t.parent.name}\": no entrance leads there any more");
+                Undo.DestroyObjectImmediate(t.gameObject);
             }
 
             // The readout toggle, once nothing carries a readout. After the
@@ -961,15 +980,17 @@ namespace AvatarBridge
                 if (c.GetType() != component) return false;
             }
             for (int i = 0; i < go.transform.childCount; i++)
-                if (!OwnChildren.Contains(go.transform.GetChild(i).name)) return false;
+                if (!Own(go.transform.GetChild(i))) return false;
             return true;
         }
 
         static IEnumerable<Transform> OwnChildrenOf(Transform t)
         {
             for (int i = 0; i < t.childCount; i++)
-                if (OwnChildren.Contains(t.GetChild(i).name)) yield return t.GetChild(i);
+                if (Own(t.GetChild(i))) yield return t.GetChild(i);
         }
+
+        static bool Own(Transform child) => OwnChildren.Contains(child.name) || YapsSocketBuilder.IsExitWriter(child);
 
         static bool Generated(AnimationClip clip)
         {

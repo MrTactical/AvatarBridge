@@ -32,6 +32,7 @@ namespace AvatarBridge
         const string SocketShader = "YAPS/Atlas Socket";
         const string GrabShader = "YAPS/Atlas Grab";
         const string ClearShader = "YAPS/Atlas Clear";
+        const string ExitShader = "YAPS/Atlas Exit";
 
         // Unity culls on renderer bounds and a culled object never draws. A
         // socket culled out of frame stops publishing, and the grab has to
@@ -118,6 +119,65 @@ namespace AvatarBridge
         }
 
         public const string ClearName = "YAPS Atlas Clear";
+
+        // A portal exit's writer, unkeyed: NumberWriters gives it the
+        // entrance's number, so every door that renumbers rekeys it too.
+        public static GameObject AddExit(Transform parent, string name)
+        {
+            var shader = Shader.Find(ExitShader);
+            if (parent == null || shader == null) return null;
+            var host = new GameObject(name);
+            host.transform.SetParent(parent, false);
+            host.AddComponent<MeshFilter>().sharedMesh = HomeQuads();
+            var renderer = host.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = Exit(0);
+            Quiet(renderer);
+            return host;
+        }
+
+        public static bool IsExit(Material m) => m != null && m.shader != null && m.shader.name == ExitShader;
+
+        // One material per entrance number, shared like the socket writers'.
+        public static Material Exit(int entrance)
+        {
+            var shader = Shader.Find(ExitShader);
+            if (shader == null) return null;
+            var m = Made(Folder + "/YAPS Atlas Exit" + (entrance > 0 ? " #" + entrance : "") + ".mat", shader);
+            if (Mathf.RoundToInt(m.GetFloat("_YAPS_EntranceIndex")) != entrance)
+            {
+                m.SetFloat("_YAPS_EntranceIndex", entrance);
+                EditorUtility.SetDirty(m);
+            }
+            return m;
+        }
+
+        // LevelQuads for the directory's two homes, flagged by z the same way.
+        static Mesh HomeQuads()
+        {
+            string path = Folder + "/YAPS Atlas Exit Quads.asset";
+            var have = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+            if (have != null && have.vertexCount == 8 && have.HasVertexAttribute(VertexAttribute.TexCoord0))
+            {
+                return have;
+            }
+            var corners = new List<Vector3>();
+            var tris = new List<int>();
+            for (int q = 0; q < 2; q++)
+            {
+                int b = corners.Count;
+                corners.Add(new Vector3(-0.5f, -0.5f, q));
+                corners.Add(new Vector3(0.5f, -0.5f, q));
+                corners.Add(new Vector3(-0.5f, 0.5f, q));
+                corners.Add(new Vector3(0.5f, 0.5f, q));
+                tris.AddRange(new[] { b, b + 2, b + 1, b + 1, b + 2, b + 3 });
+            }
+            var mesh = new Mesh { name = "YAPS Atlas Exit Quads" };
+            mesh.SetVertices(new Vector3[8]);
+            mesh.SetUVs(0, corners);
+            mesh.SetTriangles(tris, 0);
+            mesh.bounds = new Bounds(Vector3.zero, Vector3.one * BoundsSize);
+            return Save(mesh, path, have);
+        }
 
         internal static void Quiet(MeshRenderer renderer)
         {

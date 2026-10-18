@@ -874,7 +874,8 @@ plug mesh stays, straight, and where to get the add-on. Installed, it is two thi
   (recommended)*, a VRChat avatar's plug bends into sockets in game, for everyone in the instance,
   and its sockets open around plugs, with the author's own tuning carried across.
 - **The YAPS tool**, *Tools ▸ YAPS ▸ Setup*, for any ChilloutVR avatar or prop, no VRChat
-  history needed: add sockets, make a plug, tune every knob, preview in the editor. The same
+  history needed: add sockets, make a plug, turn a hole into a [portal](#portals) that a plug comes
+  out of somewhere else, tune every knob, preview in the editor. The same
   system and the same shader either way, so a converted avatar and a native one are the same
   thing to each other.
 
@@ -943,8 +944,8 @@ both. The report says which case you're in.
 
 | | costs | reaches | how good it is |
 |---|---|---|---|
-| **Screen atlas** | one synced parameter per avatar, for ownership | anyone drawing the avatar with custom shaders on, in a view at least about 240 pixels square, whose own avatar speaks the same atlas protocol | about a tenth of a millimetre, every frame |
-| **Marker lights** | nothing, until an avatar has two or more sockets with marker lights: then one synced **Marker lights** choice, starting on **Off**, says which one is lit | anyone whose client draws the plug | exact, and sampled every frame |
+| **Screen atlas** | one synced parameter per avatar, for ownership | anyone drawing the avatar with custom shaders on, in a view at least about 240 pixels square, whose own avatar speaks the same atlas protocol | about a tenth of a millimetre, every frame, and the only route a [portal](#portals) works over |
+| **Marker lights** | nothing, until an avatar has two or more sockets with marker lights: then one synced **Marker lights** choice, starting on **Off**, says which one is lit | anyone whose client draws the plug | exact, and sampled every frame; a portal entrance is an ordinary hole here |
 
 **The atlas answers first, and marker lights stand in where it cannot**: a view too small to
 hold the atlas, or content that only has lights. The atlas carries the socket's own facing,
@@ -959,8 +960,12 @@ different protocols fall back to the marker lights, which have no version and al
 an avatar with two or more sockets lights only the one its wearer picked in **Marker lights**, and
 none until they pick. That is a quiet difference rather than a broken one, and it is worth knowing
 what it looks like from the inside: a lit socket still bends a plug, and only the things the lights
-cannot carry go missing, which is tags, one-way rings and a wearer's own sockets. If a plug behaves
-for one person and not another, compare versions before anything else.
+cannot carry go missing, which is tags, one-way rings, portals and a wearer's own sockets. If a plug
+behaves for one person and not another, compare versions before anything else. **Portals did not
+change the number.** An exit writes into rows of the atlas no socket uses, so ordinary sockets
+cross between 5.0 and the versions before it on the same protocol, and a plug built before 5.0
+reads a portal's entrance as an ordinary hole rather than misreading anything. A portal itself
+needs both sides on 5.0: the avatar wearing the sockets, and the avatar wearing the plug.
 
 **There used to be a third route, a contact channel, and from 4.5.1 it no longer bends a plug.**
 A contact only lets go when the socket leaves it, and a socket deleted or switched off while a plug
@@ -974,7 +979,8 @@ of the frame, ahead of the scene so the scene covers it and nothing is visible, 
 shader reads that block. Positions cost no sync bits and no contact pairs, it crosses between
 avatars, and it is what lets a plug pass through several sockets on its way rather than bending
 at the first. It needs the plug's own patched shader, so it arrives with a conversion or a
-rebuild. The full block is 932 by 596 pixels; a smaller view (a small mirror, a camera at a low
+rebuild. The full block is 932 by 596 pixels, and its top eight rows are where portal exits say
+where they are, rows the sockets never use, so a portal makes the block no bigger; a smaller view (a small mirror, a camera at a low
 resolution, the self portrait) gets a smaller block with fewer cells, worked out from the view's
 own size by the sockets and the plugs alike. Fewer cells means a crowded instance loses the odd
 socket in that view. Below about 240 pixels square the atlas is off and a plug seen there falls
@@ -1454,6 +1460,43 @@ above.
 **No contact channel is built.** A plug finds a socket you placed by hand the way it finds a
 converted one: through the screen atlas, with marker lights where the atlas cannot answer. Build
 takes out a channel an earlier version wired onto the avatar, which frees its synced parameters.
+
+#### Portals
+
+**A hole can lead somewhere else.** Set a hole's **Portal exit**, in the *What it is* card of its
+inspector, to another socket on the same avatar, and a plug that goes into the hole comes out of
+the exit: the part of the shaft past the entrance appears at the exit and leaves through its front,
+the side its markers sit on. The exit is still an ordinary socket in every other way. Any plug
+built with 5.0 can take a portal, the wearer's own or anyone else's. While the field is set the
+socket is a hole: **Kind** is locked to *Hole*, the banner reads *Portal entrance*, and the Scene
+view draws a dotted line from the entrance to its exit. Building the entrance puts one small
+object under the exit, *Atlas Exit (from* the entrance's name*)*; on a socket already built,
+setting the field builds it again. The object is the toolkit's own: built again with the entrance,
+removed with either socket, and taken out by **Clean up leftovers** once no entrance leads there.
+
+**Screen atlas only.** The exit says where it is through the screen atlas, so, as the field's
+tooltip puts it, "by marker light, and to plugs built before 5.0, this is an ordinary hole": the
+plug stops there and tapers as it always did. **Rebuild both avatars on 5.0**, the one wearing the
+sockets and the one wearing the plug, for a portal to work between them. Where it cannot work, a
+card under the field says why:
+- *its portal exit is itself* or *is not on this avatar*: the link is refused, and the hole stays
+  ordinary. An exit is another socket on the same avatar.
+- *its portal exit is gone*: the exit was deleted. Pick the exit again, or clear the field.
+- *is an ordinary hole for now*: only an avatar's first 15 sockets carry a number, in hierarchy
+  order, and a portal is found by its entrance's number.
+- *a portal on a prop stays an ordinary hole*: a prop has no wearer to key its exit by.
+- *the portal is not built yet: press Build*: the entrance has not been built since the field was
+  set, or was renamed or copied since.
+
+**The plug's mesh has to be fine enough to cut.** A short stretch of the shaft either side of the
+cut folds away inside each body, and the rest comes out of the exit. That stretch is the plug's
+longest triangle along the shaft, with a quarter added. Past a fifth of the plug's length the bake
+says the plug *stops at a portal entrance* and the plug treats every portal as an ordinary hole.
+Add loops along the shaft and bake again.
+
+**Not yet confirmed in game.** The plug's [readout](#yaps-the-plug-does-not-bend-toward-a-socket-in-game)
+has a cell for it, and [a plug stops at a portal entrance](#yaps-a-plug-stops-at-a-portal-entrance)
+goes through what to check.
 
 ### Squash: soft parts that press together
 
@@ -2078,6 +2121,17 @@ Bipeds are unaffected by any of it.
   pushing it aside, since the shader cannot remember which side the arm came in from. The stretch
   in motion reads the swing the avatar's own physics give, so stiff physics show little of it, and
   the editor preview's bounce is a stand-in.
+- **[Portals](#portals) (YAPS).** An entrance and its exit are worn by the same avatar: a portal
+  between two people, or on a prop, is not possible. A conversion never makes one, and one set in
+  the YAPS tool on a converted avatar is lost when that avatar is converted again, so set it after
+  the last conversion. The part that comes out of the exit is drawn only while the plug is: Unity
+  culls by the plug's own bounds, which stay around the plug, so with the plug's base out of view
+  the exit side can blink out. The plug's roll as it leaves the exit is approximate, a short
+  stretch either side of the cut is hidden inside the bodies, and a plug whose shadow stays
+  straight keeps a straight shadow. A crowded view can lose an exit's place in the atlas; the
+  entrance is then an ordinary hole in that view, never a way out of the wrong socket. Someone
+  else's copy of the avatar sees an ordinary hole until the wearer's owner id first syncs. Not yet
+  confirmed in game.
 - **Action-layer emotes and features.** Only **Gesture** and **FX** convert by default: Base,
   Additive and Action are off, because CVR drives locomotion and emotes itself. **An avatar that
   transforms usually needs Action ticked**: a mech that folds into a vehicle keeps its menu toggle
@@ -2151,7 +2205,7 @@ Find your symptom:
 | **Face, eyes, viewpoint** | [face tracking missing](#face-tracking-wasnt-set-up-and-the-avatar-definitely-has-it) · [blink problems](#your-eyes-stay-open-start-closed-or-lose-a-pupil) · [viewpoint off the head](#the-viewpoint-or-voice-position-is-nowhere-near-the-head) |
 | **Toggles, menus, contacts** | [toggle does nothing on screen](#a-toggle-switches-on-the-layer-plays-and-nothing-changes-on-screen) · [toggle never comes back](#a-toggle-switches-on-but-never-back-off) · [partial material swap](#a-material-swap-changes-only-some-parts) · [dead menu control](#a-menu-control-appears-moves-syncs-and-does-nothing) · [duplicate controls](#two-near-identical-menu-controls-and-only-one-works) · [dead contact](#a-contact-does-nothing-at-all-for-anyone-including-you) |
 | **What only others see (or don't)** | [flickering for others](#other-people-see-my-avatar-flickering-cycling-colours-or-thrashing-i-dont) · [rapid flicker](#an-animation-flickers-rapidly-often-only-on-other-players-screens) · [private sound](#a-sound-only-you-can-hear) · [private particles](#a-particle-effect-only-you-can-see) · [particle squares](#a-particle-effect-draws-as-plain-coloured-squares) · [one-eye effects](#an-effect-draws-in-one-eye-only-in-vr) |
-| **YAPS (penetration)** | [plug doesn't bend in game](#yaps-the-plug-does-not-bend-toward-a-socket-in-game) · [shader not patched](#yaps-could-not-patch-the-shader-or-the-test-plug-sits-there-straight) · [plug bends twice](#yaps-a-plug-bends-twice-or-stretches) · [socket reads "not built"](#yaps-a-converted-socket-reads-not-built-or-the-windows-row-says-a-plug-is-not-baked) · [stopped bending after unlocking materials](#yaps-a-plug-stopped-bending-after-unlocking-materials) · [unlocked Poiyomi warning](#yaps-the-report-says-poiyomis-unlocked-shader-ships-under-yaps) · [plug left alone](#yaps-a-plug-was-left-alone-because-its-chain-is-the-bodys-own) · [plain mesh jumps](#yaps-a-plain-mesh-plug-jumps-or-turns-the-moment-a-socket-engages-it) · [body-mesh socket won't open](#yaps-a-socket-on-the-body-mesh-does-not-open-around-a-plug) · [toggle greyed in the tester](#yaps-a-menu-toggle-the-tool-added-is-greyed-out-in-the-ccks-tester-or-shows-a-red-) · [OSC toy stays silent](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
+| **YAPS (penetration)** | [plug doesn't bend in game](#yaps-the-plug-does-not-bend-toward-a-socket-in-game) · [plug stops at a portal](#yaps-a-plug-stops-at-a-portal-entrance) · [shader not patched](#yaps-could-not-patch-the-shader-or-the-test-plug-sits-there-straight) · [plug bends twice](#yaps-a-plug-bends-twice-or-stretches) · [socket reads "not built"](#yaps-a-converted-socket-reads-not-built-or-the-windows-row-says-a-plug-is-not-baked) · [stopped bending after unlocking materials](#yaps-a-plug-stopped-bending-after-unlocking-materials) · [unlocked Poiyomi warning](#yaps-the-report-says-poiyomis-unlocked-shader-ships-under-yaps) · [plug left alone](#yaps-a-plug-was-left-alone-because-its-chain-is-the-bodys-own) · [plain mesh jumps](#yaps-a-plain-mesh-plug-jumps-or-turns-the-moment-a-socket-engages-it) · [body-mesh socket won't open](#yaps-a-socket-on-the-body-mesh-does-not-open-around-a-plug) · [toggle greyed in the tester](#yaps-a-menu-toggle-the-tool-added-is-greyed-out-in-the-ccks-tester-or-shows-a-red-) · [OSC toy stays silent](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
 | **Uploading** | [no Upload button](#the-cck-shows-no-upload-button-or-the-uploaded-avatar-is-missing-something) · [object ID failure](#uploading-fails-with-failed-to-generate-new-object-id) |
 
 ### Nothing compiles: `'ImageDownloader' does not contain a definition for 'GetImage'`
@@ -2939,17 +2993,20 @@ Work down the list; the first that fits is usually it.
   seen together. The readout is a small strip of colours the plug draws on itself instead, and it
   leaves the plug bending normally. It is the plug's own answer, not a second reading taken beside
   it: it shares the plug's renderer, so it sees the same atlas, the same lights, the same toggle and
-  the same frame the deform does. Twelve cells
+  the same frame the deform does. Fourteen cells
   in two rows. Top row, left to right: who resolved the socket (grey nobody, cyan the editor's
   preview, amber a marker light, green the screen atlas), whether it is bending (red not engaged,
   amber engaged but its toggle holds it off, green bending), how far away the socket is as a bar,
-  what the atlas read, whether the atlas is on the camera drawing this view, and whether this plug
-  asks for the atlas at all. Bottom row, the plug's own state: whether it recovered its frame from
-  its vertices (grey a plain-mesh plug, which is normal, red the recovery refused and the bend is
-  around the wrong axis), whether the readout's vertex is inside the bake, whether the bake read
+  what the atlas read, whether the atlas is on the camera drawing this view, whether this plug
+  asks for the atlas at all, and the [portal](#portals) (dark the plug's path ends in no hole, amber
+  a hole with no owner or number yet, grey no exit published for that hole, which is every
+  ordinary hole, green the exit found, red the exit found and this plug cannot cut). Bottom row,
+  the plug's own state: whether it recovered its frame from its vertices (grey a plain-mesh plug,
+  which is normal, red the recovery refused and the bend is around the wrong axis), whether the readout's vertex is inside the bake, whether the bake read
   anything, whether the plug will take its own wearer's sockets (amber refusing, which is the
-  quietest reason a plug finds nothing), how many sockets are in the atlas chain, and whether a
-  socket was refused by this plug's tags (red: refused, and nearer than whatever did answer).
+  quietest reason a plug finds nothing), how many sockets are in the atlas chain, whether a
+  socket was refused by this plug's tags (red: refused, and nearer than whatever did answer), and
+  one dark cell that ends the row.
   Black or grey is nothing, red is a fault, green is working. **The toggle syncs**, so everyone
   who can see the plug sees the readout while it is on, each drawn from what their own game
   resolves: someone helping you reads your plug as their client sees it. Off, it draws nothing.
@@ -3004,6 +3061,30 @@ Work down the list; the first that fits is usually it.
 - **The plug bends but too little or too much:** *The bend toward a socket* and *Inside a socket*
   on the plug component are the knobs; the material panel has the same ones. Squeeze and bulge
   are as authored on the source avatar.
+
+### YAPS: a plug stops at a portal entrance
+
+The plug goes into a [portal](#portals)'s entrance and stops there, tapering as at any hole,
+instead of coming out of the exit. In order:
+
+1. **Was the plug built with 5.0?** A plug baked or converted before 5.0 sees an ordinary hole, and
+   so does one whose shader was updated without baking again. Bake it again, or convert its avatar
+   again. That is the plug's avatar, which may be someone else's.
+2. **Was the sockets' avatar built and uploaded after the portal was set?** The card under
+   **Portal exit** says whether it works; *the portal is not built yet: press Build* means just
+   that. Then upload again.
+3. **Did the bake say the plug *stops at a portal entrance*?** Its triangles are too long along the
+   shaft for a portal to cut. Add loops along the shaft and bake again.
+4. **Is the entrance one of the avatar's first 15 sockets?** Past those it *is an ordinary hole
+   for now*: reorder the hierarchy so it comes earlier, or remove a socket.
+5. **Was it found by marker light?** A view under about 240 pixels square, a viewer with custom
+   shaders off, and a DPS plug all see an ordinary hole.
+6. **Just joined?** Someone else's copy of the avatar is an ordinary hole until the wearer's owner
+   id first syncs.
+7. **Turn on *YAPS readout*.** The top row's last cell is the portal: dark, the plug's path ends in
+   no hole; amber, the hole has no owner or number yet; grey, no exit is published for that hole;
+   green, the exit was found; red, the exit was found and this plug cannot cut, which is step 1 or
+   step 3.
 
 ### YAPS: "could not patch the shader", or the test plug sits there straight
 

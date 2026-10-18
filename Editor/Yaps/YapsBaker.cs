@@ -62,7 +62,20 @@ namespace AvatarBridge
             // be measured in world space, where the avatar turning round
             // moves every number.
             public int TipVertex = -1;
+            // The portal's band, _YAPS_PortalSpan: 0 for a socket, -1 for a
+            // mesh too coarse to cut.
+            public float PortalSpan;
         }
+
+        // Past this a band is a fifth of the plug: so much of it collapses
+        // inside each body that the cut reads as the plug shrinking.
+        public const float PortalSpanLimit = 0.2f;
+
+        // A quarter more than the widest triangle, so none spans the cut.
+        const float PortalSpanMargin = 1.25f;
+
+        public const string CoarseNote = "This plug's triangles are too long along its shaft for a portal to cut " +
+            "it, so it stops at a portal entrance as at any hole. Add loops along the shaft and bake again.";
 
         // wantedShapes: a socket names its stages; a plug takes the shapes
         // that move it most. objectFrame: a socket's shader adds the shape
@@ -267,6 +280,15 @@ namespace AvatarBridge
                 return null;
             }
 
+            // A socket's material never deforms, so only a plug wants a band.
+            float portalSpan = objectFrame ? 0f : PortalSpanOf(mesh, positions, activeWeights, length);
+            if (portalSpan > PortalSpanLimit) portalSpan = -1f;
+            // A second mesh takes the first one's band, or it would come out
+            // of the exit shifted against it by twice the difference.
+            if (shared) portalSpan = portalSpan >= 0f && portalSpan <= shareFrameWith.PortalSpan ? shareFrameWith.PortalSpan : -1f;
+            if (portalSpan < 0f)
+                report?.Approximated(Category, $"\"{renderer.name}\" stops at a portal entrance", CoarseNote);
+
             // The mesh reaching the vertex shader has blendshapes applied and
             // the bake is the rest pose; the deltas let the shader rebuild it.
             var shapes = CaptureShapes(mesh, skin, toPlug, activeWeights, placements, out var shapeNames,
@@ -380,7 +402,27 @@ namespace AvatarBridge
                 Rotation = rotation,
                 AnchorVertex = anchor,
                 TipVertex = tip,
+                PortalSpan = portalSpan,
             };
+        }
+
+        // The widest z-span of any triangle wholly on the shaft, over the
+        // rest length, with the margin.
+        static float PortalSpanOf(Mesh mesh, Vector3[] positions, List<float> activeWeights, float length)
+        {
+            if (length <= 0f) return -1f;
+            var tris = mesh.triangles;
+            float widest = 0f;
+            for (int t = 0; t + 2 < tris.Length; t += 3)
+            {
+                int a = tris[t], b = tris[t + 1], c = tris[t + 2];
+                if (a >= positions.Length || b >= positions.Length || c >= positions.Length) continue;
+                if (activeWeights[a] <= 0.001f || activeWeights[b] <= 0.001f || activeWeights[c] <= 0.001f) continue;
+                float lo = Mathf.Min(positions[a].z, Mathf.Min(positions[b].z, positions[c].z));
+                float hi = Mathf.Max(positions[a].z, Mathf.Max(positions[b].z, positions[c].z));
+                widest = Mathf.Max(widest, hi - lo);
+            }
+            return widest / length * PortalSpanMargin;
         }
 
         // Which child bone chain is the SHAFT, when the stated root sits above
@@ -579,6 +621,7 @@ namespace AvatarBridge
             target.SetFloat("_YAPS_BakeGirth", 1f);
             target.SetFloat("_YAPS_FrameFromVertex", skinned ? 1f : 0f);
             target.SetFloat("_YAPS_ShapeCount", result.Shapes.Count);
+            target.SetFloat("_YAPS_PortalSpan", result.PortalSpan);
             if (result.ShapeWeights != null)
             {
                 string[] packs = { "_YAPS_ShapeWeights", "_YAPS_ShapeWeights2", "_YAPS_ShapeWeights3", "_YAPS_ShapeWeights4" };

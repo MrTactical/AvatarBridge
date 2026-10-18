@@ -21,6 +21,9 @@ content that is already out there, not only with itself.
   *Squash breasts and butt against each other and hands* when converting with AvatarBridge.
 - For a body whose bones do not say which parts squash, paint them: **Paint regions** on the same
   card, or *Tools ▸ YAPS ▸ Squash regions*.
+- **Portals**: set a hole's **Portal exit** to another socket on the same avatar, and a plug that
+  goes in comes out there. Build both the plug's and the socket's avatars with 5.0; to an older
+  plug, and by marker light, it is an ordinary hole.
 
 **The ChilloutVR Toolkit** (*Tools ▸ Avatar Bridge ▸ ChilloutVR Toolkit*) is a set of utilities that work on any
 ChilloutVR avatar: merging animator controllers, tidying an avatar before upload, adding face
@@ -57,8 +60,8 @@ publishes itself into a small block of pixels on the screen, stamped with a prot
 plug ignores any other number. What counts is the release each avatar or prop was baked with, not
 the one installed. So far: 4.5.0 and 4.5.1 use protocol 2, 4.6.0 to 4.6.2 use 7, and 4.6.4 onward
 use 9. Two avatars on different numbers fall back to the older marker lights instead: everything
-still bends, and what goes missing is what the lights cannot carry, which is tags, one-way rings
-and a wearer's own sockets. If a plug behaves with one person and not another, compare which
+still bends, and what goes missing is what the lights cannot carry, which is tags, one-way rings,
+portals and a wearer's own sockets. Portals kept protocol 9 but need both avatars built with 5.0. If a plug behaves with one person and not another, compare which
 releases their avatars were baked with before anything else.
 
 ## Help
