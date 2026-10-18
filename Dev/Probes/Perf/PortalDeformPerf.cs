@@ -376,7 +376,7 @@ namespace AvatarBridge.Regression
         }
 
         // A tapered rod along +Z, 64 round, every vertex past the hole and active.
-        static Texture2D Bake()
+        internal static Texture2D Bake()
         {
             const int width = 8192;
             int floats = 1 + Plug * 10, height = (floats + width - 1) / width;
@@ -402,7 +402,7 @@ namespace AvatarBridge.Regression
         }
 
         // The patcher's defaults, the plug's own frame, the atlas on.
-        static Material Plugged(Material m, Texture2D bake)
+        internal static Material Plugged(Material m, Texture2D bake)
         {
             m.SetTexture("_YAPS_Bake", bake);
             m.SetVector("_YAPS_Bake_TexelSize", new Vector4(1f / bake.width, 1f / bake.height, bake.width, bake.height));
@@ -422,7 +422,7 @@ namespace AvatarBridge.Regression
         }
 
         // YapsAtlas.LevelQuads, in memory: eight quads, corners in UV0, positions zero.
-        static Mesh LevelQuads()
+        internal static Mesh LevelQuads()
         {
             var corners = new List<Vector3>();
             var tris = new List<int>();
@@ -443,28 +443,28 @@ namespace AvatarBridge.Regression
             return mesh;
         }
 
-        static bool Same(Vector3 x, Vector3 y) =>
+        internal static bool Same(Vector3 x, Vector3 y) =>
             BitConverter.SingleToInt32Bits(x.x) == BitConverter.SingleToInt32Bits(y.x)
             && BitConverter.SingleToInt32Bits(x.y) == BitConverter.SingleToInt32Bits(y.y)
             && BitConverter.SingleToInt32Bits(x.z) == BitConverter.SingleToInt32Bits(y.z);
 
-        static double Median(List<double> xs)
+        internal static double Median(List<double> xs)
         {
             var s = xs.OrderBy(x => x).ToList();
             return s.Count % 2 == 1 ? s[s.Count / 2] : (s[s.Count / 2 - 1] + s[s.Count / 2]) / 2;
         }
 
-        static double Spread(List<double> xs) => xs.Max() - xs.Min();
+        internal static double Spread(List<double> xs) => xs.Max() - xs.Min();
 
         // As YapsShaderPatcher inlines it: the include lines go, the rest stays.
-        static string Part(string dir, string name) =>
+        internal static string Part(string dir, string name) =>
             Regex.Replace(Lf(File.ReadAllText(Path.Combine(dir, name + ".cginc"))), "#include\\s+\"yaps_\\w+\\.cginc\"\\s*", "");
 
-        static string Lf(string s) => s.Replace("\r\n", "\n");
+        internal static string Lf(string s) => s.Replace("\r\n", "\n");
 
         static void Log(string s) => Debug.Log(Tag + s);
 
-        static string Arg(string name)
+        internal static string Arg(string name)
         {
             var args = Environment.GetCommandLineArgs();
             int i = Array.IndexOf(args, name);
