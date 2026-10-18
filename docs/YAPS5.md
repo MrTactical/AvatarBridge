@@ -1696,6 +1696,12 @@ added to the plug's slot over the copies. `_YAPS_CopyStart` is the first copy ve
   `_YAPS_CopyStart` is above 0 is patched with it.
 - DS1, the editor gate: 74 PASS, 0 FAIL, on ten hosts, three atlas formats and 111-step sweeps
   across where the copy starts drawing [M].
+- DS2, the cost, RTX 4080, 6433 vertices, 7 interleaved repeats, three runs [M]: the define with no
+  copy is noise (+0.07 us a pass). The copy takes a pass from 7.87 to 13.59 us hidden and 16.74 us
+  drawn with the atlas empty, and from 52.73 to 102.87 and 103.49 us with it full: 1.7 to 2.0 times
+  the plain plug. Hidden costs 72% (empty) to 98% (full) of drawn, since the whole resolve runs
+  before the copy learns there is no second socket. Skinning goes from 1.18 to 2.29 us a frame.
+  Per pass, per camera and per eye [R].
 
 Open [GAME]: DG1, whether the appended vertices survive upload and both copies show on a second
 client.

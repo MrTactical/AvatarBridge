@@ -32,8 +32,8 @@ namespace AvatarBridge.Yaps
 
         [Tooltip("A second copy of the plug, drawn only while a second socket is in reach: the first copy " +
                  "goes into one socket and the second into the next. Screen atlas only. Doubles the plug's " +
-                 "vertices and adds to its deform cost. Only when no other plug shares the mesh and the plug " +
-                 "sits on one material. Bake again after changing it.")]
+                 "vertices and about doubles its deform cost, even while the copy is hidden. Only when no " +
+                 "other plug shares the mesh and the plug sits on one material. Bake again after changing it.")]
         public bool twoAtOnce;
 
         [Header("Measurement")]

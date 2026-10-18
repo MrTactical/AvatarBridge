@@ -4961,6 +4961,21 @@ if (leftOver > 0 && socket.tier > 2.5 && socket.chain.portal != 0
   - The rest of the deform is about 48% of the listing [M, fxc proxy].
   - Copy 2 pays this even while hidden. Skinning also doubles for plug vertices.
   - Multiply by passes and cameras. DS2 must give a number.
+  - **DS2, measured 2026-10-18 (`portal-spike` 487456b, `Dev/Probes/Perf/DuplicatePerf`, RTX 4080, 6433 vertices, 7 interleaved repeats, three runs; re-run by the verifier, 41 of 41 series within spread): PASS** [M]. The [R] line above was too low on a full atlas.
+
+    | Per pass | Empty atlas | Full atlas |
+    |---|---|---|
+    | plain plug | 7.86 us | 52.73 us |
+    | define on, no copy | +0.06 | -0.01 |
+    | copy hidden (one socket, none past it) | 13.61 (1.73x) | 102.92 (1.95x) |
+    | copy drawn into the second | 16.78 (1.91x) | 103.52 (1.99x) |
+    | hidden as a share of drawn | 72% | 98% |
+
+    - Hidden costs nearly as much as drawn because the whole resolve runs before `YapsCopyPath` learns there is no second socket. Skinning goes from 1.16 to 2.30 us a frame.
+    - Both breaks discriminate: the copy hide removed (nothing timed), and a 64-tap loop in the copy path (20 series fail, the 21 it misses pass). The verifier's own break (copy 2 on copy 1's path) fails the vertex-by-vertex check.
+    - **A frame for D4 [R, not measured]:** per pass times passes, eyes and cameras. Base, shadow caster, outline and one ForwardAdd, two eyes instanced, is 8 runs: the copy adds about 46 us a frame on an empty atlas and 400 us on a full one, a plug, or 0.4% and 3.6% of a 90 Hz frame. A mirror doubles it.
+    - **Not timed:** idle, no socket in reach at all, the state an opt-in plug spends most of its time in (copy 1 on the rest path); `_YAPS_FrameFromVertex` 1, which real skinned plugs use, so the copy also pays the basis recovery; the drawn copy's fragments; blendshapes. All [R].
+    - **For S1b:** constant inputs run 1.35x (empty) to 1.48x (full) faster than mesh-like ones (5.83 against 7.86 us, 35.55 against 52.73), since the compiler folds them. S1b's portal deltas were measured on constant inputs, so they may understate a real plug.
 - **Authoring.** "Two at once" bool on `YapsPlug`, default off, in the plug fold (`YapsComponentEditors.cs:1553-1585`). It must never be animated, because a renderer-wide block reaches every slot [M, memory].
 - **Production, built 2026-10-18 at risk (portal-prod), from DS1's anchored design (38d1ea4, gate 74 PASS 0 FAIL).** Compiles offline; the Unity round trip and DG1 are still to run.
   - `YapsPlug.twoAtOnce` (inspector label "Two At Once", the Skinned mesh card) and `dupFrom`. `YapsDuplicate.cs` holds the spike's `Build` and `ExtendBake` unchanged, plus `Add`, which extends the plain bake's own file in place (`YapsBaker.Result.Pixels`, kept only when asked, since the saved texture is not readable).

@@ -1511,8 +1511,8 @@ again, and the plug carries a second copy of itself. The first copy goes where t
 would; the second goes on from where the first one's path ends, into the next hole the atlas lines
 up past it, through any rings on the way. With no second socket in reach the copy is hidden, and it
 is hidden too while the plug's toggle is fading. The copy is a second set of the plug's vertices on
-the mesh, and the plug's material pays the copy's extra deform work on every vertex it draws. The
-readout describes the first copy.
+the mesh, and each of them runs the whole deform, hidden or not, so the plug costs the graphics card
+about twice what it did, even with no second socket in reach. The readout describes the first copy.
 
 **Screen atlas only.** The atlas is the only route that hands a plug more than one socket, so by
 marker light the plug is one plug.
