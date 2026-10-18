@@ -745,8 +745,8 @@ namespace AvatarBridge
                 "Convert to YAPS: rebuilt for ChilloutVR with the author's tuning, and works with DPS, TPS " +
                 "and SPS already on the platform.\n" +
                 "Remove: takes it all out.\n" +
-                "Leave as VRChat built it: nothing works; only for looking at what was there.",
-                new[] { "Convert to YAPS (recommended)", "Remove", "Leave as VRChat built it (won't work)" },
+                "Leave as VRChat built it: touches nothing; each plug and socket keeps whatever its own system does here.",
+                new[] { "Convert to YAPS (recommended)", "Remove", "Leave as VRChat built it" },
                 settings.stripSpsSystems ? (settings.convertYapsSystems ? 0 : 1) : 2,
                 choice =>
                 {
@@ -764,7 +764,7 @@ namespace AvatarBridge
             else if (!settings.stripSpsSystems)
             {
                 b.Add(BridgeElements.Notice(Tone.Warn,
-                    "Nothing will bend or open, and the haptics parameters can push the avatar over the sync cap."));
+                    "Nothing is converted, and the haptics parameters can push the avatar over the sync cap."));
             }
             else if (settings.convertYapsSystems && settings.syncHapticsForOsc)
             {
