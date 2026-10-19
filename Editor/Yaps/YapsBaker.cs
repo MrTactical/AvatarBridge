@@ -62,7 +62,29 @@ namespace AvatarBridge
             // be measured in world space, where the avatar turning round
             // moves every number.
             public int TipVertex = -1;
+            // The portal's band, _YAPS_PortalSpan: 0 for a socket, -1 for a
+            // mesh too coarse to cut.
+            public float PortalSpan;
+            // The bake's floats as written, only when asked for: the second
+            // copy extends them, and the saved texture is no longer readable.
+            public float[] Pixels;
         }
+
+        // Past this a band is a fifth of the plug: so much of it collapses
+        // inside each body that the cut reads as the plug shrinking.
+        public const float PortalSpanLimit = 0.2f;
+
+        // A quarter more than the widest triangle, so none spans the cut.
+        const float PortalSpanMargin = 1.25f;
+
+        public const string CoarseNote = "This plug's triangles are too long along its shaft for a portal to cut " +
+            "it, so it stops at a portal entrance as at any hole. Add loops along the shaft and bake again.";
+
+        // A second mesh cuts at the first one's band or not at all, so one
+        // coarser than the first stops while the rest of the plug goes through.
+        public const string CoarseExtraNote = "This mesh is baked into the plug, and its triangles are longer along " +
+            "the shaft than the plug's main mesh's, so the rest of the plug goes through a portal and this mesh " +
+            "stops at the entrance. Add loops along its shaft and bake again.";
 
         // wantedShapes: a socket names its stages; a plug takes the shapes
         // that move it most. objectFrame: a socket's shader adds the shape
@@ -72,7 +94,7 @@ namespace AvatarBridge
         public static Result Bake(Renderer renderer, Transform plugRoot, string outputDir,
             BridgeReport report, out string failure, IList<string> wantedShapes = null,
             bool objectFrame = false, bool flipAxis = false, Result shareFrameWith = null,
-            float sizeScale = 1f)
+            float sizeScale = 1f, bool keepPixels = false)
         {
             failure = null;
             if (renderer == null || plugRoot == null)
@@ -267,6 +289,16 @@ namespace AvatarBridge
                 return null;
             }
 
+            // A socket's material never deforms, so only a plug wants a band.
+            float portalSpan = objectFrame ? 0f : PortalSpanOf(mesh, positions, activeWeights, length);
+            if (portalSpan > PortalSpanLimit) portalSpan = -1f;
+            // A second mesh takes the first one's band, or it would come out
+            // of the exit shifted against it by twice the difference.
+            if (shared) portalSpan = portalSpan >= 0f && portalSpan <= shareFrameWith.PortalSpan ? shareFrameWith.PortalSpan : -1f;
+            if (portalSpan < 0f)
+                report?.Approximated(Category, $"\"{renderer.name}\" stops at a portal entrance",
+                    shared && shareFrameWith.PortalSpan >= 0f ? CoarseExtraNote : CoarseNote);
+
             // The mesh reaching the vertex shader has blendshapes applied and
             // the bake is the rest pose; the deltas let the shader rebuild it.
             var shapes = CaptureShapes(mesh, skin, toPlug, activeWeights, placements, out var shapeNames,
@@ -288,7 +320,7 @@ namespace AvatarBridge
                 }
             }
 
-            var texture = WriteTexture(positions, normals, tangents, activeWeights, count, shapes);
+            var texture = WriteTexture(positions, normals, tangents, activeWeights, count, shapes, out var pixels);
             Directory.CreateDirectory(outputDir);
             // Named for the plug that wrote it, never numbered. A unique path is
             // the wrong answer here: the name it avoids belongs to the SAME plug
@@ -380,7 +412,28 @@ namespace AvatarBridge
                 Rotation = rotation,
                 AnchorVertex = anchor,
                 TipVertex = tip,
+                PortalSpan = portalSpan,
+                Pixels = keepPixels ? pixels : null,
             };
+        }
+
+        // The widest z-span of any triangle wholly on the shaft, over the
+        // rest length, with the margin.
+        static float PortalSpanOf(Mesh mesh, Vector3[] positions, List<float> activeWeights, float length)
+        {
+            if (length <= 0f) return -1f;
+            var tris = mesh.triangles;
+            float widest = 0f;
+            for (int t = 0; t + 2 < tris.Length; t += 3)
+            {
+                int a = tris[t], b = tris[t + 1], c = tris[t + 2];
+                if (a >= positions.Length || b >= positions.Length || c >= positions.Length) continue;
+                if (activeWeights[a] <= 0.001f || activeWeights[b] <= 0.001f || activeWeights[c] <= 0.001f) continue;
+                float lo = Mathf.Min(positions[a].z, Mathf.Min(positions[b].z, positions[c].z));
+                float hi = Mathf.Max(positions[a].z, Mathf.Max(positions[b].z, positions[c].z));
+                widest = Mathf.Max(widest, hi - lo);
+            }
+            return widest / length * PortalSpanMargin;
         }
 
         // Which child bone chain is the SHAFT, when the stated root sits above
@@ -579,6 +632,7 @@ namespace AvatarBridge
             target.SetFloat("_YAPS_BakeGirth", 1f);
             target.SetFloat("_YAPS_FrameFromVertex", skinned ? 1f : 0f);
             target.SetFloat("_YAPS_ShapeCount", result.Shapes.Count);
+            target.SetFloat("_YAPS_PortalSpan", result.PortalSpan);
             if (result.ShapeWeights != null)
             {
                 string[] packs = { "_YAPS_ShapeWeights", "_YAPS_ShapeWeights2", "_YAPS_ShapeWeights3", "_YAPS_ShapeWeights4" };
@@ -1066,13 +1120,13 @@ namespace AvatarBridge
         // --- the texture ----------------------------------------------
 
         static Texture2D WriteTexture(Vector3[] positions, Vector3[] normals, Vector3[] tangents,
-            List<float> active, int count, List<Vector3[]> shapes)
+            List<float> active, int count, List<Vector3[]> shapes, out float[] pixels)
         {
             int floats = 1 + count * FloatsPerVertex + shapes.Count * count * FloatsPerShapeVertex;
             int height = Mathf.Max(1, Mathf.CeilToInt((float) floats / TextureWidth));
             // One float per RGBA32 pixel, uploaded as raw bytes: red is the
             // least significant byte, as the shader reads it.
-            var pixels = new float[TextureWidth * height];
+            pixels = new float[TextureWidth * height];
 
             int at = 0;
             Write(pixels, ref at, 0f);   // header
@@ -1107,10 +1161,15 @@ namespace AvatarBridge
                 }
             }
 
-            // Point filtering and no mips are load-bearing, not tidiness: the
-            // shader reassembles floats from raw bytes, so any interpolation
-            // corrupts the values.
-            var texture = new Texture2D(TextureWidth, height, TextureFormat.RGBA32, false, true)
+            return BakeTexture(pixels);
+        }
+
+        // Point filtering and no mips are load-bearing, not tidiness: the
+        // shader reassembles floats from raw bytes, so any interpolation
+        // corrupts the values.
+        internal static Texture2D BakeTexture(float[] pixels)
+        {
+            var texture = new Texture2D(TextureWidth, pixels.Length / TextureWidth, TextureFormat.RGBA32, false, true)
             {
                 name = "YAPS Bake",
                 filterMode = FilterMode.Point,
@@ -1286,7 +1345,7 @@ namespace AvatarBridge
         // creating it again destroys the object and the file's identity, and
         // the materials and mesh filters of every earlier conversion still
         // point at both.
-        static T SaveInPlace<T>(T made, string path) where T : UnityEngine.Object
+        internal static T SaveInPlace<T>(T made, string path) where T : UnityEngine.Object
         {
             var existing = AssetDatabase.LoadAssetAtPath<T>(path);
             if (existing == null)

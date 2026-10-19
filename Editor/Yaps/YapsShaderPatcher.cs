@@ -50,6 +50,8 @@ namespace AvatarBridge
         _YAPS_Overrun (""YAPS allow overrun"", Range(0,1)) = 1
         _YAPS_BakeScale (""YAPS bake scale"", Float) = 1
         _YAPS_BakeGirth (""YAPS bake girth"", Float) = 1
+        _YAPS_PortalSpan (""YAPS portal band (-1 too coarse)"", Float) = 0
+        _YAPS_CopyStart (""YAPS second copy's first vertex"", Float) = 0
         _YAPS_FrameFromVertex (""YAPS frame from vertex"", Range(0,1)) = 0
         _YAPS_SocketPos (""YAPS socket position"", Vector) = (0,0,0,0)
         _YAPS_SocketForward (""YAPS socket forward"", Vector) = (0,0,0,0)
@@ -145,7 +147,8 @@ namespace AvatarBridge
         {
             if (patchedOrOriginal == null || patchedOrOriginal.shader == null) return null;
             var shader = patchedOrOriginal.shader;
-            if (NameCache.TryGetValue(shader, out string cached)) return cached;
+            bool duplicate = Duplicate(patchedOrOriginal);
+            if (NameCache.TryGetValue((shader, duplicate), out string cached)) return cached;
             // A patched material names its own source; an unpatched one is
             // its own source.
             var from = OriginalShaderOf(patchedOrOriginal) ?? shader;
@@ -153,9 +156,9 @@ namespace AvatarBridge
             if (string.IsNullOrEmpty(sourcePath)) return null;
             var unit = ShaderSpiPatcher.ReadUnit(sourcePath);
             if (unit.Count == 0) return null;
-            string yaps = LoadYapsSource(out _);
+            string yaps = YapsSourceFor(duplicate, out _);
             if (yaps == null) return null;
-            return NameCache[shader] = PatchedName(unit[0].Text, NameHash(sourcePath, unit, yaps));
+            return NameCache[(shader, duplicate)] = PatchedName(unit[0].Text, NameHash(sourcePath, unit, yaps));
         }
 
         // The answer depends on the material's shader and on files in the
@@ -163,7 +166,7 @@ namespace AvatarBridge
         // material panel asks on every GUI event, and each answer read the
         // whole include closure and hashed it. Failures are never kept: a
         // read that failed once is tried again.
-        static readonly Dictionary<Shader, string> NameCache = new Dictionary<Shader, string>();
+        static readonly Dictionary<(Shader, bool), string> NameCache = new Dictionary<(Shader, bool), string>();
 
         sealed class NameCacheReset : AssetPostprocessor
         {
@@ -215,7 +218,7 @@ namespace AvatarBridge
             var stand = new Material(original) { name = patched.name };
             try
             {
-                var current = Patch(stand, report, out _, out _, allowSps: true);
+                var current = Patch(stand, report, out _, out _, allowSps: true, duplicate: Duplicate(patched));
                 if (current == null) return false;
                 patched.shader = current;
                 return true;
@@ -495,8 +498,10 @@ namespace AvatarBridge
             }
         }
 
+        // duplicate: the plug's second copy is drawn, which the material says
+        // by itself once its _YAPS_CopyStart is set.
         public static Shader Patch(Material material, BridgeReport report,
-            out string refusal, out int skippedShadowPasses, bool allowSps = false)
+            out string refusal, out int skippedShadowPasses, bool allowSps = false, bool duplicate = false)
         {
             refusal = null;
             skippedShadowPasses = 0;
@@ -510,6 +515,7 @@ namespace AvatarBridge
             // in one lock; a lone patch prepares its own.
             if (Deferred == null) YapsLock.Prepare(new[] { material });
             var asked = material;
+            duplicate |= Duplicate(asked);
             material = YapsLock.Basis(material);
             YapsLock.WarnIfUnlocked(asked, material, report);
 
@@ -551,8 +557,20 @@ namespace AvatarBridge
                           "there is no vertex function of its own to wrap";
                 return null;
             }
+            // A pass borrowed whole keeps the other shader's vertex stage, which no edit here
+            // reaches, so the plug drew straight with no word. A borrowed caster or lightmap
+            // pass is fine: neither is the plug the player sees.
+            string borrowed = Regex.Matches(shaderFile.Text, @"^[ \t]*UsePass\s+""([^""]+)""", RegexOptions.Multiline)
+                .Cast<Match>().Select(m => m.Groups[1].Value)
+                .FirstOrDefault(p => !Regex.IsMatch(p, @"/(SHADOW_?CASTER|META)$", RegexOptions.IgnoreCase));
+            if (borrowed != null)
+            {
+                refusal = $"it borrows the pass \"{borrowed}\" from another shader, and the patch " +
+                          "cannot reach a borrowed pass's vertex stage";
+                return null;
+            }
 
-            string yaps = LoadYapsSource(out string loadFailure);
+            string yaps = YapsSourceFor(duplicate, out string loadFailure);
             if (yaps == null)
             {
                 refusal = loadFailure;
@@ -812,7 +830,6 @@ namespace AvatarBridge
                 {
                     return true;   // already done for another pass
                 }
-                alreadyInjected[injectedKey] = false;
             }
 
             int parenOpen = file.Text.IndexOf('(', head.Index);
@@ -870,10 +887,6 @@ namespace AvatarBridge
             members.TryGetValue("NORMAL", out string normalField);
             members.TryGetValue("TANGENT", out string tangentField);
             missingFrame = normalField == null || tangentField == null;
-            if (injectedKey != null)
-            {
-                alreadyInjected[injectedKey] = missingFrame;
-            }
             members.TryGetValue("SV_VERTEXID", out string vertexIdField);
 
             string idExpression;
@@ -956,6 +969,13 @@ namespace AvatarBridge
             // own includes have run, so UnityCG's matrices and light arrays exist.
             file.Text = file.Text.Insert(braceOpen + 1, body.ToString());
             file.Text = file.Text.Insert(head.Index, "\n" + yaps + "\n");
+            // Marked only once injected. Passes run last first, so a shadow caster that
+            // fails here, and is skipped as cosmetic, otherwise left every later pass
+            // "already done" with nothing in it: a plug drawn straight, no refusal.
+            if (injectedKey != null)
+            {
+                alreadyInjected[injectedKey] = missingFrame;
+            }
             return true;
         }
 
@@ -1166,6 +1186,19 @@ namespace AvatarBridge
         static string YapsFolder;
         static string[] YapsRead;
         static string YapsJoined;
+
+        // A plug drawing its second copy, by the value its material holds.
+        public static bool Duplicate(Material m) =>
+            m != null && m.HasProperty("_YAPS_CopyStart") && m.GetFloat("_YAPS_CopyStart") > 0;
+
+        // The copy's code costs every vertex registers (52 temps to 59 under
+        // fxc) whether or not a copy is there, so only a material that draws
+        // one gets it, as a shader of its own beside the plain one.
+        static string YapsSourceFor(bool duplicate, out string failure)
+        {
+            string yaps = LoadYapsSource(out failure);
+            return yaps != null && duplicate ? "#define YAPS_DUPLICATE\n" + yaps : yaps;
+        }
 
         static string LoadYapsSource(out string failure)
         {

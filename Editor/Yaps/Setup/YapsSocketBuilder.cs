@@ -397,12 +397,110 @@ namespace AvatarBridge
                 }
             });
 
+            var avatar = socket.GetComponentInParent<CVRAvatar>(true);
+            BuildExit(socket, avatar);
+
             // The writer comes back unnumbered. Its avatar numbers it again,
             // with every plug's answer, whichever door built the socket; a
             // prop's or a world's still wants the number, for its bucket.
-            var avatar = socket.GetComponentInParent<CVRAvatar>(true);
             if (avatar != null) YapsOwner.ApplySelf(avatar.gameObject);
             else YapsOwner.NumberWriters(YapsNativeBuilder.AvatarRoot(socket.transform).gameObject, false);
+        }
+
+        // --- portals ----------------------------------------------------------
+
+        // Named for the entrance, so the owner layer's path to it holds from
+        // build to build, and outside the exit's own folders, which its
+        // rebuild replaces.
+        public static string ExitName(YapsSocket entrance) => "Atlas Exit (from " + entrance.name + ")";
+
+        // The writer is the entrance's whose name it carries. A duplicated
+        // entrance copies the reference and must not take the writer with it.
+        public static bool Owns(YapsSocket entrance, GameObject writer) =>
+            entrance != null && writer != null && entrance.builtExit == writer && writer.name == ExitName(entrance);
+
+        // Owned and still under the exit the entrance names. One retargeted
+        // without a rebuild, by a script, still sits under the old exit.
+        public static bool Leads(YapsSocket entrance, GameObject writer) =>
+            Owns(entrance, writer) && entrance.portalExit != null && writer.transform.parent == entrance.portalExit.transform;
+
+        // Why a link builds no writer. Null when it builds one.
+        static string Refused(YapsSocket socket, CVRAvatar avatar)
+        {
+            var exit = socket.portalExit;
+            if (exit == null)
+            {
+                // None and Missing both read null; only the stored id tells them apart.
+                var p = new SerializedObject(socket).FindProperty(nameof(YapsSocket.portalExit));
+                return p != null && p.objectReferenceInstanceIDValue != 0
+                    ? "its portal exit is gone, so it is an ordinary hole. Pick the exit again, or clear the field"
+                    : null;
+            }
+            // Only a hole cuts. The inspector locks Kind; a script or a conversion does not.
+            if (socket.kind != YapsSocket.SocketKind.Hole)
+                return "a ring cannot be a portal entrance, only a hole can. Set Kind to Hole, or clear the field";
+            if (exit == socket) return "its portal exit is itself, so it is an ordinary hole. Pick another socket";
+            if (avatar == null) return null;
+            if (exit.GetComponentInParent<CVRAvatar>(true) != avatar)
+                return $"its portal exit \"{exit.name}\" is not on this avatar, so it is an ordinary hole. " +
+                       "An exit has to be worn by the same avatar as its entrance";
+            return null;
+        }
+
+        static void BuildExit(YapsSocket socket, CVRAvatar avatar)
+        {
+            var old = socket.builtExit;
+            socket.builtExit = null;
+            if (old != null && !ClaimedByAnother(socket, old)) Undo.DestroyObjectImmediate(old);
+            // A prop carries no owner, so its writer would publish nothing.
+            if (socket.portalExit == null || avatar == null || Refused(socket, avatar) != null) return;
+            // One whose record was lost, a copy pasted back for instance.
+            var stale = socket.portalExit.transform.Find(ExitName(socket));
+            if (stale != null && IsExitWriter(stale) && !ClaimedByAnother(socket, stale.gameObject))
+                Undo.DestroyObjectImmediate(stale.gameObject);
+            var made = YapsAtlas.AddExit(socket.portalExit.transform, ExitName(socket));
+            if (made == null) return;
+            Undo.RegisterCreatedObjectUndo(made, "Build YAPS portal");
+            socket.builtExit = made;
+            EditorUtility.SetDirty(socket);
+        }
+
+        // GetComponent hands back a fake null in the editor, so no pattern match.
+        public static bool IsExitWriter(Transform t)
+        {
+            var r = t != null ? t.GetComponent<MeshRenderer>() : null;
+            return r != null && YapsAtlas.IsExit(r.sharedMaterial);
+        }
+
+        static bool ClaimedByAnother(YapsSocket socket, GameObject writer) =>
+            writer.transform.root.GetComponentsInChildren<YapsSocket>(true).Any(s => s != socket && Owns(s, writer));
+
+        // What Build tells the user about a portal, starting with a mark the
+        // windows colour by. Null when the socket is not an entrance.
+        public static string PortalNote(YapsSocket socket)
+        {
+            if (socket == null) return null;
+            var avatar = socket.GetComponentInParent<CVRAvatar>(true);
+            string refused = Refused(socket, avatar);
+            if (refused != null) return "⚠ " + refused + ".";
+            var exit = socket.portalExit;
+            if (exit == null) return null;
+            if (avatar == null)
+                return "⚠ a portal on a prop stays an ordinary hole: a prop has no wearer to key its exit by.";
+            if (!Leads(socket, socket.builtExit))
+                return "⚠ the portal is not built yet: press Build.";
+            string twin = exit.transform.Cast<Transform>().Count(c => c.name == ExitName(socket)) > 1
+                ? $" Another entrance called \"{socket.name}\" leads there too, and only one of them can: rename one and build both."
+                : "";
+            var writer = socket.builtExit.GetComponent<MeshRenderer>();
+            int n = writer != null && writer.sharedMaterial != null
+                ? Mathf.RoundToInt(writer.sharedMaterial.GetFloat("_YAPS_EntranceIndex")) : 0;
+            if (n == 0)
+                return $"⚠ the portal to \"{exit.name}\" is an ordinary hole for now: only an avatar's first " +
+                       $"{YapsOwner.MaxSelfSockets} sockets carry a number, and a portal is found by its number." + twin;
+            return (twin.Length > 0 ? "⚠ " : "✓ ") +
+                   $"a plug with Two At Once that goes in comes out of \"{exit.name}\". Screen atlas only: to any " +
+                   "other plug, by marker light, and to plugs built before 5.0, it is an ordinary hole." + twin;
         }
 
         // Inside one of the toolkit's own folders under the socket.

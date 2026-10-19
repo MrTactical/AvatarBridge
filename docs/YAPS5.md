@@ -619,7 +619,9 @@ of space looks identical to every other reason one does not bend.
 - A cell holds one socket. Buckets decouple spacing from cell size and lift 2r+1.
 - No socket KIND in the payload, so a hole cannot be told from a ring, and the
   approach-flip above is only correct for rings.
-- Portal and duplicate are ranges on top of the list, unbuilt.
+- ~~Portal~~: **built 2026-10-18** as the margin directory, see "Portal directory" at the end.
+  ~~Duplicate is still a range on top of the list, unbuilt.~~ **Built 2026-10-18** as a second
+  copy on the mesh, see "Two at once" at the end.
 - Radius 2 is 125 reads a vertex, measured only for 27. The tap harness exists.
 - The platform default for row order is right on D3D by construction and unverified in game.
   `_ForceRow` is kept as the one-click check.
@@ -675,7 +677,9 @@ two correctly reported past the tip rather than lost.
   A ring is turned to meet its approach; a HOLE keeps its sign and is dropped from the chain
   when approached from behind. The facing read moved into the gather with it, which costs one
   read per socket FOUND rather than per cell searched and deleted the separate facing pass.
-- Portal and duplicate are ranges on top of the list, unbuilt.
+- ~~Portal~~: **built 2026-10-18** as the margin directory, see "Portal directory" at the end.
+  ~~Duplicate is still a range on top of the list, unbuilt.~~ **Built 2026-10-18** as a second
+  copy on the mesh, see "Two at once" at the end.
 - 343 headers a vertex at radius 3 has not been benchmarked. The tap harness exists.
 - ~~NONE OF IT HAS BEEN IN GAME.~~ **CLOSED 2026-09-03, all four steps of pass 1.** Spike 1
   had proved only that a named GrabPass survives a ChilloutVR upload and returns what another
@@ -1618,3 +1622,102 @@ Now one word per cell and salt, the axes added rather than XORed and then run th
 and the slot, the second home and the tag each cut from their own salt. The tag keeps its form,
 `(1 + 2k) / 255`, with k the word's top seven bits, so the 8-bit exactness of protocol 8 holds.
 
+
+## Portal directory (2026-10-18)
+
+A portal is a hole whose plug comes out of another socket on the same avatar. The entrance stays a
+plain protocol-9 hole, byte for byte, so the cell protocol did not change: an older plug reads it
+as an ordinary hole, and 4.6.4 to 4.7.x avatars still see every ordinary socket of a 5.0 one. The
+exit says where it is somewhere no cell reader looks: the atlas's top eight rows, which
+`YAPS_ATLAS_ORIGIN` 8 has always left undrawn and unread.
+
+**The writer.** One small object under the exit, shader `YAPS/Atlas Exit`: two homes at
+hash(owner, n) mod capacity, 4 px per entry, in rows 0 to 7 across the atlas's width. px0 is the
+position inside a 0.32 m cell and a 7-bit tag salted by `YAPS_ATLAS_DIR_VERSION` 1; px1 the exit's
++Z and the entrance number; px2 the cell index, 8 bits an axis, so +-41 m; px3 the owner. It draws
+nothing when the atlas does not fit, when the owner is 0 or when the number is outside 1 to 15.
+Capacity is about 1,860 slots at the full rect and about 470 at the 239 px floor [R arithmetic].
+
+**The key** is (owner, n), n the entrance's own socket number. Numbers are reassigned from seven
+call sites, so the key is set inside `YapsOwner.NumberWriters`, which all of them go through. A
+writer that no entrance owns is keyed 0 and draws nothing, so a stale one can never publish
+another socket's number. A writer belongs to the entrance whose `builtExit` points at it AND whose
+name it carries, `Atlas Exit (from <entrance>)`: a copied entrance keeps the reference but not the
+name, and is dark until it is built.
+
+**The cut, on the second copy.** The resolve marks a path that ends in a hole with an owner and a
+number. The first copy treats it as any hole. The second copy (Two at once, below) looks the pair
+up and, if an exit answers at full enable and full engagement, keeps the first copy's path rather
+than the chain past it: every vertex more than 2w past the cut leaves along the exit's +Z by what
+is left over less 2w, and every other copy vertex goes to one point w inside the exit with no
+offsets, its normal and tangent along the exit. w is `_YAPS_PortalSpan` times the plug's length,
+times one plus the pump strength. No triangle joins the two mouths, so a host offset of any kind
+can only open a triangle at the exit. Engaging, fading or with no exit, the copy hides and the
+first copy is the whole plug. A build without `YAPS_DUPLICATE` never reads the exit.
+
+The span is baked: the longest z-span of any triangle whose three corners are all active, over the
+length, times 1.25, so no triangle straddles the cut. Above 0.2 the plug is too coarse and bakes
+-1, which reads as no portal. Only the main mesh carries a copy, so a second mesh baked on the same
+chain stops at the entrance whatever its span. Both builders still name a coarse second mesh.
+
+**Why the second copy (S3, K2, 2026-10-19).** The first design cut one copy in two and collapsed a
+band either side of the cut to a point inside each body, a band whose triangles ran from mouth to
+mouth with zero area. Eight of ten host configurations drew nothing in the corridor over a 50-pose
+sweep, and the exit landed within 0.021 mm on half and 0.162 mm on 8-bit, roll fitted [M]. Two did
+not: Poiyomi Toon 9.3's outline normals from vertex colour in local space, and lilToon 1.7.3's
+outline vector from vertex colour. Both build the offset as c.x*T + c.y*B + c.z*N with
+B = normalize(cross(N, T)), which has no value when N and T both lie along the band, so the band
+opened into a 1 to 2 px line across the room. A tangent across the band (worse, four hosts) and an
+exact frame (no change) both failed [M]. Kill criterion K2 fired, and Joe's standing order took the
+fallback. The cost: a portal needs Two At Once, about twice the plug's GPU work, a skinned plug on
+one material, and the main mesh only.
+
+Measured [M]:
+- The directory at 239^2, 256^2, 512^2, 932x596, 1024^2 and 1920x1080, on 8-bit linear and half
+  targets: owner and number exact, 20 of 20 found. Position worst 0.999 mm on 8-bit and 0.190 mm on
+  half, against 1.355 mm. Facing worst 0.358 and 0.067 degrees, against 0.5. 0 false exits in
+  10,000 random keys. Cell reads bit-identical with the exits drawn before or after the sockets.
+  The directory lies inside the clear at every size, asserted over 232,142 sizes.
+- A 200-entry crowd reaches home B 720 times and loses 304 entries to clashes, all as predicted
+  and none wrong: a lost entry is an ordinary hole, never the wrong exit.
+- Not covered: an sRGB 8-bit target, about 1.4 mm by arithmetic [R].
+- GPU time of the band design, before K2, RTX 4080, 6433 vertices, 7 interleaved repeats: with no portal in reach every delta is
+  -0.15 to +0.15 us against a 1 us bound; with a live portal -0.07 to +0.22 us against 21.6. The
+  deform is 3757 lines (+6.5%) and 52 temps. Six Poiyomi families add no compile messages, and
+  their vertex bytecode grows 1.3 to 1.5%. Two homes lose 0.02 to 0.24% of entries with 20 live,
+  one home 0.5 to 2% [R, simulated].
+- A built entrance matches a plain hole line for line (7368 lines), and the writer touches 8 margin
+  pixels and nothing else.
+
+Open [GAME]: all of it. Margin survival in every ChilloutVR view is the one gate that can kill the
+transport.
+
+## Two at once (2026-10-18)
+
+A plug drawn twice: the first copy takes the resolved path as before, the second the chain past the
+hole that ends it, to the next hole. A vertex shader cannot add geometry, so the copy is on the
+mesh: every vertex of a triangle wholly on the plug, copied once and appended, with those triangles
+added to the plug's slot over the copies. `_YAPS_CopyStart` is the first copy vertex.
+
+- **Anchored.** Every copy vertex sits on the bake's origin, wholly on the root's bone, its normal
+  and tangent the root's up and forward. Weighted as their originals, a bent plug's copies recovered
+  roots up to 119 mm apart and an edge triangle hid one corner at a time. On one point, each test
+  answers once for the whole copy, and a viewer without the deform sees nothing.
+- **Its shape is the plain bake, extended:** each copy reads its original's entry, marked active.
+  A bake over the copies would measure a point.
+- **Hidden** means every copy vertex on one point a metre behind the camera, so a transparent or
+  outline host draws nothing. It hides at every early return, while the toggle fades, with no
+  live socket past the first copy's hole, and at a portal whose exit is not open.
+- **Its own shader.** `YAPS_DUPLICATE` costs 52 to 59 temps under fxc, so only a material whose
+  `_YAPS_CopyStart` is above 0 is patched with it.
+- DS1, the editor gate: 74 PASS, 0 FAIL, on ten hosts, three atlas formats and 111-step sweeps
+  across where the copy starts drawing [M].
+- DS2, the cost, RTX 4080, 6433 vertices, 7 interleaved repeats, three runs [M]: the define with no
+  copy is noise (+0.07 us a pass). The copy takes a pass from 7.87 to 13.59 us hidden and 16.74 us
+  drawn with the atlas empty, and from 52.73 to 102.87 and 103.49 us with it full: 1.7 to 2.0 times
+  the plain plug. Hidden costs 72% (empty) to 98% (full) of drawn, since the whole resolve runs
+  before the copy learns there is no second socket. Skinning goes from 1.18 to 2.29 us a frame.
+  Per pass, per camera and per eye [R].
+
+Open [GAME]: DG1, whether the appended vertices survive upload and both copies show on a second
+client.

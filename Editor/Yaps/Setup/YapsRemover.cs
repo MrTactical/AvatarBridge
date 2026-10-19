@@ -49,6 +49,12 @@ namespace AvatarBridge
             var baked = socket.bakedRenderer != null ? socket.bakedRenderer : socket.renderer;
             if (baked != null && socket.bakedFrom != null)
                 lines.Add($"the socket bake on \"{baked.name}\": its material goes back to \"{socket.bakedFrom.name}\"");
+            // Remove takes both ends of a portal, and one of them lives under another socket.
+            if (YapsSocketBuilder.Owns(socket, socket.builtExit))
+                lines.Add($"its portal writer under \"{socket.builtExit.transform.parent.name}\"");
+            foreach (Transform c in socket.transform)
+                if (YapsSocketBuilder.IsExitWriter(c))
+                    lines.Add($"\"{c.name}\" under it, so that entrance becomes an ordinary hole");
             return lines;
         }
 
@@ -183,7 +189,15 @@ namespace AvatarBridge
                 }
             }
 
-            // The objects.
+            // Its portal's writer, which lives under the exit.
+            if (socket.builtExit != null && YapsSocketBuilder.Owns(socket, socket.builtExit))
+            {
+                done.Add($"its portal writer under \"{socket.builtExit.transform.parent.name}\"");
+                Undo.DestroyObjectImmediate(socket.builtExit);
+            }
+
+            // The objects. Writers under it for entrances that lead here go
+            // with it, as the toolkit's own.
             var go = socket.gameObject;
             if (OwnObject(go, typeof(YapsSocket)))
             {
@@ -278,6 +292,15 @@ namespace AvatarBridge
                     }
                     renderer.sharedMaterials = mats;
                     done.Add($"\"{renderer.name}\" with " + Describe(restores));
+                }
+
+                // The mesh from before the second copy, while the copy is on it.
+                if (plug.dupFrom != null && renderer is SkinnedMeshRenderer copied && YapsDuplicate.Is(copied.sharedMesh))
+                {
+                    Undo.RecordObject(copied, "Remove YAPS plug");
+                    copied.sharedMesh = plug.dupFrom;
+                    YapsDebugOverlayBuilder.Replaced(copied, plug.dupFrom);
+                    done.Add($"\"{renderer.name}\" back on the mesh from before its second copy");
                 }
 
                 // The mesh from before this plug's slot split off, while that
@@ -544,6 +567,16 @@ namespace AvatarBridge
                     done.Add($"the empty \"{shell.name}\"");
                     Undo.DestroyObjectImmediate(shell.gameObject);
                 }
+            }
+
+            // Portal writers no entrance owns: one deleted by hand, or aimed
+            // elsewhere by a script that never rebuilt.
+            foreach (var t in top.GetComponentsInChildren<Transform>(true).ToList())
+            {
+                if (t == null || !YapsSocketBuilder.IsExitWriter(t)) continue;
+                if (sockets.Any(s => s != null && YapsSocketBuilder.Leads(s, t.gameObject))) continue;
+                done.Add($"\"{t.name}\" under \"{t.parent.name}\": no entrance leads there any more");
+                Undo.DestroyObjectImmediate(t.gameObject);
             }
 
             // The readout toggle, once nothing carries a readout. After the
@@ -961,15 +994,17 @@ namespace AvatarBridge
                 if (c.GetType() != component) return false;
             }
             for (int i = 0; i < go.transform.childCount; i++)
-                if (!OwnChildren.Contains(go.transform.GetChild(i).name)) return false;
+                if (!Own(go.transform.GetChild(i))) return false;
             return true;
         }
 
         static IEnumerable<Transform> OwnChildrenOf(Transform t)
         {
             for (int i = 0; i < t.childCount; i++)
-                if (OwnChildren.Contains(t.GetChild(i).name)) yield return t.GetChild(i);
+                if (Own(t.GetChild(i))) yield return t.GetChild(i);
         }
+
+        static bool Own(Transform child) => OwnChildren.Contains(child.name) || YapsSocketBuilder.IsExitWriter(child);
 
         static bool Generated(AnimationClip clip)
         {
