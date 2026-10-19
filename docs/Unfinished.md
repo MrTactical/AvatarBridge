@@ -3133,6 +3133,8 @@ each failing in `IncludeVertexTest` first:
   survived the preprocessor in the tessellated pass before, 1 after.
 Sweep 8 (all 38 setups, the three fixes deployed): **38 PASS, 0 FAIL** [M]. Tessellation bends
 in view and in shadow with 0 stray, and every other host reads as it did in sweep 7.
+Sweep 9 (2026-10-20, with the `Broken` check and the struct scoping below): **38 PASS, 0 FAIL** [M],
+and its 21 refusals read word for word as sweep 8's, so neither change moved a refusal.
 - Untested [R]: lilToon fur (a geometry stage, not in the sweep); lilToon's inspector on the patched
   copy, which may swap the shader back to its own on a render-mode change (YapsShaderGUI wraps it);
   Poiyomi's tessellated variants; not in game.
