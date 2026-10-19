@@ -28,7 +28,7 @@
 //   top 6  atlas asked for      red off for this plug, green on
 //   top 7  portal               dark no hole at the end, amber hole with no key,
 //                               grey no exit published, green exit found,
-//                               red exit found and the plug cannot cut
+//                               red exit found and the plug cannot come out of it
 //   bot 1  frame recovery       grey taken from the object, red refused, green recovered
 //   bot 2  anchor vertex        red outside the bake, green inside it
 //   bot 3  bake read            black no bake, red the row read nothing, green data
@@ -475,12 +475,13 @@ Shader "YAPS/Debug Overlay"
                 else if (cell == 12)
                 {
                     // Grey is every ordinary hole, so it is not a fault. Red
-                    // is an exit that is there and a plug that cannot cut:
-                    // too coarse, or baked before portals.
+                    // is an exit that is there and a plug that cannot come
+                    // out of it: too coarse, no second copy to draw it, or
+                    // baked before portals.
                     c = portal < 0.5 ? YAPS_DEAD
                       : (portal < 1.5 ? YAPS_HALF
                       : (portal < 2.5 ? YAPS_NONE
-                      : (_YAPS_PortalSpan > 0 ? YAPS_GOOD : YAPS_BAD)));
+                      : (_YAPS_PortalSpan > 0 && _YAPS_CopyStart > 0 ? YAPS_GOOD : YAPS_BAD)));
                 }
                 else if (cell == 13)
                 {

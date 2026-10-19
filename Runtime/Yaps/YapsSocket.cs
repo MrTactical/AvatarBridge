@@ -122,8 +122,8 @@ namespace AvatarBridge.Yaps
         public bool previewInPlayMode;
 
         // Outside the #if for the same reason.
-        [Tooltip("A plug that goes into this hole comes out of the exit. Screen atlas only: by marker " +
-                 "light, and to plugs built before 5.0, this is an ordinary hole.")]
+        [Tooltip("A plug with Two At Once that goes into this hole comes out of the exit. Screen atlas " +
+                 "only: to any other plug, by marker light, and to plugs built before 5.0, this is an ordinary hole.")]
         public YapsSocket portalExit;
 
         // The exit's writer the last build made. It lives under the exit, so

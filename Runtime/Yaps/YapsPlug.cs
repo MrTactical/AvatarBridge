@@ -30,9 +30,9 @@ namespace AvatarBridge.Yaps
                  "bend. Empty for a mesh that is only the plug.")]
         public Transform rootBone;
 
-        [Tooltip("A second copy of the plug, drawn only while a second socket is in reach: the first copy " +
-                 "goes into one socket and the second into the next. Screen atlas only. Doubles the plug's " +
-                 "vertices and about doubles its deform cost, even while the copy is hidden. Only when no " +
+        [Tooltip("A second copy of the plug, drawn only while it has somewhere to go: the first copy goes " +
+                 "into one socket, and the second into the next or out of a portal's exit. Screen atlas only. " +
+                 "Doubles the plug's vertices and about doubles its deform cost, even while the copy is hidden. Only when no " +
                  "other plug shares the mesh and the plug sits on one material. Bake again after changing it.")]
         public bool twoAtOnce;
 

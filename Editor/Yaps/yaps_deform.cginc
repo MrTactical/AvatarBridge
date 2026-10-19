@@ -731,10 +731,13 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     }
 
 #ifdef YAPS_DUPLICATE
+    // A path ending in a portal gives the second copy to the portal, so it
+    // keeps the first copy's path to come out of the exit below.
+    bool viaPortal = copy2 && socket.chain.portal != 0;
     // Nested, never "copy2 && !YapsCopyPath(...)": HLSL does not short-circuit,
     // so the call ran on the first copy too and its inout shift sent the first
     // copy down the second's path.
-    if (copy2)
+    if (copy2 && !viaPortal)
     {
         if (!YapsCopyPath(socket, rootWorld, rootForward, worldLength))
         {
@@ -1013,47 +1016,55 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         frame = YapsWalk(p0, p1, p2, p3, zAlong, rootUp, rootForward, leftOver);
     }
 
-    // THE PORTAL. A path ending in a hole that publishes an exit cuts
-    // the shaft there. A band either side of the cut collapses to a point
-    // inside each body, and what is left over comes out of the exit.
+    // THE PORTAL, drawn by the second copy. The first copy enters the hole
+    // as it would any other, and the second comes out of the exit: what is
+    // left over past a cut a band beyond the hole leaves the exit's mouth,
+    // and the rest of the copy waits on one point inside the exit. No
+    // triangle joins the two bodies. One copy cut both sides of the room,
+    // and outlines built from vertex colour opened its band into a line from
+    // mouth to mouth (S3, K2).
     //
-    // Every gate term is plug-wide here, so the whole shaft takes one branch
-    // and no triangle spans the room. A portal implies the atlas tier and a
-    // hole as the last link, so neither is asked. Each of engaged and engage
-    // is at most 1, so their product at 0.999 asks both. Nested rather than
-    // one &&: HLSL runs both sides, and the read belongs to this branch alone.
+    // Every gate term is plug-wide, so the whole copy takes one branch. A
+    // portal implies the atlas tier and a hole as the last link. Each of
+    // engaged and engage is at most 1, so their product at 0.999 asks both.
     bool portalled = false;
     bool collapsed = false;
-    if (leftOver > 0 && socket.chain.portal != 0 && link == socket.chain.count - 1
-        && _YAPS_Enabled >= 1 && socket.engaged * engage >= 0.999 && _YAPS_PortalSpan > 0)
+#ifdef YAPS_DUPLICATE
+    if (viaPortal)
     {
         float3 exitAt = p3;
         float3 exitFwd = frame.forward;
-        if (YapsPortalExit(socket.chain.portal, exitAt, exitFwd))
+        bool open = _YAPS_Enabled >= 1 && socket.engaged * engage >= 0.999 && _YAPS_PortalSpan > 0;
+        // Nested rather than one &&: HLSL runs both sides, and the read
+        // belongs to this branch alone.
+        if (open) open = YapsPortalExit(socket.chain.portal, exitAt, exitFwd);
+        // Engaging, fading or no exit: the first copy is the whole plug.
+        if (!open)
         {
-            // The margin covers the pump, which moves a vertex up to its
-            // strength in lengths.
-            float w = _YAPS_PortalSpan * worldLength * (1 + max(_YAPS_PumpStrength, 0));
-            float3 PA = p3 + frame.forward * w;
-            float3 PB = exitAt - exitFwd * w;
-            collapsed = leftOver < 2 * w;
-            portalled = !collapsed;
-            // The band rides the main path below as a point on line AB with
-            // no offsets, its normal and tangent along AB, so a host offset
-            // along either stays on the line and the band has no area.
-            frame.position = collapsed ? (leftOver < w ? PA : PB) : exitAt;
-            frame.forward = collapsed ? YapsSafeNormalize(PB - PA, exitFwd) : exitFwd;
-            // Roll from the arrival, approximate.
-            frame.up = YapsPerpendicular(frame.forward, frame.up);
-            leftOver = collapsed ? 0 : leftOver - 2 * w;
-            if (collapsed)
-            {
-                baked.position.xy = 0;
-                baked.normal = float3(0, 0, 1);
-                baked.tangent = float3(0, 0, 1);
-            }
+            YapsCopyHide(position, normal, tangent);
+            return;
+        }
+        // The margin covers the pump, which moves a vertex up to its
+        // strength in lengths.
+        float w = _YAPS_PortalSpan * worldLength * (1 + max(_YAPS_PumpStrength, 0));
+        portalled = link == socket.chain.count - 1 && leftOver >= 2 * w;
+        collapsed = !portalled;
+        // Short of the cut, a point a band inside the exit with no offsets,
+        // its normal and tangent along the exit, so a host offset along
+        // either stays on one line and the copy there has no area.
+        frame.position = portalled ? exitAt : exitAt - exitFwd * w;
+        frame.forward = exitFwd;
+        // Roll from the arrival, approximate.
+        frame.up = YapsPerpendicular(exitFwd, frame.up);
+        leftOver = portalled ? leftOver - 2 * w : 0;
+        if (collapsed)
+        {
+            baked.position.xy = 0;
+            baked.normal = float3(0, 0, 1);
+            baked.tangent = float3(0, 0, 1);
         }
     }
+#endif
 
     // Past the end of the curve. A hole swallows the remainder and tapers
     // the tip, a ring lets it carry straight on through.
@@ -1146,8 +1157,8 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         + right * (baked.position.x * radius)
         + frame.up * (baked.position.y * radius);
     float3 drawn = mul(unity_WorldToObject, float4(deformed, 1)).xyz;
-    // Assigned, never lerped, on the collapsed band: lerp(a, b, 1) can be an
-    // ulp off per vertex, and that is a sliver across the room.
+    // Assigned, never lerped, on the copy's point: lerp(a, b, 1) can be an
+    // ulp off per vertex, and that is a sliver.
     position = collapsed ? drawn : lerp(restPosition, drawn, blend);
     if (collapsed) blend = 1;
 

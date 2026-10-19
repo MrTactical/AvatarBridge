@@ -454,7 +454,7 @@ namespace AvatarBridge
                     plug.dupFrom = under;
                     EditorUtility.SetDirty(plug);
                     o.Notes.Add($"Two at once: a second copy of the plug, {skin.sharedMesh.vertexCount - start} more vertices, " +
-                                "drawn only while a second socket is in reach.");
+                                "drawn only while a second socket or a portal's exit is in reach.");
                     return start;
                 }
             }

@@ -3131,6 +3131,24 @@ draft was built first, then deleted unpublished when two tester changes landed a
 `v4.7.0` stays in history and that number was never shipped. Corpus 415 is the accepted YAPS baseline.
 Not verified in ChilloutVR; the records below say what only the game can settle.*
 
+### A plug on lilToon never bends, 2026-10-19. FOUND BY S3, NOT STARTED
+
+Found by the portal's S3 probe, which patches hosts with the shipped patcher [M]:
+- lilToon 1.7.3's `lilToon` shader draws through `UsePass "Hidden/ltspass_opaque/..."`. Its own
+  passes hold only a `LightMode=Never` dummy, and that dummy is all the shipped patch deforms. The
+  4 drawing passes (6 in `Hidden/lilToonOutline`) stay the unpatched original, so a lilToon plug should
+  draw straight, with no refusal and no warning [R from the patch text; no lilToon plug was drawn].
+- Patching `Hidden/ltspass_opaque` itself fails, `invalid subscript tangentOS`, unless
+  `LIL_REQUIRE_APP_NORMAL`, `LIL_REQUIRE_APP_TANGENT` and `LIL_REQUIRE_APP_VERTEXID` are defined
+  ahead of its HLSL. With them it compiles and deforms (S3 drew it that way).
+- Not in game. The README does not list lilToon among YAPS hosts; the converter's stereo patch,
+  which does name it, is a different patch.
+- The fix is the patcher following `UsePass` into the pass shader, patching that with the three
+  switches, and pointing the copy's `UsePass` lines at the patched one. Until then, the least is a
+  refusal that says so, so the plug falls back to Simple Lit like Standard does.
+- Same night, by design and recorded for completeness: Standard is refused (`vertAdd` not found)
+  and falls back to Simple Lit; a shader with no Properties block drops `Material.SetFloat`.
+
 ### Every button pressed headless, 2026-10-15: one dead, one noisy. FIXED ON DEV
 
 Joe found **Tune it** did nothing. It and **Open material** now select the material, ping it and
@@ -4810,6 +4828,35 @@ is **in 5.0.0**, which waits for both to pass in game.
   - Its Verify menu now refuses to run outside batch mode (`001607a`): it replaces the open scene and deletes the build's material folder.
   - "Portal spike: remove" was not run headless, so remove the spike only from a scene saved first.
 
+**S3, S4 and the K2 fallback, the night of 2026-10-18 to 19 (branch `portal-spike`).**
+- **S3, slivers and corridor (`d7cb796`, `Dev/Probes/Portal/PortalBandProbe`): K2 FIRED.** 50 poses, five enables, HDR and 8-bit, ten host configurations [M]:
+  - 0 corridor pixels on eight: Standard (refused, on Simple Lit), Simple Lit, Poiyomi mask and vertex-red outline, Poiyomi vertex-colour normals in world space, Poiyomi drop shadow, three of four lilToon outlines.
+  - Deform: exit 0.021 mm HDR and 0.162 mm 8-bit with the roll fitted, seams 0.0000. Against the plug's own up, 8-bit is 0.553 mm: the coarse hole decode bends the arrival's roll.
+  - Two drew a 1 to 2 px line from mouth to mouth: Poiyomi Toon 9.3 outline normals from vertex colour in LOCAL space, and lilToon 1.7.3 `_OutlineVertexR2Width 2`. Both build c.x*T + c.y*B + c.z*N with B = normalize(cross(N, T)), undefined once N and T both run along the band.
+  - Two band fixes measured, both failed: a tangent across the band (worse, four hosts) and an exact frame (no change).
+  - A break run (band offset a span, band radius kept, seam jitter) failed every gate, so the probe can fail.
+- **The fallback, taken per Joe's standing order (uncommitted at writing, then the commit that carries this record).** The portal moved to the duplicate's second copy:
+  - The first copy treats a portal entrance as a plain hole. A build without `YAPS_DUPLICATE` never reads the exit, so every plug without Two At Once sees an ordinary hole.
+  - The second copy, on a path that ends in a portal, keeps the first copy's path instead of the chain past it. At full enable and full engagement, with an exit found: vertices more than 2w past the cut leave the exit by what is left less 2w; every other copy vertex goes to one point w inside the exit, no offsets, normal and tangent along the exit. Otherwise the copy hides.
+  - No triangle joins the two mouths, so no host offset can reach across the room. Left: an outline may open the waiting point into a speck inside the exit.
+  - Cost for users: a portal needs Two At Once, so about twice the plug's GPU work all the time (DS2), a skinned plug on one material sharing its mesh with no other plug, and only the main mesh comes out.
+  - **Joe's call, undoable:** keep it; or the band for everyone, accepting the line on those two outline modes; or both, the band for plugs without the copy and the copy for plugs with it.
+  - Readout: green now also needs `_YAPS_CopyStart` > 0, so a plug without the copy reads red at a live exit.
+  - fxc: plain 51 temps, 3546 lines; with the copy 59, 3903 [M].
+  - **Verified (`Dev/Probes/Portal/PortalCopyProbe`, PASS) [M]:** the S3 sweep and corridor detector, 50 poses, HDR and 8-bit, eleven hosts including both K2 outline modes and a Simple Lit build without the copy:
+    - 0 corridor pixels on every host, and 0 pixels near the exit while nothing came out (no speck drew).
+    - Exit vertices within 0.0213 mm HDR and 0.1617 mm 8-bit of the decoded exit's line, roll fitted; seams 0.0000 mm.
+    - The first copy within 0.000 um of the plain plug; 0 plain and 0 first-copy vertices moved by the exit; 4899 rings out over the sweep; shut at full enable 0 times.
+    - No break run of its own: the corridor detector is S3's, which caught the K2 lines and failed its break run.
+- **S4, the span survey (`6730a13`, `Dev/Probes/PortalSpanProbe`, one corpus run over 33 scenes): PASS.** 15 avatars carry a baked plug, 42 bakes, 31 plugs. 2w/L median 0.1691 over plugs against 0.2 [M]; 1 refused, 11 above 0.2.
+  - Thin margin: the per-avatar worst plug's median is 0.2141.
+  - Found: in 12 of 42 bakes, partial-weight vertices sit past 2w. The feather of a weight-blended base reaches past the band.
+  - Probe gap: either half of the active rule alone passes its self-test. A weight-0 ring in front of the base is needed.
+  - Not surveyed: three avatars whose VRCFury build fails in the corpus project.
+  - The run exited 1 on five digest changes, none from the hook: three fixtures lost two "animates body muscles" warnings (e1667a3), one scene's leftover count went 1 to 2 (project state), one gained three "Poiyomi's lock did not run" warnings.
+- **Production findings from S3, not portal bugs, queued under "Loose ends":** lilToon is never deformed (below); Standard is refused for `vertAdd` and falls back to Simple Lit, as designed; a shader with no Properties block drops `Material.SetFloat` values, so probes carry floats in a block.
+- **Still owed for G1 on production includes:** S1's Poiyomi headroom, S1b's GPU time and S2's directory probe ran on the scratch copies only. Production was bytecode-identical to them before the fallback [M]; the fallback changes the deform, so S1b's portal numbers describe the band design.
+
 Asked for by Joe ("start mapping out a plan for the YAPS portal and duplicate"). Made by a workflow:
 four readers mapped the deform, the atlas and protocol, the authoring side and the plug's draw;
 three plans were written from different angles (compatibility, risk and verification, the user);
@@ -5062,7 +5109,7 @@ Tags: **[M]** measured or written down; **[R]** reasoned, not measured; **[GAME]
 | Risk | Status | Response |
 |---|---|---|
 | Margin rows have never been drawn in a CVR view, and nothing records why ORIGIN is 8. Cells 8 px away are proven in VR and mirrors (`YAPS5.md:501, 790`) | [GAME] | K1/G2: on main or VR view, kill the transport; on a mirror or portrait, document it as a known limit. Do not fall back to OCTPX 6 |
-| Host offsets not along the normal (UV-stored outline normals, vertex noise) re-open the collapsed band | [R] | S3 measures it. K2: portal moves to the copy-2 path of f (no cross-room band, about 2x vertex cost, needs Joe's yes) |
+| Host offsets not along the normal (UV-stored outline normals, vertex noise) re-open the collapsed band | [R] | S3 measures it. K2: portal moves to the copy-2 path of f (no cross-room band, about 2x vertex cost, needs Joe's yes). **Fired 2026-10-19; fallback taken and verified, Joe's call to keep it (S3, S4 and the K2 fallback record).** |
 | Real plugs' triangle spans are unmeasured | [R] | K3: per-vertex baked extents (a bake-format change, not a protocol change) or the copy-2 path |
 | Bounds against the marker-light tier, "Not verified in ChilloutVR" (`YapsBaker.cs:1168`) | [M] code / [GAME] | D3 |
 | Owner sync timing on remote copies; until then the entrance is a plain hole (`YapsOwner.cs:7-11`) | [GAME] | test 5 |

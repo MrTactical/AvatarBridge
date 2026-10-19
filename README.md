@@ -1466,8 +1466,11 @@ takes out a channel an earlier version wired onto the avatar, which frees its sy
 **A hole can lead somewhere else.** Set a hole's **Portal exit**, in the *What it is* card of its
 inspector, to another socket on the same avatar, and a plug that goes into the hole comes out of
 the exit: the part of the shaft past the entrance appears at the exit and leaves through its front,
-the side its markers sit on. The exit is still an ordinary socket in every other way. Any plug
-built with 5.0 can take a portal, the wearer's own or anyone else's. While the field is set the
+the side its markers sit on. The exit is still an ordinary socket in every other way. **The plug
+needs [Two At Once](#two-at-once) ticked**: its first copy goes into the hole as into any other,
+and its second copy is the part that comes out of the exit, so the two are never joined across the
+room. Any such plug built with 5.0 can take a portal, the wearer's own or anyone else's; to every
+other plug the entrance is an ordinary hole. While the field is set the
 socket is a hole: **Kind** is locked to *Hole*, the banner reads *Portal entrance*, and the Scene
 view draws a dotted line from the entrance to its exit. Building the entrance puts one small
 object under the exit, *Atlas Exit (from* the entrance's name*)*; on a socket already built,
@@ -1475,8 +1478,8 @@ setting the field builds it again. The object is the toolkit's own: built again 
 removed with either socket, and taken out by **Clean up leftovers** once no entrance leads there.
 
 **Screen atlas only.** The exit says where it is through the screen atlas, so, as the field's
-tooltip puts it, "by marker light, and to plugs built before 5.0, this is an ordinary hole": the
-plug stops there and tapers as it always did. **Rebuild both avatars on 5.0**, the one wearing the
+tooltip puts it, "to any other plug, by marker light, and to plugs built before 5.0, this is an
+ordinary hole": the plug stops there and tapers as it always did. **Rebuild both avatars on 5.0**, the one wearing the
 sockets and the one wearing the plug, for a portal to work between them. Where it cannot work, a
 card under the field says why:
 - *its portal exit is itself* or *is not on this avatar*: the link is refused, and the hole stays
@@ -1492,13 +1495,12 @@ card under the field says why:
 - *the portal is not built yet: press Build*: the entrance has not been built since the field was
   set, or was renamed or copied since.
 
-**The plug's mesh has to be fine enough to cut.** A short stretch of the shaft either side of the
-cut folds away inside each body, and the rest comes out of the exit. That stretch is the plug's
-longest triangle along the shaft, with a quarter added. Past a fifth of the plug's length the bake
-says the plug *stops at a portal entrance* and the plug treats every portal as an ordinary hole.
-Add loops along the shaft and bake again. A plug of several meshes cuts them all in one place, the
-main mesh's, so another mesh baked into it whose triangles are longer stops at the entrance while
-the rest goes through; the bake names that mesh.
+**The plug's mesh has to be fine enough to cut.** A short stretch of the second copy past the cut
+folds away inside the exit, and the rest comes out. That stretch is the plug's longest triangle
+along the shaft, with a quarter added. Past a fifth of the plug's length the bake says the plug
+*stops at a portal entrance* and the plug treats every portal as an ordinary hole. Add loops along
+the shaft and bake again. Two At Once copies a plug's main mesh only, so the plug's other meshes
+stop at the entrance as at any hole.
 
 **Not yet confirmed in game.** The plug's [readout](#yaps-the-plug-does-not-bend-toward-a-socket-in-game)
 has a cell for it, and [a plug stops at a portal entrance](#yaps-a-plug-stops-at-a-portal-entrance)
@@ -1509,7 +1511,8 @@ goes through what to check.
 **One plug, two sockets.** Tick **Two At Once** in the plug's *Skinned mesh* settings and bake
 again, and the plug carries a second copy of itself. The first copy goes where the plug always
 would; the second goes on from where the first one's path ends, into the next hole the atlas lines
-up past it, through any rings on the way. With no second socket in reach the copy is hidden, and it
+up past it, through any rings on the way. When the first copy's path ends in a [portal](#portals)'s
+entrance, the second comes out of its exit instead. With nowhere to go the copy is hidden, and it
 is hidden too while the plug's toggle is fading. The copy is a second set of the plug's vertices on
 the mesh, and each of them runs the whole deform, hidden or not, so the plug costs the graphics card
 about twice what it did, even with no second socket in reach. The readout describes the first copy.
@@ -2155,10 +2158,11 @@ Bipeds are unaffected by any of it.
   the YAPS tool on a converted avatar is lost when that avatar is converted again, so set it after
   the last conversion. The part that comes out of the exit is drawn only while the plug is: Unity
   culls by the plug's own bounds, which stay around the plug, so with the plug's base out of view
-  the exit side can blink out. A plug too coarse along its shaft to cut stops at the entrance as at
-  any hole, and so does any mesh baked into a plug that is coarser than its main mesh, while the rest
-  goes through; the bake says which. The plug's roll as it leaves the exit is approximate, a short
-  stretch either side of the cut is hidden inside the bodies, and a plug whose shadow stays
+  the exit side can blink out. Only a plug with Two At Once comes out of an exit, which about doubles
+  its cost on the graphics card, and only its main mesh does; every other plug, and every other
+  mesh, stops at the entrance as at any hole. So does a plug too coarse along its shaft to cut; the
+  bake says so. The plug's roll as it leaves the exit is approximate, a short stretch past the cut
+  is hidden inside the exit, and a plug whose shadow stays
   straight keeps a straight shadow. A crowded view can lose an exit's place in the atlas; the
   entrance is then an ordinary hole in that view, never a way out of the wrong socket. Someone
   else's copy of the avatar sees an ordinary hole until the wearer's owner id first syncs. Not yet
@@ -3035,7 +3039,7 @@ Work down the list; the first that fits is usually it.
   what the atlas read, whether the atlas is on the camera drawing this view, whether this plug
   asks for the atlas at all, and the [portal](#portals) (dark the plug's path ends in no hole, amber
   a hole with no owner or number yet, grey no exit published for that hole, which is every
-  ordinary hole, green the exit found, red the exit found and this plug cannot cut). Bottom row,
+  ordinary hole, green the exit found, red the exit found and this plug cannot come out of it). Bottom row,
   the plug's own state: whether it recovered its frame from its vertices (grey a plain-mesh plug,
   which is normal, red the recovery refused and the bend is around the wrong axis), whether the readout's vertex is inside the bake, whether the bake read
   anything, whether the plug will take its own wearer's sockets (amber refusing, which is the
@@ -3102,27 +3106,30 @@ Work down the list; the first that fits is usually it.
 The plug goes into a [portal](#portals)'s entrance and stops there, tapering as at any hole,
 instead of coming out of the exit. In order:
 
-1. **Was the plug built with 5.0?** A plug baked or converted before 5.0 sees an ordinary hole, and
+1. **Is [Two At Once](#two-at-once) ticked on the plug?** Only the plug's second copy comes out of
+   an exit, so without it every portal is an ordinary hole. Tick it and bake again. If the bake
+   says *Two at once is ticked but there is no second copy*, it names why. Only the plug's main
+   mesh is copied, so its other meshes always stop at the entrance.
+2. **Was the plug built with 5.0?** A plug baked or converted before 5.0 sees an ordinary hole, and
    so does one whose shader was updated without baking again. Bake it again, or convert its avatar
    again. That is the plug's avatar, which may be someone else's.
-2. **Was the sockets' avatar built and uploaded after the portal was set?** The card under
+3. **Was the sockets' avatar built and uploaded after the portal was set?** The card under
    **Portal exit** says whether it works; *the portal is not built yet: press Build* means just
    that. Then upload again.
-3. **Did the bake say the plug *stops at a portal entrance*?** Its triangles are too long along the
-   shaft for a portal to cut. Add loops along the shaft and bake again. When it names one mesh of
-   several, only that mesh stops: add loops to it.
-4. **Is the entrance one of the avatar's first 15 sockets?** Past those it *is an ordinary hole
+4. **Did the bake say the plug *stops at a portal entrance*?** Its triangles are too long along the
+   shaft for a portal to cut. Add loops along the shaft and bake again.
+5. **Is the entrance one of the avatar's first 15 sockets?** Past those it *is an ordinary hole
    for now*. Sockets are counted by their path, letter by letter with capitals first, not by where
    they sit in the Hierarchy window: rename the entrance or move it under another object so its path
    sorts earlier, or remove a socket.
-5. **Was it found by marker light?** A view under about 240 pixels square, a viewer with custom
+6. **Was it found by marker light?** A view under about 240 pixels square, a viewer with custom
    shaders off, and a DPS plug all see an ordinary hole.
-6. **Just joined?** Someone else's copy of the avatar is an ordinary hole until the wearer's owner
+7. **Just joined?** Someone else's copy of the avatar is an ordinary hole until the wearer's owner
    id first syncs.
-7. **Turn on *YAPS readout*.** The top row's last cell is the portal: dark, the plug's path ends in
+8. **Turn on *YAPS readout*.** The top row's last cell is the portal: dark, the plug's path ends in
    no hole; amber, the hole has no owner or number yet; grey, no exit is published for that hole;
-   green, the exit was found; red, the exit was found and this plug cannot cut, which is step 1 or
-   step 3.
+   green, the exit was found; red, the exit was found and this plug cannot come out of it, which is
+   step 1, 2 or 4.
 
 ### YAPS: "could not patch the shader", or the test plug sits there straight
 

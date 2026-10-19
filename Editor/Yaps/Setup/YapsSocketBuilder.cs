@@ -499,8 +499,8 @@ namespace AvatarBridge
                 return $"⚠ the portal to \"{exit.name}\" is an ordinary hole for now: only an avatar's first " +
                        $"{YapsOwner.MaxSelfSockets} sockets carry a number, and a portal is found by its number." + twin;
             return (twin.Length > 0 ? "⚠ " : "✓ ") +
-                   $"a plug that goes in comes out of \"{exit.name}\". Screen atlas only: by marker light, and to " +
-                   "plugs built before 5.0, it is an ordinary hole." + twin;
+                   $"a plug with Two At Once that goes in comes out of \"{exit.name}\". Screen atlas only: to any " +
+                   "other plug, by marker light, and to plugs built before 5.0, it is an ordinary hole." + twin;
         }
 
         // Inside one of the toolkit's own folders under the socket.

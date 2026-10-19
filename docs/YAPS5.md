@@ -1645,16 +1645,32 @@ another socket's number. A writer belongs to the entrance whose `builtExit` poin
 name it carries, `Atlas Exit (from <entrance>)`: a copied entrance keeps the reference but not the
 name, and is dark until it is built.
 
-**The cut.** The resolve marks a path that ends in a hole with an owner and a number; the deform
-looks that pair up and, if an exit answers, cuts the shaft at the entrance. A band of
-`_YAPS_PortalSpan` times the plug's length either side of the cut collapses to a point inside each
-body, and the rest of the shaft leaves along the exit's +Z. The span is baked: the longest z-span
-of any triangle whose three corners are all active, over the length, times 1.25, so no triangle
-straddles the cut and stretches between the two bodies. Above 0.2 the plug is too coarse and bakes
--1, which reads as no portal. A second mesh baked on the same chain takes the primary's span so
-both leave the exit together; one coarser than the primary bakes -1 and stops at the entrance
-while the primary goes through [R]. Both builders name that mesh: the converter's report, and the
-toolkit's build card, which shows no report of its own.
+**The cut, on the second copy.** The resolve marks a path that ends in a hole with an owner and a
+number. The first copy treats it as any hole. The second copy (Two at once, below) looks the pair
+up and, if an exit answers at full enable and full engagement, keeps the first copy's path rather
+than the chain past it: every vertex more than 2w past the cut leaves along the exit's +Z by what
+is left over less 2w, and every other copy vertex goes to one point w inside the exit with no
+offsets, its normal and tangent along the exit. w is `_YAPS_PortalSpan` times the plug's length,
+times one plus the pump strength. No triangle joins the two mouths, so a host offset of any kind
+can only open a triangle at the exit. Engaging, fading or with no exit, the copy hides and the
+first copy is the whole plug. A build without `YAPS_DUPLICATE` never reads the exit.
+
+The span is baked: the longest z-span of any triangle whose three corners are all active, over the
+length, times 1.25, so no triangle straddles the cut. Above 0.2 the plug is too coarse and bakes
+-1, which reads as no portal. Only the main mesh carries a copy, so a second mesh baked on the same
+chain stops at the entrance whatever its span. Both builders still name a coarse second mesh.
+
+**Why the second copy (S3, K2, 2026-10-19).** The first design cut one copy in two and collapsed a
+band either side of the cut to a point inside each body, a band whose triangles ran from mouth to
+mouth with zero area. Eight of ten host configurations drew nothing in the corridor over a 50-pose
+sweep, and the exit landed within 0.021 mm on half and 0.162 mm on 8-bit, roll fitted [M]. Two did
+not: Poiyomi Toon 9.3's outline normals from vertex colour in local space, and lilToon 1.7.3's
+outline vector from vertex colour. Both build the offset as c.x*T + c.y*B + c.z*N with
+B = normalize(cross(N, T)), which has no value when N and T both lie along the band, so the band
+opened into a 1 to 2 px line across the room. A tangent across the band (worse, four hosts) and an
+exact frame (no change) both failed [M]. Kill criterion K2 fired, and Joe's standing order took the
+fallback. The cost: a portal needs Two At Once, about twice the plug's GPU work, a skinned plug on
+one material, and the main mesh only.
 
 Measured [M]:
 - The directory at 239^2, 256^2, 512^2, 932x596, 1024^2 and 1920x1080, on 8-bit linear and half
@@ -1665,7 +1681,7 @@ Measured [M]:
 - A 200-entry crowd reaches home B 720 times and loses 304 entries to clashes, all as predicted
   and none wrong: a lost entry is an ordinary hole, never the wrong exit.
 - Not covered: an sRGB 8-bit target, about 1.4 mm by arithmetic [R].
-- GPU time, RTX 4080, 6433 vertices, 7 interleaved repeats: with no portal in reach every delta is
+- GPU time of the band design, before K2, RTX 4080, 6433 vertices, 7 interleaved repeats: with no portal in reach every delta is
   -0.15 to +0.15 us against a 1 us bound; with a live portal -0.07 to +0.22 us against 21.6. The
   deform is 3757 lines (+6.5%) and 52 temps. Six Poiyomi families add no compile messages, and
   their vertex bytecode grows 1.3 to 1.5%. Two homes lose 0.02 to 0.24% of entries with 20 live,
@@ -1690,8 +1706,8 @@ added to the plug's slot over the copies. `_YAPS_CopyStart` is the first copy ve
 - **Its shape is the plain bake, extended:** each copy reads its original's entry, marked active.
   A bake over the copies would measure a point.
 - **Hidden** means every copy vertex on one point a metre behind the camera, so a transparent or
-  outline host draws nothing. It hides at every early return, while the toggle fades, and with no
-  live socket past the first copy's hole.
+  outline host draws nothing. It hides at every early return, while the toggle fades, with no
+  live socket past the first copy's hole, and at a portal whose exit is not open.
 - **Its own shader.** `YAPS_DUPLICATE` costs 52 to 59 temps under fxc, so only a material whose
   `_YAPS_CopyStart` is above 0 is patched with it.
 - DS1, the editor gate: 74 PASS, 0 FAIL, on ten hosts, three atlas formats and 111-step sweeps
