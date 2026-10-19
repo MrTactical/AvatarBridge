@@ -620,7 +620,9 @@ namespace AvatarBridge
             {
                 go?.SetEnabled(_mergeTarget != null && _mergeSources.Any(s => s != null));
                 // One empty field is what clear leaves, so there is nothing to clear.
-                clear?.SetEnabled(_mergeSources.Count > 1 || _mergeSources.Any(s => s != null));
+                bool any = _mergeSources.Count > 1 || _mergeSources.Any(s => s != null);
+                clear?.SetEnabled(any);
+                if (clear != null) clear.tooltip = any ? "Empties the source list." : "No source to clear yet.";
             }
 
             card.Body.Add(BridgeElements.ObjectPicker<AnimatorController>("Target", _mergeTarget,

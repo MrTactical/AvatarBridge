@@ -3264,8 +3264,10 @@ GUI editor); and six SELECT ONLY rows are buttons whose job is selecting: the re
 squash part, and **customise** on a socket just added. The previous run died before reporting; this
 one took an hour.
 
-Open: **Merge animators / clear** is disabled with no tooltip saying why. The paint stroke and the
-squash depth are not yet gestured.
+**Merge animators / clear** was greyed with no tooltip saying why. FIXED 2026-10-19: it says "No
+source to clear yet", and `GreyedButtonTooltipTest` mounts the Toolkit and checks it (WRONG before,
+ok after). The same test lists every greyed button with no tooltip in the Toolkit: clear was the
+only one. Open: the paint stroke and the squash depth are not yet gestured.
 
 ### "Convert just one part, like only PhysBones": a user's request, 2026-10-17. SLICES 1-2 BUILT
 
