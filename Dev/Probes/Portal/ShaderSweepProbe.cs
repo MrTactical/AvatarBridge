@@ -5,7 +5,7 @@
 // draws follow the deform?
 //
 //   -executeMethod AvatarBridge.Regression.ShaderSweepProbe.Run
-//       [-sweepHosts Mochie]     only hosts whose name contains it
+//       [-sweepHosts Mochie]     only hosts whose name contains it (a|b for either)
 //       [-sweepDump <dir>]       every host's frames as PNGs, strays marked
 //
 // PortalCopyProbe's tube on a plain mesh, its frame from the renderer, seen
@@ -41,6 +41,7 @@ namespace AvatarBridge.Regression
         const string Tag = "[ShaderSweep] ";
         const string Folder = "Assets/__ShaderSweep";
         internal const string PoiyomiPath = "Assets/_PoiyomiShaders/Shaders/9.3/Toon/Poiyomi Toon.shader";
+        const string PoiyomiProFolder = "Assets/_PoiyomiShaders/Shaders/9.3/Pro/";
         const int W = 1280, H = 800, Layer = 31, Owner = 0x5A3C17, Number = 3;
         // Wider than any outline below (about 5 mm, 7 px at the tube), narrower than the
         // gap between the unmoved tube and either move (90 mm and more).
@@ -107,7 +108,7 @@ namespace AvatarBridge.Regression
             string only = PortalCopyProbe.Arg("-sweepHosts");
             string dump = PortalCopyProbe.Arg("-sweepDump");
             if (!AssetDatabase.IsValidFolder(Folder)) AssetDatabase.CreateFolder("Assets", "__ShaderSweep");
-            var hosts = Hosts(Folder, n => only == null || n.Contains(only), out bool all);
+            var hosts = Hosts(Folder, n => only == null || only.Split('|').Any(n.Contains), out bool all);
             if (hosts.Count == 0) throw new InvalidOperationException("no host to draw");
             // One lock for every Poiyomi, as the converter's batch does.
             YapsLock.Prepare(hosts.Select(h => h.source));
@@ -433,6 +434,8 @@ namespace AvatarBridge.Regression
             Add("Poiyomi", "Poiyomi 9.3 outline, vertex colour normals, local", PoiyomiPath, true, m => { Poi(m); F(m, "_OutlineUseVertexColorNormals", 1); });
             Add("Poiyomi", "Poiyomi 9.3 outline, vertex colour normals, world", PoiyomiPath, true, m => { Poi(m); F(m, "_OutlineUseVertexColorNormals", 1); F(m, "_OutlineSpace", 1); });
             Add("Poiyomi", "Poiyomi 9.3 outline, drop shadow", PoiyomiPath, true, m => { Poi(m); F(m, "_OutlineExpansionMode", 4); F(m, "_OutlineDropShadowOffset", new Vector4(0.01f, -0.01f, 0, 0)); });
+            Add("Poiyomi", "Poiyomi Pro 9.3 tessellated", PoiyomiProFolder + "Poiyomi Pro Tessellated.shader", false);
+            Add("Poiyomi", "Poiyomi Pro 9.3 fur", PoiyomiProFolder + "Poiyomi Pro Fur.shader", true);
             Add("lilToon", "lilToon", "lilToon", false);
             Add("lilToon", "lilToon outline", "Hidden/lilToonOutline", true, m => { F(m, "_OutlineWidth", 0.5f); F(m, "_OutlineWidthMask", mask); });
             // The other render modes borrow from lenders of their own; multi borrows nothing.
@@ -442,6 +445,11 @@ namespace AvatarBridge.Regression
             Add("lilToon", "lilToon lite", "Hidden/lilToonLite", false);
             Add("lilToon", "lilToon tessellation", "Hidden/lilToonTessellation", false);
             Add("lilToon", "lilToon multi", "_lil/lilToonMulti", false);
+            // Fur grows shells in a geometry stage from what the vertex stage hands it, so it
+            // counts as an outline: the shells have to draw wider than Simple Lit's shaft.
+            Add("lilToon", "lilToon fur", "Hidden/lilToonFur", true);
+            Add("lilToon", "lilToon fur cutout", "Hidden/lilToonFurCutout", true);
+            Add("lilToon", "lilToon fur two-pass", "Hidden/lilToonFurTwoPass", true);
             Add("Mochie", "Mochie Standard", "Mochie/Standard", false);
             Add("Mochie", "Mochie Uber", "Mochie/Uber", false);
             Add("Mochie", "Mochie Uber outline", "Mochie/Uber (Outline)", true, m => F(m, "_OutlineThicc", 0.5f));
