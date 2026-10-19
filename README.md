@@ -3184,7 +3184,8 @@ converted avatar) and it is patched back.
 
 YAPS locks an unlocked Poiyomi material through Poiyomi before patching it, and this one could not
 be: it's a material variant (Poiyomi locks a variant through its parent), it isn't saved as an asset,
-or Poiyomi's lock failed or isn't in the project, and the warning says which. YAPS patched the
+it carries DPS's properties (YAPS never locks those), or Poiyomi's lock failed or isn't in the
+project, and the warning says which. YAPS patched the
 unlocked shader instead and marked it locked so the upload leaves it alone. It works in game, but
 every Poiyomi feature uploads with it. Lock the material (or the variant's parent) in Poiyomi and
 convert or bake again.

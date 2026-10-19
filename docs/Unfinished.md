@@ -3270,6 +3270,9 @@ one 418 shipped.
   in no tag), so no release note.
 - Still open [R]: an UNLOCKED Thry shader that `Detect` calls DPS is skipped by `Wants` and still
   reads "did not run". No measured case.
+  **Fixed on `dev` 2026-10-19:** the warning says it carries DPS's properties, which YAPS never
+  locks. `ThryLockMarkTest` gained the case: 1 WRONG before, PASS after. Current Poiyomi Pro (9.3,
+  10.0) declares neither property unlocked [M], so this reaches only older Pro shaders with DPS built in.
 
 ### Conversions got slower between corpus 418 and 419, 2026-10-19. NOT LOCATED
 

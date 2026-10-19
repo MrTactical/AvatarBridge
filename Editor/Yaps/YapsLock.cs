@@ -189,6 +189,7 @@ namespace AvatarBridge
                 : asked.isVariant ? "it is a material variant, and Poiyomi locks a variant through its parent"
 #endif
                 : YapsLegacyMap.Detect(asked, out _) == YapsLegacyMap.Origin.SPS ? "VRCFury's deform is built into its shader"
+                : YapsLegacyMap.Detect(asked, out _) == YapsLegacyMap.Origin.DPS ? "it carries DPS's properties, which YAPS never locks"
                 : Failed.TryGetValue(Key(asked, AnimatedOn(asked)), out string failed) ? failed
                 : "Poiyomi's lock did not run";
             report.Warning(Category, $"Poiyomi's unlocked shader ships under YAPS on \"{asked.name}\"",

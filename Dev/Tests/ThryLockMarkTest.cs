@@ -1,5 +1,6 @@
 #if CVR_CCK_EXISTS
 using System.IO;
+using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
@@ -80,6 +81,20 @@ namespace AvatarBridge.Regression
                 YapsLock.WarnIfUnlocked(oldMaterial, oldMaterial, report);
                 Check(report.CountOf(ReportStatus.Warning) == 0, "no warning that the lock did not run");
                 Object.DestroyImmediate(oldMaterial);
+
+                // YAPS never locks a shader with DPS's properties, and its warning said the lock
+                // "did not run" as if it had failed.
+                string dps = Dir + "/ThryUnlockedDps.shader";
+                File.WriteAllText(dps, Source.Replace("Test/ThryUnlocked", "Test/ThryUnlockedDps").Replace("        _Color",
+                    "        _OrificeData (\"\", 2D) = \"white\" {}\n        _Shape1Depth (\"\", Float) = 0.1\n        _Color"));
+                AssetDatabase.ImportAsset(dps, ImportAssetOptions.ForceSynchronousImport);
+                var dpsMaterial = new Material(AssetDatabase.LoadAssetAtPath<Shader>(dps));
+                AssetDatabase.CreateAsset(dpsMaterial, Dir + "/ThryUnlockedDps.mat");
+                var dpsReport = new BridgeReport();
+                YapsLock.WarnIfUnlocked(dpsMaterial, dpsMaterial, dpsReport);
+                string dpsWhy = dpsReport.Entries.Select(e => e.Detail).FirstOrDefault() ?? "";
+                Debug.Log($"[ThryLockMarkTest]   DPS: {dpsWhy}");
+                Check(dpsWhy.Contains("DPS") && !dpsWhy.Contains("did not run"), "an unlocked shader with DPS's properties says why it was not locked");
             }
             finally
             {
