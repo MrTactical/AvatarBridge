@@ -5356,18 +5356,6 @@ controlled by a curve, and `IsSynced` requires `!IsReadOnly`. Any design that co
 value in the animator and expects the room to see it is already wrong; sync the inputs, or
 compute it on every client from something that does sync.
 
-## The bend direction is ill-conditioned when a socket lines up with the plug's axis
-
-Noticed 2026-08-27 while testing the above. With the socket dead on the plug's own axis, X and Y
-both at the centre of the channel box, a sub-millimetre wobble makes the deform thrash: there is
-no preferred side to bend toward, so the direction swings. Move the socket off-axis and it is
-steady, and at long range it does not show because the plug is nearly straight anyway.
-
-No amount of smoothing the POSITION fixes an unstable DIRECTION, so this is separate from the
-resolution limit above. How much it matters depends on how often a real socket sits within a
-millimetre of the axis, which is probably rare. Worth remembering when someone reports that a
-plug "freaks out sometimes" with no other pattern to it.
-
 ## User reports from stable, 2026-08-27
 
 Both from a user on the shipped build. Neither is reproduced here yet, and
