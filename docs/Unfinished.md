@@ -4841,6 +4841,7 @@ is **in 5.0.0**, which waits for both to pass in game.
   - No triangle joins the two mouths, so no host offset can reach across the room. Left: an outline may open the waiting point into a speck inside the exit.
   - Cost for users: a portal needs Two At Once, so about twice the plug's GPU work all the time (DS2), a skinned plug on one material sharing its mesh with no other plug, and only the main mesh comes out.
   - **Joe's call, undoable:** keep it; or the band for everyone, accepting the line on those two outline modes; or both, the band for plugs without the copy and the copy for plugs with it.
+  - How common the two modes are, from the corpus project's source materials (generated output excluded) [M]: `_OutlineUseVertexColorNormals` 1 on 0 of 1412 materials carrying it; `_OutlineVertexR2Width` 2 on 1 of 21, a coat, not a plug. A fourth option for Joe: both, plus a bake warning that reads those two settings off the plug's material.
   - Readout: green now also needs `_YAPS_CopyStart` > 0, so a plug without the copy reads red at a live exit.
   - fxc: plain 51 temps, 3546 lines; with the copy 59, 3903 [M].
   - **Verified (`Dev/Probes/Portal/PortalCopyProbe`, PASS) [M]:** the S3 sweep and corridor detector, 50 poses, HDR and 8-bit, eleven hosts including both K2 outline modes and a Simple Lit build without the copy:
