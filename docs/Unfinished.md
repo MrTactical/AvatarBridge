@@ -3224,6 +3224,10 @@ cannot be patched refuses the host with the lender's reason. Sweep 5 (Poiyomi lo
 off equal to the original to 0 px over 2/255. UTS 2 (all four) now refuses through its lender (no
 `SV_VertexID`), Filamented through `Standard` (no `vertAdd`); both on Simple Lit as before.
 `IncludeVertexTest` covers a lender that patches and one that cannot.
+Two At Once on lilToon as shipped (PortalCopyProbe `-portalSweep -portalHosts lilToon`, shipped
+includes at 56f114c) [M]: 11 PASS, 0 FAIL; both lilToon shaders patch with 0 passes left drawing
+through the unpatched original; 0 corridor pixels on all four outline modes, HDR and 8-bit; exit
+within 0.0213 mm (HDR) and 0.1617 mm (8-bit); 0 plain or first-copy vertices moved by the exit.
 - Untested [R]: lilToon's other render modes (cutout, transparent, fur and the rest borrow from
   their own `ltspass_*` lenders, the same path); lilToon's inspector on the patched copy, which may
   swap the shader back to its own on a render-mode change (YapsShaderGUI wraps it); not in game.
@@ -5172,7 +5176,7 @@ if (leftOver > 0 && socket.tier > 2.5 && socket.chain.portal != 0
 - **DS1 re-verified 2026-10-18: PASS.** The breaker's re-run of 38d1ea4 matches the builder's 87 result lines character for character (74 PASS, 0 FAIL, 60 min) [M]. With the define off, plug, writer and deform bytecode is byte-identical to the spike before DS1 (d7cb796).
   - **Open, probe gap:** the behind-the-base fade in `YapsCopyPath` is untested. With it removed the gate still passes, because the resolver drops a socket more than 0.5 L behind the root (`yaps_resolve.cginc:620`), where the fade reaches 0 anyway. Removing it changes only the copy's reach at its last drawn step, from 0.0 mm to 259.8 mm, a pop, and that reach is logged without a bound. Add one before the fade counts as tested.
   - **For Joe, changed from the plan:** (1) copies are anchored on the bake origin with zero deltas, not Extend-copied; (2) the order is split, bake, duplicate, extend the bake, since a bake over the copies moved the origin 2.08 mm and took a copy as anchor [M]; (3) copy 2 has rest weight 0, so it grows out of the root and has no sway of its own, and a viewer with shaders blocked sees one plug (checklist S25.3 says so now).
-  - **Not covered, not blocking:** copy 2 with a shape weight on (its shape comes from the extended bake's blocks alone); outline hosts past 65535 vertices on the GPU; a reflected or custom-matrix camera (DG1, [GAME]); lilToon only through a forced ltspass copy.
+  - **Not covered, not blocking:** copy 2 with a shape weight on (its shape comes from the extended bake's blocks alone); outline hosts past 65535 vertices on the GPU; a reflected or custom-matrix camera (DG1, [GAME]); ~~lilToon only through a forced ltspass copy~~ (as shipped since 56f114c, 11 of 11 PASS, lilToon record).
 
 #### Phases
 
