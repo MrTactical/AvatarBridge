@@ -679,7 +679,7 @@ namespace AvatarBridge
             if (f.Kind == YapsScanner.Kind.Socket)
             {
                 var socket = f.Root.GetComponent<YapsSocket>();
-                if (socket != null) YapsSocketBuilder.Build(socket);
+                if (socket != null) YapsNativeBuilder.RebuildMarkers(socket);
             }
             else
             {

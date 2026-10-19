@@ -60,6 +60,10 @@ struct YapsChain
     // this plug is not ticked for. Kept apart from refusedD: the hip socket
     // is always the nearest own one and would crowd a tag refusal out.
     float  lightUnticked;
+    // The owner << 4 | number of the hole the path ends in,
+    // so the deform asks the margin only where it portals. 0 when the path
+    // ends in no hole, or in one whose owner or number is unknown.
+    int    portal;
 };
 
 struct YapsSocket
@@ -618,6 +622,13 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength, float3 l
                     if (scan == 1 && (YAPS_CH_SAME(0) || YAPS_CH_SAME(1) || YAPS_CH_SAME(2) || YAPS_CH_SAME(3)))
                         continue;
 
+                    // A hole carries its owner and number in its kind's bits,
+                    // a float of 2 or more, so the sort moves the key with no
+                    // array of its own and no register held across the scan.
+                    // The key is 0 when either is unknown: no exit to ask for.
+                    if (kind > 0.5)
+                        kind = asfloat(0x40000000 + (owner != 0 && ownIndex > 0 ? owner << 4 | ownIndex : 0));
+
                     // Insertion sort, nearest first. THE ORDER IS THE PATH:
                     // socket one is the one the shaft meets first.
                     //
@@ -658,13 +669,16 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength, float3 l
     // to unroll to keep every index constant.
     int count = 0;
     bool ended = false;
+    float lastK = 0;
     [unroll] for (int i2 = 0; i2 < YAPS_CHAIN_MAX; i2++)
     {
         bool live = sockK[i2] > -0.5 && !ended;
-        if (live) count++;
+        if (live) { count++; lastK = sockK[i2]; }
         ended = ended || (live && sockK[i2] > 0.5);
     }
     chain.count = count;
+    // Ended means the last live entry is a hole.
+    chain.portal = ended ? asint(lastK) - 0x40000000 : 0;
 
     float3 prev = root;
     [unroll] for (int i3 = 0; i3 < YAPS_CHAIN_MAX; i3++)
@@ -687,7 +701,7 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength, float3 l
 
         chain.position[i3] = sockP[i3];
         chain.forward[i3] = sockF[i3];
-        chain.kind[i3] = sockK[i3];
+        chain.kind[i3] = min(sockK[i3], 1);
     }
 
     chain.engaged = 1 - smoothstep(len * YAPS_ATLAS_REACH, far, sockD[0]);

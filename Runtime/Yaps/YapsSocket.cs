@@ -121,6 +121,17 @@ namespace AvatarBridge.Yaps
         [Tooltip("For a plug that only appears in Play Mode, or to see the bend on a posed avatar.")]
         public bool previewInPlayMode;
 
+        // Outside the #if for the same reason.
+        [Tooltip("A plug that goes into this hole comes out of the exit. Screen atlas only: by marker " +
+                 "light, and to plugs built before 5.0, this is an ordinary hole.")]
+        public YapsSocket portalExit;
+
+        // The exit's writer the last build made. It lives under the exit, so
+        // without this a rebuild aimed elsewhere, or Remove, would leave it
+        // publishing for an entrance that no longer leads there.
+        [HideInInspector]
+        public GameObject builtExit;
+
 #if UNITY_EDITOR
         // Editor preview: writes the socket into every YAPS plug in the scene.
         static YapsSocket _previewing;

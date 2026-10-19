@@ -83,7 +83,7 @@ mid-2026:
 | **VRCFury** (toggles, linked clothing, merged armatures survive) | ✅ baked automatically | manual |
 | VRCFury's sync workarounds removed instead of carried across broken | ✅ | - |
 | Contacts | pointers + triggers with [tags widened](#contacts) so ordinary CVR players' hands fire them, proximity receivers driven from distance, anchors and animated switches carried | emulated with `CVRPointer` + trigger |
-| Penetration (DPS / TPS / SPS) converted to a system that works in ChilloutVR | ✅ [YAPS](#yaps-penetration-that-works-in-chilloutvr), a separate 18+ add-on, plus a tool to set it up on any avatar | - |
+| Penetration (DPS / TPS / SPS) converted into one system built for ChilloutVR | ✅ [YAPS](#yaps-penetration-that-works-in-chilloutvr), a separate 18+ add-on, plus a tool to set it up on any avatar | - |
 | Stereo shaders patched so effects stop drawing into one eye | ✅ | - |
 | Gaze limits *measured off your avatar's own poses*; the viewpoint your avatar already shipped with | ✅ | - |
 | Constraints that drive another transform (Avatar Limb Scaling et al.) | ✅ | - |
@@ -859,11 +859,11 @@ toggle) keeps it outright. The report says what was settled.
 
 ## YAPS: penetration that works in ChilloutVR
 
-VRChat has had three penetration systems (Raliv's **DPS**, Thry's **TPS**, VRCFury's **SPS**),
-and every avatar that came to ChilloutVR left its penetration behind, because all three lean on
-things ChilloutVR doesn't have. **YAPS** (Yet Another Penetration System) is the fourth: written
-from scratch for ChilloutVR's own primitives, no VRChat code shipped, and built to speak to the
-other three rather than replace them.
+VRChat has had three penetration systems (Raliv's **DPS**, Thry's **TPS**, VRCFury's **SPS**).
+**YAPS** (Yet Another Penetration System) is a fourth: written from scratch for ChilloutVR's own
+primitives, no VRChat code shipped, and built to speak to the other three rather than replace
+them. A converted plug bends into the sockets it can resolve, sockets open around it, and the
+author's tuning carries across.
 
 **It is a separate download, for adults**: `YAPS-<version>-adult.unitypackage`, on the same
 releases page as the converter. Convert an avatar without it and its penetration is removed, the
@@ -874,7 +874,8 @@ plug mesh stays, straight, and where to get the add-on. Installed, it is two thi
   (recommended)*, a VRChat avatar's plug bends into sockets in game, for everyone in the instance,
   and its sockets open around plugs, with the author's own tuning carried across.
 - **The YAPS tool**, *Tools ▸ YAPS ▸ Setup*, for any ChilloutVR avatar or prop, no VRChat
-  history needed: add sockets, make a plug, tune every knob, preview in the editor. The same
+  history needed: add sockets, make a plug, turn a hole into a [portal](#portals) that a plug comes
+  out of somewhere else, tune every knob, preview in the editor. The same
   system and the same shader either way, so a converted avatar and a native one are the same
   thing to each other.
 
@@ -934,8 +935,8 @@ the DPS/TPS/SPS material by each system's own definition and written onto the YA
 with no counterpart is named in the report.
 
 **An older avatar with DPS or TPS and no SPS bake** has nothing for the converter to build a plug
-from, those systems predate the objects it reads, so its plug keeps a shader whose deform doesn't
-exist here and won't bend, while its sockets come through and work for everyone else. Leaving the
+from, those systems predate the objects it reads, so its plug keeps its own shader and system,
+untouched, while its sockets come through and work for everyone else. Leaving the
 setting on *Convert to YAPS* is what keeps their contacts and depth reactions; *Remove* strips
 both. The report says which case you're in.
 
@@ -943,8 +944,8 @@ both. The report says which case you're in.
 
 | | costs | reaches | how good it is |
 |---|---|---|---|
-| **Screen atlas** | one synced parameter per avatar, for ownership | anyone drawing the avatar with custom shaders on, in a view at least about 240 pixels square, whose own avatar speaks the same atlas protocol | about a tenth of a millimetre, every frame |
-| **Marker lights** | nothing, until an avatar has two or more sockets with marker lights: then one synced **Marker lights** choice, starting on **Off**, says which one is lit | anyone whose client draws the plug | exact, and sampled every frame |
+| **Screen atlas** | one synced parameter per avatar, for ownership | anyone drawing the avatar with custom shaders on, in a view at least about 240 pixels square, whose own avatar speaks the same atlas protocol | about a tenth of a millimetre, every frame, and the only route a [portal](#portals) works over |
+| **Marker lights** | nothing, until an avatar has two or more sockets with marker lights: then one synced **Marker lights** choice, starting on **Off**, says which one is lit | anyone whose client draws the plug | exact, and sampled every frame; a portal entrance is an ordinary hole here |
 
 **The atlas answers first, and marker lights stand in where it cannot**: a view too small to
 hold the atlas, or content that only has lights. The atlas carries the socket's own facing,
@@ -959,8 +960,12 @@ different protocols fall back to the marker lights, which have no version and al
 an avatar with two or more sockets lights only the one its wearer picked in **Marker lights**, and
 none until they pick. That is a quiet difference rather than a broken one, and it is worth knowing
 what it looks like from the inside: a lit socket still bends a plug, and only the things the lights
-cannot carry go missing, which is tags, one-way rings and a wearer's own sockets. If a plug behaves
-for one person and not another, compare versions before anything else.
+cannot carry go missing, which is tags, one-way rings, portals and a wearer's own sockets. If a plug
+behaves for one person and not another, compare versions before anything else. **Portals did not
+change the number.** An exit writes into rows of the atlas no socket uses, so ordinary sockets
+cross between 5.0 and the versions before it on the same protocol, and a plug built before 5.0
+reads a portal's entrance as an ordinary hole rather than misreading anything. A portal itself
+needs both sides on 5.0: the avatar wearing the sockets, and the avatar wearing the plug.
 
 **There used to be a third route, a contact channel, and from 4.5.1 it no longer bends a plug.**
 A contact only lets go when the socket leaves it, and a socket deleted or switched off while a plug
@@ -974,7 +979,8 @@ of the frame, ahead of the scene so the scene covers it and nothing is visible, 
 shader reads that block. Positions cost no sync bits and no contact pairs, it crosses between
 avatars, and it is what lets a plug pass through several sockets on its way rather than bending
 at the first. It needs the plug's own patched shader, so it arrives with a conversion or a
-rebuild. The full block is 932 by 596 pixels; a smaller view (a small mirror, a camera at a low
+rebuild. The full block is 932 by 596 pixels, and its top eight rows are where portal exits say
+where they are, rows the sockets never use, so a portal makes the block no bigger; a smaller view (a small mirror, a camera at a low
 resolution, the self portrait) gets a smaller block with fewer cells, worked out from the view's
 own size by the sockets and the plugs alike. Fewer cells means a crowded instance loses the odd
 socket in that view. Below about 240 pixels square the atlas is off and a plug seen there falls
@@ -1455,6 +1461,72 @@ above.
 converted one: through the screen atlas, with marker lights where the atlas cannot answer. Build
 takes out a channel an earlier version wired onto the avatar, which frees its synced parameters.
 
+#### Portals
+
+**A hole can lead somewhere else.** Set a hole's **Portal exit**, in the *What it is* card of its
+inspector, to another socket on the same avatar, and a plug that goes into the hole comes out of
+the exit: the part of the shaft past the entrance appears at the exit and leaves through its front,
+the side its markers sit on. The exit is still an ordinary socket in every other way. Any plug
+built with 5.0 can take a portal, the wearer's own or anyone else's. While the field is set the
+socket is a hole: **Kind** is locked to *Hole*, the banner reads *Portal entrance*, and the Scene
+view draws a dotted line from the entrance to its exit. Building the entrance puts one small
+object under the exit, *Atlas Exit (from* the entrance's name*)*; on a socket already built,
+setting the field builds it again. The object is the toolkit's own: built again with the entrance,
+removed with either socket, and taken out by **Clean up leftovers** once no entrance leads there.
+
+**Screen atlas only.** The exit says where it is through the screen atlas, so, as the field's
+tooltip puts it, "by marker light, and to plugs built before 5.0, this is an ordinary hole": the
+plug stops there and tapers as it always did. **Rebuild both avatars on 5.0**, the one wearing the
+sockets and the one wearing the plug, for a portal to work between them. Where it cannot work, a
+card under the field says why:
+- *its portal exit is itself* or *is not on this avatar*: the link is refused, and the hole stays
+  ordinary. An exit is another socket on the same avatar.
+- *its portal exit is gone*: the exit was deleted. Pick the exit again, or clear the field.
+- *a ring cannot be a portal entrance*: something other than the inspector, which locks **Kind** to
+  *Hole* while the field is set, made the entrance a ring. Set **Kind** to *Hole*, or clear the field.
+- *is an ordinary hole for now*: only an avatar's first 15 sockets carry a number, and a portal is
+  found by its entrance's number. They are counted by their path in the hierarchy, sorted letter by
+  letter with capitals before small letters, so dragging a socket up the Hierarchy window changes
+  nothing: rename it, or move it under another object.
+- *a portal on a prop stays an ordinary hole*: a prop has no wearer to key its exit by.
+- *the portal is not built yet: press Build*: the entrance has not been built since the field was
+  set, or was renamed or copied since.
+
+**The plug's mesh has to be fine enough to cut.** A short stretch of the shaft either side of the
+cut folds away inside each body, and the rest comes out of the exit. That stretch is the plug's
+longest triangle along the shaft, with a quarter added. Past a fifth of the plug's length the bake
+says the plug *stops at a portal entrance* and the plug treats every portal as an ordinary hole.
+Add loops along the shaft and bake again. A plug of several meshes cuts them all in one place, the
+main mesh's, so another mesh baked into it whose triangles are longer stops at the entrance while
+the rest goes through; the bake names that mesh.
+
+**Not yet confirmed in game.** The plug's [readout](#yaps-the-plug-does-not-bend-toward-a-socket-in-game)
+has a cell for it, and [a plug stops at a portal entrance](#yaps-a-plug-stops-at-a-portal-entrance)
+goes through what to check.
+
+#### Two at once
+
+**One plug, two sockets.** Tick **Two At Once** in the plug's *Skinned mesh* settings and bake
+again, and the plug carries a second copy of itself. The first copy goes where the plug always
+would; the second goes on from where the first one's path ends, into the next hole the atlas lines
+up past it, through any rings on the way. With no second socket in reach the copy is hidden, and it
+is hidden too while the plug's toggle is fading. The copy is a second set of the plug's vertices on
+the mesh, and each of them runs the whole deform, hidden or not, so the plug costs the graphics card
+about twice what it did, even with no second socket in reach. The readout describes the first copy.
+
+**Screen atlas only.** The atlas is the only route that hands a plug more than one socket, so by
+marker light the plug is one plug.
+
+**Where it cannot be made**, the bake says *Two at once is ticked but there is no second copy*, and
+why:
+- *it needs a skinned mesh*: a plain mesh bends whole, from its own object.
+- *another plug shares its mesh*: the copy's vertices sit past every vertex the other plug's bake
+  describes.
+- *its triangles span several materials*: the copy is made from one material's triangles.
+
+A plug of several meshes copies its main mesh only, and the bake says so: the parts on the other
+meshes stay with the first copy. **Not yet confirmed in game.**
+
 ### Squash: soft parts that press together
 
 An opt-in in the YAPS add-on: breasts and butt flatten where they press against each other, and
@@ -1896,7 +1968,7 @@ Analyse sets them to match. Open it to override a measurement deliberately, not 
 | **Face tracking** | Native CVR Component | Native drives blendshapes through CVR's own `CVRFaceTracking`: self-contained, a bit stiff. *Unity Animator Blendtrees (DSR)* rebuilds DragonSkyRunner's rig onto the avatar: smoother, more expressive. *Keep the avatar's own rig* strips nothing. Both set-up modes replace any existing FT rig |
 | **Remove GoGo Loco (recommended)** | on | Strips GoGo Loco, whose locomotion VRChat needs and ChilloutVR provides natively. Keeping it is experimental: GoGo replaces ChilloutVR's locomotion, so Base, Additive and Action must all be ticked or there is none, and its poses don't lock movement |
 | **Put GoGo poses in the emote wheel** | on | Offered while GoGo is removed. Up to eight: the avatar's own GoGo emotes first, then GoGo's sit and lie poses. They replace ChilloutVR's stock emotes on this avatar, hold until you move, and cost no synced parameters |
-| **Penetration** | Convert to YAPS | One choice, three answers. *Convert to YAPS (recommended)* rebuilds the penetration system for ChilloutVR: a from-scratch deform, the author's own tuning carried across, sockets found through the screen atlas and DPS marker lights, readable by and reading every system on the platform. *Remove* takes it all out: every plug and socket goes, and the plug mesh stays, straight. *Leave as VRChat built it (won't work)* touches nothing, and functions nowhere. The OGB, PCS and Wholesome haptics stacks go with the first two: local, they cost no sync bits, but each is a contact, and ChilloutVR budgets 512 overlapping pairs a frame for the whole instance: a converted avatar carried over a hundred. *Opt-ins ▸ OSC toys* keeps them beside a converted system if you drive a toy from them. The choice needs the 18+ [YAPS add-on](#yaps-penetration-that-works-in-chilloutvr) installed; without it the penetration is removed and the report names the add-on |
+| **Penetration** | Convert to YAPS | One choice, three answers. *Convert to YAPS (recommended)* rebuilds the penetration system for ChilloutVR: a from-scratch deform, the author's own tuning carried across, sockets found through the screen atlas and DPS marker lights, readable by and reading every system on the platform. *Remove* takes it all out: every plug and socket goes, and the plug mesh stays, straight. *Leave as VRChat built it* touches nothing: no plug or socket is converted, and each keeps whatever its own system does here. The OGB, PCS and Wholesome haptics stacks go with the first two: local, they cost no sync bits, but each is a contact, and ChilloutVR budgets 512 overlapping pairs a frame for the whole instance: a converted avatar carried over a hundred. *Opt-ins ▸ OSC toys* keeps them beside a converted system if you drive a toy from them. The choice needs the 18+ [YAPS add-on](#yaps-penetration-that-works-in-chilloutvr) installed; without it the penetration is removed and the report names the add-on |
 | **Remove animation that can't do anything (recommended)** | on | Drops curves pointing at material properties the shader doesn't have: dead in VRChat too, noisy in CVR |
 | **FX (toggles, expressions)** | on | The layer nearly every toggle lives in |
 | **Gesture (hand poses)** | on | Hand poses, converted to the CCK's own float threshold idiom. A Gesture layer holding **only** VRChat's `proxy_*` placeholders is left behind and ChilloutVR's own hand poses kept; see [fingers snapping](#converted-fingers-snap-to-a-pose-nobody-authored) |
@@ -2054,9 +2126,9 @@ Bipeds are unaffected by any of it.
 - **Synced animator layers** and **ONSP audio**
 - **Content tags**: set CVR's *Advanced Tagging* (NSFW, loud audio…) yourself before uploading
 - **VRChat-only rendering**: anything needing VRChat's own shader systems. Meshes and materials
-  survive; the effect doesn't. Penetration deformation (DPS, TPS, SPS) is the exception when the
-  18+ [YAPS add-on](#yaps-penetration-that-works-in-chilloutvr) is installed and *Penetration* is left
-  on *Convert to YAPS*: set to *Remove*, or without the add-on, it goes the same way.
+  survive; the effect doesn't. Penetration (DPS, TPS, SPS) is handled on its own: with the 18+
+  [YAPS add-on](#yaps-penetration-that-works-in-chilloutvr) installed and *Penetration* left on
+  *Convert to YAPS* it becomes YAPS; set to *Remove*, or without the add-on, it is removed.
 
 ### Converted with caveats
 
@@ -2078,6 +2150,23 @@ Bipeds are unaffected by any of it.
   pushing it aside, since the shader cannot remember which side the arm came in from. The stretch
   in motion reads the swing the avatar's own physics give, so stiff physics show little of it, and
   the editor preview's bounce is a stand-in.
+- **[Portals](#portals) (YAPS).** An entrance and its exit are worn by the same avatar: a portal
+  between two people, or on a prop, is not possible. A conversion never makes one, and one set in
+  the YAPS tool on a converted avatar is lost when that avatar is converted again, so set it after
+  the last conversion. The part that comes out of the exit is drawn only while the plug is: Unity
+  culls by the plug's own bounds, which stay around the plug, so with the plug's base out of view
+  the exit side can blink out. A plug too coarse along its shaft to cut stops at the entrance as at
+  any hole, and so does any mesh baked into a plug that is coarser than its main mesh, while the rest
+  goes through; the bake says which. The plug's roll as it leaves the exit is approximate, a short
+  stretch either side of the cut is hidden inside the bodies, and a plug whose shadow stays
+  straight keeps a straight shadow. A crowded view can lose an exit's place in the atlas; the
+  entrance is then an ordinary hole in that view, never a way out of the wrong socket. Someone
+  else's copy of the avatar sees an ordinary hole until the wearer's owner id first syncs. Not yet
+  confirmed in game.
+- **[Two at once](#two-at-once) (YAPS).** Screen atlas only, a skinned plug only, and only when no
+  other plug shares its mesh and its triangles sit on one material. A plug of several meshes copies
+  its main mesh alone. A conversion never ticks it, and converting the avatar again starts the plug
+  without it, so tick it after the last conversion. Not yet confirmed in game.
 - **Action-layer emotes and features.** Only **Gesture** and **FX** convert by default: Base,
   Additive and Action are off, because CVR drives locomotion and emotes itself. **An avatar that
   transforms usually needs Action ticked**: a mech that folds into a vehicle keeps its menu toggle
@@ -2151,7 +2240,7 @@ Find your symptom:
 | **Face, eyes, viewpoint** | [face tracking missing](#face-tracking-wasnt-set-up-and-the-avatar-definitely-has-it) · [blink problems](#your-eyes-stay-open-start-closed-or-lose-a-pupil) · [viewpoint off the head](#the-viewpoint-or-voice-position-is-nowhere-near-the-head) |
 | **Toggles, menus, contacts** | [toggle does nothing on screen](#a-toggle-switches-on-the-layer-plays-and-nothing-changes-on-screen) · [toggle never comes back](#a-toggle-switches-on-but-never-back-off) · [partial material swap](#a-material-swap-changes-only-some-parts) · [dead menu control](#a-menu-control-appears-moves-syncs-and-does-nothing) · [duplicate controls](#two-near-identical-menu-controls-and-only-one-works) · [dead contact](#a-contact-does-nothing-at-all-for-anyone-including-you) |
 | **What only others see (or don't)** | [flickering for others](#other-people-see-my-avatar-flickering-cycling-colours-or-thrashing-i-dont) · [rapid flicker](#an-animation-flickers-rapidly-often-only-on-other-players-screens) · [private sound](#a-sound-only-you-can-hear) · [private particles](#a-particle-effect-only-you-can-see) · [particle squares](#a-particle-effect-draws-as-plain-coloured-squares) · [one-eye effects](#an-effect-draws-in-one-eye-only-in-vr) |
-| **YAPS (penetration)** | [plug doesn't bend in game](#yaps-the-plug-does-not-bend-toward-a-socket-in-game) · [shader not patched](#yaps-could-not-patch-the-shader-or-the-test-plug-sits-there-straight) · [plug bends twice](#yaps-a-plug-bends-twice-or-stretches) · [socket reads "not built"](#yaps-a-converted-socket-reads-not-built-or-the-windows-row-says-a-plug-is-not-baked) · [stopped bending after unlocking materials](#yaps-a-plug-stopped-bending-after-unlocking-materials) · [unlocked Poiyomi warning](#yaps-the-report-says-poiyomis-unlocked-shader-ships-under-yaps) · [plug left alone](#yaps-a-plug-was-left-alone-because-its-chain-is-the-bodys-own) · [plain mesh jumps](#yaps-a-plain-mesh-plug-jumps-or-turns-the-moment-a-socket-engages-it) · [body-mesh socket won't open](#yaps-a-socket-on-the-body-mesh-does-not-open-around-a-plug) · [toggle greyed in the tester](#yaps-a-menu-toggle-the-tool-added-is-greyed-out-in-the-ccks-tester-or-shows-a-red-) · [OSC toy stays silent](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
+| **YAPS (penetration)** | [plug doesn't bend in game](#yaps-the-plug-does-not-bend-toward-a-socket-in-game) · [plug stops at a portal](#yaps-a-plug-stops-at-a-portal-entrance) · [shader not patched](#yaps-could-not-patch-the-shader-or-the-test-plug-sits-there-straight) · [plug bends twice](#yaps-a-plug-bends-twice-or-stretches) · [socket reads "not built"](#yaps-a-converted-socket-reads-not-built-or-the-windows-row-says-a-plug-is-not-baked) · [stopped bending after unlocking materials](#yaps-a-plug-stopped-bending-after-unlocking-materials) · [unlocked Poiyomi warning](#yaps-the-report-says-poiyomis-unlocked-shader-ships-under-yaps) · [plug left alone](#yaps-a-plug-was-left-alone-because-its-chain-is-the-bodys-own) · [plain mesh jumps](#yaps-a-plain-mesh-plug-jumps-or-turns-the-moment-a-socket-engages-it) · [body-mesh socket won't open](#yaps-a-socket-on-the-body-mesh-does-not-open-around-a-plug) · [toggle greyed in the tester](#yaps-a-menu-toggle-the-tool-added-is-greyed-out-in-the-ccks-tester-or-shows-a-red-) · [OSC toy stays silent](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
 | **Uploading** | [no Upload button](#the-cck-shows-no-upload-button-or-the-uploaded-avatar-is-missing-something) · [object ID failure](#uploading-fails-with-failed-to-generate-new-object-id) |
 
 ### Nothing compiles: `'ImageDownloader' does not contain a definition for 'GetImage'`
@@ -2939,17 +3028,20 @@ Work down the list; the first that fits is usually it.
   seen together. The readout is a small strip of colours the plug draws on itself instead, and it
   leaves the plug bending normally. It is the plug's own answer, not a second reading taken beside
   it: it shares the plug's renderer, so it sees the same atlas, the same lights, the same toggle and
-  the same frame the deform does. Twelve cells
+  the same frame the deform does. Fourteen cells
   in two rows. Top row, left to right: who resolved the socket (grey nobody, cyan the editor's
   preview, amber a marker light, green the screen atlas), whether it is bending (red not engaged,
   amber engaged but its toggle holds it off, green bending), how far away the socket is as a bar,
-  what the atlas read, whether the atlas is on the camera drawing this view, and whether this plug
-  asks for the atlas at all. Bottom row, the plug's own state: whether it recovered its frame from
-  its vertices (grey a plain-mesh plug, which is normal, red the recovery refused and the bend is
-  around the wrong axis), whether the readout's vertex is inside the bake, whether the bake read
+  what the atlas read, whether the atlas is on the camera drawing this view, whether this plug
+  asks for the atlas at all, and the [portal](#portals) (dark the plug's path ends in no hole, amber
+  a hole with no owner or number yet, grey no exit published for that hole, which is every
+  ordinary hole, green the exit found, red the exit found and this plug cannot cut). Bottom row,
+  the plug's own state: whether it recovered its frame from its vertices (grey a plain-mesh plug,
+  which is normal, red the recovery refused and the bend is around the wrong axis), whether the readout's vertex is inside the bake, whether the bake read
   anything, whether the plug will take its own wearer's sockets (amber refusing, which is the
-  quietest reason a plug finds nothing), how many sockets are in the atlas chain, and whether a
-  socket was refused by this plug's tags (red: refused, and nearer than whatever did answer).
+  quietest reason a plug finds nothing), how many sockets are in the atlas chain, whether a
+  socket was refused by this plug's tags (red: refused, and nearer than whatever did answer), and
+  one dark cell that ends the row.
   Black or grey is nothing, red is a fault, green is working. **The toggle syncs**, so everyone
   who can see the plug sees the readout while it is on, each drawn from what their own game
   resolves: someone helping you reads your plug as their client sees it. Off, it draws nothing.
@@ -3004,6 +3096,33 @@ Work down the list; the first that fits is usually it.
 - **The plug bends but too little or too much:** *The bend toward a socket* and *Inside a socket*
   on the plug component are the knobs; the material panel has the same ones. Squeeze and bulge
   are as authored on the source avatar.
+
+### YAPS: a plug stops at a portal entrance
+
+The plug goes into a [portal](#portals)'s entrance and stops there, tapering as at any hole,
+instead of coming out of the exit. In order:
+
+1. **Was the plug built with 5.0?** A plug baked or converted before 5.0 sees an ordinary hole, and
+   so does one whose shader was updated without baking again. Bake it again, or convert its avatar
+   again. That is the plug's avatar, which may be someone else's.
+2. **Was the sockets' avatar built and uploaded after the portal was set?** The card under
+   **Portal exit** says whether it works; *the portal is not built yet: press Build* means just
+   that. Then upload again.
+3. **Did the bake say the plug *stops at a portal entrance*?** Its triangles are too long along the
+   shaft for a portal to cut. Add loops along the shaft and bake again. When it names one mesh of
+   several, only that mesh stops: add loops to it.
+4. **Is the entrance one of the avatar's first 15 sockets?** Past those it *is an ordinary hole
+   for now*. Sockets are counted by their path, letter by letter with capitals first, not by where
+   they sit in the Hierarchy window: rename the entrance or move it under another object so its path
+   sorts earlier, or remove a socket.
+5. **Was it found by marker light?** A view under about 240 pixels square, a viewer with custom
+   shaders off, and a DPS plug all see an ordinary hole.
+6. **Just joined?** Someone else's copy of the avatar is an ordinary hole until the wearer's owner
+   id first syncs.
+7. **Turn on *YAPS readout*.** The top row's last cell is the portal: dark, the plug's path ends in
+   no hole; amber, the hole has no owner or number yet; grey, no exit is published for that hole;
+   green, the exit was found; red, the exit was found and this plug cannot cut, which is step 1 or
+   step 3.
 
 ### YAPS: "could not patch the shader", or the test plug sits there straight
 
