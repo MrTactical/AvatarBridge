@@ -39,6 +39,9 @@ namespace AvatarBridge.Regression
 {
     public static class RegressionRunner
     {
+        // (scene path, converted root), once per conversion. See ConvertAndDigest.
+        public static event Action<string, GameObject> Converted;
+
         // Digests live beside the tool, not in the Unity project.
         // They must survive a reimport of Assets/AvatarBridge.
         // Set AVATARBRIDGE_REPO to the checkout path before running.
@@ -593,6 +596,10 @@ namespace AvatarBridge.Regression
             // Never Selection: a failed conversion leaves it on the source or a half-built
             // target, and the sweep would then digest that as the conversion.
             var target = report.ConvertedRoot;
+            // A probe riding the run reads the conversion here, before the sweep
+            // moves the scene. It writes its own output, never the digest.
+            try { Converted?.Invoke(scenePath, target); }
+            catch (Exception e) { Debug.LogException(e); }
 
             var sb = new StringBuilder();
             sb.Append("avatar: ").Append(descriptor.gameObject.name).Append('\n');
