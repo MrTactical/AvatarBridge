@@ -522,9 +522,15 @@ namespace AvatarBridge
             string sourcePath = ShaderSpiPatcher.SourcePathOf(material.shader);
             if (string.IsNullOrEmpty(sourcePath))
             {
-                refusal = $"\"{material.shader.name}\" has no source file on disk, so there is " +
-                          "nothing to patch: it is one of Unity's built-ins or lives inside a " +
-                          "compiled package";
+                // A shader its importer makes from another file (ORL's .orlshader) has a path
+                // in the project, which a built-in never does.
+                string assetPath = AssetDatabase.GetAssetPath(material.shader);
+                refusal = assetPath.StartsWith("Assets/") || assetPath.StartsWith("Packages/")
+                    ? $"\"{material.shader.name}\" is made on import from \"{Path.GetFileName(assetPath)}\", " +
+                      "which is not shader source, so there is nothing to patch"
+                    : $"\"{material.shader.name}\" has no source file on disk, so there is " +
+                      "nothing to patch: it is one of Unity's built-ins or lives inside a " +
+                      "compiled package";
                 return null;
             }
 

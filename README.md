@@ -1438,8 +1438,9 @@ it, the report says so: see [Poiyomi's unlocked shader ships under YAPS](#yaps-t
 
 **YAPS Simple Lit.** A plain lit shader (metallic workflow through Unity's own BRDF) that the tool
 falls back to when a mesh's own shader cannot be patched (Unity's Standard and everything else
-built in has no source on disk, a surface shader has no vertex function of its own, and some
-shaders read no vertex index from the mesh or borrow their passes from another shader), with the
+built in has no source on disk, a surface shader has no vertex function of its own, some are made
+on import from a file that is not shader source, and some shaders read no vertex index from the
+mesh or borrow their passes from another shader), with the
 colour, albedo, normal map, metallic and smoothness carried over. The test plug wears it. Put a
 shader with source (Poiyomi, for one) on the mesh and re-bake if you need more. Of the popular
 toon shaders, drawn in the editor: Poiyomi and Xiexe's XSToon patch, outlines included; lilToon,
@@ -3137,9 +3138,10 @@ instead of coming out of the exit. In order:
 ### YAPS: "could not patch the shader", or the test plug sits there straight
 
 The plug's material wears a shader the patcher cannot wrap: Unity's Standard and everything else
-built in has no source on disk, a surface shader has no vertex function of its own, and some
-shaders read no vertex index from the mesh (the bake is addressed by it) or borrow their passes
-from another shader, whose vertex stage the patch cannot reach. The tool
+built in has no source on disk, a surface shader has no vertex function of its own, some are made
+on import from a file that is not shader source (ORL's, for one), and some shaders read no vertex
+index from the mesh (the bake is addressed by it) or borrow their passes from another shader,
+whose vertex stage the patch cannot reach. The tool
 falls back to **YAPS Simple Lit** with the colour and textures carried over and says so in the
 outcome; on a converted avatar the report names the material. A converted socket that is its own
 mesh falls back the same way; a socket on the body keeps its contact-driven shapes and its own

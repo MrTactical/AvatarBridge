@@ -3185,8 +3185,10 @@ lilToon finding below is the proof: a host can patch without a word and never be
 - **Not run in the corpus.** Squash patches body materials through the same patcher, so the next
   authorised run should change digests on avatars wearing UTS or a shader that borrows passes: a
   refusal where a silent straight patch was. That is the fix, not a regression.
-- Still open from the sweep: ORL's refusal says the shader "lives inside a compiled package", which
-  is wrong for a shader its importer generates. A host with `SV_VertexID` and one vertex function name
+- ~~ORL's refusal says the shader "lives inside a compiled package", which is wrong for a shader its
+  importer generates.~~ **Fixed on `dev` 2026-10-19:** a shader with a project path but no `.shader`
+  text is refused as "made on import from <file>, which is not shader source". `GeneratedShaderTest`
+  (its own scripted importer, no ORL needed) 2 WRONG before, PASS after. Still open from the sweep: a host with `SV_VertexID` and one vertex function name
   per pass in different files (or several under `#if`) would get only the first patched; no tested
   host has both, so it is latent [R]. The `UsePass` refusal runs before the vertex checks and
   excepts only caster and meta passes, so Filamented now refuses for borrowing `Standard/DEFERRED`
