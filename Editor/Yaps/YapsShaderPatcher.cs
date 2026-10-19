@@ -557,6 +557,18 @@ namespace AvatarBridge
                           "there is no vertex function of its own to wrap";
                 return null;
             }
+            // A pass borrowed whole keeps the other shader's vertex stage, which no edit here
+            // reaches, so the plug drew straight with no word. A borrowed caster or lightmap
+            // pass is fine: neither is the plug the player sees.
+            string borrowed = Regex.Matches(shaderFile.Text, @"^[ \t]*UsePass\s+""([^""]+)""", RegexOptions.Multiline)
+                .Cast<Match>().Select(m => m.Groups[1].Value)
+                .FirstOrDefault(p => !Regex.IsMatch(p, @"/(SHADOW_?CASTER|META)$", RegexOptions.IgnoreCase));
+            if (borrowed != null)
+            {
+                refusal = $"it borrows the pass \"{borrowed}\" from another shader, and the patch " +
+                          "cannot reach a borrowed pass's vertex stage";
+                return null;
+            }
 
             string yaps = YapsSourceFor(duplicate, out string loadFailure);
             if (yaps == null)
@@ -818,7 +830,6 @@ namespace AvatarBridge
                 {
                     return true;   // already done for another pass
                 }
-                alreadyInjected[injectedKey] = false;
             }
 
             int parenOpen = file.Text.IndexOf('(', head.Index);
@@ -876,10 +887,6 @@ namespace AvatarBridge
             members.TryGetValue("NORMAL", out string normalField);
             members.TryGetValue("TANGENT", out string tangentField);
             missingFrame = normalField == null || tangentField == null;
-            if (injectedKey != null)
-            {
-                alreadyInjected[injectedKey] = missingFrame;
-            }
             members.TryGetValue("SV_VERTEXID", out string vertexIdField);
 
             string idExpression;
@@ -962,6 +969,13 @@ namespace AvatarBridge
             // own includes have run, so UnityCG's matrices and light arrays exist.
             file.Text = file.Text.Insert(braceOpen + 1, body.ToString());
             file.Text = file.Text.Insert(head.Index, "\n" + yaps + "\n");
+            // Marked only once injected. Passes run last first, so a shadow caster that
+            // fails here, and is skipped as cosmetic, otherwise left every later pass
+            // "already done" with nothing in it: a plug drawn straight, no refusal.
+            if (injectedKey != null)
+            {
+                alreadyInjected[injectedKey] = missingFrame;
+            }
             return true;
         }
 

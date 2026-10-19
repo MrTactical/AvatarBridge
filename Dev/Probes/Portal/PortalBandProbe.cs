@@ -240,6 +240,19 @@ namespace AvatarBridge.Regression
                     Add(set.name, m, patched, true);
                 }
             }
+            // The shader sweep's other families. One the patcher refuses draws on Simple Lit,
+            // already a host above.
+            if (Environment.GetCommandLineArgs().Contains("-portalSweep"))
+            {
+                var covered = new[] { "YAPS", "Unity", "Poiyomi", "lilToon" };
+                var sweep = ShaderSweepProbe.Hosts(Folder, n => Wanted(n), out bool setUp).Where(h => !covered.Contains(h.family)).ToList();
+                if (!setUp) all = false;
+                foreach (var h in sweep)
+                {
+                    var s = Patched(h.source, h.name);
+                    if (s != null) Add(h.name, h.source, s, h.outline);
+                }
+            }
             foreach (var e in report.Entries.Where(e => e.Status == ReportStatus.Warning))
                 Log($"  report warning: {e.Subject}: {e.Detail}");
             if (hosts.Count == 0) throw new InvalidOperationException("no host to draw");

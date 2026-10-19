@@ -48,8 +48,8 @@ namespace AvatarBridge.Regression
         const string PoiyomiPath = "Assets/_PoiyomiShaders/Shaders/9.3/Toon/Poiyomi Toon.shader";
         static readonly string[] Parts = { "yaps_props", "yaps_atlas", "yaps_resolve", "yaps_deform" };
 
-        const int Rings = 96, Sides = 24, Columns = Sides + 1, Plug = (Rings + 1) * Columns;
-        const float Length = 0.3f, Radius = 0.03f, Start = 0.02f;
+        internal const int Rings = 96, Sides = 24, Columns = Sides + 1, Plug = (Rings + 1) * Columns;
+        internal const float Length = 0.3f, Radius = 0.03f, Start = 0.02f;
         // The baker's rule: the largest z-span of any triangle over the length, times 1.25.
         const float Span = 1.25f * (1 - Start) / Rings;
         const int Owner = 0x5A3C17, Number = 3, W = 1280, H = 800, Layer = 31;
@@ -240,6 +240,19 @@ namespace AvatarBridge.Regression
                     m.SetFloat("_OutlineVertexR2Width", 1);
                     set.set(m);
                     Add(set.name, m, patched, true);
+                }
+            }
+            // The shader sweep's other families, each with the copy. One the patcher refuses
+            // draws on Simple Lit, already a host above.
+            if (Environment.GetCommandLineArgs().Contains("-portalSweep"))
+            {
+                var covered = new[] { "YAPS", "Unity", "Poiyomi", "lilToon" };
+                var sweep = ShaderSweepProbe.Hosts(Folder, n => Wanted(n), out bool setUp).Where(h => !covered.Contains(h.family)).ToList();
+                if (!setUp) all = false;
+                foreach (var h in sweep)
+                {
+                    var s = Patched(h.source, h.name);
+                    if (s != null) Add(h.name, h.source, s, h.outline);
                 }
             }
             foreach (var e in report.Entries.Where(e => e.Status == ReportStatus.Warning))
@@ -675,7 +688,7 @@ namespace AvatarBridge.Regression
 
         // A tube along +Z: ring k at z, vertex j round it, the last column the
         // first again with u = 1. Normals out, tangents round.
-        static Vector3 Rest(int v, out Vector3 n, out Vector4 t)
+        internal static Vector3 Rest(int v, out Vector3 n, out Vector4 t)
         {
             int k = v / Columns, j = v % Columns;
             float a = 2 * Mathf.PI * (j % Sides) / Sides, z = Length * (Start + (1 - Start) * k / Rings);
@@ -690,7 +703,7 @@ namespace AvatarBridge.Regression
         // the copy, every vertex copied after the last as the duplicate builds
         // it: on the plug's origin, the root's up and forward for normal and
         // tangent, its original's UV and colour, the bake extended.
-        static void BuildPlug(bool copy, out Mesh mesh, out Mesh points, out Texture2D bake)
+        internal static void BuildPlug(bool copy, out Mesh mesh, out Mesh points, out Texture2D bake)
         {
             int total = copy ? 2 * Plug : Plug;
             var pos = new Vector3[total];
@@ -747,12 +760,12 @@ namespace AvatarBridge.Regression
             bake.Apply(false, false);
         }
 
-        static Vector4 TexelSize(Texture t) => new Vector4(1f / t.width, 1f / t.height, t.width, t.height);
+        internal static Vector4 TexelSize(Texture t) => new Vector4(1f / t.width, 1f / t.height, t.width, t.height);
 
         // The patcher's defaults, the plug's own frame, the atlas on; the
         // enable and the span ride the property block. The copy's count
         // takes in the copies, and its start is the first of them.
-        static Dictionary<string, float> Floats(bool copy) => new Dictionary<string, float>
+        internal static Dictionary<string, float> Floats(bool copy) => new Dictionary<string, float>
         {
             ["_YAPS_VertexCount"] = copy ? 2 * Plug : Plug, ["_YAPS_CopyStart"] = copy ? Plug : 0,
             ["_YAPS_Length"] = Length, ["_YAPS_Overrun"] = 1,
@@ -763,7 +776,7 @@ namespace AvatarBridge.Regression
             ["_YAPS_Owner"] = 0, ["_YAPS_Debug"] = 0,
         };
 
-        static Material Plugged(Material m, bool copy = false)
+        internal static Material Plugged(Material m, bool copy = false)
         {
             foreach (var kv in Floats(copy)) m.SetFloat(kv.Key, kv.Value);
             return m;
@@ -783,9 +796,9 @@ namespace AvatarBridge.Regression
             return Compiled(AssetDatabase.LoadAssetAtPath<Shader>(path), path);
         }
 
-        static Shader Compiled(string name) => Compiled(Shader.Find(name), name);
+        internal static Shader Compiled(string name) => Compiled(Shader.Find(name), name);
 
-        static Shader Compiled(Shader s, string name)
+        internal static Shader Compiled(Shader s, string name)
         {
             if (s == null) throw new InvalidOperationException(name + " not found");
             foreach (var m in ShaderUtil.GetShaderMessages(s))
@@ -794,7 +807,7 @@ namespace AvatarBridge.Regression
             return s;
         }
 
-        static Texture2D Texture(Func<int, int, Color> at)
+        internal static Texture2D Texture(Func<int, int, Color> at)
         {
             var t = new Texture2D(64, 64, TextureFormat.RGBA32, false, true) { wrapMode = TextureWrapMode.Repeat, filterMode = FilterMode.Bilinear };
             for (int y = 0; y < 64; y++)
@@ -832,7 +845,7 @@ namespace AvatarBridge.Regression
         }
 
         // YapsAtlas.LevelQuads, in memory: corners in UV0, quad index in z, positions zero.
-        static Mesh Quads(int count)
+        internal static Mesh Quads(int count)
         {
             var corners = new List<Vector3>();
             var tris = new List<int>();
@@ -853,7 +866,7 @@ namespace AvatarBridge.Regression
             return mesh;
         }
 
-        static HashSet<string> Entries(string root) => new HashSet<string>(
+        internal static HashSet<string> Entries(string root) => new HashSet<string>(
             Directory.GetFileSystemEntries(root, "*", SearchOption.AllDirectories)
                 .Select(p => p.Replace('\\', '/')).Where(p => !p.EndsWith(".meta")));
 
@@ -866,7 +879,7 @@ namespace AvatarBridge.Regression
 
         static void Log(string s) => Debug.Log(Tag + s);
 
-        static string Arg(string name)
+        internal static string Arg(string name)
         {
             var args = Environment.GetCommandLineArgs();
             int i = Array.IndexOf(args, name);
