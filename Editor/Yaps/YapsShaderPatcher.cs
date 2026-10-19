@@ -781,8 +781,10 @@ namespace AvatarBridge
                 }
 
                 // Lightmap baking runs its own geometry and shows the player nothing.
-                // Deforming there is pointless and can upset the bake.
-                if (LooksLikeMetaPass(shaderFile.Text, block.Index))
+                // Deforming there is pointless and can upset the bake. A "Never" pass is
+                // never drawn (lilToon keeps one to hold UV channels), and Unity's upgrader
+                // reads its patched "struct v2f vert(...) {" as a struct and drops it on DX11.
+                if (LooksLikeMetaPass(shaderFile.Text, block.Index) || PassTagIs(shaderFile.Text, block.Index, "Never"))
                 {
                     continue;
                 }
@@ -815,11 +817,15 @@ namespace AvatarBridge
                 {
                     frameless = true;
                 }
+                // Blocks run last first, so this shifts none still to come.
+                shaderFile.Text = shaderFile.Text.Insert(start, $"\n#define {EntryDefine(vertName)}\n");
                 patched++;
             }
 
             return patched;
         }
+
+        static string EntryDefine(string vertName) => "YAPS_ENTRY_" + vertName;
 
         static bool PatchOneVertexFunction(List<ShaderSpiPatcher.SourceFile> unit, string yaps,
             string vertName, int blockStart, int blockEnd, Dictionary<string, bool> alreadyInjected,
@@ -936,6 +942,10 @@ namespace AvatarBridge
             var body = new StringBuilder();
             body.AppendLine();
             body.AppendLine("    // --- YAPS ---");
+            // Only where this function is the pass's own vertex stage. lilToon's tessellated
+            // passes deform in vertTess, then the domain calls the vert other passes patched,
+            // and the plug bent twice and left the screen.
+            body.AppendLine($"#ifdef {EntryDefine(vertName)}");
             // The block runs before the host's own setup, and an instanced
             // variant reads unity_ObjectToWorld through the instance id, which
             // is 0 until that runs: every batched copy deformed in the first
@@ -993,6 +1003,7 @@ namespace AvatarBridge
             {
                 body.AppendLine($"    {parameterName}.{tangentField}.xyz = yapsTangent;");
             }
+            body.AppendLine("#endif");
             body.AppendLine("    // --- end YAPS ---");
 
             // Body first, then the includes above the function, so the insertion
@@ -1000,7 +1011,9 @@ namespace AvatarBridge
             // function rather than at the top of the block: by there the shader's
             // own includes have run, so UnityCG's matrices and light arrays exist.
             file.Text = file.Text.Insert(braceOpen + 1, body.ToString());
-            file.Text = file.Text.Insert(head.Index, "\n" + yaps + "\n");
+            // At the start of the line, not at the return type: lilToon writes "struct v2f
+            // vert(...)", and a word in front of the type was left in front of the source.
+            file.Text = file.Text.Insert(file.Text.LastIndexOf('\n', head.Index) + 1, "\n" + yaps + "\n");
             // Marked only once injected. Passes run last first, so a shadow caster that
             // fails here, and is skipped as cosmetic, otherwise left every later pass
             // "already done" with nothing in it: a plug drawn straight, no refusal.
@@ -1365,7 +1378,7 @@ namespace AvatarBridge
                     return File.Exists(path) && File.ReadAllText(path) == f.Text;
                 })
                 && AssetDatabase.LoadAssetAtPath<Shader>(shaderPath) is Shader existing
-                && !HasError(existing))
+                && Broken(existing) == null)
             {
                 return existing;
             }
@@ -1406,12 +1419,9 @@ namespace AvatarBridge
                 CleanUp(created, shaderPath);
                 return null;
             }
-            if (HasError(result))
+            error = Broken(result);
+            if (error != null)
             {
-                var messages = Messages(result);
-                error = messages.Length > 0
-                    ? string.Join("; ", messages.Take(3).Select(m => $"line {m.line}: {m.message}"))
-                    : "the compiler reported an error but no message";
                 // Keep the failing source so the error can be read against
                 // real line numbers.
                 File.WriteAllText(shaderPath + ".failed.txt", shaderFile.Text);
@@ -1419,6 +1429,22 @@ namespace AvatarBridge
                 return null;
             }
             return result;
+        }
+
+        // Why the copy would not draw, or null. A pass Unity's upgrader drops for DX11 is only a
+        // warning, "not supported on this GPU", so the error check alone passed a copy that drew
+        // nothing. Compiling every pass here was tried for squash and pulled: it changed which
+        // shaders were refused, and the import already compiles the default variant.
+        static string Broken(Shader shader)
+        {
+            bool error = HasError(shader);
+            if (!error && shader.isSupported) return null;
+            var messages = Messages(shader)
+                .OrderBy(m => m.severity == UnityEditor.Rendering.ShaderCompilerMessageSeverity.Error ? 0 : 1).Take(3).ToArray();
+            string said = messages.Length > 0
+                ? string.Join("; ", messages.Select(m => $"line {m.line}: {m.message}"))
+                : "no message";
+            return error ? said : $"Unity cannot draw it on this GPU ({said})";
         }
 
         static void CleanUp(List<string> written, string keep)

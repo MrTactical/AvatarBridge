@@ -49,6 +49,54 @@ SECOND
             ENDCG
         }";
 
+        // lilToon's UV-channel pass, which is never drawn.
+        const string NeverPass = @"
+        Pass
+        {
+            Tags { ""LightMode"" = ""Never"" }
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            struct appdataNever { float4 pos : POSITION; float3 normal : NORMAL; float4 tangent : TANGENT; uint vid : SV_VertexID; };
+            struct v2fNever { float4 pos : POSITION; };
+            struct v2fNever vert (struct appdataNever input) { struct v2fNever output; output.pos = float4(0, 0, 0, 1); return output; }
+            float4 frag (v2fNever i) : SV_Target { return 0; }
+            ENDCG
+        }";
+
+        const string TessPass = @"
+        Pass
+        {
+            Tags { ""LightMode"" = ""ForwardAdd"" }
+            CGPROGRAM
+            #pragma target 5.0
+            #pragma vertex vertTess
+            #pragma hull hull
+            #pragma domain domain
+            #pragma fragment frag
+            #include ""UnityCG.cginc""
+            #include ""INCLUDE""
+            ENDCG
+        }";
+
+        // Shaped like lilToon's: a pass-through vertex stage, and a domain that calls vert.
+        const string TessInclude = @"
+struct cp { float4 vertex : INTERNALTESSPOS; float3 normal : NORMAL; float4 tangent : TANGENT; uint vid : TEXCOORD8; };
+struct tf { float edge[3] : SV_TessFactor; float inside : SV_InsideTessFactor; };
+cp vertTess (appdata v) { cp o; o.vertex = v.vertex; o.normal = v.normal; o.tangent = v.tangent; o.vid = v.vid; return o; }
+tf hullConst (InputPatch<cp, 3> p) { tf f; f.edge[0] = 1; f.edge[1] = 1; f.edge[2] = 1; f.inside = 1; return f; }
+[domain(""tri"")] [partitioning(""integer"")] [outputtopology(""triangle_cw"")] [patchconstantfunc(""hullConst"")] [outputcontrolpoints(3)]
+cp hull (InputPatch<cp, 3> p, uint id : SV_OutputControlPointID) { return p[id]; }
+[domain(""tri"")]
+v2f domain (tf f, const OutputPatch<cp, 3> p, float3 b : SV_DomainLocation)
+{
+    appdata a;
+    a.vertex = p[0].vertex * b.x + p[1].vertex * b.y + p[2].vertex * b.z;
+    a.normal = p[0].normal; a.tangent = p[0].tangent; a.vid = p[0].vid;
+    return vert(a);
+}
+";
+
         const string Include = @"
 fixed4 _Color;
 struct appdata { float4 vertex : POSITION; float3 normal : NORMAL; float4 tangent : TANGENT; /*ID*/ };
@@ -90,6 +138,38 @@ fixed4 frag (v2f i) : SV_Target { return _Color; }
                 Check(badLender == null, "a pass borrowed from a shader that cannot patch is refused, not patched straight");
                 Check(borrowRefusal != null && borrowRefusal.Contains("borrows") && borrowRefusal.Contains("SV_VertexID"),
                     "the refusal names the lender's reason");
+
+                // A word in front of the return type ("inline v2f vert") was left in front of the
+                // deform's source. Only a compile of the pass shows it.
+                var qualified = Patched("IncVertInline", true, out _, out _, null,
+                    Include.Replace("v2f vert (appdata v)", "inline v2f vert (appdata v)"));
+                Check(qualified != null && Compiles(qualified), "a vert with a word before its type compiles once patched");
+
+                // lilToon's tessellation drew nothing: its "Never" pass, kept only to hold UV channels,
+                // was patched, and Unity's upgrader took "struct v2f vert(...) {" for a struct.
+                var never = Patched("IncVertNever", true, out _, out _, NeverPass);
+                Check(never != null && Compiles(never), "a shader with a never-drawn pass compiles once patched");
+                if (never != null)
+                {
+                    string text = File.ReadAllText(AssetDatabase.GetAssetPath(never));
+                    int from = text.IndexOf("\"Never\"");
+                    Check(from >= 0 && !text.Substring(from, text.IndexOf("ENDCG", from) - from).Contains("YAPS"), "and that pass is left alone");
+                }
+
+                // The same shape in a pass that draws. The upgrader drops it for DX11 with a
+                // warning, so the copy must be refused with a reason, never handed back invisible.
+                var drawn = Patched("IncVertDrawnStruct", true, out string drawnRefusal, out _, NeverPass.Replace("\"Never\"", "\"ForwardAdd\""));
+                Check(drawn == null ? drawnRefusal != null : Compiles(drawn), "a copy that would draw nothing is refused, not handed back");
+
+                // lilToon's tessellation drew nothing once bent: its passes deform in vertTess,
+                // and the domain then calls the vert the other passes had patched, bending twice.
+                var tess = Patched("IncVertTess", true, out _, out _, TessPass, Include + TessInclude);
+                Check(tess != null && Compiles(tess), "a tessellated pass compiles once patched");
+                if (tess != null)
+                {
+                    Check(DeformsIn(tess, 0) == 1, $"the plain pass still deforms, once ({DeformsIn(tess, 0)})");
+                    Check(DeformsIn(tess, 1) == 1, $"the tessellated pass deforms once, not again in what its domain calls ({DeformsIn(tess, 1)})");
+                }
             }
             finally
             {
@@ -104,10 +184,10 @@ fixed4 frag (v2f i) : SV_Target { return _Color; }
             if (Application.isBatchMode) EditorApplication.Exit(failures == 0 ? 0 : 1);
         }
 
-        static Shader Patched(string name, bool vertexId, out string refusal, out int calls, string second = null)
+        static Shader Patched(string name, bool vertexId, out string refusal, out int calls, string second = null, string source = null)
         {
             string include = name + "Inc.cginc";
-            File.WriteAllText($"{Dir}/{include}", Include.Replace("/*ID*/", vertexId ? "uint vid : SV_VertexID;" : ""));
+            File.WriteAllText($"{Dir}/{include}", (source ?? Include).Replace("/*ID*/", vertexId ? "uint vid : SV_VertexID;" : ""));
             string path = $"{Dir}/{name}.shader";
             File.WriteAllText(path, $"Shader \"Test/{name}\"\n{{{Source.Replace("SECOND", second ?? Caster).Replace("INCLUDE", include)}}}\n");
             AssetDatabase.ImportAsset($"{Dir}/{include}", ImportAssetOptions.ForceSynchronousImport);
@@ -122,6 +202,26 @@ fixed4 frag (v2f i) : SV_Target { return _Color; }
                 : 0;
             Object.DestroyImmediate(material);
             return result;
+        }
+
+        // The import reports no error in a pass it has not compiled; drawing compiles it. A pass
+        // that fails then is dropped with a warning, "not supported on this GPU", not an error.
+        static bool Compiles(Shader shader)
+        {
+            ShaderUtil.allowAsyncCompilation = false;
+            var material = new Material(shader);
+            for (int i = 0; i < material.passCount; i++) material.SetPass(i);
+            Object.DestroyImmediate(material);
+            return shader.isSupported && !ShaderUtil.ShaderHasError(shader);
+        }
+
+        // Deform calls left in a pass once its preprocessor has run.
+        static int DeformsIn(Shader shader, int pass)
+        {
+            var variant = ShaderUtil.GetShaderData(shader).GetSubshader(0).GetPass(pass).PreprocessVariant(
+                UnityEditor.Rendering.ShaderType.Vertex, new string[0], UnityEditor.Rendering.ShaderCompilerPlatform.D3D,
+                BuildTarget.StandaloneWindows64, true);
+            return variant.Success ? Regex.Matches(variant.PreprocessedCode, @"\bYapsDeform\s*\(\s*yapsPosition").Count : -1;
         }
 
         static void Check(bool ok, string what)

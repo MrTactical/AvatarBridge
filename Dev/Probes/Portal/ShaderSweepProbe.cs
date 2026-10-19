@@ -435,6 +435,13 @@ namespace AvatarBridge.Regression
             Add("Poiyomi", "Poiyomi 9.3 outline, drop shadow", PoiyomiPath, true, m => { Poi(m); F(m, "_OutlineExpansionMode", 4); F(m, "_OutlineDropShadowOffset", new Vector4(0.01f, -0.01f, 0, 0)); });
             Add("lilToon", "lilToon", "lilToon", false);
             Add("lilToon", "lilToon outline", "Hidden/lilToonOutline", true, m => { F(m, "_OutlineWidth", 0.5f); F(m, "_OutlineWidthMask", mask); });
+            // The other render modes borrow from lenders of their own; multi borrows nothing.
+            Add("lilToon", "lilToon cutout", "Hidden/lilToonCutout", false);
+            Add("lilToon", "lilToon transparent", "Hidden/lilToonTransparent", false);
+            Add("lilToon", "lilToon two-pass transparent", "Hidden/lilToonTwoPassTransparent", false);
+            Add("lilToon", "lilToon lite", "Hidden/lilToonLite", false);
+            Add("lilToon", "lilToon tessellation", "Hidden/lilToonTessellation", false);
+            Add("lilToon", "lilToon multi", "_lil/lilToonMulti", false);
             Add("Mochie", "Mochie Standard", "Mochie/Standard", false);
             Add("Mochie", "Mochie Uber", "Mochie/Uber", false);
             Add("Mochie", "Mochie Uber outline", "Mochie/Uber (Outline)", true, m => F(m, "_OutlineThicc", 0.5f));

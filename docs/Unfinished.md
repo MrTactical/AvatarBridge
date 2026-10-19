@@ -3207,8 +3207,8 @@ lilToon finding below is the proof: a host can patch without a word and never be
     17456). XSToon plain, outline and vertex-colour normals draw 0, outlines drawn. The K2 table
     stands: of the hosts that patch today, only those two draw the line under the band. A real
     lilToon patch would bring its vector mode back into reach. **It now does** (lilToon record below):
-    with the K2 call open, a lilToon plug whose outline takes its vector from vertex colour can draw the
-    line under options 2 to 4, as the Poiyomi local mode already can.
+    a lilToon plug whose outline takes its vector from vertex colour would draw the line under
+    options 2 to 4, as the Poiyomi local mode would. Joe kept the fallback (2026-10-19), so neither does.
 
 ### A plug on lilToon never bends, 2026-10-19. FOUND BY S3, PATCHED ON `dev`
 
@@ -3228,9 +3228,32 @@ Two At Once on lilToon as shipped (PortalCopyProbe `-portalSweep -portalHosts li
 includes at 56f114c) [M]: 11 PASS, 0 FAIL; both lilToon shaders patch with 0 passes left drawing
 through the unpatched original; 0 corridor pixels on all four outline modes, HDR and 8-bit; exit
 within 0.0213 mm (HDR) and 0.1617 mm (8-bit); 0 plain or first-copy vertices moved by the exit.
-- Untested [R]: lilToon's other render modes (cutout, transparent, fur and the rest borrow from
-  their own `ltspass_*` lenders, the same path); lilToon's inspector on the patched copy, which may
-  swap the shader back to its own on a render-mode change (YapsShaderGUI wraps it); not in game.
+Render modes, 2026-10-19 [M]. Sweep 6 (`-sweepHosts lilToon`): cutout, transparent, two-pass
+transparent, lite and multi all PASS. Sweep 7 (all 38 setups): 37 PASS. Tessellation drew nothing
+in view once bent (shadow fine, off and at rest equal to the original) and took three patcher fixes,
+each failing in `IncludeVertexTest` first:
+- The `LightMode=Never` UV pass is skipped like the meta pass. Patched, Unity's upgrader read its
+  `struct v2f vert(...) {` as a struct and excluded the pass from DX11, with a warning ("not
+  supported on this GPU"), not an error.
+- The YAPS source goes in at the start of the function's line. A word ahead of the return type was
+  left ahead of the source: `inline v2f vert` failed, "global variables cannot be declared 'inline'".
+- The deform runs only where its function is the pass's own `#pragma vertex` (`YAPS_ENTRY_<name>`,
+  defined per patched program). Tessellated passes deform in `vertTess`, then the domain calls the
+  `vert` the shadow caster had patched, so the plug bent twice and left the screen: 2 deform calls
+  survived the preprocessor in the tessellated pass before, 1 after.
+Sweep 8 (all 38 setups, the three fixes deployed): **38 PASS, 0 FAIL** [M]. Tessellation bends
+in view and in shadow with 0 stray, and every other host reads as it did in sweep 7.
+- Untested [R]: lilToon fur (a geometry stage, not in the sweep); lilToon's inspector on the patched
+  copy, which may swap the shader back to its own on a render-mode change (YapsShaderGUI wraps it);
+  Poiyomi's tessellated variants; not in game.
+- **FIXED 2026-10-19** [M]: `WriteAndVerify` trusted `ShaderHasError` alone after import. The
+  upgrader's DX11 exclusion is only a warning, so the `Never`-pass copy passed it and drew nothing
+  (the `inline` case was a real error and was refused). It now also needs `shader.isSupported`
+  (`Broken`), and the refusal quotes the warning. `IncludeVertexTest`, "a copy that would draw nothing
+  is refused": WRONG before, ok after, 19 of 19. Compiling every pass up front stays out, for the
+  reason in the squash record above.
+- [R] `ReadStructMembers` takes the first struct of a name in the unit, so two same-named structs
+  read the wrong members (met only in a test so far).
 - Corpus: the corpus project has no lilToon installed, so its 16 lilToon materials sit on missing
   shaders and the next run should show no change from this.
 
@@ -4979,7 +5002,8 @@ is **in 5.0.0**, which waits for both to pass in game.
   - The second copy, on a path that ends in a portal, keeps the first copy's path instead of the chain past it. At full enable and full engagement, with an exit found: vertices more than 2w past the cut leave the exit by what is left less 2w; every other copy vertex goes to one point w inside the exit, no offsets, normal and tangent along the exit. Otherwise the copy hides.
   - No triangle joins the two mouths, so no host offset can reach across the room. Left: an outline may open the waiting point into a speck inside the exit.
   - Cost for users: a portal needs Two At Once, so about twice the plug's GPU work all the time (DS2), a skinned plug on one material sharing its mesh with no other plug, and only the main mesh comes out.
-  - **Joe's call, undoable:** keep it; or the band for everyone, accepting the line on those two outline modes; or both, the band for plugs without the copy and the copy for plugs with it.
+  - ~~**Joe's call, undoable:** keep it; or the band for everyone, accepting the line on those two outline modes; or both, the band for plugs without the copy and the copy for plugs with it.~~
+    **Joe, 2026-10-19: keep the fallback.** The question put to him understated the cost: it said about twice the vertex work *only while a portal is open*, where the line above says all the time Two At Once is on. Re-confirm with the right cost before 5.0.0 ships.
   - How common the two modes are, from the corpus project's source materials (generated output excluded) [M]: `_OutlineUseVertexColorNormals` 1 on 0 of 1412 materials carrying it; `_OutlineVertexR2Width` 2 on 1 of 21, a coat, not a plug. A fourth option for Joe: both, plus a bake warning that reads those two settings off the plug's material.
   - Readout: green now also needs `_YAPS_CopyStart` > 0, so a plug without the copy reads red at a live exit.
   - fxc: plain 51 temps, 3546 lines; with the copy 59, 3903 [M].
