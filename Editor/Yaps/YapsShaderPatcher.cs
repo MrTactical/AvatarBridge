@@ -563,17 +563,35 @@ namespace AvatarBridge
                           "there is no vertex function of its own to wrap";
                 return null;
             }
-            // A pass borrowed whole keeps the other shader's vertex stage, which no edit here
-            // reaches, so the plug drew straight with no word. A borrowed caster or lightmap
-            // pass is fine: neither is the plug the player sees.
-            string borrowed = Regex.Matches(shaderFile.Text, @"^[ \t]*UsePass\s+""([^""]+)""", RegexOptions.Multiline)
-                .Cast<Match>().Select(m => m.Groups[1].Value)
-                .FirstOrDefault(p => !Regex.IsMatch(p, @"/(SHADOW_?CASTER|META)$", RegexOptions.IgnoreCase));
-            if (borrowed != null)
+            // A pass borrowed whole keeps the other shader's vertex stage, so the plug drew
+            // straight with no word (lilToon draws this way). The lender is patched too and the
+            // copy borrows from that. A lender of only a caster or lightmap pass is left alone:
+            // neither is the plug the player sees.
+            var lent = new Dictionary<string, string>();
+            int lentPasses = 0;
+            foreach (var use in Regex.Matches(shaderFile.Text, @"^[ \t]*UsePass\s+""([^""]+)/([^""/]+)""", RegexOptions.Multiline)
+                         .Cast<Match>().GroupBy(m => m.Groups[1].Value))
             {
-                refusal = $"it borrows the pass \"{borrowed}\" from another shader, and the patch " +
-                          "cannot reach a borrowed pass's vertex stage";
-                return null;
+                if (use.All(m => Regex.IsMatch(m.Groups[2].Value, @"^(SHADOW_?CASTER|META)$", RegexOptions.IgnoreCase))) continue;
+                var lender = Shader.Find(use.Key);
+                string why = null;
+                Shader lenderPatched = null;
+                if (lender != null)
+                {
+                    var lenderMaterial = new Material(lender);
+                    lenderPatched = Patch(lenderMaterial, null, out why, out _, allowSps, duplicate);
+                    UnityEngine.Object.DestroyImmediate(lenderMaterial);
+                }
+                if (lenderPatched == null)
+                {
+                    // A batch write has not compiled the lender yet; the patch after it does.
+                    if (Deferred != null && lender != null) return null;
+                    refusal = $"it borrows its passes from \"{use.Key}\", which cannot be patched: " +
+                              (lender == null ? "it is not in the project" : why);
+                    return null;
+                }
+                lent[use.Key] = lenderPatched.name;
+                lentPasses += use.Count();
             }
 
             string yaps = YapsSourceFor(duplicate, out string loadFailure);
@@ -613,10 +631,18 @@ namespace AvatarBridge
                 }
                 shaderFile.Text = shaderFile.Text.Insert(properties.Index + properties.Length,
                     PropertyBlock);
+                foreach (var pair in lent)
+                    shaderFile.Text = Regex.Replace(shaderFile.Text, $@"(UsePass\s+""){Regex.Escape(pair.Key)}/",
+                        m => m.Groups[1].Value + pair.Value + "/");
+                // lilToon declares the vertex inputs the deform reads only when a pass asks.
+                if (unit.Any(f => f.Text.Contains("LIL_REQUIRE_APP_VERTEXID")))
+                    shaderFile.Text = Regex.Replace(shaderFile.Text, @"^[ \t]*(HLSLPROGRAM|CGPROGRAM)[ \t]*(?=\r?$)",
+                        m => m.Value + "\n#define LIL_REQUIRE_APP_NORMAL\n#define LIL_REQUIRE_APP_TANGENT\n#define LIL_REQUIRE_APP_VERTEXID",
+                        RegexOptions.Multiline);
 
                 patchedPasses = PatchProgramBlocks(unit, yaps, out blockRefusal,
                     out skippedShadowPasses, out frameless);
-                bool whole = patchedPasses > 0 && blockRefusal == null;
+                bool whole = (patchedPasses > 0 || lent.Count > 0) && blockRefusal == null;
                 if (whole)
                 {
                     string newName = PatchedName(shaderFile.Text, hash);
@@ -629,7 +655,7 @@ namespace AvatarBridge
                         patchedPasses, blockRefusal, skippedShadowPasses, frameless);
                 }
             }
-            if (patchedPasses == 0)
+            if (patchedPasses == 0 && lent.Count == 0)
             {
                 refusal = blockRefusal ?? "no pass in it declares a vertex stage";
                 return null;
@@ -652,7 +678,7 @@ namespace AvatarBridge
             report?.Converted(Category, asked.name,
                 $"Deform patched into \"{asked.shader.name}\"" +
                 (asked != material ? ", locked through Poiyomi first," : "") +
-                $" across {BridgeElements.Count(patchedPasses, "pass", "passes")}. " +
+                $" across {BridgeElements.Count(patchedPasses + lentPasses, "pass", "passes")}. " +
                 $"The original shader is untouched; a copy carrying YAPS was written to {SharedFolder}, " +
                 "shared by everything patched from the same shader, and the material repointed at it."
                 + (frameless

@@ -3192,7 +3192,7 @@ lilToon finding below is the proof: a host can patch without a word and never be
   per pass in different files (or several under `#if`) would get only the first patched; no tested
   host has both, so it is latent [R]. The `UsePass` refusal runs before the vertex checks and
   excepts only caster and meta passes, so Filamented now refuses for borrowing `Standard/DEFERRED`
-  rather than for its missing `SV_VertexID`. Same outcome there; a shader whose only borrowed pass is
+  rather than for its missing `SV_VertexID` (since the lender patch, because `Standard` cannot be patched). Same outcome there; a shader whose only borrowed pass is
   a deferred one would be refused though a forward client never draws it [R].
 - Checks 4 and 5: `-portalSweep` on PortalCopyProbe (the copy and its corridor, shipped includes)
   and on PortalBandProbe (the band, spike includes swapped in) adds the same hosts beyond the
@@ -3206,13 +3206,29 @@ lilToon finding below is the proof: a host can patch without a word and never be
     37181 corridor pixels, HDR and 8-bit) and lilToon's vector from vertex colour (18217 and
     17456). XSToon plain, outline and vertex-colour normals draw 0, outlines drawn. The K2 table
     stands: of the hosts that patch today, only those two draw the line under the band. A real
-    lilToon patch would bring its vector mode back into reach.
+    lilToon patch would bring its vector mode back into reach. **It now does** (lilToon record below):
+    with the K2 call open, a lilToon plug whose outline takes its vector from vertex colour can draw the
+    line under options 2 to 4, as the Poiyomi local mode already can.
 
-### A plug on lilToon never bends, 2026-10-19. FOUND BY S3, REFUSED ON `portal-spike`, PATCH NOT STARTED
+### A plug on lilToon never bends, 2026-10-19. FOUND BY S3, PATCHED ON `dev`
 
 **Interim built 2026-10-19:** the patcher refuses a shader that borrows any pass other than a shadow
 caster or lightmap pass through `UsePass`, so a lilToon plug falls back to Simple Lit and says why.
 Drawn by the shader sweep: before, the plug never moved [M]. The real patch below is still open.
+
+**Patched on `dev` 2026-10-19:** a borrowed pass other than a caster or lightmap pass has its lender
+patched too, and the copy's `UsePass` lines point at the patched lender. Where the source uses
+lilToon's `LIL_REQUIRE_APP_*` switches, the three are defined ahead of each program. A lender that
+cannot be patched refuses the host with the lender's reason. Sweep 5 (Poiyomi lock project) [M]:
+32 of 32 PASS; lilToon plain and outline bend in view and shadow, 0 stray pixels, outlines drawn,
+off equal to the original to 0 px over 2/255. UTS 2 (all four) now refuses through its lender (no
+`SV_VertexID`), Filamented through `Standard` (no `vertAdd`); both on Simple Lit as before.
+`IncludeVertexTest` covers a lender that patches and one that cannot.
+- Untested [R]: lilToon's other render modes (cutout, transparent, fur and the rest borrow from
+  their own `ltspass_*` lenders, the same path); lilToon's inspector on the patched copy, which may
+  swap the shader back to its own on a render-mode change (YapsShaderGUI wraps it); not in game.
+- Corpus: the corpus project has no lilToon installed, so its 16 lilToon materials sit on missing
+  shaders and the next run should show no change from this.
 
 Found by the portal's S3 probe, which patches hosts with the shipped patcher [M]:
 - lilToon 1.7.3's `lilToon` shader draws through `UsePass "Hidden/ltspass_opaque/..."`. Its own

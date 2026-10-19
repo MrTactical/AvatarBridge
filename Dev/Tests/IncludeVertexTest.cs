@@ -74,12 +74,22 @@ fixed4 frag (v2f i) : SV_Target { return _Color; }
                 Check(goodCalls == 1, $"its include holds the deform once ({goodCalls})");
                 if (good != null) Check(!ShaderUtil.ShaderHasError(good), "the patched shader has no errors");
 
-                // A borrowed pass keeps its own vertex stage. A borrowed caster is no reason to refuse.
+                // A borrowed pass keeps its lender's vertex stage, so the lender is patched too.
+                // A borrowed caster alone is no reason to touch it.
                 var caster = Patched("IncVertBorrowCaster", true, out _, out _, "        UsePass \"Legacy Shaders/VertexLit/SHADOWCASTER\"");
                 Check(caster != null, "a borrowed shadow caster still patches");
-                var forward = Patched("IncVertBorrowForward", true, out string borrowRefusal, out _, "        UsePass \"Test/IncVertGood/FORWARD\"");
-                Check(forward == null, "a borrowed forward pass is refused, not patched straight");
-                Check(borrowRefusal != null && borrowRefusal.Contains("borrows"), "the refusal says the pass is borrowed");
+                var forward = Patched("IncVertBorrowForward", true, out _, out _, "        UsePass \"Test/IncVertGood/FORWARD\"");
+                Check(forward != null, "a pass borrowed from a shader that patches is patched");
+                if (forward != null)
+                {
+                    string text = File.ReadAllText(AssetDatabase.GetAssetPath(forward));
+                    Check(Regex.IsMatch(text, @"UsePass\s+""Hidden/YAPS/[0-9a-f]+/FORWARD"""), "the copy borrows it from the lender's patch");
+                    Check(!ShaderUtil.ShaderHasError(forward), "and compiles");
+                }
+                var badLender = Patched("IncVertBorrowBad", true, out string borrowRefusal, out _, "        UsePass \"Test/IncVertBad/FORWARD\"");
+                Check(badLender == null, "a pass borrowed from a shader that cannot patch is refused, not patched straight");
+                Check(borrowRefusal != null && borrowRefusal.Contains("borrows") && borrowRefusal.Contains("SV_VertexID"),
+                    "the refusal names the lender's reason");
             }
             finally
             {
