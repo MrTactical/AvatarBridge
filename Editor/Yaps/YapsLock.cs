@@ -30,7 +30,8 @@ namespace AvatarBridge
         const string Version = "1";
 
         // Thry's own test: the property whose first attribute is the lock button, locked
-        // when it defaults to 1. Null for a shader that is not Thry's.
+        // when it defaults to 1. An older Thry left the 0 in what it locked, so the Hidden/
+        // name every Thry lock gives counts too. Null for a shader that is not Thry's.
         public static bool? ThryLocked(Shader shader)
         {
             if (shader == null) return null;
@@ -38,7 +39,7 @@ namespace AvatarBridge
             {
                 var attributes = shader.GetPropertyAttributes(i);
                 if (attributes.Length > 0 && attributes[0] == "ThryShaderOptimizerLockButton")
-                    return shader.GetPropertyDefaultFloatValue(i) == 1f;
+                    return shader.GetPropertyDefaultFloatValue(i) == 1f || shader.name.StartsWith("Hidden/");
             }
             return null;
         }

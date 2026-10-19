@@ -66,6 +66,20 @@ namespace AvatarBridge.Regression
                     Check(!ShaderUtil.ShaderHasError(patched), "the patched shader has no errors");
                 }
                 Object.DestroyImmediate(material);
+
+                // An older Thry left the button at 0 and named the locked shader under Hidden/,
+                // so a shader it locked read as unlocked and YAPS warned the lock had not run.
+                string old = Dir + "/ThryOldLocked.shader";
+                File.WriteAllText(old, Source.Replace("Test/ThryUnlocked", "Hidden/.poiyomi/Test/Body-Body"));
+                AssetDatabase.ImportAsset(old, ImportAssetOptions.ForceSynchronousImport);
+                var oldShader = AssetDatabase.LoadAssetAtPath<Shader>(old);
+                Check(YapsLock.ThryLocked(oldShader) == true, "a shader an older Thry locked, button still 0, reads as locked");
+                Check(YapsLock.ThryLocked(AssetDatabase.LoadAssetAtPath<Shader>(path)) == false, "the unlocked one still reads as unlocked");
+                var report = new BridgeReport();
+                var oldMaterial = new Material(oldShader);
+                YapsLock.WarnIfUnlocked(oldMaterial, oldMaterial, report);
+                Check(report.CountOf(ReportStatus.Warning) == 0, "no warning that the lock did not run");
+                Object.DestroyImmediate(oldMaterial);
             }
             finally
             {

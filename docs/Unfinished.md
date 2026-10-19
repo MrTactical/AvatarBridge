@@ -3228,7 +3228,7 @@ Found by the portal's S3 probe, which patches hosts with the shipped patcher [M]
 - Same night, by design and recorded for completeness: Standard is refused (`vertAdd` not found)
   and falls back to Simple Lit; a shader with no Properties block drops `Material.SetFloat`.
 
-### A locked Poiyomi shader reads as unlocked, 2026-10-19. FOUND BY CORPUS 419, NOT STARTED
+### A locked Poiyomi shader reads as unlocked, 2026-10-19. FOUND BY CORPUS 419, FIXED ON DEV
 
 One corpus avatar gained three "Poiyomi's unlocked shader ships under YAPS ... lock did not run"
 warnings, on materials whose shader is already locked [M]. Report only: the patched shader is the
@@ -3240,6 +3240,14 @@ one 418 shipped.
   run", which is the misleading part [M].
 - Fix: recognise a locked shader by more than the button default, and never say "did not run" for a
   material the lock never wanted.
+- **Fixed on `dev`, 2026-10-19:** `ThryLocked` also counts a `Hidden/` name, which every Thry lock
+  gives (older `Hidden/<shader>/<material>`, newer `Hidden/Locked/...`) and no unlocked Poiyomi has.
+  The corpus avatar's shaders are `Hidden/.poiyomi/★ Poiyomi Pro ★/...` under `OptimizedShaders`
+  with the button at 0 [M]. `ThryLockMarkTest` gained the case: 2 WRONG before, PASS after;
+  `ThryLockFirstTest` still passes. Not re-run in the corpus. The warning never shipped (8821f2a is
+  in no tag), so no release note.
+- Still open [R]: an UNLOCKED Thry shader that `Detect` calls DPS is skipped by `Wants` and still
+  reads "did not run". No measured case.
 
 ### Conversions got slower between corpus 418 and 419, 2026-10-19. NOT LOCATED
 
