@@ -3188,10 +3188,23 @@ lilToon finding below is the proof: a host can patch without a word and never be
 - Still open from the sweep: ORL's refusal says the shader "lives inside a compiled package", which
   is wrong for a shader its importer generates. A host with `SV_VertexID` and one vertex function name
   per pass in different files (or several under `#if`) would get only the first patched; no tested
-  host has both, so it is latent [R].
+  host has both, so it is latent [R]. The `UsePass` refusal runs before the vertex checks and
+  excepts only caster and meta passes, so Filamented now refuses for borrowing `Standard/DEFERRED`
+  rather than for its missing `SV_VertexID`. Same outcome there; a shader whose only borrowed pass is
+  a deferred one would be refused though a forward client never draws it [R].
 - Checks 4 and 5: `-portalSweep` on PortalCopyProbe (the copy and its corridor, shipped includes)
   and on PortalBandProbe (the band, spike includes swapped in) adds the same hosts beyond the
-  families those probes already draw.
+  families those probes already draw. Refused hosts draw on Simple Lit, already a host there.
+  - **Check 4, 2026-10-19 (shipped includes at `9c52bfb`): PASS** [M]. 51 PASS, 0 FAIL: 0 corridor
+    pixels on every host, HDR and 8-bit, outlines drawn; exit vertices within 0.0213 mm (HDR) and
+    0.1617 mm (8-bit) of the decoded exit; 0 plain or first-copy vertices moved by the exit. The new
+    hosts that patch are XSToon's three; every other sweep host refused with the reasons above.
+  - **Check 5, 2026-10-19 (the band, spike includes swapped in, restored after): no new line** [M].
+    The only failures are S3's two known setups, Poiyomi's local vertex-colour normals (39098 and
+    37181 corridor pixels, HDR and 8-bit) and lilToon's vector from vertex colour (18217 and
+    17456). XSToon plain, outline and vertex-colour normals draw 0, outlines drawn. The K2 table
+    stands: of the hosts that patch today, only those two draw the line under the band. A real
+    lilToon patch would bring its vector mode back into reach.
 
 ### A plug on lilToon never bends, 2026-10-19. FOUND BY S3, REFUSED ON `portal-spike`, PATCH NOT STARTED
 
