@@ -3131,6 +3131,27 @@ draft was built first, then deleted unpublished when two tester changes landed a
 `v4.7.0` stays in history and that number was never shipped. Corpus 415 is the accepted YAPS baseline.
 Not verified in ChilloutVR; the records below say what only the game can settle.*
 
+### YAPS against every popular shader, 2026-10-19. ASKED FOR BY JOE, NOT STARTED
+
+Joe, on the K2 options: "not every shader is built the same ... we would need to test YAPS plugs and
+sockets against every known popular shader, mochie, liltoon, poi, autodesk interactive, etc". The
+lilToon finding below is the proof: a host can patch without a word and never bend.
+- What the corpus avatars use, from the corpus project's source materials (generated output excluded,
+  2194 materials) [M]: Poiyomi 1079; Standard and other built-ins 469, plus 116 Standard-like on missing
+  shaders; VRChat Mobile 150; Mochie about 134 (fingerprinted, shader not installed there); UTS 26;
+  lilToon 16 (not installed there). Not in the corpus but popular: Silent's Filamented and CrossTone,
+  Xiexe XSToon, ORL toon, Sunao, arktoon, Poiyomi Pro, Autodesk Interactive.
+- Per shader and per mode that offsets vertices (outlines above all), with the shipped patcher:
+  1. It patches, or refuses with a reason. Never patched-but-straight like lilToon.
+  2. The plug bends in every pass that draws (forward, add, shadow caster, outline), against Simple Lit.
+  3. Sockets: the dent and squash patch on the same host.
+  4. Two At Once: the copy draws, and hides, in every pass.
+  5. Portal: the corridor test, which decides whether the band (K2 options 2 to 4) is safe anywhere.
+- Harness: PortalCopyProbe's host list and its per-host captures, generalised. Shaders not on this
+  machine need Joe's yes per download.
+- It answers the K2 call: the band's safety rests on hosts offsetting along the normal, and this is
+  the survey of that.
+
 ### A plug on lilToon never bends, 2026-10-19. FOUND BY S3, NOT STARTED
 
 Found by the portal's S3 probe, which patches hosts with the shipped patcher [M]:
