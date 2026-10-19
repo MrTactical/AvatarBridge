@@ -1623,7 +1623,9 @@ again (or the avatar reconverted) to notice its socket, and to stretch in motion
   race whatever else is writing to the material, which is right until you notice that most avatars
   hide the plug until a toggle brings it in, so Play mode is the only state where there is
   anything to look at. **Preview** pressed in Play mode runs until Play ends (it ticks the socket's
-  **Keep previewing in Play Mode** for that session). It is also the only way to watch a POSED
+  **Keep previewing in Play Mode** for that session). Ticked beforehand, it carries a running
+  preview into Play mode; unticked, the socket's inspector says the preview is paused. A running
+  preview also survives a script recompile. It is also the only way to watch a POSED
   avatar: edit mode holds the rest pose, where every part of a plug agrees about which way it
   faces. A test plug dropped in Play mode is the plug prop prefab, so make that first (*Create a
   plug prop prefab*); one built there would leave its files behind.

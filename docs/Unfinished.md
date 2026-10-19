@@ -5774,7 +5774,12 @@ controlled by a curve, and `IsSynced` requires `!IsReadOnly`. Any design that co
 value in the animator and expects the room to see it is already wrong; sync the inputs, or
 compute it on every client from something that does sync.
 
-## The socket preview stands down in Play Mode without saying so
+## The socket preview stands down in Play Mode without saying so. FIXED ON DEV 2026-10-19
+
+**Fixed** [M]: paused (previewing, playing, *Keep previewing in Play Mode* unticked), the socket
+inspector shows a line under the buttons and both Preview buttons say so in their tooltip
+(`YapsPreview.Paused`); the tick rebuilds the inspector. `Dev/Tests/SocketPreviewReloadTest`, "the
+inspector says the preview is paused in Play Mode": WRONG before, ok after. The original record:
 
 `YapsSocket.PreviewTick` returns at `if (Application.isPlaying) return;`. That is correct:
 in Play Mode the game systems own the property blocks and an editor preview writing over
@@ -5788,7 +5793,13 @@ a bad encode. Out of Play Mode the same scene round-tripped to within 0 m.
 **Fix:** grey the preview toggle out in Play Mode, or put a line under it reading that the
 preview is inactive while playing. The user must not have to infer it.
 
-## `YapsSocket.preview` does not survive a recompile
+## `YapsSocket.preview` does not survive a recompile. FIXED ON DEV 2026-10-19
+
+**Fixed** [M]: the previewing socket is kept in `SessionState` across an assembly reload and set
+previewing again after it; into Play Mode only when *Keep previewing in Play Mode* is ticked, so the
+stand-down above still holds. `SocketPreviewReloadTest` (Play Mode entered WITH a domain reload,
+whatever the project's setting): "survives a recompile" and "carries into Play Mode" WRONG before,
+ok after. The original record:
 
 It is `[NonSerialized]`, so a domain reload drops it to false while the button can still read
 as active until it repaints. Any script edit silently stops a running preview. Either serialise

@@ -206,6 +206,36 @@ namespace AvatarBridge
         static double _searched = double.NegativeInfinity;
         static YapsSocket[] _sockets = new YapsSocket[0];
 
+        // Play Mode stands the preview down unless it is ticked to run there, and
+        // standing down in silence read as a feature that does not work.
+        public const string PausedLine = "The preview is paused in Play Mode. Tick Keep previewing in Play Mode on the socket to run it.";
+        public static bool Paused(YapsSocket socket) =>
+            socket != null && socket.preview && Application.isPlaying && !socket.previewInPlayMode;
+
+        // The preview is never saved, so a recompile dropped a running one while
+        // its button still read as on. The socket is kept across the reload, and
+        // into Play Mode only when it is ticked to run there.
+        const string KeptKey = "YAPS.PreviewSocket";
+
+        [InitializeOnLoadMethod]
+        static void KeepAcrossReloads()
+        {
+            AssemblyReloadEvents.beforeAssemblyReload += () =>
+            {
+                var on = Object.FindObjectsOfType<YapsSocket>(true).FirstOrDefault(s => s.preview);
+                SessionState.SetInt(KeptKey, on != null ? on.GetInstanceID() : 0);
+            };
+            int id = SessionState.GetInt(KeptKey, 0);
+            SessionState.EraseInt(KeptKey);
+            if (id == 0) return;
+            EditorApplication.delayCall += () =>
+            {
+                if (!(EditorUtility.InstanceIDToObject(id) is YapsSocket socket) || socket.preview) return;
+                if (EditorApplication.isPlayingOrWillChangePlaymode && !socket.previewInPlayMode) return;
+                Set(socket, true, spawnPlugIfNone: false);
+            };
+        }
+
         // A test plug in front of this socket, asked for outright.
         public static void DropTestPlug(YapsSocket socket)
         {
@@ -1134,7 +1164,8 @@ namespace AvatarBridge
                     : null));
             // Pressed while it runs. The label stays the one the README quotes.
             var previewButton = BridgeElements.Btn("Preview", () => { YapsPreview.Set(socket, !socket.preview); RebuildLater(); },
-                socket.preview ? "Previewing. Click again to stop."
+                YapsPreview.Paused(socket) ? YapsPreview.PausedLine
+                : socket.preview ? "Previewing. Click again to stop."
                 : bakedPlugs > 0 ? "Bends the baked plugs near it toward this socket."
                 : "No baked plug is near, so this drops a test one in front of it.",
                 ButtonKind.Strong);
@@ -1155,6 +1186,7 @@ namespace AvatarBridge
                 : canDrop ? "Drops a test plug in front of it, even with a baked one near." : YapsPreview.NoPlugPrefab);
             dropButton.SetEnabled(canDrop);
             see.Body.Add(BridgeElements.ButtonRow(previewButton, dropButton));
+            if (YapsPreview.Paused(socket)) see.Body.Add(BridgeElements.Hint(YapsPreview.PausedLine));
 
             // The plug mesh on most avatars only exists in Play Mode: it ships
             // switched off and a toggle brings it in. So the one state where you
@@ -1167,6 +1199,7 @@ namespace AvatarBridge
                     Undo.RecordObject(socket, "YAPS preview in play mode");
                     socket.previewInPlayMode = on;
                     EditorUtility.SetDirty(socket);
+                    RebuildLater();
                 }));
 
             // Applied at once on a built socket, menu included, like the kind.

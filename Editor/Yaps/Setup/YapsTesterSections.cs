@@ -84,7 +84,8 @@ namespace AvatarBridge
                 {
                     YapsPreview.Set(socket, !socket.preview);
                     refresh();
-                }, socket.preview ? "Previewing. Click again to stop."
+                }, YapsPreview.Paused(socket) ? YapsPreview.PausedLine
+                    : socket.preview ? "Previewing. Click again to stop."
                     : near ? "Bends the baked plugs near it toward this socket."
                     : "No baked plug is near, so this drops a test one in front of it.");
                 preview.EnableInClassList("ab-on", socket.preview);
