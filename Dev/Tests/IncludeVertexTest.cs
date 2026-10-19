@@ -64,6 +64,22 @@ SECOND
             ENDCG
         }";
 
+        // A caster with its own appdata, no SV_VertexID, ahead of the include's in the file.
+        const string OwnStructCaster = @"
+        Pass
+        {
+            Tags { ""LightMode"" = ""ShadowCaster"" }
+            CGPROGRAM
+            #pragma vertex vertShadow
+            #pragma fragment fragShadow
+            #include ""UnityCG.cginc""
+            struct appdata { float4 vertex : POSITION; };
+            struct v2fs { float4 pos : SV_POSITION; };
+            v2fs vertShadow (appdata v) { v2fs o; o.pos = UnityObjectToClipPos(v.vertex); return o; }
+            float4 fragShadow (v2fs i) : SV_Target { return 0; }
+            ENDCG
+        }";
+
         const string TessPass = @"
         Pass
         {
@@ -160,6 +176,12 @@ fixed4 frag (v2f i) : SV_Target { return _Color; }
                 // warning, so the copy must be refused with a reason, never handed back invisible.
                 var drawn = Patched("IncVertDrawnStruct", true, out string drawnRefusal, out _, NeverPass.Replace("\"Never\"", "\"ForwardAdd\""));
                 Check(drawn == null ? drawnRefusal != null : Compiles(drawn), "a copy that would draw nothing is refused, not handed back");
+
+                // Each pass compiles alone, so two may declare one struct name differently. The
+                // include's vert was read against the caster's appdata, the first in the file.
+                var sameName = Patched("IncVertSameName", true, out string sameRefusal, out _, OwnStructCaster);
+                Check(sameName != null && Compiles(sameName) && DeformsIn(sameName, 0) == 1,
+                    $"a vert reads its own program's struct, not another pass's of the same name ({sameRefusal ?? "patched"})");
 
                 // lilToon's tessellation drew nothing once bent: its passes deform in vertTess,
                 // and the domain then calls the vert the other passes had patched, bending twice.

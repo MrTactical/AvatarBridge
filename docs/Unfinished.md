@@ -3142,8 +3142,12 @@ in view and in shadow with 0 stray, and every other host reads as it did in swee
   (`Broken`), and the refusal quotes the warning. `IncludeVertexTest`, "a copy that would draw nothing
   is refused": WRONG before, ok after, 19 of 19. Compiling every pass up front stays out, for the
   reason in the squash record above.
-- [R] `ReadStructMembers` takes the first struct of a name in the unit, so two same-named structs
-  read the wrong members (met only in a test so far).
+- **FIXED 2026-10-19** [M]: `ReadStructMembers` took the first struct of a name in the unit, so a
+  pass whose vertex struct shared a name with another pass's read the other's members. Each pass
+  compiles alone, so both may be legal. It now takes the last declaration above the function in its
+  own program or include, and falls back to the old search. `IncludeVertexTest`, "a vert reads its
+  own program's struct": WRONG before (refused for the caster's missing `SV_VertexID`), ok after,
+  20 of 20. Met only in a test so far.
 - Corpus: the corpus project has no lilToon installed, so its 16 lilToon materials sit on missing
   shaders and the next run should show no change from this.
 

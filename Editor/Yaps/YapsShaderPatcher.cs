@@ -907,7 +907,7 @@ namespace AvatarBridge
             Dictionary<string, string> members = null;
             foreach (string candidate in identifiers.Take(identifiers.Count - 1).Distinct())
             {
-                var found = ReadStructMembers(unit, candidate);
+                var found = ReadStructMembers(unit, candidate, file, file == unit[0] ? blockStart : 0, head.Index);
                 if (found != null && found.ContainsKey("POSITION"))
                 {
                     members = found;
@@ -1143,14 +1143,24 @@ namespace AvatarBridge
         // Members keyed by SEMANTIC, because names are anybody's guess but
         // semantics are the contract.
         static Dictionary<string, string> ReadStructMembers(
-            List<ShaderSpiPatcher.SourceFile> unit, string structName, int depth = 0)
+            List<ShaderSpiPatcher.SourceFile> unit, string structName,
+            ShaderSpiPatcher.SourceFile near = null, int from = 0, int before = 0, int depth = 0)
         {
             // The optional ": Base" matters. A struct can inherit, and then
             // POSITION lives in the parent rather than here, reading only
             // the body reports a vertex input with no vertex in it.
-            var file = ShaderSpiPatcher.FindIn(unit,
-                $@"struct\s+{Regex.Escape(structName)}\s*(?::\s*(\w+)\s*)?\{{",
-                out var declaration);
+            string pattern = $@"struct\s+{Regex.Escape(structName)}\s*(?::\s*(\w+)\s*)?\{{";
+            // The declaration the function sees first: the last one above it in its own
+            // program or include. Each pass compiles alone, so two passes may declare
+            // the same name differently, and the first in the file was another pass's.
+            var file = near;
+            var declaration = near == null ? Match.Empty
+                : Regex.Matches(near.Text.Substring(0, before), pattern).Cast<Match>().LastOrDefault(m => m.Index >= from) ?? Match.Empty;
+            if (!declaration.Success)
+            {
+                file = ShaderSpiPatcher.FindIn(unit.Skip(1).ToList(), pattern, out declaration)
+                    ?? ShaderSpiPatcher.FindIn(unit, pattern, out declaration);
+            }
             if (file == null)
             {
                 return null;
@@ -1178,7 +1188,7 @@ namespace AvatarBridge
             if (!string.IsNullOrEmpty(baseName) && !string.Equals(baseName, structName,
                     StringComparison.Ordinal) && depth < 4)
             {
-                var inherited = ReadStructMembers(unit, baseName, depth + 1);
+                var inherited = ReadStructMembers(unit, baseName, depth: depth + 1);
                 if (inherited != null)
                 {
                     foreach (var pair in inherited)
