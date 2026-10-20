@@ -436,6 +436,13 @@ namespace AvatarBridge
                 }
                 smr.sharedMaterials = mats;
             }
+            // Built with no copy, nothing squashed, and it was reported as converted. The nodes
+            // the measure put on the bones go too.
+            if (copies.Count == 0)
+            {
+                Strip(root);
+                return "no layer over the parts can take the squash: " + string.Join("; ", log);
+            }
             if (still.Count > 0)
             {
                 foreach (int m in still) { reach[m] = 0f; reach[m + 1] = 0f; }
@@ -1132,6 +1139,8 @@ namespace AvatarBridge
                 Lap("Add");
                 if (!built)
                 {
+                    // The folder is this pass's alone, and what it holds now nothing reads.
+                    AssetDatabase.DeleteAsset(folder);
                     ctx.Report.Warning(Category, "Squash not built", said);
                     return;
                 }

@@ -2151,7 +2151,8 @@ Bipeds are unaffected by any of it.
   would undo the rewiring.
 - **Squash (opt-in).** A layer whose shader cannot be patched (a built-in shader with no source on
   disk, a surface shader) cannot follow, so the pair under it holds still rather than coming
-  through it, and the report names the layer. A layer casts its shadow unsquashed when the shadow
+  through it, and the report names the layer. When no layer over the parts can be patched,
+  nothing is built and the report says why. A layer casts its shadow unsquashed when the shadow
   comes from somewhere the conversion cannot reach, such as another shader's caster or a Fallback
   that cuts alpha; Unity's standard caster and an opaque Fallback bend with it. From painted regions, a layer more than 3 cm off the skin
   holds still. How deep a hand dents and how two parts meet is tuned by eye: it can only be

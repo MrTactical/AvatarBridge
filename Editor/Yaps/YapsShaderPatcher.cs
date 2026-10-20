@@ -761,20 +761,24 @@ namespace AvatarBridge
             // Whether each include function patched so far lacked a normal or tangent.
             var alreadyInjected = new Dictionary<string, bool>(StringComparer.Ordinal);
 
-            var blocks = Regex.Matches(shaderFile.Text, @"(CGPROGRAM|HLSLPROGRAM)")
+            // Scanned with comments blanked: Poiyomi's lock comments out a pass it turns off,
+            // and an entry define went in after its CGPROGRAM, outside any program. Edits go in
+            // last block first, so the offsets read here hold for every block still to come.
+            string code = Uncommented(shaderFile.Text);
+            var blocks = Regex.Matches(code, @"(CGPROGRAM|HLSLPROGRAM)")
                 .Cast<Match>().Reverse().ToList();
 
             foreach (var block in blocks)
             {
                 int start = block.Index + block.Length;
-                var end = Regex.Match(shaderFile.Text.Substring(start), @"(ENDCG|ENDHLSL)");
+                var end = Regex.Match(code.Substring(start), @"(ENDCG|ENDHLSL)");
                 if (!end.Success)
                 {
                     continue;
                 }
 
                 var vertPragma = Regex.Match(
-                    shaderFile.Text.Substring(start, end.Index), @"#pragma\s+vertex\s+(\w+)");
+                    code.Substring(start, end.Index), @"#pragma\s+vertex\s+(\w+)");
                 if (!vertPragma.Success)
                 {
                     continue;   // fragment-only, or a pass we need not touch
@@ -826,6 +830,32 @@ namespace AvatarBridge
         }
 
         static string EntryDefine(string vertName) => "YAPS_ENTRY_" + vertName;
+
+        // The text with its comments turned to spaces, every offset kept. Strings are stepped
+        // over: a "/*" inside one would blank everything up to the next "*/".
+        static string Uncommented(string text)
+        {
+            var c = text.ToCharArray();
+            for (int i = 0; i < c.Length - 1; i++)
+            {
+                if (c[i] == '"')
+                {
+                    while (++i < c.Length - 1 && c[i] != '"' && c[i] != '\n') { }
+                }
+                else if (c[i] == '/' && c[i + 1] == '/')
+                {
+                    while (i < c.Length && c[i] != '\n') c[i++] = ' ';
+                }
+                else if (c[i] == '/' && c[i + 1] == '*')
+                {
+                    int close = text.IndexOf("*/", i + 2, StringComparison.Ordinal);
+                    for (close = close < 0 ? c.Length : close + 2; i < close; i++)
+                        if (c[i] != '\n') c[i] = ' ';
+                    i--;
+                }
+            }
+            return new string(c);
+        }
 
         static bool PatchOneVertexFunction(List<ShaderSpiPatcher.SourceFile> unit, string yaps,
             string vertName, int blockStart, int blockEnd, Dictionary<string, bool> alreadyInjected,

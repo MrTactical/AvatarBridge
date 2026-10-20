@@ -3193,6 +3193,30 @@ one 418 shipped.
   locks. `ThryLockMarkTest` gained the case: 1 WRONG before, PASS after. Current Poiyomi Pro (9.3,
   10.0) declares neither property unlocked [M], so this reaches only older Pro shaders with DPS built in.
 
+### Corpus 420 against 419, 2026-10-20. TWO AVATARS CHANGED, BOTH TRACED
+
+The full run after the overnight fixes [M]. Every other avatar's digest reads as 419's.
+- **FIXED 2026-10-20** [M], a regression of 2d174ca: one avatar's squash patched nothing. Its
+  shader is Poiyomi Pro locked by an older Thry, with the outline pass commented out line by line.
+  Since 37647de it takes the locked route, and the program scan read the commented `CGPROGRAM` as
+  real: the entry define went in after it, outside any program, and the copy failed with "Parse
+  error: syntax error, unexpected TVAL_ID". The scan now runs on the text with its comments blanked,
+  offsets kept (`Uncommented`). `IncludeVertexTest`, "a commented-out pass is left as a comment":
+  WRONG before, ok after, 21 of 21. The avatar's own material and shader, moved into the Poiyomi
+  lock project (`PatchOneProbe`): REFUSED before, PATCHED across 3 passes after.
+- Still open [R]: the vertex function search, inside a block and in includes, still reads
+  comments, so a commented-out copy of the function ahead of the real one would be patched in its
+  place. Not met.
+- **FIXED 2026-10-20** [M]: that same squash reported "Soft parts squash against each other and
+  against hands" with 0 materials, the refusals only in its detail. A squash where no layer over
+  the parts takes the patch is now not built: the nodes it measured with are stripped, the
+  converter's folder is removed, and the report says "Squash not built" with the reasons. One
+  change in `YapsSquash.Add`, which the converter and both YAPS windows call. `SquashRefusedTest`
+  (a pair under a surface shader): 2 WRONG before, PASS after.
+- The other avatar's `VRChat/Mobile/Toon Standard` is now refused for no `SV_VertexID`, where 419
+  patched it [M]. 419 predates 9c52bfb, which marks an include's vert done only once it is really
+  injected, so 419's copy should have drawn straight [R, not bisected].
+
 ### Conversions got slower between corpus 418 and 419, 2026-10-19. NOT LOCATED
 
 419 took 5 h 52 min, 418 5 h 12 min, though 419 ran unthrottled for its second half [M]. Summed over

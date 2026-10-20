@@ -80,6 +80,17 @@ SECOND
             ENDCG
         }";
 
+        // A shader locked by Poiyomi comments out a pass it turns off, line by line.
+        const string CommentedPass = @"
+//        Pass
+//        {
+//            CGPROGRAM
+//            #pragma vertex vert
+//            #pragma fragment frag
+//            #include ""INCLUDE""
+//            ENDCG
+//        }";
+
         const string TessPass = @"
         Pass
         {
@@ -182,6 +193,11 @@ fixed4 frag (v2f i) : SV_Target { return _Color; }
                 var sameName = Patched("IncVertSameName", true, out string sameRefusal, out _, OwnStructCaster);
                 Check(sameName != null && Compiles(sameName) && DeformsIn(sameName, 0) == 1,
                     $"a vert reads its own program's struct, not another pass's of the same name ({sameRefusal ?? "patched"})");
+
+                // The entry define went in after the commented CGPROGRAM, and the copy did not parse.
+                var commented = Patched("IncVertCommented", true, out string commentedRefusal, out _, Caster + CommentedPass);
+                Check(commented != null && Compiles(commented) && DeformsIn(commented, 0) == 1,
+                    $"a commented-out pass is left as a comment ({commentedRefusal ?? "patched"})");
 
                 // lilToon's tessellation drew nothing once bent: its passes deform in vertTess,
                 // and the domain then calls the vert the other passes had patched, bending twice.
