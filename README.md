@@ -1517,7 +1517,9 @@ goes through what to check.
 again, and the plug carries a second copy of itself. The first copy goes where the plug always
 would; the second goes on from where the first one's path ends, into the next hole the atlas lines
 up past it, through any rings on the way. When the first copy's path ends in a [portal](#portals)'s
-entrance, the second comes out of its exit instead. With nowhere to go the copy is hidden, and it
+entrance, the second comes out of its exit instead: a plug has one second copy, so it takes the
+portal or the next hole, never both, and a second copy whose own path ends in an entrance stops
+there as at any hole. With nowhere to go the copy is hidden, and it
 is hidden too while the plug's toggle is fading. The copy is a second set of the plug's vertices on
 the mesh, and each of them runs the whole deform, hidden or not, so the plug costs the graphics card
 about twice what it did, even with no second socket in reach. The readout describes the first copy.
@@ -2169,7 +2171,9 @@ Bipeds are unaffected by any of it.
   the exit side can blink out. Only a plug with Two At Once comes out of an exit, which about doubles
   its cost on the graphics card, and only its main mesh does; every other plug, and every other
   mesh, stops at the entrance as at any hole. So does a plug too coarse along its shaft to cut; the
-  bake says so. The plug's roll as it leaves the exit is approximate, a short stretch past the cut
+  bake says so. The part that comes out leaves straight along the exit's front: a ring or hole past
+  the exit does not bend it. Two plugs in one entrance both come out of its exit. The plug's roll as
+  it leaves the exit is approximate, a short stretch past the cut
   is hidden inside the exit, and a plug whose shadow stays
   straight keeps a straight shadow. A crowded view can lose an exit's place in the atlas; the
   entrance is then an ordinary hole in that view, never a way out of the wrong socket. Someone

@@ -4689,6 +4689,11 @@ is **in 5.0.0**, which waits for both to pass in game.
     - Exit vertices within 0.0213 mm HDR and 0.1617 mm 8-bit of the decoded exit's line, roll fitted; seams 0.0000 mm.
     - The first copy within 0.000 um of the plain plug; 0 plain and 0 first-copy vertices moved by the exit; 4899 rings out over the sweep; shut at full enable 0 times.
     - No break run of its own: the corridor detector is S3's, which caught the K2 lines and failed its break run.
+- **Several sockets and plugs, Joe 2026-10-20: the rules stay as built** [M, read off `yaps_resolve.cginc:660-681` and `yaps_deform.cginc:495-525, 734-747`]:
+  - A path runs nearest first through rings to the first hole, at most `YAPS_CHAIN_MAX` (4) sockets, shared by both copies.
+  - Copy 2 goes on from copy 1's end to the next hole. A path ending in a portal gives copy 2 to the portal, never both: a third copy would be about 3x the plug's GPU work all the time.
+  - Nothing past the exit bends the part that comes out (a second resolve at the exit, about 5 to 32 us a pass). Copy 2 whose own path ends in an entrance stops there as at a hole (`c.portal = 0`).
+  - Two plugs in one entrance both come out: S24 test 13, not yet worn. README states all of it under Two at once and Known limitations.
 - **S4, the span survey (`6730a13`, `Dev/Probes/PortalSpanProbe`, one corpus run over 33 scenes): PASS.** 15 avatars carry a baked plug, 42 bakes, 31 plugs. 2w/L median 0.1691 over plugs against 0.2 [M]; 1 refused, 11 above 0.2.
   - Thin margin: the per-avatar worst plug's median is 0.2141.
   - Found: in 12 of 42 bakes, partial-weight vertices sit past 2w. The feather of a weight-blended base reaches past the band.
