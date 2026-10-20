@@ -6,10 +6,12 @@ using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 using VRC.SDK3.Dynamics.PhysBone.Components;
-using MagicaCloth2;
 
 namespace AvatarBridge
 {
+    // Here, not at the top: MagicaCloth 1's global namespace MagicaCloth beats a file-level using.
+    using MagicaCloth2;
+
     // Writes a VRCPhysBone chain as a MagicaCloth2 BoneCloth.
     // Structure transfers directly: root bones, colliders, exclusions,
     // enabled state. Physics values default to MagicaCloth2's own or a

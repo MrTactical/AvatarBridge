@@ -4,9 +4,6 @@ using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using ABI.CCK.Components;
-#if AVATARBRIDGE_MAGICA
-using MagicaCloth2;
-#endif
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEditor.UIElements;
@@ -15,6 +12,11 @@ using UnityEngine.UIElements;
 
 namespace AvatarBridge
 {
+    // Here, not at the top: MagicaCloth 1's global namespace MagicaCloth beats a file-level using.
+#if AVATARBRIDGE_MAGICA
+    using MagicaCloth2;
+#endif
+
     // The Interaction lab card: moves the avatar the way a player would, lets a
     // chain be dragged and let go, draws every chain at once with its settings,
     // and carries an Inspector edit made in Play mode out of it on request.

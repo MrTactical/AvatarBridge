@@ -84,6 +84,12 @@ sources="$WORK/sources.rsp"
 # The public package: Editor without Editor/Yaps, no Runtime, no Dev harness.
 public="$WORK/sources-public.rsp"
 find "$REPO/Editor" -name '*.cs' -not -path '*/Editor/Yaps/*' | while read -r f; do echo "\"$(cygpath -w "$f")\""; done > "$public"
+# Namespaces other packages declare at the top level. MagicaCloth 1's is MagicaCloth, the name of
+# MagicaCloth 2's component, and a global namespace beats a type from a file-level using: a user
+# with both installed could not compile the tool at all (5.0.0 rc2).
+foreign="$WORK/foreign-namespaces.cs"
+echo 'namespace MagicaCloth { internal class AvatarBridgeForeignNamespace { } }' > "$foreign"
+echo "\"$(cygpath -w "$foreign")\"" | tee -a "$sources" >> "$public"
 # Project scripts built on this tool's types are dev spikes, never in a user's project. Without the
 # add-on they fail, and csc then writes no assembly for the read-back below.
 spikes="$WORK/spikes.txt"

@@ -2,12 +2,14 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using MagicaCloth2;
 using UnityEditor;
 using UnityEngine;
 
 namespace AvatarBridge
 {
+    // Here, not at the top: MagicaCloth 1's global namespace MagicaCloth beats a file-level using.
+    using MagicaCloth2;
+
     // Soft bodies pushing each other apart: one breast against the other, a thigh against the
     // other thigh. Neither VRChat nor MagicaCloth2 collides two chains with each other, and
     // MagicaCloth2 switches its own mutual collision off for a soft body (Bone Spring), so the

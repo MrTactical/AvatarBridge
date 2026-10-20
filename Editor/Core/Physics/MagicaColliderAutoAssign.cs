@@ -3,10 +3,12 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using VRC.SDK3.Dynamics.PhysBone.Components;
-using MagicaCloth2;
 
 namespace AvatarBridge
 {
+    // Here, not at the top: MagicaCloth 1's global namespace MagicaCloth beats a file-level using.
+    using MagicaCloth2;
+
     // Optionally lends each cloth the colliders it plausibly bumps into.
     //
     // Both systems keep explicit per-chain collider lists, and AvatarBridge copies each one

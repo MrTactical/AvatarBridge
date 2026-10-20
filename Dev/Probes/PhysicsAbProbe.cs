@@ -23,7 +23,6 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
-using MagicaCloth2;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -34,6 +33,9 @@ using VRC.SDK3.Dynamics.PhysBone.Components;
 
 namespace AvatarBridge.Regression
 {
+    // Here, not at the top: MagicaCloth 1's global namespace MagicaCloth beats a file-level using.
+    using MagicaCloth2;
+
     [InitializeOnLoad]
     public static class PhysicsAbProbe
     {
