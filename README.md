@@ -1582,7 +1582,7 @@ material properties to key. The component on a VRChat avatar carries into its co
 regions alike, and ChilloutVR strips it at upload.
 
 **Where the parts are.** By default, bones whose names say breast, boob, butt, booty or glute, one
-each side, each vertex taking the weight those bones carry, whole where they carry most and fading
+each side with every bone under it (a pair is named after those top bones), each vertex taking the weight those bones carry, whole where they carry most and fading
 toward the edge, so the squash fades into the body the way the avatar was weight painted. Two pairs
 at most. A body whose bones don't say, or where the names take too much or too little, can have its
 regions painted: **Paint regions** on the same card, or *Tools ▸ YAPS ▸ Squash regions*. Pick the

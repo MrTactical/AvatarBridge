@@ -108,6 +108,8 @@ namespace AvatarBridge
                 Load();
                 Rebuild();
             }, "The skin to paint. Clothing over it follows the skin under it."));
+            // In sight, not the tooltip alone: one field reads as one mesh squashing.
+            pick.Body.Add(BridgeElements.Hint("Only the body skin is painted. Clothing and every other mesh over it squash with the skin under them, within 3 cm."));
             if (!string.IsNullOrEmpty(_status)) pick.Body.Add(BridgeElements.Notice(_tone, _status));
             scroll.Add(pick);
             if (_w == null)
@@ -127,7 +129,7 @@ namespace AvatarBridge
             else
             {
                 var names = regions.pairs.Select((p, i) => $"{i + 1}. {p.name}").ToArray();
-                paint.Body.Add(BridgeElements.Popup("Pair", "Two parts that press against each other.", names, _pair, i => { _pair = i; Recolour(); Rebuild(); }));
+                paint.Body.Add(BridgeElements.Popup("Pair", "Two parts that press against each other, named after the bones they start from.", names, _pair, i => { _pair = i; Recolour(); Rebuild(); }));
                 paint.Body.Add(BridgeElements.Text("Name", "For the report.", regions.pairs[_pair].name, v =>
                 {
                     Undo.RecordObject(regions, "Rename squash pair");
@@ -162,9 +164,12 @@ namespace AvatarBridge
             var seed = new BridgeElements.Card("Start from");
             var removePair = BridgeElements.Btn("Remove this pair", RemovePair);
             removePair.SetEnabled(pairs > 0);
+            // Greyed out at the cap: a warning on press read as "two is too many".
+            var addPair = BridgeElements.Btn("Add a pair", AddPair, "Two at most: the shader has room for four parts.");
+            addPair.SetEnabled(pairs < 2);
             seed.Body.Add(BridgeElements.ButtonRow(
-                BridgeElements.Btn("The bone names", FromNames, "What the squash finds on its own: breast, boob, butt, booty, glute bones, a pair each. Replaces every region."),
-                BridgeElements.Btn("Add a pair", AddPair, "Two at most."),
+                BridgeElements.Btn("The bone names", FromNames, "What the squash finds on its own: breast, boob, butt, booty, glute bones, a pair each, with every bone under them. Replaces every region."),
+                addPair,
                 removePair));
             if (pairs > 0)
             {
@@ -334,7 +339,7 @@ namespace AvatarBridge
         void AddPair()
         {
             if (_w == null) return;
-            if (Regions != null && Regions.pairs.Count >= 2) { Say("Two pairs at most: the shader has room for four parts.", Tone.Warn); return; }
+            if (Regions != null && Regions.pairs.Count >= 2) return;
             Save("Add squash pair");
             var regions = Regions;
             regions.pairs.Add(new YapsSquashSettings.Pair { name = regions.pairs.Count == 0 ? "Chest" : "Seat" });
@@ -374,7 +379,7 @@ namespace AvatarBridge
             Save("Squash regions from bone names");
             _pair = 0;
             Recolour();
-            Say($"Started from {BridgeElements.Count(names.Count, "pair", "pairs")} found by name: {string.Join(", ", names)}.", Tone.Good);
+            Say($"Started from {BridgeElements.Count(names.Count, "pair", "pairs")} found by name: {string.Join(", ", names)}, each side with every bone under it.", Tone.Good);
         }
 
         void FromBone()
