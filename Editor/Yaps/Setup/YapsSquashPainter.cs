@@ -139,9 +139,8 @@ namespace AvatarBridge
                 if (_named != null)
                 {
                     begin.Body.Add(BridgeElements.Hint($"Nothing painted, so the squash uses the {BridgeElements.Count(_named.Count, "pair", "pairs")} its bone names give: {string.Join(", ", _named)}. Paint only to change what they cover."));
-                    begin.Body.Add(BridgeElements.ButtonRow(
-                        new BridgeElements.PrimaryButton("Paint over them", FromNames, BridgeTheme.BridgeTo),
-                        BridgeElements.Btn("Start empty", AddPair, "One empty pair, painted from nothing.")));
+                    begin.Body.Add(new BridgeElements.PrimaryButton("Paint over them", FromNames, BridgeTheme.BridgeTo));
+                    begin.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Start empty", AddPair, "One empty pair, painted from nothing.")));
                 }
                 else
                 {

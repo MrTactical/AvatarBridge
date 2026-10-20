@@ -1023,6 +1023,22 @@ checklist and a friend with time. A chamber that sets each check up makes it rep
 **First step, after 5.0.0:** a spike. One lounge room and one chamber in a fresh CCK world project,
 uploaded privately, to learn the world CCK's limits before designing the rest.
 
+## The Animator window floods with errors after Add squash. SEEN 2026-10-20, NOT REPRODUCED
+
+Joe, 2026-10-20: with the Animator window open on a converted avatar, pressing **Add squash** on
+the Setup card was followed by 999+ `MissingReferenceException: The object of type
+'AnimatorStateMachine' has been destroyed`, from `AnimatorControllerTool.OnGUI` (DisplayDirty).
+The window still held state machines that something in the build replaced; its native refresh
+(`AnimatorControllerCallback.OnInvalidateAnimatorController`) never ran.
+
+Not reproduced, so not fixed (a fix needs the failing case first). Suspects, none confirmed: the
+`AssetDatabase.Refresh` calls in `YapsShaderPatcher` (294, 396, 1495) reimporting the
+controller, or `FollowSwaps` and `YapsLock.Animate` rewriting clips the window draws. Repro
+route: a batch probe opening `AnimatorControllerTool` on the avatar's controller, running
+`YapsSquash.Build`, then calling the window's OnGUI and counting the exception. Candidate fix
+once it fails: after Build and Strip, `AnimatorControllerTool.tool?.ResetUI()` by reflection
+(closing and reopening the window clears it meanwhile).
+
 ## Show it on the avatar: an in-scene overlay for every tool. Joe's idea 2026-10-20. PLAN ONLY, after 5.0.0
 
 Joe, 2026-10-20, after an hour lost in the squash windows: the tools say what they did in
