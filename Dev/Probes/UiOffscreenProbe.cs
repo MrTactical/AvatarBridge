@@ -242,7 +242,15 @@ namespace AvatarBridge.Regression
                     ("-test", w => { var mode = type.GetField("_mode", Any); mode.SetValue(w, Enum.ToObject(mode.FieldType, 1)); }),
                 }).ToArray();
             if (key == "painter" && converted != null)
-                return new (string, Action<EditorWindow>)[] { ("", w => type.GetMethod("Pick", Any).Invoke(w, new object[] { converted })) };
+            {
+                void Picked(EditorWindow w) => type.GetMethod("Pick", Any).Invoke(w, new object[] { converted });
+                // With pairs, so the Paint card and the cap on Add a pair are drawn. The scene is never saved.
+                return new (string, Action<EditorWindow>)[]
+                {
+                    ("", Picked),
+                    ("-named", w => { Picked(w); type.GetMethod("FromNames", Any).Invoke(w, null); }),
+                };
+            }
             if (descriptor == null) return empty;
             void Pick(EditorWindow w) => field.SetValue(w, descriptor);
             return empty.Concat(new (string, Action<EditorWindow>)[]
