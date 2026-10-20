@@ -164,7 +164,11 @@ namespace AvatarBridge
                 YapsShaderPatcher.EndPass(null, null);
             }
             Debug.Log("[YAPS] Squash: " + said);
-            return said.Trim();
+            if (!built) return said.Trim();
+            // The measurements stay in the Console: on a card they were a wall nobody read.
+            var s = SettingsOf(root);
+            bool painted = s != null && s.pairs.Count > 0;
+            return $"Squash built on {BridgeElements.Count(Materials(root).Count, "material", "materials")}, parts {(painted ? "from painted regions" : "by bone name")}. The measurements are in the Console.";
         }
 
         // The regions to use, or null for parts by bone name. `refusal` says why regions the

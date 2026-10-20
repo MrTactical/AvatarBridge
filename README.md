@@ -1565,7 +1565,7 @@ rather than added to. Their shaders live in the shared `Assets/YAPS/Generated/Sh
 shader another avatar already patched is reused instead of compiled again.
 
 **Tuning it.** The first build adds a **YAPS Squash** component to the avatar, and the Setup card
-selects it when it is done. Its knobs write straight to the materials as you move them, so nothing
+opens it in its own window when it is done; **Tune and preview** on the card opens it again. Its knobs write straight to the materials as you move them, so nothing
 needs rebuilding: **How it feels** holds how flat a part presses and where the volume goes, how the
 pair meets, the stretch in motion, and what presses it (own arms, other players' hands, plugs, and
 the physics' own colliders, off by default). **Motion Style** runs from 0, like real flesh (a small
@@ -1576,7 +1576,8 @@ front of it, dragged with the handle in the Scene view; it presses the part near
 reaches a second pair too. The editor runs no physics, so the preview stands in for them; in game
 the same knobs answer the real thing. The Avatar Tester's **Interaction lab** carries the same
 preview beside the avatar's motion, and in Play mode the cloth there is real: **Jump** or **Shake**
-swings it, and **Test hand** presses it and moves with the avatar. Its **Build** card builds,
+swings it, and **Test hand** presses it and moves with the avatar; pause Play mode to hold the cloth
+still while the hand presses. Each fold under **How it feels** says what it does and how to see it. Its **Build** card builds,
 rebuilds and removes the squash (the knobs stay on the component), and **Animate it** lists the
 material properties to key. The component on a VRChat avatar carries into its conversion, knobs and
 regions alike, and ChilloutVR strips it at upload.
@@ -1586,14 +1587,17 @@ each side with every bone under it (a pair is named after those top bones), each
 toward the edge, so the squash fades into the body the way the avatar was weight painted. Two pairs
 at most. A body whose bones don't say, or where the names take too much or too little, can have its
 regions painted: **Paint regions** on the same card, or *Tools ▸ YAPS ▸ Squash regions*. Pick the
-avatar, then start from **The bone names**, **The selected bone** or **The shape key** (a size
-slider for the part is usually exactly the right skin), and paint over it in the Scene view. Each
+avatar: with nothing painted it says which pairs the bone names give, and **Paint over them** (or
+**Start empty**) starts from there. **Paint in the Scene view** opens the brush panel in the Scene
+view, over the avatar, and the painted skin is drawn on the body, faintly where something hides it. **Fill this side from** takes **The selected bone** or **The shape key** instead (a size
+slider for the part is usually exactly the right skin). Each
 starts whole where it reaches most and fades toward the edge, so a jiggle bone weighted at a tenth
 still squashes in full. The brush spreads over the skin, never across a gap, so an arm resting on
-the side is not painted with it; Ctrl erases. **Smooth** feathers the edge, so the squash fades out
-instead of tearing; **Mirror** copies one side onto the other. The regions are kept on the avatar's
+the side is not painted with it; Ctrl erases and Esc stops. **Soften edge** feathers the edge, so the
+squash fades out instead of tearing; **Copy to the other side** mirrors one side onto its partner. The regions are kept on the avatar's
 **YAPS Squash** component; while it holds any, the converter and the Setup card both build from
-them instead of the bone names. **Remove the regions** clears them and keeps the knobs. The parts
+them instead of the bone names. **Build the squash** (or **Rebuild the squash**) at the bottom of the same window builds from
+them; **Remove the regions** clears them and keeps the knobs. The parts
 are measured on one skin: of the meshes carrying every part, the one weighted to the most bones, so
 the body and not a dense piece of clothing with more vertices. **Squash regions** starts on the
 same mesh, and its **Body** field picks another. Clothing follows the skin under it, within 3 cm.

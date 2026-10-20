@@ -28,6 +28,15 @@ namespace AvatarBridge
             { "What presses it", "arms, hands, plugs and cloth" },
         };
 
+        // Inside each fold: what it is and how to see it, which the header alone never said.
+        static readonly System.Collections.Generic.Dictionary<string, string> FoldHints = new System.Collections.Generic.Dictionary<string, string>
+        {
+            { "How it gives", "How a part answers any press: how flat it goes, how wide it spreads to keep its volume, how far it swings away first. See it with Preview and Squeeze or the test hand." },
+            { "The pair", "The two parts of a pair flatten against each other where they meet instead of passing through. See it with Preview and Squeeze." },
+            { "In motion", "As the physics swing a part, it stretches away from where it hangs and squashes back. See it with Preview and Bounce, or move the avatar in Play mode." },
+            { "What presses it", "What dents the parts besides each other, each with its own strength. See hands with the test hand." },
+        };
+
         const string Animatable =
             "material._YAPS_DentPower        0 off, 1 on\n" +
             "material._YAPS_SquashTune.y     strength\n" +
@@ -62,8 +71,7 @@ namespace AvatarBridge
             var body = new VisualElement();
             body.AddToClassList("ab-scroll");
             _root.Add(body);
-            body.Add(BridgeElements.Notice(Tone.Info, YapsInspectorStyle.InertComponentNote +
-                " To switch the squash, animate the materials' _YAPS_DentPower (0 to 1)."));
+            body.Add(BridgeElements.Notice(Tone.Info, YapsInspectorStyle.InertComponentNote));
 
             var see = new BridgeElements.Card("See it work");
             body.Add(see);
@@ -92,6 +100,7 @@ namespace AvatarBridge
                     FoldSummaries.TryGetValue(h.header, out string summary);
                     fold = new BridgeElements.Card(h.header, summary, fold == null).Nested().Remember("Yaps.Squash." + h.header);
                     feel.Body.Add(fold);
+                    if (FoldHints.TryGetValue(h.header, out string hint)) fold.Body.Add(BridgeElements.Hint(hint));
                 }
                 (fold != null ? fold.Body : feel.Body).Add(YapsInspectorStyle.Field(it.Copy(), field));
             }
@@ -160,7 +169,8 @@ namespace AvatarBridge
             bool built = YapsSquash.Has(settings.transform);
             into.Add(Application.isPlaying
                 ? BridgeElements.Hint("The cloth is real in Play mode: move the avatar (Jump or Shake in the Avatar Tester) and it swings and stretches. The preview adds another player's open hand.",
-                    "Drag the hand with its handle in the scene view; it moves with the avatar.")
+                    "Drag the hand with its handle in the scene view; it moves with the avatar. Pause Play mode to hold the cloth still while the hand presses. " +
+                    "To hold the pair squeezed together, leave Play mode: there Squeeze keeps them pressed at any amount.")
                 : BridgeElements.Hint("Squeezes, bounces and presses it in the scene view.",
                     "Edit mode runs no physics, so this stands in for them: the pair pushed together, the swing a bounce gives, " +
                     "and another player's open hand, which you drag. In Play mode the cloth is real. In game the same knobs answer the real ones."));

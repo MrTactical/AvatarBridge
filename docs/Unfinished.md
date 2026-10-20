@@ -1023,6 +1023,39 @@ checklist and a friend with time. A chamber that sets each check up makes it rep
 **First step, after 5.0.0:** a spike. One lounge room and one chamber in a fresh CCK world project,
 uploaded privately, to learn the world CCK's limits before designing the rest.
 
+## Show it on the avatar: an in-scene overlay for every tool. Joe's idea 2026-10-20. PLAN ONLY, after 5.0.0
+
+Joe, 2026-10-20, after an hour lost in the squash windows: the tools say what they did in
+reports and inspectors far from the avatar, and the reader has to translate. He wants the scene
+itself to show what AvatarBridge and YAPS are doing to the avatar and what can be changed: our own
+overlay system and UI, custom camera angles, animations, possibly the Game view, "so visually
+impressive and incredibly intuitive" that nobody needs the README. Strict planning only; he will
+expand on it. Same repository unless it turns out to need its own; say so if it does.
+
+What it would cover, every tool: the converter's report, the Avatar Tester, YAPS plugs and
+sockets, the squash and its painter, physics, contacts.
+
+Method to work out first, before any code:
+1. **One workflow per tool, written down.** What the user is trying to learn or change, in order,
+   and which on-avatar picture answers each step. The squash failed exactly here: four windows,
+   each pointing at another.
+2. **Where it draws.** Unity's Scene view overlays (`UnityEditor.Overlays`, the transient kind
+   now used by the squash brush) for controls; Handles and mesh overlays on the avatar for state;
+   a dedicated camera rig for framed shots (the part being explained, from the angle that shows
+   it). The Game view is an option for a presentation mode; it costs Play mode.
+3. **One visual language.** Colours, labels and callouts shared across tools, so a reader learns
+   it once. The two-platform colours of the window are the start.
+4. **Measured, never decorative.** Every picture reads the real state (the bake, the slots, the
+   report), so it can never claim something that is not there.
+
+The squash is the pilot: the brush panel in the Scene view (shipped on dev 2026-10-20) is the
+first piece. Open from the same day, for the pilot:
+- Hold a pose in Play mode: grab a part, lock it there, and see the squash at that angle. Today
+  only Pause holds it, and only the test hand moves while paused (the hint says so; not tried by
+  Joe yet). Edit mode's Squeeze holds the pair, but only toward each other.
+- The fold hints under How it feels name how to see each group; a live picture per knob would
+  answer it better.
+
 ## Squash against the world: an idea, 2026-10-17. NOT STARTED, after 5.0.0
 
 Joe's idea: a soft part pressed flat against a world surface, a pane of glass for example, from any
