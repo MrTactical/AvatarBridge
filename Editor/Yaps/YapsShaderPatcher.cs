@@ -764,7 +764,7 @@ namespace AvatarBridge
             // Scanned with comments blanked: Poiyomi's lock comments out a pass it turns off,
             // and an entry define went in after its CGPROGRAM, outside any program. Edits go in
             // last block first, so the offsets read here hold for every block still to come.
-            string code = Uncommented(shaderFile.Text);
+            string code = ShaderSpiPatcher.Uncommented(shaderFile.Text);
             var blocks = Regex.Matches(code, @"(CGPROGRAM|HLSLPROGRAM)")
                 .Cast<Match>().Reverse().ToList();
 
@@ -794,7 +794,7 @@ namespace AvatarBridge
                 }
 
                 string vertName = vertPragma.Groups[1].Value;
-                if (!PatchOneVertexFunction(unit, yaps, vertName,
+                if (!PatchOneVertexFunction(Reached(unit, code, start, start + end.Index), yaps, vertName,
                         start, start + end.Index, alreadyInjected, out string why, out bool missingFrame))
                 {
                     // A shadow caster is allowed to be out of reach. Unity's own
@@ -831,30 +831,36 @@ namespace AvatarBridge
 
         static string EntryDefine(string vertName) => "YAPS_ENTRY_" + vertName;
 
-        // The text with its comments turned to spaces, every offset kept. Strings are stepped
-        // over: a "/*" inside one would blank everything up to the next "*/".
-        static string Uncommented(string text)
+        const string VertexIdParameter = "yapsVertexId";
+
+        // The shader and the includes one program reaches: its own, and every CGINCLUDE
+        // block's, which is prepended to it. Passes keep their includes apart, and the first
+        // match across all of them was the outline pass's vert, patched once for four passes
+        // while the other three drew the plug straight.
+        static List<ShaderSpiPatcher.SourceFile> Reached(List<ShaderSpiPatcher.SourceFile> unit,
+            string code, int blockStart, int blockEnd)
         {
-            var c = text.ToCharArray();
-            for (int i = 0; i < c.Length - 1; i++)
+            var byPath = unit.ToDictionary(f => Path.GetFullPath(f.OriginalPath), StringComparer.OrdinalIgnoreCase);
+            var scope = new List<ShaderSpiPatcher.SourceFile> { unit[0] };
+            void Walk(string text, string path)
             {
-                if (c[i] == '"')
+                string folder = Path.GetDirectoryName(path) ?? ".";
+                foreach (Match m in ShaderSpiPatcher.IncludeDirective.Matches(text))
                 {
-                    while (++i < c.Length - 1 && c[i] != '"' && c[i] != '\n') { }
-                }
-                else if (c[i] == '/' && c[i + 1] == '/')
-                {
-                    while (i < c.Length && c[i] != '\n') c[i++] = ' ';
-                }
-                else if (c[i] == '/' && c[i + 1] == '*')
-                {
-                    int close = text.IndexOf("*/", i + 2, StringComparison.Ordinal);
-                    for (close = close < 0 ? c.Length : close + 2; i < close; i++)
-                        if (c[i] != '\n') c[i] = ' ';
-                    i--;
+                    string found = ShaderSpiPatcher.ResolveInclude(folder, m.Groups[2].Value);
+                    if (found != null && byPath.TryGetValue(Path.GetFullPath(found), out var file) && !scope.Contains(file))
+                    {
+                        scope.Add(file);
+                        Walk(ShaderSpiPatcher.Uncommented(file.Text), file.OriginalPath);
+                    }
                 }
             }
-            return new string(c);
+            foreach (Match shared in Regex.Matches(code, @"(?:CG|HLSL)INCLUDE([\s\S]*?)END(?:CG|HLSL)"))
+            {
+                Walk(shared.Groups[1].Value, unit[0].OriginalPath);
+            }
+            Walk(code.Substring(blockStart, blockEnd - blockStart), unit[0].OriginalPath);
+            return scope;
         }
 
         static bool PatchOneVertexFunction(List<ShaderSpiPatcher.SourceFile> unit, string yaps,
@@ -875,7 +881,7 @@ namespace AvatarBridge
             Match head = Match.Empty;
             if (blockStart >= 0 && blockEnd <= file.Text.Length)
             {
-                var inBlock = pattern.Match(file.Text, blockStart, blockEnd - blockStart);
+                var inBlock = pattern.Match(ShaderSpiPatcher.Uncommented(file.Text), blockStart, blockEnd - blockStart);
                 if (inBlock.Success)
                 {
                     head = inBlock;
@@ -900,6 +906,50 @@ namespace AvatarBridge
                 }
             }
 
+            // Every definition in an include, last first so the earlier offsets hold. One file
+            // can keep a vert per pass behind its own #if, and only the first was patched: the
+            // other passes drew the plug straight.
+            var heads = new List<Match> { head };
+            if (injectedKey != null)
+            {
+                string code = ShaderSpiPatcher.Uncommented(file.Text);
+                var definitions = pattern.Matches(code).Cast<Match>()
+                    .Where(m => IsDefinition(code, m.Index)).Reverse().ToList();
+                if (definitions.Count > 0) heads = definitions;
+            }
+            foreach (var definition in heads)
+            {
+                if (!PatchDefinition(unit, yaps, vertName, file, definition, blockStart,
+                        out refusal, out bool frameless))
+                {
+                    return false;
+                }
+                missingFrame |= frameless;
+            }
+            // Marked only once injected. Passes run last first, so a shadow caster that
+            // fails here, and is skipped as cosmetic, otherwise left every later pass
+            // "already done" with nothing in it: a plug drawn straight, no refusal.
+            if (injectedKey != null)
+            {
+                alreadyInjected[injectedKey] = missingFrame;
+            }
+            return true;
+        }
+
+        static readonly Regex BodyFollows = new Regex(@"\G\s*(?::\s*\w+\s*)?\{");
+
+        // A head followed by a body, not a call or a declaration.
+        static bool IsDefinition(string code, int at)
+        {
+            int close = MatchBracket(code, code.IndexOf('(', at), '(', ')');
+            return close >= 0 && BodyFollows.IsMatch(code, close + 1);
+        }
+
+        static bool PatchDefinition(List<ShaderSpiPatcher.SourceFile> unit, string yaps, string vertName,
+            ShaderSpiPatcher.SourceFile file, Match head, int blockStart, out string refusal, out bool missingFrame)
+        {
+            refusal = null;
+            missingFrame = false;
             int parenOpen = file.Text.IndexOf('(', head.Index);
             int parenClose = MatchBracket(file.Text, parenOpen, '(', ')');
             if (parenClose < 0)
@@ -957,17 +1007,10 @@ namespace AvatarBridge
             missingFrame = normalField == null || tangentField == null;
             members.TryGetValue("SV_VERTEXID", out string vertexIdField);
 
-            string idExpression;
-            if (!string.IsNullOrEmpty(vertexIdField))
-            {
-                idExpression = parameterName + "." + vertexIdField;
-            }
-            else
-            {
-                refusal = $"\"{vertName}\"'s input has no SV_VertexID, which is how the bake is " +
-                          "addressed";
-                return false;
-            }
+            // An input with no SV_VertexID: the function takes one as a parameter instead, the
+            // struct left alone, since other stages may build it.
+            bool idParameter = string.IsNullOrEmpty(vertexIdField);
+            string idExpression = idParameter ? VertexIdParameter : parameterName + "." + vertexIdField;
 
             var body = new StringBuilder();
             body.AppendLine();
@@ -1041,16 +1084,16 @@ namespace AvatarBridge
             // function rather than at the top of the block: by there the shader's
             // own includes have run, so UnityCG's matrices and light arrays exist.
             file.Text = file.Text.Insert(braceOpen + 1, body.ToString());
+            // Only where it is the pass's entry, and with a default: a domain calling it passes one
+            // argument, and is compiled in the plain passes too when it shares their include.
+            if (idParameter)
+            {
+                file.Text = file.Text.Insert(parenClose,
+                    $"\n#ifdef {EntryDefine(vertName)}\n    , uint {VertexIdParameter} : SV_VertexID = 0\n#endif\n");
+            }
             // At the start of the line, not at the return type: lilToon writes "struct v2f
             // vert(...)", and a word in front of the type was left in front of the source.
             file.Text = file.Text.Insert(file.Text.LastIndexOf('\n', head.Index) + 1, "\n" + yaps + "\n");
-            // Marked only once injected. Passes run last first, so a shadow caster that
-            // fails here, and is skipped as cosmetic, otherwise left every later pass
-            // "already done" with nothing in it: a plug drawn straight, no refusal.
-            if (injectedKey != null)
-            {
-                alreadyInjected[injectedKey] = missingFrame;
-            }
             return true;
         }
 

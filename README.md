@@ -1439,12 +1439,13 @@ it, the report says so: see [Poiyomi's unlocked shader ships under YAPS](#yaps-t
 **YAPS Simple Lit.** A plain lit shader (metallic workflow through Unity's own BRDF) that the tool
 falls back to when a mesh's own shader cannot be patched (Unity's Standard and everything else
 built in has no source on disk, a surface shader has no vertex function of its own, some are made
-on import from a file that is not shader source, and some shaders read no vertex index from the
-mesh or borrow their passes from a shader that cannot be patched), with the
+on import from a file that is not shader source, and some borrow their passes from a shader that
+cannot be patched), with the
 colour, albedo, normal map, metallic and smoothness carried over. The test plug wears it. Put a
 shader with source (Poiyomi, for one) on the mesh and re-bake if you need more. Of the popular
-toon shaders, drawn in the editor: Poiyomi, Xiexe's XSToon and lilToon patch, outlines included;
-Mochie, UTS, arktoon, ORL, Silent's and Filamented fall back.
+toon shaders, drawn in the editor: Poiyomi, Xiexe's XSToon, lilToon (fur included), UTS, Mochie
+and VRChat's mobile toon shaders patch, outlines included; arktoon, ORL, Silent's and Filamented
+fall back.
 
 **Quiet the scene view.** A converted avatar carries ninety-odd CCK components, each with an
 icon, plus pointer spheres, trigger boxes and cloth wires, and all of it buries a socket. One
@@ -3142,9 +3143,8 @@ instead of coming out of the exit. In order:
 
 The plug's material wears a shader the patcher cannot wrap: Unity's Standard and everything else
 built in has no source on disk, a surface shader has no vertex function of its own, some are made
-on import from a file that is not shader source (ORL's, for one), and some shaders read no vertex
-index from the mesh (the bake is addressed by it) or borrow their passes from a shader that
-cannot be patched. The tool
+on import from a file that is not shader source (ORL's, for one), and some borrow their passes
+from a shader that cannot be patched. The tool
 falls back to **YAPS Simple Lit** with the colour and textures carried over and says so in the
 outcome; on a converted avatar the report names the material. A converted socket that is its own
 mesh falls back the same way; a socket on the body keeps its contact-driven shapes and its own

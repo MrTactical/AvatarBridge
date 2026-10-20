@@ -124,6 +124,27 @@ v2f domain (tf f, const OutputPatch<cp, 3> p, float3 b : SV_DomainLocation)
 }
 ";
 
+        // A second visible pass whose include holds its own vert, as an outline pass does.
+        const string OutlinePass = @"
+        Pass
+        {
+            Name ""OUTLINE""
+            Cull Front
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #include ""UnityCG.cginc""
+            #include ""IncVertSplitOutline.cginc""
+            ENDCG
+        }";
+
+        const string OutlineInclude = @"
+struct appdata { float4 vertex : POSITION; float3 normal : NORMAL; float4 tangent : TANGENT; };
+struct v2f { float4 pos : SV_POSITION; };
+v2f vert (appdata v) { v2f o; o.pos = UnityObjectToClipPos(v.vertex + float4(v.normal * 0.01, 0)); return o; }
+fixed4 frag (v2f i) : SV_Target { return 0; }
+";
+
         const string Include = @"
 fixed4 _Color;
 struct appdata { float4 vertex : POSITION; float3 normal : NORMAL; float4 tangent : TANGENT; /*ID*/ };
@@ -132,6 +153,8 @@ v2f vert (appdata v) { v2f o; o.pos = UnityObjectToClipPos(v.vertex); return o; 
 fixed4 frag (v2f i) : SV_Target { return _Color; }
 ";
 
+        static readonly string NoPosition = Include.Replace("float4 vertex : POSITION;", "float4 vertex : TEXCOORD5;");
+
         [MenuItem("Tools/AvatarBridge Dev/Test: include vertex function")]
         public static void Run()
         {
@@ -139,9 +162,17 @@ fixed4 frag (v2f i) : SV_Target { return _Color; }
             try
             {
                 Directory.CreateDirectory(Dir);
-                var bad = Patched("IncVertBad", false, out string badRefusal, out int badCalls);
-                Check(bad == null, "an include vert with no SV_VertexID is refused, not patched straight");
-                Check(badRefusal != null && badRefusal.Contains("SV_VertexID"), "the refusal names SV_VertexID");
+                // A third of the refused hosts in the shader sweep had no SV_VertexID in their
+                // vertex input. The entry takes one as a parameter instead, at the default target.
+                var noId = Patched("IncVertNoId", false, out _, out int noIdCalls);
+                Check(noId != null && Compiles(noId) && DeformsIn(noId, 0) == 1 && DeformsIn(noId, 1) == 1,
+                    "an include vert with no SV_VertexID takes one and patches, in every pass");
+                Check(noIdCalls == 1, $"its include holds the deform once ({noIdCalls})");
+
+                // A vert that reads no POSITION is still refused, and nothing is written for it.
+                var bad = Patched("IncVertBad", true, out string badRefusal, out int badCalls, null, NoPosition);
+                Check(bad == null, "an include vert with no POSITION is refused, not patched straight");
+                Check(badRefusal != null && badRefusal.Contains("POSITION"), "the refusal names POSITION");
                 Check(badCalls == 0, "nothing was written for it");
 
                 var good = Patched("IncVertGood", true, out string goodRefusal, out int goodCalls);
@@ -163,7 +194,7 @@ fixed4 frag (v2f i) : SV_Target { return _Color; }
                 }
                 var badLender = Patched("IncVertBorrowBad", true, out string borrowRefusal, out _, "        UsePass \"Test/IncVertBad/FORWARD\"");
                 Check(badLender == null, "a pass borrowed from a shader that cannot patch is refused, not patched straight");
-                Check(borrowRefusal != null && borrowRefusal.Contains("borrows") && borrowRefusal.Contains("SV_VertexID"),
+                Check(borrowRefusal != null && borrowRefusal.Contains("borrows") && borrowRefusal.Contains("POSITION"),
                     "the refusal names the lender's reason");
 
                 // A word in front of the return type ("inline v2f vert") was left in front of the
@@ -193,6 +224,7 @@ fixed4 frag (v2f i) : SV_Target { return _Color; }
                 var sameName = Patched("IncVertSameName", true, out string sameRefusal, out _, OwnStructCaster);
                 Check(sameName != null && Compiles(sameName) && DeformsIn(sameName, 0) == 1,
                     $"a vert reads its own program's struct, not another pass's of the same name ({sameRefusal ?? "patched"})");
+                Check(Written("IncVertSameName").Contains("yapsTangent, v.vid);"), "and takes its vertex id from that struct");
 
                 // The entry define went in after the commented CGPROGRAM, and the copy did not parse.
                 var commented = Patched("IncVertCommented", true, out string commentedRefusal, out _, Caster + CommentedPass);
@@ -208,6 +240,34 @@ fixed4 frag (v2f i) : SV_Target { return _Color; }
                     Check(DeformsIn(tess, 0) == 1, $"the plain pass still deforms, once ({DeformsIn(tess, 0)})");
                     Check(DeformsIn(tess, 1) == 1, $"the tessellated pass deforms once, not again in what its domain calls ({DeformsIn(tess, 1)})");
                 }
+
+                // The same with no vertex id anywhere: the domain still calls vert with one argument.
+                var tessNoId = Patched("IncVertTessNoId", false, out string tessNoIdRefusal, out _, TessPass,
+                    Include + TessInclude.Replace("o.vid = v.vid;", "o.vid = 0;").Replace(" a.vid = p[0].vid;", ""));
+                Check(tessNoId != null && Compiles(tessNoId) && DeformsIn(tessNoId, 0) == 1 && DeformsIn(tessNoId, 1) == 1,
+                    $"a tessellated pass with no SV_VertexID patches, once per pass ({tessNoIdRefusal ?? "patched"})");
+
+                // An old copy of the function left in a comment, ahead of the real one.
+                var oldCopy = Patched("IncVertOldCopy", false, out string oldCopyRefusal, out _, null,
+                    "// v2f vert (appdata v)\n// {\n// }\n" + Include);
+                Check(oldCopy != null && Compiles(oldCopy) && DeformsIn(oldCopy, 0) == 1,
+                    $"a commented-out vert is passed over for the real one ({oldCopyRefusal ?? "patched"})");
+
+                // Each pass compiles alone, so each finds the vert its own includes declare.
+                File.WriteAllText($"{Dir}/IncVertSplitOutline.cginc", OutlineInclude);
+                AssetDatabase.ImportAsset($"{Dir}/IncVertSplitOutline.cginc", ImportAssetOptions.ForceSynchronousImport);
+                var split = Patched("IncVertSplit", false, out string splitRefusal, out int splitCalls, OutlinePass);
+                Check(split != null && Compiles(split) && DeformsIn(split, 0) == 1 && DeformsIn(split, 1) == 1,
+                    $"two passes with a vert each in their own include both deform ({splitRefusal ?? "patched"})");
+                Check(splitCalls == 2, $"one deform in each include ({splitCalls})");
+
+                // One include, a vert per pass behind its own #if, as Mochie's Uber keeps them.
+                var forked = Patched("IncVertForked", false, out string forkedRefusal, out int forkedCalls,
+                    Caster.Replace("#include \"UnityCG.cginc\"", "#define FORK_SHADOW\n            #include \"UnityCG.cginc\""),
+                    "#if defined(FORK_SHADOW)" + Include.Replace("return o; }", "o.pos.z += 0.001; return o; }") + "#else" + Include + "#endif\n");
+                Check(forked != null && Compiles(forked) && DeformsIn(forked, 0) == 1 && DeformsIn(forked, 1) == 1,
+                    $"a vert split by #if deforms in each pass ({forkedRefusal ?? "patched"})");
+                Check(forkedCalls == 2, $"both copies carry the deform ({forkedCalls})");
             }
             finally
             {
@@ -240,6 +300,13 @@ fixed4 frag (v2f i) : SV_Target { return _Color; }
                 : 0;
             Object.DestroyImmediate(material);
             return result;
+        }
+
+        static string Written(string name)
+        {
+            string shared = YapsShaderPatcher.SharedFolder;
+            return !Directory.Exists(shared) ? "" : string.Concat(Directory.GetFiles(shared, name + "*_YAPS_*")
+                .Where(f => !f.EndsWith(".meta")).Select(File.ReadAllText));
         }
 
         // The import reports no error in a pass it has not compiled; drawing compiles it. A pass

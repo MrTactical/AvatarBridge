@@ -931,11 +931,13 @@ namespace AvatarBridge
             Regex.Replace(text, @"^([ \t]*)Shader\s*""[^""]+""",
                 m => m.Groups[1].Value + "Shader \"" + newName + "\"", RegexOptions.Multiline);
 
+        // Searched with comments blanked: a commented-out copy of a function, ahead of the
+        // real one, was patched in its place and broke the compile.
         internal static SourceFile FindIn(List<SourceFile> unit, string pattern, out Match match)
         {
             foreach (var file in unit)
             {
-                var m = Regex.Match(file.Text, pattern);
+                var m = Regex.Match(Uncommented(file.Text), pattern);
                 if (m.Success)
                 {
                     match = m;
@@ -944,6 +946,32 @@ namespace AvatarBridge
             }
             match = Match.Empty;
             return null;
+        }
+
+        // The text with its comments turned to spaces, every offset kept. Strings are stepped
+        // over: a "/*" inside one would blank everything up to the next "*/".
+        internal static string Uncommented(string text)
+        {
+            var c = text.ToCharArray();
+            for (int i = 0; i < c.Length - 1; i++)
+            {
+                if (c[i] == '"')
+                {
+                    while (++i < c.Length - 1 && c[i] != '"' && c[i] != '\n') { }
+                }
+                else if (c[i] == '/' && c[i + 1] == '/')
+                {
+                    while (i < c.Length && c[i] != '\n') c[i++] = ' ';
+                }
+                else if (c[i] == '/' && c[i + 1] == '*')
+                {
+                    int close = text.IndexOf("*/", i + 2, StringComparison.Ordinal);
+                    for (close = close < 0 ? c.Length : close + 2; i < close; i++)
+                        if (c[i] != '\n') c[i] = ' ';
+                    i--;
+                }
+            }
+            return new string(c);
         }
 
         // A copy written and waiting for its import and its checks.

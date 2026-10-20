@@ -3135,7 +3135,8 @@ Sweep 8 (all 38 setups, the three fixes deployed): **38 PASS, 0 FAIL** [M]. Tess
 in view and in shadow with 0 stray, and every other host reads as it did in sweep 7.
 Sweep 9 (2026-10-20, with the `Broken` check and the struct scoping below): **38 PASS, 0 FAIL** [M],
 and its 21 refusals read word for word as sweep 8's, so neither change moved a refusal.
-- Untested [R]: lilToon fur (a geometry stage, not in the sweep); lilToon's inspector on the patched
+- Untested [R]: lilToon fur (a geometry stage, not in the sweep; in it from sweep 10, see "Shaders
+  with no vertex index" below); lilToon's inspector on the patched
   copy, which may swap the shader back to its own on a render-mode change (YapsShaderGUI wraps it);
   Poiyomi's tessellated variants; not in game.
 - **FIXED 2026-10-19** [M]: `WriteAndVerify` trusted `ShaderHasError` alone after import. The
@@ -3207,6 +3208,8 @@ The full run after the overnight fixes [M]. Every other avatar's digest reads as
 - Still open [R]: the vertex function search, inside a block and in includes, still reads
   comments, so a commented-out copy of the function ahead of the real one would be patched in its
   place. Not met.
+  **FIXED 2026-10-20** [M]: met in Mochie once the `SV_VertexID` refusal was lifted; see the record
+  below.
 - **FIXED 2026-10-20** [M]: that same squash reported "Soft parts squash against each other and
   against hands" with 0 materials, the refusals only in its detail. A squash where no layer over
   the parts takes the patch is now not built: the nodes it measured with are stripped, the
@@ -3216,6 +3219,52 @@ The full run after the overnight fixes [M]. Every other avatar's digest reads as
 - The other avatar's `VRChat/Mobile/Toon Standard` is now refused for no `SV_VertexID`, where 419
   patched it [M]. 419 predates 9c52bfb, which marks an include's vert done only once it is really
   injected, so 419's copy should have drawn straight [R, not bisected].
+- Subset `420f` (both avatars, c4d4d8f deployed) [M]: the first reads as 419 but for the three
+  "lock did not run" warnings 37647de removed. The second's squash is now "Squash not built", its
+  three layers refused for no `SV_VertexID`, where 419 built it (two material data providers and a
+  render controller, now gone from the digest) on copies that could not have moved.
+- The subset wiped run 420's digests (every run empties `Current/` first), so 420 cannot be
+  promoted. Baseline stays at 418's until the next full run.
+
+### Shaders with no vertex index, 2026-10-20. JOE'S ASK, PATCHED ON `dev`
+
+A vertex input with no `SV_VertexID` was refused, so its plug fell back to Simple Lit. Joe asked
+for that group to patch. The function now takes one as a parameter instead [M].
+- The parameter is `uint yapsVertexId : SV_VertexID = 0`, added only under the pass's
+  `YAPS_ENTRY_<name>`, with the struct left alone, since other stages may build it. The default
+  is for a domain in a shared include that calls `vert(a)` and compiles in the plain passes too.
+  `IncludeVertexTest`, "IncVertNoId" and "IncVertTessNoId": 3 WRONG before, ok after.
+- Lifting the refusal exposed three search bugs it had been hiding. Each was fixed with a failing
+  test first:
+  - **The include search read comments.** Mochie's shared utility include keeps an old `vert`
+    commented out ahead of the real one. The parameter landed after the comment, in live code
+    ("syntax error: unexpected token ','"). `FindIn` and the in-block search now run on
+    `Uncommented` text, which moved to `ShaderSpiPatcher`. "a commented-out vert is passed over":
+    WRONG before, ok after.
+  - **Every pass searched every include of the shader.** UTS 2's four passes all took the outline
+    include's `vert`: reported "across 4 passes", 1 deform in 4 files, the other passes drawn
+    straight. Each program now searches only what it reaches: its own includes and every
+    CGINCLUDE block's, transitively (`Reached`). "two passes with a vert each in their own
+    include": 2 WRONG before, ok after. lilToon fur had the same cause, since its fur pass includes
+    a vert file of its own.
+  - **Only the first definition in an include was patched.** Mochie's Uber keeps a vert per pass
+    in one file, each behind its own `#if`, so the shadow and outline passes drew straight. Every
+    definition in the found include is now patched, last first (`IsDefinition` skips calls and
+    declarations). "a vert split by #if": 2 WRONG before, ok after, 30 of 30.
+- Before tonight, UTS and lilToon fur were refused only by luck: the include they wrongly found
+  lacked `SV_VertexID`.
+- Sweep 10 (the parameter alone): 36 PASS, 7 FAIL [M]. VRChat's mobile toon shaders pass. UTS 2 ×4
+  and lilToon fur ×3 failed with stray pixels where only the unmoved tube was. Mochie ×4 failed to
+  compile and fell back.
+- Sweep 11 (the comment and scope fixes): 40 PASS, 3 FAIL, the three Mochie Uber hosts [M]. The
+  only change in what patched was Mochie ×4 moving from Simple Lit to patched. The 12 other refusals
+  read word for word as sweep 10's.
+- Sweep 12 (every definition patched): **43 PASS, 0 FAIL** [M]. What patched and every refusal read
+  as sweep 11's.
+- Still refused, and falling back honestly: arktoon, Silent's Crosstone and Lightramp (no POSITION
+  struct found), ORL (made on import), Filamented and Standard (`vertAdd` not found), surface
+  shaders.
+- Not in game, and not in the corpus yet.
 
 ### Conversions got slower between corpus 418 and 419, 2026-10-19. NOT LOCATED
 
