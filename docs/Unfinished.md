@@ -81,63 +81,14 @@ physics A/B probes and a corpus run. Decisions on the queue's open questions, sa
   - Ship gate: both packages ship together, after SPS2 tags and portal/duplicate pass in game.
   - The ChilloutVR Toolkit becomes its own package **after 5.0.0**, for people already on
     ChilloutVR who do not need the converter. Plan in its own record.
-- One user report on 4.7.2, 2026-10-17: the avatar held a pose in the floor. Fixed on dev (record
-  under the speed items); its line goes in the 5.0.0 notes. No hotfix (Joe, same day): 5.0.0 carries it.
+- One user report on 4.7.2, 2026-10-17: the avatar held a pose in the floor. Fixed on dev (record in
+  `docs/archive/Closed-2026-10.md`); its line is in the 5.0.0 notes. No hotfix (Joe, same day): 5.0.0 carries it.
 - `BridgeDefines.Version` is 5.0.0 on dev from 2026-10-17, for Joe's in-game test build (one avatar
   converted with every option on, through `Dev/Probes/ConvertForWearProbe`). Nothing is tagged.
 - Joe wears it in ChilloutVR before 5.0.0 ships, with the full in-game checklist (all of it,
   ordered by risk, paced over days), and the release still needs his word. The checklist and the
   release notes draft are `Dev/Release/ingame-checklist-5.0.0.md` and `Dev/Release/release-5.0.0.md`
   (gitignored, local only).
-
-**Bug panel over the 5.0.0 diff, 2026-10-15: 14 findings, 13 kept and FIXED on dev, 1 refuted.**
-Readers per area, each finding then checked by a judge trying to refute it. Fixed, by area:
-- Squash: a Rebuild left an alternate look's copy out of the new providers, so that layer stopped
-  squashing while its toggle was on (SwapTest in `SquashTestBuilder` now rebuilds; passes 2026-10-16);
-  the own-arm capsule push ignored `_YAPS_SquashHands.x`, so animating own arms off left the push;
-  the regions tool refused every other body after the last pair was removed.
-- Soft bodies: pressing the Toolkit card twice said "No two soft bodies sit close enough to meet".
-- Physics: a soft body with Multi Child Type Ignore was reported as split per branch when it is not
-  (README now says so); a local-space relay's fixed copy was parented inside a simulated chain, where
-  MagicaCloth2 takes every transform under a root as a particle, so the copy swung. The bone's own
-  parent stands in now, its offset measured from the pose, for one full-weight source only. This may
-  be part of the 4.6 cm left in the record below; unmeasured. A humanoid bone counted as never
-  rotating, since muscle curves bind at the root.
-- YAPS: every shader whose caster got wrapped was told it takes no tangent; Remove's swap-key
-  repointing had no undo.
-- Upload check: a prefab instance's own bookkeeping was listed as "not saved" (PreflightTest has a
-  prefab-instance case; passes 2026-10-16); a curve binding with no type could throw.
-- Conversion diff: a version-only change was headlined "only the counts moved", and a native setup's
-  diff pointed at `ConversionReport.md`.
-
-**Second review over the changes since the panel, 2026-10-16: 11 findings, 9 kept and FIXED on dev,
-2 judged not defects (one fixed anyway).** Same shape: readers per area, a judge refuting each.
-- Physics: a relay whose bone's parent stands in for its source also raised "relayed a bone from
-  another chain", contradicting its own Converted line, since the stand-in's parent is the
-  grandparent. A relay whose offset could not be measured (inactive, several sources, partial
-  weight) was told its source rotates and that a fixed copy was tried; neither was true.
-- GoGo: its flight scale layer reads no `Go/` value at all, so the clip test never ran on it, and it
-  kept a scale feed alive. A layer reading no `Go/` value now goes when every clip it plays is
-  GoGo's own; one borrowed `go_` clip among the creator's keeps it (`GogoLayerStripTest`, both
-  cases). `CollectParameterRefs` skipped sub-machine exits, so a parameter read only there could be
-  deleted; it is shared by the strip, the nativizer and the face-tracking prune.
-- YAPS: a shader's own shadow caster without a tangent still set the "stays straight" note. The
-  note is now decided from the passes people see, per function, include functions included.
-- Upload check: an avatar under another scene object had that parent listed as outside the avatar.
-- Native setup: `Diagnostics.md` sent the reader to `ConversionReport.md`, which a setup never writes.
-- Docs: README's *Your call* sentence named two toggles of three; the depth-sync comment said two
-  parameters per socket; the fit comment said four speed limits of five (judged a comment-only
-  miscount, fixed anyway). Not acted on: a report line saying "Physics options", a wording nit.
-
-**SPS's own menu options, 2026-10-16: both left out, the plan's default applied.** SPS adds
-*Legacy Compatibility* and *Stealth Mode* to the menu, as `VF80_legacy` and `VF80_stealth` in every
-one of the 30 controllers of the GoGo subset. Read from that subset's 29 outputs and their 242
-rebuilt sockets: none has a Light under `WorldSpace/Lights`, so the first switches nothing, and 188
-carry an atlas writer outside the tree Stealth's clip switches, so the second hides lights and
-contacts while YAPS plugs still find the socket, and "invisible to others" would be false. Both
-names are stripped exactly (`VF80_` also prefixes the depth parameters, so never the prefix), a
-Skipped line says so, and README's SPS section explains. If Stealth is ever wanted, its clip would
-have to switch the atlas writer too.
 
 **Squash costs minutes per avatar, 2026-10-16. Fixes on dev and measured (subsets `speed1`, `speed2`, then full run 418: squash 27,468 s to 13,402 s, all passes 34,587 s to 17,181 s).**
 The first corpus run with squash on (`CorpusSettings` forces it; a user's default is off) spends
@@ -328,55 +279,10 @@ copy's main asset. The test covers it, and fails with the old rehomer. Still to 
   283.0 s is growing zones; hosts 11 ms, rest states 4 ms. 112 contacts elsewhere took 1.2 s, so it
   is not linear in contacts: read what one zone's growth costs before guessing. After 5.0.0.
 
-**User report 2026-10-17 (4.7.2): the avatar held a pose in the floor. FIXED on dev.** Two FX
-hand-gesture layers whose clips carry body or root curves sat above Locomotion/Emotes, Override,
-weight 1, with no mask: `MaskMergedLayers` skipped any layer whose clips animate the body as
-"deliberate body animation", FX included, though VRChat's FX playable never drives muscles. FX
-layers (by machine, `AnimatorMerger.FxMachines`, which the toggle pass extends with the branches it
-splits out of FX) are now masked whatever their clips hold and listed under *FX layers kept off the
-body, as in VRChat*. An FX layer whose own mask lets the body through gets a copy of that mask with
-every humanoid part off and its transforms as written. `WarnLocomotionOverrides` reads the live
-layers now, not the detached merge copies that never saw a later mask or rename, and skips a layer
-whose mask cannot reach the body, which also drops the stale warning on a masked `[Base]` layer.
-Known cost: a masked layer applies only the first slot of a material swap, so an FX layer that both
-poses the body and swaps several slots loses the rest (warned, as for `[Base]`). The faithful fix
-would drop the muscle curves from copied clips and leave the layer unmasked; not done until a user
-hits it. The clips themselves were never seen (the avatar
-is not on this machine), so the pose is inferred from the controller and the report's own
-body-curve warning. Corpus digests with FX or masked Base body layers change once. **For the
-release notes:** the avatar held one pose or lay in the floor; reconvert. Fixture
-`Fixture_FxBodyPose` (`FixtureBuilder.RunFxPoseOnly`, from the corpus fixture source): two FX hand
-layers on one clip keying every non-finger muscle and `RootT.y`, one unmasked, one with an all-on
-authored mask. One-scene subset in the probe project: they come out `AvatarBridge_NoMuscles` and
-`Fix_AllOn_NoMuscles` (saved in the controller, every part off), listed under the new line, no
-body warning for either. In the main corpus project too since the same day (built there, one-scene
-subset, digest accepted as its baseline), so every full run carries it. Not tested in game.
-
 **Decided 2026-09-23 (Joe):** ship the next release first (one default corpus run authorised,
 release on his word), then the two items below. **It is 4.6.4** (Joe, same day): 4.6.3 is skipped,
 its number spent on test builds, and the socket readout goes in with it. 4.6.4 shipped that day,
 4.6.5 on 2026-09-26 and 4.6.6 on 2026-10-02, so the two items below are next.
-
-**Corpus 412 (2026-10-02, full, throttled, against 410): 6 of 83 changed, all explained.** Five
-lose a false "may not render correctly in VR" warning: locked Poiyomi 7.3 includes its own files as
-`#include "/CGI_..."`, and the old diagnostics reader sent that leading slash to the drive root and
-never saw the stereo macros inside; it reads through `ShaderSpiPatcher.ReadUnit` now. The sixth also
-lost a Weight line because `NativeToggleProbe` had converted it in the corpus project with default
-settings and slimmed six of its textures; put back with `AvatarSlimmer.Revert`. Lesson: a probe that
-converts in the corpus project must not slim, or must revert. Accepted as the YAPS baseline on Joe's
-word for the night (410 kept in `Baseline-pre-412-20261002`). The log is named 411 by mistake: that
-label was already 2026-09-24's run. Avatar H's digest in it carried the slimmed texture; a one-avatar
-YAPS-on subset after the revert brought the Weight line back and nothing else, and that digest
-replaced it in the baseline.
-
-**Corpus 413 (2026-10-02, YAPS off, full, throttled): accepted as the opt-out baseline.** Its
-baseline dated from 4.5.0 (2026-09-09), so all 83 changed against it. Explained by comparing each
-avatar with the accepted YAPS-on run instead: 53 are identical but for the `convertYapsSystems`
-stamp, and all 30 that differ carry a penetration system the two profiles treat differently (SPS
-and TPS layers stripped instead of converted, so layers renumber and pointers and triggers go; DPS
-or TPS marker lights reported as kept, one Converted line, measured on Avatar E by converting it
-in both profiles). Every other line matches, so the opt-out run's drift since 4.5.0 is the drift
-each YAPS-on baseline already accepted. 4.5.0's kept in `Baseline-pre-413-20261002`.
 
 **A Physics card in the CCK Animator Tester (now the Avatar Tester's Interaction lab, below). BUILT 2026-10-02, unreleased: Joe tries it first.**
 Asked for by Joe (motion presets, grab and fling, overlay; not the side-by-side with VRChat). A
@@ -468,43 +374,6 @@ Play-mode on/off state over the scene default; label rects are per Scene view; a
 beats a label over it; labels place worst first and a red one is never dropped; the avatar's
 chains are watched as well as the selection (a locked Inspector); kept records live in
 `SessionState` with a static `EnteredEditMode` hook, so closing the tester first loses nothing.
-
-**A mesh riding a plug stayed rigid through every rebuild. FIXED ON DEV 2026-09-26, found by Joe on
-his own avatar.** A whole-avatar plug rooted at the armature carries a second skinned mesh, a
-collar, as a rider. The rider's generated copy sat in its slot back on the mesh's own shader, with
-`_YAPS_Enabled` 0 and no `bakedSlots` record. Every Build took `PatchExtra`'s already-ours branch,
-where `IsStale` answered true for an unpatched material (it is its own source, so it names the patch
-it would get) and `Refresh`, with no original in the shader to patch from, did nothing; the `else`
-that assigns the patched shader was never reached. A rider's `_YAPS_Enabled` was never written
-either, where the primary is set to 1 on every bake. So it stayed rigid, and with no `_YAPS_Bake`
-on its shader the setup window stopped listing it as part of the plug. `IsStale` now answers only
-for patched materials (every other caller already filtered to those), and a rider is switched on as
-the primary is. `Dev/Probes/RiderProbe` (armature-rooted plug, body plus collar, the copy reverted
-by hand) failed on the old code and passes. The primary and a mirrored slot already handled the
-same state (`oursAlready`, and `MirrorToSlots`' own branch); the rider path was the third door and
-had none. How the copy got reverted is not known. **Withdrawn, same day:** it was not Remove, which
-leaves a rider slot it has no record of alone; an earlier bake or removal of that mesh as a plug of
-its own is the likelier history.
-
-**A shader drew into one eye with the stereo patch on. FIXED ON DEV 2026-09-26, found by Joe, not
-verified in game.** An eye shader keeps its vertex and fragment functions in an include named from
-the project root, `#include "Assets/<vendor>//Shaders/.../Base.cginc"`, doubled slash and all.
-`ShaderSpiPatcher.ReadUnit` looked for an include only beside the file naming it, never read that
-one, found no vertex function and refused the shader ("vertex function signature not recognised"),
-so it kept drawing into one eye. The same beside-only lookup sat in both patchers' include
-repointing and in a separate reader `BridgeDiagnostics` kept for the one-eye warning. All now go
-through `ShaderSpiPatcher.ResolveInclude` (beside the file, else from the project root through
-`FileUtil.GetPhysicalPath`), and the warning reads through `ReadUnit` itself so the two cannot
-disagree. A consequence: a `Packages/...` include now resolves too, so a shader including a
-package's file gets that file copied into `RehomedAssets` with the rest, where before its include
-was left pointing at the package. Patching it then showed a second fault: the header is
-`Shader"name"`, no space, which ShaderLab accepts and the rename pattern `Shader\s+"` did not, so the
-patched copy came out under the original's name. Both patchers rename through
-`ShaderSpiPatcher.Rename` now, anchored to a line start so a display name ending in "Shader" is never
-taken. `Dev/Probes/SpiIncludeProbe` (a synthetic shader with both traits, and `-spiShader` for a real
-one) passes; the real shader, copied into a test project, came out patched, renamed and compiling,
-where before the rename fix it came out patched under its own name. The YAPS rename shares the
-helper and was not probed separately. Both eyes can only be checked in game.
 
 **1. A runtime tester: the bend as data. PROPOSED, step one is a probe.** Every YAPS bug this week
 (8-bit atlas holes, own socket in the editor, rigid accessories, the torn tip) was found by eye,
