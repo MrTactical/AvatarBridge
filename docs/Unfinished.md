@@ -2981,6 +2981,12 @@ draft was built first, then deleted unpublished when two tester changes landed a
 `v4.7.0` stays in history and that number was never shipped. Corpus 415 is the accepted YAPS baseline.
 Not verified in ChilloutVR; the records below say what only the game can settle.*
 
+### Cloth on a plug's own bones, unmeasured. RISK, left from a shipped record
+
+A cloth chain that moves bones inside a plug would break the per-vertex frame in play. Ruled out
+as the cause of the 4.6.4 tear (archived, "Blendshapes a plug renderer holds came undone"), never
+measured in game.
+
 ### YAPS against every popular shader, 2026-10-19. ASKED FOR BY JOE, STARTED
 
 Joe, on the K2 options: "not every shader is built the same ... we would need to test YAPS plugs and
@@ -3785,155 +3791,6 @@ ChilloutVR and not through the corpus.
   sharing the clip walk in `ConstraintScaleRelay` (PHY-13), a weights-based helper-rig rule shared
   with `ConstraintConverter.SkinningBones` (PHY-19, a behaviour decision), and the Toolkit's *Mesh
   bounds* button re-applying the avatar envelope to a separate plug mesh after a native bake.
-
-### The stereo shader patcher, read end to end on 2026-10-03. FIXED ON DEV the same day, not in game
-
-**What changed.** One analysis, `PlanStereo`, finds every vertex and fragment function named by a
-pragma, in every pass and file, and the exact edits each needs; whether a shader needs patching
-(`DeclaresStereo`), the one-eye warning (`StereoProblems`) and the patch itself all read it, so they
-cannot disagree. Edits are planned on the text as read and applied from the end of each file back.
-Two facts it rests on were measured first (`Dev/Probes/SpiFactsProbe`): Unity's generated
-surface-shader code carries all four macros in every pass, and a duplicated instancing member
-compiles in the default variant with `ShaderHasError` false and fails only with
-`STEREO_INSTANCING_ON`. So the copy is now also compiled outright in the single-pass instanced
-variant, every pass, through `ShaderData.Pass.CompileVariant`. That check found a bug old and new
-code shared: the stereo member went FIRST in the struct, and a fragment taking its own system value
-(a `VFACE`) failed in exactly the variant ChilloutVR draws; members now go last, as Unity places
-them. `Dev/Probes/SpiPatcherProbe` builds a shader per fault and passes 32 of 32.
-
-**One item deliberately not done:** a shader naming all four macros is not patched for a plain depth
-read. `Dev/Probes/SpiSweepProbe` puts every shader of the corpus project (1092) through old and new
-builds; counting depth sent nearly every locked Poiyomi Pro material to be copied, for optional
-features that declare a plain depth texture. Depth reads are rewritten only in shaders patched
-anyway, and only when every read takes the depth value alone (`DecodeFloatRG` of two channels would
-compile and read wrong); otherwise they are left and the report says so.
-
-The record as found:
-
-A read of `ShaderSpiPatcher` with every claim checked against the code. From the code, none of it
-measured yet:
-
-1. **Multi-pass shaders get half a patch.** Only the first `#pragma vertex/fragment` is used and the
-   setup lines go into the first matching vertex function, so an outline or ForwardAdd pass with its
-   own vertex function stays one-eyed while the shader is reported patched.
-2. **Copies overwrite each other.** Copies are named `<stem>_SPI` with names deduplicated only within
-   one shader, so two shaders sharing a file or include name write the same file in `RehomedAssets`,
-   and a later failed patch deletes a file an earlier good copy includes.
-3. **Macros added twice.** A shader holding some of the four (instancing ID for GPU instancing) gets a
-   second copy, a duplicate struct member.
-4. **The toggle pass drops lines.** Swap-only shaders that are already correct or limited by a
-   screen grab are collected and never reported.
-5. **`.failed.txt` keeps only the main file** while the report says the failing line is in it.
-6. **Unreadable reads as correct:** `DeclaresStereo` catches a throw and returns true.
-7. **Depth reads: two exact spellings only**, and never for a shader that already names all four
-   macros, which can still read a stereo depth array as a plain texture.
-8. **`#include_with_pragmas` is never followed**, checked or copied.
-9. **Surface shaders are refused and flagged as one-eyed**, when Unity generates their passes; a
-   surface shader with its own vert/frag pass (an outline) is refused whole. To be measured.
-10. **The compile check proves the default variant only**; nothing compiles `STEREO_INSTANCING_ON`.
-11. **Docs and comments out of step:** the README and the diagnostics warning put the tickbox "in
-   Advanced" (it is in Manual options, under Shaders); the README says screen reads are rewritten
-   (depth only) and that an edited shader's recipe "is refused rather than guessed at" (a mismatch
-   only adds a note); two header comments say locked shaders and shared-include structs are refused.
-   *The recipe claim is moot, done 2026-10-03: the recipe machinery held no recipes and is removed
-   (`ShaderFixRecipes.cs` deleted, its branches gone from `ShaderSpiPatcher`), and the README no
-   longer mentions recipes.*
-12. **The advisor counts renderers only**, so swap-only one-eyed shaders never raise its suggestion.
-
-### Blendshapes a plug renderer holds came undone mid-bend. ROOT CAUSE FIXED ON DEV 2026-09-23, ~~for 4.6.4~~ **SHIPPED IN 4.6.4** (044cb3d and the root-cause fix 020e88b are both in `v4.6.4`, checked 2026-10-17)
-
-Field report on 4.6.2, with the output folder: near a socket the plug grew torn translucent pieces
-and black shards, and a ring appeared at the tip; at rest it looked right. The plug renderer held
-five blendshapes at 100 with no animation, among them toggles that hide parts of the plug mesh.
-
-**Measured, not reasoned:** the shipped bake decoded clean (no NaN, every vertex inside the length,
-blend weight 1), so the data was not the fault. The deform lerps from the skinned vertex to one
-rebuilt from the bake, and the bake's rest pose is the raw mesh: baked shapes enter only through
-`_YAPS_ShapeWeights`, which started at 0 and are written only by mirrored animation curves, and a
-held shape outside the baked sixteen was nowhere. So whatever a held shape did was undone as the
-bend engaged.
-
-**Fix, in `YapsBaker` so both builders and the swap path get it:** a baked shape's held weight is
-the material's starting weight (`Result.ShapeWeights`, written by `Apply`); an unbaked held shape
-is folded into the rest pose with the same turn as a shape block. Plugs only: sockets bake with
-`objectFrame` and stage their shapes by depth. `YapsHeldShapeTest` 7/7. **Not verified:** on the
-reporter's avatar (no mesh here) or in game. A multi-frame shape is folded as its last frame
-scaled, exact for one frame only. The frame and length are still measured without held shapes.
-
-**2026-09-22, the test build did not fix it.** The report confirms the fix ran (5 held shapes, all
-five in the baked sixteen, every current slot starting them at 1), and the plug still tears near a
-native socket too: fine up to the socket, a cone and brown/gold sheets past it, and stretched
-toward a socket a length and a half away. Measured and ruled out, each on the shipped files:
-- **Physics on the plug's bones. WITHDRAWN as the cause.** Four cloth chains move bones inside
-  the plug (one rooted just above it, gravity 1, no ignores), which WOULD break the per-vertex
-  frame in play. But the screenshots were outside Play mode, and turning the four off changed
-  nothing. Still a real risk in game, unmeasured.
-- **Bake data**, decoded: no NaN, all inside the length, weight 1.
-- **Bones scaled to zero** to hide parts: none in the prefab.
-- **Held shapes collapsing a normal or tangent** into a bad frame: none below 0.2 length.
-- **Length measured without held shapes**: 0.582 m worn against 0.586 m baked.
-Open, and not reproducible here without the plug's mesh, which is not in the output folder.
-
-**2026-09-22, the debug overlay on the reporter's plug:** resolve healthy in every shot (atlas
-green, bending, frame recovered, bake read). Socket at the tip or mid-shaft, all green; no socket,
-grey. So the finder is not it, and the 8-bit tag fix does not touch this. The cone past a test hole
-floating in air runs about 0.27 of a length past it (140 of 520 px), against the hole taper's 0.10
-to 0.30 by default: the part a real body hides. **Candidate, not proven:** the "cone" is the taper
-seen with no body round the hole. Pending an A/B against a ring, which carries straight through with
-no taper. The white and magenta markers sit slightly apart even at rest, so the bones are a little
-off bake pose; small, unexplained.
-
-**Also measured 2026-09-22, "some parts hidden, some not" (Joe's theory):** the plug is ONE renderer
-with five slots (shaft, condom, an invisible slot, gold, leather), and all 14843 vertices are baked
-fully on the plug: no partial weights, none left out. Its hidden parts are held shapes, baked at
-their held weights, so baking "everything on" would bake the hidden parts IN. Four other renderers
-share the plug's armature and are not baked (sheath, a ring, a harness, fluff), so any of them on the
-shaft would stay straight while it bends: floating pieces, not tearing. Which of them sit on the
-shaft needs their meshes, not in the output folder.
-
-**2026-09-23, the same reporter on a 4.6.4 build, still torn** (gold and brown sheets past the
-fist, editor screenshot). Joe's theory: the accessories are hidden by blendshapes, so they are not
-their normal size when the plug is baked. Measured on the output folder:
-- Five shapes held at 100 on the plug renderer (a shrink, and hides for a cock ring, the condom, a
-  spiked choker, plates); the materials' starting `_YAPS_ShapeWeights` carry exactly five ones.
-- The toggle clips mirror correctly: `blendShape.Disable dick ring` pairs with
-  `material._YAPS_ShapeWeights2.z`, both 0 in the restore clip.
-- The deform adds each baked shape's delta times its weight to position, normal and tangent
-  BEFORE the per-vertex frame is solved, so a shrunken accessory recovers consistently while the
-  weights agree. So the plain form of the theory is already handled; it needs the reproduction.
-- **New: the output now carries the plug's mesh**, as the readout's copy (`YAPS Cock readout.asset`,
-  shapes included), which the 4.6.2 folder lacked. A reproduction is possible for the first time:
-  import the folder, run the bend tester on the plug, then A/B with the four hides released.
-- **ROOT CAUSE, measured on the reporter's own plug (2026-09-23).** Imported the output folder into
-  a test project and ran the bend tester on it: seams 725 mm, edges 70,000x, steps 300x the socket's
-  move, sheets fanning off the shaft exactly as in the screenshot. With every shape released on both
-  sides, edges 5.5x and steps under 6x: the held shapes are the cause (Joe's theory, right class).
-  `Dev/Probes/HeldShapeFrameProbe.cs` repeats the deform's per-vertex frame recovery on the CPU
-  against Unity's own skinning. Released, every vertex recovers the same root to 0.00 mm. As
-  shipped, every vertex a held shape moves recovered a root 85 mm to 1 m off. Position deltas were
-  exact (ratio 1.000); the normals were not: relative to its normal a held shape's delta is 1.40 in
-  the mesh and 0.095 in the bake, the renderer's 0.07 scale. The baker keeps rest normals and
-  tangents at UNIT length (`YapsBaker` line ~208, since the first baker) but turned shape normal and
-  tangent deltas through the same scaled matrices without dividing by that length, so on a mesh
-  imported at a unit conversion a shape that turns a normal 90 degrees turned the baked one 3, and
-  the frame spun. Invisible at scale 1, and invisible until a shape turns normals hard: collapse to
-  hide does. The 22 Sep fix held the weights correctly and so exposed it.
-  **Fix:** `DirectionDelta` divides each normal and tangent delta by its rest vector's pre-normalise
-  length, in both capture paths and `HoldShapes` (sockets too). Rebaked the reporter's plug with it:
-  normals turned exactly as Unity turns them (88.9 against 88.9 degrees), every root 0.0 mm, and the
-  bend tester's steps back under 6x with no sheets in any shot. **Left:** the tester's worst edge is
-  a hidden part, 0.010 mm at rest drawn to 68 to 98 mm, zero width and invisible in the shots:
-  collapsed vertices a held shape moves behind the base go inactive while their neighbours bend.
-  And seams open 290 to 770 mm on this mesh with or without the shapes, so they are its own, not
-  this bug. **Verified in game 2026-09-23:** the reporter reconverted on test build `sep23`
-  (020e88b) and it functions as expected (Joe).
-- Side finding: the weigh pass advised shrinking the bake texture ("8192x280 ... 1024x1024 is the
-  same picture"). It is data, not a picture. Nothing acted on the bake itself (the texture pass only
-  touches textures with an importer), but the same suggestion drives the texture pass, so an
-  imported data texture (point filtered, no mipmaps) could have been resized on convert.
-  **FIXED ON DEV 2026-09-23:** a data texture gets no density and no suggestion, in the advice and
-  the texture pass alike. `Dev/Probes/WeighDataProbe.cs` on the reporter's avatar. Not in corpus
-  408 (deployed before), and the corpus runs with the texture pass off.
 
 ### Four found wearing the avatar, 2026-08-25/26
 
