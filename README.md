@@ -1522,7 +1522,8 @@ portal or the next hole, never both, and a second copy whose own path ends in an
 there as at any hole. With nowhere to go the copy is hidden, and it
 is hidden too while the plug's toggle is fading. The copy is a second set of the plug's vertices on
 the mesh, and each of them runs the whole deform, hidden or not, so the plug costs the graphics card
-about twice what it did, even with no second socket in reach. The readout describes the first copy.
+about twice what it did, even with no second socket in reach; while it is ticked, the plug's
+inspector says so in red, under the field. The readout describes the first copy.
 
 **Screen atlas only.** The atlas is the only route that hands a plug more than one socket, so by
 marker light the plug is one plug.

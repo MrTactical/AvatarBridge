@@ -4681,6 +4681,7 @@ is **in 5.0.0**, which waits for both to pass in game.
   - Cost for users: a portal needs Two At Once, so about twice the plug's GPU work all the time (DS2), a skinned plug on one material sharing its mesh with no other plug, and only the main mesh comes out.
   - ~~**Joe's call, undoable:** keep it; or the band for everyone, accepting the line on those two outline modes; or both, the band for plugs without the copy and the copy for plugs with it.~~
     **Joe, 2026-10-19: keep the fallback.** The question put to him understated the cost: it said about twice the vertex work *only while a portal is open*, where the line above says all the time Two At Once is on. Re-confirm with the right cost before 5.0.0 ships.
+    **Re-confirmed, Joe 2026-10-20, with the right cost:** keep it as a toggle (Two At Once already is one, off by default) and warn in red. The plug inspector shows a `Tone.Bad` notice under the field while it is ticked; README says so under Two at once.
   - How common the two modes are, from the corpus project's source materials (generated output excluded) [M]: `_OutlineUseVertexColorNormals` 1 on 0 of 1412 materials carrying it; `_OutlineVertexR2Width` 2 on 1 of 21, a coat, not a plug. A fourth option for Joe: both, plus a bake warning that reads those two settings off the plug's material.
   - Readout: green now also needs `_YAPS_CopyStart` > 0, so a plug without the copy reads red at a live exit.
   - fxc: plain 51 temps, 3546 lines; with the copy 59, 3903 [M].

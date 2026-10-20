@@ -1645,7 +1645,19 @@ namespace AvatarBridge
                     }
                 }
                 if (!Passes(from)) continue;
-                into.Add(YapsInspectorStyle.Field(it.Copy(), field, null, from));
+                var drawn = YapsInspectorStyle.Field(it.Copy(), field, null, from);
+                into.Add(drawn);
+                // Red, not the tooltip alone: the copy runs the whole deform
+                // even while hidden, so the cost is paid with nothing in reach.
+                if (it.name == nameof(YapsPlug.twoAtOnce))
+                {
+                    drawn.TrackPropertyValue(it.Copy(), p => RebuildLater());
+                    if (plug.twoAtOnce)
+                        into.Add(BridgeElements.Notice(Tone.Bad,
+                            "Performance: Two At Once about doubles this plug's cost on the graphics card, all the time " +
+                            "it is ticked, even with no second socket or portal in reach. Leave it off unless the plug " +
+                            "needs two sockets at once or a portal."));
+                }
             }
             FinishFold(fold);
             if (Passes("YAPS")) OwnSockets(plug, sockets.Body);
