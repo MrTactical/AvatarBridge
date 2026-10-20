@@ -421,6 +421,9 @@ namespace AvatarBridge.Regression
             Add("Unity", "Autodesk Interactive", "Autodesk Interactive", false);
             Add("VRChat", "VRChat Mobile Toon Lit", "VRChat/Mobile/Toon Lit", false);
             Add("VRChat", "VRChat Mobile Standard Lite", "VRChat/Mobile/Standard Lite", false);
+            Add("VRChat", "VRChat Toon Standard", "VRChat/Mobile/Toon Standard", false);
+            Add("VRChat", "VRChat Toon Standard outline", "VRChat/Mobile/Toon Standard (Outline)", true,
+                m => { F(m, "_OutlineThickness", 0.2f); F(m, "_OutlineMask", mask); });
             // Width from a mask and from vertex red, so it differs vertex by vertex.
             void Poi(Material m)
             {

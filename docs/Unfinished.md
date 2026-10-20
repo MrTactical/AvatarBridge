@@ -3261,6 +3261,20 @@ for that group to patch. The function now takes one as a parameter instead [M].
   read word for word as sweep 10's.
 - Sweep 12 (every definition patched): **43 PASS, 0 FAIL** [M]. What patched and every refusal read
   as sweep 11's.
+- `VRChat/Mobile/Toon Standard` and its `(Outline)` variant joined the sweep. One corpus avatar's
+  squash layers wear the first, and neither had been swept. Sweep 13, those two alone: **2 PASS** [M],
+  the outline variant with a deform in both `vert` and `vert_outline`.
+- Corpus subset `421sv` (2 of tonight's 3): the 18 avatars whose 419 squash was "not built" or had
+  materials that "cannot squash", plus the two from `420f`. 23 avatars in 753 s, d0f1f30 deployed
+  [M]:
+  - 6 changed against Baseline (418's). On three, a "[Base] Locomotion animates body muscles"
+    warning is gone, which 419 already showed, so it predates tonight. On the three lemur scenes,
+    "3 swapped-in materials cannot squash" is gone and 12 more are converted: tonight's fix.
+  - The `420f` avatar's squash is built again, its digest identical to 419's. Now it is built on a
+    shader that bends in the sweep. The other `420f` avatar reads as 418.
+  - The 18 squashes still not built all fail on pairing (no soft pair found by name, or too little
+    skin), none on a shader.
+  - A subset cannot be promoted, so Baseline stays at 418's.
 - Still refused, and falling back honestly: arktoon, Silent's Crosstone and Lightramp (no POSITION
   struct found), ORL (made on import), Filamented and Standard (`vertAdd` not found), surface
   shaders.
