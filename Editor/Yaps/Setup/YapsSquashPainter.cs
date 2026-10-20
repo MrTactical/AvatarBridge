@@ -536,14 +536,6 @@ namespace AvatarBridge
             var e = Event.current;
             if (e.type == EventType.Repaint)
             {
-                if (_overlay == null)
-                {
-                    // Vertex colour over the skin, pulled toward the camera so it never fights it.
-                    _overlay = new Material(Shader.Find("Hidden/Internal-Colored")) { hideFlags = HideFlags.HideAndDontSave };
-                    _overlay.SetInt("_ZWrite", 0);
-                    _overlay.SetInt("_Cull", (int)CullMode.Back);
-                    _overlay.SetFloat("_ZBias", -2f);
-                }
                 // Every repaint: in Play mode and under the preview the skin moves, and an
                 // overlay baked once sat inside it, out of sight.
                 Bake();
@@ -596,6 +588,14 @@ namespace AvatarBridge
 
         void DrawRegions(CompareFunction test, float alpha)
         {
+            if (_overlay == null)
+            {
+                // Vertex colour over the skin, pulled toward the camera so it never fights it.
+                _overlay = new Material(Shader.Find("Hidden/Internal-Colored")) { hideFlags = HideFlags.HideAndDontSave };
+                _overlay.SetInt("_ZWrite", 0);
+                _overlay.SetInt("_Cull", (int)CullMode.Back);
+                _overlay.SetFloat("_ZBias", -2f);
+            }
             _overlay.SetInt("_ZTest", (int)test);
             _overlay.SetColor("_Color", new Color(1f, 1f, 1f, alpha));
             _overlay.SetPass(0);

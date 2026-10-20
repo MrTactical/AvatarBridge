@@ -827,10 +827,13 @@ namespace AvatarBridge
         static List<Skin> Skins(Transform root)
         {
             var list = new List<Skin>();
+            // Never the last build's own skin: one vertex on each part's bone, it carries every
+            // part and won Body's pick, so the painter painted twenty vertices of nothing.
+            var built = root.Find(ShaderHostName);
             foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
                 var mesh = smr.sharedMesh;
-                if (mesh == null) continue;
+                if (mesh == null || (built != null && smr.transform.IsChildOf(built))) continue;
                 var rb = smr.bones;
                 var weights = mesh.boneWeights;
                 var verts = mesh.vertices;
