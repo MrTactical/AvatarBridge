@@ -1831,22 +1831,6 @@ version and still cross. Every tester has to be on the same build for the atlas.
 - Stripping contacts from the transport, which is planned, removes the channel latch further
   down this file, and leaves the owner id as the one self guard that does not rest on geometry.
 
-## An avatar floated, and folded up after full-body calibration. FIXED ON DEV 2026-10-11, works in game
-
-Reconverted and reported working by Joe, 2026-10-14. Desktop and FBT were not confirmed separately.
-
-Field report 2026-10-11: feet off the floor on desktop, the body collapsing after FBT calibration,
-the hips looking wrong; on the floor in edit mode, floating in editor Play mode too. The armature
-was scaled about 9x and moved in the scene after the FBX's humanoid rig was made, so the rig's
-recorded skeleton put the hips at a different height from the body. `RigSkeletonSync` (before
-`JawUnmapper`) compares the recorded hips position, composed through the skeleton entries of
-every object above the hips, with the scene's; past 1% of the hips height it rewrites those
-entries and the hips position from the scene and rebuilds with `BuildHumanAvatar`, saved as
-`<rig>_Matched.asset`. Limb rotations keep the recorded T-pose.
-Test: reconvert, press Play (feet on the floor), then desktop and FBT in game. The source rig
-was not on this machine, so the report's numbers are the first reading of how far off it was.
-Open: a rig asset that the jaw pass also rebuilds leaves the `_Matched` copy unused in the output.
-
 ## Two reports from the field, 2026-09-07
 
 ### One cloth per PhysBone, 94 of them on one avatar (issue #7)
@@ -2986,6 +2970,11 @@ Not verified in ChilloutVR; the records below say what only the game can settle.
 A cloth chain that moves bones inside a plug would break the per-vertex frame in play. Ruled out
 as the cause of the 4.6.4 tear (archived, "Blendshapes a plug renderer holds came undone"), never
 measured in game.
+
+### A rebuilt rig the jaw pass rebuilds again. OPEN, left from a fixed record
+
+When the jaw pass also rebuilds a rig, the `_Matched` copy `RigSkeletonSync` writes goes unused
+in the output. The rest of the floating-avatar fix is archived ("An avatar floated").
 
 ### YAPS against every popular shader, 2026-10-19. ASKED FOR BY JOE, STARTED
 
