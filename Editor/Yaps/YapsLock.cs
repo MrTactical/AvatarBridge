@@ -13,6 +13,7 @@
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using AvatarBridge.Yaps;
@@ -23,7 +24,6 @@ namespace AvatarBridge
 {
     public static class YapsLock
     {
-        // ponytail: stand-ins of settings since changed stay here; sweep the folder if it grows
         public const string Folder = "Assets/YAPS/Generated/Locked";
         const string Category = "YAPS";
         // Changed when a stand-in must be made again for a reason the key cannot see.
@@ -172,6 +172,62 @@ namespace AvatarBridge
                 Failed[m.name] = threw != null ? "Poiyomi's lock stopped: " + threw : "Poiyomi's lock left it unlocked";
                 AssetDatabase.DeleteAsset(AssetDatabase.GetAssetPath(m));
             }
+        }
+
+        // Stand-ins nothing needs any more, each with its locked shader, to the trash. One is
+        // needed while a material wears its shader (Thry gives matching settings the first
+        // lock's shader) or names it as the source of its YAPS patch, which Update every YAPS
+        // shader patches from again. One for settings since changed is neither once its avatar
+        // is converted again. Null when there are no stand-ins.
+        public static string PruneUnused(Func<int, bool> confirm = null, string folder = Folder)
+        {
+            if (!AssetDatabase.IsValidFolder(folder)) return null;
+            var sets = Directory.GetFiles(folder, "*.mat").Select(f => f.Replace('\\', '/')).Select(mat =>
+            {
+                // Thry writes a material's locked shader into a folder named after the material.
+                string dir = folder + "/OptimizedShaders/" + Path.GetFileNameWithoutExtension(mat);
+                var shaders = AssetDatabase.IsValidFolder(dir)
+                    ? AssetDatabase.FindAssets("t:Shader", new[] { dir }).Select(AssetDatabase.GUIDToAssetPath).ToList()
+                    : new List<string>();
+                return (mat, dir, shaders);
+            }).ToList();
+            if (sets.Count == 0) return null;
+            var inSets = new HashSet<string>(sets.SelectMany(s => s.shaders.Append(s.mat)), StringComparer.OrdinalIgnoreCase);
+            var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var named = new HashSet<string>(StringComparer.Ordinal);
+            void Note(Material m)
+            {
+                if (m == null || m.shader == null || inSets.Contains(AssetDatabase.GetAssetPath(m))) return;
+                used.Add(AssetDatabase.GetAssetPath(m.shader));
+                if (YapsShaderPatcher.SourceShaderOf(m) is string source) named.Add(source);
+            }
+            var guids = AssetDatabase.FindAssets("t:Material").Concat(AssetDatabase.FindAssets("t:Scene"))
+                .Concat(AssetDatabase.FindAssets("t:Prefab")).Distinct().ToArray();
+            try
+            {
+                for (int i = 0; i < guids.Length; i++)
+                {
+                    if (EditorUtility.DisplayCancelableProgressBar("YAPS", $"Checking what uses each locked copy ({i + 1} of {guids.Length})",
+                            (i + 1) / (float) guids.Length)) return "Stopped. No locked copy was removed.";
+                    string path = AssetDatabase.GUIDToAssetPath(guids[i]);
+                    if (inSets.Contains(path)) continue;
+                    used.UnionWith(AssetDatabase.GetDependencies(path, false));
+                    if (path.EndsWith(".mat", StringComparison.OrdinalIgnoreCase)) Note(AssetDatabase.LoadAssetAtPath<Material>(path));
+                }
+            }
+            finally { EditorUtility.ClearProgressBar(); }
+            foreach (var m in Resources.FindObjectsOfTypeAll<Material>()) Note(m);
+
+            var unused = sets.Where(s => !used.Contains(s.mat) && !s.shaders.Any(p =>
+                used.Contains(p) || named.Contains(AssetDatabase.LoadAssetAtPath<Shader>(p)?.name ?? ""))).ToList();
+            int kept = sets.Count - unused.Count;
+            if (unused.Count == 0) return $"Nothing to remove: {BridgeElements.Count(kept, "locked Poiyomi copy is", "locked Poiyomi copies are")} in use.";
+            if (confirm != null && !confirm(unused.Count)) return "No locked copy was removed.";
+            var failed = new List<string>();
+            AssetDatabase.MoveAssetsToTrash(unused.SelectMany(s => AssetDatabase.IsValidFolder(s.dir) ? new[] { s.mat, s.dir } : new[] { s.mat }).ToArray(), failed);
+            return $"Moved {BridgeElements.Count(unused.Count, "unused locked Poiyomi copy", "unused locked Poiyomi copies")} to the trash, " +
+                   $"with {(unused.Count == 1 ? "its" : "their")} shaders; {kept} in use kept." +
+                   (failed.Count > 0 ? $" {BridgeElements.Count(failed.Count, "file", "files")} could not be moved: {string.Join(", ", failed.Take(3).Select(Path.GetFileName))}." : "");
         }
 
         static BridgeReport warnedFor;

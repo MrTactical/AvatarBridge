@@ -363,7 +363,7 @@ namespace AvatarBridge
             props.Body.Add(BridgeElements.Hint(
                 "A prop keeps the shader it was built with. This updates every YAPS material in the project; " +
                 "upload old props again after. Each update leaves the last set of patched shaders behind: " +
-                "removing the ones no material uses moves them to the trash."));
+                "removing the ones no material uses moves them to the trash, with any locked Poiyomi copy nothing needs."));
             _pages.Add(props);
         }
 
@@ -383,6 +383,11 @@ namespace AvatarBridge
             string said = YapsShaderPatcher.PruneUnused(n => EditorUtility.DisplayDialog("YAPS",
                 $"Move {BridgeElements.Count(n, "patched shader", "patched shaders")} that no material in this project uses " +
                 "to the trash, with their includes?", "Move to trash", "Cancel"));
+            // Copies YAPS had Poiyomi lock live beside them, and go stale the same way.
+            string locked = YapsLock.PruneUnused(n => EditorUtility.DisplayDialog("YAPS",
+                $"Move {BridgeElements.Count(n, "locked Poiyomi copy", "locked Poiyomi copies")} that no material in this project uses " +
+                "or was patched from to the trash, with their shaders?", "Move to trash", "Cancel"));
+            if (locked != null) said += " " + locked;
             EditorUtility.DisplayDialog("YAPS", said, "OK");
             Debug.Log("[AvatarBridge] " + said);
         }

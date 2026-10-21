@@ -307,6 +307,7 @@ namespace AvatarBridge.Regression
             public float bend, turn, from, to;
             public Vector3 dir;
             public bool edge;   // crosses where the copy starts drawing
+            public bool fades;  // the copy must have grown to nothing by its last drawn step
         }
 
         static readonly Sock A = new Sock { name = "A", offset = new Vector3(-0.07f, 0.02f, 0.24f), kind = 1, number = 1 };
@@ -1062,7 +1063,7 @@ namespace AvatarBridge.Regression
                             new Sweep { name = "bent 10, past the first hole", bend = 10, dir = B.offset.normalized, from = 0.55f, to = 0.95f },
                             // Beside the base and on behind it, where the resolve drops a socket.
                             new Sweep { name = "bent 10, the hole moving behind the base", bend = 10,
-                                dir = new Vector3(0.8f, 0, -0.6f).normalized, from = 0.3f, to = 1.0f, edge = true },
+                                dir = new Vector3(0.8f, 0, -0.6f).normalized, from = 0.3f, to = 1.0f, edge = true, fades = true },
                         };
                         int tip = Rings * Columns;
                         foreach (var s in sweeps)
@@ -1145,8 +1146,13 @@ namespace AvatarBridge.Regression
                             var hiddenAt = steps.Where(x => x.hidden == total - n).Select(x => x.d / L).ToList();
                             var lastDrawn = steps.Where(x => x.hidden == 0).OrderBy(x => x.d).LastOrDefault();
                             double reachMax = steps.Where(x => x.hidden == 0).Select(x => x.span).DefaultIfEmpty(0).Max();
+                            // Behind the base the resolver drops the socket at 0.5 L, where the fade
+                            // already reached 0, so only the reach shows the fade: without it the copy
+                            // pops from a quarter metre to nothing.
+                            double fadeBound = L * 1000 * 0.02;
                             bool ok = apartRoots == 0 && partial == 0 && mixedMax == 0 && strayMax == 0 && drawnAt.Count > 0
-                                      && (s.edge ? hiddenAt.Count > 0 && drawnAt.Max() < hiddenAt.Min() : hiddenAt.Count == 0);
+                                      && (s.edge ? hiddenAt.Count > 0 && drawnAt.Max() < hiddenAt.Min() : hiddenAt.Count == 0)
+                                      && (!s.fades || lastDrawn.span <= fadeBound);
                             string line = $"sweep {s.name}, the second hole {s.from} to {s.to} L, {steps.Count} steps" +
                                 $"{(edge > 0 ? $" (40 of them inside {steps[edge - 1].d / L:0.0000} to {steps[edge].d / L:0.0000} L)" : "")}: " +
                                 $"{partial} with part of the copy hidden, at most {mixedMax} mixed triangles and {strayMax} pixels outside the plug; " +
@@ -1154,7 +1160,7 @@ namespace AvatarBridge.Regression
                                 $"{(hiddenAt.Count > 0 ? hiddenAt.Min().ToString("0.00000", inv) : "-")} L; {apartRoots} of {total - n} copy " +
                                 $"vertices off the copy's one root (spread {spread2:0.0000} mm), {spread1:0.000} mm over the first copy; " +
                                 $"at the copy's last drawn step its tip {lastDrawn.apart:0.0} mm from the first's, its reach {lastDrawn.span:0.0} mm " +
-                                $"(at most {reachMax:0.0} mm over the sweep)";
+                                $"(at most {reachMax:0.0} mm over the sweep){(s.fades ? $", bound {fadeBound:0.0} mm" : "")}";
                             Check(ok, line);
                         }
                         Lights(true);

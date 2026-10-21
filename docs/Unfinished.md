@@ -908,6 +908,15 @@ route: a batch probe opening `AnimatorControllerTool` on the avatar's controller
 once it fails: after Build and Strip, `AnimatorControllerTool.tool?.ResetUI()` by reflection
 (closing and reopening the window clears it meanwhile).
 
+**Probed 2026-10-21, not reproduced** [M]. `Dev/Probes/AnimatorFloodProbe` instantiates a converted
+avatar (58 layers, 59 state machines), makes an `AnimatorControllerTool` on its controller with
+breadcrumbs set, runs `YapsSquash.Build` twice and checks every state machine loaded: 0 destroyed
+after either build, controller alive, breadcrumbs alive. From the window's decompiled code, the
+flood needs `activeStateMachine` or `rootStateMachine` destroyed (`Graph.DisplayDirty`, called
+first in `OnGraphGUI`), so the build alone is cleared. Left: what the GUI editor has and batch does
+not (Play mode, a different avatar or controller in the window, a sub-state machine open, the CCK's
+own inspector reacting to the new components). Needs Joe's setup before another probe.
+
 ## Show it on the avatar: an in-scene overlay for every tool. Joe's idea 2026-10-20. PLAN ONLY, after 5.0.0
 
 Joe, 2026-10-20, after an hour lost in the squash windows: the tools say what they did in
@@ -2080,7 +2089,8 @@ but its tether caps stretch at a compiled-in 3% (`TetherStretchLimit`), which no
   1.46 of rest. Under the hips the same chain strays 0.2 cm everywhere: a dynamic body under a moving
   parent is teleported with it, confirmed. Settled sag 6.9 cm, untuned. The client decompile shows
   Rigidbody and joints pass the avatar filter untouched; only colliders are processed (content
-  filters, layers, a kinematic body added). Awaiting Joe's upload.
+  filters, layers, a kinematic body added). ~~Awaiting Joe's upload.~~ **Not needed (Joe,
+  2026-10-21):** the three-layer build below superseded the spike.
 - **Layered on MagicaCloth2: works in batch Play mode, 2026-10-10.** The first build drove a copy of
   the chain with the cloth and had the real bones follow it. Dead by design: MC2 restores its bones
   to rest in EarlyUpdate, before physics and constraints, so nothing outside MC2 ever read the
@@ -3624,8 +3634,13 @@ designs, one judge. Chosen: lock STAND-INS, never the user's materials.
 - *Content-addressed, never relocked.* The stand-in is `Assets/YAPS/Generated/Locked/<key>.mat`, key =
   hash of a version constant, the source's serialized JSON, the sorted animated set and the shader's
   dependency hash. Changed settings make a new key and a new stand-in; nothing is ever relocked, so the
-  fingerprint tag and the `CopySerialized` relock are gone. Orphans pile up: **open**, a sweep of
-  `Generated/Locked`.
+  fingerprint tag and the `CopySerialized` relock are gone. Orphans pile up: ~~**open**, a sweep of
+  `Generated/Locked`.~~ **Built 2026-10-21:** `YapsLock.PruneUnused`, run by *Remove unused patched
+  shaders* after its own sweep. A stand-in stays while a material wears its locked shader (Thry's
+  shared shader for matching settings) or names it in `_YAPS_SourceShader`, which `Refresh`
+  finds by `Shader.Find`; README's "nothing built points back at it" was true of avatars only, and
+  now says what deleting by hand costs. `Dev/Tests/PruneLockedTest` 7/7, `PruneShadersTest` PASS.
+  Not run on a real Thry lock folder.
 - *No batch points beyond Prewrite.* `Prewrite` prepares its whole list in one Thry call; a lone `Patch`
   prepares its own material. ConvertSockets and RepointSwappedMaterials stay one call per material.
 - *Skipped sources, each with the Warning:* unsaved materials, material variants (Poiyomi locks a variant

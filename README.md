@@ -1142,7 +1142,8 @@ already on the platform is the one it went up with.
 Each update also names its patched shaders afresh, so `Assets/YAPS/Generated/Shaders` keeps the last
 version's set beside the new one. *Tools ▸ YAPS ▸ Remove unused patched shaders* moves every shader
 no material or scene in the project uses to the trash, with its includes, and asks first. A shader
-still in use stays.
+still in use stays. The same button then offers the locked Poiyomi copies in
+`Assets/YAPS/Generated/Locked` that no material wears or was patched from.
 
 **A ring-and-socket prop prefab**: *Tools ▸ YAPS ▸ Create a ring-and-socket prop prefab* writes
 `YAPS Ring and Socket Prop` to `Assets/YAPS/Prefabs` too: the plug prop's other half, a spawnable
@@ -1431,9 +1432,11 @@ that locked shader. Your material stays unlocked and untouched. The upload then 
 by hand would, with YAPS on top, rather than every Poiyomi feature, and the upload's own lock leaves
 it alone. Properties your animations drive stay live through the lock. The copy is reused until the
 material's settings change, so converting again locks nothing new. A change of settings adds a new
-copy and the old one stays, so the folder only grows; it is safe to delete whenever you like, since
-every patched shader is a complete copy of its own in `Assets/YAPS/Generated/Shaders` and nothing
-built points back at it, and the next conversion or bake just locks again. Where Poiyomi can't lock
+copy and the old one stays. *Tools ▸ YAPS ▸ Remove unused patched shaders* clears the copies no
+material wears or was patched from, and asks first. Deleting the folder by hand never breaks a
+built avatar, since every patched shader is a complete copy of its own in
+`Assets/YAPS/Generated/Shaders`, but *Update every YAPS shader* cannot refresh a material whose
+copy is gone until the next conversion or bake locks it again. Where Poiyomi can't lock
 it, the report says so: see [Poiyomi's unlocked shader ships under YAPS](#yaps-the-report-says-poiyomis-unlocked-shader-ships-under-yaps).
 
 **YAPS Simple Lit.** A plain lit shader (metallic workflow through Unity's own BRDF) that the tool
