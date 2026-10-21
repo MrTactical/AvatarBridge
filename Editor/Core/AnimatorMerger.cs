@@ -7113,11 +7113,13 @@ namespace AvatarBridge
             return states > 1 && transitions == 0 ? root.defaultState : null;
         }
 
-        // A 1D blend tree shaped like a toggle: one child animates, the other is empty.
+        // A 1D blend tree shaped like a toggle: one child animates, the other is empty. Or a
+        // Slider: no child empty, but each end animates something another end does not.
         struct ToggleTree
         {
             public BlendTree Tree;
             public int EmptyIndex;
+            public bool Slider;
             public HashSet<EditorCurveBinding> Floats;
             public HashSet<EditorCurveBinding> Objects;
         }
@@ -7126,8 +7128,9 @@ namespace AvatarBridge
             HashSet<string> writtenPaths)
         {
             string dir = $"{ctx.OutputDir}/RehomedAssets";
-            int filled = 0, reused = 0, candidateCount = 0;
+            int filled = 0, reused = 0, candidateCount = 0, sliders = 0;
             var names = new List<string>();
+            var sliderNames = new List<string>();
             var contested = new SortedSet<string>(StableSampleOrder.Instance);
 
             var layers = master.layers;
@@ -7167,7 +7170,7 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                candidateCount += candidates.Count;
+                candidateCount += candidates.Count(c => !c.Slider);
 
                 // How many toggles in this layer animate each property, and what the REST of the
                 // layer animates outside them. Both have to say "only me" before anything moves.
@@ -7211,6 +7214,71 @@ namespace AvatarBridge
                         // inside trees. Unknown binding here: nobody's,
                         // so this layer may restore it.
                         return !anyOwner.TryGetValue(binding, out int lowest) || lowest == here;
+                    }
+
+                    if (candidate.Slider)
+                    {
+                        // Each end on a copy: the clip may play somewhere else too.
+                        var ends = candidate.Tree.children;
+                        int changed = 0, contestedHere = 0;
+                        for (int i = 0; i < ends.Length; i++)
+                        {
+                            var own = (AnimationClip)ends[i].motion;
+                            var have = new HashSet<EditorCurveBinding>(Bindings(own));
+                            AnimationClip copy = null;
+                            foreach (var binding in candidate.Floats.Concat(candidate.Objects))
+                            {
+                                if (have.Contains(binding) || !SliderRestores(binding))
+                                {
+                                    continue;
+                                }
+                                if (!Owns(binding))
+                                {
+                                    contestedHere++;
+                                    continue;
+                                }
+                                bool isObject = candidate.Objects.Contains(binding);
+                                float value = 0f;
+                                UnityEngine.Object reference = null;
+                                if (isObject ? !AnimationUtility.GetObjectReferenceValue(ctx.Target, binding, out reference)
+                                             : !AnimationUtility.GetFloatValue(ctx.Target, binding, out value))
+                                {
+                                    continue;
+                                }
+                                if (copy == null)
+                                {
+                                    copy = UnityEngine.Object.Instantiate(own);
+                                    copy.name = SanitizeFileName($"{label} {i} at rest");
+                                }
+                                if (isObject)
+                                {
+                                    AnimationUtility.SetObjectReferenceCurve(copy, binding,
+                                        new[] { new ObjectReferenceKeyframe { time = 0f, value = reference } });
+                                }
+                                else
+                                {
+                                    AnimationUtility.SetEditorCurve(copy, binding, AnimationCurve.Constant(0f, 0f, value));
+                                }
+                            }
+                            if (copy == null)
+                            {
+                                continue;
+                            }
+                            WriteRestoreClip(copy, dir, writtenPaths, pending);
+                            ends[i].motion = copy;
+                            changed++;
+                        }
+                        if (contestedHere > 0)
+                        {
+                            contested.Add(label);
+                        }
+                        if (changed > 0)
+                        {
+                            candidate.Tree.children = ends;
+                            sliders++;
+                            sliderNames.Add(label);
+                        }
+                        continue;
                     }
 
                     var clip = new AnimationClip { name = SanitizeFileName($"{label} restore") };
@@ -7286,6 +7354,15 @@ namespace AvatarBridge
             }
             CreateRestoreClips(dir, pending);
 
+            if (sliders > 0)
+            {
+                ctx.Report.Converted(Category,
+                    $"{BridgeElements.Count(sliders, "blend-tree slider", "blend-tree sliders")} whose ends animate different things given each other's values at rest",
+                    $"{string.Join(", ", sliderNames.Take(6))}{(sliderNames.Count > 6 ? ", …" : "")}: at one end the slider " +
+                    "said nothing about what the other end changes, and ChilloutVR, which does not restore defaults, " +
+                    "could leave it wherever it last was. Each end now also holds the others' at their value at " +
+                    "conversion time. Set the avatar at rest before converting.");
+            }
             if (filled == 0)
             {
                 if (candidateCount > 0)
@@ -7294,6 +7371,11 @@ namespace AvatarBridge
                         $"{BridgeElements.Count(candidateCount, "blend-tree toggle was", "blend-tree toggles were")} left without a restore animation",
                         "Their \"off\" halves are empty and every property is claimed elsewhere. If one sticks on " +
                         "in game, this is why.");
+                }
+                if (sliders > 0)
+                {
+                    EditorUtility.SetDirty(master);
+                    AssetDatabase.SaveAssets();
                 }
                 return;
             }
@@ -7373,12 +7455,44 @@ namespace AvatarBridge
                         return;
                     }
                 }
+                // At one end the tree asserts nothing for what only another end animates, and Unity
+                // blends that against whatever its last rebind captured: in CVR, wherever the avatar
+                // was. Object on/off is BalanceMenuTreeActives' to give a rest side. Restore pass
+                // only (ctx), the hoist pass keeps the toggle shape.
+                if (empty < 0 && ctx != null && children.All(c => c.motion is AnimationClip clip && !clip.humanMotion))
+                {
+                    var floats = new HashSet<EditorCurveBinding>();
+                    var objects = new HashSet<EditorCurveBinding>();
+                    foreach (var c in children)
+                    {
+                        CollectBindings(c.motion, floats, objects);
+                    }
+                    int all = floats.Concat(objects).Count(SliderRestores);
+                    if (children.Any(c => Bindings((AnimationClip)c.motion).Count(SliderRestores) < all))
+                    {
+                        into.Add(new ToggleTree
+                        {
+                            Tree = tree,
+                            EmptyIndex = -1,
+                            Slider = true,
+                            Floats = floats,
+                            Objects = objects,
+                        });
+                        return;
+                    }
+                }
             }
             foreach (var child in children)
             {
                 CollectToggleTrees(child.motion, seen, into, ctx);
             }
         }
+
+        static bool SliderRestores(EditorCurveBinding b) => b.type != typeof(Animator)
+            && !(b.type == typeof(GameObject) && b.propertyName == "m_IsActive");
+
+        static IEnumerable<EditorCurveBinding> Bindings(AnimationClip clip) =>
+            AnimationUtility.GetCurveBindings(clip).Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip));
 
         // Dead means missing here and in the source too, or removed with a stripped system. A path
         // the conversion renamed waits for RepairClipPaths, and an object whose component a

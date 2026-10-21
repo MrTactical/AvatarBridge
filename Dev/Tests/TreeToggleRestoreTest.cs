@@ -27,7 +27,10 @@ namespace AvatarBridge.Regression
     //   - an off half that animates only paths already dead in VRChat is as empty as a missing
     //     one; one on a path the conversion renamed is not, since the path repair puts it back
     //     later, and nor is one that animates a live material property, though the value reads
-    //     as missing to a script.
+    //     as missing to a script;
+    //   - a slider with no empty child whose ends animate different properties: at one end the
+    //     tree says nothing about the other's, and CVR leaves it wherever the last rebind found
+    //     it. Each end gets the others' at rest, on a copy, so a clip shared elsewhere is untouched.
     public static class TreeToggleRestoreTest
     {
         [MenuItem("Tools/AvatarBridge Dev/Test: blend-tree toggle restore")]
@@ -57,7 +60,7 @@ namespace AvatarBridge.Regression
                 }
 
                 var controller = AnimatorController.CreateAnimatorControllerAtPath(path);
-                foreach (var p in new[] { "Weight", "HatP", "ShirtP", "PresetP", "AapP", "EmptyP", "DirectP" })
+                foreach (var p in new[] { "Weight", "HatP", "ShirtP", "PresetP", "AapP", "EmptyP", "DirectP", "ShapeP" })
                 {
                     controller.AddParameter(p, AnimatorControllerParameterType.Float);
                 }
@@ -124,9 +127,37 @@ namespace AvatarBridge.Regression
                 kids[0].motion = renamed;
                 cape.children = kids;
 
+                // A slider whose ends move two different shapes. The rest value is not 0, so a
+                // fill that wrote 0 instead of reading the body would show.
+                var body = new GameObject("Body");
+                body.transform.SetParent(avatar.transform, false);
+                var mesh = new Mesh { vertices = new[] { Vector3.zero, Vector3.up, Vector3.right }, triangles = new[] { 0, 1, 2 } };
+                var deltas = new[] { Vector3.up, Vector3.up, Vector3.up };
+                mesh.AddBlendShapeFrame("Wide", 100f, deltas, null, null);
+                mesh.AddBlendShapeFrame("Tall", 100f, deltas, null, null);
+                var smr = body.AddComponent<SkinnedMeshRenderer>();
+                smr.sharedMesh = mesh;
+                smr.SetBlendShapeWeight(0, 0f);
+                smr.SetBlendShapeWeight(1, 25f);
+                AnimationClip Shape(string shape)
+                {
+                    var c = new AnimationClip { name = shape };
+                    AnimationUtility.SetEditorCurve(c,
+                        new EditorCurveBinding { path = "Body", type = typeof(SkinnedMeshRenderer), propertyName = "blendShape." + shape },
+                        AnimationCurve.Constant(0f, 0f, 100f));
+                    AssetDatabase.AddObjectToAsset(c, controller);
+                    return c;
+                }
+                var wide = Shape("Wide");
+                var tall = Shape("Tall");
+                var slider = Tree("Slider", BlendTreeType.Simple1D, "ShapeP", tall);
+                kids = slider.children;
+                kids[0].motion = wide;
+                slider.children = kids;
+
                 var root = new BlendTree { name = "Direct", blendType = BlendTreeType.Direct };
                 AssetDatabase.AddObjectToAsset(root, controller);
-                root.children = new[] { hat, shirt, preset, aap, bothEmpty, directPair, scarf, skirt, cape }
+                root.children = new[] { hat, shirt, preset, aap, bothEmpty, directPair, scarf, skirt, cape, slider }
                     .Select(t => new ChildMotion { motion = t, timeScale = 1f, directBlendParameter = "Weight" })
                     .ToArray();
 
@@ -175,6 +206,24 @@ namespace AvatarBridge.Regression
                     skirt.children[0].motion == tint);
                 fail += Check("off half on a path the conversion renamed: left as it was",
                     cape.children[0].motion == renamed);
+                float ShapeAt(Motion motion, string shape)
+                {
+                    var curve = motion is AnimationClip clip ? AnimationUtility.GetEditorCurve(clip,
+                        new EditorCurveBinding { path = "Body", type = typeof(SkinnedMeshRenderer), propertyName = "blendShape." + shape }) : null;
+                    return curve == null ? float.NaN : curve.Evaluate(0f);
+                }
+                var low = slider.children[0].motion;
+                var high = slider.children[1].motion;
+                fail += Check($"slider: the Wide end holds Tall at rest (25, read {ShapeAt(low, "Tall")}) and keeps its own Wide 100",
+                    Mathf.Approximately(ShapeAt(low, "Tall"), 25f) && Mathf.Approximately(ShapeAt(low, "Wide"), 100f));
+                fail += Check($"slider: the Tall end holds Wide at rest (0, read {ShapeAt(high, "Wide")}) and keeps its own Tall 100",
+                    Mathf.Approximately(ShapeAt(high, "Wide"), 0f) && Mathf.Approximately(ShapeAt(high, "Tall"), 100f));
+                fail += Check("slider: the original clips are untouched",
+                    low != wide && high != tall && float.IsNaN(ShapeAt(wide, "Tall")) && float.IsNaN(ShapeAt(tall, "Wide")));
+                fail += Check("report names the slider it gave rest values",
+                    ctx.Report.Entries.Any(e => e.Status == ReportStatus.Converted
+                        && e.Subject != null && e.Subject.Contains("slider")
+                        && e.Detail != null && e.Detail.Contains("Slider")));
                 fail += Check("report names the toggle it repaired",
                     ctx.Report.Entries.Any(e => e.Status == ReportStatus.Converted
                         && e.Subject != null && e.Subject.Contains("blend-tree toggle")

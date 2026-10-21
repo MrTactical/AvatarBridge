@@ -2627,7 +2627,10 @@ avatar as it is at conversion time.
 
 **VRCFury toggles are repaired too.** Fury rewrites whole toggle layers into blend trees, which moves
 the empty "off" half one level down, out of reach of the repair above, so on a Fury avatar the
-wardrobe could stay one-way while everything else went both ways. Those are filled as well.
+wardrobe could stay one-way while everything else went both ways. Those are filled as well. So is a
+slider whose two ends change different things, one shape at one end and another shape at the other:
+at each end it said nothing about the other end's shape, which could stay wherever it last was. Each
+end now also holds the other's at its value at conversion time.
 
 **Nothing is left to Write Defaults at all.** VRChat's runtime quietly puts a
 property back to its default when no animation writes it; **ChilloutVR's does not**: measured in

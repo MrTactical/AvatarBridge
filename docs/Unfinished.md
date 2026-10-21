@@ -122,6 +122,14 @@ explains the swap, so it reads as expected but has not been traced line by line.
 - **One is the other shape** (now reported as unstable at rest): a slider's two children each animate a
   property the other does not. No pass covers it, and the restore passes exempt tree-driven bindings
   by design, so it needs a decision first.
+- **Joe's decision 2026-10-21: fix before 5.0.0. FIXED ON DEV.** `CollectToggleTrees` offers a 1D tree
+  with no empty child whose clip children animate different properties as a `Slider` candidate, restore
+  pass only (the hoist pass passes no ctx and keeps the toggle shape). Each end gets, on a copy of its
+  clip, the properties only other ends animate at their conversion-time value, through the same
+  ownership rule as the empty-child fill; object on/off stays `BalanceMenuTreeActives`' and Animator
+  bindings are skipped. `TreeToggleRestoreTest`: 4 new cases WRONG before, 17/17 after. **To confirm
+  in the next full run:** the three `unstable at rest:` lines on Avatar E (VRCEmote, Collar, DPS) go,
+  and the new Converted line appears where sliders were filled. Not worn in ChilloutVR.
 
 ### 5. Cloth on a plug's own bones, unmeasured
 
