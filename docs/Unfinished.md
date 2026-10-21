@@ -581,6 +581,25 @@ of it run in Unity yet:
   converting in the window sees the same first-convert wait. **Open:** whether anything avoids it short
   of fewer patches (one shader shared by more materials).
 
+### 13. What the speed work missed, read from run 425 against 417. 2026-10-21
+
+Per avatar, all passes plus save and report, the 83 avatars in both runs. The commit that queued
+this names the avatars.
+
+- **One heavy avatar sped up 1.2×** (third slowest public before, 4 min 33 s to 3 min 44 s). Its
+  *Animator merge* did not move (104 s to 107 s), so it is not the toggle-heavy shape the merge work
+  targeted, and its report step got slower (31 s to 51 s). Next: what its controllers look like, and
+  where the report's 20 s went.
+- **A light avatar got slower,** 36 s to 43 s: *Animator merge* 22 s to 34 s.
+- **Two small passes grew** across the 83: *Point material swaps at the baked material* 1 s to 15 s,
+  *Name grafted emote clips* 59 s to 68 s.
+- **No cold number for the stereo step.** Run 425 found the stereo copies earlier runs made and
+  skipped them: *Shader SPI patch* fell about 95% on every avatar, unique shaders included. So the
+  published overall figures (3.6× average, 10.9× heaviest) are converting-again figures. Putting the
+  old step time back brackets a first conversion at 2.5× to 2.8× average and 5.7× to 6.8× heaviest.
+  Measuring it takes the stereo copies and `Library/AvatarBridge` cleared, then one run, which needs
+  Joe's order.
+
 ## Major Ideas
 
 The work Joe means to take on after 5.0.0.
