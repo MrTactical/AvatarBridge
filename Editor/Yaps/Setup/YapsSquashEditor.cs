@@ -23,7 +23,7 @@ namespace AvatarBridge
         static readonly System.Collections.Generic.Dictionary<string, string> FoldSummaries = new System.Collections.Generic.Dictionary<string, string>
         {
             { "How it gives", "how far it flattens and where the volume goes" },
-            { "The pair", "the two meeting in the middle" },
+            { "The pair", "whether the two meet in the middle, off by default" },
             { "In motion", "stretch and squash as it swings, real to anime" },
             { "What presses it", "arms, hands, plugs and cloth" },
         };
@@ -32,7 +32,7 @@ namespace AvatarBridge
         static readonly System.Collections.Generic.Dictionary<string, string> FoldHints = new System.Collections.Generic.Dictionary<string, string>
         {
             { "How it gives", "How a part answers any press: how flat it goes, how wide it spreads to keep its volume, how far it swings away first. See it with Preview and Squeeze or the test hand." },
-            { "The pair", "The two parts of a pair flatten against each other where they meet instead of passing through. See it with Preview and Squeeze." },
+            { "The pair", "Pressed together, each part of a pair flattens and keeps its volume; what still overlaps passes through. Meet presses the two onto one plane instead, a hard seam. See it with Preview and Squeeze." },
             { "In motion", "As the physics swing a part, it stretches away from where it hangs and squashes back. See it with Preview and Bounce, or move the avatar in Play mode." },
             { "What presses it", "What dents the parts besides each other, each with its own strength. See hands with the test hand." },
         };

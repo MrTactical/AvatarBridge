@@ -1544,7 +1544,8 @@ meshes stay with the first copy. **Not yet confirmed in game.**
 ### Squash: soft parts that press together
 
 An opt-in in the YAPS add-on: breasts and butt flatten where they press against each other, and
-dent under a hand, instead of passing through. It is done in the body's shader, so every layer
+dent under a hand. What a pair still overlaps after flattening passes through by default; **Meet**
+on the component presses the two onto one plane instead, which reads as a hard seam. It is done in the body's shader, so every layer
 over the skin (a bra, a shirt, piercings) takes the same move and nothing comes through. It
 costs no synced parameters and uses no contacts. The wearer's own arms press it, and so do other
 players' hands, from the hand positions ChilloutVR hands every shader, so neither avatar needs
@@ -1569,8 +1570,8 @@ shader another avatar already patched is reused instead of compiled again.
 
 **Tuning it.** The first build adds a **YAPS Squash** component to the avatar, and the Setup card
 opens it in its own window when it is done; **Tune and preview** on the card opens it again. Its knobs write straight to the materials as you move them, so nothing
-needs rebuilding: **How it feels** holds how flat a part presses and where the volume goes, how the
-pair meets, the stretch in motion, and what presses it (own arms, other players' hands, plugs, and
+needs rebuilding: **How it feels** holds how flat a part presses and where the volume goes, whether the
+pair meets (off by default), the stretch in motion, and what presses it (own arms, other players' hands, plugs, and
 the physics' own colliders, off by default). **Motion Style** runs from 0, like real flesh (a small
 stretch, small swings ignored), to 1, like anime (a long stretch and a deep squash on every
 bounce). **See it work ▸ Preview** shows it in the editor: **Squeeze** pushes the pair together,

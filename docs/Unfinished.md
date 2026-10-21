@@ -968,6 +968,27 @@ first piece. Open from the same day, for the pilot:
 - The fold hints under How it feels name how to see each group; a live picture per knob would
   answer it better.
 
+## Squash pair contact: the flat seam is off, a natural squish is open. 2026-10-21
+
+Joe, 2026-10-21, in game on the first upload since 58518d7: pushed together standing still, the
+pair pressed into one hard vertical plane down the cleavage, "its doing the behaviour I kinda
+wanted? but man, its terrible", and "I would rather let them either use YAPS squish to look
+really good or clip through each other". The upload before it was built from a squash made two
+hours before 58518d7, so this was its first time in game; that commit had already noted the
+flat seam in the editor renders.
+
+- **DONE ON DEV:** **Meet** is off by default (`YapsSquashSettings.meet`, and the patched
+  shader's `_YAPS_SquashShape.w` default). The whole-part flatten still runs; what still
+  overlaps passes through. A component saved with Meet on keeps it, so an avatar built before
+  this needs it unticked or a fresh component.
+- **OPEN, the squish that looks good [design]:** why it reads as a knife cut: everything past
+  the plane is eased onto it with a give of 3% of the reach (`YAPS_SQUASH_MEET`), so the overlap
+  of each part is planed flat and the spill goes sideways. Candidate shape, from parts the shader
+  already has: the pair swings apart first; only the true overlap flattens, its edge rounded over
+  a width that grows with the overlap depth; the volume pressed back rises in a rim up and out of
+  the cleavage, as the hand dent's rim does. Judged only in ChilloutVR; the `-spLook` renders
+  never showed the seam Joe saw. Meet stays off until one passes in game.
+
 ## Squash against the world: an idea, 2026-10-17. NOT STARTED, after 5.0.0
 
 Joe's idea: a soft part pressed flat against a world surface, a pane of glass for example, from any
