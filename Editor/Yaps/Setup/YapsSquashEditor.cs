@@ -64,9 +64,12 @@ namespace AvatarBridge
             bool built = YapsSquash.Has(root);
             int mats = YapsSquash.Materials(root).Count;
             bool painted = settings.pairs.Count > 0;
+            bool stale = built && YapsSquash.RegionsHash(settings) != settings.builtFrom;
 
             _root.Add(BridgeElements.Banner("Squash",
-                built ? $"built · {BridgeElements.Count(mats, "material", "materials")} · parts {(painted ? "painted" : "by bone name")}" : "not built yet: press Build at the bottom",
+                !built ? "not built yet: press Build at the bottom"
+                : stale ? $"built · {BridgeElements.Count(mats, "material", "materials")} · regions painted since: press Rebuild"
+                : $"built · {BridgeElements.Count(mats, "material", "materials")} · parts {(painted ? "painted" : "by bone name")}",
                 built ? "built" : "not built", BridgeTheme.Span.Cvr));
             var body = new VisualElement();
             body.AddToClassList("ab-scroll");

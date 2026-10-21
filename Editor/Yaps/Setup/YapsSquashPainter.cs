@@ -34,8 +34,8 @@ namespace AvatarBridge
         int _pair, _side, _shape;
         float _radius = 0.04f, _strength = 1f;
         bool _painting, _stroke;
-        string _status;
-        Tone _tone = Tone.Info;
+        string _status, _built;
+        Tone _tone = Tone.Info, _builtTone;
 
         // The window painting now, for the brush panel in the Scene view.
         internal static YapsSquashPainter Painting { get; private set; }
@@ -74,6 +74,7 @@ namespace AvatarBridge
         void Pick(GameObject avatar)
         {
             _avatar = avatar;
+            _built = null;
             var regions = Regions;
             // The skin the build would use, not the biggest mesh: dense clothing outweighs a body.
             _body = regions != null && regions.body != null ? regions.body
@@ -183,15 +184,17 @@ namespace AvatarBridge
 
             bool built = YapsSquash.Has(_avatar.transform);
             var use = new BridgeElements.Card("Use them");
-            use.Body.Add(BridgeElements.Hint(built
-                ? "The squash keeps what it was built from until it is rebuilt."
-                : "The avatar has no squash yet. Building it uses these regions."));
+            // Where the build button is: the result at the top of the window was out of sight.
+            string state = YapsSquash.Status(_avatar.transform, out var stateTone);
+            use.Body.Add(BridgeElements.Notice(stateTone, built ? state : "Not built yet. Building it uses these regions."));
             use.Body.Add(new BridgeElements.PrimaryButton(built ? "Rebuild the squash" : "Build the squash", () =>
             {
                 SetPainting(false);
-                string said = YapsSquash.Build(_avatar.transform, out bool ok);
-                Say(said, ok ? Tone.Good : Tone.Warn);
+                _built = YapsSquash.Build(_avatar.transform, out bool ok);
+                _builtTone = ok ? Tone.Good : Tone.Warn;
+                Rebuild();
             }, BridgeTheme.BridgeTo));
+            if (_built != null) use.Body.Add(BridgeElements.Notice(_builtTone, _built));
             use.Section("Start over");
             use.Body.Add(BridgeElements.ButtonRow(
                 BridgeElements.Btn("From the bone names", FromNames, "What the squash finds on its own: breast, boob, butt, booty, glute bones, a pair each, with every bone under them. Replaces every region."),
@@ -316,6 +319,8 @@ namespace AvatarBridge
             if (regions == null) regions = Undo.AddComponent<YapsSquashSettings>(_avatar);
             else Undo.RecordObject(regions, action);
             regions.body = _body;
+            // The last build's result no longer describes these regions; the status line does.
+            _built = null;
             var mesh = _body.sharedMesh;
             regions.vertexCount = mesh.vertexCount;
             regions.fingerprint = YapsSquash.Fingerprint(mesh);
@@ -325,6 +330,8 @@ namespace AvatarBridge
                 pair.b = Bytes(_w[2 * k + 1]);
             }
             EditorUtility.SetDirty(regions);
+            // So the status says at once that the build no longer matches.
+            if (YapsSquash.Has(_avatar.transform)) Rebuild();
         }
 
         byte[] Bytes(float[] w) => Enumerable.Range(0, w.Length).Select(v => (byte)Mathf.RoundToInt(Mathf.Clamp01(w[_rep[v]]) * 255f)).ToArray();

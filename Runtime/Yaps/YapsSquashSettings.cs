@@ -77,5 +77,8 @@ namespace AvatarBridge.Yaps
         // than read with every weight on the wrong vertex.
         [HideInInspector] public int vertexCount;
         [HideInInspector] public int fingerprint;
+
+        // The regions the last build read, so the windows can say a stroke since needs a rebuild.
+        [HideInInspector] public int builtFrom;
     }
 }

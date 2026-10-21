@@ -39,7 +39,7 @@ namespace AvatarBridge
         VisualElement _legacy;
         // Each action reports under its own button. Results never go through the scan summary,
         // which every rescan rewrites.
-        BridgeElements.NoticeBox _next, _addStatus, _propStatus, _tidyStatus, _squashStatus;
+        BridgeElements.NoticeBox _next, _addStatus, _propStatus, _tidyStatus, _squashStatus, _squashState;
         Button _addHole, _addRing, _makePlug;
         BridgeElements.PrimaryButton _build;
         ObjectField _picker;
@@ -182,6 +182,9 @@ namespace AvatarBridge
             squash.Body.Add(BridgeElements.Hint(
                 "Breasts and butt flatten against each other and dent under anyone's hand, in the body shader. " +
                 "No sync cost. Found by bone name, or from regions you paint."));
+            // Whether it is there at all, before any button: a tester could not tell.
+            _squashState = BridgeElements.Notice(Tone.Info, "");
+            squash.Body.Add(_squashState);
             squash.Body.Add(BridgeElements.ButtonRow(
                 BridgeElements.Btn("Add squash", AddSquash,
                     "Builds it on the avatar picked in step 1: from its painted regions if it has them, else by bone name. " +
@@ -207,6 +210,7 @@ namespace AvatarBridge
             string said = YapsSquash.Build(_target.transform, out bool built);
             if (!built) { _squashStatus.Set(said, Tone.Warn); return; }
             _squashStatus.Set(said + " Tune and preview it in the window that opened.", Tone.Good);
+            ShowSquashState();
             // Its own window, not a selection: the component sits at the bottom of a long Inspector.
             BridgeElements.Reveal(YapsSquash.SettingsOf(_target.transform));
         }
@@ -227,6 +231,15 @@ namespace AvatarBridge
             }
             YapsSquash.Strip(_target.transform, YapsSwapFollow.RunnableClips(_target.transform));
             _squashStatus.Set("Squash removed. Every layer and toggle is back on its own material.", Tone.Good);
+            ShowSquashState();
+        }
+
+        void ShowSquashState()
+        {
+            if (_squashState == null) return;
+            if (_target == null) { _squashState.Set("Pick an avatar in step 1 to see whether it has squash.", Tone.Info); return; }
+            string state = YapsSquash.Status(_target.transform, out var tone);
+            _squashState.Set(state, tone);
         }
 
         // Props, the legacy channel, the scene view and tidying: used now and then, so collapsed.
@@ -407,6 +420,7 @@ namespace AvatarBridge
                 _addStatus?.Hide();
                 _propStatus?.Hide();
                 _tidyStatus?.Hide();
+                _squashStatus?.Hide();
             }
             _target = top;
             if (_picker != null && _picker.value != top) _picker.SetValueWithoutNotify(top);
@@ -516,6 +530,7 @@ namespace AvatarBridge
             if (_foundBody == null) return;
             _foundBody.Clear();
             RefreshSelection();
+            ShowSquashState();
             if (_target == null)
             {
                 // The notice below says it, so the faint line would only repeat it.

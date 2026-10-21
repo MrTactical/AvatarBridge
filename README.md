@@ -1562,7 +1562,8 @@ the body draws as it would without the squash. Nothing breaks, and there is no w
 **Two ways on.** Converting: *Manual options ▸ Opt-ins ▸ Soft parts ▸ Squash breasts and butt
 against each other and hands*. Already on ChilloutVR: *Tools ▸ YAPS ▸ Setup*, the **Squash**
 card, **Add squash**. Pressing it again rebuilds it; **Remove squash** puts every layer back on its
-own material, toggles included. Only a layer that lies over a soft part gets a copy; the rest keep
+own material, toggles included. The card says whether the picked avatar has squash, on how many
+materials, and when its regions were painted after the last build. Only a layer that lies over a soft part gets a copy; the rest keep
 their own material and cost nothing. The copies go to `Assets/YAPS/Generated/Squash`; a rebuild
 goes back to the folder the last build used, a conversion's own included, so they are written over
 rather than added to. Their shaders live in the shared `Assets/YAPS/Generated/Shaders`, where a
@@ -1601,7 +1602,7 @@ the side is not painted with it; Ctrl erases and Esc stops. **Soften edge** feat
 squash fades out instead of tearing; **Copy to the other side** mirrors one side onto its partner. The regions are kept on the avatar's
 **YAPS Squash** component; while it holds any, the converter and the Setup card both build from
 them instead of the bone names. **Build the squash** (or **Rebuild the squash**) at the bottom of the same window builds from
-them; **Remove the regions** clears them and keeps the knobs. The parts
+them, and says above it whether the squash is built and whether strokes since need a rebuild; **Remove the regions** clears them and keeps the knobs. The parts
 are measured on one skin: of the meshes carrying every part, the one weighted to the most bones, so
 the body and not a dense piece of clothing with more vertices. **Squash regions** starts on the
 same mesh, and its **Body** field picks another. Clothing follows the skin under it, within 3 cm.

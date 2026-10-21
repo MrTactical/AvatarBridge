@@ -171,6 +171,37 @@ namespace AvatarBridge
             return $"Squash built on {BridgeElements.Count(Materials(root).Count, "material", "materials")}, parts {(painted ? "from painted regions" : "by bone name")}. The measurements are in the Console.";
         }
 
+        // Built or not, and whether the regions were painted since, in one line for every place
+        // that builds it. A tester could not tell whether the build had happened at all.
+        internal static string Status(Transform root, out Tone tone)
+        {
+            tone = Tone.Info;
+            if (!Has(root)) return "Not built yet.";
+            var s = SettingsOf(root);
+            string on = BridgeElements.Count(Materials(root).Count, "material", "materials");
+            if (s != null && RegionsHash(s) != s.builtFrom)
+            {
+                tone = Tone.Warn;
+                return $"Built on {on}, but the regions were painted since: rebuild to use them.";
+            }
+            tone = Tone.Good;
+            return $"Built on {on}, parts {(s != null && s.pairs.Count > 0 ? "from the painted regions" : "by bone name")}.";
+        }
+
+        public static int RegionsHash(YapsSquashSettings s)
+        {
+            unchecked
+            {
+                int h = s.pairs.Count;
+                foreach (var p in s.pairs)
+                {
+                    foreach (byte w in p.a) h = h * 31 + w;
+                    foreach (byte w in p.b) h = h * 31 + w;
+                }
+                return h;
+            }
+        }
+
         // The regions to use, or null for parts by bone name. `refusal` says why regions the
         // avatar carries cannot be used; they are never quietly swapped for the name search.
         public static YapsSquashSettings RegionsOf(Transform root, out string refusal)
@@ -506,7 +537,10 @@ namespace AvatarBridge
             Lap("Providers");
 
             // The knobs, from the avatar's component; a first build adds one with the defaults.
-            if (SettingsOf(root) == null) root.gameObject.AddComponent<YapsSquashSettings>();
+            var knobs = SettingsOf(root);
+            if (knobs == null) knobs = root.gameObject.AddComponent<YapsSquashSettings>();
+            knobs.builtFrom = RegionsHash(knobs);
+            EditorUtility.SetDirty(knobs);
             Flush();
             Lap("Flush");
             Apply(root);
