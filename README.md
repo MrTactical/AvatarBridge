@@ -1431,7 +1431,9 @@ Poiyomi's panel entire.
 `Assets/YAPS/Generated/Locked`, locked through Poiyomi's own lock, and the deform is patched into
 that locked shader. Your material stays unlocked and untouched. The upload then carries what a lock
 by hand would, with YAPS on top, rather than every Poiyomi feature, and the upload's own lock leaves
-it alone. Properties your animations drive stay live through the lock. The copy is reused until the
+it alone. Properties your animations drive stay live through the lock. A property set to Poiyomi's
+*Rename Animated* keeps its renamed name on every copy YAPS makes, locked or not, so the animations
+that drive it still reach it after the copy is unlocked and locked again. The copy is reused until the
 material's settings change, so converting again locks nothing new. A change of settings adds a new
 copy and the old one stays. *Tools ▸ YAPS ▸ Remove unused patched shaders* clears the copies no
 material wears or was patched from, and asks first. Deleting the folder by hand never breaks a

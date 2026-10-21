@@ -644,7 +644,7 @@ namespace AvatarBridge
 
         static Material Save(Material copy, Material source, string folder, string file)
         {
-            YapsLock.Stamp(copy);
+            YapsLock.Stamp(copy, source);
             if (Held == null)
             {
                 copy = Asset(folder, copy, file);

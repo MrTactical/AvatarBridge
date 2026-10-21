@@ -669,7 +669,7 @@ namespace AvatarBridge
                 {
                     existing.shader = patched;
                 }
-                YapsLock.Stamp(existing);
+                YapsLock.Stamp(existing, source);
                 EditorUtility.SetDirty(existing);
                 return existing;
             }
@@ -678,7 +678,7 @@ namespace AvatarBridge
             {
                 made.shader = patched;
             }
-            YapsLock.Stamp(made);
+            YapsLock.Stamp(made, source);
             AssetDatabase.CreateAsset(made, path);
             return made;
         }

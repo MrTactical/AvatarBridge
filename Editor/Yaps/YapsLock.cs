@@ -124,9 +124,14 @@ namespace AvatarBridge
         // A copy carries its basis's list of every material on that locked shader, and Thry's
         // Unlock of the copy trashes the shader it wears unless one of those still wears it:
         // none do, so it trashed the patch every other copy shares. Empty, Thry keeps it.
-        public static void Stamp(Material copy)
+        // And Thry's rename suffix is the material's name unless tagged: a copy saved under
+        // its own name would unlock without its renamed values and relock off the clips.
+        public static void Stamp(Material copy, Material source)
         {
-            if (copy != null && copy.GetTag("AllLockedGUIDS", false, "") != "") copy.SetOverrideTag("AllLockedGUIDS", "");
+            if (copy == null) return;
+            if (copy.GetTag("AllLockedGUIDS", false, "") != "") copy.SetOverrideTag("AllLockedGUIDS", "");
+            if (source != null && copy.GetTag("thry_rename_suffix", false, "") == "")
+                copy.SetOverrideTag("thry_rename_suffix", source.GetTag("thry_rename_suffix", false, source.name));
         }
 
         // Makes and locks, in one Thry call, a stand-in for every unlocked source that has
@@ -274,7 +279,7 @@ namespace AvatarBridge
         static Action<List<Material>> lockCall;
         static string lockMissing;
 
-        static Action<List<Material>> LockCall(out string missing)
+        internal static Action<List<Material>> LockCall(out string missing)
         {
             if (lockCall == null && lockMissing == null) Bind();
             missing = lockMissing;

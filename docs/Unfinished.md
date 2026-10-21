@@ -157,6 +157,10 @@ the YAPS avatars [M]:
   the heaviest avatar's 1190 s (33 copies), then 137 s, 61 s, 0.07 s; the material assignment is 0.
   `Basis` now laps keying apart from loading the stand-in, and full run 424 reports the split.
   Suspect [R]: `Existing` loading each stand-in, and with it its own locked shader.
+- **A tester's report 2026-10-21 [user]:** the squash "takes ages for everything to compile" on an
+  avatar whose materials were locked before it built. `Basis` returns at its first test for a locked
+  material (`Wants`), so this one is not the stand-in time above: suspect [R] the patched copies'
+  own shaders compiling. Measure it on a locked-first avatar before calling item 6 done.
 
 ### 7. YAPS against every popular shader: checks 4 and 5, and a corpus run
 
