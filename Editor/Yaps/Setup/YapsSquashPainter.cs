@@ -502,17 +502,23 @@ namespace AvatarBridge
         {
             if (_body == null || _w == null) return;
             if (_baked == null) _baked = new Mesh { hideFlags = HideFlags.HideAndDontSave };
-            _body.BakeMesh(_baked, true);
-            var m = Matrix();
-            _at = _baked.vertices.Select(m.MultiplyPoint3x4).ToArray();
+            _at = WorldPoints(_body, _baked);
             _tris ??= _baked.triangles;
             // BakeMesh puts back the source mesh's colours.
             if (_colours != null && _colours.Length == _at.Length) _baked.colors = _colours;
             else Recolour();
         }
 
-        // BakeMesh with its scale applied leaves position and rotation.
-        Matrix4x4 Matrix() => Matrix4x4.TRS(_body.transform.position, _body.transform.rotation, Vector3.one);
+        internal static Vector3[] WorldPoints(SkinnedMeshRenderer body, Mesh into)
+        {
+            body.BakeMesh(into, true);
+            var m = Frame(body);
+            return into.vertices.Select(m.MultiplyPoint3x4).ToArray();
+        }
+
+        // BakeMesh with useScale divides the scale back out, so the frame carries it again.
+        // Position and rotation alone drew the regions off the skin of a scaled avatar.
+        internal static Matrix4x4 Frame(SkinnedMeshRenderer body) => body.transform.localToWorldMatrix;
 
         void Recolour()
         {
@@ -599,7 +605,7 @@ namespace AvatarBridge
             _overlay.SetInt("_ZTest", (int)test);
             _overlay.SetColor("_Color", new Color(1f, 1f, 1f, alpha));
             _overlay.SetPass(0);
-            Graphics.DrawMeshNow(_baked, Matrix());
+            Graphics.DrawMeshNow(_baked, Frame(_body));
         }
 
         // Spreads over the skin from the triangle hit, never across a gap: an arm resting on the
