@@ -370,7 +370,17 @@ ranked by how visible it should be:
    **MC2 still open:** it only reports "Also moves", because rooting around a nested root pins the
    first joint of every sibling branch, and partway down a strand it would pin the path bones too.
    Measure with the Physics A/B probe on an avatar with one, rooted around vs two cloths on one
-   bone, before choosing. Curves keep only endpoints though MC2 samples 16 points; the Immobile
+   bone, before choosing.
+   **Measured 2026-10-21 [M], decided: keep the report.** A census over the corpus scenes finds
+   nested roots under Ignore Other on 3 avatars only (one at depth 1, one at 2, one at depth 3 down
+   a strand). Physics A/B probe on all three, today's two-cloths-on-one-bone against a variant that
+   adds the nested roots to the ignores (so `WriteRootsExcluding` roots around them), summing
+   |copy - source| over sag, lie, lie hold, the walk/turn/jump/shake peaks, settle, overshoot, press
+   and stretch for the outer and nested chains: depth 3, 1094 to 1002 (one side nearer, the rest
+   unchanged); depth 1, 310 to 2356 (chains that held still swing 100° and more once rooted around);
+   depth 2, 195 to 251. Rooting around is worse where it changes anything big, so the "Also moves"
+   report stays. Both are far from the source on these soft parts either way, which is items 3 and 5's
+   ground, not this one. Curves keep only endpoints though MC2 samples 16 points; the Immobile
    curve is dropped. ~~PhysBone `version` never read~~ withdrawn: `IsVersion10` is read and used
    (`MagicaClothWriter.cs:631,633,731,894`). One cloth per PhysBone (issue #7): the "asked which
    avatar" blocker is stale, the reporter sent it on Discord. Distance culling unused.
