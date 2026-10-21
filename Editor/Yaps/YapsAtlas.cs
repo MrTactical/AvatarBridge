@@ -137,12 +137,6 @@ namespace AvatarBridge
 
         public static bool IsExit(Material m) => m != null && m.shader != null && m.shader.name == ExitShader;
 
-        // Bounded at BoundsSize so it never culls, so its bounds say nothing
-        // about the size of whatever carries it.
-        public static bool IsAtlas(Material m) => m != null && m.shader != null
-            && (m.shader.name == SocketShader || m.shader.name == GrabShader
-                || m.shader.name == ClearShader || m.shader.name == ExitShader);
-
         // One material per entrance number, shared like the socket writers'.
         public static Material Exit(int entrance)
         {

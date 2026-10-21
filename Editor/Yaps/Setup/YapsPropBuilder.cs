@@ -223,7 +223,7 @@ namespace AvatarBridge
             // Not the atlas meshes: counted in, every socket prop's grab box
             // came out a kilometre wide.
             var renderers = root.GetComponentsInChildren<Renderer>(true)
-                .Where(r => !YapsAtlas.IsAtlas(r.sharedMaterial)).ToArray();
+                .Where(r => !YapsMarks.IsAtlasMaterial(r.sharedMaterial)).ToArray();
             if (renderers.Length == 0) { o.Notes.Add("No renderer to size a collider from; add one by hand so the prop can be grabbed."); return; }
             var bounds = renderers[0].bounds;
             foreach (var r in renderers) bounds.Encapsulate(r.bounds);

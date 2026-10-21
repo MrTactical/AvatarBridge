@@ -94,6 +94,7 @@ namespace AvatarBridge
             public int Cloth;
             public int ClothColliders;
             public int ClothParticles;
+            public int ClothMeshVertices;   // a ceiling: MeshCloth reduction merges an unknown share
             public int Pointers;
             public int Triggers;
             public readonly List<string> Atlas = new List<string>();
@@ -614,6 +615,7 @@ namespace AvatarBridge
                 {
                     report.Cloth++;
                     report.ClothParticles += ParticlesUnder(c);
+                    report.ClothMeshVertices += MeshClothVertices(c);
                     // Solvers whose chains hang off one parent are the
                     // merge candidates: one solver could hold every root.
                     var parent = c.transform.parent;
@@ -654,6 +656,26 @@ namespace AvatarBridge
             foreach (var root in roots)
             {
                 if (root != null) count += root.GetComponentsInChildren<Transform>(true).Length;
+            }
+            return count;
+        }
+
+        // A MeshCloth has no roots: it simulates its source meshes' vertices,
+        // fewer once reduction merges near ones by rules only the package
+        // applies. So the count is a ceiling, and never called transforms.
+        static int MeshClothVertices(MonoBehaviour solver)
+        {
+            var data = solver.GetType().GetProperty("SerializeData")?.GetValue(solver);
+            if (data?.GetType().GetField("clothType")?.GetValue(data)?.ToString() != "MeshCloth") return 0;
+            if (!(data.GetType().GetField("sourceRenderers")?.GetValue(data) is IEnumerable<Renderer> renderers)) return 0;
+            int count = 0;
+            foreach (var r in renderers)
+            {
+                if (r == null) continue;
+                // GetComponent hands back a fake null in the editor, so no ?. on it.
+                var filter = r is SkinnedMeshRenderer ? null : r.GetComponent<MeshFilter>();
+                var mesh = r is SkinnedMeshRenderer skin ? skin.sharedMesh : filter != null ? filter.sharedMesh : null;
+                if (mesh != null) count += mesh.vertexCount;
             }
             return count;
         }
@@ -830,7 +852,10 @@ namespace AvatarBridge
               .Append(" triggers) against 512 overlapping pairs a frame for the whole instance\n");
             sb.Append("physics    ").Append(r.Cloth).Append(" cloth simulating ")
               .Append(r.ClothParticles.ToString("N0")).Append(" transforms, ")
-              .Append(r.ClothColliders).Append(" colliders\n");
+              .Append(r.ClothColliders).Append(" colliders");
+            if (r.ClothMeshVertices > 0)
+                sb.Append(", and mesh cloth on up to ").Append(r.ClothMeshVertices.ToString("N0")).Append(" vertices before reduction");
+            sb.Append('\n');
             if (r.ContactFamilies.Count > 0)
             {
                 sb.Append("pointers   ")

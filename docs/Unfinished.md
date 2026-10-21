@@ -56,6 +56,10 @@ physics A/B probes and a corpus run. Decisions on the queue's open questions, sa
   root in a scene with no avatar and digests the result. Its first digest found every socket
   prop's grab box a kilometre wide (the atlas meshes' cull-proof bounds were fitted in); fixed in
   `YapsPropBuilder.AddCollider`, smoke step added. No baseline until the next run is accepted.
+  **Subset 422, 2026-10-21** (Fixture_Props, Fixture_DeformSocket, Fixture_TaggedPair) [M]: the prop
+  digest is written, both props verify, the socket body's box is 0.06 x 0.04 x 0.06; the two
+  fixtures changed only by losing the two "animates body muscles" warnings, e1667a3, intended, as the
+  portal plan record's run notes already say. Not accepted into the baseline: Joe's call.
 - ~~A slider whose two children animate different properties: covered by the restore pass.~~
   **Corrected 2026-10-21: not covered** but for object on/off curves, which
   `BalanceMenuTreeActives` gives a rest side; the restore passes exempt tree-driven bindings, so
@@ -3731,7 +3735,10 @@ ChilloutVR and not through the corpus.
   enabled state recorded beside `ctx.ContactHosts`. Whether a switched-off host stops a DynamicBone
   collider needs ChilloutVR.
 - **ANA-016, MeshCloth cost.** Counted as 0 transforms; needs a particle estimate and wording of its
-  own. New work.
+  own. ~~New work.~~ **Built 2026-10-21:** `AvatarWeight.MeshClothVertices` sums the source meshes'
+  vertices and the card's physics line adds "mesh cloth on up to N vertices before reduction". A
+  ceiling, since MagicaCloth's reduction merges a share only it computes; no warning threshold until
+  a real MeshCloth avatar says what the reduced count runs to.
 - **A native plug whose Root Bone is an empty under a bone** keeps the one-slot re-bake YS1-07 fixed
   for converted plugs. ~~Not touched.~~ **Fixed 2026-10-21:** `SlotsWeightedTo` takes the bake's own
   climb (`climb: true`) where that bake ran, so an empty under a bone picks the bone's slots; the
