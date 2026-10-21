@@ -159,6 +159,9 @@ namespace AvatarBridge
         public static YapsSquashSettings On { get; private set; }
         public static float Squeeze;
         public static bool Bounce, Hand;
+        // The hand's player's viewpoint height, which sizes the hand as it does in the shader.
+        // Kept between previews, unlike the rest.
+        public static float Tall = 1.7f;
         // In the avatar's space, so the hand walks, jumps and turns with it.
         static Vector3 _wrist;
         static Vector4 _params;
@@ -199,6 +202,8 @@ namespace AvatarBridge
             }
             into.Add(BridgeElements.Bind("Test hand", "Another player's open hand, dragged with the handle in the scene view. It presses the part nearest it.",
                 Hand, b => { Hand = b; SceneView.RepaintAll(); }));
+            into.Add(BridgeElements.SliderField("Player height", "How tall the hand's player is, in metres. A hand is sized to its player, so lower it for a smaller hand pressing a smaller spot.",
+                0.3f, 2.5f, Tall, v => { Tall = v; SceneView.RepaintAll(); }));
             return row;
         }
 
@@ -289,7 +294,7 @@ namespace AvatarBridge
             var chest = wrist - aim * 0.45f;
             left[1] = new Vector4(wrist.x, wrist.y, wrist.z, -1f);
             chests[1] = chest;
-            roots[1] = new Vector4(chest.x, 0f, chest.z, 1.7f);
+            roots[1] = new Vector4(chest.x, 0f, chest.z, Tall);
             Shader.SetGlobalVectorArray("_CVR_PlayerLeftHandPositions", left);
             Shader.SetGlobalVectorArray("_CVR_PlayerRightHandPositions", NoOne);
             Shader.SetGlobalVectorArray("_CVR_PlayerChestPositions", chests);
@@ -306,10 +311,10 @@ namespace AvatarBridge
             var root = On.transform;
             var wrist = root.TransformPoint(_wrist);
             var aim = (Nearest(slots, wrist) - wrist).normalized;
-            float radius = On.handSize * 1.7f / 1.6f;
+            float radius = On.handSize * Tall / 1.6f;
             Handles.color = YapsInspectorStyle.PlugColour;
-            Handles.DrawWireDisc(wrist + aim * 0.06f, aim, radius);
-            Handles.DrawLine(wrist, wrist + aim * (0.11f * 1.7f));
+            Handles.DrawWireDisc(wrist + aim * (0.06f * Tall / 1.7f), aim, radius);
+            Handles.DrawLine(wrist, wrist + aim * (0.11f * Tall));
             _wrist = root.InverseTransformPoint(Handles.PositionHandle(wrist, Quaternion.LookRotation(aim)));
         }
     }

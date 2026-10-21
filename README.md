@@ -1581,7 +1581,8 @@ stretch, small swings ignored), to 1, like anime (a long stretch and a deep squa
 bounce). **See it work ▸ Preview** shows it in the editor: **Squeeze** pushes the pair together,
 **Bounce** swings each part as a jump would, and **Test hand** puts another player's open hand in
 front of it, dragged with the handle in the Scene view; it presses the part nearest it, so it
-reaches a second pair too. The editor runs no physics, so the preview stands in for them; in game
+reaches a second pair too. **Player height** sizes it, since a hand is sized to its player: lower it
+for a smaller hand pressing a smaller spot. The editor runs no physics, so the preview stands in for them; in game
 the same knobs answer the real thing. The Avatar Tester's **Interaction lab** carries the same
 preview beside the avatar's motion, and in Play mode the cloth there is real: **Jump** or **Shake**
 swings it, and **Test hand** presses it and moves with the avatar; pause Play mode to hold the cloth
