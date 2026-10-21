@@ -260,7 +260,7 @@ void YapsHandsPress(YapsPart p, inout float3 hv[4], inout float hr[4])
     {
         // Per arm, its bones merged, the deepest leading: upper arm, forearm and hand overlap at
         // the joints, and adding all three pressed one forearm in twice.
-        [unroll]
+        [loop]
         for (uint k = 0; k < 6; k++)
         {
             uint a = 8 + (k / 3) * 4 + k % 3;
@@ -293,7 +293,7 @@ void YapsHandsPress(YapsPart p, inout float3 hv[4], inout float hr[4])
             float mine = 2.25 * r * r;
             float3 chest = _CVR_PlayerChestPositions[i].xyz;
             float4 hands[2] = { _CVR_PlayerLeftHandPositions[i], _CVR_PlayerRightHandPositions[i] };
-            [unroll]
+            [loop]
             for (int j = 0; j < 2; j++)
             {
                 float3 h = hands[j].xyz;
@@ -332,7 +332,7 @@ void YapsHandsPress(YapsPart p, inout float3 hv[4], inout float hr[4])
     if (_YAPS_SquashPlug > 0 && YapsUnit(socket) > 0)
     {
         float3 at = YapsSlot(socket);
-        [unroll]
+        [loop]
         for (uint i = 0; i < 4; i++)
         {
             if (dot(unity_LightColor[i].rgb, unity_LightColor[i].rgb) > 0.0001) continue;
@@ -373,7 +373,9 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
     float squashPlane[4], squashReach[4], squashContact[4];
     float3 mapped = 0;
     float3 mappedN = n;
-    [unroll]
+    // Looped, not unrolled, here and in the arm, hand and plug loops: four copies of this body took the
+    // compiler minutes on every patched shader, and a user waits on that at the first build.
+    [loop]
     for (int m = 0; m < 4; m++)
     {
         squashPlane[m] = 0;
@@ -703,7 +705,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
     // it went opposite ways and the bone sweeping past flicked it across.
     if (_YAPS_SquashPush.w > 0 && _YAPS_SquashHands.x > 0)
     {
-        [unroll]
+        [loop]
         for (uint k = 0; k < 6; k++)
         {
             uint a = 8 + (k / 3) * 4 + k % 3;

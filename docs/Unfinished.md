@@ -138,7 +138,7 @@ A cloth chain that moves bones inside a plug would break the per-vertex frame in
 as the cause of the 4.6.4 tear (archived, "Blendshapes a plug renderer holds came undone"), never
 measured in game.
 
-### 6. Conversions got slower between corpus 418 and 419, not located
+### 6. Conversions got slower between corpus 418 and 419: the squash's compile, fixed on dev
 
 
 419 took 5 h 52 min, 418 5 h 12 min, though 419 ran unthrottled for its second half [M]. Summed over
@@ -175,6 +175,14 @@ the YAPS avatars [M]:
   atlas scan first. Next: a fresh YAPS Simple Lit timed the same way, which says whether the YAPS
   code alone costs it, then switch features off one at a time (atlas, squash, portal, the second
   copy) to find which.
+- **Located and fixed on dev 2026-10-21 [M]:** the squash. A fresh YAPS Simple Lit costs it too
+  (203 s against Poiyomi's 215 s), and without the squash call the same patches take 15 s and 20 s.
+  The dent's four-part loop was unrolled around unrolled arm, hand and plug-light loops, so the
+  body was copied many times over. Those five loops are `[loop]` now: 27 s and 33 s, salted fresh
+  shaders in the probe project, contended by a corpus run. A/B against the unrolled dent in batch
+  Play mode, with the arm and 64 players' hands: 0.0005 mm worst over 1800 frames and 4928
+  vertices, render cost level. Not exercised: the plug-light loop (no vertex lights in that scene).
+  Still open: a corpus run on the fix to confirm the squash pass time fell, and it needs Joe's word.
 
 ### 7. YAPS against every popular shader: checks 4 and 5, and a corpus run
 
