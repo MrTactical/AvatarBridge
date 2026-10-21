@@ -430,6 +430,14 @@ ranked by how visible it should be:
   `IllegalMenuNameChars` (`[^a-zA-Z0-9/\-_#]`) instead of its own list, leaving
   `VerifyMenuParameterNames` to assert. Author decision: it changes the names users get for menu
   parameters holding `.`, `!`, `&`, `+` or non-ASCII letters.
+  **Measured 2026-10-21 [M], decided: no change.** Every name the regex catches and `RenamePass`
+  misses is already renamed later by `VerifyMenuParameterNames`, as a Warning, so the baseline
+  digests list them all: 43 renames on 12 of 86 avatars, 11 distinct (`at||Sweater||29` to
+  `atSweater29` and five like it on six avatars, `~Soup_FaceLock~`, `Oiled~`,
+  `PullEars&TailToggle`, `VF#_thine.gg`, one all non-ASCII name to `Param`). Every result is
+  legal and synced today. Moving the trigger into `RenamePass` would only swap those names for
+  label-derived ones, and ChilloutVR profiles restore saved values by name, so users who already
+  converted would lose their saved values for nothing they can see.
 - **AM1-14, PlayAudio paths with a slash.** Whether VRChat plays a PlayAudio whose AudioSource object
   has `/` in its name is untested; one VRChat test before `ConvertPlayAudio` moves to
   `FindByAnimationPath`.
@@ -441,7 +449,13 @@ ranked by how visible it should be:
 - **Optional, no bug behind them:** an early out in `YapsDeform` before the full baked read (YC1-10;
   a compact layout would be a protocol change), one `PatchOnSimpleLit` for both builders (YC1-08),
   sharing the clip walk in `ConstraintScaleRelay` (PHY-13), a weights-based helper-rig rule shared
-  with `ConstraintConverter.SkinningBones` (PHY-19, a behaviour decision), and the Toolkit's *Mesh
+  with `ConstraintConverter.SkinningBones` (PHY-19, a behaviour decision; **measured 2026-10-21 [M],
+  decided: no change.** A census over the corpus sources: a weights rule would call 97 of 3710
+  chains helper rigs that today's listed-bones rule converts, on 14 scenes (32 distinct chains,
+  hat brims, shaft segments, small two-bone chains), and none the other way, since a weighted bone
+  is always listed. 72 of the 97 are grabbable and none holds content. They move no vertex, so
+  converting them costs a little and shows nothing; flipping them hands them to the cleanup pass,
+  the route that deleted grab handles before (item 3), for no fix anyone could see), and the Toolkit's *Mesh
   bounds* button re-applying the avatar envelope to a separate plug mesh after a native bake.
 
 ### 12. The bend tester's seam checks fail on a fresh bake
