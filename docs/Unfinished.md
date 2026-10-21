@@ -152,6 +152,11 @@ the YAPS avatars [M]:
   3903 fxc lines against 3546), and dev's own commits since 418 (8821f2a, e1667a3, ba7b338).
 - Next: lap the slot loop's imports, then an A/B subset of the slowest avatars, `dev` before the
   merge against `portal-spike`. A subset run needs Joe's word.
+- **Located 2026-10-21, subset 423 (`ab5-subset.txt`, dev 3a8f9e1 + laps, Joe's word) [M]:** the
+  slot loop's missing time is `YapsLock.Basis`, the locked stand-in the copy is made from: 1188 s of
+  the heaviest avatar's 1190 s (33 copies), then 137 s, 61 s, 0.07 s; the material assignment is 0.
+  `Basis` now laps keying apart from loading the stand-in, and full run 424 reports the split.
+  Suspect [R]: `Existing` loading each stand-in, and with it its own locked shader.
 
 ### 7. YAPS against every popular shader: checks 4 and 5, and a corpus run
 

@@ -427,6 +427,8 @@ namespace AvatarBridge
             // rest of it is timed too: the lock's basis and the renderer's material assignment.
             var basis = new System.Diagnostics.Stopwatch();
             var assign = new System.Diagnostics.Stopwatch();
+            YapsLock.KeyTime.Reset();
+            YapsLock.LoadTime.Reset();
             foreach (var (smr, own, shares) in shared)
             {
                 var mats = smr.sharedMaterials;
@@ -491,7 +493,7 @@ namespace AvatarBridge
                 foreach (int m in still) { reach[m] = 0f; reach[m + 1] = 0f; }
                 foreach (var copy in copies) copy.SetVector("_YAPS_SquashReach", reach);
             }
-            Lap($"Slots (ShaderFor {shaderFor.ElapsedMilliseconds}, Save {saving.ElapsedMilliseconds}, Basis {basis.ElapsedMilliseconds}, Assign {assign.ElapsedMilliseconds}, {copies.Count} copies)");
+            Lap($"Slots (ShaderFor {shaderFor.ElapsedMilliseconds}, Save {saving.ElapsedMilliseconds}, Basis {basis.ElapsedMilliseconds} (key {YapsLock.KeyTime.ElapsedMilliseconds}, load {YapsLock.LoadTime.ElapsedMilliseconds}), Assign {assign.ElapsedMilliseconds}, {copies.Count} copies)");
 
             // Off the root: the client works out whose avatar it is from the parent up.
             var host = Child(root, ShaderHostName).gameObject;

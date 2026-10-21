@@ -104,7 +104,22 @@ namespace AvatarBridge
         static readonly Dictionary<string, string> Failed = new Dictionary<string, string>();
 
         // The locked stand-in to patch from, or the material itself.
-        public static Material Basis(Material m) => Wants(m) ? Existing(Key(m, AnimatedOn(m))) ?? m : m;
+        public static Material Basis(Material m)
+        {
+            if (!Wants(m)) return m;
+            KeyTime.Start();
+            string key = Key(m, AnimatedOn(m));
+            KeyTime.Stop();
+            LoadTime.Start();
+            var basis = Existing(key);
+            LoadTime.Stop();
+            return basis ?? m;
+        }
+
+        // Corpus 423: Basis was 1188 s of one avatar's 1190 s slot loop. Which half, keying or
+        // loading the stand-in, is what the squash lap reports.
+        internal static readonly System.Diagnostics.Stopwatch KeyTime = new System.Diagnostics.Stopwatch();
+        internal static readonly System.Diagnostics.Stopwatch LoadTime = new System.Diagnostics.Stopwatch();
 
         // A copy carries its basis's list of every material on that locked shader, and Thry's
         // Unlock of the copy trashes the shader it wears unless one of those still wears it:
