@@ -142,6 +142,10 @@ namespace AvatarBridge
         }
 
         // The YAPS tool's build: the squash, then the toggles' swaps pointed at it.
+        // The last build's whole message, measurements and all, for the setup window's diagnostics.
+        internal static string LastSaid;
+        internal static bool LastBuilt;
+
         public static string Build(Transform root, out bool built)
         {
             // Back into the folder the last build used, so a rebuild writes over its own copies
@@ -164,6 +168,8 @@ namespace AvatarBridge
                 YapsShaderPatcher.EndPass(null, null);
             }
             Debug.Log("[YAPS] Squash: " + said);
+            LastSaid = said.Trim();
+            LastBuilt = built;
             if (!built) return said.Trim();
             // The measurements stay in the Console: on a card they were a wall nobody read.
             var s = SettingsOf(root);

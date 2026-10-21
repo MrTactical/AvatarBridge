@@ -3321,8 +3321,11 @@ every entry at the cost of regenerating the controller.
 Hit **Report an issue** at the foot of the AvatarBridge window (the ChilloutVR Toolkit, the Avatar
 Tester and *Tools ▸ YAPS ▸ Setup* carry it too): it opens a pre-filled GitHub issue with
 your versions and detected packages already in it. After a conversion the window's link adds the
-run's counts, and **Copy diagnostics** under the report puts the same text on your clipboard. A bug
-somebody hit while wearing an avatar comes before any other open work.
+run's counts, and **Copy diagnostics** under the report puts the same text on your clipboard.
+*Tools ▸ YAPS ▸ Setup* writes no report file, so its link adds the last Build's counts instead, and
+**Copy diagnostics** in its footer copies those along with what Build and the squash said, line by
+line. The link leaves the lines out because they name parts of your avatar, so you choose where to
+paste them. A bug somebody hit while wearing an avatar comes before any other open work.
 
 Two things make a report solvable immediately:
 

@@ -88,13 +88,45 @@ namespace AvatarBridge
             _pages.Add(Footer());
         }
 
-        // Guide, bug report, Discord.
-        static VisualElement Footer()
+        // What the last Build and squash said, for a bug report: YAPS writes no report file, and the
+        // window's notes go when it closes.
+        static string _lastBuild, _lastBuildCounts;
+
+        internal static void Record(string headline, List<string> lines)
+        {
+            int failed = lines.Count(l => l.StartsWith("✗")), warned = lines.Count(l => !l.StartsWith("✗") && l.Contains("⚠"));
+            _lastBuildCounts = $"{headline} {failed} failed, {BridgeElements.Count(warned, "warning", "warnings")}.";
+            _lastBuild = string.Join("\n", lines.Select(l => "  " + l));
+        }
+
+        // Counts alone for the issue link: Build's lines name the avatar's parts, and a pre-filled
+        // issue is public once sent. Copy diagnostics carries the lines, to paste by choice.
+        internal static string Diagnostics(bool full, Transform target)
+        {
+            var sb = new System.Text.StringBuilder();
+            if (_lastBuildCounts != null || YapsSquash.LastSaid != null) sb.AppendLine();
+            if (_lastBuildCounts != null) sb.AppendLine($"Last Build:    {_lastBuildCounts}");
+            if (YapsSquash.LastSaid != null) sb.AppendLine($"Last squash:   {(YapsSquash.LastBuilt ? "built" : "refused")}");
+            if (!full) return sb.ToString();
+            if (!string.IsNullOrEmpty(_lastBuild)) sb.AppendLine().AppendLine("What Build did:").AppendLine(_lastBuild);
+            if (YapsSquash.LastSaid != null) sb.AppendLine().AppendLine("What the squash said:").AppendLine("  " + YapsSquash.LastSaid);
+            if (target != null) sb.AppendLine().AppendLine("Squash now:").AppendLine("  " + YapsSquash.Status(target, out _));
+            return sb.ToString();
+        }
+
+        // Guide, bug report, diagnostics, Discord.
+        VisualElement Footer()
         {
             return BridgeElements.Footer(
                 BridgeElements.ExternalLink("Guide", BridgeLinks.YapsHelp, "The YAPS chapter of the README."),
-                BridgeElements.ExternalLink("Report an issue", BridgeLinks.OpenYapsBugReport,
-                    "Opens a pre-filled GitHub issue with your versions and detected packages, marked as a YAPS tool report."),
+                BridgeElements.ExternalLink("Report an issue", () => BridgeLinks.OpenYapsBugReport(Diagnostics(false, null)),
+                    "Opens a pre-filled GitHub issue with your versions and detected packages, marked as a YAPS tool report, " +
+                    "with the last Build's counts."),
+                BridgeElements.TextLink("Copy diagnostics", () =>
+                {
+                    EditorGUIUtility.systemCopyBuffer = BridgeLinks.YapsDiagnostics(Diagnostics(true, _target != null ? _target.transform : null));
+                    ShowNotification(new GUIContent("Diagnostics copied"));
+                }, "Copies your versions and what the last Build and squash said, line by line, to paste into a bug report."),
                 BridgeElements.ExternalLink("Discord", BridgeLinks.OpenDiscord,
                     $"{BridgeLinks.DiscordUser} on Discord. Best for quick questions; please use GitHub issues for " +
                     "bugs so they don't get lost."));
@@ -866,6 +898,7 @@ namespace AvatarBridge
         // a bug report to quote.
         void ShowBuildLog(string headline, List<string> lines)
         {
+            Record(headline, lines);
             if (_buildLog == null) return;
             _buildLog.Clear();
             _buildLog.Add(BridgeElements.SubHeading("What Build did"));
