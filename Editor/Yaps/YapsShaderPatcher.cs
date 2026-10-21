@@ -24,6 +24,21 @@ namespace AvatarBridge
     {
         const string Category = "YAPS";
 
+        // Which deforms a patch compiles. Each one costs its compile in every pass whether the
+        // material calls it or not: the plug's took most of a squash copy's wait, 10 s of 12.
+        [Flags]
+        public enum Roles { Plug = 1, Socket = 2, Squash = 4, All = Plug | Socket | Squash }
+
+        // A patch made before roles, or for all of them, carries no such property.
+        public static Roles RolesOf(Shader shader)
+        {
+            int i = shader != null ? shader.FindPropertyIndex("_YAPS_Roles") : -1;
+            return i < 0 ? Roles.All : (Roles) Mathf.RoundToInt(shader.GetPropertyDefaultFloatValue(i));
+        }
+
+        static string RolesProperty(Roles roles) => roles == Roles.All ? ""
+            : $"        [HideInInspector] _YAPS_Roles (\"YAPS deforms compiled in\", Float) = {(int) roles}\n";
+
         // Every patched shader, from every conversion and build, in one folder. Its name hashes
         // everything it is made from, so the same source patched for another avatar, a variant,
         // or a conversion whose folder was deleted finds the copy already compiled. A folder per
@@ -156,7 +171,7 @@ namespace AvatarBridge
             if (string.IsNullOrEmpty(sourcePath)) return null;
             var unit = ShaderSpiPatcher.ReadUnit(sourcePath);
             if (unit.Count == 0) return null;
-            string yaps = YapsSourceFor(duplicate, out _);
+            string yaps = YapsSourceFor(duplicate, RolesOf(shader), out _);
             if (yaps == null) return null;
             return NameCache[(shader, duplicate)] = PatchedName(unit[0].Text, NameHash(sourcePath, unit, yaps));
         }
@@ -213,16 +228,28 @@ namespace AvatarBridge
         // the default its block declares.
         public static bool Refresh(Material patched, BridgeReport report)
         {
+            var current = Repatch(patched, RolesOf(patched.shader), report);
+            if (current == null) return false;
+            patched.shader = current;
+            return true;
+        }
+
+        // The shader a material already carrying YAPS needs to take on one more role: its own
+        // when that is compiled in, else its original patched again with both. A plug baked
+        // into a squashed body kept the squash-only copy and would never bend. Null when the
+        // original is gone from the project.
+        public static Shader WithRole(Material patched, Roles role, BridgeReport report)
+        {
+            var have = RolesOf(patched.shader);
+            return (have & role) == role ? patched.shader : Repatch(patched, have | role, report);
+        }
+
+        static Shader Repatch(Material patched, Roles roles, BridgeReport report)
+        {
             var original = OriginalShaderOf(patched);
-            if (original == null) return false;
+            if (original == null) return null;
             var stand = new Material(original) { name = patched.name };
-            try
-            {
-                var current = Patch(stand, report, out _, out _, allowSps: true, duplicate: Duplicate(patched));
-                if (current == null) return false;
-                patched.shader = current;
-                return true;
-            }
+            try { return Patch(stand, report, out _, out _, allowSps: true, duplicate: Duplicate(patched), roles: roles); }
             finally { UnityEngine.Object.DestroyImmediate(stand); }
         }
 
@@ -384,7 +411,7 @@ namespace AvatarBridge
         // runs every installed package's import hooks, about a minute each in a large project,
         // and a squash patches twenty. A copy that failed to compile is left to Patch, which
         // writes it again and reports why.
-        public static void Prewrite(IEnumerable<Material> materials)
+        public static void Prewrite(IEnumerable<Material> materials, Roles roles = Roles.All)
         {
             var list = materials.Where(m => m != null).Distinct().ToList();
             if (list.Count == 0) return;
@@ -399,7 +426,7 @@ namespace AvatarBridge
             Prewritten = new Dictionary<string, (string[], int, string, int, bool)>();
             try
             {
-                foreach (var m in list) Patch(m, null, out _, out _);
+                foreach (var m in list) Patch(m, null, out _, out _, roles: roles);
             }
             finally
             {
@@ -501,7 +528,8 @@ namespace AvatarBridge
         // duplicate: the plug's second copy is drawn, which the material says
         // by itself once its _YAPS_CopyStart is set.
         public static Shader Patch(Material material, BridgeReport report,
-            out string refusal, out int skippedShadowPasses, bool allowSps = false, bool duplicate = false)
+            out string refusal, out int skippedShadowPasses, bool allowSps = false, bool duplicate = false,
+            Roles roles = Roles.All)
         {
             refusal = null;
             skippedShadowPasses = 0;
@@ -579,7 +607,7 @@ namespace AvatarBridge
                 if (lender != null)
                 {
                     var lenderMaterial = new Material(lender);
-                    lenderPatched = Patch(lenderMaterial, null, out why, out _, allowSps, duplicate);
+                    lenderPatched = Patch(lenderMaterial, null, out why, out _, allowSps, duplicate, roles);
                     UnityEngine.Object.DestroyImmediate(lenderMaterial);
                 }
                 if (lenderPatched == null)
@@ -594,7 +622,7 @@ namespace AvatarBridge
                 lentPasses += use.Count();
             }
 
-            string yaps = YapsSourceFor(duplicate, out string loadFailure);
+            string yaps = YapsSourceFor(duplicate, roles, out string loadFailure);
             if (yaps == null)
             {
                 refusal = loadFailure;
@@ -630,7 +658,7 @@ namespace AvatarBridge
                     return null;
                 }
                 shaderFile.Text = shaderFile.Text.Insert(properties.Index + properties.Length,
-                    PropertyBlock);
+                    PropertyBlock + RolesProperty(roles));
                 foreach (var pair in lent)
                     shaderFile.Text = Regex.Replace(shaderFile.Text, $@"(UsePass\s+""){Regex.Escape(pair.Key)}/",
                         m => m.Groups[1].Value + pair.Value + "/");
@@ -1066,6 +1094,7 @@ namespace AvatarBridge
             // The alternative was a socket-mode patcher, which means two emitted
             // bodies to keep in step. Every expensive bug on this feature has come
             // from two things that had to agree and quietly stopped agreeing.
+            // The body stays one; the roles' defines only decide which calls compile.
             body.Append(DeformCalls(idExpression));
             body.AppendLine($"    {parameterName}.{positionField}.xyz = yapsPosition;");
             if (normalField != null)
@@ -1099,9 +1128,9 @@ namespace AvatarBridge
 
         // The one list of deforms, for the patched vertex functions and the shadow wrapper alike.
         static string DeformCalls(string id) =>
-            $"    YapsDeform(yapsPosition, yapsNormal, yapsTangent, {id});\n" +
-            $"    YapsSocketDeform(yapsPosition, yapsNormal, yapsTangent, {id});\n" +
-            $"    YapsDentDeform(yapsPosition, yapsNormal, yapsTangent, {id});\n";
+            $"#ifndef YAPS_NO_PLUG\n    YapsDeform(yapsPosition, yapsNormal, yapsTangent, {id});\n#endif\n" +
+            $"#ifndef YAPS_NO_SOCKET\n    YapsSocketDeform(yapsPosition, yapsNormal, yapsTangent, {id});\n#endif\n" +
+            $"#ifndef YAPS_NO_SQUASH\n    YapsDentDeform(yapsPosition, yapsNormal, yapsTangent, {id});\n#endif\n";
 
         // Unity's own caster: a wrapper with its exact signature deforms the input, then calls
         // it. The signature is read from the editor's own copy, the one the shader compiles
@@ -1322,10 +1351,15 @@ namespace AvatarBridge
         // The copy's code costs every vertex registers (52 temps to 59 under
         // fxc) whether or not a copy is there, so only a material that draws
         // one gets it, as a shader of its own beside the plain one.
-        static string YapsSourceFor(bool duplicate, out string failure)
+        static string YapsSourceFor(bool duplicate, Roles roles, out string failure)
         {
             string yaps = LoadYapsSource(out failure);
-            return yaps != null && duplicate ? "#define YAPS_DUPLICATE\n" + yaps : yaps;
+            if (yaps == null) return null;
+            // In the text, so the name hashes them and each set of roles is a shader of its own.
+            if ((roles & Roles.Plug) == 0) yaps = "#define YAPS_NO_PLUG\n" + yaps;
+            if ((roles & Roles.Socket) == 0) yaps = "#define YAPS_NO_SOCKET\n" + yaps;
+            if ((roles & Roles.Squash) == 0) yaps = "#define YAPS_NO_SQUASH\n" + yaps;
+            return duplicate ? "#define YAPS_DUPLICATE\n" + yaps : yaps;
         }
 
         static string LoadYapsSource(out string failure)

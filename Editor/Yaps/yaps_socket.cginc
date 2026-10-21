@@ -77,7 +77,7 @@ float YapsPlugDepth(float3 socketAt, float3 ownerAnchor)
 {
     float depth = 0;
 
-    [unroll]
+    [loop]
     for (uint i = 0; i < 4; i++)
     {
         // Black, or it is real lighting rather than protocol.

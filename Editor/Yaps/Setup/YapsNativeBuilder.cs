@@ -241,12 +241,13 @@ namespace AvatarBridge
             {
                 shader = legacy == YapsLegacyMap.Origin.DPS ? null
                     : YapsShaderPatcher.Patch(source, report, out refusal, out _, allowSps: legacy == YapsLegacyMap.Origin.SPS,
-                        duplicate: copyStart > 0);
+                        duplicate: copyStart > 0, roles: YapsShaderPatcher.Roles.Plug);
                 if (shader == null)
                 {
                     var plain = OnSimpleLit(source, out string why);
                     if (plain == null) { o.Message = "could not patch the shader: " + refusal + "; and " + why; return o; }
-                    shader = YapsShaderPatcher.Patch(plain, report, out string plainRefusal, out _, duplicate: copyStart > 0);
+                    shader = YapsShaderPatcher.Patch(plain, report, out string plainRefusal, out _, duplicate: copyStart > 0,
+                        roles: YapsShaderPatcher.Roles.Plug);
                     if (shader == null) { o.Message = "could not patch the shader: " + refusal + "; and YAPS Simple Lit refused too: " + plainRefusal; return o; }
                     o.Notes.Add(legacy == YapsLegacyMap.Origin.DPS
                         ? "A DPS shader has no switch for its own deform, so the plug now wears YAPS Simple Lit " +
@@ -320,6 +321,8 @@ namespace AvatarBridge
             // on a re-bake leaves the patch behind it.
             patched.SetFloat("_YAPS_CopyStart", copyStart);
             if (YapsShaderPatcher.IsStale(patched)) YapsShaderPatcher.Refresh(patched, report);
+            // A squashed body the plug lives in carried the squash alone until now.
+            patched.shader = YapsShaderPatcher.WithRole(patched, YapsShaderPatcher.Roles.Plug, report) ?? patched.shader;
             if (plug.lengthOverride > 0) patched.SetFloat("_YAPS_Length", BakeLength(renderer, patched, plug.lengthOverride));
             patched.SetFloat("_YAPS_Enabled", 1f);
             WritePlugWide(plug, patched);
@@ -1137,11 +1140,13 @@ namespace AvatarBridge
             }
             else
             {
-                var shader = YapsShaderPatcher.Patch(source, report, out string refusal, out _);
+                var shader = YapsShaderPatcher.Patch(source, report, out string refusal, out _,
+                    roles: YapsShaderPatcher.Roles.Socket);
                 if (shader == null)
                 {
                     var plain = OnSimpleLit(source, out string why);
-                    shader = plain != null ? YapsShaderPatcher.Patch(plain, report, out refusal, out _) : null;
+                    shader = plain != null ? YapsShaderPatcher.Patch(plain, report, out refusal, out _,
+                        roles: YapsShaderPatcher.Roles.Socket) : null;
                     if (shader == null) return $"✗ {socket.name}: could not patch the shader: {refusal}";
                     source = plain;
                 }
@@ -1347,7 +1352,7 @@ namespace AvatarBridge
                 {
                     // Generated here, with its shader reverted by a previous Remove.
                     // Re-patch in place rather than cloning a clone.
-                    var again = YapsShaderPatcher.Patch(was, report, out _, out _);
+                    var again = YapsShaderPatcher.Patch(was, report, out _, out _, roles: YapsShaderPatcher.Roles.Plug);
                     if (again != null)
                     {
                         was.shader = again;
@@ -1364,13 +1369,15 @@ namespace AvatarBridge
                     // material back and call that a restore.
                     target = was;
                     if (YapsShaderPatcher.IsStale(target)) YapsShaderPatcher.Refresh(target, report);
+                    target.shader = YapsShaderPatcher.WithRole(target, YapsShaderPatcher.Roles.Plug, report) ?? target.shader;
                     CopyYapsProperties(primary, target);
                     EditorUtility.SetDirty(target);
                     done++;
                     continue;
                 }
                 {
-                    var shader = YapsShaderPatcher.Patch(was, report, out string refusal, out _);
+                    var shader = YapsShaderPatcher.Patch(was, report, out string refusal, out _,
+                        roles: YapsShaderPatcher.Roles.Plug);
                     if (shader == null)
                     {
                         // Leave a material that cannot be patched alone and say so:
@@ -1648,7 +1655,7 @@ namespace AvatarBridge
                 bool ours = was.HasProperty("_YAPS_Bake") || IsGenerated(was);
                 var shader = was.HasProperty("_YAPS_Bake")
                     ? was.shader
-                    : YapsShaderPatcher.Patch(was, report, out _, out _);
+                    : YapsShaderPatcher.Patch(was, report, out _, out _, roles: YapsShaderPatcher.Roles.Plug);
                 if (shader == null)
                 {
                     report?.Warning("YAPS", $"\"{was.name}\" keeps its own shader",
@@ -1662,6 +1669,7 @@ namespace AvatarBridge
                     target = was;
                     if (YapsShaderPatcher.IsStale(target)) YapsShaderPatcher.Refresh(target, report);
                     else target.shader = shader;
+                    target.shader = YapsShaderPatcher.WithRole(target, YapsShaderPatcher.Roles.Plug, report) ?? target.shader;
                     YapsBaker.Apply(result, target, true);
                 }
                 else

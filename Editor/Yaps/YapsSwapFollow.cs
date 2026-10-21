@@ -257,12 +257,13 @@ namespace AvatarBridge.Yaps
                 // own material follows.
                 var shader = legacy == YapsLegacyMap.Origin.DPS ? null
                     : YapsShaderPatcher.Patch(source, report, out _, out _,
-                                              allowSps: legacy == YapsLegacyMap.Origin.SPS);
+                                              allowSps: legacy == YapsLegacyMap.Origin.SPS,
+                                              roles: YapsShaderPatcher.Roles.Plug);
                 if (shader == null)
                 {
                     var plain = YapsNativeBuilder.OnSimpleLit(source, out _);
                     shader = plain != null
-                        ? YapsShaderPatcher.Patch(plain, report, out _, out _)
+                        ? YapsShaderPatcher.Patch(plain, report, out _, out _, roles: YapsShaderPatcher.Roles.Plug)
                         : null;
                     if (shader != null) source = plain;
                 }

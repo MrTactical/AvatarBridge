@@ -157,7 +157,7 @@ inline bool YapsTagsRefuse(int socketWord)
     // makes a fold testable at all: an OR of patterns keeps each one whole.
     bool wanted = false;
     bool matched = false;
-    [unroll] for (int i = 0; i < 4; i++)
+    [loop] for (int i = 0; i < 4; i++)
     {
         int deny = (int) round(_YAPS_TagExclude[i]);
         if (deny != 0 && (socketWord & deny) == deny) return true;
@@ -372,7 +372,10 @@ bool YapsFindLightSocket(float3 plugOrigin, float reach,
     int4 kinds = int4(YapsClassifyLight(0), YapsClassifyLight(1),
                       YapsClassifyLight(2), YapsClassifyLight(3));
 
-    [unroll]
+    // Looped, not unrolled, here, in the tag test and in the socket's depth read: the
+    // four-light scans unrolled were half or more of every plug's compile, and they index
+    // only arrays a loop can.
+    [loop]
     for (uint i = 0; i < 4; i++)
     {
         int kind = kinds[i];
@@ -392,7 +395,7 @@ bool YapsFindLightSocket(float3 plugOrigin, float reach,
         // a hand apart, and the axis pointed sideways.
         forward = 0;
         float frontSq = 0.01;
-        [unroll]
+        [loop]
         for (uint j = 0; j < 4; j++)
         {
             if (kinds[j] != YAPS_LIGHT_FRONT) continue;

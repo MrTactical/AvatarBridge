@@ -442,7 +442,7 @@ namespace AvatarBridge
                 else
                 {
                     shader = YapsShaderPatcher.Patch(plain, ctx.Report,
-                        out refusal, out skippedShadowPasses);
+                        out refusal, out skippedShadowPasses, roles: YapsShaderPatcher.Roles.Plug);
                     if (shader != null)
                     {
                         patchSource = plain;
@@ -456,7 +456,7 @@ namespace AvatarBridge
             else
             {
                 shader = YapsShaderPatcher.Patch(source, ctx.Report, out refusal, out skippedShadowPasses,
-                    allowSps: legacy == YapsLegacyMap.Origin.SPS);
+                    allowSps: legacy == YapsLegacyMap.Origin.SPS, roles: YapsShaderPatcher.Roles.Plug);
             }
 
             // A shader that will not take the deform is not the end of it:
@@ -465,7 +465,8 @@ namespace AvatarBridge
             // has already tried Simple Lit, and the same patch refuses again.
             if (shader == null && legacy != YapsLegacyMap.Origin.DPS)
             {
-                shader = PatchOnSimpleLit(ctx, source, ref refusal, out var plain, out skippedShadowPasses);
+                shader = PatchOnSimpleLit(ctx, source, ref refusal, out var plain, out skippedShadowPasses,
+                    YapsShaderPatcher.Roles.Plug);
                 if (shader != null)
                 {
                     patchSource = plain;
@@ -547,7 +548,7 @@ namespace AvatarBridge
         // and for a socket that is its own mesh. Null when Simple Lit refuses
         // too, and refusal then says so.
         static Shader PatchOnSimpleLit(BridgeContext ctx, Material source, ref string refusal,
-            out Material plain, out int skippedShadowPasses)
+            out Material plain, out int skippedShadowPasses, YapsShaderPatcher.Roles roles)
         {
             skippedShadowPasses = 0;
             plain = YapsNativeBuilder.OnSimpleLit(source, out string why);
@@ -557,7 +558,7 @@ namespace AvatarBridge
                 return null;
             }
             var shader = YapsShaderPatcher.Patch(plain, ctx.Report,
-                out string plainRefusal, out skippedShadowPasses);
+                out string plainRefusal, out skippedShadowPasses, roles: roles);
             if (shader == null)
             {
                 refusal += "; and YAPS Simple Lit refused too: " + plainRefusal;
@@ -1136,12 +1137,14 @@ namespace AvatarBridge
                         continue;
                     }
                     var patchSource = materials[slot];
-                    var patched = YapsShaderPatcher.Patch(patchSource, ctx.Report, out string refusal, out _);
+                    var patched = YapsShaderPatcher.Patch(patchSource, ctx.Report, out string refusal, out _,
+                        roles: YapsShaderPatcher.Roles.Socket);
                     // The mesh is the socket's own, so Simple Lit repaints only the
                     // socket, as the toolkit does. A body never reaches here.
                     if (patched == null)
                     {
-                        patched = PatchOnSimpleLit(ctx, materials[slot], ref refusal, out var plain, out _);
+                        patched = PatchOnSimpleLit(ctx, materials[slot], ref refusal, out var plain, out _,
+                            YapsShaderPatcher.Roles.Socket);
                         patchSource = plain;
                     }
                     if (patched == null)

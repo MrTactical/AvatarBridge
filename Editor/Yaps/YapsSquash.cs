@@ -425,7 +425,7 @@ namespace AvatarBridge
             Hold();
             YapsShaderPatcher.Prewrite(shared.SelectMany(x => x.smr.sharedMaterials
                     .Where((m, slot) => m != null && Moves(x.smr.sharedMesh, slot, x.shares)))
-                .Where(m => !m.HasProperty("_YAPS_DentOwn")));
+                .Where(m => !m.HasProperty("_YAPS_DentOwn")), YapsShaderPatcher.Roles.Squash);
             Lap("Prewrite");
             var shaderFor = new System.Diagnostics.Stopwatch();
             var saving = new System.Diagnostics.Stopwatch();
@@ -637,11 +637,18 @@ namespace AvatarBridge
             return skin.share;
         }
 
-        // A material already carrying YAPS has the squash in it; anything else is patched.
+        // A material already carrying YAPS gains the squash on its own shader; anything else is
+        // patched with the squash alone.
         static Shader ShaderFor(Material source, BridgeReport report, List<string> log)
         {
-            if (source.HasProperty("_YAPS_DentOwn")) return source.shader;
-            var shader = YapsShaderPatcher.Patch(source, report, out string refusal, out int shadows);
+            if (source.HasProperty("_YAPS_DentOwn"))
+            {
+                var with = YapsShaderPatcher.WithRole(source, YapsShaderPatcher.Roles.Squash, report);
+                if (with == null) log?.Add($"left \"{source.name}\" as it was: the shader it was patched from is no longer in the project");
+                return with;
+            }
+            var shader = YapsShaderPatcher.Patch(source, report, out string refusal, out int shadows,
+                roles: YapsShaderPatcher.Roles.Squash);
             if (shader == null) log?.Add($"left \"{source.name}\" as it was: {refusal}");
             // Unity's standard caster is wrapped; a caster from anywhere else cannot be reached.
             else if (shadows > 0) log?.Add($"\"{source.name}\" casts its shadow unsquashed");
@@ -744,7 +751,7 @@ namespace AvatarBridge
                     if (mats[slot] != null && SourceOf(mats[slot]) != null && mats[slot].HasProperty("_YAPS_DentOwn"))
                         pending.AddRange(Keyed(clips, path, slot).Select(Original).Where(m => !m.HasProperty("_YAPS_DentOwn")));
             }
-            YapsShaderPatcher.Prewrite(pending);
+            YapsShaderPatcher.Prewrite(pending, YapsShaderPatcher.Roles.Squash);
             foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
                 var mats = smr.sharedMaterials;
