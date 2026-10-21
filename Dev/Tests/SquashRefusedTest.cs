@@ -72,7 +72,10 @@ namespace AvatarBridge.Regression
 
                 // One Simple Lit would draw differently keeps its own look, and says why.
                 var mapped = new Material(standard) { name = "Mapped" };
-                mapped.SetTexture("_MetallicGlossMap", Texture2D.whiteTexture);
+                // A saved texture: the built-in white one does not survive the material being saved.
+                var metal = new Texture2D(4, 4);
+                AssetDatabase.CreateAsset(metal, Dir + "/Metal.asset");
+                mapped.SetTexture("_MetallicGlossMap", metal);
                 AssetDatabase.CreateAsset(mapped, Dir + "/Mapped.mat");
                 root = Avatar(mapped, roots);
                 said = YapsSquash.Add(root, Dir + "/OutMapped", out built);

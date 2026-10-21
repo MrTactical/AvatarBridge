@@ -108,6 +108,13 @@ no longer wears. Bake, socket build and rebuild, prop, remove, the Setup card's 
 `YapsSquash.Build`/`Strip` now refuse in Play mode with `YapsNativeBuilder.NotInPlayMode`; README
 says so beside the Play mode preview. Order: probe on the old code first (stash), then on the fix.
 
+**Probed 2026-10-21 [M]** (`-floodPlay`, a converted avatar that already wears squash, 44 state
+machines). Old code: the build threw `InvalidOperationException: This cannot be used during play
+mode` from `MarkSceneDirty` inside `Strip`, partway through. New code: refused with "Leave Play mode
+first", 0 of 44 state machines destroyed, controller and breadcrumbs alive, "consistent" after
+leaving Play. The flood itself was still not reproduced in batch (no GUI to draw the window), so it
+is closed by the refusal, not by a seen fix. In-game checklist: Add squash in Play mode is refused.
+
 ### 2. A rebuilt rig the jaw pass rebuilds again
 
 
@@ -118,6 +125,12 @@ after saving `_NoJaw`, as it already does its own earlier copies (the skeleton p
 `BridgeConverter.cs:167-168`). Verify on a conversion where both passes fire: one rig in the
 output, the avatar standing on it. The digests do not record which passes ran, so the corpus
 cannot pick such an avatar out by itself.
+**Tested 2026-10-21 [M]:** `Dev/Tests/JawMatchedRigTest` gives a converted avatar a rig with its Jaw
+on a hat bone, moves the armature 20 cm, and runs both passes. Old code: `_Matched` and
+`_Matched_NoJaw` both left in the output (2 WRONG). New: one rig, worn, no Jaw, hips 0.00 cm from
+the armature's: PASS. Trap found writing it: the Animator writes back the pose it bound to when its
+rig is swapped, so a test that moves bones after assigning the rig sees the passes' detach undo the
+move. A real conversion binds on the moved armature, so it is a test-order trap, not a product bug.
 
 ### 3. Unskinned grab-and-stretch handles deleted as helper rigs (corpus 414)
 
@@ -226,6 +239,10 @@ the YAPS avatars [M]:
   else keeps the refusal, with the reason. `SquashRefusedTest` gains a plain Standard case (built, on
   a patched Simple Lit copy) and a metallic-map case (refused, names the map). Then: the nine
   avatars from run 424 in a subset.
+  **Tested 2026-10-21 [M]:** old code 4 WRONG (both new cases). New code first read 2 WRONG on the
+  metallic case: the test set `Texture2D.whiteTexture`, which does not survive the material being
+  saved, so the material had no map. With a saved texture asset: 8/8 PASS, the refusal reads "YAPS
+  Simple Lit has no metallic map". The nine avatars are checked in the full run instead of a subset.
 
 
 Joe, on the K2 options: "not every shader is built the same ... we would need to test YAPS plugs and
@@ -348,7 +365,8 @@ ranked by how visible it should be:
    (`:670-697`). Walking ends up over-held; head turns slightly over-held. Needs the harness.
 8. **Structure.** `ignoreOtherPhysBones` is now read (`PhysBoneData.NestedExclusions`, matching
    `VRCPhysBoneBase.cs:714`: any child that is another PhysBone's root, the whole hierarchy's
-   components, disabled ones too). DynamicBone excludes them exactly (`NestedPhysBoneTest`).
+   components, disabled ones too). DynamicBone excludes them exactly (`NestedPhysBoneTest`: old code
+   WRONG, exclusions empty; new PASS, Front and Bead, empty with the flag off. 2026-10-21 [M]).
    **MC2 still open:** it only reports "Also moves", because rooting around a nested root pins the
    first joint of every sibling branch, and partway down a strand it would pin the path bones too.
    Measure with the Physics A/B probe on an avatar with one, rooted around vs two cloths on one
@@ -418,6 +436,13 @@ Read what the seam check measures before calling it a bake fault.
   vertices share that rest point, how far apart the two sit in the bind mesh and how far apart
   their normals are. Bind distance 0 means a real seam, a bake or deform fault; above 0 with a
   cluster bigger than two means the shape collapse, and the check needs the edge check's rule.
+- **Run 2026-10-21 [M]** (a converted SPS avatar's plug, 6618 vertices, 155 seam pairs; the capture
+  shader `Dev/Tester/YapsBendCapture.shader` has to sit in DevTools beside the tester, deploy does
+  not add it). Every failing walk names the same pair: vertices 2924 and 6614, 5 vertices at that
+  rest point, 0.00000 apart in the bind mesh, normals 0° apart; bent, one moves 87.7 to 236.4 mm and
+  the other 0.0 mm. So a TRUE seam: one copy of a point bends and its twin is not deformed at all.
+  A bake or deform fault, not the collapse case. Next: what sets 6614 apart (its baked frame, its
+  weights, whether it falls outside the plug's bake set).
 
 ## 5.0.1
 
