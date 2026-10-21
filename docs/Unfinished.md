@@ -400,9 +400,20 @@ ranked by how visible it should be:
 - **FT-05, eye gaze on a rolled head bone.** The gaze empties hang off `EyeTracking.Frame`, turned to
   the avatar's facing, so the clips' angles should hold on a head bone that is not axis-aligned.
   Compiled only. Play mode or ChilloutVR: such an avatar looking down and left.
+  **Proven in Play mode 2026-10-21 [M]:** `Dev/Tests/GazeRolledHeadTest` builds the rig on a head
+  rolled (-90, 0, 37) and on a straight one, both under an avatar turned 30°, keys the empties
+  down 20 and left 20 and reads the eyes after the constraints run: both heads, both eyes, down
+  0.342 and left 0.321 in the avatar's frame (sin 20° = 0.342). Real eye-tracking input stays on the
+  in-game checklist (S6.8).
 - **ASSET-FURYHEAD-REFS, skins bound to VRCFury's second head.** `FuryHeadFlattener.RepointReferences`
   moves anything naming `vrcfAlwaysVisibleHead` onto the head bone, but nobody has seen VRCFury bind
   bones to the copy. Convert such an avatar, read the report's count, check the skin keeps its pose.
+  **Read 2026-10-21, closed as defensive:** VRCFury 1.1408.0 makes the copy in `FakeHeadService`
+  for one caller, Show In First Person, which links the OBJECT under it (`useObj`, not `useBone`), so
+  the object's own bones move with it and nothing binds to the copy itself. With an SDK that has
+  head chop (`VRCSDK_HAS_HEAD_CHOP`) the copy is not made at all. The corpus's one copy carries a
+  socket child, which the flattener moves. `RepointReferences` stays as a guard for older Fury
+  builds; there is no avatar to convert that exercises it.
 - **YSH-13, the protocol-light black test differs between plug and socket.** The plug's
   `YapsClassifyLight` rejects `any(rgb > 1e-4) && a > 0`; `YapsPlugDepth` and the readout reject
   `dot(rgb,rgb) > 1e-4`, which accepts a near-black third-party light the plug refuses. The digit
