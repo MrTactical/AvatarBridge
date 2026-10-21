@@ -374,15 +374,6 @@ ranked by how visible it should be:
   with `ConstraintConverter.SkinningBones` (PHY-19, a behaviour decision), and the Toolkit's *Mesh
   bounds* button re-applying the avatar envelope to a separate plug mesh after a native bake.
 
-### 11. The marker-light chooser reorders itself between conversions
-Found 2026-10-21 in the washover's A/B [M]: two conversions of one VRCFury avatar, no change
-between them, gave the four marker-light phases their sockets in a different order.
-`YapsSocketBuilder.Lit` (and `YapsOwner`'s target order) sort by the transform path, and VRCFury
-names what it moves `[VFnnn]` with a fresh number each build. So the menu row that lights a
-socket, and which sockets start lit, can swap on a reconvert, and a saved profile's value then
-lights another socket. Fix: sort on the path with each segment's Fury id stripped
-(`YapsScanner.StripFuryId`), with a test that two id sets give one order.
-
 ### 12. The bend tester's seam checks fail on a fresh bake
 Found 2026-10-21 [M]: on a freshly converted SPS avatar the tester's seams open 38 to 102 mm and 6
 scenarios fail, with the includes before and after the roles change alike, so not that change.

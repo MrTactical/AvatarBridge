@@ -291,6 +291,17 @@ namespace AvatarBridge
             return close < 0 ? name : name.Substring(close + 1).TrimStart();
         }
 
+        // The path below root with Fury's id taken out of every name. Fury
+        // numbers what it moves afresh each build, so anything ordered by the
+        // raw path reshuffles on a reconvert of an unchanged avatar.
+        public static string StablePath(Transform t, Transform root)
+        {
+            var names = new List<string>();
+            for (; t != null && t != root; t = t.parent) names.Add(StripFuryId(t.name));
+            names.Reverse();
+            return string.Join("/", names);
+        }
+
         // Every name test reads through Fury's id. ArmatureLink renames what
         // it moves "[VF724] BakedSpsSocket", and a raw test misses each one.
         public static bool NameStarts(string name, string prefix) =>

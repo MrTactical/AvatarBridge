@@ -296,7 +296,7 @@ namespace AvatarBridge
             return root.GetComponentsInChildren<YapsSocket>(true)
                 .Where(s => s != null && s.emitLights)
                 .OrderBy(s => s.kind == YapsSocket.SocketKind.Hole ? 0 : 1)
-                .ThenBy(s => AnimationUtility.CalculateTransformPath(s.transform, root))
+                .ThenBy(s => YapsScanner.StablePath(s.transform, root))
                 .ToList();
         }
 

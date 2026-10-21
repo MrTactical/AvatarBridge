@@ -140,7 +140,7 @@ namespace AvatarBridge
         public static Dictionary<YapsSocket, int> NumberWriters(GameObject root, bool avatar)
         {
             var sockets = root.GetComponentsInChildren<YapsSocket>(true)
-                .OrderBy(s => AnimationUtility.CalculateTransformPath(s.transform, root.transform), StringComparer.Ordinal)
+                .OrderBy(s => YapsScanner.StablePath(s.transform, root.transform), StringComparer.Ordinal)
                 .ToList();
             int offset = avatar || sockets.Count > 8 ? 0 : (int) (Fnv(root.name) % (uint) (16 - sockets.Count));
             var numbers = new Dictionary<YapsSocket, int>();
