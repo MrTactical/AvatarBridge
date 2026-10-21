@@ -899,9 +899,13 @@ namespace AvatarBridge.Regression
                 Debug.Log($"[PhysicsAb] timeline starts, {cloths.Count(c => c.IsValid())}/{cloths.Length} cloth(s) built");
             }
             float t = (Time.frameCount - startFrame) / Fps;
-            float v = t >= 2f && t <= 4f ? 1.4f * Mathf.Clamp01((t - 2f) / 0.25f) * Mathf.Clamp01((4f - t) / 0.25f) : 0f;
+            // -abHarsh: desktop movement, full walking speed within a few frames and a mouse turn,
+            // where the default is a VR walk's quarter-second ramp and a half-second turn.
+            bool harsh = Environment.GetCommandLineArgs().Contains("-abHarsh");
+            float ramp = harsh ? 0.05f : 0.25f, speed = harsh ? 2.5f : 1.4f;
+            float v = t >= 2f && t <= 4f ? speed * Mathf.Clamp01((t - 2f) / ramp) * Mathf.Clamp01((4f - t) / ramp) : 0f;
             walked += v / Fps;
-            float yaw = 90f * Smooth((t - 6.5f) / 0.5f);
+            float yaw = 90f * Smooth((t - 6.5f) / (harsh ? 0.15f : 0.5f));
             float headYaw = 60f * Smooth((t - 9.5f) / 0.4f);
             float jump = t >= 12f && t <= 12.6f ? 0.35f * 4f * ((t - 12f) / 0.6f) * (1f - (t - 12f) / 0.6f) : 0f;
             float shake = t >= 15f && t <= 16f ? 0.06f * Mathf.Sin(2f * Mathf.PI * 3f * (t - 15f)) : 0f;
