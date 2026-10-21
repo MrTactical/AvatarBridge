@@ -157,10 +157,24 @@ the YAPS avatars [M]:
   the heaviest avatar's 1190 s (33 copies), then 137 s, 61 s, 0.07 s; the material assignment is 0.
   `Basis` now laps keying apart from loading the stand-in, and full run 424 reports the split.
   Suspect [R]: `Existing` loading each stand-in, and with it its own locked shader.
+  **WITHDRAWN 2026-10-21 (run 424):** not `Basis`. Its key and load laps read 0 on all 24 squash
+  avatars while the lap around them read up to 1011 s: the time is in the same line's
+  `new Material(...) { shader = patched }`, which that lap also wrapped.
 - **A tester's report 2026-10-21 [user]:** the squash "takes ages for everything to compile" on an
   avatar whose materials were locked before it built. `Basis` returns at its first test for a locked
   material (`Wants`), so this one is not the stand-in time above: suspect [R] the patched copies'
   own shaders compiling. Measure it on a locked-first avatar before calling item 6 done.
+  **Same cause, measured 2026-10-21 in the Poiyomi probe project [M]:** the first Material made
+  with a fresh YAPS patch waits 82 to 280 s; Poiyomi's own locked shader under a fresh name waits
+  0.12 to 0.17 s, and so does the YAPS copy once one material has used it. Locked or unlocked makes
+  no difference: three patches in one build, timed in either order, cost 280 s, 85 s and 0.15 s in
+  that order, so they compile side by side and the first material waits for its own.
+  `ShaderHasError` and `isSupported` return at once and trigger none of it. The patch is 844 KB
+  against the locked shader's 342 KB, and the compiler logs show only its Base, Add and
+  ShadowCaster default variants compiling. Suspect [R]: YAPS code the compiler unrolls, the
+  atlas scan first. Next: a fresh YAPS Simple Lit timed the same way, which says whether the YAPS
+  code alone costs it, then switch features off one at a time (atlas, squash, portal, the second
+  copy) to find which.
 
 ### 7. YAPS against every popular shader: checks 4 and 5, and a corpus run
 
