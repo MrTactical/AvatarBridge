@@ -133,6 +133,64 @@ namespace AvatarBridge.Dev
             if (Application.isBatchMode) EditorApplication.Exit(code);
         }
 
+        // The prop case: a plug and a ring-and-socket body as they stand before Make
+        // prop, in a scene with no avatar. The corpus makes each a prop and verifies it
+        // every run; built once here so the input holds still while the code moves.
+        //
+        //   Unity.exe -batchmode -quit -executeMethod AvatarBridge.Dev.FixtureBuilder.RunPropsOnly
+        public static void RunPropsOnly()
+        {
+            int code = 0;
+            try
+            {
+                string source = FindScene(SourceScene);
+                if (source == null) throw new Exception($"no scene matching \"{SourceScene}\"");
+                string dir = Path.GetDirectoryName(source).Replace('\\', '/');
+                string target = dir + "/Fixture_Props.unity";
+                var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
+                // Its own mesh, beside the scene: the test plug's default is
+                // overwritten by every test plug anyone spawns.
+                var plug = YapsNativeBuilder.BuildTestPlug(null, select: false, meshPath: dir + "/Fixture_Props Plug Mesh.asset");
+                if (plug == null) throw new Exception("the test plug did not build: YAPS Simple Lit missing?");
+                plug.name = "Fixture Prop Plug";
+                plug.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+
+                // The ring-and-socket prefab's layout: a body to grab, ring above,
+                // hole below, facing apart so one prop serves both approaches.
+                var body = new GameObject("Fixture Prop Sockets");
+                body.transform.position = new Vector3(0.5f, 0f, 0f);
+                var shape = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                shape.name = "Body";
+                shape.transform.SetParent(body.transform, false);
+                shape.transform.localScale = new Vector3(0.06f, 0.02f, 0.06f);
+                UnityEngine.Object.DestroyImmediate(shape.GetComponent<Collider>());
+                foreach (var (name, kind, y, tilt) in new[]
+                         {
+                             ("Ring", AvatarBridge.Yaps.YapsSocket.SocketKind.Ring, 0.03f, -90f),
+                             ("Hole", AvatarBridge.Yaps.YapsSocket.SocketKind.Hole, -0.03f, 90f),
+                         })
+                {
+                    var s = YapsSocketBuilder.BuildPreviewSocket(name, kind);
+                    s.transform.SetParent(body.transform, false);
+                    s.transform.localPosition = new Vector3(0f, y, 0f);
+                    s.transform.localRotation = Quaternion.Euler(tilt, 0f, 0f);
+                }
+
+                if (File.Exists(target)) AssetDatabase.DeleteAsset(target);
+                if (!EditorSceneManager.SaveScene(scene, target)) throw new Exception($"could not save {target}");
+                AssetDatabase.SaveAssets();
+                _log.AppendLine($"built {target}");
+            }
+            catch (Exception e)
+            {
+                _log.AppendLine("FAILED: " + e);
+                code = 1;
+            }
+            File.WriteAllText(Log, _log.ToString());
+            if (Application.isBatchMode) EditorApplication.Exit(code);
+        }
+
         static void BuildFixtures()
         {
             string source = FindScene(SourceScene);

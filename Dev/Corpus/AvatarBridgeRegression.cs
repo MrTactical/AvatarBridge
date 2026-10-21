@@ -574,7 +574,7 @@ namespace AvatarBridge.Regression
                 descriptor = root.GetComponentInChildren<VRCAvatarDescriptor>(true);
                 if (descriptor != null) break;
             }
-            if (descriptor == null) return null;
+            if (descriptor == null) return PropDigest(scene, scenePath);
 
             // Re-activate the source and everything above it. A saved
             // scene can hold its source switched off from a previous
@@ -617,6 +617,69 @@ namespace AvatarBridge.Regression
             AppendCvrSide(sb, target);
             AppendSweep(sb, target);
             return Stable(sb.ToString());
+        }
+
+        // A scene with no avatar can still be a case. Each root named "Fixture Prop..."
+        // (FixtureBuilder.RunPropsOnly) is re-baked, made a prop and verified the way a
+        // user builds one, so the prop path diffs every run like a conversion. Named
+        // roots only: plenty of scenes hold a loose plug or socket nobody meant as a case.
+        static string PropDigest(Scene scene, string scenePath)
+        {
+            var roots = scene.GetRootGameObjects()
+                .Where(r => r.name.StartsWith("Fixture Prop", StringComparison.Ordinal))
+                .OrderBy(r => r.name, StringComparer.Ordinal)
+                .ToList();
+            if (roots.Count == 0) return null;
+
+            var sb = new StringBuilder();
+            sb.Append("scene: ").Append(scenePath).Append("\n\n");
+            foreach (var root in roots)
+            {
+                sb.Append("[prop ").Append(root.name).Append("]\n");
+                var plug = root.GetComponentInChildren<AvatarBridge.Yaps.YapsPlug>(true);
+                if (plug != null)
+                {
+                    var baked = YapsNativeBuilder.Bake(plug);
+                    sb.Append("  bake: ").Append(baked.Ok ? "ok " : "FAILED ").Append(Brief(baked.Message)).Append('\n');
+                }
+                var made = YapsPropBuilder.MakeProp(root);
+                sb.Append("  make: ").Append(made.Ok ? "ok " : "FAILED ").Append(Brief(made.Message)).Append('\n');
+                foreach (var note in made.Notes) sb.Append("    note: ").Append(Brief(note)).Append('\n');
+                var verified = YapsPropBuilder.Verify(root);
+                sb.Append("  verify: ").Append(verified.Ok ? "ok " : "FAILED ").Append(Brief(verified.Message)).Append('\n');
+
+                var pickup = root.GetComponent<CVRPickupObject>();
+                if (pickup != null)
+                    sb.Append("  pickup: ").Append(pickup.moveMode).Append(", reach ").Append(F(pickup.maximumGrabDistance))
+                      .Append(pickup.disallowTheft ? ", theft disallowed\n" : ", theft allowed\n");
+                var spawnable = root.GetComponent<CVRSpawnable>();
+                if (spawnable != null)
+                    sb.Append("  spawnable: height ").Append(F(spawnable.spawnHeight)).Append(", values [")
+                      .Append(string.Join(",", spawnable.syncValues.Select(v => v.name))).Append("]\n");
+                foreach (var c in root.GetComponents<Collider>())
+                    sb.Append("  collider: ").Append(ColliderOf(c)).Append('\n');
+                // Every component, not the CCK-only count an avatar gets: a prop is
+                // a handful of objects, and a lost light or renderer is the regression.
+                foreach (var c in root.GetComponentsInChildren<Component>(true).Where(c => c != null && !(c is Transform)))
+                {
+                    sb.Append("  ").Append(HierarchyPath(root, c)).Append(": ").Append(c.GetType().Name);
+                    if (c is Light l) sb.Append(" range ").Append(l.range.ToString("0.0000", CultureInfo.InvariantCulture));
+                    sb.Append('\n');
+                }
+                sb.Append('\n');
+            }
+            return Stable(sb.ToString());
+        }
+
+        static string ColliderOf(Collider c)
+        {
+            switch (c)
+            {
+                case BoxCollider b: return $"box {V3(b.center)} {V3(b.size)}";
+                case CapsuleCollider k: return $"capsule {V3(k.center)} r {F(k.radius)} h {F(k.height)} axis {k.direction}";
+                case SphereCollider s: return $"sphere {V3(s.center)} r {F(s.radius)}";
+                default: return c.GetType().Name;
+            }
         }
 
         // The sweep rides every corpus conversion: it drives each menu

@@ -1148,7 +1148,7 @@ still in use stays. The same button then offers the locked Poiyomi copies in
 **A ring-and-socket prop prefab**: *Tools ▸ YAPS ▸ Create a ring-and-socket prop prefab* writes
 `YAPS Ring and Socket Prop` to `Assets/YAPS/Prefabs` too: the plug prop's other half, a spawnable
 carrying a ring to pass through above and a hole to enter below, facing opposite ways so one prop
-serves both. Resize the body and move the sockets before uploading. Both sockets carry marker
+serves both. Resize the body and move the sockets before uploading. Its grab box fits the body; builds before 5.0.0 fitted it to the sockets' screen-atlas meshes, which are a kilometre across so they never cull, so make the prefab again and re-upload one made earlier. The same goes for a socket made a prop with *Make selected object a prop*. Both sockets carry marker
 lights, and a mesh has four vertex light slots, so an old DPS toy sees one at a time; anything
 reading the screen atlas finds both. **Not yet confirmed in game**: it is built and it behaves in
 the editor, and nobody has uploaded one and used it with another person yet.

@@ -50,8 +50,16 @@ physics A/B probes and a corpus run. Decisions on the queue's open questions, sa
 - ~~A prop case in the corpus: added.~~ **Corrected 2026-10-17: not added.** Nothing under
   `Dev/Corpus` or `Dev/Probes/FixtureBuilder.cs` builds a prop; outside the tool itself, only
   `Dev/Tests/AvatarBridgeSmokeTest.cs` calls `MakeProp`, so the prop path has a smoke test and no regression cover (as the prop channel
-  records further down say). Building the prop case is the open item.
-- A slider whose two children animate different properties: covered by the restore pass.
+  records further down say). ~~Building the prop case is the open item.~~ **Built 2026-10-21:**
+  `FixtureBuilder.RunPropsOnly` writes `Fixture_Props` (a test plug and a ring-and-socket body, as
+  they stand before Make prop), and the corpus re-bakes, makes and verifies every `Fixture Prop`
+  root in a scene with no avatar and digests the result. Its first digest found every socket
+  prop's grab box a kilometre wide (the atlas meshes' cull-proof bounds were fitted in); fixed in
+  `YapsPropBuilder.AddCollider`, smoke step added. No baseline until the next run is accepted.
+- ~~A slider whose two children animate different properties: covered by the restore pass.~~
+  **Corrected 2026-10-21: not covered** but for object on/off curves, which
+  `BalanceMenuTreeActives` gives a rest side; the restore passes exempt tree-driven bindings, so
+  any other property is still the open shape in the Corpus 415 record, waiting on a decision.
 - Also in 5.0.0, Joe's picks from the rest of the queue: the remote twin, a diff between two
   conversions for users, fast reconversion (skipped passes proven equal by the corpus), and YAPS
   portal and duplicate. (twin and diff built; fast reconversion logs each pass's time, ~~the next full
@@ -150,7 +158,8 @@ copy's main asset. The test covers it, and fails with the old rehomer. Still to 
   inside one run can reach. The same probe measured it: the identical text in a second folder
   compiled again in full, about 140 s for the three, where the same folder reused is free (the
   reconvert case, squash 319 s to 15 s in the speed subset).
-  **DONE on dev 2026-10-16, not yet run in a conversion:** every YAPS patch, converted or built,
+  **DONE on dev 2026-10-16, ~~not yet run in a conversion~~ run from 418 on (0452e5a predates its
+  start, 23:04 that night; squash 27,468 s to 13,402 s, see above):** every YAPS patch, converted or built,
   goes to `Assets/YAPS/Generated/Shaders` (`YapsShaderPatcher.SharedFolder`); the name already
   hashed the source path, its text and the YAPS version, so nothing else had to change, and the
   output-folder argument is gone from `Patch`, `Prewrite` and `Refresh`. The project sweep no longer
@@ -3153,7 +3162,7 @@ one 418 shipped.
   with the button at 0 [M]. `ThryLockMarkTest` gained the case: 2 WRONG before, PASS after;
   `ThryLockFirstTest` still passes. Not re-run in the corpus. The warning never shipped (8821f2a is
   in no tag), so no release note.
-- Still open [R]: an UNLOCKED Thry shader that `Detect` calls DPS is skipped by `Wants` and still
+- ~~Still open~~ Closed [R]: an UNLOCKED Thry shader that `Detect` calls DPS is skipped by `Wants` and still
   reads "did not run". No measured case.
   **Fixed on `dev` 2026-10-19:** the warning says it carries DPS's properties, which YAPS never
   locks. `ThryLockMarkTest` gained the case: 1 WRONG before, PASS after. Current Poiyomi Pro (9.3,
@@ -3170,7 +3179,7 @@ The full run after the overnight fixes [M]. Every other avatar's digest reads as
   offsets kept (`Uncommented`). `IncludeVertexTest`, "a commented-out pass is left as a comment":
   WRONG before, ok after, 21 of 21. The avatar's own material and shader, moved into the Poiyomi
   lock project (`PatchOneProbe`): REFUSED before, PATCHED across 3 passes after.
-- Still open [R]: the vertex function search, inside a block and in includes, still reads
+- ~~Still open~~ Closed [R]: the vertex function search, inside a block and in includes, still reads
   comments, so a commented-out copy of the function ahead of the real one would be patched in its
   place. Not met.
   **FIXED 2026-10-20** [M]: met in Mochie once the `SV_VertexID` refusal was lifted; see the record
@@ -3545,7 +3554,8 @@ Regressions:
   6.07 to 2.61 m², another's reclaim 29.4 to 22.4 MB). Nothing on the avatar changes; the card and the
   report misstate it. Fix: merge the area of materials with the same textures and scale before the
   density, in Core, since `Editor/Yaps` is pruned from the public package. **FIXED on dev
-  2026-10-16, not yet run:** `Densities` sums the area of every material drawing the same maps
+  2026-10-16, ~~not yet run~~ run from 418 on, so the baseline's Weight lines carry it (8e0a0bf
+  predates 418's start):** `Densities` sums the area of every material drawing the same maps
   (data textures left out of the key, so a bake one copy gained does not split it) at the same
   tiling, then measures. `TextureDensityTest` pins two uneven copies as one surface (512 per
   metre over 2 m², where the old code read 324 over 1) and a second tiling kept apart. It changes
@@ -3723,7 +3733,10 @@ ChilloutVR and not through the corpus.
 - **ANA-016, MeshCloth cost.** Counted as 0 transforms; needs a particle estimate and wording of its
   own. New work.
 - **A native plug whose Root Bone is an empty under a bone** keeps the one-slot re-bake YS1-07 fixed
-  for converted plugs. Not touched.
+  for converted plugs. ~~Not touched.~~ **Fixed 2026-10-21:** `SlotsWeightedTo` takes the bake's own
+  climb (`climb: true`) where that bake ran, so an empty under a bone picks the bone's slots; the
+  extra-mesh and scanner callers stay unclimbed, since from another mesh the bone above is the
+  body's. Smoke step "A plug rooted on an empty under its bone" failed first (slot 0 baked).
 - **PHY-14b, animated offsets and rest values on position, scale, aim and look-at constraints** are
   dropped (reported). The SDK's reverse map in `AvatarDynamicsSetup.cs` gives their names. A rotation
   constraint's offset is measured from the live pose, so its animated offset stays dropped unless

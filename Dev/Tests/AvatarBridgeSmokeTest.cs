@@ -236,6 +236,16 @@ namespace AvatarBridge.Regression
                 // On the ROOT: CVRPickupObject cannot see a child's collider.
                 Check(plugRoot.GetComponent<Collider>() != null, "a collider on the root to grab");
             });
+            // A socket prop's grab box is sized from its renderers, and the atlas
+            // writers' meshes are bounded at a kilometre so they never cull.
+            Step("YAPS > Create a ring-and-socket prop prefab", () =>
+            {
+                YapsSocketBuilder.CreateSocketPropPrefab();
+                var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(YapsSocketBuilder.SocketPropPrefabPath);
+                var box = prefab != null ? prefab.GetComponent<BoxCollider>() : null;
+                Check(box != null, "a box to grab");
+                Check(box != null && box.size.magnitude < 1f, $"sized to the body, not the atlas ({(box != null ? box.size.ToString() : "none")})");
+            });
             Step("YAPS > Verify prop", () =>
             {
                 var o = YapsPropBuilder.Verify(plugRoot);
@@ -274,6 +284,36 @@ namespace AvatarBridge.Regression
                 Check(o.Ok, o.Message);
                 Check(smr.sharedMaterials[1].HasProperty("_YAPS_Bake"), "skinned slot baked");
                 Check(YapsNativeBuilder.GuessRootBone(smr, 1) == shaft.transform, "root bone guessed from the mesh");
+            });
+            // The bake climbs from an empty to the bone above it, and the slot
+            // pick has to climb with it, or it finds no weight and takes slot 0.
+            Step("YAPS > A plug rooted on an empty under its bone", () =>
+            {
+                var shaft = new GameObject("Shaft B"); shaft.transform.SetParent(hips.transform, false);
+                var tip = new GameObject("Shaft B Tip"); tip.transform.SetParent(shaft.transform, false);
+                tip.transform.localPosition = new Vector3(0, 0, 0.15f);
+                var empty = new GameObject("Shaft B Root"); empty.transform.SetParent(shaft.transform, false);
+                var smrGo = new GameObject("Body B"); smrGo.transform.SetParent(avatar.transform, false);
+                try
+                {
+                    var smr = smrGo.AddComponent<SkinnedMeshRenderer>();
+                    smr.sharedMesh = SkinnedShaft(new[] { hips.transform, shaft.transform, tip.transform });
+                    smr.bones = new[] { hips.transform, shaft.transform, tip.transform };
+                    smr.rootBone = hips.transform;
+                    smr.sharedMaterials = new[] { new Material(Shader.Find(YapsNativeBuilder.SimpleLitName)), new Material(Shader.Find(YapsNativeBuilder.SimpleLitName)) };
+                    var plug = empty.AddComponent<YapsPlug>();
+                    plug.renderer = smr; plug.rootBone = empty.transform;
+                    var o = YapsNativeBuilder.Bake(plug);
+                    Check(o.Ok, o.Message);
+                    Check(smr.sharedMaterials[1].HasProperty("_YAPS_Bake"), "the shaft's slot baked");
+                    Check(!smr.sharedMaterials[0].HasProperty("_YAPS_Bake"), "the body's slot left alone");
+                }
+                finally
+                {
+                    // Gone again, so the steps below meet the avatar they expect.
+                    UnityEngine.Object.DestroyImmediate(smrGo);
+                    UnityEngine.Object.DestroyImmediate(shaft);
+                }
             });
             // A converted plug's author's Self rules ride on its material, and
             // the conversion adopts a component onto it, as here: the rules

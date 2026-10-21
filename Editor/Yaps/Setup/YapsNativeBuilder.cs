@@ -135,7 +135,7 @@ namespace AvatarBridge
             {
                 // result.Root, not plug.rootBone: the bake may have descended
                 // to the shaft, and the slots have to be the ones it baked.
-                alsoSlots = SlotsWeightedTo(skinned, result.Root, out slot);
+                alsoSlots = SlotsWeightedTo(skinned, result.Root, out slot, climb: true);
             }
             else if (slot < 0)
             {
@@ -201,7 +201,7 @@ namespace AvatarBridge
                                 if (b != null && b.slot == slot && b.renderer == renderer) b.slot = added;
                             alsoSlots = RecordedSlots(plug, renderer);
                         }
-                        else alsoSlots = SlotsWeightedTo(shared, result.Root);
+                        else alsoSlots = SlotsWeightedTo(shared, result.Root, out _, climb: true);
                         alsoSlots.Remove(slot);
                         slot = added;
                         mats = renderer.sharedMaterials;
@@ -1699,7 +1699,10 @@ namespace AvatarBridge
         // most, -1 when none is. One walk answers both, so the two cannot
         // disagree about which vertices count, and a bake reads the weights
         // once.
-        public static List<int> SlotsWeightedTo(SkinnedMeshRenderer skin, Transform rootBone, out int heaviest)
+        // climb: the bake's own climb from a root no bone sits under (an empty
+        // under a bone) to the first level that has one. Only where that bake
+        // ran: from any other mesh, the bone above is usually the body's.
+        public static List<int> SlotsWeightedTo(SkinnedMeshRenderer skin, Transform rootBone, out int heaviest, bool climb = false)
         {
             var slots = new List<int>();
             heaviest = -1;
@@ -1708,8 +1711,9 @@ namespace AvatarBridge
             var weights = mesh.boneWeights;
             if (weights == null || weights.Length == 0) return slots;
             var chain = new HashSet<int>();
-            for (int i = 0; i < skin.bones.Length; i++)
-                if (skin.bones[i] != null && (skin.bones[i] == rootBone || skin.bones[i].IsChildOf(rootBone))) chain.Add(i);
+            for (var level = rootBone; level != null && chain.Count == 0; level = climb ? level.parent : null)
+                for (int i = 0; i < skin.bones.Length; i++)
+                    if (skin.bones[i] != null && (skin.bones[i] == level || skin.bones[i].IsChildOf(level))) chain.Add(i);
             if (chain.Count == 0) return slots;
             float most = 0f;
             for (int sub = 0; sub < mesh.subMeshCount; sub++)
