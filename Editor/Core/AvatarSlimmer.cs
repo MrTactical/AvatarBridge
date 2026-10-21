@@ -485,11 +485,60 @@ namespace AvatarBridge
         static readonly System.Diagnostics.Stopwatch Decode = new System.Diagnostics.Stopwatch(),
             Users = new System.Diagnostics.Stopwatch(), Outside = new System.Diagnostics.Stopwatch();
 
+        // Verdicts kept in Library by the database's hash of the file and its import settings: a
+        // reconvert decoded every texture again, 22 s on one avatar. Only decoded verdicts are kept,
+        // so a file that failed to read is tried again. Rename the file when Content changes.
+        static Dictionary<string, int> verdicts;
+        static readonly string VerdictFile = Path.Combine("Library", "AvatarBridge", "TextureContent-1.txt");
+
         static bool TimedContent(string path, out bool greyscale, out bool opaque)
         {
+            var hash = AssetDatabase.GetAssetDependencyHash(path);
+            string key = hash.isValid ? hash.ToString() : null;
+            if (key != null && Verdicts().TryGetValue(key, out int known))
+            {
+                greyscale = (known & 1) != 0;
+                opaque = (known & 2) != 0;
+                return true;
+            }
             Decode.Start();
-            try { return Content(path, out greyscale, out opaque); }
+            try
+            {
+                if (!Content(path, out greyscale, out opaque)) return false;
+                if (key != null)
+                {
+                    int verdict = (greyscale ? 1 : 0) | (opaque ? 2 : 0);
+                    verdicts[key] = verdict;
+                    try
+                    {
+                        Directory.CreateDirectory(Path.GetDirectoryName(VerdictFile));
+                        File.AppendAllText(VerdictFile, $"{key} {verdict}\n");
+                    }
+                    catch (IOException) { }
+                    catch (UnauthorizedAccessException) { }
+                }
+                return true;
+            }
             finally { Decode.Stop(); }
+        }
+
+        // ponytail: one line per texture version, never pruned; trim when the file grows past a few MB.
+        static Dictionary<string, int> Verdicts()
+        {
+            if (verdicts != null) return verdicts;
+            verdicts = new Dictionary<string, int>(StringComparer.Ordinal);
+            try
+            {
+                foreach (string line in File.ReadAllLines(VerdictFile))
+                {
+                    int space = line.IndexOf(' ');
+                    if (space > 0 && int.TryParse(line.Substring(space + 1), out int verdict))
+                        verdicts[line.Substring(0, space)] = verdict;
+                }
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            return verdicts;
         }
 
         static bool Content(string path, out bool greyscale, out bool opaque)

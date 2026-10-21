@@ -43,7 +43,178 @@ namespace AvatarBridge
                 new Dictionary<(Mesh, int), (int[], Vector3[])>();
             internal readonly Dictionary<(Mesh mesh, string path), List<(int, string, int, float)>> Animated =
                 new Dictionary<(Mesh, string), List<(int, string, int, float)>>();
+            internal readonly Dictionary<SkinnedMeshRenderer, Placement> Placed =
+                new Dictionary<SkinnedMeshRenderer, Placement>();
+            internal readonly Dictionary<(Mesh mesh, string path), Movers> Moving =
+                new Dictionary<(Mesh, string), Movers>();
+            internal readonly Dictionary<(Vector3 centre, float radius, bool shapes), Answer> Answers =
+                new Dictionary<(Vector3, float, bool), Answer>();
         }
+
+        // Zones that share a centre and a capture read the same vertices: a socket's receivers sit
+        // on one point, most of them at the smallest capture. Reused only while every mesh is
+        // placed and named as it was.
+        sealed class Answer
+        {
+            internal List<Placement> Placed;
+            internal List<string> Paths;
+            internal float Push;
+            internal Dictionary<string, float> PerShape;
+        }
+
+        // A mesh's sampled vertices placed in the world under one bone state, bucketed so a zone
+        // reads only the cells around it. Every zone placed every vertex of every mesh again.
+        sealed class Placement
+        {
+            readonly Vector3[] rest;
+            readonly BoneWeight[] weights;
+            readonly Matrix4x4[] toWorlds;
+            readonly bool[] bound;
+            internal readonly List<int> Index = new List<int>();   // sampled vertices with a dominant bone, ascending
+            internal readonly List<Vector3> AtRest = new List<Vector3>();
+            readonly Vector3 min = Vector3.positiveInfinity, max = Vector3.negativeInfinity;
+            readonly float cell = 1f;
+            readonly int nx = 1, ny = 1, nz = 1;
+            readonly Dictionary<int, List<int>> cells = new Dictionary<int, List<int>>();
+            // Not finite: no cell holds it and the distance test may still pass it.
+            readonly List<int> strays = new List<int>();
+
+            internal Placement(Vector3[] rest, BoneWeight[] weights, Matrix4x4[] toWorlds, bool[] bound)
+            {
+                this.rest = rest;
+                this.weights = weights;
+                this.toWorlds = toWorlds;
+                this.bound = bound;
+                int stride = Mathf.Max(1, rest.Length / SampleTarget);
+                for (int i = 0; i < rest.Length; i += stride)
+                {
+                    var w = weights[i];
+                    if (w.weight0 < MinBoneWeight || w.boneIndex0 < 0
+                        || w.boneIndex0 >= toWorlds.Length || !bound[w.boneIndex0])
+                    {
+                        continue;
+                    }
+                    Vector3 at = toWorlds[w.boneIndex0].MultiplyPoint3x4(rest[i]);
+                    Index.Add(i);
+                    AtRest.Add(at);
+                    if (Finite(at))
+                    {
+                        min = Vector3.Min(min, at);
+                        max = Vector3.Max(max, at);
+                    }
+                }
+                Vector3 size = max - min;
+                float extent = Mathf.Max(size.x, Mathf.Max(size.y, size.z));
+                bool grid = extent >= 0f && !float.IsInfinity(extent);
+                if (grid)
+                {
+                    cell = Mathf.Max(extent / 64f, 1e-6f);
+                    nx = Mathf.Min(Mathf.FloorToInt(size.x / cell), 64) + 1;
+                    ny = Mathf.Min(Mathf.FloorToInt(size.y / cell), 64) + 1;
+                    nz = Mathf.Min(Mathf.FloorToInt(size.z / cell), 64) + 1;
+                }
+                for (int j = 0; j < AtRest.Count; j++)
+                {
+                    var p = AtRest[j];
+                    if (!grid || !Finite(p))
+                    {
+                        strays.Add(j);
+                        continue;
+                    }
+                    int key = Axis(p.x, min.x, nx) + nx * (Axis(p.y, min.y, ny) + ny * Axis(p.z, min.z, nz));
+                    if (!cells.TryGetValue(key, out var list))
+                    {
+                        cells[key] = list = new List<int>();
+                    }
+                    list.Add(j);
+                }
+            }
+
+            // Compared exactly: reused only where placing again would give the same positions.
+            internal bool Matches(Vector3[] rest, BoneWeight[] weights, Matrix4x4[] toWorlds, bool[] bound)
+            {
+                if (rest != this.rest || weights != this.weights || toWorlds.Length != this.toWorlds.Length)
+                {
+                    return false;
+                }
+                for (int b = 0; b < toWorlds.Length; b++)
+                {
+                    if (bound[b] != this.bound[b] || !toWorlds[b].Equals(this.toWorlds[b]))
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            // Subtract, divide and floor never reorder two values, so a point inside a range lands
+            // in the range's cells.
+            int Axis(float value, float from, int count) =>
+                Mathf.FloorToInt(Mathf.Clamp((value - from) / cell, 0f, count - 1));
+
+            // Positions in Index that may lie within radius of centre, ascending. The margin is for
+            // rounding; the distance test after this decides.
+            internal List<int> Near(Vector3 c, float radius)
+            {
+                float r = radius * 1.001f + 1e-5f * (1f + Mathf.Abs(c.x) + Mathf.Abs(c.y) + Mathf.Abs(c.z));
+                if (!Finite(c) || !Finite(r))
+                {
+                    return All();
+                }
+                var found = new List<int>(strays);
+                if (c.x + r >= min.x && c.x - r <= max.x && c.y + r >= min.y && c.y - r <= max.y
+                    && c.z + r >= min.z && c.z - r <= max.z)
+                {
+                    int x0 = Axis(c.x - r, min.x, nx), x1 = Axis(c.x + r, min.x, nx);
+                    int y0 = Axis(c.y - r, min.y, ny), y1 = Axis(c.y + r, min.y, ny);
+                    int z0 = Axis(c.z - r, min.z, nz), z1 = Axis(c.z + r, min.z, nz);
+                    if ((long)(x1 - x0 + 1) * (y1 - y0 + 1) * (z1 - z0 + 1) > cells.Count)
+                    {
+                        return All();   // most of the mesh: reading every cell costs more than testing it
+                    }
+                    for (int z = z0; z <= z1; z++)
+                    {
+                        for (int y = y0; y <= y1; y++)
+                        {
+                            for (int x = x0; x <= x1; x++)
+                            {
+                                if (cells.TryGetValue(x + nx * (y + ny * z), out var list))
+                                {
+                                    found.AddRange(list);
+                                }
+                            }
+                        }
+                    }
+                }
+                found.Sort();
+                return found;
+            }
+
+            List<int> All()
+            {
+                var all = new List<int>(Index.Count);
+                for (int j = 0; j < Index.Count; j++)
+                {
+                    all.Add(j);
+                }
+                return all;
+            }
+        }
+
+        // Per vertex, the animated shapes that move it, in shape order. A zone walks its own
+        // samples instead of every shape's moved list, which was most of the pass.
+        sealed class Movers
+        {
+            internal List<(int shape, string key, int frame, float scale)> Shapes;
+            internal Vector3[][] Delta;   // per shape, null where unreadable
+            internal int[] Start;         // per vertex, into Shape and At
+            internal int[] Shape, At;
+            internal List<float>[] Pushes;
+        }
+
+        static bool Finite(float f) => !float.IsNaN(f) && !float.IsInfinity(f);
+
+        static bool Finite(Vector3 v) => Finite(v.x) && Finite(v.y) && Finite(v.z);
 
         static readonly ConditionalWeakTable<BridgeContext, Cache> Caches =
             new ConditionalWeakTable<BridgeContext, Cache>();
@@ -84,10 +255,15 @@ namespace AvatarBridge
             }
 
             var cache = CacheOf(ctx);
+            // Only the pushes above zero are kept and sorted; the rest are counted.
             var deltas = new List<float>();
+            int count = 0, broken = 0;
             var samples = perShape != null
                 ? new List<(SkinnedMeshRenderer renderer, int index, Matrix4x4 toWorld, Vector3 direction)>()
                 : null;
+            var meshes = new List<(SkinnedMeshRenderer renderer, Placement place, Matrix4x4[] toWorlds,
+                BoneWeight[] weights, Vector3[] grown)>();
+            var placedNow = new List<Placement>();
             foreach (var renderer in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
                 var mesh = renderer.sharedMesh;
@@ -134,28 +310,83 @@ namespace AvatarBridge
                     }
                 }
 
-                int stride = Mathf.Max(1, rest.Length / SampleTarget);
-                for (int i = 0; i < rest.Length; i += stride)
+                if (!cache.Placed.TryGetValue(renderer, out var place)
+                    || !place.Matches(rest, weights, toWorlds, placed))
                 {
-                    var w = weights[i];
-                    if (w.weight0 < MinBoneWeight || w.boneIndex0 < 0
-                        || w.boneIndex0 >= boneCount || !placed[w.boneIndex0])
+                    cache.Placed[renderer] = place = new Placement(rest, weights, toWorlds, placed);
+                }
+                meshes.Add((renderer, place, toWorlds, weights, grown));
+                placedNow.Add(place);
+            }
+
+            List<string> paths = null;
+            if (perShape != null)
+            {
+                paths = new List<string>(meshes.Count);
+                foreach (var m in meshes)
+                {
+                    paths.Add(AnimationUtility.CalculateTransformPath(m.renderer.transform, ctx.Target.transform));
+                }
+            }
+            var key = (worldCentre, captureRadius, perShape != null);
+            if (cache.Answers.TryGetValue(key, out var answer) && answer.Placed.Count == placedNow.Count)
+            {
+                bool same = true;
+                for (int m = 0; same && m < placedNow.Count; m++)
+                {
+                    same = answer.Placed[m] == placedNow[m] && (paths == null || answer.Paths[m] == paths[m]);
+                }
+                if (same)
+                {
+                    if (perShape != null)
                     {
-                        continue;
+                        foreach (var pair in answer.PerShape)
+                        {
+                            perShape[pair.Key] = pair.Value;
+                        }
                     }
-                    Matrix4x4 toWorld = toWorlds[w.boneIndex0];
-                    Vector3 atRest = toWorld.MultiplyPoint3x4(rest[i]);
+                    return answer.Push;
+                }
+            }
+            float Remember(float push)
+            {
+                cache.Answers[key] = new Answer
+                {
+                    Placed = placedNow,
+                    Paths = paths,
+                    Push = push,
+                    PerShape = perShape != null ? new Dictionary<string, float>(perShape, StringComparer.Ordinal) : null,
+                };
+                return push;
+            }
+
+            foreach (var (renderer, place, toWorlds, weights, grown) in meshes)
+            {
+                foreach (int j in place.Near(worldCentre, captureRadius))
+                {
+                    int i = place.Index[j];
+                    Vector3 atRest = place.AtRest[j];
                     float restDistance = Vector3.Distance(atRest, worldCentre);
                     if (restDistance > captureRadius)
                     {
                         continue;
                     }
+                    Matrix4x4 toWorld = toWorlds[weights[i].boneIndex0];
                     Vector3 atGrown = toWorld.MultiplyPoint3x4(grown[i]);
                     // Outward only: distance from the zone growing. A
                     // shape pulling the surface inward reads as zero,
                     // the way a shrinking slider costs the physics
                     // sizes nothing.
-                    deltas.Add(Mathf.Max(0f, Vector3.Distance(atGrown, worldCentre) - restDistance));
+                    float delta = Mathf.Max(0f, Vector3.Distance(atGrown, worldCentre) - restDistance);
+                    count++;
+                    if (delta > 0f)
+                    {
+                        deltas.Add(delta);
+                    }
+                    else if (float.IsNaN(delta))
+                    {
+                        broken++;
+                    }
                     if (samples != null)
                     {
                         Vector3 direction = restDistance > 1e-4f
@@ -166,9 +397,9 @@ namespace AvatarBridge
                 }
             }
 
-            if (deltas.Count < MinSamples)
+            if (count < MinSamples)
             {
-                return 0f;
+                return Remember(0f);
             }
             deltas.Sort();
             if (perShape != null)
@@ -177,8 +408,10 @@ namespace AvatarBridge
             }
             // The far edge of the push, robust to a stray vertex. The
             // median would under-read a shape that only grows one side
-            // of the body, which is what growth sliders do.
-            return Percentile(deltas, 0.9f);
+            // of the body, which is what growth sliders do. A broken
+            // vertex sorts below zero, as it did in the full sorted list.
+            int at = Mathf.Clamp(Mathf.RoundToInt((count - 1) * 0.9f), 0, count - 1);
+            return Remember(at < broken ? float.NaN : PercentileAboveZeros(deltas, count, 0.9f));
         }
 
         // Which animated shape pushes the captured surface, and how far.
@@ -198,7 +431,6 @@ namespace AvatarBridge
                 list.Add(i);
             }
 
-            var positives = new List<float>();
             foreach (var pair in byRenderer)
             {
                 var list = pair.Value;
@@ -206,64 +438,95 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                var renderer = pair.Key;
-                var mesh = renderer.sharedMesh;
-                string path = AnimationUtility.CalculateTransformPath(renderer.transform, ctx.Target.transform);
-                Vector3[] scratch = null;
-                foreach (var (s, key, frame, scale) in AnimatedShapes(cache, extents, mesh, path))
+                var movers = MoversOf(ctx, cache, extents, pair.Key);
+                foreach (var pushes in movers.Pushes)
                 {
-                    var (moved, delta) = LastFrame(cache, mesh, s, frame, ref scratch);
-                    if (moved == null)
+                    pushes.Clear();
+                }
+                foreach (int i in list)
+                {
+                    var sample = samples[i];
+                    for (int e = movers.Start[sample.index]; e < movers.Start[sample.index + 1]; e++)
                     {
-                        continue;
-                    }
-                    // Only the pushes above zero are kept and sorted: a vertex the shape does not
-                    // move pushes nothing, and those were most of every list, sorted once per
-                    // zone per shape. Both lists run in vertex order, so a big zone walks the
-                    // moved list once where searching it per sample cost most of the pass.
-                    positives.Clear();
-                    bool search = list.Count * 16 < moved.Length;
-                    int m = search ? 0 : Array.BinarySearch(moved, samples[list[0]].index);
-                    m = m < 0 ? ~m : m;
-                    foreach (int i in list)
-                    {
-                        var sample = samples[i];
-                        int at;
-                        if (search)
-                        {
-                            at = Array.BinarySearch(moved, sample.index);
-                        }
-                        else
-                        {
-                            while (m < moved.Length && moved[m] < sample.index)
-                            {
-                                m++;
-                            }
-                            if (m == moved.Length)
-                            {
-                                break;   // the shape moves nothing further on
-                            }
-                            at = moved[m] == sample.index ? m : -1;
-                        }
-                        if (at < 0)
-                        {
-                            continue;
-                        }
-                        Vector3 world = sample.toWorld.MultiplyVector(delta[at] * scale);
+                        int k = movers.Shape[e];
+                        Vector3 world = sample.toWorld.MultiplyVector(movers.Delta[k][movers.At[e]] * movers.Shapes[k].scale);
                         float one = Vector3.Dot(world, sample.direction);
                         if (one > 0f)
                         {
-                            positives.Add(one);
+                            movers.Pushes[k].Add(one);
                         }
                     }
+                }
+                // Only the pushes above zero are kept and sorted: a vertex the shape does not move
+                // pushes nothing, and those were most of every list.
+                for (int k = 0; k < movers.Shapes.Count; k++)
+                {
+                    if (movers.Delta[k] == null)
+                    {
+                        continue;
+                    }
+                    var positives = movers.Pushes[k];
                     positives.Sort();
                     float push = PercentileAboveZeros(positives, list.Count, 0.9f);
                     if (push > 0.002f)
                     {
+                        string key = movers.Shapes[k].key;
                         perShape[key] = perShape.TryGetValue(key, out float had) ? Mathf.Max(had, push) : push;
                     }
                 }
             }
+        }
+
+        static Movers MoversOf(BridgeContext ctx, Cache cache, Dictionary<string, float> extents,
+            SkinnedMeshRenderer renderer)
+        {
+            var mesh = renderer.sharedMesh;
+            string path = AnimationUtility.CalculateTransformPath(renderer.transform, ctx.Target.transform);
+            if (cache.Moving.TryGetValue((mesh, path), out var known))
+            {
+                return known;
+            }
+            var shapes = AnimatedShapes(cache, extents, mesh, path);
+            int vertices = mesh.vertexCount;
+            var movers = new Movers
+            {
+                Shapes = shapes,
+                Delta = new Vector3[shapes.Count][],
+                Pushes = new List<float>[shapes.Count],
+                Start = new int[vertices + 1],
+            };
+            var moved = new int[shapes.Count][];
+            Vector3[] scratch = null;
+            for (int k = 0; k < shapes.Count; k++)
+            {
+                (moved[k], movers.Delta[k]) = LastFrame(cache, mesh, shapes[k].shape, shapes[k].frame, ref scratch);
+                movers.Pushes[k] = new List<float>();
+                if (moved[k] != null)
+                {
+                    foreach (int v in moved[k])
+                    {
+                        movers.Start[v + 1]++;
+                    }
+                }
+            }
+            for (int v = 0; v < vertices; v++)
+            {
+                movers.Start[v + 1] += movers.Start[v];
+            }
+            movers.Shape = new int[movers.Start[vertices]];
+            movers.At = new int[movers.Start[vertices]];
+            var next = (int[])movers.Start.Clone();
+            for (int k = 0; k < shapes.Count; k++)
+            {
+                for (int at = 0; moved[k] != null && at < moved[k].Length; at++)
+                {
+                    int e = next[moved[k][at]]++;
+                    movers.Shape[e] = k;
+                    movers.At[e] = at;
+                }
+            }
+            cache.Moving[(mesh, path)] = movers;
+            return movers;
         }
 
         // A mesh's shapes the animator raises, with the frame read and the weight that maps it
@@ -372,9 +635,6 @@ namespace AvatarBridge
                 parents[rb] = ra;
             }
         }
-
-        static float Percentile(List<float> sorted, float p)
-            => sorted[Mathf.Clamp(Mathf.RoundToInt((sorted.Count - 1) * p), 0, sorted.Count - 1)];
 
         // Percentile of count values of which only the sorted ones above zero are listed.
         static float PercentileAboveZeros(List<float> sorted, int count, float p)

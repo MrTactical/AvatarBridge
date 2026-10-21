@@ -540,9 +540,15 @@ of it run in Unity yet:
   zero are kept now, the percentile offset by the zeros, and a big zone walks the moved list once.
   The per-mesh shape list is cached for the conversion. Same avatar, default settings: 212 s to
   53.6 s; every zone's push and per-shape reach byte-identical, and the reconvert's report says
-  nothing changed. Still open: the vertex scan, now about half of what is left.
+  nothing changed. **Then 53.6 s to 12.9 s, same day [M]:** each mesh is placed once per bone
+  state into a coarse grid and a zone reads only nearby cells (exact distance test kept); each
+  vertex lists the shapes that move it, so a zone walks its own samples, not every shape's
+  moved list; and zones sharing a centre and capture reuse the answer while every mesh is placed
+  and named the same (206 of 336 asks on that avatar: a socket's receivers sit on one point).
+  Zone probe digests identical on 59 zones, report identical, clips identical but for item 11.
+  What is left is the samples themselves, 3.3 s scan and 7.0 s attribution.
 - **The converter washover, fixed for 5.0.0 on dev 2026-10-21 [M]:** the same avatar, every pass
-  timed, original code against now: 474.9 s to 127.8 s.
+  timed, original code against now: 474.9 s to 127.8 s, then 88.9 s after the second round.
   - *Rename YAPS objects* 76.8 s to 0.8 s. Its masks list 556,568 transforms and each
     `SetTransformPath` was a whole-mask update: one serialized pass now. Its clips moved a binding at
     a time, two clip syncs each over 3197 bindings: one `SetEditorCurves` call per clip now. Every
@@ -551,10 +557,21 @@ of it run in Unity yet:
     29.7 s with nothing to change. The project's material index asked the database for each
     material's dependencies, 4 to 46 s; each `.mat` file's own GUIDs are a superset, about 3 s, with
     the database for anything not text. The content check decodes without a mip chain, 11% faster
-    and the same verdict on 291 files. Still open: the decode itself, 22 s of every convert;
-    a verdict cache keyed by file size and time would make a reconvert skip it.
-  - Laps left in the log: `Texture sizes steps`. Animator merge is next, 19 to 31 s: two sub-steps
-    write curves one binding at a time, `RehomeVolatileAssets` 8.4 s and `WriteRestoreClips` 6.3 s.
+    and the same verdict on 291 files. **Then the decode, same day [M]:** verdicts are kept in
+    `Library/AvatarBridge/TextureContent-1.txt`, keyed by `GetAssetDependencyHash` (file and import
+    settings, no extra read), decoded verdicts only. 26.6 s cold to 7.4 s on a reconvert.
+  - Laps left in the log: `Texture sizes steps`.
+  - *Animator merge*, 19 s, not changed. The guess that its curve writes cost it was wrong:
+    timed, every per-binding write in `WriteRestoreClips` comes to 0.3 s. The time is files:
+    `RehomeVolatileAssets` 5 s is `SceneAssetRehomer` cloning six textures Fury left inside its
+    FX controller, each `CreateAsset` outside any batch (0.7 s each), and `CreateRestoreClips`
+    3 s is writing about 485 clips, already batched. Batching the texture clones means a rescued
+    material naming a texture created in the same batch; untested, and that path broke before
+    (particles drawn as white squares). Open, [M] timings, fix [R].
+  - Whole conversion, original code against now, same avatar: public passes 351.4 s to 82.3 s on
+    a first convert (4.3x) and 60.4 s on a reconvert (5.8x), the add-on's 123.4 s to 6.6 s. The
+    reconvert's report differs from the first only in which 40 of the same 848 contested bindings
+    it samples, the order Fury writes its defaults in.
 
 - Probes first, in the copy project: P0 stopwatches over each squash step against `shadercompiler-*.log`;
   P1 whether `new Material`/`CopyPropertiesFromMaterial`/`CopySerialized` carry override tags; P2 lock the
