@@ -423,6 +423,10 @@ namespace AvatarBridge
             Lap("Prewrite");
             var shaderFor = new System.Diagnostics.Stopwatch();
             var saving = new System.Diagnostics.Stopwatch();
+            // The two laps above summed to a second an avatar while the loop took minutes, so the
+            // rest of it is timed too: the lock's basis and the renderer's material assignment.
+            var basis = new System.Diagnostics.Stopwatch();
+            var assign = new System.Diagnostics.Stopwatch();
             foreach (var (smr, own, shares) in shared)
             {
                 var mats = smr.sharedMaterials;
@@ -448,7 +452,9 @@ namespace AvatarBridge
                                     log.Add($"\"{source.name}\" on {smr.name} cannot follow, so {parts[m & ~1].name}/{parts[m | 1].name} does not squash");
                         continue;
                     }
+                    basis.Start();
                     var copy = new Material(YapsLock.Basis(source)) { shader = shader, name = source.name };
+                    basis.Stop();
                     copy.SetFloat("_YAPS_DentPower", 1f);
                     copy.SetTexture("_YAPS_DentOwn", own);
                     copy.SetVector("_YAPS_SquashReach", reach);
@@ -469,7 +475,9 @@ namespace AvatarBridge
                     copies.Add(copy);
                     mats[slot] = copy;
                 }
+                assign.Start();
                 smr.sharedMaterials = mats;
+                assign.Stop();
             }
             // Built with no copy, nothing squashed, and it was reported as converted. The nodes
             // the measure put on the bones go too.
@@ -483,7 +491,7 @@ namespace AvatarBridge
                 foreach (int m in still) { reach[m] = 0f; reach[m + 1] = 0f; }
                 foreach (var copy in copies) copy.SetVector("_YAPS_SquashReach", reach);
             }
-            Lap($"Slots (ShaderFor {shaderFor.ElapsedMilliseconds}, Save {saving.ElapsedMilliseconds}, {copies.Count} copies)");
+            Lap($"Slots (ShaderFor {shaderFor.ElapsedMilliseconds}, Save {saving.ElapsedMilliseconds}, Basis {basis.ElapsedMilliseconds}, Assign {assign.ElapsedMilliseconds}, {copies.Count} copies)");
 
             // Off the root: the client works out whose avatar it is from the parent up.
             var host = Child(root, ShaderHostName).gameObject;
