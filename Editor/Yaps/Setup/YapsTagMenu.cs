@@ -43,14 +43,14 @@ namespace AvatarBridge
                 int over = YapsTags.Dropped(plug.answers);
                 if (over > 0)
                 {
-                    notes.Add(YapsToggles.LabelFor(plug) + ": " + BridgeElements.Count(over, "tag", "tags") + " past the first "
+                    notes.Add(YapsToggles.MenuLabelFor(plug) + ": " + BridgeElements.Count(over, "tag", "tags") + " past the first "
                               + YapsTags.PlugSlots + " have no row, and the bake did not keep them either");
                 }
                 if (tags.Count < 2)
                 {
                     if (Remove(avatar, controller, parameter))
                     {
-                        notes.Add(YapsToggles.LabelFor(plug) + ": tag chooser removed, fewer than two tags");
+                        notes.Add(YapsToggles.MenuLabelFor(plug) + ": tag chooser removed, fewer than two tags");
                     }
                     continue;
                 }
@@ -59,10 +59,10 @@ namespace AvatarBridge
                 labels.AddRange(tags.Select(Pretty));
                 labels.Add("Anything");
 
-                EnsureEntry(avatar, parameter, YapsToggles.LabelFor(plug) + " answers", labels);
+                EnsureEntry(avatar, parameter, YapsToggles.MenuLabelFor(plug) + " answers", labels);
                 RemoveLayer(controller, parameter);
                 AddLayer(avatar, controller, plug, parameter, tags);
-                notes.Add(YapsToggles.LabelFor(plug) + ": tag chooser added (" + parameter + "), "
+                notes.Add(YapsToggles.MenuLabelFor(plug) + ": tag chooser added (" + parameter + "), "
                           + tags.Count + " tags, \"As built\" by default");
             }
 
@@ -248,7 +248,7 @@ namespace AvatarBridge
             for (int i = 0; i < values.Count; i++)
             {
                 var clip = YapsToggles.Clip(targets, "_YAPS_TagInclude", values[i],
-                    dir + "/" + Sanitise(YapsToggles.LabelFor(plug)) + " answers " + i + ".anim");
+                    dir + "/" + Sanitise(YapsToggles.MenuLabelFor(plug)) + " answers " + i + ".anim");
                 var state = machine.AddState("Answers " + i);
                 state.writeDefaultValues = false;
                 state.motion = clip;

@@ -1383,8 +1383,9 @@ instead.
 menu of identical "YAPS Ring" entries tells you nothing about which one you are switching. The
 menu entry, its parameter, the reactions layer, the row in the window and the socket's own object
 in the Hierarchy all carry the kind, `Chest ring`, `Head hole`, `cock plug`, and a converted
-socket takes the author's own word for it, VRCFury's numbering stripped: `Blowjob hole`,
-`Handjob Left ring`. A socket you have named yourself keeps that name and gains the kind, and
+socket or plug takes the author's own word for it, VRCFury's numbering stripped: `Blowjob hole`,
+`Handjob Left ring`, `Left Shaft plug`. Plugs that share one mesh share one set of rows, since a
+row switches the whole mesh, and the rows name them all. A socket you have named yourself keeps that name and gains the kind, and
 the bone when the name does not say it; the object is renamed only while nothing animates it by
 path. Moving a socket to another bone renames all of it on the next Build, rather than
 leaving a second copy behind.

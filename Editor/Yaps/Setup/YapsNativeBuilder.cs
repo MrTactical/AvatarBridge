@@ -409,13 +409,13 @@ namespace AvatarBridge
             var avatarForToggle = plug.GetComponentInParent<CVRAvatar>(true);
             if (avatarForToggle != null)
             {
-                string toggled = YapsToggles.EnsurePlugToggle(plug, avatarForToggle, patched, YapsToggles.LabelFor(plug));
+                string toggled = YapsToggles.EnsurePlugToggle(plug, avatarForToggle, patched, YapsToggles.MenuLabelFor(plug));
                 if (toggled != null) o.Notes.Add(toggled);
                 // And a second row for whose sockets it answers, where that
                 // can mean anything. Off, so an avatar carrying both parts
                 // behaves as it did before the atlas learned to see its own.
                 string own = YapsToggles.EnsureSelfToggle(plug, avatarForToggle, patched,
-                    YapsToggles.LabelFor(plug) + " own sockets");
+                    YapsToggles.MenuLabelFor(plug) + " own sockets");
                 if (own != null) o.Notes.Add(own);
             }
 

@@ -55,6 +55,22 @@ at whether the duplicate entry appears and whether `ToggledBy` returned null. Th
 avatars in it; a probe counting menu entries that target the same object would find this across
 all of them at once, which is better than one reproduction.
 
+**Found 2026-10-21, on the window's route, not the converter's.** `DuplicateToggleCheck.RunNativeBatch`
+converts each avatar, then runs Build all on it as the YAPS window would. Across 12 SPS avatars,
+every converted plug's rows read the same: the label came from the plug's root, which the
+conversion always names `YAPS Plug`, so two plugs gave two `YAPS Plug plug own sockets` rows nobody
+could tell apart. Plugs on one mesh were a second case: a row writes the whole renderer, so they
+share it, and each build renamed it to whichever plug went last. **Fixed:** the label climbs past
+the conversion's and VRCFury's wrappers to the author's object, two plugs of one name are told
+apart by the first wrapper the other lacks, and a row shared by plugs on one mesh names them all
+(`MenuLabelFor`). `Dev/Tests/PlugLabelTest.cs`.
+
+**Still open, and not this:** the user's report was an inert author toggle beside a working one.
+The probe marked no entry dead on either route across the 12, but dead there means a clip path that
+no longer resolves; an entry that resolves and still does nothing in game would not show. Leave the
+record open until the user confirms on the 5.0.0 build, and ask for their avatar's SPS setup if it
+persists.
+
 ### 1. The Animator window floods after Add squash
 
 Joe, 2026-10-20: with the Animator window open on a converted avatar, pressing **Add squash** on

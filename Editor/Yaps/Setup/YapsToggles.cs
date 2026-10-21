@@ -141,11 +141,63 @@ namespace AvatarBridge
             return $"renamed \"{was}\" to \"{label}\"";
         }
 
+        static readonly string[] DefaultPlugNames =
+            { "YAPS Plug", "BakedSpsPlug", "SPS Plug", "SPS", "Plug" };
+
+        // A converted plug's root is always the conversion's "YAPS Plug" under
+        // the author's wrappers, so a label from the root read the same for
+        // every plug on the avatar: menu rows nobody could tell apart.
+        static Transform Owner(YapsPlug plug)
+        {
+            var at = plug.rootBone != null ? plug.rootBone : plug.transform;
+            while (at.parent != null && (at.name == "Original Object"
+                   || DefaultPlugNames.Contains(YapsScanner.StripFuryId(at.name))))
+                at = at.parent;
+            return at;
+        }
+
+        static YapsPlug[] PlugsBeside(YapsPlug plug)
+        {
+            var avatar = plug.GetComponentInParent<CVRAvatar>(true);
+            return (avatar != null ? avatar.transform : plug.transform.root).GetComponentsInChildren<YapsPlug>(true);
+        }
+
+        static string NameOf(YapsPlug plug, YapsPlug[] all)
+        {
+            var at = Owner(plug);
+            string name = YapsScanner.StripFuryId(at.name);
+            // One name on two plugs, a prop in each hand: the first wrapper
+            // the other does not have tells them apart.
+            var twins = all.Where(q => q != null && q != plug && YapsScanner.StripFuryId(Owner(q).name) == name).ToList();
+            if (twins.Count == 0) return name;
+            var theirs = new HashSet<string>();
+            foreach (var q in twins)
+                for (var up = Owner(q).parent; up != null; up = up.parent) theirs.Add(YapsScanner.StripFuryId(up.name));
+            for (var up = at.parent; up != null && up.parent != null; up = up.parent)
+            {
+                string n = YapsScanner.StripFuryId(up.name);
+                if (!theirs.Contains(n)) return n;
+            }
+            return name;
+        }
+
         public static string LabelFor(YapsPlug plug)
         {
             if (plug == null) return "YAPS plug";
-            string bone = plug.rootBone != null ? plug.rootBone.name : plug.name;
-            return $"{bone} plug";
+            return NameOf(plug, PlugsBeside(plug)) + " plug";
+        }
+
+        // A menu row writes the plug's whole renderer, so plugs on one mesh
+        // share the row, and it names them all. One plug's label renamed it
+        // to whichever plug was built last, on every build.
+        public static string MenuLabelFor(YapsPlug plug)
+        {
+            if (plug == null) return "YAPS plug";
+            var all = PlugsBeside(plug);
+            var names = all.Where(p => p == plug || (p != null && p.Target != null && p.Target == plug.Target))
+                .Select(p => NameOf(p, all)).Distinct().ToList();
+            if (names.Count == 1) return names[0] + " plug";
+            return string.Join(", ", names.Take(names.Count - 1)) + " and " + names[names.Count - 1] + " plugs";
         }
 
         // What already switches this object off, by name. Entries, their
