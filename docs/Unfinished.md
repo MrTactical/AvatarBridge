@@ -443,6 +443,19 @@ Read what the seam check measures before calling it a bake fault.
   the other 0.0 mm. So a TRUE seam: one copy of a point bends and its twin is not deformed at all.
   A bake or deform fault, not the collapse case. Next: what sets 6614 apart (its baked frame, its
   weights, whether it falls outside the plug's bake set).
+- **Found and fixed (tester only), 2026-10-21 [M]:** neither. Vertices 6606 to 6617 are the debug
+  overlay's readout, a second submesh on the plug's renderer (`YAPS/Debug Overlay`), all twelve
+  past `_YAPS_VertexCount` (6606) and four of them collapsed onto plug vertex 2924. The tester took
+  that slot for a plug slot, since it carries the plug's YAPS block, and paired the readout's
+  undeformed corners with the bending tip. `IsPlug` now skips a material with `_YAPS_AnchorVertex`.
+  Rerun: 1 slot, 143 seam pairs, seams open 0.00 to 0.05 mm on all four walks, every seeded
+  scenario passes. The bake and the deform were never at fault.
+- **Still failing, separate:** the 90° walk stretches an edge 6.31x at 0.20L (3.97 to 25.03 mm) and
+  crushes 57 edges outside the opening, against the 6x floor set on 2026-09-23 from another plug
+  (5.84x, socket beside the base). It failed in the first run too, before the slot fix. A socket a
+  fifth of a length out at right angles bends the shaft 90° in a few centimetres, so a large
+  stretch there is expected; whether 6x is the right bound needs the floor's own avatar (not in
+  the corpus project) measured again. Tester only, not a 5.0.0 blocker.
 
 ## 5.0.1
 

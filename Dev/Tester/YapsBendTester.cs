@@ -822,10 +822,12 @@ namespace AvatarBridge.Regression
         }
 
         // A plug's slot, not a socket's: the patcher emits both ends into
-        // every material and the properties say which it is.
+        // every material and the properties say which it is. The debug overlay's readout carries
+        // the plug's block too, but its vertices sit past the bake, collapsed onto one plug vertex.
         static bool IsPlug(Material m)
         {
             if (m == null || m.shader == null) return false;
+            if (m.shader.FindPropertyIndex("_YAPS_AnchorVertex") >= 0) return false;
             if (m.shader.FindPropertyIndex("_YAPS_VertexCount") < 0 || m.GetFloat("_YAPS_VertexCount") <= 0f) return false;
             return m.shader.FindPropertyIndex("_YAPS_SocketPower") < 0 || m.GetFloat("_YAPS_SocketPower") <= 0f;
         }
