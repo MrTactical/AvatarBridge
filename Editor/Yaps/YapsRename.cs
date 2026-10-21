@@ -180,37 +180,55 @@ namespace AvatarBridge
         static int RewriteClips(BridgeContext ctx, Dictionary<string, string> remap, string[] longestFirst,
             Dictionary<string, string> memo)
         {
+            // A clip at a time, removals first: each single-curve set resyncs the whole
+            // clip, and one avatar's 3197 bindings cost 75 s that way.
             int count = 0;
             foreach (var clip in Clips(ctx))
             {
+                var from = new List<EditorCurveBinding>();
+                var to = new List<EditorCurveBinding>();
+                var curves = new List<AnimationCurve>();
                 foreach (var binding in AnimationUtility.GetCurveBindings(clip))
                 {
                     if (!Remap(binding.path, remap, longestFirst, memo, out string path))
                     {
                         continue;
                     }
-                    var curve = AnimationUtility.GetEditorCurve(clip, binding);
-                    AnimationUtility.SetEditorCurve(clip, binding, null);
+                    curves.Add(AnimationUtility.GetEditorCurve(clip, binding));
+                    from.Add(binding);
                     var moved = binding;
                     moved.path = path;
-                    AnimationUtility.SetEditorCurve(clip, moved, curve);
-                    count++;
+                    to.Add(moved);
+                }
+                if (from.Count > 0)
+                {
+                    AnimationUtility.SetEditorCurves(clip, from.ToArray(), new AnimationCurve[from.Count]);
+                    AnimationUtility.SetEditorCurves(clip, to.ToArray(), curves.ToArray());
+                    count += from.Count;
                 }
 
                 // Material swaps and the like. A separate list, and losing
                 // these is how a wardrobe half-applies.
+                from.Clear();
+                to.Clear();
+                var keys = new List<ObjectReferenceKeyframe[]>();
                 foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
                 {
                     if (!Remap(binding.path, remap, longestFirst, memo, out string path))
                     {
                         continue;
                     }
-                    var keys = AnimationUtility.GetObjectReferenceCurve(clip, binding);
-                    AnimationUtility.SetObjectReferenceCurve(clip, binding, null);
+                    keys.Add(AnimationUtility.GetObjectReferenceCurve(clip, binding));
+                    from.Add(binding);
                     var moved = binding;
                     moved.path = path;
-                    AnimationUtility.SetObjectReferenceCurve(clip, moved, keys);
-                    count++;
+                    to.Add(moved);
+                }
+                if (from.Count > 0)
+                {
+                    AnimationUtility.SetObjectReferenceCurves(clip, from.ToArray(), new ObjectReferenceKeyframe[from.Count][]);
+                    AnimationUtility.SetObjectReferenceCurves(clip, to.ToArray(), keys.ToArray());
+                    count += from.Count;
                 }
             }
             return count;
@@ -241,17 +259,23 @@ namespace AvatarBridge
                 {
                     continue;
                 }
+                // Through the serialized list, applied once: each SetTransformPath call cost
+                // a whole-mask update, and one avatar's masks took a minute that way.
+                var serialized = new SerializedObject(mask);
+                var elements = serialized.FindProperty("m_Elements");
                 bool touched = false;
-                for (int i = 0; i < mask.transformCount; i++)
+                for (int i = 0; i < elements.arraySize; i++)
                 {
-                    if (Remap(mask.GetTransformPath(i), remap, longestFirst, memo, out string path))
+                    var element = elements.GetArrayElementAtIndex(i).FindPropertyRelative("m_Path");
+                    if (Remap(element.stringValue, remap, longestFirst, memo, out string path))
                     {
-                        mask.SetTransformPath(i, path);
+                        element.stringValue = path;
                         touched = true;
                     }
                 }
                 if (touched)
                 {
+                    serialized.ApplyModifiedPropertiesWithoutUndo();
                     EditorUtility.SetDirty(mask);
                 }
             }

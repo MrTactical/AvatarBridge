@@ -183,8 +183,24 @@ the YAPS avatars [M]:
   Play mode, with the arm and 64 players' hands: 0.0005 mm worst over 1800 frames and 4928
   vertices, render cost level. Not exercised: the plug-light loop (no vertex lights in that scene).
   Still open: a corpus run on the fix to confirm the squash pass time fell, and it needs Joe's word.
+- **Roles and the four-light loops, on dev 2026-10-21 [M]:** each patch now carries only what its
+  material does (plug, socket, squash, or a union of them; `_YAPS_Roles` records which, absent means
+  all), and the four-light scans loop instead of unrolling. First compile, salted fresh copies in
+  the Poiyomi probe project, the includes before the squash fix against now: Poiyomi 354.7 s to
+  24.5 s with every role, 10.7 s squash alone; Simple Lit 126.6 s to 14.5 s, 7.9 s squash alone.
+  `YapsRolesTest` PASS; a bend A/B on a fresh bake identical, the light route 50 of 50 both ways.
+- **Run 424 (dev b9fb21d, before the loop fix) [M]:** 73 of 85 digests moved against baseline 422,
+  every class explained: the count line; rest clips for sliders (90b277a); squash reported not
+  built where every shader under the part refused (a1b3812: 9 avatars on Unity's Standard or a
+  shader in error had a provider that moved nothing); the locomotion warning gone where the
+  baseline predates e1667a3's FX masks. Seven avatars' Weight lines are void: a probe converted
+  them with default settings that morning and resized their source textures (reverted from each
+  `TextureSizes.undo`). So 424 is not promoted.
 
 ### 7. YAPS against every popular shader: checks 4 and 5, and a corpus run
+- **Squash on Unity's Standard, 2026-10-21 [M]:** the plug and socket move a Standard material to
+  YAPS Simple Lit; the squash only patches, refuses Standard ("no source file on disk") and is not
+  built. Run 424 has nine such avatars. Same Simple Lit fallback, or say so in the setup card.
 
 
 Joe, on the K2 options: "not every shader is built the same ... we would need to test YAPS plugs and
@@ -358,6 +374,20 @@ ranked by how visible it should be:
   with `ConstraintConverter.SkinningBones` (PHY-19, a behaviour decision), and the Toolkit's *Mesh
   bounds* button re-applying the avatar envelope to a separate plug mesh after a native bake.
 
+### 11. The marker-light chooser reorders itself between conversions
+Found 2026-10-21 in the washover's A/B [M]: two conversions of one VRCFury avatar, no change
+between them, gave the four marker-light phases their sockets in a different order.
+`YapsSocketBuilder.Lit` (and `YapsOwner`'s target order) sort by the transform path, and VRCFury
+names what it moves `[VFnnn]` with a fresh number each build. So the menu row that lights a
+socket, and which sockets start lit, can swap on a reconvert, and a saved profile's value then
+lights another socket. Fix: sort on the path with each segment's Fury id stripped
+(`YapsScanner.StripFuryId`), with a test that two id sets give one order.
+
+### 12. The bend tester's seam checks fail on a fresh bake
+Found 2026-10-21 [M]: on a freshly converted SPS avatar the tester's seams open 38 to 102 mm and 6
+scenarios fail, with the includes before and after the roles change alike, so not that change.
+Read what the seam check measures before calling it a bake fault.
+
 ## 5.0.1
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).
@@ -504,7 +534,27 @@ of it run in Unity yet:
 - **Contacts: zones grown is the biggest single cost left, found 2026-10-17 by the new timers**
   (`ContactsConverter.Run`, log only). On one avatar with 212 contacts, 282.8 s of the pass's
   283.0 s is growing zones; hosts 11 ms, rest states 4 ms. 112 contacts elsewhere took 1.2 s, so it
-  is not linear in contacts: read what one zone's growth costs before guessing. After 5.0.0.
+  is not linear in contacts: read what one zone's growth costs before guessing.
+  **Fixed for 5.0.0 on dev 2026-10-21 [M]:** the cost was attributing each animated shape to each
+  zone, a binary search per sample and a sort of lists that were mostly zeros. Only the pushes above
+  zero are kept now, the percentile offset by the zeros, and a big zone walks the moved list once.
+  The per-mesh shape list is cached for the conversion. Same avatar, default settings: 212 s to
+  53.6 s; every zone's push and per-shape reach byte-identical, and the reconvert's report says
+  nothing changed. Still open: the vertex scan, now about half of what is left.
+- **The converter washover, fixed for 5.0.0 on dev 2026-10-21 [M]:** the same avatar, every pass
+  timed, original code against now: 474.9 s to 127.8 s.
+  - *Rename YAPS objects* 76.8 s to 0.8 s. Its masks list 556,568 transforms and each
+    `SetTransformPath` was a whole-mask update: one serialized pass now. Its clips moved a binding at
+    a time, two clip syncs each over 3197 bindings: one `SetEditorCurves` call per clip now. Every
+    curve and mask entry identical before and after, build ids folded.
+  - *Texture sizes* (on by default, off in `CorpusSettings`, so the corpus never timed it) 83 s to
+    29.7 s with nothing to change. The project's material index asked the database for each
+    material's dependencies, 4 to 46 s; each `.mat` file's own GUIDs are a superset, about 3 s, with
+    the database for anything not text. The content check decodes without a mip chain, 11% faster
+    and the same verdict on 291 files. Still open: the decode itself, 22 s of every convert;
+    a verdict cache keyed by file size and time would make a reconvert skip it.
+  - Laps left in the log: `Texture sizes steps`. Animator merge is next, 19 to 31 s: two sub-steps
+    write curves one binding at a time, `RehomeVolatileAssets` 8.4 s and `WriteRestoreClips` 6.3 s.
 
 - Probes first, in the copy project: P0 stopwatches over each squash step against `shadercompiler-*.log`;
   P1 whether `new Material`/`CopyPropertiesFromMaterial`/`CopySerialized` carry override tags; P2 lock the

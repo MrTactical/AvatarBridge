@@ -41,6 +41,8 @@ namespace AvatarBridge
                 new Dictionary<Mesh, (BoneWeight[], Matrix4x4[])>();
             internal readonly Dictionary<(Mesh mesh, int shape), (int[] index, Vector3[] delta)> LastFrame =
                 new Dictionary<(Mesh, int), (int[], Vector3[])>();
+            internal readonly Dictionary<(Mesh mesh, string path), List<(int, string, int, float)>> Animated =
+                new Dictionary<(Mesh, string), List<(int, string, int, float)>>();
         }
 
         static readonly ConditionalWeakTable<BridgeContext, Cache> Caches =
@@ -196,60 +198,106 @@ namespace AvatarBridge
                 list.Add(i);
             }
 
+            var positives = new List<float>();
             foreach (var pair in byRenderer)
             {
+                var list = pair.Value;
+                if (list.Count < MinSamples)
+                {
+                    continue;
+                }
                 var renderer = pair.Key;
                 var mesh = renderer.sharedMesh;
                 string path = AnimationUtility.CalculateTransformPath(renderer.transform, ctx.Target.transform);
                 Vector3[] scratch = null;
-                for (int s = 0; s < mesh.blendShapeCount; s++)
+                foreach (var (s, key, frame, scale) in AnimatedShapes(cache, extents, mesh, path))
                 {
-                    string key = path + "|" + mesh.GetBlendShapeName(s);
-                    if (!extents.TryGetValue(key, out float reachWeight) || reachWeight < 0.01f)
-                    {
-                        continue;
-                    }
-                    int frames = mesh.GetBlendShapeFrameCount(s);
-                    if (frames <= 0)
-                    {
-                        continue;
-                    }
-                    float frameWeight = mesh.GetBlendShapeFrameWeight(s, frames - 1);
-                    if (frameWeight <= 0f)
-                    {
-                        continue;
-                    }
-                    var (moved, delta) = LastFrame(cache, mesh, s, frames - 1, ref scratch);
+                    var (moved, delta) = LastFrame(cache, mesh, s, frame, ref scratch);
                     if (moved == null)
                     {
                         continue;
                     }
-                    float scale = reachWeight / frameWeight;
-                    var pushes = new List<float>(pair.Value.Count);
-                    foreach (int i in pair.Value)
+                    // Only the pushes above zero are kept and sorted: a vertex the shape does not
+                    // move pushes nothing, and those were most of every list, sorted once per
+                    // zone per shape. Both lists run in vertex order, so a big zone walks the
+                    // moved list once where searching it per sample cost most of the pass.
+                    positives.Clear();
+                    bool search = list.Count * 16 < moved.Length;
+                    int m = search ? 0 : Array.BinarySearch(moved, samples[list[0]].index);
+                    m = m < 0 ? ~m : m;
+                    foreach (int i in list)
                     {
                         var sample = samples[i];
-                        int at = Array.BinarySearch(moved, sample.index);
+                        int at;
+                        if (search)
+                        {
+                            at = Array.BinarySearch(moved, sample.index);
+                        }
+                        else
+                        {
+                            while (m < moved.Length && moved[m] < sample.index)
+                            {
+                                m++;
+                            }
+                            if (m == moved.Length)
+                            {
+                                break;   // the shape moves nothing further on
+                            }
+                            at = moved[m] == sample.index ? m : -1;
+                        }
                         if (at < 0)
                         {
-                            pushes.Add(0f);   // a vertex the shape does not move pushes nothing
                             continue;
                         }
                         Vector3 world = sample.toWorld.MultiplyVector(delta[at] * scale);
-                        pushes.Add(Mathf.Max(0f, Vector3.Dot(world, sample.direction)));
+                        float one = Vector3.Dot(world, sample.direction);
+                        if (one > 0f)
+                        {
+                            positives.Add(one);
+                        }
                     }
-                    if (pushes.Count < MinSamples)
-                    {
-                        continue;
-                    }
-                    pushes.Sort();
-                    float push = Percentile(pushes, 0.9f);
+                    positives.Sort();
+                    float push = PercentileAboveZeros(positives, list.Count, 0.9f);
                     if (push > 0.002f)
                     {
                         perShape[key] = perShape.TryGetValue(key, out float had) ? Mathf.Max(had, push) : push;
                     }
                 }
             }
+        }
+
+        // A mesh's shapes the animator raises, with the frame read and the weight that maps it
+        // to the reach, once per conversion and path: every zone asked the mesh again for each
+        // name and frame through the native getters.
+        static List<(int shape, string key, int frame, float scale)> AnimatedShapes(Cache cache,
+            Dictionary<string, float> extents, Mesh mesh, string path)
+        {
+            if (cache.Animated.TryGetValue((mesh, path), out var known))
+            {
+                return known;
+            }
+            var shapes = new List<(int, string, int, float)>();
+            for (int s = 0; s < mesh.blendShapeCount; s++)
+            {
+                string key = path + "|" + mesh.GetBlendShapeName(s);
+                if (!extents.TryGetValue(key, out float reachWeight) || reachWeight < 0.01f)
+                {
+                    continue;
+                }
+                int frames = mesh.GetBlendShapeFrameCount(s);
+                if (frames <= 0)
+                {
+                    continue;
+                }
+                float frameWeight = mesh.GetBlendShapeFrameWeight(s, frames - 1);
+                if (frameWeight <= 0f)
+                {
+                    continue;
+                }
+                shapes.Add((s, key, frames - 1, reachWeight / frameWeight));
+            }
+            cache.Animated[(mesh, path)] = shapes;
+            return shapes;
         }
 
         // One frame's moved vertices, read once per conversion. Every zone
@@ -327,6 +375,13 @@ namespace AvatarBridge
 
         static float Percentile(List<float> sorted, float p)
             => sorted[Mathf.Clamp(Mathf.RoundToInt((sorted.Count - 1) * p), 0, sorted.Count - 1)];
+
+        // Percentile of count values of which only the sorted ones above zero are listed.
+        static float PercentileAboveZeros(List<float> sorted, int count, float p)
+        {
+            int at = Mathf.Clamp(Mathf.RoundToInt((count - 1) * p), 0, count - 1) - (count - sorted.Count);
+            return at < 0 ? 0f : sorted[at];
+        }
 
         // Highest weight any selected controller's curves push each
         // blendshape to, keyed "renderer path|shape name".
