@@ -59,7 +59,8 @@ physics A/B probes and a corpus run. Decisions on the queue's open questions, sa
   **Subset 422, 2026-10-21** (Fixture_Props, Fixture_DeformSocket, Fixture_TaggedPair) [M]: the prop
   digest is written, both props verify, the socket body's box is 0.06 x 0.04 x 0.06; the two
   fixtures changed only by losing the two "animates body muscles" warnings, e1667a3, intended, as the
-  portal plan record's run notes already say. Not accepted into the baseline: Joe's call.
+  portal plan record's run notes already say. Accepted into the baseline 2026-10-21 on Joe's word;
+  the old baseline is kept beside it as `Baseline-pre-422-20261021`.
 - ~~A slider whose two children animate different properties: covered by the restore pass.~~
   **Corrected 2026-10-21: not covered** but for object on/off curves, which
   `BalanceMenuTreeActives` gives a rest side; the restore passes exempt tree-driven bindings, so
@@ -929,6 +930,10 @@ flood needs `activeStateMachine` or `rootStateMachine` destroyed (`Graph.Display
 first in `OnGraphGUI`), so the build alone is cleared. Left: what the GUI editor has and batch does
 not (Play mode, a different avatar or controller in the window, a sub-state machine open, the CCK's
 own inspector reacting to the new components). Needs Joe's setup before another probe.
+
+**Joe, 2026-10-21: it was in Play mode.** So the next probe is the same one in batch Play mode:
+enter Play, build with the window on the live animator, and count destroyed state machines. Still
+unknown: which avatar, whether a sub-state machine was open, whether closing the window stops it.
 
 ## Show it on the avatar: an in-scene overlay for every tool. Joe's idea 2026-10-20. PLAN ONLY, after 5.0.0
 
