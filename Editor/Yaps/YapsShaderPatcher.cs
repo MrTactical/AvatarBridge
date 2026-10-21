@@ -29,15 +29,17 @@ namespace AvatarBridge
         [Flags]
         public enum Roles { Plug = 1, Socket = 2, Squash = 4, All = Plug | Socket | Squash }
 
+        public const string RolesProperty = "_YAPS_Roles";
+
         // A patch made before roles, or for all of them, carries no such property.
         public static Roles RolesOf(Shader shader)
         {
-            int i = shader != null ? shader.FindPropertyIndex("_YAPS_Roles") : -1;
+            int i = shader != null ? shader.FindPropertyIndex(RolesProperty) : -1;
             return i < 0 ? Roles.All : (Roles) Mathf.RoundToInt(shader.GetPropertyDefaultFloatValue(i));
         }
 
-        static string RolesProperty(Roles roles) => roles == Roles.All ? ""
-            : $"        [HideInInspector] _YAPS_Roles (\"YAPS deforms compiled in\", Float) = {(int) roles}\n";
+        static string RolesDeclaration(Roles roles) => roles == Roles.All ? ""
+            : $"        [HideInInspector] {RolesProperty} (\"YAPS deforms compiled in\", Float) = {(int) roles}\n";
 
         // Every patched shader, from every conversion and build, in one folder. Its name hashes
         // everything it is made from, so the same source patched for another avatar, a variant,
@@ -658,7 +660,7 @@ namespace AvatarBridge
                     return null;
                 }
                 shaderFile.Text = shaderFile.Text.Insert(properties.Index + properties.Length,
-                    PropertyBlock + RolesProperty(roles));
+                    PropertyBlock + RolesDeclaration(roles));
                 foreach (var pair in lent)
                     shaderFile.Text = Regex.Replace(shaderFile.Text, $@"(UsePass\s+""){Regex.Escape(pair.Key)}/",
                         m => m.Groups[1].Value + pair.Value + "/");

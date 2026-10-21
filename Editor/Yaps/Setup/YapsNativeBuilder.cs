@@ -1417,9 +1417,10 @@ namespace AvatarBridge
             {
                 string name = ShaderUtil.GetPropertyName(shader, i);
                 if (!name.StartsWith("_YAPS_", System.StringComparison.Ordinal)) continue;
-                // The patcher's markers carry their meaning in the description,
-                // so the value is nothing anyone reads.
-                if (name == YapsShaderGUI.OriginalEditorProperty || name == YapsShaderPatcher.SourceShaderProperty) continue;
+                // The patcher's markers carry their meaning in the description or
+                // the shader default, so the material's value is nothing anyone reads.
+                if (name == YapsShaderGUI.OriginalEditorProperty || name == YapsShaderPatcher.SourceShaderProperty
+                    || name == YapsShaderPatcher.RolesProperty) continue;
                 var kind = ShaderUtil.GetPropertyType(shader, i);
                 if (!to.HasProperty(name))
                 {
