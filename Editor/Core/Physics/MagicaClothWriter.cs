@@ -286,11 +286,12 @@ namespace AvatarBridge
                 FitToPhysBone(ctx, data, sdata, softBody);
             }
 
-            if (ctx.Settings.boundSwingToSourceLimit && softBody && !string.IsNullOrEmpty(data.LimitTypeName) && data.LimitTypeName != "None")
+            if (ctx.Settings.boundSwingToSourceLimit && softBody)
             {
-                ctx.Report.Approximated(Category, data.Label,
-                    $"Source {data.LimitTypeName} limit not converted: MagicaCloth2 turns distance bounds off for a soft " +
-                    "body, whose spring range holds it near rest instead.");
+                // MagicaCloth2 turns distance bounds off for a soft body, so the limit goes on as an
+                // angle limit, as the stand-in's does. Without one a soft body swung unbounded on a
+                // walk: a belly to 160 degrees where its PhysBone stopped at 36.
+                if (!data.StandIn) ApplySoftBodyLimit(ctx, data, sdata);
             }
             else if (ctx.Settings.boundSwingToSourceLimit)
             {
@@ -784,6 +785,24 @@ namespace AvatarBridge
                         "against the world, and MagicaCloth2 measures the same thing the other way round.");
                 }
             }
+        }
+
+        static void ApplySoftBodyLimit(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata)
+        {
+            if (data.LimitTypeName == "None" || string.IsNullOrEmpty(data.LimitTypeName))
+            {
+                return;
+            }
+            float limitAngle = data.LimitTypeName == "Polar" ? Mathf.Max(data.MaxAngleX, data.MaxAngleZ) : data.MaxAngleX;
+            if (limitAngle <= 0f)
+            {
+                return;
+            }
+            sdata.angleLimitConstraint.useAngleLimit = true;
+            sdata.angleLimitConstraint.limitAngle.SetValue(Mathf.Min(limitAngle, 180f));
+            ctx.Report.Converted(Category, data.Label,
+                $"Swing capped at the source's {limitAngle:0}° {data.LimitTypeName} limit, as an angle limit: " +
+                "MagicaCloth2 turns distance bounds off for a soft body.");
         }
 
         static void ApplyMotionLeash(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata)

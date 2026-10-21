@@ -663,7 +663,7 @@ namespace AvatarBridge
                     "Measures the limb each collider sits on and tapers the capsule to it. Off keeps the source's sizes.",
                     settings.fitCollidersToMesh, v => settings.fitCollidersToMesh = v));
                 t.Add(BridgeElements.Bind("Bound swing to the source's limit",
-                    "Keeps a loose chain within the PhysBone's angle limit, as a distance bound that cannot vibrate.",
+                    "Keeps a loose chain within the PhysBone's angle limit: a distance bound that cannot vibrate, or an angle limit on a soft body.",
                     settings.boundSwingToSourceLimit, v => settings.boundSwingToSourceLimit = v));
                 t.Add(BridgeElements.Bind("Cap particle radius to bone spacing",
                     "Bounds each particle to half the gap between its bones. Try it on a long chain of close bones that misbehaves.",

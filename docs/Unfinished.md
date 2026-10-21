@@ -2043,6 +2043,15 @@ unmeasured: inside-bounds colliders as a distance bound. Next attempt starts fro
 **Still open: a belly flailing.** Avatar B's belly peaks at 160 to 170 degrees on the walk where the
 original moves 3, and slides 0.36 even at limitDistance 0. Not investigated.
 
+**2026-10-21: soft bodies now keep the source's angle limit** [M]. They had dropped it: the
+distance leash is off on a BoneSpring, and the report said "not converted". Now an MC2 angle limit
+at the source's angle (`ApplySoftBodyLimit`, `Dev/Tests/SoftBodyLimitTest`). Physics A/B on one
+avatar, before and after: a belly's jump 46.6 to 34.0 degrees against its PhysBone's 36 (its
+limit), everything else within a degree. The same run says the breasts swing LESS than the
+original on the scripted walk (14 against 48), so Joe's 2026-10-21 report from game, breasts
+lifting when moving forward, is not the limit and is not reproduced by the probe's walk. Open:
+what the game's movement does that the scripted walk does not (speed, sprint, IK lean).
+
 **GrabbyBones:** research and a fork plan, private in `Regression/GrabbyBonesForkPlan.md` (it leans on
 the client decompile). GPL-3.0; the author has pose on his own roadmap and merges outside PRs, so
 the plan recommends an upstream PR first and a fork only if declined.

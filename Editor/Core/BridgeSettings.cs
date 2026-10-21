@@ -113,7 +113,8 @@ namespace AvatarBridge
         // Honour the source's Angle/Hinge/Polar limit as a distance
         // bound from rest, allowing for the limit at every joint. A
         // distance bound removes motion rather than adding a restoring
-        // force, so it cannot start vibration. Not on soft bodies.
+        // force, so it cannot start vibration. A soft body has no distance
+        // bounds in MagicaCloth2, so it gets the limit as an angle limit.
         public bool boundSwingToSourceLimit = true;
         // Bound the particle to half the bone gap. Off since the
         // radius became a measurement; on a soft body this throws most
