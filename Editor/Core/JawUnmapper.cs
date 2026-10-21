@@ -152,6 +152,8 @@ namespace AvatarBridge
             // The name comes from "previous"; animator.avatar is null
             // here, cleared before the build.
             SaveRig(ctx, rebuilt, previous.name, "_NoJaw", out int orphans);
+            // Built from the skeleton pass's rig when that one ran, so its copy is no longer used.
+            orphans += DeleteStaleRigs(ctx.OutputDir, null, "_Matched");
             Reattach(animator, rebuilt, layers);
             EditorUtility.SetDirty(animator);
 

@@ -160,7 +160,15 @@ namespace AvatarBridge
             var tipScale = data.Root.lossyScale;
             db.m_EndOffset = data.EndpointPosition *
                              ((Mathf.Abs(tipScale.x) + Mathf.Abs(tipScale.y) + Mathf.Abs(tipScale.z)) / 3f);
-            db.m_Exclusions = new List<Transform>(data.Ignores);
+            db.m_Exclusions = data.Ignores.Concat(data.NestedExclusions).ToList();
+            if (data.NestedExclusions.Count > 0)
+            {
+                ctx.Report.Approximated(Category, data.Root.name,
+                    $"{BridgeElements.Count(data.NestedExclusions.Count, "other PhysBone's chain", "other PhysBones' chains")} added to the exclusions: " +
+                    $"{string.Join(", ", data.NestedExclusions.Take(4).Select(t => t.name))}" +
+                    $"{(data.NestedExclusions.Count > 4 ? ", …" : "")} and below, which VRChat leaves to their own PhysBone " +
+                    "(Ignore Other PhysBones).");
+            }
             if (data.HumanoidExclusions.Count > 0)
             {
                 ctx.Report.Approximated(Category, data.Root.name,

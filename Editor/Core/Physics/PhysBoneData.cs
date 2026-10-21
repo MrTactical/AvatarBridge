@@ -83,6 +83,11 @@ namespace AvatarBridge
 
         public List<Transform> ToeExclusions = new List<Transform>();
 
+        // Other PhysBones' roots inside this chain, which VRChat leaves to them when Ignore Other
+        // PhysBones is on. Apart from Ignores: MagicaCloth2 cannot drop them without pinning bones
+        // this chain moves.
+        public List<Transform> NestedExclusions = new List<Transform>();
+
         public static PhysBoneChainData Read(VRCPhysBone pb, Animator animator, bool excludeToes)
         {
             var data = new PhysBoneChainData
@@ -110,7 +115,7 @@ namespace AvatarBridge
                 MaxAngleX = pb.maxAngleX,
                 MaxAngleZ = pb.maxAngleZ,
                 MaxStretch = pb.maxStretch,
-                MaxSquish = ReadFloat(pb, "maxSquish", 0f),
+                MaxSquish = ReadField(pb, "maxSquish", 0f),
                 Parameter = pb.parameter,
                 IsAnimated = pb.isAnimated,
                 MultiChildTypeName = pb.multiChildType.ToString()
@@ -129,6 +134,22 @@ namespace AvatarBridge
                         data.Ignores.Add(t);
                     }
                 }
+            }
+            // VRChat's walk collects every PhysBone under the hierarchy root, disabled ones too, and
+            // stops at any child that is one's root. Read by name: older SDKs lack the field.
+            if (data.Root != null && ReadField(pb, "ignoreOtherPhysBones", false))
+            {
+                foreach (var other in data.Root.root.GetComponentsInChildren<VRCPhysBone>(true))
+                {
+                    var otherRoot = other.rootTransform != null ? other.rootTransform : other.transform;
+                    if (other != pb && otherRoot != data.Root && otherRoot.IsChildOf(data.Root)
+                        && !data.Ignores.Any(t => otherRoot.IsChildOf(t)) && !data.NestedExclusions.Contains(otherRoot))
+                    {
+                        data.NestedExclusions.Add(otherRoot);
+                    }
+                }
+                // The walk never reaches a root below another, so only the top of each counts.
+                data.NestedExclusions.RemoveAll(n => data.NestedExclusions.Any(o => o != n && n.IsChildOf(o)));
             }
             if (pb.colliders != null)
             {
@@ -217,7 +238,8 @@ namespace AvatarBridge
             int children = 0;
             for (int i = 0; i < data.Root.childCount; i++)
             {
-                if (!data.Ignores.Contains(data.Root.GetChild(i)))
+                var child = data.Root.GetChild(i);
+                if (!data.Ignores.Contains(child) && !data.NestedExclusions.Contains(child))
                 {
                     children++;
                 }
@@ -227,22 +249,22 @@ namespace AvatarBridge
             return data;
         }
 
-        static float ReadFloat(object source, string fieldName, float fallback)
+        static T ReadField<T>(object source, string fieldName, T fallback)
         {
             var type = source.GetType();
             try
             {
                 var field = type.GetField(fieldName,
                     System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-                if (field != null && field.FieldType == typeof(float))
+                if (field != null && field.FieldType == typeof(T))
                 {
-                    return (float)field.GetValue(source);
+                    return (T)field.GetValue(source);
                 }
                 var property = type.GetProperty(fieldName,
                     System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-                if (property != null && property.PropertyType == typeof(float))
+                if (property != null && property.PropertyType == typeof(T))
                 {
-                    return (float)property.GetValue(source);
+                    return (T)property.GetValue(source);
                 }
             }
             catch

@@ -56,6 +56,9 @@ namespace AvatarBridge.Regression
             "MuteSelf", "Voice", "IsLocal", "Zoom", "Blend", "Upright", "AngularY", "Velocity",
             "VelocityX", "VelocityY", "VelocityZ", "TrackingType", "Seated", "Earmuffs",
             "ScaleFactor", "ScaleModified", "Output", "Height",
+            // The stream and the Scale Feed layer rewrite these every frame, so a driven value
+            // never holds and read as refused.
+            "EyeHeightAsMeters", "EyeHeightAsPercent", "ScaleFactorInverse",
         };
 
         public struct SweepResult

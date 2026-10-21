@@ -9,6 +9,10 @@ Status words used below: **shipped** (in the package), **built** (in the code, u
 **proposed** (designed, not started), **postponed** (designed, deliberately not built),
 **blocked** (needs something outside this repo).
 
+This is a record, so code names below are as they stood when each part was written. Three are gone:
+`DefaultMaxLightEmittingSockets` and `Places()` (the light path's one-socket start is `StartLit` in
+`YapsSocketBuilder` now) and `YapsAtlas.Enabled` (it was a constant `true`; the atlas is always on).
+
 ---
 
 ## What runs today

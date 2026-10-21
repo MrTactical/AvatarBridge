@@ -43,6 +43,7 @@ namespace AvatarBridge
         {
             var o = new Outcome();
             if (root == null) { o.Message = "nothing selected"; return o; }
+            if (YapsNativeBuilder.Playing) { o.Message = YapsNativeBuilder.NotInPlayMode; return o; }
             // An avatar's plugs and sockets ride the avatar; a spawnable on it or inside it
             // never uploads as a prop and only leaves a collider on the body.
             var avatar = root.GetComponentInParent<CVRAvatar>(true);

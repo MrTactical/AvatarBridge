@@ -433,6 +433,8 @@ namespace AvatarBridge.Regression
                 {
                     var walker = MakeSocket("__Walk", YapsSocket.SocketKind.Hole, false, w.atlas, true);
                     float seam = 0f, stretch = 1f, squash = 1f, jump = 0f, seamAt = 0f, stretchAt = 0f, squashAt = 0f, jumpAt = 0f;
+                    var seamPair = (a: -1, b: -1);
+                    Vector4[] seamBent = null;
                     // The worst stretch's own lengths: a part a held shape hides
                     // is collapsed, and a ratio off a near-zero edge says nothing.
                     float stretchRest = 0f, stretchBent = 0f;
@@ -448,7 +450,7 @@ namespace AvatarBridge.Regression
                         foreach (var (va, vb) in seams)
                         {
                             float d = Vector3.Distance(bent[va], bent[vb]);
-                            if (d > seam) { seam = d; seamAt = reach; }
+                            if (d > seam) { seam = d; seamAt = reach; seamPair = (va, vb); seamBent = bent; }
                         }
                         var opening = walker.transform.position;
                         var outward = walker.transform.forward;
@@ -513,6 +515,21 @@ namespace AvatarBridge.Regression
                                     $"socket {walker.transform.position.x:F5} {walker.transform.position.y:F5} {walker.transform.position.z:F5}, " +
                                     $"length {length:F5}, screen {hdr.pixelWidth}x{hdr.pixelHeight}");
                             }
+                    }
+                    // A true seam shares its place in the mesh itself; a pair that only meets at rest
+                    // was put there by a shape, often a whole part squashed to one point.
+                    if (seam >= 0.5e-3f && seamPair.a >= 0)
+                    {
+                        var (pa, pb) = seamPair;
+                        var key = Vector3Int.RoundToInt((Vector3) rest[pa] * 1e5f);
+                        int cluster = 0;
+                        for (int i = 0; i < n; i++)
+                            if (rest[i].w > 0.5f && Vector3Int.RoundToInt((Vector3) rest[i] * 1e5f) == key) cluster++;
+                        var bind = mesh.vertices;
+                        var normals = mesh.normals;
+                        Log($"  worst seam: vertices {pa} and {pb}, {cluster} at that rest point, {Vector3.Distance(bind[pa], bind[pb]):0.00000} apart in mesh units, " +
+                            $"normals {(normals.Length > pb ? Vector3.Angle(normals[pa], normals[pb]) : -1f):0}° apart; bent moved them " +
+                            $"{Vector3.Distance(seamBent[pa], rest[pa]) * 1000f:0.0} and {Vector3.Distance(seamBent[pb], rest[pb]) * 1000f:0.0} mm");
                     }
                     fail += Check($"{w.label}: no seam opens past 0.5 mm", seam < 0.5e-3f);
                     // Crushed behind the opening is the socket hiding what went

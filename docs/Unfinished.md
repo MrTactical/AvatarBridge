@@ -100,11 +100,24 @@ own inspector reacting to the new components). Needs Joe's setup before another 
 enter Play, build with the window on the live animator, and count destroyed state machines. Still
 unknown: which avatar, whether a sub-state machine was open, whether closing the window stops it.
 
+**Written on dev 2026-10-21, not yet compiled or probed (Joe in VR):** `AnimatorFloodProbe
+-floodPlay` builds in batch Play mode, leaves it, and checks what the build left behind. Whatever
+the flood turns out to be, a build in Play mode is wrong on its own: leaving Play puts the scene back
+but keeps the materials and repointed clips, so an animation switches to a squash copy the avatar
+no longer wears. Bake, socket build and rebuild, prop, remove, the Setup card's build buttons and
+`YapsSquash.Build`/`Strip` now refuse in Play mode with `YapsNativeBuilder.NotInPlayMode`; README
+says so beside the Play mode preview. Order: probe on the old code first (stash), then on the fix.
+
 ### 2. A rebuilt rig the jaw pass rebuilds again
 
 
 When the jaw pass also rebuilds a rig, the `_Matched` copy `RigSkeletonSync` writes goes unused
 in the output. The rest of the floating-avatar fix is archived ("An avatar floated").
+**Written on dev 2026-10-21, not yet compiled:** `JawUnmapper` deletes the stale `_Matched` rig
+after saving `_NoJaw`, as it already does its own earlier copies (the skeleton pass runs first,
+`BridgeConverter.cs:167-168`). Verify on a conversion where both passes fire: one rig in the
+output, the avatar standing on it. The digests do not record which passes ran, so the corpus
+cannot pick such an avatar out by itself.
 
 ### 3. Unskinned grab-and-stretch handles deleted as helper rigs (corpus 414)
 
@@ -116,6 +129,11 @@ Also: the toggle sweep threw on 11 avatars in every run, so their toggles were n
 sweeps them, and an avatar with nothing to sweep says so. Still open: one avatar's sweep now refuses
 `ScaleFactorInverse` where it refused `EyeHeightAsMeters`; both are game-driven, and the scaler change
 explains the swap, so it reads as expected but has not been traced line by line.
+**Traced 2026-10-21:** the Scale Feed layer's Recompute state loops every 1/60 s and its driver
+rewrites `ScaleFactor`, `ScaleFactorInverse`, `EyeHeightAsPercent` and `ScaleModified` each entry
+(`AnimatorMerger.cs:5627-5800`), so a value the sweep drives never holds. `ToggleSweep` now counts
+`EyeHeightAsMeters`, `EyeHeightAsPercent` and `ScaleFactorInverse` as game-owned. Expected on the
+next run: that avatar's refused line goes away.
 
 ### 4. A slider whose two children animate different properties (corpus 415)
 
@@ -201,6 +219,13 @@ the YAPS avatars [M]:
 - **Squash on Unity's Standard, 2026-10-21 [M]:** the plug and socket move a Standard material to
   YAPS Simple Lit; the squash only patches, refuses Standard ("no source file on disk") and is not
   built. Run 424 has nine such avatars. Same Simple Lit fallback, or say so in the setup card.
+  **Written on dev, not yet compiled (Joe in VR):** `YapsSquash.ShaderFor` moves a Standard layer to
+  Simple Lit only when it is opaque and uses nothing Simple Lit lacks (metallic, occlusion, emission,
+  height or detail maps, smoothness from albedo alpha, an emission colour with the keyword off), since
+  squash patches the body's own skin and a changed look there is worse than holding still. Anything
+  else keeps the refusal, with the reason. `SquashRefusedTest` gains a plain Standard case (built, on
+  a patched Simple Lit copy) and a metallic-map case (refused, names the map). Then: the nine
+  avatars from run 424 in a subset.
 
 
 Joe, on the K2 options: "not every shader is built the same ... we would need to test YAPS plugs and
@@ -321,10 +346,16 @@ ranked by how visible it should be:
    ends and never re-centres.
 7. **Inertia split** (weakened by its skeptic): all three of world, local and anchor take `1-immobile`
    (`:670-697`). Walking ends up over-held; head turns slightly over-held. Needs the harness.
-8. **Structure.** `ignoreOtherPhysBones` never read, so a nested chain is driven by two cloths.
-   Curves keep only endpoints though MC2 samples 16 points; the Immobile curve is dropped. PhysBone
-   `version` never read (v1.0 stiffness algebra differs). One cloth per PhysBone (issue #7): the
-   "asked which avatar" blocker is stale, the reporter sent it on Discord. Distance culling unused.
+8. **Structure.** `ignoreOtherPhysBones` is now read (`PhysBoneData.NestedExclusions`, matching
+   `VRCPhysBoneBase.cs:714`: any child that is another PhysBone's root, the whole hierarchy's
+   components, disabled ones too). DynamicBone excludes them exactly (`NestedPhysBoneTest`).
+   **MC2 still open:** it only reports "Also moves", because rooting around a nested root pins the
+   first joint of every sibling branch, and partway down a strand it would pin the path bones too.
+   Measure with the Physics A/B probe on an avatar with one, rooted around vs two cloths on one
+   bone, before choosing. Curves keep only endpoints though MC2 samples 16 points; the Immobile
+   curve is dropped. ~~PhysBone `version` never read~~ withdrawn: `IsVersion10` is read and used
+   (`MagicaClothWriter.cs:631,633,731,894`). One cloth per PhysBone (issue #7): the "asked which
+   avatar" blocker is stale, the reporter sent it on Discord. Distance culling unused.
 
 ### 9. The audit of 2026-10-03: what is still open
 
@@ -363,11 +394,11 @@ ranked by how visible it should be:
 - **AM1-14, PlayAudio paths with a slash.** Whether VRChat plays a PlayAudio whose AudioSource object
   has `/` in its name is untested; one VRChat test before `ConvertPlayAudio` moves to
   `FindByAnimationPath`.
-- **Docs outside the README.** `YAPS-CLEAN-ROOM.md` still rests YAPS's independence on "no screen
-  atlas, a contact channel", both since reversed: rewrite it around what YAPS does today (its own
-  atlas protocol, DPS marker lights). `YAPS5.md` names `DefaultMaxLightEmittingSockets` and
-  `YapsAtlas.Enabled`, both gone. The `ParameterMenuConverter` header still says its entries exist
-  so ChilloutVR syncs the values.
+- **Docs outside the README: done on dev 2026-10-21.** `YAPS-CLEAN-ROOM.md` now rests on YAPS's own
+  atlas protocol and the DPS marker lights, and no longer claims a contact channel. `YAPS5.md` stays
+  a record, with a note at the top naming the three code names since removed and what replaced
+  them. The `ParameterMenuConverter` header says the entries give menu controls and profile saves,
+  and that sync comes from the animator's parameters.
 - **Optional, no bug behind them:** an early out in `YapsDeform` before the full baked read (YC1-10;
   a compact layout would be a protocol change), one `PatchOnSimpleLit` for both builders (YC1-08),
   sharing the clip walk in `ConstraintScaleRelay` (PHY-13), a weights-based helper-rig rule shared
@@ -378,6 +409,15 @@ ranked by how visible it should be:
 Found 2026-10-21 [M]: on a freshly converted SPS avatar the tester's seams open 38 to 102 mm and 6
 scenarios fail, with the includes before and after the roles change alike, so not that change.
 Read what the seam check measures before calling it a bake fault.
+- **Read 2026-10-21:** it pairs every captured plug vertex that sits within 0.01 mm of another at
+  rest, with the current blendshape weights applied, and fails a pair that parts by more than
+  0.5 mm bent. That catches true seams (one point, two UVs or normals) and also vertices a shape
+  collapses together without being one point, which YAPS is right to move apart. The edge check
+  already leaves collapsed parts out; the seam check does not.
+- **Instrument written, not yet run:** a failing seam check now logs its worst pair, how many
+  vertices share that rest point, how far apart the two sit in the bind mesh and how far apart
+  their normals are. Bind distance 0 means a real seam, a bake or deform fault; above 0 with a
+  cluster bigger than two means the shape collapse, and the check needs the edge check's rule.
 
 ## 5.0.1
 

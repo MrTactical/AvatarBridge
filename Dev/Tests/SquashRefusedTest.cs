@@ -9,7 +9,8 @@ namespace AvatarBridge.Regression
 {
     // A squash whose every layer refuses the patch squashes nothing. It was built anyway and
     // reported as converted, with the refusals only in the detail (found by the corpus on an
-    // avatar whose one skin shader would not compile once patched).
+    // avatar whose one skin shader would not compile once patched). Standard is refused too, but
+    // a skin Simple Lit can draw moves onto it instead.
     //
     // Run: -executeMethod AvatarBridge.Regression.SquashRefusedTest.Run
     public static class SquashRefusedTest
@@ -40,7 +41,7 @@ namespace AvatarBridge.Regression
                 Debug.Log($"[SquashRefusedTest] {(ok ? "ok   " : "WRONG")} {what}");
             }
 
-            var root = new GameObject("SquashRefusedAvatar").transform;
+            var roots = new System.Collections.Generic.List<Transform>();
             try
             {
                 Directory.CreateDirectory(Dir);
@@ -49,36 +50,35 @@ namespace AvatarBridge.Regression
                 var material = new Material(AssetDatabase.LoadAssetAtPath<Shader>(Dir + "/SquashRefused.shader")) { name = "Skin" };
                 AssetDatabase.CreateAsset(material, Dir + "/Skin.mat");
 
-                // A chest with a pair on it, each part a small ball of skin on its own bone.
-                var chest = new GameObject("Chest").transform;
-                chest.SetParent(root, false);
-                chest.localPosition = new Vector3(0f, 1.3f, 0f);
-                var bones = new[] { chest, Bone("Breast_L", chest, -0.08f), Bone("Breast_R", chest, 0.08f) };
-                var smr = new GameObject("Body").AddComponent<SkinnedMeshRenderer>();
-                smr.transform.SetParent(root, false);
-                const int PerSide = 40;
-                var verts = new Vector3[2 * PerSide];
-                var weights = new BoneWeight[2 * PerSide];
-                for (int v = 0; v < verts.Length; v++)
-                {
-                    int side = v / PerSide, i = v % PerSide;
-                    float y = 1f - 2f * (i + 0.5f) / PerSide, r = Mathf.Sqrt(1f - y * y), a = i * 2.4f;
-                    verts[v] = bones[1 + side].position + 0.05f * new Vector3(r * Mathf.Cos(a), y, r * Mathf.Sin(a));
-                    weights[v] = new BoneWeight { boneIndex0 = 1 + side, weight0 = 1f };
-                }
-                var mesh = new Mesh { name = "SquashRefused", vertices = verts, boneWeights = weights };
-                mesh.triangles = Enumerable.Range(0, verts.Length / 3 * 3).ToArray();
-                mesh.bindposes = bones.Select(b => b.worldToLocalMatrix * smr.transform.localToWorldMatrix).ToArray();
-                smr.bones = bones;
-                smr.sharedMesh = mesh;
-                smr.sharedMaterial = material;
-
+                var root = Avatar(material, roots);
                 string said = YapsSquash.Add(root, Dir + "/Out", out bool built);
                 Debug.Log("[SquashRefusedTest]   said: " + said);
                 Check(!built, "a squash with no layer that can take it is not built");
                 Check(!root.GetComponentsInChildren<Transform>(true).Any(t => t.name.StartsWith("YAPS squash")),
                     "and leaves nothing on the avatar");
                 Check(said.Contains("surface shader"), "the reason given is the layer's refusal");
+
+                // Standard has no source to patch: a skin Simple Lit can draw moves onto it.
+                var standard = new Material(Shader.Find("Standard")) { name = "Plain" };
+                AssetDatabase.CreateAsset(standard, Dir + "/Plain.mat");
+                root = Avatar(standard, roots);
+                said = YapsSquash.Add(root, Dir + "/OutPlain", out built);
+                Debug.Log("[SquashRefusedTest]   said: " + said);
+                var worn = root.GetComponentInChildren<SkinnedMeshRenderer>().sharedMaterial;
+                Check(built, "a plain Standard skin is squashed");
+                Check(worn != standard && worn.HasProperty("_YAPS_DentOwn") && worn.HasProperty("_Glossiness"),
+                    "on a patched Simple Lit copy");
+                Check(said.Contains("wears YAPS Simple Lit"), "and the log says so");
+
+                // One Simple Lit would draw differently keeps its own look, and says why.
+                var mapped = new Material(standard) { name = "Mapped" };
+                mapped.SetTexture("_MetallicGlossMap", Texture2D.whiteTexture);
+                AssetDatabase.CreateAsset(mapped, Dir + "/Mapped.mat");
+                root = Avatar(mapped, roots);
+                said = YapsSquash.Add(root, Dir + "/OutMapped", out built);
+                Debug.Log("[SquashRefusedTest]   said: " + said);
+                Check(!built, "a Standard skin with a metallic map is not squashed");
+                Check(said.Contains("no metallic map"), "and the reason names the map");
             }
             catch (System.Exception e)
             {
@@ -87,11 +87,41 @@ namespace AvatarBridge.Regression
             }
             finally
             {
-                Object.DestroyImmediate(root.gameObject);
+                foreach (var r in roots) Object.DestroyImmediate(r.gameObject);
                 AssetDatabase.DeleteAsset(Dir);
             }
             Debug.Log(failures == 0 ? "[SquashRefusedTest] PASS" : $"[SquashRefusedTest] FAIL: {failures}");
             if (Application.isBatchMode) EditorApplication.Exit(failures == 0 ? 0 : 1);
+        }
+
+        // A chest with a pair on it, each part a small ball of skin on its own bone.
+        static Transform Avatar(Material material, System.Collections.Generic.List<Transform> roots)
+        {
+            var root = new GameObject("SquashRefusedAvatar").transform;
+            roots.Add(root);
+            var chest = new GameObject("Chest").transform;
+            chest.SetParent(root, false);
+            chest.localPosition = new Vector3(0f, 1.3f, 0f);
+            var bones = new[] { chest, Bone("Breast_L", chest, -0.08f), Bone("Breast_R", chest, 0.08f) };
+            var smr = new GameObject("Body").AddComponent<SkinnedMeshRenderer>();
+            smr.transform.SetParent(root, false);
+            const int PerSide = 40;
+            var verts = new Vector3[2 * PerSide];
+            var weights = new BoneWeight[2 * PerSide];
+            for (int v = 0; v < verts.Length; v++)
+            {
+                int side = v / PerSide, i = v % PerSide;
+                float y = 1f - 2f * (i + 0.5f) / PerSide, r = Mathf.Sqrt(1f - y * y), a = i * 2.4f;
+                verts[v] = bones[1 + side].position + 0.05f * new Vector3(r * Mathf.Cos(a), y, r * Mathf.Sin(a));
+                weights[v] = new BoneWeight { boneIndex0 = 1 + side, weight0 = 1f };
+            }
+            var mesh = new Mesh { name = "SquashRefused", vertices = verts, boneWeights = weights };
+            mesh.triangles = Enumerable.Range(0, verts.Length / 3 * 3).ToArray();
+            mesh.bindposes = bones.Select(b => b.worldToLocalMatrix * smr.transform.localToWorldMatrix).ToArray();
+            smr.bones = bones;
+            smr.sharedMesh = mesh;
+            smr.sharedMaterial = material;
+            return root;
         }
 
         static Transform Bone(string name, Transform parent, float x)

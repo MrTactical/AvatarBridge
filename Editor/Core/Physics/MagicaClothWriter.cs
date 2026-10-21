@@ -172,6 +172,18 @@ namespace AvatarBridge
                     "if they are deliberate.");
             }
 
+            // ponytail: reported, not rooted around. Rooting below a nested chain pins the bones
+            // this chain moves beside it; measure that against two cloths on one bone before choosing.
+            if (data.NestedExclusions.Count > 0)
+            {
+                ctx.Report.Approximated(Category, data.Label,
+                    $"Also moves {BridgeElements.Count(data.NestedExclusions.Count, "other PhysBone's chain", "other PhysBones' chains")}: " +
+                    $"{string.Join(", ", data.NestedExclusions.Take(4).Select(t => t.name))}" +
+                    $"{(data.NestedExclusions.Count > 4 ? ", …" : "")} and below. VRChat leaves those to their own PhysBone " +
+                    "(Ignore Other PhysBones), but MagicaCloth2 leaves a bone out only by rooting below it, which would " +
+                    "pin bones this chain moves.");
+            }
+
             if (data.Ignores.Count == 0 && !ignoreBranching)
             {
                 // Chains folded in by the grouping pass are roots in the same

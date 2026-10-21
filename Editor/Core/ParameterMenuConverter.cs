@@ -20,7 +20,8 @@ namespace AvatarBridge
     //
     // The generated entries deliberately have no GameObject targets: the converted FX
     // layers already react to the parameters, the entries only exist so CVR shows menu
-    // controls and syncs the values.
+    // controls and saves the values to the profile. Sync comes from the animator's own
+    // parameter list, entry or not.
     public static class ParameterMenuConverter
     {
         const string Category = "Parameters & menu";

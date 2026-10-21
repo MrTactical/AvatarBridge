@@ -560,7 +560,9 @@ bones against them, as VRChat does, rather than only the joints), which transfor
 whether it started enabled. Two things can't cross exactly: MagicaCloth2
 leaves a bone out only by rooting the cloth below it, so where that would leave too little of the
 chain to move, the excluded bones simulate with the rest; and an *inside bounds* collider has no
-equivalent. The report names each.
+equivalent. The report names each. For the same reason a PhysBone nested inside another's chain,
+which VRChat leaves to the inner one when **Ignore Other PhysBones** is on, is moved by both
+cloths; the report names those too. DynamicBone excludes it exactly.
 
 **A breast is not a chain of hanging bones.** Chains read as a breast, butt, belly or thigh are
 written as MagicaCloth2's **Bone Spring**: a volume anchored to a bone and held near its rest
@@ -1646,6 +1648,10 @@ again (or the avatar reconverted) to notice its socket, and to stretch in motion
   avatar: edit mode holds the rest pose, where every part of a plug agrees about which way it
   faces. A test plug dropped in Play mode is the plug prop prefab, so make that first (*Create a
   plug prop prefab*); one built there would leave its files behind.
+- **Building waits for edit mode.** Baking, *Add squash*, building, rebuilding or removing a socket
+  or plug, and making a prop refuse in Play mode and say why: Unity puts the scene back when Play
+  mode ends but keeps the materials and animations a build changed, so the avatar would come out
+  half built.
 - **In the Avatar Tester**, the **Interaction lab** card lists the avatar's sockets and plugs, and
   any on props in the scene, under **Plugs and sockets**: **Preview** and **Drop a test plug here**
   per socket, **Preview into a hole** and **Preview through a ring** per baked plug, the same
@@ -2168,7 +2174,10 @@ Bipeds are unaffected by any of it.
   would undo the rewiring.
 - **Squash (opt-in).** A layer whose shader cannot be patched (a built-in shader with no source on
   disk, a surface shader) cannot follow, so the pair under it holds still rather than coming
-  through it, and the report names the layer. When no layer over the parts can be patched,
+  through it, and the report names the layer. Unity's Standard is the exception when the layer is
+  opaque and uses only colour, albedo, normal map, metallic and smoothness: it moves to **YAPS
+  Simple Lit** with those carried over, and the report says so. A Standard layer with a
+  metallic, occlusion, emission, height or detail map keeps its look and holds still. When no layer over the parts can be patched,
   nothing is built and the report says why. A layer casts its shadow unsquashed when the shadow
   comes from somewhere the conversion cannot reach, such as another shader's caster or a Fallback
   that cuts alpha; Unity's standard caster and an opaque Fallback bend with it. From painted regions, a layer more than 3 cm off the skin

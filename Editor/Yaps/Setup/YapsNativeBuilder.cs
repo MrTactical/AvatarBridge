@@ -32,12 +32,19 @@ namespace AvatarBridge
             public float Length, Radius;
         }
 
+        // A build writes the scene and files together, and leaving Play mode puts back only the
+        // scene: the animations it repointed would then switch to copies the avatar no longer wears.
+        public static bool Playing => EditorApplication.isPlayingOrWillChangePlaymode;
+        public const string NotInPlayMode = "Leave Play mode first. Unity undoes a build's changes to the scene when Play mode ends, " +
+                                            "but keeps the materials and animations it changed, so the avatar would come out half built.";
+
         // --- make this a plug ------------------------------------------------
 
         // Every readout comes off the mesh before the bake, so one that stops
         // short puts back the ones whose plugs still own their materials.
         public static Outcome Bake(YapsPlug plug)
         {
+            if (Playing) return new Outcome { Message = NotInPlayMode };
             if (plug != null && plug.Target != null) YapsLock.Animate(plug.Target.transform);
             var o = BakeOnce(plug);
             if (!o.Ok && plug != null) YapsDebugOverlayBuilder.Build(plug.Target, null);
@@ -899,7 +906,7 @@ namespace AvatarBridge
         // portal writer it misses publishes for nobody in game.
         public static void RebuildMarkers(YapsSocket socket)
         {
-            if (socket == null) return;
+            if (socket == null || Playing) return;
             YapsSocketBuilder.Build(socket);
             YapsOwner.Wire(socket.GetComponentInParent<CVRAvatar>(true));
         }
@@ -911,6 +918,7 @@ namespace AvatarBridge
         {
             var lines = new List<string>();
             if (socket == null) return lines;
+            if (Playing) { lines.Add("✗ " + NotInPlayMode); return lines; }
             Undo.RegisterFullObjectHierarchyUndo(socket.gameObject, "Build YAPS socket");
             string renamed = YapsToggles.RenameToLabel(socket, socket.GetComponentInParent<CVRAvatar>(true));
             if (renamed != null) lines.Add($"✓ {renamed}");
@@ -948,6 +956,7 @@ namespace AvatarBridge
         // changed the entries. What the plug inspector's button does.
         public static Outcome BakeAndRefreshMenu(YapsPlug plug)
         {
+            if (Playing) return new Outcome { Message = NotInPlayMode };
             int before = YapsToggles.Edits;
             var o = Bake(plug);
             var avatar = plug != null ? plug.GetComponentInParent<CVRAvatar>(true) : null;

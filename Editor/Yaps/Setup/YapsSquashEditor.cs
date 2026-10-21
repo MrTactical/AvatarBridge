@@ -127,9 +127,10 @@ namespace AvatarBridge
                 build.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Remove the squash", () =>
                 {
                     YapsSquashPreview.Stop();
-                    YapsSquash.Strip(root, YapsSwapFollow.RunnableClips(root));
-                    _said = "Squash removed. Every layer and toggle is back on its own material; the knobs stay for the next build.";
-                    _saidTone = Tone.Good;
+                    bool removed = YapsSquash.Strip(root, YapsSwapFollow.RunnableClips(root));
+                    _said = removed ? "Squash removed. Every layer and toggle is back on its own material; the knobs stay for the next build."
+                        : YapsNativeBuilder.NotInPlayMode;
+                    _saidTone = removed ? Tone.Good : Tone.Warn;
                     RebuildLater();
                 }, null, ButtonKind.Danger)));
             }

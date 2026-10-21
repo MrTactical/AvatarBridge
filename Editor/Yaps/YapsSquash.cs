@@ -148,6 +148,8 @@ namespace AvatarBridge
 
         public static string Build(Transform root, out bool built)
         {
+            built = false;
+            if (YapsNativeBuilder.Playing) return YapsNativeBuilder.NotInPlayMode;
             // Back into the folder the last build used, so a rebuild writes over its own copies
             // and anything pointing at them keeps pointing, instead of leaving a second set.
             string folder = root.GetComponentsInChildren<Renderer>(true).SelectMany(r => r.sharedMaterials)
@@ -649,10 +651,43 @@ namespace AvatarBridge
             }
             var shader = YapsShaderPatcher.Patch(source, report, out string refusal, out int shadows,
                 roles: YapsShaderPatcher.Roles.Squash);
+            // Standard has no source to patch. Simple Lit takes its property names, so a skin using
+            // only what Simple Lit draws moves over unchanged; any other skin keeps its own look.
+            if (shader == null && source.shader != null && source.shader.name == "Standard")
+            {
+                string lacks = SimpleLitLacks(source);
+                var plain = lacks == null ? YapsNativeBuilder.OnSimpleLit(source, out lacks) : null;
+                if (plain != null)
+                {
+                    shader = YapsShaderPatcher.Patch(plain, report, out string plainRefusal, out shadows,
+                        roles: YapsShaderPatcher.Roles.Squash);
+                    lacks = "YAPS Simple Lit refused too: " + plainRefusal;
+                    UnityEngine.Object.DestroyImmediate(plain);
+                }
+                if (shader != null) log?.Add($"\"{source.name}\" wears YAPS Simple Lit now, colour, albedo, normal map, metallic and smoothness carried over");
+                else refusal += "; and " + lacks;
+            }
             if (shader == null) log?.Add($"left \"{source.name}\" as it was: {refusal}");
             // Unity's standard caster is wrapped; a caster from anywhere else cannot be reached.
             else if (shadows > 0) log?.Add($"\"{source.name}\" casts its shadow unsquashed");
             return shader;
+        }
+
+        // What a Standard material draws that Simple Lit does not, or null.
+        static string SimpleLitLacks(Material m)
+        {
+            if (m.GetFloat("_Mode") != 0f) return "YAPS Simple Lit is opaque only";
+            foreach (var (map, what) in new[] { ("_MetallicGlossMap", "metallic map"), ("_OcclusionMap", "occlusion map"),
+                ("_EmissionMap", "emission map"), ("_ParallaxMap", "height map"), ("_DetailMask", "detail mask"),
+                ("_DetailAlbedoMap", "detail albedo"), ("_DetailNormalMap", "detail normal map") })
+            {
+                if (m.GetTexture(map) != null) return "YAPS Simple Lit has no " + what;
+            }
+            if (m.GetFloat("_SmoothnessTextureChannel") != 0f) return "YAPS Simple Lit cannot read smoothness from the albedo's alpha";
+            // Simple Lit always adds the colour; Standard only with the keyword on.
+            if (!m.IsKeywordEnabled("_EMISSION") && m.GetColor("_EmissionColor").maxColorComponent > 0f)
+                return "YAPS Simple Lit would light an emission this material leaves off";
+            return null;
         }
 
         static Material Save(Material copy, Material source, string folder, string file)
@@ -993,9 +1028,10 @@ namespace AvatarBridge
 
         // An earlier build off again: each layer back on the material it was copied from, and
         // with clips given, every swap pointed back the same way, or a toggle would put on a
-        // squash copy no provider writes any more.
-        public static void Strip(Transform root, IList<AnimationClip> clips = null)
+        // squash copy no provider writes any more. False when refused in Play mode.
+        public static bool Strip(Transform root, IList<AnimationClip> clips = null)
         {
+            if (YapsNativeBuilder.Playing) return false;
             var skipped = new SortedSet<string>();
             foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
@@ -1017,6 +1053,7 @@ namespace AvatarBridge
             foreach (var t in root.GetComponentsInChildren<Transform>(true).Where(t => t.name == FollowName || t.name == RestName || t.name == BackName || t.name == ShaderHostName).ToList())
                 if (t != null) UnityEngine.Object.DestroyImmediate(t.gameObject);
             if (root.gameObject.scene.IsValid()) EditorSceneManager.MarkSceneDirty(root.gameObject.scene);
+            return true;
         }
 
         // The asset to use in place of `asset`: the one already at its path when the last build

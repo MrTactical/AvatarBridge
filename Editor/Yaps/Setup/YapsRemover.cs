@@ -90,7 +90,7 @@ namespace AvatarBridge
         // Asks, listing what goes, then removes. True when it did.
         public static bool Ask(YapsSocket socket)
         {
-            if (socket == null) return false;
+            if (socket == null || RefusedPlaying()) return false;
             if (!Confirm($"Remove socket \"{socket.name}\"?", Plan(socket))) return false;
             Debug.Log("[YAPS] " + RemoveSocket(socket));
             return true;
@@ -98,9 +98,17 @@ namespace AvatarBridge
 
         public static bool Ask(YapsPlug plug)
         {
-            if (plug == null) return false;
+            if (plug == null || RefusedPlaying()) return false;
             if (!Confirm($"Remove plug \"{plug.name}\"?", Plan(plug))) return false;
             Debug.Log("[YAPS] " + RemovePlug(plug));
+            return true;
+        }
+
+        // Removing edits the controller as well as the scene, the same split a build has.
+        static bool RefusedPlaying()
+        {
+            if (!YapsNativeBuilder.Playing) return false;
+            EditorUtility.DisplayDialog("YAPS", YapsNativeBuilder.NotInPlayMode, "OK");
             return true;
         }
 

@@ -261,7 +261,11 @@ namespace AvatarBridge
                 _squashStatus.Set("Nothing to remove: the avatar picked in step 1 has no squash.", Tone.Info);
                 return;
             }
-            YapsSquash.Strip(_target.transform, YapsSwapFollow.RunnableClips(_target.transform));
+            if (!YapsSquash.Strip(_target.transform, YapsSwapFollow.RunnableClips(_target.transform)))
+            {
+                _squashStatus.Set(YapsNativeBuilder.NotInPlayMode, Tone.Warn);
+                return;
+            }
             _squashStatus.Set("Squash removed. Every layer and toggle is back on its own material.", Tone.Good);
             ShowSquashState();
         }
@@ -333,6 +337,7 @@ namespace AvatarBridge
                     _tidyStatus.Set("Pick an avatar or prop in step 1 first.", Tone.Warn);
                     return;
                 }
+                if (RefusedPlaying(_tidyStatus)) return;
                 var done = YapsRemover.Sweep(_target.transform);
                 _tidyStatus.Set(done.Count == 0
                     ? "Nothing left behind."
@@ -776,8 +781,17 @@ namespace AvatarBridge
         // A mesh selected: the plug is that mesh. A bone selected: the plug
         // is the skinned mesh that bone drives, from that bone down, and
         // the component sits on the bone so its markers follow it.
+        // The window's own scene edits before a build, refused with the build's reason.
+        static bool RefusedPlaying(BridgeElements.NoticeBox status)
+        {
+            if (!YapsNativeBuilder.Playing) return false;
+            status.Set(YapsNativeBuilder.NotInPlayMode, Tone.Warn);
+            return true;
+        }
+
         void MakePlug()
         {
+            if (RefusedPlaying(_addStatus)) return;
             var go = Candidate();
             var renderer = go != null ? go.GetComponent<Renderer>() : null;
             Transform rootBone = null;
@@ -852,6 +866,11 @@ namespace AvatarBridge
         void BuildAll()
         {
             if (_target == null) return;
+            if (YapsNativeBuilder.Playing)
+            {
+                ShowBuildLog("Nothing built.", new List<string> { "✗ " + YapsNativeBuilder.NotInPlayMode });
+                return;
+            }
             // Adopt first, so bare converted sockets and plugs get components.
             int adopted = AdoptAll();
             if (adopted > 0) _scan = YapsScanner.Scan(_target);
@@ -939,6 +958,7 @@ namespace AvatarBridge
         // Under the selected bone, else in a YAPS folder on the avatar.
         YapsSocket AddSocket(YapsSocket.SocketKind kind)
         {
+            if (RefusedPlaying(_addStatus)) return null;
             string name = kind == YapsSocket.SocketKind.Hole ? "YAPS Hole" : "YAPS Ring";
             var go = new GameObject(name);
 
