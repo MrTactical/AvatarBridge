@@ -1100,6 +1100,9 @@ unlock/edit/re-lock.
    to the Console, and **Show me the files** selects `Assets/YAPS/Generated/<avatar>`, where the
    generated materials, bakes and clips go. Patched shaders go to `Assets/YAPS/Generated/Shaders`,
    one folder for every avatar, so a shader another avatar already patched is not compiled again.
+   The first ChilloutVR upload after a build compiles each patched shader once, which can take
+   minutes on an avatar with many materials; later uploads reuse it. The upload leaves out the
+   stereo mode ChilloutVR never draws, a third less to compile and download.
 
 **Upgrade in place.** An avatar that never went through the converter but carries DPS, TPS or SPS
 becomes YAPS on the same mesh. A socket gains the markers it lacks so every plug family reads it.

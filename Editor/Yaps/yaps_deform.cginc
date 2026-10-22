@@ -134,9 +134,9 @@ YapsVertex YapsReadBaked(uint vertexId)
     YapsVertex baked;
     // One header float, then ten per vertex.
     uint at = 1 + vertexId * 10;
-    baked.position = YapsReadFloat3(at);
-    baked.normal = YapsReadFloat3(at + 3);
-    baked.tangent = YapsReadFloat3(at + 6);
+    baked.position = 0;
+    baked.normal = 0;
+    baked.tangent = 0;
     baked.active = YapsReadFloat(at + 9);
 
     // Blendshapes. The vertex arriving here has them applied, but the
@@ -144,24 +144,25 @@ YapsVertex YapsReadBaked(uint vertexId)
     // the two describe different meshes. Add back what each contributed.
     //
     // Blocks of nine floats a vertex follow the base block, which is why
-    // the vertex count has to be on the material.
-    uint shapeCount = (uint) max(_YAPS_ShapeCount, 0);
-    if (shapeCount > 0)
+    // the vertex count has to be on the material. The base block is the
+    // loop's first pass, weight 1: read apart, its nine reads were compiled
+    // twice, and an upload compiles them for every variant.
+    int shapeCount = (int) max(_YAPS_ShapeCount, 0);
+    uint total = (uint) max(_YAPS_VertexCount, 0);
+    uint block = 1 + total * 10;
+    [loop]
+    for (int s = -1; s < shapeCount; s++)
     {
-        uint total = (uint) max(_YAPS_VertexCount, 0);
-        uint block = 1 + total * 10;
-        [loop]
-        for (uint s = 0; s < shapeCount; s++)
+        float weight = 1;
+        if (s >= 0)
         {
-            float weight = YapsShapeWeight(s);
-            if (abs(weight) > 0.0001)
-            {
-                uint shapeAt = block + s * total * 9 + vertexId * 9;
-                baked.position += YapsReadFloat3(shapeAt) * weight;
-                baked.normal += YapsReadFloat3(shapeAt + 3) * weight;
-                baked.tangent += YapsReadFloat3(shapeAt + 6) * weight;
-            }
+            weight = YapsShapeWeight((uint) s);
+            if (abs(weight) <= 0.0001) continue;
+            at = block + (uint) s * total * 9 + vertexId * 9;
         }
+        baked.position += YapsReadFloat3(at) * weight;
+        baked.normal += YapsReadFloat3(at + 3) * weight;
+        baked.tangent += YapsReadFloat3(at + 6) * weight;
     }
 
     // Baked vectors carry the plug's own scale, seen anywhere from 0.38
@@ -984,36 +985,33 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     float ease = max(_YAPS_SmoothStart, 0) * worldLength;
     float leftOver;
     YapsFrame frame;
-    if (straight > 1e-5)
+    bool held = straight > 1e-5;
+    if (held && zAlong <= straight)
     {
-        if (zAlong <= straight)
-        {
-            // In the straight part. On the plug's own axis, no walk.
-            frame.position = rootWorld + rootForward * zAlong;
-            frame.forward = rootForward;
-            frame.up = rootUp;
-            leftOver = 0;
-        }
-        else
-        {
-            frame = YapsWalk(startWorld, sp1, p2, p3, zAlong - straight, rootUp, rootForward, leftOver);
-            // The join: blend the walked frame back toward the straight
-            // one over the ease length, so the shaft bends into the curve
-            // instead of breaking at a point.
-            if (ease > 1e-5)
-            {
-                float k = saturate((zAlong - straight) / ease);
-                k = k * k * (3 - 2 * k);
-                float3 straightPos = rootWorld + rootForward * zAlong;
-                frame.position = lerp(straightPos, frame.position, k);
-                frame.forward = YapsSafeNormalize(lerp(rootForward, frame.forward, k), rootForward);
-                frame.up = YapsPerpendicular(frame.forward, lerp(rootUp, frame.up, k));
-            }
-        }
+        // In the straight part. On the plug's own axis, no walk.
+        frame.position = rootWorld + rootForward * zAlong;
+        frame.forward = rootForward;
+        frame.up = rootUp;
+        leftOver = 0;
     }
     else
     {
-        frame = YapsWalk(p0, p1, p2, p3, zAlong, rootUp, rootForward, leftOver);
+        // One walk for both curves: called twice, the walk was compiled twice, and an upload
+        // compiles it for every variant of every patched shader.
+        frame = YapsWalk(held ? startWorld : p0, held ? sp1 : p1, p2, p3, held ? zAlong - straight : zAlong,
+                         rootUp, rootForward, leftOver);
+        // The join: blend the walked frame back toward the straight
+        // one over the ease length, so the shaft bends into the curve
+        // instead of breaking at a point.
+        if (held && ease > 1e-5)
+        {
+            float k = saturate((zAlong - straight) / ease);
+            k = k * k * (3 - 2 * k);
+            float3 straightPos = rootWorld + rootForward * zAlong;
+            frame.position = lerp(straightPos, frame.position, k);
+            frame.forward = YapsSafeNormalize(lerp(rootForward, frame.forward, k), rootForward);
+            frame.up = YapsPerpendicular(frame.forward, lerp(rootUp, frame.up, k));
+        }
     }
 
     // THE PORTAL, drawn by the second copy. The first copy enters the hole

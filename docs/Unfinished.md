@@ -610,6 +610,23 @@ Six reports from Joe's testers on the latest test packages.
   plug and squash code's per-variant compile cost, the bigger lever but real shader work (the
   walk and atlas loops are already `[loop]`). Also seen: the plug's debug overlay and socket
   readout shaders ship in the bundle (48 variants).
+  **Bundle split per avatar 2026-10-22 [M]** (`UploadCostProbe -upSplit`, warm bundles rebuilt
+  by kind of asset): YAPS patches are 1.60 of 10.3 MB, 16.4 of 239, 9.9 of 159, none of 69 (no
+  YAPS). Textures and meshes are the rest of every big bundle. Speed is the compile, not bytes.
+  **(a) done:** `Editor/Yaps/YapsStereoStrip` drops `UNITY_SINGLE_PASS_STEREO` from patches under
+  `Assets/YAPS/Generated/Shaders` only. Variant log after it: 0 double-wide patch variants (the
+  small atlas, overlay and readout shaders keep theirs). 3-patch avatar bundle 10.27 to 9.88 MB.
+  **(b) done:** compile cost cut without changing the result, measured by direct fxc (one vertex
+  variant, Unity's flags): plug 1.76 to 1.58 s, squash 1.07 to 0.90 s, all three 4.40 to 3.86 s,
+  bytecode 151 to 132 KB. One plug walk instead of two, the baked base read inside the shape
+  loop, one press loop over arms, hands and plugs, reciprocal reaches. Checks: `YapsDiffProbe`
+  (old and new includes on 400 random squash states, 4096 vertices each, 2 seeds) worst 0.002 mm
+  and 0.0005 in a normal, rounding; control old against old exactly 0. YapsBendTester on the
+  plug: output identical line for line before and after (its one FAIL, the 45° seam at 0.95 mm,
+  is old). Tried and worse: scalarised socket arrays, unrolled atlas scan, skipping optimisation
+  (2x instructions). The six-deep atlas scan is still most of the plug's cost. Together about
+  0.6x the old first-upload compile; existing patches keep the old code until rebuilt.
+  Not done: `YapsCompileBisect` end to end on a rebuilt patch; a test in game.
 
 ## 5.0.1
 

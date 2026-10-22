@@ -6,8 +6,9 @@
 // compile shows apart from what every upload pays.
 //
 //   -executeMethod AvatarBridge.Regression.UploadCostProbe.Run
-//       [-upPrefabs <a.prefab;b.prefab>] [-upTop N] [-upOut <dir>]
+//       [-upPrefabs <a.prefab;b.prefab>] [-upTop N] [-upOut <dir>] [-upSplit]
 //
+// -upSplit rebuilds each warm bundle split by kind of asset and logs the sizes.
 // -upTop adds the N output prefabs with the most YAPS-patched shaders, and the
 // largest one with none for contrast. Each bundle build sits between
 // "[UploadCost] BEGIN" and "END" lines, so the per-shader compile lines Unity
@@ -165,6 +166,11 @@ namespace AvatarBridge.Regression
                     Log("END " + label);
                     Lap("bundle");
                     long size = File.Exists(bundle) ? new FileInfo(bundle).Length : -1;
+                    if (pass == "warm" && Environment.GetCommandLineArgs().Contains("-upSplit"))
+                    {
+                        Split(asset.TempAssetPath, label);
+                        sw.Restart();
+                    }
                     asset.PostProcessAsset();
                     Lap("post");
                     Cleanup(asset, instance);
@@ -186,6 +192,56 @@ namespace AvatarBridge.Regression
                     }
                 }
             };
+        }
+
+        // The same prefab rebuilt as one bundle per kind of asset, same compression,
+        // so the single bundle's bytes can be read by kind. A material rides with its
+        // shader, so the variant set each shader keeps is the one it had in the real
+        // bundle. Run warm: the compiles come from the cache.
+        static void Split(string prefabPath, string label)
+        {
+            var kinds = new Dictionary<string, List<string>>();
+            void Add(string kind, string p)
+            {
+                if (!kinds.TryGetValue(kind, out var list)) kinds[kind] = list = new List<string>();
+                if (!list.Contains(p)) list.Add(p);
+            }
+            foreach (string d in AssetDatabase.GetDependencies(prefabPath, true))
+            {
+                if (d == prefabPath || d.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)
+                    || d.EndsWith(".cginc", StringComparison.OrdinalIgnoreCase) || d.EndsWith(".hlsl", StringComparison.OrdinalIgnoreCase)) continue;
+                var type = AssetDatabase.GetMainAssetTypeAtPath(d);
+                if (type == typeof(Material))
+                {
+                    var m = AssetDatabase.LoadAssetAtPath<Material>(d);
+                    string sp = m != null && m.shader != null ? AssetDatabase.GetAssetPath(m.shader) : "";
+                    Add(sp.EndsWith(".shader", StringComparison.OrdinalIgnoreCase) ? (IsYaps(sp) ? "yaps shaders" : "shaders") : "materials", d);
+                }
+                else if (type == typeof(Shader)) Add(IsYaps(d) ? "yaps shaders" : "shaders", d);
+                else if (type != null && typeof(Texture).IsAssignableFrom(type)) Add("textures", d);
+                else if (type == typeof(Mesh) || type == typeof(GameObject) && !d.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase)) Add("meshes", d);
+                else if (type == typeof(AnimationClip)) Add("clips", d);
+                else if (type == typeof(AudioClip)) Add("audio", d);
+                else Add("other", d);
+            }
+            var builds = kinds.Select(k => new AssetBundleBuild { assetBundleName = "split_" + k.Key.Replace(' ', '_'), assetNames = k.Value.ToArray() }).ToList();
+            builds.Add(new AssetBundleBuild { assetBundleName = "split_prefab", assetNames = new[] { prefabPath } });
+            string dir = Path.Combine(_out, "split");
+            Directory.CreateDirectory(dir);
+            var sw = Stopwatch.StartNew();
+            var manifest = BuildPipeline.BuildAssetBundles(dir, builds.ToArray(), BuildAssetBundleOptions.ChunkBasedCompression, EditorUserBuildSettings.activeBuildTarget);
+            if (manifest == null) { Log($"SPLIT {label}: build failed"); return; }
+            long sum = 0;
+            var parts = new List<string>();
+            foreach (var b in builds)
+            {
+                string f = Path.Combine(dir, b.assetBundleName);
+                long len = File.Exists(f) ? new FileInfo(f).Length : -1;
+                sum += Math.Max(0, len);
+                parts.Add($"{b.assetBundleName.Substring(6).Replace('_', ' ')} {len / 1048576.0:0.00} MB ({b.assetNames.Length})");
+            }
+            Log($"SPLIT {label}: sum {sum / 1048576.0:0.00} MB in {sw.Elapsed.TotalSeconds:0.0} s; {string.Join(", ", parts)}");
+            foreach (string f in Directory.GetFiles(dir)) File.Delete(f);
         }
 
         static void Cleanup(TempBuildAsset asset, GameObject instance)

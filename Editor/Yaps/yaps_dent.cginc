@@ -142,6 +142,8 @@ struct YapsPart
 {
     int m;
     float3 centre, a, o, u;
+    // The six reaches as 1 / reach^2, toward +a, +o, +u and away from each.
+    float3 front, back;
     float unit, reach;
     bool framed;
 };
@@ -156,6 +158,8 @@ YapsPart YapsPartAt(int m, float3 centre, float unit)
     p.a = 0;
     p.o = 0;
     p.u = 0;
+    p.front = 0;
+    p.back = 0;
     p.framed = false;
     int back = 16 + (m >> 1);
     if (YapsUnit(4 + m) > 0 && YapsUnit(4 + (m ^ 1)) > 0 && YapsUnit(back) > 0
@@ -175,6 +179,8 @@ YapsPart YapsPartAt(int m, float3 centre, float unit)
                 p.o = normalize(o);
                 p.u = cross(p.a, p.o);
                 p.framed = true;
+                p.front = 1 / float3(_YAPS_SquashReach[m] * _YAPS_SquashReach[m], _YAPS_SquashOut[m] * _YAPS_SquashOut[m], _YAPS_SquashSideA[m] * _YAPS_SquashSideA[m]);
+                p.back = 1 / float3(_YAPS_SquashAway[m] * _YAPS_SquashAway[m], _YAPS_SquashIn[m] * _YAPS_SquashIn[m], _YAPS_SquashSideB[m] * _YAPS_SquashSideB[m]);
             }
         }
     }
@@ -187,11 +193,8 @@ YapsPart YapsPartAt(int m, float3 centre, float unit)
 float YapsExtent(YapsPart p, float3 w)
 {
     if (!p.framed) return p.reach;
-    float x = dot(w, p.a), y = dot(w, p.o), z = dot(w, p.u);
-    float ex = x >= 0 ? _YAPS_SquashReach[p.m] : _YAPS_SquashAway[p.m];
-    float ey = y >= 0 ? _YAPS_SquashOut[p.m] : _YAPS_SquashIn[p.m];
-    float ez = z >= 0 ? _YAPS_SquashSideA[p.m] : _YAPS_SquashSideB[p.m];
-    return p.unit * rsqrt(max(x * x / (ex * ex) + y * y / (ey * ey) + z * z / (ez * ez), 1e-8));
+    float3 c = float3(dot(w, p.a), dot(w, p.o), dot(w, p.u));
+    return p.unit * rsqrt(max(dot(c * c, c >= 0 ? p.front : p.back), 1e-8));
 }
 
 // Presses add up as their sum S and their outer products over length M. The sum alone let two
@@ -235,92 +238,28 @@ void YapsMerge(inout float3 v, inout float r, float3 v2, float r2)
     r = (r * wa + r2 * wb) / max(wa + wb, 1e-36);
 }
 
-// Into the slots others share, 2 and 3: the deepest press, and the rest merged into the other.
-// With two presses that is both as they are; a third eases into the shallower instead of one
-// dropping out whole as another overtook it.
-void YapsKeep(inout float3 hv[4], inout float hr[4], float3 v, float r)
-{
-    if (dot(v, v) > dot(hv[2], hv[2]))
-    {
-        float3 tv = hv[2];
-        float tr = hr[2];
-        hv[2] = v;
-        hr[2] = r;
-        v = tv;
-        r = tr;
-    }
-    YapsMerge(hv[3], hr[3], v, r);
-}
-
 // The hands reaching into the part, as presses toward each hand by how far it is in, with its
 // radius: both own arms first, then other hands, the deepest and the rest merged.
+// One loop over every source, arms, then hands, then plugs, so the press and the merge are
+// compiled once each: a loop per source inlined them four times, and an upload compiles this
+// for every variant of every patched shader.
 void YapsHandsPress(YapsPart p, inout float3 hv[4], inout float hr[4])
 {
-    if (_YAPS_SquashPush.w > 0 && _YAPS_SquashHands.x > 0)
-    {
-        // Per arm, its bones merged, the deepest leading: upper arm, forearm and hand overlap at
-        // the joints, and adding all three pressed one forearm in twice.
-        [loop]
-        for (uint k = 0; k < 6; k++)
-        {
-            uint a = 8 + (k / 3) * 4 + k % 3;
-            if (YapsUnit(a) <= 0 || YapsUnit(a + 1) <= 0) continue;
-            float3 pa = YapsSlot(a), pb = YapsSlot(a + 1);
-            float r = (k < 3 ? _YAPS_SquashLimbL : _YAPS_SquashLimbR)[k % 3] * length(pb - pa);
-            YapsMerge(hv[k / 3], hr[k / 3], YapsPress(p, pa, pb, r) * _YAPS_SquashHands.x, r);
-        }
-    }
-    if (_YAPS_SquashHands.z > 0 && _YAPS_SquashHands.y > 0)
-    {
-        // Every player's hands, the wearer's among them, which the arms above already are: a
-        // hand by either own hand is skipped. Capped at 64 players for cost. The globals carry
-        // only the wrist, a palm's length out from the skin while the palm is on it, so a ball
-        // there never reached the part: the hand runs on from it, away from that player's chest,
-        // for a ninth of their viewpoint height.
-        // The gesture rides in each hand's w, the numbers an avatar's GestureLeft reads: -1 open,
-        // 0 to 1 a fist closing, 2 thumbs up, 3 finger gun, 4 point, 5 victory, 6 rock and roll.
-        // A fist ends at the knuckles; a finger out runs on, thin, to where the fingertips are.
-        // Which way the palm faces is not carried, so two fingers out are one thicker one.
-        // ponytail: the line from the chest stands in for the forearm, which the globals do not carry.
-        float3 ownL = YapsSlot(10), ownR = YapsSlot(14);
-        int count = min((int) round(CVRGlobalParams1.y), 64);
-        [loop]
-        for (int i = 0; i < count; i++)
-        {
-            float tall = _CVR_PlayerRootPositions[i].w;
-            tall = tall > 0.1 ? tall : 1.6;
-            float r = _YAPS_SquashHands.y * tall / 1.6;
-            float mine = 2.25 * r * r;
-            float3 chest = _CVR_PlayerChestPositions[i].xyz;
-            float4 hands[2] = { _CVR_PlayerLeftHandPositions[i], _CVR_PlayerRightHandPositions[i] };
-            [loop]
-            for (int j = 0; j < 2; j++)
-            {
-                float3 h = hands[j].xyz;
-                float g = hands[j].w;
-                // Most hands in a full room are nowhere near: out past the part's reach, a hand's
-                // length and its radius, it cannot press. Saves the press for the ones that can.
-                float near = 3 * p.reach + 0.11 * tall + r;
-                if (dot(h - p.centre, h - p.centre) > near * near) continue;
-                if (dot(h, h) < 1e-6) continue;
-                // Eased out by either own hand rather than cut, since the globals and the slots
-                // are read at different moments and a quick own hand would flicker in as another's.
-                float own = saturate(min(dot(h - ownL, h - ownL), dot(h - ownR, h - ownR)) / mine - 1);
-                if (own <= 0) continue;
-                float3 arm = h - chest;
-                float3 dir = dot(chest, chest) > 1e-6 && dot(arm, arm) > 1e-6 ? normalize(arm) : 0;
-                float fist = g > 1.5 ? 1 : saturate(g);
-                float3 v = YapsPress(p, h, h + dir * max(lerp(0.11, 0.06, fist) * tall - r, 0), r) * (_YAPS_SquashHands.z * own);
-                float vr = r;
-                if (g > 2.5)
-                {
-                    float rf = (g > 4.5 && g < 5.5 ? 0.35 : 0.2) * r;
-                    YapsMerge(v, vr, YapsPress(p, h + dir * (0.06 * tall), h + dir * max(0.11 * tall - rf, 0.06 * tall), rf) * (_YAPS_SquashHands.z * own), rf);
-                }
-                YapsKeep(hv, hr, v, vr);
-            }
-        }
-    }
+    // Per arm, its bones merged, the deepest leading: upper arm, forearm and hand overlap at
+    // the joints, and adding all three pressed one forearm in twice.
+    int arms = _YAPS_SquashPush.w > 0 && _YAPS_SquashHands.x > 0 ? 6 : 0;
+    // Every player's hands, the wearer's among them, which the arms above already are: a
+    // hand by either own hand is skipped. Capped at 64 players for cost. The globals carry
+    // only the wrist, a palm's length out from the skin while the palm is on it, so a ball
+    // there never reached the part: the hand runs on from it, away from that player's chest,
+    // for a ninth of their viewpoint height.
+    // The gesture rides in each hand's w, the numbers an avatar's GestureLeft reads: -1 open,
+    // 0 to 1 a fist closing, 2 thumbs up, 3 finger gun, 4 point, 5 victory, 6 rock and roll.
+    // A fist ends at the knuckles; a finger out runs on, thin, to where the fingertips are.
+    // Which way the palm faces is not carried, so two fingers out are one thicker one.
+    // ponytail: the line from the chest stands in for the forearm, which the globals do not carry.
+    float3 ownL = YapsSlot(10), ownR = YapsSlot(14);
+    int hands = _YAPS_SquashHands.z > 0 && _YAPS_SquashHands.y > 0 ? 2 * min((int) round(CVRGlobalParams1.y), 64) : 0;
     // A plug in the socket between the pair, anyone's, from the light it announces itself with:
     // its base and its length. The light gives no direction, so the shaft runs from the base
     // through the socket for the plug's length, and presses like another hand. Only while it
@@ -329,12 +268,60 @@ void YapsHandsPress(YapsPart p, inout float3 hv[4], inout float hr[4])
     // ponytail: the radius is a tenth of the length, since the light carries none; 6 cm at most
     // (3.5 cm drew a long thick plug thin). Real girth needs a channel the light does not have.
     int socket = 18 + (p.m >> 1);
-    if (_YAPS_SquashPlug > 0 && YapsUnit(socket) > 0)
+    int plugs = _YAPS_SquashPlug > 0 && YapsUnit(socket) > 0 ? 4 : 0;
+    float3 at = YapsSlot(socket);
+    [loop]
+    for (int s = 0; s < arms + hands + plugs; s++)
     {
-        float3 at = YapsSlot(socket);
-        [loop]
-        for (uint i = 0; i < 4; i++)
+        float3 a, b, fa = 0, fb = 0;
+        float r, rf = 0, scale;
+        bool finger = false;
+        int into = 3;
+        if (s < arms)
         {
+            uint k = s;
+            uint slot = 8 + (k / 3) * 4 + k % 3;
+            if (YapsUnit(slot) <= 0 || YapsUnit(slot + 1) <= 0) continue;
+            a = YapsSlot(slot);
+            b = YapsSlot(slot + 1);
+            r = (k < 3 ? _YAPS_SquashLimbL : _YAPS_SquashLimbR)[k % 3] * length(b - a);
+            scale = _YAPS_SquashHands.x;
+            into = k / 3;
+        }
+        else if (s < arms + hands)
+        {
+            int i = (s - arms) >> 1;
+            float tall = _CVR_PlayerRootPositions[i].w;
+            tall = tall > 0.1 ? tall : 1.6;
+            r = _YAPS_SquashHands.y * tall / 1.6;
+            float mine = 2.25 * r * r;
+            float3 chest = _CVR_PlayerChestPositions[i].xyz;
+            float4 hand = ((s - arms) & 1) == 0 ? _CVR_PlayerLeftHandPositions[i] : _CVR_PlayerRightHandPositions[i];
+            float3 h = hand.xyz;
+            float g = hand.w;
+            // Most hands in a full room are nowhere near: out past the part's reach, a hand's
+            // length and its radius, it cannot press. Saves the press for the ones that can.
+            float near = 3 * p.reach + 0.11 * tall + r;
+            if (dot(h - p.centre, h - p.centre) > near * near) continue;
+            if (dot(h, h) < 1e-6) continue;
+            // Eased out by either own hand rather than cut, since the globals and the slots
+            // are read at different moments and a quick own hand would flicker in as another's.
+            float own = saturate(min(dot(h - ownL, h - ownL), dot(h - ownR, h - ownR)) / mine - 1);
+            if (own <= 0) continue;
+            float3 arm = h - chest;
+            float3 dir = dot(chest, chest) > 1e-6 && dot(arm, arm) > 1e-6 ? normalize(arm) : 0;
+            float fist = g > 1.5 ? 1 : saturate(g);
+            a = h;
+            b = h + dir * max(lerp(0.11, 0.06, fist) * tall - r, 0);
+            scale = _YAPS_SquashHands.z * own;
+            finger = g > 2.5;
+            rf = (g > 4.5 && g < 5.5 ? 0.35 : 0.2) * r;
+            fa = h + dir * (0.06 * tall);
+            fb = h + dir * max(0.11 * tall - rf, 0.06 * tall);
+        }
+        else
+        {
+            uint i = s - arms - hands;
             if (dot(unity_LightColor[i].rgb, unity_LightColor[i].rgb) > 0.0001) continue;
             int digit = YapsLightDigit(i);
             if (digit != 8 && digit != 9) continue;
@@ -342,10 +329,27 @@ void YapsHandsPress(YapsPart p, inout float3 hv[4], inout float hr[4])
             float3 base = YapsLightPosition(i);
             float d = distance(at, base);
             if (len <= 0.0001 || d >= len || d <= 1e-4) continue;
-            float r = clamp(0.1 * len, 0.012, 0.06);
-            float fade = saturate((len - d) / (0.2 * len));
-            YapsKeep(hv, hr, YapsPress(p, base, base + (at - base) / d * len, r) * (_YAPS_SquashPlug * fade), r);
+            r = clamp(0.1 * len, 0.012, 0.06);
+            a = base;
+            b = base + (at - base) / d * len;
+            scale = _YAPS_SquashPlug * saturate((len - d) / (0.2 * len));
         }
+        float3 v = YapsPress(p, a, b, r) * scale;
+        float vr = r;
+        if (finger) YapsMerge(v, vr, YapsPress(p, fa, fb, rf) * scale, rf);
+        // Into the slots others share, 2 and 3: the deepest press, and the rest merged into
+        // the other. With two presses that is both as they are; a third eases into the
+        // shallower instead of one dropping out whole as another overtook it.
+        if (into == 3 && dot(v, v) > dot(hv[2], hv[2]))
+        {
+            float3 tv = hv[2];
+            float tr = hr[2];
+            hv[2] = v;
+            hr[2] = vr;
+            v = tv;
+            vr = tr;
+        }
+        YapsMerge(hv[into], hr[into], v, vr);
     }
 }
 
