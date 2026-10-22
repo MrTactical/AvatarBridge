@@ -977,8 +977,11 @@ that is not there. The cost is sockets that announce themselves by contacts alon
 orifices among them: a YAPS plug no longer bends toward those.
 
 **What the atlas is.** Every socket draws its position into a small block of pixels in the corner
-of the frame, ahead of the scene so the scene covers it and nothing is visible, and every plug's
-shader reads that block. Positions cost no sync bits and no contact pairs, it crosses between
+of the frame, ahead of the scene, and every plug's shader reads that block from a copy of the
+screen taken straight after; the block is then painted back with the camera's background before
+the scene draws, so nothing shows even where the scene leaves the corner empty (a camera clearing
+to a solid colour or to transparent). A camera drawing over another camera's picture is the one
+case left to the scene to cover. Positions cost no sync bits and no contact pairs, it crosses between
 avatars, and it is what lets a plug pass through several sockets on its way rather than bending
 at the first. It needs the plug's own patched shader, so it arrives with a conversion or a
 rebuild. The full block is 932 by 596 pixels, and its top eight rows are where portal exits say
@@ -1596,7 +1599,9 @@ regions alike, and ChilloutVR strips it at upload.
 **Where the parts are.** By default, bones whose names say breast, boob, butt, booty or glute, one
 each side with every bone under it (a pair is named after those top bones), each vertex taking the weight those bones carry, whole where they carry most and fading
 toward the edge, so the squash fades into the body the way the avatar was weight painted. Two pairs
-at most. A body whose bones don't say, or where the names take too much or too little, can have its
+at most. **Part bones** on the component's **Parts** card picks the bones by hand instead, for
+anything that comes in two (cheeks, thighs): two to a pair, one each side, next to each other in
+the list, each with every bone under it. Painted regions win over picked bones. A body whose bones don't say, or where the names take too much or too little, can have its
 regions painted: **Paint regions** on the same card, or *Tools ▸ YAPS ▸ Squash regions*. Pick the
 avatar: with nothing painted it says which pairs the bone names give, and **Paint over them** (or
 **Start empty**) starts from there. **Paint in the Scene view** opens the brush panel in the Scene
@@ -1612,6 +1617,10 @@ them, and says above it whether the squash is built and whether strokes since ne
 are measured on one skin: of the meshes carrying every part, the one weighted to the most bones, so
 the body and not a dense piece of clothing with more vertices. **Squash regions** starts on the
 same mesh, and its **Body** field picks another. Clothing follows the skin under it, within 3 cm.
+
+**Layers left alone.** **Materials left alone**, on the same card, lists materials the squash never
+touches: they keep their own shader and stay still while the skin under them squashes, so a press
+can show the skin through one. Rebuild after changing either list; the banner says when one changed.
 
 **Toggles keep working.** A toggle that swaps a material into a squashed slot, the original back
 or an alternate look, is pointed at a squashed copy of it, so the layer never drops behind the

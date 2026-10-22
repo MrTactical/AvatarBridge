@@ -37,6 +37,8 @@ namespace AvatarBridge
             { "What presses it", "What dents the parts besides each other, each with its own strength. See hands with the test hand." },
         };
 
+        static readonly string[] HereNotKnobs = { "partBones", "leaveAlone" };
+
         const string Animatable =
             "material._YAPS_DentPower        0 off, 1 on\n" +
             "material._YAPS_SquashTune.y     strength\n" +
@@ -68,8 +70,8 @@ namespace AvatarBridge
 
             _root.Add(BridgeElements.Banner("Squash",
                 !built ? "not built yet: press Build at the bottom"
-                : stale ? $"built · {BridgeElements.Count(mats, "material", "materials")} · regions painted since: press Rebuild"
-                : $"built · {BridgeElements.Count(mats, "material", "materials")} · parts {(painted ? "painted" : "by bone name")}",
+                : stale ? $"built · {BridgeElements.Count(mats, "material", "materials")} · parts changed since: press Rebuild"
+                : $"built · {BridgeElements.Count(mats, "material", "materials")} · parts {YapsSquash.PartsFrom(settings)}",
                 built ? "built" : "not built", BridgeTheme.Span.Cvr));
             var body = new VisualElement();
             body.AddToClassList("ab-scroll");
@@ -84,9 +86,13 @@ namespace AvatarBridge
             body.Add(parts);
             parts.Body.Add(BridgeElements.Hint(painted
                 ? $"From {BridgeElements.Count(settings.pairs.Count, "painted pair", "painted pairs")} on \"{(settings.body != null ? settings.body.name : "?")}\"."
-                : "Found by bone name: breast, boob, butt, booty or glute, one each side. Paint regions for a body whose bones do not say."));
+                : settings.partBones.Count > 0 ? "From the bones picked below, two to a pair."
+                : "Found by bone name: breast, boob, butt, booty or glute, one each side. Pick bones below or paint regions for anything else."));
             parts.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Paint regions", () => YapsSquashPainter.Open(root.gameObject),
                 "Paint which skin squashes. A rebuild picks them up.")));
+            // Both need a rebuild, so they sit here and not with the knobs.
+            parts.Body.Add(new PropertyField(serializedObject.FindProperty("partBones"), "Part bones"));
+            parts.Body.Add(new PropertyField(serializedObject.FindProperty("leaveAlone"), "Materials left alone"));
 
             // Fields in declaration order, a fold per [Header]. The regions are hidden.
             var feel = new BridgeElements.Card("How it feels");
@@ -97,6 +103,7 @@ namespace AvatarBridge
             BridgeElements.Card fold = null;
             while (it.NextVisible(false))
             {
+                if (HereNotKnobs.Contains(it.name)) continue;
                 var field = typeof(YapsSquashSettings).GetField(it.name);
                 if (field?.GetCustomAttributes(typeof(HeaderAttribute), false).FirstOrDefault() is HeaderAttribute h)
                 {

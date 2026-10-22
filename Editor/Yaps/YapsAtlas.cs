@@ -7,7 +7,8 @@
 // what that costs in a crowded instance, how it behaves in mirrors and in
 // VR, and whether a viewer with custom shaders blocked sees anything at all.
 // It also paints: the payload is colour, so an occupied cell puts a few
-// pixels on screen.
+// pixels on screen. The grab's second pass paints them back with the
+// background where the background is one colour.
 //
 // No VRChat types here on purpose, so the standalone toolkit can call it.
 using System.Collections.Generic;

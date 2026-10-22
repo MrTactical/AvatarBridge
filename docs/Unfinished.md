@@ -558,6 +558,37 @@ Neither looks like a converter change; both need a decision before the baseline 
   is `Regression/Yaps/Baseline-pre-428-20261022`.
 - **One avatar's texture estimate grew:** moved to 5.0.1, item 15 (Joe, 2026-10-22).
 
+### 16. Tester reports on the rc builds, 2026-10-22
+
+Six reports from Joe's testers on the latest test packages.
+- **Squash: leave chosen materials alone.** Done. `YapsSquashSettings.leaveAlone`; a listed
+  squashed copy resolves to its original. The rebuild hash covers the list. SquashPartsTest passes.
+- **Squash parts from picked bones (cheeks, thighs).** Done for pairs: `partBones`, two to a pair,
+  two pairs at most; painted regions still win. A single centred part (belly) does not fit the
+  pair design; painted regions cover it. SquashPartsTest passes.
+- **Atlas spots on a user's camera.** Fixed. The clear zeroed the rect's alpha and the writers'
+  pixels stayed in the picture. The grab shader's second pass now paints the rect back with the
+  background wherever the background is one colour. AtlasSpotsProbe: opaque and transparent
+  backgrounds both went from FAIL (561,600 px; 32 spots) to 0 px, plug bend unchanged. PlugGhost
+  rerun: the atlas routes still show 0 depth-only px. Left open: a camera drawing over another
+  camera's picture with detail in that corner.
+- **Poiyomi 10 coming back as 9.3.** Two Poiyomi installs share the shader name
+  ".poiyomi/Poiyomi Toon" (the 9.3 folder in Joe's project carries 10.0.12, the 10.0 folder
+  10.0.11), and `Shader.Find` picks one. The lock and Thry's Unlock keep the right file
+  (PoiyomiYapsProbe: both go by GUID). The name lookups were ours: `OriginalShaderOf` (re-patch,
+  roles, staleness) and the Remove fallback. A patch now records its source's GUID and resolves by
+  file first. TwinSourceTest failed on the old code (B led back to A) and passes now. Patches made
+  before this keep the name lookup until rebuilt.
+- **Poiyomi panel not working after the patch.** Not reproduced. The patch is marked locked so the
+  upload leaves it alone, and Thry's panel reads that as a locked material: its settings are baked
+  into the copy and edits belong on the original, then a rebuild. PoiyomiYapsProbe's panel
+  captures came back blank for the plain source too, so UiOffscreenProbe cannot draw a material
+  inspector; that is the probe, not evidence. Needs the tester's steps (which material, what
+  "not working" looks like, whether they pressed Unlock).
+- **Slower CVR uploads.** Not measured. The editor hooks are cheap; the suspects are first-upload
+  compiles of patched shaders and an uber shader shipped when the lock fails. Next: time
+  `BuildAssetBundles` of one avatar with and without YAPS and squash.
+
 ## 5.0.1
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).

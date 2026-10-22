@@ -64,6 +64,15 @@ namespace AvatarBridge.Yaps
                                 "Off by default: every swing read as a press.")]
         public float clothPush = 0f;
 
+        // Drawn by the inspector's Parts card, not with the knobs: both need a rebuild.
+        [Tooltip("Bones picked by hand in place of the name search, two to a pair, one each side, " +
+                 "next to each other in the list: cheeks, thighs, anything that comes in two. Two pairs at most. " +
+                 "Painted regions win over these.")]
+        public List<Transform> partBones = new List<Transform>();
+        [Tooltip("Materials the squash never touches. A layer left out stays still while the skin under it " +
+                 "squashes, so a press can show the skin through it.")]
+        public List<Material> leaveAlone = new List<Material>();
+
         // The regions, painted with Tools > YAPS > Squash regions. None: the parts are found by
         // bone name. Drawn by the inspector's Parts card, not with the knobs.
         [HideInInspector]

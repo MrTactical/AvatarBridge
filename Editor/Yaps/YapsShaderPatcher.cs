@@ -221,6 +221,10 @@ namespace AvatarBridge
         // The shader a patched material was made from, or null.
         public static Shader OriginalShaderOf(Material patched)
         {
+            // By file first: two installs of one shader share its name, and Find picks either.
+            if (patched?.shader != null && patched.shader.FindPropertyIndex(SourceGuidProperty) is int i && i >= 0
+                && AssetDatabase.LoadAssetAtPath<Shader>(AssetDatabase.GUIDToAssetPath(patched.shader.GetPropertyDescription(i))) is Shader byFile)
+                return byFile;
             string name = SourceShaderOf(patched);
             return string.IsNullOrEmpty(name) ? null : Shader.Find(name);
         }
@@ -677,7 +681,8 @@ namespace AvatarBridge
                 {
                     string newName = PatchedName(shaderFile.Text, hash);
                     shaderFile.Text = MarkLocked(ShaderSpiPatcher.Rename(shaderFile.Text, newName));
-                    InstallShaderGui(shaderFile, material.shader.name);
+                    InstallShaderGui(shaderFile, material.shader.name,
+                        AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(material.shader)));
                 }
                 if (key != null)
                 {
@@ -732,6 +737,7 @@ namespace AvatarBridge
         // class name and the source shader's name ride in the description
         // of a hidden property: the only place a string can travel.
         public const string SourceShaderProperty = "_YAPS_SourceShader";
+        public const string SourceGuidProperty = "_YAPS_SourceShaderGuid";
 
         public static string SourceShaderOf(Material material)
         {
@@ -742,7 +748,7 @@ namespace AvatarBridge
             return string.IsNullOrEmpty(name) ? null : name;
         }
 
-        static void InstallShaderGui(ShaderSpiPatcher.SourceFile shaderFile, string sourceShaderName)
+        static void InstallShaderGui(ShaderSpiPatcher.SourceFile shaderFile, string sourceShaderName, string sourceGuid)
         {
             string original = null;
             var existing = Regex.Match(shaderFile.Text, @"^\s*CustomEditor\s+""([^""]+)""\s*$",
@@ -760,7 +766,9 @@ namespace AvatarBridge
                 string marker = "\n        [HideInInspector] " + YapsShaderGUI.OriginalEditorProperty
                                 + " (\"" + (original ?? "") + "\", Float) = 0"
                                 + "\n        [HideInInspector] " + SourceShaderProperty
-                                + " (\"" + (sourceShaderName ?? "").Replace("\"", "") + "\", Float) = 0";
+                                + " (\"" + (sourceShaderName ?? "").Replace("\"", "") + "\", Float) = 0"
+                                + "\n        [HideInInspector] " + SourceGuidProperty
+                                + " (\"" + (sourceGuid ?? "") + "\", Float) = 0";
                 shaderFile.Text = shaderFile.Text.Insert(properties.Index + properties.Length, marker);
             }
 

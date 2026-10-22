@@ -293,8 +293,7 @@ namespace AvatarBridge
                         var m = mats[slot];
                         Undo.RecordObject(m, "Remove YAPS plug");
                         m.SetFloat("_YAPS_Enabled", 0f);
-                        string source = YapsShaderPatcher.SourceShaderOf(m);
-                        var shader = source != null ? Shader.Find(source) : null;
+                        var shader = YapsShaderPatcher.OriginalShaderOf(m);
                         if (shader != null) m.shader = shader;
                         EditorUtility.SetDirty(m);
                     }

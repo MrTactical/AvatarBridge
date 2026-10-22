@@ -1429,7 +1429,7 @@ namespace AvatarBridge
                 // The patcher's markers carry their meaning in the description or
                 // the shader default, so the material's value is nothing anyone reads.
                 if (name == YapsShaderGUI.OriginalEditorProperty || name == YapsShaderPatcher.SourceShaderProperty
-                    || name == YapsShaderPatcher.RolesProperty) continue;
+                    || name == YapsShaderPatcher.SourceGuidProperty || name == YapsShaderPatcher.RolesProperty) continue;
                 var kind = ShaderUtil.GetPropertyType(shader, i);
                 if (!to.HasProperty(name))
                 {

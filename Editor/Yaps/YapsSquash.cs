@@ -6,10 +6,11 @@
 // How it feels comes from the avatar's YAPS Squash component, added on the first build. Its
 // knobs write straight to the materials, so tuning needs no rebuild.
 //
-// Two ways to say where the parts are. Regions painted with the squash region tool, when the
-// avatar carries them; otherwise bones found by name (breast, boob, butt, booty, glute, one each
-// side), each vertex's share the skin weight its part's bones carry. Two pairs at most either
-// way. Measured at rest, in edit mode. A shader the patcher refuses is reported and its layer
+// Three ways to say where the parts are. Regions painted with the squash region tool, when the
+// avatar carries them; else bones picked on the component, two to a pair; else bones found by
+// name (breast, boob, butt, booty, glute, one each side). With bones, each vertex's share is the
+// skin weight its part's bones carry. Two pairs at most any way. Materials listed as left alone
+// are never copied. Measured at rest, in edit mode. A shader the patcher refuses is reported and its layer
 // left as it was.
 #if CVR_CCK_EXISTS
 using System;
@@ -75,6 +76,8 @@ namespace AvatarBridge
         // so a root both parts hang from is not taken for one of them.
         static List<List<Transform>> Pairs(Transform root, out string none)
         {
+            var picked = SettingsOf(root)?.partBones;
+            if (picked != null && picked.Count > 0) return Picked(root, picked, out none);
             var skinned = new HashSet<Transform>(root.GetComponentsInChildren<SkinnedMeshRenderer>(true).SelectMany(r => r.bones).Where(t => t != null));
             var found = skinned
                 .Where(t => Sided(t) && (t.parent == null || !Sided(t.parent)))
@@ -84,6 +87,22 @@ namespace AvatarBridge
                 .ToList();
             none = found.Count > 0 ? null : "no soft pair found by name among " + string.Join(", ", skinned.Where(t => Soft.IsMatch(t.name)).Select(t => t.name + "<" + t.parent?.name));
             return found;
+        }
+
+        // The component's hand-picked bones, two to a pair in list order, each pair ordered by side
+        // as the name search orders it.
+        static List<List<Transform>> Picked(Transform root, List<Transform> picked, out string none)
+        {
+            none = picked.Any(t => t == null) ? "a picked part bone is empty"
+                : picked.Count % 2 != 0 ? "picked part bones come in pairs, one each side, and one is alone"
+                : picked.Count > 4 ? "two pairs of picked part bones at most"
+                : picked.Distinct().Count() != picked.Count ? "a part bone is picked twice"
+                : picked.FirstOrDefault(t => !t.IsChildOf(root)) is Transform away ? $"picked part bone \"{away.name}\" is not on this avatar"
+                : null;
+            if (none != null) return new List<List<Transform>>();
+            return Enumerable.Range(0, picked.Count / 2)
+                .Select(i => new[] { picked[2 * i], picked[2 * i + 1] }.OrderBy(t => root.InverseTransformPoint(t.position).x).ToList())
+                .ToList();
         }
 
         // Whether the avatar carries a squash build.
@@ -174,10 +193,12 @@ namespace AvatarBridge
             LastBuilt = built;
             if (!built) return said.Trim();
             // The measurements stay in the Console: on a card they were a wall nobody read.
-            var s = SettingsOf(root);
-            bool painted = s != null && s.pairs.Count > 0;
-            return $"Squash built on {BridgeElements.Count(Materials(root).Count, "material", "materials")}, parts {(painted ? "from painted regions" : "by bone name")}. The measurements are in the Console.";
+            return $"Squash built on {BridgeElements.Count(Materials(root).Count, "material", "materials")}, parts {PartsFrom(SettingsOf(root))}. The measurements are in the Console.";
         }
+
+        // Where the build takes its parts from, in the order Add tries them.
+        internal static string PartsFrom(YapsSquashSettings s) =>
+            s != null && s.pairs.Count > 0 ? "from painted regions" : s != null && s.partBones.Count > 0 ? "from picked bones" : "by bone name";
 
         // Built or not, and whether the regions were painted since, in one line for every place
         // that builds it. A tester could not tell whether the build had happened at all.
@@ -190,10 +211,10 @@ namespace AvatarBridge
             if (s != null && RegionsHash(s) != s.builtFrom)
             {
                 tone = Tone.Warn;
-                return $"Built on {on}, but the regions were painted since: rebuild to use them.";
+                return $"Built on {on}, but its parts or the layers left alone changed since: rebuild to use them.";
             }
             tone = Tone.Good;
-            return $"Built on {on}, parts {(s != null && s.pairs.Count > 0 ? "from the painted regions" : "by bone name")}.";
+            return $"Built on {on}, parts {PartsFrom(s)}.";
         }
 
         public static int RegionsHash(YapsSquashSettings s)
@@ -206,6 +227,10 @@ namespace AvatarBridge
                     foreach (byte w in p.a) h = h * 31 + w;
                     foreach (byte w in p.b) h = h * 31 + w;
                 }
+                // By name, which a reload keeps and an instance id does not. Empty lists add
+                // nothing, so a build from before them does not read as stale.
+                foreach (var t in s.partBones) foreach (char c in t != null ? t.name : "") h = h * 31 + c;
+                foreach (var m in s.leaveAlone) foreach (char c in m != null ? m.name : "") h = h * 37 + c;
                 return h;
             }
         }
@@ -424,9 +449,11 @@ namespace AvatarBridge
             Lap("Arms");
             var shared = Shares(skins, bodySkin, root.name, folder);
             Lap("Shares");
+            // Layers the wearer left out stay on their own material, still, by their choice.
+            var leave = LeftAlone(root);
             Hold();
             YapsShaderPatcher.Prewrite(shared.SelectMany(x => x.smr.sharedMaterials
-                    .Where((m, slot) => m != null && Moves(x.smr.sharedMesh, slot, x.shares)))
+                    .Where((m, slot) => m != null && !leave.Contains(m) && Moves(x.smr.sharedMesh, slot, x.shares)))
                 .Where(m => !m.HasProperty("_YAPS_DentOwn")), YapsShaderPatcher.Roles.Squash);
             Lap("Prewrite");
             var shaderFor = new System.Diagnostics.Stopwatch();
@@ -443,7 +470,7 @@ namespace AvatarBridge
                 for (int slot = 0; slot < mats.Length; slot++)
                 {
                     var source = mats[slot];
-                    if (source == null || !Moves(smr.sharedMesh, slot, shares)) continue;
+                    if (source == null || leave.Contains(source) || !Moves(smr.sharedMesh, slot, shares)) continue;
                     if (!patched.TryGetValue(source, out var shader))
                     {
                         shaderFor.Start();
@@ -569,7 +596,7 @@ namespace AvatarBridge
             if (root.gameObject.scene.IsValid()) EditorSceneManager.MarkSceneDirty(root.gameObject.scene);
             if (report != null) Debug.Log("[AvatarBridge] Squash build steps (ms): " + string.Join(", ", times));
             built = true;
-            return $"{BridgeElements.Count(parts.Count / 2, "pair", "pairs")} {(regions != null ? "from painted regions" : "found by bone name")} on {root.name}, {BridgeElements.Count(copies.Count, "material", "materials")} in {folder}: " + string.Join("; ", log);
+            return $"{BridgeElements.Count(parts.Count / 2, "pair", "pairs")} {PartsFrom(SettingsOf(root))} on {root.name}, {BridgeElements.Count(copies.Count, "material", "materials")} in {folder}: " + string.Join("; ", log);
         }
 
         static List<HashSet<Transform>> Sets(List<List<Transform>> found) =>
@@ -738,6 +765,11 @@ namespace AvatarBridge
             foreach (var (copy, source, _) in held) Remember(copy, source);
         }
 
+        // The component's left-alone layers as originals: the list may hold a squashed copy, which
+        // is what the renderer showed when it was dragged in.
+        static HashSet<Material> LeftAlone(Transform root) =>
+            new HashSet<Material>(SettingsOf(root)?.leaveAlone.Where(m => m != null).Select(Original) ?? Enumerable.Empty<Material>());
+
         // The material a squash copy was made from, or null when it is not one.
         static Material SourceOf(Material m)
         {
@@ -774,6 +806,7 @@ namespace AvatarBridge
             var refused = new SortedSet<string>();
             var skipped = new SortedSet<string>();
             int repointed = 0;
+            var leave = LeftAlone(root);
             // Patched in one batch first, as Add does: one at a time, each import cost about a
             // minute in a large project.
             var pending = new List<Material>();
@@ -784,7 +817,7 @@ namespace AvatarBridge
                 var mats = smr.sharedMaterials;
                 for (int slot = 0; slot < mats.Length; slot++)
                     if (mats[slot] != null && SourceOf(mats[slot]) != null && mats[slot].HasProperty("_YAPS_DentOwn"))
-                        pending.AddRange(Keyed(clips, path, slot).Select(Original).Where(m => !m.HasProperty("_YAPS_DentOwn")));
+                        pending.AddRange(Keyed(clips, path, slot).Select(Original).Where(m => !m.HasProperty("_YAPS_DentOwn") && !leave.Contains(m)));
             }
             YapsShaderPatcher.Prewrite(pending, YapsShaderPatcher.Roles.Squash);
             foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
@@ -812,6 +845,7 @@ namespace AvatarBridge
                             continue;
                         }
                         var original = Original(was);
+                        if (leave.Contains(original)) continue;
                         if (!copyOf.TryGetValue((smr, original), out var to))
                         {
                             var shader = ShaderFor(original, report, null);
