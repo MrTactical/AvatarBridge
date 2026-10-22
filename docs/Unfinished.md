@@ -446,6 +446,24 @@ ranked by how visible it should be:
 - **YSH-18, shadow and depth passes** resolve with different light and atlas state from the visible
   pass. Game: a plug bent through a marker light and one through the atlas, under a shadow-casting
   light. If confirmed, decide per pass, and add a README Known limitations line.
+  **Measured 2026-10-22 [M], Joe's "ghost" report** (a faint plug shape through the receiving
+  skin in game). `Dev/Probes/PlugGhostProbe.cs`: a converted avatar's real skinned plug on its
+  patched material, a hole 0.7L out at 35° and 60°, camera depth texture read back. Atlas only, and
+  atlas with lights: 0 depth pixels where the colour has no plug, and the floor shadow bends (20875
+  to 24140 px off the unbent plug's). Marker lights only: 21724 and 26216 depth pixels where the
+  colour has no plug, every one of them on the UNBENT plug, and the shadow identical to the unbent
+  plug's (0 px differ). With an opaque box behind the entrance as the body, those same pixels are
+  depth where the colour shows only body. Cause: Unity sets the four vertex light slots for
+  ForwardBase only, so a ShadowCaster pass (shadow maps and the camera depth texture that depth of
+  field, fog and ambient occlusion read) sees no marker light and draws the plug straight. The
+  atlas is a global texture and reaches every pass. Marker lights decide whenever the atlas cannot:
+  a DPS-only socket, a view too small for the atlas, mixed YAPS builds (protocol 7). README Known
+  limitations line added; checklist S17.6.
+  **No shipped fix: the caster has no way to read the lights.** Options for Joe: (a) leave it,
+  documented; (b) the plug's forward pass writes the socket it found by light into the atlas, so the
+  next frame's caster (and every plug) reads it there: an atlas protocol change, real work; (c) the
+  plug left out of the camera depth texture (not shadow maps) when no atlas socket resolves, which
+  removes the ghost but lets fog and depth of field treat every idle plug as the wall behind it.
 - **AM1-10, the menu-name rename rule.** Whether `RenamePass` should trigger on
   `IllegalMenuNameChars` (`[^a-zA-Z0-9/\-_#]`) instead of its own list, leaving
   `VerifyMenuParameterNames` to assert. Author decision: it changes the names users get for menu
