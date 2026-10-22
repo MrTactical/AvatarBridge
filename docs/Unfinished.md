@@ -588,6 +588,28 @@ Six reports from Joe's testers on the latest test packages.
 - **Slower CVR uploads.** Not measured. The editor hooks are cheap; the suspects are first-upload
   compiles of patched shaders and an uber shader shipped when the lock fails. Next: time
   `BuildAssetBundles` of one avatar with and without YAPS and squash.
+  **Measured 2026-10-22 [M]: the first upload compiles every variant of every YAPS patch.**
+  `Dev/Probes/Perf/UploadCostProbe` runs the CCK's own pipeline (LocalTest, no upload) stage by
+  stage, cold then warm. Clone, build processors, save and validation take under 5 s on every
+  avatar; the bundle build is the rest. Cold, then warm:
+  - 3-plug-patch avatar 92 s then 4 s: 79 s of it compiling 3 YAPS patches (568 variants).
+  - 36-patch avatar 851 s then 45 s: YAPS shaders 723 s wall, 9234 s CPU, 4154 variants.
+  - 25-patch avatar 683 s then 34 s: YAPS 586 s of 648 s compiling.
+  - An avatar with no YAPS: 56 s then 11 s.
+  No material was locked by Poiyomi's upload hook. Warm builds hit the shader cache for every
+  variant, so the cost lands on the first upload after a conversion or rebuild that changed a
+  patch, which is what testers see.
+  Per variant, the YAPS vertex stage costs 3 to 4 s CPU against 0.05 s for the same host
+  unpatched. `Dev/Probes/Perf/YapsCompileBisect` (one vertex variant, salted): no YAPS 0.02 s,
+  plug 2.8 s, squash 1.5 s, socket 0.13 s, all three 4.9 s.
+  `Dev/Probes/Perf/YapsVariantLog` (`-ycbLogVariants`): every YAPS variant is built three
+  times, mono, `STEREO_INSTANCING_ON` and `UNITY_SINGLE_PASS_STEREO` (85 of 255 vertex variants
+  each). ChilloutVR forces single-pass instanced, so the double-wide third is never drawn.
+  Options, not built: (a) an `IPreprocessShaders` stripper in the add-on dropping
+  `UNITY_SINGLE_PASS_STEREO` from YAPS patches only, a third off the first upload; (b) cut the
+  plug and squash code's per-variant compile cost, the bigger lever but real shader work (the
+  walk and atlas loops are already `[loop]`). Also seen: the plug's debug overlay and socket
+  readout shaders ship in the bundle (48 variants).
 
 ## 5.0.1
 
