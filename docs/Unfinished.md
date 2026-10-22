@@ -458,9 +458,7 @@ ranked by how visible it should be:
   legal and synced today. Moving the trigger into `RenamePass` would only swap those names for
   label-derived ones, and ChilloutVR profiles restore saved values by name, so users who already
   converted would lose their saved values for nothing they can see.
-- **AM1-14, PlayAudio paths with a slash.** Whether VRChat plays a PlayAudio whose AudioSource object
-  has `/` in its name is untested; one VRChat test before `ConvertPlayAudio` moves to
-  `FindByAnimationPath`.
+- **AM1-14, PlayAudio paths with a slash:** moved to 5.0.1, item 15 (Joe, 2026-10-22).
 - **Docs outside the README: done on dev 2026-10-21.** `YAPS-CLEAN-ROOM.md` now rests on YAPS's own
   atlas protocol and the DPS marker lights, and no longer claims a contact channel. `YAPS5.md` stays
   a record, with a note at the top naming the three code names since removed and what replaced
@@ -526,17 +524,34 @@ Neither looks like a converter change; both need a decision before the baseline 
   smoke test's own test plug also writes into. Fix: rebuild the fixture with
   `Dev/Probes/FixtureBuilder.cs` (it changes that fixture's digest), and give it a root name of its
   own so no other test plug shares its folder.
-- **One avatar's texture estimate grew [M].** "About 268.0 MB of texture to download" in every run
-  from 410 to 422 (276.2 once, in 416), 274.0 in 425 and 427, with "1 set of materials shares a
-  shader" becoming "2 sets": four materials on one locked YAPS copy and two on another. 424 cannot
-  say (a probe had resized this avatar's textures that morning, reverted at 14:40 from its
-  `TextureSizes.undo`). Candidates: the per-role patches (65a4466), which put materials on shared
-  copies by role, or the revert not restoring every importer exactly. Only the report's estimate
-  moved; meshes, clips and the `[physics]` block are unchanged.
+  **Done 2026-10-22 [M].** Verified first: `BuildTestPlug` bakes before either caller renames the
+  plug, and `BakeOnce` names the folder after `AvatarRoot` (the scene root here), so the fixture
+  and the smoke test's standalone plug both baked into `Generated/YAPS Test Plug/`; the smoke test's
+  cleanup deletes `Smoke Prop`, `Smoke Avatar` and `Test Plug`, never that folder, and `YapsRemover`
+  keeps generated files. Two test tools sharing a folder, not a user path; the deleter itself is
+  still not found. `FixtureBuilder` now builds the plug under a holder called "Fixture Prop Plug",
+  so its material lands in `Generated/Fixture Prop Plug/`, and the rebuilt scene points there.
+  Subset 428-props (1 of 3): the plug bakes ("ok", 601 vertices) and the digest is byte-identical
+  to baseline 422's. Run 427 promoted to the baseline with this digest in place; the old baseline
+  is `Regression/Yaps/Baseline-pre-428-20261022`.
+- **One avatar's texture estimate grew:** moved to 5.0.1, item 15 (Joe, 2026-10-22).
 
 ## 5.0.1
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).
+
+### 15. Moved out of 5.0.0 (Joe, 2026-10-22)
+
+- **One avatar's texture estimate grew [M]** (from item 14). "About 268.0 MB of texture to
+  download" in every run from 410 to 422 (276.2 once, in 416), 274.0 in 425 and 427, with "1 set
+  of materials shares a shader" becoming "2 sets": four materials on one locked YAPS copy and two
+  on another. 424 cannot say (a probe had resized this avatar's textures that morning, reverted at
+  14:40 from its `TextureSizes.undo`). Candidates: the per-role patches (65a4466), which put
+  materials on shared copies by role, or the revert not restoring every importer exactly. Only the
+  report's estimate moved; meshes, clips and the `[physics]` block are unchanged.
+- **AM1-14, PlayAudio paths with a slash** (from item 9). Whether VRChat plays a PlayAudio whose
+  AudioSource object has `/` in its name is untested; one VRChat test before `ConvertPlayAudio`
+  moves to `FindByAnimationPath`. Checklist S6.9 is optional.
 
 ### 10. Squash, stereo, contacts and the lock: what is left of the speed work
 

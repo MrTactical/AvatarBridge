@@ -151,8 +151,14 @@ namespace AvatarBridge.Dev
 
                 // Its own mesh, beside the scene: the test plug's default is
                 // overwritten by every test plug anyone spawns.
-                var plug = YapsNativeBuilder.BuildTestPlug(null, select: false, meshPath: dir + "/Fixture_Props Plug Mesh.asset");
+                // Baked under a root of its own name: the bake folder follows the
+                // root, and a bare test plug's "YAPS Test Plug" folder is shared
+                // with the smoke test's plug. The fixture lost its material there.
+                var holder = new GameObject("Fixture Prop Plug");
+                var plug = YapsNativeBuilder.BuildTestPlug(holder.transform, select: false, meshPath: dir + "/Fixture_Props Plug Mesh.asset");
                 if (plug == null) throw new Exception("the test plug did not build: YAPS Simple Lit missing?");
+                plug.transform.SetParent(null, false);
+                UnityEngine.Object.DestroyImmediate(holder);
                 plug.name = "Fixture Prop Plug";
                 plug.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
 
