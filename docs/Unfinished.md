@@ -464,6 +464,10 @@ ranked by how visible it should be:
   next frame's caster (and every plug) reads it there: an atlas protocol change, real work; (c) the
   plug left out of the camera depth texture (not shadow maps) when no atlas socket resolves, which
   removes the ghost but lets fog and depth of field treat every idle plug as the wall behind it.
+  **Decided 2026-10-22 (Joe): (a), leave it documented for 5.0.0.** The README line and the release
+  notes' YAPS line stand. `PlugGhostProbe` keeps failing on the marker-light cases by design; that
+  is the expected result, not a regression. What is still open is the game check (S17.9), which
+  confirms whether Joe's ghost was this cause at all.
 - **AM1-10, the menu-name rename rule.** Whether `RenamePass` should trigger on
   `IllegalMenuNameChars` (`[^a-zA-Z0-9/\-_#]`) instead of its own list, leaving
   `VerifyMenuParameterNames` to assert. Author decision: it changes the names users get for menu
