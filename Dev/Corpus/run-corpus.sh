@@ -205,7 +205,7 @@ launch() {
 # Progress is digests written since the run began, wherever the profile files them.
 began="$REPO/Regression/.run-began"
 touch "$began"
-digests() { find "$REPO/Regression" -name '*.txt' -newer "$began" 2>/dev/null | wc -l; }
+digests() { find "$REPO/Regression/" -name '*.txt' -newer "$began" 2>/dev/null | wc -l; }
 
 part=1
 had=0

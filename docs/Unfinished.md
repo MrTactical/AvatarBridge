@@ -147,6 +147,9 @@ rewrites `ScaleFactor`, `ScaleFactorInverse`, `EyeHeightAsPercent` and `ScaleMod
 (`AnimatorMerger.cs:5627-5800`), so a value the sweep drives never holds. `ToggleSweep` now counts
 `EyeHeightAsMeters`, `EyeHeightAsPercent` and `ScaleFactorInverse` as game-owned. Expected on the
 next run: that avatar's refused line goes away.
+**Run 427 [M]:** no digest in baseline 422, run 424 or 427 refuses a scale or eye-height parameter,
+so the line had already gone. What moved: 22 avatars sweep one parameter fewer (`params` down by
+1), `responded`, `stuck` and `refused` unchanged on every one.
 
 ### 4. A slider whose two children animate different properties (corpus 415)
 
@@ -161,6 +164,8 @@ next run: that avatar's refused line goes away.
   bindings are skipped. `TreeToggleRestoreTest`: 4 new cases WRONG before, 17/17 after. **To confirm
   in the next full run:** the three `unstable at rest:` lines on Avatar E (VRCEmote, Collar, DPS) go,
   and the new Converted line appears where sliders were filled. Not worn in ChilloutVR.
+  **Run 427 [M]:** the one `unstable at rest:` line in baseline 422 is gone (as in 424), and the
+  sliders' ends show as `Blend Tree N at rest` rest clips on the avatars run 424 listed.
 
 ### 5. Cloth on a plug's own bones, unmeasured
 
@@ -220,6 +225,11 @@ the YAPS avatars [M]:
   the Poiyomi probe project, the includes before the squash fix against now: Poiyomi 354.7 s to
   24.5 s with every role, 10.7 s squash alone; Simple Lit 126.6 s to 14.5 s, 7.9 s squash alone.
   `YapsRolesTest` PASS; a bend A/B on a fresh bake identical, the light route 50 of 50 both ways.
+- **Confirmed by run 427 (dev e5608e1, full, default profile) [M]:** the squash pass summed over 84
+  avatars took 223.4 min in 418, 261.1 in 419, 242.5 in 424, 29.4 in 425 and 14.2 in 427; every pass
+  together 286.3, 321.4, 287.2, 62.8 and 36.8 min. The run took about an hour in four Unity
+  processes. 427 followed 425 and 426 on the same machine, so part of its lead over 425 may be
+  Unity's shader cache holding copies those runs compiled.
 - **Run 424 (dev b9fb21d, before the loop fix) [M]:** 73 of 85 digests moved against baseline 422,
   every class explained: the count line; rest clips for sliders (90b277a); squash reported not
   built where every shader under the part refused (a1b3812: 9 avatars on Unity's Standard or a
@@ -243,6 +253,11 @@ the YAPS avatars [M]:
   metallic case: the test set `Texture2D.whiteTexture`, which does not survive the material being
   saved, so the material had no map. With a saved texture asset: 8/8 PASS, the refusal reads "YAPS
   Simple Lit has no metallic map". The nine avatars are checked in the full run instead of a subset.
+  **Run 427 [M]:** one avatar gains squash on a Standard layer (Converted "Deform patched into YAPS
+  Simple Lit", 14 squash materials where 13 were). The nine stay unbuilt, each now naming why:
+  Standard with a metallic map (three), Unity's surface shaders (two), shaders in error that read
+  as `Hidden/InternalErrorShader` (four, one avatar's scene variants). Correct by the rule above; the fallback simply finds
+  little to take in this corpus.
 
 
 Joe, on the K2 options: "not every shader is built the same ... we would need to test YAPS plugs and
@@ -384,6 +399,11 @@ ranked by how visible it should be:
    curve is dropped. ~~PhysBone `version` never read~~ withdrawn: `IsVersion10` is read and used
    (`MagicaClothWriter.cs:631,633,731,894`). One cloth per PhysBone (issue #7): the "asked which
    avatar" blocker is stale, the reporter sent it on Discord. Distance culling unused.
+   **Run 427 [M]:** the "Also moves" line appears on four avatars (two scene variants of one, and
+   two more; Approximated up by 1 or 2). On one of them it replaced the chain's "Multi Child Type
+   'Ignore'" line: `PhysBoneData` counts a root's children without the nested roots, so that root
+   no longer branches, as VRChat sees it with Ignore Other on. The `[physics]` block, which records
+   each cloth's root bones, is byte-identical on all four against run 424, so no cloth moved.
 
 ### 9. The audit of 2026-10-03: what is still open
 
@@ -491,6 +511,28 @@ Read what the seam check measures before calling it a bake fault.
   fifth of a length out at right angles bends the shaft 90° in a few centimetres, so a large
   stretch there is expected; whether 6x is the right bound needs the floor's own avatar (not in
   the corpus project) measured again. Tester only, not a 5.0.0 blocker.
+
+### 14. Run 427 against baseline 422: what no commit explains yet
+
+Full run 427 (dev e5608e1, default profile, 2026-10-22): 85 digests, 73 moved against 422 and
+27 against 424. Every class is explained (items 3, 4, 6, 7, 8 above and run 424's list) but two.
+Neither looks like a converter change; both need a decision before the baseline moves.
+- **The props fixture lost its plug's material [M].** Its plug bakes "FAILED material slot 0 is
+  empty" from run 426 on; 425 baked it. The saved scene's plug points at a material in
+  `Assets/YAPS/Generated/YAPS Test Plug/`, and that whole folder is gone from the project. 425
+  ended at 20:04 and 426 began at 20:14 on 2026-10-21; no log in that window names the folder, and
+  the conversion code holds no delete that reaches it, so the deleter is not found. The folder's
+  name is the native builder's per-root folder for any root called "YAPS Test Plug", which the
+  smoke test's own test plug also writes into. Fix: rebuild the fixture with
+  `Dev/Probes/FixtureBuilder.cs` (it changes that fixture's digest), and give it a root name of its
+  own so no other test plug shares its folder.
+- **One avatar's texture estimate grew [M].** "About 268.0 MB of texture to download" in every run
+  from 410 to 422 (276.2 once, in 416), 274.0 in 425 and 427, with "1 set of materials shares a
+  shader" becoming "2 sets": four materials on one locked YAPS copy and two on another. 424 cannot
+  say (a probe had resized this avatar's textures that morning, reverted at 14:40 from its
+  `TextureSizes.undo`). Candidates: the per-role patches (65a4466), which put materials on shared
+  copies by role, or the revert not restoring every importer exactly. Only the report's estimate
+  moved; meshes, clips and the `[physics]` block are unchanged.
 
 ## 5.0.1
 
