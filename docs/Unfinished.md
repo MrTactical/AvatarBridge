@@ -585,6 +585,15 @@ Six reports from Joe's testers on the latest test packages.
   captures came back blank for the plain source too, so UiOffscreenProbe cannot draw a material
   inspector; that is the probe, not evidence. Needs the tester's steps (which material, what
   "not working" looks like, whether they pressed Unlock).
+  **Screenshots 2026-10-23:** a locked patch ("Hidden/Locked/YAPS/...") shows the YAPS sections,
+  then Poiyomi's "POIYOMI SHADER UI FAILED TO LOAD" text. Those lines are `[Header]` decorators
+  on `_ShaderUIWarning0/1` that only Unity's default drawing shows; Thry never draws them. So
+  `YapsShaderGUI.OriginalEditor` returned null and the fallback drew the raw properties: the
+  recorded class (`Thry.ShaderEditor`) did not exist in that project. In Attempt Conversion it
+  resolves on all 734 patched materials (scratch probe), so ours works where Thry compiles. Most
+  likely Poiyomi's own scripts failed to compile in the tester's project (Poiyomi's text says the
+  same). To decide: does an unpatched Poiyomi material there show the same text, and what is the
+  console's first error.
 - **Slower CVR uploads.** Not measured. The editor hooks are cheap; the suspects are first-upload
   compiles of patched shaders and an uber shader shipped when the lock fails. Next: time
   `BuildAssetBundles` of one avatar with and without YAPS and squash.
