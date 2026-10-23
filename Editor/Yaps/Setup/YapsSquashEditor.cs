@@ -69,7 +69,7 @@ namespace AvatarBridge
             bool stale = built && YapsSquash.RegionsHash(settings) != settings.builtFrom;
 
             _root.Add(BridgeElements.Banner("Squash",
-                !built ? "not built yet: press Build at the bottom"
+                !built ? "not built yet: check the parts, then press Build"
                 : stale ? $"built · {BridgeElements.Count(mats, "material", "materials")} · parts changed since: press Rebuild"
                 : $"built · {BridgeElements.Count(mats, "material", "materials")} · parts {YapsSquash.PartsFrom(settings)}",
                 built ? "built" : "not built", BridgeTheme.Span.Cvr));
@@ -78,11 +78,8 @@ namespace AvatarBridge
             _root.Add(body);
             body.Add(BridgeElements.Notice(Tone.Info, YapsInspectorStyle.InertComponentNote));
 
-            var see = new BridgeElements.Card("See it work");
-            body.Add(see);
-            YapsSquashPreview.Controls(see.Body, settings, RebuildLater);
-
-            var parts = new BridgeElements.Card("Parts");
+            // In the order of the work: what squashes, build it, then see and tune it.
+            var parts = new BridgeElements.Card("Parts").Step(1, 4, BridgeTheme.Span.Cvr);
             body.Add(parts);
             parts.Body.Add(BridgeElements.Hint(painted
                 ? $"From {BridgeElements.Count(settings.pairs.Count, "painted pair", "painted pairs")} on \"{(settings.body != null ? settings.body.name : "?")}\"."
@@ -94,28 +91,7 @@ namespace AvatarBridge
             parts.Body.Add(new PropertyField(serializedObject.FindProperty("partBones"), "Part bones"));
             parts.Body.Add(new PropertyField(serializedObject.FindProperty("leaveAlone"), "Materials left alone"));
 
-            // Fields in declaration order, a fold per [Header]. The regions are hidden.
-            var feel = new BridgeElements.Card("How it feels");
-            body.Add(feel);
-            feel.Body.Add(BridgeElements.Hint("Knobs write to the materials as you move them: no rebuild."));
-            var it = serializedObject.GetIterator();
-            it.NextVisible(true);   // m_Script
-            BridgeElements.Card fold = null;
-            while (it.NextVisible(false))
-            {
-                if (HereNotKnobs.Contains(it.name)) continue;
-                var field = typeof(YapsSquashSettings).GetField(it.name);
-                if (field?.GetCustomAttributes(typeof(HeaderAttribute), false).FirstOrDefault() is HeaderAttribute h)
-                {
-                    FoldSummaries.TryGetValue(h.header, out string summary);
-                    fold = new BridgeElements.Card(h.header, summary, fold == null).Nested().Remember("Yaps.Squash." + h.header);
-                    feel.Body.Add(fold);
-                    if (FoldHints.TryGetValue(h.header, out string hint)) fold.Body.Add(BridgeElements.Hint(hint));
-                }
-                (fold != null ? fold.Body : feel.Body).Add(YapsInspectorStyle.Field(it.Copy(), field));
-            }
-
-            var build = new BridgeElements.Card("Build");
+            var build = new BridgeElements.Card("Build").Step(2, 4, BridgeTheme.Span.Cvr);
             body.Add(build);
             build.Body.Add(BridgeElements.Hint(built
                 ? "Rebuild after the body, its bones or its regions change, or after a new outfit is added."
@@ -140,6 +116,31 @@ namespace AvatarBridge
                     _saidTone = removed ? Tone.Good : Tone.Warn;
                     RebuildLater();
                 }, null, ButtonKind.Danger)));
+            }
+
+            var see = new BridgeElements.Card("See it work").Step(3, 4, BridgeTheme.Span.Cvr);
+            body.Add(see);
+            YapsSquashPreview.Controls(see.Body, settings, RebuildLater);
+
+            // Fields in declaration order, a fold per [Header]. The regions are hidden.
+            var feel = new BridgeElements.Card("How it feels").Step(4, 4, BridgeTheme.Span.Cvr);
+            body.Add(feel);
+            feel.Body.Add(BridgeElements.Hint("Knobs write to the materials as you move them: no rebuild."));
+            var it = serializedObject.GetIterator();
+            it.NextVisible(true);   // m_Script
+            BridgeElements.Card fold = null;
+            while (it.NextVisible(false))
+            {
+                if (HereNotKnobs.Contains(it.name)) continue;
+                var field = typeof(YapsSquashSettings).GetField(it.name);
+                if (field?.GetCustomAttributes(typeof(HeaderAttribute), false).FirstOrDefault() is HeaderAttribute h)
+                {
+                    FoldSummaries.TryGetValue(h.header, out string summary);
+                    fold = new BridgeElements.Card(h.header, summary, fold == null).Nested().Remember("Yaps.Squash." + h.header);
+                    feel.Body.Add(fold);
+                    if (FoldHints.TryGetValue(h.header, out string hint)) fold.Body.Add(BridgeElements.Hint(hint));
+                }
+                (fold != null ? fold.Body : feel.Body).Add(YapsInspectorStyle.Field(it.Copy(), field));
             }
 
             var animate = new BridgeElements.Card("Animate it", null, false);

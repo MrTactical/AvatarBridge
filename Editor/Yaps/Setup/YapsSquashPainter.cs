@@ -152,34 +152,41 @@ namespace AvatarBridge
                 return;
             }
 
+            // One pick and one button in sight; the rest folds away. All at one level it read
+            // like a cockpit.
             var paint = new BridgeElements.Card("Paint");
             var names = regions.pairs.Select((p, i) => $"{i + 1}. {p.name}").ToArray();
             paint.Body.Add(BridgeElements.Popup("Pair", "Two parts that press against each other, named after the bones they start from.", names, _pair, i => { _pair = i; Recolour(); Changed?.Invoke(); Rebuild(); }));
+            // The brush's own controls sit in the Scene view beside the work, not here.
+            paint.Body.Add(new BridgeElements.PrimaryButton(_painting ? "Stop painting" : "Paint in the Scene view", () => SetPainting(!_painting), BridgeTheme.BridgeTo));
+            paint.Body.Add(BridgeElements.Hint("The brush, its side and its tools open in the Scene view, over the avatar."));
             // Greyed out at the cap: a warning on press read as "two is too many".
             var addPair = BridgeElements.Btn("Add a pair", AddPair, "Two at most: the shader has room for four parts.");
             addPair.SetEnabled(pairs < 2);
             paint.Body.Add(BridgeElements.ButtonRow(addPair, BridgeElements.Btn("Remove this pair", RemovePair)));
-            paint.Body.Add(BridgeElements.Text("Name", "For the report.", regions.pairs[_pair].name, v =>
+
+            var more = new BridgeElements.Card("More for this pair", "name, fill from a bone or shape key, clear", false).Nested();
+            paint.Body.Add(more);
+            more.Body.Add(BridgeElements.Text("Name", "For the report.", regions.pairs[_pair].name, v =>
             {
                 Undo.RecordObject(regions, "Rename squash pair");
                 regions.pairs[_pair].name = v;
                 EditorUtility.SetDirty(regions);
             }));
-            paint.Body.Add(SideChoice(() => Changed?.Invoke()));
-            // The brush's own controls sit in the Scene view beside the work, not here.
-            paint.Body.Add(new BridgeElements.PrimaryButton(_painting ? "Stop painting" : "Paint in the Scene view", () => SetPainting(!_painting), BridgeTheme.BridgeTo));
-            paint.Body.Add(BridgeElements.Hint("The brush and its tools open in the Scene view, over the avatar."));
-            paint.Section("Fill this side from");
-            paint.Body.Add(BridgeElements.ButtonRow(
+            more.Body.Add(SideChoice(() => Changed?.Invoke()));
+            more.Section("Fill this side from");
+            more.Body.Add(BridgeElements.ButtonRow(
                 BridgeElements.Btn("The selected bone", FromBone, "The skin the bone selected in the Hierarchy and the bones under it carry, onto this side, whole where they carry most.")));
             var mesh = _body.sharedMesh;
             var shapes = Enumerable.Range(0, mesh.blendShapeCount).Select(mesh.GetBlendShapeName).ToArray();
             if (shapes.Length > 0)
             {
                 _shape = Mathf.Clamp(_shape, 0, shapes.Length - 1);
-                paint.Body.Add(BridgeElements.Popup("Shape key", "A size or shape slider for the part: the skin it moves.", shapes, _shape, i => _shape = i));
-                paint.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("The shape key", FromShape, "The skin that shape key moves, split down the avatar's middle into this pair.")));
+                more.Body.Add(BridgeElements.Popup("Shape key", "A size or shape slider for the part: the skin it moves.", shapes, _shape, i => _shape = i));
+                more.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("The shape key", FromShape, "The skin that shape key moves, split down the avatar's middle into this pair.")));
             }
+            more.Body.Add(BridgeElements.ButtonRow(
+                BridgeElements.Btn("Clear this side", () => Each((w, c) => System.Array.Clear(w, 0, w.Length)), null, ButtonKind.Danger)));
             scroll.Add(paint);
 
             bool built = YapsSquash.Has(_avatar.transform);
@@ -195,8 +202,9 @@ namespace AvatarBridge
                 Rebuild();
             }, BridgeTheme.BridgeTo));
             if (_built != null) use.Body.Add(BridgeElements.Notice(_builtTone, _built));
-            use.Section("Start over");
-            use.Body.Add(BridgeElements.ButtonRow(
+            var over = new BridgeElements.Card("Start over", "from the bone names, or no regions at all", false).Nested();
+            use.Body.Add(over);
+            over.Body.Add(BridgeElements.ButtonRow(
                 BridgeElements.Btn("From the bone names", FromNames, "What the squash finds on its own: breast, boob, butt, booty, glute bones, a pair each, with every bone under them. Replaces every region."),
                 BridgeElements.Btn("Remove the regions", () =>
                 {
@@ -243,19 +251,17 @@ namespace AvatarBridge
         {
             var regions = Regions;
             if (regions == null || regions.pairs.Count == 0) return;
-            into.Add(BridgeElements.Hint($"Painting {regions.pairs[_pair].name}. Drag over the body, the ring is the brush. Ctrl erases, Esc stops."));
+            // The brush and three tools. Wider and Narrower read as the radius again, and Clear
+            // lives in the window, away from the strokes.
+            into.Add(BridgeElements.Hint($"Painting {regions.pairs[_pair].name}. Drag over the body. Ctrl erases, Ctrl+Z undoes a stroke, Esc stops."));
             into.Add(SideChoice(() => rootVisualElement.schedule.Execute(Rebuild)));
             into.Add(BridgeElements.SliderField("Radius (cm)", "How far the brush spreads over the skin.", 1f, 20f, _radius * 100f, v => _radius = v / 100f));
             into.Add(BridgeElements.SliderField("Strength", "How much one stroke paints. Strokes never paint past it.", 0.05f, 1f, _strength, v => _strength = v));
             into.Add(BridgeElements.ButtonRow(
-                BridgeElements.Btn("Wider", () => Each(Grow), "One ring of skin wider."),
-                BridgeElements.Btn("Narrower", () => Each(Shrink), "One ring of skin narrower."),
-                BridgeElements.Btn("Soften edge", () => Each(Smooth), "So the squash fades out instead of tearing.")));
-            into.Add(BridgeElements.ButtonRow(
-                BridgeElements.Btn("Copy to the other side", Mirror, "This side onto its partner, across the avatar's middle."),
-                BridgeElements.Btn("Clear this side", () => Each((w, c) => System.Array.Clear(w, 0, w.Length)), null, ButtonKind.Danger)));
+                BridgeElements.Btn("Soften edge", () => Each(Smooth), "So the squash fades out instead of tearing."),
+                BridgeElements.Btn("Copy to other side", Mirror, "This side onto its partner, across the avatar's middle."),
+                BridgeElements.Btn("Stop", () => SetPainting(false))));
             into.Add(BridgeElements.Hint("<color=#ff5050>■</color> this side   <color=#5080ff>■</color> its partner   <color=#40cc40>■</color> the other pair"));
-            into.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Stop painting", () => SetPainting(false))));
         }
 
         // --- weights ----------------------------------------------------------------
@@ -266,6 +272,9 @@ namespace AvatarBridge
             _w = null;
             _tris = null;
             _named = null;
+            // Bake keeps colours of the same length, so an undo restored the weights and the
+            // overlay still drew the stroke.
+            _colours = null;
             if (_body == null || _body.sharedMesh == null) return;
             if (YapsSquash.NamedShares(_avatar.transform, _body, out var named, out _) != null) _named = named;
             var mesh = _body.sharedMesh;
@@ -348,8 +357,6 @@ namespace AvatarBridge
             Recolour();
         }
 
-        void Grow(float[] w, int c) => Spread(w, (x, n) => Mathf.Max(x, n.Max()));
-        void Shrink(float[] w, int c) => Spread(w, (x, n) => Mathf.Min(x, n.Min()));
         void Smooth(float[] w, int c) => Spread(w, (x, n) => 0.5f * x + 0.5f * n.Average());
 
         void Spread(float[] w, System.Func<float, IEnumerable<float>, float> rule)

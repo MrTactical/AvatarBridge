@@ -54,6 +54,30 @@ namespace AvatarBridge.Regression
                 Check(Body().sharedMaterial != skin && Body().sharedMaterial.HasProperty("_YAPS_DentOwn"), "the skin is squashed");
                 var shirtCopy = Shirt().sharedMaterial;
                 Check(shirtCopy != shirt && shirtCopy.HasProperty("_YAPS_DentOwn"), "and so is the shirt over it");
+                // Squash copies carry the plug's YAPS properties, and the setup listed them as plugs.
+                var scan = YapsScanner.Scan(root.gameObject);
+                Check(scan.Plugs.Count == 0, $"the setup lists no squashed layer as a plug ({scan.Plugs.Count} listed)");
+
+                // A stroke undone must leave the overlay too: its colours stayed, so it read as no undo.
+                var painter = ScriptableObject.CreateInstance<YapsSquashPainter>();
+                try
+                {
+                    Call(painter, "Pick", root.gameObject);
+                    Call(painter, "AddPair");
+                    Undo.IncrementCurrentGroup();
+                    var w = (float[][])Field(painter, "_w");
+                    for (int v = 0; v < w[0].Length; v++) w[0][v] = 1f;
+                    Call(painter, "Recolour");
+                    Call(painter, "Save", "Paint squash region");
+                    float Red() => ((Color[])Field(painter, "_colours")).Max(c => c.r);
+                    Check(Red() > 0.9f, "a stroke shows on the overlay");
+                    Undo.PerformUndo();
+                    Check(settings.pairs.Count == 1 && settings.pairs[0].a.All(x => x == 0), "undo takes the stroke out of the regions");
+                    Check(Red() < 0.01f, $"and off the overlay (red {Red():0.00})");
+                }
+                finally { Object.DestroyImmediate(painter); }
+                settings.pairs.Clear();
+                settings.body = null;
 
                 settings.leaveAlone = new List<Material> { shirt };
                 said = YapsSquash.Add(root, Dir + "/Out", out built);
@@ -80,6 +104,10 @@ namespace AvatarBridge.Regression
             Debug.Log(failures == 0 ? "[SquashPartsTest] PASS" : $"[SquashPartsTest] FAIL: {failures}");
             if (Application.isBatchMode) EditorApplication.Exit(failures == 0 ? 0 : 1);
         }
+
+        const System.Reflection.BindingFlags Private = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+        static object Call(object o, string name, params object[] args) => o.GetType().GetMethod(name, Private).Invoke(o, args);
+        static object Field(object o, string name) => o.GetType().GetField(name, Private).GetValue(o);
 
         static Material Saved(string name)
         {

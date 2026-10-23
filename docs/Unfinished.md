@@ -637,6 +637,35 @@ Six reports from Joe's testers on the latest test packages.
   0.6x the old first-upload compile; existing patches keep the old code until rebuilt.
   Not done: `YapsCompileBisect` end to end on a rebuilt patch; a test in game.
 
+### 17. Joe's squash and setup UI review, 2026-10-23 (screenshots image2-7)
+
+All six done 2026-10-23 (Joe: "do all 6", "do both" for item 1). SquashPartsTest gained three
+checks: on the old code the scan listed 2 plugs and the overlay kept an undone stroke (red 1.00),
+FAIL 2; on the new code PASS (Non Corpus Zone, headless). compile-check all ok. Not seen in the
+GUI yet: the new layouts want one look from Joe.
+
+1. **Two toggles read as one feature.** Done, both ways: renamed to "Soft body physics: keep parts
+   from passing through" (Physics ▸ Your call, `softBodiesCollide`) and "Soft body shape: squash
+   where parts press together" (Opt-ins ▸ Soft parts, `squashSoftParts`), and each carries a hint
+   line naming the other ("use both"). The physics hint shows only with the add-on. Field names
+   unchanged, so saved settings keep.
+2. **Clothing listed as plugs (bug).** Fixed: `YapsScanner.Scan` skips a component-less YAPS
+   plug material that is not `YapsMarks.IsBakedMaterial`; squash copies carry the plug's
+   properties with no bake. Test: 2 listed, then 0.
+3. **Painting has no undo.** It had one: each stroke's `Save` records the component, and Ctrl+Z
+   restored the weights. The overlay did not follow: `Load` kept `_colours` of the same length and
+   `Bake` redrew them, so the undone stroke stayed drawn. `Load` now drops them. Test: red 1.00
+   after undo, then 0.00. The brush hint now says Ctrl+Z.
+4. **The brush overlay is cluttered.** Now: hint, side, radius, strength, one row (Soften edge,
+   Copy to other side, Stop), the legend. Wider and Narrower are gone (they read as the radius),
+   Clear this side moved to the window.
+5. **The Squash regions window reads like a cockpit.** Paint card: pair, the paint button, add or
+   remove a pair. Name, side, fill from a bone or shape key and Clear sit in a closed fold "More for
+   this pair"; Start over is a closed fold under the build.
+6. **The squash card's buttons open different places.** The Setup card has one primary button,
+   **Set up squash**, which opens the YAPS Squash component (adding it if missing, no build), plus
+   Remove. The component's cards run as numbered steps: Parts, Build, See it work, How it feels.
+
 ## 5.0.1
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).

@@ -735,7 +735,7 @@ sharing one.
 | **Convert toe PhysBones** | off | Toes are left out of the simulation entirely: both chains *rooted* at them and toe branches found part-way down a longer chain (a leg or skirt chain that runs through the feet), for MagicaCloth2 and DynamicBone alike. Simulated toes splay and swing while IK plants the foot, which reads as broken feet rather than as physics. Turn on if the toe physics are deliberate |
 | **Bound swing to the source's limit** | on | A PhysBone's angle limit is often the only thing keeping a deliberately loose chain presentable: convert the looseness without it and the chain swings much further here than it did in VRChat. This bounds how far each bone may travel from rest, worked out from that limit, which VRChat applies at every joint, along the chain's own bones, easing to nothing at the root. A soft body (breasts, butt, belly, thighs) gets the limit as an angle limit instead, since MagicaCloth2 turns distance bounds off for one; builds before 5.0.0 left it unbounded, so it could swing far past where its PhysBone stopped on a walk. Elsewhere it's a *distance* bound rather than an angle limit, so it removes motion instead of adding a restoring force and can't set the chain vibrating |
 | **Auto-assign nearby colliders** | off | Gives each cloth the avatar's own colliders it could swing into. Improves on the original rather than copying it, so check before uploading |
-| **Soft bodies push each other apart** | off | Soft bodies near each other, like the two breasts or thighs, collide instead of passing through: a sphere on each one's collision bone, given to the others. VRChat collides chains only with colliders, never with each other, so this too improves on the original. Also a Toolkit card, for an avatar already converted |
+| **Soft body physics: keep parts from passing through** | off | Soft bodies near each other, like the two breasts or thighs, collide instead of passing through: a sphere on each one's collision bone, given to the others. VRChat collides chains only with colliders, never with each other, so this too improves on the original. Also a Toolkit card, for an avatar already converted |
 | **Add physics to toggled rigs that have none** | off | A toggled style (usually add-on hair) carrying its own rig and mesh but no PhysBone was rigid in VRChat too; this synthesizes a MagicaCloth for it, preset by classification, wired to the style's toggle. Off because it invents physics the author never made |
 
 ## Contacts
@@ -1570,9 +1570,13 @@ avatar draws, so nothing arrives late. A viewer with the **Cameras** content fil
 of it: ChilloutVR then removes the components that hand the shader where the parts swung to, and
 the body draws as it would without the squash. Nothing breaks, and there is no way around it.
 
-**Two ways on.** Converting: *Manual options ▸ Opt-ins ▸ Soft parts ▸ Squash breasts and butt
-against each other and hands*. Already on ChilloutVR: *Tools ▸ YAPS ▸ Setup*, the **Squash**
-card, **Add squash**. Pressing it again rebuilds it; **Remove squash** puts every layer back on its
+**Two ways on.** Converting: *Manual options ▸ Opt-ins ▸ Soft parts ▸ Soft body shape: squash
+where parts press together*. It changes the parts' shape where they meet; *Physics ▸ Your call ▸
+Soft body physics* keeps whole parts from passing through. They are separate, and work together.
+Already on ChilloutVR: *Tools ▸ YAPS ▸ Setup*, the **Squash** card, **Set up squash**. It opens the
+avatar's **YAPS Squash** component in its own window, adding it first if the avatar has none, and
+the window's steps run in order: **Parts**, **Build**, **See it work**, **How it feels**. **Build**
+there builds it, and pressing it again rebuilds; **Remove squash** puts every layer back on its
 own material, toggles included. The card says whether the picked avatar has squash, on how many
 materials, and when its regions were painted after the last build. Only a layer that lies over a soft part gets a copy; the rest keep
 their own material and cost nothing. The copies go to `Assets/YAPS/Generated/Squash`; a rebuild
@@ -1580,8 +1584,8 @@ goes back to the folder the last build used, a conversion's own included, so the
 rather than added to. Their shaders live in the shared `Assets/YAPS/Generated/Shaders`, where a
 shader another avatar already patched is reused instead of compiled again.
 
-**Tuning it.** The first build adds a **YAPS Squash** component to the avatar, and the Setup card
-opens it in its own window when it is done; **Tune and preview** on the card opens it again. Its knobs write straight to the materials as you move them, so nothing
+**Tuning it.** A build adds the **YAPS Squash** component if the avatar has none yet, and
+**Set up squash** on the Setup card opens it again. Its knobs write straight to the materials as you move them, so nothing
 needs rebuilding: **How it feels** holds how flat a part presses and where the volume goes, whether the
 pair meets (off by default), the stretch in motion, and what presses it (own arms, other players' hands, plugs, and
 the physics' own colliders, off by default). **Motion Style** runs from 0, like real flesh (a small
@@ -1608,15 +1612,18 @@ the list, each with every bone under it. Painted regions win over picked bones. 
 regions painted: **Paint regions** on the same card, or *Tools ▸ YAPS ▸ Squash regions*. Pick the
 avatar: with nothing painted it says which pairs the bone names give, and **Paint over them** (or
 **Start empty**) starts from there. **Paint in the Scene view** opens the brush panel in the Scene
-view, over the avatar, and the painted skin is drawn on the body, faintly where something hides it. **Fill this side from** takes **The selected bone** or **The shape key** instead (a size
-slider for the part is usually exactly the right skin). Each
+view, over the avatar, and the painted skin is drawn on the body, faintly where something hides it.
+The fold **More for this pair** holds the pair's name, and **Fill this side from**, which takes
+**The selected bone** or **The shape key** instead of painting (a size slider for the part is
+usually exactly the right skin), and **Clear this side**. Each
 starts whole where it reaches most and fades toward the edge, so a jiggle bone weighted at a tenth
 still squashes in full. The brush spreads over the skin, never across a gap, so an arm resting on
-the side is not painted with it; Ctrl erases and Esc stops. **Soften edge** feathers the edge, so the
-squash fades out instead of tearing; **Copy to the other side** mirrors one side onto its partner. The regions are kept on the avatar's
+the side is not painted with it; Ctrl erases, Ctrl+Z undoes a stroke and Esc stops. **Soften edge**
+feathers the edge, so the squash fades out instead of tearing; **Copy to other side** mirrors one
+side onto its partner. The regions are kept on the avatar's
 **YAPS Squash** component; while it holds any, the converter and the Setup card both build from
 them instead of the bone names. **Build the squash** (or **Rebuild the squash**) at the bottom of the same window builds from
-them, and says above it whether the squash is built and whether strokes since need a rebuild; **Remove the regions** clears them and keeps the knobs. The parts
+them, and says above it whether the squash is built and whether strokes since need a rebuild; under **Start over**, **Remove the regions** clears them and keeps the knobs. The parts
 are measured on one skin: of the meshes carrying every part, the one weighted to the most bones, so
 the body and not a dense piece of clothing with more vertices. **Squash regions** starts on the
 same mesh, and its **Body** field picks another. Clothing follows the skin under it, within 3 cm.
@@ -1640,7 +1647,7 @@ already carries, or any plug that announces itself the same way, so it costs not
 light shares the four vertex-light slots with everything else that uses them. The light carries no
 thickness, so the shaft's radius is taken as a tenth of its length, between 1.2 and 6 cm. Without a
 socket between the pair, a plug still passes through the parts. **Plugs**, under *What presses it*,
-sets how hard; 0 leaves them out. A squash built by an earlier version needs **Add squash** pressed
+sets how hard; 0 leaves them out. A squash built by an earlier version needs **Rebuild** pressed
 again (or the avatar reconverted) to notice its socket, and to stretch in motion.
 
 ### Testing it
@@ -1660,7 +1667,7 @@ again (or the avatar reconverted) to notice its socket, and to stretch in motion
   avatar: edit mode holds the rest pose, where every part of a plug agrees about which way it
   faces. A test plug dropped in Play mode is the plug prop prefab, so make that first (*Create a
   plug prop prefab*); one built there would leave its files behind.
-- **Building waits for edit mode.** Baking, *Add squash*, building, rebuilding or removing a socket
+- **Building waits for edit mode.** Baking, building the squash, building, rebuilding or removing a socket
   or plug, and making a prop refuse in Play mode and say why: Unity puts the scene back when Play
   mode ends but keeps the materials and animations a build changed, so the avatar would come out
   half built.
@@ -1979,7 +1986,7 @@ cloth** card uses these same options, all but **Add physics to toggled rigs that
 **Convert toe PhysBones** and **Size for the largest a slider makes the body** sit under these for
 both solvers. On MagicaCloth 2 the card adds *Advanced physics tuning*, folded away, and a **Your
 call** section with the three that depend on intent rather than measurement: **Add physics to toggled
-rigs that have none**, **Auto-assign nearby colliders** and **Soft bodies push each other apart**. All of them are in the
+rigs that have none**, **Auto-assign nearby colliders** and **Soft body physics: keep parts from passing through**. All of them are in the
 [physics table](#options) above and not repeated here.
 
 ### Manual options: what the avatar can't tell you
@@ -1993,7 +2000,7 @@ settle. Leaving all of them alone converts fine.
 | **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
 | **Opt-ins ▸ OSC toys ▸ Keep the OGB / PCS haptics contacts** (YAPS add-on) | off | The toy-app contacts *Penetration* strips with the rest of the stack. Plugs and sockets work either way; these only drive a toy, and each one spends some of the instance's 512 contact pairs. Needs *Penetration* on *Convert to YAPS*; *Remove* strips them regardless. See [OSC toys](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
 | **Opt-ins ▸ OSC toys ▸ Keep OGB haptics synced (OSCGoesBrrr, Lovense)** (YAPS add-on) | off | Off, the kept OGB haptics parameters are local (free); OSCGoesBrrr's automatic detection skips ChilloutVR's `#` names, but its manual avatar-parameter links read them, and the report lists the names. On, they stay synced and automatic detection works with no links to add (ChilloutVR still needs its `--osc-query-prefix=VRChat-Client` launch argument), at 32 sync bits each, about nine per plug and per socket; the report's sync budget entry says where the avatar landed. Needs the contacts above kept and *Penetration* on *Convert to YAPS* |
-| **Opt-ins ▸ Soft parts ▸ Squash breasts and butt against each other and hands** (YAPS add-on) | off | Off, the parts swing as their physics make them and pass through each other. On, the body shader flattens them where they press together, dents them under a hand and parts them around a plug in a socket between them, on every layer over the skin, at no sync cost; see [Squash](#squash-soft-parts-that-press-together). The parts are found by bone name, or from regions painted with *Tools ▸ YAPS ▸ Squash regions*; tuned on the **YAPS Squash** component the build adds. Works with *Penetration* on any answer |
+| **Opt-ins ▸ Soft parts ▸ Soft body shape: squash where parts press together** (YAPS add-on) | off | Off, the parts swing as their physics make them and pass through each other. On, the body shader flattens them where they press together, dents them under a hand and parts them around a plug in a socket between them, on every layer over the skin, at no sync cost; see [Squash](#squash-soft-parts-that-press-together). The parts are found by bone name, or from regions painted with *Tools ▸ YAPS ▸ Squash regions*; tuned on the **YAPS Squash** component the build adds. Works with *Penetration* on any answer |
 | **Opt-ins ▸ Penetration ▸ Show the avatar's OWN depth animations to other players** (YAPS add-on) | off | Not YAPS's socket shapes, which already play for everyone on a synced parameter. This is the bulges and winces the avatar's author animated in VRChat, which are contact-driven, and ChilloutVR runs an avatar's triggers on the wearer's machine alone. Off, each socket's depth parameter is local: free, and only the wearer sees the reaction. On, it syncs and the room sees it, at 32 bits per socket: one depth parameter each, six sockets is about 192 of 3200; a socket that kept several depth parameters as authored pays for each. Needs *Penetration* on *Convert to YAPS* |
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder: you must press **Create Controller** yourself |
 | **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of this avatar's measured height, centred on its original size. Parent-constrained props are re-anchored so they scale with you. Not added, with a warning, when the avatar already has its own parameter or menu entry called "Height": rename that one to get the slider |

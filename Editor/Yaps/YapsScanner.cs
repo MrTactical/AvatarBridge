@@ -184,6 +184,10 @@ namespace AvatarBridge
                 {
                     var origin = YapsLegacyMap.Detect(mats[i], out var part);
                     if (origin == YapsLegacyMap.Origin.None || part != YapsLegacyMap.Part.Plug) continue;
+                    // Squash copies carry the same YAPS properties with no bake, so
+                    // every squashed shirt and body listed as a plug. A YAPS plug
+                    // with no component is always a baked one.
+                    if (origin == YapsLegacyMap.Origin.YAPS && !YapsMarks.IsBakedMaterial(mats[i])) continue;
                     var owner = PlugOwner(r.transform);
                     if (owner == r.transform && plugObjects.Count > 0)
                     {

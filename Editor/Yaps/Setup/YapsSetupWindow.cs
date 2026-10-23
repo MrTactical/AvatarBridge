@@ -217,40 +217,31 @@ namespace AvatarBridge
             // Whether it is there at all, before any button: a tester could not tell.
             _squashState = BridgeElements.Notice(Tone.Info, "");
             squash.Body.Add(_squashState);
+            // One way in: the component's window walks parts, build, preview and feel in order.
+            // Three buttons opening three places read as three features.
+            squash.Body.Add(new BridgeElements.PrimaryButton("Set up squash", OpenSquash, BridgeTheme.BridgeTo));
             squash.Body.Add(BridgeElements.ButtonRow(
-                BridgeElements.Btn("Add squash", AddSquash,
-                    "Builds it on the avatar picked in step 1: from its painted regions if it has them, else by bone name. " +
-                    "Pressing it again rebuilds it."),
-                BridgeElements.Btn("Tune and preview", TuneSquash,
-                    "Opens the YAPS Squash component in its own window: how it feels, and a preview in the scene view."),
-                BridgeElements.Btn("Paint regions", () => YapsSquashPainter.Open(_target),
-                    "Paint which skin squashes, for a body whose bones do not say."),
                 BridgeElements.Btn("Remove squash", RemoveSquash,
-                    "Puts every layer back on its own material, and points the toggles back too.")));
+                    "Puts every layer back on its own material, and points the toggles back too.", ButtonKind.Danger)));
             _squashStatus = Status();
             squash.Body.Add(_squashStatus);
             _pages.Add(squash);
         }
 
-        void AddSquash()
+        // The component's window, added first on an avatar that has none: its steps start with
+        // the parts, before anything is built.
+        void OpenSquash()
         {
             if (_target == null)
             {
                 _squashStatus.Set("Pick an avatar in step 1 first.", Tone.Warn);
                 return;
             }
-            string said = YapsSquash.Build(_target.transform, out bool built);
-            if (!built) { _squashStatus.Set(said, Tone.Warn); return; }
-            _squashStatus.Set(said + " Tune and preview it in the window that opened.", Tone.Good);
-            ShowSquashState();
+            var settings = YapsSquash.SettingsOf(_target.transform) ?? Undo.AddComponent<YapsSquashSettings>(_target);
+            _squashStatus.Set(YapsSquash.Has(_target.transform)
+                ? "Opened in its own window: tune it, or change the parts and rebuild."
+                : "Opened in its own window: check the parts, then press Build.", Tone.Info);
             // Its own window, not a selection: the component sits at the bottom of a long Inspector.
-            BridgeElements.Reveal(YapsSquash.SettingsOf(_target.transform));
-        }
-
-        void TuneSquash()
-        {
-            var settings = _target != null ? YapsSquash.SettingsOf(_target.transform) : null;
-            if (settings == null) { _squashStatus.Set("Add squash first: the build adds the component that tunes it.", Tone.Warn); return; }
             BridgeElements.Reveal(settings);
         }
 

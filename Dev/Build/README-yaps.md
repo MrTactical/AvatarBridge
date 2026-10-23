@@ -17,10 +17,10 @@ content that is already out there, not only with itself.
   sockets** in its **Interaction lab** card: preview a socket, drop a test plug or socket, or press
   the squash with a test hand, beside the avatar's motion in Play mode.
 - **Squash** (breasts and butt flattening against each other and denting under a hand) is off
-  until you add it: the **Squash** card in *Tools ▸ YAPS ▸ Setup*, **Add squash**, or the opt-in
-  *Squash breasts and butt against each other and hands* when converting with AvatarBridge.
-- For a body whose bones do not say which parts squash, paint them: **Paint regions** on the same
-  card, or *Tools ▸ YAPS ▸ Squash regions*.
+  until you add it: the **Squash** card in *Tools ▸ YAPS ▸ Setup*, **Set up squash**, or the opt-in
+  *Soft body shape: squash where parts press together* when converting with AvatarBridge.
+- For a body whose bones do not say which parts squash, paint them: **Paint regions** on the
+  squash window's **Parts** step, or *Tools ▸ YAPS ▸ Squash regions*.
 - **Portals**: set a hole's **Portal exit** to another socket on the same avatar, and a plug that
   goes in comes out there. Build both the plug's and the socket's avatars with 5.0; to an older
   plug, and by marker light, it is an ordinary hole.

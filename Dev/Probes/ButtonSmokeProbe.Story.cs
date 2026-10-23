@@ -1,7 +1,7 @@
 // A user's story, pressed through the same windows a person uses, with a picture of each step.
 //   -bsStory thighs -bsScenes <scene> -bsOut <file.tsv>
-// "thighs": somebody wants their thighs to squash and jiggle. Convert with Squash, Soft bodies
-// push each other apart and Keep the converted avatar a prefab on; in Squash regions keep the
+// "thighs": somebody wants their thighs to squash and jiggle. Convert with Soft body shape, Soft body
+// physics and Keep the converted avatar a prefab on; in Squash regions keep the
 // chest pair and repaint the second pair onto the thighs from their jiggle bones, then one brush
 // stroke; rebuild, turn Motion Style to anime, preview Squeeze, Bounce and Test hand; apply the
 // prefab overrides; then in Play mode Walk, Jump and Shake in the Interaction lab while the thighs
@@ -78,7 +78,7 @@ namespace AvatarBridge.Regression
             WindowShot(converter, dir, "01 converter analysed", null);
 
             // 2. The three options a person wanting soft thighs would turn on.
-            foreach (var label in new[] { "Squash breasts and butt against each other and hands", "Soft bodies push each other apart", "Keep the converted avatar a prefab" })
+            foreach (var label in new[] { "Soft body shape: squash where parts press together", "Soft body physics: keep parts from passing through", "Keep the converted avatar a prefab" })
             {
                 var toggle = converter.Content.Query<Toggle>().ToList().FirstOrDefault(x => Label(x) == label);
                 if (toggle == null) { Step(t, "turn on: " + label, false, "no such toggle"); continue; }
@@ -87,7 +87,7 @@ namespace AvatarBridge.Regression
                 toggle = converter.Content.Query<Toggle>().ToList().FirstOrDefault(x => Label(x) == label);
                 Step(t, "turn on: " + label, toggle != null && toggle.value, toggle != null && toggle.value ? "on" : "would not stay on");
             }
-            var squashToggle = converter.Content.Query<Toggle>().ToList().FirstOrDefault(x => Label(x) == "Squash breasts and butt against each other and hands");
+            var squashToggle = converter.Content.Query<Toggle>().ToList().FirstOrDefault(x => Label(x) == "Soft body shape: squash where parts press together");
             WindowShot(converter, dir, "02 converter options", squashToggle);
 
             // 3. Convert, and wait the way a person watches "Converting...".

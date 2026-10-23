@@ -679,9 +679,13 @@ namespace AvatarBridge
                 b.Add(BridgeElements.Bind("Auto-assign nearby colliders",
                     "Lets each cloth collide with body colliders it could swing into, which VRChat did not. Check before uploading.",
                     settings.autoAssignNearbyColliders, v => settings.autoAssignNearbyColliders = v));
-                b.Add(BridgeElements.Bind("Soft bodies push each other apart",
+                b.Add(BridgeElements.Bind("Soft body physics: keep parts from passing through",
                     "Breasts, thighs and other soft bodies near each other stop passing through, which VRChat did not do. Check before uploading.",
                     settings.softBodiesCollide, v => settings.softBodiesCollide = v));
+#if AVATARBRIDGE_YAPS
+                // Two labels that sounded alike, in two places: each says what the other is.
+                b.Add(BridgeElements.Hint("Moves whole parts apart. Their shape giving where they meet is Opt-ins ▸ Soft parts ▸ Soft body shape; use both."));
+#endif
             }
             return card;
         }
@@ -900,11 +904,12 @@ namespace AvatarBridge
             }
 
             optIns.Add(BridgeElements.SubHeading("Soft parts"));
-            optIns.Add(BridgeElements.Bind("Squash breasts and butt against each other and hands",
+            optIns.Add(BridgeElements.Bind("Soft body shape: squash where parts press together",
                 "In the body shader: pressed together they flatten and meet, anyone's hand dents them, and a plug in a socket between them parts them. " +
                 "As the physics swing them they stretch and squash too. Found by bone name, or by regions painted with " +
                 "Tools ▸ YAPS ▸ Squash regions; tuned on the YAPS Squash component the build adds. No sync cost.",
                 settings.squashSoftParts, v => { settings.squashSoftParts = v; ScheduleRebuild(); }));
+            optIns.Add(BridgeElements.Hint("Changes the skin's shape where breasts, butt, a hand or a plug press. Keeping whole parts from passing through is Physics ▸ Your call ▸ Soft body physics; use both."));
             if (settings.squashSoftParts)
             {
                 optIns.Add(BridgeElements.Hint(
