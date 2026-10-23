@@ -668,8 +668,8 @@ GUI yet: the new layouts want one look from Joe.
 
 ### 18. Squash in game, reported by other users, 2026-10-23 (image8, image9, a clip)
 
-Both fixed on dev 2026-10-23. Existing squash builds keep the old shader code until rebuilt,
-because patched shaders inline the include. Neither fix has been seen in game yet.
+All fixed on dev 2026-10-23. Existing squash builds keep the old shader code until rebuilt,
+because patched shaders inline the include. No fix has been seen in game yet.
 
 1. **Turning in place pressed the pair's middle (image8).** It looked like cloth swinging. The
    cause was in the decompiled client instead. `AvatarClone` builds the wearer's first-person copy:
@@ -692,6 +692,19 @@ because patched shaders inline the include. Neither fix has been seen in game ye
    Still open: the buffer is two skinning passes old by design, so a very fast turn can still
    shift the contact a little (a LastFrame provider could compensate). What decides the remote
    cause: the viewer's client branch (stable or beta), and whether it happens with that one avatar alone.
+3. **Tessellated Poiyomi 10 read the wrong vertex (Joe's lead, 2026-10-23: "tessellation and loop
+   limits").** Poiyomi 10's Pro Tessellated shaders keep one `appdata` with `vertexId : TEXCOORD6`
+   under `POI_TESSELLATED` and `: SV_VertexID` otherwise. The patcher's struct reader does not follow
+   `#if`, so in the tessellated passes the deform read `v.vertexId`, a mesh UV channel (zero when the
+   mesh has none): every vertex took one vertex's squash share, plug frame and socket weights.
+   Poiyomi 9.3's tessellated shaders use two structs and were right. Fix: in a program with
+   `#pragma hull`, a vertex id field the struct declares twice is not trusted, and the entry (a real
+   vertex stage) takes `SV_VertexID` as a parameter. `IncludeVertexTest`: WRONG on the old code, PASS
+   on the new. On the real Poiyomi 10.0 Pro Tessellated (copied into Non Corpus Zone under a probe
+   name): old, all four passes read `v . vertexId`; new, all four read `yapsVertexId` and the patch
+   compiles. Not proven to be the testers' explosion: ask whether the exploding material is on
+   Poiyomi 10 Tessellated. Loop limits ruled out by reading: DX11 puts no cap on a `[loop]` count;
+   fxc's limit is on unrolling, which fails the compile rather than moving vertices.
 
 ## 5.0.1
 

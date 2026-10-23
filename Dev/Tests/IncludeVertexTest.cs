@@ -124,6 +124,55 @@ v2f domain (tf f, const OutputPatch<cp, 3> p, float3 b : SV_DomainLocation)
 }
 ";
 
+        // Shaped like Poiyomi Pro's tessellated shaders: the entry copies the id into a texcoord
+        // for the later stages, and the struct names that field SV_VertexID only when untessellated.
+        const string PoiTessPass = @"
+        Pass
+        {
+            Tags { ""LightMode"" = ""ForwardAdd"" }
+            CGPROGRAM
+            #pragma target 5.0
+            #define POI_TESSELLATED
+            #pragma vertex vertPrePass
+            #pragma hull hull
+            #pragma domain domain
+            #pragma fragment frag
+            #include ""UnityCG.cginc""
+            #include ""INCLUDE""
+            ENDCG
+        }";
+
+        const string PoiTessInclude = @"
+fixed4 _Color;
+struct appdata
+{
+    float4 vertex : POSITION; float3 normal : NORMAL; float4 tangent : TANGENT;
+    #ifdef POI_INTERNAL_WATER
+    float4 poiBindNormal : TEXCOORD6;
+    #endif
+    #ifdef POI_TESSELLATED
+    uint vertexId : TEXCOORD6;
+    #else
+    uint vertexId : SV_VertexID;
+    #endif
+};
+struct v2f { float4 pos : SV_POSITION; };
+struct tf { float edge[3] : SV_TessFactor; float inside : SV_InsideTessFactor; };
+v2f vert (appdata v) { v2f o; o.pos = UnityObjectToClipPos(v.vertex); return o; }
+fixed4 frag (v2f i) : SV_Target { return _Color; }
+appdata vertPrePass (appdata v) { appdata t = v; t.vertexId = (uint) v.vertexId; return t; }
+tf hullConst (InputPatch<appdata, 3> p) { tf f; f.edge[0] = 1; f.edge[1] = 1; f.edge[2] = 1; f.inside = 1; return f; }
+[domain(""tri"")] [partitioning(""integer"")] [outputtopology(""triangle_cw"")] [patchconstantfunc(""hullConst"")] [outputcontrolpoints(3)]
+appdata hull (InputPatch<appdata, 3> p, uint id : SV_OutputControlPointID) { return p[id]; }
+[domain(""tri"")]
+v2f domain (tf f, const OutputPatch<appdata, 3> p, float3 b : SV_DomainLocation)
+{
+    appdata a = p[0];
+    a.vertex = p[0].vertex * b.x + p[1].vertex * b.y + p[2].vertex * b.z;
+    return vert(a);
+}
+";
+
         // A second visible pass whose include holds its own vert, as an outline pass does.
         const string OutlinePass = @"
         Pass
@@ -247,6 +296,22 @@ fixed4 frag (v2f i) : SV_Target { return _Color; }
                 Check(tessNoId != null && Compiles(tessNoId) && DeformsIn(tessNoId, 0) == 1 && DeformsIn(tessNoId, 1) == 1,
                     $"a tessellated pass with no SV_VertexID patches, once per pass ({tessNoIdRefusal ?? "patched"})");
 
+                // Poiyomi Pro's tessellated shaders carry the id as TEXCOORD6 there, so a deform
+                // reading the struct's field read a mesh UV channel: every vertex took one vertex's
+                // squash share and plug frame. The entry is a real vertex stage, so it takes one.
+                var poiTess = Patched("IncVertPoiTess", false, out string poiTessRefusal, out _, PoiTessPass, PoiTessInclude);
+                Check(poiTess != null && Compiles(poiTess) && DeformsIn(poiTess, 0) == 1 && DeformsIn(poiTess, 1) == 1,
+                    $"a Poiyomi-shaped tessellated pass patches, once per pass ({poiTessRefusal ?? "patched"})");
+                if (poiTess != null)
+                {
+                    string tessCode = Preprocessed(poiTess, 1);
+                    Check(Regex.IsMatch(tessCode, @"YapsDeform\s*\(\s*yapsPosition\s*,\s*yapsNormal\s*,\s*yapsTangent\s*,\s*yapsVertexId\s*\)")
+                          && Regex.IsMatch(tessCode, @"uint\s+yapsVertexId\s*:\s*SV_VertexID"),
+                        "its tessellated pass reads the id from SV_VertexID, not the texcoord the struct holds there");
+                    Check(Regex.IsMatch(Preprocessed(poiTess, 0), @"YapsDeform\s*\(\s*yapsPosition\s*,\s*yapsNormal\s*,\s*yapsTangent\s*,\s*v\s*\.\s*vertexId\s*\)"),
+                        "its plain pass still reads the struct's SV_VertexID");
+                }
+
                 // An old copy of the function left in a comment, ahead of the real one.
                 var oldCopy = Patched("IncVertOldCopy", false, out string oldCopyRefusal, out _, null,
                     "// v2f vert (appdata v)\n// {\n// }\n" + Include);
@@ -323,10 +388,16 @@ fixed4 frag (v2f i) : SV_Target { return _Color; }
         // Deform calls left in a pass once its preprocessor has run.
         static int DeformsIn(Shader shader, int pass)
         {
+            string code = Preprocessed(shader, pass);
+            return code != null ? Regex.Matches(code, @"\bYapsDeform\s*\(\s*yapsPosition").Count : -1;
+        }
+
+        static string Preprocessed(Shader shader, int pass)
+        {
             var variant = ShaderUtil.GetShaderData(shader).GetSubshader(0).GetPass(pass).PreprocessVariant(
                 UnityEditor.Rendering.ShaderType.Vertex, new string[0], UnityEditor.Rendering.ShaderCompilerPlatform.D3D,
                 BuildTarget.StandaloneWindows64, true);
-            return variant.Success ? Regex.Matches(variant.PreprocessedCode, @"\bYapsDeform\s*\(\s*yapsPosition").Count : -1;
+            return variant.Success ? variant.PreprocessedCode : null;
         }
 
         static void Check(bool ok, string what)

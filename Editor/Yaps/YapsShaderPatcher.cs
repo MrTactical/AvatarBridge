@@ -955,9 +955,11 @@ namespace AvatarBridge
                     .Where(m => IsDefinition(code, m.Index)).Reverse().ToList();
                 if (definitions.Count > 0) heads = definitions;
             }
+            bool tessellated = blockStart >= 0 && blockEnd <= unit[0].Text.Length && Regex.IsMatch(
+                ShaderSpiPatcher.Uncommented(unit[0].Text).Substring(blockStart, blockEnd - blockStart), @"#pragma\s+hull\b");
             foreach (var definition in heads)
             {
-                if (!PatchDefinition(unit, yaps, vertName, file, definition, blockStart,
+                if (!PatchDefinition(unit, yaps, vertName, file, definition, blockStart, tessellated,
                         out refusal, out bool frameless))
                 {
                     return false;
@@ -984,7 +986,7 @@ namespace AvatarBridge
         }
 
         static bool PatchDefinition(List<ShaderSpiPatcher.SourceFile> unit, string yaps, string vertName,
-            ShaderSpiPatcher.SourceFile file, Match head, int blockStart, out string refusal, out bool missingFrame)
+            ShaderSpiPatcher.SourceFile file, Match head, int blockStart, bool tessellated, out string refusal, out bool missingFrame)
         {
             refusal = null;
             missingFrame = false;
@@ -1044,6 +1046,14 @@ namespace AvatarBridge
             members.TryGetValue("TANGENT", out string tangentField);
             missingFrame = normalField == null || tangentField == null;
             members.TryGetValue("SV_VERTEXID", out string vertexIdField);
+            // Poiyomi Pro's tessellated shaders give the same field TEXCOORD6 there, behind an #if
+            // this reader does not follow, so the deform read a mesh UV channel and every vertex
+            // took one vertex's squash share and plug frame. A tessellated entry is a real vertex
+            // stage, so it takes its own.
+            if (tessellated && vertexIdField != null && members.ContainsKey(TwiceKey + vertexIdField))
+            {
+                vertexIdField = null;
+            }
 
             // An input with no SV_VertexID: the function takes one as a parameter instead, the
             // struct left alone, since other stages may build it.
@@ -1254,6 +1264,9 @@ namespace AvatarBridge
 
         // Members keyed by SEMANTIC, because names are anybody's guess but
         // semantics are the contract.
+        // Not a semantic: marks a field the struct declares more than once.
+        const string TwiceKey = "twice:";
+
         static Dictionary<string, string> ReadStructMembers(
             List<ShaderSpiPatcher.SourceFile> unit, string structName,
             ShaderSpiPatcher.SourceFile near = null, int from = 0, int before = 0, int depth = 0)
@@ -1287,12 +1300,18 @@ namespace AvatarBridge
 
             var members = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             string body = file.Text.Substring(open, close - open);
+            var seen = new HashSet<string>(StringComparer.Ordinal);
             foreach (Match m in Regex.Matches(body, @"\w+\s+(\w+)\s*:\s*(\w+)\s*;"))
             {
                 string semantic = m.Groups[2].Value.ToUpperInvariant();
                 if (!members.ContainsKey(semantic))
                 {
                     members[semantic] = m.Groups[1].Value;
+                }
+                // A field declared twice sits behind #if branches with different semantics.
+                if (!seen.Add(m.Groups[1].Value))
+                {
+                    members[TwiceKey + m.Groups[1].Value] = m.Groups[1].Value;
                 }
             }
 
