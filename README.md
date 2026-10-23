@@ -1581,9 +1581,10 @@ Already on ChilloutVR: *Tools ▸ YAPS ▸ Setup*, the **Squash** card, **Set up
 avatar's **YAPS Squash** component and shows it in the Inspector, adding it first if the avatar has
 none. Like a plug or socket, the component sits on the bone the parts hang from (the chest for one
 pair, the hips when there are two), or on the avatar root while no part is found; one an older build
-put on the avatar root moves there. Its steps run in order: **Parts**, **Build**, **See and tune it**. **Build**
-there builds it, and pressing it again rebuilds; **Remove squash** puts every layer back on its
-own material, toggles included. The card says whether the picked avatar has squash, on how many
+put on the avatar root moves there. Its steps run top to bottom, building last as the other windows do: **Which parts squash**,
+**Paint them** (only when the bones miss a part), **Tune how it feels**, and **Build**. **Build the
+squash** there builds it, **Rebuild the squash** rebuilds, and **Remove the squash** puts every
+layer back on its own material, toggles included. The card says whether the picked avatar has squash, on how many
 materials, and when its regions were painted after the last build. Only a layer that lies over a soft part gets a copy; the rest keep
 their own material and cost nothing. The copies go to `Assets/YAPS/Generated/Squash`; a rebuild
 goes back to the folder the last build used, a conversion's own included, so they are written over
@@ -1592,11 +1593,11 @@ shader another avatar already patched is reused instead of compiled again.
 
 **Tuning it.** A build adds the **YAPS Squash** component if the avatar has none yet, and
 **Set up squash** on the Setup card opens it again. Its knobs write straight to the materials as you move them, so nothing
-needs rebuilding: **See and tune it** holds how flat a part presses and where the volume goes, whether the
+needs rebuilding: **Tune how it feels** holds how flat a part presses and where the volume goes, whether the
 pair meets (off by default), the stretch in motion, and what presses it (own arms, other players' hands, plugs, and
 the physics' own colliders, off by default). **Motion Style** runs from 0, like real flesh (a small
 stretch, small swings ignored), to 1, like anime (a long stretch and a deep squash on every
-bounce). **See and tune it ▸ Preview** shows it in the editor, starting half squeezed so every knob
+bounce). **Tune how it feels ▸ Preview** shows it in the editor once built, starting half squeezed so every knob
 shows as it moves: **Squeeze** is another player's two open hands pushing each pair together from
 outside, so *Other players' hands* scales it, **Bounce** swings each part as a jump would, and **Test hand** puts another player's open hand in
 front of it, dragged with the handle in the Scene view; it presses the part nearest it, so it
@@ -1605,23 +1606,23 @@ for a smaller hand pressing a smaller spot. The editor runs no physics, so the p
 the same knobs answer the real thing. The Avatar Tester's **Interaction lab** carries the same
 preview beside the avatar's motion, and in Play mode the cloth there is real: **Jump** or **Shake**
 swings it, and **Squeeze** and **Test hand** press it, moving with the avatar; pause Play mode to hold
-the cloth still while they press. Each fold under **See and tune it** says what it does and how to see it. Its **Build** card builds,
-rebuilds and removes the squash (the knobs stay on the component), and **Animate it** lists the
-material properties to key. The component on a VRChat avatar carries into its conversion, knobs and
+the cloth still while they press. Each fold under **Tune how it feels** says what it does and how to see it, and its fold
+**Animate it** lists the material properties to key. The last step, **Build**, builds, rebuilds and
+removes the squash (the knobs stay on the component). The component on a VRChat avatar carries into its conversion, knobs and
 regions alike, and ChilloutVR strips it at upload.
 
 **Where the parts are.** By default, bones whose names say breast, boob, butt, booty or glute, one
 each side with every bone under it (a pair is named after those top bones), each vertex taking the weight those bones carry, whole where they carry most and fading
 toward the edge, so the squash fades into the body the way the avatar was weight painted. Two pairs
-at most. **Part bones** on the component's **Parts** card picks the bones by hand instead, for
+at most. **Part bones** in the component's first step, **Which parts squash**, picks the bones by hand instead, for
 anything that comes in two (cheeks, thighs): two to a pair, one each side, next to each other in
 the list, each with every bone under it. Painted regions win over picked bones. A body whose bones don't say, or where the names take too much or too little, can have its
-regions painted: **Paint regions** on the same card, or *Tools ▸ YAPS ▸ Squash regions*. Pick the
-avatar: with nothing painted it says which pairs the bone names give, and **Paint over them** (or
+regions painted in the second step, **Paint them**: press **Paint regions** there (*Tools ▸ YAPS ▸
+Squash regions* opens the same component). With nothing painted it says which pairs the bone names give, and **Paint over them** (or
 **Start empty**) starts from there. **Paint in the Scene view** opens the brush panel in the Scene
 view, over the avatar, and the painted skin is drawn on the body, faintly where something hides it.
 The fold **More for this pair** holds the pair's name, and **Fill this side from**, which takes
-**The selected bone** or **The shape key** instead of painting (a size slider for the part is
+**The bone** (picked in its **Bone** field) or **The shape key** instead of painting (a size slider for the part is
 usually exactly the right skin), and **Clear this side**. Each
 starts whole where it reaches most and fades toward the edge, so a jiggle bone weighted at a tenth
 still squashes in full. The brush spreads over the skin, never across a gap, so an arm resting on
@@ -1629,13 +1630,13 @@ the side is not painted with it; Ctrl erases, Ctrl+Z undoes a stroke and Esc sto
 feathers the edge, so the squash fades out instead of tearing; **Copy to other side** mirrors one
 side onto its partner. The regions are kept on the avatar's
 **YAPS Squash** component; while it holds any, the converter and the Setup card both build from
-them instead of the bone names. **Build the squash** (or **Rebuild the squash**) at the bottom of the same window builds from
-them, and says above it whether the squash is built and whether strokes since need a rebuild; under **Start over**, **Remove the regions** clears them and keeps the knobs. The parts
+them instead of the bone names. **Build the squash** (or **Rebuild the squash**) in the last step builds from
+them, and the banner at the top says whether the squash is built and whether strokes since need a rebuild; under **Start over**, **Remove the regions** clears them and keeps the knobs. The parts
 are measured on one skin: of the meshes carrying every part, the one weighted to the most bones, so
-the body and not a dense piece of clothing with more vertices. **Squash regions** starts on the
+the body and not a dense piece of clothing with more vertices. The painter starts on the
 same mesh, and its **Body** field picks another. Clothing follows the skin under it, within 3 cm.
 
-**Layers left alone.** **Materials left alone**, on the same card, lists materials the squash never
+**Layers left alone.** **Materials left alone**, in the first step, lists materials the squash never
 touches: they keep their own shader and stay still while the skin under them squashes, so a press
 can show the skin through one. Rebuild after changing either list; the banner says when one changed.
 

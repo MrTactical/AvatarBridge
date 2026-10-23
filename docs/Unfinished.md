@@ -765,8 +765,17 @@ Fixed on dev the same day, except where marked open.
 5. **"How it feels" did nothing outside Play mode.** The knobs wrote, but nothing pressed, so nothing
    showed. Preview and knobs are one card now, **See and tune it** (steps 1-3 of 3), and Preview starts
    at Squeeze 0.5 so a knob shows the moment it moves.
-6. **Open, for Joe:** whether the rest of the squash menu should change shape too (the painter as a
-   window of its own, the Animate it card).
+6. **The painter came inline, and the build went last** (Joe: "similar to all other UIs where the
+   last thing you do is bake the squash at the bottom"). The component reads top to bottom: 1 Which
+   parts squash (Part bones, Materials left alone), 2 Paint them (the region painter, drawn in the
+   inspector, which owns and destroys it; "Paint regions" starts it when nothing is painted yet),
+   3 Tune how it feels (Preview, the knob folds, Animate it as a closed fold), 4 Build or Rebuild,
+   with Remove under it. *Tools ▸ YAPS ▸ Squash regions* now selects the component. Fill from a bone
+   takes a **Bone** picker instead of the Hierarchy selection, since selecting a bone closes the
+   inspector. The region colours hide while the preview runs, unless painting. SquashPartsTest PASS
+   (the painter still mounts alone for tests and probes); the inspector rendered with
+   UiOffscreenProbe on AlexaSquash in Non Corpus Zone. ButtonSmokeProbe's story now sets the bone
+   field; not rerun.
 
 ## 5.0.1
 

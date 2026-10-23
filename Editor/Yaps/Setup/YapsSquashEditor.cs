@@ -1,5 +1,5 @@
-// The YAPS Squash component's inspector: the knobs, written straight to the build's materials,
-// and a preview that presses the parts as the game does. Another player's hands, written into
+// The YAPS Squash component's inspector, in steps: the parts, the region painter, the knobs
+// (written straight to the build's materials) and the build last. The preview that presses the parts as the game does. Another player's hands, written into
 // the client's own globals, squeeze the pair from outside and press where dragged, in edit and
 // Play mode alike. Edit mode runs no cloth, so there the preview also swings the rests under it.
 #if CVR_CCK_EXISTS
@@ -18,6 +18,14 @@ namespace AvatarBridge
         VisualElement _root;
         string _said;
         Tone _saidTone;
+        // Kept across redraws, so a stroke in progress and the overlay survive them; gone with
+        // the inspector.
+        YapsSquashPainter _painter;
+
+        void OnDisable()
+        {
+            if (_painter != null) DestroyImmediate(_painter);
+        }
 
         // One short line in each fold's header. The knobs keep their own tooltips.
         static readonly System.Collections.Generic.Dictionary<string, string> FoldSummaries = new System.Collections.Generic.Dictionary<string, string>
@@ -71,8 +79,8 @@ namespace AvatarBridge
             bool stale = built && YapsSquash.RegionsHash(settings) != settings.builtFrom;
 
             _root.Add(BridgeElements.Banner("Squash",
-                !built ? "not built yet: check the parts, then press Build"
-                : stale ? $"built · {BridgeElements.Count(mats, "material", "materials")} · parts changed since: press Rebuild"
+                !built ? "not built yet: work down the steps, then Build at the bottom"
+                : stale ? $"built · {BridgeElements.Count(mats, "material", "materials")} · parts changed since: Rebuild at the bottom"
                 : $"built · {BridgeElements.Count(mats, "material", "materials")} · parts {YapsSquash.PartsFrom(settings)}",
                 built ? "built" : "not built", BridgeTheme.Span.Cvr));
             var body = new VisualElement();
@@ -80,53 +88,42 @@ namespace AvatarBridge
             _root.Add(body);
             body.Add(BridgeElements.Notice(Tone.Info, YapsInspectorStyle.InertComponentNote));
 
-            // In the order of the work: what squashes, build it, then see and tune it.
-            var parts = new BridgeElements.Card("Parts").Step(1, 3,BridgeTheme.Span.Cvr);
+            // Top to bottom in the order of the work, building last as in the other windows:
+            // what squashes, painted if the bones miss, how it feels, then build.
+            var parts = new BridgeElements.Card("Which parts squash").Step(1, 4, BridgeTheme.Span.Cvr);
             body.Add(parts);
             parts.Body.Add(BridgeElements.Hint(painted
-                ? $"From {BridgeElements.Count(settings.pairs.Count, "painted pair", "painted pairs")} on \"{(settings.body != null ? settings.body.name : "?")}\"."
+                ? $"From {BridgeElements.Count(settings.pairs.Count, "painted pair", "painted pairs")} on \"{(settings.body != null ? settings.body.name : "?")}\" (step 2), which win over the bones."
                 : settings.partBones.Count > 0 ? "From the bones picked below, two to a pair."
-                : "Found by bone name: breast, boob, butt, booty or glute, one each side. Pick bones below or paint regions for anything else."));
-            parts.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Paint regions", () => YapsSquashPainter.Open(root.gameObject),
-                "Paint which skin squashes. A rebuild picks them up.")));
+                : "Found by bone name: breast, boob, butt, booty or glute, one each side. Pick bones below, or paint them in step 2, for anything else."));
             // Both need a rebuild, so they sit here and not with the knobs.
             parts.Body.Add(new PropertyField(serializedObject.FindProperty("partBones"), "Part bones"));
             parts.Body.Add(new PropertyField(serializedObject.FindProperty("leaveAlone"), "Materials left alone"));
 
-            var build = new BridgeElements.Card("Build").Step(2, 3,BridgeTheme.Span.Cvr);
-            body.Add(build);
-            build.Body.Add(BridgeElements.Hint(built
-                ? "Rebuild after the body, its bones or its regions change, or after a new outfit is added."
-                : "Measures the parts and patches every layer over them. Shaders already carrying YAPS keep theirs."));
-            build.Body.Add(new BridgeElements.PrimaryButton(built ? "Rebuild" : "Build", () =>
+            // The painter lives here, not in a window of its own: a step that sent the reader to
+            // another window was a step they lost.
+            var paint = new BridgeElements.Card("Paint them", "only if the bones miss a part or catch too much").Step(2, 4, BridgeTheme.Span.Cvr);
+            body.Add(paint);
+            if (_painter == null && painted) _painter = YapsSquashPainter.For(root.gameObject, RebuildLater);
+            if (_painter != null) _painter.Panel(paint.Body);
+            else
             {
-                YapsSquashPreview.Stop();
-                _said = YapsSquash.Build(root, out bool ok);
-                _saidTone = ok ? Tone.Good : Tone.Warn;
-                RebuildLater();
-            }, BridgeTheme.BridgeTo));
-            if (_said != null) build.Body.Add(BridgeElements.Notice(_saidTone, _said));
-            if (built)
-            {
-                build.Section("Remove");
-                build.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Remove the squash", () =>
+                paint.Body.Add(BridgeElements.Hint("Skip this when step 1 finds the right parts. Paint which skin squashes when it does not."));
+                paint.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Paint regions", () =>
                 {
-                    YapsSquashPreview.Stop();
-                    bool removed = YapsSquash.Strip(root, YapsSwapFollow.RunnableClips(root));
-                    _said = removed ? "Squash removed. Every layer and toggle is back on its own material; the knobs stay for the next build."
-                        : YapsNativeBuilder.NotInPlayMode;
-                    _saidTone = removed ? Tone.Good : Tone.Warn;
+                    _painter = YapsSquashPainter.For(root.gameObject, RebuildLater);
                     RebuildLater();
-                }, null, ButtonKind.Danger)));
+                }, "Paint which skin squashes on the body. A rebuild picks them up.")));
             }
 
             // The preview and the knobs in one card: a knob shows nothing until something presses.
-            var feel = new BridgeElements.Card("See and tune it").Step(3, 3, BridgeTheme.Span.Cvr);
+            var feel = new BridgeElements.Card("Tune how it feels").Step(3, 4, BridgeTheme.Span.Cvr);
             body.Add(feel);
             YapsSquashPreview.Controls(feel.Body, settings, RebuildLater);
             feel.Body.Add(BridgeElements.Hint(YapsSquashPreview.On == settings
                 ? "Knobs write to the materials as you move them, no rebuild, and show on the preview."
-                : "Knobs write to the materials as you move them, no rebuild. Preview first to see them."));
+                : built ? "Knobs write to the materials as you move them, no rebuild. Preview first to see them."
+                : "Knobs set now are used by the build. Build in step 4, then Preview here to see them."));
 
             // Fields in declaration order, a fold per [Header]. The regions are hidden.
             var it = serializedObject.GetIterator();
@@ -146,11 +143,40 @@ namespace AvatarBridge
                 (fold != null ? fold.Body : feel.Body).Add(YapsInspectorStyle.Field(it.Copy(), field));
             }
 
-            var animate = new BridgeElements.Card("Animate it", null, false);
-            body.Add(animate);
+            var animate = new BridgeElements.Card("Animate it", "turn it off or change it from a toggle", false).Nested();
+            feel.Body.Add(animate);
             animate.Body.Add(BridgeElements.Hint(
                 "Key these under each renderer the squash reaches ▸ Material, on all of them alike: a layer left squashing over skin that is not comes apart from it."));
             animate.Body.Add(BridgeElements.Code(Animatable));
+
+            var build = new BridgeElements.Card(built ? "Rebuild" : "Build").Step(4, 4, BridgeTheme.Span.Cvr);
+            body.Add(build);
+            build.Body.Add(BridgeElements.Hint(built
+                ? "Rebuild after steps 1 or 2 change, the body or its bones change, or a new outfit is added. Knobs need no rebuild."
+                : "Measures the parts and patches every layer over them. Shaders already carrying YAPS keep theirs."));
+            build.Body.Add(new BridgeElements.PrimaryButton(built ? "Rebuild the squash" : "Build the squash", () =>
+            {
+                YapsSquashPreview.Stop();
+                if (_painter != null && _painter.IsPainting) _painter.SetPainting(false);
+                _said = YapsSquash.Build(root, out bool ok);
+                if (ok) _said += " Preview it in step 3.";
+                _saidTone = ok ? Tone.Good : Tone.Warn;
+                RebuildLater();
+            }, BridgeTheme.BridgeTo));
+            if (_said != null) build.Body.Add(BridgeElements.Notice(_saidTone, _said));
+            if (built)
+            {
+                build.Section("Remove");
+                build.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Remove the squash", () =>
+                {
+                    YapsSquashPreview.Stop();
+                    bool removed = YapsSquash.Strip(root, YapsSwapFollow.RunnableClips(root));
+                    _said = removed ? "Squash removed. Every layer and toggle is back on its own material; the knobs stay for the next build."
+                        : YapsNativeBuilder.NotInPlayMode;
+                    _saidTone = removed ? Tone.Good : Tone.Warn;
+                    RebuildLater();
+                }, null, ButtonKind.Danger)));
+            }
 
             _root.Bind(serializedObject);
             // No undo record on the materials: the component owns the values and its own undo

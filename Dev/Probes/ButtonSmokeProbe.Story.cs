@@ -166,8 +166,8 @@ namespace AvatarBridge.Regression
                 if (sideGroup == null) { Step(t, "Side", false, "no Side choice"); break; }
                 sideGroup.value = side;
                 yield return Settle(painter);
-                Selection.activeTransform = side == 0 ? thighL : thighR;
-                yield return PressNamed(t, painter, "The selected bone");
+                painterType.GetField("_bone", UiOffscreenProbe.Any).SetValue(painter.Window, side == 0 ? thighL : thighR);
+                yield return PressNamed(t, painter, "The bone");
                 // Build measures a part on the skin painted at half or more, and wants 20 of it.
                 int whole = Painted(painter, 2 * seat + side, 0.5f);
                 Step(t, $"painted the thigh, {(side == 0 ? "left" : "right")}", whole >= 20, $"{Painted(painter, 2 * seat + side)} vertices, {whole} at half or more");

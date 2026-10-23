@@ -73,8 +73,8 @@ namespace AvatarBridge.Yaps
                  "squashes, so a press can show the skin through it.")]
         public List<Material> leaveAlone = new List<Material>();
 
-        // The regions, painted with Tools > YAPS > Squash regions. None: the parts are found by
-        // bone name. Drawn by the inspector's Parts card, not with the knobs.
+        // The regions, painted in the inspector's Paint them step. None: the parts are found by
+        // bone name.
         [HideInInspector]
         public SkinnedMeshRenderer body;
 
