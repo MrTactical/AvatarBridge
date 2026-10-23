@@ -1056,8 +1056,14 @@ flat seam in the editor renders.
     `YapsDiffProbe -ydWild` PASS, 0 NaN; sane scenes 297/400 differ by design, 0 NaN, farthest
     move 8.19 reaches against 8.34. Compile per squash variant 1.28 to 1.35 s (fxc). SquashParts,
     SquashRefused, SquashSlot and SquashStatus tests PASS. Squash builds need a rebuild to get it.
-  - Open for Joe: turn Meet on by default once it passes in game? A real avatar with painted,
-    uneven skin weights (Kar) was not rendered: Attempt Conversion was open in the GUI.
+  - Open for Joe: turn Meet on by default once it passes in game?
+  - Kar rendered 2026-10-23 (Attempt Conversion, squash rebuilt, `-spLook [-spMeet]`, old shader =
+    `7c0c6fe^`'s include swapped in on the new bake). Meet on: the old kink where the two bottoms
+    meet is gone in the side view, the crease down the middle stays straight; mean pixel change
+    3.5 grey levels at the hard squeeze, 0.3 at rest. Meet off: the parts still cross through, and
+    the swing now tilts them so the crossing reads as a V at the top and a notch below instead of a
+    straight line (0.7). Shares: no visible change at rest. The look probe's shader includes the
+    DEPLOYED `yaps_dent.cginc`, so an A/B needs the old include swapped in, not an old scene.
 
 ### Show it on the avatar: an in-scene overlay for every tool. Joe's idea 2026-10-20. PLAN ONLY, after 5.0.0
 
