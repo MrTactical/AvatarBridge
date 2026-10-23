@@ -1035,6 +1035,29 @@ flat seam in the editor renders.
   a width that grows with the overlap depth; the volume pressed back rises in a rim up and out of
   the cleavage, as the hand dent's rim does. Judged only in ChilloutVR; the `-spLook` renders
   never showed the seam Joe saw. Meet stays off until one passes in game.
+- **BUILT ON DEV 2026-10-23, waits on the game (Joe: "I agree with the fix", plus "the squash
+  deform in general can look a shit-ton better, the way the vertices smooth out"):**
+  - Shader (`yaps_dent.cginc`): the partner's press now feeds the bend, so a pair pushed together
+    swings apart first, Meet on or off. With Meet on, half of what the swing leaves flattens the
+    whole part (`YAPS_SQUASH_WHOLE`) and the rest is the overlap the contact presses back. The
+    contact maps v before the stop to KEEP v + (1 - KEEP) v (1 - e^(v / width)), width = the
+    overlap depth (`YAPS_SQUASH_ROUND`), so the flat patch is level with the plane at its edge
+    and rounds into the part; strictly monotone, so layers keep their order. A rim, -x e^(1 + x),
+    pushes the skin just outside the patch away from the pair's line. Normals from the real slope.
+  - Bake (`YapsSquash.cs`): named shares get two passes of neighbour averaging over the welded
+    mesh (`Soften`), and `Peak` eases its 2x clamp with a smoothstep (it stopped dead at half the
+    peak and at the last weighted vertex). Layers take a Gaussian (1 cm) average of the skin's
+    shares within 3 cm instead of the nearest vertex's, easing into their own weights from 3 to
+    4 cm (a top bridging the cleavage stepped along the 3 cm line). Painted regions keep their paint.
+  - Evidence (Non Corpus Zone, Alexa, `SquashPlayProbe -spLook [-spMeet]`, zebra stripes): Meet
+    on, old = a dead-straight crease down the top and the skin and a pinched V at the top's edge;
+    new = a rounded cleavage, no pinch. Meet off still crosses through in the middle, as before.
+    Alexa's skin weights are mostly solid, so the share smoothing showed no visible change there.
+    `YapsDiffProbe -ydWild` PASS, 0 NaN; sane scenes 297/400 differ by design, 0 NaN, farthest
+    move 8.19 reaches against 8.34. Compile per squash variant 1.28 to 1.35 s (fxc). SquashParts,
+    SquashRefused, SquashSlot and SquashStatus tests PASS. Squash builds need a rebuild to get it.
+  - Open for Joe: turn Meet on by default once it passes in game? A real avatar with painted,
+    uneven skin weights (Kar) was not rendered: Attempt Conversion was open in the GUI.
 
 ### Show it on the avatar: an in-scene overlay for every tool. Joe's idea 2026-10-20. PLAN ONLY, after 5.0.0
 

@@ -314,6 +314,7 @@ namespace AvatarBridge
                 foreach (var s in skins) NameShares(s, sets);
                 // Picked before scaling, which lifts every skin and could change the pick.
                 named = Body(skins);
+                Soften(named);
                 Peak(skins, named);
             }
             else
@@ -629,8 +630,53 @@ namespace AvatarBridge
             {
                 float most = body.share.Max(x => x[c]);
                 if (most <= 0f) continue;
+                // Eased at both ends: clamped straight, the move stopped dead at half the peak and at
+                // the last weighted vertex, and each read as a crease round the part.
                 foreach (var s in skins)
-                    for (int v = 0; v < s.share.Length; v++) s.share[v][c] = Mathf.Clamp01(2f * s.share[v][c] / most);
+                    for (int v = 0; v < s.share.Length; v++) s.share[v][c] = Mathf.SmoothStep(0f, 1f, 2f * s.share[v][c] / most);
+            }
+        }
+
+        // Skin weights fade the way they were painted, often in steps, and the squash multiplies
+        // every step by a move of centimetres, so the part came out lumpy. Two passes of
+        // averaging with the mesh neighbours, seam copies as one point.
+        static void Soften(Skin s)
+        {
+            var mesh = s?.smr.sharedMesh;
+            if (mesh == null) return;
+            int n = s.share.Length;
+            var rep = Enumerable.Range(0, n).ToArray();
+            foreach (var weld in Welds(mesh))
+                foreach (int v in weld)
+                    if (v < n) rep[v] = weld[0];
+            var near = new List<int>[n];
+            for (int sub = 0; sub < mesh.subMeshCount; sub++)
+            {
+                if (mesh.GetTopology(sub) != MeshTopology.Triangles) continue;
+                var tri = mesh.GetTriangles(sub);
+                for (int i = 0; i + 2 < tri.Length; i += 3)
+                    for (int k = 0; k < 3; k++)
+                    {
+                        int a = tri[i + k], b = tri[i + (k + 1) % 3];
+                        if (a >= n || b >= n) continue;
+                        a = rep[a];
+                        b = rep[b];
+                        if (a == b) continue;
+                        (near[a] ??= new List<int>()).Add(b);
+                        (near[b] ??= new List<int>()).Add(a);
+                    }
+            }
+            for (int pass = 0; pass < 2; pass++)
+            {
+                var was = (Vector4[])s.share.Clone();
+                for (int v = 0; v < n; v++)
+                {
+                    if (rep[v] != v || near[v] == null) continue;
+                    var sum = Vector4.zero;
+                    foreach (int x in near[v]) sum += was[x];
+                    s.share[v] = 0.5f * was[v] + 0.5f * sum / near[v].Count;
+                }
+                for (int v = 0; v < n; v++) s.share[v] = s.share[rep[v]];
             }
         }
 
@@ -666,6 +712,7 @@ namespace AvatarBridge
             var skin = none == null ? Skins(root).FirstOrDefault(s => s.smr == body) : null;
             if (skin == null) return null;
             NameShares(skin, Sets(found));
+            Soften(skin);
             Peak(new List<Skin> { skin }, skin);
             return skin.share;
         }
@@ -984,14 +1031,16 @@ namespace AvatarBridge
         }
 
         // Each renderer's texture of its shares, in r, g, b, a. The skin is the painted body, or
-        // Body's pick; a layer riding bones of its own takes the
-        // share of the nearest skin vertex within 3 cm, or the skin would squash out from under it.
+        // Body's pick; a layer riding bones of its own takes the skin's share where it lies, from
+        // the skin vertices within 3 cm, easing out by 4, or the skin would squash out from under it. Weighted by
+        // distance: the nearest one alone gave each layer vertex its own step, and a top came out
+        // in facets the skin under it did not have.
         static List<(SkinnedMeshRenderer smr, Texture2D own, Vector4[] shares)> Shares(List<Skin> skins, Skin painted, string name, string folder)
         {
             int Owned(Skin s) => s.share.Count(x => Mathf.Max(x.x, x.y, x.z, x.w) >= 0.5f);
             var body = painted ?? Body(skins);
             if (body == null || Owned(body) == 0) return new List<(SkinnedMeshRenderer, Texture2D, Vector4[])>();
-            const float Cell = 0.02f, Near = 0.03f;
+            const float Cell = 0.02f, Near = 0.03f, Fade = 0.04f, Spread = 0.01f;
             var grid = new Dictionary<Vector3Int, List<int>>();
             Vector3Int Key(Vector3 p) => new Vector3Int(Mathf.FloorToInt(p.x / Cell), Mathf.FloorToInt(p.y / Cell), Mathf.FloorToInt(p.z / Cell));
             // Skin with no share goes in too: a strap painted onto the part's bones over a shoulder
@@ -1009,8 +1058,8 @@ namespace AvatarBridge
                     for (int v = 0; v < m.at.Length; v++)
                     {
                         var k = Key(m.at[v]);
-                        int best = -1;
-                        float bestD = Near * Near;
+                        var sum = Vector4.zero;
+                        float total = 0f, nearest = Fade * Fade;
                         for (int x = -2; x <= 2; x++)
                             for (int y = -2; y <= 2; y++)
                                 for (int z = -2; z <= 2; z++)
@@ -1019,10 +1068,16 @@ namespace AvatarBridge
                                     foreach (int s in list)
                                     {
                                         float d = (body.at[s] - m.at[v]).sqrMagnitude;
-                                        if (d < bestD) { bestD = d; best = s; }
+                                        if (d >= Fade * Fade) continue;
+                                        float w = Mathf.Exp(-d / (2f * Spread * Spread));
+                                        sum += body.share[s] * w;
+                                        total += w;
+                                        nearest = Mathf.Min(nearest, d);
                                     }
                                 }
-                        if (best >= 0) m.share[v] = body.share[best];
+                        // Eased into the layer's own weights from 3 cm off the skin to 4: cut at 3, a
+                        // top bridging the cleavage stepped from one share to another along a line.
+                        if (total > 0f) m.share[v] = Vector4.Lerp(m.share[v], sum / total, Mathf.SmoothStep(0f, 1f, (Fade - Mathf.Sqrt(nearest)) / (Fade - Near)));
                     }
                 if (m.share.All(x => x == Vector4.zero)) continue;
                 int width = 1024, height = Mathf.Max(1, (m.at.Length + width - 1) / width);

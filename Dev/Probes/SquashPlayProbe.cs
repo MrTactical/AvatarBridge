@@ -35,7 +35,10 @@
 // -spLook draws the pair with the project's own yaps_dent.cginc too, lit from the camera over a
 // lightened texture so a black garment still shows its shape, from the front, from above and
 // close: at rest, then squeezed together from outside at two strengths, into
-// <dir>/look_<name>.png. For judging the shape where the pair meets.
+// <dir>/look_<name>.png. For judging the shape where the pair meets. Each shot is drawn again as
+// the part shares in colour (_shares), as zebra stripes on the shader's normals (_zebra) and on
+// the triangles themselves (_zebra_mesh): a kink in a stripe is a crease. -spMeet turns the pair's
+// contact on first.
 //
 // Batch, never -nographics: the frames are rendered.
 
@@ -858,8 +861,9 @@ namespace AvatarBridge.Regression
             #include ""Assets/AvatarBridge/Editor/Yaps/yaps_dent.cginc""
             sampler2D _MainTex;
             float4 _MainTex_ST;
+            float _LookMode;
             struct A { float4 vertex : POSITION; float3 normal : NORMAL; float4 tangent : TANGENT; float2 uv : TEXCOORD0; uint id : SV_VertexID; };
-            struct V { float4 pos : SV_POSITION; float3 n : TEXCOORD0; float3 w : TEXCOORD1; float2 uv : TEXCOORD2; };
+            struct V { float4 pos : SV_POSITION; float3 n : TEXCOORD0; float3 w : TEXCOORD1; float2 uv : TEXCOORD2; float4 share : TEXCOORD3; };
             V vert(A v)
             {
                 float3 p = v.vertex.xyz, n = v.normal, t = v.tangent.xyz;
@@ -869,11 +873,26 @@ namespace AvatarBridge.Regression
                 o.w = mul(unity_ObjectToWorld, float4(p, 1)).xyz;
                 o.n = UnityObjectToWorldNormal(n);
                 o.uv = TRANSFORM_TEX(v.uv, _MainTex);
+                uint width = (uint) round(abs(1.0 / _YAPS_DentOwn_TexelSize.x));
+                o.share = _YAPS_DentOwn.Load(int3(v.id % width, v.id / width, 0));
                 return o;
+            }
+            // Zebra stripes: a reflection of horizontal bands. A kink in a stripe is a crease, a
+            // wobble a lump, where plain shading hides both.
+            float Zebra(float3 n, float3 w)
+            {
+                float3 r = reflect(-normalize(_WorldSpaceCameraPos - w), n);
+                return step(0.5, frac(r.y * 6));
             }
             float4 frag(V i) : SV_Target
             {
                 float3 n = normalize(i.n);
+                // 1 the part shares, 2 stripes on the shader's normals, 3 stripes on the drawn
+                // triangles themselves, so a normal that disagrees with the shape shows.
+                if (_LookMode > 0.5 && _LookMode < 1.5)
+                    return float4(i.share.r + i.share.b, i.share.g + i.share.a, 0.25 + 0.5 * (i.share.b + i.share.a), 1);
+                if (_LookMode > 2.5) n = normalize(cross(ddy(i.w), ddx(i.w)));
+                if (_LookMode > 1.5) { float z = Zebra(n, i.w); return float4(z, z, z * 0.9 + 0.1, 1); }
                 float3 l = normalize(normalize(_WorldSpaceCameraPos - i.w) + float3(0, 0.6, 0));
                 float k = 0.25 + 0.75 * saturate(dot(n, l));
                 return float4((0.55 + 0.45 * tex2D(_MainTex, i.uv).rgb) * k, 1);
@@ -929,6 +948,9 @@ namespace AvatarBridge.Regression
                 var shader = Shader.Find("Hidden/AvatarBridge/SquashLook");
                 if (shader == null || ShaderUtil.ShaderHasError(shader))
                     Debug.LogError("[SquashPlay] look shader: " + (shader == null ? "missing" : string.Join(" | ", ShaderUtil.GetShaderMessages(shader).Select(m => m.message))));
+                // -spMeet: the pair's contact on, which a fresh build leaves off.
+                if (Environment.GetCommandLineArgs().Contains("-spMeet"))
+                    foreach (var m in mats) { var s = m.GetVector("_YAPS_SquashShape"); m.SetVector("_YAPS_SquashShape", new Vector4(s.x, s.y, s.z, 1f)); }
                 lookAt = 0;
                 lookWas = -1f;
                 foreach (var m in mats) m.SetFloat("_YAPS_SquashPulse", LookShots[0].pulse);
@@ -954,15 +976,21 @@ namespace AvatarBridge.Regression
             var shader = Shader.Find("Hidden/AvatarBridge/SquashLook");
             var sheet = new Texture2D(700 * lookCams.Length, 700, TextureFormat.RGB24, false);
             var one = new Texture2D(700, 700, TextureFormat.RGB24, false);
-            for (int c = 0; c < lookCams.Length; c++)
+            string[] modes = { "", "_shares", "_zebra", "_zebra_mesh" };
+            for (int mode = 0; mode < modes.Length; mode++)
             {
-                lookCams[c].RenderWithShader(shader, "");
-                RenderTexture.active = lookCams[c].targetTexture;
-                one.ReadPixels(new Rect(0, 0, 700, 700), 0, 0);
-                sheet.SetPixels(700 * c, 0, 700, 700, one.GetPixels());
+                Shader.SetGlobalFloat("_LookMode", mode);
+                for (int c = 0; c < lookCams.Length; c++)
+                {
+                    lookCams[c].RenderWithShader(shader, "");
+                    RenderTexture.active = lookCams[c].targetTexture;
+                    one.ReadPixels(new Rect(0, 0, 700, 700), 0, 0);
+                    sheet.SetPixels(700 * c, 0, 700, 700, one.GetPixels());
+                }
+                RenderTexture.active = null;
+                File.WriteAllBytes(Path.Combine(outDir, $"look_{lookShot}{modes[mode]}.png"), sheet.EncodeToPNG());
             }
-            RenderTexture.active = null;
-            File.WriteAllBytes(Path.Combine(outDir, $"look_{lookShot}.png"), sheet.EncodeToPNG());
+            Shader.SetGlobalFloat("_LookMode", 0f);
             UnityEngine.Object.DestroyImmediate(sheet);
             UnityEngine.Object.DestroyImmediate(one);
             Debug.Log($"[SquashPlay] look shot {lookShot}");

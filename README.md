@@ -1555,8 +1555,9 @@ meshes stay with the first copy. **Not yet confirmed in game.**
 ### Squash: soft parts that press together
 
 An opt-in in the YAPS add-on: breasts and butt flatten where they press against each other, and
-dent under a hand. What a pair still overlaps after flattening passes through by default; **Meet**
-on the component presses the two onto one plane instead, which reads as a hard seam. It is done in the body's shader, so every layer
+dent under a hand. Pushed together, a pair swings apart first, then flattens. What still overlaps
+passes through by default; **Meet** on the component presses the two flat where they touch, the
+edge rounding into the part with a slight rim around it (not yet confirmed in game). It is done in the body's shader, so every layer
 over the skin (a bra, a shirt, piercings) takes the same move and nothing comes through. It
 costs no synced parameters and uses no contacts. The wearer's own arms press it, and so do other
 players' hands, from the hand positions ChilloutVR hands every shader, so neither avatar needs
