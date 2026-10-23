@@ -11,6 +11,13 @@
 // YapsDentDeform over 4096 vertices round the parts in a compute shader built from each copy.
 // Exit code 0 when no vertex moves 0.01 mm apart and no normal 0.001: float rounding from
 // reordered arithmetic measured 0.002 mm. No -quit: it exits.
+//
+// -ydWild [-ydCap 1.5] instead feeds the skinned slot buffer and spoils it: frozen where the body
+// stood a moment ago and turned since, the first rest slot right and the rest wherever, or one
+// slot huge or NaN. Each copy's worst move is logged in reaches of the vertex's own parts, and
+// the run passes when the new copy never moves a vertex past the cap and never writes a NaN.
+// The client can bind a buffer nothing skinned in the wearer's view, and remote copies blew up
+// along metres-long streaks.
 using System;
 using System.IO;
 using System.Linq;
@@ -29,6 +36,10 @@ namespace AvatarBridge.Regression
 
         const string Kernel = @"#pragma kernel Main
 #define UNITY_UV_STARTS_AT_TOP 1
+// A compute shader leaves SHADER_TARGET unset, which compiled the skinned slots out.
+#ifndef SHADER_TARGET
+#define SHADER_TARGET 50
+#endif
 float4 _ScreenParams;
 float4 _ProjectionParams;
 float4 unity_4LightAtten0;
@@ -87,21 +98,27 @@ void Main(uint id : SV_DispatchThreadID)
                 AssetDatabase.FindAssets("yaps_dent").First(g => AssetDatabase.GUIDToAssetPath(g).EndsWith("yaps_dent.cginc"))));
             int scenes = int.TryParse(Arg("-ydScenes"), out int s) ? s : 400;
             var rng = new Random(int.TryParse(Arg("-ydSeed"), out int seed) ? seed : 1);
-            Log($"old {oldDir}, new {newDir}, {scenes} scenes of {Count} vertices");
+            bool wild = Environment.GetCommandLineArgs().Contains("-ydWild");
+            float cap = float.TryParse(Arg("-ydCap"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float cp) ? cp : 1.5f;
+            Log($"old {oldDir}, new {newDir}, {scenes} scenes of {Count} vertices" + (wild ? $", wild slots, cap {cap} reaches" : ""));
             var shaders = new[] { Build("old", oldDir), Build("new", newDir) };
 
             var input = new ComputeBuffer(Count * 3, 16);
             var output = new ComputeBuffer(Count * 3, 16);
-            var skin = new ComputeBuffer(16, 4, ComputeBufferType.Raw);
+            var skin = new ComputeBuffer(60, 4, ComputeBufferType.Raw);
             var own = new Texture2D(64, Count / 64, TextureFormat.RGBAFloat, false, true) { filterMode = FilterMode.Point };
             var got = new Vector4[2][] { new Vector4[Count * 3], new Vector4[Count * 3] };
             double worstP = 0, worstN = 0;
             long moved = 0, nanMismatch = 0, bad = 0;
+            var farthest = new double[2];
+            var nans = new long[2];
+            var byKind = new System.Collections.Generic.SortedDictionary<string, double>[] { new System.Collections.Generic.SortedDictionary<string, double>(), new System.Collections.Generic.SortedDictionary<string, double>() };
+            var clean = new Vector4[Count * 3];
             try
             {
                 for (int scene = 0; scene < scenes; scene++)
                 {
-                    var verts = Scene(rng, shaders, own, out string what);
+                    var verts = Scene(rng, shaders, own, skin, wild, out float[] lim, out float[] cleanSlots, out float[] spoiltSlots, out string kind, out string what);
                     input.SetData(verts);
                     for (int k = 0; k < 2; k++)
                     {
@@ -111,9 +128,29 @@ void Main(uint id : SV_DispatchThreadID)
                         cs.SetBuffer(0, "_YAPS_SquashSkin", skin);
                         cs.SetTexture(0, "_YAPS_DentOwn", own);
                         cs.SetInt("_Count", Count);
+                        // Spoilt, measured against the same scene with its slots as they should be:
+                        // the scenes alone press harder than any avatar does.
+                        if (wild)
+                        {
+                            skin.SetData(cleanSlots);
+                            cs.Dispatch(0, Count / 64, 1, 1);
+                            output.GetData(clean);
+                            skin.SetData(spoiltSlots);
+                        }
                         cs.Dispatch(0, Count / 64, 1, 1);
                         output.GetData(got[k]);
+                        double sceneFar = 0;
+                        for (int i = 0; i < Count; i++)
+                        {
+                            Vector3 by = (Vector3) got[k][i * 3] - (Vector3) (wild ? clean[i * 3] : verts[i * 3]);
+                            if (float.IsNaN(by.x + by.y + by.z) || float.IsInfinity(by.x + by.y + by.z)) { nans[k]++; continue; }
+                            if (lim[i] > 0) sceneFar = Math.Max(sceneFar, by.magnitude / lim[i]);
+                        }
+                        farthest[k] = Math.Max(farthest[k], sceneFar);
+                        byKind[k][kind] = Math.Max(byKind[k].TryGetValue(kind, out double was) ? was : 0, sceneFar);
+                        if (wild && k == 1 && kind != "frozen" && sceneFar > 0.01) Log($"scene {scene} {kind} moved {sceneFar:0.000}: {what}");
                     }
+                    if (wild) continue;
                     double sceneP = 0, sceneN = 0;
                     for (int i = 0; i < Count; i++)
                     {
@@ -144,6 +181,17 @@ void Main(uint id : SV_DispatchThreadID)
                 skin.Release();
                 UnityEngine.Object.DestroyImmediate(own);
             }
+            for (int k = 0; k < 2; k++)
+                Log($"{(k == 0 ? "old" : "new")}: farthest move {farthest[k]:0.000} reaches" + (wild ? " off the clean result (" + string.Join(", ", byKind[k].Select(e => $"{e.Key} {e.Value:0.000}")) + ")" : "") + $", {nans[k]} vertices NaN or infinite");
+            if (wild)
+            {
+                // Frozen slots read as a body standing still a moment ago, which no shader can
+                // tell from a real one: logged, fixed where the buffer stops being skinned.
+                double spoiled = byKind[1].Where(e => e.Key != "frozen").Select(e => e.Value).DefaultIfEmpty(0).Max();
+                bool held = spoiled <= cap + 1e-4 && nans[1] == 0;
+                Log((held ? "PASS" : "FAIL") + $": the new copy {(held ? "held" : "broke")} the {cap} reach cap on spoilt slots");
+                return held ? 0 : 1;
+            }
             Log($"vertices moved by the squash: {moved} of {(long) scenes * Count} ({100.0 * moved / ((long) scenes * Count):0.0}%)");
             Log($"worst position difference {worstP * 1000:0.000000} mm, worst normal difference {worstN:0.000000}, NaN mismatches {nanMismatch}");
             bool pass = bad == 0 && nanMismatch == 0 && moved > 0;
@@ -162,13 +210,14 @@ void Main(uint id : SV_DispatchThreadID)
         }
 
         // One random state for every uniform the squash reads, and vertices round its parts.
-        static Vector4[] Scene(Random r, ComputeShader[] shaders, Texture2D own, out string what)
+        static Vector4[] Scene(Random r, ComputeShader[] shaders, Texture2D own, ComputeBuffer skin, bool wild, out float[] lim, out float[] cleanSlots, out float[] spoiltSlots, out string spoilt, out string what)
         {
             var o2w = P(r, 0.5) ? Matrix4x4.identity
                 : Matrix4x4.TRS(V(r, 1), Quaternion.LookRotation(Dir(r), Dir(r)), Vector3.one * F(r, 0.5f, 2f));
             var slots = new Matrix4x4[20];
             var centres = new Vector3[4];
             float[] R = new float[4];
+            var units = new float[4];
             var reach = new Vector4[6];
             bool second = P(r, 0.5);
             for (int m = 0; m < 4; m++)
@@ -180,7 +229,7 @@ void Main(uint id : SV_DispatchThreadID)
             for (int m = 0; m < 4; m++)
             {
                 bool present = m < 2 || second;
-                float unit = F(r, 0.5f, 2f);
+                float unit = units[m] = F(r, 0.5f, 2f);
                 if (present && !P(r, 0.05))
                     slots[m] = Matrix4x4.TRS(centres[m], Quaternion.LookRotation(Dir(r), Dir(r)), Vector3.one * unit);
                 // The rest slot: near the centre, up axis toward where the part hangs from.
@@ -251,7 +300,7 @@ void Main(uint id : SV_DispatchThreadID)
 
             var reachNames = new[] { "_YAPS_SquashReach", "_YAPS_SquashAway", "_YAPS_SquashOut", "_YAPS_SquashIn", "_YAPS_SquashSideA", "_YAPS_SquashSideB" };
             var push = new Vector4(F(r, 0, 1), F(r, 0, 0.5f), F(r, 0.2f, 0.5f), P(r, 0.7) ? 1 : 0);
-            var hands = new Vector4(F(r, 0, 2), F(r, 0.03f, 0.08f), P(r, 0.8) ? F(r, 0.2f, 2) : 0, 0);
+            var hands = new Vector4(F(r, 0, 2), F(r, 0.03f, 0.08f), P(r, 0.8) ? F(r, 0.2f, 2) : 0, wild ? 12 : 0);
             var shape = new Vector4(F(r, 0.2f, 0.6f), F(r, 0.5f, 1), F(r, 1.5f, 3), P(r, 0.7) ? 1 : 0);
             var tune = new Vector4(F(r, 0, 1), F(r, 0.5f, 1.5f), F(r, 0, 1), F(r, 0.2f, 0.8f));
             var motion = new Vector4(P(r, 0.6) ? F(r, 0.2f, 2) : 0, F(r, 0, 0.3f), F(r, 1.2f, 2), 0);
@@ -260,6 +309,38 @@ void Main(uint id : SV_DispatchThreadID)
             var limbL = new Vector4(F(r, 0.1f, 0.4f), F(r, 0.1f, 0.4f), F(r, 0.1f, 0.4f), 0);
             var limbR = new Vector4(F(r, 0.1f, 0.4f), F(r, 0.1f, 0.4f), F(r, 0.1f, 0.4f), 0);
             var time = new Vector4(0, F(r, 0, 100), 0, 0);
+            // The skinned slots: where the matrices put them, an empty one too (both on the host in
+            // a build), then spoilt.
+            var skinAt = new Vector3[20];
+            for (int i = 0; i < 20; i++) skinAt[i] = slots[i].GetColumn(3);
+            cleanSlots = Raw(skinAt);
+            spoilt = "clean";
+            string what0 = "";
+            if (wild)
+            {
+                Vector3 pivot = skinAt[4];
+                switch (r.Next(3))
+                {
+                    case 0:
+                        var turn = Quaternion.Euler(0, F(r, -60, 60), 0);
+                        var off = Dir(r) * F(r, 0.05f, 0.4f);
+                        for (int i = 0; i < 20; i++) skinAt[i] = pivot + turn * (skinAt[i] - pivot) + off;
+                        spoilt = "frozen";
+                        break;
+                    case 1:
+                        for (int i = 0; i < 20; i++) if (i != 4) skinAt[i] = pivot + V(r, 3);
+                        spoilt = "garbage";
+                        break;
+                    default:
+                        int j = r.Next(19);
+                        bool nan = P(r, 0.5);
+                        skinAt[j < 4 ? j : j + 1] = Vector3.one * (nan ? float.NaN : 1e20f);
+                        spoilt = nan ? "NaN" : "huge"; what0 = $"slot {(j < 4 ? j : j + 1)}";
+                        break;
+                }
+            }
+            spoiltSlots = Raw(skinAt);
+            skin.SetData(spoiltSlots);
             // Both copies get the same values: no draw from the generator below this line.
             foreach (var cs in shaders)
             {
@@ -296,6 +377,7 @@ void Main(uint id : SV_DispatchThreadID)
             // Vertices round the parts, in object space, with their shares of each part.
             var shares = new Color[Count];
             var verts = new Vector4[Count * 3];
+            lim = new float[Count];
             var w2o = o2w.inverse;
             for (int i = 0; i < Count; i++)
             {
@@ -308,6 +390,9 @@ void Main(uint id : SV_DispatchThreadID)
                     if (P(r, 0.3)) c[m ^ 1] = F(r, 0, 0.5f);
                 }
                 shares[i] = c;
+                // The vertex's own size to measure a move in: its largest part's reach.
+                for (int q = 0; q < 4; q++)
+                    if (c[q] > 0 && slots[q].GetColumn(0).sqrMagnitude > 0) lim[i] = Mathf.Max(lim[i], reach[0][q] * units[q]);
                 Vector3 n = P(r, 0.05) ? Vector3.zero : w2o.MultiplyVector(Dir(r)).normalized;
                 verts[i * 3] = w2o.MultiplyPoint3x4(world);
                 verts[i * 3 + 1] = n;
@@ -315,8 +400,15 @@ void Main(uint id : SV_DispatchThreadID)
             }
             own.SetPixels(shares);
             own.Apply(false);
-            what = $"players {players}, second pair {second}, arms {push.w}, hands {hands.z:0.00}, plug {plug:0.00}, contact {shape.w}";
+            what = $"players {players}, second pair {second}, arms {push.w}, hands {hands.z:0.00}, plug {plug:0.00}, contact {shape.w}" + (wild ? $", slots {spoilt} {what0}" : "");
             return verts;
+        }
+
+        static float[] Raw(Vector3[] at)
+        {
+            var raw = new float[at.Length * 3];
+            for (int i = 0; i < at.Length; i++) { raw[i * 3] = at[i].x; raw[i * 3 + 1] = at[i].y; raw[i * 3 + 2] = at[i].z; }
+            return raw;
         }
 
         static string Arg(string name)

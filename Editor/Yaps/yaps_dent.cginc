@@ -104,11 +104,24 @@ int YapsSkinState()
 {
 #if SHADER_TARGET >= 45
     if (_YAPS_SquashHands.w <= 0) return 0;
-    float3 s = asfloat(_YAPS_SquashSkin.Load3(4 * (uint) _YAPS_SquashHands.w));
+    uint stride = (uint) _YAPS_SquashHands.w;
+    float3 s = asfloat(_YAPS_SquashSkin.Load3(4 * stride));
     if (all(s == 0)) return 2;
-    // The rest slot rides a bone no cloth moves, so the two agree but for a frame of motion.
-    float3 d = s - _YAPS_SquashFollow[4]._m03_m13_m23;
-    return dot(d, d) < 0.25 ? 1 : 3;
+    // Every slot against its matrix, which agree but for a frame of motion and the cloth's swing
+    // (an empty one sits on the host in both); arms by an arm's length, as the IK may hold a hand
+    // far from the pose the matrices saw. One slot off reads them all from the matrices: remote
+    // copies blew up in metres-long streaks, and mixing the two sources put a pair's halves in
+    // different frames.
+    [loop]
+    for (uint i = 0; i < 20; i++)
+    {
+        uint3 raw = _YAPS_SquashSkin.Load3(i * stride);
+        // NaN and infinity by their bits: the compiler folds a float test for NaN away.
+        if (any((raw & 0x7f800000) == 0x7f800000)) return 3;
+        float3 d = asfloat(raw) - _YAPS_SquashFollow[i]._m03_m13_m23;
+        if (dot(d, d) >= (i >= 8 && i < 16 ? 2.25 : 0.25)) return 3;
+    }
+    return 1;
 #else
     return 0;
 #endif
@@ -122,6 +135,14 @@ float3 YapsSlot(int i)
     return _YAPS_SquashFollow[i]._m03_m13_m23;
 }
 float YapsUnit(int i) { return length(_YAPS_SquashFollow[i]._m00_m10_m20); }
+// A limb's radius, from its bone's length in the matrices. The skinned slots can arrive spoilt
+// (remote copies blew up in metres-long streaks), and a radius read from them grew with the gap.
+float YapsLimb(uint k)
+{
+    uint a = 8 + (k / 3) * 4 + k % 3;
+    return (k < 3 ? _YAPS_SquashLimbL : _YAPS_SquashLimbR)[k % 3]
+        * distance(_YAPS_SquashFollow[a + 1]._m03_m13_m23, _YAPS_SquashFollow[a]._m03_m13_m23);
+}
 
 // s past a surface, eased back from soft before it to a fifth of the slope, never flat: how
 // far it goes back, and the slope left.
@@ -284,7 +305,7 @@ void YapsHandsPress(YapsPart p, inout float3 hv[4], inout float hr[4])
             if (YapsUnit(slot) <= 0 || YapsUnit(slot + 1) <= 0) continue;
             a = YapsSlot(slot);
             b = YapsSlot(slot + 1);
-            r = (k < 3 ? _YAPS_SquashLimbL : _YAPS_SquashLimbR)[k % 3] * length(b - a);
+            r = YapsLimb(k);
             scale = _YAPS_SquashHands.x;
             into = k / 3;
         }
@@ -717,7 +738,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
             float3 pa = YapsSlot(a);
             float3 ab = YapsSlot(a + 1) - pa;
             float len2 = dot(ab, ab);
-            float r = (k < 3 ? _YAPS_SquashLimbL : _YAPS_SquashLimbR)[k % 3] * sqrt(len2);
+            float r = YapsLimb(k);
             if (len2 < 1e-10 || r <= 0) continue;
             float3 d = world - (pa + ab * saturate(dot(world - pa, ab) / len2));
             float dist = length(d);

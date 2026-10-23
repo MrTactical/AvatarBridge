@@ -666,6 +666,33 @@ GUI yet: the new layouts want one look from Joe.
    **Set up squash**, which opens the YAPS Squash component (adding it if missing, no build), plus
    Remove. The component's cards run as numbered steps: Parts, Build, See it work, How it feels.
 
+### 18. Squash in game, reported by other users, 2026-10-23 (image8, image9, a clip)
+
+Both fixed on dev 2026-10-23. Existing squash builds keep the old shader code until rebuilt,
+because patched shaders inline the include. Neither fix has been seen in game yet.
+
+1. **Turning in place pressed the pair's middle (image8).** It looked like cloth swinging. The
+   cause was in the decompiled client instead. `AvatarClone` builds the wearer's first-person copy:
+   it turns off offscreen skinning on the wearer's renderers and sets `forceRenderingOff` on any
+   renderer that casts no shadow. The slot skin casts none, so it never skinned in the wearer's own
+   view. `SkinnedMeshRendererPreviousVertexBuffer` then served a frozen buffer: the contact plane
+   stayed wherever a mirror or camera last saw it, and turning sliced the pair along that plane.
+   Renderers named with "[FPR]" are skipped by the copy, so the helper is now `skin [FPR]` (Owned
+   finds it by component, so older builds still clean up). SquashPartsTest: FAIL on the old name,
+   PASS on the new.
+2. **The squashed mesh exploded for other players (image9, the clip).** What spoils the buffer on a
+   remote copy is NOT proven. It may be a stable client binding a disposed or reused buffer, or
+   NetIK order. The shader now checks every skinned slot against its matrix (0.5 m, 1.5 m for arm
+   slots) and treats NaN or infinity by its bits, because fxc folds a float NaN test away. If any
+   slot is off, all slots are read from the matrices, and limb radii come from the matrices' bone
+   lengths. `YapsDiffProbe -ydWild` (new) spoils the buffer four ways. Old code moved vertices by
+   garbage 27.2, huge 56035, NaN 2.7 reaches, with 52471 NaN vertices. New code: 0, 0, 0, and no NaN.
+   The sane diff, seeds 1 and 2 with 400 scenes each, is still 0.000000 mm. compile-check and
+   check-defines are ok.
+   Still open: the buffer is two skinning passes old by design, so a very fast turn can still
+   shift the contact a little (a LastFrame provider could compensate). What decides the remote
+   cause: the viewer's client branch (stable or beta), and whether it happens with that one avatar alone.
+
 ## 5.0.1
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).

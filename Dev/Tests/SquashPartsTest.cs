@@ -54,6 +54,11 @@ namespace AvatarBridge.Regression
                 Check(Body().sharedMaterial != skin && Body().sharedMaterial.HasProperty("_YAPS_DentOwn"), "the skin is squashed");
                 var shirtCopy = Shirt().sharedMaterial;
                 Check(shirtCopy != shirt && shirtCopy.HasProperty("_YAPS_DentOwn"), "and so is the shirt over it");
+                Check(!ShaderUtil.ShaderHasError(Body().sharedMaterial.shader), "the squashed skin's shader compiles");
+                // The client's first-person copy skips "[FPR]" renderers; without it the slot skin
+                // went unskinned in the wearer's own view and the shader read a frozen buffer.
+                var slotSkin = root.Find("YAPS squash (shader)")?.GetComponentInChildren<SkinnedMeshRenderer>(true);
+                Check(slotSkin != null && slotSkin.name.Contains("[FPR]"), $"the slot skin is kept off the first-person copy ({(slotSkin != null ? slotSkin.name : "none")})");
                 // Squash copies carry the plug's YAPS properties, and the setup listed them as plugs.
                 var scan = YapsScanner.Scan(root.gameObject);
                 Check(scan.Plugs.Count == 0, $"the setup lists no squashed layer as a plug ({scan.Plugs.Count} listed)");

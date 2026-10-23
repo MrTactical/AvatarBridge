@@ -547,8 +547,12 @@ namespace AvatarBridge
             provider.shaderPropertyName = "_YAPS_SquashFollow";
 
             // One vertex on each slot, skinned to it, so the slots come through skinning, after
-            // the cloth and the IK. Its triangles have no area, so it draws nothing.
-            var skin = Child(host.transform, "skin").gameObject.AddComponent<SkinnedMeshRenderer>();
+            // the cloth and the IK. Its triangles have no area, so it draws nothing. "[FPR]" keeps
+            // the client's first-person copy off it: that copy switches the wearer's renderers off
+            // for their own view and stops skinning them offscreen, so the buffer froze where a
+            // mirror or camera last saw it, and turning in place sliced the pair along a plane
+            // left behind.
+            var skin = Child(host.transform, "skin [FPR]").gameObject.AddComponent<SkinnedMeshRenderer>();
             var skinBones = slots.Select(t => t == empty ? host.transform : t).ToArray();
             var mesh = new Mesh { name = "YAPS squash skin" };
             mesh.vertices = slots.Select(t => skin.transform.InverseTransformPoint(t.position)).ToArray();
@@ -1122,7 +1126,8 @@ namespace AvatarBridge
                     string path = AnimationUtility.CalculateTransformPath(smr.transform, root);
                     for (int slot = 0; slot < smr.sharedMaterials.Length; slot++) mats.AddRange(Keyed(clips, path, slot));
                 }
-            var skin = root.Find(ShaderHostName + "/skin")?.GetComponent<SkinnedMeshRenderer>();
+            // By component: the helper was named "skin" before "skin [FPR]".
+            var skin = root.Find(ShaderHostName)?.GetComponentInChildren<SkinnedMeshRenderer>(true);
             var from = mats.Where(m => SourceOf(m) != null).Cast<UnityEngine.Object>()
                 .Concat(new UnityEngine.Object[] { skin?.sharedMesh, skin?.sharedMaterial }).Where(o => o != null).ToArray();
             return new HashSet<string>(EditorUtility.CollectDependencies(from)
