@@ -1569,6 +1569,9 @@ do; how far is a knob, from real flesh to anime.
 avatar draws, so nothing arrives late. A viewer with the **Cameras** content filter off sees none
 of it: ChilloutVR then removes the components that hand the shader where the parts swung to, and
 the body draws as it would without the squash. Nothing breaks, and there is no way around it.
+A viewer with **Shader Filtering** on (ChilloutVR's *Settings ▸ Experimental*) sees the pair keep
+its shape, meet and swing, but hands and plugs mostly stop pressing it: the filter cuts short every
+loop in a shader, and those presses are read in loops.
 
 **Two ways on.** Converting: *Manual options ▸ Opt-ins ▸ Soft parts ▸ Soft body shape: squash
 where parts press together*. It changes the parts' shape where they meet; *Physics ▸ Your call ▸

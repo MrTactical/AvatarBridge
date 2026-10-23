@@ -7,7 +7,9 @@
 //
 // -spOther leaves the arms alone and presses with another player's hand instead, through the
 // client's player globals: one shot per hand shape (open, fist, pointing, two fingers), the palm
-// again as a third client lays the arrays out, then the wrist sunk in.
+// again as a third client lays the arrays out, then the wrist sunk in. -spPart 1 presses the
+// pair's second part instead of the one nearest the left hand (the shader filter cut every part
+// loop after its first part, so only a press on a later part shows it).
 //
 // -spVideo films one continuous run instead, three views a frame at 30 fps into <dir>/frames,
 // with segments.tsv naming each segment's first frame: the avatar hopping with the stretch in
@@ -84,6 +86,7 @@ namespace AvatarBridge.Regression
             SessionState.SetString(K + "out", Arg("-spOut"));
             SessionState.SetInt(K + "on", 1);
             SessionState.SetInt(K + "other", Environment.GetCommandLineArgs().Contains("-spOther") ? 1 : 0);
+            SessionState.SetInt(K + "part", Environment.GetCommandLineArgs().Contains("-spPart") ? int.Parse(Arg("-spPart")) : -1);
             SessionState.SetInt(K + "video", Environment.GetCommandLineArgs().Contains("-spVideo") ? 1 : 0);
             SessionState.SetInt(K + "plug", Environment.GetCommandLineArgs().Contains("-spPlug") ? 1 : 0);
             SessionState.SetInt(K + "cost", Environment.GetCommandLineArgs().Contains("-spCost") ? 1 : 0);
@@ -148,6 +151,7 @@ namespace AvatarBridge.Regression
                 // The arm on the side of the part nearest the left hand.
                 bool left = Vector3.Distance(slots[0].position, animator.GetBoneTransform(HumanBodyBones.LeftHand).position)
                           < Vector3.Distance(slots[1].position, animator.GetBoneTransform(HumanBodyBones.LeftHand).position);
+                if (SessionState.GetInt(K + "part", -1) >= 0) left = SessionState.GetInt(K + "part", -1) == 0;
                 var part = slots[left ? 0 : 1];
                 shoulder = animator.GetBoneTransform(HumanBodyBones.LeftUpperArm);
                 elbow = animator.GetBoneTransform(HumanBodyBones.LeftLowerArm);

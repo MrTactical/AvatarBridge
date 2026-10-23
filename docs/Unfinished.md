@@ -705,6 +705,35 @@ because patched shaders inline the include. No fix has been seen in game yet.
    compiles. Not proven to be the testers' explosion: ask whether the exploding material is on
    Poiyomi 10 Tessellated. Loop limits ruled out by reading: DX11 puts no cap on a `[loop]` count;
    fxc's limit is on unrolling, which fails the compile rather than moving vertices.
+4. **Shader Filtering made a part fly apart (Joe's report on one avatar, 2026-10-23: one breast
+   and one butt cheek break, only sometimes, and toggling Settings ▸ Experimental ▸ Enable Shader
+   Filtering changes it).** The filter is the client's `DxbcShaderFilter.dll`, a native hook on
+   the device's Create*Shader that rewrites the bytecode. Read from its output on our compiled
+   shaders: one counter for the whole program; each loop pass adds its body's instruction count;
+   at the end of every pass and at every `continue`, the loop breaks once the counter reaches the
+   Loop Limit (128 to 2048); and a loop whose counter is already past 8192 at its top does not run.
+   The squash part loop costs 2022 a pass, so at every limit it ends after its first pass. A vertex
+   of parts 1 to 3 left at part 0's `continue`, and the meet loop then read its own part's plane,
+   axis and contact from registers the loop never wrote: `held = shares x garbage`, long streaks.
+   Fix (`yaps_dent.cginc`): the five per-part arrays are cleared before the loop; the loop starts
+   at the vertex's strongest part, so the one pass that survives is its own; normals are blended
+   after the loop in part order (the lerp chain is order dependent, and the reorder alone flipped
+   normals on vertices two parts share); the slot check reads the matrices if the filter cut it
+   short (unrolling it cost 22% more compile per variant, this costs 4%).
+   Why every earlier editor try came out clean: **the editor's hook never sees an imported
+   shader**, only one compiled at run time (canary drawn from source 0.0315 at limit 128, the same
+   shader imported as an asset 0.6323, even with the plugin loaded at startup). So
+   `ShaderFilterProbe -sfRuntime` recompiles the squash materials' shaders from source in Play
+   mode. With it, on the old code, part 1 at limit 128 streaks at rest and pressed; on the new code
+   rest is identical to the filter off (YAVG 0.001) at 128 and 2048, and a press by another
+   player's hand is lost, as expected (the hand loop gets one pass, the own upper arm). `YapsDiffProbe`
+   old vs new, filter off: 0 of 400 scenes differ on seeds 1 and 2 (0.0006 mm, normals 0.00001);
+   `-ydWild` still passes. README notes the lost presses.
+   Same filter, not fixed: **plugs**. The bake's shape-key loop and the walk along the curve are
+   loops, so with the filter on a plug with active shape keys reads its rest shape short of them,
+   and the walk stops after a pass or two and lands on the curve's end. Not measured in the editor
+   yet (`-sfRuntime` on a plug scene would show it). Unrolling the walk costs compile time on every
+   plug variant, so it waits on Joe.
 
 ## 5.0.1
 

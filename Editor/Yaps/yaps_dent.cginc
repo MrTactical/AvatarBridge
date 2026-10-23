@@ -112,8 +112,9 @@ int YapsSkinState()
     // far from the pose the matrices saw. One slot off reads them all from the matrices: remote
     // copies blew up in metres-long streaks, and mixing the two sources put a pair's halves in
     // different frames.
+    uint i = 0;
     [loop]
-    for (uint i = 0; i < 20; i++)
+    for (; i < 20; i++)
     {
         uint3 raw = _YAPS_SquashSkin.Load3(i * stride);
         // NaN and infinity by their bits: the compiler folds a float test for NaN away.
@@ -121,7 +122,8 @@ int YapsSkinState()
         float3 d = asfloat(raw) - _YAPS_SquashFollow[i]._m03_m13_m23;
         if (dot(d, d) >= (i >= 8 && i < 16 ? 2.25 : 0.25)) return 3;
     }
-    return 1;
+    // ChilloutVR's shader filter can end the loop early, leaving slots unchecked: matrices then.
+    return i == 20 ? 1 : 3;
 #else
     return 0;
 #endif
@@ -394,20 +396,35 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
     float3 start = world;
     float3 startN = n;
 
-    float3 squashAxis[4], squashCentre[4];
-    float squashPlane[4], squashReach[4], squashContact[4];
+    float3 squashAxis[4], squashCentre[4], partN[4];
+    float squashPlane[4], squashReach[4], squashContact[4], partDone[4];
+    // Cleared before the loop, not in it: ChilloutVR's shader filter can end the loop early, and
+    // the meet below read the parts it never reached from uninitialised registers.
+    [unroll]
+    for (int z = 0; z < 4; z++)
+    {
+        squashPlane[z] = 0;
+        squashContact[z] = 0;
+        squashAxis[z] = 0;
+        squashCentre[z] = 0;
+        squashReach[z] = 0;
+        partN[z] = 0;
+        partDone[z] = 0;
+    }
+    // The filter adds each loop pass's instruction count to one counter and breaks every loop once
+    // it passes the Loop Limit, which this loop's first pass always does. So the vertex's own part
+    // goes first, and is the one that survives.
+    int first = 0;
+    [unroll]
+    for (int f = 1; f < 4; f++) first = shares[f] > shares[first] ? f : first;
     float3 mapped = 0;
     float3 mappedN = n;
     // Looped, not unrolled, here and in the arm, hand and plug loops: four copies of this body took the
     // compiler minutes on every patched shader, and a user waits on that at the first build.
     [loop]
-    for (int m = 0; m < 4; m++)
+    for (int j = 0; j < 4; j++)
     {
-        squashPlane[m] = 0;
-        squashContact[m] = 0;
-        squashAxis[m] = 0;
-        squashCentre[m] = 0;
-        squashReach[m] = 0;
+        int m = (first + j) & 3;
         float unit = YapsUnit(m);
         if (shares[m] <= 0 || unit <= 0) continue;
         YapsPart p = YapsPartAt(m, YapsSlot(m), unit);
@@ -691,8 +708,14 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
             }
         }
         mapped += (moved - world) * shares[m];
-        if (hasNormal) mappedN = normalize(lerp(mappedN, nm, shares[m]));
+        partN[m] = nm;
+        partDone[m] = 1;
     }
+    // Blended in part order whichever part went first: each lerp leans on the last, so a vertex
+    // two parts share took a different normal when the order changed.
+    [unroll]
+    for (int o = 0; o < 4; o++)
+        if (hasNormal && partDone[o] > 0) mappedN = normalize(lerp(mappedN, partN[o], shares[o]));
     world += mapped;
     n = mappedN;
 

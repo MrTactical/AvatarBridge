@@ -83,7 +83,7 @@ namespace AvatarBridge.Regression
                 var descriptor = scene.GetRootGameObjects().Select(r => r.GetComponentInChildren<VRCAvatarDescriptor>(true)).FirstOrDefault(d => d != null);
                 bool Has(string flag) => Array.IndexOf(Environment.GetCommandLineArgs(), flag) >= 0;
                 // -squashConvert: the converter's opt-in builds it, not this builder.
-                var report = BridgeConverter.Convert(descriptor, new BridgeSettings { cloneAvatar = true, squashSoftParts = Has("-squashConvert") });
+                var report = BridgeConverter.Convert(descriptor, new BridgeSettings { cloneAvatar = true, slimTexturesOnConvert = false, squashSoftParts = Has("-squashConvert") });
                 var avatar = report.ConvertedRoot != null ? report.ConvertedRoot.GetComponent<CVRAvatar>() : null;
                 if (avatar == null) throw new Exception("conversion made nothing");
 #if AVATARBRIDGE_YAPS
