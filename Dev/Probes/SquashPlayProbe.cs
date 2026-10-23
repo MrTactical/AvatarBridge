@@ -38,7 +38,7 @@
 // <dir>/look_<name>.png. For judging the shape where the pair meets. Each shot is drawn again as
 // the part shares in colour (_shares), as zebra stripes on the shader's normals (_zebra) and on
 // the triangles themselves (_zebra_mesh): a kink in a stripe is a crease. -spMeet turns the pair's
-// contact on first.
+// contact on first. -spPreview squeezes with the inspector preview's hands instead (0, 0.5, 1, 1).
 //
 // Batch, never -nographics: the frames are rendered.
 
@@ -905,6 +905,7 @@ namespace AvatarBridge.Regression
         // The squeeze from outside at each shot, and which part of its swing to shoot it at.
         static readonly (string name, float pulse, float phase)[] LookShots =
             { ("rest", 0f, 0f), ("squeeze_soft", 0.3f, 0.985f), ("squeeze_hard", 0.6f, 0.985f), ("squeeze_hard_half", 0.6f, 0.5f) };
+        static readonly bool LookPreview = Environment.GetCommandLineArgs().Contains("-spPreview");
         static Camera[] lookCams;
         static string lookShot;
         static int lookAt;
@@ -953,7 +954,14 @@ namespace AvatarBridge.Regression
                     foreach (var m in mats) { var s = m.GetVector("_YAPS_SquashShape"); m.SetVector("_YAPS_SquashShape", new Vector4(s.x, s.y, s.z, 1f)); }
                 lookAt = 0;
                 lookWas = -1f;
-                foreach (var m in mats) m.SetFloat("_YAPS_SquashPulse", LookShots[0].pulse);
+                foreach (var m in mats) m.SetFloat("_YAPS_SquashPulse", LookPreview ? 0f : LookShots[0].pulse);
+                if (LookPreview) YapsSquashPreview.Start(YapsSquash.SettingsOf(animator.transform));
+            }
+            // -spPreview: the inspector's Squeeze, its hands, in place of the test pulse.
+            if (LookPreview && lookAt < LookShots.Length)
+            {
+                YapsSquashPreview.Squeeze = LookShots[lookAt].pulse / 0.6f;
+                typeof(YapsSquashPreview).GetMethod("Tick", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static).Invoke(null, null);
             }
             if (lookAt >= LookShots.Length)
             {
@@ -995,7 +1003,7 @@ namespace AvatarBridge.Regression
             UnityEngine.Object.DestroyImmediate(one);
             Debug.Log($"[SquashPlay] look shot {lookShot}");
             lookShot = null;
-            if (lookAt < LookShots.Length)
+            if (lookAt < LookShots.Length && !LookPreview)
                 foreach (var m in provider.materials) m.SetFloat("_YAPS_SquashPulse", LookShots[lookAt].pulse);
         }
 

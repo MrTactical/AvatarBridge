@@ -63,6 +63,17 @@ namespace AvatarBridge.Regression
                 var scan = YapsScanner.Scan(root.gameObject);
                 Check(scan.Plugs.Count == 0, $"the setup lists no squashed layer as a plug ({scan.Plugs.Count} listed)");
 
+                // Set up squash puts the component on the bone the parts hang from, as a plug's sits,
+                // moving one an older build left on the avatar root and keeping what it held.
+                var head = root.Find("Head");
+                Check(YapsSquash.HomeFor(root) == head, $"the component's home is the parts' bone ({YapsSquash.HomeFor(root)?.name})");
+                settings.strength = 1.3f;
+                settings = YapsSquash.Ensure(root);
+                Check(settings.transform == head && root.GetComponent<YapsSquashSettings>() == null, "Set up squash moves it off the avatar root");
+                Check(settings.partBones.SequenceEqual(cheeks) && Mathf.Approximately(settings.strength, 1.3f), "and keeps its bones and knobs");
+                Check(YapsSquash.RootOf(settings) == root && YapsSquash.SettingsOf(root) == settings, "and still belongs to the avatar");
+                Check(YapsSquash.Ensure(root) == settings, "a second Set up squash leaves it where it is");
+
                 // A stroke undone must leave the overlay too: its colours stayed, so it read as no undo.
                 var painter = ScriptableObject.CreateInstance<YapsSquashPainter>();
                 try

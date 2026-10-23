@@ -735,6 +735,39 @@ because patched shaders inline the include. No fix has been seen in game yet.
    yet (`-sfRuntime` on a plug scene would show it). Unrolling the walk costs compile time on every
    plug variant, so it waits on Joe.
 
+### 19. Joe's squash UI review, round 2, 2026-10-23
+
+Fixed on dev the same day, except where marked open.
+
+1. **The Avatar Tester's tab still read "CCK Animator Tester".** The title was set only when opened
+   from the menu; a window restored from a saved layout kept the old one. Set in `OnEnable` now.
+2. **The squash component moved to the parts' bone, like a plug or socket** (Joe: "consistency is
+   key"). `YapsSquash.HomeFor` is the common parent of the found or picked part bones (the chest
+   for one pair, the hips for two), the avatar root while none is found. **Set up squash**
+   (`YapsSquash.Ensure`) adds it there, or moves one an older build left on the avatar root, keeping
+   its values, then selects it and fronts the Inspector (`YapsSquash.Show`), as the plug and socket
+   rows' customise chip does. The Avatar Tester's **Tune it** does the same. SquashPartsTest: five
+   new checks, PASS.
+3. **Tune it opened a new window on every press, and the windows broke.** It called
+   `EditorUtility.OpenPropertyEditor`, one window per call; a property window on a scene object
+   outlives Play mode's scene reload, and Joe's Editor.log has the `MissingReferenceException` from
+   `YapsSquashEditor.Rebuild` it threw. No window is opened now (item 2), and a stale inspector
+   returns early. "Broke the preview button" was not reproduced beyond this.
+4. **Squeeze pushed the pair apart.** It moved the follows toward each other but not the skin, so
+   the shader read an overlap and, since 7c0c6fe, swung each part away from its partner. Squeeze is
+   now another player's two open hands pressing each pair from outside, through the client's own
+   hand globals (players 0 and 2, one per pair; the test hand stays player 1), touching at 0 and at
+   the part's centre at 1, in Play mode too. "Other players' hands" scales it. Rendered on Kar with
+   `SquashPlayProbe -spLook -spPreview` (new flag), Meet off and on: the pair goes together, sides
+   flatten, and with Meet on the middle closes on a seam. Images:
+   `D:/Claude/scratch/squashlook/kar/prev2_<off|on>/small.jpg` (rows Squeeze 0, 0.5, 1). Pushed past
+   the centre, the bottoms pinched into a bridge.
+5. **"How it feels" did nothing outside Play mode.** The knobs wrote, but nothing pressed, so nothing
+   showed. Preview and knobs are one card now, **See and tune it** (steps 1-3 of 3), and Preview starts
+   at Squeeze 0.5 so a knob shows the moment it moves.
+6. **Open, for Joe:** whether the rest of the squash menu should change shape too (the painter as a
+   window of its own, the Animate it card).
+
 ## 5.0.1
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).

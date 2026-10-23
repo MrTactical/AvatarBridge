@@ -110,6 +110,8 @@ namespace AvatarBridge
 
         void OnEnable()
         {
+            // A window restored from a saved layout keeps the title it was saved with.
+            titleContent = new GUIContent("Avatar Tester");
             EditorApplication.playModeStateChanged += OnPlayModeChanged;
             Selection.selectionChanged += OnSelectionChanged;
             // The menu card mirrors the Animator's current controller.

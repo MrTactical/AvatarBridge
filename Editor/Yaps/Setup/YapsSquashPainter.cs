@@ -325,7 +325,7 @@ namespace AvatarBridge
         void Save(string action)
         {
             var regions = Regions;
-            if (regions == null) regions = Undo.AddComponent<YapsSquashSettings>(_avatar);
+            if (regions == null) regions = Undo.AddComponent<YapsSquashSettings>(YapsSquash.HomeFor(_avatar.transform).gameObject);
             else Undo.RecordObject(regions, action);
             regions.body = _body;
             // The last build's result no longer describes these regions; the status line does.

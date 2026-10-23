@@ -217,8 +217,8 @@ namespace AvatarBridge
             // Whether it is there at all, before any button: a tester could not tell.
             _squashState = BridgeElements.Notice(Tone.Info, "");
             squash.Body.Add(_squashState);
-            // One way in: the component's window walks parts, build, preview and feel in order.
-            // Three buttons opening three places read as three features.
+            // One way in: the component, on the bone the parts hang from, walks parts, build,
+            // preview and feel in order. Three buttons opening three places read as three features.
             squash.Body.Add(new BridgeElements.PrimaryButton("Set up squash", OpenSquash, BridgeTheme.BridgeTo));
             squash.Body.Add(BridgeElements.ButtonRow(
                 BridgeElements.Btn("Remove squash", RemoveSquash,
@@ -228,8 +228,8 @@ namespace AvatarBridge
             _pages.Add(squash);
         }
 
-        // The component's window, added first on an avatar that has none: its steps start with
-        // the parts, before anything is built.
+        // The component in the Inspector, added first on an avatar that has none: its steps start
+        // with the parts, before anything is built.
         void OpenSquash()
         {
             if (_target == null)
@@ -237,12 +237,11 @@ namespace AvatarBridge
                 _squashStatus.Set("Pick an avatar in step 1 first.", Tone.Warn);
                 return;
             }
-            var settings = YapsSquash.SettingsOf(_target.transform) ?? Undo.AddComponent<YapsSquashSettings>(_target);
+            var settings = YapsSquash.Ensure(_target.transform);
             _squashStatus.Set(YapsSquash.Has(_target.transform)
-                ? "Opened in its own window: tune it, or change the parts and rebuild."
-                : "Opened in its own window: check the parts, then press Build.", Tone.Info);
-            // Its own window, not a selection: the component sits at the bottom of a long Inspector.
-            BridgeElements.Reveal(settings);
+                ? $"Selected on \"{settings.name}\" in the Inspector: tune it, or change the parts and rebuild."
+                : $"Selected on \"{settings.name}\" in the Inspector: check the parts, then press Build.", Tone.Info);
+            YapsSquash.Show(settings);
         }
 
         void RemoveSquash()

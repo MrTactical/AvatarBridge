@@ -41,8 +41,8 @@ namespace AvatarBridge
             if (settings == null) return null;
             bool on = YapsSquashPreview.On == settings;
             var fold = new BridgeElements.Card("Squash", on ? "previewing" : null, true).Nested().Remember("Tester.Squash");
-            YapsSquashPreview.Controls(fold.Body, settings, refresh).Add(BridgeElements.Btn("Tune it", () => BridgeElements.Reveal(settings),
-                "Opens the YAPS Squash component in a window of its own, where the knobs and Build are."));
+            YapsSquashPreview.Controls(fold.Body, settings, refresh).Add(BridgeElements.Btn("Tune it", () => YapsSquash.Show(settings),
+                "Selects the YAPS Squash component and shows it in the Inspector, where the knobs and Build are."));
             return fold;
         }
 

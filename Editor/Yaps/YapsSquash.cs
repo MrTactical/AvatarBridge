@@ -110,6 +110,43 @@ namespace AvatarBridge
 
         public static YapsSquashSettings SettingsOf(Transform root) => root != null ? root.GetComponentInChildren<YapsSquashSettings>(true) : null;
 
+        // The avatar a component belongs to, wherever under it the component sits.
+        public static Transform RootOf(YapsSquashSettings s) => s != null ? YapsNativeBuilder.AvatarRoot(s.transform) : null;
+
+        // Where a component goes: the bone the parts hang from, as a plug's sits on its own bone,
+        // so it opens in a short Inspector. The avatar root while no part is found.
+        public static Transform HomeFor(Transform root)
+        {
+            var bones = Pairs(root, out _).Take(2).SelectMany(p => p).ToList();
+            if (bones.Count == 0) return root;
+            var home = bones[0].parent;
+            while (home != null && home != root && !bones.All(b => b.IsChildOf(home))) home = home.parent;
+            return home != null && home.IsChildOf(root) ? home : root;
+        }
+
+        // The avatar's component, added at home, or an older one moved there from the avatar root.
+        public static YapsSquashSettings Ensure(Transform root)
+        {
+            var s = SettingsOf(root);
+            var home = HomeFor(root);
+            if (s == null) return Undo.AddComponent<YapsSquashSettings>(home.gameObject);
+            if (s.transform != root || home == root) return s;
+            var moved = Undo.AddComponent<YapsSquashSettings>(home.gameObject);
+            UnityEditorInternal.ComponentUtility.CopyComponent(s);
+            UnityEditorInternal.ComponentUtility.PasteComponentValues(moved);
+            Undo.DestroyObjectImmediate(s);
+            return moved;
+        }
+
+        // Selected and shown in the Inspector, as the setup window shows a plug or socket.
+        public static void Show(YapsSquashSettings s)
+        {
+            if (s == null) return;
+            Selection.activeGameObject = s.gameObject;
+            EditorGUIUtility.PingObject(s);
+            EditorApplication.ExecuteMenuItem("Window/General/Inspector");
+        }
+
         // The knobs onto one squash material. The skin stride in the hands' w is the build's.
         public static void WriteKnobs(YapsSquashSettings s, Material m)
         {
@@ -588,7 +625,7 @@ namespace AvatarBridge
 
             // The knobs, from the avatar's component; a first build adds one with the defaults.
             var knobs = SettingsOf(root);
-            if (knobs == null) knobs = root.gameObject.AddComponent<YapsSquashSettings>();
+            if (knobs == null) knobs = HomeFor(root).gameObject.AddComponent<YapsSquashSettings>();
             knobs.builtFrom = RegionsHash(knobs);
             EditorUtility.SetDirty(knobs);
             Flush();

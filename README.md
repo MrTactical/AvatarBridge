@@ -1577,9 +1577,11 @@ loop in a shader, and those presses are read in loops.
 **Two ways on.** Converting: *Manual options ▸ Opt-ins ▸ Soft parts ▸ Soft body shape: squash
 where parts press together*. It changes the parts' shape where they meet; *Physics ▸ Your call ▸
 Soft body physics* keeps whole parts from passing through. They are separate, and work together.
-Already on ChilloutVR: *Tools ▸ YAPS ▸ Setup*, the **Squash** card, **Set up squash**. It opens the
-avatar's **YAPS Squash** component in its own window, adding it first if the avatar has none, and
-the window's steps run in order: **Parts**, **Build**, **See it work**, **How it feels**. **Build**
+Already on ChilloutVR: *Tools ▸ YAPS ▸ Setup*, the **Squash** card, **Set up squash**. It selects the
+avatar's **YAPS Squash** component and shows it in the Inspector, adding it first if the avatar has
+none. Like a plug or socket, the component sits on the bone the parts hang from (the chest for one
+pair, the hips when there are two), or on the avatar root while no part is found; one an older build
+put on the avatar root moves there. Its steps run in order: **Parts**, **Build**, **See and tune it**. **Build**
 there builds it, and pressing it again rebuilds; **Remove squash** puts every layer back on its
 own material, toggles included. The card says whether the picked avatar has squash, on how many
 materials, and when its regions were painted after the last build. Only a layer that lies over a soft part gets a copy; the rest keep
@@ -1590,19 +1592,20 @@ shader another avatar already patched is reused instead of compiled again.
 
 **Tuning it.** A build adds the **YAPS Squash** component if the avatar has none yet, and
 **Set up squash** on the Setup card opens it again. Its knobs write straight to the materials as you move them, so nothing
-needs rebuilding: **How it feels** holds how flat a part presses and where the volume goes, whether the
+needs rebuilding: **See and tune it** holds how flat a part presses and where the volume goes, whether the
 pair meets (off by default), the stretch in motion, and what presses it (own arms, other players' hands, plugs, and
 the physics' own colliders, off by default). **Motion Style** runs from 0, like real flesh (a small
 stretch, small swings ignored), to 1, like anime (a long stretch and a deep squash on every
-bounce). **See it work ▸ Preview** shows it in the editor: **Squeeze** pushes the pair together,
-**Bounce** swings each part as a jump would, and **Test hand** puts another player's open hand in
+bounce). **See and tune it ▸ Preview** shows it in the editor, starting half squeezed so every knob
+shows as it moves: **Squeeze** is another player's two open hands pushing each pair together from
+outside, so *Other players' hands* scales it, **Bounce** swings each part as a jump would, and **Test hand** puts another player's open hand in
 front of it, dragged with the handle in the Scene view; it presses the part nearest it, so it
 reaches a second pair too. **Player height** sizes it, since a hand is sized to its player: lower it
 for a smaller hand pressing a smaller spot. The editor runs no physics, so the preview stands in for them; in game
 the same knobs answer the real thing. The Avatar Tester's **Interaction lab** carries the same
 preview beside the avatar's motion, and in Play mode the cloth there is real: **Jump** or **Shake**
-swings it, and **Test hand** presses it and moves with the avatar; pause Play mode to hold the cloth
-still while the hand presses. Each fold under **How it feels** says what it does and how to see it. Its **Build** card builds,
+swings it, and **Squeeze** and **Test hand** press it, moving with the avatar; pause Play mode to hold
+the cloth still while they press. Each fold under **See and tune it** says what it does and how to see it. Its **Build** card builds,
 rebuilds and removes the squash (the knobs stay on the component), and **Animate it** lists the
 material properties to key. The component on a VRChat avatar carries into its conversion, knobs and
 regions alike, and ChilloutVR strips it at upload.

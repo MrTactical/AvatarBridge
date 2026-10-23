@@ -1,7 +1,7 @@
 // The YAPS Squash component's inspector: the knobs, written straight to the build's materials,
-// and a preview that moves the slots the provider moves in game. Edit mode runs no cloth, so the
-// preview squeezes the pair and swings the rests under it; in Play mode the cloth is real and the
-// preview only adds a test hand where the client would put another player's.
+// and a preview that presses the parts as the game does. Another player's hands, written into
+// the client's own globals, squeeze the pair from outside and press where dragged, in edit and
+// Play mode alike. Edit mode runs no cloth, so there the preview also swings the rests under it.
 #if CVR_CCK_EXISTS
 using System.Linq;
 using AvatarBridge.Yaps;
@@ -60,9 +60,11 @@ namespace AvatarBridge
         {
             if (_root == null) return;
             _root.Clear();
+            // A stale inspector, its component gone with the scene Play mode reloaded.
+            if (target == null) return;
             serializedObject.Update();
             var settings = (YapsSquashSettings) target;
-            var root = settings.transform;
+            var root = YapsSquash.RootOf(settings);
             bool built = YapsSquash.Has(root);
             int mats = YapsSquash.Materials(root).Count;
             bool painted = settings.pairs.Count > 0;
@@ -79,7 +81,7 @@ namespace AvatarBridge
             body.Add(BridgeElements.Notice(Tone.Info, YapsInspectorStyle.InertComponentNote));
 
             // In the order of the work: what squashes, build it, then see and tune it.
-            var parts = new BridgeElements.Card("Parts").Step(1, 4, BridgeTheme.Span.Cvr);
+            var parts = new BridgeElements.Card("Parts").Step(1, 3,BridgeTheme.Span.Cvr);
             body.Add(parts);
             parts.Body.Add(BridgeElements.Hint(painted
                 ? $"From {BridgeElements.Count(settings.pairs.Count, "painted pair", "painted pairs")} on \"{(settings.body != null ? settings.body.name : "?")}\"."
@@ -91,7 +93,7 @@ namespace AvatarBridge
             parts.Body.Add(new PropertyField(serializedObject.FindProperty("partBones"), "Part bones"));
             parts.Body.Add(new PropertyField(serializedObject.FindProperty("leaveAlone"), "Materials left alone"));
 
-            var build = new BridgeElements.Card("Build").Step(2, 4, BridgeTheme.Span.Cvr);
+            var build = new BridgeElements.Card("Build").Step(2, 3,BridgeTheme.Span.Cvr);
             body.Add(build);
             build.Body.Add(BridgeElements.Hint(built
                 ? "Rebuild after the body, its bones or its regions change, or after a new outfit is added."
@@ -118,14 +120,15 @@ namespace AvatarBridge
                 }, null, ButtonKind.Danger)));
             }
 
-            var see = new BridgeElements.Card("See it work").Step(3, 4, BridgeTheme.Span.Cvr);
-            body.Add(see);
-            YapsSquashPreview.Controls(see.Body, settings, RebuildLater);
+            // The preview and the knobs in one card: a knob shows nothing until something presses.
+            var feel = new BridgeElements.Card("See and tune it").Step(3, 3, BridgeTheme.Span.Cvr);
+            body.Add(feel);
+            YapsSquashPreview.Controls(feel.Body, settings, RebuildLater);
+            feel.Body.Add(BridgeElements.Hint(YapsSquashPreview.On == settings
+                ? "Knobs write to the materials as you move them, no rebuild, and show on the preview."
+                : "Knobs write to the materials as you move them, no rebuild. Preview first to see them."));
 
             // Fields in declaration order, a fold per [Header]. The regions are hidden.
-            var feel = new BridgeElements.Card("How it feels").Step(4, 4, BridgeTheme.Span.Cvr);
-            body.Add(feel);
-            feel.Body.Add(BridgeElements.Hint("Knobs write to the materials as you move them: no rebuild."));
             var it = serializedObject.GetIterator();
             it.NextVisible(true);   // m_Script
             BridgeElements.Card fold = null;
@@ -171,7 +174,9 @@ namespace AvatarBridge
         // The hand's player's viewpoint height, which sizes the hand as it does in the shader.
         // Kept between previews, unlike the rest.
         public static float Tall = 1.7f;
-        // In the avatar's space, so the hand walks, jumps and turns with it.
+        // The avatar the component sits under, and the dragged hand in its space, so the hand
+        // walks, jumps and turns with it.
+        static Transform _root;
         static Vector3 _wrist;
         static Vector4 _params;
         static readonly Matrix4x4[] Empty = new Matrix4x4[20];
@@ -181,14 +186,13 @@ namespace AvatarBridge
         // Returns the Preview button's row, so a caller can put its own buttons beside it.
         public static VisualElement Controls(VisualElement into, YapsSquashSettings settings, System.Action refresh)
         {
-            bool built = YapsSquash.Has(settings.transform);
+            bool built = YapsSquash.Has(YapsSquash.RootOf(settings));
             into.Add(Application.isPlaying
-                ? BridgeElements.Hint("The cloth is real in Play mode: move the avatar (Jump or Shake in the Avatar Tester) and it swings and stretches. The preview adds another player's open hand.",
-                    "Drag the hand with its handle in the scene view; it moves with the avatar. Pause Play mode to hold the cloth still while the hand presses. " +
-                    "To hold the pair squeezed together, leave Play mode: there Squeeze keeps them pressed at any amount.")
+                ? BridgeElements.Hint("The cloth is real in Play mode: move the avatar (Jump or Shake in the Avatar Tester) and it swings and stretches. Squeeze and the test hand press it as another player's hands would.",
+                    "Drag the hand with its handle in the scene view; it moves with the avatar. Pause Play mode to hold the cloth still while it presses.")
                 : BridgeElements.Hint("Squeezes, bounces and presses it in the scene view.",
-                    "Edit mode runs no physics, so this stands in for them: the pair pushed together, the swing a bounce gives, " +
-                    "and another player's open hand, which you drag. In Play mode the cloth is real. In game the same knobs answer the real ones."));
+                    "Squeeze is another player's two hands pushing each pair together from outside, the test hand one more you drag. " +
+                    "Edit mode runs no physics, so Bounce stands in for the swing a jump gives. In game the same knobs answer real hands."));
             bool on = On == settings;
             var preview = BridgeElements.Btn(on ? "Stop the preview" : "Preview", () =>
             {
@@ -199,16 +203,14 @@ namespace AvatarBridge
             var row = BridgeElements.ButtonRow(preview);
             into.Add(row);
             if (!on) return row;
+            var squeeze = new Slider("Squeeze", 0f, 1f) { value = Squeeze, showInputField = true,
+                tooltip = "Two open hands pushing each pair together from outside, how far in. They press as other players' hands do, so \"Other players' hands\" scales them." };
+            squeeze.AddToClassList("ab-slider");
+            squeeze.RegisterValueChangedCallback(e => Squeeze = e.newValue);
+            into.Add(squeeze);
             if (!Application.isPlaying)
-            {
-                var squeeze = new Slider("Squeeze", 0f, 1f) { value = Squeeze, showInputField = true,
-                    tooltip = "The pair pushed together, as a share of the way." };
-                squeeze.AddToClassList("ab-slider");
-                squeeze.RegisterValueChangedCallback(e => Squeeze = e.newValue);
-                into.Add(squeeze);
                 into.Add(BridgeElements.Bind("Bounce", "Swings each part up and down under it, as a jump would, to show the stretch in motion.",
                     Bounce, b => Bounce = b));
-            }
             into.Add(BridgeElements.Bind("Test hand", "Another player's open hand, dragged with the handle in the scene view. It presses the part nearest it.",
                 Hand, b => { Hand = b; SceneView.RepaintAll(); }));
             into.Add(BridgeElements.SliderField("Player height", "How tall the hand's player is, in metres. A hand is sized to its player, so lower it for a smaller hand pressing a smaller spot.",
@@ -219,13 +221,17 @@ namespace AvatarBridge
         public static void Start(YapsSquashSettings s)
         {
             Stop();
-            var slots = YapsSquash.Slots(s.transform);
+            var root = YapsSquash.RootOf(s);
+            var slots = YapsSquash.Slots(root);
             if (slots == null) return;
             On = s;
+            _root = root;
+            // Pressed from the start, so a knob shows as soon as it moves.
+            Squeeze = 0.5f;
             _params = Shader.GetGlobalVector("CVRGlobalParams1");
             // In front of the first part, a hand's length and a palm out.
-            var part = slots[0] != null ? slots[0].position : s.transform.position + Vector3.up;
-            _wrist = s.transform.InverseTransformPoint(part + s.transform.forward * 0.25f);
+            var part = slots[0] != null ? slots[0].position : root.position + Vector3.up;
+            _wrist = root.InverseTransformPoint(part + root.forward * 0.25f);
             EditorApplication.update += Tick;
             EditorApplication.playModeStateChanged += Leave;
             AssemblyReloadEvents.beforeAssemblyReload += Stop;
@@ -242,12 +248,13 @@ namespace AvatarBridge
             AssemblyReloadEvents.beforeAssemblyReload -= Stop;
             SceneView.duringSceneGui -= Draw;
             if (On == null) return;
-            if (!Application.isPlaying)
-                foreach (var m in YapsSquash.Materials(On.transform)) m.SetMatrixArray("_YAPS_SquashFollow", Empty);
+            if (!Application.isPlaying && _root != null)
+                foreach (var m in YapsSquash.Materials(_root)) m.SetMatrixArray("_YAPS_SquashFollow", Empty);
             foreach (var name in new[] { "_CVR_PlayerLeftHandPositions", "_CVR_PlayerRightHandPositions", "_CVR_PlayerChestPositions", "_CVR_PlayerRootPositions" })
                 Shader.SetGlobalVectorArray(name, NoOne);
             Shader.SetGlobalVector("CVRGlobalParams1", _params);
             On = null;
+            _root = null;
             Squeeze = 0f;
             Bounce = Hand = false;
             SceneView.RepaintAll();
@@ -255,18 +262,20 @@ namespace AvatarBridge
 
         static void Tick()
         {
-            if (On == null) { Stop(); return; }
-            var root = On.transform;
+            if (On == null || _root == null) { Stop(); return; }
+            var root = _root;
             var slots = YapsSquash.Slots(root);
             var mats = YapsSquash.Materials(root);
             if (slots == null || mats.Count == 0) { Stop(); return; }
             var m = slots.Select(t => t != null ? t.localToWorldMatrix : Matrix4x4.zero).ToArray();
             if (!Application.isPlaying) Stand(root, m, mats);
-            Press(root, Nearest(slots, root.TransformPoint(_wrist)));
+            Press(root, slots, mats[0].GetVector("_YAPS_SquashReach"), Nearest(slots, root.TransformPoint(_wrist)));
             SceneView.RepaintAll();
         }
 
-        // The stand-ins for the cloth edit mode never runs.
+        // The stand-in for the cloth edit mode never runs. Squeeze is not one: moving the follows
+        // together left the skin where it was, so the shader read an overlap and swung the pair
+        // apart, the opposite of a squeeze. Hands press the skin as the game's do.
         static void Stand(Transform root, Matrix4x4[] m, System.Collections.Generic.List<Material> mats)
         {
             var reach = mats[0].GetVector("_YAPS_SquashReach");
@@ -275,11 +284,6 @@ namespace AvatarBridge
             {
                 float unit = ((Vector3) m[i].GetColumn(0)).magnitude;
                 if (unit <= 0f || reach[i] <= 0f) continue;
-                // Each follow toward its partner. The skin stays put, so the squash is drawn
-                // about where the follow moved to, as it is in game when the cloth swings in.
-                var partner = (Vector3) m[i ^ 1].GetColumn(3);
-                var to = Vector3.Lerp(m[i].GetColumn(3), partner, 0.3f * Squeeze);
-                m[i].SetColumn(3, new Vector4(to.x, to.y, to.z, 1f));
                 // The rest moved the other way gives the same swing with the part where its skin is.
                 if (Bounce) m[4 + i] = Matrix4x4.Translate(-root.up * (0.5f * reach[i] * unit * swing)) * m[4 + i];
             }
@@ -292,32 +296,69 @@ namespace AvatarBridge
             slots.Take(4).Where(t => t != null && t.lossyScale.sqrMagnitude > 0f).Select(t => t.position)
                 .OrderBy(p => (p - wrist).sqrMagnitude).DefaultIfEmpty(wrist + Vector3.forward).First();
 
-        // Player 1's open left hand, reaching from a chest behind it toward the part.
-        static void Press(Transform root, Vector3 part)
+        // Player 1's open left hand, reaching from a chest behind it toward the part, and for
+        // Squeeze players 0 and 2, one per pair, a hand each side pushing it together.
+        static void Press(Transform root, Transform[] slots, Vector4 reach, Vector3 part)
         {
             var left = new Vector4[255];
+            var right = new Vector4[255];
             var chests = new Vector4[255];
             var roots = new Vector4[255];
-            var wrist = root.TransformPoint(_wrist);
-            var aim = (part - wrist).normalized;
-            var chest = wrist - aim * 0.45f;
-            left[1] = new Vector4(wrist.x, wrist.y, wrist.z, -1f);
-            chests[1] = chest;
-            roots[1] = new Vector4(chest.x, 0f, chest.z, Tall);
+            if (Hand)
+            {
+                var wrist = root.TransformPoint(_wrist);
+                var aim = (part - wrist).normalized;
+                var chest = wrist - aim * 0.45f;
+                left[1] = new Vector4(wrist.x, wrist.y, wrist.z, -1f);
+                chests[1] = chest;
+                roots[1] = new Vector4(chest.x, 0f, chest.z, Tall);
+            }
+            if (Squeeze > 0f)
+                for (int i = 0; i < 4; i++)
+                {
+                    if (!Squeezer(slots, reach, i, out var wrist, out var chest)) continue;
+                    int player = i & 2;
+                    ((i & 1) == 0 ? left : right)[player] = new Vector4(wrist.x, wrist.y, wrist.z, -1f);
+                    chests[player] = chest;
+                    roots[player] = new Vector4(chest.x, 0f, chest.z, Tall);
+                }
             Shader.SetGlobalVectorArray("_CVR_PlayerLeftHandPositions", left);
-            Shader.SetGlobalVectorArray("_CVR_PlayerRightHandPositions", NoOne);
+            Shader.SetGlobalVectorArray("_CVR_PlayerRightHandPositions", right);
             Shader.SetGlobalVectorArray("_CVR_PlayerChestPositions", chests);
             Shader.SetGlobalVectorArray("_CVR_PlayerRootPositions", roots);
-            Shader.SetGlobalVector("CVRGlobalParams1", new Vector4(_params.x, Hand ? 2f : 0f, _params.z, _params.w));
+            Shader.SetGlobalVector("CVRGlobalParams1", new Vector4(_params.x, Hand || Squeeze > 0f ? 3f : 0f, _params.z, _params.w));
+        }
+
+        // An open hand on the far side of part i from its partner, fingers up so its side presses:
+        // touching at Squeeze 0, and at 1 pushed in to the part's centre. Further, a quarter of the
+        // way to the partner, pinched the pair's bottoms into a bridge. Its chest sits below the
+        // wrist only to point the fingers up.
+        static bool Squeezer(Transform[] slots, Vector4 reach, int i, out Vector3 wrist, out Vector3 chest)
+        {
+            wrist = chest = Vector3.zero;
+            var t = slots[i];
+            var partner = slots[i ^ 1];
+            if (t == null || partner == null || reach[i] <= 0f) return false;
+            var away = t.position - partner.position;
+            float gap = away.magnitude;
+            if (gap < 1e-5f) return false;
+            away /= gap;
+            float r = On.handSize * Tall / 1.6f;
+            float part = reach[i] * t.lossyScale.x;
+            float d = Mathf.Lerp(part + r, r, Squeeze);
+            float length = Mathf.Max(0.11f * Tall - r, 0f);
+            wrist = t.position + away * d - _root.up * (0.5f * length);
+            chest = wrist - _root.up * 0.45f;
+            return true;
         }
 
         // The wrist, and the palm the shader presses with drawn ahead of it.
         static void Draw(SceneView view)
         {
-            if (On == null || !Hand) return;
-            var slots = YapsSquash.Slots(On.transform);
+            if (On == null || !Hand || _root == null) return;
+            var slots = YapsSquash.Slots(_root);
             if (slots == null || slots[0] == null) return;
-            var root = On.transform;
+            var root = _root;
             var wrist = root.TransformPoint(_wrist);
             var aim = (Nearest(slots, wrist) - wrist).normalized;
             float radius = On.handSize * Tall / 1.6f;
