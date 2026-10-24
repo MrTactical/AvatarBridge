@@ -612,7 +612,8 @@ so a leg collider can only come out leg-sized. Every change is in the report wit
 after, and *Fit colliders to the mesh* turns it off.
 
 **So does the feel.** Each chain's `pull`, `spring` and `stiffness` are converted into
-MagicaCloth2's damping and angle restoration, `gravity` into the pull that settles the chain where
+MagicaCloth2's damping and angle restoration along its whole length, so a curve that loosens a
+chain in the middle comes across too, `gravity` into the pull that settles the chain where
 VRChat settles it, and `immobile` into its inertia. Every adjustment is named in the report
 alongside the PhysBone's original numbers. The conversion was checked by driving original avatars
 and their conversions through the same motion in Unity and comparing how far each chain swings,

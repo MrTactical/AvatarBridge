@@ -27,7 +27,8 @@ namespace AvatarBridge.Regression
     // length, so no resolve code is copied here to drift from the shader's.
     //
     // Run: -executeMethod AvatarBridge.Regression.YapsBendTester.Run [-yapsAvatar <prefab path>] [-yapsShots <folder>]
-    //      [-yapsSeed <n>] [-yapsScenarios <count>] [-yapsScenario <index>]
+    //      [-yapsSeed <n>] [-yapsScenarios <count>] [-yapsScenario <index>] [-yapsScale <s>]
+    // -yapsScale resizes the avatar's root, as ChilloutVR's scaling does, and every test place with it.
     public static class YapsBendTester
     {
         const string DefaultAvatar = "Assets/AvatarBridgeOutput/Alexa/Alexa (ChilloutVR).prefab";
@@ -50,7 +51,10 @@ namespace AvatarBridge.Regression
                 EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
                 var avatar = (GameObject) PrefabUtility.InstantiatePrefab(prefab);
                 avatar.transform.position = Vector3.zero;
-                Log($"avatar {path}");
+                float scale = float.TryParse(Arg("-yapsScale"), System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out float scaleArg) ? scaleArg : 1f;
+                avatar.transform.localScale = Vector3.one * scale;
+                Log($"avatar {path}, scale {scale}");
 
                 var plug = avatar.GetComponentsInChildren<YapsPlug>(true).FirstOrDefault(p => p.Target is SkinnedMeshRenderer);
                 var skin = plug != null ? (SkinnedMeshRenderer) plug.Target
@@ -109,6 +113,7 @@ namespace AvatarBridge.Regression
                     mats[s] = h;
                 }
                 skin.sharedMaterials = mats;
+                length *= scale;
                 Log($"plug \"{skin.name}\", {capture.Count} slot(s), length {length:0.000} m, " +
                     $"{skin.sharedMesh.vertexCount} vertices");
 

@@ -71,102 +71,6 @@ no longer resolves; an entry that resolves and still does nothing in game would 
 record open until the user confirms on the 5.0.0 build, and ask for their avatar's SPS setup if it
 persists.
 
-### 1. The Animator window floods after Add squash
-
-Joe, 2026-10-20: with the Animator window open on a converted avatar, pressing **Add squash** on
-the Setup card was followed by 999+ `MissingReferenceException: The object of type
-'AnimatorStateMachine' has been destroyed`, from `AnimatorControllerTool.OnGUI` (DisplayDirty).
-The window still held state machines that something in the build replaced; its native refresh
-(`AnimatorControllerCallback.OnInvalidateAnimatorController`) never ran.
-
-Not reproduced, so not fixed (a fix needs the failing case first). Suspects, none confirmed: the
-`AssetDatabase.Refresh` calls in `YapsShaderPatcher` (294, 396, 1495) reimporting the
-controller, or `FollowSwaps` and `YapsLock.Animate` rewriting clips the window draws. Repro
-route: a batch probe opening `AnimatorControllerTool` on the avatar's controller, running
-`YapsSquash.Build`, then calling the window's OnGUI and counting the exception. Candidate fix
-once it fails: after Build and Strip, `AnimatorControllerTool.tool?.ResetUI()` by reflection
-(closing and reopening the window clears it meanwhile).
-
-**Probed 2026-10-21, not reproduced** [M]. `Dev/Probes/AnimatorFloodProbe` instantiates a converted
-avatar (58 layers, 59 state machines), makes an `AnimatorControllerTool` on its controller with
-breadcrumbs set, runs `YapsSquash.Build` twice and checks every state machine loaded: 0 destroyed
-after either build, controller alive, breadcrumbs alive. From the window's decompiled code, the
-flood needs `activeStateMachine` or `rootStateMachine` destroyed (`Graph.DisplayDirty`, called
-first in `OnGraphGUI`), so the build alone is cleared. Left: what the GUI editor has and batch does
-not (Play mode, a different avatar or controller in the window, a sub-state machine open, the CCK's
-own inspector reacting to the new components). Needs Joe's setup before another probe.
-
-**Joe, 2026-10-21: it was in Play mode.** So the next probe is the same one in batch Play mode:
-enter Play, build with the window on the live animator, and count destroyed state machines. Still
-unknown: which avatar, whether a sub-state machine was open, whether closing the window stops it.
-
-**Written on dev 2026-10-21, not yet compiled or probed (Joe in VR):** `AnimatorFloodProbe
--floodPlay` builds in batch Play mode, leaves it, and checks what the build left behind. Whatever
-the flood turns out to be, a build in Play mode is wrong on its own: leaving Play puts the scene back
-but keeps the materials and repointed clips, so an animation switches to a squash copy the avatar
-no longer wears. Bake, socket build and rebuild, prop, remove, the Setup card's build buttons and
-`YapsSquash.Build`/`Strip` now refuse in Play mode with `YapsNativeBuilder.NotInPlayMode`; README
-says so beside the Play mode preview. Order: probe on the old code first (stash), then on the fix.
-
-**Probed 2026-10-21 [M]** (`-floodPlay`, a converted avatar that already wears squash, 44 state
-machines). Old code: the build threw `InvalidOperationException: This cannot be used during play
-mode` from `MarkSceneDirty` inside `Strip`, partway through. New code: refused with "Leave Play mode
-first", 0 of 44 state machines destroyed, controller and breadcrumbs alive, "consistent" after
-leaving Play. The flood itself was still not reproduced in batch (no GUI to draw the window), so it
-is closed by the refusal, not by a seen fix. In-game checklist: Add squash in Play mode is refused.
-
-### 2. A rebuilt rig the jaw pass rebuilds again
-
-
-When the jaw pass also rebuilds a rig, the `_Matched` copy `RigSkeletonSync` writes goes unused
-in the output. The rest of the floating-avatar fix is archived ("An avatar floated").
-**Written on dev 2026-10-21, not yet compiled:** `JawUnmapper` deletes the stale `_Matched` rig
-after saving `_NoJaw`, as it already does its own earlier copies (the skeleton pass runs first,
-`BridgeConverter.cs:167-168`). Verify on a conversion where both passes fire: one rig in the
-output, the avatar standing on it. The digests do not record which passes ran, so the corpus
-cannot pick such an avatar out by itself.
-**Tested 2026-10-21 [M]:** `Dev/Tests/JawMatchedRigTest` gives a converted avatar a rig with its Jaw
-on a hat bone, moves the armature 20 cm, and runs both passes. Old code: `_Matched` and
-`_Matched_NoJaw` both left in the output (2 WRONG). New: one rig, worn, no Jaw, hips 0.00 cm from
-the armature's: PASS. Trap found writing it: the Animator writes back the pose it bound to when its
-rig is swapped, so a test that moves bones after assigning the rig sees the passes' detach undo the
-move. A real conversion binds on the moved armature, so it is a test-order trap, not a product bug.
-
-### 3. Unskinned grab-and-stretch handles deleted as helper rigs (corpus 414)
-
-- **Unskinned grab-and-stretch handles were deleted as helper rigs.** A chain that moves no rendered
-  vertex and drives no constraint is left alone again, and the helper-rig report no longer claims
-  constraints where none were removed.
-
-Also: the toggle sweep threw on 11 avatars in every run, so their toggles were never compared; it now
-sweeps them, and an avatar with nothing to sweep says so. Still open: one avatar's sweep now refuses
-`ScaleFactorInverse` where it refused `EyeHeightAsMeters`; both are game-driven, and the scaler change
-explains the swap, so it reads as expected but has not been traced line by line.
-**Traced 2026-10-21:** the Scale Feed layer's Recompute state loops every 1/60 s and its driver
-rewrites `ScaleFactor`, `ScaleFactorInverse`, `EyeHeightAsPercent` and `ScaleModified` each entry
-(`AnimatorMerger.cs:5627-5800`), so a value the sweep drives never holds. `ToggleSweep` now counts
-`EyeHeightAsMeters`, `EyeHeightAsPercent` and `ScaleFactorInverse` as game-owned. Expected on the
-next run: that avatar's refused line goes away.
-**Run 427 [M]:** no digest in baseline 422, run 424 or 427 refuses a scale or eye-height parameter,
-so the line had already gone. What moved: 22 avatars sweep one parameter fewer (`params` down by
-1), `responded`, `stuck` and `refused` unchanged on every one.
-
-### 4. A slider whose two children animate different properties (corpus 415)
-
-- **One is the other shape** (now reported as unstable at rest): a slider's two children each animate a
-  property the other does not. No pass covers it, and the restore passes exempt tree-driven bindings
-  by design, so it needs a decision first.
-- **Joe's decision 2026-10-21: fix before 5.0.0. FIXED ON DEV.** `CollectToggleTrees` offers a 1D tree
-  with no empty child whose clip children animate different properties as a `Slider` candidate, restore
-  pass only (the hoist pass passes no ctx and keeps the toggle shape). Each end gets, on a copy of its
-  clip, the properties only other ends animate at their conversion-time value, through the same
-  ownership rule as the empty-child fill; object on/off stays `BalanceMenuTreeActives`' and Animator
-  bindings are skipped. `TreeToggleRestoreTest`: 4 new cases WRONG before, 17/17 after. **To confirm
-  in the next full run:** the three `unstable at rest:` lines on Avatar E (VRCEmote, Collar, DPS) go,
-  and the new Converted line appears where sliders were filled. Not worn in ChilloutVR.
-  **Run 427 [M]:** the one `unstable at rest:` line in baseline 422 is gone (as in 424), and the
-  sliders' ends show as `Blend Tree N at rest` rest clips on the avatars run 424 listed.
-
 ### 5. Cloth on a plug's own bones, unmeasured
 
 
@@ -238,7 +142,7 @@ the YAPS avatars [M]:
   them with default settings that morning and resized their source textures (reverted from each
   `TextureSizes.undo`). So 424 is not promoted.
 
-### 7. YAPS against every popular shader: checks 4 and 5, and a corpus run
+### 7. YAPS against every popular shader: done but Sunao, which waits on Joe
 - **Squash on Unity's Standard, 2026-10-21 [M]:** the plug and socket move a Standard material to
   YAPS Simple Lit; the squash only patches, refuses Standard ("no source file on disk") and is not
   built. Run 424 has nine such avatars. Same Simple Lit fallback, or say so in the setup card.
@@ -312,6 +216,11 @@ lilToon finding below is the proof: a host can patch without a word and never be
 - **Not run in the corpus.** Squash patches body materials through the same patcher, so the next
   authorised run should change digests on avatars wearing UTS or a shader that borrows passes: a
   refusal where a silent straight patch was. That is the fix, not a regression.
+  **Run 427 carried the fix (9c52bfb is in e5608e1), checked 2026-10-24 [M]:** its log names every
+  refusal the corpus has (no source file on disk 13, no metallic map 5, surface shader 3,
+  `InternalErrorShader` 14) and none of the new kinds (a borrowed pass, no `SV_VertexID`, made on
+  import), so no corpus avatar wears such a shader under a plug, socket or squash part and no digest
+  moved for it. Nothing left to run. Checks 4 and 5 passed on 2026-10-19 (below).
 - ~~ORL's refusal says the shader "lives inside a compiled package", which is wrong for a shader its
   importer generates.~~ **Fixed on `dev` 2026-10-19:** a shader with a project path but no `.shader`
   text is refused as "made on import from <file>, which is not shader source". `GeneratedShaderTest`
@@ -404,6 +313,17 @@ ranked by how visible it should be:
    'Ignore'" line: `PhysBoneData` counts a root's children without the nested roots, so that root
    no longer branches, as VRChat sees it with Ignore Other on. The `[physics]` block, which records
    each cloth's root bones, is byte-identical on all four against run 424, so no cloth moved.
+   **Curves, fixed on dev 2026-10-24 [M]:** pull, spring and stiffness curves were read at the two
+   ends only, so a chain loose in the middle converted as held all along. A census of the corpus
+   sources (2935 PhysBones) finds 45 pull, 50 spring and 66 stiffness curves shaped more than 0.1
+   away from a straight line, in 13 to 18 files. The derived damping and restoration are sampled at
+   MagicaCloth2's own 16 depths now; a result that is a straight line keeps the old two-end write.
+   `PhysBoneCurveTest`: old code 2 WRONG (a dip read 0.678 all along where the PhysBone wants 0.054
+   mid-chain; a ramp's middle 8% off), new PASS (0.061, and 0.0001 off). A straight PhysBone curve
+   is not a straight restoration (the mapping bends it), so linear-curve chains change too. Not
+   measured with the Physics A/B probe yet, not in game. Left as they are, each small: the Immobile
+   curve (MC2 inertia has no depth curve), gravity curves (49 shaped; MC2 gravity is one number),
+   distance culling.
 
 ### 9. The audit of 2026-10-03: what is still open
 
@@ -495,7 +415,7 @@ ranked by how visible it should be:
   hat brims, shaft segments, small two-bone chains), and none the other way, since a weighted bone
   is always listed. 72 of the 97 are grabbable and none holds content. They move no vertex, so
   converting them costs a little and shows nothing; flipping them hands them to the cleanup pass,
-  the route that deleted grab handles before (item 3), for no fix anyone could see), and the Toolkit's *Mesh
+  the route that deleted grab handles before (item 3, archived), for no fix anyone could see), and the Toolkit's *Mesh
   bounds* button re-applying the avatar envelope to a separate plug mesh after a native bake.
 
 ### 12. The bend tester's seam checks fail on a fresh bake
@@ -531,32 +451,9 @@ Read what the seam check measures before calling it a bake fault.
   fifth of a length out at right angles bends the shaft 90° in a few centimetres, so a large
   stretch there is expected; whether 6x is the right bound needs the floor's own avatar (not in
   the corpus project) measured again. Tester only, not a 5.0.0 blocker.
-
-### 14. Run 427 against baseline 422: what no commit explains yet
-
-Full run 427 (dev e5608e1, default profile, 2026-10-22): 85 digests, 73 moved against 422 and
-27 against 424. Every class is explained (items 3, 4, 6, 7, 8 above and run 424's list) but two.
-Neither looks like a converter change; both need a decision before the baseline moves.
-- **The props fixture lost its plug's material [M].** Its plug bakes "FAILED material slot 0 is
-  empty" from run 426 on; 425 baked it. The saved scene's plug points at a material in
-  `Assets/YAPS/Generated/YAPS Test Plug/`, and that whole folder is gone from the project. 425
-  ended at 20:04 and 426 began at 20:14 on 2026-10-21; no log in that window names the folder, and
-  the conversion code holds no delete that reaches it, so the deleter is not found. The folder's
-  name is the native builder's per-root folder for any root called "YAPS Test Plug", which the
-  smoke test's own test plug also writes into. Fix: rebuild the fixture with
-  `Dev/Probes/FixtureBuilder.cs` (it changes that fixture's digest), and give it a root name of its
-  own so no other test plug shares its folder.
-  **Done 2026-10-22 [M].** Verified first: `BuildTestPlug` bakes before either caller renames the
-  plug, and `BakeOnce` names the folder after `AvatarRoot` (the scene root here), so the fixture
-  and the smoke test's standalone plug both baked into `Generated/YAPS Test Plug/`; the smoke test's
-  cleanup deletes `Smoke Prop`, `Smoke Avatar` and `Test Plug`, never that folder, and `YapsRemover`
-  keeps generated files. Two test tools sharing a folder, not a user path; the deleter itself is
-  still not found. `FixtureBuilder` now builds the plug under a holder called "Fixture Prop Plug",
-  so its material lands in `Generated/Fixture Prop Plug/`, and the rebuilt scene points there.
-  Subset 428-props (1 of 3): the plug bakes ("ok", 601 vertices) and the digest is byte-identical
-  to baseline 422's. Run 427 promoted to the baseline with this digest in place; the old baseline
-  is `Regression/Yaps/Baseline-pre-428-20261022`.
-- **One avatar's texture estimate grew:** moved to 5.0.1, item 15 (Joe, 2026-10-22).
+- **Run 2026-10-24 [M]** on Non Corpus Zone's converted Alexa plug (6445 vertices, 307 seam pairs):
+  PASS. Seams open 0.17 mm at most; the 90° walk stretches 4.65x at 0.22L, under the floor. The
+  6.31x plug and the floor's own avatar are still the two to measure.
 
 ### 16. Tester reports on the rc builds, 2026-10-22
 
@@ -636,6 +533,16 @@ Six reports from Joe's testers on the latest test packages.
   (2x instructions). The six-deep atlas scan is still most of the plug's cost. Together about
   0.6x the old first-upload compile; existing patches keep the old code until rebuilt.
   Not done: `YapsCompileBisect` end to end on a rebuilt patch; a test in game.
+  **Bisect end to end 2026-10-24 [M]**, on the YAPS block as the patcher inlines it at three
+  commits, one vertex variant each, run while corpus 429 had the cores (so ±0.3 s on identical
+  bytecode). Squash: e2ae6d3 1.29 s / 63.9 KB, 2373354 1.36 s / 65.1 KB, 43aef09 (item 22's
+  partner pass) 1.55-2.69 s over four runs, median 1.80 s / 71.8 KB. Plug and socket unchanged;
+  all three together 5.4-5.7 s at every commit, so a single 7.1 s reading was noise. Tried:
+  the partner pass's hand loop as `[loop]` instead of `[unroll]`, identical output
+  (`YapsDiffProbe` both seeds, 0 of 400 scenes differ, 0.000000 mm), squash median 1.56 s over
+  four runs and 69.2 KB. Not applied: a quarter of a second at best, while a dynamic index puts the hand arrays in
+  indexed registers every frame (unmeasured) and ChilloutVR's shader filter treats each heavy
+  `[loop]` on its own. The `plug chain1` case is gone: the chain is a fixed four by design.
 
 ### 17. Joe's squash and setup UI review, 2026-10-23 (screenshots image2-7)
 
@@ -643,6 +550,10 @@ All six done 2026-10-23 (Joe: "do all 6", "do both" for item 1). SquashPartsTest
 checks: on the old code the scan listed 2 plugs and the overlay kept an undone stroke (red 1.00),
 FAIL 2; on the new code PASS (Non Corpus Zone, headless). compile-check all ok. Not seen in the
 GUI yet: the new layouts want one look from Joe.
+**Rendered 2026-10-24 [M]** (UiOffscreenProbe on AlexaSquash in Non Corpus Zone, dev 43aef09): the
+YAPS window's squash card (one **Set up squash**, Remove under it), the component and the Avatar
+Tester read as this item and item 19 say. The two renamed toggles are in the window and README
+word for word. Joe's own look in the GUI is still wanted.
 
 1. **Two toggles read as one feature.** Done, both ways: renamed to "Soft body physics: keep parts
    from passing through" (Physics ▸ Your call, `softBodiesCollide`) and "Soft body shape: squash
@@ -775,7 +686,7 @@ Fixed on dev the same day, except where marked open.
    inspector. The region colours hide while the preview runs, unless painting. SquashPartsTest PASS
    (the painter still mounts alone for tests and probes); the inspector rendered with
    UiOffscreenProbe on AlexaSquash in Non Corpus Zone. ButtonSmokeProbe's story now sets the bone
-   field; not rerun.
+   field; not rerun: it converts, so it needs the corpus project, free once run 429 ends.
 7. **Round 3, 2026-10-24 (Joe: "can we refine the squash UI still?", a screenshot on Kar, then "do
    all five"). Steps 1 and 2 contradicted each other:** step 1 said the painted pairs win and still
    showed two empty lists, while step 2's subtitle said "only if the bones miss a part", false once
@@ -787,7 +698,9 @@ Fixed on dev the same day, except where marked open.
    line under the greyed **Add a pair** says why. The "stripped at upload" notice is shared by every
    YAPS inspector and stays. **Meet is on by default** (Joe: should it stay off? "nah"), in the
    component and the patched shader's `_YAPS_SquashShape.w`; a component saved before keeps its
-   value. compile-check 7/7, check-defines 8/8. Not rendered or seen in Unity yet.
+   value. compile-check 7/7, check-defines 8/8. **Rendered 2026-10-24 [M]:** three steps, Part
+   bones hidden while empty, Materials left alone closed with "none", Add a pair greyed with its
+   line, Rebuild last. Not seen in the GUI yet.
 8. **The painted colours only while painting, 2026-10-24** (Joe, a screenshot on Kar: "I cannot
    test the squish when the intrusive overlay is on top of the avatar"). The region overlay drew
    whenever the component was inspected with pairs painted, hidden only under the inspector's
@@ -821,6 +734,17 @@ due on the Nightly branch within days; none of this is in stable yet.
 2. **Universal Scaling**: any avatar resized from 20 cm to 5 m, set up for it or not, with gestures.
    Check plug reach and bend, sockets, the atlas, squash reach and hand size, contacts and cloth at
    both ends.
+   **A skinned plug keeps its baked length, measured 2026-10-24 [M]** (`YapsBendTester -yapsScale`,
+   which scales the avatar's root and every test place with it; Alexa's plug, 0.649 m). Scale 1
+   passes. At 2 the plug is 1.298 m but the shader still calibrates 0.649 m: the atlas misses
+   every socket at 0.8L, the 0° walk stretches an edge 59.9x and steps 16x the socket's move, 24
+   checks fail. At 0.5 (0.324 m) it bends 45 to 423 mm toward sockets 1.8 lengths away, 11 fail.
+   Why: Unity skins into world space, so `unity_ObjectToWorld` is identity on a skinned plug, the
+   frame recovered from the normal and tangent carries rotation only, and `_YAPS_BakeScale`
+   follows animated bone scale, not the root's. Assumes ChilloutVR scales the root, unconfirmed
+   until the Nightly. The neighbour checks fail at both scales too, not yet separated from this.
+   To decide: where the shader can learn the avatar's scale (a parameter the client drives, or
+   measured from the skin), then a fix and a rerun at 0.2, 0.5, 2 and 5.
 3. **Prop partial sync**: the server hands out control per part of a prop, and Disallow Theft is now
    enforced. `YapsPropBuilder` already leaves it off on fresh props, but who writes a prop's synced
    value changes: retest the prop contact channel on the Nightly.
@@ -880,7 +804,7 @@ Speed, held back from 5.0.0 (Joe, 2026-10-21).
 
 ### 15. Moved out of 5.0.0 (Joe, 2026-10-22)
 
-- **One avatar's texture estimate grew [M]** (from item 14). "About 268.0 MB of texture to
+- **One avatar's texture estimate grew [M]** (from item 14, archived). "About 268.0 MB of texture to
   download" in every run from 410 to 422 (276.2 once, in 416), 274.0 in 425 and 427, with "1 set
   of materials shares a shader" becoming "2 sets": four materials on one locked YAPS copy and two
   on another. 424 cannot say (a probe had resized this avatar's textures that morning, reverted at

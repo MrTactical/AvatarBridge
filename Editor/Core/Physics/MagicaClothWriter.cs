@@ -618,38 +618,33 @@ namespace AvatarBridge
             // 8; following the preset's taper instead still left them swinging 50.
             float dampFloor = sdata.damping.value;
             float restPreset = sdata.angleRestorationConstraint.stiffness.value;
-            float restFloorRoot = softBody ? restPreset : 0f;
-            float restFloorTip = restFloorRoot;
+            float restFloor = softBody ? restPreset : 0f;
 
-            // Evaluate both ends of the chain. PhysBone multiplies each base value by its curve
-            // at the bone's depth, so root and tip can want quite different things.
-            float pullRoot = data.Pull * PhysBoneSolverMap.SafeEvaluate(data.PullCurve, 0f);
-            float pullTip = data.Pull * PhysBoneSolverMap.SafeEvaluate(data.PullCurve, 1f);
-            float springRoot = data.Spring * PhysBoneSolverMap.SafeEvaluate(data.SpringCurve, 0f);
-            float springTip = data.Spring * PhysBoneSolverMap.SafeEvaluate(data.SpringCurve, 1f);
-            float stiffRoot = PhysBoneSolverMap.AsVersion11(
-                data.Stiffness * PhysBoneSolverMap.SafeEvaluate(data.StiffnessCurve, 0f), data.IsVersion10);
-            float stiffTip = PhysBoneSolverMap.AsVersion11(
-                data.Stiffness * PhysBoneSolverMap.SafeEvaluate(data.StiffnessCurve, 1f), data.IsVersion10);
-
-            float dampRoot = PhysBoneSolverMap.Damping(pullRoot, springRoot, stiffRoot, advanced);
-            float dampTip = PhysBoneSolverMap.Damping(pullTip, springTip, stiffTip, advanced);
-            float dampDerived = Mathf.Max(dampRoot, dampTip);
-            dampRoot = Mathf.Max(dampRoot, dampFloor);
-            dampTip = Mathf.Max(dampTip, dampFloor);
-            PhysBoneSolverMap.MapCurve(dampRoot, dampTip,
-                out float dampValue, out float dampStart, out float dampEnd, out bool dampCurve);
-            sdata.damping.SetValue(dampValue, dampStart, dampEnd, dampCurve);
-
-            float restRoot = Mathf.Max(restFloorRoot, PhysBoneSolverMap.RestorationStiffness(
-                pullRoot, springRoot, stiffRoot, advanced, out bool satRoot));
-            float restTip = Mathf.Max(restFloorTip, PhysBoneSolverMap.RestorationStiffness(
-                pullTip, springTip, stiffTip, advanced, out bool satTip));
-            PhysBoneSolverMap.MapCurve(restRoot, restTip,
-                out float restValue, out float restStart, out float restEnd, out bool restCurve);
-
+            // PhysBone multiplies each base value by its curve at the bone's depth, so root and tip
+            // can want quite different things, and so can the middle: the two ends alone drew a
+            // chain loose in the middle as held all along. Sampled at the 16 depths MagicaCloth2
+            // samples its own curves at.
+            var damp = new float[16];
+            var rest = new float[16];
+            float dampDerived = 0f;
+            bool saturated = false;
+            for (int i = 0; i < damp.Length; i++)
+            {
+                float t = i / (damp.Length - 1f);
+                float pull = data.Pull * PhysBoneSolverMap.SafeEvaluate(data.PullCurve, t);
+                float spring = data.Spring * PhysBoneSolverMap.SafeEvaluate(data.SpringCurve, t);
+                float stiff = PhysBoneSolverMap.AsVersion11(
+                    data.Stiffness * PhysBoneSolverMap.SafeEvaluate(data.StiffnessCurve, t), data.IsVersion10);
+                float d = PhysBoneSolverMap.Damping(pull, spring, stiff, advanced);
+                dampDerived = Mathf.Max(dampDerived, d);
+                damp[i] = Mathf.Max(d, dampFloor);
+                rest[i] = Mathf.Max(restFloor,
+                    PhysBoneSolverMap.RestorationStiffness(pull, spring, stiff, advanced, out bool sat));
+                saturated |= sat;
+            }
+            float dampValue = SetAlongChain(sdata.damping, damp);
+            float restValue = SetAlongChain(sdata.angleRestorationConstraint.stiffness, rest);
             sdata.angleRestorationConstraint.useAngleRestoration = restValue > 0.0001f;
-            sdata.angleRestorationConstraint.stiffness.SetValue(restValue, restStart, restEnd, restCurve);
 
             bool dampFloored = dampValue > dampDerived + 0.0001f;
             ctx.Report.Approximated(Category, data.Label,
@@ -658,7 +653,7 @@ namespace AvatarBridge
                 $"(the preset had damping {dampFloor:0.###}, restoration {restPreset:0.###})." +
                 (dampFloored ? $" Damping held at the preset's; derived it would have been {dampDerived:0.###}." : ""));
 
-            if (satRoot || satTip)
+            if (saturated)
             {
                 ctx.Report.Approximated(Category, data.Label,
                     $"Pull {data.Pull:0.##} is stiffer than MagicaCloth2 can express: its restoration tops " +
@@ -666,6 +661,34 @@ namespace AvatarBridge
                     "not be visible, but the chain will not get any stiffer than it now is.");
             }
 
+        }
+
+        // A straight line from root to tip is all most chains need, and keeps them as they were.
+        static float SetAlongChain(CurveSerializeData target, float[] at)
+        {
+            int last = at.Length - 1;
+            PhysBoneSolverMap.MapCurve(at[0], at[last], out float value, out float start, out float end, out bool curve);
+            float peak = Mathf.Clamp01(at.Max());
+            bool straight = true;
+            for (int i = 1; i < last && straight; i++)
+            {
+                float line = Mathf.Lerp(Mathf.Clamp01(at[0]), Mathf.Clamp01(at[last]), i / (float)last);
+                straight = Mathf.Abs(Mathf.Clamp01(at[i]) - line) <= 0.01f * peak;
+            }
+            if (straight || peak <= 0.0001f)
+            {
+                target.SetValue(value, start, end, curve);
+                return value;
+            }
+            var shape = new AnimationCurve();
+            for (int i = 0; i <= last; i++) shape.AddKey(new Keyframe(i / (float)last, Mathf.Clamp01(at[i]) / peak));
+            for (int k = 0; k < shape.length; k++)
+            {
+                AnimationUtility.SetKeyLeftTangentMode(shape, k, AnimationUtility.TangentMode.Linear);
+                AnimationUtility.SetKeyRightTangentMode(shape, k, AnimationUtility.TangentMode.Linear);
+            }
+            target.SetValue(peak, shape);
+            return peak;
         }
 
         static void FitToPhysBone(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata,
