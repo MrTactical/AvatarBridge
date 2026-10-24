@@ -19,8 +19,8 @@ content that is already out there, not only with itself.
 - **Squash** (breasts and butt flattening against each other and denting under a hand) is off
   until you add it: the **Squash** card in *Tools ▸ YAPS ▸ Setup*, **Set up squash**, or the opt-in
   *Soft body shape: squash where parts press together* when converting with AvatarBridge.
-- For a body whose bones do not say which parts squash, paint them: **Paint regions** in the
-  squash component's second step, **Paint them**, or *Tools ▸ YAPS ▸ Squash regions*.
+- For a body whose bones do not say which parts squash, paint them: **Paint them** in the
+  squash component's first step, **Which parts squash**, or *Tools ▸ YAPS ▸ Squash regions*.
 - **Portals**: set a hole's **Portal exit** to another socket on the same avatar, and a plug that
   goes in comes out there. Build both the plug's and the socket's avatars with 5.0; to an older
   plug, and by marker light, it is an ordinary hole.

@@ -147,7 +147,12 @@ namespace AvatarBridge
             {
                 // What the squash uses with nothing painted, said outright: "no regions" beside a
                 // build that had just found two pairs read as a contradiction.
-                if (_named != null)
+                if (regions != null && regions.partBones.Count > 0)
+                {
+                    into.Add(BridgeElements.Hint("Nothing painted, so the squash uses the bones picked below. A painted pair replaces them."));
+                    into.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Start painting", AddPair, "One empty pair, painted from nothing.")));
+                }
+                else if (_named != null)
                 {
                     into.Add(BridgeElements.Hint($"Nothing painted, so the squash uses the {BridgeElements.Count(_named.Count, "pair", "pairs")} its bone names give: {string.Join(", ", _named)}. Paint only to change what they cover."));
                     into.Add(BridgeElements.ButtonRow(
@@ -173,6 +178,8 @@ namespace AvatarBridge
             var addPair = BridgeElements.Btn("Add a pair", AddPair, "Two at most: the shader has room for four parts.");
             addPair.SetEnabled(pairs < 2);
             into.Add(BridgeElements.ButtonRow(addPair, BridgeElements.Btn("Remove this pair", RemovePair)));
+            // The tooltip alone left a greyed-out button with no reason in sight.
+            if (pairs >= 2) into.Add(BridgeElements.Hint("Two pairs is the most: the shader has room for four parts."));
 
             var more = new BridgeElements.Card("More for this pair", "name, fill from a bone or shape key, clear", false).Nested();
             into.Add(more);

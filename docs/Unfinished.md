@@ -776,6 +776,55 @@ Fixed on dev the same day, except where marked open.
    (the painter still mounts alone for tests and probes); the inspector rendered with
    UiOffscreenProbe on AlexaSquash in Non Corpus Zone. ButtonSmokeProbe's story now sets the bone
    field; not rerun.
+7. **Round 3, 2026-10-24 (Joe: "can we refine the squash UI still?", a screenshot on Kar, then "do
+   all five"). Steps 1 and 2 contradicted each other:** step 1 said the painted pairs win and still
+   showed two empty lists, while step 2's subtitle said "only if the bones miss a part", false once
+   the painter had started from the bone names. Now three steps: 1 **Which parts squash** names the
+   source first (painted, picked bones, or bone names) and holds the painter; **Paint them** opens it
+   when nothing is painted. **Part bones** shows only while it holds bones or after **Pick bones**,
+   with a line saying the painting wins when both are set. **Materials left alone** is a closed fold
+   whose header counts them. The painter says so when picked bones are in use, and at two pairs a
+   line under the greyed **Add a pair** says why. The "stripped at upload" notice is shared by every
+   YAPS inspector and stays. **Meet is on by default** (Joe: should it stay off? "nah"), in the
+   component and the patched shader's `_YAPS_SquashShape.w`; a component saved before keeps its
+   value. compile-check 7/7, check-defines 8/8. Not rendered or seen in Unity yet.
+
+### 20. The atlas paints dots on viewers' screens. Joe, 2026-10-24, OPEN
+
+Joe, in game: "the dots in the right hand corner, atlas is leaking to user screens, did we fix
+that?" Not fixed. The payload pass writes colour, so every occupied cell paints a pixel or a few,
+noted 2026-09-03 (`docs/YAPS5.md` "One cosmetic item is now visible") and never queued. The writers
+draw at `Background-945`, ahead of the scene, so the dots hide wherever the world draws over them
+and show wherever it does not: a void or no skybox, and a camera clearing to transparent
+(`YAPS5.md`, the size gate's second job). Every socket avatar in view writes into every viewer's
+frame, so the dots reach other people.
+
+- First, confirm the screenshot's dots are the atlas: the same spot with no socket avatar in view.
+- Fix candidates, unmeasured: (a) grab the frame before the payload writes and copy those pixels
+  back after the plugs' grab at -943: one more full-screen grab each frame a socket is in view;
+  (b) carry the payload in alpha alone, as the clear already does (`ColorMask A`): invisible, but
+  about four pixels a cell and a protocol bump, so mixed builds cannot see each other.
+
+### 21. ChilloutVR's October 2026 status report: what to check. Joe, 2026-10-24
+
+From <https://chilloutvr.net/blog/status_report_october_2026>, read 2026-10-24. Game Server 2 is
+due on the Nightly branch within days; none of this is in stable yet.
+
+1. **Local test avatars show as the default avatar, labelled "Local Test", to other players** under
+   GS2. Two-client checks need uploaded (private) avatars, not Build & Test.
+2. **Universal Scaling**: any avatar resized from 20 cm to 5 m, set up for it or not, with gestures.
+   Check plug reach and bend, sockets, the atlas, squash reach and hand size, contacts and cloth at
+   both ends.
+3. **Prop partial sync**: the server hands out control per part of a prop, and Disallow Theft is now
+   enforced. `YapsPropBuilder` already leaves it off on fresh props, but who writes a prop's synced
+   value changes: retest the prop contact channel on the Nightly.
+4. **Avatar settings send only what changed after the first full set**, and distant avatars get
+   fewer updates. Retest the synced YAPS channels (owner id, contact-driven parameters) on the Nightly.
+5. **Unity 6.3 LTS** is being evaluated after GS2. Nothing until a 6.3 CCK exists; then compile and
+   run the corpus against it.
+6. Watch only: Lookalikes (baked stand-ins; view-based shader effects are not processed, so the
+   atlas should simply be absent from them), server-side SPI patching of pre-CCK 3.4 content (not
+   ours), and a URP proof of concept that keeps grab passes (no move planned).
 
 ## 5.0.1
 
@@ -1098,7 +1147,7 @@ flat seam in the editor renders.
     `YapsDiffProbe -ydWild` PASS, 0 NaN; sane scenes 297/400 differ by design, 0 NaN, farthest
     move 8.19 reaches against 8.34. Compile per squash variant 1.28 to 1.35 s (fxc). SquashParts,
     SquashRefused, SquashSlot and SquashStatus tests PASS. Squash builds need a rebuild to get it.
-  - Open for Joe: turn Meet on by default once it passes in game?
+  - Joe, 2026-10-24: Meet on by default (queue item 19.7), ahead of the game check.
   - Kar rendered 2026-10-23 (Attempt Conversion, squash rebuilt, `-spLook [-spMeet]`, old shader =
     `7c0c6fe^`'s include swapped in on the new bake). Meet on: the old kink where the two bottoms
     meet is gone in the side view, the crease down the middle stays straight; mean pixel change

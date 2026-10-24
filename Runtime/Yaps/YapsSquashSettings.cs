@@ -39,7 +39,7 @@ namespace AvatarBridge.Yaps
 
         [Header("The pair")]
         [Tooltip("Off, what still overlaps after the parts swing apart and flatten passes through. On, the two press flat where they touch, the edge rounding off into the part.")]
-        public bool meet = false;
+        public bool meet = true;
         [Range(0f, 2f), Tooltip("What the meeting pushes back spills sideways and rises in a rim round the contact, in press depths.")]
         public float spill = 1f;
 
@@ -73,8 +73,8 @@ namespace AvatarBridge.Yaps
                  "squashes, so a press can show the skin through it.")]
         public List<Material> leaveAlone = new List<Material>();
 
-        // The regions, painted in the inspector's Paint them step. None: the parts are found by
-        // bone name.
+        // The regions, painted in the inspector's first step. None: the parts come from the
+        // picked bones, or else the bone names.
         [HideInInspector]
         public SkinnedMeshRenderer body;
 

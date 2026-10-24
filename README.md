@@ -1555,9 +1555,9 @@ meshes stay with the first copy. **Not yet confirmed in game.**
 ### Squash: soft parts that press together
 
 An opt-in in the YAPS add-on: breasts and butt flatten where they press against each other, and
-dent under a hand. Pushed together, a pair swings apart first, then flattens. What still overlaps
-passes through by default; **Meet** on the component presses the two flat where they touch, the
-edge rounding into the part with a slight rim around it (not yet confirmed in game). It is done in the body's shader, so every layer
+dent under a hand. Pushed together, a pair swings apart first, then flattens. **Meet**, on by
+default, then presses the two flat where they touch, the edge rounding into the part with a slight
+rim around it (not yet confirmed in game); with it off, what still overlaps passes through. It is done in the body's shader, so every layer
 over the skin (a bra, a shirt, piercings) takes the same move and nothing comes through. It
 costs no synced parameters and uses no contacts. The wearer's own arms press it, and so do other
 players' hands, from the hand positions ChilloutVR hands every shader, so neither avatar needs
@@ -1581,8 +1581,8 @@ Already on ChilloutVR: *Tools ▸ YAPS ▸ Setup*, the **Squash** card, **Set up
 avatar's **YAPS Squash** component and shows it in the Inspector, adding it first if the avatar has
 none. Like a plug or socket, the component sits on the bone the parts hang from (the chest for one
 pair, the hips when there are two), or on the avatar root while no part is found; one an older build
-put on the avatar root moves there. Its steps run top to bottom, building last as the other windows do: **Which parts squash**,
-**Paint them** (only when the bones miss a part), **Tune how it feels**, and **Build**. **Build the
+put on the avatar root moves there. Its steps run top to bottom, building last as the other windows do: **Which parts squash**
+(painted right there when the bones miss a part), **Tune how it feels**, and **Build**. **Build the
 squash** there builds it, **Rebuild the squash** rebuilds, and **Remove the squash** puts every
 layer back on its own material, toggles included. The card says whether the picked avatar has squash, on how many
 materials, and when its regions were painted after the last build. Only a layer that lies over a soft part gets a copy; the rest keep
@@ -1594,7 +1594,7 @@ shader another avatar already patched is reused instead of compiled again.
 **Tuning it.** A build adds the **YAPS Squash** component if the avatar has none yet, and
 **Set up squash** on the Setup card opens it again. Its knobs write straight to the materials as you move them, so nothing
 needs rebuilding: **Tune how it feels** holds how flat a part presses and where the volume goes, whether the
-pair meets (off by default), the stretch in motion, and what presses it (own arms, other players' hands, plugs, and
+pair meets (on by default), the stretch in motion, and what presses it (own arms, other players' hands, plugs, and
 the physics' own colliders, off by default). **Motion Style** runs from 0, like real flesh (a small
 stretch, small swings ignored), to 1, like anime (a long stretch and a deep squash on every
 bounce). **Tune how it feels ▸ Preview** shows it in the editor once built, starting half squeezed so every knob
@@ -1614,11 +1614,13 @@ regions alike, and ChilloutVR strips it at upload.
 **Where the parts are.** By default, bones whose names say breast, boob, butt, booty or glute, one
 each side with every bone under it (a pair is named after those top bones), each vertex taking the weight those bones carry, whole where they carry most and fading
 toward the edge, so the squash fades into the body the way the avatar was weight painted. Two pairs
-at most. **Part bones** in the component's first step, **Which parts squash**, picks the bones by hand instead, for
+at most. The component's first step, **Which parts squash**, says first where the parts come from:
+painted regions, picked bones or the bone names. **Pick bones** there opens **Part bones**, to pick the bones by hand instead, for
 anything that comes in two (cheeks, thighs): two to a pair, one each side, next to each other in
-the list, each with every bone under it. Painted regions win over picked bones. A body whose bones don't say, or where the names take too much or too little, can have its
-regions painted in the second step, **Paint them**: press **Paint regions** there (*Tools ▸ YAPS ▸
-Squash regions* opens the same component). With nothing painted it says which pairs the bone names give, and **Paint over them** (or
+the list, each with every bone under it. Painted regions win over picked bones, and the list says
+so while both are set. A body whose bones don't say, or where the names take too much or too little, can have its
+regions painted in the same step: press **Paint them** there (*Tools ▸ YAPS ▸
+Squash regions* opens the same component). With nothing painted it says which pairs the bone names give (or that the picked bones are used), and **Paint over them** (or
 **Start empty**) starts from there. **Paint in the Scene view** opens the brush panel in the Scene
 view, over the avatar, and the painted skin is drawn on the body, faintly where something hides it.
 The fold **More for this pair** holds the pair's name, and **Fill this side from**, which takes
@@ -1636,7 +1638,7 @@ are measured on one skin: of the meshes carrying every part, the one weighted to
 the body and not a dense piece of clothing with more vertices. The painter starts on the
 same mesh, and its **Body** field picks another. Clothing follows the skin under it, within 3 cm.
 
-**Layers left alone.** **Materials left alone**, in the first step, lists materials the squash never
+**Layers left alone.** **Materials left alone**, a fold in the first step that shows how many it holds, lists materials the squash never
 touches: they keep their own shader and stay still while the skin under them squashes, so a press
 can show the skin through one. Rebuild after changing either list; the banner says when one changed.
 
