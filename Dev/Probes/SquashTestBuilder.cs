@@ -91,6 +91,7 @@ namespace AvatarBridge.Regression
                     Debug.Log("[Squash] converter: " + string.Join(" | ", report.Entries.Where(e => e.Category == YapsSquash.Category).Select(e => $"{e.Status} {e.Subject}: {e.Detail}")));
                 else if (Has("-squashPaint")) Debug.Log("[Squash] " + Painted(avatar));
                 else if (Has("-squashSwap")) Debug.Log("[Squash] " + AddShader(avatar) + " || " + SwapTest(avatar.transform));
+                else if (Has("-squashByHand")) Debug.Log("[Squash] " + ByHandTest(avatar));
                 else
                 {
                     // -squashSocket: a socket between the first pair, for a plug to part it.
@@ -680,6 +681,40 @@ namespace AvatarBridge.Regression
             keys = AnimationUtility.GetObjectReferenceCurve(clip, binding);
             bool back = keys[0].value == original && keys[1].value == alternate && smr.sharedMaterials[slot] == original;
             return $"swap test on {smr.name} slot {slot}: follow {(ok ? "ok" : "FAILED")}, rebuild {(rebuilt ? "ok" : "FAILED")}, strip {(back ? "ok" : "FAILED")} ({said})";
+        }
+
+        // A build deleted by hand instead of removed: its objects and component gone, a layer and
+        // a toggle's swap still on squash copies. The card must still see it, and Remove, given
+        // the clips, must hand both back.
+        static string ByHandTest(CVRAvatar avatar)
+        {
+            var root = avatar.transform;
+            Strip(root);
+            var before = root.GetComponentsInChildren<SkinnedMeshRenderer>(true).ToDictionary(r => r, r => r.sharedMaterials);
+            string said = YapsSquash.Add(root, Folder, out bool built, null, 0f);
+            var smr = before.Keys.FirstOrDefault(r => r.sharedMaterials.Any(m => m != null && m.HasProperty("_YAPS_DentOwn")));
+            if (!built || smr == null) return "by hand: FAILED, the squash did not build: " + said;
+            int slot = Array.FindIndex(smr.sharedMaterials, m => m != null && m.HasProperty("_YAPS_DentOwn"));
+            var clip = new AnimationClip { name = "By hand test" };
+            AssetDatabase.CreateAsset(clip, AssetDatabase.GenerateUniqueAssetPath(Folder + "/By hand test.anim"));
+            var binding = EditorCurveBinding.PPtrCurve(AnimationUtility.CalculateTransformPath(smr.transform, root), typeof(SkinnedMeshRenderer), $"m_Materials.Array.data[{slot}]");
+            AnimationUtility.SetObjectReferenceCurve(clip, binding, new[] { new ObjectReferenceKeyframe { time = 0f, value = before[smr][slot] } });
+            var clips = new List<AnimationClip> { clip };
+            YapsSquash.FollowSwaps(root, clips, Folder, null);
+            bool followed = AnimationUtility.GetObjectReferenceCurve(clip, binding)[0].value == smr.sharedMaterials[slot];
+
+            // By hand: every squash object and the component deleted, Remove never pressed.
+            foreach (var t in root.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith("YAPS squash")).ToList())
+                if (t != null) UnityEngine.Object.DestroyImmediate(t.gameObject);
+            foreach (var s in root.GetComponentsInChildren<AvatarBridge.Yaps.YapsSquashSettings>(true)) UnityEngine.Object.DestroyImmediate(s);
+
+            string card = YapsSquash.Status(root, out _);
+            bool seen = !YapsSquash.Has(root) && !card.StartsWith("Not built yet");
+            YapsSquash.Strip(root, clips);
+            bool back = before.All(p => p.Key.sharedMaterials.SequenceEqual(p.Value))
+                        && AnimationUtility.GetObjectReferenceCurve(clip, binding)[0].value == before[smr][slot];
+            return $"by hand on {smr.name} slot {slot}: follow {(followed ? "ok" : "FAILED")}, " +
+                   $"card {(seen ? "ok" : "FAILED")} (\"{card}\"), remove {(back ? "ok" : "FAILED")}";
         }
 
         // Regions seeded from the bone names, as the region tool's first button does, then built

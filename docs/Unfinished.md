@@ -988,6 +988,25 @@ plane collider"; and take a playbook from Poiyomi's glass squish.
      point at the top of the seam are gone (`D:/Claude/scratch/keel2.jpg`). On Kar the small point
      at the bottom of the seam rounds off too, one-sided unchanged (`kar_ridge.jpg`).
 
+### 23. Squash turned swapped-in materials pink. A user, 2026-10-24 (two screenshots, via Joe)
+
+The user built squash with the Toolkit on an avatar whose toggles swap materials for outfit and hair
+colours. The build put copies on the hair and clothing layers it moves and pointed the swaps at
+copies, as designed. In game the hair and clothes drew pink, the skin did not. The user then deleted
+the YAPS Squash component instead of pressing Remove, so the swaps stayed on the copies.
+
+- **Remove blind after a hand deletion: fixed on dev [M].** Both Remove buttons asked only whether
+  the `YAPS squash (shader)` object was there. Deleted by hand, the window said "Nothing to remove"
+  while every layer and swap stayed on its copy. `YapsSquash.Worn` counts the slots and swap keys on
+  copies; both buttons and the card use it. `SquashTestBuilder -squashByHand` (build, key a swap,
+  delete the objects and component, read the card, Remove) failed on the card before, passes after.
+- **The pink itself: open, Joe investigating.** Not explained by the code read so far. Two leads, both
+  untested: the shader sweep (item 7) covered the plug and socket patches, never the squash patch, so
+  a hair or clothing shader may patch for one and fail for the other; and `FollowSwaps` keys copies
+  into the clips before `Flush` writes them, while the swap test checks the clip in memory only, never
+  reloaded from disk. Asked of the user: pink in the editor too or only in game, the shader on a pink
+  material, Console errors.
+
 ## 5.0.1
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).

@@ -109,6 +109,21 @@ namespace AvatarBridge
         // Whether the avatar carries a squash build.
         public static bool Has(Transform root) => root != null && root.Find(ShaderHostName) != null;
 
+        // Layers and toggle keys still on a squash copy. A build deleted by hand instead of
+        // removed leaves them all, and Has no longer sees it; each copy's mark still leads back
+        // to its original, so Remove can hand them back.
+        internal static int Worn(Transform root, IList<AnimationClip> clips = null)
+        {
+            if (root == null) return 0;
+            int n = root.GetComponentsInChildren<SkinnedMeshRenderer>(true).Sum(r => r.sharedMaterials.Count(m => SourceOf(m) != null));
+            foreach (var clip in clips ?? YapsSwapFollow.RunnableClips(root))
+                foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                    if (YapsSwapFollow.SlotIndex(binding.propertyName) >= 0)
+                        n += (AnimationUtility.GetObjectReferenceCurve(clip, binding) ?? new ObjectReferenceKeyframe[0])
+                            .Count(k => k.value is Material m && SourceOf(m) != null);
+            return n;
+        }
+
         public static YapsSquashSettings SettingsOf(Transform root) => root != null ? root.GetComponentInChildren<YapsSquashSettings>(true) : null;
 
         // The avatar a component belongs to, wherever under it the component sits.
@@ -243,7 +258,14 @@ namespace AvatarBridge
         internal static string Status(Transform root, out Tone tone)
         {
             tone = Tone.Info;
-            if (!Has(root)) return "Not built yet.";
+            if (!Has(root))
+            {
+                int left = Worn(root);
+                if (left == 0) return "Not built yet.";
+                tone = Tone.Warn;
+                return $"Not built, but {(left == 1 ? "a layer or toggle is" : left + " layers and toggles are")} still on squash copies " +
+                       "from a build deleted by hand: Remove squash puts them back on their own materials.";
+            }
             var s = SettingsOf(root);
             string on = BridgeElements.Count(Materials(root).Count, "material", "materials");
             if (s != null && RegionsHash(s) != s.builtFrom)

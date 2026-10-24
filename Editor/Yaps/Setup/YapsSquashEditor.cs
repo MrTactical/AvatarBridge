@@ -190,7 +190,8 @@ namespace AvatarBridge
                 RebuildLater();
             }, BridgeTheme.BridgeTo));
             if (_said != null) build.Body.Add(BridgeElements.Notice(_saidTone, _said));
-            if (built)
+            // Also a build whose objects were deleted by hand, its copies still worn.
+            if (built || YapsSquash.Worn(root) > 0)
             {
                 build.Section("Remove");
                 build.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Remove the squash", () =>
