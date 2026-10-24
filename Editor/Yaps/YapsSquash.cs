@@ -487,11 +487,13 @@ namespace AvatarBridge
             Lap("Arms");
             var shared = Shares(skins, bodySkin, root.name, folder);
             Lap("Shares");
-            // Layers the wearer left out stay on their own material, still, by their choice.
+            // Layers the wearer left out stay on their own material, still, by their choice. So
+            // does a baked plug: it bends on its own and lies on no skin, so it is never what a
+            // squashed part shows through, and a share on top of the bend only adds a compile.
             var leave = LeftAlone(root);
             Hold();
             YapsShaderPatcher.Prewrite(shared.SelectMany(x => x.smr.sharedMaterials
-                    .Where((m, slot) => m != null && !leave.Contains(m) && Moves(x.smr.sharedMesh, slot, x.shares)))
+                    .Where((m, slot) => m != null && !leave.Contains(m) && !YapsMarks.IsBakedMaterial(m) && Moves(x.smr.sharedMesh, slot, x.shares)))
                 .Where(m => !m.HasProperty("_YAPS_DentOwn")), YapsShaderPatcher.Roles.Squash);
             Lap("Prewrite");
             var shaderFor = new System.Diagnostics.Stopwatch();
@@ -508,7 +510,7 @@ namespace AvatarBridge
                 for (int slot = 0; slot < mats.Length; slot++)
                 {
                     var source = mats[slot];
-                    if (source == null || leave.Contains(source) || !Moves(smr.sharedMesh, slot, shares)) continue;
+                    if (source == null || leave.Contains(source) || YapsMarks.IsBakedMaterial(source) || !Moves(smr.sharedMesh, slot, shares)) continue;
                     if (!patched.TryGetValue(source, out var shader))
                     {
                         shaderFor.Start();
@@ -1140,10 +1142,10 @@ namespace AvatarBridge
         static Color32 Stored(Vector4 s) =>
             new Color32((byte)(s.x * 255f + 0.5f), (byte)(s.y * 255f + 0.5f), (byte)(s.z * 255f + 0.5f), (byte)(s.w * 255f + 0.5f));
 
-        // Whether any vertex of the slot carries a share once stored. The dent returns at once on
-        // a zero share, so a slot with none draws the same on its own material, and a copy would
-        // only cost a shader compile and one more material for the providers to write. A slot past
-        // the last submesh draws the last one again.
+        // Whether any vertex of the slot carries a share worth drawing once stored. The dent
+        // returns at once on a zero share, so a slot with none draws the same on its own material,
+        // and a copy would only cost a shader compile and one more material for the providers to
+        // write. A slot past the last submesh draws the last one again.
         internal static bool Moves(Mesh mesh, int slot, Vector4[] shares)
         {
             if (mesh == null || mesh.subMeshCount == 0) return false;
@@ -1151,10 +1153,15 @@ namespace AvatarBridge
             {
                 if (v >= shares.Length) continue;
                 var c = Stored(shares[v]);
-                if (c.r > 0 || c.g > 0 || c.b > 0 || c.a > 0) return true;
+                if (c.r >= MinShare || c.g >= MinShare || c.b >= MinShare || c.a >= MinShare) return true;
             }
             return false;
         }
+
+        // The least stored share that earns a copy, in steps of 1/255. Under it a layer follows
+        // less than 1.5% of the squash, too little to see, and the 4 cm blend handed one step to
+        // layers that only neared a part: run 429 copied a hood, a belt and a socket mesh for it.
+        internal const int MinShare = 4;
 
         // An earlier build off again: each layer back on the material it was copied from, and
         // with clips given, every swap pointed back the same way, or a toggle would put on a

@@ -1589,8 +1589,8 @@ put on the avatar root moves there. Its steps run top to bottom, building last a
 (painted right there when the bones miss a part), **Tune how it feels**, and **Build**. **Build the
 squash** there builds it, **Rebuild the squash** rebuilds, and **Remove the squash** puts every
 layer back on its own material, toggles included. The card says whether the picked avatar has squash, on how many
-materials, and when its regions were painted after the last build. Only a layer that lies over a soft part gets a copy; the rest keep
-their own material and cost nothing. The copies go to `Assets/YAPS/Generated/Squash`; a rebuild
+materials, and when its regions were painted after the last build. Only a layer that lies over a soft part, close enough to follow it visibly, gets a copy; a baked plug
+never does, since it bends on its own. The rest keep their own material and cost nothing. The copies go to `Assets/YAPS/Generated/Squash`; a rebuild
 goes back to the folder the last build used, a conversion's own included, so they are written over
 rather than added to. Their shaders live in the shared `Assets/YAPS/Generated/Shaders`, where a
 shader another avatar already patched is reused instead of compiled again.

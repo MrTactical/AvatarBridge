@@ -5,10 +5,9 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    // Known-answer test for which slots the squash copies. A slot whose vertices all store a
-    // zero share draws the same on its own material, so it keeps it and nothing compiles for it.
-    // The judgement is on the stored byte, not the float: a share too small to round to one
-    // step reads as zero in the shader.
+    // Known-answer test for which slots the squash copies. A slot whose vertices all store less
+    // than the least share worth drawing keeps its own material, and nothing compiles for it.
+    // The judgement is on the stored byte, not the float, since that is what the shader reads.
     public static class SquashSlotTest
     {
         [MenuItem("Tools/AvatarBridge Dev/Test: squash slots")]
@@ -43,7 +42,13 @@ namespace AvatarBridge.Regression
                 fail += Check("a share that rounds to zero does not", !YapsSquash.Moves(mesh, 1, shares));
 
                 shares[4] = new Vector4(0f, 0f, 0f, 0.003f);
-                fail += Check("one that rounds to a step does", YapsSquash.Moves(mesh, 1, shares));
+                fail += Check("one step is too faint to copy", !YapsSquash.Moves(mesh, 1, shares));
+
+                shares[4] = new Vector4(0f, (YapsSquash.MinShare - 1) / 255f, 0f, 0f);
+                fail += Check("one step under the least share does not", !YapsSquash.Moves(mesh, 1, shares));
+
+                shares[4] = new Vector4(0f, 0f, 0f, YapsSquash.MinShare / 255f);
+                fail += Check("the least share does", YapsSquash.Moves(mesh, 1, shares));
 
                 shares[4] = Vector4.zero;
                 fail += Check("a slot past the last submesh is judged as the last",
@@ -66,7 +71,7 @@ namespace AvatarBridge.Regression
             }
 
             Debug.Log(fail == 0
-                ? "[SquashSlotTest] PASS: only slots that store a share are copied."
+                ? "[SquashSlotTest] PASS: only slots that store a visible share are copied."
                 : $"[SquashSlotTest] FAIL: {fail} case(s) wrong.");
             if (Application.isBatchMode) EditorApplication.Exit(fail == 0 ? 0 : 1);
         }

@@ -148,9 +148,15 @@ the YAPS avatars [M]:
   every pass 51.1 min against 36.8, squash 20.1 against 14.2, but the animator merge (7.4 to 14.3)
   and clip self-containment (7.1 to 12.2), which compile nothing, slowed more than the squash, and
   probes shared the cores during the run.
-  To decide: whether a copy should need a share worth drawing (a few 1/255 steps) rather than any,
-  which would drop the faint 3 to 4 cm copies and their shader compiles; and whether a baked plug
-  should ever take a squash share, which in ChilloutVR is unmeasured either way.
+  **Decided 2026-10-24 (Joe) and fixed [M]:** a copy needs a stored share of 4/255 (about 1.5% of
+  the squash) on some vertex of the slot (`YapsSquash.MinShare`), and a material carrying a plug
+  bake never takes one. Measured over the 506 share textures in the corpus output: the prop (220 on
+  3 vertices) and the hair mesh (median 207 on 91) are strong and keep their copies; the faint ones
+  are the plug (1 on all three variants), a hood (1), a belt (1) and a socket mesh (3), which the
+  cutoff drops, while a stocking at 4 keeps its copy. Of those three plugs only one variant's is
+  baked; the rest, and a plug-shaped mesh on another avatar at 52, are plain meshes and follow the
+  cutoff like any layer. `SquashSlotTest` PASS.
+  Not yet seen in a corpus run, and neither rule in ChilloutVR.
 - **Run 424 (dev b9fb21d, before the loop fix) [M]:** 73 of 85 digests moved against baseline 422,
   every class explained: the count line; rest clips for sliders (90b277a); squash reported not
   built where every shader under the part refused (a1b3812: 9 avatars on Unity's Standard or a
