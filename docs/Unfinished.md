@@ -1051,6 +1051,12 @@ renames it `<name>-FaceTracking` and adds its tracking prefabs.
   The user says the window's card found 51 shapes; that card reads the add-on's mesh only, so it
   and the output came from different avatars or attempts. Asked for the report from converting the
   avatar the card was on, and whether "lost" means the output or in game.
+- **What the user wanted [M]:** the add-on's animator rig, the smoothed layers driving the shapes,
+  which Native replaces by design. Both bake platforms carry that rig intact (FX 22 layers, 275
+  tracking parameters, the same on Generic and VRChat), so *Keep the avatar's own rig* converts it
+  on 4.7.2 as well. Their output's Body still points at the FBX's own mesh: the 4.7.2 window converts
+  the avatar its card analysed (a new pick clears the card) and clones with `Object.Instantiate`, so
+  the avatar converted was wearing the stock mesh.
 - **Diagnostics said "Modular Avatar: not installed" on every machine: fixed on dev [M].** The row
   looked up `ModularAvatarInformation`, a type no release has (checked against 1.17.1). It reads
   `ModularAvatarMergeAnimator` now. `Dev/Tests/DiagnosticsPackagesTest` (each loaded package's row
