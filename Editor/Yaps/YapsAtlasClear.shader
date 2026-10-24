@@ -11,12 +11,17 @@
 // Before the scene. Painting last erased self portraits.
 //
 // With no clear in the room cells go unreliable, not wrong.
+//
+// It grabs the screen first, so the grab's second pass can put back what
+// the rect held, whatever an earlier camera left there.
 Shader "YAPS/Atlas Clear"
 {
     SubShader
     {
         Tags { "Queue" = "Background-946" "RenderType" = "Opaque" "IgnoreProjector" = "True" }
         ZTest Always ZWrite Off Cull Off
+
+        GrabPass { "_YAPS_Under" }
 
         Pass
         {

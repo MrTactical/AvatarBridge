@@ -6,8 +6,8 @@
 // Queue Background-944, after the writers, before the scene.
 // The scene covers those pixels, except where nothing draws: a camera
 // clearing to a solid colour or to transparent showed the cells as spots.
-// So the second pass paints the rect back with the background, read from
-// the grab just taken. Readers read the grab, never the screen.
+// So the second pass puts the rect back as the clear's grab found it.
+// Readers read the grab, never the screen.
 Shader "YAPS/Atlas Grab"
 {
     SubShader
@@ -47,10 +47,9 @@ Shader "YAPS/Atlas Grab"
             ENDCG
         }
 
-        // The rect back to the background. Before the scene draws, the rest of
-        // the screen is still the camera's clear, so three pixels outside the
-        // rect that agree are it. When they disagree (a camera drawing over an
-        // earlier one's picture) nothing is painted: there is no one colour.
+        // The rect back as it was before the clear. Painting it with one colour
+        // sampled beside it left the spots wherever the background was not one
+        // colour: a camera drawing over an earlier one's picture.
         Pass
         {
             ZWrite Off
@@ -66,11 +65,17 @@ Shader "YAPS/Atlas Grab"
             #include "yaps_atlas.cginc"
 
             struct appdata { float4 vertex : POSITION; uint id : SV_VertexID; UNITY_VERTEX_INPUT_INSTANCE_ID };
+            // Each eye its own slice: unlike the atlas, the pictures differ.
+            #if defined(UNITY_STEREO_INSTANCING_ENABLED)
+                Texture2DArray _YAPS_Under;
+            #else
+                Texture2D _YAPS_Under;
+            #endif
+
             struct v2f
             {
                 float4 pos : SV_POSITION;
                 float2 px : TEXCOORD0;
-                nointerpolation float4 back : TEXCOORD1;
                 UNITY_VERTEX_OUTPUT_STEREO
             };
 
@@ -81,25 +86,26 @@ Shader "YAPS/Atlas Grab"
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
                 // The clear's rect, in pixels from the top left.
                 float2 span = float2(YapsAtlasWidthPx(), YapsAtlasHeightPx()) + 4;
-                int sx = min((int) span.x + 1, (int) _ScreenParams.x - 1);
-                int sy = min((int) span.y + 1, (int) _ScreenParams.y - 1);
-                float4 a = YAPS_ATLAS_LOAD(sx, YapsAtlasRow(0));
-                float4 b = YAPS_ATLAS_LOAD(0, YapsAtlasRow(sy));
-                float4 c = YAPS_ATLAS_LOAD(sx, YapsAtlasRow(sy));
-                float4 d = abs(a - b) + abs(a - c);
-                bool one = max(max(d.r, d.g), max(d.b, d.a)) <= 0.002;
                 // One triangle twice the rect each way covers it; frag cuts the rest.
                 o.px = float2(v.id == 1 ? 2 : 0, v.id == 2 ? 2 : 0) * span;
-                o.back = a;
-                o.pos = YapsAtlasFits() && one ? float4(YapsAtlasToClip(o.px), UNITY_NEAR_CLIP_VALUE, 1) : YapsAtlasNowhere();
+                o.pos = YapsAtlasFits() ? float4(YapsAtlasToClip(o.px), UNITY_NEAR_CLIP_VALUE, 1) : YapsAtlasNowhere();
                 return o;
             }
 
+            // By the fragment's own pixel, never a row worked out from the top:
+            // the grab is a copy of this target, so whichever way up it is, the
+            // same pixel is the same address.
             float4 frag (v2f i) : SV_Target
             {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
                 float2 span = float2(YapsAtlasWidthPx(), YapsAtlasHeightPx()) + 4;
                 clip(span - i.px);
-                return i.back;
+                int2 at = int2(i.pos.xy);
+            #if defined(UNITY_STEREO_INSTANCING_ENABLED)
+                return _YAPS_Under.Load(int4(at, unity_StereoEyeIndex, 0));
+            #else
+                return _YAPS_Under.Load(int3(at, 0));
+            #endif
             }
             ENDCG
         }

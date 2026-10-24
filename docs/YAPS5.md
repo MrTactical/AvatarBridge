@@ -1577,6 +1577,14 @@ per level per home. Below the 384-cell floor nothing changed; above it this is u
 portrait shows specks, the fix is a second alpha-only clear AFTER the grab (-943), which leaves the
 plugs' copy alone and makes the corner transparent again before the scene draws.
 
+**Put back, not cleared (2026-10-24).** The second pass ended up in the grab shader (2026-10-22),
+painting the rect with one colour sampled beside it, and nothing where the samples disagreed. It
+now restores the rect exactly: the clear grabs the screen before it writes (`_YAPS_Under`), and
+the grab's second pass copies that back pixel for pixel, each eye from its own slice, so a camera
+drawing over an earlier camera's picture is covered too. One more full-screen copy per camera per
+frame. Alpha alone (`ColorMask A` on the writers) was weighed again and lost on cells: four
+pixels each, so 1634 at 720p and 450 in a 512 mirror.
+
 ## One-way rings, protocol 7 (2026-09-11)
 
 The facing pixel's alpha carried `1 + kind + 2 * number` over 63 with a kind bit. A one-way ring

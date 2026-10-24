@@ -5,14 +5,17 @@
 //   -executeMethod AvatarBridge.Regression.AtlasSpotsProbe.Run [-spotsAvatar <converted prefab>]
 //
 // A converted avatar's plug and a socket resolved through the atlas only, against an opaque
-// background and a transparent one. Per background:
+// background, a transparent one, and a picture an earlier camera left, which this camera only
+// draws over. Per background:
 //   spots  pixels that differ from the background with the plug hidden: should be 0
 //   bend   pixels the plug moves when the socket appears: the atlas still reads (> 200)
+// First, the clear and the grab compile with STEREO_INSTANCING_ON, which no batch camera renders.
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using AvatarBridge.Yaps;
 using UnityEditor;
+using UnityEditor.Rendering;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -31,7 +34,7 @@ namespace AvatarBridge.Regression
         {
             int code = 1;
             var cleanup = new List<Action>();
-            try { code = Measure(cleanup) ? 0 : 1; }
+            try { code = Stereo() & Measure(cleanup) ? 0 : 1; }
             catch (Exception e) { Debug.LogException(e); code = 2; }
             finally { foreach (var c in cleanup) c(); }
             Log(code == 0 ? "RESULT PASS" : "RESULT FAIL");
@@ -93,10 +96,25 @@ namespace AvatarBridge.Regression
             var read = new Texture2D(W, H, TextureFormat.RGBA32, false);
             cleanup.Add(() => { cam.targetTexture = null; rt.Release(); });
 
+            // Not one colour, so no sample of it can stand for the rest.
+            var picture = new Texture2D(W, H, TextureFormat.RGBA32, false);
+            var tones = new Color32[W * H];
+            for (int y = 0; y < H; y++)
+                for (int x = 0; x < W; x++)
+                    tones[y * W + x] = new Color32((byte) (x * 255 / W), (byte) (y * 255 / H), (byte) ((x ^ y) & 255), 255);
+            picture.SetPixels32(tones);
+            picture.Apply();
+            Texture under = null;
+
             Color32[] Frame()
             {
                 // Three times: the grab is the frame's own, the readers read last frame's.
-                for (int i = 0; i < 3; i++) { YapsOwnerStandIn.Apply(); cam.Render(); }
+                for (int i = 0; i < 3; i++)
+                {
+                    if (under != null) Graphics.Blit(under, rt);
+                    YapsOwnerStandIn.Apply();
+                    cam.Render();
+                }
                 RenderTexture.active = rt;
                 read.ReadPixels(new Rect(0, 0, W, H), 0, 0);
                 RenderTexture.active = null;
@@ -104,23 +122,70 @@ namespace AvatarBridge.Regression
             }
 
             bool all = true;
-            foreach (var bg in new[] { new Color32(51, 102, 153, 255), new Color32(0, 177, 64, 0) })
+            foreach (var bg in new Color32?[] { new Color32(51, 102, 153, 255), new Color32(0, 177, 64, 0), null })
             {
-                cam.backgroundColor = bg;
+                Color32[] back;
+                if (bg is Color32 solid)
+                {
+                    cam.clearFlags = CameraClearFlags.SolidColor;
+                    cam.backgroundColor = solid;
+                    under = null;
+                    back = Enumerable.Repeat(solid, W * H).ToArray();
+                }
+                else
+                {
+                    cam.clearFlags = CameraClearFlags.Depth;
+                    under = picture;
+                    Graphics.Blit(picture, rt);
+                    RenderTexture.active = rt;
+                    read.ReadPixels(new Rect(0, 0, W, H), 0, 0);
+                    RenderTexture.active = null;
+                    back = read.GetPixels32();
+                }
                 skin.enabled = false;
                 var empty = Frame();
-                int spots = empty.Count(c => Math.Abs(c.r - bg.r) > 1 || Math.Abs(c.g - bg.g) > 1 || Math.Abs(c.b - bg.b) > 1 || Math.Abs(c.a - bg.a) > 1);
+                int spots = 0;
+                for (int i = 0; i < empty.Length; i++)
+                {
+                    Color32 c = empty[i], b = back[i];
+                    if (Math.Abs(c.r - b.r) > 1 || Math.Abs(c.g - b.g) > 1 || Math.Abs(c.b - b.b) > 1 || Math.Abs(c.a - b.a) > 1) spots++;
+                }
                 skin.enabled = true;
                 sock.SetActive(false);
                 var straight = Frame();
                 sock.SetActive(true);
                 var bent = Frame();
-                bool Off(Color32 c) => Math.Abs(c.r - bg.r) > 3 || Math.Abs(c.g - bg.g) > 3 || Math.Abs(c.b - bg.b) > 3;
+                bool Off(Color32 c, Color32 b) => Math.Abs(c.r - b.r) > 3 || Math.Abs(c.g - b.g) > 3 || Math.Abs(c.b - b.b) > 3;
                 int moved = 0;
-                for (int i = 0; i < bent.Length; i++) if (Off(bent[i]) != Off(straight[i])) moved++;
+                for (int i = 0; i < bent.Length; i++) if (Off(bent[i], back[i]) != Off(straight[i], back[i])) moved++;
                 bool ok = spots == 0 && moved > 200;
                 all &= ok;
-                Log($"{(ok ? "PASS" : "FAIL")} background {bg}: {spots} atlas px left on screen, plug bend {moved} px");
+                Log($"{(ok ? "PASS" : "FAIL")} background {(bg is Color32 named ? named.ToString() : "an earlier camera's picture")}: " +
+                    $"{spots} atlas px left on screen, plug bend {moved} px");
+            }
+            return all;
+        }
+
+        static bool Stereo()
+        {
+            bool all = true;
+            foreach (var name in new[] { "YAPS/Atlas Clear", "YAPS/Atlas Grab" })
+            {
+                var data = ShaderUtil.GetShaderData(Shader.Find(name)).GetSubshader(0);
+                for (int p = 0; p < data.PassCount; p++)
+                {
+                    var pass = data.GetPass(p);
+                    if (string.IsNullOrEmpty(pass.SourceCode)) continue;
+                    foreach (var stage in new[] { ShaderType.Vertex, ShaderType.Fragment })
+                        foreach (var keywords in new[] { new string[0], new[] { "STEREO_INSTANCING_ON" } })
+                        {
+                            var info = pass.CompileVariant(stage, keywords, ShaderCompilerPlatform.D3D, BuildTarget.StandaloneWindows64);
+                            var errors = (info.Messages ?? new ShaderMessage[0]).Where(m => m.severity == ShaderCompilerMessageSeverity.Error).ToArray();
+                            all &= info.Success && errors.Length == 0;
+                            Log($"{(info.Success && errors.Length == 0 ? "PASS" : "FAIL")} {name} pass {p} {stage} " +
+                                $"[{string.Join(" ", keywords)}]{(errors.Length > 0 ? ": " + errors[0].message : "")}");
+                        }
+                }
             }
             return all;
         }

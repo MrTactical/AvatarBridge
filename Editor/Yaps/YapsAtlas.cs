@@ -2,13 +2,13 @@
 // grabs it. The protocol itself lives in yaps_atlas.cginc, which is where the
 // shaders read it from.
 //
-// Writing costs a handful of tiny draws per socket and a grab is a full
-// screen copy per camera, mirrors included. Still unproven in ChilloutVR:
+// Writing costs a handful of tiny draws per socket and two grabs, each a
+// full screen copy per camera, mirrors included. Still unproven in ChilloutVR:
 // what that costs in a crowded instance, how it behaves in mirrors and in
 // VR, and whether a viewer with custom shaders blocked sees anything at all.
 // It also paints: the payload is colour, so an occupied cell puts a few
-// pixels on screen. The grab's second pass paints them back with the
-// background where the background is one colour.
+// pixels on screen. The clear grabs the screen before it writes, and the
+// grab's second pass puts that back over the rect.
 //
 // No VRChat types here on purpose, so the standalone toolkit can call it.
 using System.Collections.Generic;

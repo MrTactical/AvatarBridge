@@ -499,7 +499,7 @@ Six reports from Joe's testers on the latest test packages.
   background wherever the background is one colour. AtlasSpotsProbe: opaque and transparent
   backgrounds both went from FAIL (561,600 px; 32 spots) to 0 px, plug bend unchanged. PlugGhost
   rerun: the atlas routes still show 0 depth-only px. Left open: a camera drawing over another
-  camera's picture with detail in that corner.
+  camera's picture with detail in that corner. Closed 2026-10-24 by item 20.
 - **Poiyomi 10 coming back as 9.3.** Two Poiyomi installs share the shader name
   ".poiyomi/Poiyomi Toon" (the 9.3 folder in Joe's project carries 10.0.12, the 10.0 folder
   10.0.11), and `Shader.Find` picks one. The lock and Thry's Unlock keep the right file
@@ -739,10 +739,12 @@ Fixed on dev the same day, except where marked open.
    **Paint in the Scene view** is on. Fill this side from and Copy to other side change the weights
    with no colours in sight until painting resumes. compile-check 7/7, check-defines 8/8.
 
-### 20. The atlas paints dots on viewers' screens. Joe, 2026-10-24, OPEN
+### 20. The atlas paints dots on viewers' screens. Joe, 2026-10-24, fixed on dev, Joe to check in game
 
 Joe, in game: "the dots in the right hand corner, atlas is leaking to user screens, did we fix
-that?" Not fixed. The payload pass writes colour, so every occupied cell paints a pixel or a few,
+that?" ~~Not fixed.~~ **WITHDRAWN 2026-10-24: it was half fixed, in 04da441 (2026-10-22, the
+"Atlas spots" line under item 16), which this record missed.** The payload pass writes colour, so
+every occupied cell paints a pixel or a few,
 noted 2026-09-03 (`docs/YAPS5.md` "One cosmetic item is now visible") and never queued. The writers
 draw at `Background-945`, ahead of the scene, so the dots hide wherever the world draws over them
 and show wherever it does not: a void or no skybox, and a camera clearing to transparent
@@ -754,6 +756,25 @@ frame, so the dots reach other people.
   back after the plugs' grab at -943: one more full-screen grab each frame a socket is in view;
   (b) carry the payload in alpha alone, as the clear already does (`ColorMask A`): invisible, but
   about four pixels a cell and a protocol bump, so mixed builds cannot see each other.
+- **(b) rejected, 2026-10-24.** Four alpha pixels per payload pixel, stacked down so the width
+  holds, cut the cells a view holds: 720p 4096 to 1634, a 1024 mirror 4096 to 1860, a 512 one 1890
+  to 450, and the atlas off below about 480 px square (was 240). Header reads stay one tap, a hit
+  costs 16 taps not 4. Fewer cells means more sockets lost to clashes (about 0.5% at 1634 cells
+  with 120 in view, 6% at 450). Joe picked (a).
+- **(a) done, 2026-10-24.** 04da441 painted the rect back with one colour sampled from three
+  pixels beside it, and painted nothing where they disagreed, so the one case left was a camera
+  drawing over an earlier camera's picture. Now the clear grabs the screen first (`_YAPS_Under`,
+  before its own pass at Background-946) and the grab's second pass copies that back over the
+  rect by the fragment's own pixel, each eye from its own slice. Any background, any number of
+  old-build avatars in view: one new-build avatar puts the whole rect back. AtlasSpotsProbe gained
+  that case (a picture blitted under a depth-only camera): FAIL, 561,600 px (the whole rect, alpha
+  zeroed plus the payload), to 0 px; opaque and transparent stay 0; plug bend 27,747 px unchanged
+  in all three. Clear and grab compile with and without STEREO_INSTANCING_ON. Cost: a second
+  full-screen copy per camera per frame while a YAPS avatar is in view, unmeasured in game.
+- Still to do in game: confirm Joe's dots were the atlas (and which build showed them: an avatar
+  uploaded before 2026-10-22 has no paint-back at all, though one current avatar in view now
+  clears it), and look at the corner in a void with a current build. The right-hand corner is
+  odd: the rect sits top LEFT of each eye.
 
 ### 21. ChilloutVR's October 2026 status report: what to check. Joe, 2026-10-24
 
