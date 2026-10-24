@@ -39,6 +39,8 @@
 // the part shares in colour (_shares), as zebra stripes on the shader's normals (_zebra) and on
 // the triangles themselves (_zebra_mesh): a kink in a stripe is a crease. -spMeet turns the pair's
 // contact on first. -spPreview squeezes with the inspector preview's hands instead (0, 0.5, 1, 1).
+// -spSwing turns the parts' own bones instead, the cloth stopped, across any gap between them and
+// on into an overlap: one into a still partner by 0.3 and 0.6 reaches, then both, half each.
 //
 // Batch, never -nographics: the frames are rendered.
 
@@ -906,6 +908,14 @@ namespace AvatarBridge.Regression
         static readonly (string name, float pulse, float phase)[] LookShots =
             { ("rest", 0f, 0f), ("squeeze_soft", 0.3f, 0.985f), ("squeeze_hard", 0.6f, 0.985f), ("squeeze_hard_half", 0.6f, 0.5f) };
         static readonly bool LookPreview = Environment.GetCommandLineArgs().Contains("-spPreview");
+        // -spSwing: the parts' own bones turned toward each other instead, as a spin swings them,
+        // across any gap and on into an overlap of so many reaches: by the first alone into a still
+        // partner, then by both, half each.
+        static readonly (string name, float overlap, float first)[] SwingShots =
+            { ("rest", 0f, 1f), ("swing_one_soft", 0.3f, 1f), ("swing_one_hard", 0.6f, 1f), ("swing_both_hard", 0.6f, 0.5f) };
+        static readonly bool LookSwing = Environment.GetCommandLineArgs().Contains("-spSwing");
+        static Quaternion[] swingFrom;
+        static int swingWait;
         static Camera[] lookCams;
         static string lookShot;
         static int lookAt;
@@ -963,7 +973,18 @@ namespace AvatarBridge.Regression
                 YapsSquashPreview.Squeeze = LookShots[lookAt].pulse / 0.6f;
                 typeof(YapsSquashPreview).GetMethod("Tick", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static).Invoke(null, null);
             }
-            if (lookAt >= LookShots.Length)
+            if (LookSwing && lookAt < SwingShots.Length)
+            {
+                var (swingName, overlap, first) = SwingShots[lookAt];
+                Swing(slots, mats, overlap, first);
+                // The provider and the skinning catch up over a few frames.
+                if (++swingWait < 8) return;
+                swingWait = 0;
+                lookShot = swingName;
+                lookAt++;
+                return;
+            }
+            if (lookAt >= (LookSwing ? SwingShots.Length : LookShots.Length))
             {
                 Debug.Log("[SquashPlay] look done " + outDir);
                 SessionState.SetInt(K + "on", 0);
@@ -1003,8 +1024,50 @@ namespace AvatarBridge.Regression
             UnityEngine.Object.DestroyImmediate(one);
             Debug.Log($"[SquashPlay] look shot {lookShot}");
             lookShot = null;
-            if (lookAt < LookShots.Length && !LookPreview)
+            if (lookAt < LookShots.Length && !LookPreview && !LookSwing)
                 foreach (var m in provider.materials) m.SetFloat("_YAPS_SquashPulse", LookShots[lookAt].pulse);
+        }
+
+        // Each part's own bone turned so its follow moves toward where the other stood, together
+        // closing the gap to where the pair touches and then the overlap, the first taking that
+        // share. Both from their first pose. The cloth is stopped, or it turns them back.
+        static void Swing(Transform[] slots, Material[] mats, float overlap, float first)
+        {
+            if (swingFrom == null)
+            {
+                foreach (var c in animator.GetComponentsInChildren<MonoBehaviour>(true).Where(c => c != null && c.GetType().Name.Contains("MagicaCloth")))
+                    c.enabled = false;
+                swingFrom = new[] { slots[0].parent.localRotation, slots[1].parent.localRotation };
+            }
+            slots[0].parent.localRotation = swingFrom[0];
+            slots[1].parent.localRotation = swingFrom[1];
+            float reach = mats[0].GetVector("_YAPS_SquashReach")[0] * slots[0].lossyScale.x;
+            Vector3 p0 = slots[0].position, p1 = slots[1].position;
+            float touch = mats[0].GetVector("_YAPS_SquashPair").x * slots[0].lossyScale.x;
+            float total = overlap > 0f ? (p1 - p0).magnitude - touch + overlap * reach : 0f;
+            float a = total * first / reach, b = total * (1f - first) / reach;
+            for (int i = 0; i < 2; i++)
+            {
+                float by = (i == 0 ? a : b) * reach;
+                if (by <= 0f) continue;
+                var mover = slots[i].parent;
+                Vector3 from = i == 0 ? p0 : p1, to = (i == 0 ? p1 - p0 : p0 - p1).normalized;
+                Vector3 r = from - mover.position;
+                mover.rotation = Quaternion.FromToRotation(r, r + to * by) * mover.rotation;
+            }
+            if (swingWait == 0)
+                Debug.Log($"[SquashPlay] swing {a:0.00}/{b:0.00} reach, touching at {touch / reach:0.00}: moved {(slots[0].position - p0).magnitude / reach:0.00}/{(slots[1].position - p1).magnitude / reach:0.00}, apart {(p1 - p0).magnitude / reach:0.00} -> {(slots[1].position - slots[0].position).magnitude / reach:0.00}");
+            // What the shader reads: each follow off its rest, from the matrices the provider wrote.
+            if (swingWait == 7)
+            {
+                var w = mats[0].GetMatrixArray("_YAPS_SquashFollow");
+                Vector3 At(int k) => w[k].GetColumn(3);
+                var axis = (At(1) - At(0)).normalized;
+                Debug.Log($"[SquashPlay] swing read: follow off rest {(At(0) - At(4)).magnitude / reach:0.00}/{(At(1) - At(5)).magnitude / reach:0.00} " +
+                          $"(toward the other {Vector3.Dot(At(0) - At(4), axis) / reach:0.00}/{Vector3.Dot(At(5) - At(1), axis) / reach:0.00}, down {-(At(0) - At(4)).y / reach:0.00}/{-(At(1) - At(5)).y / reach:0.00}), " +
+                          $"overlap {(touch - (At(1) - At(0)).magnitude) / reach:0.00}, apart {(At(1) - At(0)).magnitude / reach:0.00}; " +
+                          $"rest under {slots[4].parent.name}/{slots[5].parent.name}, movers {slots[0].parent.name}/{slots[1].parent.name}");
+            }
         }
 
         static float Beats(float u, int n) => Mathf.Pow(Mathf.Sin(Mathf.PI * Mathf.Repeat(u * n, 1f)), 2f);

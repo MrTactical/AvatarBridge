@@ -17,7 +17,8 @@
 // water balloon. The whole-part squash runs along the line the presses mostly
 // share, each side moving in by what pressed it, so two hands from opposite
 // sides squeeze instead of cancelling, and it grows across by exactly what keeps
-// its volume. Pushed together, the pair swings apart first; with the contact on,
+// its volume. One part swung into a still partner shunts it aside. Pushed together
+// from both sides, the pair swings apart first; with the contact on,
 // what still overlaps is pressed flat where the two meet, rounding into the part
 // with a rim around it. Then the own arms and hands, as capsules, ease the skin
 // out of their way.
@@ -445,7 +446,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         float3 S = 0;
         float3x3 M = 0;
         float3 squeeze = 0;
-        float pairPress = 0;
+        float pairPress = 0, shunt = 0;
         float3 pairAxis = 0;
         float strength = _YAPS_SquashTune.y;
         float3 toward = YapsSlot(m ^ 1) - p.centre;
@@ -457,6 +458,20 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
             float start = (m < 2 ? _YAPS_SquashPair.x : _YAPS_SquashPair.z) * YapsUnit(m & 2);
             float share = (m & 1) == 0 ? first : 1 - first;
             float over = start - length(toward);
+            // What one part drove further toward the other than the other drove back shunts the
+            // other aside, so both move its way; only the rest presses the two together. Pressed at
+            // a plane whichever moved, a part swung into a still partner flattened them both down a
+            // seam. Read as the difference of the two swings, as the follows settle well off their
+            // edit-mode rests in play, inward too, and each swing alone read the still part as
+            // pushing back.
+            if (over > 0 && YapsUnit(4 + m) > 0 && YapsUnit(4 + (m ^ 1)) > 0)
+            {
+                float self = dot(p.centre - YapsSlot(4 + m), axis);
+                float other = dot(YapsSlot(4 + (m ^ 1)) - YapsSlot(m ^ 1), axis);
+                float lead = min(abs(other - self), over);
+                shunt = other > self ? lead : 0;
+                over -= lead;
+            }
             // Swings the part apart first, below, like any press from one side.
             pairPress = max(over, 0) * share * strength;
             pairAxis = axis;
@@ -471,7 +486,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
             squashCentre[m] = p.centre;
             squashReach[m] = reach;
             // Signed, so a pair apart meets midway across the gap.
-            squashPlane[m] = dot(axis, p.centre) + reach - over * share;
+            squashPlane[m] = dot(axis, p.centre) + reach - over * share - shunt;
             // Eased in over the last of the gap: switched on at the touch, the skin by the plane
             // jumped back onto it.
             squashContact[m] = share > 0 && _YAPS_SquashShape.w > 0 ? saturate(1 + over / (YAPS_SQUASH_SOFT * reach)) : 0;
@@ -672,7 +687,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
                 hangAt = hang * YapsExtent(p, hang);
             }
         }
-        if (pressAll <= 0 && dot(bend, bend) <= 0 && !dented && stretch == 1) continue;
+        if (pressAll <= 0 && dot(bend, bend) <= 0 && !dented && stretch == 1 && shunt <= 0) continue;
         float3 nmS = n;
         if (stretch != 1)
         {
@@ -689,12 +704,18 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         for (int c3 = 0; c3 < 3; c3++) squashed += ax[c3] * (dot(d, ax[c3]) * along[c3] + shift[c3]);
         float lean = saturate((dot(squashed, p.o) + bendFrom) / bendSpan);
         float3 moved = p.centre + squashed + bend * lean;
+        // Shunted, it swings about where it meets the body, as a bend does, unshaped.
+        float3 shuntBy = -pairAxis * shunt * strength;
+        float shuntSpan = (_YAPS_SquashIn[m] + _YAPS_SquashOut[m]) * unit;
+        float leanS = p.framed && shuntSpan > 0 ? saturate((dot(squashed, p.o) + _YAPS_SquashIn[m] * unit) / shuntSpan) : 1;
+        moved += shuntBy * leanS;
         float3 nm = nmS;
         if (hasNormal)
         {
             if (pressAll > 0)
                 nm = normalize(ax[0] * (dot(ax[0], nm) / along[0]) + ax[1] * (dot(ax[1], nm) / along[1]) + ax[2] * (dot(ax[2], nm) / along[2]));
             if (lean > 0 && lean < 1) nm = normalize(nm - p.o * dot(bend / bendSpan, nm));
+            if (leanS > 0 && leanS < 1) nm = normalize(nm - p.o * dot(shuntBy / shuntSpan, nm));
         }
         // Each dent, centred where the hand meets the part at rest. Inside, the skin lies on the
         // hand: a bowl as deep as the dent and as wide as a ball of the hand's size pressed that

@@ -832,6 +832,32 @@ due on the Nightly branch within days; none of this is in stable yet.
    atlas should simply be absent from them), server-side SPI patching of pre-CCK 3.4 content (not
    ours), and a URP proof of concept that keeps grab passes (no move planned).
 
+### 22. A spin flattens the pair down a seam. Joe, 2026-10-24 (two screenshots, Kar in game)
+
+Joe: "if I spin still, it flattens the boob like they are pushing together but they are not ... if
+one boob is pushing against another boob, you'd expect both boobs to move together to the right";
+"meet should only occur when it detects or sees that both boobs are being pushed against each
+other. And then it can do like a marshmallow style spillage in the middle and not just a weird like
+plane collider"; and take a playbook from Poiyomi's glass squish.
+
+1. **One part swung into a still partner now shunts it. Fixed on dev, not yet seen in game.** The
+   overlap one follow drove further toward the other than the other drove back moves the other
+   aside (swung about where it meets the body, as a bend), and only the rest presses the two
+   together. Read as the difference of the two swings: in batch Play mode on Alexa each follow sat
+   0.95 reaches off its edit-mode rest with nothing pushing, 0.30 of it inward, so a first version
+   measuring each swing alone read the still part as pushing back and never shunted.
+   - Evidence: `SquashPlayProbe -spLook -spSwing -spMeet` (new flag) on Non Corpus Zone's
+     AlexaSquash, old include against new: one bone turned until the pair overlaps by 0.14 and 0.25
+     reaches, then both by 0.59. One-sided, the old shader pressed a flat face down the middle and
+     the new one moves the still part out of the way; both-sided, the two renders match.
+     Images `D:/Claude/scratch/squashlook/swing/cmp_*.jpg`. Squash builds need a rebuild to get it.
+2. **OPEN: the meet itself still reads as a plane** when both push. Poiyomi's glass squish lerps
+   the skin onto its plane by a smoothstep of the depth past it, eased toward the plane's edge,
+   and spreads what it flattens outward in the plane by a bump peaking about a third of the way
+   in. The meet already spreads in the plane (`_YAPS_DentSpill`) and rises in a rim; what to
+   change (a bigger in-plane spread, a softer onto-plane blend, a bulge up out of the cleavage)
+   waits on Joe seeing item 1 in game.
+
 ## 5.0.1
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).
