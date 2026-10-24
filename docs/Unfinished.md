@@ -421,6 +421,11 @@ ranked by how visible it should be:
   on a skinned mesh, so the bend may not follow the slider. Game first: a skinned plug in a socket at
   2x and 0.5x, Gap or Resolved-by view. The fix would be an avatar-scale property mirrored next to
   the slider, used in the per-vertex recovery too.
+  **Covered by item 21.2's fix (f588654), read 2026-10-24:** the slider animates the root's
+  `m_LocalScale` (`AvatarScaler/Anim_AvatarScale_Slider_*.anim`, empty path), which is what the
+  tester's `-yapsScale` does, and a skinned plug now reads that size from its own skinned normals
+  (`_YAPS_BakeSkinScale`). Tester: 0.2, 0.5 and 1 pass; what fails past 1.6 is the atlas's reach,
+  not the scale. Needs a re-bake; ChilloutVR still to see, with the slider at both ends.
 - **YSH-18, shadow and depth passes** resolve with different light and atlas state from the visible
   pass. Game: a plug bent through a marker light and one through the atlas, under a shadow-casting
   light. If confirmed, decide per pass, and add a README Known limitations line.
