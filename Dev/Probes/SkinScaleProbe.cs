@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using AvatarBridge.Yaps;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -14,11 +15,14 @@ namespace AvatarBridge.Regression
     // skinning leaves the normal and tangent unnormalised, their length is the scale, per vertex.
     // Hidden/SkinScaleCapture records what the vertex stage receives on the plug's slots. One
     // scale per process: the skinned buffer read back from C# in edit mode was stale.
+    // Then the plug baked afresh at that scale, into a scratch folder removed after, for the
+    // skin scale the bake records against the one the vertex stage saw.
     //
     // Run: -executeMethod AvatarBridge.Regression.SkinScaleProbe.Run [-ssAvatar <prefab path>] [-ssScale <s>]
     public static class SkinScaleProbe
     {
         const string DefaultAvatar = "Assets/AvatarBridgeOutput/Alexa/Alexa (ChilloutVR).prefab";
+        const string Scratch = "Assets/__SkinScaleProbe";
 
         public static void Run()
         {
@@ -88,6 +92,20 @@ namespace AvatarBridge.Regression
                 Log($"the vertex stage sees: normal {F(drawnIds.Median(i => got[i].w))} long " +
                     $"({F(drawnIds.Min(i => got[i].w))} to {F(drawnIds.Max(i => got[i].w))}), " +
                     $"tangent {F(drawnIds.Median(i => got[n + i].x))} long, ObjectToWorld scale {F(drawnIds.Median(i => got[n + i].y))}");
+
+                var plug = avatar.GetComponentsInChildren<YapsPlug>(true).FirstOrDefault(p => p.Target == skin);
+                var chainRoot = plug == null ? null : plug.rootBone != null ? plug.rootBone : plug.transform;
+                if (chainRoot == null) throw new Exception("no YapsPlug on the plug's renderer");
+                try
+                {
+                    var result = YapsBaker.Bake(skin, chainRoot, Scratch, new BridgeReport(), out string failure);
+                    if (result == null) throw new Exception("bake failed: " + failure);
+                    Log($"the bake records skin scale {F(result.SkinScale)}, length {F(result.Length)}");
+                }
+                finally
+                {
+                    AssetDatabase.DeleteAsset(Scratch);
+                }
                 code = 0;
             }
             catch (Exception e)

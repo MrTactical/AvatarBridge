@@ -1386,7 +1386,10 @@ numbers still line up, in the editor and in game alike. Before it measures, Bake
 sets a root bone that a size slider or hyper toggle scales to the size it starts at in game, so the
 plug in the editor is the one people see when the avatar loads; the report or the Bake note says
 when it moved one, and Undo puts it back. A saved profile that remembers another size starts there
-instead.
+instead. Resizing the whole avatar needs no curve: a plug on its own object always followed the
+avatar's scale, and a plug skinned into the body now reads it from its own skin, so it keeps its
+reach at any size. One baked before 5.0.0 keeps its baked length when the avatar is resized, so
+Bake it again.
 
 **Everything is named after what it is and where it is.** An avatar can carry a dozen sockets, and a
 menu of identical "YAPS Ring" entries tells you nothing about which one you are switching. The

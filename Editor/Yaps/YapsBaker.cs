@@ -32,6 +32,9 @@ namespace AvatarBridge
             public float Length;        // plug-local, along +Z
             public float Radius;        // plug-local, the widest shaft vertex off the axis
             public bool FromSkinnedMesh;
+            // A skinned shaft's normal length at bake, the skin's own scale then, which the
+            // shader holds the live normal against. 0 on a plain mesh.
+            public float SkinScale;
             // The mesh this bake describes. Apply names the generated material
             // after the pair: a bake is indexed by mesh-global vertex id, so two
             // meshes can never share one.
@@ -216,6 +219,7 @@ namespace AvatarBridge
             var tangents = new Vector3[count];
             float length = 0f, radius = 0f;
             int active = 0;
+            var skinScales = new List<float>();
 
             // The readout's anchor. A vertex blended across bones recovers a
             // blended frame, so prefer one wholly on a single bone and take
@@ -241,6 +245,7 @@ namespace AvatarBridge
                     if (positions[i].z >= 0f && activeWeights[i] > 0.5f)
                     {
                         radius = Mathf.Max(radius, positions[i].x * positions[i].x + positions[i].y * positions[i].y);
+                        if (!staticMesh) skinScales.Add(worldNormals[i].magnitude);
                     }
 
                     // Behind the base is not the shaft; the shader reads it inactive.
@@ -403,6 +408,7 @@ namespace AvatarBridge
                 Length = length,
                 Radius = Mathf.Sqrt(radius),
                 FromSkinnedMesh = !staticMesh,
+                SkinScale = skinScales.Count > 0 ? skinScales.OrderBy(x => x).ElementAt(skinScales.Count / 2) : 0f,
                 Renderer = renderer,
                 Root = plugRoot,
                 Shapes = shapeNames,
@@ -631,6 +637,7 @@ namespace AvatarBridge
             target.SetFloat("_YAPS_BakeScale", 1f);   // the rest pose; a size animation drives these
             target.SetFloat("_YAPS_BakeGirth", 1f);
             target.SetFloat("_YAPS_FrameFromVertex", skinned ? 1f : 0f);
+            target.SetFloat("_YAPS_BakeSkinScale", skinned ? result.SkinScale : 0f);
             target.SetFloat("_YAPS_ShapeCount", result.Shapes.Count);
             target.SetFloat("_YAPS_PortalSpan", result.PortalSpan);
             if (result.ShapeWeights != null)

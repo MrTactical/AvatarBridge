@@ -67,6 +67,7 @@ namespace AvatarBridge
         _YAPS_Overrun (""YAPS allow overrun"", Range(0,1)) = 1
         _YAPS_BakeScale (""YAPS bake scale"", Float) = 1
         _YAPS_BakeGirth (""YAPS bake girth"", Float) = 1
+        _YAPS_BakeSkinScale (""YAPS bake skin scale"", Float) = 0
         _YAPS_PortalSpan (""YAPS portal band (-1 too coarse)"", Float) = 0
         _YAPS_CopyStart (""YAPS second copy's first vertex"", Float) = 0
         _YAPS_FrameFromVertex (""YAPS frame from vertex"", Range(0,1)) = 0

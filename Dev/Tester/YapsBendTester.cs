@@ -27,8 +27,9 @@ namespace AvatarBridge.Regression
     // length, so no resolve code is copied here to drift from the shader's.
     //
     // Run: -executeMethod AvatarBridge.Regression.YapsBendTester.Run [-yapsAvatar <prefab path>] [-yapsShots <folder>]
-    //      [-yapsSeed <n>] [-yapsScenarios <count>] [-yapsScenario <index>] [-yapsScale <s>]
+    //      [-yapsSeed <n>] [-yapsScenarios <count>] [-yapsScenario <index>] [-yapsScale <s>] [-yapsSkinScale <s>]
     // -yapsScale resizes the avatar's root, as ChilloutVR's scaling does, and every test place with it.
+    // -yapsSkinScale stands in for the skin scale a fresh bake records, on a bake older than it.
     public static class YapsBendTester
     {
         const string DefaultAvatar = "Assets/AvatarBridgeOutput/Alexa/Alexa (ChilloutVR).prefab";
@@ -101,6 +102,9 @@ namespace AvatarBridge.Regression
                         }
                     }
                     h.SetFloat("_YAPS_Enabled", 1f);
+                    if (float.TryParse(Arg("-yapsSkinScale"), System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out float skinScale))
+                        h.SetFloat("_YAPS_BakeSkinScale", skinScale);
                 }
                 for (int s = 0; s < mats.Length; s++)
                 {

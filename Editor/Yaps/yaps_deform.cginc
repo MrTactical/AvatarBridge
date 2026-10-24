@@ -261,6 +261,7 @@ YapsRoot YapsRecoverRoot(inout YapsVertex baked, float3 position, float3 normal,
     float3 rootLocal = float3(0, 0, 0);
     float3 forwardLocal = float3(0, 0, 1);
     float3 upLocal = float3(0, 1, 0);
+    float skinScale = 1;
 
     if (_YAPS_FrameFromVertex > 0.5)
     {
@@ -270,6 +271,17 @@ YapsRoot YapsRecoverRoot(inout YapsVertex baked, float3 position, float3 normal,
         root.recovered = basis.valid ? 2 : 1;
         if (basis.valid)
         {
+            // The avatar's own scale, which the matrix below never shows on a skinned
+            // mesh: skinning scales the normal and does not renormalise it (measured,
+            // SkinScaleProbe). Its length over the bake's, with the bone scale above
+            // taken out, is the root's scale, so a resized avatar's plug keeps its
+            // reach and its root. 0 on a bake older than this: the baked size, as before.
+            if (_YAPS_BakeSkinScale > 0)
+            {
+                float3 boned = basis.a1 * float3(max(_YAPS_BakeGirth, 0.0001), max(_YAPS_BakeGirth, 0.0001), max(_YAPS_BakeScale, 0.0001));
+                skinScale = length(normal) / max(_YAPS_BakeSkinScale * length(boned), 1e-6);
+                baked.position *= skinScale;
+            }
             rootLocal = position - YapsRotate(basis, baked.position);
             forwardLocal = YapsRotate(basis, float3(0, 0, 1));
             upLocal = YapsRotate(basis, float3(0, 1, 0));
@@ -295,16 +307,14 @@ YapsRoot YapsRecoverRoot(inout YapsVertex baked, float3 position, float3 normal,
     // offsets are added to unit world vectors. A 2x avatar wore a
     // half-thickness plug.
     //
-    // NOT PROVEN FOR A SKINNED PLUG. A skinned mesh is drawn with a matrix
-    // that is not its renderer's transform (measured for rotation), and
-    // whether it carries the root's scale was never checked in game. If
-    // not, this reads 1 there and the height slider is not followed.
+    // A skinned mesh is drawn with an identity matrix, so this reads 1 there
+    // and skinScale above carries the root's scale instead.
     //
     // AFTER the frame recovery above, which works in object space and
     // needs the baked numbers exactly as baked.
     float yapsScale = length(mul((float3x3) unity_ObjectToWorld, float3(0, 0, 1)));
     baked.position *= yapsScale;
-    root.worldLength = _YAPS_Length * _YAPS_BakeScale * yapsScale;
+    root.worldLength = _YAPS_Length * _YAPS_BakeScale * skinScale * yapsScale;
     return root;
 }
 

@@ -735,7 +735,7 @@ due on the Nightly branch within days; none of this is in stable yet.
    Check plug reach and bend, sockets, the atlas, squash reach and hand size, contacts and cloth at
    both ends.
    **A skinned plug keeps its baked length, measured 2026-10-24 [M]** (`YapsBendTester -yapsScale`,
-   which scales the avatar's root and every test place with it; Alexa's plug, 0.649 m). Scale 1
+   which scales the avatar's root and every test place with it; the test plug, 0.649 m). Scale 1
    passes. At 2 the plug is 1.298 m but the shader still calibrates 0.649 m: the atlas misses
    every socket at 0.8L, the 0° walk stretches an edge 59.9x and steps 16x the socket's move, 24
    checks fail. At 0.5 (0.324 m) it bends 45 to 423 mm toward sockets 1.8 lengths away, 11 fail.
@@ -755,6 +755,18 @@ due on the Nightly branch within days; none of this is in stable yet.
    and the length. Bone scale the bake already follows (`_YAPS_BakeGirth`, `_YAPS_BakeScale`)
    lengthens the normal too, so it divides out through the baked normal's direction. Unmeasured:
    CPU skinning, a blendshape's normal deltas at weights other than the bake's, and ChilloutVR.
+   **Fixed for the plug, measured 2026-10-24 [M].** Bake records the shaft's median skinned normal
+   length as `_YAPS_BakeSkinScale` (1.0000 at root 1, 2.0000 at root 2); the shader divides the
+   live normal by it, with the bone scale taken out, scales the baked offset before the recovery
+   and the length after. 0, an older bake, is the old path: the tester at scale 1 without it
+   matches the old shader line for line. With it (`-yapsSkinScale 1` standing in for a fresh bake):
+   0.2, 0.5 and 1 pass every check (0.5 was 11 fails), 1.6 fails 3, 2 fails 14 (was 24), 5 fails 17.
+   What is left is the atlas, not the scale: its top cell is 1.28 m and the scan covers 1.2 plug
+   lengths, so a plug past 1.07 m long misses sockets at the far edge (1.6, a 1.04 m plug, finds
+   all 50 everywhere; 2 misses 1). The 1.6 leftovers, the 6 cm neighbour pair (a fixed gap, read
+   through cells sized for a plug 1.6 times as long), one 90° walk-in and one scenario, are not yet
+   separated from that. Existing plugs need a re-bake. Still open: sockets and squash reach under
+   scaling, and all of it in ChilloutVR.
 3. **Prop partial sync**: the server hands out control per part of a prop, and Disallow Theft is now
    enforced. `YapsPropBuilder` already leaves it off on fresh props, but who writes a prop's synced
    value changes: retest the prop contact channel on the Nightly.

@@ -25,6 +25,9 @@ float _YAPS_Overrun;       // may the tip travel past the socket
 // slider reaches the bake. Held at 1, a scaled plug squashes.
 float _YAPS_BakeScale;
 float _YAPS_BakeGirth;
+// A skinned plug's normal length at bake, the skin's own scale then.
+// 0 is not measured, and the plug keeps its baked size.
+float _YAPS_BakeSkinScale;
 
 // Where the plug's own frame comes from.
 //   0  the renderer's transform, when the plug is its own object
