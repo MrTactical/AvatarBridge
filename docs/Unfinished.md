@@ -851,12 +851,28 @@ plane collider"; and take a playbook from Poiyomi's glass squish.
      reaches, then both by 0.59. One-sided, the old shader pressed a flat face down the middle and
      the new one moves the still part out of the way; both-sided, the two renders match.
      Images `D:/Claude/scratch/squashlook/swing/cmp_*.jpg`. Squash builds need a rebuild to get it.
-2. **OPEN: the meet itself still reads as a plane** when both push. Poiyomi's glass squish lerps
-   the skin onto its plane by a smoothstep of the depth past it, eased toward the plane's edge,
-   and spreads what it flattens outward in the plane by a bump peaking about a third of the way
-   in. The meet already spreads in the plane (`_YAPS_DentSpill`) and rises in a rim; what to
-   change (a bigger in-plane spread, a softer onto-plane blend, a bulge up out of the cleavage)
-   waits on Joe seeing item 1 in game.
+2. **A hand pushing one part into the other now shunts it too. Fixed on dev, not yet seen in
+   game.** Joe, the same day: "do those". Each part also runs its partner's hands, when that
+   partner could reach it, and keeps how far they bend the partner its way; what one part's hands
+   bent it further than the other's bent back shunts the other, as a swing does, and the plane
+   sits where the fronts end up. Seen from the pushed part alone, the other was never pushed and
+   both pressed flat down the middle. The partner's pass doubles the hand loop for those vertices;
+   the shader filter can cut it, which falls back to the old plane.
+   - Evidence: `-spHand` (new flag): the pair swung to touching, then another player's open hand
+     on the first part's outer side, 0.4 and 0.8 reaches in. Old, the pushed part flattens at the
+     middle and the other stays; new, both move over together, the seam with them. `cmp_hand_*.jpg`.
+3. **The meet swells instead of a rim. Done on dev, Joe to judge in game.** Poiyomi's glass squish
+   turned out to be a plane too: it projects the skin onto it, starting a centimetre short, and
+   spreads it a few millimetres. What reads as marshmallow is volume coming out round the contact,
+   so what the meet pushes back now swells out round the patch, most at the plane and dying away
+   over the rounding width, sized to hold the cap the overlap pushed back (a patch of radius
+   sqrt(2 reach deep)); the normals follow the swell. The old spill went half the push sideways
+   inside the patch, where a flat face sliding shows nothing, and a rim half that size a width out.
+   Spill keeps its range; 1 now means the volume kept.
+   - Evidence: `-spSwing` gains a both-sided 1.2-reach shot. At 0.6 the swell is a few
+     millimetres on Alexa and the renders barely differ; at 1.2 the zebra shows the sides bulging
+     round the seam where the old ones creased into it, and the top V partly fills.
+     `cmp_meet_both_deep*.jpg`, `crop_meet_deep.jpg`. Rest renders identical old and new.
 
 ## 5.0.1
 

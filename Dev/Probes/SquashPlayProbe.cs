@@ -40,7 +40,11 @@
 // the triangles themselves (_zebra_mesh): a kink in a stripe is a crease. -spMeet turns the pair's
 // contact on first. -spPreview squeezes with the inspector preview's hands instead (0, 0.5, 1, 1).
 // -spSwing turns the parts' own bones instead, the cloth stopped, across any gap between them and
-// on into an overlap: one into a still partner by 0.3 and 0.6 reaches, then both, half each.
+// on into an overlap: one into a still partner by 0.3 and 0.6 reaches, then both, half each, by
+// 0.6 and 1.2.
+// -spHand swings the pair to just touching the same way, then presses the first part from its
+// outer side with another player's open hand, 0.4 and 0.8 reaches in, bending it into the other.
+// Deeper presses less: a press stops at the hand's line, which by then nears the part's centre.
 //
 // Batch, never -nographics: the frames are rendered.
 
@@ -912,8 +916,10 @@ namespace AvatarBridge.Regression
         // across any gap and on into an overlap of so many reaches: by the first alone into a still
         // partner, then by both, half each.
         static readonly (string name, float overlap, float first)[] SwingShots =
-            { ("rest", 0f, 1f), ("swing_one_soft", 0.3f, 1f), ("swing_one_hard", 0.6f, 1f), ("swing_both_hard", 0.6f, 0.5f) };
+            { ("rest", 0f, 1f), ("swing_one_soft", 0.3f, 1f), ("swing_one_hard", 0.6f, 1f), ("swing_both_hard", 0.6f, 0.5f), ("swing_both_deep", 1.2f, 0.5f) };
         static readonly bool LookSwing = Environment.GetCommandLineArgs().Contains("-spSwing");
+        static readonly (string name, float depth)[] HandShots = { ("hand_rest", 0f), ("hand_soft", 0.4f), ("hand_in", 0.8f) };
+        static readonly bool LookHand = Environment.GetCommandLineArgs().Contains("-spHand");
         static Quaternion[] swingFrom;
         static int swingWait;
         static Camera[] lookCams;
@@ -984,7 +990,17 @@ namespace AvatarBridge.Regression
                 lookAt++;
                 return;
             }
-            if (lookAt >= (LookSwing ? SwingShots.Length : LookShots.Length))
+            if (LookHand && lookAt < HandShots.Length)
+            {
+                Swing(slots, mats, 0.001f, 0.5f);
+                HandOn(slots, mats, HandShots[lookAt].depth);
+                if (++swingWait < 8) return;
+                swingWait = 0;
+                lookShot = HandShots[lookAt].name;
+                lookAt++;
+                return;
+            }
+            if (lookAt >= (LookSwing ? SwingShots.Length : LookHand ? HandShots.Length : LookShots.Length))
             {
                 Debug.Log("[SquashPlay] look done " + outDir);
                 SessionState.SetInt(K + "on", 0);
@@ -1024,7 +1040,7 @@ namespace AvatarBridge.Regression
             UnityEngine.Object.DestroyImmediate(one);
             Debug.Log($"[SquashPlay] look shot {lookShot}");
             lookShot = null;
-            if (lookAt < LookShots.Length && !LookPreview && !LookSwing)
+            if (lookAt < LookShots.Length && !LookPreview && !LookSwing && !LookHand)
                 foreach (var m in provider.materials) m.SetFloat("_YAPS_SquashPulse", LookShots[lookAt].pulse);
         }
 
@@ -1068,6 +1084,32 @@ namespace AvatarBridge.Regression
                           $"overlap {(touch - (At(1) - At(0)).magnitude) / reach:0.00}, apart {(At(1) - At(0)).magnitude / reach:0.00}; " +
                           $"rest under {slots[4].parent.name}/{slots[5].parent.name}, movers {slots[0].parent.name}/{slots[1].parent.name}");
             }
+        }
+
+        // An open hand upright against the first part's outer side, so deep into it that the
+        // shader's press is that many reaches: the capsule line sits the part's away reach plus the
+        // hand's radius out, less the depth. Its ghost capsules stay off the look cameras' layer.
+        static void HandOn(Transform[] slots, Material[] mats, float depth)
+        {
+            if (ghost == null)
+            {
+                handRadius = mats[0].GetVector("_YAPS_SquashHands").y;
+                ghost = Enumerable.Range(0, 12).Select(_ =>
+                {
+                    var go = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                    UnityEngine.Object.DestroyImmediate(go.GetComponent<Collider>());
+                    go.SetActive(false);
+                    return go.transform;
+                }).ToArray();
+            }
+            if (depth <= 0f) { Press(); return; }
+            float unit = slots[0].lossyScale.x, reach = mats[0].GetVector("_YAPS_SquashReach")[0] * unit;
+            float away = mats[0].GetVector("_YAPS_SquashAway")[0] * unit, rad = handRadius * Tall / 1.6f;
+            Vector3 P = slots[0].position, up = animator.transform.up;
+            var outP = Vector3.ProjectOnPlane(P - slots[1].position, up).normalized;
+            float len = 0.11f * Tall - rad;
+            Press((P + outP * (away + rad - depth * reach) + up * (len / 2f), -up, -1f));
+            if (swingWait == 0) Debug.Log($"[SquashPlay] hand {depth:0.0} reach in, line {(away + rad - depth * reach) / reach:0.00} reach out, radius {rad / reach:0.00}");
         }
 
         static float Beats(float u, int n) => Mathf.Pow(Mathf.Sin(Mathf.PI * Mathf.Repeat(u * n, 1f)), 2f);
