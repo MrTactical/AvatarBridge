@@ -1461,8 +1461,8 @@ on import from a file that is not shader source, and some borrow their passes fr
 cannot be patched), with the
 colour, albedo, normal map, metallic and smoothness carried over. The test plug wears it. Put a
 shader with source (Poiyomi, for one) on the mesh and re-bake if you need more. Of the popular
-toon shaders, drawn in the editor: Poiyomi, Xiexe's XSToon, lilToon (fur included), UTS, Mochie
-and VRChat's mobile toon shaders patch, outlines included; arktoon, ORL, Silent's and Filamented
+toon shaders, drawn in the editor: Poiyomi, Xiexe's XSToon, lilToon (fur included), Sunao (fur
+included), UTS, Mochie and VRChat's mobile toon shaders patch, outlines included; arktoon, ORL, Silent's and Filamented
 fall back.
 
 **Quiet the scene view.** A converted avatar carries ninety-odd CCK components, each with an

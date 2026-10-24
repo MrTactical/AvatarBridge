@@ -165,7 +165,7 @@ the YAPS avatars [M]:
   them with default settings that morning and resized their source textures (reverted from each
   `TextureSizes.undo`). So 424 is not promoted.
 
-### 7. YAPS against every popular shader: done but Sunao, which waits on Joe
+### 7. YAPS against every popular shader: done
 - **Squash on Unity's Standard, 2026-10-21 [M]:** the plug and socket move a Standard material to
   YAPS Simple Lit; the squash only patches, refuses Standard ("no source file on disk") and is not
   built. Run 424 has nine such avatars. Same Simple Lit fallback, or say so in the setup card.
@@ -209,8 +209,8 @@ lilToon finding below is the proof: a host can patch without a word and never be
   generator and inspector), XSToon 3.7.1 (its fur add-on left out; 15 GUIDs it shares with an older
   partial Xiexe copy there were given new ones), Filamented 1.4.0, arktoon 1.0.2.6, UTS 2.0.7 and
   Silent's Cel Shading. Already there: Poiyomi 9.3, lilToon 1.7.3, the VRChat Mobile shaders. Sunao
-  waits on Joe fetching it from BOOTH.
-- `Dev/Probes/Portal/ShaderSweepProbe.cs` covers checks 1 to 3: 32 setups across 11 families, every outline mode that offsets by its own rule
+  1.6.2 added 2026-10-24, fetched by Joe.
+- `Dev/Probes/Portal/ShaderSweepProbe.cs` covers checks 1 to 3: 37 setups across 12 families, every outline mode that offsets by its own rule
   (mask, vertex colour, baked normal, position, geometry-shader outlines). Per host: patched or
   refused with a reason; YAPS off draws the unpatched original to 2/255; a plug bend and a socket
   shape move, each judged against Simple Lit drawing the same move, in the view (forward and add
@@ -229,6 +229,12 @@ lilToon finding below is the proof: a host can patch without a word and never be
     and UTS 2.0.7 with outline (three outline modes): 0 deform calls in their copies. lilToon (plain and
     outline): its drawing passes are borrowed.
   - Probe fix on the way: a refused host was failed for drawing no outline. Simple Lit has none.
+- **Sunao 1.6.2, checks 1 to 5, 2026-10-24 (Poiyomi lock project) [M]:** plain, outline (normal
+  times a mask), stencil outline, transparent outline and fur all patch natively, five vertex passes
+  in the first subshader, 3 deform calls in 18 files (fur 20). Off and nothing in reach both 0 px
+  over 2/255; bend and open 0 stray pixels, view and shadow fully covered, outlines drawn (+29.2%,
+  fur +19.7%). A skinned plug stays straight on none of them. Check 4: 0 corridor pixels on all five,
+  HDR and 8-bit. Check 5: 0 corridor pixels on all five, so no new line under the band.
 - **Fixed on `portal-spike`, 2026-10-19: a shader whose vertex function sits in an include was
   "patched" with nothing in it.** Passes are patched last first, so the shadow caster went first. It
   marked the include done before its checks, failed on the missing `SV_VertexID`, was skipped as

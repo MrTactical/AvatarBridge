@@ -484,6 +484,13 @@ namespace AvatarBridge.Regression
             Add("ORL", "ORL Standard", "orels1/Standard", false);
             Add("arktoon", "arktoon", "arktoon/Opaque", false);
             Add("arktoon", "arktoon outline", "arktoon/Opaque", true, m => { F(m, "_UseOutline", 1); F(m, "_OutlineWidth", 0.5f); });
+            // Sunao 1.6.2: the outline grows along the normal by a centimetre times the scale, through a mask.
+            void Sunao(Material m) { F(m, "_OutLineEnable", 1); F(m, "_OutLineSize", 1f); F(m, "_OutLineMask", mask); }
+            Add("Sunao", "Sunao", "Sunao Shader/Opaque", false);
+            Add("Sunao", "Sunao outline", "Sunao Shader/Opaque", true, Sunao);
+            Add("Sunao", "Sunao stencil outline", "Sunao Shader/[Stencil Outline]/Opaque", true, Sunao);
+            Add("Sunao", "Sunao transparent outline", "Sunao Shader/Transparent", true, Sunao);
+            Add("Sunao", "Sunao fur", "Sunao Shader/Fur", true, m => { F(m, "_FurEnable", 1); F(m, "_FurLength", 0.5f); });
             ok = good;
             return list;
         }
