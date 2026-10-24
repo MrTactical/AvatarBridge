@@ -1435,7 +1435,7 @@ version, keeps the copy too: it has no record of the original, so put that mesh 
 Filter by hand, or convert again. A dialog lists exactly what will go first, and it is one undo step.
 The files it generated stay in `Assets/YAPS/Generated` for the next Bake, so an undo never points
 at a missing asset. If you delete one by hand instead, *Clean up leftovers* in the window finds
-what it left.
+what it left, and puts a toggle that still names a deleted material back on the one it held before.
 
 **The material panel.** A patched material's YAPS block is grouped and named the same way as the
 component, and hands everything else to the shader's own editor: a Poiyomi material keeps
@@ -1598,7 +1598,11 @@ put on the avatar root moves there. Its steps run top to bottom, building last a
 squash** there builds it, **Rebuild the squash** rebuilds, and **Remove the squash** puts every
 layer back on its own material, toggles included. Deleting the component or the squash's objects by
 hand skips that and leaves every layer and toggle on its copy; the card says so, and **Remove
-squash** there still puts them back. The card says whether the picked avatar has squash, on how many
+squash** there still puts them back. Deleting the generated copies as well leaves each toggle
+naming a material that is gone, which draws pink in game: a swap pointed at a copy from 5.0.0 on
+remembers the material it held before, so the card says so, and **Remove squash** or *Clean up leftovers* puts those back too. The
+layers themselves are in plain sight in the Inspector; put those back by hand. The card says whether
+the picked avatar has squash, on how many
 materials, and when its regions were painted after the last build. Only a layer that lies over a soft part, close enough to follow it visibly, gets a copy; a baked plug
 never does, since it bends on its own. The rest keep their own material and cost nothing. The copies go to `Assets/YAPS/Generated/Squash`; a rebuild
 goes back to the folder the last build used, a conversion's own included, so they are written over
@@ -1858,6 +1862,15 @@ blendshapes. On a typical VRCFT avatar that's a couple of layers and a few hundr
   **zero** sync bits, so a full smoothed rig fits ChilloutVR's 3200-bit budget comfortably, and
   the FT parameters that were synced keep syncing. The pick for avatars whose shipped rig is the
   point.
+
+**Analyse this avatar** recommends Native when the face mesh carries the shapes. When the avatar
+also brings its own rig, the animator layers a face-tracking add-on or template uses to drive and
+smooth those shapes, a *your call* card says so and offers **Keep the avatar's own rig**: both set-up
+modes replace that rig, and *Apply all* leaves the choice to you. When this avatar has no tracking
+shapes but another in the scene wears the same mesh with them, as an add-on's installer leaves
+things when it works on a copy, the analysis and the report name that avatar: it is the one to
+convert. A face-tracking add-on installed in the project but not yet run on the avatar is named the
+same way.
 
 **Every mode needs a tracking source at runtime**: true of any CVR face-tracking avatar. Run
 [VRCFaceTracking](https://store.steampowered.com/app/3329480) and set CVR's *Eye Tracking* and
@@ -2489,6 +2502,11 @@ Read the *Face tracking* section of the report: it says how close detection got 
 e.g. *matched 10 of the tracking shape names: 12 are needed*. A score near the threshold means the
 shapes are there under names it couldn't read; a score of nothing means it found no tracking shapes
 at all.
+
+A score of nothing on an avatar you installed face tracking on usually means it is the wrong avatar:
+installers that work on a copy leave the original in the scene, untouched. The report names the copy
+when it finds one. Convert that one, and if you want the add-on's own smoothing kept, pick **Keep the
+avatar's own rig**.
 
 Shapes named **without a side** are handled (one `CheekPuff` standing for
 `CheekPuffLeft`/`Right`), except where the side is the movement

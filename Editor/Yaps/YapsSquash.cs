@@ -31,7 +31,7 @@ namespace AvatarBridge
         public const string Category = "Squash";
         const string ShaderHostName = "YAPS squash (shader)", FollowName = "YAPS squash follow", RestName = "YAPS squash rest", BackName = "YAPS squash back";
         // On each copy's importer, before the material it was copied from, for Strip to put back.
-        const string Mark = "squash:";
+        internal const string Mark = "squash:";
         static readonly Regex Soft = new Regex("breast|boob|butt|booty|glute", RegexOptions.IgnoreCase);
         static readonly Regex Side = new Regex(@"left|right|[._ ]?[lr](?=$|[._ ])", RegexOptions.IgnoreCase);
 
@@ -116,7 +116,9 @@ namespace AvatarBridge
         {
             if (root == null) return 0;
             int n = root.GetComponentsInChildren<SkinnedMeshRenderer>(true).Sum(r => r.sharedMaterials.Count(m => SourceOf(m) != null));
-            foreach (var clip in clips ?? YapsSwapFollow.RunnableClips(root))
+            clips = clips ?? YapsSwapFollow.RunnableClips(root);
+            n += YapsSwapFollow.MissingKeys(clips);
+            foreach (var clip in clips)
                 foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
                     if (YapsSwapFollow.SlotIndex(binding.propertyName) >= 0)
                         n += (AnimationUtility.GetObjectReferenceCurve(clip, binding) ?? new ObjectReferenceKeyframe[0])
@@ -258,6 +260,14 @@ namespace AvatarBridge
         internal static string Status(Transform root, out Tone tone)
         {
             tone = Tone.Info;
+            int gone = YapsSwapFollow.MissingKeys(YapsSwapFollow.RunnableClips(root));
+            if (gone > 0)
+            {
+                tone = Tone.Warn;
+                return $"{(gone == 1 ? "A material swap names a material" : gone + " material swaps name materials")} deleted by hand, " +
+                       "which draws pink in game: Remove squash puts " + (gone == 1 ? "it" : "them") + " back on what " +
+                       (gone == 1 ? "it" : "they") + " held before.";
+            }
             if (!Has(root))
             {
                 int left = Worn(root);
@@ -1206,6 +1216,9 @@ namespace AvatarBridge
                 }
                 if (any) smr.sharedMaterials = mats;
             }
+            // Swaps whose copy was deleted by hand: the copy's mark went with it, the clip's own
+            // record did not.
+            if (clips != null) YapsSwapFollow.RestoreMissing(clips);
             foreach (var t in root.GetComponentsInChildren<Transform>(true).Where(t => t.name == FollowName || t.name == RestName || t.name == BackName || t.name == ShaderHostName).ToList())
                 if (t != null) UnityEngine.Object.DestroyImmediate(t.gameObject);
             if (root.gameObject.scene.IsValid()) EditorSceneManager.MarkSceneDirty(root.gameObject.scene);

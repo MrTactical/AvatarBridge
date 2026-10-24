@@ -1,9 +1,11 @@
 #if CVR_CCK_EXISTS
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using ABI.CCK.Components;
 
 namespace AvatarBridge
@@ -85,6 +87,12 @@ namespace AvatarBridge
                     ? $"The closest was \"{bestMesh.name}\", which matched {bestScore} of the " +
                       $"tracking shape names: {DetectionThreshold} are needed to be sure. "
                     : "No mesh on this avatar carries blendshapes that resemble tracking shapes. ";
+                string elsewhere = WhereTheShapesAre(ctx.Target, out _);
+                if (elsewhere != null)
+                {
+                    ctx.Report.Warning(Category, "No face-tracking blendshapes detected", near + elsewhere);
+                    return;
+                }
                 ctx.Report.Converted(Category, "No face-tracking blendshapes detected",
                     near + "None exist, or their names aren't recognised. If it has them, please report it.");
                 return;
@@ -299,6 +307,67 @@ namespace AvatarBridge
                 return list;
             }
             return fallback;
+        }
+
+        // Face-tracking add-ons recognised by their installer's type, under the name users know.
+        // Each entry was read from the package itself.
+        static readonly (string type, string name)[] AddOns =
+        {
+            ("Triturbo.FaceTrackingFramework.Installer.FaceTrackingInstaller", "Triturbo Face Tracking Framework"),
+        };
+
+        // Where an avatar without tracking shapes should have found them. An installer that works
+        // on a copy leaves the original beside it, and the original is the one that gets
+        // converted; an add-on installed and never run looks the same from inside the avatar.
+        // Null when neither applies.
+        internal static string WhereTheShapesAre(GameObject root, out GameObject copy)
+        {
+            copy = TrackedCopyOf(root);
+            if (copy != null)
+            {
+                return $"\"{copy.name}\" in this scene wears the same mesh with tracking shapes added: " +
+                       "if face tracking was installed, that is the avatar to convert.";
+            }
+            var addOn = AddOns.FirstOrDefault(a => AppDomain.CurrentDomain.GetAssemblies().Any(assembly =>
+            {
+                try { return assembly.GetType(a.type, false) != null; }
+                catch { return false; }
+            }));
+            return addOn.name == null ? null
+                : $"\"{addOn.name}\" is installed in this project, but this avatar does not wear its shapes: " +
+                  "run its installer on the avatar, then convert the one it gives back.";
+        }
+
+        // A scene root wearing one of this avatar's meshes, matched by renderer name and vertex
+        // count, with tracking shapes added. Roots only, as an installer's copy sits beside its
+        // original; converted avatars are skipped, being outputs rather than sources.
+        static GameObject TrackedCopyOf(GameObject root)
+        {
+            var own = root.GetComponentsInChildren<SkinnedMeshRenderer>(true)
+                .Where(r => r.sharedMesh != null)
+                .Select(r => (r.name, r.sharedMesh.vertexCount))
+                .ToList();
+            for (int i = 0; i < SceneManager.sceneCount; i++)
+            {
+                var scene = SceneManager.GetSceneAt(i);
+                if (!scene.isLoaded)
+                {
+                    continue;
+                }
+                foreach (var other in scene.GetRootGameObjects())
+                {
+                    if (other == root || other.GetComponent<CVRAvatar>() != null
+                        || !DetectShapes(other, null, out var mesh, out _, out _))
+                    {
+                        continue;
+                    }
+                    if (own.Contains((mesh.name, mesh.sharedMesh.vertexCount)))
+                    {
+                        return other;
+                    }
+                }
+            }
+            return null;
         }
 
         // Internal so the face mesh finder can share it. The panel carries every tracking

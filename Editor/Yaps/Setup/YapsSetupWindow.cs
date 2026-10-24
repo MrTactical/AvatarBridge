@@ -336,7 +336,8 @@ namespace AvatarBridge
                 foreach (var line in done) Debug.Log("[YAPS] Cleaned up " + line);
                 Rescan();
             }, "Removes what a socket or plug deleted by hand left behind: layers, parameters, " +
-               "menu toggles and marker objects.")));
+               "menu toggles and marker objects. Material swaps naming a YAPS material that was " +
+               "deleted go back on what they held before.")));
             tools.Body.Add(BridgeElements.Hint("A row's remove chip takes a plug or socket out in one undo step."));
             _tidyStatus = Status();
             tools.Body.Add(_tidyStatus);

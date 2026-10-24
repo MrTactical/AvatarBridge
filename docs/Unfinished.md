@@ -1036,14 +1036,22 @@ the YAPS Squash component instead of pressing Remove, so the swaps stayed on the
   copy is gone. Two leads checked against it and left untested, still worth a test: the shader sweep
   (item 7) never covered the squash patch, and `FollowSwaps` keys copies into the clips before `Flush`
   writes them while the swap test reads the clip in memory only.
-- **Open, Joe's call: stop editing the user's clips [user's suggestion].** Both the squash and the
-  plug and socket bakes (`YapsSwapFollow.RepointInClips`) rewrite live, user-owned clips in place, so
-  the avatar depends on generated files and a hand cleanup breaks it. The user asks for it the way
-  VRCFury does it: leave the clips alone and repoint only at upload. The CCK has the hook,
-  `CCK_BuildUtility.PreAvatarBundleEvent`, invoked on the instantiated upload copy. Cheaper middle
-  ground: each repointed clip remembers its originals (say in its importer's userData), so Remove and
-  Clean up leftovers can restore keys whose copy was deleted, and the card warns about swap keys that
-  name a missing material.
+- **B, clips remember their originals: done on dev (Joe's call, 2026-10-25) [M].** Every key
+  `RepointInClips` moves off a user's material records that material in the clip's importer userData
+  (`yaps-swap-originals`, one line per key: clip local id, path, property, time, the original's
+  GlobalObjectId); a move back onto a user's material forgets it, copy to copy keeps the first.
+  "User's material" = not in a folder named YAPS and not carrying the squash mark. A clip whose
+  importer already holds someone else's userData is not recorded. `MissingKeys` counts remembered
+  keys whose material is gone; the squash card warns on them and counts them toward Remove;
+  Remove squash and Clean up leftovers (`RestoreMissing`) put them back. Renderer slots are not
+  covered: they show in the Inspector. Keys pointed before this have no record, and a rebuild
+  over them makes none (copy to copy): Remove, then build.
+  `SquashTestBuilder -squashDeleted` (build, key a swap reachable through an Animator, follow,
+  reimport the clip, delete the copies, card, then Remove squash, and again with Clean up
+  leftovers) failed record, card and put back on both before, passes after.
+- **A, repoint only at upload: planned for 5.1 (Joe, 2026-10-25).** Leave user clips untouched and
+  repoint on the upload copy through `CCK_BuildUtility.PreAvatarBundleEvent`, the way VRCFury does.
+  Covers the plug and socket bakes as well as squash.
 
 ### 24. "Converting drops the face-tracking blendshapes." A user, 2026-10-24 (via Joe, their output folder)
 
@@ -1059,14 +1067,34 @@ renames it `<name>-FaceTracking` and adds its tracking prefabs.
   names against the 12 needed. The add-on's names are ones the detector knows. So the avatar that
   was converted never had the add-on on it: most likely the original next to the copy the
   installer made. Asked of the user: convert the `-FaceTracking` avatar, and check the report's
-  Face tracking section. Not reproduced with the packages here (that would run their editor code).
+  Face tracking section.
+- **Repro with the same packages, run headless the way the add-on's button runs [M]:** Body 372
+  shapes as imported, 457 on the add-on's mesh after it, 457 on that mesh converted (dev, Native
+  mode: 51 mapped, the add-on's rig of 9 layers removed and reported). The scene saved and reopened,
+  then baked on NDMF's Generic platform as 4.7.2 did: still 457 on that mesh. The add-on records its
+  mesh change through Undo, so a reload keeps it. 4.7.2 strips and reports any tracking rig in Native
+  mode whether or not it detects shapes, and the user's report has no such line: nothing to strip.
+  The user says the window's card found 51 shapes; that card reads the add-on's mesh only, so it
+  and the output came from different avatars or attempts. Asked for the report from converting the
+  avatar the card was on, and whether "lost" means the output or in game.
+- **What the user wanted [M]:** the add-on's animator rig, the smoothed layers driving the shapes,
+  which Native replaces by design. Both bake platforms carry that rig intact (FX 22 layers, 275
+  tracking parameters, the same on Generic and VRChat), so *Keep the avatar's own rig* converts it
+  on 4.7.2 as well. Their output's Body still points at the FBX's own mesh: the 4.7.2 window converts
+  the avatar its card analysed (a new pick clears the card) and clones with `Object.Instantiate`, so
+  the avatar converted was wearing the stock mesh.
 - **Diagnostics said "Modular Avatar: not installed" on every machine: fixed on dev [M].** The row
   looked up `ModularAvatarInformation`, a type no release has (checked against 1.17.1). It reads
   `ModularAvatarMergeAnimator` now. `Dev/Tests/DiagnosticsPackagesTest` (each loaded package's row
   must read as installed) failed on it before, passes after.
-- **Possible, not done:** when nothing is detected but the scene holds an avatar of the same name
-  with `-FaceTracking` after it, or the avatar carries a tracking add-on's leftovers, the report
-  could say which avatar to convert.
+- **The analysis and the report now say it, on dev (Joe, 2026-10-24) [M]:** an avatar with no
+  tracking shapes names a scene root wearing the same mesh (renderer name and vertex count) with them,
+  or else a face-tracking add-on installed in the project and not run on it (one known installer
+  type, read from the package). The report's line turns into a Warning when it does. An avatar with
+  the shapes AND its own rig (face-tracking parameters in its expression parameters or in any
+  controller a component hands over, merge components included, so before the bake) gets a *your
+  call* card offering Keep; with Keep chosen, Native is no longer recommended over it.
+  `Dev/Tests/FaceTrackingAdviceTest` failed 4 checks before, passes after.
 
 ## 5.0.1
 
