@@ -1045,6 +1045,29 @@ the YAPS Squash component instead of pressing Remove, so the swaps stayed on the
   Clean up leftovers can restore keys whose copy was deleted, and the card warns about swap keys that
   name a missing material.
 
+### 24. "Converting drops the face-tracking blendshapes." A user, 2026-10-24 (via Joe, their output folder)
+
+A paid avatar with a paid face-tracking add-on. The add-on (BlendShare data, Modular Avatar
+prefabs) works in the editor: its installer writes a generated mesh carrying about 70 tracking
+shapes (`JawOpen`, `MouthClosed`, `EyeLookUpLeft` and the rest) onto the avatar, or onto a copy,
+renames it `<name>-FaceTracking` and adds its tracking prefabs.
+
+- **Read from the user's output (4.7.2) [M]:** the converted Body wears the original FBX mesh, the
+  one the add-on's data names as its origin; no tracking object, layer or `v2/` parameter came
+  across, though the Modular Avatar bake ran (its own layers are there), and the avatar is named
+  without `-FaceTracking`. The report: "No face-tracking blendshapes detected", Body matching 4
+  names against the 12 needed. The add-on's names are ones the detector knows. So the avatar that
+  was converted never had the add-on on it: most likely the original next to the copy the
+  installer made. Asked of the user: convert the `-FaceTracking` avatar, and check the report's
+  Face tracking section. Not reproduced with the packages here (that would run their editor code).
+- **Diagnostics said "Modular Avatar: not installed" on every machine: fixed on dev [M].** The row
+  looked up `ModularAvatarInformation`, a type no release has (checked against 1.17.1). It reads
+  `ModularAvatarMergeAnimator` now. `Dev/Tests/DiagnosticsPackagesTest` (each loaded package's row
+  must read as installed) failed on it before, passes after.
+- **Possible, not done:** when nothing is detected but the scene holds an avatar of the same name
+  with `-FaceTracking` after it, or the avatar carries a tracking add-on's leftovers, the report
+  could say which avatar to convert.
+
 ## 5.0.1
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).

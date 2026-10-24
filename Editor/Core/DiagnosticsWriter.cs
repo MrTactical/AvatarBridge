@@ -94,7 +94,9 @@ namespace AvatarBridge
                 Row("VRChat SDK", VersionOf("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor")),
                 Row("ChilloutVR CCK", VersionOf("ABI.CCK.Components.CVRAvatar", CckVersion())),
                 Row("VRCFury", VersionOf("VF.Model.VRCFury")),
-                Row("Modular Avatar", VersionOf("nadena.dev.modular_avatar.core.ModularAvatarInformation")),
+                // A component every release has. ModularAvatarInformation never existed, so
+                // every report said "not installed".
+                Row("Modular Avatar", VersionOf("nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator")),
                 Row("MagicaCloth2", VersionOf("MagicaCloth2.MagicaCloth")),
                 Row("DynamicBone", VersionOf("DynamicBone")),
             };
