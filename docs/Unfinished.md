@@ -542,6 +542,22 @@ Read what the seam check measures before calling it a bake fault.
   seam 0.96 mm at 1.36L (vertices 77 and 553, one rest point, normals 0° apart, both moved about
   275 mm), a true seam parting deep in a hard bend. The 90° walk passes there (3.31x). Not
   separated yet.
+- **Separated 2026-10-25 [M]: the atlas resolve, not the bake or the deform.** A twin probe in the
+  capture shader (`_YapsTwinA/B/At`) reads each twin's recovered root, its resolved socket and its
+  whole chain. The twins' tangents are 77° apart and mirrored (a UV seam), yet their roots agree to
+  0.000 mm and 0.000°. Their sockets do not: 0.494 mm apart, same facing, both engaged, both tier 3.
+  Vertex 77's chain took 2 header taps and 2 hits, the fine read and the coarse one (deduped);
+  vertex 553's 1 and 1, the coarse read alone. The fine block is centred on `floor((root + axis *
+  len/2) / size)`, so float noise in a vertex's own root can move it one cell, and a socket at the
+  block's edge is then read at the coarse level's precision (a half-float fraction of a larger
+  cell, 0.47 mm off here). The plug deform doubles that at the tip: 0.956 mm. So any two vertices,
+  not only seam twins, can resolve one socket at two precisions; as the plug moves it should read
+  as a faint shimmer or a one-frame crack along UV seams.
+  **Proposed fix, not done (Joe's call):** an entry only the coarse read found is looked up again
+  in its own fine cell, `floor(at / fineSize)`, and takes the fine position when the same socket is
+  there. Precision then follows the socket, not the block. It costs a header tap and up to eight
+  octant reads per coarse-only entry, in the shipped resolver, so compile time and CVR's shader
+  filter need measuring. Tester: the 45° walk on this plug is the repro.
 
 ### 16. Tester reports on the rc builds, 2026-10-22
 
