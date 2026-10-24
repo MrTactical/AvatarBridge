@@ -134,6 +134,23 @@ the YAPS avatars [M]:
   together 286.3, 321.4, 287.2, 62.8 and 36.8 min. The run took about an hour in four Unity
   processes. 427 followed 425 and 426 on the same machine, so part of its lead over 425 may be
   Unity's shader cache holding copies those runs compiled.
+- **Run 429 (dev 2373354, full, default profile) read against 427, 2026-10-24 [M]:** 10 of 85
+  digests moved, one class: which layers the squash copies. 7c0c6fe gives a layer the skin's share
+  as a distance-weighted blend out to 4 cm instead of the nearest skin vertex within 3 cm, and any
+  layer with one share that stores above zero (1/510) is copied. So layers 3 to 4 cm off a part now
+  carry a faint share and a copy (a prop, a hair mesh, and a plug on three variants of one avatar;
+  a plug on another was already copied in 427). Two hair layers lost theirs, read from the output
+  folders; that they only grazed a part's faded edge and now average below storable is inferred,
+  not measured. The `converted=` counts move by the copies,
+  the Weight "sets of materials share a shader" counts and one avatar's texture total (0.1 MB, a
+  share texture fewer) with them. Components, AAS, controllers, physics and the toggle sweep (2798
+  parameters, 1624 responded, 47 stuck) are identical. Not promoted. Pass time is not comparable:
+  every pass 51.1 min against 36.8, squash 20.1 against 14.2, but the animator merge (7.4 to 14.3)
+  and clip self-containment (7.1 to 12.2), which compile nothing, slowed more than the squash, and
+  probes shared the cores during the run.
+  To decide: whether a copy should need a share worth drawing (a few 1/255 steps) rather than any,
+  which would drop the faint 3 to 4 cm copies and their shader compiles; and whether a baked plug
+  should ever take a squash share, which in ChilloutVR is unmeasured either way.
 - **Run 424 (dev b9fb21d, before the loop fix) [M]:** 73 of 85 digests moved against baseline 422,
   every class explained: the count line; rest clips for sliders (90b277a); squash reported not
   built where every shader under the part refused (a1b3812: 9 avatars on Unity's Standard or a
