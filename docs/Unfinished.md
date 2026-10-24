@@ -1041,7 +1041,16 @@ renames it `<name>-FaceTracking` and adds its tracking prefabs.
   names against the 12 needed. The add-on's names are ones the detector knows. So the avatar that
   was converted never had the add-on on it: most likely the original next to the copy the
   installer made. Asked of the user: convert the `-FaceTracking` avatar, and check the report's
-  Face tracking section. Not reproduced with the packages here (that would run their editor code).
+  Face tracking section.
+- **Repro with the same packages, run headless the way the add-on's button runs [M]:** Body 372
+  shapes as imported, 457 on the add-on's mesh after it, 457 on that mesh converted (dev, Native
+  mode: 51 mapped, the add-on's rig of 9 layers removed and reported). The scene saved and reopened,
+  then baked on NDMF's Generic platform as 4.7.2 did: still 457 on that mesh. The add-on records its
+  mesh change through Undo, so a reload keeps it. 4.7.2 strips and reports any tracking rig in Native
+  mode whether or not it detects shapes, and the user's report has no such line: nothing to strip.
+  The user says the window's card found 51 shapes; that card reads the add-on's mesh only, so it
+  and the output came from different avatars or attempts. Asked for the report from converting the
+  avatar the card was on, and whether "lost" means the output or in game.
 - **Diagnostics said "Modular Avatar: not installed" on every machine: fixed on dev [M].** The row
   looked up `ModularAvatarInformation`, a type no release has (checked against 1.17.1). It reads
   `ModularAvatarMergeAnimator` now. `Dev/Tests/DiagnosticsPackagesTest` (each loaded package's row
