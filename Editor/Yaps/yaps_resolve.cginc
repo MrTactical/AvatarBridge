@@ -495,12 +495,14 @@ bool YapsFindRelaySocket(float3 plugOrigin, float reach,
 
         float bestSq = reach * reach;
         int3 near = int3(floor(plugOrigin / YAPS_RELAY_CELL));
-        [loop]
-        for (int k = 0; ok && k < YAPS_RELAY_ROOTS; k++)
+        // Unrolled: ChilloutVR's Shader Filtering gives a [loop] after a heavy
+        // one a single pass, which would drop the second root.
+        [unroll]
+        for (int k = 0; k < YAPS_RELAY_ROOTS; k++)
         {
             float4 a = YAPS_ATLAS_LOAD(2 + 3 * k, py);
             int kind = (int) round(a.a * YAPS_ATLAS_OWNERMAX);
-            if (!YapsIsRoot(kind)) continue;
+            if (!ok || !YapsIsRoot(kind)) continue;
             int c = YapsOwnerDecode(YAPS_ATLAS_LOAD(4 + 3 * k, py));
             int3 cell = near + ((((int3(c, c >> 8, c >> 16) - near) & 0xFF) ^ 0x80) - 0x80);
             float3 at = (float3(cell) + a.rgb) * YAPS_RELAY_CELL;
