@@ -1195,6 +1195,61 @@ first piece. Open from the same day, for the pilot:
 - The fold hints under How it feels name how to see each group; a live picture per knob would
   answer it better.
 
+### Squash anywhere: any bone, no two-pair cap, each other, slaps. Joe, 2026-10-24. PLAN ONLY, after 5.0.0
+
+Joe, 2026-10-24: "fuck the limit": keep the name detection for breasts and butt, but let a user put
+the squash on any bone (thighs, face cheeks), weights from that bone's skin weights with the brush
+only for touch-ups, and warn past a point that performance degrades. Then avatars squashing each
+other, walls and world objects squashing the avatar, and a slap that ripples. Thinking so far,
+nothing built:
+
+**1. No hard cap.** Four parts is a storage layout, not a GPU ceiling: `_YAPS_DentOwn` holds four
+shares per vertex in RGBA, every per-part number is one component of a `float4`
+(`_YAPS_SquashReach` and its five siblings, `_YAPS_SquashPair`), and the 20 provider slots are laid
+out for two pairs. Reworked:
+- Per vertex, the two strongest parts as index and share (`r` index, `g` share, `b` index, `a`
+  share): up to 255 parts, and the vertex loop drops from four passes to two, cheaper than today
+  and a smaller bill under Shader Filtering's loop limit.
+- Per-part numbers in a small part table texture, read with `Load`. Not material arrays: Unity does
+  not save arrays in the material asset, so they would not survive an upload.
+- Two provider slots per part (follow and rest) plus one helper skin vertex each; the arm, back
+  and socket slots move after them.
+- A part is a pair (its partner presses it, as now) or single: a belly, a tail, one cheek, with no
+  partner press, only hands, plugs and later the world. The belly was turned away (queue item 16)
+  only because the design was pairs.
+- UI: name detection keeps finding the pairs; **Add a part** takes a bone (and an optional partner)
+  and fills its weights from that bone's skin weights, which **Fill this side from The bone**
+  already does; the brush is for touch-ups. The warning comes from measurement, not a guess: cost
+  grows with the skin on the squash path (GPU, per vertex) and the slots (CPU, every frame), not
+  with the shader's size, so measure frame time against squashed vertex count on the corpus before
+  picking a threshold.
+
+**2. Each other.** Tier 1 is nearly free: the client already gives every shader each player's chest
+and root positions (`_CVR_PlayerChestPositions`, `_CVR_PlayerRootPositions`, `w` their viewpoint
+height) beside the hands the squash reads today. A torso capsule per player from chest to root,
+scaled by height, presses the parts like a big hand: a hug flattens a chest, a lap presses a
+butt. No sync, no atlas, every client. Tier 2 is real shapes: each part published into the atlas as
+sockets are (centre, axis, reaches), so another avatar's squash sees it and both sides flatten
+against each other, each deforming itself against the other. That bumps the atlas protocol (mixed
+builds blind to each other) and waits on queue item 20 (the atlas dots on viewers' screens).
+
+**3. Walls and world objects.** Planned in the next record, "Squash against the world": a lag body
+per part on a spring, pushed back by world colliders, its offset read as a press. Its gate 4 (all
+20 slots used) is what point 1 removes. Its gates 1 to 3 (avatar collider layers for the wearer and
+for remote copies, the player capsule, content filters) need a look at the client first.
+
+**4. A slap that ripples.** The squash shader has no memory, and a ripple needs time. The bounce
+spike (`Dev/Probes/BounceSpikeBuilder.cs`, memory note on CVRBlitter self-update) proved the memory
+in game on 2026-10-14: a blitter writing a render texture into itself once a frame. Per part, a few
+texels hold the hands' last positions, so a hand's speed at contact is known; a fast hit stores the
+impact point, time and strength, and the vertex shader adds a damped wave spreading from it over
+the part plus a wobble of the whole part. Own hands and other players' hands both work, from
+positions the shader already has. Open: the blitter on remote copies, its cost, both VR eyes.
+
+**Order proposed:** 1 first (the biggest ask; every piece is already proven in game), then 2 tier 1
+(reuses the hand code), then 4 (half spiked), then 3 (client read first), then 2 tier 2 (after item
+20). Not in 5.0.0, which is in its release gate.
+
 ### Squash against the world: an idea, 2026-10-17. NOT STARTED, after 5.0.0
 
 Joe's idea: a soft part pressed flat against a world surface, a pane of glass for example, from any
