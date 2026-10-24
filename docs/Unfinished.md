@@ -304,6 +304,14 @@ ranked by how visible it should be:
    Jewellery under a breast bone becomes a soft body through the ancestor walk
    (`MagicaPresetLibrary.cs:107-114`); "Pec" and "Hip Jiggle" are missed. A shared parent root springs
    both sides as one block.
+   - 2026-10-24, the angle limit 86a563f gave soft bodies is a trade, not a fix. Physics A/B on
+     Sootie with it and without: breasts much nearer their PhysBones with it (walk peak error 22
+     against 68, lying 52 against 192), thighs worse (walk 34 against 9; lying they hang 20 degrees
+     off where without it they hang exactly). It is what grew the thighs' swing in the squash story
+     from 5 to 20 cm since 2026-10-15, and it deadens the tester's hand on them in Play mode: the
+     thigh story's lab Test hand moves 3.7% of the legs against 2.4% swaying (DEAD) with it, 7.3%
+     against 2.5% without, every other row the same. Undecided: keep it per class, or find why an
+     MC2 angle limit on a BoneSpring swings a part further. `D:/Claude/scratch/curveab/{new,nolimit}`.
 6. **Collision.** Point mode (`:184`, `MagicaColliderAutoAssign.cs:82`) where VRChat collides the bone
    as a capsule with lerped radius, so chains pass between particles; MC2's Edge mode matches. The
    author's radius is replaced by a mesh thickness; collider fitting sizes spheres from their narrow
@@ -809,7 +817,8 @@ one boob is pushing against another boob, you'd expect both boobs to move togeth
 other. And then it can do like a marshmallow style spillage in the middle and not just a weird like
 plane collider"; and take a playbook from Poiyomi's glass squish.
 
-1. **One part swung into a still partner now shunts it. Fixed on dev, not yet seen in game.** The
+1. **One part swung into a still partner now shunts it. Fixed on dev, not yet seen in game; does
+   not hold on Kar, see 4.** The
    overlap one follow drove further toward the other than the other drove back moves the other
    aside (swung about where it meets the body, as a bend), and only the rest presses the two
    together. Read as the difference of the two swings: in batch Play mode on Alexa each follow sat
@@ -842,6 +851,21 @@ plane collider"; and take a playbook from Poiyomi's glass squish.
      millimetres on Alexa and the renders barely differ; at 1.2 the zebra shows the sides bulging
      round the seam where the old ones creased into it, and the top V partly fills.
      `cmp_meet_both_deep*.jpg`, `crop_meet_deep.jpg`. Rest renders identical old and new.
+4. **On Kar a part turned into its partner still tears the pair open. OPEN.** Joe, 2026-10-24
+   (screenshots of the tester's bone drag, then "its still folding into a void? when I have meet on
+   enabled?"). Measured on his 12:44 conversion: one breast's bone turned 0.58 reach into the still
+   partner. The skinning alone presses the two together cleanly. With the squash, both parts end up
+   further apart than at rest, and the band between them, half each part's share, stretches into a
+   tube. Meet adds a fold at the top of the cleavage that reads as a dark hole; with Meet off the
+   fold goes and the tube stays. Every include from before 7c0c6fe to now draws the same tube, so
+   none of the last two days' changes made it, and 1 above never fixed it here: it was measured on
+   Alexa only. Kar's pair rests exactly touching, which Alexa's was not shown to.
+   - Joe, on seeing it: "its the flat plane itself I have an issue with". The dark fold is the
+     meet's flat face, turned away from the light; the meet should not press to a plane at all.
+   - Evidence: `SquashPlayProbe -spLook -spSwing` on a scratch scene holding only the converted
+     prefab (`AvatarBridgeOutput/SquashTest/KarMeetDrag.unity`, to delete once fixed), with new
+     shots: `_raw` (the skinning, the squash left out) and `-spNoMeet`. Images
+     `D:/Claude/scratch/meetdrag/kar-drag-meet.jpg`, the includes `meetcmp/sheet.jpg`.
 
 ## 5.0.1
 

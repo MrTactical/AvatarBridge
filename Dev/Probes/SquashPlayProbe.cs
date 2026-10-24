@@ -37,7 +37,8 @@
 // close: at rest, then squeezed together from outside at two strengths, into
 // <dir>/look_<name>.png. For judging the shape where the pair meets. Each shot is drawn again as
 // the part shares in colour (_shares), as zebra stripes on the shader's normals (_zebra) and on
-// the triangles themselves (_zebra_mesh): a kink in a stripe is a crease. -spMeet turns the pair's
+// the triangles themselves (_zebra_mesh): a kink in a stripe is a crease, and with the skinning
+// alone, the squash left out (_raw). -spMeet turns the pair's
 // contact on first. -spPreview squeezes with the inspector preview's hands instead (0, 0.5, 1, 1).
 // -spSwing turns the parts' own bones instead, the cloth stopped, across any gap between them and
 // on into an overlap: one into a still partner by 0.3 and 0.6 reaches, then both, half each, by
@@ -868,12 +869,13 @@ namespace AvatarBridge.Regression
             sampler2D _MainTex;
             float4 _MainTex_ST;
             float _LookMode;
+            float _LookRaw;
             struct A { float4 vertex : POSITION; float3 normal : NORMAL; float4 tangent : TANGENT; float2 uv : TEXCOORD0; uint id : SV_VertexID; };
             struct V { float4 pos : SV_POSITION; float3 n : TEXCOORD0; float3 w : TEXCOORD1; float2 uv : TEXCOORD2; float4 share : TEXCOORD3; };
             V vert(A v)
             {
                 float3 p = v.vertex.xyz, n = v.normal, t = v.tangent.xyz;
-                YapsDentDeform(p, n, t, v.id);
+                if (_LookRaw < 0.5) YapsDentDeform(p, n, t, v.id);
                 V o;
                 o.pos = UnityObjectToClipPos(float4(p, 1));
                 o.w = mul(unity_ObjectToWorld, float4(p, 1)).xyz;
@@ -968,6 +970,9 @@ namespace AvatarBridge.Regression
                 // -spMeet: the pair's contact on, which a fresh build leaves off.
                 if (Environment.GetCommandLineArgs().Contains("-spMeet"))
                     foreach (var m in mats) { var s = m.GetVector("_YAPS_SquashShape"); m.SetVector("_YAPS_SquashShape", new Vector4(s.x, s.y, s.z, 1f)); }
+                // -spNoMeet: off, for a build saved with it on.
+                if (Environment.GetCommandLineArgs().Contains("-spNoMeet"))
+                    foreach (var m in mats) { var s = m.GetVector("_YAPS_SquashShape"); m.SetVector("_YAPS_SquashShape", new Vector4(s.x, s.y, s.z, 0f)); }
                 lookAt = 0;
                 lookWas = -1f;
                 foreach (var m in mats) m.SetFloat("_YAPS_SquashPulse", LookPreview ? 0f : LookShots[0].pulse);
@@ -1035,7 +1040,19 @@ namespace AvatarBridge.Regression
                 RenderTexture.active = null;
                 File.WriteAllBytes(Path.Combine(outDir, $"look_{lookShot}{modes[mode]}.png"), sheet.EncodeToPNG());
             }
+            // The skinning alone, the squash left out, to tell what the shader adds.
             Shader.SetGlobalFloat("_LookMode", 0f);
+            Shader.SetGlobalFloat("_LookRaw", 1f);
+            for (int c = 0; c < lookCams.Length; c++)
+            {
+                lookCams[c].RenderWithShader(shader, "");
+                RenderTexture.active = lookCams[c].targetTexture;
+                one.ReadPixels(new Rect(0, 0, 700, 700), 0, 0);
+                sheet.SetPixels(700 * c, 0, 700, 700, one.GetPixels());
+            }
+            RenderTexture.active = null;
+            File.WriteAllBytes(Path.Combine(outDir, $"look_{lookShot}_raw.png"), sheet.EncodeToPNG());
+            Shader.SetGlobalFloat("_LookRaw", 0f);
             UnityEngine.Object.DestroyImmediate(sheet);
             UnityEngine.Object.DestroyImmediate(one);
             Debug.Log($"[SquashPlay] look shot {lookShot}");

@@ -141,9 +141,15 @@ namespace AvatarBridge.Regression
             var painter = UiOffscreenProbe.Mount(painterType, Width, StoryHeight, false,
                 w => painterType.GetMethod("Pick", UiOffscreenProbe.Any).Invoke(w, new object[] { avatar }));
             yield return Settle(painter);
-            yield return PressNamed(t, painter, "The bone names");
-            Pairs(t, settings, "after The bone names");
-            yield return PressNamed(t, painter, "Add a pair");
+            yield return PressNamed(t, painter, "Paint over them");
+            Pairs(t, settings, "after Paint over them");
+            if (settings.pairs.Count < 2) yield return PressNamed(t, painter, "Add a pair");
+            else
+            {
+                // Two pairs is the cap, and the button says so by greying out.
+                var add = painter.Content.Query<Button>().ToList().FirstOrDefault(b => Label(b) == "Add a pair" && Shown(b, painter.Content));
+                Step(t, "Add a pair greyed at two pairs", add != null && !add.enabledInHierarchy, add == null ? "no Add a pair button" : add.enabledInHierarchy ? "pressable" : "greyed");
+            }
             var pairPopup = Field<PopupField<string>>(painter.Content, "Pair");
             if (pairPopup != null && settings.pairs.Count >= 2)
             {
@@ -156,23 +162,26 @@ namespace AvatarBridge.Regression
             {
                 yield return PressNamed(t, painter, "Add a pair");
             }
+            yield return Unfold(painter, "More for this pair");
             var name = Field<TextField>(painter.Content, "Name");
             if (name != null) { name.value = "Thighs"; yield return Settle(painter); }
             Pairs(t, settings, "after naming");
             int seat = settings.pairs.Count - 1;
+            if (seat < 0) { Step(t, "a pair to paint", false, "none after Add a pair"); painter.Dispose(); yield return StoryEnd(outFile); yield break; }
             for (int side = 0; side < 2; side++)
             {
+                yield return Unfold(painter, "More for this pair");
                 var sideGroup = Field<RadioButtonGroup>(painter.Content, "Side");
                 if (sideGroup == null) { Step(t, "Side", false, "no Side choice"); break; }
                 sideGroup.value = side;
                 yield return Settle(painter);
                 painterType.GetField("_bone", UiOffscreenProbe.Any).SetValue(painter.Window, side == 0 ? thighL : thighR);
+                yield return Unfold(painter, "More for this pair");
                 yield return PressNamed(t, painter, "The bone");
                 // Build measures a part on the skin painted at half or more, and wants 20 of it.
                 int whole = Painted(painter, 2 * seat + side, 0.5f);
                 Step(t, $"painted the thigh, {(side == 0 ? "left" : "right")}", whole >= 20, $"{Painted(painter, 2 * seat + side)} vertices, {whole} at half or more");
             }
-            yield return PressNamed(t, painter, "Smooth");
 
             // One brush stroke down the inside of the left thigh, as a person tidies a seed.
             var sideNow = Field<RadioButtonGroup>(painter.Content, "Side");
@@ -192,6 +201,17 @@ namespace AvatarBridge.Regression
             yield return Settle(painter);
             float afterStroke = Weight(painter, 2 * seat);
             Step(t, "brush stroke on the inner left thigh", afterStroke != beforeStroke, $"painted weight {beforeStroke:0} -> {afterStroke:0} ({points.Count} points on the skin)");
+            // The brush's tools sit in the Scene view panel while painting, Soften edge among them.
+            var brush = new VisualElement();
+            painterType.GetMethod("Brush", UiOffscreenProbe.Any).Invoke(painter.Window, new object[] { brush });
+            var soften = brush.Query<Button>().ToList().FirstOrDefault(b => Label(b) == "Soften edge");
+            if (soften == null) Step(t, "Soften edge", false, "not in the brush panel");
+            else
+            {
+                Press(soften, out bool softened);
+                yield return Settle(painter);
+                Step(t, "Soften edge", softened, $"painted weight {afterStroke:0} -> {Weight(painter, 2 * seat):0}");
+            }
             yield return PressNamed(t, painter, "Stop painting");
             WindowShot(painter, dir, "05 squash regions", null);
             SceneShotSave(cam, dir, "06 regions on the thighs (red left, blue right, yellow the chest pair)");
@@ -203,8 +223,8 @@ namespace AvatarBridge.Regression
             UiOffscreenProbe.Inspector.Target = settings;
             var inspector = UiOffscreenProbe.Mount(typeof(UiOffscreenProbe.Inspector), Width, StoryHeight, false);
             yield return Settle(inspector);
-            var build = inspector.Content.Query<Button>().ToList().FirstOrDefault(b => Label(b) == "Rebuild" || Label(b) == "Build");
-            if (build == null) Step(t, "Rebuild", false, "no Build or Rebuild button");
+            var build = inspector.Content.Query<Button>().ToList().FirstOrDefault(b => Label(b) == "Rebuild the squash" || Label(b) == "Build the squash");
+            if (build == null) Step(t, "Rebuild", false, "no Build the squash or Rebuild the squash button");
             else
             {
                 Press(build, out _);
@@ -227,8 +247,10 @@ namespace AvatarBridge.Regression
 
             // 6. The edit-mode preview: Squeeze, Test hand on the thigh, Bounce.
             yield return PressNamed(t, inspector, "Preview");
-            var rest = ThighPixels(avatar, thighL, thighR);
+            // Preview starts half squeezed; the rest picture is the part with no hand on it.
             var squeeze = Field<Slider>(inspector.Content, "Squeeze");
+            if (squeeze != null) { squeeze.value = 0f; yield return Ticks(0.5, null); }
+            var rest = ThighPixels(avatar, thighL, thighR);
             if (squeeze != null)
             {
                 squeeze.value = 1f;
@@ -365,6 +387,9 @@ namespace AvatarBridge.Regression
                 Press(preview, out _);
                 yield return Settle(tester, PlaySettleSeconds);
                 var hand = CardTitled(tester.Content, "Squash")?.Query<Toggle>().ToList().FirstOrDefault(x => Label(x) == "Test hand");
+                var squeeze = Field<Slider>(CardTitled(tester.Content, "Squash"), "Squeeze");
+                if (squeeze != null) { squeeze.value = 0f; for (int i = 0; i < 30; i++) yield return null; }
+                Note(t, "lab Squeeze before the hand", squeeze == null ? "no Squeeze slider" : $"{squeeze.value:0.##}, the preview's own {TypeNamed("AvatarBridge.YapsSquashPreview")?.GetField("Squeeze")?.GetValue(null)}");
                 if (hand != null)
                 {
                     // The cloth sways on its own, so the same wait without the hand is the floor.
@@ -655,6 +680,15 @@ namespace AvatarBridge.Regression
         {
             var w = painter.Window.GetType().GetField("_w", UiOffscreenProbe.Any)?.GetValue(painter.Window) as float[][];
             return w != null && channel < w.Length ? w[channel].Count(x => x >= least) : -1;
+        }
+
+        // A closed fold as a person opens it; the painter builds its folds closed on every rebuild.
+        static IEnumerator Unfold(UiOffscreenProbe.Mounted m, string title)
+        {
+            var card = CardTitled(m.Content, title);
+            if (card == null || card.Open) yield break;
+            card.Open = true;
+            yield return Settle(m);
         }
 
         static float Weight(UiOffscreenProbe.Mounted painter, int channel)
