@@ -1622,7 +1622,8 @@ so while both are set. A body whose bones don't say, or where the names take too
 regions painted in the same step: press **Paint them** there (*Tools ▸ YAPS ▸
 Squash regions* opens the same component). With nothing painted it says which pairs the bone names give (or that the picked bones are used), and **Paint over them** (or
 **Start empty**) starts from there. **Paint in the Scene view** opens the brush panel in the Scene
-view, over the avatar, and the painted skin is drawn on the body, faintly where something hides it.
+view, over the avatar, and while it paints the painted skin is drawn on the body, faintly where
+something hides it. The colours go when painting stops, so they never cover a squash being tested.
 The fold **More for this pair** holds the pair's name, and **Fill this side from**, which takes
 **The bone** (picked in its **Bone** field) or **The shape key** instead of painting (a size slider for the part is
 usually exactly the right skin), and **Clear this side**. Each

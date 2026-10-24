@@ -554,8 +554,9 @@ namespace AvatarBridge
         void OnScene(SceneView view)
         {
             if (_baked == null || _body == null || _w == null) return;
-            // The colours over the parts hid the very press the preview shows.
-            if (!_painting && YapsSquashPreview.On != null) return;
+            // Only while painting: anywhere else the colours over the parts hid the very press
+            // being tested, by the preview, the test hand or Play mode.
+            if (!_painting) return;
             var e = Event.current;
             if (e.type == EventType.Repaint)
             {
@@ -567,7 +568,7 @@ namespace AvatarBridge
                 DrawRegions(CompareFunction.Greater, 0.3f);
                 DrawRegions(CompareFunction.LessEqual, 1f);
             }
-            if (!_painting || Regions == null || Regions.pairs.Count == 0) return;
+            if (Regions == null || Regions.pairs.Count == 0) return;
             if (e.type == EventType.KeyDown && e.keyCode == KeyCode.Escape)
             {
                 SetPainting(false);

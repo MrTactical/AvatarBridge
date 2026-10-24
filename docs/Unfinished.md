@@ -788,6 +788,12 @@ Fixed on dev the same day, except where marked open.
    YAPS inspector and stays. **Meet is on by default** (Joe: should it stay off? "nah"), in the
    component and the patched shader's `_YAPS_SquashShape.w`; a component saved before keeps its
    value. compile-check 7/7, check-defines 8/8. Not rendered or seen in Unity yet.
+8. **The painted colours only while painting, 2026-10-24** (Joe, a screenshot on Kar: "I cannot
+   test the squish when the intrusive overlay is on top of the avatar"). The region overlay drew
+   whenever the component was inspected with pairs painted, hidden only under the inspector's
+   Preview, so the test hand and Play mode pressed a part under the colours. It now draws only while
+   **Paint in the Scene view** is on. Fill this side from and Copy to other side change the weights
+   with no colours in sight until painting resumes. compile-check 7/7, check-defines 8/8.
 
 ### 20. The atlas paints dots on viewers' screens. Joe, 2026-10-24, OPEN
 
