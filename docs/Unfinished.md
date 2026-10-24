@@ -425,6 +425,11 @@ ranked by how visible it should be:
   notes' YAPS line stand. `PlugGhostProbe` keeps failing on the marker-light cases by design; that
   is the expected result, not a regression. What is still open is the game check (S17.9), which
   confirms whether Joe's ghost was this cause at all.
+  **Seen again in game 2026-10-24 (Joe, screenshot):** a very faint straight plug shape across the
+  floor under a bent plug. The other player could not say whether their avatar went through the
+  YAPS upgrade, so the route is unknown. Next: S17.9's Resolved by view (`_YAPS_Debug` 1) on the
+  plug while it shows: three quarters (marker light) is this cause, full (atlas) would be a new bug
+  that needs the world and both builds.
 - **AM1-10, the menu-name rename rule.** Whether `RenamePass` should trigger on
   `IllegalMenuNameChars` (`[^a-zA-Z0-9/\-_#]`) instead of its own list, leaving
   `VerifyMenuParameterNames` to assert. Author decision: it changes the names users get for menu
@@ -1202,6 +1207,65 @@ checklist and a friend with time. A chamber that sets each check up makes it rep
 
 **First step, after 5.0.0:** a spike. One lounge room and one chamber in a fresh CCK world project,
 uploaded privately, to learn the world CCK's limits before designing the rest.
+
+### A VRChat accessory onto a ChilloutVR avatar: find and attach. Joe's idea 2026-10-24. PLAN ONLY, after 5.0.0
+
+Joe, 2026-10-24: "what if we can also throw them through the convertor? like lets say, a piece of
+clothing that I want to put on an already converted avatar, but attach it myself manually after?
+lets say, a "plug" thats vrc dependent but I can convert its logic to the avatar? like a find and
+attach system??" Recorded as a brand new idea at his word.
+
+**The gap.** Today an accessory converts only on a VRChat avatar: put it on the original and
+reconvert, and everything comes across (physics, contacts, SPS, VRCFury toggles). An avatar with no
+VRChat original has no route: a ChilloutVR-native avatar, or a converted one edited by hand since.
+That is the value: VRChat's accessory market (clothing, props, plugs) opens to ChilloutVR-native
+avatars. When the target did come out of the converter and its source is still in the project, the
+tool should say that reconverting is the better route.
+
+**Two modes, as Joe put them.**
+1. Convert only: the accessory comes out converted, and the user attaches it by hand.
+2. Find and attach: the tool also matches it onto the avatar.
+
+**What already exists.**
+- Bone matching: MA Merge Armature and VRCFury Armature Link define it. When the accessory carries
+  one, read its settings (offset, prefix, bone map) rather than guess. `YapsConverter` and
+  `YapsScanner` already read names through Fury's ArmatureLink ids (YapsConverter.cs:954, 1733;
+  YapsScanner.cs:309).
+- Component conversion: the passes in `BridgeConverter.ContentPasses` (PhysBones, Contacts,
+  Constraints, Misc components, Shader SPI patch, YAPS penetration system).
+- Logic merge: the Toolkit's Merge animators (`Editor/Toolkit/AnimatorMergeTool.cs`) copies layers
+  and parameters into a target controller and names clashes. AAS entries and the 3200-bit check are
+  not in it.
+- The plug is closest: YAPS's upgrade converts an SPS plug in place. Whether it works on a
+  ChilloutVR avatar with no descriptor is unchecked.
+
+**Why "run only the component passes" is not a clean cut.** Read from the pass list, not measured:
+- `BridgeConverter.Convert` takes a `VRCAvatarDescriptor`, and `VRCFuryBaker.TryBake` bakes from
+  one: Fury builds an accessory only as part of an avatar.
+- The component passes lean on the avatar ones: contacts drive parameters made by "Parameters and
+  menu", and the later clip passes repoint constraint, contact and collider enable curves inside
+  the merged controller.
+- A prefab asset can reference only its own objects, so its PhysBones collide with colliders it
+  carries. VRChat's player colliders (hands, fingers) come from the descriptor and have to be made,
+  or found, on the ChilloutVR avatar.
+
+**Candidate route for the first spike: a stand-in avatar.** Build a throwaway VRChat avatar from a
+copy of the target (its armature, a bare descriptor), put the accessory on it, run the normal
+pipeline unchanged, then carry back only what is new: the accessory's converted subtree, and its
+layers, parameters and menu entries merged into the target's own controller and AAS. It reuses every
+pass instead of forking a third path (the converter and the Toolkit already diverge: five of six
+audit findings were one-path-only), and Armature Link resolves against the target's real bones.
+Unknowns: what the pipeline does with the target's own ChilloutVR components on the copy, and
+telling new from touched on the way back.
+
+**Cut.**
+1. MVP: convert and attach, no logic. The report names every toggle not carried.
+2. Then the logic: layers, parameters, AAS entries, the 3200-bit check, name clashes with the
+   avatar's own parameters.
+3. A record on the attached accessory, so it re-attaches in one press after the avatar changes.
+
+**Gates only ChilloutVR can settle:** the physics and toggles of the attached accessory, as for any
+conversion.
 
 ### Squash pair contact: the flat seam is off, a natural squish is open. 2026-10-21
 
