@@ -1435,7 +1435,7 @@ version, keeps the copy too: it has no record of the original, so put that mesh 
 Filter by hand, or convert again. A dialog lists exactly what will go first, and it is one undo step.
 The files it generated stay in `Assets/YAPS/Generated` for the next Bake, so an undo never points
 at a missing asset. If you delete one by hand instead, *Clean up leftovers* in the window finds
-what it left.
+what it left, and puts a toggle that still names a deleted material back on the one it held before.
 
 **The material panel.** A patched material's YAPS block is grouped and named the same way as the
 component, and hands everything else to the shader's own editor: a Poiyomi material keeps
@@ -1598,7 +1598,11 @@ put on the avatar root moves there. Its steps run top to bottom, building last a
 squash** there builds it, **Rebuild the squash** rebuilds, and **Remove the squash** puts every
 layer back on its own material, toggles included. Deleting the component or the squash's objects by
 hand skips that and leaves every layer and toggle on its copy; the card says so, and **Remove
-squash** there still puts them back. The card says whether the picked avatar has squash, on how many
+squash** there still puts them back. Deleting the generated copies as well leaves each toggle
+naming a material that is gone, which draws pink in game: a swap pointed at a copy from 5.0.0 on
+remembers the material it held before, so the card says so, and **Remove squash** or *Clean up leftovers* puts those back too. The
+layers themselves are in plain sight in the Inspector; put those back by hand. The card says whether
+the picked avatar has squash, on how many
 materials, and when its regions were painted after the last build. Only a layer that lies over a soft part, close enough to follow it visibly, gets a copy; a baked plug
 never does, since it bends on its own. The rest keep their own material and cost nothing. The copies go to `Assets/YAPS/Generated/Squash`; a rebuild
 goes back to the folder the last build used, a conversion's own included, so they are written over

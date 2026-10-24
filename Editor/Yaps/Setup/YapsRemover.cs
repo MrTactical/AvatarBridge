@@ -596,6 +596,10 @@ namespace AvatarBridge
             }
             DropAtlasIfUnused(top, done);
 
+            // Material swaps left naming a copy that was deleted by hand.
+            int back = YapsSwapFollow.RestoreMissing(YapsSwapFollow.RunnableClips(top));
+            if (back > 0)
+                done.Add($"{BridgeElements.Count(back, "material swap", "material swaps")} back on what they held before YAPS: the copy they named was deleted");
             Undo.CollapseUndoOperations(group);
             return done;
         }

@@ -92,6 +92,7 @@ namespace AvatarBridge.Regression
                 else if (Has("-squashPaint")) Debug.Log("[Squash] " + Painted(avatar));
                 else if (Has("-squashSwap")) Debug.Log("[Squash] " + AddShader(avatar) + " || " + SwapTest(avatar.transform));
                 else if (Has("-squashByHand")) Debug.Log("[Squash] " + ByHandTest(avatar));
+                else if (Has("-squashDeleted")) Debug.Log("[Squash] " + DeletedTest(avatar, false) + " || " + DeletedTest(avatar, true));
                 else
                 {
                     // -squashSocket: a socket between the first pair, for a plug to part it.
@@ -715,6 +716,63 @@ namespace AvatarBridge.Regression
                         && AnimationUtility.GetObjectReferenceCurve(clip, binding)[0].value == before[smr][slot];
             return $"by hand on {smr.name} slot {slot}: follow {(followed ? "ok" : "FAILED")}, " +
                    $"card {(seen ? "ok" : "FAILED")} (\"{card}\"), remove {(back ? "ok" : "FAILED")}";
+        }
+
+        // The user's version of by hand: the generated copies deleted as well. Each swap key then
+        // names a missing material, the copy's mark that led back to the original is gone with it,
+        // and only the clip's own record can say what the key held. Put back by Remove squash, or
+        // with `sweep` by Clean up leftovers, which finds the clip through the avatar's animators.
+        static string DeletedTest(CVRAvatar avatar, bool sweep)
+        {
+            var root = avatar.transform;
+            Strip(root);
+            var before = root.GetComponentsInChildren<SkinnedMeshRenderer>(true).ToDictionary(r => r, r => r.sharedMaterials);
+            string said = YapsSquash.Add(root, Folder, out bool built, null, 0f);
+            var smr = before.Keys.FirstOrDefault(r => r.sharedMaterials.Any(m => m != null && m.HasProperty("_YAPS_DentOwn")));
+            if (!built || smr == null) return "deleted: FAILED, the squash did not build: " + said;
+            int slot = Array.FindIndex(smr.sharedMaterials, m => m != null && m.HasProperty("_YAPS_DentOwn"));
+            var original = before[smr][slot];
+            string name = sweep ? "Deleted sweep test" : "Deleted remove test";
+            var clip = new AnimationClip { name = name };
+            string clipPath = AssetDatabase.GenerateUniqueAssetPath($"{Folder}/{name}.anim");
+            AssetDatabase.CreateAsset(clip, clipPath);
+            var binding = EditorCurveBinding.PPtrCurve(AnimationUtility.CalculateTransformPath(smr.transform, root), typeof(SkinnedMeshRenderer), $"m_Materials.Array.data[{slot}]");
+            AnimationUtility.SetObjectReferenceCurve(clip, binding, new[] { new ObjectReferenceKeyframe { time = 0.5f, value = original } });
+            // Reachable the way a toggle is, so both buttons find it on their own.
+            var controller = UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPathWithClip(
+                AssetDatabase.GenerateUniqueAssetPath($"{Folder}/{name}.controller"), clip);
+            var host = new GameObject(name);
+            host.transform.SetParent(root, false);
+            host.AddComponent<Animator>().runtimeAnimatorController = controller;
+            YapsSquash.FollowSwaps(root, AvatarBridge.Yaps.YapsSwapFollow.RunnableClips(root), Folder, null);
+            AssetDatabase.SaveAssets();
+            Material Key() => AnimationUtility.GetObjectReferenceCurve(clip, binding)[0].value as Material;
+            bool followed = Key() != null && Key() != original;
+            // Read back from the file, as a later session would.
+            AssetDatabase.ImportAsset(clipPath, ImportAssetOptions.ForceUpdate);
+            bool written = System.IO.File.ReadAllText(clipPath + ".meta").Contains("yaps-swap-originals");
+
+            // By hand: the squash objects and component deleted, the slots put back by eye, and
+            // every generated copy deleted.
+            var copies = before.Keys.SelectMany(r => r.sharedMaterials).Append(Key())
+                .Where(m => m != null && (AssetImporter.GetAtPath(AssetDatabase.GetAssetPath(m))?.userData ?? "").StartsWith("squash:"))
+                .Distinct().ToList();
+            foreach (var t in root.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith("YAPS squash")).ToList())
+                if (t != null) UnityEngine.Object.DestroyImmediate(t.gameObject);
+            foreach (var settings in root.GetComponentsInChildren<AvatarBridge.Yaps.YapsSquashSettings>(true)) UnityEngine.Object.DestroyImmediate(settings);
+            foreach (var p in before) p.Key.sharedMaterials = p.Value;
+            foreach (var m in copies) AssetDatabase.DeleteAsset(AssetDatabase.GetAssetPath(m));
+            bool gone = Key() == null;
+
+            string card = YapsSquash.Status(root, out _);
+            bool warned = card.Contains("deleted");
+            if (sweep) YapsRemover.Sweep(root);
+            else YapsSquash.Strip(root, AvatarBridge.Yaps.YapsSwapFollow.RunnableClips(root));
+            bool back = Key() == original;
+            UnityEngine.Object.DestroyImmediate(host);
+            return $"deleted, {(sweep ? "Clean up leftovers" : "Remove squash")}, {copies.Count} copies: follow {(followed ? "ok" : "FAILED")}, " +
+                   $"record {(written ? "ok" : "FAILED")}, copies gone {(gone ? "ok" : "FAILED")}, card {(warned ? "ok" : "FAILED")} (\"{card}\"), " +
+                   $"put back {(back ? "ok" : "FAILED")}";
         }
 
         // Regions seeded from the bone names, as the region tool's first button does, then built

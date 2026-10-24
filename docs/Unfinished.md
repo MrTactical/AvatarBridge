@@ -1018,14 +1018,22 @@ the YAPS Squash component instead of pressing Remove, so the swaps stayed on the
   copy is gone. Two leads checked against it and left untested, still worth a test: the shader sweep
   (item 7) never covered the squash patch, and `FollowSwaps` keys copies into the clips before `Flush`
   writes them while the swap test reads the clip in memory only.
-- **Open, Joe's call: stop editing the user's clips [user's suggestion].** Both the squash and the
-  plug and socket bakes (`YapsSwapFollow.RepointInClips`) rewrite live, user-owned clips in place, so
-  the avatar depends on generated files and a hand cleanup breaks it. The user asks for it the way
-  VRCFury does it: leave the clips alone and repoint only at upload. The CCK has the hook,
-  `CCK_BuildUtility.PreAvatarBundleEvent`, invoked on the instantiated upload copy. Cheaper middle
-  ground: each repointed clip remembers its originals (say in its importer's userData), so Remove and
-  Clean up leftovers can restore keys whose copy was deleted, and the card warns about swap keys that
-  name a missing material.
+- **B, clips remember their originals: done on dev (Joe's call, 2026-10-25) [M].** Every key
+  `RepointInClips` moves off a user's material records that material in the clip's importer userData
+  (`yaps-swap-originals`, one line per key: clip local id, path, property, time, the original's
+  GlobalObjectId); a move back onto a user's material forgets it, copy to copy keeps the first.
+  "User's material" = not in a folder named YAPS and not carrying the squash mark. A clip whose
+  importer already holds someone else's userData is not recorded. `MissingKeys` counts remembered
+  keys whose material is gone; the squash card warns on them and counts them toward Remove;
+  Remove squash and Clean up leftovers (`RestoreMissing`) put them back. Renderer slots are not
+  covered: they show in the Inspector. Keys pointed before this have no record, and a rebuild
+  over them makes none (copy to copy): Remove, then build.
+  `SquashTestBuilder -squashDeleted` (build, key a swap reachable through an Animator, follow,
+  reimport the clip, delete the copies, card, then Remove squash, and again with Clean up
+  leftovers) failed record, card and put back on both before, passes after.
+- **A, repoint only at upload: planned for 5.1 (Joe, 2026-10-25).** Leave user clips untouched and
+  repoint on the upload copy through `CCK_BuildUtility.PreAvatarBundleEvent`, the way VRCFury does.
+  Covers the plug and socket bakes as well as squash.
 
 ### 24. "Converting drops the face-tracking blendshapes." A user, 2026-10-24 (via Joe, their output folder)
 

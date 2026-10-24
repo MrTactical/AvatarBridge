@@ -21,7 +21,9 @@
 // replaces the same slot on the same kind of renderer, and an avatar
 // set up natively is MORE likely to have its toggles already built.
 #if CVR_CCK_EXISTS
+using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using ABI.CCK.Components;
 using UnityEditor;
@@ -88,6 +90,7 @@ namespace AvatarBridge.Yaps
                         continue;
                     }
                     bool touched = false;
+                    var ledger = Ledger.Of(clip);
                     for (int i = 0; i < keys.Length; i++)
                     {
                         if (keys[i].value != from)
@@ -105,6 +108,10 @@ namespace AvatarBridge.Yaps
                         keys[i].value = to;
                         touched = true;
                         repointed++;
+                        // Off a user's material: remembered. Back onto one: forgotten. Copy to
+                        // copy keeps the first, which is the one to go back to.
+                        if (!Generated(from)) ledger?.Set(binding, keys[i].time, from);
+                        else if (!Generated(to) && EditorUtility.IsPersistent(to)) ledger?.Forget(binding, keys[i].time);
                     }
                     if (touched)
                     {
@@ -112,10 +119,120 @@ namespace AvatarBridge.Yaps
                         Undo.RegisterCompleteObjectUndo(clip, "YAPS material swap");
                         AnimationUtility.SetObjectReferenceCurve(clip, binding, keys);
                         EditorUtility.SetDirty(clip);
+                        ledger?.Save();
                     }
                 }
             }
             return repointed;
+        }
+
+        // Each key moved off a user's material remembers that material in the clip's importer, so
+        // a key whose copy was deleted by hand can still go back. Without it the way back runs
+        // through the copy's own mark, and a deleted copy takes that with it: the swap then puts
+        // a missing material in the slot, which draws pink in game.
+        sealed class Ledger
+        {
+            const string Head = "yaps-swap-originals\n";
+            readonly AssetImporter importer;
+            readonly string clipId;
+            readonly List<string[]> lines;
+
+            Ledger(AssetImporter importer, string clipId)
+            {
+                this.importer = importer;
+                this.clipId = clipId;
+                string data = importer.userData ?? "";
+                lines = data.StartsWith(Head)
+                    ? data.Substring(Head.Length).Split('\n').Select(l => l.Split('\t')).Where(f => f.Length == 5).ToList()
+                    : new List<string[]>();
+            }
+
+            // Null for a clip with no file, or whose importer already carries somebody else's data.
+            public static Ledger Of(AnimationClip clip)
+            {
+                if (clip == null || !EditorUtility.IsPersistent(clip)) return null;
+                var importer = AssetImporter.GetAtPath(AssetDatabase.GetAssetPath(clip));
+                if (importer == null || !(string.IsNullOrEmpty(importer.userData) || importer.userData.StartsWith(Head))) return null;
+                // Several clips can share one file, a controller's sub-assets, so each line names its own.
+                return new Ledger(importer, GlobalObjectId.GetGlobalObjectIdSlow(clip).targetObjectId.ToString());
+            }
+
+            static string Time(float t) => t.ToString("R", CultureInfo.InvariantCulture);
+
+            bool Is(string[] f, EditorCurveBinding b, float t) => f[0] == clipId && f[1] == b.path && f[2] == b.propertyName && f[3] == Time(t);
+
+            public IEnumerable<(string path, string property, float time, string original)> Entries =>
+                lines.Where(f => f[0] == clipId).Select(f => (f[1], f[2], float.Parse(f[3], CultureInfo.InvariantCulture), f[4]));
+
+            public void Set(EditorCurveBinding b, float t, Material original)
+            {
+                Forget(b, t);
+                if (EditorUtility.IsPersistent(original))
+                    lines.Add(new[] { clipId, b.path, b.propertyName, Time(t), GlobalObjectId.GetGlobalObjectIdSlow(original).ToString() });
+            }
+
+            public void Forget(EditorCurveBinding b, float t) => lines.RemoveAll(f => Is(f, b, t));
+
+            // Written by the clip's own save, which writes the importer too.
+            public void Save()
+            {
+                string data = lines.Count == 0 ? "" : Head + string.Join("\n", lines.Select(f => string.Join("\t", f)));
+                if (importer.userData != data) importer.userData = data;
+            }
+        }
+
+        // A material YAPS wrote: its folders are all called YAPS, the toolkit's and a conversion's,
+        // and a squash copy says so in its importer wherever it was put.
+        static bool Generated(Material m)
+        {
+            string path = m != null ? AssetDatabase.GetAssetPath(m) : null;
+            if (string.IsNullOrEmpty(path)) return false;
+            return path.Replace('\\', '/').Split('/').Reverse().Skip(1).Contains("YAPS")
+                   || (AssetImporter.GetAtPath(path)?.userData ?? "").StartsWith(YapsSquash.Mark);
+        }
+
+        // Remembered keys whose material is gone: the copy was deleted by hand.
+        public static int MissingKeys(IEnumerable<AnimationClip> clips) => Walk(clips, false);
+
+        // Puts each of those back on the material it held before YAPS, and forgets keys that went
+        // back some other way. Keys still on a live copy are left to that copy's own Remove.
+        public static int RestoreMissing(IEnumerable<AnimationClip> clips) => Walk(clips, true);
+
+        static int Walk(IEnumerable<AnimationClip> clips, bool restore)
+        {
+            int count = 0;
+            foreach (var clip in (clips ?? Enumerable.Empty<AnimationClip>()).Where(c => c != null).Distinct())
+            {
+                var ledger = Ledger.Of(clip);
+                if (ledger == null) continue;
+                var bindings = AnimationUtility.GetObjectReferenceCurveBindings(clip);
+                bool changed = false;
+                foreach (var (path, property, time, original) in ledger.Entries.ToList())
+                {
+                    int at = Array.FindIndex(bindings, b => b.path == path && b.propertyName == property);
+                    var keys = at >= 0 ? AnimationUtility.GetObjectReferenceCurve(clip, bindings[at]) : null;
+                    int i = keys == null ? -1 : Array.FindIndex(keys, k => k.time == time);
+                    if (i < 0 || (keys[i].value != null && !Generated(keys[i].value as Material)))
+                    {
+                        // The key is gone, or holds a user's material again.
+                        if (restore && at >= 0) { ledger.Forget(bindings[at], time); changed = true; }
+                        continue;
+                    }
+                    if (keys[i].value != null) continue;
+                    var back = GlobalObjectId.TryParse(original, out var id) ? GlobalObjectId.GlobalObjectIdentifierToObjectSlow(id) as Material : null;
+                    if (back == null) continue;
+                    count++;
+                    if (!restore) continue;
+                    Undo.RegisterCompleteObjectUndo(clip, "YAPS material swap");
+                    keys[i].value = back;
+                    AnimationUtility.SetObjectReferenceCurve(clip, bindings[at], keys);
+                    EditorUtility.SetDirty(clip);
+                    ledger.Forget(bindings[at], time);
+                    changed = true;
+                }
+                if (changed) ledger.Save();
+            }
+            return count;
         }
 
         // What animation paths in this avatar's clips are relative to. For a
