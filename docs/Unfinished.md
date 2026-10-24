@@ -745,6 +745,16 @@ due on the Nightly branch within days; none of this is in stable yet.
    until the Nightly. The neighbour checks fail at both scales too, not yet separated from this.
    To decide: where the shader can learn the avatar's scale (a parameter the client drives, or
    measured from the skin), then a fix and a rerun at 0.2, 0.5, 2 and 5.
+   **The skin carries it, measured 2026-10-24 [M]** (`Dev/Probes/SkinScaleProbe` with
+   `Hidden/SkinScaleCapture`, which records what the vertex stage receives on the plug's slots;
+   D3D11 GPU skinning). Root 1, 2, 0.5: every plug vertex's normal and tangent arrive 1.0000,
+   2.0000, 0.5000 long, the plug spans 1.28, 2.57, 0.64 m, and `unity_ObjectToWorld` scales by
+   1.0000 at all three. So skinning does not renormalise, and |normal| over the bake's normal is the
+   scale, per vertex. A fix has two halves: the recovery subtracts the baked offset unscaled, so at
+   2x each vertex finds its root displaced by its own offset (the 59.9x stretch with seams shut),
+   and the length. Bone scale the bake already follows (`_YAPS_BakeGirth`, `_YAPS_BakeScale`)
+   lengthens the normal too, so it divides out through the baked normal's direction. Unmeasured:
+   CPU skinning, a blendshape's normal deltas at weights other than the bake's, and ChilloutVR.
 3. **Prop partial sync**: the server hands out control per part of a prop, and Disallow Theft is now
    enforced. `YapsPropBuilder` already leaves it off on fresh props, but who writes a prop's synced
    value changes: retest the prop contact channel on the Nightly.
