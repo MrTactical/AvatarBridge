@@ -537,6 +537,11 @@ Read what the seam check measures before calling it a bake fault.
 - **Run 2026-10-24 [M]** on Non Corpus Zone's converted Alexa plug (6445 vertices, 307 seam pairs):
   PASS. Seams open 0.17 mm at most; the 90° walk stretches 4.65x at 0.22L, under the floor. The
   6.31x plug and the floor's own avatar are still the two to measure.
+- **Run 2026-10-24 [M]** on another converted SPS avatar's plug (117 seam pairs), dev and the
+  light-relay branch alike, line for line: 35 checks pass, one fails. The 45° YAPS hole walk opens a
+  seam 0.96 mm at 1.36L (vertices 77 and 553, one rest point, normals 0° apart, both moved about
+  275 mm), a true seam parting deep in a hard bend. The 90° walk passes there (3.31x). Not
+  separated yet.
 
 ### 16. Tester reports on the rc builds, 2026-10-22
 
@@ -871,6 +876,20 @@ due on the Nightly branch within days; none of this is in stable yet.
    through cells sized for a plug 1.6 times as long), one 90° walk-in and one scenario, are not yet
    separated from that. Existing plugs need a re-bake. Still open: sockets and squash reach under
    scaling, and all of it in ChilloutVR.
+   **A skinned socket mesh opens at its baked size, measured 2026-10-24 [M]**
+   (`Dev/Probes/SocketScaleProbe`, one scale per Unity process: re-scaling the root inside one left
+   the skin at the first size. `-sockMaterial` put an orphaned body-socket bake back on its body,
+   34453 vertices, 2 shapes, the contact channel's depth forced to 1). The mesh reads 1.6061 avatar
+   units across at 1, 2 and 0.5, so the root's scale reached the skin; the widest opening reads
+   0.0098, 0.0049 and 0.0195 avatar units, the same 9.8 mm in the world at every size. A quarter turn
+   moves every vertex's opening by 0.0° from its unturned move turned, so the opening does turn with
+   the avatar (the shader comment saying the deltas keep the bake pose is wrong); only the size is
+   baked. Fix to decide: the socket bake records a skin scale as the plug's does, and the deltas
+   scale by the live normal's length over it, then a re-bake. Plain socket meshes take their scale
+   from the matrix and were not measured. Beside it, by reading only: a DPS plug's length rides its
+   marker light's intensity, which no transform scale reaches, so a resized plug opens a light-read
+   socket as if it were its baked length. Squash reaches are kept in each follow node's units, so
+   they should scale; not measured.
 3. **Prop partial sync**: the server hands out control per part of a prop, and Disallow Theft is now
    enforced. `YapsPropBuilder` already leaves it off on fresh props, but who writes a prop's synced
    value changes: retest the prop contact channel on the Nightly.
