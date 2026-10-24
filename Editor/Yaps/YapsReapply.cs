@@ -76,7 +76,7 @@ namespace AvatarBridge
                     continue;
                 }
 
-                material.shader = shader;
+                YapsShaderPatcher.Wear(material, shader);
                 Restore(material, saved);
                 EditorUtility.SetDirty(material);
                 patched++;

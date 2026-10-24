@@ -674,7 +674,7 @@ namespace AvatarBridge
                 existing.CopyPropertiesFromMaterial(basis);
                 if (patched != null)
                 {
-                    existing.shader = patched;
+                    YapsShaderPatcher.Wear(existing, patched);
                 }
                 YapsLock.Stamp(existing, source);
                 EditorUtility.SetDirty(existing);
@@ -683,7 +683,7 @@ namespace AvatarBridge
             var made = new Material(basis) { name = source.name + " (YAPS)" };
             if (patched != null)
             {
-                made.shader = patched;
+                YapsShaderPatcher.Wear(made, patched);
             }
             YapsLock.Stamp(made, source);
             AssetDatabase.CreateAsset(made, path);

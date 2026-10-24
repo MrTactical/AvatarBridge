@@ -10,7 +10,7 @@ namespace AvatarBridge.Regression
     // A squash whose every layer refuses the patch squashes nothing. It was built anyway and
     // reported as converted, with the refusals only in the detail (found by the corpus on an
     // avatar whose one skin shader would not compile once patched). Standard is refused too, but
-    // a skin Simple Lit can draw moves onto it instead.
+    // its skin moves onto YAPS Standard instead.
     //
     // Run: -executeMethod AvatarBridge.Regression.SquashRefusedTest.Run
     public static class SquashRefusedTest
@@ -58,7 +58,8 @@ namespace AvatarBridge.Regression
                     "and leaves nothing on the avatar");
                 Check(said.Contains("surface shader"), "the reason given is the layer's refusal");
 
-                // Standard has no source to patch: a skin Simple Lit can draw moves onto it.
+                // Standard has no source to patch: its skin moves onto YAPS Standard, Unity's own
+                // source, which Simple Lit's property list cannot stand in for.
                 var standard = new Material(Shader.Find("Standard")) { name = "Plain" };
                 AssetDatabase.CreateAsset(standard, Dir + "/Plain.mat");
                 root = Avatar(standard, roots);
@@ -66,22 +67,38 @@ namespace AvatarBridge.Regression
                 Debug.Log("[SquashRefusedTest]   said: " + said);
                 var worn = root.GetComponentInChildren<SkinnedMeshRenderer>().sharedMaterial;
                 Check(built, "a plain Standard skin is squashed");
-                Check(worn != standard && worn.HasProperty("_YAPS_DentOwn") && worn.HasProperty("_Glossiness"),
-                    "on a patched Simple Lit copy");
-                Check(said.Contains("wears YAPS Simple Lit"), "and the log says so");
+                Check(worn != standard && worn.HasProperty("_YAPS_DentOwn") && worn.HasProperty("_MetallicGlossMap"),
+                    "on a patched YAPS Standard copy");
+                Check(said.Contains("wears YAPS Standard"), "and the log says so");
 
-                // One Simple Lit would draw differently keeps its own look, and says why.
+                // A metallic map was refused while Simple Lit was the only host; it carries over now.
                 var mapped = new Material(standard) { name = "Mapped" };
                 // A saved texture: the built-in white one does not survive the material being saved.
                 var metal = new Texture2D(4, 4);
                 AssetDatabase.CreateAsset(metal, Dir + "/Metal.asset");
                 mapped.SetTexture("_MetallicGlossMap", metal);
+                mapped.EnableKeyword("_METALLICGLOSSMAP");
+                // Transparent, as Standard's inspector leaves it: the blend, the keyword and a queue set
+                // by hand, all of which the copy must keep.
+                mapped.SetFloat("_Mode", 3f);
+                mapped.SetFloat("_SrcBlend", (float) UnityEngine.Rendering.BlendMode.One);
+                mapped.SetFloat("_DstBlend", (float) UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+                mapped.SetFloat("_ZWrite", 0f);
+                mapped.EnableKeyword("_ALPHAPREMULTIPLY_ON");
+                mapped.renderQueue = (int) UnityEngine.Rendering.RenderQueue.Transparent;
                 AssetDatabase.CreateAsset(mapped, Dir + "/Mapped.mat");
+                Debug.Log($"[SquashRefusedTest]   source queue {mapped.renderQueue}, keywords {string.Join(" ", mapped.shaderKeywords)}");
                 root = Avatar(mapped, roots);
                 said = YapsSquash.Add(root, Dir + "/OutMapped", out built);
                 Debug.Log("[SquashRefusedTest]   said: " + said);
-                Check(!built, "a Standard skin with a metallic map is not squashed");
-                Check(said.Contains("no metallic map"), "and the reason names the map");
+                worn = root.GetComponentInChildren<SkinnedMeshRenderer>().sharedMaterial;
+                Check(built, "a Standard skin with a metallic map is squashed");
+                Check(worn != mapped && worn.HasProperty("_YAPS_DentOwn")
+                    && worn.HasProperty("_MetallicGlossMap") && worn.GetTexture("_MetallicGlossMap") == metal
+                    && worn.IsKeywordEnabled("_METALLICGLOSSMAP"), "and keeps its map");
+                Check(worn.renderQueue == mapped.renderQueue && worn.IsKeywordEnabled("_ALPHAPREMULTIPLY_ON")
+                    && worn.GetFloat("_DstBlend") == mapped.GetFloat("_DstBlend"),
+                    $"and its blend and render queue ({worn.renderQueue} for {mapped.renderQueue})");
             }
             catch (System.Exception e)
             {

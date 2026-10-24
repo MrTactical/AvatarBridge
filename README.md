@@ -1454,9 +1454,13 @@ built avatar, since every patched shader is a complete copy of its own in
 copy is gone until the next conversion or bake locks it again. Where Poiyomi can't lock
 it, the report says so: see [Poiyomi's unlocked shader ships under YAPS](#yaps-the-report-says-poiyomis-unlocked-shader-ships-under-yaps).
 
+**YAPS Standard.** Unity's Standard is built in, with no source on disk to patch, so a mesh
+wearing it moves to YAPS Standard: the same shader built from Unity's published source, with every
+setting carried over (rendering mode, metallic, occlusion, emission, height and detail maps).
+
 **YAPS Simple Lit.** A plain lit shader (metallic workflow through Unity's own BRDF) that the tool
-falls back to when a mesh's own shader cannot be patched (Unity's Standard and everything else
-built in has no source on disk, a surface shader has no vertex function of its own, some are made
+falls back to when any other shader cannot be patched (the rest of Unity's built-in shaders have no
+source on disk, a surface shader has no vertex function of its own, some are made
 on import from a file that is not shader source, and some borrow their passes from a shader that
 cannot be patched), with the
 colour, albedo, normal map, metallic and smoothness carried over. The test plug wears it. Put a
@@ -2210,10 +2214,10 @@ Bipeds are unaffected by any of it.
   would undo the rewiring.
 - **Squash (opt-in).** A layer whose shader cannot be patched (a built-in shader with no source on
   disk, a surface shader) cannot follow, so the pair under it holds still rather than coming
-  through it, and the report names the layer. Unity's Standard is the exception when the layer is
-  opaque and uses only colour, albedo, normal map, metallic and smoothness: it moves to **YAPS
-  Simple Lit** with those carried over, and the report says so. A Standard layer with a
-  metallic, occlusion, emission, height or detail map keeps its look and holds still. When no layer over the parts can be patched,
+  through it, and the report names the layer. Unity's Standard is the exception: it moves to
+  **YAPS Standard**, the same shader from Unity's published source, with every setting carried over,
+  and the report says so. Simple Lit never stands in on a squash layer, since it would repaint the
+  skin. When no layer over the parts can be patched,
   nothing is built and the report says why. A layer casts its shadow unsquashed when the shadow
   comes from somewhere the conversion cannot reach, such as another shader's caster or a Fallback
   that cuts alpha; Unity's standard caster and an opaque Fallback bend with it. From painted regions, a layer more than 3 cm off the skin
@@ -3212,12 +3216,13 @@ instead of coming out of the exit. In order:
 
 ### YAPS: "could not patch the shader", or the test plug sits there straight
 
-The plug's material wears a shader the patcher cannot wrap: Unity's Standard and everything else
-built in has no source on disk, a surface shader has no vertex function of its own, some are made
+The plug's material wears a shader the patcher cannot wrap: Unity's built-in shaders have no
+source on disk, a surface shader has no vertex function of its own, some are made
 on import from a file that is not shader source (ORL's, for one), and some borrow their passes
-from a shader that cannot be patched. The tool
-falls back to **YAPS Simple Lit** with the colour and textures carried over and says so in the
-outcome; on a converted avatar the report names the material. A converted socket that is its own
+from a shader that cannot be patched. Unity's Standard moves to **YAPS Standard**, the same shader
+from Unity's published source, with every setting carried over. Any other shader
+falls back to **YAPS Simple Lit** with the colour and textures carried over. The outcome says
+which; on a converted avatar the report names the material. A converted socket that is its own
 mesh falls back the same way; a socket on the body keeps its contact-driven shapes and its own
 shader. If you want the original look, put a shader with source on the mesh (Poiyomi patches
 cleanly) and re-bake or reconvert.

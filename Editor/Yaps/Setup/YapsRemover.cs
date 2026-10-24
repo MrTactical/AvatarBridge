@@ -294,7 +294,7 @@ namespace AvatarBridge
                         Undo.RecordObject(m, "Remove YAPS plug");
                         m.SetFloat("_YAPS_Enabled", 0f);
                         var shader = YapsShaderPatcher.OriginalShaderOf(m);
-                        if (shader != null) m.shader = shader;
+                        if (shader != null) YapsShaderPatcher.Wear(m, shader);
                         EditorUtility.SetDirty(m);
                     }
                     renderer.sharedMaterials = mats;

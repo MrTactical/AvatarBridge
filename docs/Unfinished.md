@@ -185,6 +185,27 @@ the YAPS avatars [M]:
   Standard with a metallic map (three), Unity's surface shaders (two), shaders in error that read
   as `Hidden/InternalErrorShader` (four, one avatar's scene variants). Correct by the rule above; the fallback simply finds
   little to take in this corpus.
+  **YAPS Standard, on dev 2026-10-24 [M] (Joe: "try that"):** `Editor/Yaps/YapsStandard.shader` is
+  Unity's Standard rebuilt from its published source (MIT, notice in the file): the same properties,
+  passes and pragmas, Unity's own vertex functions called through thin wrappers that the patcher can
+  take. A Standard material on a plug, socket or squash layer now moves to it with every setting
+  carried over (`YapsNativeBuilder.OnFallback`); every other refused shader still goes to Simple Lit,
+  which never stands in on a squash layer. `SquashRefusedTest` old code 5 WRONG, new code PASS: a
+  plain Standard skin is built on a patched YAPS Standard copy, and a transparent one with a metallic
+  map keeps its map, keyword, blend and render queue. SquashPartsTest, StandardCasterTest and
+  IncludeVertexTest PASS. Full shader sweep RESULT PASS, 54 of 54: YAPS Standard plain, every map
+  and cutout patched, 0 px over 2/255 against the unpatched shader at rest and off, Bend and Open 0
+  stray with full cover in view and shadow; built-in Standard and Standard every map refused, drawn
+  on YAPS Standard, 0 px against built-in Standard. Run 427's three metallic-map avatars should now
+  build; the next full run checks them.
+  **Found on the way, pre-existing, fixed for YAPS [M]:** Unity drops a material's own render queue
+  when its shader changes. A QueueProbe read 2000 for a transparent 3000 on every route that swaps
+  the shader (Standard to the patched copy, Standard to Simple Lit, Poiyomi to YAPS Standard), so
+  every patched copy of a transparent Standard or Poiyomi material drew in the opaque queue.
+  `YapsShaderPatcher.Wear` keeps the queue across the swap and every YAPS site uses it.
+  **Still open:** the same swap without the queue kept in `Editor/Core/ShaderSpiPatcher.cs:1370`
+  (`copy.shader = patchedShader`, the SPS patcher) and `SceneAssetRehomer.cs:265`. Unmeasured there;
+  a failing test first.
 
 
 Joe, on the K2 options: "not every shader is built the same ... we would need to test YAPS plugs and

@@ -253,15 +253,15 @@ namespace AvatarBridge.Yaps
                 var source = variant;
                 var legacy = YapsLegacyMap.Detect(source, out _);
                 // DPS has no switch for its own deform, so its shader is never
-                // patched; Simple Lit carries the look instead. Same rule the plug's
-                // own material follows.
+                // patched; Simple Lit carries the look instead, and YAPS Standard
+                // for Standard. Same rule the plug's own material follows.
                 var shader = legacy == YapsLegacyMap.Origin.DPS ? null
                     : YapsShaderPatcher.Patch(source, report, out _, out _,
                                               allowSps: legacy == YapsLegacyMap.Origin.SPS,
                                               roles: YapsShaderPatcher.Roles.Plug);
                 if (shader == null)
                 {
-                    var plain = YapsNativeBuilder.OnSimpleLit(source, out _);
+                    var plain = YapsNativeBuilder.OnFallback(source, out _);
                     shader = plain != null
                         ? YapsShaderPatcher.Patch(plain, report, out _, out _, roles: YapsShaderPatcher.Roles.Plug)
                         : null;

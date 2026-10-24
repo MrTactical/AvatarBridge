@@ -460,12 +460,12 @@ namespace AvatarBridge
             }
 
             // A shader that will not take the deform is not the end of it:
-            // Simple Lit will, with the look carried over. The toolkit has
+            // YAPS Standard or Simple Lit will, with the look carried over. The toolkit has
             // always done this; the converter used to give up instead. DPS
             // has already tried Simple Lit, and the same patch refuses again.
             if (shader == null && legacy != YapsLegacyMap.Origin.DPS)
             {
-                shader = PatchOnSimpleLit(ctx, source, ref refusal, out var plain, out skippedShadowPasses,
+                shader = PatchOnFallback(ctx, source, ref refusal, out var plain, out skippedShadowPasses,
                     YapsShaderPatcher.Roles.Plug);
                 if (shader != null)
                 {
@@ -543,30 +543,36 @@ namespace AvatarBridge
             return patched;
         }
 
-        // YAPS Simple Lit for a material whose own shader will not take the
-        // deform, with the look carried over: the toolkit's rule for a plug
-        // and for a socket that is its own mesh. Null when Simple Lit refuses
-        // too, and refusal then says so.
-        static Shader PatchOnSimpleLit(BridgeContext ctx, Material source, ref string refusal,
+        // A shader the patcher takes, for a material whose own will not, with the look carried
+        // over: the toolkit's rule for a plug and for a socket that is its own mesh. Null when that
+        // one refuses too, and refusal then says so.
+        static Shader PatchOnFallback(BridgeContext ctx, Material source, ref string refusal,
             out Material plain, out int skippedShadowPasses, YapsShaderPatcher.Roles roles)
         {
             skippedShadowPasses = 0;
-            plain = YapsNativeBuilder.OnSimpleLit(source, out string why);
+            plain = YapsNativeBuilder.OnFallback(source, out string why);
             if (plain == null)
             {
                 refusal += "; and " + why;
                 return null;
             }
+            string host = plain.shader.name.Replace('/', ' ');
             var shader = YapsShaderPatcher.Patch(plain, ctx.Report,
                 out string plainRefusal, out skippedShadowPasses, roles: roles);
             if (shader == null)
             {
-                refusal += "; and YAPS Simple Lit refused too: " + plainRefusal;
+                refusal += $"; and {host} refused too: " + plainRefusal;
                 return null;
             }
-            ctx.Report.Approximated(Category, $"\"{source.name}\" wears YAPS Simple Lit now",
-                $"Its shader could not take the deform ({refusal}). Colour, albedo, normal, metallic and " +
-                "smoothness carried over.");
+            // Unity's own source draws as Standard did, so only Simple Lit is an approximation.
+            if (plain.shader.name == YapsNativeBuilder.StandardName)
+                ctx.Report.Converted(Category, $"\"{source.name}\" wears YAPS Standard now",
+                    "Unity's Standard has no source to patch. YAPS Standard is the same shader from Unity's " +
+                    "published source, every setting carried over.");
+            else
+                ctx.Report.Approximated(Category, $"\"{source.name}\" wears YAPS Simple Lit now",
+                    $"Its shader could not take the deform ({refusal}). Colour, albedo, normal, metallic and " +
+                    "smoothness carried over.");
             return shader;
         }
 
@@ -1139,11 +1145,11 @@ namespace AvatarBridge
                     var patchSource = materials[slot];
                     var patched = YapsShaderPatcher.Patch(patchSource, ctx.Report, out string refusal, out _,
                         roles: YapsShaderPatcher.Roles.Socket);
-                    // The mesh is the socket's own, so Simple Lit repaints only the
+                    // The mesh is the socket's own, so the fallback repaints only the
                     // socket, as the toolkit does. A body never reaches here.
                     if (patched == null)
                     {
-                        patched = PatchOnSimpleLit(ctx, materials[slot], ref refusal, out var plain, out _,
+                        patched = PatchOnFallback(ctx, materials[slot], ref refusal, out var plain, out _,
                             YapsShaderPatcher.Roles.Socket);
                         patchSource = plain;
                     }

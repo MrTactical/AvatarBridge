@@ -540,7 +540,8 @@ namespace AvatarBridge
                         continue;
                     }
                     basis.Start();
-                    var copy = new Material(YapsLock.Basis(source)) { shader = shader, name = source.name };
+                    var copy = new Material(YapsLock.Basis(source)) { name = source.name };
+                    YapsShaderPatcher.Wear(copy, shader);
                     basis.Stop();
                     copy.SetFloat("_YAPS_DentPower", 1f);
                     copy.SetTexture("_YAPS_DentOwn", own);
@@ -781,43 +782,25 @@ namespace AvatarBridge
             }
             var shader = YapsShaderPatcher.Patch(source, report, out string refusal, out int shadows,
                 roles: YapsShaderPatcher.Roles.Squash);
-            // Standard has no source to patch. Simple Lit takes its property names, so a skin using
-            // only what Simple Lit draws moves over unchanged; any other skin keeps its own look.
+            // Standard has no source to patch. YAPS Standard is its source, so the skin moves over
+            // unchanged. Simple Lit never stands in on a body: it would repaint the skin.
             if (shader == null && source.shader != null && source.shader.name == "Standard")
             {
-                string lacks = SimpleLitLacks(source);
-                var plain = lacks == null ? YapsNativeBuilder.OnSimpleLit(source, out lacks) : null;
+                var plain = YapsNativeBuilder.OnFallback(source, out string lacks);
                 if (plain != null)
                 {
                     shader = YapsShaderPatcher.Patch(plain, report, out string plainRefusal, out shadows,
                         roles: YapsShaderPatcher.Roles.Squash);
-                    lacks = "YAPS Simple Lit refused too: " + plainRefusal;
+                    lacks = "YAPS Standard refused too: " + plainRefusal;
                     UnityEngine.Object.DestroyImmediate(plain);
                 }
-                if (shader != null) log?.Add($"\"{source.name}\" wears YAPS Simple Lit now, colour, albedo, normal map, metallic and smoothness carried over");
+                if (shader != null) log?.Add($"\"{source.name}\" wears YAPS Standard now, every setting carried over");
                 else refusal += "; and " + lacks;
             }
             if (shader == null) log?.Add($"left \"{source.name}\" as it was: {refusal}");
             // Unity's standard caster is wrapped; a caster from anywhere else cannot be reached.
             else if (shadows > 0) log?.Add($"\"{source.name}\" casts its shadow unsquashed");
             return shader;
-        }
-
-        // What a Standard material draws that Simple Lit does not, or null.
-        static string SimpleLitLacks(Material m)
-        {
-            if (m.GetFloat("_Mode") != 0f) return "YAPS Simple Lit is opaque only";
-            foreach (var (map, what) in new[] { ("_MetallicGlossMap", "metallic map"), ("_OcclusionMap", "occlusion map"),
-                ("_EmissionMap", "emission map"), ("_ParallaxMap", "height map"), ("_DetailMask", "detail mask"),
-                ("_DetailAlbedoMap", "detail albedo"), ("_DetailNormalMap", "detail normal map") })
-            {
-                if (m.GetTexture(map) != null) return "YAPS Simple Lit has no " + what;
-            }
-            if (m.GetFloat("_SmoothnessTextureChannel") != 0f) return "YAPS Simple Lit cannot read smoothness from the albedo's alpha";
-            // Simple Lit always adds the colour; Standard only with the keyword on.
-            if (!m.IsKeywordEnabled("_EMISSION") && m.GetColor("_EmissionColor").maxColorComponent > 0f)
-                return "YAPS Simple Lit would light an emission this material leaves off";
-            return null;
         }
 
         static Material Save(Material copy, Material source, string folder, string file)
@@ -953,7 +936,8 @@ namespace AvatarBridge
                         {
                             var shader = ShaderFor(original, report, null);
                             if (shader == null) { refused.Add(original.name); continue; }
-                            to = new Material(YapsLock.Basis(original)) { shader = shader, name = original.name };
+                            to = new Material(YapsLock.Basis(original)) { name = original.name };
+                            YapsShaderPatcher.Wear(to, shader);
                             foreach (string name in Properties) Carry(template, to, name);
                             to = Save(to, original, folder, $"{root.name} {smr.name} {slot} {original.name}.mat");
                             copyOf[(smr, original)] = to;

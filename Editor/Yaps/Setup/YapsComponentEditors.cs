@@ -1665,7 +1665,7 @@ namespace AvatarBridge
             var bake = new BridgeElements.Card("Bake");
             bake.Body.Add(BridgeElements.Hint(isBaked
                 ? "Knobs write to the material and its YAPS panel writes back. Mesh, bone and measurement changes need a re-bake."
-                : "Set up the mesh, then Bake: it measures the mesh and patches its shader, or uses YAPS Simple Lit."));
+                : "Set up the mesh, then Bake: it measures the mesh and patches its shader, or uses YAPS Standard or YAPS Simple Lit."));
             bake.Body.Add(new BridgeElements.PrimaryButton(isBaked ? "Re-bake" : "Bake", () =>
             {
                 var o = YapsNativeBuilder.BakeAndRefreshMenu(plug);

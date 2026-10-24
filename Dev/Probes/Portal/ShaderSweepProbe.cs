@@ -18,7 +18,7 @@
 // outlines and all, in the view and in the shadow.
 //
 // Gates per host: the patch answers (patched, or refused with a reason, then
-// drawn on Simple Lit as the converter does); off is the original (YAPS
+// drawn on its fallback as the converter does); off is the original (YAPS
 // disabled: 0 pixels more than 2/255 from the unpatched shader); each move
 // draws 0 pixels where only the unmoved tube was and covers at least half of
 // Simple Lit's moved tube; an outline mode draws more than Simple Lit. A
@@ -304,6 +304,9 @@ namespace AvatarBridge.Regression
                     // A fresh report per host, and the entry names the locked stand-in, not the host.
                     string said = string.Join(" ", report.Entries.Select(e => e.Detail));
                     bool native = patched != null;
+                    // A fallback that is the host's own source must draw as the host did.
+                    bool sameLook = native;
+                    string host = "patched";
                     Material drawn;
                     string patch;
                     var fails = new List<string>();
@@ -315,16 +318,18 @@ namespace AvatarBridge.Regression
                     else
                     {
                         if (string.IsNullOrWhiteSpace(refusal)) fails.Add("refused with no reason");
-                        var plain = YapsNativeBuilder.OnSimpleLit(h.source, out string why);
+                        var plain = YapsNativeBuilder.OnFallback(h.source, out string why);
                         var onLit = plain != null ? YapsShaderPatcher.Patch(plain, report, out _, out skipped) : null;
                         if (onLit == null)
                         {
-                            Log($"FAIL {h.name}: refused ({refusal}), and Simple Lit could not take it either ({why})");
+                            Log($"FAIL {h.name}: refused ({refusal}), and its fallback could not take it either ({why})");
                             all = false;
                             continue;
                         }
                         drawn = Wear(new Material(plain) { name = h.name }, onLit);
-                        patch = $"refused: {refusal}; drawn on Simple Lit, as the converter does";
+                        host = plain.shader.name;
+                        sameLook = host == YapsNativeBuilder.StandardName;
+                        patch = $"refused: {refusal}; drawn on {host}, as the converter does";
                     }
                     bool skinnedStraight = said.Contains("a skinned plug on this shader stays straight");
                     bool shadowSaid = skipped > 0;
@@ -334,7 +339,7 @@ namespace AvatarBridge.Regression
                     // Off is the original, and so, near enough, is on with nothing in reach.
                     string off = "n/a", rest = "n/a";
                     bool castsAny = true;
-                    if (native)
+                    if (sameLook)
                     {
                         if (!basis.shader.isSupported || ShaderUtil.ShaderHasError(basis.shader)) fails.Add("the original does not compile here");
                         var orig = Frame(basis, State.Off, true);
@@ -377,7 +382,7 @@ namespace AvatarBridge.Regression
                     bool pass = fails.Count == 0;
                     all &= pass;
                     Log($"{(pass ? "PASS" : "FAIL")} {h.name}: " + string.Join("; ", verdicts) + (pass ? "" : " -- " + string.Join("; ", fails)));
-                    rows.Add(string.Join("\t", h.family, h.name, pass ? "PASS" : "FAIL", native ? "patched" : "Simple Lit",
+                    rows.Add(string.Join("\t", h.family, h.name, pass ? "PASS" : "FAIL", host,
                         native ? "" : refusal, off, rest, shadowSaid ? "shadow straight, said" : "", skinnedStraight ? "skinned straight, said" : "",
                         string.Join("; ", verdicts)));
                 }
@@ -417,7 +422,22 @@ namespace AvatarBridge.Regression
             }
 
             Add("YAPS", "Simple Lit", "YAPS/Simple Lit", false);
+            // Standard is refused and moves to YAPS Standard, so both are here, every map on as well:
+            // a normal or height map changes which input Unity's own struct carries.
+            void Maps(Material m)
+            {
+                F(m, "_BumpMap", tilt); m.EnableKeyword("_NORMALMAP");
+                F(m, "_MetallicGlossMap", mask); m.EnableKeyword("_METALLICGLOSSMAP");
+                F(m, "_ParallaxMap", mask); m.EnableKeyword("_PARALLAXMAP");
+                F(m, "_OcclusionMap", mask);
+            }
+            // Cutout adds the caster's output struct, which the wrapper passes through.
+            void Cutout(Material m) { F(m, "_Mode", 1); m.EnableKeyword("_ALPHATEST_ON"); m.renderQueue = 2450; }
+            Add("YAPS", "YAPS Standard", "YAPS/Standard", false);
+            Add("YAPS", "YAPS Standard, every map", "YAPS/Standard", false, Maps);
+            Add("YAPS", "YAPS Standard cutout, every map", "YAPS/Standard", false, m => { Maps(m); Cutout(m); });
             Add("Unity", "Standard", "Standard", false);
+            Add("Unity", "Standard, every map", "Standard", false, Maps);
             Add("Unity", "Autodesk Interactive", "Autodesk Interactive", false);
             Add("VRChat", "VRChat Mobile Toon Lit", "VRChat/Mobile/Toon Lit", false);
             Add("VRChat", "VRChat Mobile Standard Lite", "VRChat/Mobile/Standard Lite", false);

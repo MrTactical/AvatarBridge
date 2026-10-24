@@ -251,14 +251,19 @@ namespace AvatarBridge
                         duplicate: copyStart > 0, roles: YapsShaderPatcher.Roles.Plug);
                 if (shader == null)
                 {
-                    var plain = OnSimpleLit(source, out string why);
+                    var plain = OnFallback(source, out string why);
                     if (plain == null) { o.Message = "could not patch the shader: " + refusal + "; and " + why; return o; }
+                    string host = plain.shader.name.Replace('/', ' ');
                     shader = YapsShaderPatcher.Patch(plain, report, out string plainRefusal, out _, duplicate: copyStart > 0,
                         roles: YapsShaderPatcher.Roles.Plug);
-                    if (shader == null) { o.Message = "could not patch the shader: " + refusal + "; and YAPS Simple Lit refused too: " + plainRefusal; return o; }
+                    if (shader == null) { o.Message = "could not patch the shader: " + refusal + $"; and {host} refused too: " + plainRefusal; return o; }
                     o.Notes.Add(legacy == YapsLegacyMap.Origin.DPS
                         ? "A DPS shader has no switch for its own deform, so the plug now wears YAPS Simple Lit " +
                           "with its colour, albedo, normal map, metallic and smoothness carried over. Its original " +
+                          "material is untouched."
+                        : plain.shader.name == StandardName
+                        ? "Unity's Standard has no source to patch, so the plug now wears YAPS Standard, the same " +
+                          "shader from Unity's published source, with every setting carried over. Its original " +
                           "material is untouched."
                         : $"\"{source.shader.name}\" could not be patched ({refusal}), so the plug now wears " +
                           "YAPS Simple Lit with its colour, albedo, normal map, metallic and smoothness carried " +
@@ -277,7 +282,7 @@ namespace AvatarBridge
             bool oursAlready = IsGenerated(source);
             if (oursAlready && !source.HasProperty("_YAPS_Bake"))
             {
-                source.shader = shader;
+                YapsShaderPatcher.Wear(source, shader);
                 EditorUtility.SetDirty(source);
             }
             bool fresh = !source.HasProperty("_YAPS_Bake") && !oursAlready;
@@ -329,7 +334,7 @@ namespace AvatarBridge
             patched.SetFloat("_YAPS_CopyStart", copyStart);
             if (YapsShaderPatcher.IsStale(patched)) YapsShaderPatcher.Refresh(patched, report);
             // A squashed body the plug lives in carried the squash alone until now.
-            patched.shader = YapsShaderPatcher.WithRole(patched, YapsShaderPatcher.Roles.Plug, report) ?? patched.shader;
+            YapsShaderPatcher.Wear(patched, YapsShaderPatcher.WithRole(patched, YapsShaderPatcher.Roles.Plug, report) ?? patched.shader);
             if (plug.lengthOverride > 0) patched.SetFloat("_YAPS_Length", BakeLength(renderer, patched, plug.lengthOverride));
             patched.SetFloat("_YAPS_Enabled", 1f);
             WritePlugWide(plug, patched);
@@ -606,18 +611,30 @@ namespace AvatarBridge
             }
         }
 
+        public const string StandardName = "YAPS/Standard";
+
         // The same material on Simple Lit, in memory. Property names match Standard's.
-        public static Material OnSimpleLit(Material source, out string why)
+        public static Material OnSimpleLit(Material source, out string why) =>
+            OnShader(source, SimpleLitName, "YapsSimpleLit.shader", out why);
+
+        // A shader the patcher refused, swapped for one it takes. Standard is built in with no
+        // source on disk, so it goes to its own source, every map kept. The rest go to Simple Lit.
+        public static Material OnFallback(Material source, out string why) =>
+            source.shader != null && source.shader.name == "Standard"
+                ? OnShader(source, StandardName, "YapsStandard.shader", out why)
+                : OnSimpleLit(source, out why);
+
+        static Material OnShader(Material source, string name, string file, out string why)
         {
             why = null;
-            var shader = Shader.Find(SimpleLitName);
+            var shader = Shader.Find(name);
             if (shader == null)
             {
-                why = "YAPS Simple Lit is not in the project (Editor/Yaps/YapsSimpleLit.shader)";
+                why = $"{name.Replace('/', ' ')} is not in the project (Editor/Yaps/{file})";
                 return null;
             }
             var m = new Material(source) { name = source.name };
-            m.shader = shader;
+            YapsShaderPatcher.Wear(m, shader);
             return m;
         }
 
@@ -1153,7 +1170,7 @@ namespace AvatarBridge
                     roles: YapsShaderPatcher.Roles.Socket);
                 if (shader == null)
                 {
-                    var plain = OnSimpleLit(source, out string why);
+                    var plain = OnFallback(source, out string why);
                     shader = plain != null ? YapsShaderPatcher.Patch(plain, report, out refusal, out _,
                         roles: YapsShaderPatcher.Roles.Socket) : null;
                     if (shader == null) return $"✗ {socket.name}: could not patch the shader: {refusal}";
@@ -1364,7 +1381,7 @@ namespace AvatarBridge
                     var again = YapsShaderPatcher.Patch(was, report, out _, out _, roles: YapsShaderPatcher.Roles.Plug);
                     if (again != null)
                     {
-                        was.shader = again;
+                        YapsShaderPatcher.Wear(was, again);
                         CopyYapsProperties(primary, was);
                         EditorUtility.SetDirty(was);
                         done++;
@@ -1378,7 +1395,7 @@ namespace AvatarBridge
                     // material back and call that a restore.
                     target = was;
                     if (YapsShaderPatcher.IsStale(target)) YapsShaderPatcher.Refresh(target, report);
-                    target.shader = YapsShaderPatcher.WithRole(target, YapsShaderPatcher.Roles.Plug, report) ?? target.shader;
+                    YapsShaderPatcher.Wear(target, YapsShaderPatcher.WithRole(target, YapsShaderPatcher.Roles.Plug, report) ?? target.shader);
                     CopyYapsProperties(primary, target);
                     EditorUtility.SetDirty(target);
                     done++;
@@ -1678,8 +1695,8 @@ namespace AvatarBridge
                 {
                     target = was;
                     if (YapsShaderPatcher.IsStale(target)) YapsShaderPatcher.Refresh(target, report);
-                    else target.shader = shader;
-                    target.shader = YapsShaderPatcher.WithRole(target, YapsShaderPatcher.Roles.Plug, report) ?? target.shader;
+                    else YapsShaderPatcher.Wear(target, shader);
+                    YapsShaderPatcher.Wear(target, YapsShaderPatcher.WithRole(target, YapsShaderPatcher.Roles.Plug, report) ?? target.shader);
                     YapsBaker.Apply(result, target, true);
                 }
                 else
