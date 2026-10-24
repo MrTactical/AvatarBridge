@@ -421,6 +421,11 @@ ranked by how visible it should be:
   on a skinned mesh, so the bend may not follow the slider. Game first: a skinned plug in a socket at
   2x and 0.5x, Gap or Resolved-by view. The fix would be an avatar-scale property mirrored next to
   the slider, used in the per-vertex recovery too.
+  **Covered by item 21.2's fix (f588654), read 2026-10-24:** the slider animates the root's
+  `m_LocalScale` (`AvatarScaler/Anim_AvatarScale_Slider_*.anim`, empty path), which is what the
+  tester's `-yapsScale` does, and a skinned plug now reads that size from its own skinned normals
+  (`_YAPS_BakeSkinScale`). Tester: 0.2, 0.5 and 1 pass; what fails past 1.6 is the atlas's reach,
+  not the scale. Needs a re-bake; ChilloutVR still to see, with the slider at both ends.
 - **YSH-18, shadow and depth passes** resolve with different light and atlas state from the visible
   pass. Game: a plug bent through a marker light and one through the atlas, under a shadow-casting
   light. If confirmed, decide per pass, and add a README Known limitations line.
@@ -550,6 +555,11 @@ Read what the seam check measures before calling it a bake fault.
 - **Run 2026-10-24 [M]** on Non Corpus Zone's converted Alexa plug (6445 vertices, 307 seam pairs):
   PASS. Seams open 0.17 mm at most; the 90° walk stretches 4.65x at 0.22L, under the floor. The
   6.31x plug and the floor's own avatar are still the two to measure.
+- **Run 2026-10-24 [M]** on another converted SPS avatar's plug (117 seam pairs), dev and the
+  light-relay branch alike, line for line: 35 checks pass, one fails. The 45° YAPS hole walk opens a
+  seam 0.96 mm at 1.36L (vertices 77 and 553, one rest point, normals 0° apart, both moved about
+  275 mm), a true seam parting deep in a hard bend. The 90° walk passes there (3.31x). Not
+  separated yet.
 
 ### 16. Tester reports on the rc builds, 2026-10-22
 
@@ -884,6 +894,32 @@ due on the Nightly branch within days; none of this is in stable yet.
    through cells sized for a plug 1.6 times as long), one 90° walk-in and one scenario, are not yet
    separated from that. Existing plugs need a re-bake. Still open: sockets and squash reach under
    scaling, and all of it in ChilloutVR.
+   **A skinned socket mesh opens at its baked size, measured 2026-10-24 [M]**
+   (`Dev/Probes/SocketScaleProbe`, one scale per Unity process: re-scaling the root inside one left
+   the skin at the first size. `-sockMaterial` put an orphaned body-socket bake back on its body,
+   34453 vertices, 2 shapes, the contact channel's depth forced to 1). The mesh reads 1.6061 avatar
+   units across at 1, 2 and 0.5, so the root's scale reached the skin; the widest opening reads
+   0.0098, 0.0049 and 0.0195 avatar units, the same 9.8 mm in the world at every size. A quarter turn
+   moves every vertex's opening by 0.0° from its unturned move turned. ~~So the opening does turn
+   with the avatar (the shader comment saying the deltas keep the bake pose is wrong).~~ **Withdrawn
+   the same day:** a batch run skins the GPU mesh once and never again (blendshape weights and scale
+   set later never reach it; the closed mesh still turned exactly), so the turn came from the draw
+   matrix carrying the rig's rotation, which says nothing about ChilloutVR's GPU skinning, where
+   the matrix was read as identity (memory, not re-measured). Whether a turned avatar's opening
+   turns in game is open; the shader comment stays until it is measured there.
+   **Fixed, measured 2026-10-24 [M].** A skinned socket bake records `_YAPS_BakeSkinScale`, the
+   median skinned normal length of the vertices its shapes move (it took the plug's shaft rule
+   before, meaningless for a socket); the shader scales the position offsets by the live normal's
+   length over it and the normal and tangent offsets, stored per unit length, by the live lengths.
+   0, an older bake or a plain mesh, is as before, as is a host with no normal input. The probe now
+   bakes the socket again (`-sockShapes`) and checks it against the stage shapes themselves, skinned
+   by Unity on the CPU (which lands 0.0000 from the GPU's closed mesh): before, the opening was
+   0.500 of the shapes' length at 2 and 1.999 at 0.5; after, 1.000 at 0.5, 1 and 2, 0.0° off their
+   direction, the widest 0.999 of the scale 1 run's; baked at 2 and shown at 1 (skin scale 2.0000), 1.000 too. Sockets need building again. Plain
+   socket meshes take their scale from the matrix and were not measured. Beside it, by reading only: a DPS plug's length rides its
+   marker light's intensity, which no transform scale reaches, so a resized plug opens a light-read
+   socket as if it were its baked length. Squash reaches are kept in each follow node's units, so
+   they should scale; not measured.
 3. **Prop partial sync**: the server hands out control per part of a prop, and Disallow Theft is now
    enforced. `YapsPropBuilder` already leaves it off on fresh props, but who writes a prop's synced
    value changes: retest the prop contact channel on the Nightly.
@@ -981,6 +1017,33 @@ plane collider"; and take a playbook from Poiyomi's glass squish.
      level at the seam and dies away over two widths, holding the same volume; the ridge and the
      point at the top of the seam are gone (`D:/Claude/scratch/keel2.jpg`). On Kar the small point
      at the bottom of the seam rounds off too, one-sided unchanged (`kar_ridge.jpg`).
+
+### 23. Squash turned swapped-in materials pink. A user, 2026-10-24 (two screenshots, via Joe)
+
+The user built squash with the Toolkit on an avatar whose toggles swap materials for outfit and hair
+colours. The build put copies on the hair and clothing layers it moves and pointed the swaps at
+copies, as designed. In game the hair and clothes drew pink, the skin did not. The user then deleted
+the YAPS Squash component instead of pressing Remove, so the swaps stayed on the copies.
+
+- **Remove blind after a hand deletion: fixed on dev [M].** Both Remove buttons asked only whether
+  the `YAPS squash (shader)` object was there. Deleted by hand, the window said "Nothing to remove"
+  while every layer and swap stayed on its copy. `YapsSquash.Worn` counts the slots and swap keys on
+  copies; both buttons and the card use it. `SquashTestBuilder -squashByHand` (build, key a swap,
+  delete the objects and component, read the card, Remove) failed on the card before, passes after.
+- **The pink itself: explained [user].** The user then deleted every generated YAPS material by hand.
+  The swap clips still named them, so each swap put a missing material in the slot, which draws pink.
+  Nothing can undo that now: Remove finds each original through the copy's own importer mark, and the
+  copy is gone. Two leads checked against it and left untested, still worth a test: the shader sweep
+  (item 7) never covered the squash patch, and `FollowSwaps` keys copies into the clips before `Flush`
+  writes them while the swap test reads the clip in memory only.
+- **Open, Joe's call: stop editing the user's clips [user's suggestion].** Both the squash and the
+  plug and socket bakes (`YapsSwapFollow.RepointInClips`) rewrite live, user-owned clips in place, so
+  the avatar depends on generated files and a hand cleanup breaks it. The user asks for it the way
+  VRCFury does it: leave the clips alone and repoint only at upload. The CCK has the hook,
+  `CCK_BuildUtility.PreAvatarBundleEvent`, invoked on the instantiated upload copy. Cheaper middle
+  ground: each repointed clip remembers its originals (say in its importer's userData), so Remove and
+  Clean up leftovers can restore keys whose copy was deleted, and the card warns about swap keys that
+  name a missing material.
 
 ## 5.0.1
 

@@ -245,7 +245,7 @@ namespace AvatarBridge
                     if (positions[i].z >= 0f && activeWeights[i] > 0.5f)
                     {
                         radius = Mathf.Max(radius, positions[i].x * positions[i].x + positions[i].y * positions[i].y);
-                        if (!staticMesh) skinScales.Add(worldNormals[i].magnitude);
+                        if (!staticMesh && !objectFrame) skinScales.Add(worldNormals[i].magnitude);
                     }
 
                     // Behind the base is not the shaft; the shader reads it inactive.
@@ -308,6 +308,13 @@ namespace AvatarBridge
             // the bake is the rest pose; the deltas let the shader rebuild it.
             var shapes = CaptureShapes(mesh, skin, toPlug, activeWeights, placements, out var shapeNames,
                 out var movingShapes, wantedShapes);
+
+            // A skinned socket's opening is its shapes' offsets at the size baked here, added
+            // to a vertex that arrives at the avatar's live size. The skin scale of the
+            // vertices they move lets the shader carry them across.
+            if (objectFrame && !staticMesh)
+                for (int i = 0; i < count; i++)
+                    if (shapes.Any(block => block[i * 3].sqrMagnitude > 1e-12f)) skinScales.Add(worldNormals[i].magnitude);
 
             // A shape the renderer simply holds is part of the mesh as worn, but
             // the bent path rebuilds each vertex from the bake. Left out, a part

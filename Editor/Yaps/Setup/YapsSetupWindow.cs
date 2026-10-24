@@ -246,7 +246,7 @@ namespace AvatarBridge
 
         void RemoveSquash()
         {
-            if (_target == null || !YapsSquash.Has(_target.transform))
+            if (_target == null || !YapsSquash.Has(_target.transform) && YapsSquash.Worn(_target.transform) == 0)
             {
                 _squashStatus.Set("Nothing to remove: the avatar picked in step 1 has no squash.", Tone.Info);
                 return;

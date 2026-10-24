@@ -1389,7 +1389,9 @@ when it moved one, and Undo puts it back. A saved profile that remembers another
 instead. Resizing the whole avatar needs no curve: a plug on its own object always followed the
 avatar's scale, and a plug skinned into the body now reads it from its own skin, so it keeps its
 reach at any size. One baked before 5.0.0 keeps its baked length when the avatar is resized, so
-Bake it again.
+Bake it again. A socket whose opening is part of the body's skinned mesh opens to the same share of
+the body at any size too; one built before 5.0.0 opens at its built size, so Build it again or
+convert again.
 
 **Everything is named after what it is and where it is.** An avatar can carry a dozen sockets, and a
 menu of identical "YAPS Ring" entries tells you nothing about which one you are switching. The
@@ -1594,7 +1596,9 @@ pair, the hips when there are two), or on the avatar root while no part is found
 put on the avatar root moves there. Its steps run top to bottom, building last as the other windows do: **Which parts squash**
 (painted right there when the bones miss a part), **Tune how it feels**, and **Build**. **Build the
 squash** there builds it, **Rebuild the squash** rebuilds, and **Remove the squash** puts every
-layer back on its own material, toggles included. The card says whether the picked avatar has squash, on how many
+layer back on its own material, toggles included. Deleting the component or the squash's objects by
+hand skips that and leaves every layer and toggle on its copy; the card says so, and **Remove
+squash** there still puts them back. The card says whether the picked avatar has squash, on how many
 materials, and when its regions were painted after the last build. Only a layer that lies over a soft part, close enough to follow it visibly, gets a copy; a baked plug
 never does, since it bends on its own. The rest keep their own material and cost nothing. The copies go to `Assets/YAPS/Generated/Squash`; a rebuild
 goes back to the folder the last build used, a conversion's own included, so they are written over

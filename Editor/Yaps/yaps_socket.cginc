@@ -139,6 +139,21 @@ void YapsSocketDeform(inout float3 position, inout float3 normal, inout float3 t
     // A header float, ten floats a vertex, then nine a vertex per shape.
     uint block = 1 + total * 10;
 
+    // Skinned, the vertex arrives at the avatar's live size and the offsets were
+    // baked at the bake's: skinning scales the normal and never renormalises it,
+    // so its length over the bake's carries the opening across (SocketScaleProbe).
+    // Normal and tangent offsets are stored per unit of their own length. 0 on an
+    // older bake, and on a plain mesh, whose matrix carries the size: as baked.
+    // So too on a host with no normal input, which hands over zero.
+    float positionScale = 1, normalScale = 1, tangentScale = 1;
+    float liveScale = length(normal);
+    if (_YAPS_BakeSkinScale > 0 && liveScale > 1e-6)
+    {
+        positionScale = liveScale / _YAPS_BakeSkinScale;
+        normalScale = liveScale;
+        tangentScale = length(tangent);
+    }
+
     [loop]
     for (uint s = 0; s < min(shapeCount, 16u); s++)
     {
@@ -156,9 +171,9 @@ void YapsSocketDeform(inout float3 position, inout float3 normal, inout float3 t
         if (weight <= 0.0001) continue;
 
         uint at = block + s * total * 9 + vertexId * 9;
-        position += YapsReadFloat3(at) * weight;
-        normal += YapsReadFloat3(at + 3) * weight;
-        tangent += YapsReadFloat3(at + 6) * weight;
+        position += YapsReadFloat3(at) * (weight * positionScale);
+        normal += YapsReadFloat3(at + 3) * (weight * normalScale);
+        tangent += YapsReadFloat3(at + 6) * (weight * tangentScale);
     }
 
     normal = YapsSafeNormalize(normal, float3(0, 0, 1));
