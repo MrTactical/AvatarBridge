@@ -1195,7 +1195,10 @@ first piece. Open from the same day, for the pilot:
 - The fold hints under How it feels name how to see each group; a live picture per knob would
   answer it better.
 
-### Squash anywhere: any bone, no two-pair cap, each other, slaps. Joe, 2026-10-24. PLAN ONLY, after 5.0.0
+### Squash anywhere: any bone, no two-pair cap, each other, slaps. Joe, 2026-10-24. PLAN ONLY, for 5.1.0
+
+Joe, 2026-10-24, on reading this plan: "keep those as plans for now. We'll do it in 5.1.0 ... Get
+everything functional for 5.0, and then we can move on to the new projects and new ideas."
 
 Joe, 2026-10-24: "fuck the limit": keep the name detection for breasts and butt, but let a user put
 the squash on any bone (thighs, face cheeks), weights from that bone's skin weights with the brush
