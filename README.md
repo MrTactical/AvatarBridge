@@ -1389,7 +1389,9 @@ when it moved one, and Undo puts it back. A saved profile that remembers another
 instead. Resizing the whole avatar needs no curve: a plug on its own object always followed the
 avatar's scale, and a plug skinned into the body now reads it from its own skin, so it keeps its
 reach at any size. One baked before 5.0.0 keeps its baked length when the avatar is resized, so
-Bake it again.
+Bake it again. A socket whose opening is part of the body's skinned mesh opens to the same share of
+the body at any size too; one built before 5.0.0 opens at its built size, so Build it again or
+convert again.
 
 **Everything is named after what it is and where it is.** An avatar can carry a dozen sockets, and a
 menu of identical "YAPS Ring" entries tells you nothing about which one you are switching. The

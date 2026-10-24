@@ -23,6 +23,9 @@ namespace AvatarBridge.Regression
     // Run: -executeMethod AvatarBridge.Regression.SocketScaleProbe.Run [-sockAvatar <prefab path>]
     //      [-sockScale <s>] [-sockMaterial <baked socket material>]  put back on the slot it was baked from, for an
     //                                               avatar whose socket bake was later taken off
+    //      [-sockShapes "<shape>;<shape>"]          bake the socket again with these stage shapes
+    //      [-sockRef <opening>]                     fail unless the opening matches a scale 1 run's
+    //      [-sockBakeScale <s>]                     bake with the avatar at this scale first
     public static class SocketScaleProbe
     {
         const string DefaultAvatar = "Assets/AvatarBridgeOutput/SootiePoopie SPS Version/SootiePoopie SPS Version (ChilloutVR).prefab";
@@ -72,6 +75,25 @@ namespace AvatarBridge.Regression
                 foreach (var other in avatar.GetComponentsInChildren<Renderer>(true)) if (other != socket) other.enabled = false;
                 foreach (var light in avatar.GetComponentsInChildren<Light>(true)) light.enabled = false;
 
+                // Baked again by this build's baker into a folder deleted after, so the run
+                // measures a fresh bake, not whatever an older one wrote. Before the capture
+                // copy: the bake's import refreshes materials, and a refresh drops every value
+                // the capture shader does not declare.
+                YapsBaker.Result rebaked = null;
+                if (Arg("-sockShapes") is string shapeList)
+                {
+                    const string scratch = "Assets/__SocketScaleProbe";
+                    cleanup.Add(() => AssetDatabase.DeleteAsset(scratch));
+                    // -sockBakeScale: baked on an avatar already resized, then shown at -sockScale.
+                    if (float.TryParse(Arg("-sockBakeScale"), NumberStyles.Float, CultureInfo.InvariantCulture, out float bakeScale))
+                        avatar.transform.localScale = Vector3.one * bakeScale;
+                    var skin = socket as SkinnedMeshRenderer;
+                    rebaked = YapsBaker.Bake(socket, skin != null && skin.rootBone != null ? skin.rootBone : socket.transform, scratch,
+                        new BridgeReport(), out string failure, shapeList.Split(';').Select(x => x.Trim()).ToList(), objectFrame: true);
+                    if (rebaked == null) throw new Exception("the socket did not bake again: " + failure);
+                    Log($"baked again: {rebaked.Shapes.Count} shapes ({string.Join(", ", rebaked.Shapes)}), skin scale {F(rebaked.SkinScale)}");
+                }
+
                 // A copy on the capture shader carrying the slot's whole YAPS block, so the
                 // converted avatar's own material is never written.
                 var mats = socket.sharedMaterials;
@@ -91,6 +113,7 @@ namespace AvatarBridge.Regression
                     }
                 }
                 capture.SetFloat("_YapsCaptureOn", 1f);
+                if (rebaked != null) YapsBaker.Apply(rebaked, capture, rebaked.FromSkinnedMesh);
                 mats[slot] = capture;
                 socket.sharedMaterials = mats;
                 var mesh = socket is SkinnedMeshRenderer s ? s.sharedMesh : socket.GetComponent<MeshFilter>().sharedMesh;
@@ -139,7 +162,11 @@ namespace AvatarBridge.Regression
                     var open = Capture(1f);
 
                     var drawn = Enumerable.Range(0, n).Where(i => closed[i].w > 0.5f && open[i].w > 0.5f).ToList();
-                    if (drawn.Count == 0) throw new Exception($"nothing captured at scale {scale}");
+                    if (drawn.Count == 0)
+                        throw new Exception($"nothing captured at scale {scale}: closed {closed.Count(c => c.w > 0.5f)}, open {open.Count(c => c.w > 0.5f)}, " +
+                                            $"renderer {(socket.enabled ? "on" : "off")} {(socket.gameObject.activeInHierarchy ? "active" : "inactive")}, " +
+                                            $"bounds {socket.bounds.center} {socket.bounds.size}, camera at {cam.transform.position}, " +
+                                            $"vertex count {capture.GetFloat("_YAPS_VertexCount")}, mesh {(socket is SkinnedMeshRenderer sm && sm.sharedMesh != null ? sm.sharedMesh.name : "?")}");
                     var b = new Bounds(closed[drawn[0]], Vector3.zero);
                     foreach (int i in drawn) b.Encapsulate(closed[i]);
                     float worst = 0f, sum = 0f;
@@ -155,25 +182,70 @@ namespace AvatarBridge.Regression
                     ok &= moved > 0;
                     Log($"scale {scale}: mesh {F(size)} avatar units across, {drawn.Count} drawn; " +
                         $"opening widest {F(opening)} avatar units, {moved} vertices move, mean {F(moved > 0 ? sum / moved / scale : 0f)}");
+                    // -sockRef: the widest opening a run at scale 1 read, in avatar units.
+                    if (float.TryParse(Arg("-sockRef"), NumberStyles.Float, CultureInfo.InvariantCulture, out float reference) && reference > 0f)
+                    {
+                        bool same = Mathf.Abs(opening / reference - 1f) < 0.03f;
+                        ok &= same;
+                        Log($"{(same ? "PASS" : "FAIL")} scale {scale}: the opening is {opening / reference:0.000} of the one at 1 ({F(reference)})");
+                    }
+
+                    // The stage shapes themselves at full weight: what the opening at full depth
+                    // should be, at this size and in this pose. Skinned by Unity on the CPU,
+                    // since a batch run skins the GPU mesh once and never again; trusted only
+                    // where that lands on the GPU's closed mesh.
+                    if (rebaked != null && socket is SkinnedMeshRenderer worn)
+                    {
+                        var shapeIndices = rebaked.Shapes.Select(x => worn.sharedMesh.GetBlendShapeIndex(x)).Where(k => k >= 0).ToList();
+                        var held = Enumerable.Range(0, worn.sharedMesh.blendShapeCount).Select(worn.GetBlendShapeWeight).ToList();
+                        var snapshot = new Mesh();
+                        Vector3[] Skinned()
+                        {
+                            worn.BakeMesh(snapshot, true);
+                            return snapshot.vertices.Select(v => worn.transform.TransformPoint(v)).ToArray();
+                        }
+                        var bare = Skinned();
+                        foreach (int k in shapeIndices) worn.SetBlendShapeWeight(k, held[k] + 100f);
+                        var shaped = Skinned();
+                        foreach (int k in shapeIndices) worn.SetBlendShapeWeight(k, held[k]);
+                        UnityEngine.Object.DestroyImmediate(snapshot);
+                        float off = drawn.Average(i => Vector3.Distance(bare[i], closed[i]));
+                        Log($"the CPU skin sits {F(off)} from the GPU's on average");
+                        float angles = 0f, ratios = 0f;
+                        int compared = 0;
+                        foreach (int i in drawn)
+                        {
+                            Vector3 truth = shaped[i] - bare[i], made = open[i] - closed[i];
+                            if (truth.magnitude < 1e-4f * scale || made.magnitude < 1e-6f) continue;
+                            angles += Vector3.Angle(truth, made);
+                            ratios += made.magnitude / truth.magnitude;
+                            compared++;
+                        }
+                        bool matches = compared > 0 && angles / compared < 5f && Mathf.Abs(ratios / compared - 1f) < 0.03f;
+                        ok &= matches;
+                        Log($"{(matches ? "PASS" : "FAIL")} scale {scale}: against the shapes themselves on {compared} vertices, the opening is " +
+                            $"{(compared > 0 ? ratios / compared : 0f):0.000} of their length and {(compared > 0 ? angles / compared : 0f):0.0}° off their direction on average");
+                    }
                 }
 
                 // A quarter turn about up: each vertex's move against its unturned move, turned.
-                Vector3[] Moves()
+                (Vector3[] closed, Vector3[] moves) Moves()
                 {
                     cam.transform.position = socket.bounds.center + Vector3.back * (3f * socket.bounds.extents.magnitude);
                     cam.transform.LookAt(socket.bounds.center);
                     Capture(-1f);
                     var closed = Capture(-1f);
                     var open = Capture(1f);
-                    return Enumerable.Range(0, n).Select(i => closed[i].w > 0.5f && open[i].w > 0.5f ? (Vector3) (open[i] - closed[i]) : Vector3.zero).ToArray();
+                    return (closed.Select(c => (Vector3) c).ToArray(),
+                        Enumerable.Range(0, n).Select(i => closed[i].w > 0.5f && open[i].w > 0.5f ? (Vector3) (open[i] - closed[i]) : Vector3.zero).ToArray());
                 }
                 avatar.transform.rotation = Quaternion.identity;
-                var straight = Moves();
+                var (restStraight, straight) = Moves();
                 var quarter = Quaternion.AngleAxis(90f, Vector3.up);
                 avatar.transform.rotation = quarter;
-                var turned = Moves();
+                var (restTurned, turned) = Moves();
                 avatar.transform.rotation = Quaternion.identity;
-                float worstAngle = 0f, angleSum = 0f;
+                float worstAngle = 0f, angleSum = 0f, flat = 0f, offTurn = 0f, offStill = 0f;
                 int counted = 0;
                 for (int i = 0; i < n; i++)
                 {
@@ -181,9 +253,18 @@ namespace AvatarBridge.Regression
                     float a = Vector3.Angle(quarter * straight[i], turned[i]);
                     worstAngle = Mathf.Max(worstAngle, a);
                     angleSum += a;
+                    // A move straight up turns into itself, so only the level part tests the turn.
+                    flat += new Vector2(straight[i].x, straight[i].z).magnitude / straight[i].magnitude;
+                    // Whether the mesh itself turned: a skin that never re-skinned compares two
+                    // identical captures and reads every move as turned with it.
+                    offTurn += Vector3.Distance(restTurned[i], quarter * restStraight[i]);
+                    offStill += Vector3.Distance(restTurned[i], restStraight[i]);
                     counted++;
                 }
-                bool turns = counted > 0 && angleSum / counted < 1f;
+                Log(counted > 0
+                    ? $"turn check: the moves are {flat / counted:0.00} level on average; the closed mesh sits {F(offTurn / counted)} from the unturned mesh turned and {F(offStill / counted)} from it unturned"
+                    : "turn check: no vertex moved in both");
+                bool turns = counted > 0 && angleSum / counted < 1f && offTurn < offStill;
                 ok &= turns;
                 Log($"{(turns ? "PASS" : "FAIL")} turned 90°: {counted} vertices compared, their move off the turned unturned move by " +
                     $"{(counted > 0 ? angleSum / counted : 0f):0.0}° on average, {worstAngle:0.0}° at worst");

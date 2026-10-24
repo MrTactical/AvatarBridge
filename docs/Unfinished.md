@@ -882,11 +882,23 @@ due on the Nightly branch within days; none of this is in stable yet.
    34453 vertices, 2 shapes, the contact channel's depth forced to 1). The mesh reads 1.6061 avatar
    units across at 1, 2 and 0.5, so the root's scale reached the skin; the widest opening reads
    0.0098, 0.0049 and 0.0195 avatar units, the same 9.8 mm in the world at every size. A quarter turn
-   moves every vertex's opening by 0.0° from its unturned move turned, so the opening does turn with
-   the avatar (the shader comment saying the deltas keep the bake pose is wrong); only the size is
-   baked. Fix to decide: the socket bake records a skin scale as the plug's does, and the deltas
-   scale by the live normal's length over it, then a re-bake. Plain socket meshes take their scale
-   from the matrix and were not measured. Beside it, by reading only: a DPS plug's length rides its
+   moves every vertex's opening by 0.0° from its unturned move turned. ~~So the opening does turn
+   with the avatar (the shader comment saying the deltas keep the bake pose is wrong).~~ **Withdrawn
+   the same day:** a batch run skins the GPU mesh once and never again (blendshape weights and scale
+   set later never reach it; the closed mesh still turned exactly), so the turn came from the draw
+   matrix carrying the rig's rotation, which says nothing about ChilloutVR's GPU skinning, where
+   the matrix was read as identity (memory, not re-measured). Whether a turned avatar's opening
+   turns in game is open; the shader comment stays until it is measured there.
+   **Fixed, measured 2026-10-24 [M].** A skinned socket bake records `_YAPS_BakeSkinScale`, the
+   median skinned normal length of the vertices its shapes move (it took the plug's shaft rule
+   before, meaningless for a socket); the shader scales the position offsets by the live normal's
+   length over it and the normal and tangent offsets, stored per unit length, by the live lengths.
+   0, an older bake or a plain mesh, is as before, as is a host with no normal input. The probe now
+   bakes the socket again (`-sockShapes`) and checks it against the stage shapes themselves, skinned
+   by Unity on the CPU (which lands 0.0000 from the GPU's closed mesh): before, the opening was
+   0.500 of the shapes' length at 2 and 1.999 at 0.5; after, 1.000 at 0.5, 1 and 2, 0.0° off their
+   direction, the widest 0.999 of the scale 1 run's; baked at 2 and shown at 1 (skin scale 2.0000), 1.000 too. Sockets need building again. Plain
+   socket meshes take their scale from the matrix and were not measured. Beside it, by reading only: a DPS plug's length rides its
    marker light's intensity, which no transform scale reaches, so a resized plug opens a light-read
    socket as if it were its baked length. Squash reaches are kept in each follow node's units, so
    they should scale; not measured.
