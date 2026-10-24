@@ -2246,11 +2246,12 @@ Bipeds are unaffected by any of it.
   other plug shares its mesh and its triangles sit on one material. A plug of several meshes copies
   its main mesh alone. A conversion never ticks it, and converting the avatar again starts the plug
   without it, so tick it after the last conversion. Not yet confirmed in game.
-- **A plug bent by marker lights is straight in shadows and depth effects (YAPS).** Unity gives
-  the shadow and depth passes no lights, so a plug that found its socket by marker light (a DPS
-  socket, a view too small for the atlas, or another YAPS version) casts a straight shadow, and in
-  a world with depth-based effects (depth of field, fog, ambient occlusion) a faint straight plug
-  can show through the skin. A plug bent through the screen atlas matches in every pass.
+- **A bent plug casts a straight shadow (YAPS).** A light's shadow is drawn in a pass that gets no
+  marker lights and, whenever anything in view copies the screen (the screen atlas is such a copy),
+  reads the wrong copy. So a plug in a socket casts the shadow of a straight one. Depth effects
+  (depth of field, fog, ambient occlusion) follow a plug bent through the screen atlas, but one that
+  found its socket by marker light (a DPS socket, a view too small for the atlas, or another YAPS
+  version) can show as a faint straight plug through the skin.
 - **Action-layer emotes and features.** Only **Gesture** and **FX** convert by default: Base,
   Additive and Action are off, because CVR drives locomotion and emotes itself. **An avatar that
   transforms usually needs Action ticked**: a mech that folds into a vehicle keeps its menu toggle

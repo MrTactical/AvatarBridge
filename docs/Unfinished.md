@@ -451,6 +451,21 @@ ranked by how visible it should be:
   YAPS upgrade, so the route is unknown. Next: S17.9's Resolved by view (`_YAPS_Debug` 1) on the
   plug while it shows: three quarters (marker light) is this cause, full (atlas) would be a new bug
   that needs the world and both builds.
+  **Measured again 2026-10-24 [M]: the sun's shadow cannot read the atlas either.** In a fresh
+  project the floor shadow stayed straight on every route, the atlas included. A debug buffer written
+  from a ShadowCaster pass showed why: a light's shadow map is drawn after the frame's screen grabs
+  but bound to the texture `_YAPS_Atlas` named when the frame began, and Unity's temporary-texture
+  pool trades same-size grab textures between names every frame (instance ids logged alternating
+  render to render). The light's pass read a flat (0,0,0,1) picture, the clear's `_YAPS_Under` grab,
+  while the camera depth pass, drawn before the grabs, read the real atlas. 7d5d696 (the exact
+  put-back) added that second grab; with it commented out the 10-22 numbers come back (20875 and
+  24148 px bent), but one unrelated named grab at the transparent queue, as water or glass in a
+  world, breaks the single-grab build the same way (the light's pass read the floor's colour). So
+  the 10-22 "atlas bends the floor shadow" held only in a scene with no other grab, and 7d5d696
+  stays. README line corrected: a bent plug casts a straight shadow on every route, and depth
+  effects follow the atlas. Release notes' YAPS shadow line and S17.9 corrected to match. Joe's
+  10-24 sighting is one of two: a cast shadow sits off the plug along the sun and moves with it,
+  the depth ghost sits exactly behind the plug from the eye. He will say which next time.
 - **AM1-10, the menu-name rename rule.** Whether `RenamePass` should trigger on
   `IllegalMenuNameChars` (`[^a-zA-Z0-9/\-_#]`) instead of its own list, leaving
   `VerifyMenuParameterNames` to assert. Author decision: it changes the names users get for menu
