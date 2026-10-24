@@ -142,6 +142,9 @@ namespace AvatarBridge
         _YAPS_SquashIn (""YAPS squash reach per part into the body"", Vector) = (0,0,0,0)
         _YAPS_SquashSideA (""YAPS squash reach per part across, one way"", Vector) = (0,0,0,0)
         _YAPS_SquashSideB (""YAPS squash reach per part across, the other way"", Vector) = (0,0,0,0)
+        _YAPS_SquashHangToward (""YAPS squash hang point per part toward its partner, off its rest"", Vector) = (0,0,0,0)
+        _YAPS_SquashHangOut (""YAPS squash hang point per part out of the body"", Vector) = (0,0,0,0)
+        _YAPS_SquashHangAcross (""YAPS squash hang point per part across"", Vector) = (0,0,0,0)
         _YAPS_SquashPair (""YAPS squash pairs: start, first share; start, first share"", Vector) = (0,0.5,0,0.5)
         _YAPS_SquashShape (""YAPS squash: flattest, volume kept, widest, contact"", Vector) = (0.6,1,1.5,1)
         _YAPS_SquashPulse (""YAPS squash test pulse"", Float) = 0

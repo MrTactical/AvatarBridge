@@ -42,6 +42,7 @@ namespace AvatarBridge
             "_YAPS_SquashIn", "_YAPS_SquashSideA", "_YAPS_SquashSideB", "_YAPS_SquashTune", "_YAPS_SquashPair",
             "_YAPS_SquashShape", "_YAPS_SquashPulse", "_YAPS_SquashPush", "_YAPS_SquashLimbL", "_YAPS_SquashLimbR",
             "_YAPS_SquashHands", "_YAPS_SquashMotion", "_YAPS_SquashPlug", "_YAPS_DentSpill",
+            "_YAPS_SquashHangToward", "_YAPS_SquashHangOut", "_YAPS_SquashHangAcross",
         };
 
         sealed class Part
@@ -388,6 +389,11 @@ namespace AvatarBridge
             var inward = Vector4.zero;
             var sideA = Vector4.zero;
             var sideB = Vector4.zero;
+            // Where each part hangs from, off its rest in the same frame and the rest's units: a
+            // swing turns it about there, so the shader can tell a turned part from a slid one.
+            var hangToward = Vector4.zero;
+            var hangOut = Vector4.zero;
+            var hangAcross = Vector4.zero;
             var pair = new Vector4(0f, 0.5f, 0f, 0.5f);
             for (int k = 0; k < pairCount; k++)
             {
@@ -443,6 +449,10 @@ namespace AvatarBridge
                     inward[parts.Count] = Reach(p, -o) / unit;
                     sideA[parts.Count] = Reach(p, u) / unit;
                     sideB[parts.Count] = Reach(p, -u) / unit;
+                    var hang = (p.hangsFrom - p.centre) / Unit(rest);
+                    hangToward[parts.Count] = Vector3.Dot(hang, toward);
+                    hangOut[parts.Count] = Vector3.Dot(hang, o);
+                    hangAcross[parts.Count] = Vector3.Dot(hang, u);
                     parts.Add(p);
                 }
                 pair[i] = start / Unit(a.follow);
@@ -541,6 +551,9 @@ namespace AvatarBridge
                     copy.SetVector("_YAPS_SquashSideA", sideA);
                     copy.SetVector("_YAPS_SquashSideB", sideB);
                     copy.SetVector("_YAPS_SquashPair", pair);
+                    copy.SetVector("_YAPS_SquashHangToward", hangToward);
+                    copy.SetVector("_YAPS_SquashHangOut", hangOut);
+                    copy.SetVector("_YAPS_SquashHangAcross", hangAcross);
                     // A test build's pulse: the pair squeezes and lets go every few seconds with
                     // nobody moving it, which only happens if the provider is writing the follows.
                     copy.SetFloat("_YAPS_SquashPulse", pulse);

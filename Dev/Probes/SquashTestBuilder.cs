@@ -598,6 +598,29 @@ namespace AvatarBridge.Regression
 
         public static void StripShader(Transform root) => YapsSquash.Strip(root);
 
+        // The shader squash built again on the converted avatar a scene already holds, saved in
+        // place: after a change to what the build writes, with no conversion.
+        //   -executeMethod AvatarBridge.Regression.SquashTestBuilder.Rebuild -squashScene <scene>
+        public static void Rebuild()
+        {
+            int code = 1;
+            try
+            {
+                var scene = EditorSceneManager.OpenScene(Arg("-squashScene"), OpenSceneMode.Single);
+                // Every avatar standing in it: a probe takes whichever provider it finds first.
+                foreach (var avatar in scene.GetRootGameObjects().Select(r => r.GetComponentInChildren<CVRAvatar>()).Where(a => a != null))
+                    Debug.Log($"[Squash] {avatar.name}: " + AddShader(avatar));
+                EditorSceneManager.SaveScene(scene);
+                AssetDatabase.SaveAssets();
+                code = 0;
+            }
+            catch (Exception e)
+            {
+                Debug.LogException(e);
+            }
+            EditorApplication.Exit(code);
+        }
+
         // On the chest, between the pair nearest it, a little in front of their roots.
         static void TestSocket(Transform root)
         {

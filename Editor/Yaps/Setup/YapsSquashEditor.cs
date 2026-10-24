@@ -41,7 +41,7 @@ namespace AvatarBridge
         static readonly System.Collections.Generic.Dictionary<string, string> FoldHints = new System.Collections.Generic.Dictionary<string, string>
         {
             { "How it gives", "How a part answers any press: how flat it goes, how wide it spreads to keep its volume, how far it swings away first. See it with Preview and Squeeze or the test hand." },
-            { "The pair", "One part swung or pushed by a hand into a still partner shunts it aside, so both move its way. Pressed together from both sides, each part swings apart, then flattens and keeps its volume; what still overlaps passes through. Meet presses the two flat where they touch, swelling out round the contact. See it with Preview and Squeeze." },
+            { "The pair", "With Meet on, a part swung or pushed by a hand into a still partner keeps its round front and presses a rounded hollow into the other, swelling out round the contact. Pushed alike from both sides, both give and the seam curves softly. Neither is pushed away from the other. With Meet off, what overlaps passes through. See it with Preview and Squeeze." },
             { "In motion", "As the physics swing a part, it stretches away from where it hangs and squashes back. See it with Preview and Bounce, or move the avatar in Play mode." },
             { "What presses it", "What dents the parts besides each other, each with its own strength. See hands with the test hand." },
         };

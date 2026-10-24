@@ -219,6 +219,7 @@ void Main(uint id : SV_DispatchThreadID)
             float[] R = new float[4];
             var units = new float[4];
             var reach = new Vector4[6];
+            var hang = new Vector4[3];
             bool second = P(r, 0.5);
             for (int m = 0; m < 4; m++)
             {
@@ -246,6 +247,9 @@ void Main(uint id : SV_DispatchThreadID)
                     if (P(r, 0.03)) k[j] = 0;
                     reach[j][m] = k[j];
                 }
+                // Where it hangs from, off the rest: anywhere round it, sometimes on it.
+                var hd = P(r, 0.1) ? Vector3.zero : V(r, 1f) * R[m] / unit;
+                for (int j = 0; j < 3; j++) hang[j][m] = hd[j];
             }
             // Arms: shoulder, elbow, hand, finger each side, the hand often on a part.
             for (int side = 0; side < 2; side++)
@@ -348,6 +352,9 @@ void Main(uint id : SV_DispatchThreadID)
                 cs.SetMatrix("unity_WorldToObject", o2w.inverse);
                 cs.SetMatrixArray("_YAPS_SquashFollow", slots);
                 for (int j = 0; j < 6; j++) cs.SetVector(reachNames[j], reach[j]);
+                cs.SetVector("_YAPS_SquashHangToward", hang[0]);
+                cs.SetVector("_YAPS_SquashHangOut", hang[1]);
+                cs.SetVector("_YAPS_SquashHangAcross", hang[2]);
                 cs.SetVector("_YAPS_SquashPair", pairs);
                 cs.SetVector("_YAPS_SquashShape", shape);
                 cs.SetVector("_YAPS_SquashPush", push);

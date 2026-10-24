@@ -817,8 +817,8 @@ one boob is pushing against another boob, you'd expect both boobs to move togeth
 other. And then it can do like a marshmallow style spillage in the middle and not just a weird like
 plane collider"; and take a playbook from Poiyomi's glass squish.
 
-1. **One part swung into a still partner now shunts it. Fixed on dev, not yet seen in game; does
-   not hold on Kar, see 4.** The
+1. **WITHDRAWN 2026-10-24: the shunt is gone, see 5.** One part swung into a still partner
+   shunted it. Fixed on dev, never seen in game; did not hold on Kar, see 4. The
    overlap one follow drove further toward the other than the other drove back moves the other
    aside (swung about where it meets the body, as a bend), and only the rest presses the two
    together. Read as the difference of the two swings: in batch Play mode on Alexa each follow sat
@@ -829,8 +829,8 @@ plane collider"; and take a playbook from Poiyomi's glass squish.
      reaches, then both by 0.59. One-sided, the old shader pressed a flat face down the middle and
      the new one moves the still part out of the way; both-sided, the two renders match.
      Images `D:/Claude/scratch/squashlook/swing/cmp_*.jpg`. Squash builds need a rebuild to get it.
-2. **A hand pushing one part into the other now shunts it too. Fixed on dev, not yet seen in
-   game.** Joe, the same day: "do those". Each part also runs its partner's hands, when that
+2. **WITHDRAWN 2026-10-24: the shunt is gone, see 5.** A hand pushing one part into the other
+   shunted it too, never seen in game. Joe, the same day: "do those". Each part also runs its partner's hands, when that
    partner could reach it, and keeps how far they bend the partner its way; what one part's hands
    bent it further than the other's bent back shunts the other, as a swing does, and the plane
    sits where the fronts end up. Seen from the pushed part alone, the other was never pushed and
@@ -851,7 +851,8 @@ plane collider"; and take a playbook from Poiyomi's glass squish.
      millimetres on Alexa and the renders barely differ; at 1.2 the zebra shows the sides bulging
      round the seam where the old ones creased into it, and the top V partly fills.
      `cmp_meet_both_deep*.jpg`, `crop_meet_deep.jpg`. Rest renders identical old and new.
-4. **On Kar a part turned into its partner still tears the pair open. OPEN.** Joe, 2026-10-24
+4. **On Kar a part turned into its partner tore the pair open. Fixed on dev by 5, Joe to judge in
+   game.** Joe, 2026-10-24
    (screenshots of the tester's bone drag, then "its still folding into a void? when I have meet on
    enabled?"). Measured on his 12:44 conversion: one breast's bone turned 0.58 reach into the still
    partner. The skinning alone presses the two together cleanly. With the squash, both parts end up
@@ -866,6 +867,30 @@ plane collider"; and take a playbook from Poiyomi's glass squish.
      prefab (`AvatarBridgeOutput/SquashTest/KarMeetDrag.unity`, to delete once fixed), with new
      shots: `_raw` (the skinning, the squash left out) and `-spNoMeet`. Images
      `D:/Claude/scratch/meetdrag/kar-drag-meet.jpg`, the includes `meetcmp/sheet.jpg`.
+5. **The pair wraps round instead of pressing flat or pushing apart. Done on dev, Joe to judge in
+   game.** Joe, 2026-10-24, after "You're stretching the boobs apart ... You have to push them
+   together", chose *Wrap round*: the part that moved keeps its round front and the still one takes
+   a rounded hollow its shape, flesh swelling round the edge; pushed alike from both sides, both
+   give and the seam curves softly. Nothing moves either part away from the other any more.
+   - How: the overlap goes to the part driven less (the lead is the difference of the two swings,
+     the hands' bends included, over their sum). The seam is the leader's turned shape bowed by the
+     lead, read where the line through the vertex leaves it, carrying on away from the part pressed
+     past the leader's outline. The leader gives only where it is inside the other, as far as it
+     leads.
+   - The turn is about where the part really hangs from: the converter writes it per part
+     (`_YAPS_SquashHangToward/Out/Across`, off the rest, in the rest's units) and the shader turns
+     the frame about it. `SquashPlayProbe -spPivot` (new) fits the pivot from Play-mode physics: on
+     Kar and Alexa, the chain root, where the written point sits. Written in follow units the point
+     shrank on Alexa, whose follow plays at 0.556 of its build scale.
+   - The leader first came out pointed top and bottom with shards, on Alexa (whose pair rests
+     apart) and on Kar's soft swing and soft hand shots: past its fitted outline the seam curved back
+     into it, and inside it the press stepped off at its edge. Found by switching stages off one at
+     a time: contact off was clean, stretch or swell off was not.
+   - Evidence: `-spLook -spSwing -spMeet` and `-spHand` on AlexaSquash and KarMeetDrag, rebuilt in
+     place by `SquashTestBuilder.Rebuild` (new). Images `D:/Claude/scratch/alexa_blend.jpg`,
+     `kar_blend.jpg`, `hand_cmp.jpg`. Squash builds need a rebuild for the new properties.
+   - Left: pushed together hard from both sides (1.08 reaches each), the bottoms meet in a slight
+     keel along the seam on Alexa.
 
 ## 5.0.1
 

@@ -38,7 +38,7 @@ namespace AvatarBridge.Yaps
         public float lyingBack = 0.25f;
 
         [Header("The pair")]
-        [Tooltip("Off, what still overlaps after the parts swing apart and flatten passes through. On, the two press flat where both push into each other, swelling out round the contact. One swung or pushed by a hand into a still partner shunts it aside either way.")]
+        [Tooltip("Off, what overlaps passes through. On, the part driven further keeps its round front and presses a rounded hollow into the other, swelling out round the contact; pushed alike from both sides, both give and the seam curves softly.")]
         public bool meet = true;
         [Range(0f, 2f), Tooltip("How much of what the meeting pushes back swells out round the contact: 1 keeps its volume.")]
         public float spill = 1f;

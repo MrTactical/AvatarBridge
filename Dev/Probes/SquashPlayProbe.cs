@@ -40,7 +40,7 @@
 // the triangles themselves (_zebra_mesh): a kink in a stripe is a crease, and with the skinning
 // alone, the squash left out (_raw). -spMeet turns the pair's
 // contact on first. -spPreview squeezes with the inspector preview's hands instead (0, 0.5, 1, 1).
-// -spSwing turns the parts' own bones instead, the cloth stopped, across any gap between them and
+// -spSwing turns each part about the bone it hangs from instead, the cloth stopped, across any gap between them and
 // on into an overlap: one into a still partner by 0.3 and 0.6 reaches, then both, half each, by
 // 0.6 and 1.2.
 // -spHand swings the pair to just touching the same way, then presses the first part from its
@@ -170,7 +170,7 @@ namespace AvatarBridge.Regression
                 elbowRest = elbow.rotation;
                 // The wrist sunk into the front of the part, so the hand and forearm lie in it.
                 var root = animator.transform;
-                float reach = mats[0].GetVector("_YAPS_SquashReach")[left ? 0 : 1] * part.lossyScale.x;
+                float reach = mats[0].GetVector("_YAPS_SquashReach")[left ? 0 : 1] * Unit(part);
                 var chest = animator.GetBoneTransform(HumanBodyBones.Chest) ?? animator.GetBoneTransform(HumanBodyBones.Spine);
                 var outward = Vector3.ProjectOnPlane(part.position - chest.position, Vector3.up).normalized;
                 target = part.position + root.forward * reach * 0.6f + outward * reach * 0.2f;
@@ -179,6 +179,7 @@ namespace AvatarBridge.Regression
             }
             if (SessionState.GetInt(K + "cost", 0) == 1) { if (frame == Bend) Cost(slots, mats); return; }
             if (SessionState.GetInt(K + "jump", 0) == 1) { if (frame >= Bend) JumpPose(slots, mats); return; }
+            if (PivotOn) { if (frame >= Bend) PivotShake(slots); return; }
             if (SessionState.GetInt(K + "look", 0) == 1) { if (frame >= Bend) LookPose(slots, mats); return; }
             if (SessionState.GetInt(K + "video", 0) == 1) { if (frame >= Bend) Film(slots, mats); return; }
             if (frame == Bend - 1) Shoot("rest");
@@ -516,7 +517,7 @@ namespace AvatarBridge.Regression
 
             int p = (slots[0].position - target).sqrMagnitude < (slots[1].position - target).sqrMagnitude ? 0 : 1;
             Vector3 P = slots[p].position, Q = slots[1 - p].position, mid = (P + Q) / 2f;
-            float reach = mats[0].GetVector("_YAPS_SquashReach")[p] * slots[p].lossyScale.x;
+            float reach = mats[0].GetVector("_YAPS_SquashReach")[p] * Unit(slots[p]);
             var outP = Vector3.ProjectOnPlane(P - Q, up).normalized;
             outside = outP;
             var front = Surface(target + f * 0.4f, -f, target - f * 0.07f);
@@ -740,7 +741,7 @@ namespace AvatarBridge.Regression
                 int p = (slots[0].position - target).sqrMagnitude < (slots[1].position - target).sqrMagnitude ? 0 : 1;
                 Vector3 P = slots[p].position, Q = slots[1 - p].position;
                 var root = animator.transform;
-                jumpReach = mats[0].GetVector("_YAPS_SquashReach")[p] * slots[p].lossyScale.x;
+                jumpReach = mats[0].GetVector("_YAPS_SquashReach")[p] * Unit(slots[p]);
                 var outP = Vector3.ProjectOnPlane(P - Q, Vector3.up).normalized;
                 jumpFrom = P + outP * 1.3f * jumpReach;
                 jumpTo = Q - outP * 0.3f * jumpReach;
@@ -923,7 +924,103 @@ namespace AvatarBridge.Regression
         static readonly (string name, float depth)[] HandShots = { ("hand_rest", 0f), ("hand_soft", 0.4f), ("hand_in", 0.8f) };
         static readonly bool LookHand = Environment.GetCommandLineArgs().Contains("-spHand");
         static Quaternion[] swingFrom;
+        static Transform[] swingHinge;
         static int swingWait;
+
+        // -spPivot: the avatar shaken side to side, up and down, then back and forth, the cloth
+        // running, and the point each part of the first pair turns about fitted from its follow's
+        // pose against its rest every frame: whatever stays put while the follow swings. Logged in
+        // the part's frame beside the hang the build wrote, with how far each bone between follow
+        // and rest moved, so the hang can be checked against what the physics really do.
+        static readonly bool PivotOn = Environment.GetCommandLineArgs().Contains("-spPivot");
+        const int PivotFrames = 360;
+        static Vector3 pivotStanding;
+        static Vector3[] pivotC0;
+        static Quaternion[] pivotQ0;
+        static double[][] pivotM, pivotB;
+        static Dictionary<Transform, (Vector3 at, float moved, float turned, Quaternion q)> pivotBones;
+
+        static void PivotShake(Transform[] slots)
+        {
+            var root = animator.transform;
+            int k = frame - Bend;
+            if (k == 0) pivotStanding = root.position;
+            var ways = new[] { root.right, Vector3.up, root.forward };
+            float u = k / (float)(PivotFrames / 3);
+            int w = Mathf.Min((int)u, 2);
+            root.position = pivotStanding + ways[w] * (0.08f * Mathf.Sin(2f * Mathf.PI * 2f * (u - w)));
+            if (k < PivotFrames) return;
+            for (int p = 0; p < 2; p++)
+            {
+                var m = new Matrix4x4();
+                for (int i = 0; i < 9; i++) m[i / 3, i % 3] = (float)pivotM[p][i];
+                m[3, 3] = 1;
+                var local = m.inverse.MultiplyVector(new Vector3((float)pivotB[p][0], (float)pivotB[p][1], (float)pivotB[p][2]));
+                var rest = slots[4 + p];
+                var at = rest.position + rest.rotation * local;
+                var mat = provider.materials[0];
+                float reach = mat.GetVector("_YAPS_SquashReach")[p] * Unit(slots[p]);
+                Vector3 r0 = slots[4 + p].position, r1 = slots[4 + (p ^ 1)].position, ta = (r1 - r0).normalized;
+                Vector3 to = Vector3.ProjectOnPlane(0.5f * (r0 + r1) - slots[16].position, ta).normalized, tu = Vector3.Cross(ta, to);
+                Vector3 pv = at - r0;
+                float R = reach / Unit(slots[4 + p]);
+                Debug.Log($"[SquashPlay] pivot part {p}: fitted {Vector3.Dot(pv, ta) / reach:0.00}/{Vector3.Dot(pv, to) / reach:0.00}/{Vector3.Dot(pv, tu) / reach:0.00} reach, " +
+                          $"hang written {mat.GetVector("_YAPS_SquashHangToward")[p] / R:0.00}/{mat.GetVector("_YAPS_SquashHangOut")[p] / R:0.00}/{mat.GetVector("_YAPS_SquashHangAcross")[p] / R:0.00}; " +
+                          string.Join(", ", pivotBones.Where(b => b.Key.IsChildOf(slots[4 + p].parent) && slots[p].IsChildOf(b.Key))
+                              .Select(b => (b, at: rest.rotation * b.Value.at))
+                              .Select(x => $"{x.b.Key.name} at {Vector3.Dot(x.at, ta) / reach:0.00}/{Vector3.Dot(x.at, to) / reach:0.00}/{Vector3.Dot(x.at, tu) / reach:0.00} moved {x.b.Value.moved / reach:0.00} reach, turned {x.b.Value.turned:0} deg")));
+            }
+            EditorApplication.Exit(0);
+        }
+
+        // After the cloth: the follow's pose in its rest's frame, against the first frame's. A
+        // turn R about a point P takes c0 to P + R (c0 - P), so (I - R) P = c - R c0, summed
+        // over the frames in the least squares.
+        static void PivotRead(Transform[] slots)
+        {
+            int k = frame - Bend;
+            if (k < 0 || k >= PivotFrames) return;
+            if (k == 0)
+            {
+                pivotC0 = new Vector3[2];
+                pivotQ0 = new Quaternion[2];
+                pivotM = new[] { new double[9], new double[9] };
+                pivotB = new[] { new double[3], new double[3] };
+                pivotBones = new Dictionary<Transform, (Vector3, float, float, Quaternion)>();
+            }
+            for (int p = 0; p < 2; p++)
+            {
+                var rest = slots[4 + p];
+                var inv = Quaternion.Inverse(rest.rotation);
+                var c = inv * (slots[p].position - rest.position);
+                var q = inv * slots[p].rotation;
+                for (var b = slots[p].parent; b != null && b != rest.parent; b = b.parent)
+                {
+                    var bAt = inv * (b.position - rest.position);
+                    var bq = inv * b.rotation;
+                    if (k == 0) pivotBones[b] = (bAt, 0f, 0f, bq);
+                    else
+                    {
+                        var was = pivotBones[b];
+                        pivotBones[b] = (was.at, Mathf.Max(was.moved, (bAt - was.at).magnitude), Mathf.Max(was.turned, Quaternion.Angle(bq, was.q)), was.q);
+                    }
+                }
+                if (k == 0) { pivotC0[p] = c; pivotQ0[p] = q; continue; }
+                var R = Matrix4x4.Rotate(q * Quaternion.Inverse(pivotQ0[p]));
+                var rhs = c - R.MultiplyVector(pivotC0[p]);
+                for (int i = 0; i < 3; i++)
+                {
+                    for (int j = 0; j < 3; j++)
+                    {
+                        // (I - R)^T (I - R), and (I - R)^T rhs
+                        double s = 0;
+                        for (int r = 0; r < 3; r++) s += ((r == i ? 1 : 0) - R[r, i]) * ((r == j ? 1 : 0) - R[r, j]);
+                        pivotM[p][i * 3 + j] += s;
+                    }
+                    for (int r = 0; r < 3; r++) pivotB[p][i] += ((r == i ? 1 : 0) - R[r, i]) * rhs[r];
+                }
+            }
+        }
         static Camera[] lookCams;
         static string lookShot;
         static int lookAt;
@@ -937,7 +1034,7 @@ namespace AvatarBridge.Regression
             {
                 var root = animator.transform;
                 Vector3 mid = 0.5f * (slots[0].position + slots[1].position);
-                float reach = mats[0].GetVector("_YAPS_SquashReach")[0] * slots[0].lossyScale.x;
+                float reach = mats[0].GetVector("_YAPS_SquashReach")[0] * Unit(slots[0]);
                 foreach (var smr in animator.GetComponentsInChildren<SkinnedMeshRenderer>().Where(r => r.sharedMaterials.Any(m => mats.Contains(m))))
                 {
                     smr.gameObject.layer = 31;
@@ -1070,26 +1167,50 @@ namespace AvatarBridge.Regression
             {
                 foreach (var c in animator.GetComponentsInChildren<MonoBehaviour>(true).Where(c => c != null && c.GetType().Name.Contains("MagicaCloth")))
                     c.enabled = false;
-                swingFrom = new[] { slots[0].parent.localRotation, slots[1].parent.localRotation };
+                swingHinge = new[] { Hinge(0), Hinge(1) };
+                swingFrom = new[] { swingHinge[0].localRotation, swingHinge[1].localRotation };
             }
-            slots[0].parent.localRotation = swingFrom[0];
-            slots[1].parent.localRotation = swingFrom[1];
-            float reach = mats[0].GetVector("_YAPS_SquashReach")[0] * slots[0].lossyScale.x;
+            swingHinge[0].localRotation = swingFrom[0];
+            swingHinge[1].localRotation = swingFrom[1];
+            float reach = mats[0].GetVector("_YAPS_SquashReach")[0] * Unit(slots[0]);
             Vector3 p0 = slots[0].position, p1 = slots[1].position;
-            float touch = mats[0].GetVector("_YAPS_SquashPair").x * slots[0].lossyScale.x;
+            float touch = mats[0].GetVector("_YAPS_SquashPair").x * Unit(slots[0]);
             float total = overlap > 0f ? (p1 - p0).magnitude - touch + overlap * reach : 0f;
             float a = total * first / reach, b = total * (1f - first) / reach;
             for (int i = 0; i < 2; i++)
             {
                 float by = (i == 0 ? a : b) * reach;
                 if (by <= 0f) continue;
-                var mover = slots[i].parent;
+                var mover = swingHinge[i];
                 Vector3 from = i == 0 ? p0 : p1, to = (i == 0 ? p1 - p0 : p0 - p1).normalized;
                 Vector3 r = from - mover.position;
                 mover.rotation = Quaternion.FromToRotation(r, r + to * by) * mover.rotation;
             }
             if (swingWait == 0)
-                Debug.Log($"[SquashPlay] swing {a:0.00}/{b:0.00} reach, touching at {touch / reach:0.00}: moved {(slots[0].position - p0).magnitude / reach:0.00}/{(slots[1].position - p1).magnitude / reach:0.00}, apart {(p1 - p0).magnitude / reach:0.00} -> {(slots[1].position - slots[0].position).magnitude / reach:0.00}");
+                Debug.Log($"[SquashPlay] swing {a:0.00}/{b:0.00} reach, touching at {touch / reach:0.00}: moved {(slots[0].position - p0).magnitude / reach:0.00}/{(slots[1].position - p1).magnitude / reach:0.00}, apart {(p1 - p0).magnitude / reach:0.00} -> {(slots[1].position - slots[0].position).magnitude / reach:0.00}, turned {Quaternion.Angle(swingFrom[0], swingHinge[0].localRotation):0}/{Quaternion.Angle(swingFrom[1], swingHinge[1].localRotation):0} deg about {swingHinge[0].name}, lever {(p0 - swingHinge[0].position).magnitude / reach:0.00} reach, pivot {Pivot()}");
+            // The bone the physics turn it about: of those between the follow and its rest, the one
+            // nearest the hang the build wrote. Measured with -spPivot, the cloth holds it in place
+            // and turns it. With no hang written, the follow's own bone.
+            Transform Hinge(int i)
+            {
+                Vector3 r0 = slots[4 + i].position, r1 = slots[4 + (i ^ 1)].position, ta = (r1 - r0).normalized;
+                Vector3 to = Vector3.ProjectOnPlane(0.5f * (r0 + r1) - slots[16].position, ta).normalized, tu = Vector3.Cross(ta, to);
+                var hang = new Vector3(mats[0].GetVector("_YAPS_SquashHangToward")[i], mats[0].GetVector("_YAPS_SquashHangOut")[i], mats[0].GetVector("_YAPS_SquashHangAcross")[i]);
+                var at = r0 + (ta * hang.x + to * hang.y + tu * hang.z) * Unit(slots[4 + i]);
+                var best = slots[i].parent;
+                if (hang == Vector3.zero) return best;
+                for (var b = slots[i].parent; b != null && b != slots[4 + i].parent; b = b.parent)
+                    if ((b.position - at).sqrMagnitude < (best.position - at).sqrMagnitude) best = b;
+                return best;
+            }
+            string Pivot()
+            {
+                // The bone it turns about, in the part's frame: toward the partner, out of the body, across.
+                Vector3 r0 = slots[4].position, r1 = slots[5].position, ta = (r1 - r0).normalized;
+                Vector3 to = Vector3.ProjectOnPlane(0.5f * (r0 + r1) - slots[16].position, ta).normalized, tu = Vector3.Cross(ta, to);
+                Vector3 pv = swingHinge[0].position - r0;
+                return $"{Vector3.Dot(pv, ta) / reach:0.00}/{Vector3.Dot(pv, to) / reach:0.00}/{Vector3.Dot(pv, tu) / reach:0.00}";
+            }
             // What the shader reads: each follow off its rest, from the matrices the provider wrote.
             if (swingWait == 7)
             {
@@ -1120,7 +1241,7 @@ namespace AvatarBridge.Regression
                 }).ToArray();
             }
             if (depth <= 0f) { Press(); return; }
-            float unit = slots[0].lossyScale.x, reach = mats[0].GetVector("_YAPS_SquashReach")[0] * unit;
+            float unit = Unit(slots[0]), reach = mats[0].GetVector("_YAPS_SquashReach")[0] * unit;
             float away = mats[0].GetVector("_YAPS_SquashAway")[0] * unit, rad = handRadius * Tall / 1.6f;
             Vector3 P = slots[0].position, up = animator.transform.up;
             var outP = Vector3.ProjectOnPlane(P - slots[1].position, up).normalized;
@@ -1203,6 +1324,7 @@ namespace AvatarBridge.Regression
             var slots = provider.transforms;
             for (int p = 0; p < 4; p++) late[p] = (slots[p].position - slots[4 + p].position).magnitude;
             lastEnd = slots.Select(t => t.position).ToArray();
+            if (PivotOn) PivotRead(slots);
             if (jumpCam != null) JumpRead();
             if (lookShot != null) LookShoot();
         }
@@ -1244,7 +1366,7 @@ namespace AvatarBridge.Regression
                 if (slots[p].lossyScale.x <= 0f) continue;
                 var off = slots[p].position - slots[4 + p].position;
                 var lifted = new Vector3(off.x, Mathf.Max(off.y, 0f), off.z);
-                float press = Mathf.Max(lifted.magnitude - push.y * reach[p] * slots[p].lossyScale.x, 0f) * push.x;
+                float press = Mathf.Max(lifted.magnitude - push.y * reach[p] * Unit(slots[p]), 0f) * push.x;
                 rows.Add(string.Join("\t", frame, p, (off.magnitude * 100f).ToString("0.00", CultureInfo.InvariantCulture),
                     (press * 100f).ToString("0.00", CultureInfo.InvariantCulture), writes ? 1 : 0,
                     (late.TryGetValue(p, out float l) ? l * 100f : -1f).ToString("0.00", CultureInfo.InvariantCulture),
@@ -1297,6 +1419,10 @@ namespace AvatarBridge.Regression
             RenderTexture.active = null;
             UnityEngine.Object.DestroyImmediate(pixels);
         }
+
+        // A follow's unit as the shader reads it: its matrix's first column, which lossyScale is
+        // not under a turned, unevenly scaled parent.
+        static float Unit(Transform t) => ((Vector3)t.localToWorldMatrix.GetColumn(0)).magnitude;
 
         static string Arg(string name)
         {
