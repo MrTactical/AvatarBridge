@@ -1859,6 +1859,15 @@ blendshapes. On a typical VRCFT avatar that's a couple of layers and a few hundr
   the FT parameters that were synced keep syncing. The pick for avatars whose shipped rig is the
   point.
 
+**Analyse this avatar** recommends Native when the face mesh carries the shapes. When the avatar
+also brings its own rig, the animator layers a face-tracking add-on or template uses to drive and
+smooth those shapes, a *your call* card says so and offers **Keep the avatar's own rig**: both set-up
+modes replace that rig, and *Apply all* leaves the choice to you. When this avatar has no tracking
+shapes but another in the scene wears the same mesh with them, as an add-on's installer leaves
+things when it works on a copy, the analysis and the report name that avatar: it is the one to
+convert. A face-tracking add-on installed in the project but not yet run on the avatar is named the
+same way.
+
 **Every mode needs a tracking source at runtime**: true of any CVR face-tracking avatar. Run
 [VRCFaceTracking](https://store.steampowered.com/app/3329480) and set CVR's *Eye Tracking* and
 *Mouth Tracking* modules to **OSC**.
@@ -2486,6 +2495,11 @@ Read the *Face tracking* section of the report: it says how close detection got 
 e.g. *matched 10 of the tracking shape names: 12 are needed*. A score near the threshold means the
 shapes are there under names it couldn't read; a score of nothing means it found no tracking shapes
 at all.
+
+A score of nothing on an avatar you installed face tracking on usually means it is the wrong avatar:
+installers that work on a copy leave the original in the scene, untouched. The report names the copy
+when it finds one. Convert that one, and if you want the add-on's own smoothing kept, pick **Keep the
+avatar's own rig**.
 
 Shapes named **without a side** are handled (one `CheekPuff` standing for
 `CheekPuffLeft`/`Right`), except where the side is the movement

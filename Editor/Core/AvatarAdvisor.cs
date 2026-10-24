@@ -253,6 +253,19 @@ namespace AvatarBridge
             {
                 string where = $"{score} face-tracking blendshapes on \"{mesh.name}\" " +
                                $"({(unified ? "Unified Expressions" : "Legacy / SRanipal")} naming)";
+                int rig = OwnRigParameters(root, descriptor);
+                if (rig > 0 && settings.faceTrackingMode == FaceTrackingMode.None)
+                {
+                    advice.Add(new Advice
+                    {
+                        Kind = AdviceKind.Confirm,
+                        Setting = "Face tracking",
+                        Finding = $"{where}, driven by the avatar's own rig ({rig} face-tracking parameters). " +
+                                  "Kept, it converts with the rest of the animator, smoothing included.",
+                        Targets = new UnityEngine.Object[] { mesh.gameObject },
+                    });
+                    return;
+                }
                 if (settings.faceTrackingMode == FaceTrackingMode.Native)
                 {
                     advice.Add(new Advice
@@ -277,8 +290,29 @@ namespace AvatarBridge
                         Targets = new UnityEngine.Object[] { mesh.gameObject },
                     });
                 }
+                // Native is the better default for the shapes, but a rig somebody paid for is
+                // usually the point of the add-on, and either set-up mode replaces it. So the
+                // choice is shown, and left out of Apply all.
+                if (rig > 0)
+                {
+                    string mode = settings.faceTrackingMode == FaceTrackingMode.Native
+                        ? "Native CVR Component" : "Unity Animator Blendtrees (DSR)";
+                    advice.Add(new Advice
+                    {
+                        Kind = AdviceKind.Manual,
+                        Setting = "Keep the avatar's own face-tracking rig",
+                        Finding = $"The avatar also carries its own face-tracking rig: {rig} parameters, the " +
+                                  $"animator layers that drive and smooth those shapes. \"{mode}\" replaces it. " +
+                                  "Your call: turn this on to keep the rig, and it converts with the rest of the animator.",
+                        Apply = s => s.faceTrackingMode = FaceTrackingMode.None,
+                    });
+                }
                 return;
             }
+
+            string elsewhere = FaceTrackingConverter.WhereTheShapesAre(root, out var copy);
+            string hint = elsewhere != null ? " " + elsewhere : "";
+            var copyTarget = copy != null ? new UnityEngine.Object[] { copy } : null;
 
             var names = ParameterNames(descriptor);
             // The stripper's rule, so the advice counts exactly what the mode would replace.
@@ -299,7 +333,8 @@ namespace AvatarBridge
                               (installed
                                   ? "\"Unity Animator Blendtrees (DSR)\" replaces the rig with a parameter-driven one that works here."
                                   : $"\"Unity Animator Blendtrees (DSR)\" would be the route, but \"{FaceTrackingPackages.DisplayName}\" " +
-                                    "is missing: reimport AvatarBridge to get it back."),
+                                    "is missing: reimport AvatarBridge to get it back.") + hint,
+                    Targets = copyTarget,
                     Apply = installed && settings.faceTrackingMode != FaceTrackingMode.DragonSkyRunner
                         ? s => s.faceTrackingMode = FaceTrackingMode.DragonSkyRunner
                         : (Action<BridgeSettings>)null,
@@ -314,7 +349,8 @@ namespace AvatarBridge
                 Setting = "Face tracking",
                 Finding = "No face-tracking blendshapes and no face-tracking parameters on this avatar. " +
                           "There is nothing for either mode to set up, and both of them strip an existing " +
-                          "rig before they start.",
+                          "rig before they start." + hint,
+                Targets = copyTarget,
                 Apply = settings.faceTrackingMode == FaceTrackingMode.None
                     ? (Action<BridgeSettings>)null : s => s.faceTrackingMode = FaceTrackingMode.None,
             });
@@ -797,6 +833,32 @@ namespace AvatarBridge
             }
             return vrcParams.parameters.Where(p => p != null && !string.IsNullOrEmpty(p.name))
                 .Select(p => p.name);
+        }
+
+        // Face-tracking parameters the avatar's own rig uses: its expression parameters and those
+        // of every controller a component hands over, the descriptor's and a merge component's
+        // alike, so a rig an add-on merges in at bake time is counted before the bake.
+        static int OwnRigParameters(GameObject root, VRCAvatarDescriptor descriptor)
+        {
+            var names = new HashSet<string>(ParameterNames(descriptor));
+            foreach (var behaviour in root.GetComponentsInChildren<MonoBehaviour>(true))
+            {
+                if (behaviour == null)
+                {
+                    continue;
+                }
+                var property = new SerializedObject(behaviour).GetIterator();
+                // Large arrays are weights and vertex data, never a list of controllers.
+                while (property.Next(!(property.isArray && property.arraySize > 1024)))
+                {
+                    if (property.propertyType == SerializedPropertyType.ObjectReference
+                        && property.objectReferenceValue is AnimatorController controller)
+                    {
+                        names.UnionWith(controller.parameters.Select(p => p.name));
+                    }
+                }
+            }
+            return names.Count(FaceTrackingParameters.IsFaceTracking);
         }
 
         static string Nice(PhysicsTarget target) =>

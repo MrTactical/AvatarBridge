@@ -1061,9 +1061,14 @@ renames it `<name>-FaceTracking` and adds its tracking prefabs.
   looked up `ModularAvatarInformation`, a type no release has (checked against 1.17.1). It reads
   `ModularAvatarMergeAnimator` now. `Dev/Tests/DiagnosticsPackagesTest` (each loaded package's row
   must read as installed) failed on it before, passes after.
-- **Possible, not done:** when nothing is detected but the scene holds an avatar of the same name
-  with `-FaceTracking` after it, or the avatar carries a tracking add-on's leftovers, the report
-  could say which avatar to convert.
+- **The analysis and the report now say it, on dev (Joe, 2026-10-24) [M]:** an avatar with no
+  tracking shapes names a scene root wearing the same mesh (renderer name and vertex count) with them,
+  or else a face-tracking add-on installed in the project and not run on it (one known installer
+  type, read from the package). The report's line turns into a Warning when it does. An avatar with
+  the shapes AND its own rig (face-tracking parameters in its expression parameters or in any
+  controller a component hands over, merge components included, so before the bake) gets a *your
+  call* card offering Keep; with Keep chosen, Native is no longer recommended over it.
+  `Dev/Tests/FaceTrackingAdviceTest` failed 4 checks before, passes after.
 
 ## 5.0.1
 
