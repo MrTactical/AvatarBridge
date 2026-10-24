@@ -553,11 +553,20 @@ Read what the seam check measures before calling it a bake fault.
   cell, 0.47 mm off here). The plug deform doubles that at the tip: 0.956 mm. So any two vertices,
   not only seam twins, can resolve one socket at two precisions; as the plug moves it should read
   as a faint shimmer or a one-frame crack along UV seams.
-  **Proposed fix, not done (Joe's call):** an entry only the coarse read found is looked up again
-  in its own fine cell, `floor(at / fineSize)`, and takes the fine position when the same socket is
-  there. Precision then follows the socket, not the block. It costs a header tap and up to eight
-  octant reads per coarse-only entry, in the shipped resolver, so compile time and CVR's shader
-  filter need measuring. Tester: the 45° walk on this plug is the repro.
+  **Fixed 2026-10-25 for 5.0.0 [M]:** the nearest entry only the coarse read found is read again
+  from its own fine cell, by a third pass of the scan loop, and takes the fine position when that
+  cell holds a socket within the coarse SAME distance. Precision follows the socket, not the block.
+  Tester on this plug, before and after: YAPS 0° 0.15 to 0.24 mm, 45° 0.96 (FAIL) to 0.00 mm, 90°
+  0.25 to 0.00 mm, DPS 0° 0.04 unchanged; PASS. The twin probe at the 0° worst pair: roots, sockets
+  and chains identical (0.000 mm), 0.237 mm apart already after the plug deform, so that residue is
+  each twin's own baked record, not the resolve, and the fix only moved where it peaks.
+  Compile, direct fxc on the deform target, three runs each: 1.57 s, 2207 slots, 47 temps before;
+  1.80 s, 2343 slots, 59 temps after (+15%). Tried and dropped: a refine function called per entry
+  (bisect plug +44%), the same pass carrying the decode (1.92 s, 63 temps), the refine reading the
+  coarse position's own cell only (1.74 s, but a coarse position across a cell edge keeps coarse).
+  Under CVR's Shader Filtering the scan loop gets one pass, so the coarse and refine passes are both
+  cut, as the coarse one already was; every new value is set before the loop. Reaches users on a
+  rebake. Left: a second coarse-only socket keeps its coarse reading.
 
 ### 16. Tester reports on the rc builds, 2026-10-22
 

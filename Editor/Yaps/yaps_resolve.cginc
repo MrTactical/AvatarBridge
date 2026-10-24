@@ -432,6 +432,7 @@ bool YapsFindLightSocket(float3 plugOrigin, float reach,
 #define YAPS_CH_MOVE(a, b) sockD[a] = sockD[b]; sockP[a] = sockP[b]; sockF[a] = sockF[b]; sockK[a] = sockK[b];
 #define YAPS_CH_PUT(a) sockD[a] = d; sockP[a] = at; sockF[a] = fwd; sockK[a] = kind;
 #define YAPS_CH_SAME(a) (sockD[a] < 1e8 && distance(sockP[a], at) < same)
+#define YAPS_CH_REFINE(a) if (sockD[a] < 1e8 && all(sockP[a] == refineAt)) { sockP[a] = refined; sockD[a] = distance(refined, root); }
 
 // Reads the neighbourhood of the shaft's MIDPOINT, not its root, so a
 // radius-1 read covers the whole plug. No extra taps. lightAt is the light
@@ -484,15 +485,30 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength, float3 l
     float  sockD[YAPS_CHAIN_MAX] = { 1e9, 1e9, 1e9, 1e9 };
     float  sockK[YAPS_CHAIN_MAX] = { -1, -1, -1, -1 };
 
-    [loop] for (int scan = 0; scan < 2; scan++)
+    // FOUND BY THE COARSE READ ALONE. The fine block is centred on each vertex's
+    // own root, and float noise in that root can move it a cell, so a socket at
+    // its edge came from the coarse read for some vertices and the fine one for
+    // their neighbours: half a millimetre apart, and a bend opened the plug along
+    // its UV seams (the bend tester's 45° walk). The nearest such socket is read
+    // again from its own fine cell, by a third pass of the same loop, so precision
+    // follows the socket rather than the block. A second one keeps the coarse
+    // reading; a third pass costs far less compile time than a loop of its own.
+    float3 refineAt = (float3)0;
+    float refineD = 1e9;
+    float coarseSame = YapsAtlasCellSize(lvl) / 128.0;
+    float3 refined = (float3)0;
+    float refinedGap = 1e9;
+
+    [loop] for (int scan = 0; scan < 3; scan++)
     {
-        int lv = scan == 0 ? fine : lvl;
+        int lv = scan == 1 ? lvl : fine;
         if (scan == 1 && lv == fine) break;
+        if (scan == 2 && refineD > 1e8) break;
         float size = YapsAtlasCellSize(lv);
         // The coverage block round the base, not the middle: engagement is
         // measured from the base, so a block centred there needs the least
         // reach to hold every socket in it.
-        int3 mine = int3(floor((scan == 0 ? root + axis * (len * 0.5) : root) / size));
+        int3 mine = int3(floor((scan == 0 ? root + axis * (len * 0.5) : (scan == 1 ? root : refineAt)) / size));
         // A socket the fine read already holds comes back from the coarse one
         // within a step or two of the coarse encoding.
         float same = size / 128.0;
@@ -502,6 +518,8 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength, float3 l
         [loop] for (int dz = -YAPS_ATLAS_RADIUS; dz <= YAPS_ATLAS_RADIUS; dz++)
         {
             int3 c = mine + int3(dx, dy, dz);
+            // The third pass asks only the cells the coarse position could be in.
+            if (scan == 2 && any(abs(refineAt - (float3(c) + 0.5) * size) > size * 0.5 + coarseSame)) continue;
             float tagWant = YapsAtlasTag(c);
 
             int idx, idxB;
@@ -536,6 +554,14 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength, float3 l
                     chain.hits += 1;
 
                     float3 at = (float3(c) + got.rgb) * size;
+                    // The third pass wants the position alone: the coarse read
+                    // already judged this socket.
+                    if (scan == 2)
+                    {
+                        float gap = distance(at, refineAt);
+                        if (gap < min(refinedGap, coarseSame)) { refinedGap = gap; refined = at; }
+                        continue;
+                    }
                     float d = distance(at, root);
 
                     float4 f4 = YAPS_ATLAS_LOAD(px + YAPS_ATLAS_SLOTPX, cellY);
@@ -624,6 +650,7 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength, float3 l
 
                     if (scan == 1 && (YAPS_CH_SAME(0) || YAPS_CH_SAME(1) || YAPS_CH_SAME(2) || YAPS_CH_SAME(3)))
                         continue;
+                    if (scan == 1 && d < sockD[3] && d < refineD) { refineD = d; refineAt = at; }
 
                     // A hole carries its owner and number in its kind's bits,
                     // a float of 2 or more, so the sort moves the key with no
@@ -661,6 +688,7 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength, float3 l
             }
         }
     }
+    if (refinedGap < 1e8) { YAPS_CH_REFINE(0) YAPS_CH_REFINE(1) YAPS_CH_REFINE(2) YAPS_CH_REFINE(3) }
 
     // A HOLE ENDS THE PATH. Entries are nearest first, so the chain runs to
     // the first hole and stops: a ring is passed through, a hole is entered
