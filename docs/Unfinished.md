@@ -1000,12 +1000,20 @@ the YAPS Squash component instead of pressing Remove, so the swaps stayed on the
   while every layer and swap stayed on its copy. `YapsSquash.Worn` counts the slots and swap keys on
   copies; both buttons and the card use it. `SquashTestBuilder -squashByHand` (build, key a swap,
   delete the objects and component, read the card, Remove) failed on the card before, passes after.
-- **The pink itself: open, Joe investigating.** Not explained by the code read so far. Two leads, both
-  untested: the shader sweep (item 7) covered the plug and socket patches, never the squash patch, so
-  a hair or clothing shader may patch for one and fail for the other; and `FollowSwaps` keys copies
-  into the clips before `Flush` writes them, while the swap test checks the clip in memory only, never
-  reloaded from disk. Asked of the user: pink in the editor too or only in game, the shader on a pink
-  material, Console errors.
+- **The pink itself: explained [user].** The user then deleted every generated YAPS material by hand.
+  The swap clips still named them, so each swap put a missing material in the slot, which draws pink.
+  Nothing can undo that now: Remove finds each original through the copy's own importer mark, and the
+  copy is gone. Two leads checked against it and left untested, still worth a test: the shader sweep
+  (item 7) never covered the squash patch, and `FollowSwaps` keys copies into the clips before `Flush`
+  writes them while the swap test reads the clip in memory only.
+- **Open, Joe's call: stop editing the user's clips [user's suggestion].** Both the squash and the
+  plug and socket bakes (`YapsSwapFollow.RepointInClips`) rewrite live, user-owned clips in place, so
+  the avatar depends on generated files and a hand cleanup breaks it. The user asks for it the way
+  VRCFury does it: leave the clips alone and repoint only at upload. The CCK has the hook,
+  `CCK_BuildUtility.PreAvatarBundleEvent`, invoked on the instantiated upload copy. Cheaper middle
+  ground: each repointed clip remembers its originals (say in its importer's userData), so Remove and
+  Clean up leftovers can restore keys whose copy was deleted, and the card warns about swap keys that
+  name a missing material.
 
 ## 5.0.1
 
