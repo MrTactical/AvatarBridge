@@ -889,8 +889,12 @@ plane collider"; and take a playbook from Poiyomi's glass squish.
    - Evidence: `-spLook -spSwing -spMeet` and `-spHand` on AlexaSquash and KarMeetDrag, rebuilt in
      place by `SquashTestBuilder.Rebuild` (new). Images `D:/Claude/scratch/alexa_blend.jpg`,
      `kar_blend.jpg`, `hand_cmp.jpg`. Squash builds need a rebuild for the new properties.
-   - Left: pushed together hard from both sides (1.08 reaches each), the bottoms meet in a slight
-     keel along the seam on Alexa.
+   - Pushed together hard from both sides (1.08 reaches each), the bottoms met in a ridge along the
+     seam on Alexa. The swell did it, not the press: off, the bottoms met in a small notch. It
+     peaked at the seam and fell away from it at once, so the two sides met at an angle. Now it is
+     level at the seam and dies away over two widths, holding the same volume; the ridge and the
+     point at the top of the seam are gone (`D:/Claude/scratch/keel2.jpg`). Kar not reshot: Joe
+     had its project open.
 
 ## 5.0.1
 

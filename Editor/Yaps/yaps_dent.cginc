@@ -906,20 +906,23 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         float held = shares[c] * squashContact[c];
         float back = (v - to) * held;
         // What the press pushes back swells out round the patch, as a marshmallow pressed on
-        // glass: the patch spreads and the side swells most at the seam, dying away over a
-        // width. The swell holds the cap the overlap pushed back, as deep as the press across a
-        // patch of radius sqrt(2 reach deep). A rim half that size a width out read as two parts
-        // cut flat down a seam.
+        // glass: the patch spreads and the side swells most at the seam, level there and dying
+        // away over a width. Falling away from the seam itself, the two sides met in a ridge
+        // along the bottom of a pair pressed hard together. The swell holds the cap the overlap
+        // pushed back, as deep as the press across a patch of radius sqrt(2 reach deep); its
+        // profile spans two widths. A rim half that size a width out read as two parts cut flat
+        // down a seam.
         float deep = squashDeep[c];
         float ring = sqrt(max(2 * squashReach[c] * deep, 1e-12));
-        float swell = _YAPS_DentSpill * squashReach[c] * deep * deep / (2 * ring * width) * held * exp(min(v, 0) / width);
+        float behind = max(-v, 0) / width;
+        float swell = _YAPS_DentSpill * squashReach[c] * deep * deep / (4 * ring * width) * held * (1 + behind) * exp(-behind);
         float3 away = side / max(length(side), ring);
         world += away * swell - facing * back;
         if (hasNormal)
         {
             n = normalize(n + seamN * dot(n, seamN) * (1 / max(1 - held * (1 - slope), 1e-3) - 1));
             // Swelling more toward the seam leans the side back from it.
-            if (v < 0) n = normalize(n - facing * (swell / width) * dot(away, n));
+            if (v < 0) n = normalize(n - facing * (swell * behind / ((1 + behind) * width)) * dot(away, n));
         }
     }
 
