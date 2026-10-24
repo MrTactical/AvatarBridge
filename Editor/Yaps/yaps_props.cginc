@@ -81,6 +81,10 @@ float _YAPS_SelfSockets;
 // chooser still narrows the wearer's own sockets.
 float _YAPS_SelfChosen;
 
+// This plug's number among its wearer's plugs, 1 to 15, which keys its light
+// relay with the owner. Zero has no relay. Set at build.
+float _YAPS_PlugIndex;
+
 
 // The screen atlas. The property defaults to 0; conversion and Build both
 // set 1. The marker lights answer where it cannot.

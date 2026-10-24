@@ -425,6 +425,58 @@ bool YapsPortalExit(int key, inout float3 exitAt, inout float3 exitFwd)
     return ok;
 }
 
+// --- the light relay ------------------------------------------------------
+//
+// Unity fills the four vertex light slots for ForwardBase alone, so a plug's
+// shadow caster, its add passes and an outline drawn Always saw no marker
+// light and drew straight: a ghost of the unbent plug in the camera depth
+// texture. A relay renderer per plug, drawn before the grab with the plug's
+// bounds, is handed the same four lights and writes the sockets they name
+// here, keyed by owner and plug number. Those passes read it a frame late.
+// A light's shadow map cannot: it is drawn after the frame's grabs but bound
+// to the texture the atlas name held when the frame began, and the pool hands
+// that one to the clear's grab. Columns 0 to 7 under the directory, which no
+// cell or entry draws or reads, so the cell protocol stays 9 and an older
+// reader never looks.
+//
+// Eight pixels an entry: tag and number, owner, then per root its position
+// fraction and kind, its facing, its cell index. Two roots, since four slots
+// hold two sockets with their fronts. The relay pairs each root with its front
+// at full precision; ownership waits for the reader, which alone knows where
+// the plug starts.
+#define YAPS_RELAY_VERSION 1
+#define YAPS_RELAY_PX      8
+#define YAPS_RELAY_ROOTS   2
+#define YAPS_RELAY_SLOTS   512
+// A cell index of 8 bits per axis at 2 cm is +-2.56 m around the plug, and a
+// marker light's range is under half a metre, so any light in the plug's slots
+// unwraps right; the fraction keeps a twelfth of a millimetre.
+#define YAPS_RELAY_CELL    0.02
+
+uint YapsRelayWord(int owner, int n)
+{
+    return YapsAtlasMix(int3(owner & 0xFFF, owner >> 12, 16 + n), 0x6A09E667u + YAPS_RELAY_VERSION * 0x27D4EB2Fu);
+}
+
+float YapsRelayTag(int owner, int n)
+{
+    return (1 + 2 * (YapsRelayWord(owner, n) >> 25)) / 255.0;
+}
+
+// Row from the top of home 0 or 1, both under the directory.
+uint YapsRelayRow(int owner, int n, int home)
+{
+    uint h = home == 0 ? YapsRelayWord(owner, n) : YapsAtlasMix(int3(owner & 0xFFF, owner >> 12, 16 + n), 0xBB67AE85u);
+    return YAPS_ATLAS_DIR_ROWS + (((h & 0xFFFF) * YAPS_RELAY_SLOTS) >> 16);
+}
+
+// The writer's side: only where the strip lies inside the cleared rect, or its
+// pixels would stay on screen.
+bool YapsRelayFits()
+{
+    return YapsAtlasFits() && YapsAtlasHeightPx() >= YAPS_ATLAS_DIR_ROWS + YAPS_RELAY_SLOTS;
+}
+
 // Outside the cube, so the clipper drops it.
 // z only has to suit both depth conventions.
 float4 YapsAtlasNowhere()

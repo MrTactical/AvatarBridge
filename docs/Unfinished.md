@@ -466,6 +466,24 @@ ranked by how visible it should be:
   effects follow the atlas. Release notes' YAPS shadow line and S17.9 corrected to match. Joe's
   10-24 sighting is one of two: a cast shadow sits off the plug along the sun and moves with it,
   the depth ghost sits exactly behind the plug from the eye. He will say which next time.
+  **Fix (b) for depth effects, branch `plug-ghost-light-atlas`, 2026-10-24 [M], not merged.** Each
+  plug gets a light relay: a boneless skinned renderer on the plug's own bounds (so Unity hands it
+  the same four lights), drawn in ForwardBase before the grab, which writes the roots those lights
+  name into a strip of the atlas: columns 0 to 7, rows 8 to 519, keyed by owner and a plug number
+  1 to 15 (`_YAPS_PlugIndex`), two homes, tag, number and the 24-bit owner checked on read. Every
+  pass but ForwardBase reads it when nothing else resolved. `PlugGhostProbe` (marker lights only):
+  21724 and 26216 depth-only px to 0, ghost 0, on every route at 35° and 60°; the floor shadow
+  stays straight (above), so the probe reports it and no longer fails on it. `AtlasSpotsProbe`:
+  the relay writes its 16 px and 0 px stay on screen on all three backgrounds. Shader sweep:
+  54 of 54 hosts pass, every one as before. Left out: owner 0 (a plug on a prop, someone else's copy before the owner id
+  syncs), views too small for the atlas, a socket mesh's opening, one frame late, and the sun's
+  shadow. The patch's property block changed, so every patched shader is stale and avatars need
+  converting again. Merges into dev only once seen in game with two clients: a plug in a DPS-only
+  socket in a world with depth of field or fog, no straight plug through the skin for either.
+  **Later, after 5.0.0 (option B, not started):** the plug's other passes read a per-avatar texture
+  outside the grab pool, filled once a frame by a CVRBlitter copying the relay rows out of the atlas,
+  which would reach a light's shadow too. Own sockets first; needs the blitter's timing proven in
+  game.
 - **AM1-10, the menu-name rename rule.** Whether `RenamePass` should trigger on
   `IllegalMenuNameChars` (`[^a-zA-Z0-9/\-_#]`) instead of its own list, leaving
   `VerifyMenuParameterNames` to assert. Author decision: it changes the names users get for menu
