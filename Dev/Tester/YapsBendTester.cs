@@ -153,7 +153,7 @@ namespace AvatarBridge.Regression
 
                 int n = skin.sharedMesh.vertexCount;
                 // Past the vertices, the atlas list the capture shader probes.
-                const int probe = 8;
+                const int probe = 8 + 32;
                 var buffer = new ComputeBuffer(n + probe, 16);
                 cleanup.Add(buffer.Release);
                 var zero = new Vector4[n + probe];
@@ -539,6 +539,37 @@ namespace AvatarBridge.Regression
                         Log($"  worst seam: vertices {pa} and {pb}, {cluster} at that rest point, {Vector3.Distance(bind[pa], bind[pb]):0.00000} apart in mesh units, " +
                             $"normals {(normals.Length > pb ? Vector3.Angle(normals[pa], normals[pb]) : -1f):0}° apart; bent moved them " +
                             $"{Vector3.Distance(seamBent[pa], rest[pa]) * 1000f:0.0} and {Vector3.Distance(seamBent[pb], rest[pb]) * 1000f:0.0} mm");
+                        // Each twin's own recovered root, from the rest capture's inputs: the bend
+                        // rotates about it, so roots that disagree part the twins as it bends.
+                        foreach (var (mat, _) in capture)
+                        {
+                            mat.SetFloat("_YapsTwinA", pa);
+                            mat.SetFloat("_YapsTwinB", pb);
+                            mat.SetFloat("_YapsTwinAt", n + 8);
+                        }
+                        // In the state that parted them most.
+                        Aim(walker.transform, (w.angle, 0f, seamAt));
+                        var twins = Capture(hdr, 0f);
+                        foreach (var (mat, _) in capture) mat.SetFloat("_YapsTwinAt", 0f);
+                        Vector4 T(int i) => twins[n + 8 + i];
+                        Vector3 V(int i) => T(i);
+                        var tangents = mesh.tangents;
+                        Log($"  twin roots: {Vector3.Distance(V(0), V(16)) * 1000f:0.000} mm apart (recovered {T(0).w:0}/{T(16).w:0}), " +
+                            $"forward {Vector3.Angle(V(1), V(17)):0.000}° apart, up {Vector3.Angle(V(2), V(18)):0.000}°; " +
+                            $"baked normal {Vector3.Angle(V(3), V(19)):0.000}°, baked tangent {Vector3.Angle(V(4), V(20)):0.000}°, " +
+                            $"live tangent {Vector3.Angle(V(5), V(21)):0.000}° (w {T(5).w:0}/{T(21).w:0}), " +
+                            $"bind tangent {(tangents.Length > pb ? Vector3.Angle(tangents[pa], tangents[pb]) : -1f):0.000}°, " +
+                            $"active {T(3).w:0.00}/{T(19).w:0.00}");
+                        Log($"  twins bent at {seamAt:0.00}L: captured {Vector3.Distance(twins[pa], twins[pb]) * 1000f:0.000} mm apart; " +
+                            $"after the plug deform {Vector3.Distance(V(6), V(22)) * 1000f:0.000} mm, after the socket deform " +
+                            $"{Vector3.Distance(V(7), V(23)) * 1000f:0.000} mm; sockets resolved {Vector3.Distance(V(8), V(24)) * 1000f:0.000} mm " +
+                            $"and {Vector3.Angle(V(9), V(25)):0.000}° apart, engaged {T(8).w:0.0000}/{T(24).w:0.0000}, tier {T(9).w:0}/{T(25).w:0}");
+                        string Chain(int o) => $"count {T(o + 10).x:0}, engaged {T(o + 10).y:0.0000}, headers {T(o + 10).z:0}, hits {T(o + 10).w:0}: " +
+                            string.Join("; ", Enumerable.Range(0, 4).Where(j => T(o + 11 + j).w > -0.5f)
+                                .Select(j => $"{((Vector3) T(o + 11 + j) - (Vector3) T(o)).magnitude / Mathf.Max(T(o + 15).x, 1e-6f):0.0000}L kind {T(o + 11 + j).w:0} " +
+                                             $"at {T(o + 11 + j).x:F5} {T(o + 11 + j).y:F5} {T(o + 11 + j).z:F5}"));
+                        Log($"    twin {pa} chain: {Chain(0)}");
+                        Log($"    twin {pb} chain: {Chain(16)}");
                     }
                     fail += Check($"{w.label}: no seam opens past 0.5 mm", seam < 0.5e-3f);
                     // Crushed behind the opening is the socket hiding what went
