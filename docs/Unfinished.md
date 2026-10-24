@@ -893,8 +893,8 @@ plane collider"; and take a playbook from Poiyomi's glass squish.
      seam on Alexa. The swell did it, not the press: off, the bottoms met in a small notch. It
      peaked at the seam and fell away from it at once, so the two sides met at an angle. Now it is
      level at the seam and dies away over two widths, holding the same volume; the ridge and the
-     point at the top of the seam are gone (`D:/Claude/scratch/keel2.jpg`). Kar not reshot: Joe
-     had its project open.
+     point at the top of the seam are gone (`D:/Claude/scratch/keel2.jpg`). On Kar the small point
+     at the bottom of the seam rounds off too, one-sided unchanged (`kar_ridge.jpg`).
 
 ## 5.0.1
 
