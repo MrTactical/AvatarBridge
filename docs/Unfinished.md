@@ -916,6 +916,15 @@ plane collider"; and take a playbook from Poiyomi's glass squish.
      goes into the partner's swing there. At 0.9 the pair parted at the top of the cleavage.
      Still a fitted shape (six reaches), not the real mesh: a contact read from the mesh itself
      is the next step if this does not read as soft enough in game.
+   - **Grab chains, measured (Joe: "it's just not moving the other titty").** Kar as converted
+     2026-10-25 20:06 (soft body physics on), `-spDrag -spGrab -spLookStages slots`: the shader reads
+     the grabbed part from the skinned helper (source 1), its follow 3.0 cm off rest exactly as the
+     bone at frame end, the matrices 0.0. So the squash sees a grab. The grab itself moves little:
+     3.0 cm on a 21 cm pull at one push a frame, 6.1 cm (skin 6.7 average, 8.4 most) at five
+     pushes a frame toward 42 cm (`-spGrabTimes 5 -spDragScale 2`); the soft body spring and 50°
+     limit hold it. At 6 cm the partner shoves about as far, hard to see on black latex. Joe's
+     screenshot shows a far bigger move passing in front with no shove: not reproduced yet.
+     At rest the soft body spheres move nothing (both follows 0.00 cm off rest, on or off).
 
 ## 5.0.1
 

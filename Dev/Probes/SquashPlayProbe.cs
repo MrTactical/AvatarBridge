@@ -67,6 +67,8 @@
 // -spRootScale <s> resizes the avatar before Play, through a parent, with any of the above.
 // -spEach adds a front shot per renderer, each drawn alone, at every shot.
 // -spRaw switches the squash off on copies of its materials, for skinning alone.
+// -spGrabTimes N pushes N times a frame with -spGrab, as mouse drag events can come.
+// -spNoContact switches off the converter's soft body spheres ("SoftBodyContact") once a drag starts.
 //
 // Batch, never -nographics: the frames are rendered.
 
@@ -916,7 +918,7 @@ namespace AvatarBridge.Regression
             string only = Arg("-spLookStages");
             if (only == null || only.StartsWith("-")) return LookStages;
             var names = only.Split(',');
-            return LookStages.Where(x => names.Contains(x.name));
+            return LookStages.Concat(ProbeStages).Where(x => names.Contains(x.name));
         }
 
         static readonly (string name, string[] swaps)[] LookStages =
@@ -941,6 +943,7 @@ namespace AvatarBridge.Regression
         {
             ("share", new[] { "    yapsSkin = YapsSkinState();\n", "    yapsSkin = YapsSkinState();\n    position = mul(unity_WorldToObject, float4(mul(unity_ObjectToWorld, float4(position, 1)).xyz + float3(shares[0] + shares[2], shares[1] + shares[3], 0), 1)).xyz;\n    return;\n" }),
             ("lean", new[] { "mapped += (moved - world) * shares[m] + shunt * swings[m] * swingOut;", "mapped += float3(onSeam, squashContact[m], length(world - p.centre) / YapsExtent(p, normalize(world - p.centre))) * ((m & 1) == 1);", Stop, StopTo }),
+            ("slots", new[] { "    yapsSkin = YapsSkinState();\n", "    yapsSkin = YapsSkinState();\n    position = mul(unity_WorldToObject, float4(mul(unity_ObjectToWorld, float4(position, 1)).xyz + float3(yapsSkin, 100 * distance(YapsSlot(0), _YAPS_SquashFollow[0]._m03_m13_m23), 100 * distance(YapsSlot(0), YapsSlot(4))), 1)).xyz;\n    return;\n" }),
             ("swing", new[] { "mapped += (moved - world) * shares[m] + shunt * swings[m] * swingOut;", "mapped += float3(swings[m], shares[m], length(shunt)) * ((m & 1) == 1);", Stop, StopTo }),
         };
 
@@ -1488,6 +1491,10 @@ namespace AvatarBridge.Regression
                     dragged = provider.GetComponentInParent<CVRAvatar>().GetComponentsInChildren<Transform>(true).First(x => x.name == named);
                 if (SessionState.GetInt(K + "moveTool", 0) == 1) EditorApplication.update += () => { if (EditorApplication.isPlaying) Place(); };
                 if (SessionState.GetInt(K + "push", 0) == 1) YapsSquashPreview.Start(YapsSquash.SettingsOf(provider.GetComponentInParent<CVRAvatar>().transform));
+                // The converter's soft body spheres switched off, to see what they do at rest.
+                if (Environment.GetCommandLineArgs().Contains("-spNoContact"))
+                    foreach (var sphere in provider.GetComponentInParent<CVRAvatar>().GetComponentsInChildren<Transform>(true).Where(x => x.name == "SoftBodyContact"))
+                        sphere.gameObject.SetActive(false);
                 grabBone = slots[0].parent;
                 grabFrom = grabBone.position;
                 dragLocal = dragged.localPosition;
@@ -1530,7 +1537,10 @@ namespace AvatarBridge.Regression
             if (SessionState.GetInt(K + "grab", 0) == 1)
             {
                 var pull = grabFrom + dragBy * dragSet - grabBone.position;
-                CckAnimatorTester.Push(dragged.GetComponent<MagicaCloth2.MagicaCloth>(), pull, Mathf.Min(pull.magnitude * 30f, 18f));
+                // The tester pushes on every mouse drag event, which can come several times a frame.
+                int.TryParse(Arg("-spGrabTimes") ?? "1", out int times);
+                for (int i = 0; i < Mathf.Max(times, 1); i++)
+                    CckAnimatorTester.Push(dragged.GetComponent<MagicaCloth2.MagicaCloth>(), pull, Mathf.Min(pull.magnitude * 30f, 18f));
                 dragSetAt = dragged.position;
             }
             else
@@ -1636,6 +1646,16 @@ namespace AvatarBridge.Regression
                     return into;
                 }
                 var moved = Read(tearShader, out var seen);
+                if (stage == "slots")
+                {
+                    var v = moved.Where((x, i) => seen[i] && x != Vector3.zero).DefaultIfEmpty(Vector3.zero).First();
+                    var ends = provider.transforms;
+                    var mats = smr.sharedMaterials.Where(m => m != null && m.HasProperty("_YAPS_DentOwn")).ToArray();
+                    var held = mats.Length > 0 ? mats[0].GetMatrixArray("_YAPS_SquashFollow") : null;
+                    string matrix = held != null && held.Length > 4 ? (100f * ((Vector3) held[0].GetColumn(3) - (Vector3) held[4].GetColumn(3)).magnitude).ToString("0.0", CultureInfo.InvariantCulture) : "none";
+                    Debug.Log($"[SquashPlay] slots {smr.name}: source {v.x:0}, skinned slot off the matrix {v.y:0.0} cm, shader's follow off rest {v.z:0.0} cm, " +
+                              $"transforms at frame end {100f * (ends[0].position - ends[4].position).magnitude:0.0} cm, material matrices {matrix} cm");
+                }
                 Vector3[] share = null, lean = null, swingW = null;
                 if (stage == "")
                 {
@@ -1661,6 +1681,16 @@ namespace AvatarBridge.Regression
                 int count = 0, over2 = 0, over3 = 0, turned = 0, opened = 0, skinOpened = 0, openedStart = 0;
                 float worst = 1f, widest = 0f, widestStart = 0f;
                 Vector3[] start = startAt != null && startAt.TryGetValue(smr, out var st) && st.Length == rest.Length ? st : null;
+                // How far the first part's own skin moved, against how far its follow did.
+                if (stage == "slots" && start != null)
+                {
+                    var sh = Read(Staged(tearShaders, JumpShader, "SquashJump", "share"), out _);
+                    var at = provider.transforms[4].position - smr.transform.position;
+                    var near = Enumerable.Range(0, rest.Length).Where(v => sh[v].x >= 0.9f && (start[v] - at).magnitude < 0.3f).ToList();
+                    if (near.Count > 0)
+                        Debug.Log($"[SquashPlay] slots {smr.name}: the first part's skin moved {100f * near.Average(v => (rest[v] - start[v]).magnitude):0.0} cm on average, " +
+                                  $"{100f * near.Max(v => (rest[v] - start[v]).magnitude):0.0} cm at most, over {near.Count} vertices");
+                }
                 var tris = mesh.triangles;
                 for (int i = 0; i < tris.Length; i += 3)
                 {
