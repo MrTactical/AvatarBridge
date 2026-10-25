@@ -892,11 +892,30 @@ plane collider"; and take a playbook from Poiyomi's glass squish.
      off its rest, overlap 6.9 cm, lead -1.00 (one-sided), no compile error. Kar: 21.4 cm, overlap
      21.3 cm, lead -1.00. The probe's own drag on Joe's 18:48 rebuild tears as at 048465f (body 296
      edges opened past 1 cm, panties 0), so the rebuild carried the fix.
-   - **Open: a butt cheek pushed half the gap into its partner tears.** The first Push moved every
+   - **Fixed: a butt cheek pushed into its partner tore the panties.** The first Push moved every
      pair's first part; on Kar the cheek's push opened 788 panty edges past 1 cm, widest 15.3 cm,
-     and about 780 more on the body (`kar/push` in the session scratchpad). Push now moves the
-     first pair only, so this is out of the tester's way, not fixed. The shunt and seam were tuned
-     on breasts alone.
+     and about 780 more on the body (`kar/push` in the session scratchpad). Cause: the shunt (the
+     partner swung away) was laid on each vertex by its share, and a thong strip bridging the
+     cleft copies its share from the skin either side, stepping 0, 0.5, 1 across about 1.5 cm.
+     Now the build writes `_YAPS_DentSwing`, each renderer's own skin weight on each part's chain
+     (root included), and the shader lays the shunt on by it, faded from the part's base to its
+     tip as a swing. Vertices with no share but some swing weight now enter the part loop for the
+     shunt alone (the seam and squash still weigh by share). Opened past 1 cm from the pre-drag
+     pose, skin-only in brackets: Kar cheek at a quarter push, panties 204 to 0 (0); full push 966
+     to 580 (196), widest 15.3 to 5.2 cm; Kar breast push, body 1118 to 1100 (1100), bra 251
+     (360); Alexa's top 157 (143). Tried and dropped: the shunt rigid by swing weight (Kar breast
+     body 1890, Alexa's top 13.6x, its own weights step 0 to 0.76 across one edge); capped by
+     share (tore a layer where the share ends); the swing set without the chain root (the cheek
+     swung 9% of its skin, so the shove all but vanished).
+   - **Soft-body pair contact (Joe: "boob mesh to boob mesh squishy, genuine soft body").**
+     `YAPS_SQUASH_BULK 0.6` of each part's overlap now goes into the whole-part squash (flatten
+     toward the partner, grow the other ways, volume kept); the seam presses only the rest. Pressed
+     from both sides at 0, the two met as halves of one ball cut down a plane; at 0.6 they round
+     off into each other with a short seam. Kar squeezed both sides, body edges opened from start:
+     264 at 0, 120 at 0.6 (skin alone 694). One-sided pushes are unchanged, as all of the overlap
+     goes into the partner's swing there. At 0.9 the pair parted at the top of the cleavage.
+     Still a fitted shape (six reaches), not the real mesh: a contact read from the mesh itself
+     is the next step if this does not read as soft enough in game.
 
 ## 5.0.1
 

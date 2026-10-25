@@ -38,7 +38,7 @@ namespace AvatarBridge
         // Every property the squash sets, so a swapped-in look can take the same values.
         internal static readonly string[] Properties =
         {
-            "_YAPS_DentPower", "_YAPS_DentOwn", "_YAPS_SquashReach", "_YAPS_SquashAway", "_YAPS_SquashOut",
+            "_YAPS_DentPower", "_YAPS_DentOwn", "_YAPS_DentSwing", "_YAPS_SquashReach", "_YAPS_SquashAway", "_YAPS_SquashOut",
             "_YAPS_SquashIn", "_YAPS_SquashSideA", "_YAPS_SquashSideB", "_YAPS_SquashTune", "_YAPS_SquashPair",
             "_YAPS_SquashShape", "_YAPS_SquashPulse", "_YAPS_SquashPush", "_YAPS_SquashLimbL", "_YAPS_SquashLimbR",
             "_YAPS_SquashHands", "_YAPS_SquashMotion", "_YAPS_SquashPlug", "_YAPS_DentSpill",
@@ -533,6 +533,7 @@ namespace AvatarBridge
             var bodySkin = regions != null ? skins.First(s => s.smr == regions.body) : named;
             Lap("Arms");
             var shared = Shares(skins, bodySkin, root.name, folder);
+            var swings = Swings(shared, skins, bodySkin, parts, root.name, folder, log);
             Lap("Shares");
             // Layers the wearer left out stay on their own material, still, by their choice. So
             // does a baked plug: it bends on its own and lies on no skin, so it is never what a
@@ -582,6 +583,7 @@ namespace AvatarBridge
                     basis.Stop();
                     copy.SetFloat("_YAPS_DentPower", 1f);
                     copy.SetTexture("_YAPS_DentOwn", own);
+                    copy.SetTexture("_YAPS_DentSwing", swings[smr]);
                     copy.SetVector("_YAPS_SquashReach", reach);
                     copy.SetVector("_YAPS_SquashAway", away);
                     copy.SetVector("_YAPS_SquashOut", outward);
@@ -1019,7 +1021,7 @@ namespace AvatarBridge
         static void Carry(Material from, Material to, string name)
         {
             if (!from.HasProperty(name) || !to.HasProperty(name)) return;
-            if (name == "_YAPS_DentOwn") to.SetTexture(name, from.GetTexture(name));
+            if (name == "_YAPS_DentOwn" || name == "_YAPS_DentSwing") to.SetTexture(name, from.GetTexture(name));
             else if (name == "_YAPS_DentPower" || name == "_YAPS_SquashPulse" || name == "_YAPS_SquashPlug" || name == "_YAPS_DentSpill") to.SetFloat(name, from.GetFloat(name));
             else to.SetVector(name, from.GetVector(name));
         }
@@ -1153,21 +1155,77 @@ namespace AvatarBridge
                         if (total > 0f) m.share[v] = Vector4.Lerp(m.share[v], sum / total, Mathf.SmoothStep(0f, 1f, (Fade - Mathf.Sqrt(nearest)) / (Fade - Near)));
                     }
                 if (m.share.All(x => x == Vector4.zero)) continue;
-                int width = 1024, height = Mathf.Max(1, (m.at.Length + width - 1) / width);
-                var pixels = new Color32[width * height];
-                for (int v = 0; v < m.at.Length; v++) pixels[v] = Stored(m.share[v]);
-                // Linear and point-sampled: a share is a number, not a colour.
-                var tex = new Texture2D(width, height, TextureFormat.RGBA32, false, true) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
-                tex.SetPixels32(pixels);
-                tex.Apply(false);
-                tex = Asset(folder, tex, $"{name} {m.smr.name} shares.asset");
-                // What the CCK's upload checks ask of an avatar texture. The asset keeps its
-                // pixels either way; readable only adds a CPU copy, and with no mips nothing streams.
-                var flags = new SerializedObject(tex);
-                flags.FindProperty("m_IsReadable").boolValue = false;
-                flags.FindProperty("m_StreamingMipmaps").boolValue = true;
-                flags.ApplyModifiedPropertiesWithoutUndo();
-                result.Add((m.smr, tex, m.share));
+                result.Add((m.smr, PerVertex(m.share, folder, $"{name} {m.smr.name} shares.asset"), m.share));
+            }
+            return result;
+        }
+
+        // Four numbers per vertex as a texture the shader loads by vertex id.
+        static Texture2D PerVertex(Vector4[] values, string folder, string file)
+        {
+            int width = 1024, height = Mathf.Max(1, (values.Length + width - 1) / width);
+            var pixels = new Color32[width * height];
+            for (int v = 0; v < values.Length; v++) pixels[v] = Stored(values[v]);
+            // Linear and point-sampled: a share is a number, not a colour.
+            var tex = new Texture2D(width, height, TextureFormat.RGBA32, false, true) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
+            tex.SetPixels32(pixels);
+            tex.Apply(false);
+            tex = Asset(folder, tex, file);
+            // What the CCK's upload checks ask of an avatar texture. The asset keeps its
+            // pixels either way; readable only adds a CPU copy, and with no mips nothing streams.
+            var flags = new SerializedObject(tex);
+            flags.FindProperty("m_IsReadable").boolValue = false;
+            flags.FindProperty("m_StreamingMipmaps").boolValue = true;
+            flags.ApplyModifiedPropertiesWithoutUndo();
+            return tex;
+        }
+
+        // Per renderer, how much of each vertex the bones of each part's chain carry, from its own
+        // skin weights, the chain's root with them: a shunt moves the whole part, as a push on it
+        // does. Without the root, which the cloth holds still, a seat swung a tenth of its skin.
+        // By share instead, a layer bridging the gap between a pair, its share stepping from one
+        // part to the other across a centimetre or two, was pulled apart by the whole shunt. A
+        // part whose follow and rest ride one bone swings nothing, and is shunted by its share.
+        static Dictionary<SkinnedMeshRenderer, Texture2D> Swings(List<(SkinnedMeshRenderer smr, Texture2D own, Vector4[] shares)> shared,
+            List<Skin> skins, Skin body, List<Part> parts, string name, string folder, List<string> log)
+        {
+            var sets = parts.Select(p =>
+            {
+                if (p.mover == p.restOn) return null;
+                var chain = p.mover;
+                while (chain.parent != null && chain.parent != p.restOn) chain = chain.parent;
+                return new HashSet<Transform>(chain.GetComponentsInChildren<Transform>(true));
+            }).ToList();
+            var result = new Dictionary<SkinnedMeshRenderer, Texture2D>();
+            foreach (var (smr, _, shares) in shared)
+            {
+                var s = skins.First(x => x.smr == smr);
+                var swing = new Vector4[s.at.Length];
+                for (int v = 0; v < swing.Length; v++)
+                {
+                    var w = s.weights[v];
+                    int[] index = { w.boneIndex0, w.boneIndex1, w.boneIndex2, w.boneIndex3 };
+                    float[] weight = { w.weight0, w.weight1, w.weight2, w.weight3 };
+                    for (int i = 0; i < 4; i++)
+                    {
+                        if (i >= sets.Count || sets[i] == null) { swing[v][i] = shares[v][i]; continue; }
+                        float sum = 0f;
+                        for (int q = 0; q < 4; q++)
+                        {
+                            var bone = weight[q] > 0f ? s.bones[index[q]] : null;
+                            if (bone != null && sets[i].Contains(bone)) sum += weight[q];
+                        }
+                        swing[v][i] = Mathf.Clamp01(sum);
+                    }
+                }
+                result[smr] = PerVertex(swing, folder, $"{name} {smr.name} swings.asset");
+                if (s != body) continue;
+                // How much of each part's own skin swings, for the log: low, a shunt moves little.
+                for (int i = 0; i < parts.Count; i++)
+                {
+                    var core = Enumerable.Range(0, swing.Length).Where(v => shares[v][i] >= 0.5f).ToList();
+                    if (core.Count > 0) log.Add($"{parts[i].name} swings {core.Average(v => swing[v][i]):0.00} of its skin");
+                }
             }
             return result;
         }
@@ -1268,7 +1326,7 @@ namespace AvatarBridge
                 .Concat(new UnityEngine.Object[] { skin?.sharedMesh, skin?.sharedMaterial }).Where(o => o != null).ToArray();
             return new HashSet<string>(EditorUtility.CollectDependencies(from)
                 .Where(o => !(o is Material m) || SourceOf(m) != null || (skin != null && o == skin.sharedMaterial)).Select(AssetDatabase.GetAssetPath)
-                .Where(p => p.EndsWith(".mat") || p.EndsWith(" shares.asset") || p.EndsWith(" squash skin.asset")));
+                .Where(p => p.EndsWith(".mat") || p.EndsWith(" shares.asset") || p.EndsWith(" swings.asset") || p.EndsWith(" squash skin.asset")));
         }
 
         // Pair `k` as the skin carries it, posed as it stands: points from the renderer carrying

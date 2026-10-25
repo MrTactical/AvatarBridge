@@ -137,6 +137,7 @@ namespace AvatarBridge
         _YAPS_DentPower (""YAPS soft-body dent"", Range(0,1)) = 0
         _YAPS_DentSpill (""YAPS squish spill, 1 keeps the volume"", Range(0,2)) = 1
         [NoScaleOffset] _YAPS_DentOwn (""YAPS dent part shares, per vertex"", 2D) = ""black"" {}
+        [NoScaleOffset] _YAPS_DentSwing (""YAPS dent part swings, per vertex"", 2D) = ""white"" {}
         _YAPS_SquashReach (""YAPS squash reach per part toward its partner, follow units"", Vector) = (0,0,0,0)
         _YAPS_SquashAway (""YAPS squash reach per part away from its partner"", Vector) = (0,0,0,0)
         _YAPS_SquashOut (""YAPS squash reach per part out of the body"", Vector) = (0,0,0,0)

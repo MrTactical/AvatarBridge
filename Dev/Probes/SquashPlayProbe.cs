@@ -55,7 +55,8 @@
 // sets it between frames as the Move tool's handle does, not at the start of the frame's Update.
 // -spGrab pulls with the Avatar Tester's grab instead: the cloth component named by -spDragName
 // pushed each frame toward where the first part's follow bone would be, dragged. -spPush runs the
-// Avatar Tester's squash preview and moves its Push one in from 0 to 1 instead.
+// Avatar Tester's squash preview and moves its Push one in from 0 to 1 instead. -spDragPair 1
+// drags the second pair, shot from behind. -spDragScale f moves it f times as far.
 // With -spLook each shot is drawn again in the look shader, every layer tinted its own colour, so
 // one coming through another shows, and the squashed layers each alone (_look, _look_<layer>).
 // At the drag's end every squashed layer's edges are read back, into tear.tsv: how many the
@@ -130,6 +131,7 @@ namespace AvatarBridge.Regression
             SessionState.SetInt(K + "moveTool", Environment.GetCommandLineArgs().Contains("-spMoveTool") ? 1 : 0);
             SessionState.SetInt(K + "grab", Environment.GetCommandLineArgs().Contains("-spGrab") ? 1 : 0);
             SessionState.SetInt(K + "push", Environment.GetCommandLineArgs().Contains("-spPush") ? 1 : 0);
+            SessionState.SetInt(K + "dragPair", Arg("-spDragPair") == "1" ? 2 : 0);
             if (Environment.GetCommandLineArgs().Contains("-spJump")) WriteJumpShaders();
             var scene = EditorSceneManager.OpenScene(Arg("-spScene"), OpenSceneMode.Single);
             foreach (var r in scene.GetRootGameObjects())
@@ -685,18 +687,18 @@ namespace AvatarBridge.Regression
             ("noflat", new[] { "squashed += ax[c3] * (dot(d, ax[c3]) * along[c3] + shift[c3]);", "squashed += ax[c3] * dot(d, ax[c3]);" }),
             ("noplane", new[] { "if (squashContact[c] <= 0) continue;", "continue;" }),
             ("nocapsule", new[] { "if (dist >= r + soft || dist < 1e-6) continue;", "continue;" }),
-            ("press", new[] { "mapped += (moved - world) * shares[m];", "mapped += (hv[0] + hv[1] + hv[2] + hv[3]) * shares[m];", Stop, StopTo }),
-            ("bend", new[] { "mapped += (moved - world) * shares[m];", "mapped += bend * shares[m];", Stop, StopTo }),
-            ("shares", new[] { "mapped += (moved - world) * shares[m];", "mapped += float3(m == 0, m == 1, m >= 2) * shares[m];", Stop, StopTo }),
+            ("press", new[] { "mapped += (moved - world) * shares[m] + shunt * swings[m] * swingOut;", "mapped += (hv[0] + hv[1] + hv[2] + hv[3]) * shares[m];", Stop, StopTo }),
+            ("bend", new[] { "mapped += (moved - world) * shares[m] + shunt * swings[m] * swingOut;", "mapped += bend * shares[m];", Stop, StopTo }),
+            ("shares", new[] { "mapped += (moved - world) * shares[m] + shunt * swings[m] * swingOut;", "mapped += float3(m == 0, m == 1, m >= 2) * shares[m];", Stop, StopTo }),
             ("dentmove", new[] { "float3 moved = p.centre + squashed + bend * lean;", "float3 moved = world;", Stop, StopTo }),
             ("nodentmove", new[] { "            moved -= d * sink;\n", "" }),
-            ("ax0", new[] { "mapped += (moved - world) * shares[m];", "mapped += (ax[0]) * shares[m];", Stop, StopTo }),
-            ("ax1", new[] { "mapped += (moved - world) * shares[m];", "mapped += (ax[1]) * shares[m];", Stop, StopTo }),
-            ("along", new[] { "mapped += (moved - world) * shares[m];", "mapped += (float3(along[0], along[1], along[2])) * shares[m];", Stop, StopTo }),
-            ("shift", new[] { "mapped += (moved - world) * shares[m];", "mapped += (float3(shift[0], shift[1], shift[2])) * shares[m];", Stop, StopTo }),
-            ("sum", new[] { "mapped += (moved - world) * shares[m];", "mapped += (S) * shares[m];", Stop, StopTo }),
-            ("online", new[] { "mapped += (moved - world) * shares[m];", "mapped += (float3(dot(ax[0], mul(M, ax[0])), dot(ax[1], mul(M, ax[1])), dot(ax[2], mul(M, ax[2])))) * shares[m];", Stop, StopTo }),
-            ("lean", new[] { "mapped += (moved - world) * shares[m];", "mapped += (float3(lean, bendBy, 0)) * shares[m];", Stop, StopTo }),
+            ("ax0", new[] { "mapped += (moved - world) * shares[m] + shunt * swings[m] * swingOut;", "mapped += (ax[0]) * shares[m];", Stop, StopTo }),
+            ("ax1", new[] { "mapped += (moved - world) * shares[m] + shunt * swings[m] * swingOut;", "mapped += (ax[1]) * shares[m];", Stop, StopTo }),
+            ("along", new[] { "mapped += (moved - world) * shares[m] + shunt * swings[m] * swingOut;", "mapped += (float3(along[0], along[1], along[2])) * shares[m];", Stop, StopTo }),
+            ("shift", new[] { "mapped += (moved - world) * shares[m] + shunt * swings[m] * swingOut;", "mapped += (float3(shift[0], shift[1], shift[2])) * shares[m];", Stop, StopTo }),
+            ("sum", new[] { "mapped += (moved - world) * shares[m] + shunt * swings[m] * swingOut;", "mapped += (S) * shares[m];", Stop, StopTo }),
+            ("online", new[] { "mapped += (moved - world) * shares[m] + shunt * swings[m] * swingOut;", "mapped += (float3(dot(ax[0], mul(M, ax[0])), dot(ax[1], mul(M, ax[1])), dot(ax[2], mul(M, ax[2])))) * shares[m];", Stop, StopTo }),
+            ("lean", new[] { "mapped += (moved - world) * shares[m] + shunt * swings[m] * swingOut;", "mapped += (float3(lean, bendBy, 0)) * shares[m];", Stop, StopTo }),
         };
 
         static void WriteJumpShaders()
@@ -908,25 +910,38 @@ namespace AvatarBridge.Regression
 
         // Stages the drag's look is drawn again without, with -spLookStages: find-and-put pairs as
         // in the sweep's.
+        // -spLookStages alone draws every stage; followed by names, a comma list, only those.
+        static IEnumerable<(string name, string[] swaps)> ChosenStages()
+        {
+            string only = Arg("-spLookStages");
+            if (only == null || only.StartsWith("-")) return LookStages;
+            var names = only.Split(',');
+            return LookStages.Where(x => names.Contains(x.name));
+        }
+
         static readonly (string name, string[] swaps)[] LookStages =
         {
             ("noplane", new[] { "if (squashContact[c] <= 0) continue;", "continue;" }),
             ("noshunt", new[] { "shunt = -axis * min(max(meet, 0) * max(lead, 0), reach);", "shunt = 0;" }),
+            ("bulk0", new[] { "#define YAPS_SQUASH_BULK 0.6", "#define YAPS_SQUASH_BULK 0" }),
+            ("bulk3", new[] { "#define YAPS_SQUASH_BULK 0.6", "#define YAPS_SQUASH_BULK 0.3" }),
+            ("bulk9", new[] { "#define YAPS_SQUASH_BULK 0.6", "#define YAPS_SQUASH_BULK 0.9" }),
             ("fullheld", new[] { "float held = shares[c] * squashContact[c];", "float held = (shares[c] > 0) * squashContact[c];" }),
             ("nobow", new[] { "float bow = squashBow[c];", "float bow = 0;" }),
             ("noswell", new[] { "float3 away = side / max(length(side), ring);", "float3 away = 0;" }),
             ("leanall", new[] { "float lean = saturate((dot(squashed, p.o) + bendFrom) / bendSpan);", "float lean = 1;" }),
             ("nostretch", new[] { "stretch = clamp(1 + by, 1 / _YAPS_SquashMotion.z, _YAPS_SquashMotion.z);", "stretch = 1;" }),
             ("noflat", new[] { "squashed += ax[c3] * (dot(d, ax[c3]) * along[c3] + shift[c3]);", "squashed += ax[c3] * dot(d, ax[c3]);" }),
-            ("nopart", new[] { "mapped += (moved - world) * shares[m];", "mapped += 0;" }),
+            ("nopart", new[] { "mapped += (moved - world) * shares[m] + shunt * swings[m] * swingOut;", "mapped += 0;" }),
         };
         // Read out in place of the move, for the edges the tear finds: each vertex's shares (the
         // first part, the second, the rest), and the second part's lean, bend and how far out of
         // its shape, in its reaches.
         static readonly (string name, string[] swaps)[] ProbeStages =
         {
-            ("share", new[] { "    yapsSkin = YapsSkinState();\n", "    yapsSkin = YapsSkinState();\n    position = mul(unity_WorldToObject, float4(mul(unity_ObjectToWorld, float4(position, 1)).xyz + float3(shares[0], shares[1], shares[2] + shares[3]), 1)).xyz;\n    return;\n" }),
-            ("lean", new[] { "mapped += (moved - world) * shares[m];", "mapped += float3(onSeam, squashContact[m], length(world - p.centre) / YapsExtent(p, normalize(world - p.centre))) * (m == 1);", Stop, StopTo }),
+            ("share", new[] { "    yapsSkin = YapsSkinState();\n", "    yapsSkin = YapsSkinState();\n    position = mul(unity_WorldToObject, float4(mul(unity_ObjectToWorld, float4(position, 1)).xyz + float3(shares[0] + shares[2], shares[1] + shares[3], 0), 1)).xyz;\n    return;\n" }),
+            ("lean", new[] { "mapped += (moved - world) * shares[m] + shunt * swings[m] * swingOut;", "mapped += float3(onSeam, squashContact[m], length(world - p.centre) / YapsExtent(p, normalize(world - p.centre))) * ((m & 1) == 1);", Stop, StopTo }),
+            ("swing", new[] { "mapped += (moved - world) * shares[m] + shunt * swings[m] * swingOut;", "mapped += float3(swings[m], shares[m], length(shunt)) * ((m & 1) == 1);", Stop, StopTo }),
         };
 
         // Made in memory, so nothing is written into the project. A stage inlines its copy of the
@@ -1431,13 +1446,31 @@ namespace AvatarBridge.Regression
         }
 
         static Transform dragged, dragged2, grabBone;
+        static Dictionary<SkinnedMeshRenderer, Vector3[]> startAt;
         static Vector3 grabFrom;
         static Vector3 dragLocal, dragLocal2, dragBy, dragSetAt;
         static float dragSet;
         static List<string> dragRows;
 
+        // The dragged pair's slots where the first pair's sit, so the drag reads either alike.
+        static Transform[] Paired(Transform[] s)
+        {
+            int dp = SessionState.GetInt(K + "dragPair", 0);
+            if (dp == 0) return s;
+            var r = (Transform[]) s.Clone();
+            r[0] = s[dp]; r[1] = s[dp + 1]; r[4] = s[4 + dp]; r[5] = s[5 + dp];
+            return r;
+        }
+
+        static Vector4 PairedReach(Vector4 reach)
+        {
+            int dp = SessionState.GetInt(K + "dragPair", 0);
+            return dp == 0 ? reach : new Vector4(reach[dp], reach[dp + 1], reach[dp], reach[dp + 1]);
+        }
+
         static void Drag(Transform[] slots, Material[] mats)
         {
+            slots = Paired(slots);
             int t = frame - Bend;
             if (t == 0)
             {
@@ -1459,21 +1492,34 @@ namespace AvatarBridge.Regression
                 grabFrom = grabBone.position;
                 dragLocal = dragged.localPosition;
                 dragBy = (slots[1].position - slots[0].position) * 0.5f;
+                if (float.TryParse(Arg("-spDragScale"), NumberStyles.Float, CultureInfo.InvariantCulture, out float dragScale)) dragBy *= dragScale;
                 if (SessionState.GetInt(K + "drag", 0) == 2)
                 {
                     dragged2 = Root(slots[1], slots[5]);
                     dragLocal2 = dragged2.localPosition;
                 }
                 var mid = 0.5f * (slots[0].position + slots[1].position);
-                float away = mats[0].GetVector("_YAPS_SquashReach")[0] * slots[0].lossyScale.x * 7f;
-                front.transform.position = mid + animator.transform.forward * away;
+                float away = PairedReach(mats[0].GetVector("_YAPS_SquashReach"))[0] * slots[0].lossyScale.x * 7f;
+                front.transform.position = mid + animator.transform.forward * (SessionState.GetInt(K + "dragPair", 0) == 0 ? away : -away);
                 front.transform.LookAt(mid);
                 side.transform.position = mid + Vector3.up * away;
                 side.transform.LookAt(mid, animator.transform.forward);
+                // The skin before the drag, for the tear's count against where the skin started:
+                // against the dragged pose alone, a squash undoing what the drag's skinning
+                // pressed together read as tearing.
+                startAt = new Dictionary<SkinnedMeshRenderer, Vector3[]>();
+                foreach (var r in animator.GetComponentsInChildren<SkinnedMeshRenderer>()
+                             .Where(r => r.enabled && r.sharedMaterials.Any(m => m != null && m.HasProperty("_YAPS_DentOwn"))))
+                {
+                    var bm = new Mesh();
+                    r.BakeMesh(bm);
+                    startAt[r] = bm.vertices.Select(v => r.transform.rotation * v).ToArray();
+                    UnityEngine.Object.DestroyImmediate(bm);
+                }
                 dragRows = new List<string> { "frame	set_cm	dragged_off_set_cm	self_cm	other_cm	lead_dragged	gap_cm	over_cm	lead_over" };
                 // Compiled before the drag moves anything, as each takes seconds.
                 if (Environment.GetCommandLineArgs().Contains("-spLookStages"))
-                    foreach (var s in LookStages) Look(s.name);
+                    foreach (var s in ChosenStages()) Look(s.name);
                 Debug.Log($"[SquashPlay] drag: {dragged.name} under {dragged.parent.name}; follow on {slots[0].parent.name}, rest on {slots[4].parent.name}; " +
                           $"partner follow on {slots[1].parent.name}, rest on {slots[5].parent.name}; by {dragBy.magnitude * 100f:0.0} cm");
             }
@@ -1508,13 +1554,13 @@ namespace AvatarBridge.Regression
 
         static void DragRead()
         {
-            var slots = provider.transforms;
+            var slots = Paired(provider.transforms);
             var axis = (slots[1].position - slots[0].position).normalized;
             float self = Vector3.Dot(slots[0].position - slots[4].position, axis);
             float other = Vector3.Dot(slots[5].position - slots[1].position, axis);
             float lead = Mathf.Clamp((other - self) / Mathf.Max(Mathf.Abs(other) + Mathf.Abs(self), 1e-6f), -1f, 1f);
             // The overlap from the straight reaches, which the shader turns with the swing.
-            var reach = provider.materials[0].GetVector("_YAPS_SquashReach");
+            var reach = PairedReach(provider.materials[0].GetVector("_YAPS_SquashReach"));
             float over = reach[0] * slots[0].lossyScale.x + reach[1] * slots[1].lossyScale.x - Vector3.Distance(slots[0].position, slots[1].position);
             float leadOver = Mathf.Clamp((other - self) / Mathf.Max(over, 0.1f * reach[0] * slots[0].lossyScale.x), -1f, 1f);
             int t = frame - Bend;
@@ -1539,11 +1585,11 @@ namespace AvatarBridge.Regression
         static Vector3[] bodyAt;
         static void DragTear()
         {
-            var rows = new List<string> { "stage\trenderer\tedges_moved\tover_2x\tover_3x\tworst_x\tturned_over\topened_1cm\twidest_cm" };
-            tearEdges = new List<string> { "renderer\ta\tb\tstretch_x\tx_cm\ty_cm\tz_cm\tmove_a_x\tmove_a_y\tmove_a_z\tmove_b_x\tmove_b_y\tmove_b_z\tshare0_a\tshare1_a\tshare23_a\tshare0_b\tshare1_b\tshare23_b\tlean_a\tbend_a_cm\tout_a\tlean_b\tbend_b_cm\tout_b" };
+            var rows = new List<string> { "stage\trenderer\tedges_moved\tover_2x\tover_3x\tworst_x\tturned_over\topened_1cm\twidest_cm\tskin_opened_from_start\topened_from_start\twidest_from_start_cm" };
+            tearEdges = new List<string> { "renderer\ta\tb\tstretch_x\toff_skin_cm\tx_cm\ty_cm\tz_cm\tmove_a_x\tmove_a_y\tmove_a_z\tmove_b_x\tmove_b_y\tmove_b_z\tfirst_a\tsecond_a\t_\tfirst_b\tsecond_b\t_\tlean_a\tbend_a_cm\tout_a\tlean_b\tbend_b_cm\tout_b\tskin_a_x\tskin_a_y\tskin_a_z\tskin_b_x\tskin_b_y\tskin_b_z\tswing_a\tswing_b\tshunt_cm" };
             DragTear("", rows);
             if (Environment.GetCommandLineArgs().Contains("-spLookStages"))
-                foreach (var s in LookStages) DragTear(s.name, rows);
+                foreach (var s in ChosenStages()) DragTear(s.name, rows);
             File.WriteAllLines(Path.Combine(outDir, "tear.tsv"), rows);
             File.WriteAllLines(Path.Combine(outDir, "tear_edges.tsv"), tearEdges);
         }
@@ -1590,10 +1636,11 @@ namespace AvatarBridge.Regression
                     return into;
                 }
                 var moved = Read(tearShader, out var seen);
-                Vector3[] share = null, lean = null;
+                Vector3[] share = null, lean = null, swingW = null;
                 if (stage == "")
                 {
                     share = Read(Staged(tearShaders, JumpShader, "SquashJump", "share"), out _);
+                    swingW = Read(Staged(tearShaders, JumpShader, "SquashJump", "swing"), out _);
                     lean = Read(Staged(tearShaders, JumpShader, "SquashJump", "lean"), out _);
                     // How far out of the second part's shape the vertices it moves lie.
                     float[] edges = { 1f, 1.25f, 1.5f, 2f, 3f, float.MaxValue };
@@ -1611,8 +1658,9 @@ namespace AvatarBridge.Regression
                 // stretched twenty times by a centimetre of move is no gap anyone sees. How far an
                 // edge opens is counted whatever its length.
                 const float Least = 0.003f;
-                int count = 0, over2 = 0, over3 = 0, turned = 0, opened = 0;
-                float worst = 1f, widest = 0f;
+                int count = 0, over2 = 0, over3 = 0, turned = 0, opened = 0, skinOpened = 0, openedStart = 0;
+                float worst = 1f, widest = 0f, widestStart = 0f;
+                Vector3[] start = startAt != null && startAt.TryGetValue(smr, out var st) && st.Length == rest.Length ? st : null;
                 var tris = mesh.triangles;
                 for (int i = 0; i < tris.Length; i += 3)
                 {
@@ -1633,6 +1681,13 @@ namespace AvatarBridge.Regression
                         float now = (rest[a] + moved[a] - rest[b] - moved[b]).magnitude;
                         if (now - was > 0.01f) opened++;
                         widest = Mathf.Max(widest, now - was);
+                        if (start != null)
+                        {
+                            float was0 = (start[a] - start[b]).magnitude;
+                            if (was - was0 > 0.01f) skinOpened++;
+                            if (now - was0 > 0.01f) openedStart++;
+                            widestStart = Mathf.Max(widestStart, now - was0);
+                        }
                         if (was < Least) continue;
                         float x = now / was;
                         count++;
@@ -1641,7 +1696,7 @@ namespace AvatarBridge.Regression
                             // Where, off the partner's follow in the avatar's axes (x out to the
                             // partner's side, y up, z forward), and how each end moved, in cm.
                             var root = animator.transform;
-                            var slots = provider.transforms;
+                            var slots = Paired(provider.transforms);
                             string C(Vector3 v) => string.Join("\t", (100f * v).x.ToString("0.0", CultureInfo.InvariantCulture),
                                 (100f * v).y.ToString("0.0", CultureInfo.InvariantCulture), (100f * v).z.ToString("0.0", CultureInfo.InvariantCulture));
                             Vector3 L(Vector3 v)
@@ -1667,7 +1722,9 @@ namespace AvatarBridge.Regression
                             tearEdges.Add(string.Join("\t", smr.name, a, b, x.ToString("0.00", CultureInfo.InvariantCulture), off.ToString("0.0", CultureInfo.InvariantCulture),
                                 C(L(smr.transform.position + rest[a] - slots[1].position)), C(L(moved[a])), C(L(moved[b])),
                                 S(share[a]), S(share[b]), S(new Vector3(lean[a].x, lean[a].y * 100f, lean[a].z)),
-                                S(new Vector3(lean[b].x, lean[b].y * 100f, lean[b].z))));
+                                S(new Vector3(lean[b].x, lean[b].y * 100f, lean[b].z)),
+                                start != null ? C(L(rest[a] - start[a])) : "", start != null ? C(L(rest[b] - start[b])) : "",
+                                S(new Vector3(swingW[a].x, swingW[b].x, 100f * Mathf.Max(swingW[a].z, swingW[b].z)))));
                         }
                         if (x > 2f) over2++;
                         if (x > 3f) over3++;
@@ -1675,9 +1732,9 @@ namespace AvatarBridge.Regression
                     }
                 }
                 rows.Add(string.Join("\t", stage == "" ? "full" : stage, smr.name, count, over2, over3, worst.ToString("0.00", CultureInfo.InvariantCulture), turned,
-                    opened, (100f * widest).ToString("0.0", CultureInfo.InvariantCulture)));
+                    opened, (100f * widest).ToString("0.0", CultureInfo.InvariantCulture), skinOpened, openedStart, (100f * widestStart).ToString("0.0", CultureInfo.InvariantCulture)));
                 Debug.Log($"[SquashPlay] tear {stage} {smr.name}: {count} edges moved, {over2} over 2x, {over3} over 3x, worst {worst:0.00}x, {turned} turned over, " +
-                          $"{opened} opened over 1 cm, widest {100f * widest:0.0} cm");
+                          $"{opened} opened over 1 cm, widest {100f * widest:0.0} cm; from the start: skin {skinOpened}, squashed {openedStart}, widest {100f * widestStart:0.0} cm");
                 UnityEngine.Object.DestroyImmediate(baked);
                 UnityEngine.Object.DestroyImmediate(tex);
                 rt.Release();
@@ -1725,7 +1782,7 @@ namespace AvatarBridge.Regression
             for (int i = 0; i < shown.Count; i++) Tint(shown[i], Tints[i % Tints.Length]);
             Grab($"{name}_look");
             if (name.EndsWith("_239") && Environment.GetCommandLineArgs().Contains("-spLookStages"))
-                foreach (var s in LookStages) Grab($"{name}_look_{s.name}", s.name);
+                foreach (var s in ChosenStages()) Grab($"{name}_look_{s.name}", s.name);
             foreach (var only in squashed)
             {
                 foreach (var r in shown) r.enabled = r == only;

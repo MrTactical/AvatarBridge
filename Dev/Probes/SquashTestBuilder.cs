@@ -603,6 +603,8 @@ namespace AvatarBridge.Regression
         // The shader squash built again on the converted avatar a scene already holds, saved in
         // place: after a change to what the build writes, with no conversion.
         //   -executeMethod AvatarBridge.Regression.SquashTestBuilder.Rebuild -squashScene <scene>
+        // -squashInPlace builds as the component's Rebuild does, into the folder the last build
+        // used, for an avatar whose squash must stay where it is.
         public static void Rebuild()
         {
             int code = 1;
@@ -611,7 +613,8 @@ namespace AvatarBridge.Regression
                 var scene = EditorSceneManager.OpenScene(Arg("-squashScene"), OpenSceneMode.Single);
                 // Every avatar standing in it: a probe takes whichever provider it finds first.
                 foreach (var avatar in scene.GetRootGameObjects().Select(r => r.GetComponentInChildren<CVRAvatar>()).Where(a => a != null))
-                    Debug.Log($"[Squash] {avatar.name}: " + AddShader(avatar));
+                    Debug.Log($"[Squash] {avatar.name}: " + (Environment.GetCommandLineArgs().Contains("-squashInPlace")
+                        ? YapsSquash.Build(avatar.transform, out _) : AddShader(avatar)));
                 EditorSceneManager.SaveScene(scene);
                 AssetDatabase.SaveAssets();
                 code = 0;

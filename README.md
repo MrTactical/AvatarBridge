@@ -1574,7 +1574,8 @@ An opt-in in the YAPS add-on: breasts and butt press into each other where they 
 under a hand. With **Meet**, on by default, a part swung or pushed into a still partner keeps its
 round front and pushes the partner aside, swinging it about where it meets the body by as much as
 it pushed in; where the two still meet, the partner takes a rounded hollow. Pushed together from
-both sides, the two press flat against each other down the middle. What the press pushes back swells out
+both sides, each part gives as a whole first, flattening toward the other and growing the other ways
+to keep its volume, and only the rest presses flat where they meet. What the press pushes back swells out
 round the contact, keeping its volume (not yet confirmed in game); with Meet off, what overlaps
 passes through. It is done in the body's shader, so every layer
 over the skin (a bra, a shirt, piercings) takes the same move and nothing comes through. It
@@ -1635,7 +1636,7 @@ the same knobs answer the real thing. In Play mode the cloth in the tester is re
 swings it, and **Squeeze** and **Test hand** press it, moving with the avatar; pause Play mode to hold
 the cloth still while they press. There Squeeze starts at 0, and **Push one in** moves one part of the
 first pair toward its partner by its bone, as a swing or a shove would, so the partner can be
-seen giving way; with Squeeze as well, pushed from both sides, the two press flat. The Move tool
+seen giving way; with Squeeze as well, pushed from both sides, both give and meet. The Move tool
 cannot push a part in Play mode: the cloth puts its bones back every frame. Knobs moved in Play mode go back when it ends, as every
 component's do. Each fold under **Tune how it feels** says what it does and how to see it, and its fold
 **Animate it** lists the material properties to key. The last step, **Build**, says whether the

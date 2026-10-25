@@ -49,6 +49,10 @@
 // How wide the contact's edge rounds over, in overlap depths. Eased over a fixed sliver of the
 // reach, the edge was a crease down the middle however deep the overlap.
 #define YAPS_SQUASH_ROUND 1.0
+// How much of what a pair overlaps the whole part takes, flattening toward its partner and
+// growing the other ways to keep its volume; the contact presses only the rest. Pressed all at
+// the contact, the two met as halves of one ball cut down a plane.
+#define YAPS_SQUASH_BULK 0.6
 // How close two squeezes count as level, as a share of the stronger: within it their lines
 // share the flattening, wholly when exactly level.
 #define YAPS_SQUASH_LEVEL 0.3
@@ -57,6 +61,7 @@
 float _YAPS_DentPower;
 float _YAPS_DentSpill;
 Texture2D _YAPS_DentOwn;       // per vertex: its share of parts 0 to 3 in r, g, b, a
+Texture2D _YAPS_DentSwing;     // per vertex: the weight each part's chain of bones carries, the same way
 float4 _YAPS_DentOwn_TexelSize;
 // Slots, as the provider writes them. One with nothing in it holds a node scaled to zero,
 // which reads as absent.
@@ -440,6 +445,8 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
     float partShare = saturate(own.r + own.g + own.b + own.a);
     if (partShare <= 0) return;
     float shares[4] = { own.r, own.g, own.b, own.a };
+    float4 swing = _YAPS_DentSwing.Load(int3(vertexId % width, vertexId / width, 0));
+    float swings[4] = { swing.r, swing.g, swing.b, swing.a };
     yapsSkin = YapsSkinState();
 
     // A skinned mesh arrives in world space under an identity matrix, a plain
@@ -483,7 +490,8 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
     {
         int m = (first + j) & 3;
         float unit = YapsUnit(m);
-        if (shares[m] <= 0 || unit <= 0) continue;
+        // Skin the part's bones carry moves with its shunt, though none of it is the part's own.
+        if ((shares[m] <= 0 && swings[m] <= 0) || unit <= 0) continue;
         YapsPart p = YapsPartAt(m, YapsSlot(m), unit);
         float reach = p.reach;
         float3 d = world - p.centre;
@@ -655,14 +663,14 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
                 bendSpan = bendFrom + outE;
             }
         }
-        // Shunted by its partner, by all the partner drove in further, about the same base. Taken
-        // through the give a hand meets, it moved a few centimetres and the leader went through it.
-        if (p.framed && dot(shunt, shunt) > 0)
-        {
-            bend += shunt;
-            bendFrom = _YAPS_SquashIn[m] * unit;
-            bendSpan = bendFrom + _YAPS_SquashOut[m] * unit;
-        }
+        // Shunted by its partner, by all the partner drove in further. Taken through the give a
+        // hand meets, it moved a few centimetres and the leader went through it. It moves the
+        // skin below by the weight the part's bones carry, as a push on the part would: laid on
+        // by share, a layer bridging the gap between a pair, its share stepping from one part to
+        // the other across a centimetre or two, was pulled apart by the whole shunt, and capped
+        // by share, a layer's edge was torn where the part's share ends.
+        if (!p.framed) shunt = 0;
+        float3 swung = bend + shunt;
         [unroll]
         for (int hl = 0; hl < 4; hl++)
             YapsAdd(S, M, dentW[hl] * max(spare[hl] - bendBy * max(dot(dentW[hl], bendDir), 0), 0));
@@ -673,9 +681,19 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         // bend, as the contact moves skin that is near it, not only past.
         if (squashReach[m] > 0 && _YAPS_SquashShape.w > 0)
         {
-            squashContact[m] = max(squashContact[m], saturate(dot(bend, squashAxis[m]) / (YAPS_SQUASH_SOFT * reach)));
-            squashDeep[m] += max(dot(bend, squashAxis[m]) - bendSelf, 0);
-            squashDeep[m] = max(squashDeep[m] - max(-dot(bend, squashAxis[m]), 0), 0);
+            squashContact[m] = max(squashContact[m], saturate(dot(swung, squashAxis[m]) / (YAPS_SQUASH_SOFT * reach)));
+            squashDeep[m] += max(dot(swung, squashAxis[m]) - bendSelf, 0);
+            squashDeep[m] = max(squashDeep[m] - max(-dot(swung, squashAxis[m]), 0), 0);
+            // The whole part gives first, as flesh does: its front goes back by its bulk share and
+            // it grows the other ways, so the seam below presses only what is left, a smaller
+            // patch rounding into a part squashed all over. Read before the seam's own cut-off,
+            // which differs vertex to vertex, so the whole part moves as one.
+            float bulk = YAPS_SQUASH_BULK * squashDeep[m] * squashContact[m];
+            if (bulk > 0)
+            {
+                YapsAdd(S, M, squashAxis[m] * bulk);
+                squashDeep[m] -= bulk;
+            }
             squashContact[m] *= onSeam;
         }
 
@@ -792,7 +810,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
                 hangAt = hang * YapsExtent(p, hang);
             }
         }
-        if (pressAll <= 0 && dot(bend, bend) <= 0 && !dented && stretch == 1) continue;
+        if (pressAll <= 0 && dot(swung, swung) <= 0 && !dented && stretch == 1) continue;
         float3 nmS = n;
         if (stretch != 1)
         {
@@ -847,7 +865,11 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
                 nm = normalize(nm + g * dot(d, nm) / max(1 - sink - dot(g, d), 0.1));
             }
         }
-        mapped += (moved - world) * shares[m];
+        // Swung about its base: the tip takes the whole shunt and the base none. Moved whole, the
+        // skin tore where a part's weights step near the body.
+        float spanS = (_YAPS_SquashIn[m] + _YAPS_SquashOut[m]) * unit;
+        float swingOut = spanS > 0 ? saturate((dot(squashed, p.o) + _YAPS_SquashIn[m] * unit) / spanS) : 0;
+        mapped += (moved - world) * shares[m] + shunt * swings[m] * swingOut;
         partN[m] = nm;
         partDone[m] = 1;
     }
