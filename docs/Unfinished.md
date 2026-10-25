@@ -224,6 +224,11 @@ ranked by how visible it should be:
      thigh story's lab Test hand moves 3.7% of the legs against 2.4% swaying (DEAD) with it, 7.3%
      against 2.5% without, every other row the same. Undecided: keep it per class, or find why an
      MC2 angle limit on a BoneSpring swings a part further. `D:/Claude/scratch/curveab/{new,nolimit}`.
+     **Decided 2026-10-25 (Joe): per class.** Breasts and belly keep it, thighs and butt are left
+     without (the report says so). Belly was not in the question; it stays on the measured 86a563f
+     result (unbounded 160 degrees, limited 34 against the PhysBone's 36). `SoftBodyLimitTest`:
+     Thigh and Butt WRONG before, PASS after. Why the limit swings a BoneSpring further is not
+     looked into.
 6. **Collision.** Point mode (`:184`, `MagicaColliderAutoAssign.cs:82`) where VRChat collides the bone
    as a capsule with lerped radius, so chains pass between particles; MC2's Edge mode matches. The
    author's radius is replaced by a mesh thickness; collider fitting sizes spheres from their narrow

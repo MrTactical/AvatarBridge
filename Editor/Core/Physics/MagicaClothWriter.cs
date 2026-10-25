@@ -303,7 +303,7 @@ namespace AvatarBridge
                 // MagicaCloth2 turns distance bounds off for a soft body, so the limit goes on as an
                 // angle limit, as the stand-in's does. Without one a soft body swung unbounded on a
                 // walk: a belly to 160 degrees where its PhysBone stopped at 36.
-                if (!data.StandIn) ApplySoftBodyLimit(ctx, data, sdata);
+                if (!data.StandIn) ApplySoftBodyLimit(ctx, data, sdata, chainClass);
             }
             else if (ctx.Settings.boundSwingToSourceLimit)
             {
@@ -822,10 +822,20 @@ namespace AvatarBridge
             }
         }
 
-        static void ApplySoftBodyLimit(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata)
+        static void ApplySoftBodyLimit(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata, string chainClass)
         {
             if (data.LimitTypeName == "None" || string.IsNullOrEmpty(data.LimitTypeName))
             {
+                return;
+            }
+            // Thighs and a butt are left without: against their PhysBones the angle limit made a
+            // thigh swing further on a walk (34 degrees off against 9) and hang 20 degrees off lying
+            // down, where without it they hang exactly. Breasts came much nearer with it.
+            if (chainClass == "Thigh" || chainClass == "Butt")
+            {
+                ctx.Report.Approximated(Category, data.Label,
+                    $"Source {data.LimitTypeName} limit not converted: MagicaCloth2 turns distance bounds off for a soft " +
+                    "body, and an angle limit made a thigh or butt swing further than its PhysBone, so its spring holds it near rest instead.");
                 return;
             }
             float limitAngle = data.LimitTypeName == "Polar" ? Mathf.Max(data.MaxAngleX, data.MaxAngleZ) : data.MaxAngleX;
