@@ -790,7 +790,7 @@ plane collider"; and take a playbook from Poiyomi's glass squish.
      shots: `_raw` (the skinning, the squash left out) and `-spNoMeet`. Images
      `D:/Claude/scratch/meetdrag/kar-drag-meet.jpg`, the includes `meetcmp/sheet.jpg`.
 5. **The pair wraps round instead of pressing flat or pushing apart. Done on dev, Joe to judge in
-   game.** Joe, 2026-10-24, after "You're stretching the boobs apart ... You have to push them
+   game. One-sided pushes SUPERSEDED 2026-10-25 by 6: the partner swings aside again.** Joe, 2026-10-24, after "You're stretching the boobs apart ... You have to push them
    together", chose *Wrap round*: the part that moved keeps its round front and the still one takes
    a rounded hollow its shape, flesh swelling round the edge; pushed alike from both sides, both
    give and the seam curves softly. Nothing moves either part away from the other any more.
@@ -817,6 +817,29 @@ plane collider"; and take a playbook from Poiyomi's glass squish.
      level at the seam and dies away over two widths, holding the same volume; the ridge and the
      point at the top of the seam are gone (`D:/Claude/scratch/keel2.jpg`). On Kar the small point
      at the bottom of the seam rounds off too, one-sided unchanged (`kar_ridge.jpg`).
+6. **One-sided pushes the partner aside, flat only when both press. Done on dev, Kar not measured,
+   Joe to judge.** Joe, 2026-10-25, dragging one breast's bone into the other in the Scene view and
+   the tester: "the same weird planar smush ... It's not moving the other tit the other way ... I
+   want the planar to only occur when you're pushing both breasts together at once". This reverses
+   the choice in 5 that nothing moves either part away.
+   - Cause, measured: the lead was the difference of the two swings over their SUM. In Play mode
+     each follow settles about 7.5 cm inward of its edit-mode rest on Alexa with nothing pushing, so a
+     22 cm drag of one chain root read as lead -0.47 and both parts flattened most of the way to a
+     middle plane. The sum carried the settling; the difference cancels it.
+   - Now the lead is the difference over the overlap: what one part drove in further than the other
+     (as a share of the overlap) goes into the other's bend as a press along the line, so it swings
+     away about its base as far as Bend Give allows, and the seam stays at the leader's front, so
+     what swung away is pressed no more. Both driven alike, the lead is 0 and the two press flat at
+     the middle as before. Read in C# from the slots: one-sided drag -1.00, both-sided -0.10.
+   - Evidence: `SquashPlayProbe -spDrag` and `-spDragBoth` (new): the first part's chain root moved
+     22 cm into the other over two seconds, as the Move tool does, then held; both roots half as far
+     each. AlexaSquash rebuilt in place before and after. Images and drag.tsv in the session
+     scratchpad `squash-drag/` (before/after one and both). One-sided, the partner now slides away
+     in the front view; both-sided, a flat middle seam, unchanged.
+   - Open: Kar (its test scene lives in Attempt Conversion, open in the GUI); Bend Give's default
+     0.35 of the outward reach is about 3.5 cm on Kar, so the partner may swing only a little before
+     hollowing. The tester's grab pushes a whole cloth component, so a pair on one component moves
+     together and never overlaps.
 
 ## 5.0.1
 

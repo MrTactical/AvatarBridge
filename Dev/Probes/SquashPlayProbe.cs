@@ -47,6 +47,11 @@
 // outer side with another player's open hand, 0.4 and 0.8 reaches in, bending it into the other.
 // Deeper presses less: a press stops at the hand's line, which by then nears the part's centre.
 //
+// -spDrag moves the first part's chain root into the other over two seconds, as the Move tool
+// does in Play mode, then holds it. Each frame after the cloth, into <dir>/drag.tsv: where each
+// follow sits off its rest along the pair's line and the lead the pair squash reads from that,
+// with shots from the front and above. -spDragBoth moves both chain roots, half as far each.
+//
 // Batch, never -nographics: the frames are rendered.
 
 #if AVATARBRIDGE_YAPS
@@ -102,6 +107,8 @@ namespace AvatarBridge.Regression
             SessionState.SetInt(K + "cost", Environment.GetCommandLineArgs().Contains("-spCost") ? 1 : 0);
             SessionState.SetInt(K + "jump", Environment.GetCommandLineArgs().Contains("-spJump") ? 1 : 0);
             SessionState.SetInt(K + "look", Environment.GetCommandLineArgs().Contains("-spLook") ? 1 : 0);
+            SessionState.SetInt(K + "drag", Environment.GetCommandLineArgs().Contains("-spDragBoth") ? 2
+                : Environment.GetCommandLineArgs().Contains("-spDrag") ? 1 : 0);
             if (Environment.GetCommandLineArgs().Contains("-spLook"))
             {
                 File.WriteAllText(LookPath, LookShader);
@@ -182,6 +189,7 @@ namespace AvatarBridge.Regression
             if (PivotOn) { if (frame >= Bend) PivotShake(slots); return; }
             if (SessionState.GetInt(K + "look", 0) == 1) { if (frame >= Bend) LookPose(slots, mats); return; }
             if (SessionState.GetInt(K + "video", 0) == 1) { if (frame >= Bend) Film(slots, mats); return; }
+            if (SessionState.GetInt(K + "drag", 0) > 0) { if (frame >= Bend) Drag(slots, mats); return; }
             if (frame == Bend - 1) Shoot("rest");
             if (SessionState.GetInt(K + "plug", 0) == 1)
             {
@@ -1327,6 +1335,74 @@ namespace AvatarBridge.Regression
             if (PivotOn) PivotRead(slots);
             if (jumpCam != null) JumpRead();
             if (lookShot != null) LookShoot();
+            if (dragRows != null) DragRead();
+        }
+
+        static Transform dragged, dragged2;
+        static Vector3 dragLocal, dragLocal2, dragBy, dragSetAt;
+        static float dragSet;
+        static List<string> dragRows;
+
+        static void Drag(Transform[] slots, Material[] mats)
+        {
+            int t = frame - Bend;
+            if (t == 0)
+            {
+                // The bone under the rest's on the way to the follow: the chain root. Follow and
+                // rest on one bone leave the bone itself.
+                Transform Root(Transform follow, Transform rest)
+                {
+                    var b = follow;
+                    while (b.parent != null && b.parent != rest.parent) b = b.parent;
+                    return b == follow || b.parent == null ? follow.parent : b;
+                }
+                dragged = Root(slots[0], slots[4]);
+                dragLocal = dragged.localPosition;
+                dragBy = (slots[1].position - slots[0].position) * 0.5f;
+                if (SessionState.GetInt(K + "drag", 0) == 2)
+                {
+                    dragged2 = Root(slots[1], slots[5]);
+                    dragLocal2 = dragged2.localPosition;
+                }
+                var mid = 0.5f * (slots[0].position + slots[1].position);
+                float away = mats[0].GetVector("_YAPS_SquashReach")[0] * slots[0].lossyScale.x * 7f;
+                front.transform.position = mid + animator.transform.forward * away;
+                front.transform.LookAt(mid);
+                side.transform.position = mid + Vector3.up * away;
+                side.transform.LookAt(mid, animator.transform.forward);
+                dragRows = new List<string> { "frame	set_cm	dragged_off_set_cm	self_cm	other_cm	lead_dragged	gap_cm	over_cm	lead_over" };
+                Debug.Log($"[SquashPlay] drag: {dragged.name} under {dragged.parent.name}; follow on {slots[0].parent.name}, rest on {slots[4].parent.name}; " +
+                          $"partner follow on {slots[1].parent.name}, rest on {slots[5].parent.name}; by {dragBy.magnitude * 100f:0.0} cm");
+            }
+            dragSet = Mathf.SmoothStep(0f, 1f, t / 120f);
+            float mine = dragged2 != null ? 0.5f : 1f;
+            dragged.localPosition = dragLocal + dragged.parent.InverseTransformVector(dragBy * dragSet * mine);
+            if (dragged2 != null) dragged2.localPosition = dragLocal2 - dragged2.parent.InverseTransformVector(dragBy * dragSet * mine);
+            dragSetAt = dragged.position;
+            if (t == 240)
+            {
+                File.WriteAllLines(Path.Combine(outDir, "drag.tsv"), dragRows);
+                Debug.Log("[SquashPlay] drag done");
+                EditorApplication.Exit(0);
+            }
+        }
+
+        static void DragRead()
+        {
+            var slots = provider.transforms;
+            var axis = (slots[1].position - slots[0].position).normalized;
+            float self = Vector3.Dot(slots[0].position - slots[4].position, axis);
+            float other = Vector3.Dot(slots[5].position - slots[1].position, axis);
+            float lead = Mathf.Clamp((other - self) / Mathf.Max(Mathf.Abs(other) + Mathf.Abs(self), 1e-6f), -1f, 1f);
+            // The overlap from the straight reaches, which the shader turns with the swing.
+            var reach = provider.materials[0].GetVector("_YAPS_SquashReach");
+            float over = reach[0] * slots[0].lossyScale.x + reach[1] * slots[1].lossyScale.x - Vector3.Distance(slots[0].position, slots[1].position);
+            float leadOver = Mathf.Clamp((other - self) / Mathf.Max(over, 0.1f * reach[0] * slots[0].lossyScale.x), -1f, 1f);
+            int t = frame - Bend;
+            string F(float x) => x.ToString("0.00", CultureInfo.InvariantCulture);
+            dragRows.Add(string.Join("	", frame, F(dragSet * dragBy.magnitude * 100f), F((dragged.position - dragSetAt).magnitude * 100f),
+                F(self * 100f), F(other * 100f), F(lead), F(Vector3.Distance(slots[0].position, slots[1].position) * 100f), F(over * 100f), F(leadOver)));
+            if (t == 0 || t == 60 || t == 120 || t == 239) Shoot($"drag_{t}");
         }
 
         // What the skinned helper holds when the provider reads it: the last skinning pass.

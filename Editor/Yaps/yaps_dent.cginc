@@ -570,12 +570,12 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         {
             float first = m < 2 ? _YAPS_SquashPair.y : _YAPS_SquashPair.w;
             float share = (m & 1) == 0 ? first : 1 - first;
-            // The overlap, the hands' bends with it, is pressed in where the two touch and never
-            // moves either part away: swung or shunted apart, the skin between them, held by the
-            // body, stretched into a tube. The part driven further keeps its round front and the
-            // other takes a hollow its shape; driven alike, each gives its share. Read as the
-            // difference of the two swings, as the follows settle well off their edit-mode rests
-            // in play, inward too.
+            // The overlap, the hands' bends with it. What one part drove in further than the other
+            // swings the other away about its base, as far as its bend gives, and the rest presses
+            // a hollow the leader's shape; what both drove in alike presses flat down the middle,
+            // each its share. Read as the difference of the two swings against the overlap: the
+            // follows settle well off their edit-mode rests in play, inward too, by the same on
+            // both sides, and over the sum of the swings that settling read as driven alike.
             float meet = over + bendSelf + bendOther;
             float self = bendSelf, other = bendOther;
             if (YapsUnit(4 + m) > 0 && YapsUnit(4 + (m ^ 1)) > 0)
@@ -583,10 +583,13 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
                 self += dot(p.centre - YapsSlot(4 + m), axis);
                 other += dot(YapsSlot(4 + (m ^ 1)) - YapsSlot(m ^ 1), axis);
             }
-            float lead = clamp((other - self) / max(abs(other) + abs(self), 1e-6), -1, 1);
+            float lead = clamp((other - self) / max(meet, YAPS_SQUASH_SOFT * reach), -1, 1);
             float takes = lead > 0 ? lerp(share, 1, lead) : share * (1 + lead);
             squashBow[m] = lead;
             squashDeep[m] = max(meet, 0) * takes;
+            // The bend below carries it away from the leader. The seam stays where the leader's
+            // front is, so what it swings away is pressed no more.
+            F += axis * max(meet, 0) * max(lead, 0);
             // Test builds show where the slots came from by where the pulse plays: both pairs
             // for the skinned buffer, the first pair alone when it reads empty, the second when
             // it reads wrong. It squeezes from the outside, as a share of the start, so the pair
@@ -651,6 +654,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         {
             squashContact[m] = max(squashContact[m], saturate(dot(bend, squashAxis[m]) / (YAPS_SQUASH_SOFT * reach)));
             squashDeep[m] += max(dot(bend, squashAxis[m]) - bendSelf, 0);
+            squashDeep[m] = max(squashDeep[m] - max(-dot(bend, squashAxis[m]), 0), 0);
         }
 
         // The squeeze lines, solved exactly: M's largest eigenvalue in closed form, its line as

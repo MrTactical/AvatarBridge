@@ -30,7 +30,7 @@ namespace AvatarBridge.Yaps
         public float widest = 1.5f;
         [Range(0f, 1f), Tooltip("1 keeps the volume, so it widens as it flattens. Lower lets some of it go.")]
         public float volumeKept = 1f;
-        [Range(0f, 1f), Tooltip("How far a part swings away from a press before it squashes, as a share of its reach out of the body.")]
+        [Range(0f, 1f), Tooltip("How far a part swings away from a press, a hand's or its partner's, before it squashes, as a share of its reach out of the body.")]
         public float bendGive = 0.35f;
         [Range(0f, 1f), Tooltip("How deep a hand dents before the whole part moves, as a share of its depth.")]
         public float deepestDent = 0.35f;
@@ -38,7 +38,7 @@ namespace AvatarBridge.Yaps
         public float lyingBack = 0.25f;
 
         [Header("The pair")]
-        [Tooltip("Off, what overlaps passes through. On, the part driven further keeps its round front and presses a rounded hollow into the other, swelling out round the contact; pushed alike from both sides, both give and the seam curves softly.")]
+        [Tooltip("Off, what overlaps passes through. On, the part driven further keeps its round front and pushes the other aside as far as Bend Give lets it swing, then presses a rounded hollow into it; pushed alike from both sides, the two press flat against each other, swelling out round the contact.")]
         public bool meet = true;
         [Range(0f, 2f), Tooltip("How much of what the meeting pushes back swells out round the contact: 1 keeps its volume.")]
         public float spill = 1f;
