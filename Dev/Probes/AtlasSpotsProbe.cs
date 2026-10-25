@@ -7,7 +7,8 @@
 // A converted avatar's plug and a socket resolved through the atlas only, against an opaque
 // background, a transparent one, and a picture an earlier camera left, which this camera only
 // draws over. Per background:
-//   spots  pixels that differ from the background with the plug hidden: should be 0
+//   spots  pixels that differ from the background with the plug hidden: should be 0,
+//          with a marker light on the plug so its light relay writes too
 //   bend   pixels the plug moves when the socket appears: the atlas still reads (> 200)
 // First, the clear and the grab compile with STEREO_INSTANCING_ON, which no batch camera renders.
 using System;
@@ -54,9 +55,15 @@ namespace AvatarBridge.Regression
             if (plug == null) throw new Exception("no skinned plug on " + path);
             var skin = (SkinnedMeshRenderer) plug.Target;
             for (var t = skin.transform; t != null; t = t.parent) t.gameObject.SetActive(true);
+            // A prefab converted before the light relay wears re-patched copies, and
+            // gets the relay the next conversion would build.
+            skin.sharedMaterials = skin.sharedMaterials.Select(m => m != null && YapsShaderPatcher.IsStale(m) ? Repatched(m) : m).ToArray();
+            YapsOwner.Relays(avatar);
+            var relay = avatar.GetComponentsInChildren<SkinnedMeshRenderer>(true).FirstOrDefault(r => YapsAtlas.IsRelay(r.sharedMaterial));
+            if (relay == null) throw new Exception("no light relay built on " + path);
             skin.updateWhenOffscreen = true;
             foreach (var r in avatar.GetComponentsInChildren<Renderer>(true))
-                if (r != skin) r.enabled = false;
+                if (r != skin && r != relay) r.enabled = false;
             foreach (var s in avatar.GetComponentsInChildren<YapsSocket>(true)) s.gameObject.SetActive(false);
             float length = skin.sharedMaterials.Where(m => m != null && m.HasProperty("_YAPS_Length"))
                 .Select(m => m.GetFloat("_YAPS_Length")).DefaultIfEmpty(0f).Max();
@@ -77,6 +84,14 @@ namespace AvatarBridge.Regression
             var dir = Quaternion.AngleAxis(35f, up) * fwd;
             var at = root + dir * (0.7f * length);
             sock.transform.SetPositionAndRotation(at, Quaternion.LookRotation(root - at, up));
+            // Lights only, in the same place, on for the spots so the relay has a socket to write.
+            var lit = new GameObject("__Lit");
+            var litSocket = lit.AddComponent<YapsSocket>();
+            litSocket.kind = YapsSocket.SocketKind.Hole;
+            YapsSocketBuilder.Build(litSocket);
+            foreach (var w in lit.GetComponentsInChildren<Renderer>(true)) w.enabled = false;
+            lit.transform.SetPositionAndRotation(at, sock.transform.rotation);
+            lit.SetActive(false);
 
             var camGo = new GameObject("__Camera");
             var cam = camGo.AddComponent<Camera>();
@@ -121,6 +136,20 @@ namespace AvatarBridge.Regression
                 return read.GetPixels32();
             }
 
+            // The relay's strip in the frame's grab, columns 0 to 7.
+            Color32[] Strip()
+            {
+                var grab = Shader.GetGlobalTexture("_YAPS_Atlas") as RenderTexture;
+                if (grab == null) return new Color32[0];
+                var strip = new Texture2D(8, grab.height, TextureFormat.RGBA32, false);
+                RenderTexture.active = grab;
+                strip.ReadPixels(new Rect(0, 0, 8, grab.height), 0, 0);
+                RenderTexture.active = null;
+                var px = strip.GetPixels32();
+                Object.DestroyImmediate(strip);
+                return px;
+            }
+
             bool all = true;
             foreach (var bg in new Color32?[] { new Color32(51, 102, 153, 255), new Color32(0, 177, 64, 0), null })
             {
@@ -143,7 +172,16 @@ namespace AvatarBridge.Regression
                     back = read.GetPixels32();
                 }
                 skin.enabled = false;
+                lit.SetActive(true);
                 var empty = Frame();
+                var withRelay = Strip();
+                relay.enabled = false;
+                Frame();
+                var noRelay = Strip();
+                relay.enabled = true;
+                lit.SetActive(false);
+                // Pixels the relay wrote: the strip with it against the strip without.
+                int relayPx = withRelay.Length == noRelay.Length ? withRelay.Where((c, i) => !c.Equals(noRelay[i])).Count() : 0;
                 int spots = 0;
                 for (int i = 0; i < empty.Length; i++)
                 {
@@ -158,18 +196,25 @@ namespace AvatarBridge.Regression
                 bool Off(Color32 c, Color32 b) => Math.Abs(c.r - b.r) > 3 || Math.Abs(c.g - b.g) > 3 || Math.Abs(c.b - b.b) > 3;
                 int moved = 0;
                 for (int i = 0; i < bent.Length; i++) if (Off(bent[i], back[i]) != Off(straight[i], back[i])) moved++;
-                bool ok = spots == 0 && moved > 200;
+                bool ok = spots == 0 && moved > 200 && relayPx > 0;
                 all &= ok;
                 Log($"{(ok ? "PASS" : "FAIL")} background {(bg is Color32 named ? named.ToString() : "an earlier camera's picture")}: " +
-                    $"{spots} atlas px left on screen, plug bend {moved} px");
+                    $"{spots} atlas px left on screen, {relayPx} relay px in the grab, plug bend {moved} px");
             }
             return all;
+        }
+
+        static Material Repatched(Material m)
+        {
+            var copy = new Material(m) { name = m.name + " (probe)" };
+            if (!YapsShaderPatcher.Refresh(copy, null)) Log($"WARN {m.name}: the re-patch failed");
+            return copy;
         }
 
         static bool Stereo()
         {
             bool all = true;
-            foreach (var name in new[] { "YAPS/Atlas Clear", "YAPS/Atlas Grab" })
+            foreach (var name in new[] { "YAPS/Atlas Clear", "YAPS/Atlas Grab", "YAPS/Atlas Relay" })
             {
                 var data = ShaderUtil.GetShaderData(Shader.Find(name)).GetSubshader(0);
                 for (int p = 0; p < data.PassCount; p++)

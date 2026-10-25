@@ -2276,9 +2276,12 @@ Bipeds are unaffected by any of it.
 - **A bent plug casts a straight shadow (YAPS).** A light's shadow is drawn in a pass that gets no
   marker lights and, whenever anything in view copies the screen (the screen atlas is such a copy),
   reads the wrong copy. So a plug in a socket casts the shadow of a straight one. Depth effects
-  (depth of field, fog, ambient occlusion) follow a plug bent through the screen atlas, but one that
-  found its socket by marker light (a DPS socket, a view too small for the atlas, or another YAPS
-  version) can show as a faint straight plug through the skin.
+  (depth of field, fog, ambient occlusion) follow the bend: a plug that found its socket by marker
+  light (a DPS socket, or one from another YAPS version) hands it on through the screen atlas, a
+  frame late, to the passes that get no lights. That needs the avatar converted with this version
+  and a view big enough for the atlas. Otherwise, and for a plug on a prop or on someone else's copy
+  before the wearer's owner id first syncs, a faint straight plug can show through the skin in those
+  effects. Not yet confirmed in game.
 - **Action-layer emotes and features.** Only **Gesture** and **FX** convert by default: Base,
   Additive and Action are off, because CVR drives locomotion and emotes itself. **An avatar that
   transforms usually needs Action ticked**: a mech that folds into a vehicle keeps its menu toggle

@@ -410,6 +410,117 @@ bool YapsFindLightSocket(float3 plugOrigin, float reach,
     return found;
 }
 
+// --- the light relay, both ends ------------------------------------------
+//
+// See the protocol in yaps_atlas.cginc. The writer is YAPS/Atlas Relay.
+
+// The first two roots in the slots, slot order being Unity's ranking, each
+// paired with its nearest front within ten centimetres as above. Unpaired
+// fronts of an owned socket are not filtered: the relay cannot tell whose
+// they are, and a stranger's root with the wearer's front nearer than its
+// own is the only case that differs.
+int YapsRelayRoots(out float3 at[YAPS_RELAY_ROOTS], out float3 fwd[YAPS_RELAY_ROOTS],
+                   out int kind[YAPS_RELAY_ROOTS])
+{
+    int4 kinds = int4(YapsClassifyLight(0), YapsClassifyLight(1),
+                      YapsClassifyLight(2), YapsClassifyLight(3));
+    int count = 0;
+    [unroll] for (int k = 0; k < YAPS_RELAY_ROOTS; k++) { at[k] = 0; fwd[k] = 0; kind[k] = YAPS_LIGHT_NONE; }
+    [unroll] for (uint i = 0; i < 4; i++)
+    {
+        if (count >= YAPS_RELAY_ROOTS || !YapsIsRoot(kinds[i])) continue;
+        float3 p = YapsLightPosition(i);
+        float3 f = 0;
+        float frontSq = 0.01;
+        [unroll] for (uint j = 0; j < 4; j++)
+        {
+            if (kinds[j] != YAPS_LIGHT_FRONT) continue;
+            float3 offset = YapsLightPosition(j) - p;
+            float offsetSq = dot(offset, offset);
+            if (!(offsetSq > 1e-8 && offsetSq < frontSq)) continue;
+            frontSq = offsetSq;
+            f = normalize(offset);
+        }
+        at[count] = p;
+        fwd[count] = f;
+        kind[count] = kinds[i];
+        count++;
+    }
+    return count;
+}
+
+// The writer's pixel i of the entry.
+float4 YapsRelayPixel(int i, int owner, int n, float3 at[YAPS_RELAY_ROOTS],
+                      float3 fwd[YAPS_RELAY_ROOTS], int kind[YAPS_RELAY_ROOTS])
+{
+    if (i == 0) return float4(n / (float) YAPS_ATLAS_OWNERMAX, 0, 0, 0.5 + 0.5 * YapsRelayTag(owner, n));
+    if (i == 1) return YapsOwnerEncode(owner);
+    int k = (i - 2) / 3;
+    float3 s = at[k] / YAPS_RELAY_CELL;
+    int3 c = int3(floor(s)) & 0xFF;
+    int part = (i - 2) % 3;
+    return part == 0 ? float4(frac(s), kind[k] / (float) YAPS_ATLAS_OWNERMAX)
+         : part == 1 ? float4(fwd[k] * 0.5 + 0.5, dot(fwd[k], fwd[k]) > 0 ? 1 : 0)
+         : YapsOwnerEncode(c.x | (c.y << 8) | (c.z << 16));
+}
+
+// What the relay saw a frame ago, for the passes Unity hands no lights: the
+// nearest unowned root within reach, as YapsFindLightSocket picks it. Tag,
+// number and the whole owner must match, so a clash fails safe to straight.
+// A target too short for the strip loads zero, which is untagged.
+bool YapsFindRelaySocket(float3 plugOrigin, float reach,
+                         out float3 position, out float3 forward,
+                         out float holeHint)
+{
+    position = 0;
+    forward = 0;
+    holeHint = -1;
+    bool found = false;
+    int owner = YapsOwnerOf(_YAPS_Owner);
+    int n = (int) round(_YAPS_PlugIndex);
+    if (owner != 0 && n >= 1 && n <= YAPS_ATLAS_SOCKETMAX)
+    {
+        float tagWant = YapsRelayTag(owner, n);
+        int py = YapsAtlasRow(YapsRelayRow(owner, n, 0));
+        float4 p0 = YAPS_ATLAS_LOAD(0, py);
+        bool ok = YapsDirTagged(p0, tagWant);
+        if (!ok)
+        {
+            py = YapsAtlasRow(YapsRelayRow(owner, n, 1));
+            p0 = YAPS_ATLAS_LOAD(0, py);
+            ok = YapsDirTagged(p0, tagWant);
+        }
+        ok = ok && (int) round(p0.r * YAPS_ATLAS_OWNERMAX) == n
+                && YapsOwnerDecode(YAPS_ATLAS_LOAD(1, py)) == owner;
+
+        float bestSq = reach * reach;
+        int3 near = int3(floor(plugOrigin / YAPS_RELAY_CELL));
+        // Unrolled: ChilloutVR's Shader Filtering gives a [loop] after a heavy
+        // one a single pass, which would drop the second root.
+        [unroll]
+        for (int k = 0; k < YAPS_RELAY_ROOTS; k++)
+        {
+            float4 a = YAPS_ATLAS_LOAD(2 + 3 * k, py);
+            int kind = (int) round(a.a * YAPS_ATLAS_OWNERMAX);
+            if (!ok || !YapsIsRoot(kind)) continue;
+            int c = YapsOwnerDecode(YAPS_ATLAS_LOAD(4 + 3 * k, py));
+            int3 cell = near + ((((int3(c, c >> 8, c >> 16) - near) & 0xFF) ^ 0x80) - 0x80);
+            float3 at = (float3(cell) + a.rgb) * YAPS_RELAY_CELL;
+            float fromPlugSq = dot(at - plugOrigin, at - plugOrigin);
+            if (fromPlugSq >= bestSq) continue;
+            if (_YAPS_SelfTag >= 0 && YapsSameBodyOwned(plugOrigin, at, 0)) continue;
+            bestSq = fromPlugSq;
+            position = at;
+            found = true;
+            holeHint = kind == YAPS_LIGHT_HOLE ? 1 : (kind == YAPS_LIGHT_RING ? 0 : -1);
+            float4 f = YAPS_ATLAS_LOAD(3 + 3 * k, py);
+            float3 v = f.rgb * 2 - 1;
+            forward = f.a >= 0.5 && dot(v, v) >= 0.25 ? normalize(v) : 0;
+        }
+    }
+    return found;
+}
+
 // --- what the player globals are NOT for -------------------------------
 //
 // There used to be a fourth tier here: aim the plug at the nearest
@@ -788,8 +899,16 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     float3 lightPosition;
     float3 lightForward;
     float lightHoleHint;
-    if (!found && YapsFindLightSocket(plugOrigin, worldLength * 1.6,
-                                      lightPosition, lightForward, lightHoleHint))
+    bool lit = !found && YapsFindLightSocket(plugOrigin, worldLength * 1.6,
+                                             lightPosition, lightForward, lightHoleHint);
+    // Every other pass, the depth texture's caster above all, asks the
+    // relay. Where a shader does not say which pass it is, ForwardBase asks
+    // too, and finds what its own lights said a frame ago.
+#if !defined(UNITY_PASS_FORWARDBASE)
+    if (!found && !lit)
+        lit = YapsFindRelaySocket(plugOrigin, worldLength * 1.6, lightPosition, lightForward, lightHoleHint);
+#endif
+    if (lit)
     {
         socket.position = lightPosition;
         found = true;

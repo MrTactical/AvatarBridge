@@ -44,6 +44,7 @@ namespace AvatarBridge
         {
             if (root == null || controller == null) return null;
             int unnumbered = ApplySelf(root);
+            Relays(root);
             var targets = root.GetComponentsInChildren<Renderer>(true)
                 .Where(r => r.sharedMaterials.Any(m => m != null && m.HasProperty(Property)))
                 .ToList();
@@ -246,6 +247,36 @@ namespace AvatarBridge
 
         static SelfRules RulesOf(IEnumerable<Material> materials) =>
             materials.Select(RulesOn).FirstOrDefault(x => x != null);
+
+        // Numbers the relay carries, 1 to 15. Must match YAPS_ATLAS_SOCKETMAX.
+        const int MaxRelays = 15;
+
+        // Each plug numbered among the avatar's on its materials and on the relay
+        // that hands its marker lights to its other passes, in hierarchy order
+        // like the sockets. Only a plug whose shader reads the number gets a
+        // relay, and a relay whose plug is gone goes with it. Wire picks the
+        // relays up, since their material carries the owner too.
+        internal static void Relays(GameObject root)
+        {
+            var keep = new HashSet<SkinnedMeshRenderer>();
+            int count = 0;
+            foreach (var plug in root.GetComponentsInChildren<YapsPlug>(true))
+            {
+                var own = MaterialsOf(plug).Where(m => m.HasProperty("_YAPS_PlugIndex")).ToList();
+                if (plug.Target == null || own.Count == 0) continue;
+                int n = ++count <= MaxRelays ? count : 0;
+                foreach (var m in own)
+                {
+                    if (Mathf.RoundToInt(m.GetFloat("_YAPS_PlugIndex")) == n) continue;
+                    Undo.RecordObject(m, "YAPS light relays");
+                    m.SetFloat("_YAPS_PlugIndex", n);
+                    EditorUtility.SetDirty(m);
+                }
+                if (n > 0 && YapsAtlas.AddRelay(plug.Target, n) is SkinnedMeshRenderer relay) keep.Add(relay);
+            }
+            foreach (var r in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                if (YapsAtlas.IsRelay(r.sharedMaterial) && !keep.Contains(r)) Undo.DestroyObjectImmediate(r.gameObject);
+        }
 
         // The materials this plug baked: its slot and the slots it recorded,
         // on whichever mesh, and on its own mesh every slot wearing the same

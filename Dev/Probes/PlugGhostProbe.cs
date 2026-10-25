@@ -13,7 +13,12 @@
 //   ghost  an opaque box behind the socket entrance as the receiving body:
 //          pixels where the depth texture changes with the plug on while the
 //          colour does not.
-// Both should be 0 past a two-pixel edge. PNGs of each frame with -ghostOut.
+// Both should be 0 past a two-pixel edge. The sun's shadow on a floor is
+// reported, never failed: a light's shadow map is drawn after the frame's
+// grabs but bound to the texture the atlas name held when the frame began, and
+// the pool trades grab textures between names whenever a frame has two. YAPS
+// has two of its own, so the shadow reads the wrong picture. PNGs of each
+// frame with -ghostOut.
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -75,10 +80,21 @@ namespace AvatarBridge.Regression
             if (plug == null) throw new Exception("no skinned plug on " + path);
             var skin = (SkinnedMeshRenderer) plug.Target;
             for (var t = skin.transform; t != null; t = t.parent) t.gameObject.SetActive(true);
+            // A prefab converted before the light relay: its patch has no plug number, so
+            // the plug wears re-patched copies and the relay is built here, as the next
+            // conversion would. Before the bounds follow the skin, which the relay copies.
+            // -ghostNoRelay measures the prefab as it was converted.
+            if (Arg("-ghostNoRelay") == null)
+            {
+                skin.sharedMaterials = skin.sharedMaterials.Select(m => m != null && YapsShaderPatcher.IsStale(m) ? Repatched(m) : m).ToArray();
+                YapsOwner.Relays(avatar);
+            }
+            var relay = avatar.GetComponentsInChildren<SkinnedMeshRenderer>(true).FirstOrDefault(r => YapsAtlas.IsRelay(r.sharedMaterial));
+            Log(relay == null ? "no light relay built" : $"relay \"{relay.name}\" under \"{relay.transform.parent.name}\": bounds {relay.bounds.center:F3} {relay.bounds.size:F3}, the plug's {skin.bounds.center:F3} {skin.bounds.size:F3}");
             skin.updateWhenOffscreen = true;
-            // The plug alone: every other renderer of the avatar off.
+            // The plug alone: every other renderer of the avatar off, but its relay.
             foreach (var r in avatar.GetComponentsInChildren<Renderer>(true))
-                if (r != skin) r.enabled = false;
+                if (r != skin && r != relay) r.enabled = false;
             foreach (var s in avatar.GetComponentsInChildren<YapsSocket>(true)) s.gameObject.SetActive(false);
             float length = skin.sharedMaterials.Where(m => m != null && m.HasProperty("_YAPS_Length"))
                 .Select(m => m.GetFloat("_YAPS_Length")).DefaultIfEmpty(0f).Max();
@@ -267,17 +283,20 @@ namespace AvatarBridge.Regression
                 }
                 Log($"  shadow {name}: {shadowPx} px, {shadowMoved} px differ from the unbent plug's shadow");
 
+                // Where the shadow reads the atlas it moves 75 to 90 percent of its pixels.
+                bool shadowBent = shadowMoved * 2 >= shadowPx;
                 bool ok = casterOnly == 0 && ghost == 0;
                 all &= ok;
                 Log($"{(ok ? "PASS" : "FAIL")} {name}: bend {bent} px off the straight plug; plug alone {mc.Count(x => x)} colour px, " +
                     $"{md.Count(x => x)} depth px, {casterOnly} depth only ({unbent} on the unbent plug), {forwardOnly} colour only; with the body " +
-                    $"{depthMoved} depth px moved by the plug, {ghost} of them where the colour shows only the body");
+                    $"{depthMoved} depth px moved by the plug, {ghost} of them where the colour shows only the body; shadow {(shadowBent ? "bent" : "STRAIGHT")}");
                 if (bent < 200) Log($"WARN {name}: the plug barely moved, so the socket may not have resolved on this route");
                 if (outDir != null)
                 {
                     string stem = Path.Combine(outDir, name.Replace(' ', '-'));
                     Png(stem + "-alone.png", alone.c, alone.d, casterMask);
                     Png(stem + "-body.png", withPlug.c, withPlug.d, ghostMask);
+                    Pair(stem + "-shadow.png", shBent, shStraight);
                 }
                 Object.DestroyImmediate(sock);
             }
@@ -302,6 +321,26 @@ namespace AvatarBridge.Regression
             tex.Apply();
             File.WriteAllBytes(file, tex.EncodeToPNG());
             Object.DestroyImmediate(tex);
+        }
+
+        // The bent plug's shadow frame on the left, the unbent one's on the right.
+        static void Pair(string file, Color32[] a, Color32[] b)
+        {
+            var tex = new Texture2D(W * 2, H, TextureFormat.RGB24, false);
+            var px = new Color32[W * 2 * H];
+            for (int y = 0; y < H; y++)
+            for (int x = 0; x < W; x++) { px[y * W * 2 + x] = a[y * W + x]; px[y * W * 2 + W + x] = b[y * W + x]; }
+            tex.SetPixels32(px);
+            tex.Apply();
+            File.WriteAllBytes(file, tex.EncodeToPNG());
+            Object.DestroyImmediate(tex);
+        }
+
+        static Material Repatched(Material m)
+        {
+            var copy = new Material(m) { name = m.name + " (probe)" };
+            if (!YapsShaderPatcher.Refresh(copy, null)) Log($"WARN {m.name}: the re-patch failed");
+            return copy;
         }
 
         static bool[] Dilate(bool[] m, int r)
@@ -340,7 +379,7 @@ namespace AvatarBridge.Regression
         {
             var args = Environment.GetCommandLineArgs();
             int i = Array.IndexOf(args, name);
-            return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
+            return i < 0 ? null : i + 1 < args.Length ? args[i + 1] : "";
         }
     }
 }
