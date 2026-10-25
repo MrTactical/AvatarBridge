@@ -165,136 +165,17 @@ the YAPS avatars [M]:
   them with default settings that morning and resized their source textures (reverted from each
   `TextureSizes.undo`). So 424 is not promoted.
 
-### 7. YAPS against every popular shader: done
-- **Squash on Unity's Standard, 2026-10-21 [M]:** the plug and socket move a Standard material to
-  YAPS Simple Lit; the squash only patches, refuses Standard ("no source file on disk") and is not
-  built. Run 424 has nine such avatars. Same Simple Lit fallback, or say so in the setup card.
-  **Written on dev, not yet compiled (Joe in VR):** `YapsSquash.ShaderFor` moves a Standard layer to
-  Simple Lit only when it is opaque and uses nothing Simple Lit lacks (metallic, occlusion, emission,
-  height or detail maps, smoothness from albedo alpha, an emission colour with the keyword off), since
-  squash patches the body's own skin and a changed look there is worse than holding still. Anything
-  else keeps the refusal, with the reason. `SquashRefusedTest` gains a plain Standard case (built, on
-  a patched Simple Lit copy) and a metallic-map case (refused, names the map). Then: the nine
-  avatars from run 424 in a subset.
-  **Tested 2026-10-21 [M]:** old code 4 WRONG (both new cases). New code first read 2 WRONG on the
-  metallic case: the test set `Texture2D.whiteTexture`, which does not survive the material being
-  saved, so the material had no map. With a saved texture asset: 8/8 PASS, the refusal reads "YAPS
-  Simple Lit has no metallic map". The nine avatars are checked in the full run instead of a subset.
-  **Run 427 [M]:** one avatar gains squash on a Standard layer (Converted "Deform patched into YAPS
-  Simple Lit", 14 squash materials where 13 were). The nine stay unbuilt, each now naming why:
-  Standard with a metallic map (three), Unity's surface shaders (two), shaders in error that read
-  as `Hidden/InternalErrorShader` (four, one avatar's scene variants). Correct by the rule above; the fallback simply finds
-  little to take in this corpus.
-  **YAPS Standard, on dev 2026-10-24 [M] (Joe: "try that"):** `Editor/Yaps/YapsStandard.shader` is
-  Unity's Standard rebuilt from its published source (MIT, notice in the file): the same properties,
-  passes and pragmas, Unity's own vertex functions called through thin wrappers that the patcher can
-  take. A Standard material on a plug, socket or squash layer now moves to it with every setting
-  carried over (`YapsNativeBuilder.OnFallback`); every other refused shader still goes to Simple Lit,
-  which never stands in on a squash layer. `SquashRefusedTest` old code 5 WRONG, new code PASS: a
-  plain Standard skin is built on a patched YAPS Standard copy, and a transparent one with a metallic
-  map keeps its map, keyword, blend and render queue. SquashPartsTest, StandardCasterTest and
-  IncludeVertexTest PASS. Full shader sweep RESULT PASS, 54 of 54: YAPS Standard plain, every map
-  and cutout patched, 0 px over 2/255 against the unpatched shader at rest and off, Bend and Open 0
-  stray with full cover in view and shadow; built-in Standard and Standard every map refused, drawn
-  on YAPS Standard, 0 px against built-in Standard. Run 427's three metallic-map avatars should now
-  build; the next full run checks them.
-  **Found on the way, pre-existing, fixed for YAPS [M]:** Unity drops a material's own render queue
-  when its shader changes. A QueueProbe read 2000 for a transparent 3000 on every route that swaps
-  the shader (Standard to the patched copy, Standard to Simple Lit, Poiyomi to YAPS Standard), so
-  every patched copy of a transparent Standard or Poiyomi material drew in the opaque queue.
-  `YapsShaderPatcher.Wear` keeps the queue across the swap and every YAPS site uses it.
-  **Still open:** the same swap without the queue kept in `Editor/Core/ShaderSpiPatcher.cs:1370`
-  (`copy.shader = patchedShader`, the SPS patcher) and `SceneAssetRehomer.cs:265`. Unmeasured there;
-  a failing test first.
-
-
-Joe, on the K2 options: "not every shader is built the same ... we would need to test YAPS plugs and
-sockets against every known popular shader, mochie, liltoon, poi, autodesk interactive, etc". The
-lilToon finding below is the proof: a host can patch without a word and never bend.
-- What the corpus avatars use, from the corpus project's source materials (generated output excluded,
-  2194 materials) [M]: Poiyomi 1079; Standard and other built-ins 469, plus 116 Standard-like on missing
-  shaders; VRChat Mobile 150; Mochie about 134 (fingerprinted, shader not installed there); UTS 26;
-  lilToon 16 (not installed there). Not in the corpus but popular: Silent's Filamented and CrossTone,
-  Xiexe XSToon, ORL toon, Sunao, arktoon, Poiyomi Pro, Autodesk Interactive.
-- Per shader and per mode that offsets vertices (outlines above all), with the shipped patcher:
-  1. It patches, or refuses with a reason. Never patched-but-straight like lilToon.
-  2. The plug bends in every pass that draws (forward, add, shadow caster, outline), against Simple Lit.
-  3. Sockets: the dent and squash patch on the same host.
-  4. Two At Once: the copy draws, and hides, in every pass.
-  5. Portal: the corridor test, which decides whether the band (K2 options 2 to 4) is safe anywhere.
-- Harness: PortalCopyProbe's host list and its per-host captures, generalised. Shaders not on this
-  machine need Joe's yes per download.
-- It answers the K2 call: the band's safety rests on hosts offsetting along the normal, and this is
-  the survey of that.
-- Installed in the Poiyomi lock project with Joe's yes: Mochie 1.77.1 Free, ORL 7.3.1 (with its
-  generator and inspector), XSToon 3.7.1 (its fur add-on left out; 15 GUIDs it shares with an older
-  partial Xiexe copy there were given new ones), Filamented 1.4.0, arktoon 1.0.2.6, UTS 2.0.7 and
-  Silent's Cel Shading. Already there: Poiyomi 9.3, lilToon 1.7.3, the VRChat Mobile shaders. Sunao
-  1.6.2 added 2026-10-24, fetched by Joe.
-- `Dev/Probes/Portal/ShaderSweepProbe.cs` covers checks 1 to 3: 37 setups across 12 families, every outline mode that offsets by its own rule
-  (mask, vertex colour, baked normal, position, geometry-shader outlines). Per host: patched or
-  refused with a reason; YAPS off draws the unpatched original to 2/255; a plug bend and a socket
-  shape move, each judged against Simple Lit drawing the same move, in the view (forward and add
-  passes, outlines) and in a floor shadow (the caster). A pass the patch missed draws where only the
-  unmoved tube was. The dent rides the same injected call as the socket move and is not drawn
-  separately. It also counts the deform calls in each patched copy, and `-sweepDump` keeps the copies.
-- **Checks 1 to 3, run 2026-10-19 (Poiyomi lock project, four runs) [M]:**
-  - Patched and moving in every pass, 0 stray pixels in view and shadow, outlines drawn: Simple Lit,
-    Poiyomi 9.3 (plain, outline, vertex-colour normals local and world, drop shadow), XSToon 3.7.1
-    (plain, outline, vertex-colour normals). Off equals the original to 0 px over 2/255 on all.
-  - Refused with a reason and drawn on Simple Lit, as designed: Standard and Autodesk Interactive
-    (no `vertAdd`), VRChat Mobile Toon Lit and Standard Lite (surface shader), Mochie Standard and
-    Filamented (no `SV_VertexID`), Crosstone, Lightramp and arktoon (no POSITION struct found), ORL's
-    three (generated by its importer, no source on disk).
-  - **Patched yet never moved, no warning (fixed, below):** Mochie Uber 1.77.1 (plain and both outlines)
-    and UTS 2.0.7 with outline (three outline modes): 0 deform calls in their copies. lilToon (plain and
-    outline): its drawing passes are borrowed.
-  - Probe fix on the way: a refused host was failed for drawing no outline. Simple Lit has none.
-- **Sunao 1.6.2, checks 1 to 5, 2026-10-24 (Poiyomi lock project) [M]:** plain, outline (normal
-  times a mask), stencil outline, transparent outline and fur all patch natively, five vertex passes
-  in the first subshader, 3 deform calls in 18 files (fur 20). Off and nothing in reach both 0 px
-  over 2/255; bend and open 0 stray pixels, view and shadow fully covered, outlines drawn (+29.2%,
-  fur +19.7%). A skinned plug stays straight on none of them. Check 4: 0 corridor pixels on all five,
-  HDR and 8-bit. Check 5: 0 corridor pixels on all five, so no new line under the band.
-- **Fixed on `portal-spike`, 2026-10-19: a shader whose vertex function sits in an include was
-  "patched" with nothing in it.** Passes are patched last first, so the shadow caster went first. It
-  marked the include done before its checks, failed on the missing `SV_VertexID`, was skipped as
-  cosmetic, and every later pass returned "already done". It is marked only once injected now, so
-  Mochie Uber and UTS refuse with the real reason and fall back to Simple Lit (sweep 3: 30 of 32,
-  lilToon the two left; sweep 4 with the `UsePass` refusal below: 32 of 32 PASS). `Dev/Tests/IncludeVertexTest`
-  failed before, passes after, and covers the borrowed-pass refusal (a borrowed caster still patches).
-- **Not run in the corpus.** Squash patches body materials through the same patcher, so the next
-  authorised run should change digests on avatars wearing UTS or a shader that borrows passes: a
-  refusal where a silent straight patch was. That is the fix, not a regression.
-  **Run 427 carried the fix (9c52bfb is in e5608e1), checked 2026-10-24 [M]:** its log names every
-  refusal the corpus has (no source file on disk 13, no metallic map 5, surface shader 3,
-  `InternalErrorShader` 14) and none of the new kinds (a borrowed pass, no `SV_VertexID`, made on
-  import), so no corpus avatar wears such a shader under a plug, socket or squash part and no digest
-  moved for it. Nothing left to run. Checks 4 and 5 passed on 2026-10-19 (below).
-- ~~ORL's refusal says the shader "lives inside a compiled package", which is wrong for a shader its
-  importer generates.~~ **Fixed on `dev` 2026-10-19:** a shader with a project path but no `.shader`
-  text is refused as "made on import from <file>, which is not shader source". `GeneratedShaderTest`
-  (its own scripted importer, no ORL needed) 2 WRONG before, PASS after. Still open from the sweep: a host with `SV_VertexID` and one vertex function name
-  per pass in different files (or several under `#if`) would get only the first patched; no tested
-  host has both, so it is latent [R]. The `UsePass` refusal runs before the vertex checks and
-  excepts only caster and meta passes, so Filamented now refuses for borrowing `Standard/DEFERRED`
-  rather than for its missing `SV_VertexID` (since the lender patch, because `Standard` cannot be patched). Same outcome there; a shader whose only borrowed pass is
-  a deferred one would be refused though a forward client never draws it [R].
-- Checks 4 and 5: `-portalSweep` on PortalCopyProbe (the copy and its corridor, shipped includes)
-  and on PortalBandProbe (the band, spike includes swapped in) adds the same hosts beyond the
-  families those probes already draw. Refused hosts draw on Simple Lit, already a host there.
-  - **Check 4, 2026-10-19 (shipped includes at `9c52bfb`): PASS** [M]. 51 PASS, 0 FAIL: 0 corridor
-    pixels on every host, HDR and 8-bit, outlines drawn; exit vertices within 0.0213 mm (HDR) and
-    0.1617 mm (8-bit) of the decoded exit; 0 plain or first-copy vertices moved by the exit. The new
-    hosts that patch are XSToon's three; every other sweep host refused with the reasons above.
-  - **Check 5, 2026-10-19 (the band, spike includes swapped in, restored after): no new line** [M].
-    The only failures are S3's two known setups, Poiyomi's local vertex-colour normals (39098 and
-    37181 corridor pixels, HDR and 8-bit) and lilToon's vector from vertex colour (18217 and
-    17456). XSToon plain, outline and vertex-colour normals draw 0, outlines drawn. The K2 table
-    stands: of the hosts that patch today, only those two draw the line under the band. A real
-    lilToon patch would bring its vector mode back into reach. **It now does** (lilToon record below):
-    a lilToon plug whose outline takes its vector from vertex colour would draw the line under
-    options 2 to 4, as the Poiyomi local mode would. Joe kept the fallback (2026-10-19), so neither does.
+### 7. What the shader sweep left open
+The record is in `archive/Closed-2026-10.md`, "YAPS against every popular shader".
+- **The render queue across a shader swap.** `YapsShaderPatcher.Wear` keeps it at every YAPS site;
+  `Editor/Core/ShaderSpiPatcher.cs:1370` (`copy.shader = patchedShader`, the SPS patcher) and
+  `SceneAssetRehomer.cs:265` still swap without it. Unmeasured there; a failing test first.
+- **Two latent patcher gaps [R].** A host with `SV_VertexID` and one vertex function name per pass
+  in different files (or several under `#if`) would get only the first patched; no tested host has
+  both. A shader whose only borrowed pass is a deferred one would be refused though a forward
+  client never draws it.
+- **Run 427's three metallic-map avatars** should build on YAPS Standard now; the next full run
+  checks them.
 
 ### 8. The MagicaCloth2 review: findings not yet acted on
 
@@ -564,6 +445,9 @@ Read what the seam check measures before calling it a bake fault.
   1.80 s, 2343 slots, 59 temps after (+15%). Tried and dropped: a refine function called per entry
   (bisect plug +44%), the same pass carrying the decode (1.92 s, 63 temps), the refine reading the
   coarse position's own cell only (1.74 s, but a coarse position across a cell edge keeps coarse).
+  Unity's first compile of a fresh every-part patch, the fix in and reverted in one session, two runs
+  each: Poiyomi 18.3 to 19.6 s (+7%), Simple Lit 16.2 to 18.5 s (+14%). Scaled onto the speed card's
+  session: 26 s (14x) and 17 s (8x, was 9x); the card, both films' YAPS cut and the notes follow.
   Under CVR's Shader Filtering the scan loop gets one pass, so the coarse and refine passes are both
   cut, as the coarse one already was; every new value is set before the loop. Reaches users on a
   rebake. Left: a second coarse-only socket keeps its coarse reading.
@@ -657,39 +541,6 @@ Six reports from Joe's testers on the latest test packages.
   indexed registers every frame (unmeasured) and ChilloutVR's shader filter treats each heavy
   `[loop]` on its own. The `plug chain1` case is gone: the chain is a fixed four by design.
 
-### 17. Joe's squash and setup UI review, 2026-10-23 (screenshots image2-7)
-
-All six done 2026-10-23 (Joe: "do all 6", "do both" for item 1). SquashPartsTest gained three
-checks: on the old code the scan listed 2 plugs and the overlay kept an undone stroke (red 1.00),
-FAIL 2; on the new code PASS (Non Corpus Zone, headless). compile-check all ok. Not seen in the
-GUI yet: the new layouts want one look from Joe.
-**Rendered 2026-10-24 [M]** (UiOffscreenProbe on AlexaSquash in Non Corpus Zone, dev 43aef09): the
-YAPS window's squash card (one **Set up squash**, Remove under it), the component and the Avatar
-Tester read as this item and item 19 say. The two renamed toggles are in the window and README
-word for word. Joe's own look in the GUI is still wanted.
-
-1. **Two toggles read as one feature.** Done, both ways: renamed to "Soft body physics: keep parts
-   from passing through" (Physics ▸ Your call, `softBodiesCollide`) and "Soft body shape: squash
-   where parts press together" (Opt-ins ▸ Soft parts, `squashSoftParts`), and each carries a hint
-   line naming the other ("use both"). The physics hint shows only with the add-on. Field names
-   unchanged, so saved settings keep.
-2. **Clothing listed as plugs (bug).** Fixed: `YapsScanner.Scan` skips a component-less YAPS
-   plug material that is not `YapsMarks.IsBakedMaterial`; squash copies carry the plug's
-   properties with no bake. Test: 2 listed, then 0.
-3. **Painting has no undo.** It had one: each stroke's `Save` records the component, and Ctrl+Z
-   restored the weights. The overlay did not follow: `Load` kept `_colours` of the same length and
-   `Bake` redrew them, so the undone stroke stayed drawn. `Load` now drops them. Test: red 1.00
-   after undo, then 0.00. The brush hint now says Ctrl+Z.
-4. **The brush overlay is cluttered.** Now: hint, side, radius, strength, one row (Soften edge,
-   Copy to other side, Stop), the legend. Wider and Narrower are gone (they read as the radius),
-   Clear this side moved to the window.
-5. **The Squash regions window reads like a cockpit.** Paint card: pair, the paint button, add or
-   remove a pair. Name, side, fill from a bone or shape key and Clear sit in a closed fold "More for
-   this pair"; Start over is a closed fold under the build.
-6. **The squash card's buttons open different places.** The Setup card has one primary button,
-   **Set up squash**, which opens the YAPS Squash component (adding it if missing, no build), plus
-   Remove. The component's cards run as numbered steps: Parts, Build, See it work, How it feels.
-
 ### 18. Squash in game, reported by other users, 2026-10-23 (image8, image9, a clip)
 
 All fixed on dev 2026-10-23. Existing squash builds keep the old shader code until rebuilt,
@@ -758,68 +609,6 @@ because patched shaders inline the include. No fix has been seen in game yet.
    and the walk stops after a pass or two and lands on the curve's end. Not measured in the editor
    yet (`-sfRuntime` on a plug scene would show it). Unrolling the walk costs compile time on every
    plug variant, so it waits on Joe.
-
-### 19. Joe's squash UI review, round 2, 2026-10-23
-
-Fixed on dev the same day, except where marked open.
-
-1. **The Avatar Tester's tab still read "CCK Animator Tester".** The title was set only when opened
-   from the menu; a window restored from a saved layout kept the old one. Set in `OnEnable` now.
-2. **The squash component moved to the parts' bone, like a plug or socket** (Joe: "consistency is
-   key"). `YapsSquash.HomeFor` is the common parent of the found or picked part bones (the chest
-   for one pair, the hips for two), the avatar root while none is found. **Set up squash**
-   (`YapsSquash.Ensure`) adds it there, or moves one an older build left on the avatar root, keeping
-   its values, then selects it and fronts the Inspector (`YapsSquash.Show`), as the plug and socket
-   rows' customise chip does. The Avatar Tester's **Tune it** does the same. SquashPartsTest: five
-   new checks, PASS.
-3. **Tune it opened a new window on every press, and the windows broke.** It called
-   `EditorUtility.OpenPropertyEditor`, one window per call; a property window on a scene object
-   outlives Play mode's scene reload, and Joe's Editor.log has the `MissingReferenceException` from
-   `YapsSquashEditor.Rebuild` it threw. No window is opened now (item 2), and a stale inspector
-   returns early. "Broke the preview button" was not reproduced beyond this.
-4. **Squeeze pushed the pair apart.** It moved the follows toward each other but not the skin, so
-   the shader read an overlap and, since 7c0c6fe, swung each part away from its partner. Squeeze is
-   now another player's two open hands pressing each pair from outside, through the client's own
-   hand globals (players 0 and 2, one per pair; the test hand stays player 1), touching at 0 and at
-   the part's centre at 1, in Play mode too. "Other players' hands" scales it. Rendered on Kar with
-   `SquashPlayProbe -spLook -spPreview` (new flag), Meet off and on: the pair goes together, sides
-   flatten, and with Meet on the middle closes on a seam. Images:
-   `D:/Claude/scratch/squashlook/kar/prev2_<off|on>/small.jpg` (rows Squeeze 0, 0.5, 1). Pushed past
-   the centre, the bottoms pinched into a bridge.
-5. **"How it feels" did nothing outside Play mode.** The knobs wrote, but nothing pressed, so nothing
-   showed. Preview and knobs are one card now, **See and tune it** (steps 1-3 of 3), and Preview starts
-   at Squeeze 0.5 so a knob shows the moment it moves.
-6. **The painter came inline, and the build went last** (Joe: "similar to all other UIs where the
-   last thing you do is bake the squash at the bottom"). The component reads top to bottom: 1 Which
-   parts squash (Part bones, Materials left alone), 2 Paint them (the region painter, drawn in the
-   inspector, which owns and destroys it; "Paint regions" starts it when nothing is painted yet),
-   3 Tune how it feels (Preview, the knob folds, Animate it as a closed fold), 4 Build or Rebuild,
-   with Remove under it. *Tools ▸ YAPS ▸ Squash regions* now selects the component. Fill from a bone
-   takes a **Bone** picker instead of the Hierarchy selection, since selecting a bone closes the
-   inspector. The region colours hide while the preview runs, unless painting. SquashPartsTest PASS
-   (the painter still mounts alone for tests and probes); the inspector rendered with
-   UiOffscreenProbe on AlexaSquash in Non Corpus Zone. ButtonSmokeProbe's story now sets the bone
-   field; not rerun: it converts, so it needs the corpus project, free once run 429 ends.
-7. **Round 3, 2026-10-24 (Joe: "can we refine the squash UI still?", a screenshot on Kar, then "do
-   all five"). Steps 1 and 2 contradicted each other:** step 1 said the painted pairs win and still
-   showed two empty lists, while step 2's subtitle said "only if the bones miss a part", false once
-   the painter had started from the bone names. Now three steps: 1 **Which parts squash** names the
-   source first (painted, picked bones, or bone names) and holds the painter; **Paint them** opens it
-   when nothing is painted. **Part bones** shows only while it holds bones or after **Pick bones**,
-   with a line saying the painting wins when both are set. **Materials left alone** is a closed fold
-   whose header counts them. The painter says so when picked bones are in use, and at two pairs a
-   line under the greyed **Add a pair** says why. The "stripped at upload" notice is shared by every
-   YAPS inspector and stays. **Meet is on by default** (Joe: should it stay off? "nah"), in the
-   component and the patched shader's `_YAPS_SquashShape.w`; a component saved before keeps its
-   value. compile-check 7/7, check-defines 8/8. **Rendered 2026-10-24 [M]:** three steps, Part
-   bones hidden while empty, Materials left alone closed with "none", Add a pair greyed with its
-   line, Rebuild last. Not seen in the GUI yet.
-8. **The painted colours only while painting, 2026-10-24** (Joe, a screenshot on Kar: "I cannot
-   test the squish when the intrusive overlay is on top of the avatar"). The region overlay drew
-   whenever the component was inspected with pairs painted, hidden only under the inspector's
-   Preview, so the test hand and Play mode pressed a part under the colours. It now draws only while
-   **Paint in the Scene view** is on. Fill this side from and Copy to other side change the weights
-   with no colours in sight until painting resumes. compile-check 7/7, check-defines 8/8.
 
 ### 20. The atlas paints dots on viewers' screens. Joe, 2026-10-24, fixed on dev, Joe to check in game
 
@@ -1025,87 +814,18 @@ plane collider"; and take a playbook from Poiyomi's glass squish.
      point at the top of the seam are gone (`D:/Claude/scratch/keel2.jpg`). On Kar the small point
      at the bottom of the seam rounds off too, one-sided unchanged (`kar_ridge.jpg`).
 
-### 23. Squash turned swapped-in materials pink. A user, 2026-10-24 (two screenshots, via Joe)
-
-The user built squash with the Toolkit on an avatar whose toggles swap materials for outfit and hair
-colours. The build put copies on the hair and clothing layers it moves and pointed the swaps at
-copies, as designed. In game the hair and clothes drew pink, the skin did not. The user then deleted
-the YAPS Squash component instead of pressing Remove, so the swaps stayed on the copies.
-
-- **Remove blind after a hand deletion: fixed on dev [M].** Both Remove buttons asked only whether
-  the `YAPS squash (shader)` object was there. Deleted by hand, the window said "Nothing to remove"
-  while every layer and swap stayed on its copy. `YapsSquash.Worn` counts the slots and swap keys on
-  copies; both buttons and the card use it. `SquashTestBuilder -squashByHand` (build, key a swap,
-  delete the objects and component, read the card, Remove) failed on the card before, passes after.
-- **The pink itself: explained [user].** The user then deleted every generated YAPS material by hand.
-  The swap clips still named them, so each swap put a missing material in the slot, which draws pink.
-  Nothing can undo that now: Remove finds each original through the copy's own importer mark, and the
-  copy is gone. Two leads checked against it and left untested, still worth a test: the shader sweep
-  (item 7) never covered the squash patch, and `FollowSwaps` keys copies into the clips before `Flush`
-  writes them while the swap test reads the clip in memory only.
-- **B, clips remember their originals: done on dev (Joe's call, 2026-10-25) [M].** Every key
-  `RepointInClips` moves off a user's material records that material in the clip's importer userData
-  (`yaps-swap-originals`, one line per key: clip local id, path, property, time, the original's
-  GlobalObjectId); a move back onto a user's material forgets it, copy to copy keeps the first.
-  "User's material" = not in a folder named YAPS and not carrying the squash mark. A clip whose
-  importer already holds someone else's userData is not recorded. `MissingKeys` counts remembered
-  keys whose material is gone; the squash card warns on them and counts them toward Remove;
-  Remove squash and Clean up leftovers (`RestoreMissing`) put them back. Renderer slots are not
-  covered: they show in the Inspector. Keys pointed before this have no record, and a rebuild
-  over them makes none (copy to copy): Remove, then build.
-  `SquashTestBuilder -squashDeleted` (build, key a swap reachable through an Animator, follow,
-  reimport the clip, delete the copies, card, then Remove squash, and again with Clean up
-  leftovers) failed record, card and put back on both before, passes after.
-- **A, repoint only at upload: planned for 5.1 (Joe, 2026-10-25).** Leave user clips untouched and
-  repoint on the upload copy through `CCK_BuildUtility.PreAvatarBundleEvent`, the way VRCFury does.
-  Covers the plug and socket bakes as well as squash.
-
-### 24. "Converting drops the face-tracking blendshapes." A user, 2026-10-24 (via Joe, their output folder)
-
-A paid avatar with a paid face-tracking add-on. The add-on (BlendShare data, Modular Avatar
-prefabs) works in the editor: its installer writes a generated mesh carrying about 70 tracking
-shapes (`JawOpen`, `MouthClosed`, `EyeLookUpLeft` and the rest) onto the avatar, or onto a copy,
-renames it `<name>-FaceTracking` and adds its tracking prefabs.
-
-- **Read from the user's output (4.7.2) [M]:** the converted Body wears the original FBX mesh, the
-  one the add-on's data names as its origin; no tracking object, layer or `v2/` parameter came
-  across, though the Modular Avatar bake ran (its own layers are there), and the avatar is named
-  without `-FaceTracking`. The report: "No face-tracking blendshapes detected", Body matching 4
-  names against the 12 needed. The add-on's names are ones the detector knows. So the avatar that
-  was converted never had the add-on on it: most likely the original next to the copy the
-  installer made. Asked of the user: convert the `-FaceTracking` avatar, and check the report's
-  Face tracking section.
-- **Repro with the same packages, run headless the way the add-on's button runs [M]:** Body 372
-  shapes as imported, 457 on the add-on's mesh after it, 457 on that mesh converted (dev, Native
-  mode: 51 mapped, the add-on's rig of 9 layers removed and reported). The scene saved and reopened,
-  then baked on NDMF's Generic platform as 4.7.2 did: still 457 on that mesh. The add-on records its
-  mesh change through Undo, so a reload keeps it. 4.7.2 strips and reports any tracking rig in Native
-  mode whether or not it detects shapes, and the user's report has no such line: nothing to strip.
-  The user says the window's card found 51 shapes; that card reads the add-on's mesh only, so it
-  and the output came from different avatars or attempts. Asked for the report from converting the
-  avatar the card was on, and whether "lost" means the output or in game.
-- **What the user wanted [M]:** the add-on's animator rig, the smoothed layers driving the shapes,
-  which Native replaces by design. Both bake platforms carry that rig intact (FX 22 layers, 275
-  tracking parameters, the same on Generic and VRChat), so *Keep the avatar's own rig* converts it
-  on 4.7.2 as well. Their output's Body still points at the FBX's own mesh: the 4.7.2 window converts
-  the avatar its card analysed (a new pick clears the card) and clones with `Object.Instantiate`, so
-  the avatar converted was wearing the stock mesh.
-- **Diagnostics said "Modular Avatar: not installed" on every machine: fixed on dev [M].** The row
-  looked up `ModularAvatarInformation`, a type no release has (checked against 1.17.1). It reads
-  `ModularAvatarMergeAnimator` now. `Dev/Tests/DiagnosticsPackagesTest` (each loaded package's row
-  must read as installed) failed on it before, passes after.
-- **The analysis and the report now say it, on dev (Joe, 2026-10-24) [M]:** an avatar with no
-  tracking shapes names a scene root wearing the same mesh (renderer name and vertex count) with them,
-  or else a face-tracking add-on installed in the project and not run on it (one known installer
-  type, read from the package). The report's line turns into a Warning when it does. An avatar with
-  the shapes AND its own rig (face-tracking parameters in its expression parameters or in any
-  controller a component hands over, merge components included, so before the bake) gets a *your
-  call* card offering Keep; with Keep chosen, Native is no longer recommended over it.
-  `Dev/Tests/FaceTrackingAdviceTest` failed 4 checks before, passes after.
-
 ## 5.0.1
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).
+
+### 23. Squash swaps: repoint at upload, planned for 5.1 (Joe, 2026-10-25)
+The record is in `archive/Closed-2026-10.md`, "Squash turned swapped-in materials pink".
+- **A: leave user clips untouched** and repoint on the upload copy through
+  `CCK_BuildUtility.PreAvatarBundleEvent`, the way VRCFury does. Covers the plug and socket bakes as
+  well as squash.
+- **Two leads, untested:** the shader sweep (item 7) never covered the squash patch, and
+  `FollowSwaps` keys copies into the clips before `Flush` writes them while the swap test reads the
+  clip in memory only.
 
 ### 15. Moved out of 5.0.0 (Joe, 2026-10-22)
 
@@ -1441,56 +1161,6 @@ telling new from touched on the way back.
 
 **Gates only ChilloutVR can settle:** the physics and toggles of the attached accessory, as for any
 conversion.
-
-### Squash pair contact: the flat seam is off, a natural squish is open. 2026-10-21
-
-Joe, 2026-10-21, in game on the first upload since 58518d7: pushed together standing still, the
-pair pressed into one hard vertical plane down the cleavage, "its doing the behaviour I kinda
-wanted? but man, its terrible", and "I would rather let them either use YAPS squish to look
-really good or clip through each other". The upload before it was built from a squash made two
-hours before 58518d7, so this was its first time in game; that commit had already noted the
-flat seam in the editor renders.
-
-- **DONE ON DEV:** **Meet** is off by default (`YapsSquashSettings.meet`, and the patched
-  shader's `_YAPS_SquashShape.w` default). The whole-part flatten still runs; what still
-  overlaps passes through. A component saved with Meet on keeps it, so an avatar built before
-  this needs it unticked or a fresh component.
-- **OPEN, the squish that looks good [design]:** why it reads as a knife cut: everything past
-  the plane is eased onto it with a give of 3% of the reach (`YAPS_SQUASH_MEET`), so the overlap
-  of each part is planed flat and the spill goes sideways. Candidate shape, from parts the shader
-  already has: the pair swings apart first; only the true overlap flattens, its edge rounded over
-  a width that grows with the overlap depth; the volume pressed back rises in a rim up and out of
-  the cleavage, as the hand dent's rim does. Judged only in ChilloutVR; the `-spLook` renders
-  never showed the seam Joe saw. Meet stays off until one passes in game.
-- **BUILT ON DEV 2026-10-23, waits on the game (Joe: "I agree with the fix", plus "the squash
-  deform in general can look a shit-ton better, the way the vertices smooth out"):**
-  - Shader (`yaps_dent.cginc`): the partner's press now feeds the bend, so a pair pushed together
-    swings apart first, Meet on or off. With Meet on, half of what the swing leaves flattens the
-    whole part (`YAPS_SQUASH_WHOLE`) and the rest is the overlap the contact presses back. The
-    contact maps v before the stop to KEEP v + (1 - KEEP) v (1 - e^(v / width)), width = the
-    overlap depth (`YAPS_SQUASH_ROUND`), so the flat patch is level with the plane at its edge
-    and rounds into the part; strictly monotone, so layers keep their order. A rim, -x e^(1 + x),
-    pushes the skin just outside the patch away from the pair's line. Normals from the real slope.
-  - Bake (`YapsSquash.cs`): named shares get two passes of neighbour averaging over the welded
-    mesh (`Soften`), and `Peak` eases its 2x clamp with a smoothstep (it stopped dead at half the
-    peak and at the last weighted vertex). Layers take a Gaussian (1 cm) average of the skin's
-    shares within 3 cm instead of the nearest vertex's, easing into their own weights from 3 to
-    4 cm (a top bridging the cleavage stepped along the 3 cm line). Painted regions keep their paint.
-  - Evidence (Non Corpus Zone, Alexa, `SquashPlayProbe -spLook [-spMeet]`, zebra stripes): Meet
-    on, old = a dead-straight crease down the top and the skin and a pinched V at the top's edge;
-    new = a rounded cleavage, no pinch. Meet off still crosses through in the middle, as before.
-    Alexa's skin weights are mostly solid, so the share smoothing showed no visible change there.
-    `YapsDiffProbe -ydWild` PASS, 0 NaN; sane scenes 297/400 differ by design, 0 NaN, farthest
-    move 8.19 reaches against 8.34. Compile per squash variant 1.28 to 1.35 s (fxc). SquashParts,
-    SquashRefused, SquashSlot and SquashStatus tests PASS. Squash builds need a rebuild to get it.
-  - Joe, 2026-10-24: Meet on by default (queue item 19.7), ahead of the game check.
-  - Kar rendered 2026-10-23 (Attempt Conversion, squash rebuilt, `-spLook [-spMeet]`, old shader =
-    `7c0c6fe^`'s include swapped in on the new bake). Meet on: the old kink where the two bottoms
-    meet is gone in the side view, the crease down the middle stays straight; mean pixel change
-    3.5 grey levels at the hard squeeze, 0.3 at rest. Meet off: the parts still cross through, and
-    the swing now tilts them so the crossing reads as a V at the top and a notch below instead of a
-    straight line (0.7). Shares: no visible change at rest. The look probe's shader includes the
-    DEPLOYED `yaps_dent.cginc`, so an A/B needs the old include swapped in, not an old scene.
 
 ### Show it on the avatar: an in-scene overlay for every tool. Joe's idea 2026-10-20. PLAN ONLY, after 5.0.0
 
