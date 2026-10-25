@@ -52,6 +52,8 @@
 // follow sits off its rest along the pair's line and the lead the pair squash reads from that,
 // with shots from the front and above. -spDragBoth moves both chain roots, half as far each.
 // -spRootScale <s> resizes the avatar before Play, through a parent, with any of the above.
+// -spEach adds a front shot per renderer, each drawn alone, at every shot.
+// -spRaw switches the squash off on its materials, for skinning alone.
 //
 // Batch, never -nographics: the frames are rendered.
 
@@ -143,6 +145,9 @@ namespace AvatarBridge.Regression
             Directory.CreateDirectory(outDir);
             var providers = UnityEngine.Object.FindObjectsOfType<CVRMaterialDataProvider>();
             provider = providers.First(p => p.dataMode == CVRMaterialDataProvider.DataMode.TransformLocalToWorld);
+            // -spRaw: the squash off, to tell what skinning alone does from what the squash adds.
+            if (Environment.GetCommandLineArgs().Contains("-spRaw"))
+                foreach (var m in provider.materials) m.SetFloat("_YAPS_DentPower", 0f);
             skin = providers.Where(p => p.dataMode == CVRMaterialDataProvider.DataMode.SkinnedMeshRendererPreviousVertexBuffer).Select(p => p.smr).FirstOrDefault();
             animator = provider.GetComponentInParent<CVRAvatar>().GetComponent<Animator>();
             rows = new List<string> { "frame\tpart\toff_rest_cm\tpush_cm\tprovider_writes\tend_of_frame_off_rest_cm\tskin_off_rest_cm\tskin_vs_last_end_cm\tskin_worst_slot_vs_last_end_cm" };
@@ -1504,6 +1509,21 @@ namespace AvatarBridge.Regression
                 RenderTexture.active = cam.targetTexture;
                 pixels.ReadPixels(new Rect(0, 0, 800, 800), 0, 0);
                 File.WriteAllBytes(Path.Combine(outDir, $"{name}_{view}.png"), pixels.EncodeToPNG());
+            }
+            // -spEach: the front view again with one renderer at a time, to name what draws where.
+            if (Environment.GetCommandLineArgs().Contains("-spEach"))
+            {
+                var shown = animator.GetComponentsInChildren<Renderer>().Where(r => r.enabled).ToList();
+                foreach (var only in shown)
+                {
+                    foreach (var r in shown) r.enabled = r == only;
+                    front.Render();
+                    RenderTexture.active = front.targetTexture;
+                    pixels.ReadPixels(new Rect(0, 0, 800, 800), 0, 0);
+                    string file = string.Concat(only.name.Split(Path.GetInvalidFileNameChars()));
+                    File.WriteAllBytes(Path.Combine(outDir, $"{name}_front_{file}.png"), pixels.EncodeToPNG());
+                }
+                foreach (var r in shown) r.enabled = true;
             }
             RenderTexture.active = null;
             UnityEngine.Object.DestroyImmediate(pixels);

@@ -657,6 +657,23 @@ due on the Nightly branch within days; none of this is in stable yet.
    atlas should simply be absent from them), server-side SPI patching of pre-CCK 3.4 content (not
    ours), and a URP proof of concept that keeps grab passes (no move planned).
 
+### 24. Kar after reconverting, 2026-10-25: plug gone, a breast "cloned" (Joe, editor screenshots)
+- **Plug: FIXED on dev [M].** Kar's plug wears a locked Poiyomi 7.3 Pro, which declares Raliv's
+  orifice (`_OrificeData`, `_Shape1Depth`) beside its penetrator, and `YapsLegacyMap.Detect` checked
+  the orifice first: the plug read as a DPS socket, so neither the converter nor the YAPS window saw
+  it, and the plug Joe had made by hand went with every reconvert. Poiyomi's own `_PenetratorEnabled`
+  decides first now. `LegacyDetectTest`: WRONG ("DPS Socket") before, PASS after. Locked, Poiyomi
+  bakes the penetrator in (`if((1.0 /*_PenetratorEnabled*/))`), so it takes the DPS route to YAPS
+  Simple Lit. Joe to reconvert and check the plug.
+- **The clone.** Probe (`SquashPlayProbe -spDrag -spEach -spRaw`, Kar's own scene, nothing written
+  to the project): at the 10:26 build the dragged breast slid over a partner that stayed put, two
+  breasts where one should be (Joe circled it). With aa4a613 the partner swings aside, but the
+  dragged one still cuts into it where they meet, and the bra tears at the partner's outer rim.
+  My look-shader renders hid both: every layer drawn in one flat shader. Open: Joe to say which of
+  these is the clone he means, then the fix.
+- **592 duplicate files** from my probes moved out of the project to
+  `D:/Claude/scratch/kar-cleanup-2026-10-25` (SquashTest, Kar 2, Generated/Squash Kar sets).
+
 ### 22. A spin flattens the pair down a seam. Joe, 2026-10-24 (two screenshots, Kar in game)
 
 Joe: "if I spin still, it flattens the boob like they are pushing together but they are not ... if

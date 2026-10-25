@@ -59,6 +59,13 @@ namespace AvatarBridge
             {
                 return Origin.TPS;
             }
+            // Poiyomi 7.3 declares Raliv's orifice beside its penetrator, so a plug on it read as
+            // a socket. Its own toggle says which half is in use.
+            if (material.HasProperty("_PenetratorEnabled") && material.GetFloat("_PenetratorEnabled") > 0.5f
+                && material.HasProperty("_EntranceStiffness"))
+            {
+                return Origin.DPS;
+            }
             if (material.HasProperty("_OrificeData") && material.HasProperty("_Shape1Depth"))
             {
                 part = Part.Socket;

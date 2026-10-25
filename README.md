@@ -1109,7 +1109,8 @@ unlock/edit/re-lock.
 becomes YAPS on the same mesh. A socket gains the markers it lacks so every plug family reads it.
 A plug is baked with the author's values carried onto the YAPS knobs and the old deform switched
 off: a TPS or SPS plug keeps its shader (`_TPS_PenetratorEnabled` / `_SPS_Enabled` off), a DPS plug
-moves to *YAPS Simple Lit* because Raliv's deform has no switch. Check the plug's **Root Bone** on a
+moves to *YAPS Simple Lit* because Raliv's deform has no switch. That includes a plug on Poiyomi's
+built-in DPS penetrator once the material is locked, since locking bakes the penetrator in. Check the plug's **Root Bone** on a
 skinned mesh before you Build. TPS upgrades are tested in game, on both props and avatars.
 
 **Make this a prop.** Select the top object of a plug or socket meant to be spawned in ChilloutVR
