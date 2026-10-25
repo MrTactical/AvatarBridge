@@ -13,6 +13,7 @@ Shader "YAPS/Simple Lit"
         [Gamma] _Metallic ("Metallic", Range(0,1)) = 0
         _Glossiness ("Smoothness", Range(0,1)) = 0.5
         [HDR] _EmissionColor ("Emission", Color) = (0,0,0,1)
+        _EmissionMap ("Emission Map", 2D) = "white" {}
         [Enum(UnityEngine.Rendering.CullMode)] _Cull ("Cull", Float) = 2
     }
 
@@ -30,6 +31,7 @@ Shader "YAPS/Simple Lit"
         sampler2D _MainTex; float4 _MainTex_ST;
         sampler2D _BumpMap; half _BumpScale;
         fixed4 _Color; half _Metallic; half _Glossiness; half4 _EmissionColor;
+        sampler2D _EmissionMap;
 
         struct appdata
         {
@@ -106,7 +108,7 @@ Shader "YAPS/Simple Lit"
             }
 
             half4 c = UNITY_BRDF_PBS(diffColor, specColor, oneMinusReflectivity, _Glossiness, n, viewDir, light, indirect);
-            if (basePass) c.rgb += _EmissionColor.rgb;
+            if (basePass) c.rgb += tex2D(_EmissionMap, i.uv).rgb * _EmissionColor.rgb;
             c.a = 1;
             return c;
         }

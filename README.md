@@ -1466,7 +1466,8 @@ falls back to when any other shader cannot be patched (the rest of Unity's built
 source on disk, a surface shader has no vertex function of its own, some are made
 on import from a file that is not shader source, and some borrow the passes they draw from a
 shader that cannot be patched), with the
-colour, albedo, normal map, metallic and smoothness carried over. The test plug wears it. Put a
+colour, albedo, normal map, metallic, smoothness and emission carried over (the emission map too,
+and a toon shader's emission switch and strength). The test plug wears it. Put a
 shader with source (Poiyomi, for one) on the mesh and re-bake if you need more. Of the popular
 toon shaders, drawn in the editor: Poiyomi, Xiexe's XSToon, lilToon (fur included), Sunao (fur
 included), UTS, Mochie and VRChat's mobile toon shaders patch, outlines included; arktoon, ORL, Silent's and Filamented

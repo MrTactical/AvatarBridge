@@ -614,8 +614,31 @@ namespace AvatarBridge
         public const string StandardName = "YAPS/Standard";
 
         // The same material on Simple Lit, in memory. Property names match Standard's.
-        public static Material OnSimpleLit(Material source, out string why) =>
-            OnShader(source, SimpleLitName, "YapsSimpleLit.shader", out why);
+        public static Material OnSimpleLit(Material source, out string why)
+        {
+            var m = OnShader(source, SimpleLitName, "YapsSimpleLit.shader", out why);
+            if (m != null) CarryEmission(source, m);
+            return m;
+        }
+
+        // Poiyomi and lilToon default their emission colour to white and keep it behind a
+        // switch, Poiyomi with a strength on top. Simple Lit has neither, so a plug moved onto
+        // it glowed white all over.
+        static void CarryEmission(Material source, Material m)
+        {
+            foreach (var flag in new[] { "_EnableEmission", "_UseEmission" })
+            {
+                if (source.HasProperty(flag) && source.GetFloat(flag) < 0.5f)
+                {
+                    m.SetColor("_EmissionColor", Color.black);
+                    return;
+                }
+            }
+            if (source.HasProperty("_EmissionStrength") && source.HasProperty("_EmissionColor"))
+            {
+                m.SetColor("_EmissionColor", source.GetColor("_EmissionColor") * source.GetFloat("_EmissionStrength"));
+            }
+        }
 
         // A shader the patcher refused, swapped for one it takes. Standard is built in with no
         // source on disk, so it goes to its own source, every map kept. The rest go to Simple Lit.

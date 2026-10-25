@@ -671,6 +671,12 @@ due on the Nightly branch within days; none of this is in stable yet.
   dragged one still cuts into it where they meet, and the bra tears at the partner's outer rim.
   My look-shader renders hid both: every layer drawn in one flat shader. Open: Joe to say which of
   these is the clone he means, then the fix.
+- **White plug: FIXED on dev [M].** Joe, after toggling the plug on: the plug glowed pure white.
+  The DPS route moves it to YAPS Simple Lit, which took Poiyomi's `_EmissionColor` (white) but had
+  no `_EmissionMap` (Kar's is black with one dot) and no switch. Simple Lit samples an emission map
+  now, and `OnSimpleLit` honours `_EnableEmission`/`_UseEmission` and `_EmissionStrength`.
+  `SimpleLitEmissionTest`: 3 WRONG before, PASS after. Kar's baked plug material still holds the
+  map, so a re-bake picks it up. Joe to re-bake and look.
 - **592 duplicate files** from my probes moved out of the project to
   `D:/Claude/scratch/kar-cleanup-2026-10-25` (SquashTest, Kar 2, Generated/Squash Kar sets).
 
