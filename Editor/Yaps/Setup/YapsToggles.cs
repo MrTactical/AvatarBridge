@@ -354,10 +354,21 @@ namespace AvatarBridge
             if (ours != null)
             {
                 string renamed = Rename(avatar, ours, label);
+                // Off by default. An older build defaulted it to the socket's own state, on, and a
+                // rebuild kept that, so every socket of the avatar opened at once in game.
+                string off = null;
+                if (ours.toggleSettings.defaultValue)
+                {
+                    Undo.RecordObject(avatar, "YAPS toggle");
+                    ours.toggleSettings.defaultValue = false;
+                    EditorUtility.SetDirty(avatar);
+                    off = "now off by default";
+                }
                 // The entry is there; its layer may not be, if the animator
                 // was never regenerated. Written now, in place.
                 string wired = YapsAasAnimator.Wire(avatar, ours);
-                return (renamed ?? $"{label}: menu toggle already there") + (wired != null ? "; " + wired : "");
+                return (renamed ?? $"{label}: menu toggle already there") + (off != null ? "; " + off : "")
+                       + (wired != null ? "; " + wired : "");
             }
             if (avatar.avatarSettings == null)
             {

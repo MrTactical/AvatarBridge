@@ -663,7 +663,7 @@ namespace AvatarBridge
                     {
                         if (captured.Root == null) { RescanLater(); return; }
                         Undo.RegisterFullObjectHierarchyUndo(captured.Root.gameObject, "Adopt YAPS " + (captured.Kind == YapsScanner.Kind.Plug ? "plug" : "socket"));
-                        Adopt(captured);
+                        YapsNativeBuilder.Adopt(captured);
                         if (legacy) Upgrade(captured);
                         RescanLater();
                     }, legacy ? "Makes it YAPS in place, keeping the author's values." : "Adds the component that makes it editable here."));
@@ -705,28 +705,6 @@ namespace AvatarBridge
             });
         }
 
-        // Puts the authoring component on a found plug or socket that has none.
-        static void Adopt(YapsScanner.Found f)
-        {
-            if (f.Root == null) return;
-            // Never a mesh another plug carries. It wears a patched material, so it
-            // reads as a plug, and adopting it hands it a component, which is a
-            // claim on the mesh, which makes the carrier let go of it, which leaves
-            // it bending on its own frame. That is Build re-creating the exact
-            // component the user just deleted, every time they press it.
-            if (f.CarriedBy != null) return;
-            if (f.Kind == YapsScanner.Kind.Socket)
-            {
-                // Shape names are not on the material, so the user fills the
-                // rows. An empty list, not null: it still carries the power over.
-                YapsNativeBuilder.AdoptSocket(f.Root, f.Renderer, f.Material, new string[0]);
-            }
-            else
-            {
-                YapsNativeBuilder.AdoptPlug(f.Root, f.Renderer, f.MaterialSlot, f.Material, null);
-            }
-        }
-
         // A legacy socket becomes YAPS by building the markers it lacks; a
         // legacy plug by baking, which carries its values and switches the
         // old deform off.
@@ -752,21 +730,6 @@ namespace AvatarBridge
                 if (!o.Ok) Debug.LogError("[YAPS] " + o.Message);
                 Say(_addStatus, o.Ok ? Tone.Good : Tone.Bad, o.Message, o.Notes);
             }
-        }
-
-        int AdoptAll()
-        {
-            if (_scan == null) return 0;
-            int n = 0;
-            foreach (var f in _scan.Plugs.Concat(_scan.Sockets))
-            {
-                if (f.Root == null || f.CarriedBy != null) continue;
-                if (f.Root.GetComponent<YapsSocket>() != null || f.Root.GetComponent<YapsPlug>() != null) continue;
-                Undo.RegisterFullObjectHierarchyUndo(f.Root.gameObject, "Adopt YAPS");
-                Adopt(f);
-                n++;
-            }
-            return n;
         }
 
         // A mesh selected: the plug is that mesh. A bone selected: the plug
@@ -862,45 +825,8 @@ namespace AvatarBridge
                 ShowBuildLog("Nothing built.", new List<string> { "✗ " + YapsNativeBuilder.NotInPlayMode });
                 return;
             }
-            // Adopt first, so bare converted sockets and plugs get components.
-            int adopted = AdoptAll();
-            if (adopted > 0) _scan = YapsScanner.Scan(_target);
-            int plugsOk = 0, plugsTried = 0, socketsBuilt = 0;
-            var lines = new List<string>();
-            if (adopted > 0) lines.Add($"made {adopted} editable");
-            int edits = YapsToggles.Edits;
-            foreach (var p in _target.GetComponentsInChildren<YapsPlug>(true))
-            {
-                plugsTried++;
-                var o = YapsNativeBuilder.Bake(p);
-                if (o.Ok) plugsOk++;
-                lines.Add((o.Ok ? "✓ " : "✗ ") + o.Message);
-                // The toggle and wiring notes were only in the console before.
-                lines.AddRange(o.Notes.Where(n => n.Contains("menu toggle") || n.Contains("Wired")));
-            }
-            // The plugs' toggles into the menu animator, once. Sockets do their own.
-            string menu = YapsToggles.RefreshMenuAnimator(_target.GetComponentInChildren<CVRAvatar>(true), edits);
-            if (menu != null) lines.Add(menu);
-            foreach (var s in _target.GetComponentsInChildren<YapsSocket>(true))
-            {
-                socketsBuilt++;
-                lines.AddRange(YapsNativeBuilder.BuildSocket(s));
-            }
-            // The writers go on the sockets; the surface they publish to goes on
-            // the avatar. Only the converter used to add it, so a hand-built avatar
-            // had sockets writing to a screen nothing grabbed.
-            if (YapsAtlas.AddClear(_target.transform) != null
-                && YapsAtlas.AddGrab(_target.transform) != null)
-            {
-                lines.Add("Added the screen surface plugs read each other through.");
-            }
-
-            // Last, and once: the channel reads the frames the bakes just
-            // measured, and it replaces its own wiring rather than stacking.
-            lines.AddRange(YapsNativeChannel.Build(_target.GetComponentInChildren<CVRAvatar>(true)));
+            var lines = YapsNativeBuilder.BuildAvatar(_target, out string headline);
             Rescan();
-            string headline = $"Built {plugsOk} of {plugsTried} plug{(plugsTried == 1 ? "" : "s")} and " +
-                              $"{socketsBuilt} socket{(socketsBuilt == 1 ? "" : "s")}.";
             ShowBuildLog(headline, lines);
         }
 

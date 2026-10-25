@@ -937,11 +937,12 @@ name, so renaming one would quietly stop your saved settings from loading.
 the DPS/TPS/SPS material by each system's own definition and written onto the YAPS one; anything
 with no counterpart is named in the report.
 
-**An older avatar with DPS or TPS and no SPS bake** has nothing for the converter to build a plug
-from, those systems predate the objects it reads, so its plug keeps its own shader and system,
-untouched, while its sockets come through and work for everyone else. Leaving the
-setting on *Convert to YAPS* is what keeps their contacts and depth reactions; *Remove* strips
-both. The report says which case you're in.
+**An older avatar with DPS or TPS and no SPS bake** is upgraded in place once the rest of the
+conversion is done, exactly as the YAPS window's **Bake every plug and verify** would do it: the plug
+is baked with the author's values carried across, and each socket gains the markers every plug family
+reads (see *Upgrade in place* below). Converting again does it again, so nothing the window made is
+lost to a reconvert. *Remove* strips both. The report lists what was built, and anything that could
+not be.
 
 **How a plug finds a socket.** Two routes, and an avatar uses whichever ones are available to it:
 
@@ -1108,9 +1109,11 @@ unlock/edit/re-lock.
 **Upgrade in place.** An avatar that never went through the converter but carries DPS, TPS or SPS
 becomes YAPS on the same mesh. A socket gains the markers it lacks so every plug family reads it.
 A plug is baked with the author's values carried onto the YAPS knobs and the old deform switched
-off: a TPS or SPS plug keeps its shader (`_TPS_PenetratorEnabled` / `_SPS_Enabled` off), a DPS plug
-moves to *YAPS Simple Lit* because Raliv's deform has no switch. That includes a plug on Poiyomi's
-built-in DPS penetrator once the material is locked, since locking bakes the penetrator in. Check the plug's **Root Bone** on a
+off: a TPS or SPS plug keeps its shader (`_TPS_PenetratorEnabled` / `_SPS_Enabled` off), and so does a
+plug on Poiyomi's built-in DPS penetrator (`_PenetratorEnabled` off; a locked material has the switch
+baked in, so it is turned off in YAPS's copy of the shader, never in yours). A plug on Raliv's own DPS
+shader moves to *YAPS Simple Lit* because that deform has no switch. The converter does the same for
+an avatar with DPS or TPS and no SPS. Check the plug's **Root Bone** on a
 skinned mesh before you Build. TPS upgrades are tested in game, on both props and avatars.
 
 **Make this a prop.** Select the top object of a plug or socket meant to be spawned in ChilloutVR
@@ -1407,7 +1410,8 @@ leaving a second copy behind.
 
 **A menu toggle for anything that has none.** A socket nobody can switch off holds one of the four
 vertex-light slots forever, and a plug with no switch cannot be put away, so Build gives each an
-Advanced Settings entry, **off by default**, and writes its layer and parameter straight into
+Advanced Settings entry, **off by default** (a socket's toggle made by an older version, which
+defaulted on, is turned off by the next Build), and writes its layer and parameter straight into
 the controller the avatar uploads, and into your base controller too when the CCK has generated
 one from it, so the layer ships now and survives the next *Create Controller*. Never into the CCK's
 own stock controller, which every avatar in the project shares: an avatar still running it is told

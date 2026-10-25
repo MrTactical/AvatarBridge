@@ -321,6 +321,8 @@ namespace AvatarBridge
                 : said + $" {failed} could not be: their original shader is no longer in the project.";
         }
 
+        static readonly Regex FrozenPenetrator = new Regex(@"\(\s*[0-9.]+\s*/\*_PenetratorEnabled\*/\s*\)");
+
         // The tag every patched file carries, the shader and its includes alike.
         static readonly Regex GeneratedTag = new Regex(@"_YAPS_([0-9a-f]{8})(?:_\d+)?\.[A-Za-z0-9]+$");
 
@@ -682,6 +684,9 @@ namespace AvatarBridge
                         m => m.Value + "\n#define LIL_REQUIRE_APP_NORMAL\n#define LIL_REQUIRE_APP_TANGENT\n#define LIL_REQUIRE_APP_VERTEXID",
                         RegexOptions.Multiline);
 
+                // Locking Poiyomi writes its DPS penetrator's switch into the code, on. The copy
+                // bends the plug the YAPS way, so DPS's goes off there; the source keeps it.
+                foreach (var file in unit) file.Text = FrozenPenetrator.Replace(file.Text, "(0 /*_PenetratorEnabled*/)");
                 patchedPasses = PatchProgramBlocks(unit, yaps, out blockRefusal,
                     out skippedShadowPasses, out frameless);
                 bool whole = (patchedPasses > 0 || lent.Count > 0) && blockRefusal == null;

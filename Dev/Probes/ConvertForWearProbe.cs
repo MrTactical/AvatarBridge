@@ -12,6 +12,9 @@ namespace AvatarBridge.Regression
     // saves the scene so the result is there to upload. The previous conversion in the scene is
     // switched off and renamed, never deleted.
     // Batch: -executeMethod AvatarBridge.Regression.ConvertForWearProbe.Run -abScene <path> -abAvatar <root name>
+    // -abSaved converts with the window's last-used settings instead, a reconvert by hand. -abNoSave
+    // leaves the scene as it was on disk: the outputs are written as Convert writes them, and the
+    // previous conversion stays in the scene untouched.
     public static class ConvertForWearProbe
     {
         public static void Run()
@@ -31,7 +34,9 @@ namespace AvatarBridge.Regression
                 var source = roots.First(r => r.name == name);
                 source.SetActive(true);
                 var descriptor = source.GetComponentInChildren<VRCAvatarDescriptor>(true);
-                var settings = Everything();
+                var settings = Flag("-abSaved")
+                    ? JsonUtility.FromJson<BridgeSettings>(EditorPrefs.GetString(CvrSetup.SettingsPrefsKey, "{}"))
+                    : Everything();
                 var clock = System.Diagnostics.Stopwatch.StartNew();
                 var report = BridgeConverter.Convert(descriptor, settings);
                 Debug.Log($"[ConvertForWear] converted in {clock.Elapsed.TotalMinutes:0.0} min: " +
@@ -39,7 +44,26 @@ namespace AvatarBridge.Regression
                               .Select(s => $"{s} {report.CountOf(s)}")));
                 foreach (var e in report.Entries.Where(e => e.Status == ReportStatus.Error || e.Status == ReportStatus.Warning))
                     Debug.Log($"[ConvertForWear]   {e.Status} [{e.Category}] {e.Subject}: {e.Detail}");
+                foreach (var e in report.Entries.Where(e => e.Category == "YAPS" && e.Status == ReportStatus.Converted))
+                    Debug.Log($"[ConvertForWear]   {e.Status} [{e.Category}] {e.Subject}: {e.Detail}");
                 if (report.ConvertedRoot == null) throw new Exception("no converted root");
+#if AVATARBRIDGE_YAPS
+                foreach (var plug in report.ConvertedRoot.GetComponentsInChildren<Yaps.YapsPlug>(true))
+                    foreach (var m in (plug.Target != null ? plug.Target.sharedMaterials : new Material[0]).Where(m => m != null && m.HasProperty("_YAPS_Bake")))
+                        Debug.Log($"[ConvertForWear] plug \"{plug.name}\": \"{m.name}\" patched from \"{YapsShaderPatcher.SourceShaderOf(m)}\"" +
+                                  (m.HasProperty("_PenetratorEnabled") ? $", DPS switch {m.GetFloat("_PenetratorEnabled")}" : ""));
+                foreach (var socket in report.ConvertedRoot.GetComponentsInChildren<Yaps.YapsSocket>(true))
+                    Debug.Log($"[ConvertForWear] socket \"{socket.name}\" ({socket.kind})");
+#endif
+                Debug.Log($"[ConvertForWear] output folder {System.IO.Path.GetDirectoryName(report.SavedReportPath)}");
+                if (Flag("-abNoSave"))
+                {
+                    AssetDatabase.SaveAssets();
+                    Debug.Log("[ConvertForWear] scene left unsaved");
+                    code = report.CountOf(ReportStatus.Error) == 0 ? 0 : 2;
+                    if (Application.isBatchMode) EditorApplication.Exit(code);
+                    return;
+                }
                 EditorSceneManager.MarkSceneDirty(scene);
                 EditorSceneManager.SaveScene(scene);
                 AssetDatabase.SaveAssets();
@@ -64,6 +88,8 @@ namespace AvatarBridge.Regression
                 Debug.Log($"[ConvertForWear] setting {f.Name}={f.GetValue(s)}");
             return s;
         }
+
+        static bool Flag(string name) => Environment.GetCommandLineArgs().Contains(name);
 
         static string Arg(string name)
         {

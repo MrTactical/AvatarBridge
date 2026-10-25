@@ -677,6 +677,25 @@ due on the Nightly branch within days; none of this is in stable yet.
   now, and `OnSimpleLit` honours `_EnableEmission`/`_UseEmission` and `_EmissionStrength`.
   `SimpleLitEmissionTest`: 3 WRONG before, PASS after. Kar's baked plug material still holds the
   map, so a re-bake picks it up. Joe to re-bake and look.
+- **The converter upgrades DPS/TPS itself: DONE on dev [M]** (Joe's "yes to both", then "go
+  ahead"). The window's Build moved into `YapsNativeBuilder.BuildAvatar`; the window calls it, and
+  `YapsConverter.UpgradeLegacy` runs it after the last pass on an avatar with no SPS (it replaces
+  `ReportLegacyContent`). A Poiyomi DPS plug keeps Poiyomi: `_PenetratorEnabled` off on the material,
+  and the patcher turns a locked shader's `(1.0 /*_PenetratorEnabled*/)` to 0 in its copy. Simple Lit
+  stand-ins name their bake after the material they stand in for (`YapsBaker.StandsInFor`), which is
+  where Kar's three Peen materials came from (a new instance id per fresh bake). `LegacyUpgradeTest`:
+  5 FAIL before, PASS after. Kar reconverted twice in batch with Joe's saved settings, scene unsaved:
+  "Built 1 of 1 plug and 6 sockets", plug patched from Poiyomi 7.3 Pro, DPS switch 0, the copy's
+  `CGI_PoiPenetration` at 0, no shader errors, the second run reused `Peen _YAPS_ 38c45deb9450`.
+  Open: an avatar with SPS AND leftover DPS/TPS parts still upgrades only the SPS ones.
+  Joe to look in game: Poiyomi plug, DPS bend off, sockets.
+- **Sockets all on in game: FIXED on dev [M]** (Joe, Krystal screenshot: seven socket readouts
+  showing). Socket toggles defaulted to the socket's own state (on) until 949789f, and
+  `EnsureObjectToggle` kept an existing entry's default on every rebuild; Joe had to switch
+  Krystal's seven off by hand. A rebuild now turns an existing one off. `SocketToggleDefaultTest`:
+  WRONG (default True) before, PASS after. The readouts draw only while "YAPS readout" is on; it
+  reads off by default in the scene, but Joe had switched things off before I read it, so whether
+  it shipped on is unknown. Watch for it on the next upload.
 - **592 duplicate files** from my probes moved out of the project to
   `D:/Claude/scratch/kar-cleanup-2026-10-25` (SquashTest, Kar 2, Generated/Squash Kar sets).
 

@@ -77,6 +77,10 @@ namespace AvatarBridge
                 // Always. CVR deletes them on load, the CCK complains,
                 // and a lingering VRC descriptor reads as unconverted.
                 MiscConverter.DeleteVrcComponents(ctx);
+#if AVATARBRIDGE_YAPS
+                // On the finished avatar, as the YAPS window sees it when its Build is pressed.
+                YapsConverter.UpgradeLegacy(ctx);
+#endif
 
                 // Deactivate the original whenever the work happened on
                 // a separate object (clone or baked copy).

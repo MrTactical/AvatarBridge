@@ -593,12 +593,18 @@ namespace AvatarBridge
         // numbered step above them keeps their materials apart.
         internal static string Tail(Material source, Renderer on)
         {
+            while (StandsInFor.TryGetValue(source, out var original)) source = original;
             string id = AssetDatabase.TryGetGUIDAndLocalFileIdentifier(
                 source, out string guid, out long local)
                 ? guid + local
                 : source.GetInstanceID().ToString();
             return " " + YapsShaderPatcher.Hash(id + "|" + PathOf(on));
         }
+
+        // A stand-in made in memory on another shader, by the material it was made from. It has
+        // no asset to name it, and its instance id named a new bake file on every fresh bake.
+        internal static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Material, Material> StandsInFor =
+            new System.Runtime.CompilerServices.ConditionalWeakTable<Material, Material>();
 
         static string PathOf(Renderer on)
         {

@@ -229,11 +229,12 @@ namespace AvatarBridge
             int copyStart = plug.twoAtOnce ? SecondCopy(plug, renderer, slot, alsoSlots, result, dir, o) : 0;
 
             // What the material already is. A legacy plug is upgraded in
-            // place: TPS and SPS keep their shader with the old deform
-            // switched off, DPS moves to Simple Lit because its deform has
-            // no switch. The author's values are carried either way.
+            // place: TPS, SPS and Poiyomi's DPS keep their shader with the old
+            // deform switched off, Raliv's DPS moves to Simple Lit because its
+            // deform has no switch. The author's values are carried either way.
             var legacy = source.HasProperty("_YAPS_Bake") ? YapsLegacyMap.Origin.None
                 : YapsLegacyMap.Detect(source, out _);
+            bool simpleLit = legacy == YapsLegacyMap.Origin.DPS && !HasDpsSwitch(source);
             var original = source;
 
             // Patch its own shader; keep one already patched. When it refuses,
@@ -246,7 +247,7 @@ namespace AvatarBridge
             }
             else
             {
-                shader = legacy == YapsLegacyMap.Origin.DPS ? null
+                shader = simpleLit ? null
                     : YapsShaderPatcher.Patch(source, report, out refusal, out _, allowSps: legacy == YapsLegacyMap.Origin.SPS,
                         duplicate: copyStart > 0, roles: YapsShaderPatcher.Roles.Plug);
                 if (shader == null)
@@ -257,7 +258,7 @@ namespace AvatarBridge
                     shader = YapsShaderPatcher.Patch(plain, report, out string plainRefusal, out _, duplicate: copyStart > 0,
                         roles: YapsShaderPatcher.Roles.Plug);
                     if (shader == null) { o.Message = "could not patch the shader: " + refusal + $"; and {host} refused too: " + plainRefusal; return o; }
-                    o.Notes.Add(legacy == YapsLegacyMap.Origin.DPS
+                    o.Notes.Add(simpleLit
                         ? "A DPS shader has no switch for its own deform, so the plug now wears YAPS Simple Lit " +
                           "with its colour, albedo, normal map, metallic and smoothness carried over. Its original " +
                           "material is untouched."
@@ -602,7 +603,8 @@ namespace AvatarBridge
         public static void SwitchOffLegacyDeform(Material m, YapsLegacyMap.Origin legacy)
         {
             string flag = legacy == YapsLegacyMap.Origin.TPS ? "_TPS_PenetratorEnabled"
-                        : legacy == YapsLegacyMap.Origin.SPS ? "_SPS_Enabled" : null;
+                        : legacy == YapsLegacyMap.Origin.SPS ? "_SPS_Enabled"
+                        : legacy == YapsLegacyMap.Origin.DPS ? "_PenetratorEnabled" : null;
             if (flag != null && m.HasProperty(flag)) m.SetFloat(flag, 0f);
             string tag = legacy.ToString();
             foreach (var keyword in m.shaderKeywords)
@@ -610,6 +612,11 @@ namespace AvatarBridge
                 if (keyword.IndexOf(tag, System.StringComparison.OrdinalIgnoreCase) >= 0) m.DisableKeyword(keyword);
             }
         }
+
+        // Raliv's DPS shader has no switch for its deform, so its plug moves to Simple Lit.
+        // Poiyomi's copy of it has one and keeps its own shader: off on the material, and the
+        // patch turns off the copy a locked Poiyomi froze on.
+        public static bool HasDpsSwitch(Material m) => m != null && m.HasProperty("_PenetratorEnabled");
 
         public const string StandardName = "YAPS/Standard";
 
@@ -658,6 +665,7 @@ namespace AvatarBridge
             }
             var m = new Material(source) { name = source.name };
             YapsShaderPatcher.Wear(m, shader);
+            YapsBaker.StandsInFor.Add(m, source);
             return m;
         }
 
@@ -1277,6 +1285,82 @@ namespace AvatarBridge
                 if (t != null && socket.IsChildOf(t)) return true;
             }
             return false;
+        }
+
+        // The YAPS window's Build, for the window and the converter alike: every plug and socket
+        // found made editable, the plugs baked, the sockets built, the surface and the channel
+        // added. One door, so a reconvert comes out as pressing the button left it.
+        public static List<string> BuildAvatar(GameObject target, out string headline)
+        {
+            // Adopt first, so bare converted sockets and plugs get components.
+            int adopted = 0;
+            var scan = YapsScanner.Scan(target);
+            foreach (var f in scan.Plugs.Concat(scan.Sockets))
+            {
+                if (f.Root == null || f.CarriedBy != null) continue;
+                if (f.Root.GetComponent<YapsSocket>() != null || f.Root.GetComponent<YapsPlug>() != null) continue;
+                Undo.RegisterFullObjectHierarchyUndo(f.Root.gameObject, "Adopt YAPS");
+                Adopt(f);
+                adopted++;
+            }
+            int plugsOk = 0, plugsTried = 0, socketsBuilt = 0;
+            var lines = new List<string>();
+            if (adopted > 0) lines.Add($"made {adopted} editable");
+            int edits = YapsToggles.Edits;
+            foreach (var p in target.GetComponentsInChildren<YapsPlug>(true))
+            {
+                plugsTried++;
+                var o = Bake(p);
+                if (o.Ok) plugsOk++;
+                lines.Add((o.Ok ? "✓ " : "✗ ") + o.Message);
+                // The toggle and wiring notes were only in the console before.
+                lines.AddRange(o.Notes.Where(n => n.Contains("menu toggle") || n.Contains("Wired")));
+            }
+            // The plugs' toggles into the menu animator, once. Sockets do their own.
+            string menu = YapsToggles.RefreshMenuAnimator(target.GetComponentInChildren<CVRAvatar>(true), edits);
+            if (menu != null) lines.Add(menu);
+            foreach (var s in target.GetComponentsInChildren<YapsSocket>(true))
+            {
+                socketsBuilt++;
+                lines.AddRange(BuildSocket(s));
+            }
+            // The writers go on the sockets; the surface they publish to goes on
+            // the avatar. Only the converter used to add it, so a hand-built avatar
+            // had sockets writing to a screen nothing grabbed.
+            if (YapsAtlas.AddClear(target.transform) != null
+                && YapsAtlas.AddGrab(target.transform) != null)
+            {
+                lines.Add("Added the screen surface plugs read each other through.");
+            }
+
+            // Last, and once: the channel reads the frames the bakes just
+            // measured, and it replaces its own wiring rather than stacking.
+            lines.AddRange(YapsNativeChannel.Build(target.GetComponentInChildren<CVRAvatar>(true)));
+            headline = $"Built {plugsOk} of {plugsTried} plug{(plugsTried == 1 ? "" : "s")} and " +
+                       $"{socketsBuilt} socket{(socketsBuilt == 1 ? "" : "s")}.";
+            return lines;
+        }
+
+        // Puts the authoring component on a found plug or socket that has none.
+        public static void Adopt(YapsScanner.Found f)
+        {
+            if (f.Root == null) return;
+            // Never a mesh another plug carries. It wears a patched material, so it
+            // reads as a plug, and adopting it hands it a component, which is a
+            // claim on the mesh, which makes the carrier let go of it, which leaves
+            // it bending on its own frame. That is Build re-creating the exact
+            // component the user just deleted, every time they press it.
+            if (f.CarriedBy != null) return;
+            if (f.Kind == YapsScanner.Kind.Socket)
+            {
+                // Shape names are not on the material, so the user fills the
+                // rows. An empty list, not null: it still carries the power over.
+                AdoptSocket(f.Root, f.Renderer, f.Material, new string[0]);
+            }
+            else
+            {
+                AdoptPlug(f.Root, f.Renderer, f.MaterialSlot, f.Material, null);
+            }
         }
 
         // --- adoption --------------------------------------------------------

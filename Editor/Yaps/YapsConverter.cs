@@ -34,10 +34,14 @@ namespace AvatarBridge
         // Plug materials already warned about VRCFury's deform, once each per conversion.
         static readonly HashSet<Material> PrebuiltSps = new HashSet<Material>();
 
+        // DPS or TPS with no SPS, upgraded once the avatar is finished.
+        static bool LegacyPending;
+
         public static void Run(BridgeContext ctx)
         {
             PendingVariants.Clear();
             PrebuiltSps.Clear();
+            LegacyPending = false;
             if (!ctx.Settings.convertYapsSystems)
             {
                 return;
@@ -47,7 +51,7 @@ namespace AvatarBridge
             var socketRoots = Named(ctx, "BakedSpsSocket");
             if (plugRoots.Count == 0 && socketRoots.Count == 0)
             {
-                ReportLegacyContent(ctx);
+                LegacyPending = true;
                 return;
             }
 
@@ -409,9 +413,9 @@ namespace AvatarBridge
             }
 
             // What the material already is. The old deform must not run beside
-            // YAPS: TPS and SPS keep their shader with theirs switched off, DPS
-            // moves to Simple Lit because Raliv's has no switch. Same rule the
-            // toolkit applies to a native plug.
+            // YAPS: TPS, SPS and Poiyomi's DPS keep their shader with theirs switched
+            // off, Raliv's DPS moves to Simple Lit because it has no switch. Same rule
+            // the toolkit applies to a native plug.
             var source = materials[slot];
             // A slot another plug on the same shaft already patched in this
             // conversion is patched again from what it replaced. Patching the
@@ -432,7 +436,8 @@ namespace AvatarBridge
             var patchSource = source;
             Shader shader = null;
             string refusal = null;
-            if (legacy == YapsLegacyMap.Origin.DPS)
+            bool simpleLit = legacy == YapsLegacyMap.Origin.DPS && !YapsNativeBuilder.HasDpsSwitch(source);
+            if (simpleLit)
             {
                 var plain = YapsNativeBuilder.OnSimpleLit(source, out string why);
                 if (plain == null)
@@ -461,9 +466,9 @@ namespace AvatarBridge
 
             // A shader that will not take the deform is not the end of it:
             // YAPS Standard or Simple Lit will, with the look carried over. The toolkit has
-            // always done this; the converter used to give up instead. DPS
-            // has already tried Simple Lit, and the same patch refuses again.
-            if (shader == null && legacy != YapsLegacyMap.Origin.DPS)
+            // always done this; the converter used to give up instead. Raliv's
+            // DPS has already tried Simple Lit, and the same patch refuses again.
+            if (shader == null && !simpleLit)
             {
                 shader = PatchOnFallback(ctx, source, ref refusal, out var plain, out skippedShadowPasses,
                     YapsShaderPatcher.Roles.Plug);
@@ -1293,47 +1298,23 @@ namespace AvatarBridge
             return false;
         }
 
-        static void ReportLegacyContent(BridgeContext ctx)
+        // DPS and TPS through the YAPS window's own Build, on the avatar as it ships, so a
+        // reconvert keeps what pressing the button made. The converter used to leave them as
+        // they were, and every reconvert threw the window's upgrade away.
+        public static void UpgradeLegacy(BridgeContext ctx)
         {
-            // A protocol light first, then its digit: an ordinary point light
-            // of range 0.25 or 1.03 has a digit too.
-            int lights = ctx.Target.GetComponentsInChildren<Light>(true)
-                .Count(l => YapsScanner.IsProtocolLight(l)
-                            && YapsScanner.LightDigit(l) >= 1 && YapsScanner.LightDigit(l) <= 6);
-
-            var pointers = ctx.Target.GetComponentsInChildren<CVRPointer>(true)
-                .Where(p => p != null && !string.IsNullOrEmpty(p.type))
-                .Select(p => p.type)
-                .ToList();
-            int sockets = pointers.Count(t => t.StartsWith("TPS_Orf", StringComparison.OrdinalIgnoreCase)
-                                           || t.StartsWith("SPSLL_Socket", StringComparison.OrdinalIgnoreCase));
-            int plugs = pointers.Count(t => t.StartsWith("TPS_Pen", StringComparison.OrdinalIgnoreCase)
-                                         || t.StartsWith("SPSLL_Pen", StringComparison.OrdinalIgnoreCase));
-
-            if (lights == 0 && sockets == 0 && plugs == 0)
+            if (!LegacyPending) return;
+            LegacyPending = false;
+            var scan = YapsScanner.Scan(ctx.Target);
+            if (!scan.Plugs.Concat(scan.Sockets).Any(f => !f.IsYapsAlready)) return;
+            var lines = YapsNativeBuilder.BuildAvatar(ctx.Target, out string headline);
+            var bad = lines.Where(l => l.StartsWith("✗") || l.Contains("⚠")).ToList();
+            var good = lines.Except(bad).Select(l => l.TrimStart('✓', ' ')).ToList();
+            ctx.Report.Converted(Category, "Upgraded this avatar's older penetration setup to YAPS",
+                headline + (good.Count > 0 ? " " + string.Join("; ", good) : ""));
+            foreach (var line in bad)
             {
-                return;   // nothing penetration-shaped on this avatar at all
-            }
-
-            string found = string.Join(", ", new[]
-            {
-                lights > 0 ? $"{BridgeElements.Count(lights, "marker light", "marker lights")}" : null,
-                sockets > 0 ? $"{BridgeElements.Count(sockets, "socket contact", "socket contacts")}" : null,
-                plugs > 0 ? $"{BridgeElements.Count(plugs, "plug contact", "plug contacts")}" : null,
-            }.Where(s => s != null));
-
-            if (plugs > 0)
-            {
-                ctx.Report.Warning(Category,
-                    "This avatar's penetrator could not be converted, but its sockets work",
-                    $"Found {found}, and no SPS setup to build a plug from, so it will not bend. Set it up with " +
-                    "SPS and convert again.");
-            }
-            else
-            {
-                ctx.Report.Converted(Category,
-                    "Kept this avatar's existing penetration sockets",
-                    $"Found {found} from DPS or TPS. Their lights and contacts come through as they were.");
+                ctx.Report.Warning(Category, "Part of the YAPS upgrade did not finish", line.TrimStart('✗', '⚠', ' '));
             }
         }
 
