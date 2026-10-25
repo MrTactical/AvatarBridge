@@ -244,16 +244,8 @@ namespace AvatarBridge
             return true;
         }
 
-        // Unity drops a material's own render queue whenever its shader changes, and Standard and
-        // Poiyomi keep a transparent mode's queue there: the patched copy drew in the opaque queue.
-        public static void Wear(Material m, Shader shader)
-        {
-            if (m.shader == shader) return;
-            int queue = m.renderQueue;
-            bool own = m.shader != null && queue != m.shader.renderQueue;
-            m.shader = shader;
-            if (own) m.renderQueue = queue;
-        }
+        // A swap that keeps the material's own render queue; the converter's copies use the same.
+        public static void Wear(Material m, Shader shader) => ShaderSpiPatcher.Wear(m, shader);
 
         // The shader a material already carrying YAPS needs to take on one more role: its own
         // when that is compiled in, else its original patched again with both. A plug baked

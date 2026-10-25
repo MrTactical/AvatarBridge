@@ -167,9 +167,13 @@ the YAPS avatars [M]:
 
 ### 7. What the shader sweep left open
 The record is in `archive/Closed-2026-10.md`, "YAPS against every popular shader".
-- **The render queue across a shader swap.** `YapsShaderPatcher.Wear` keeps it at every YAPS site;
-  `Editor/Core/ShaderSpiPatcher.cs:1370` (`copy.shader = patchedShader`, the SPS patcher) and
-  `SceneAssetRehomer.cs:265` still swap without it. Unmeasured there; a failing test first.
+- **The render queue across a shader swap: fixed on dev 2026-10-25, for 5.0.1 [M].** The stereo
+  patcher's copies (`ShaderSpiPatcher.Repoint`) and a material rescued with its shader out of
+  VRCFury's temp folder (`SceneAssetRehomer.CopyMaterial`) both dropped a material's own queue:
+  3000 read back 2000, so a transparent material drew in the opaque queue. The rule moved to
+  `ShaderSpiPatcher.Wear`, which both use and `YapsShaderPatcher.Wear` now calls.
+  `Dev/Tests/RenderQueueSwapTest` 2 WRONG before, PASS after; a queue taken from the shader still
+  follows the new one.
 - **Two latent patcher gaps [R].** A host with `SV_VertexID` and one vertex function name per pass
   in different files (or several under `#if`) would get only the first patched; no tested host has
   both. A shader whose only borrowed pass is a deferred one would be refused though a forward

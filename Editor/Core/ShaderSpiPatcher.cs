@@ -1367,13 +1367,25 @@ namespace AvatarBridge
             }
 
             var copy = UnityEngine.Object.Instantiate(original);
-            copy.shader = patchedShader;
+            Wear(copy, patchedShader);
             Directory.CreateDirectory(dir);
             // CreateAsset renames the object after the file, so the path decides the final name.
             string path = OutputAssetPaths.Claim(dir + "/" + original.name + "_SPI.mat");
             AssetDatabase.CreateAsset(copy, path);
             clones[original] = copy;
             return copy;
+        }
+
+        // Unity drops a material's own render queue whenever its shader changes, and Standard and
+        // Poiyomi keep a transparent mode's queue there: a copy on another shader drew in the
+        // opaque queue. A queue the material took from its shader follows the new one.
+        public static void Wear(Material m, Shader shader)
+        {
+            if (m.shader == shader) return;
+            int queue = m.renderQueue;
+            bool own = m.shader != null && queue != m.shader.renderQueue;
+            m.shader = shader;
+            if (own) m.renderQueue = queue;
         }
     }
 }

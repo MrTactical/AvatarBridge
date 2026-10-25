@@ -262,7 +262,7 @@ namespace AvatarBridge
             // would undo them.
             if (Rehome(ctx, copy.shader) is Shader shader && shader != copy.shader)
             {
-                copy.shader = shader;
+                ShaderSpiPatcher.Wear(copy, shader);
             }
             // And so do its TEXTURES, which for a long time they did not. Instantiate carries every
             // texture reference over verbatim, so a material rescued out of the doomed folder kept
