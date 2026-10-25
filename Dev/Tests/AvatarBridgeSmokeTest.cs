@@ -27,6 +27,7 @@ namespace AvatarBridge.Regression
         {
             Results.Clear();
             var created = new List<GameObject>();
+            var generated = GeneratedFiles.Snapshot();
             // A batch run inherits whatever scene was open last, and a corpus
             // avatar left sitting in it has baked plugs near everything: the
             // preview then finds one already close and spawns none, and the
@@ -46,9 +47,7 @@ namespace AvatarBridge.Regression
             {
                 foreach (var go in created) if (go != null) UnityEngine.Object.DestroyImmediate(go);
                 if (AssetDatabase.IsValidFolder(ScratchDir)) AssetDatabase.DeleteAsset(ScratchDir);
-                if (AssetDatabase.IsValidFolder("Assets/YAPS/Generated/Smoke Prop")) AssetDatabase.DeleteAsset("Assets/YAPS/Generated/Smoke Prop");
-                if (AssetDatabase.IsValidFolder("Assets/YAPS/Generated/Smoke Avatar")) AssetDatabase.DeleteAsset("Assets/YAPS/Generated/Smoke Avatar");
-                if (AssetDatabase.IsValidFolder("Assets/YAPS/Generated/Test Plug")) AssetDatabase.DeleteAsset("Assets/YAPS/Generated/Test Plug");
+                GeneratedFiles.DeleteNew(generated);
                 AssetDatabase.SaveAssets();
             }
             int fails = Results.Count(r => !r.ok);

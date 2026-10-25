@@ -41,6 +41,7 @@ namespace AvatarBridge.Regression
                 Debug.Log($"[SquashRefusedTest] {(ok ? "ok   " : "WRONG")} {what}");
             }
 
+            var generated = GeneratedFiles.Snapshot();
             var roots = new System.Collections.Generic.List<Transform>();
             try
             {
@@ -109,6 +110,7 @@ namespace AvatarBridge.Regression
             {
                 foreach (var r in roots) Object.DestroyImmediate(r.gameObject);
                 AssetDatabase.DeleteAsset(Dir);
+                GeneratedFiles.DeleteNew(generated);
             }
             Debug.Log(failures == 0 ? "[SquashRefusedTest] PASS" : $"[SquashRefusedTest] FAIL: {failures}");
             if (Application.isBatchMode) EditorApplication.Exit(failures == 0 ? 0 : 1);

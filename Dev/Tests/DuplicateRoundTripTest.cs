@@ -32,6 +32,7 @@ namespace AvatarBridge.Regression
         public static void Run()
         {
             failures = 0;
+            var generated = GeneratedFiles.Snapshot();
             string shaderPath = Folder + "Shader/Probe.shader";
             System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(shaderPath));
             System.IO.File.WriteAllText(shaderPath, ProbeShader);
@@ -40,6 +41,7 @@ namespace AvatarBridge.Regression
             catch (Exception e) { Debug.LogException(e); failures++; }
             AssetDatabase.DeleteAsset(Folder + "Shader");
             AssetDatabase.DeleteAsset(Folder);
+            GeneratedFiles.DeleteNew(generated);
             Debug.Log(failures == 0 ? Tag + "PASS" : $"{Tag}FAIL: {failures}");
             if (Application.isBatchMode) EditorApplication.Exit(failures == 0 ? 0 : 1);
         }

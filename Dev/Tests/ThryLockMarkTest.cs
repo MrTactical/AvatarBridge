@@ -45,7 +45,7 @@ namespace AvatarBridge.Regression
         public static void Run()
         {
             failures = 0;
-            string written = null;
+            var generated = GeneratedFiles.Snapshot();
             try
             {
                 Directory.CreateDirectory(Dir);
@@ -58,7 +58,7 @@ namespace AvatarBridge.Regression
                 Check(patched != null, "an unlocked Thry shader patches");
                 if (patched != null)
                 {
-                    written = AssetDatabase.GetAssetPath(patched);
+                    string written = AssetDatabase.GetAssetPath(patched);
                     string text = File.ReadAllText(written);
                     Check(patched.name.StartsWith("Hidden/Locked/YAPS/"), "it keeps the locked name");
                     int i = patched.FindPropertyIndex("_ShaderOptimizerEnabled");
@@ -99,7 +99,7 @@ namespace AvatarBridge.Regression
             finally
             {
                 AssetDatabase.DeleteAsset(Dir);
-                if (written != null) AssetDatabase.DeleteAsset(written);
+                GeneratedFiles.DeleteNew(generated);
             }
             Debug.Log(failures == 0 ? "[ThryLockMarkTest] PASS" : $"[ThryLockMarkTest] FAIL: {failures}");
             if (Application.isBatchMode) EditorApplication.Exit(failures == 0 ? 0 : 1);

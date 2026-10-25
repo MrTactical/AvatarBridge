@@ -32,6 +32,7 @@ namespace AvatarBridge.Regression
                 if (!ok) fail++;
             }
 
+            var generated = GeneratedFiles.Snapshot();
             var shader = ShaderUtil.CreateShaderAsset(Source);
             var mask = new Texture2D(2, 2);
             var source = new Material(shader);
@@ -64,6 +65,7 @@ namespace AvatarBridge.Regression
                 Object.DestroyImmediate(source);
                 Object.DestroyImmediate(mask);
                 Object.DestroyImmediate(shader);
+                GeneratedFiles.DeleteNew(generated);
             }
             Debug.Log(fail == 0 ? "[SimpleLitEmissionTest] PASS" : $"[SimpleLitEmissionTest] FAIL: {fail}");
             if (Application.isBatchMode) EditorApplication.Exit(fail == 0 ? 0 : 1);

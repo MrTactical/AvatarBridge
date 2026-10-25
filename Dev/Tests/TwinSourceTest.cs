@@ -25,7 +25,7 @@ namespace AvatarBridge.Regression
         public static void Run()
         {
             failures = 0;
-            var made = new System.Collections.Generic.List<string>();
+            var generated = GeneratedFiles.Snapshot();
             try
             {
                 AssetDatabase.DeleteAsset(Dir);
@@ -41,7 +41,6 @@ namespace AvatarBridge.Regression
                     var material = new Material(source);
                     var patched = YapsShaderPatcher.Patch(material, null, out string refusal, out _);
                     if (patched == null) { Check(false, $"{side} patches ({refusal})"); continue; }
-                    made.Add(AssetDatabase.GetAssetPath(patched));
                     var back = YapsShaderPatcher.OriginalShaderOf(new Material(patched));
                     Check(back == source, $"the patch of {side} leads back to {side} ({AssetDatabase.GetAssetPath(back)})");
                 }
@@ -53,8 +52,8 @@ namespace AvatarBridge.Regression
             }
             finally
             {
-                foreach (string path in made) AssetDatabase.DeleteAsset(path);
                 AssetDatabase.DeleteAsset(Dir);
+                GeneratedFiles.DeleteNew(generated);
             }
             Debug.Log(failures == 0 ? "[TwinSourceTest] PASS" : $"[TwinSourceTest] FAIL: {failures}");
             if (Application.isBatchMode) EditorApplication.Exit(failures == 0 ? 0 : 1);

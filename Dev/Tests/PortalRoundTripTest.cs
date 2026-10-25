@@ -27,6 +27,7 @@ namespace AvatarBridge.Regression
         public static void Run()
         {
             failures = 0;
+            var generated = GeneratedFiles.Snapshot();
             AssetDatabase.DeleteAsset(ControllerPath);
             var root = new GameObject("PortalTestAvatar");
             try
@@ -137,6 +138,7 @@ namespace AvatarBridge.Regression
             {
                 Object.DestroyImmediate(root);
                 AssetDatabase.DeleteAsset(ControllerPath);
+                GeneratedFiles.DeleteNew(generated);
             }
             Debug.Log(failures == 0 ? $"{Tag} PASS" : $"{Tag} FAIL: {failures}");
             if (Application.isBatchMode) EditorApplication.Exit(failures == 0 ? 0 : 1);

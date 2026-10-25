@@ -29,6 +29,7 @@ namespace AvatarBridge.Regression
             if (lit == null) { Finish(failures); return; }
             var source = new Material(lit) { name = "RolesTest" };
             var made = new System.Collections.Generic.List<Material> { source };
+            var generated = GeneratedFiles.Snapshot();
             try
             {
                 var names = new System.Collections.Generic.HashSet<string>();
@@ -70,6 +71,7 @@ namespace AvatarBridge.Regression
             finally
             {
                 foreach (var m in made) Object.DestroyImmediate(m);
+                GeneratedFiles.DeleteNew(generated);
             }
             Finish(failures);
         }

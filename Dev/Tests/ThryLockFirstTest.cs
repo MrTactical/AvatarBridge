@@ -26,7 +26,7 @@ namespace AvatarBridge.Regression
                 if (Application.isBatchMode) EditorApplication.Exit(0);
                 return;
             }
-            var made = new System.Collections.Generic.List<string>();
+            var generated = GeneratedFiles.Snapshot();
             try
             {
                 Directory.CreateDirectory(Dir);
@@ -45,12 +45,6 @@ namespace AvatarBridge.Regression
                 if (refusal != null) Debug.Log($"[ThryLockFirstTest]   refused: {refusal}");
                 var basis = YapsLock.Basis(material);
                 string basisPath = AssetDatabase.GetAssetPath(basis);
-                if (basis != material)
-                {
-                    made.Add(basisPath);
-                    made.Add(Path.GetDirectoryName(AssetDatabase.GetAssetPath(basis.shader)).Replace('\\', '/'));
-                }
-                if (patched != null) made.Add(AssetDatabase.GetAssetPath(patched));
 
                 Check(patched != null, "the unlocked material patches");
                 Check(basis != material && basisPath.StartsWith(YapsLock.Folder + "/"), "it has a stand-in in the stand-in folder");
@@ -75,7 +69,6 @@ namespace AvatarBridge.Regression
                 // An unsaved material cannot be locked by Poiyomi, and says so.
                 var loose = new Material(poiyomi) { name = "Loose" };
                 var looseReport = new BridgeReport();
-                // Its patch is Poiyomi's own shared one, so it stays.
                 YapsShaderPatcher.Patch(loose, looseReport, out _, out _);
                 Check(looseReport.Entries.Any(e => e.Status == ReportStatus.Warning && e.Subject.Contains("\"Loose\"")),
                     "an unsaved material patched unlocked gets the warning");
@@ -83,8 +76,8 @@ namespace AvatarBridge.Regression
             }
             finally
             {
-                foreach (string path in made.Where(p => !string.IsNullOrEmpty(p))) AssetDatabase.DeleteAsset(path);
                 AssetDatabase.DeleteAsset(Dir);
+                GeneratedFiles.DeleteNew(generated);
             }
             Debug.Log(failures == 0 ? "[ThryLockFirstTest] PASS" : $"[ThryLockFirstTest] FAIL: {failures}");
             if (Application.isBatchMode) EditorApplication.Exit(failures == 0 ? 0 : 1);

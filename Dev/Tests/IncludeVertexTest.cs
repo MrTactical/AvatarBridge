@@ -208,6 +208,7 @@ fixed4 frag (v2f i) : SV_Target { return _Color; }
         public static void Run()
         {
             failures = 0;
+            var generated = GeneratedFiles.Snapshot();
             try
             {
                 Directory.CreateDirectory(Dir);
@@ -363,11 +364,7 @@ fixed4 frag (v2f i) : SV_Target { return _Color; }
                 try
                 {
                     AssetDatabase.DeleteAsset(Dir);
-                    string shared = YapsShaderPatcher.SharedFolder;
-                    foreach (string file in Directory.Exists(shared) ? Directory.GetFiles(shared, "IncVert*_YAPS_*") : new string[0])
-                    {
-                        if (!file.EndsWith(".meta")) AssetDatabase.DeleteAsset(file.Replace('\\', '/'));
-                    }
+                    GeneratedFiles.DeleteNew(generated);
                 }
                 finally
                 {

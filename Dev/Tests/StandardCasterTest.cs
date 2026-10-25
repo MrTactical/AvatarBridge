@@ -41,6 +41,7 @@ namespace AvatarBridge.Regression
         public static void Run()
         {
             failures = 0;
+            var generated = GeneratedFiles.Snapshot();
             try
             {
                 Directory.CreateDirectory(Dir);
@@ -68,12 +69,7 @@ namespace AvatarBridge.Regression
             finally
             {
                 AssetDatabase.DeleteAsset(Dir);
-                // The patched copies land in the shared folder, named after these sources.
-                string shared = YapsShaderPatcher.SharedFolder;
-                foreach (string file in Directory.Exists(shared) ? Directory.GetFiles(shared, "Caster*_YAPS_*") : new string[0])
-                {
-                    if (!file.EndsWith(".meta")) AssetDatabase.DeleteAsset(file.Replace('\\', '/'));
-                }
+                GeneratedFiles.DeleteNew(generated);
             }
             Debug.Log(failures == 0 ? "[StandardCasterTest] PASS" : $"[StandardCasterTest] FAIL: {failures}");
             if (Application.isBatchMode) EditorApplication.Exit(failures == 0 ? 0 : 1);

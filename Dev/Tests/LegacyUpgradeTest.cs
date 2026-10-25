@@ -32,6 +32,7 @@ namespace AvatarBridge.Regression
         public static void Run()
         {
             failures = 0;
+            var generated = GeneratedFiles.Snapshot();
             string dir = Sources;
             Directory.CreateDirectory(dir);
             File.WriteAllText(dir + "/LegacyUpgradeTest.shader", Source);
@@ -44,9 +45,7 @@ namespace AvatarBridge.Regression
             {
                 AssetDatabase.DeleteAsset(dir);
                 AssetDatabase.DeleteAsset(Folder);
-                foreach (var path in Directory.GetFiles(YapsShaderPatcher.SharedFolder, "LegacyUpgradeTest*")
-                             .Where(p => !p.EndsWith(".meta")))
-                    AssetDatabase.DeleteAsset(path.Replace('\\', '/'));
+                GeneratedFiles.DeleteNew(generated);
             }
             Debug.Log(failures == 0 ? Tag + "PASS" : $"{Tag}FAIL: {failures}");
             if (Application.isBatchMode) EditorApplication.Exit(failures == 0 ? 0 : 1);

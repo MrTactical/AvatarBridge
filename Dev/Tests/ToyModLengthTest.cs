@@ -17,6 +17,7 @@ namespace AvatarBridge.Regression
         public static void Run()
         {
             failures = 0;
+            var generated = GeneratedFiles.Snapshot();
             var avatar = new GameObject("ToyLengthAvatar");
             try
             {
@@ -51,7 +52,7 @@ namespace AvatarBridge.Regression
             finally
             {
                 Object.DestroyImmediate(avatar);
-                AssetDatabase.DeleteAsset(YapsNativeBuilder.OutputRoot + "/ToyLengthTest");
+                GeneratedFiles.DeleteNew(generated);
             }
             Debug.Log(failures == 0 ? "[ToyModLengthTest] PASS" : $"[ToyModLengthTest] FAIL: {failures}");
             if (Application.isBatchMode) EditorApplication.Exit(failures == 0 ? 0 : 1);

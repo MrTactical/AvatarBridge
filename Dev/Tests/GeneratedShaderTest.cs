@@ -32,6 +32,7 @@ namespace AvatarBridge.Regression
                 if (!ok) failures++;
                 Debug.Log($"[GeneratedShaderTest] {(ok ? "ok   " : "WRONG")} {what}");
             }
+            var generated = GeneratedFiles.Snapshot();
             try
             {
                 File.WriteAllText(Asset, "Shader \"Test/Generated\" { SubShader { Pass { } } }");
@@ -49,7 +50,11 @@ namespace AvatarBridge.Regression
                     Object.DestroyImmediate(material);
                 }
             }
-            finally { AssetDatabase.DeleteAsset(Asset); }
+            finally
+            {
+                AssetDatabase.DeleteAsset(Asset);
+                GeneratedFiles.DeleteNew(generated);
+            }
             Debug.Log(failures == 0 ? "[GeneratedShaderTest] PASS" : $"[GeneratedShaderTest] FAIL: {failures}");
             if (Application.isBatchMode) EditorApplication.Exit(failures == 0 ? 0 : 1);
         }

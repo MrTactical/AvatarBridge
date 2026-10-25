@@ -43,6 +43,7 @@ namespace AvatarBridge.Regression
             }
             string Suffix(Material m) => (string)suffixOf.Invoke(null, new object[] { m });
 
+            var generated = GeneratedFiles.Snapshot();
             var made = new List<string>();
             var roots = new List<GameObject>();
             try
@@ -81,14 +82,6 @@ namespace AvatarBridge.Regression
                     var baked = patched != null ? YapsBaker.Generated(source, patched, dir + "/Out/Skin 0 baked.mat") : null;
                     Check(baked != null && Suffix(baked) == "Skin0",
                         $"{how}: the bake copy's suffix is the source's (\"{(baked != null ? Suffix(baked) : refusal)}\")");
-
-                    var stand = basis != source ? AssetDatabase.GetAssetPath(basis) : null;
-                    if (stand != null)
-                    {
-                        made.Add(stand);
-                        made.Add(Path.GetDirectoryName(AssetDatabase.GetAssetPath(basis.shader)).Replace('\\', '/'));
-                    }
-                    if (patched != null) made.Add(AssetDatabase.GetAssetPath(patched));
                 }
             }
             catch (System.Exception e)
@@ -101,6 +94,7 @@ namespace AvatarBridge.Regression
                 foreach (var root in roots) Object.DestroyImmediate(root);
                 foreach (string path in made.Where(p => !string.IsNullOrEmpty(p)).Distinct()) AssetDatabase.DeleteAsset(path);
                 AssetDatabase.DeleteAsset(Dir);
+                GeneratedFiles.DeleteNew(generated);
             }
             Debug.Log(failures == 0 ? "[RenameSuffixTest] PASS" : $"[RenameSuffixTest] FAIL: {failures}");
             if (Application.isBatchMode) EditorApplication.Exit(failures == 0 ? 0 : 1);
