@@ -938,6 +938,16 @@ plane collider"; and take a playbook from Poiyomi's glass squish.
      0.140) and the collider list, gravity 0, spring 0.06, root rotation 1 in both. So the spheres
      add about 3 cm and something else in this conversion turns the roots 14 deg. Next: the prefab
      with radius put back to 0.191, then a diff of everything else between the two copies.
+     **Fixed, same night.** The cause was the sphere's own object: `SoftBodyContact.Link` put each
+     sphere on a child "SoftBodyContact" at the collision bone, and MagicaCloth2 simulates every
+     transform under a chain's root, so it became a bone of no length (`-spDestroy SoftBodyContact`
+     before Play: 0.0 deg, gap 42.74). The sphere now goes on the bone itself, told from an
+     author's collider there by its size; a run on an older link moves each list's reference to it
+     and deletes the child (`-spRelink` on the 20:06 prefab: gap 42.86 cm against 42.79 in edit
+     mode, roots 2 deg). Measured with the fixed spheres under a strong grab (`-spGrabTimes 5
+     -spDragScale 2`): the grabbed breast stops at 4.97 cm instead of 5.77 cm, and its partner does
+     not move (0.07 cm, as at rest). So the option stops a part at the other's rest and never
+     pushes the other aside; the window hint and README now say so.
 
 ## 5.0.1
 

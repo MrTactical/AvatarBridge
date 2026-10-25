@@ -76,11 +76,12 @@ namespace AvatarBridge
                 }
             }
             var spheres = new Dictionary<Transform, MagicaSphereCollider>();
+            var cloths = avatar.GetComponentsInChildren<MagicaCloth>(true).ToList();
             foreach (var (cloth, bones, _) in bodies)
             {
                 foreach (var bone in bones)
                 {
-                    spheres[bone] = SphereOn(bone, fit[cloth]);
+                    spheres[bone] = SphereOn(bone, fit[cloth], cloths);
                 }
             }
 
@@ -148,22 +149,51 @@ namespace AvatarBridge
                 : new List<Transform>();
         }
 
-        static MagicaSphereCollider SphereOn(Transform bone, float radius)
+        // On the bone itself, never on a child: the cloth simulates every transform under its
+        // root, and a child at the bone's own position was a bone of no length, which turned each
+        // chain about 14 degrees outward on entering Play and spread a pair apart. Told from a
+        // collider the avatar's author put on the same bone by its size, which a second run finds
+        // the same.
+        static MagicaSphereCollider SphereOn(Transform bone, float radius, List<MagicaCloth> cloths)
         {
-            var existing = bone.Find(SphereName);
-            var sphere = existing != null ? existing.GetComponent<MagicaSphereCollider>() : null;
-            if (sphere == null)
-            {
-                var go = new GameObject(SphereName);
-                Undo.RegisterCreatedObjectUndo(go, "Link soft bodies");
-                go.transform.SetParent(bone, false);
-                sphere = go.AddComponent<MagicaSphereCollider>();
-            }
             // The cloth's radius is in world units; a collider's size is scaled by its own
             // transform, so the bone's scale is divided out.
             Vector3 s = bone.lossyScale;
             float scale = Mathf.Max(Mathf.Abs(s.x), Mathf.Abs(s.y), Mathf.Abs(s.z));
-            sphere.SetSize(scale > 0f ? radius / scale : radius);
+            float size = scale > 0f ? radius / scale : radius;
+            var sphere = bone.GetComponents<MagicaSphereCollider>()
+                .FirstOrDefault(c => c.center == Vector3.zero && Mathf.Abs(c.GetSize().x - size) < 1e-4f);
+            if (sphere == null)
+            {
+                sphere = Undo.AddComponent<MagicaSphereCollider>(bone.gameObject);
+                sphere.SetSize(size);
+            }
+            // An earlier run's child: its place in every list goes to the sphere on the bone.
+            var old = bone.Find(SphereName);
+            if (old != null)
+            {
+                var was = old.GetComponent<MagicaSphereCollider>();
+                foreach (var cloth in cloths)
+                {
+                    var list = cloth.SerializeData.colliderCollisionConstraint.colliderList;
+                    int at = was != null ? list.IndexOf(was) : -1;
+                    if (at < 0)
+                    {
+                        continue;
+                    }
+                    Undo.RecordObject(cloth, "Link soft bodies");
+                    if (list.Contains(sphere))
+                    {
+                        list.RemoveAt(at);
+                    }
+                    else
+                    {
+                        list[at] = sphere;
+                    }
+                    EditorUtility.SetDirty(cloth);
+                }
+                Undo.DestroyObjectImmediate(old.gameObject);
+            }
             return sphere;
         }
     }

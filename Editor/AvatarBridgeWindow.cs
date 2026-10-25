@@ -684,7 +684,7 @@ namespace AvatarBridge
                     settings.softBodiesCollide, v => settings.softBodiesCollide = v));
 #if AVATARBRIDGE_YAPS
                 // Two labels that sounded alike, in two places: each says what the other is.
-                b.Add(BridgeElements.Hint("Moves whole parts apart. Their shape giving where they meet is Opt-ins ▸ Soft parts ▸ Soft body shape; use both."));
+                b.Add(BridgeElements.Hint("Stops a part where the other one rests. The other giving way, and their shape where they meet, is Opt-ins ▸ Soft parts ▸ Soft body shape; use both."));
 #endif
             }
             return card;

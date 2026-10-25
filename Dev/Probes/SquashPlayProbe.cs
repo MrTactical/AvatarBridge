@@ -64,6 +64,8 @@
 // it turns over; tear_edges.tsv lists the worst with where they lie, their shares and how far
 // off the skin. -spLookStages draws and counts it again with each stage of the squash switched
 // off in turn, in memory.
+// -spRelink runs the soft body pass again on the prefab copy, as the Toolkit card does.
+// -spDestroy <name> destroys the prefab copy's objects so named before Play.
 // -spPose <a,b> logs those bones' local moves at the drag's end against before Play.
 // -spPrefab <asset path> plays that converted prefab in place of the scene's own avatar, logging
 // each cloth's colliders; -spNoColliders <prefixes> takes colliders so named out of them first.
@@ -71,7 +73,8 @@
 // -spEach adds a front shot per renderer, each drawn alone, at every shot.
 // -spRaw switches the squash off on copies of its materials, for skinning alone.
 // -spGrabTimes N pushes N times a frame with -spGrab, as mouse drag events can come.
-// -spNoContact switches off the converter's soft body spheres ("SoftBodyContact") once a drag starts.
+// -spNoContact switches off the converter's soft body spheres once a drag starts, on builds that
+// still put them on "SoftBodyContact" children.
 //
 // Batch, never -nographics: the frames are rendered.
 
@@ -162,6 +165,17 @@ namespace AvatarBridge.Regression
                 // What each soft part collides with, and -spNoColliders <a,b> takes colliders whose
                 // names start so out of every list before Play, so the cloth never registers them.
                 string[] drop = (Arg("-spNoColliders") ?? "").Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                // -spDestroy <name>: objects so named removed outright, from the bone tree as well.
+                if (Arg("-spDestroy") is string gone && !gone.StartsWith("-"))
+                    foreach (var t in made.GetComponentsInChildren<Transform>(true).Where(x => x.name == gone).ToList())
+                        UnityEngine.Object.DestroyImmediate(t.gameObject);
+                // -spRelink: the soft body pass run again on the copy, as the Toolkit card does.
+                if (Environment.GetCommandLineArgs().Contains("-spRelink"))
+                {
+                    var relinked = new BridgeReport();
+                    SoftBodyContact.Link(made, relinked);
+                    Debug.Log("[SquashPlay] relinked: " + string.Join(" | ", relinked.Entries.Select(e => $"{e.Subject}: {e.Detail}")));
+                }
                 foreach (var cloth in made.GetComponentsInChildren<MagicaCloth2.MagicaCloth>(true))
                 {
                     var list = cloth.SerializeData.colliderCollisionConstraint.colliderList;
