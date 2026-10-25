@@ -51,9 +51,16 @@
 // does in Play mode, then holds it. Each frame after the cloth, into <dir>/drag.tsv: where each
 // follow sits off its rest along the pair's line and the lead the pair squash reads from that,
 // with shots from the front and above. -spDragBoth moves both chain roots, half as far each.
+// With -spLook each shot is drawn again in the look shader, every layer tinted its own colour, so
+// one coming through another shows, and the squashed layers each alone (_look, _look_<layer>).
+// At the drag's end every squashed layer's edges are read back, into tear.tsv: how many the
+// squash stretches past two and three times, how many open by a centimetre, how many triangles
+// it turns over; tear_edges.tsv lists the worst with where they lie, their shares and how far
+// off the skin. -spLookStages draws and counts it again with each stage of the squash switched
+// off in turn, in memory.
 // -spRootScale <s> resizes the avatar before Play, through a parent, with any of the above.
 // -spEach adds a front shot per renderer, each drawn alone, at every shot.
-// -spRaw switches the squash off on its materials, for skinning alone.
+// -spRaw switches the squash off on copies of its materials, for skinning alone.
 //
 // Batch, never -nographics: the frames are rendered.
 
@@ -109,14 +116,11 @@ namespace AvatarBridge.Regression
             SessionState.SetInt(K + "plug", Environment.GetCommandLineArgs().Contains("-spPlug") ? 1 : 0);
             SessionState.SetInt(K + "cost", Environment.GetCommandLineArgs().Contains("-spCost") ? 1 : 0);
             SessionState.SetInt(K + "jump", Environment.GetCommandLineArgs().Contains("-spJump") ? 1 : 0);
-            SessionState.SetInt(K + "look", Environment.GetCommandLineArgs().Contains("-spLook") ? 1 : 0);
+            // In a drag, -spLook only redraws the drag's shots.
+            SessionState.SetInt(K + "look", Environment.GetCommandLineArgs().Contains("-spLook")
+                && !Environment.GetCommandLineArgs().Contains("-spDrag") && !Environment.GetCommandLineArgs().Contains("-spDragBoth") ? 1 : 0);
             SessionState.SetInt(K + "drag", Environment.GetCommandLineArgs().Contains("-spDragBoth") ? 2
                 : Environment.GetCommandLineArgs().Contains("-spDrag") ? 1 : 0);
-            if (Environment.GetCommandLineArgs().Contains("-spLook"))
-            {
-                File.WriteAllText(LookPath, LookShader);
-                AssetDatabase.ImportAsset(LookPath, ImportAssetOptions.ForceUpdate);
-            }
             if (Environment.GetCommandLineArgs().Contains("-spJump")) WriteJumpShaders();
             var scene = EditorSceneManager.OpenScene(Arg("-spScene"), OpenSceneMode.Single);
             foreach (var r in scene.GetRootGameObjects())
@@ -145,9 +149,24 @@ namespace AvatarBridge.Regression
             Directory.CreateDirectory(outDir);
             var providers = UnityEngine.Object.FindObjectsOfType<CVRMaterialDataProvider>();
             provider = providers.First(p => p.dataMode == CVRMaterialDataProvider.DataMode.TransformLocalToWorld);
-            // -spRaw: the squash off, to tell what skinning alone does from what the squash adds.
+            // -spRaw: the squash off, to tell what skinning alone does from what the squash adds. On
+            // copies: switched off on the assets, the batch editor saved them on exit and the squash
+            // stayed off in the project.
             if (Environment.GetCommandLineArgs().Contains("-spRaw"))
-                foreach (var m in provider.materials) m.SetFloat("_YAPS_DentPower", 0f);
+            {
+                var raw = new Dictionary<Material, Material>();
+                foreach (var r in provider.GetComponentInParent<CVRAvatar>().GetComponentsInChildren<Renderer>(true))
+                    r.sharedMaterials = r.sharedMaterials.Select(m =>
+                    {
+                        if (m == null || !m.HasProperty("_YAPS_DentPower")) return m;
+                        if (!raw.TryGetValue(m, out var off))
+                        {
+                            raw[m] = off = new Material(m);
+                            off.SetFloat("_YAPS_DentPower", 0f);
+                        }
+                        return off;
+                    }).ToArray();
+            }
             skin = providers.Where(p => p.dataMode == CVRMaterialDataProvider.DataMode.SkinnedMeshRendererPreviousVertexBuffer).Select(p => p.smr).FirstOrDefault();
             animator = provider.GetComponentInParent<CVRAvatar>().GetComponent<Animator>();
             rows = new List<string> { "frame\tpart\toff_rest_cm\tpush_cm\tprovider_writes\tend_of_frame_off_rest_cm\tskin_off_rest_cm\tskin_vs_last_end_cm\tskin_worst_slot_vs_last_end_cm" };
@@ -878,7 +897,51 @@ namespace AvatarBridge.Regression
             jumpWas[s] = moved;
         }
 
-        const string LookPath = "Assets/AvatarBridgeOutput/SquashTest/SquashLook.shader";
+        // Stages the drag's look is drawn again without, with -spLookStages: find-and-put pairs as
+        // in the sweep's.
+        static readonly (string name, string[] swaps)[] LookStages =
+        {
+            ("noplane", new[] { "if (squashContact[c] <= 0) continue;", "continue;" }),
+            ("noshunt", new[] { "shunt = -axis * min(max(meet, 0) * max(lead, 0), reach);", "shunt = 0;" }),
+            ("fullheld", new[] { "float held = shares[c] * squashContact[c];", "float held = (shares[c] > 0) * squashContact[c];" }),
+            ("nobow", new[] { "float bow = squashBow[c];", "float bow = 0;" }),
+            ("noswell", new[] { "float3 away = side / max(length(side), ring);", "float3 away = 0;" }),
+            ("leanall", new[] { "float lean = saturate((dot(squashed, p.o) + bendFrom) / bendSpan);", "float lean = 1;" }),
+            ("nostretch", new[] { "stretch = clamp(1 + by, 1 / _YAPS_SquashMotion.z, _YAPS_SquashMotion.z);", "stretch = 1;" }),
+            ("noflat", new[] { "squashed += ax[c3] * (dot(d, ax[c3]) * along[c3] + shift[c3]);", "squashed += ax[c3] * dot(d, ax[c3]);" }),
+            ("nopart", new[] { "mapped += (moved - world) * shares[m];", "mapped += 0;" }),
+        };
+        // Read out in place of the move, for the edges the tear finds: each vertex's shares (the
+        // first part, the second, the rest), and the second part's lean, bend and how far out of
+        // its shape, in its reaches.
+        static readonly (string name, string[] swaps)[] ProbeStages =
+        {
+            ("share", new[] { "    yapsSkin = YapsSkinState();\n", "    yapsSkin = YapsSkinState();\n    position = mul(unity_WorldToObject, float4(mul(unity_ObjectToWorld, float4(position, 1)).xyz + float3(shares[0], shares[1], shares[2] + shares[3]), 1)).xyz;\n    return;\n" }),
+            ("lean", new[] { "mapped += (moved - world) * shares[m];", "mapped += float3(onSeam, squashContact[m], length(world - p.centre) / YapsExtent(p, normalize(world - p.centre))) * (m == 1);", Stop, StopTo }),
+        };
+
+        // Made in memory, so nothing is written into the project. A stage inlines its copy of the
+        // deform in place of the include.
+        static readonly Dictionary<string, Shader> lookShaders = new Dictionary<string, Shader>();
+        static Shader Look(string stage = "") => Staged(lookShaders, LookShader, "SquashLook", stage);
+
+        static Shader Staged(Dictionary<string, Shader> made, string source, string name, string stage)
+        {
+            if (made.TryGetValue(stage, out var shader) && shader != null) return shader;
+            source = source.Replace(name + "\"", $"{name}_{stage}\"");
+            var swaps = LookStages.Concat(ProbeStages).FirstOrDefault(s => s.name == stage).swaps;
+            if (swaps != null)
+            {
+                string copy = File.ReadAllText(LiveDent).Replace("\r\n", "\n");
+                for (int i = 0; i < swaps.Length; i += 2)
+                {
+                    if (!copy.Contains(swaps[i])) Debug.LogError($"[SquashPlay] look stage {stage}: line {i / 2} not found");
+                    copy = copy.Replace(swaps[i], swaps[i + 1]);
+                }
+                source = source.Replace($"#include \"{LiveDent}\"", copy);
+            }
+            return made[stage] = ShaderUtil.CreateShaderAsset(source);
+        }
         const string LookShader = @"Shader ""Hidden/AvatarBridge/SquashLook""
 {
     SubShader
@@ -896,6 +959,7 @@ namespace AvatarBridge.Regression
             float4 _MainTex_ST;
             float _LookMode;
             float _LookRaw;
+            float4 _LookTint;
             struct A { float4 vertex : POSITION; float3 normal : NORMAL; float4 tangent : TANGENT; float2 uv : TEXCOORD0; uint id : SV_VertexID; };
             struct V { float4 pos : SV_POSITION; float3 n : TEXCOORD0; float3 w : TEXCOORD1; float2 uv : TEXCOORD2; float4 share : TEXCOORD3; };
             V vert(A v)
@@ -929,7 +993,8 @@ namespace AvatarBridge.Regression
                 if (_LookMode > 1.5) { float z = Zebra(n, i.w); return float4(z, z, z * 0.9 + 0.1, 1); }
                 float3 l = normalize(normalize(_WorldSpaceCameraPos - i.w) + float3(0, 0.6, 0));
                 float k = 0.25 + 0.75 * saturate(dot(n, l));
-                return float4((0.55 + 0.45 * tex2D(_MainTex, i.uv).rgb) * k, 1);
+                float3 base = _LookTint.a > 0 ? _LookTint.rgb : 0.55 + 0.45 * tex2D(_MainTex, i.uv).rgb;
+                return float4(base * k, 1);
             }
             ENDCG
         }
@@ -1087,7 +1152,7 @@ namespace AvatarBridge.Regression
                     Make(mid + root.up * reach * 4f + root.forward * reach * 2.5f),
                     Make(mid + root.forward * reach * 2.6f + root.up * reach * 0.8f - root.right * reach * 0.8f),
                 };
-                var shader = Shader.Find("Hidden/AvatarBridge/SquashLook");
+                var shader = Look();
                 if (shader == null || ShaderUtil.ShaderHasError(shader))
                     Debug.LogError("[SquashPlay] look shader: " + (shader == null ? "missing" : string.Join(" | ", ShaderUtil.GetShaderMessages(shader).Select(m => m.message))));
                 // -spMeet: the pair's contact on, which a fresh build leaves off.
@@ -1146,7 +1211,7 @@ namespace AvatarBridge.Regression
 
         static void LookShoot()
         {
-            var shader = Shader.Find("Hidden/AvatarBridge/SquashLook");
+            var shader = Look();
             var sheet = new Texture2D(700 * lookCams.Length, 700, TextureFormat.RGB24, false);
             var one = new Texture2D(700, 700, TextureFormat.RGB24, false);
             string[] modes = { "", "_shares", "_zebra", "_zebra_mesh" };
@@ -1389,6 +1454,9 @@ namespace AvatarBridge.Regression
                 side.transform.position = mid + Vector3.up * away;
                 side.transform.LookAt(mid, animator.transform.forward);
                 dragRows = new List<string> { "frame	set_cm	dragged_off_set_cm	self_cm	other_cm	lead_dragged	gap_cm	over_cm	lead_over" };
+                // Compiled before the drag moves anything, as each takes seconds.
+                if (Environment.GetCommandLineArgs().Contains("-spLookStages"))
+                    foreach (var s in LookStages) Look(s.name);
                 Debug.Log($"[SquashPlay] drag: {dragged.name} under {dragged.parent.name}; follow on {slots[0].parent.name}, rest on {slots[4].parent.name}; " +
                           $"partner follow on {slots[1].parent.name}, rest on {slots[5].parent.name}; by {dragBy.magnitude * 100f:0.0} cm");
             }
@@ -1420,7 +1488,222 @@ namespace AvatarBridge.Regression
             string F(float x) => x.ToString("0.00", CultureInfo.InvariantCulture);
             dragRows.Add(string.Join("	", frame, F(dragSet * dragBy.magnitude * 100f), F((dragged.position - dragSetAt).magnitude * 100f),
                 F(self * 100f), F(other * 100f), F(lead), F(Vector3.Distance(slots[0].position, slots[1].position) * 100f), F(over * 100f), F(leadOver)));
-            if (t == 0 || t == 60 || t == 120 || t == 239) Shoot($"drag_{t}");
+            if (t == 0 || t == 60 || t == 120 || t == 239)
+            {
+                Shoot($"drag_{t}");
+                if (Environment.GetCommandLineArgs().Contains("-spLook")) DragLook($"drag_{t}");
+            }
+            if (t == 239) DragTear();
+        }
+
+        // At the drag's end, how far the squash stretches each squashed layer's edges and how many
+        // of its triangles it turns over, into tear.tsv. A tear is skin either side of an edge
+        // sent opposite ways, a fold skin turned back over itself; a picture shows either only as
+        // a slit. Read with the sweep's shader, made in memory, and with -spLookStages without each
+        // stage too.
+        static readonly Dictionary<string, Shader> tearShaders = new Dictionary<string, Shader>();
+        static List<string> tearEdges;
+        static Vector3[] bodyAt;
+        static void DragTear()
+        {
+            var rows = new List<string> { "stage\trenderer\tedges_moved\tover_2x\tover_3x\tworst_x\tturned_over\topened_1cm\twidest_cm" };
+            tearEdges = new List<string> { "renderer\ta\tb\tstretch_x\tx_cm\ty_cm\tz_cm\tmove_a_x\tmove_a_y\tmove_a_z\tmove_b_x\tmove_b_y\tmove_b_z\tshare0_a\tshare1_a\tshare23_a\tshare0_b\tshare1_b\tshare23_b\tlean_a\tbend_a_cm\tout_a\tlean_b\tbend_b_cm\tout_b" };
+            DragTear("", rows);
+            if (Environment.GetCommandLineArgs().Contains("-spLookStages"))
+                foreach (var s in LookStages) DragTear(s.name, rows);
+            File.WriteAllLines(Path.Combine(outDir, "tear.tsv"), rows);
+            File.WriteAllLines(Path.Combine(outDir, "tear_edges.tsv"), tearEdges);
+        }
+
+        static void DragTear(string stage, List<string> rows)
+        {
+            var tearShader = Staged(tearShaders, JumpShader, "SquashJump", stage);
+            var cam = new GameObject("SquashTear camera").AddComponent<Camera>();
+            cam.enabled = false;
+            cam.cullingMask = 1 << 31;
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = Color.clear;
+            cam.allowHDR = false;
+            cam.allowMSAA = false;
+            cam.transform.SetPositionAndRotation(front.transform.position, front.transform.rotation);
+            foreach (var smr in animator.GetComponentsInChildren<SkinnedMeshRenderer>()
+                         .Where(r => r.enabled && r.sharedMaterials.Any(m => m != null && m.HasProperty("_YAPS_DentOwn"))))
+            {
+                var mesh = smr.sharedMesh;
+                int height = (mesh.vertexCount + JumpWidth - 1) / JumpWidth;
+                Shader.SetGlobalFloat("_JumpWidth", JumpWidth);
+                Shader.SetGlobalFloat("_JumpHeight", height);
+                var rt = new RenderTexture(JumpWidth, height, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear);
+                var tex = new Texture2D(JumpWidth, height, TextureFormat.RGBAFloat, false, true);
+                cam.targetTexture = rt;
+                Vector3[] Read(Shader with, out bool[] got)
+                {
+                    int layer = smr.gameObject.layer;
+                    smr.gameObject.layer = 31;
+                    cam.RenderWithShader(with, "");
+                    smr.gameObject.layer = layer;
+                    RenderTexture.active = rt;
+                    tex.ReadPixels(new Rect(0, 0, JumpWidth, height), 0, 0);
+                    RenderTexture.active = null;
+                    var into = new Vector3[mesh.vertexCount];
+                    got = new bool[into.Length];
+                    foreach (var c in tex.GetPixels())
+                    {
+                        int id = Mathf.RoundToInt(c.a) - 1;
+                        if (id < 0 || id >= into.Length) continue;
+                        into[id] = new Vector3(c.r, c.g, c.b);
+                        got[id] = true;
+                    }
+                    return into;
+                }
+                var moved = Read(tearShader, out var seen);
+                Vector3[] share = null, lean = null;
+                if (stage == "")
+                {
+                    share = Read(Staged(tearShaders, JumpShader, "SquashJump", "share"), out _);
+                    lean = Read(Staged(tearShaders, JumpShader, "SquashJump", "lean"), out _);
+                    // How far out of the second part's shape the vertices it moves lie.
+                    float[] edges = { 1f, 1.25f, 1.5f, 2f, 3f, float.MaxValue };
+                    var bins = new int[edges.Length];
+                    for (int v = 0; v < share.Length; v++)
+                        if (share[v].y >= 0.05f && lean[v].z > 0f) bins[Array.FindIndex(edges, e => lean[v].z < e)]++;
+                    Debug.Log($"[SquashPlay] out {smr.name}: under 1 {bins[0]}, 1-1.25 {bins[1]}, 1.25-1.5 {bins[2]}, 1.5-2 {bins[3]}, 2-3 {bins[4]}, over 3 {bins[5]}");
+                }
+                // Baked in world units in the renderer's axes (the flag to scale it left a 0.12 body
+                // eight times too big); turned into the world the moves are in.
+                var baked = new Mesh();
+                smr.BakeMesh(baked);
+                var rest = baked.vertices.Select(v => smr.transform.rotation * v).ToArray();
+                // Edges under 3 mm left out of the ratios and the turned count: a millimetre edge
+                // stretched twenty times by a centimetre of move is no gap anyone sees. How far an
+                // edge opens is counted whatever its length.
+                const float Least = 0.003f;
+                int count = 0, over2 = 0, over3 = 0, turned = 0, opened = 0;
+                float worst = 1f, widest = 0f;
+                var tris = mesh.triangles;
+                for (int i = 0; i < tris.Length; i += 3)
+                {
+                    int t0 = tris[i], t1 = tris[i + 1], t2 = tris[i + 2];
+                    if (seen[t0] && seen[t1] && seen[t2] && moved[t0] + moved[t1] + moved[t2] != Vector3.zero
+                        && Mathf.Max((rest[t1] - rest[t0]).sqrMagnitude, (rest[t2] - rest[t1]).sqrMagnitude, (rest[t0] - rest[t2]).sqrMagnitude) >= Least * Least)
+                    {
+                        var was = Vector3.Cross(rest[t1] - rest[t0], rest[t2] - rest[t0]);
+                        var now = Vector3.Cross(rest[t1] + moved[t1] - rest[t0] - moved[t0], rest[t2] + moved[t2] - rest[t0] - moved[t0]);
+                        if (Vector3.Dot(was, now) < 0f) turned++;
+                    }
+                    for (int k = 0; k < 3; k++)
+                    {
+                        int a = tris[i + k], b = tris[i + (k + 1) % 3];
+                        if (!seen[a] || !seen[b] || (moved[a].sqrMagnitude < 1e-10f && moved[b].sqrMagnitude < 1e-10f)) continue;
+                        float was = (rest[a] - rest[b]).magnitude;
+                        if (was < 1e-6f) continue;
+                        float now = (rest[a] + moved[a] - rest[b] - moved[b]).magnitude;
+                        if (now - was > 0.01f) opened++;
+                        widest = Mathf.Max(widest, now - was);
+                        if (was < Least) continue;
+                        float x = now / was;
+                        count++;
+                        if ((x > 3f || now - was > 0.01f) && stage == "")
+                        {
+                            // Where, off the partner's follow in the avatar's axes (x out to the
+                            // partner's side, y up, z forward), and how each end moved, in cm.
+                            var root = animator.transform;
+                            var slots = provider.transforms;
+                            string C(Vector3 v) => string.Join("\t", (100f * v).x.ToString("0.0", CultureInfo.InvariantCulture),
+                                (100f * v).y.ToString("0.0", CultureInfo.InvariantCulture), (100f * v).z.ToString("0.0", CultureInfo.InvariantCulture));
+                            Vector3 L(Vector3 v)
+                            {
+                                var l = root.InverseTransformVector(v);
+                                l.x *= Mathf.Sign(Vector3.Dot(slots[1].position - slots[0].position, root.right));
+                                return l;
+                            }
+                            string S(Vector3 v) => string.Join("\t", v.x.ToString("0.00", CultureInfo.InvariantCulture),
+                                v.y.ToString("0.00", CultureInfo.InvariantCulture), v.z.ToString("0.00", CultureInfo.InvariantCulture));
+                            // How far off the body skin, in cm: the build copies the skin's shares
+                            // onto a layer within 4 cm of it.
+                            if (bodyAt == null)
+                            {
+                                var body = animator.GetComponentsInChildren<SkinnedMeshRenderer>().Where(r => r.enabled && r.sharedMaterials.Any(m => m != null && m.HasProperty("_YAPS_DentOwn"))).OrderByDescending(r => r.sharedMesh.vertexCount).First();
+                                var bm = new Mesh();
+                                body.BakeMesh(bm);
+                                bodyAt = bm.vertices.Select(v => body.transform.position + body.transform.rotation * v).ToArray();
+                                UnityEngine.Object.DestroyImmediate(bm);
+                            }
+                            var wa = smr.transform.position + rest[a];
+                            float off = smr.sharedMesh.vertexCount == bodyAt.Length ? 0f : 100f * Mathf.Sqrt(bodyAt.Min(v => (v - wa).sqrMagnitude));
+                            tearEdges.Add(string.Join("\t", smr.name, a, b, x.ToString("0.00", CultureInfo.InvariantCulture), off.ToString("0.0", CultureInfo.InvariantCulture),
+                                C(L(smr.transform.position + rest[a] - slots[1].position)), C(L(moved[a])), C(L(moved[b])),
+                                S(share[a]), S(share[b]), S(new Vector3(lean[a].x, lean[a].y * 100f, lean[a].z)),
+                                S(new Vector3(lean[b].x, lean[b].y * 100f, lean[b].z))));
+                        }
+                        if (x > 2f) over2++;
+                        if (x > 3f) over3++;
+                        worst = Mathf.Max(worst, x);
+                    }
+                }
+                rows.Add(string.Join("\t", stage == "" ? "full" : stage, smr.name, count, over2, over3, worst.ToString("0.00", CultureInfo.InvariantCulture), turned,
+                    opened, (100f * widest).ToString("0.0", CultureInfo.InvariantCulture)));
+                Debug.Log($"[SquashPlay] tear {stage} {smr.name}: {count} edges moved, {over2} over 2x, {over3} over 3x, worst {worst:0.00}x, {turned} turned over, " +
+                          $"{opened} opened over 1 cm, widest {100f * widest:0.0} cm");
+                UnityEngine.Object.DestroyImmediate(baked);
+                UnityEngine.Object.DestroyImmediate(tex);
+                rt.Release();
+                UnityEngine.Object.DestroyImmediate(rt);
+            }
+            UnityEngine.Object.DestroyImmediate(cam.gameObject);
+        }
+
+        static readonly Color[] Tints =
+        {
+            new Color(1f, 0.6f, 0.4f, 1f), new Color(0.4f, 0.65f, 1f, 1f), new Color(0.5f, 0.95f, 0.5f, 1f),
+            new Color(1f, 0.95f, 0.45f, 1f), new Color(0.85f, 0.55f, 1f, 1f), new Color(0.5f, 0.95f, 0.95f, 1f),
+            new Color(1f, 0.5f, 0.75f, 1f), new Color(0.75f, 0.75f, 0.75f, 1f),
+        };
+
+        // The drag's front and top views in the look shader: every layer tinted its own colour, then
+        // each squashed layer alone.
+        static void DragLook(string name)
+        {
+            var shown = animator.GetComponentsInChildren<Renderer>().Where(r => r.enabled).ToList();
+            var squashed = shown.Where(r => r.sharedMaterials.Any(m => m != null && m.HasProperty("_YAPS_DentOwn"))).ToList();
+            var block = new MaterialPropertyBlock();
+            void Tint(Renderer r, Color c)
+            {
+                r.GetPropertyBlock(block);
+                block.SetColor("_LookTint", c);
+                r.SetPropertyBlock(block);
+            }
+            if (name.EndsWith("_0"))
+                Debug.Log("[SquashPlay] look tints: " + string.Join(", ", shown.Select((r, i) => $"{r.name} {Tints[i % Tints.Length]}")));
+            var pixels = new Texture2D(800, 800, TextureFormat.RGB24, false);
+            Shader.SetGlobalFloat("_LookMode", 0f);
+            Shader.SetGlobalFloat("_LookRaw", 0f);
+            void Grab(string file, string stage = "")
+            {
+                foreach (var (cam, view) in new[] { (front, "front"), (side, "top") })
+                {
+                    cam.RenderWithShader(Look(stage), "");
+                    RenderTexture.active = cam.targetTexture;
+                    pixels.ReadPixels(new Rect(0, 0, 800, 800), 0, 0);
+                    File.WriteAllBytes(Path.Combine(outDir, $"{file}_{view}.png"), pixels.EncodeToPNG());
+                }
+                RenderTexture.active = null;
+            }
+            for (int i = 0; i < shown.Count; i++) Tint(shown[i], Tints[i % Tints.Length]);
+            Grab($"{name}_look");
+            if (name.EndsWith("_239") && Environment.GetCommandLineArgs().Contains("-spLookStages"))
+                foreach (var s in LookStages) Grab($"{name}_look_{s.name}", s.name);
+            foreach (var only in squashed)
+            {
+                foreach (var r in shown) r.enabled = r == only;
+                Grab($"{name}_look_{string.Concat(only.name.Split(Path.GetInvalidFileNameChars()))}");
+            }
+            foreach (var r in shown)
+            {
+                r.enabled = true;
+                Tint(r, Color.clear);
+            }
+            UnityEngine.Object.DestroyImmediate(pixels);
         }
 
         // What the skinned helper holds when the provider reads it: the last skinning pass.

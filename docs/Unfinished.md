@@ -665,12 +665,41 @@ due on the Nightly branch within days; none of this is in stable yet.
   decides first now. `LegacyDetectTest`: WRONG ("DPS Socket") before, PASS after. Locked, Poiyomi
   bakes the penetrator in (`if((1.0 /*_PenetratorEnabled*/))`), so it takes the DPS route to YAPS
   Simple Lit. Joe to reconvert and check the plug.
-- **The clone.** Probe (`SquashPlayProbe -spDrag -spEach -spRaw`, Kar's own scene, nothing written
-  to the project): at the 10:26 build the dragged breast slid over a partner that stayed put, two
-  breasts where one should be (Joe circled it). With aa4a613 the partner swings aside, but the
-  dragged one still cuts into it where they meet, and the bra tears at the partner's outer rim.
-  My look-shader renders hid both: every layer drawn in one flat shader. Open: Joe to say which of
-  these is the clone he means, then the fix.
+- **The clone: FIXED on dev [M]** (Joe: "go ahead with the squash push", then "go ahead with the
+  bra strap and cup fix"). Probe (`SquashPlayProbe -spDrag`, Kar's own scene): at the 10:26 build
+  the dragged breast slid over a partner that stayed put, two breasts where one should be (Joe
+  circled it). With aa4a613 the partner swings aside, but the dragged one cut a jagged slit down
+  the partner and the bra tore. Two causes, found with the new tear count (`tear.tsv`) and stages
+  switched off one at a time (`-spLookStages`):
+  - **Shares over one.** The build eases each part's share toward its peak (`Peak`, half the peak
+    reads as a whole share), so a vertex between the two carried 0.7 to 0.9 of EACH and took most
+    of both moves. The shader caps a vertex's shares at one in all.
+  - **The seam had no sides.** The contact is a plane along the pair's line, so a halter strap over
+    the chest, 25 cm off the line and past the plane, was pressed and swollen by up to 10 cm, and
+    its rough weights (0.54 beside 0.10 on one edge) tore it. The contact now fades out between 1
+    and 1.5 of the part's own breadth off the line. Tighter (0.8 to 1.2), the both-sides seam
+    crossed at its ends; cut by the distance out of the part's shape instead, real skin past the
+    shape tore.
+  - Kar, edges stretched past 3x / triangles turned over, before -> after: one side dragged, bra
+    44 -> 0, body 120 -> 34, body turned 820 -> 132; both sides, bra 20 -> 0, body 286 -> 12, body
+    turned 884 -> 144. Alexa (AlexaSquash): tube top 95 -> 12 one side, 86 -> 54 both; her body
+    unchanged and clean. Swings (`-spSwing`) and hand pushes (`-spHand`) on both avatars render as
+    before. The rest of Alexa's both-sides count is a share step across her tube top's cleavage
+    midline (0.5 beside 1.0, 3 mm apart): the build copies body shares onto a garment within 3 cm,
+    and over the gap one vertex averages both sides while its neighbour sees one. Not visible at
+    the probe's framing; a build-side smoothing would need a rebuild to reach anyone.
+  - **WITHDRAWN: a flat seam.** First tried pressing both flat at a plane in place of the hollow.
+    It cleared the drag's slit, but on a swing into a still partner it showed the flat face Joe
+    asked never to see one-sided ("see? when you push, the flat is still happening"). The slit was
+    the double shares, not the wrap-round: with the cap, the wrap-round drags clean. Reverted.
+  - The tear count's first runs understated the body eightfold: `BakeMesh(m, true)` left a renderer
+    at 0.12 scale unscaled. Baked without the flag now, as the film's body bake always was.
+  - **My mistake, put right:** a `-spRaw` run set `_YAPS_DentPower` 0 on Kar's seven squash
+    materials and the batch editor saved them on exit (16:19), so Kar's squash was off in Attempt
+    Conversion until 16:34, when I set them back to 1. `-spRaw` now works on copies, and every run
+    script checks the materials after.
+  - Joe to rebuild Kar's squash (or reconvert) and look in game: a breast pushed into the other,
+    the bra and any strap over the chest.
 - **White plug: FIXED on dev [M].** Joe, after toggling the plug on: the plug glowed pure white.
   The DPS route moves it to YAPS Simple Lit, which took Poiyomi's `_EmissionColor` (white) but had
   no `_EmissionMap` (Kar's is black with one dot) and no switch. Simple Lit samples an emission map

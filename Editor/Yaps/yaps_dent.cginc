@@ -433,6 +433,10 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
 
     uint width = (uint) round(abs(1.0 / _YAPS_DentOwn_TexelSize.x));
     float4 own = _YAPS_DentOwn.Load(int3(vertexId % width, vertexId / width, 0));
+    // Between two parts a vertex carries a share of each, both eased toward their peaks at the
+    // build, so they can come to more than one: it took most of both moves, and the pair tore
+    // down the cleavage where its neighbours took less.
+    own /= max(own.r + own.g + own.b + own.a, 1);
     float partShare = saturate(own.r + own.g + own.b + own.a);
     if (partShare <= 0) return;
     float shares[4] = { own.r, own.g, own.b, own.a };
@@ -499,9 +503,17 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         float start = (m < 2 ? _YAPS_SquashPair.x : _YAPS_SquashPair.z) * YapsUnit(m & 2);
         // How far each reaches toward the other as turned by its swing.
         float frontS = reach, frontO = start - reach;
+        // The contact reaches only across the part's own breadth: a strap over the chest lay past
+        // the seam too, and was pressed and swollen by centimetres where nothing touched it. Cut
+        // off sooner, a deep press let the two cross at the top and bottom of the seam; cut by the
+        // distance out of the part's shape, real skin past it tore.
+        float onSeam = 1;
         if (paired)
         {
-            frontS = YapsExtent(YapsTurned(p), axis);
+            YapsPart pt = YapsTurned(p);
+            frontS = YapsExtent(pt, axis);
+            float3 across = d - axis * dot(d, axis);
+            onSeam = 1 - smoothstep(1, 1.5, length(across) / YapsExtent(pt, across / max(length(across), 1e-6)));
             YapsPart po = YapsPartAt(m ^ 1, YapsSlot(m ^ 1), YapsUnit(m ^ 1));
             if (po.framed) frontO = YapsExtent(YapsTurned(po), -axis);
         }
@@ -664,6 +676,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
             squashContact[m] = max(squashContact[m], saturate(dot(bend, squashAxis[m]) / (YAPS_SQUASH_SOFT * reach)));
             squashDeep[m] += max(dot(bend, squashAxis[m]) - bendSelf, 0);
             squashDeep[m] = max(squashDeep[m] - max(-dot(bend, squashAxis[m]), 0), 0);
+            squashContact[m] *= onSeam;
         }
 
         // The squeeze lines, solved exactly: M's largest eigenvalue in closed form, its line as
