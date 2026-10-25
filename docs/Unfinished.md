@@ -949,6 +949,56 @@ plane collider"; and take a playbook from Poiyomi's glass squish.
      not move (0.07 cm, as at rest). So the option stops a part at the other's rest and never
      pushes the other aside; the window hint and README now say so.
 
+### 25. Mesh-to-mesh squash contact. Joe, 2026-10-25. PLAN, to start 2026-10-26
+
+Joe: "boob mesh to boob mesh squishy, genuine soft body", then "plan that for tomorrow". Ask him
+first: 5.0.0 or 5.1.0 (on 10-24 he put new squash ideas in 5.1.0).
+
+**Today.** Each part is an ellipsoid of six measured reaches in its own frame (a toward the
+partner, o out of the body, u across): `YapsExtent`, `YapsInside` and the quadratic solves in the
+seam pass (`leave`, `disc`) all read that ellipsoid. The pair meets where the two ellipsoids
+overlap; the partner swings away (shunt, by swing weight, faded base to tip), 0.6 of the overlap
+squashes each whole part, the seam presses the rest, bowed round the leader's front.
+
+**What mesh to mesh can mean in a vertex shader.** A vertex sees only itself and what textures and
+buffers carry. The partner's live vertices have no transport (40k positions a frame). Its *shape*
+can travel instead: baked once from the mesh in the part's own frame, then turned and placed every
+frame by the slots the shader already reads, cloth included through the skinned helper (measured
+2026-10-25: source 1, exact to the bone). So: the real surface, moving as the part moves.
+
+**Step 1, the real shape (build only).** Per part, a radial map: on a 32 x 16 grid of directions in
+the part's frame, how far its skin reaches from the centre (the outermost skin in each direction's
+cell, from vertices with share >= 0.5; empty cells filled from neighbours; one texel of smoothing).
+All parts stacked in one RHalf texture, 32 x 64, `_YAPS_SquashShape`, saved non-readable with
+streaming mips like the share textures (CCK upload check), carried by `Carry` and `Owned`.
+**Gate 1, a probe, no shader change:** distance from every part vertex to the ellipsoid and to the
+map surface, mean / 95th / max cm per part, on Kar, Alexa and three more squash avatars, plus a
+picture of each surface drawn over the skin. Go on only if the map is clearly closer; where it
+should be: a breast's underside and top, a cheek's side toward the cleft.
+
+**Step 2, the shader reads it.** `YapsExtent(p, w)` becomes a lookup in the turned frame (bilinear,
+wrapping in longitude, clamped at the poles); the ellipsoid stays as the fallback when no map was
+baked (older builds, unframed parts). `YapsInside` and the seam's ray solves become a fixed
+four-step secant on the map, unrolled, since ChilloutVR's shader filter cuts loops. Everything
+that reads the shape gets the real surface at once: the contact, its bow round the leader's front,
+the swing, the hands' dents, the swell.
+**Gate 2:** the squash probes before and after (`-spSwing`, `-spDrag`, `-spDragBoth`, `-spPush`,
+looks on the real materials of every layer, from-start tear counts no worse), the patched shader's
+compile time, and the filtered path (`-sfRuntime`). Then Joe in game.
+
+**Step 3, pressed along the partner's surface.** Where they meet, a vertex goes out of the other's
+mapped shape along that surface's normal (from the map's gradient), not along the line between the
+two centres; the lead still decides who keeps its shape (the leader keeps it, the partner takes the
+hollow, alike both take half). The bulk share stays.
+
+**Left out, said plainly:** each part sees the partner's rest shape turned and moved, not the
+partner's own squash; a jiggle that rings on after the contact needs state kept between frames
+(the CVRBlitter self-update route, its own spike); a shape a ray from the centre crosses twice keeps
+only its outer surface. Cost: a 4 KB texture per avatar and a few texture reads per vertex per part.
+
+**First move tomorrow:** the Gate 1 probe on Kar's prefab (`-spPrefab`, since the scene copy is
+older than the conversion).
+
 ## 5.0.1
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).
