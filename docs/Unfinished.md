@@ -840,7 +840,9 @@ plane collider"; and take a playbook from Poiyomi's glass squish.
      rebuild): one-sided 0.6 reach, the partner now pushed aside with a curved contact where it was
      cut flat; zebra smooth; both-sided unchanged, a flat seam. Images `squash-drag/kar-shunt.jpg`.
    - Open: the tester's grab pushes a whole cloth component, so a pair on one component moves
-     together and never overlaps; the Move tool on a chain root does.
+     together and never overlaps; the Move tool on a chain root does. **WITHDRAWN 2026-10-25, see
+     8:** the Move tool moves nothing in Play mode, and the probe's drag set the root at the start
+     of Update, where no user can.
 7. **The squash setup, one place each. Done on dev, Joe to judge.** Joe, 2026-10-25: two previews
    (the tester's, and the inspector's that undid it), test hand and player height in both places,
    no telling when to rebuild, and "Paint over them" / "Start empty" saying nothing of what they do
@@ -862,6 +864,39 @@ plane collider"; and take a playbook from Poiyomi's glass squish.
      aa4a613, so it read "built by an older YAPS", as it should); the thighs story
      (`button-smoke.sh -bsStory thighs`) pressing Change these areas, Test in the Avatar Tester,
      the tester's Squeeze, Test hand and Bounce, and a knob moved while previewing.
+8. **In Play mode nothing a user could do pushed one part into the other. Done on dev, Joe to
+   judge.** Joe, 2026-10-25, after rebuilding Kar's squash: in Play mode he dragged the
+   MagicaCloth_Breast_L object into the other side with the Move tool, "it's still not pushing the
+   other boob the other way. It's still flattening", and "the squish you're seeing and the squish
+   I'm seeing are completely different". The step's hint told him to "drag one part's bone into
+   the other in Play mode".
+   - Measured on Alexa (`SquashPlayProbe -spDrag` with the new `-spDragName`, `-spMoveTool`,
+     `-spGrab`, `-spPush`; `drag.tsv` under the session scratchpad `alexa/`): the cloth component's
+     object dragged 22 cm moved the follow 0 cm. The chain root set between frames, as the Move
+     tool sets it, sat 22 cm off where it was set every frame and the follow never moved: MC2's
+     `RestoreTransformJob` puts every cloth transform back to its pose, the fixed root included
+     (`VirtualMeshProxy.cs:1605`), before it reads them. The tester's grab moved the follow 5 cm
+     of a 22 cm pull, short of contact on Alexa. Only a root set at the start of Update, the
+     probe's drag, moves the chain: what every earlier render showed and Joe could never make.
+   - Now the tester's squash section has **Push one in** in Play mode: the first pair's first
+     part moved toward its partner by its chain root, at the start of each frame's Update, by up
+     to half the gap, kept in the root's parent's space and put back at 0 or when the preview
+     stops. Squeeze starts at 0 in Play mode, since a one-sided push under a both-sided squeeze
+     read as flat. The hints say the Move tool cannot push a cloth part in Play mode.
+   - The paint step said "Painted: 2 pairs on "Kar", which win over any bones" and its colours
+     vanished in Play mode with no word why. It now names the pairs ("Squashing Breast and Butt,
+     painted on ..."), says where the colours show and that they hide while the squash is tested,
+     and in Play mode greys out painting, since the regions live on the component and a Play-mode
+     stroke would be lost when it ends.
+   - Evidence: `-spDrag -spPush` drives the preview's own code. Alexa: the follow 7.6 to 22.0 cm
+     off its rest, overlap 6.9 cm, lead -1.00 (one-sided), no compile error. Kar: 21.4 cm, overlap
+     21.3 cm, lead -1.00. The probe's own drag on Joe's 18:48 rebuild tears as at 048465f (body 296
+     edges opened past 1 cm, panties 0), so the rebuild carried the fix.
+   - **Open: a butt cheek pushed half the gap into its partner tears.** The first Push moved every
+     pair's first part; on Kar the cheek's push opened 788 panty edges past 1 cm, widest 15.3 cm,
+     and about 780 more on the body (`kar/push` in the session scratchpad). Push now moves the
+     first pair only, so this is out of the tester's way, not fixed. The shunt and seam were tuned
+     on breasts alone.
 
 ## 5.0.1
 

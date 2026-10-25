@@ -10,6 +10,7 @@ using AvatarBridge.Yaps;
 using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
+using UnityEngine.LowLevel;
 using UnityEngine.UIElements;
 
 namespace AvatarBridge
@@ -43,7 +44,7 @@ namespace AvatarBridge
         static readonly System.Collections.Generic.Dictionary<string, string> FoldHints = new System.Collections.Generic.Dictionary<string, string>
         {
             { "How it gives", "How a part answers any press: how flat it goes, how wide it spreads to keep its volume, how far it swings away first. See it in the Avatar Tester with Squeeze or the test hand." },
-            { "The pair", "With Meet on, a part swung or pushed into a still partner keeps its round front and pushes the partner aside by as much as it pushed in, the partner taking a rounded hollow where they still meet. Pushed alike from both sides, the two press flat against each other, swelling out round the contact. With Meet off, what overlaps passes through. See it in the Avatar Tester with Squeeze, or drag one part's bone into the other in Play mode." },
+            { "The pair", "With Meet on, a part swung or pushed into a still partner keeps its round front and pushes the partner aside by as much as it pushed in, the partner taking a rounded hollow where they still meet. Pushed alike from both sides, the two press flat against each other, swelling out round the contact. With Meet off, what overlaps passes through. See it in the Avatar Tester: Squeeze presses from both sides, and in Play mode Push one in shoves one part into the other." },
             { "In motion", "As the physics swing a part, it stretches away from where it hangs and squashes back. See it in the Avatar Tester with Bounce, or move the avatar in Play mode." },
             { "What presses it", "What dents the parts besides each other, each with its own strength. See hands in the Avatar Tester with the test hand." },
         };
@@ -105,7 +106,7 @@ namespace AvatarBridge
             // is pressed. Behind a "Paint them" button it showed nothing until painting began.
             if (_painter == null) _painter = YapsSquashPainter.For(root.gameObject, RebuildLater);
             if (painted)
-                parts.Body.Add(BridgeElements.Hint($"Painted: {BridgeElements.Count(settings.pairs.Count, "pair", "pairs")} on \"{(settings.body != null ? settings.body.name : "?")}\", which win over any bones."));
+                parts.Body.Add(BridgeElements.Hint($"Squashing {string.Join(" and ", settings.pairs.Select(p => p.name))}, painted on \"{(settings.body != null ? settings.body.name : "?")}\"."));
 
             // The painter lives here, not in a window of its own: a step that sent the reader to
             // another window was a step they lost.
@@ -229,7 +230,7 @@ namespace AvatarBridge
     static class YapsSquashPreview
     {
         public static YapsSquashSettings On { get; private set; }
-        public static float Squeeze;
+        public static float Squeeze, Push;
         public static bool Bounce, Hand;
         // The hand's player's viewpoint height, which sizes the hand as it does in the shader.
         // Kept between previews, unlike the rest.
@@ -248,8 +249,9 @@ namespace AvatarBridge
         {
             bool built = YapsSquash.Has(YapsSquash.RootOf(settings));
             into.Add(Application.isPlaying
-                ? BridgeElements.Hint("The cloth is real in Play mode: move the avatar (Jump or Shake in the Avatar Tester) and it swings and stretches. Squeeze and the test hand press it as another player's hands would.",
-                    "Drag the hand with its handle in the scene view; it moves with the avatar. Pause Play mode to hold the cloth still while it presses.")
+                ? BridgeElements.Hint("The cloth is real in Play mode: move the avatar (Jump or Shake in the Avatar Tester) and it swings and stretches. Push one in shoves one part of the first pair into the other; Squeeze and the test hand press it as another player's hands would.",
+                    "Drag the hand with its handle in the scene view; it moves with the avatar. Pause Play mode to hold the cloth still while it presses. " +
+                    "The Move tool cannot push a part in Play mode: the cloth puts its bones back every frame.")
                 : BridgeElements.Hint("Squeezes, bounces and presses it in the scene view.",
                     "Squeeze is another player's two hands pushing each pair together from outside, the test hand one more you drag. " +
                     "Edit mode runs no physics, so Bounce stands in for the swing a jump gives. In game the same knobs answer real hands."));
@@ -268,6 +270,15 @@ namespace AvatarBridge
             squeeze.AddToClassList("ab-slider");
             squeeze.RegisterValueChangedCallback(e => Squeeze = e.newValue);
             into.Add(squeeze);
+            if (Application.isPlaying)
+            {
+                var push = new Slider("Push one in", 0f, 1f) { value = Push, showInputField = true,
+                    tooltip = "Moves one part of the first pair toward its partner by its bone, at 1 halfway across the gap between them, as a swing or a shove would. " +
+                              "The partner gives way, rounded; pushed from both sides, with Squeeze, the two press flat." };
+                push.AddToClassList("ab-slider");
+                push.RegisterValueChangedCallback(e => Push = e.newValue);
+                into.Add(push);
+            }
             if (!Application.isPlaying)
                 into.Add(BridgeElements.Bind("Bounce", "Swings each part up and down under it, as a jump would, to show the stretch in motion.",
                     Bounce, b => Bounce = b));
@@ -313,8 +324,9 @@ namespace AvatarBridge
             if (slots == null) return;
             On = s;
             _root = root;
-            // Pressed from the start, so a knob shows as soon as it moves.
-            Squeeze = 0.5f;
+            // Pressed from the start, so a knob shows as soon as it moves. Not in Play mode, where
+            // the cloth moves on its own and a push from one side read as flat under the squeeze.
+            Squeeze = Application.isPlaying ? 0f : 0.5f;
             _params = Shader.GetGlobalVector("CVRGlobalParams1");
             // In front of the first part, a hand's length and a palm out.
             var part = slots[0] != null ? slots[0].position : root.position + Vector3.up;
@@ -324,6 +336,7 @@ namespace AvatarBridge
             AssemblyReloadEvents.beforeAssemblyReload += Stop;
             // Here and not in an inspector, so the handle stays when the tester runs it.
             SceneView.duringSceneGui += Draw;
+            Hook(true);
         }
 
         static void Leave(PlayModeStateChange _) => Stop();
@@ -334,7 +347,10 @@ namespace AvatarBridge
             EditorApplication.playModeStateChanged -= Leave;
             AssemblyReloadEvents.beforeAssemblyReload -= Stop;
             SceneView.duringSceneGui -= Draw;
+            Hook(false);
             if (On == null) return;
+            Push = 0f;
+            PushNow();
             if (!Application.isPlaying && _root != null)
                 foreach (var m in YapsSquash.Materials(_root)) m.SetMatrixArray("_YAPS_SquashFollow", Empty);
             foreach (var name in new[] { "_CVR_PlayerLeftHandPositions", "_CVR_PlayerRightHandPositions", "_CVR_PlayerChestPositions", "_CVR_PlayerRootPositions" })
@@ -437,6 +453,54 @@ namespace AvatarBridge
             wrist = t.position + away * d - _root.up * (0.5f * length);
             chest = wrist - _root.up * 0.45f;
             return true;
+        }
+
+        // Push one in runs at the start of each frame's Update: after the cloth has put its bones
+        // back to their pose, before the animator and the cloth read them. Set between frames, as
+        // the Move tool sets them, the cloth undid it before it read them (measured).
+        struct PushStep { }
+        static Transform _pushed;
+        static Vector3 _pushedFrom, _pushBy;
+
+        static void Hook(bool on)
+        {
+            var loop = PlayerLoop.GetCurrentPlayerLoop();
+            for (int i = 0; i < loop.subSystemList.Length; i++)
+            {
+                if (loop.subSystemList[i].type != typeof(UnityEngine.PlayerLoop.Update)) continue;
+                var list = loop.subSystemList[i].subSystemList.Where(x => x.type != typeof(PushStep)).ToList();
+                if (on) list.Insert(0, new PlayerLoopSystem { type = typeof(PushStep), updateDelegate = PushNow });
+                loop.subSystemList[i].subSystemList = list.ToArray();
+            }
+            PlayerLoop.SetPlayerLoop(loop);
+        }
+
+        // The first pair's first part, moved by its chain's root, the bone the cloth holds still
+        // and carries the chain with: the first under the rest's parent on the way up from the
+        // follow. One pair only: every pair at once shoved a second one unasked. The push is kept
+        // in the root's parent's space, so it turns with the avatar.
+        static void PushNow()
+        {
+            if (!Application.isPlaying) return;
+            var slots = _root != null ? YapsSquash.Slots(_root) : null;
+            if (Push <= 0f || slots == null || slots[0] == null || slots[1] == null || slots[4] == null)
+            {
+                // Put back, for a bone no cloth restores.
+                if (_pushed != null) _pushed.localPosition = _pushedFrom;
+                _pushed = null;
+                return;
+            }
+            if (_pushed == null)
+            {
+                var bone = slots[0];
+                while (bone.parent != null && bone.parent != slots[4].parent) bone = bone.parent;
+                bone = bone == slots[0] || bone.parent == null ? slots[0].parent : bone;
+                if (bone == null || bone.parent == null) return;
+                _pushed = bone;
+                _pushedFrom = bone.localPosition;
+                _pushBy = bone.parent.InverseTransformVector((slots[1].position - slots[0].position) * 0.5f);
+            }
+            _pushed.localPosition = _pushedFrom + _pushBy * Push;
         }
 
         // The wrist, and the palm the shader presses with drawn ahead of it.

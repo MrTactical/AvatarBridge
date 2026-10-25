@@ -138,7 +138,7 @@ namespace AvatarBridge
                 else if (_named != null)
                 {
                     into.Add(BridgeElements.Notice(Tone.Good, $"These squash: {string.Join(", ", _named.Select(n => n + " pair"))}, found from the bone names. " +
-                        "They are coloured on the body in the Scene view."));
+                        "They are coloured on the body in the Scene view, except while the squash is tested."));
                     first = BridgeElements.Btn("Change these areas", () => { if (FromNames()) SetPainting(true); },
                         "Paint over them in the Scene view, starting from what is coloured now: trim, add, or clear a side to start it again.");
                 }
@@ -146,6 +146,11 @@ namespace AvatarBridge
                 {
                     into.Add(BridgeElements.Notice(Tone.Warn, "Nothing found to squash: no bone on this body names a breast or butt. Paint the two sides of a pair on the body."));
                     first = BridgeElements.Btn("Paint a pair", StartPair, "One empty pair, then the brush in the Scene view.");
+                }
+                if (EditorApplication.isPlaying)
+                {
+                    first.SetEnabled(false);
+                    into.Add(BridgeElements.Hint("Paint outside Play mode: what is painted in it would go when it ends."));
                 }
                 into.Add(BridgeElements.ButtonRow(new[] { first }.Concat(beside).ToArray()));
                 return;
@@ -164,6 +169,12 @@ namespace AvatarBridge
             }, "The skin to paint. Clothing over it follows the skin under it."));
             // In sight, not the tooltip alone: one field reads as one mesh squashing.
             into.Add(BridgeElements.Hint("Only the body skin is painted. Clothing and every other mesh over it squash with the skin under them, within 3 cm."));
+            // Said, since the colours vanish then and read as the regions gone. Painting is kept
+            // out of Play mode: the regions live on the component, which goes back when it ends.
+            bool playing = EditorApplication.isPlaying;
+            into.Add(playing
+                ? BridgeElements.Notice(Tone.Info, "The painted areas hide in Play mode, so they never cover a press. Paint outside Play mode: what is painted in it would go when it ends.")
+                : BridgeElements.Hint("The painted areas are coloured on the body in the Scene view, except while the preview runs, so they never cover a press."));
             if (!string.IsNullOrEmpty(_status)) into.Add(BridgeElements.Notice(_tone, _status));
             if (_w == null)
             {
@@ -178,8 +189,10 @@ namespace AvatarBridge
             var names = regions.pairs.Select((p, i) => $"{i + 1}. {p.name}").ToArray();
             into.Add(BridgeElements.Popup("Pair", "Two parts that press against each other, named after the bones they start from.", names, _pair, i => { _pair = i; Recolour(); Changed?.Invoke(); Rebuild(); }));
             // The brush's own controls sit in the Scene view beside the work, not here.
-            into.Add(BridgeElements.ButtonRow(BridgeElements.Btn(_painting ? "Stop painting" : "Paint in the Scene view", () => SetPainting(!_painting),
-                "The brush, its side and its tools open in the Scene view, over the avatar.")));
+            var paint = BridgeElements.Btn(_painting ? "Stop painting" : "Paint in the Scene view", () => SetPainting(!_painting),
+                "The brush, its side and its tools open in the Scene view, over the avatar.");
+            paint.SetEnabled(!playing || _painting);
+            into.Add(BridgeElements.ButtonRow(paint));
             // Greyed out at the cap: a warning on press read as "two is too many".
             var addPair = BridgeElements.Btn("Add a pair", AddPair, "Two at most: the shader has room for four parts.");
             addPair.SetEnabled(pairs < 2);

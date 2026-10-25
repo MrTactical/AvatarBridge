@@ -51,6 +51,11 @@
 // does in Play mode, then holds it. Each frame after the cloth, into <dir>/drag.tsv: where each
 // follow sits off its rest along the pair's line and the lead the pair squash reads from that,
 // with shots from the front and above. -spDragBoth moves both chain roots, half as far each.
+// -spDragName <object> drags that object instead, found by name under the avatar, and -spMoveTool
+// sets it between frames as the Move tool's handle does, not at the start of the frame's Update.
+// -spGrab pulls with the Avatar Tester's grab instead: the cloth component named by -spDragName
+// pushed each frame toward where the first part's follow bone would be, dragged. -spPush runs the
+// Avatar Tester's squash preview and moves its Push one in from 0 to 1 instead.
 // With -spLook each shot is drawn again in the look shader, every layer tinted its own colour, so
 // one coming through another shows, and the squashed layers each alone (_look, _look_<layer>).
 // At the drag's end every squashed layer's edges are read back, into tear.tsv: how many the
@@ -121,6 +126,10 @@ namespace AvatarBridge.Regression
                 && !Environment.GetCommandLineArgs().Contains("-spDrag") && !Environment.GetCommandLineArgs().Contains("-spDragBoth") ? 1 : 0);
             SessionState.SetInt(K + "drag", Environment.GetCommandLineArgs().Contains("-spDragBoth") ? 2
                 : Environment.GetCommandLineArgs().Contains("-spDrag") ? 1 : 0);
+            SessionState.SetString(K + "dragName", Arg("-spDragName") ?? "");
+            SessionState.SetInt(K + "moveTool", Environment.GetCommandLineArgs().Contains("-spMoveTool") ? 1 : 0);
+            SessionState.SetInt(K + "grab", Environment.GetCommandLineArgs().Contains("-spGrab") ? 1 : 0);
+            SessionState.SetInt(K + "push", Environment.GetCommandLineArgs().Contains("-spPush") ? 1 : 0);
             if (Environment.GetCommandLineArgs().Contains("-spJump")) WriteJumpShaders();
             var scene = EditorSceneManager.OpenScene(Arg("-spScene"), OpenSceneMode.Single);
             foreach (var r in scene.GetRootGameObjects())
@@ -1421,7 +1430,8 @@ namespace AvatarBridge.Regression
             if (dragRows != null) DragRead();
         }
 
-        static Transform dragged, dragged2;
+        static Transform dragged, dragged2, grabBone;
+        static Vector3 grabFrom;
         static Vector3 dragLocal, dragLocal2, dragBy, dragSetAt;
         static float dragSet;
         static List<string> dragRows;
@@ -1440,6 +1450,13 @@ namespace AvatarBridge.Regression
                     return b == follow || b.parent == null ? follow.parent : b;
                 }
                 dragged = Root(slots[0], slots[4]);
+                string named = SessionState.GetString(K + "dragName", "");
+                if (named.Length > 0)
+                    dragged = provider.GetComponentInParent<CVRAvatar>().GetComponentsInChildren<Transform>(true).First(x => x.name == named);
+                if (SessionState.GetInt(K + "moveTool", 0) == 1) EditorApplication.update += () => { if (EditorApplication.isPlaying) Place(); };
+                if (SessionState.GetInt(K + "push", 0) == 1) YapsSquashPreview.Start(YapsSquash.SettingsOf(provider.GetComponentInParent<CVRAvatar>().transform));
+                grabBone = slots[0].parent;
+                grabFrom = grabBone.position;
                 dragLocal = dragged.localPosition;
                 dragBy = (slots[1].position - slots[0].position) * 0.5f;
                 if (SessionState.GetInt(K + "drag", 0) == 2)
@@ -1461,16 +1478,32 @@ namespace AvatarBridge.Regression
                           $"partner follow on {slots[1].parent.name}, rest on {slots[5].parent.name}; by {dragBy.magnitude * 100f:0.0} cm");
             }
             dragSet = Mathf.SmoothStep(0f, 1f, t / 120f);
-            float mine = dragged2 != null ? 0.5f : 1f;
-            dragged.localPosition = dragLocal + dragged.parent.InverseTransformVector(dragBy * dragSet * mine);
-            if (dragged2 != null) dragged2.localPosition = dragLocal2 - dragged2.parent.InverseTransformVector(dragBy * dragSet * mine);
-            dragSetAt = dragged.position;
+            if (SessionState.GetInt(K + "push", 0) == 1) YapsSquashPreview.Push = dragSet;
+            else
+#if AVATARBRIDGE_MAGICA
+            if (SessionState.GetInt(K + "grab", 0) == 1)
+            {
+                var pull = grabFrom + dragBy * dragSet - grabBone.position;
+                CckAnimatorTester.Push(dragged.GetComponent<MagicaCloth2.MagicaCloth>(), pull, Mathf.Min(pull.magnitude * 30f, 18f));
+                dragSetAt = dragged.position;
+            }
+            else
+#endif
+            if (SessionState.GetInt(K + "moveTool", 0) == 0) Place();
             if (t == 240)
             {
                 File.WriteAllLines(Path.Combine(outDir, "drag.tsv"), dragRows);
                 Debug.Log("[SquashPlay] drag done");
                 EditorApplication.Exit(0);
             }
+        }
+
+        static void Place()
+        {
+            float mine = dragged2 != null ? 0.5f : 1f;
+            dragged.localPosition = dragLocal + dragged.parent.InverseTransformVector(dragBy * dragSet * mine);
+            if (dragged2 != null) dragged2.localPosition = dragLocal2 - dragged2.parent.InverseTransformVector(dragBy * dragSet * mine);
+            dragSetAt = dragged.position;
         }
 
         static void DragRead()

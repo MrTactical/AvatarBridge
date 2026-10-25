@@ -1624,7 +1624,7 @@ pair meets (on by default), the stretch in motion, and what presses it (own arms
 the physics' own colliders, off by default). **Motion Style** runs from 0, like real flesh (a small
 stretch, small swings ignored), to 1, like anime (a long stretch and a deep squash on every
 bounce). **Test in the Avatar Tester**, at the top of that step once built, opens the Avatar Tester on the avatar with the
-squash preview running under **Interaction lab ▸ Squash**, starting half squeezed so every knob
+squash preview running under **Interaction lab ▸ Squash**, starting half squeezed outside Play mode so every knob
 shows as it moves there: **Squeeze** is another player's two open hands pushing each pair together from
 outside, so *Other players' hands* scales it, **Bounce** swings each part as a jump would, and **Test hand** puts another player's open hand in
 front of it, dragged with the handle in the Scene view; it presses the part nearest it, so it
@@ -1633,7 +1633,10 @@ for a smaller hand pressing a smaller spot. **Settings** there goes back to the 
 preview keeps running while you move its knobs. The editor runs no physics, so the preview stands in for them; in game
 the same knobs answer the real thing. In Play mode the cloth in the tester is real: **Jump** or **Shake**
 swings it, and **Squeeze** and **Test hand** press it, moving with the avatar; pause Play mode to hold
-the cloth still while they press. Knobs moved in Play mode go back when it ends, as every
+the cloth still while they press. There Squeeze starts at 0, and **Push one in** moves one part of the
+first pair toward its partner by its bone, as a swing or a shove would, so the partner can be
+seen giving way; with Squeeze as well, pushed from both sides, the two press flat. The Move tool
+cannot push a part in Play mode: the cloth puts its bones back every frame. Knobs moved in Play mode go back when it ends, as every
 component's do. Each fold under **Tune how it feels** says what it does and how to see it, and its fold
 **Animate it** lists the material properties to key. The last step, **Build**, says whether the
 build is up to date and, if not, why: its parts or the layers left alone changed, the painted body
@@ -1657,7 +1660,9 @@ the Scene view, and **Change these areas** starts painting from exactly that. Wi
 by name it says so, and **Paint a pair** starts one empty; with picked bones, **Paint a pair
 instead** does. **Paint in the Scene view** opens the brush panel in the Scene view, over the
 avatar, and the parts are drawn on the body, faintly where something hides them. The colours hide
-while a squash is being tested, by the tester's preview or in Play mode, so they never cover it.
+while a squash is being tested, by the tester's preview or in Play mode, so they never cover it,
+and the step says so. Painting waits for Play mode to end, since the regions live on the component
+and what was painted in it would go when it ends.
 The fold **More for this pair** holds the pair's name, and **Fill this side from**, which takes
 **The bone** (picked in its **Bone** field) or **The shape key** instead of painting (a size slider for the part is
 usually exactly the right skin), and **Clear this side**. Each
