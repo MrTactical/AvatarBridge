@@ -489,6 +489,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
 
         float3 S = 0;
         float3x3 M = 0;
+        float3 shunt = 0;
         float3 squeeze = 0;
         float strength = _YAPS_SquashTune.y;
         float3 toward = YapsSlot(m ^ 1) - p.centre;
@@ -587,9 +588,9 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
             float takes = lead > 0 ? lerp(share, 1, lead) : share * (1 + lead);
             squashBow[m] = lead;
             squashDeep[m] = max(meet, 0) * takes;
-            // The bend below carries it away from the leader. The seam stays where the leader's
-            // front is, so what it swings away is pressed no more.
-            F += axis * max(meet, 0) * max(lead, 0);
+            // Swung away from the leader below. The seam stays at the leader's front, so what it
+            // swings away is pressed no more.
+            shunt = -axis * min(max(meet, 0) * max(lead, 0), reach);
             // Test builds show where the slots came from by where the pulse plays: both pairs
             // for the skinned buffer, the first pair alone when it reads empty, the second when
             // it reads wrong. It squeezes from the outside, as a share of the start, so the pair
@@ -641,6 +642,14 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
                 bendFrom = _YAPS_SquashIn[m] * unit;
                 bendSpan = bendFrom + outE;
             }
+        }
+        // Shunted by its partner, by all the partner drove in further, about the same base. Taken
+        // through the give a hand meets, it moved a few centimetres and the leader went through it.
+        if (p.framed && dot(shunt, shunt) > 0)
+        {
+            bend += shunt;
+            bendFrom = _YAPS_SquashIn[m] * unit;
+            bendSpan = bendFrom + _YAPS_SquashOut[m] * unit;
         }
         [unroll]
         for (int hl = 0; hl < 4; hl++)
