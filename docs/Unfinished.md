@@ -924,7 +924,20 @@ plane collider"; and take a playbook from Poiyomi's glass squish.
      pushes a frame toward 42 cm (`-spGrabTimes 5 -spDragScale 2`); the soft body spring and 50°
      limit hold it. At 6 cm the partner shoves about as far, hard to see on black latex. Joe's
      screenshot shows a far bigger move passing in front with no shove: not reproduced yet.
-     At rest the soft body spheres move nothing (both follows 0.00 cm off rest, on or off).
+     ~~At rest the soft body spheres move nothing (both follows 0.00 cm off rest, on or off).~~
+     **Withdrawn:** measured on the scene's own Kar, saved 19:58, which predates the 20:06
+     conversion and has no spheres. The grab numbers above share that copy (same breast cloth
+     but for radius and colliders).
+   - **Soft body physics spreads the pair on entering Play (Joe, reproduced).** `-spPrefab` plays
+     the converted prefab instead of the scene's copy. Kar 20:06 prefab, at rest: edit-mode gap
+     42.79 cm with both follows on their rests; in Play 51.2 cm, follows 3.9 and 4.6 cm outward.
+     Spheres taken out of every collider list before Play (`-spNoColliders SoftBodyContact`): 47.9
+     cm, right follow still 4.2 cm out (the left root is pinned by the probe's drag), both breast
+     roots turned 14 deg off edit pose. Cloth off (`-spNoCloth`): 0.0 deg, so the animator does not
+     do it. The scene's 19:58 copy: 0.0 deg. Its breast cloth differs only in radius (0.191 vs
+     0.140) and the collider list, gravity 0, spring 0.06, root rotation 1 in both. So the spheres
+     add about 3 cm and something else in this conversion turns the roots 14 deg. Next: the prefab
+     with radius put back to 0.191, then a diff of everything else between the two copies.
 
 ## 5.0.1
 

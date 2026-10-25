@@ -64,6 +64,9 @@
 // it turns over; tear_edges.tsv lists the worst with where they lie, their shares and how far
 // off the skin. -spLookStages draws and counts it again with each stage of the squash switched
 // off in turn, in memory.
+// -spPose <a,b> logs those bones' local moves at the drag's end against before Play.
+// -spPrefab <asset path> plays that converted prefab in place of the scene's own avatar, logging
+// each cloth's colliders; -spNoColliders <prefixes> takes colliders so named out of them first.
 // -spRootScale <s> resizes the avatar before Play, through a parent, with any of the above.
 // -spEach adds a front shot per renderer, each drawn alone, at every shot.
 // -spRaw switches the squash off on copies of its materials, for skinning alone.
@@ -138,6 +141,38 @@ namespace AvatarBridge.Regression
             var scene = EditorSceneManager.OpenScene(Arg("-spScene"), OpenSceneMode.Single);
             foreach (var r in scene.GetRootGameObjects())
                 if (r.GetComponentInChildren<CVRAvatar>(true) == null && r.GetComponentInChildren<Animator>(true) != null) r.SetActive(false);
+            // -spPrefab: the avatar as last converted, in place of the scene's copy, which keeps
+            // whatever conversion was in the scene when it was saved. Never saved.
+            if (Arg("-spPrefab") is string prefabPath && !prefabPath.StartsWith("-"))
+            {
+                var old = scene.GetRootGameObjects().First(r => r.GetComponentInChildren<CVRAvatar>(true) != null);
+                var made = (GameObject) PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath), scene);
+                made.transform.SetPositionAndRotation(old.transform.position, old.transform.rotation);
+                foreach (var r in scene.GetRootGameObjects())
+                    if (r != made && r.GetComponentInChildren<CVRAvatar>(true) != null) r.SetActive(false);
+                // Where the first pair's follows sit off their rests before Play, along the pair's line.
+                var edit = YapsSquash.Slots(made.transform);
+                if (edit != null && edit[0] != null && edit[1] != null)
+                {
+                    var line = (edit[1].position - edit[0].position).normalized;
+                    Debug.Log($"[SquashPlay] edit mode: gap {100f * (edit[1].position - edit[0].position).magnitude:0.00} cm, follows off rest " +
+                              $"{100f * Vector3.Dot(edit[0].position - edit[4].position, line):0.00} and {100f * Vector3.Dot(edit[5].position - edit[1].position, line):0.00} cm");
+                }
+#if AVATARBRIDGE_MAGICA
+                // What each soft part collides with, and -spNoColliders <a,b> takes colliders whose
+                // names start so out of every list before Play, so the cloth never registers them.
+                string[] drop = (Arg("-spNoColliders") ?? "").Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var cloth in made.GetComponentsInChildren<MagicaCloth2.MagicaCloth>(true))
+                {
+                    var list = cloth.SerializeData.colliderCollisionConstraint.colliderList;
+                    list.RemoveAll(c => c == null || drop.Any(d => c.name.StartsWith(d)));
+                    // -spNoCloth: the cloth off, so only the animator poses the bones.
+                    if (Environment.GetCommandLineArgs().Contains("-spNoCloth")) cloth.enabled = false;
+                    Debug.Log($"[SquashPlay] cloth {cloth.name}: radius {cloth.SerializeData.radius.value:0.###}, colliders " +
+                              string.Join(", ", list.Select(c => $"{c.name} on {c.transform.parent?.name}")));
+                }
+#endif
+            }
             // -spRootScale: the avatar resized, as a scaler or a height slider does. Set on a parent:
             // an avatar's own animator can write its root's scale back every frame. The look
             // cameras and the swing read are in reaches, so a reach that scales reads the same.
@@ -149,6 +184,13 @@ namespace AvatarBridge.Regression
                         parent.localScale = Vector3.one * rootScale;
                         r.transform.SetParent(parent, false);
                     }
+            // -spPose: the named bones' local poses before Play, logged against Play at the drag's end.
+            if (Arg("-spPose") is string poseNames && !poseNames.StartsWith("-"))
+                SessionState.SetString(K + "pose", string.Join("|", poseNames.Split(',').Select(n =>
+                {
+                    var t = scene.GetRootGameObjects().Where(r => r.activeSelf).SelectMany(r => r.GetComponentsInChildren<Transform>(true)).FirstOrDefault(x => x.name == n);
+                    return t == null ? "" : string.Join(";", n, JsonUtility.ToJson(t.localPosition), JsonUtility.ToJson(t.localEulerAngles), JsonUtility.ToJson(t.localScale));
+                }).Where(x => x.Length > 0)));
             // Nothing is on screen in batch, and the cloth culls with the Animator.
             foreach (var a in UnityEngine.Object.FindObjectsOfType<Animator>()) a.cullingMode = AnimatorCullingMode.AlwaysAnimate;
             EditorApplication.update += Tick;
@@ -1582,7 +1624,20 @@ namespace AvatarBridge.Regression
                 Shoot($"drag_{t}");
                 if (Environment.GetCommandLineArgs().Contains("-spLook")) DragLook($"drag_{t}");
             }
-            if (t == 239) DragTear();
+            if (t == 239)
+            {
+                foreach (var entry in SessionState.GetString(K + "pose", "").Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var f = entry.Split(';');
+                    var bone = animator.GetComponentsInChildren<Transform>(true).FirstOrDefault(x => x.name == f[0]);
+                    if (bone == null) continue;
+                    var p0 = JsonUtility.FromJson<Vector3>(f[1]);
+                    var r0 = Quaternion.Euler(JsonUtility.FromJson<Vector3>(f[2]));
+                    var s0 = JsonUtility.FromJson<Vector3>(f[3]);
+                    Debug.Log($"[SquashPlay] pose {f[0]}: moved {100f * bone.parent.TransformVector(bone.localPosition - p0).magnitude:0.00} cm, turned {Quaternion.Angle(r0, bone.localRotation):0.0} deg, scale {s0} -> {bone.localScale}");
+                }
+                DragTear();
+            }
         }
 
         // At the drag's end, how far the squash stretches each squashed layer's edges and how many
