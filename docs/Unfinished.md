@@ -844,6 +844,27 @@ plane collider"; and take a playbook from Poiyomi's glass squish.
      cut flat; zebra smooth; both-sided unchanged, a flat seam. Images `squash-drag/kar-shunt.jpg`.
    - Open: the tester's grab pushes a whole cloth component, so a pair on one component moves
      together and never overlaps; the Move tool on a chain root does.
+7. **The squash setup, one place each. Done on dev, Joe to judge.** Joe, 2026-10-25: two previews
+   (the tester's, and the inspector's that undid it), test hand and player height in both places,
+   no telling when to rebuild, and "Paint over them" / "Start empty" saying nothing of what they do
+   ("the end user is really fucking stupid and we have to account for that").
+   - The preview's controls are in the Avatar Tester alone; the inspector keeps the knobs and gains
+     **Test in the Avatar Tester**, which opens the tester on the avatar with the preview running
+     and its squash section open. The tester's **Tune it** is now **Settings**. A rebuild started
+     with the preview on starts it again.
+   - One status line (`YapsSquash.Status`) for the inspector, the tester and the Setup card, naming
+     why a rebuild is needed: built by an older YAPS (any squash material `IsStale`), the painted
+     body changed, or the parts or layers left alone changed. Rebuild is primary only then.
+   - The parts step opens on what squashes: the pairs the bone names give, coloured on the body
+     (shown, not kept), and one button, **Change these areas**, that starts painting from them;
+     nothing found says so and offers **Paint a pair**. The colours hide while the preview or Play
+     mode runs, instead of only showing while painting.
+   - Knobs moved in Play mode stayed on the materials while the component went back: re-applied
+     when Play ends.
+   - Evidence: `UiOffscreenProbe` renders of the inspector and tester on KarMeetDrag (built before
+     aa4a613, so it read "built by an older YAPS", as it should); the thighs story
+     (`button-smoke.sh -bsStory thighs`) pressing Change these areas, Test in the Avatar Tester,
+     the tester's Squeeze, Test hand and Bounce, and a knob moved while previewing.
 
 ## 5.0.1
 

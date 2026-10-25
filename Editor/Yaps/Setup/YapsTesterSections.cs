@@ -41,8 +41,11 @@ namespace AvatarBridge
             if (settings == null) return null;
             bool on = YapsSquashPreview.On == settings;
             var fold = new BridgeElements.Card("Squash", on ? "previewing" : null, true).Nested().Remember("Tester.Squash");
-            YapsSquashPreview.Controls(fold.Body, settings, refresh).Add(BridgeElements.Btn("Tune it", () => YapsSquash.Show(settings),
-                "Selects the YAPS Squash component and shows it in the Inspector, where the knobs and Build are."));
+            // A build behind the code or the parts squashes the old way here, so it says so.
+            string status = YapsSquash.Status(avatar.transform, out var tone);
+            if (tone == Tone.Warn) fold.Body.Add(BridgeElements.Notice(tone, status + " Rebuild it from Settings."));
+            YapsSquashPreview.Controls(fold.Body, settings, refresh).Add(BridgeElements.Btn("Settings", () => YapsSquash.Show(settings),
+                "Shows the YAPS Squash component in the Inspector, where the knobs and the rebuild are. The preview keeps running, and the knobs show on it as they move."));
             return fold;
         }
 

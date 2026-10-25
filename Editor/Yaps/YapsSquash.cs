@@ -277,14 +277,19 @@ namespace AvatarBridge
                        "from a build deleted by hand: Remove squash puts them back on their own materials.";
             }
             var s = SettingsOf(root);
-            string on = BridgeElements.Count(Materials(root).Count, "material", "materials");
+            var mats = Materials(root);
+            string on = BridgeElements.Count(mats.Count, "material", "materials");
+            // Each reason said, so a tester knows whether the rebuild is theirs to press. The
+            // shader is copied into the build, so a YAPS update reaches it only through one.
+            tone = Tone.Warn;
+            if (mats.Any(YapsShaderPatcher.IsStale))
+                return "Needs a rebuild: it was built by an older YAPS, so it still squashes the old way.";
+            if (s != null && s.pairs.Count > 0 && RegionsOf(root, out string refusal) == null && refusal != null)
+                return $"Needs painting again: {refusal}.";
             if (s != null && RegionsHash(s) != s.builtFrom)
-            {
-                tone = Tone.Warn;
-                return $"Built on {on}, but its parts or the layers left alone changed since: rebuild to use them.";
-            }
+                return "Needs a rebuild: the parts or the layers left alone changed since it was built.";
             tone = Tone.Good;
-            return $"Built on {on}, parts {PartsFrom(s)}.";
+            return $"Up to date: built on {on}, parts {PartsFrom(s)}. Knobs need no rebuild.";
         }
 
         public static int RegionsHash(YapsSquashSettings s)
@@ -1416,7 +1421,7 @@ namespace AvatarBridge
                     return;
                 }
                 ctx.Report.Converted(Category, "Soft parts squash against each other and against hands",
-                    said + ". Tune it, and preview it, on the YAPS Squash component on the converted avatar");
+                    said + ". Tune it on the YAPS Squash component on the converted avatar, and test it in the Avatar Tester");
                 if (ctx.MergedController != null) FollowSwaps(root, ctx.MergedController.animationClips, folder, ctx.Report);
                 Lap("FollowSwaps");
             }

@@ -3,7 +3,8 @@
 // "thighs": somebody wants their thighs to squash and jiggle. Convert with Soft body shape, Soft body
 // physics and Keep the converted avatar a prefab on; in Squash regions keep the
 // chest pair and repaint the second pair onto the thighs from their jiggle bones, then one brush
-// stroke; rebuild, turn Motion Style to anime, preview Squeeze, Bounce and Test hand; apply the
+// stroke; rebuild, turn Motion Style to anime, test it in the Avatar Tester with Squeeze, Bounce and
+// Test hand, a knob moved meanwhile showing on the running preview; apply the
 // prefab overrides; then in Play mode Walk, Jump and Shake in the Interaction lab while the thighs
 // are filmed and their jiggle measured. Pictures in <out>/pics, film frames in <out>/film/<move>.
 // The converter's saved settings are machine-wide EditorPrefs: a new user's defaults are used and
@@ -141,8 +142,12 @@ namespace AvatarBridge.Regression
             var painter = UiOffscreenProbe.Mount(painterType, Width, StoryHeight, false,
                 w => painterType.GetMethod("Pick", UiOffscreenProbe.Any).Invoke(w, new object[] { avatar }));
             yield return Settle(painter);
-            yield return PressNamed(t, painter, "Paint over them");
-            Pairs(t, settings, "after Paint over them");
+            yield return PressNamed(t, painter, "Change these areas");
+            Pairs(t, settings, "after Change these areas");
+            // It starts painting at once, from what the bone names gave.
+            bool painting = (bool) painterType.GetProperty("IsPainting", UiOffscreenProbe.Any).GetValue(painter.Window);
+            Step(t, "Change these areas starts painting", painting, painting ? "painting" : "not painting");
+            if (painting) yield return PressNamed(t, painter, "Stop painting");
             if (settings.pairs.Count < 2) yield return PressNamed(t, painter, "Add a pair");
             else
             {
@@ -245,10 +250,16 @@ namespace AvatarBridge.Regression
             }
             WindowShot(inspector, dir, "07 squash component", null);
 
-            // 6. The edit-mode preview: Squeeze, Test hand on the thigh, Bounce.
-            yield return PressNamed(t, inspector, "Preview");
+            // 6. The edit-mode preview, run from the Avatar Tester alone: the inspector's button
+            // opens it there with the preview on. Squeeze, Test hand on the thigh, Bounce.
+            Selection.activeGameObject = avatar.gameObject;
+            yield return PressNamed(t, inspector, "Test in the Avatar Tester");
+            Step(t, "Test in the Avatar Tester starts the preview", YapsSquashPreview.On == settings, YapsSquashPreview.On == null ? "no preview running" : "running");
+            var testerType = TypeNamed("AvatarBridge.CckAnimatorTester");
+            var testerWindow = UiOffscreenProbe.Mount(testerType, Width, StoryHeight, false);
+            yield return Settle(testerWindow);
             // Preview starts half squeezed; the rest picture is the part with no hand on it.
-            var squeeze = Field<Slider>(inspector.Content, "Squeeze");
+            var squeeze = Field<Slider>(testerWindow.Content, "Squeeze");
             if (squeeze != null) { squeeze.value = 0f; yield return Ticks(0.5, null); }
             var rest = ThighPixels(avatar, thighL, thighR);
             if (squeeze != null)
@@ -262,7 +273,7 @@ namespace AvatarBridge.Regression
                 yield return Ticks(0.5, null);
             }
             else Step(t, "Squeeze", false, "no Squeeze slider after Preview");
-            var hand = inspector.Content.Query<Toggle>().ToList().FirstOrDefault(x => Label(x) == "Test hand");
+            var hand = testerWindow.Content.Query<Toggle>().ToList().FirstOrDefault(x => Label(x) == "Test hand");
             if (hand != null)
             {
                 Press(hand, out _);
@@ -276,7 +287,7 @@ namespace AvatarBridge.Regression
                 Press(hand, out _);
             }
             else Step(t, "Test hand", false, "no Test hand toggle after Preview");
-            var bounce = inspector.Content.Query<Toggle>().ToList().FirstOrDefault(x => Label(x) == "Bounce");
+            var bounce = testerWindow.Content.Query<Toggle>().ToList().FirstOrDefault(x => Label(x) == "Bounce");
             if (bounce != null)
             {
                 Press(bounce, out _);
@@ -294,7 +305,22 @@ namespace AvatarBridge.Regression
                 Press(bounce, out _);
             }
             else Step(t, "Bounce", false, "no Bounce toggle after Preview");
-            yield return PressNamed(t, inspector, "Stop the preview");
+            // A knob moved in the inspector reaches the running preview, which carries on.
+            var strength = Field<Slider>(inspector.Content, "Strength");
+            if (strength == null) Step(t, "Strength moved while previewing", false, "no Strength slider");
+            else
+            {
+                float was = strength.value;
+                strength.value = 0.25f;
+                yield return Settle(inspector);
+                float read = YapsSquash.Materials(root).FirstOrDefault()?.GetVector("_YAPS_SquashTune").y ?? -1f;
+                Step(t, "Strength moved while previewing", Mathf.Approximately(read, 0.25f) && YapsSquashPreview.On == settings,
+                    $"material strength {read}, preview {(YapsSquashPreview.On == settings ? "still running" : "stopped")}");
+                strength.value = was;
+                yield return Settle(inspector);
+            }
+            yield return PressNamed(t, testerWindow, "Stop the preview");
+            testerWindow.Dispose();
             inspector.Dispose();
 
             // 7. Keep the converted avatar a prefab: the changes since converting apply to it.

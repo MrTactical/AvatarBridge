@@ -1,7 +1,9 @@
 // The YAPS Squash component's inspector, in steps: the parts with the region painter, the knobs
-// (written straight to the build's materials) and the build last. The preview that presses the parts as the game does. Another player's hands, written into
-// the client's own globals, squeeze the pair from outside and press where dragged, in edit and
-// Play mode alike. Edit mode runs no cloth, so there the preview also swings the rests under it.
+// (written straight to the build's materials) and the build last. Then the preview that presses
+// the parts as the game does, run from the Avatar Tester alone: a second copy of its controls here
+// read as a second preview. Another player's hands, written into the client's own globals, squeeze
+// the pair from outside and press where dragged, in edit and Play mode alike. Edit mode runs no
+// cloth, so there the preview also swings the rests under it.
 #if CVR_CCK_EXISTS
 using System.Linq;
 using AvatarBridge.Yaps;
@@ -40,10 +42,10 @@ namespace AvatarBridge
         // Inside each fold: what it is and how to see it, which the header alone never said.
         static readonly System.Collections.Generic.Dictionary<string, string> FoldHints = new System.Collections.Generic.Dictionary<string, string>
         {
-            { "How it gives", "How a part answers any press: how flat it goes, how wide it spreads to keep its volume, how far it swings away first. See it with Preview and Squeeze or the test hand." },
-            { "The pair", "With Meet on, a part swung or pushed by a hand into a still partner keeps its round front and presses a rounded hollow into the other, swelling out round the contact. Pushed alike from both sides, both give and the seam curves softly. Neither is pushed away from the other. With Meet off, what overlaps passes through. See it with Preview and Squeeze." },
-            { "In motion", "As the physics swing a part, it stretches away from where it hangs and squashes back. See it with Preview and Bounce, or move the avatar in Play mode." },
-            { "What presses it", "What dents the parts besides each other, each with its own strength. See hands with the test hand." },
+            { "How it gives", "How a part answers any press: how flat it goes, how wide it spreads to keep its volume, how far it swings away first. See it in the Avatar Tester with Squeeze or the test hand." },
+            { "The pair", "With Meet on, a part swung or pushed into a still partner keeps its round front and pushes the partner aside by as much as it pushed in, the partner taking a rounded hollow where they still meet. Pushed alike from both sides, the two press flat against each other, swelling out round the contact. With Meet off, what overlaps passes through. See it in the Avatar Tester with Squeeze, or drag one part's bone into the other in Play mode." },
+            { "In motion", "As the physics swing a part, it stretches away from where it hangs and squashes back. See it in the Avatar Tester with Bounce, or move the avatar in Play mode." },
+            { "What presses it", "What dents the parts besides each other, each with its own strength. See hands in the Avatar Tester with the test hand." },
         };
 
         static readonly string[] HereNotKnobs = { "partBones", "leaveAlone" };
@@ -77,14 +79,15 @@ namespace AvatarBridge
             var settings = (YapsSquashSettings) target;
             var root = YapsSquash.RootOf(settings);
             bool built = YapsSquash.Has(root);
-            int mats = YapsSquash.Materials(root).Count;
             bool painted = settings.pairs.Count > 0;
-            bool stale = built && YapsSquash.RegionsHash(settings) != settings.builtFrom;
+            // One line for the build's state, the same one every window shows, naming what a
+            // rebuild is for. A bare "built" left nobody knowing when to press it.
+            string status = YapsSquash.Status(root, out var statusTone);
+            bool needed = !built || statusTone == Tone.Warn;
 
             _root.Add(BridgeElements.Banner("Squash",
                 !built ? "not built yet: work down the steps, then Build at the bottom"
-                : stale ? $"built · {BridgeElements.Count(mats, "material", "materials")} · parts changed since: Rebuild at the bottom"
-                : $"built · {BridgeElements.Count(mats, "material", "materials")} · parts {YapsSquash.PartsFrom(settings)}",
+                : needed ? "needs a rebuild: the last step says why" : "up to date",
                 built ? "built" : "not built", BridgeTheme.Span.Cvr));
             var body = new VisualElement();
             body.AddToClassList("ab-scroll");
@@ -98,29 +101,17 @@ namespace AvatarBridge
             // One step whatever the parts come from, said first. As two steps, the first said the
             // paint wins and the second "only if the bones miss", side by side.
             bool picked = settings.partBones.Count > 0;
-            if (_painter == null && painted) _painter = YapsSquashPainter.For(root.gameObject, RebuildLater);
+            // Always open, so the step shows what squashes, coloured on the body, before anything
+            // is pressed. Behind a "Paint them" button it showed nothing until painting began.
+            if (_painter == null) _painter = YapsSquashPainter.For(root.gameObject, RebuildLater);
             if (painted)
                 parts.Body.Add(BridgeElements.Hint($"Painted: {BridgeElements.Count(settings.pairs.Count, "pair", "pairs")} on \"{(settings.body != null ? settings.body.name : "?")}\", which win over any bones."));
-            else if (picked)
-                parts.Body.Add(BridgeElements.Hint("From the bones picked below, two to a pair, one each side."));
-            // An open painter names what the bone names give, so this would say it twice.
-            else if (_painter == null)
-                parts.Body.Add(BridgeElements.Hint("Found by bone name: breast, boob, butt, booty or glute, one each side. Paint them, or pick the bones, for anything else."));
 
             // The painter lives here, not in a window of its own: a step that sent the reader to
             // another window was a step they lost.
-            if (_painter != null) _painter.Panel(parts.Body);
-            else
-            {
-                var paint = BridgeElements.Btn("Paint them", () =>
-                {
-                    _painter = YapsSquashPainter.For(root.gameObject, RebuildLater);
-                    RebuildLater();
-                }, "Paint which skin squashes on the body, starting from what the bones give. A rebuild picks it up.");
-                parts.Body.Add(picked || _pickBones ? BridgeElements.ButtonRow(paint) : BridgeElements.ButtonRow(paint,
-                    BridgeElements.Btn("Pick bones", () => { _pickBones = true; RebuildLater(); },
-                        "Pick by hand the bones of anything that comes in two: cheeks, thighs.")));
-            }
+            if (picked || _pickBones) _painter.Panel(parts.Body);
+            else _painter.Panel(parts.Body, BridgeElements.Btn("Pick bones instead", () => { _pickBones = true; RebuildLater(); },
+                "Pick by hand the bones of anything that comes in two: cheeks, thighs."));
 
             // In sight only while it decides something: two empty lists read as two jobs left.
             if (picked || (_pickBones && !painted))
@@ -142,14 +133,23 @@ namespace AvatarBridge
             leaveField.TrackPropertyValue(leaveProp, p => leave.SetSummary(LeftAlone(p.arraySize)));
             leave.Body.Add(leaveField);
 
-            // The preview and the knobs in one card: a knob shows nothing until something presses.
+            // The knobs here, the testing in the Avatar Tester: a knob shows nothing until something
+            // presses, so the way there comes first in the card.
             var feel = new BridgeElements.Card("Tune how it feels").Step(2, 3, BridgeTheme.Span.Cvr);
             body.Add(feel);
-            YapsSquashPreview.Controls(feel.Body, settings, RebuildLater);
-            feel.Body.Add(BridgeElements.Hint(YapsSquashPreview.On == settings
-                ? "Knobs write to the materials as you move them, no rebuild, and show on the preview."
-                : built ? "Knobs write to the materials as you move them, no rebuild. Preview first to see them."
-                : "Knobs set now are used by the build. Build in step 3, then Preview here to see them."));
+            bool testing = YapsSquashPreview.On == settings;
+            if (Application.isPlaying) feel.Body.Add(BridgeElements.Notice(Tone.Info, "Knobs moved in Play mode go back when it ends, as every component's do."));
+            var test = BridgeElements.Btn(testing ? "Show the Avatar Tester" : "Test in the Avatar Tester", () =>
+            {
+                YapsSquashPreview.Test(settings);
+                RebuildLater();
+            }, built ? "Opens the Avatar Tester on this avatar with the squash preview running: Squeeze, Bounce and the test hand press it there." : "Build first");
+            test.SetEnabled(built);
+            feel.Body.Add(BridgeElements.ButtonRow(test));
+            feel.Body.Add(BridgeElements.Hint(testing
+                ? "Knobs write to the materials as you move them, no rebuild, and show on the Avatar Tester's preview."
+                : built ? "Knobs write to the materials as you move them, no rebuild. Test them in the Avatar Tester to see them."
+                : "Knobs set now are used by the build. Build in step 3, then test it in the Avatar Tester."));
 
             // Fields in declaration order, a fold per [Header]. The regions are hidden.
             var it = serializedObject.GetIterator();
@@ -177,18 +177,25 @@ namespace AvatarBridge
 
             var build = new BridgeElements.Card(built ? "Rebuild" : "Build").Step(3, 3, BridgeTheme.Span.Cvr);
             body.Add(build);
-            build.Body.Add(BridgeElements.Hint(built
-                ? "Rebuild after step 1 changes, the body or its bones change, or a new outfit is added. Knobs need no rebuild."
-                : "Measures the parts and patches every layer over them. Shaders already carrying YAPS keep theirs."));
-            build.Body.Add(new BridgeElements.PrimaryButton(built ? "Rebuild the squash" : "Build the squash", () =>
+            if (built) build.Body.Add(BridgeElements.Notice(statusTone, status));
+            build.Body.Add(BridgeElements.Hint(!built
+                ? "Measures the parts and patches every layer over them. Shaders already carrying YAPS keep theirs."
+                : "A rebuild is needed after step 1 changes, the body or its bones change, an outfit is added, or YAPS is updated. The line above says when; a preview running in the Avatar Tester carries on after it."));
+            void Run()
             {
+                // The build swaps the materials the preview writes to, so it stops and starts again.
+                bool was = YapsSquashPreview.On == settings;
                 YapsSquashPreview.Stop();
                 if (_painter != null && _painter.IsPainting) _painter.SetPainting(false);
                 _said = YapsSquash.Build(root, out bool ok);
-                if (ok) _said += " Preview it in step 2.";
+                if (ok && was) YapsSquashPreview.Start(settings);
+                else if (ok) _said += " Test it in the Avatar Tester from step 2.";
                 _saidTone = ok ? Tone.Good : Tone.Warn;
                 RebuildLater();
-            }, BridgeTheme.BridgeTo));
+            }
+            // Standing out only when it is needed: always primary, it read as a step left undone.
+            if (needed) build.Body.Add(new BridgeElements.PrimaryButton(built ? "Rebuild the squash" : "Build the squash", Run, BridgeTheme.BridgeTo));
+            else build.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Rebuild the squash", Run, "Up to date, so nothing changes unless something above did.")));
             if (_said != null) build.Body.Add(BridgeElements.Notice(_saidTone, _said));
             // Also a build whose objects were deleted by hand, its copies still worn.
             if (built || YapsSquash.Worn(root) > 0)
@@ -235,7 +242,7 @@ namespace AvatarBridge
         static readonly Matrix4x4[] Empty = new Matrix4x4[20];
         static readonly Vector4[] NoOne = new Vector4[255];
 
-        // The preview's controls, for the component's inspector and the Avatar Tester alike.
+        // The preview's controls, for the Avatar Tester's squash section.
         // Returns the Preview button's row, so a caller can put its own buttons beside it.
         public static VisualElement Controls(VisualElement into, YapsSquashSettings settings, System.Action refresh)
         {
@@ -270,6 +277,33 @@ namespace AvatarBridge
                 0.3f, 2.5f, Tall, v => { Tall = v; SceneView.RepaintAll(); }));
             return row;
         }
+
+        // The Avatar Tester on this avatar, its squash section open and the preview running. The
+        // tester ships in the public package and the add-on can be installed alone, so it is
+        // reached by name.
+        public static void Test(YapsSquashSettings s)
+        {
+            var open = typeof(YapsSquashPreview).Assembly.GetType("AvatarBridge.CckAnimatorTester")
+                ?.GetMethod("OpenFor", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            if (open == null)
+            {
+                Debug.LogError("[YAPS] The Avatar Tester has no OpenFor, so the squash cannot be tested from here. Open it from Tools > Avatar Bridge.");
+                return;
+            }
+            EditorPrefs.SetBool("AvatarBridge.Card.Tester.Physics", true);
+            EditorPrefs.SetBool("AvatarBridge.Card.Tester.Squash", true);
+            if (On != s) Start(s);
+            open.Invoke(null, new object[] { YapsSquash.RootOf(s).GetComponent<ABI.CCK.Components.CVRAvatar>() });
+        }
+
+        // Knobs moved in Play mode stay on the materials, which are assets, while the component
+        // goes back to its edit mode values when Play ends: the two then disagreed in silence.
+        [InitializeOnLoadMethod]
+        static void KeepKnobs() => EditorApplication.playModeStateChanged += change =>
+        {
+            if (change != PlayModeStateChange.EnteredEditMode) return;
+            foreach (var s in Object.FindObjectsOfType<YapsSquashSettings>(true)) YapsSquash.Apply(YapsSquash.RootOf(s));
+        };
 
         public static void Start(YapsSquashSettings s)
         {

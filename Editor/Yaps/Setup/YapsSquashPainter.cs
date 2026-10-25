@@ -118,8 +118,39 @@ namespace AvatarBridge
         }
 
         // Top to bottom in the order of the work. Building is the inspector's last step, not here.
-        internal void Panel(VisualElement into)
+        // `beside` goes next to the one button shown while nothing is painted.
+        internal void Panel(VisualElement into, params VisualElement[] beside)
         {
+            var regions = Regions;
+            int pairs = regions != null ? regions.pairs.Count : 0;
+            // Nothing painted: what squashes now, coloured on the body, and one way on. Two
+            // buttons here, "Paint over them" and "Start empty", said nothing of what each did.
+            // The mesh and the brush come with the painting; up front they read as jobs left.
+            if (pairs == 0 && _w != null)
+            {
+                if (!string.IsNullOrEmpty(_status)) into.Add(BridgeElements.Notice(_tone, _status));
+                VisualElement first;
+                if (regions != null && regions.partBones.Count > 0)
+                {
+                    into.Add(BridgeElements.Hint("Nothing painted, so the squash uses the bones picked below. A painted pair replaces them."));
+                    first = BridgeElements.Btn("Paint a pair instead", StartPair, "One empty pair to paint in the Scene view. It replaces the picked bones.");
+                }
+                else if (_named != null)
+                {
+                    into.Add(BridgeElements.Notice(Tone.Good, $"These squash: {string.Join(", ", _named.Select(n => n + " pair"))}, found from the bone names. " +
+                        "They are coloured on the body in the Scene view."));
+                    first = BridgeElements.Btn("Change these areas", () => { if (FromNames()) SetPainting(true); },
+                        "Paint over them in the Scene view, starting from what is coloured now: trim, add, or clear a side to start it again.");
+                }
+                else
+                {
+                    into.Add(BridgeElements.Notice(Tone.Warn, "Nothing found to squash: no bone on this body names a breast or butt. Paint the two sides of a pair on the body."));
+                    first = BridgeElements.Btn("Paint a pair", StartPair, "One empty pair, then the brush in the Scene view.");
+                }
+                into.Add(BridgeElements.ButtonRow(new[] { first }.Concat(beside).ToArray()));
+                return;
+            }
+
             into.Add(BridgeElements.ObjectPicker<SkinnedMeshRenderer>("Body", _body, b =>
             {
                 if (Regions != null && Regions.body != null && Regions.pairs.Count > 0 && b != Regions.body)
@@ -140,32 +171,7 @@ namespace AvatarBridge
                 return;
             }
 
-            var regions = Regions;
-            int pairs = regions != null ? regions.pairs.Count : 0;
             _pair = Mathf.Clamp(_pair, 0, Mathf.Max(pairs - 1, 0));
-            if (pairs == 0)
-            {
-                // What the squash uses with nothing painted, said outright: "no regions" beside a
-                // build that had just found two pairs read as a contradiction.
-                if (regions != null && regions.partBones.Count > 0)
-                {
-                    into.Add(BridgeElements.Hint("Nothing painted, so the squash uses the bones picked below. A painted pair replaces them."));
-                    into.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Start painting", AddPair, "One empty pair, painted from nothing.")));
-                }
-                else if (_named != null)
-                {
-                    into.Add(BridgeElements.Hint($"Nothing painted, so the squash uses the {BridgeElements.Count(_named.Count, "pair", "pairs")} its bone names give: {string.Join(", ", _named)}. Paint only to change what they cover."));
-                    into.Add(BridgeElements.ButtonRow(
-                        BridgeElements.Btn("Paint over them", FromNames, "Starts from the skin the bone names give, to trim or add to."),
-                        BridgeElements.Btn("Start empty", AddPair, "One empty pair, painted from nothing.")));
-                }
-                else
-                {
-                    into.Add(BridgeElements.Hint("No bone on this body names a breast or butt, so the squash has nothing to squash until you paint it."));
-                    into.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Start painting", AddPair, "One empty pair, painted from nothing.")));
-                }
-                return;
-            }
 
             // One pick and one button in sight; the rest folds away. All at one level it read
             // like a cockpit.
@@ -209,7 +215,7 @@ namespace AvatarBridge
             var over = new BridgeElements.Card("Start over", "from the bone names, or no regions at all", false).Nested();
             into.Add(over);
             over.Body.Add(BridgeElements.ButtonRow(
-                BridgeElements.Btn("From the bone names", FromNames, "What the squash finds on its own: breast, boob, butt, booty, glute bones, a pair each, with every bone under them. Replaces every region."),
+                BridgeElements.Btn("From the bone names", () => FromNames(), "What the squash finds on its own: breast, boob, butt, booty, glute bones, a pair each, with every bone under them. Replaces every region."),
                 BridgeElements.Btn("Remove the regions", () =>
                 {
                     // The component keeps its knobs; only the regions go.
@@ -279,7 +285,8 @@ namespace AvatarBridge
             // overlay still drew the stroke.
             _colours = null;
             if (_body == null || _body.sharedMesh == null) return;
-            if (YapsSquash.NamedShares(_avatar.transform, _body, out var named, out _) != null) _named = named;
+            var shares = YapsSquash.NamedShares(_avatar.transform, _body, out var named, out _);
+            if (shares != null) _named = named;
             var mesh = _body.sharedMesh;
             int n = mesh.vertexCount;
             _rep = Enumerable.Range(0, n).ToArray();
@@ -314,6 +321,12 @@ namespace AvatarBridge
                             _w[2 * k + 1][v] = v < regions.pairs[k].b.Length ? regions.pairs[k].b[v] / 255f : 0f;
                         }
             }
+            // Nothing painted or picked: what the bone names give, shown and not kept, so the step
+            // shows what squashes before anything is touched.
+            bool painted = regions != null && regions.body == _body && regions.pairs.Count > 0;
+            if (!painted && shares != null && (regions == null || regions.partBones.Count == 0))
+                for (int c = 0; c < 4; c++)
+                    for (int v = 0; v < n; v++) _w[c][v] = shares[v][c];
             Bake();
         }
 
@@ -434,10 +447,10 @@ namespace AvatarBridge
             Rebuild();
         }
 
-        void FromNames()
+        bool FromNames()
         {
             var shares = YapsSquash.NamedShares(_avatar.transform, _body, out var names, out string none);
-            if (shares == null) { Say(none ?? "None of the parts found by name are on this mesh.", Tone.Warn); return; }
+            if (shares == null) { Say(none ?? "None of the parts found by name are on this mesh.", Tone.Warn); return false; }
             for (int c = 0; c < 4; c++)
                 for (int v = 0; v < shares.Length; v++) _w[c][v] = shares[v][c];
             // A point's copies can carry different weights; the first copy's stands for all.
@@ -450,6 +463,13 @@ namespace AvatarBridge
             _pair = 0;
             Recolour();
             Say($"Started from {BridgeElements.Count(names.Count, "pair", "pairs")} found by name: {string.Join(", ", names)}, each side with every bone under it.", Tone.Good);
+            return true;
+        }
+
+        void StartPair()
+        {
+            AddPair();
+            if (Regions != null && Regions.pairs.Count > 0) SetPainting(true);
         }
 
         void FromBone()
@@ -554,21 +574,21 @@ namespace AvatarBridge
         void OnScene(SceneView view)
         {
             if (_baked == null || _body == null || _w == null) return;
-            // Only while painting: anywhere else the colours over the parts hid the very press
-            // being tested, by the preview, the test hand or Play mode.
-            if (!_painting) return;
+            // Painting, or with nothing pressing it: over a press being tested, by the preview,
+            // the test hand or Play mode, the colours hid the very press.
+            if (!_painting && (YapsSquashPreview.On != null || EditorApplication.isPlaying)) return;
             var e = Event.current;
             if (e.type == EventType.Repaint)
             {
-                // Every repaint: in Play mode and under the preview the skin moves, and an
-                // overlay baked once sat inside it, out of sight.
-                Bake();
+                // Every repaint while painting: in Play mode and under the preview the skin
+                // moves, and an overlay baked once sat inside it, out of sight.
+                if (_painting) Bake();
                 // Faint through whatever hides it, full where it is in sight, so a shader or a pose
                 // that moves the skin off the bake never hides a region outright.
                 DrawRegions(CompareFunction.Greater, 0.3f);
                 DrawRegions(CompareFunction.LessEqual, 1f);
             }
-            if (Regions == null || Regions.pairs.Count == 0) return;
+            if (!_painting || Regions == null || Regions.pairs.Count == 0) return;
             if (e.type == EventType.KeyDown && e.keyCode == KeyCode.Escape)
             {
                 SetPainting(false);
