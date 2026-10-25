@@ -124,10 +124,17 @@ The record is in `archive/Closed-2026-10.md`, "YAPS against every popular shader
   `ShaderSpiPatcher.Wear`, which both use and `YapsShaderPatcher.Wear` now calls.
   `Dev/Tests/RenderQueueSwapTest` 2 WRONG before, PASS after; a queue taken from the shader still
   follows the new one.
-- **Two latent patcher gaps [R].** A host with `SV_VertexID` and one vertex function name per pass
-  in different files (or several under `#if`) would get only the first patched; no tested host has
-  both. A shader whose only borrowed pass is a deferred one would be refused though a forward
-  client never draws it.
+- **Two latent patcher gaps [R], both fixed on dev 2026-10-25 [M] (Joe: "run them").** A vertex
+  function defined in two include files that an `#if` chooses between was patched in the first
+  file only, so the passes reading the other drew the plug straight with no refusal: every include
+  defining it is patched now, each once. A shader whose only borrowed pass from an unpatchable
+  lender is a deferred one was refused: DEFERRED joins the caster and lightmap passes that leave a
+  lender alone. The client draws forward: `PlayerSetup.SetDefaultCamValues` sets
+  `RenderingPath.Forward`, and `CVRTools.CopyToDestCam` copies no rendering path from a world's
+  reference camera. `IncludeVertexTest`: the two-file case failed before, passes after
+  ("both files carry the deform (2)"); the deferred case, a lender whose only pass is a DEFERRED
+  one with no POSITION, WRONG before and PASS after, the copy compiling. 36 checks, PASS. The
+  test's cleanup now refreshes once instead of once per file.
 - **Run 427's three metallic-map avatars** should build on YAPS Standard now; the next full run
   checks them.
 
@@ -218,8 +225,15 @@ ranked by how visible it should be:
    MagicaCloth2's own 16 depths now; a result that is a straight line keeps the old two-end write.
    `PhysBoneCurveTest`: old code 2 WRONG (a dip read 0.678 all along where the PhysBone wants 0.054
    mid-chain; a ramp's middle 8% off), new PASS (0.061, and 0.0001 off). A straight PhysBone curve
-   is not a straight restoration (the mapping bends it), so linear-curve chains change too. Not
-   measured with the Physics A/B probe yet, not in game. Left as they are, each small: the Immobile
+   is not a straight restoration (the mapping bends it), so linear-curve chains change too.
+   **Physics A/B, 2026-10-24 [M], recorded 2026-10-25:** the writer before 0894a9e against after,
+   on two avatars with shaped curves and one without (4437 rows, 140 chains;
+   `D:/Claude/scratch/curveab/{old,new}`, `ab.out`). A wash with a lean to better: shake peak 47
+   chains nearer their PhysBone against 27 further, lie peak 37 against 26, lie 35 against 25, walk
+   peak 25 against 17; jump and turn settle lean the other way (4 against 9, 1 against 7). Mean
+   errors move 11% at most (shake settle, better), except slide (32 to 45), which is one pair of butt chains on the avatar
+   without shaped curves, 2244 to 3170 root lengths on both sides; those chains read 180 degree
+   peaks on their source PhysBones too, so the row says nothing about the curve. Not in game. Left as they are, each small: the Immobile
    curve (MC2 inertia has no depth curve), gravity curves (49 shaped; MC2 gravity is one number),
    distance culling.
 
@@ -622,8 +636,16 @@ due on the Nightly branch within days; none of this is in stable yet.
    direction, the widest 0.999 of the scale 1 run's; baked at 2 and shown at 1 (skin scale 2.0000), 1.000 too. Sockets need building again. Plain
    socket meshes take their scale from the matrix and were not measured. Beside it, by reading only: a DPS plug's length rides its
    marker light's intensity, which no transform scale reaches, so a resized plug opens a light-read
-   socket as if it were its baked length. Squash reaches are kept in each follow node's units, so
-   they should scale; not measured.
+   socket as if it were its baked length.
+   **Squash reach scales with the avatar, measured 2026-10-25 [M]** (`SquashPlayProbe -spLook
+   -spSwing -spMeet -spRootScale`, a converted pair with Meet on, the swing shots one-sided and
+   both). Reach in the world 21.381 cm at 1, 4.276 at 0.2 and 42.763 at 2, exactly the scale; the
+   look sheets, framed in reaches, match the scale 1 run to 141 of 1.47 million pixels at 0.2 (the
+   zebra stripes' edges) and to none at 2, with the squash and without. The scale has to sit on a
+   parent: the avatar's own animator wrote its root back to 0.999 every frame, so a first run
+   scaling the root measured nothing. Read, not measured: other players' hands are sized by their
+   viewpoint height, own arms by their own bones. Physics under scaling (the cloth's gravity is in
+   metres) and all of it in ChilloutVR are still open.
 3. **Prop partial sync**: the server hands out control per part of a prop, and Disallow Theft is now
    enforced. `YapsPropBuilder` already leaves it off on fresh props, but who writes a prop's synced
    value changes: retest the prop contact channel on the Nightly.

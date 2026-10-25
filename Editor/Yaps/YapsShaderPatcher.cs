@@ -607,14 +607,14 @@ namespace AvatarBridge
             }
             // A pass borrowed whole keeps the other shader's vertex stage, so the plug drew
             // straight with no word (lilToon draws this way). The lender is patched too and the
-            // copy borrows from that. A lender of only a caster or lightmap pass is left alone:
-            // neither is the plug the player sees.
+            // copy borrows from that. A lender of only a caster, lightmap or deferred pass is left
+            // alone: none is the plug the player sees, and the client draws forward.
             var lent = new Dictionary<string, string>();
             int lentPasses = 0;
             foreach (var use in Regex.Matches(shaderFile.Text, @"^[ \t]*UsePass\s+""([^""]+)/([^""/]+)""", RegexOptions.Multiline)
                          .Cast<Match>().GroupBy(m => m.Groups[1].Value))
             {
-                if (use.All(m => Regex.IsMatch(m.Groups[2].Value, @"^(SHADOW_?CASTER|META)$", RegexOptions.IgnoreCase))) continue;
+                if (use.All(m => Regex.IsMatch(m.Groups[2].Value, @"^(SHADOW_?CASTER|META|DEFERRED)$", RegexOptions.IgnoreCase))) continue;
                 var lender = Shader.Find(use.Key);
                 string why = null;
                 Shader lenderPatched = null;
@@ -915,7 +915,6 @@ namespace AvatarBridge
         {
             refusal = null;
             missingFrame = false;
-            string injectedKey = null;
             var pattern = new Regex($@"(\w+)\s+{Regex.Escape(vertName)}\s*\(");
 
             // Look inside THIS program block first. A flattened shader repeats its
@@ -934,10 +933,21 @@ namespace AvatarBridge
                 }
             }
 
-            if (!head.Success)
+            bool tessellated = blockStart >= 0 && blockEnd <= unit[0].Text.Length && Regex.IsMatch(
+                ShaderSpiPatcher.Uncommented(unit[0].Text).Substring(blockStart, blockEnd - blockStart), @"#pragma\s+hull\b");
+            if (head.Success)
             {
-                // Not in the block, so it lives in an include. Those are shared
-                // textually by every pass, so patch such a function exactly once.
+                return PatchDefinition(unit, yaps, vertName, file, head, blockStart, tessellated,
+                    out refusal, out missingFrame);
+            }
+
+            // Not in the block, so it lives in an include. Those are shared textually by every
+            // pass, so each is patched exactly once. An #if can choose between two files that
+            // each define it, and only the first found was patched: passes reading the other
+            // drew the plug straight.
+            var files = unit.Skip(1).Where(f => Definitions(f, pattern).Count > 0).ToList();
+            if (files.Count == 0)
+            {
                 file = ShaderSpiPatcher.FindIn(unit.Skip(1).ToList(), pattern.ToString(), out head);
                 if (file == null)
                 {
@@ -945,43 +955,45 @@ namespace AvatarBridge
                               "shader or its includes";
                     return false;
                 }
-                injectedKey = file.OriginalPath + "::" + vertName;
-                if (alreadyInjected.TryGetValue(injectedKey, out missingFrame))
+                files.Add(file);
+            }
+            foreach (var include in files)
+            {
+                string injectedKey = include.OriginalPath + "::" + vertName;
+                if (alreadyInjected.TryGetValue(injectedKey, out bool done))
                 {
-                    return true;   // already done for another pass
+                    missingFrame |= done;
+                    continue;   // already done for another pass
                 }
-            }
-
-            // Every definition in an include, last first so the earlier offsets hold. One file
-            // can keep a vert per pass behind its own #if, and only the first was patched: the
-            // other passes drew the plug straight.
-            var heads = new List<Match> { head };
-            if (injectedKey != null)
-            {
-                string code = ShaderSpiPatcher.Uncommented(file.Text);
-                var definitions = pattern.Matches(code).Cast<Match>()
-                    .Where(m => IsDefinition(code, m.Index)).Reverse().ToList();
-                if (definitions.Count > 0) heads = definitions;
-            }
-            bool tessellated = blockStart >= 0 && blockEnd <= unit[0].Text.Length && Regex.IsMatch(
-                ShaderSpiPatcher.Uncommented(unit[0].Text).Substring(blockStart, blockEnd - blockStart), @"#pragma\s+hull\b");
-            foreach (var definition in heads)
-            {
-                if (!PatchDefinition(unit, yaps, vertName, file, definition, blockStart, tessellated,
-                        out refusal, out bool frameless))
+                // Every definition in the file. One file can keep a vert per pass behind its own
+                // #if, and only the first was patched. Read here, not above: patching one file
+                // can edit another.
+                var heads = Definitions(include, pattern);
+                if (heads.Count == 0) heads.Add(head);
+                bool fileFrameless = false;
+                foreach (var definition in heads)
                 {
-                    return false;
+                    if (!PatchDefinition(unit, yaps, vertName, include, definition, blockStart, tessellated,
+                            out refusal, out bool frameless))
+                    {
+                        return false;
+                    }
+                    fileFrameless |= frameless;
                 }
-                missingFrame |= frameless;
-            }
-            // Marked only once injected. Passes run last first, so a shadow caster that
-            // fails here, and is skipped as cosmetic, otherwise left every later pass
-            // "already done" with nothing in it: a plug drawn straight, no refusal.
-            if (injectedKey != null)
-            {
-                alreadyInjected[injectedKey] = missingFrame;
+                // Marked only once injected. Passes run last first, so a shadow caster that
+                // fails here, and is skipped as cosmetic, otherwise left every later pass
+                // "already done" with nothing in it: a plug drawn straight, no refusal.
+                alreadyInjected[injectedKey] = fileFrameless;
+                missingFrame |= fileFrameless;
             }
             return true;
+        }
+
+        // Last first, so patching one leaves the offsets of those before it.
+        static List<Match> Definitions(ShaderSpiPatcher.SourceFile file, Regex pattern)
+        {
+            string code = ShaderSpiPatcher.Uncommented(file.Text);
+            return pattern.Matches(code).Cast<Match>().Where(m => IsDefinition(code, m.Index)).Reverse().ToList();
         }
 
         static readonly Regex BodyFollows = new Regex(@"\G\s*(?::\s*\w+\s*)?\{");

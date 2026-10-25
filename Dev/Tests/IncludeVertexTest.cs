@@ -245,6 +245,17 @@ fixed4 frag (v2f i) : SV_Target { return _Color; }
                 Check(badLender == null, "a pass borrowed from a shader that cannot patch is refused, not patched straight");
                 Check(borrowRefusal != null && borrowRefusal.Contains("borrows") && borrowRefusal.Contains("POSITION"),
                     "the refusal names the lender's reason");
+                // A forward client never draws a deferred pass, so a lender of one alone is left as
+                // it is, even one that cannot be patched.
+                File.WriteAllText($"{Dir}/IncVertBadDeferredInc.cginc", NoPosition.Replace("/*ID*/", "uint vid : SV_VertexID;"));
+                File.WriteAllText($"{Dir}/IncVertBadDeferred.shader", "Shader \"Test/IncVertBadDeferred\"\n{" + Source
+                    .Replace("SECOND", "").Replace("INCLUDE", "IncVertBadDeferredInc.cginc")
+                    .Replace("Name \"FORWARD\"", "Name \"DEFERRED\"").Replace("\"ForwardBase\"", "\"Deferred\"") + "}\n");
+                AssetDatabase.ImportAsset($"{Dir}/IncVertBadDeferredInc.cginc", ImportAssetOptions.ForceSynchronousImport);
+                AssetDatabase.ImportAsset($"{Dir}/IncVertBadDeferred.shader", ImportAssetOptions.ForceSynchronousImport);
+                var deferred = Patched("IncVertBorrowDeferred", true, out string deferredRefusal, out _, "        UsePass \"Test/IncVertBadDeferred/DEFERRED\"");
+                Check(deferred != null && Compiles(deferred),
+                    $"a deferred pass borrowed from a shader that cannot patch leaves the shader patched ({deferredRefusal ?? "patched"})");
 
                 // A word in front of the return type ("inline v2f vert") was left in front of the
                 // deform's source. Only a compile of the pass shows it.
@@ -333,14 +344,34 @@ fixed4 frag (v2f i) : SV_Target { return _Color; }
                 Check(forked != null && Compiles(forked) && DeformsIn(forked, 0) == 1 && DeformsIn(forked, 1) == 1,
                     $"a vert split by #if deforms in each pass ({forkedRefusal ?? "patched"})");
                 Check(forkedCalls == 2, $"both copies carry the deform ({forkedCalls})");
+
+                // One include choosing between two files by #if, a vert in each.
+                File.WriteAllText($"{Dir}/IncVertTwoFilesB.cginc",
+                    Include.Replace("return o; }", "o.pos.z += 0.001; return o; }").Replace("/*ID*/", ""));
+                AssetDatabase.ImportAsset($"{Dir}/IncVertTwoFilesB.cginc", ImportAssetOptions.ForceSynchronousImport);
+                var twoFiles = Patched("IncVertTwoFiles", false, out string twoFilesRefusal, out int twoFilesCalls,
+                    Caster.Replace("#include \"UnityCG.cginc\"", "#define FORK_SHADOW\n            #include \"UnityCG.cginc\""),
+                    "#if defined(FORK_SHADOW)\n#include \"IncVertTwoFilesB.cginc\"\n#else" + Include + "#endif\n");
+                Check(twoFiles != null && Compiles(twoFiles) && DeformsIn(twoFiles, 0) == 1 && DeformsIn(twoFiles, 1) == 1,
+                    $"a vert in each of two files an #if chooses between deforms in each pass ({twoFilesRefusal ?? "patched"})");
+                Check(twoFilesCalls == 2, $"both files carry the deform ({twoFilesCalls})");
             }
             finally
             {
-                AssetDatabase.DeleteAsset(Dir);
-                string shared = YapsShaderPatcher.SharedFolder;
-                foreach (string file in Directory.Exists(shared) ? Directory.GetFiles(shared, "IncVert*_YAPS_*") : new string[0])
+                // One refresh for the lot: each delete on its own re-read the project's shaders.
+                AssetDatabase.StartAssetEditing();
+                try
                 {
-                    if (!file.EndsWith(".meta")) AssetDatabase.DeleteAsset(file.Replace('\\', '/'));
+                    AssetDatabase.DeleteAsset(Dir);
+                    string shared = YapsShaderPatcher.SharedFolder;
+                    foreach (string file in Directory.Exists(shared) ? Directory.GetFiles(shared, "IncVert*_YAPS_*") : new string[0])
+                    {
+                        if (!file.EndsWith(".meta")) AssetDatabase.DeleteAsset(file.Replace('\\', '/'));
+                    }
+                }
+                finally
+                {
+                    AssetDatabase.StopAssetEditing();
                 }
             }
             Debug.Log(failures == 0 ? "[IncludeVertexTest] PASS" : $"[IncludeVertexTest] FAIL: {failures}");

@@ -1463,8 +1463,8 @@ setting carried over (rendering mode, metallic, occlusion, emission, height and 
 **YAPS Simple Lit.** A plain lit shader (metallic workflow through Unity's own BRDF) that the tool
 falls back to when any other shader cannot be patched (the rest of Unity's built-in shaders have no
 source on disk, a surface shader has no vertex function of its own, some are made
-on import from a file that is not shader source, and some borrow their passes from a shader that
-cannot be patched), with the
+on import from a file that is not shader source, and some borrow the passes they draw from a
+shader that cannot be patched), with the
 colour, albedo, normal map, metallic and smoothness carried over. The test plug wears it. Put a
 shader with source (Poiyomi, for one) on the mesh and re-bake if you need more. Of the popular
 toon shaders, drawn in the editor: Poiyomi, Xiexe's XSToon, lilToon (fur included), Sunao (fur
@@ -3254,8 +3254,8 @@ instead of coming out of the exit. In order:
 
 The plug's material wears a shader the patcher cannot wrap: Unity's built-in shaders have no
 source on disk, a surface shader has no vertex function of its own, some are made
-on import from a file that is not shader source (ORL's, for one), and some borrow their passes
-from a shader that cannot be patched. Unity's Standard moves to **YAPS Standard**, the same shader
+on import from a file that is not shader source (ORL's, for one), and some borrow the passes they
+draw from a shader that cannot be patched. Unity's Standard moves to **YAPS Standard**, the same shader
 from Unity's published source, with every setting carried over. Any other shader
 falls back to **YAPS Simple Lit** with the colour and textures carried over. The outcome says
 which; on a converted avatar the report names the material. A converted socket that is its own

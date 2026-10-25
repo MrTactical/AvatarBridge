@@ -51,6 +51,7 @@
 // does in Play mode, then holds it. Each frame after the cloth, into <dir>/drag.tsv: where each
 // follow sits off its rest along the pair's line and the lead the pair squash reads from that,
 // with shots from the front and above. -spDragBoth moves both chain roots, half as far each.
+// -spRootScale <s> resizes the avatar before Play, through a parent, with any of the above.
 //
 // Batch, never -nographics: the frames are rendered.
 
@@ -118,6 +119,17 @@ namespace AvatarBridge.Regression
             var scene = EditorSceneManager.OpenScene(Arg("-spScene"), OpenSceneMode.Single);
             foreach (var r in scene.GetRootGameObjects())
                 if (r.GetComponentInChildren<CVRAvatar>(true) == null && r.GetComponentInChildren<Animator>(true) != null) r.SetActive(false);
+            // -spRootScale: the avatar resized, as a scaler or a height slider does. Set on a parent:
+            // an avatar's own animator can write its root's scale back every frame. The look
+            // cameras and the swing read are in reaches, so a reach that scales reads the same.
+            if (float.TryParse(Arg("-spRootScale"), NumberStyles.Float, CultureInfo.InvariantCulture, out float rootScale))
+                foreach (var r in scene.GetRootGameObjects())
+                    if (r.GetComponentInChildren<CVRAvatar>(true) != null)
+                    {
+                        var parent = new GameObject("SquashPlay scale").transform;
+                        parent.localScale = Vector3.one * rootScale;
+                        r.transform.SetParent(parent, false);
+                    }
             // Nothing is on screen in batch, and the cloth culls with the Animator.
             foreach (var a in UnityEngine.Object.FindObjectsOfType<Animator>()) a.cullingMode = AnimatorCullingMode.AlwaysAnimate;
             EditorApplication.update += Tick;
@@ -1043,6 +1055,7 @@ namespace AvatarBridge.Regression
                 var root = animator.transform;
                 Vector3 mid = 0.5f * (slots[0].position + slots[1].position);
                 float reach = mats[0].GetVector("_YAPS_SquashReach")[0] * Unit(slots[0]);
+                Debug.Log($"[SquashPlay] look reach {reach * 100f:0.000} cm in the world, avatar scale in the world {root.lossyScale.x:0.###}");
                 foreach (var smr in animator.GetComponentsInChildren<SkinnedMeshRenderer>().Where(r => r.sharedMaterials.Any(m => mats.Contains(m))))
                 {
                     smr.gameObject.layer = 31;
