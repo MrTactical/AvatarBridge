@@ -69,6 +69,10 @@
 // -spSeamFilm <file>[,<file>] films the pair pressed into each other six ways in the look shader,
 // the live include beside each file's, every column drawn from the same frame; "," films the live
 // one alone. Mid hold it counts the tear and the volume the squash adds, as at the drag's end.
+// -spReference with it films only the hands' presses, with the pair as real tissue beside them
+// (SoftBodyReference), bare and clothed, and logs where each puts the volume. -spBasis adds the
+// bare tissue's answers to single presses summed for the same hands, as a bake would store them;
+// -spBasisCache <file> keeps those answers between runs, -spBare drops the clothed column.
 // -spDestroy <name> destroys the prefab copy's objects so named before Play.
 // -spPose <a,b> logs those bones' local moves at the drag's end against before Play.
 // -spPrefab <asset path> plays that converted prefab in place of the scene's own avatar, logging
@@ -1455,7 +1459,17 @@ namespace AvatarBridge.Regression
             // Past about half a reach a hand's line nears the part's centre, where its press lets go.
             ("A hand pressing one from outside", 4, 0.45f),
             ("Two hands squeezing them together", 5, 0.45f),
+            // Held short of the centres, where a press still says which way it came in.
+            ("Two hands squeezing them halfway", 5, 0.25f),
         };
+        // The reference has no bones to swing, so it films the hands alone, each eased in from rest.
+        static readonly bool Reference = Environment.GetCommandLineArgs().Contains("-spReference");
+        static readonly (string name, int kind, float amount)[] SeamOn = Reference ? SeamShots.Where(x => x.kind >= 4).ToArray() : SeamShots;
+        static SoftBodyReference[] refs;
+        static List<Renderer>[] refShown;
+        static SkinnedMeshRenderer refBody;
+        static Vector3[] refRest;
+        const int RefLayer = 30;
         const int SeamFrames = 360, SeamSize = 900;
         static Camera[] seamCams;
         static Shader[] seamLooks;
@@ -1467,7 +1481,10 @@ namespace AvatarBridge.Regression
 
         static void SeamPose(Transform[] slots, Material[] mats)
         {
-            int t = frame - Bend, at = t / SeamFrames;
+            int t = frame - Bend - (Reference ? 30 : 0), at = t / SeamFrames;
+            // Turned off, the cloth lets its bones back to their own pose: the reference is built
+            // on that, so the shader starts from the pose the tissue does.
+            if (t < 0) { Swing(slots, mats, 0f, 0.5f); HandOn(slots, mats, 0f); return; }
             if (seamCams == null)
             {
                 var root = animator.transform;
@@ -1481,6 +1498,7 @@ namespace AvatarBridge.Regression
                     cam.fieldOfView = 30f;
                     cam.clearFlags = CameraClearFlags.SolidColor;
                     cam.backgroundColor = new Color(0.2f, 0.2f, 0.25f);
+                    cam.cullingMask = ~(1 << RefLayer);
                     cam.transform.position = from;
                     cam.transform.LookAt(mid, up);
                     cam.targetTexture = new RenderTexture(SeamSize, SeamSize, 24) { antiAliasing = 8 };
@@ -1501,13 +1519,16 @@ namespace AvatarBridge.Regression
                     block.SetColor("_LookTint", Tints[i % Tints.Length]);
                     shown[i].SetPropertyBlock(block);
                 }
-                seamSheet = new Texture2D(SeamSize * seamLooks.Length, 2 * SeamSize, TextureFormat.RGB24, false);
+                if (Reference) StartReference(slots, reach);
+                // -spReferenceSetup, or -spBakeTest: built, logged and left, to tune the build without a film.
+                if (Environment.GetCommandLineArgs().Contains("-spReferenceSetup") || Arg("-spBakeTest") != null) { SessionState.SetInt(K + "on", 0); EditorApplication.Exit(0); return; }
+                seamSheet = new Texture2D(SeamSize * (seamLooks.Length + (refs?.Length ?? 0)), 2 * SeamSize, TextureFormat.RGB24, false);
                 seamSegments = new List<string>();
                 Directory.CreateDirectory(Path.Combine(outDir, "frames"));
                 // Measured once at rest: the second drag starts while the first's cloth still sways.
                 dragBy = (slots[1].position - slots[0].position) * 0.5f;
             }
-            if (at >= SeamShots.Length)
+            if (at >= SeamOn.Length)
             {
                 File.WriteAllLines(Path.Combine(outDir, "segments.tsv"), seamSegments);
                 Debug.Log($"[SquashPlay] seam film {seamFilmed} frames into {outDir}");
@@ -1515,7 +1536,7 @@ namespace AvatarBridge.Regression
                 EditorApplication.Exit(0);
                 return;
             }
-            var (name, kind, amount) = SeamShots[at];
+            var (name, kind, amount) = SeamOn[at];
             float u = (t % SeamFrames) / (float)SeamFrames;
             float s = u < 0.35f ? Mathf.SmoothStep(0f, 1f, u / 0.35f) : u < 0.65f ? 1f : Mathf.SmoothStep(1f, 0f, (u - 0.65f) / 0.35f);
             if (t % SeamFrames == 0)
@@ -1534,8 +1555,15 @@ namespace AvatarBridge.Regression
             else
             {
                 // Two hands push the pair into each other as well as denting it.
-                Swing(slots, mats, kind == 5 ? 0.001f + 0.6f * s : 0.001f, 0.5f);
+                Swing(slots, mats, kind == 5 ? 0.001f + 0.6f * s : 0.001f, 0.5f, Reference ? s : 1f);
                 HandOn(slots, mats, amount * s, kind == 5);
+            }
+            if (refs != null)
+            {
+                if (t % SeamFrames == 0) foreach (var r in refs) r.Reset();
+                var hands = Hands();
+                foreach (var r in refs) if (r != summed) r.Step(hands);
+                if (summed != null) summed.Show(Summed(hands));
             }
             // Mid hold, the tear and the volume the squash adds, with the live include or -spDent's.
             if (t % SeamFrames == SeamFrames / 2) seamRead = name;
@@ -1556,12 +1584,367 @@ namespace AvatarBridge.Regression
                     RenderTexture.active = seamCams[c].targetTexture;
                     seamSheet.ReadPixels(new Rect(0, 0, SeamSize, SeamSize), SeamSize * k, c == 0 ? SeamSize : 0);
                 }
+            if (refs != null)
+            {
+                // The tissue drawn unsquashed, on its own layer with the hands moved onto it.
+                Shader.SetGlobalFloat("_LookRaw", 1f);
+                foreach (var g in ghost) g.gameObject.layer = RefLayer;
+                for (int r = 0; r < refs.Length; r++)
+                {
+                    for (int q = 0; q < refs.Length; q++) foreach (var shown in refShown[q]) shown.enabled = q == r;
+                    for (int c = 0; c < 2; c++)
+                    {
+                        int mask = seamCams[c].cullingMask;
+                        seamCams[c].cullingMask = 1 << RefLayer;
+                        seamCams[c].RenderWithShader(seamLooks[0], "");
+                        seamCams[c].cullingMask = mask;
+                        RenderTexture.active = seamCams[c].targetTexture;
+                        seamSheet.ReadPixels(new Rect(0, 0, SeamSize, SeamSize), SeamSize * (seamLooks.Length + r), c == 0 ? SeamSize : 0);
+                    }
+                }
+                foreach (var g in ghost) g.gameObject.layer = 0;
+                Shader.SetGlobalFloat("_LookRaw", 0f);
+            }
             RenderTexture.active = null;
             File.WriteAllBytes(Path.Combine(outDir, "frames", $"f_{seamFilmed++:00000}.jpg"), seamSheet.EncodeToJPG(92));
             if (seamRead == null) return;
             Debug.Log($"[SquashPlay] seam film hold: {seamRead}");
+            if (refs != null)
+                foreach (var r in refs)
+                    Debug.Log($"[SoftBody] {r.label} {seamRead}: tissue volume {100f * r.VolumeChange:+0.00;-0.00}%, skin {r.Where(r.Rest(0), r.Now(0), refBody.sharedMesh.triangles)}");
+            if (summed != null)
+            {
+                // How far the summed answers land from the tissue solving the same hands.
+                Vector3[] solved = refs[0].Now(0), sum = summed.Now(0), rest = refs[0].Rest(0);
+                double se = 0;
+                int count = 0;
+                float worst = 0f, most = 0f;
+                for (int v = 0; v < rest.Length; v++)
+                {
+                    float moved = (solved[v] - rest[v]).magnitude;
+                    if (moved < 1e-4f && (sum[v] - rest[v]).sqrMagnitude < 1e-8f) continue;
+                    float e = (solved[v] - sum[v]).magnitude;
+                    se += e * e;
+                    count++;
+                    worst = Mathf.Max(worst, e);
+                    most = Mathf.Max(most, moved);
+                }
+                Debug.Log($"[SoftBody] summed against solved, {seamRead}: {count} vertices moved, {100f * most:0.0} cm at most; off by {100f * Math.Sqrt(se / Math.Max(count, 1)):0.00} cm rms, {100f * worst:0.0} cm at worst; {summedRead}");
+            }
             DragTear();
             seamRead = null;
+        }
+
+        // The reference built on the pose the film starts from: once bare and once under whatever
+        // clothing lies over the pair, each drawn by copies of the body and that clothing on their
+        // own layer, tinted as the avatar's are.
+        static void StartReference(Transform[] slots, float reach)
+        {
+            var root = animator.transform;
+            var skins = animator.GetComponentsInChildren<SkinnedMeshRenderer>().Where(r => r.enabled).ToList();
+            refBody = skins.Where(r => r.sharedMaterials.Any(m => m != null && m.HasProperty("_YAPS_DentOwn"))).OrderByDescending(r => r.sharedMesh.vertexCount).First();
+            Vector3[] World(SkinnedMeshRenderer r)
+            {
+                var m = new Mesh();
+                r.BakeMesh(m);
+                var at = m.vertices.Select(v => r.transform.position + r.transform.rotation * v).ToArray();
+                UnityEngine.Object.DestroyImmediate(m);
+                return at;
+            }
+            refRest = World(refBody);
+            var share = ReadStage(refBody, "share").Select(s => new Vector2(s.x, s.y)).ToArray();
+            Vector3 c0 = slots[0].position, c1 = slots[1].position;
+            var cloth = skins.Where(r => r != refBody).Select(r => (r, at: World(r)))
+                .Where(c => c.at.Count(v => Mathf.Min((v - c0).magnitude, (v - c1).magnitude) < 1.2f * reach) >= 50).ToList();
+            Debug.Log($"[SoftBody] clothing over the pair: {(cloth.Count > 0 ? string.Join(", ", cloth.Select(c => c.r.name)) : "none")}");
+            // Every layer as one surface: the tissue goes out only where none lies over it.
+            var clothAt = cloth.SelectMany(c => c.at).ToArray();
+            var clothTris = new List<int>();
+            int offset = 0;
+            foreach (var c in cloth) { clothTris.AddRange(c.r.sharedMesh.triangles.Select(i => i + offset)); offset += c.at.Length; }
+            var block = new MaterialPropertyBlock();
+            Renderer Copy(SkinnedMeshRenderer from, Vector3[] at, out Mesh mesh)
+            {
+                var src = from.sharedMesh;
+                mesh = new Mesh { name = from.name, indexFormat = UnityEngine.Rendering.IndexFormat.UInt32, vertices = at, uv = src.uv };
+                mesh.subMeshCount = src.subMeshCount;
+                for (int i = 0; i < src.subMeshCount; i++) mesh.SetTriangles(src.GetTriangles(i), i);
+                mesh.RecalculateNormals();
+                var go = new GameObject("SoftBody " + from.name) { layer = RefLayer };
+                go.AddComponent<MeshFilter>().sharedMesh = mesh;
+                var r = go.AddComponent<MeshRenderer>();
+                r.sharedMaterials = from.sharedMaterials;
+                from.GetPropertyBlock(block);
+                r.SetPropertyBlock(block);
+                return r;
+            }
+            // -spBare: the bare tissue alone, to check the basis sooner.
+            refs = new SoftBodyReference[cloth.Count > 0 && !Environment.GetCommandLineArgs().Contains("-spBare") ? 2 : 1];
+            refShown = new List<Renderer>[refs.Length];
+            for (int k = 0; k < refs.Length; k++)
+            {
+                refs[k] = new SoftBodyReference(k == 0 ? "bare" : "clothed", refRest, refBody.sharedMesh.triangles, share, c0, c1, reach, root.up, root.forward,
+                    k == 0 ? null : ((Vector3[], int[])?) (clothAt, clothTris.ToArray()), reach / 16f);
+                refShown[k] = new List<Renderer> { Copy(refBody, refRest, out var bodyMesh) };
+                refs[k].Embed(bodyMesh, refRest);
+                if (k == 0) continue;
+                foreach (var c in cloth)
+                {
+                    refShown[k].Add(Copy(c.r, c.at, out var mesh));
+                    refs[k].Follow(mesh, c.at);
+                }
+            }
+            // -spBasis: a column more, the bare tissue's answers to single presses summed for the
+            // hands each frame, as a bake would store and the shader add, beside it solving them.
+            // -spBasisBake "<cube divisor>,<substeps>,<frames>,<hold>": baked as a build would, on
+            // its own coarser tissue, to a quarter and a half of the reach, the cache unused.
+            var bake = Arg("-spBasisBake")?.Split(',').Select(x => float.Parse(x, CultureInfo.InvariantCulture)).ToArray();
+            if (Environment.GetCommandLineArgs().Contains("-spBasis"))
+            {
+                summed = new SoftBodyReference("summed", refRest, refBody.sharedMesh.triangles, share, c0, c1, reach, root.up, root.forward, null, reach / (bake?[0] ?? 16f))
+                    { Substeps = bake != null ? (int) bake[1] : 12 };
+                refShown = refShown.Append(new List<Renderer> { Copy(refBody, refRest, out var sumMesh) }).ToArray();
+                summed.Embed(sumMesh, refRest);
+                refs = refs.Append(summed).ToArray();
+                Basis(bake != null ? summed : refs[0], share, c0, c1, reach, bake);
+                if (Arg("-spBakeTest") != null) BakeTest(share, c0, c1, reach);
+            }
+        }
+
+        static SoftBodyReference summed;
+        static string summedRead, summedHands;
+        // The bare tissue's answers: which part a palm pressed (2 both, squeezed), from which way, and
+        // its moves at each depth.
+        static List<(int part, Vector3 dir, Vector3[][] at)> basis;
+        static float[] basisDepths;
+        static List<Vector3>[] partSkin;
+        static Vector3[] partAt, partOut;
+
+        // The bare tissue pressed one way at a time, as a bake would: a palm on each part from
+        // outside, from its partner's side, the front, above and below, and the pair squeezed from
+        // both outsides at once, each to a quarter, a half and four fifths of its reach. Summed from one side
+        // each, a squeeze counted the partner shoved away twice, once from either side.
+        static void Basis(SoftBodyReference tissue, Vector2[] share, Vector3 c0, Vector3 c1, float reach, float[] bake)
+        {
+            partAt = new[] { c0, c1 };
+            partSkin = new[] { 0, 1 }.Select(j => refRest.Where((v, i) => (j == 0 ? share[i].x : share[i].y) >= 0.5f).ToList()).ToArray();
+            var root = animator.transform;
+            Vector3 across = Vector3.ProjectOnPlane(c1 - c0, root.up).normalized, up = root.up;
+            partOut = new[] { -across, across };
+            basisDepths = bake != null ? new[] { 0.25f * reach, 0.5f * reach } : new[] { 0.25f * reach, 0.5f * reach, 0.8f * reach };
+            basis = new List<(int, Vector3, Vector3[][])>();
+            basisWays = new List<(int part, Vector3 dir)>();
+            for (int j = 0; j < 2; j++)
+                foreach (var dir in new[] { partOut[j], -partOut[j], root.forward, up, -up }) basisWays.Add((j, dir));
+            basisWays.Add((2, Vector3.zero));
+            // -spBasisCache <file>: the answers kept between runs, the presses being slow; read back
+            // only when the tissue and the depths match.
+            string cache = bake != null ? null : Arg("-spBasisCache");
+            int count = tissue.Particles.Length;
+            if (cache != null && File.Exists(cache))
+                using (var r = new BinaryReader(File.OpenRead(cache)))
+                    if (r.ReadInt32() == count && r.ReadInt32() == basisDepths.Length && r.ReadInt32() == basisWays.Count && basisDepths.All(d => Mathf.Approximately(r.ReadSingle(), d)))
+                    {
+                        foreach (var (part, dir) in basisWays)
+                            basis.Add((part, dir, basisDepths.Select(_ => Enumerable.Range(0, count).Select(i => new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle())).ToArray()).ToArray()));
+                        Debug.Log($"[SoftBody] the presses' answers read from {cache}");
+                        return;
+                    }
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            foreach (var (part, dir) in basisWays)
+                basis.Add((part, dir, tissue.Respond(Palms(part, dir), basisDepths, bake != null ? (int) bake[2] : 40, bake != null ? (int) bake[3] : 30)));
+            Debug.Log($"[SoftBody] the basis baked in {clock.Elapsed.TotalSeconds:0.0} s, {basisWays.Count} ways to {basisDepths.Length} depths ({tissue.Timing})");
+            if (cache == null) return;
+            using (var w = new BinaryWriter(File.Create(cache)))
+            {
+                w.Write(count);
+                w.Write(basisDepths.Length);
+                w.Write(basisWays.Count);
+                foreach (var d in basisDepths) w.Write(d);
+                foreach (var (_, _, at) in basis)
+                    foreach (var field in at)
+                        foreach (var v in field) { w.Write(v.x); w.Write(v.y); w.Write(v.z); }
+            }
+        }
+
+        static List<(int part, Vector3 dir)> basisWays;
+
+        // The palms of one way: upright on the sides and front, flat under or over the part; both
+        // outsides for the squeeze.
+        static (Vector3, Vector3, float, Vector3)[] Palms(int part, Vector3 dir)
+        {
+            if (part == 2) return new[] { Palms(0, partOut[0])[0], Palms(1, partOut[1])[0] };
+            var up = animator.transform.up;
+            float rad = handRadius * Tall / 1.6f, len = 0.11f * Tall - rad;
+            var axis = Mathf.Abs(Vector3.Dot(dir, up)) > 0.7f ? partOut[1] : up;
+            var touch = partAt[part] + dir * (Extent(part, dir) + rad);
+            return new[] { (touch - axis * (len / 2f), touch + axis * (len / 2f), rad, -dir) };
+        }
+
+        // -spBakeTest "<cube divisor>,<substeps>,<frames>,<hold>,<settle mm>[,<threads 0/1>]_...":
+        // the basis's presses again on a tissue so built, for each setting, timed, its skin's moves
+        // set against the reference's answers; -spBakeWays "<i>,..." only those ways.
+        static void BakeTest(Vector2[] share, Vector3 c0, Vector3 c1, float reach)
+        {
+            var root = animator.transform;
+            var ways = Arg("-spBakeWays")?.Split(',').Select(int.Parse).ToArray() ?? Enumerable.Range(0, basisWays.Count).ToArray();
+            var slow = ways.Select(w => basis[w].at.Select(refs[0].SkinMoves).ToArray()).ToArray();
+            foreach (var spec in Arg("-spBakeTest").Split('_'))
+            {
+                var f = spec.Split(',').Select(s => float.Parse(s, CultureInfo.InvariantCulture)).ToArray();
+                var build = System.Diagnostics.Stopwatch.StartNew();
+                var fast = new SoftBodyReference($"fast {spec}", refRest, refBody.sharedMesh.triangles, share, c0, c1, reach, root.up, root.forward, null, reach / f[0])
+                    { Substeps = (int) f[1], Threads = f.Length < 6 || f[5] != 0f };
+                fast.Embed(new Mesh { indexFormat = UnityEngine.Rendering.IndexFormat.UInt32, vertices = refRest, triangles = refBody.sharedMesh.triangles }, refRest);
+                build.Stop();
+                var press = System.Diagnostics.Stopwatch.StartNew();
+                var rows = new List<string>();
+                double all = 0;
+                int allCount = 0;
+                for (int i = 0; i < ways.Length; i++)
+                {
+                    var fields = fast.Respond(Palms(basisWays[ways[i]].part, basisWays[ways[i]].dir), basisDepths, (int) f[2], (int) f[3], f[4] / 1000f);
+                    var cells = new List<string>();
+                    for (int k = 0; k < basisDepths.Length; k++)
+                    {
+                        var got = fast.SkinMoves(fields[k]);
+                        double sum = 0, worst = 0, most = 0;
+                        int count = 0, lost = 0;
+                        for (int v = 0; v < got.Length; v++)
+                        {
+                            var want = slow[i][k][v];
+                            if (float.IsNaN(want.x) || want.magnitude < 1e-3f) continue;
+                            most = Math.Max(most, want.magnitude);
+                            if (float.IsNaN(got[v].x)) { lost++; continue; }
+                            double e = (got[v] - want).magnitude;
+                            sum += e * e;
+                            worst = Math.Max(worst, e);
+                            count++;
+                        }
+                        all += sum;
+                        allCount += count;
+                        cells.Add($"{100 * Math.Sqrt(sum / Math.Max(count, 1)):0.00}/{100 * worst:0.0} of {100 * most:0.0}" + (lost > 0 ? $" ({lost} lost)" : ""));
+                    }
+                    rows.Add($"way {ways[i]} " + string.Join(", ", cells));
+                }
+                press.Stop();
+                Debug.Log($"[SoftBody] bake test {spec}: built in {build.Elapsed.TotalSeconds:0.0} s, {ways.Length} ways pressed in {press.Elapsed.TotalSeconds:0.0} s ({fast.Timing}); " +
+                          $"off by {100 * Math.Sqrt(all / Math.Max(allCount, 1)):0.00} cm rms over all, by way and depth rms/worst of the most, cm: {string.Join("; ", rows)}");
+            }
+        }
+
+        // How far a part's skin reaches from its centre toward dir: its furthest within 20 degrees.
+        static float Extent(int j, Vector3 dir)
+        {
+            float best = 0f;
+            foreach (var v in partSkin[j])
+            {
+                var d = v - partAt[j];
+                float along = Vector3.Dot(d, dir);
+                if (along > 0.94f * d.magnitude) best = Mathf.Max(best, along);
+            }
+            return best;
+        }
+
+        // The basis summed for these hands. Each capsule presses each part toward it by how far it
+        // is in, shared over the five ways by the square of how near it points to each, which sums
+        // to one; the deepest capsule each way counts, as a palm and its fingers press one dent. What both outsides are pressed alike is the squeeze;
+        // the rest each part's own. Each answer read at its depth, straight between the depths
+        // baked and on past the last.
+        static Vector3[] Summed(IList<(Vector3 a, Vector3 b, float r)> hands)
+        {
+            var amount = new float[2, 5];
+            summedHands = "";
+            foreach (var (a, b, r) in hands)
+                for (int j = 0; j < 2; j++)
+                {
+                    // How far the capsule is in past the part's skin at rest, along the line from
+                    // its centre: the shader's press without its cap at that distance. Capped, a
+                    // hand pushing the part ahead of it read as a touch; measured as how deep it
+                    // sat in the rest skin, it stopped growing once it was deeper than it is wide.
+                    var ab = b - a;
+                    var to = a + ab * Mathf.Clamp01(Vector3.Dot(partAt[j] - a, ab) / Mathf.Max(ab.sqrMagnitude, 1e-10f)) - partAt[j];
+                    float dist = to.magnitude;
+                    if (dist < 1e-6f) continue;
+                    var w = to / dist;
+                    float press = Extent(j, w) + r - dist;
+                    if (press <= 0f) continue;
+                    summedHands += $" [{j}: {100f * dist:0.0} from the centre, skin at {100f * Extent(j, w):0.0}, radius {100f * r:0.0}]";
+                    for (int k = 0; k < 5; k++)
+                    {
+                        float c = Mathf.Max(Vector3.Dot(w, basis[5 * j + k].dir), 0f);
+                        amount[j, k] = Mathf.Max(amount[j, k], c * c * press);
+                    }
+                }
+            float squeeze = Mathf.Min(amount[0, 0], amount[1, 0]);
+            amount[0, 0] -= squeeze;
+            amount[1, 0] -= squeeze;
+            summedRead = $"squeezed {100f * squeeze:0.0} cm, then out, in, front, up, down: " +
+                         string.Join(" | ", new[] { 0, 1 }.Select(j => string.Join(" ", Enumerable.Range(0, 5).Select(k => (100f * amount[j, k]).ToString("0.0"))))) + ";" + summedHands;
+            var at = (Vector3[]) summed.Particles.Clone();
+            void Add(Vector3[][] fields, float d)
+            {
+                if (d <= 0f) return;
+                int k = 0;
+                while (k < basisDepths.Length - 1 && d > basisDepths[k]) k++;
+                float d0 = k == 0 ? 0f : basisDepths[k - 1], t = (d - d0) / (basisDepths[k] - d0);
+                for (int p = 0; p < at.Length; p++)
+                    at[p] += k == 0 ? fields[0][p] * t : fields[k - 1][p] + (fields[k][p] - fields[k - 1][p]) * t;
+            }
+            for (int j = 0; j < 2; j++)
+                for (int k = 0; k < 5; k++) Add(basis[5 * j + k].at, amount[j, k]);
+            Add(basis[10].at, squeeze);
+            return at;
+        }
+
+        // One stage of the jump shader read back per vertex, as the drag's tear reads them.
+        static Vector3[] ReadStage(SkinnedMeshRenderer smr, string stage)
+        {
+            var cam = new GameObject("SquashRead camera").AddComponent<Camera>();
+            cam.enabled = false;
+            cam.cullingMask = 1 << 31;
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = Color.clear;
+            cam.allowHDR = false;
+            cam.allowMSAA = false;
+            cam.transform.SetPositionAndRotation(front.transform.position, front.transform.rotation);
+            int n = smr.sharedMesh.vertexCount, height = (n + JumpWidth - 1) / JumpWidth;
+            Shader.SetGlobalFloat("_JumpWidth", JumpWidth);
+            Shader.SetGlobalFloat("_JumpHeight", height);
+            var rt = new RenderTexture(JumpWidth, height, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear);
+            var tex = new Texture2D(JumpWidth, height, TextureFormat.RGBAFloat, false, true);
+            cam.targetTexture = rt;
+            int layer = smr.gameObject.layer;
+            smr.gameObject.layer = 31;
+            cam.RenderWithShader(Staged(tearShaders, JumpShader, "SquashJump", stage), "");
+            smr.gameObject.layer = layer;
+            RenderTexture.active = rt;
+            tex.ReadPixels(new Rect(0, 0, JumpWidth, height), 0, 0);
+            RenderTexture.active = null;
+            var into = new Vector3[n];
+            foreach (var c in tex.GetPixels())
+            {
+                int id = Mathf.RoundToInt(c.a) - 1;
+                if (id >= 0 && id < n) into[id] = new Vector3(c.r, c.g, c.b);
+            }
+            UnityEngine.Object.DestroyImmediate(tex);
+            rt.Release();
+            UnityEngine.Object.DestroyImmediate(rt);
+            UnityEngine.Object.DestroyImmediate(cam.gameObject);
+            return into;
+        }
+
+        // The ghost capsules as drawn: each a shape of a hand the shader presses with.
+        static List<(Vector3 a, Vector3 b, float r)> Hands()
+        {
+            var list = new List<(Vector3 a, Vector3 b, float r)>();
+            foreach (var g in ghost ?? new Transform[0])
+            {
+                if (!g.gameObject.activeSelf) continue;
+                float r = g.localScale.x / 2f, half = Mathf.Max(g.localScale.y - r, 0f);
+                list.Add((g.position - g.up * half, g.position + g.up * half, r));
+            }
+            return list;
         }
 
         // Each part's own bone turned so its follow moves toward where the other stood, together
@@ -2163,6 +2546,10 @@ namespace AvatarBridge.Regression
                 }
                 pairVolume.TryGetValue(smr.name, out double pairV);
                 Debug.Log($"[SquashPlay] volume {stage} {smr.name}: the squash adds {gained * 1e6:0} cm3, {100 * gained / Math.Max(Math.Abs(pairV), 1e-9):+0.0;-0.0}% of the pair's {pairV * 1e6:0} cm3");
+                // Against the pose the reference started from, so the bones' swing counts as the
+                // tissue's own move does.
+                if (stage == "" && refs != null && smr == refBody)
+                    Debug.Log($"[SquashPlay] where {smr.name}: skin {refs[0].Where(refRest, rest.Select((x, i) => smr.transform.position + x + (seen[i] ? moved[i] : Vector3.zero)).ToArray(), tris)}");
                 // The same counted once where the skin overlaps itself, as the eye sees it: two
                 // sides of a cleavage already crossing at rest lose that overlap to the seam, which
                 // the sum above reads as volume gone and no one sees.

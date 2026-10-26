@@ -1370,6 +1370,40 @@ someone's system": the sim is bake-time only; in game about six texture reads pe
 part, the rest skipping it, measured against today's squash with the probe's cost mode before it
 ships, replacing the seam's swell rather than adding to it.
 
+**Measured 2026-10-26: the presses add up, and the bake takes seconds.** The probe's `-spBasis`
+bakes eleven presses (outside, partner side, front, above, below for each part, and the pair
+squeezed from both outsides) to a quarter and a half of the reach. The hands are then summed onto
+them as a shader would: each capsule's depth along the line from the part's centre, shared over
+the ways by cos², the deepest capsule each way (a palm and its fingers press one dent, summed
+they counted it twice), and a squeeze where both outsides are pressed. Against the solved tissue,
+skin rms:
+- One hand: 1.18 cm of 11.5.
+- Halfway squeeze: 2.11 cm of 13.1, mostly a high palm's share read as a press from above, with no
+  partner contact in it.
+- Deep squeeze: 4.94 cm of 17.8. The palm ends 2.3 cm from the part's centre, where one frame cannot
+  say which way it came in.
+
+That deep case is the no-collider one. Other players' hands push the MC2 bones when the toucher's
+hand carries a MagicaCloth collider (Joe), so with one the hand sits shallow against the moved part
+and the answers compose with the bones.
+
+Deep presses are not reproducible anyway: the same solver in another constraint order lands 4 cm
+rms apart at 0.8 of the reach (0.3 to 0.9 at a quarter and a half). So bake to half a reach and
+limit beyond.
+
+The bake went from 45 minutes on one core to **14.0 s**:
+- 2.7 cm cubes (an eighth of the reach), 6 substeps, 15 frames in and 30 held.
+- Each constraint kind coloured into batches that share no particle, run on every core.
+- Contacts found once a frame.
+
+Off the slow reference that costs 0.6 to 0.8 cm rms at a quarter and 0.8 to 1.8 at a half; four
+substeps broke it (2.3 to 3.1). Users would run it at conversion, so it has to stay seconds.
+
+Next:
+1. One part's answers mirrored onto the other (about 8 s), and the cost of starting each batch.
+2. The shader: the answers stored per part on a sphere round its centre, direction by depth in one
+   texture so the hardware interpolates the depth, measured against today's squash with `-spCost`.
+
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 
 A user: a grip squeeze in VRChat became a trigger squeeze after conversion. The converter fed
