@@ -769,6 +769,9 @@ namespace AvatarBridge.Regression
                     float b = Beats(u, 2);
                     Press((sideP + f * 0.1f + outP * (r + Mathf.Lerp(0.03f, -0.13f, b)), -f, -1f), (sideQ + f * 0.1f - outP * (r + Mathf.Lerp(0.03f, -0.13f, b)), -f, -1f));
                 } },
+                // One side only: the part pushed leads, and the other gives a little where they meet.
+                new Shot { name = "One hand pushing one into the other", frames = 360, at = mid + f * 0.05f, width = 1f, pose = (s, u) =>
+                    Press((sideP + f * 0.1f + outP * (r + Mathf.Lerp(0.03f, -0.13f, Beats(u, 2))), -f, -1f)) },
                 new Shot { name = "Grabbed and squeezed, top and bottom", frames = 300, at = P + f * 0.05f, width = 0.6f, profile = true, pose = (s, u) =>
                 {
                     float b = Beats(u, 2);

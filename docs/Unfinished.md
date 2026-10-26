@@ -675,6 +675,17 @@ due on the Nightly branch within days; none of this is in stable yet.
    kept. Heavier the second time = ChilloutVR scales before the cloths start, and writing
    `initData` or Pre-Build at conversion (start scale pinned to the converted size) is the likely
    fix. The probe's press metrics are meaningless at live 0.2 (the press never reached).
+   **Joe, 2026-10-26: ChilloutVR DOES apply a saved scale before the cloths start, known.** So a
+   user with a saved small or large size gets the drooping or stiff cloth today. The fix, not
+   started: pin each cloth's start scale to the converted size. MagicaCloth2's editor writes
+   `initData` only as a side effect of drawing a cloth's gizmo or inspector
+   (`ClothEditorManager.RegisterComponent`, then `ApplyInitData` once its edit mesh builds), so
+   today a cloth has it or not by whether someone looked at it; batch conversions never do.
+   Preferred: `initData`, built at conversion the way the editor builds it. When it does not
+   validate, MagicaCloth2 warns and builds as now. Pre-Build (`PreBuildDataCreation`) also pins the
+   scale, as `buildScale`, but needs an asset per avatar and fails outright when ChilloutVR's own
+   MagicaCloth2 rejects the data's version. Failing check first: `PhysicsAbProbe -abScale 0.2`
+   (long hair lying 72 deg against 43).
 3. **Prop partial sync**: the server hands out control per part of a prop, and Disallow Theft is now
    enforced. `YapsPropBuilder` already leaves it off on fresh props, but who writes a prop's synced
    value changes: retest the prop contact channel on the Nightly.
