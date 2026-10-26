@@ -4,7 +4,7 @@
 // the YAPS vertex stage costs about 60x the host's per variant (UploadCostProbe).
 //
 //   -executeMethod AvatarBridge.Regression.YapsCompileBisect.Run
-//       -ycbSource <a patched .shader> [-ycbEntry vertBase] [-ycbTarget 4.0] [-ycbCases squash,all]
+//       -ycbSource <a patched .shader> [-ycbEntry vertBase] [-ycbTarget 4.0] [-ycbCases squash,all] [-ycbDump <dir>]
 //
 // Lifts the YAPS block out of a patched shader, wraps it in a bare vertex
 // shader, and compiles one vertex variant per case: roles switched on and off,
@@ -87,6 +87,14 @@ namespace AvatarBridge.Regression
                 double second = sw.Elapsed.TotalSeconds;
                 string err = info.Success ? "" : " ERRORS: " + string.Join(" | ", info.Messages.Take(3).Select(m => m.message));
                 Log($"case {name,-14} vertex {first:0.00} s, instanced {second:0.00} s, bytes {info.ShaderData?.Length ?? 0}{err}");
+                // -ycbDump <dir>: the vertex program as DXBC, from its magic on, to run through a filter outside Unity.
+                if (Arg("-ycbDump") is string dump && info.ShaderData != null)
+                {
+                    var data = info.ShaderData;
+                    int at = Enumerable.Range(0, Math.Max(data.Length - 3, 0)).FirstOrDefault(i => data[i] == 'D' && data[i + 1] == 'X' && data[i + 2] == 'B' && data[i + 3] == 'C');
+                    Directory.CreateDirectory(dump);
+                    File.WriteAllBytes(Path.Combine(dump, name.Replace(' ', '_').Replace('+', '_') + ".dxbc"), data.Skip(at).ToArray());
+                }
             }
         }
 

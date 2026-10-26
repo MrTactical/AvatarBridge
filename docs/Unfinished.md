@@ -1210,6 +1210,34 @@ game. Open for Step 3's second half: pressing along the partner's surface normal
   by md5 after a `-spPush -spLook -spMeet` run.
 Next: Joe in game, on a reconverted avatar.
 
+**Step 3, second half, DONE on dev 2026-10-26 [M].** The seam's normal comes from the leader's own
+surface (`YapsSurfaceNormal`, four reads a texel and a half either side; the ellipsoid's gradient
+where no map was baked), and the pressed skin goes out along it to the seam's tangent plane,
+`seamN * dot(seamN, facing) * back`, not straight back along the line: the same where the seam is
+flat, and off a bowed front it slides round it. Kar's prefab, `-spRebuild`, against the committed
+include, same frames:
+- Looks: one-sided swing and drag, the long crack down the meeting line is gone (the part Joe
+  circled, 2026-10-26); both-sided swings within 0.3% of pixels, both-sided drag identical to the
+  digit. **Open (Joe: "still being jagged"):** a short sawtooth sliver at the bottom of the contact
+  on the deepest drag, and faint lumps near its top.
+- Drag one part 22 cm: body edges turned over 365 to 119, over 2x 62 to 36, worst 3.77x to 3.59x,
+  widest opening 3.9 to 3.2 cm, but opened over 1 cm 262 to 330; bra turned over 112 to 56, worst
+  2.78x to 3.20x, over 3x 0 to 4.
+- Compile, one vertex variant: squash 7.0 to 8.1 s, squash+socket 7.1 to 7.8 s, all roles 14.6 to
+  15.5 s. GPU, the probe's frame: level (1.70 and 1.74 ms, squash on alone).
+- Shader Filtering at 128 against off: 0.07-0.28% of pixels differ, as the old code's 0.12-0.22%.
+- Alexa's deepest drag shows the partner through the pressed patch with the old code and the new,
+  fainter now.
+Tried and dropped, both on Joe's "needs some smoothing": the normal read three texels apart, and
+the shading turned over twice the press's width. Each made the band along the meeting line darker
+(the contact face is turned toward the partner, so that band is right; spreading it shows more of
+it), and the wider read changed the drag only within noise.
+Probe notes: the client's filter DLL crashes the editor (SIGSEGV in `DoFilterShader`) when a freshly
+generated shader is imported with it hooked, so run each case unfiltered first and the filtered run
+reuses the import; `YapsCompileBisect -ycbDump` writes the vertex programs as DXBC for the
+out-of-Unity `filt.py`, where both versions pass. A rebuild piles numbered material copies, so read
+the newest, not `Kar 0`. Next: Joe in game.
+
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 
 A user: a grip squeeze in VRChat became a trigger squeeze after conversion. The converter fed

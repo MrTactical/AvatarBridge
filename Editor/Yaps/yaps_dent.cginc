@@ -320,6 +320,20 @@ float YapsInside(YapsPart p, float3 x, float3 w)
     return YapsLeave(p, S, D, (-qb + sign(disc) * sqrt(abs(disc))) / max(qa, 1e-12)) - dot(Q, D);
 }
 
+// The outward normal of the part's own surface toward P, in its frame: from four reads either side
+// of P's direction, about a texel and a half apart, so it turns smoothly across texels.
+float3 YapsSurfaceNormal(YapsPart p, float3 P)
+{
+    float3 d = P * rsqrt(max(dot(P, P), 1e-12));
+    float3 t1 = normalize(cross(d, abs(d.x) < 0.9 ? float3(1, 0, 0) : float3(0, 1, 0)));
+    float3 t2 = cross(d, t1);
+    const float h = 0.15;
+    float3 a = normalize(d + t1 * h), b = normalize(d - t1 * h);
+    float3 c = normalize(d + t2 * h), e = normalize(d - t2 * h);
+    float3 N = cross(a * YapsSurfaceAt(p.m, a) - b * YapsSurfaceAt(p.m, b), c * YapsSurfaceAt(p.m, c) - e * YapsSurfaceAt(p.m, e));
+    return dot(N, d) >= 0 ? N : -N;
+}
+
 // v turned as f turns onto t, both unit vectors, the shortest way.
 float3 YapsTurn(float3 v, float3 f, float3 t)
 {
@@ -1011,9 +1025,9 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         // seam, as the other's fitted shape misses some of its skin and the two tore apart there.
         if (bow < 0) v = lerp(v, min(v, YapsInside(YapsTurned(YapsPartAt(c ^ 1, YapsSlot(c ^ 1), YapsUnit(c ^ 1))), world, -facing)), -bow);
         if (v <= -10 * width) continue;
-        // The seam's own facing there, which the pressed skin turns to: the leader's front, as
-        // much as it leads.
-        float3 X = (S + Wd * leave) * Wt;
+        // The seam's own facing there, which the pressed skin turns to and is pressed out along:
+        // the leader's front, as much as it leads, from its own surface where one was baked.
+        float3 X = L.own ? YapsSurfaceNormal(L, S + Wd * leave) : (S + Wd * leave) * Wt;
         float3 nL = L.framed ? L.a * X.x + L.o * X.y + L.u * X.z : facing;
         nL *= dot(nL, facing) >= 0 ? 1 : -1;
         float3 seamN = normalize(facing * (1 - abs(bow)) + normalize(nL) * abs(bow));
@@ -1046,7 +1060,9 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         float behind = max(-v, 0) / width;
         float swell = _YAPS_DentSpill * squashReach[c] * deep * deep / (4 * ring * width) * held * (1 + behind) * exp(-behind);
         float3 away = side / max(length(side), ring);
-        world += away * swell - facing * back;
+        // Out along the seam's normal to where its tangent plane is, not back along the line:
+        // the same where the seam is flat, and off a bowed front it slides round it as skin does.
+        world += away * swell - seamN * (dot(seamN, facing) * back);
         if (hasNormal)
         {
             n = normalize(n + seamN * dot(n, seamN) * (1 / max(1 - held * (1 - slope), 1e-3) - 1));
