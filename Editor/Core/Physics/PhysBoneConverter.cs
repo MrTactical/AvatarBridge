@@ -71,14 +71,15 @@ namespace AvatarBridge
             // A new host is live from load, so a collider that shipped switched off came out
             // always on. The host takes the off state the hierarchy does not already give it: a
             // disabled component, or an inactive object the host is not under (a rootTransform
-            // elsewhere). RepointColliderEnableCurves carries the switching onto it.
+            // elsewhere). RepointColliderEnableCurves carries the switching onto it, a native
+            // toggle ToggleNativizer.WithContactHosts.
             bool live = original.enabled;
-            // Native toggles switch objects without a clip, so nothing could switch on a host
-            // outside the object; there it stays live as before.
-            bool nativeToggles = ctx.Settings.toggleStyle == ToggleStyle.CvrNativeTargets;
+            if (!live)
+            {
+                ctx.DisabledHosts.Add(hostPath);
+            }
             // Judged inside the avatar only: one converted in place may itself be off in the scene.
-            for (var t = original.transform; live && !nativeToggles && t != null && t != ctx.Target.transform;
-                 t = t.parent)
+            for (var t = original.transform; live && t != null && t != ctx.Target.transform; t = t.parent)
             {
                 live = t.gameObject.activeSelf || host.transform.IsChildOf(t);
             }

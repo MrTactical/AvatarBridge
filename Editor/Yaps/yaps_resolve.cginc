@@ -140,12 +140,23 @@ inline float3 YapsLightPosition(uint slot)
 
 // The protocol digit in a vertex light's second decimal, or -1 when the
 // range is too long to be protocol. One decode, so every reader agrees on
-// the digit. The black test stays with each caller: the plug and the socket
-// test colour differently, and which is right only shows in game.
+// the digit.
 inline int YapsLightDigit(uint slot)
 {
     float range = YapsLightRange(slot);
     return range >= 0.5 ? -1 : (int) round(fmod(range, 0.1) * 100.0);
+}
+
+// A protocol light is authored black, or 1/255 grey as some kits do, and
+// the intensity scales that grey: a plug's tip carries its length there. So
+// colour is judged against the light's own intensity. Grey reads 3e-4 of
+// it at any intensity, real light a tenth or more. A fixed bound took a
+// grey socket at 0.354 for real light (1.07e-4) and a grey tip 31.85 long
+// (0.0097) too. One test for every reader, plug and socket alike.
+inline bool YapsLightIsMarker(uint slot)
+{
+    float4 colour = unity_LightColor[slot];
+    return all(colour.rgb <= 0.005 * colour.a);
 }
 
 // Does this plug refuse a socket publishing this tag word? Only the atlas
@@ -328,9 +339,7 @@ int YapsClassifyLight(uint slot)
     int digit = YapsLightDigit(slot);
     if (digit < 0) return YAPS_LIGHT_NONE;
 
-    // A protocol light is authored black. Colour means real lighting.
-    float4 colour = unity_LightColor[slot];
-    if (any(colour.rgb > 0.0001) && colour.a > 0) return YAPS_LIGHT_NONE;
+    if (!YapsLightIsMarker(slot)) return YAPS_LIGHT_NONE;
 
     // YAPS first: the two digits legacy never claimed.
     if (digit == 7) return YAPS_LIGHT_ROOT;

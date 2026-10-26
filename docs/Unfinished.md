@@ -237,18 +237,42 @@ ranked by how visible it should be:
    curve (MC2 inertia has no depth curve), gravity curves (49 shaped; MC2 gravity is one number),
    distance culling.
 
-### 9. The audit of 2026-10-03: what is still open
+### 9. The audit of 2026-10-03: what is left, all of it for the game
 
-**Still open**, each with why:
+Joe, 2026-10-26: "work on those". The three with code behind them are fixed on dev; the rest wait
+only on the in-game checklist. ASSET-FURYHEAD-REFS (closed as defensive), AM1-10 (decided: no
+change) and the docs outside the README moved to `archive/Closed-2026-10.md` the same day.
 
-- **PHY-03, native mode's ancestor rule.** A contact or collider host outside the switched-off object
-  it belongs under still converts live in *CVR Native Targets*; dropping that needs the contact's
-  enabled state recorded beside `ctx.ContactHosts`. Whether a switched-off host stops a DynamicBone
-  collider needs ChilloutVR.
-- **FT-02, face shapes after Face Tracking goes off.** The rig's off states are Write Defaults on with
-  no motion, and ChilloutVR restores no defaults, so the last tracked shapes may stay. A zero clip
-  would fight the native blink `EyeTrakingOFF` hands back and override the avatar's expressions.
-  ChilloutVR: turn Face Tracking off mid-expression and watch the face.
+- **PHY-03, native mode's ancestor rule. Fixed on dev 2026-10-26 [M], Joe to check in game.** A
+  contact or collider rebuilt under a rootTransform outside its own object stayed live from load
+  with *CVR Native Targets*, so one under an object that starts off, or that nothing ever turns on,
+  worked anyway. Both now take the rule animator toggles already had, and the native toggle
+  carries collider hosts as it did contact hosts. `ctx.DisabledHosts` records the hosts whose
+  component shipped switched off, which the toggle must never wake. `NativeContactRestTest`: red
+  before (both contacts under switched-off objects live), green after, collider cases included.
+  Still unchecked [GAME]: whether a switched-off host stops a DynamicBone collider (README says
+  so). Checklist R14.
+- **FT-02, face shapes after Face Tracking goes off. Fixed on dev 2026-10-26 [M], Joe to check in
+  game.** The DSR rig's off states were empty, so the last tracked expression stayed. Each empty
+  state in a rig layer that drives face shapes now plays the face mesh's own rest weights for one
+  frame (read from the mesh, not assumed 0), then hands over to an empty state with the same ways
+  out. Held, those weights would sit over every expression sharing a shape, since the rig's layers
+  are on top; for one frame they fight neither the expressions nor the native blink. Lives in
+  `FaceTrackingInjector.Inject`, so both builders get it. `FaceTrackingOffResetTest`: red before
+  (both off states empty), green after. Open [GAME]: Face Tracking off mid-expression lets the
+  face go, and gesture expressions still play. Checklist R15.
+- **YSH-13, the protocol-light black test. Fixed on dev 2026-10-26 [M], settled without the game.**
+  A census of the projects' avatars (7808 files, 2033 lights shorter than 0.5 m) found protocol
+  lights authored black and also 1/255 grey (90 plug tips, 25 sockets on digits 3 and 7); every
+  coloured one is far brighter. Rendered for real (`MarkerLightColourTest`, linear colour space):
+  grey reads 3e-4 of its intensity at any intensity, so a grey socket at 0.354 gave 1.07e-4 a
+  channel, just over the plug's 1e-4 bound, and plugs ignored it; a grey tip 31.85 long gave
+  0.0097, over the socket readers' 0.01 length. One helper, `YapsLightIsMarker`, now judges colour
+  against the light's intensity (0.005 of it) for the plug, the socket, the squash and the
+  readout; real light measured at 0.4 to 1 of its intensity. Red before (8 wrong), green after.
+  The editor's `YapsScanner.IsProtocolLight` keeps its 0.02 bound, all of which the shader
+  accepts. Patched shaders hash the include, so every patch goes stale and avatars need
+  converting again. Checklist R16.
 - **FT-05, eye gaze on a rolled head bone.** The gaze empties hang off `EyeTracking.Frame`, turned to
   the avatar's facing, so the clips' angles should hold on a head bone that is not axis-aligned.
   Compiled only. Play mode or ChilloutVR: such an avatar looking down and left.
@@ -257,20 +281,6 @@ ranked by how visible it should be:
   down 20 and left 20 and reads the eyes after the constraints run: both heads, both eyes, down
   0.342 and left 0.321 in the avatar's frame (sin 20° = 0.342). Real eye-tracking input stays on the
   in-game checklist (S6.8).
-- **ASSET-FURYHEAD-REFS, skins bound to VRCFury's second head.** `FuryHeadFlattener.RepointReferences`
-  moves anything naming `vrcfAlwaysVisibleHead` onto the head bone, but nobody has seen VRCFury bind
-  bones to the copy. Convert such an avatar, read the report's count, check the skin keeps its pose.
-  **Read 2026-10-21, closed as defensive:** VRCFury 1.1408.0 makes the copy in `FakeHeadService`
-  for one caller, Show In First Person, which links the OBJECT under it (`useObj`, not `useBone`), so
-  the object's own bones move with it and nothing binds to the copy itself. With an SDK that has
-  head chop (`VRCSDK_HAS_HEAD_CHOP`) the copy is not made at all. The corpus's one copy carries a
-  socket child, which the flattener moves. `RepointReferences` stays as a guard for older Fury
-  builds; there is no avatar to convert that exercises it.
-- **YSH-13, the protocol-light black test differs between plug and socket.** The plug's
-  `YapsClassifyLight` rejects `any(rgb > 1e-4) && a > 0`; `YapsPlugDepth` and the readout reject
-  `dot(rgb,rgb) > 1e-4`, which accepts a near-black third-party light the plug refuses. The digit
-  decode is shared now (`YapsLightDigit`), the colour test is not. Settle in game which one
-  third-party lights need, then fold it into the helper.
 - **YSH-07, a skinned plug and the height slider.** `yapsScale` reads `unity_ObjectToWorld`, identity
   on a skinned mesh, so the bend may not follow the slider. Game first: a skinned plug in a socket at
   2x and 0.5x, Gap or Resolved-by view. The fix would be an avatar-scale property mirrored next to
@@ -344,24 +354,7 @@ ranked by how visible it should be:
   outside the grab pool, filled once a frame by a CVRBlitter copying the relay rows out of the atlas,
   which would reach a light's shadow too. Own sockets first; needs the blitter's timing proven in
   game.
-- **AM1-10, the menu-name rename rule.** Whether `RenamePass` should trigger on
-  `IllegalMenuNameChars` (`[^a-zA-Z0-9/\-_#]`) instead of its own list, leaving
-  `VerifyMenuParameterNames` to assert. Author decision: it changes the names users get for menu
-  parameters holding `.`, `!`, `&`, `+` or non-ASCII letters.
-  **Measured 2026-10-21 [M], decided: no change.** Every name the regex catches and `RenamePass`
-  misses is already renamed later by `VerifyMenuParameterNames`, as a Warning, so the baseline
-  digests list them all: 43 renames on 12 of 86 avatars, 11 distinct (`at||Sweater||29` to
-  `atSweater29` and five like it on six avatars, `~Soup_FaceLock~`, `Oiled~`,
-  `PullEars&TailToggle`, `VF#_thine.gg`, one all non-ASCII name to `Param`). Every result is
-  legal and synced today. Moving the trigger into `RenamePass` would only swap those names for
-  label-derived ones, and ChilloutVR profiles restore saved values by name, so users who already
-  converted would lose their saved values for nothing they can see.
 - **AM1-14, PlayAudio paths with a slash:** moved to 5.0.1, item 15 (Joe, 2026-10-22).
-- **Docs outside the README: done on dev 2026-10-21.** `YAPS-CLEAN-ROOM.md` now rests on YAPS's own
-  atlas protocol and the DPS marker lights, and no longer claims a contact channel. `YAPS5.md` stays
-  a record, with a note at the top naming the three code names since removed and what replaced
-  them. The `ParameterMenuConverter` header says the entries give menu controls and profile saves,
-  and that sync comes from the animator's parameters.
 - **Optional, no bug behind them:** an early out in `YapsDeform` before the full baked read (YC1-10;
   a compact layout would be a protocol change), one `PatchOnSimpleLit` for both builders (YC1-08),
   sharing the clip walk in `ConstraintScaleRelay` (PHY-13), a weights-based helper-rig rule shared
@@ -952,7 +945,7 @@ plane collider"; and take a playbook from Poiyomi's glass squish.
 ### 25. Mesh-to-mesh squash contact. Joe, 2026-10-25. PLAN, to start 2026-10-26
 
 Joe: "boob mesh to boob mesh squishy, genuine soft body", then "plan that for tomorrow". Ask him
-first: 5.0.0 or 5.1.0 (on 10-24 he put new squash ideas in 5.1.0).
+first: 5.0.0 or 5.1.0 (on 10-24 he put new squash ideas in 5.1.0). **Decided 2026-10-26 (Joe): 5.0.0.**
 
 **Today.** Each part is an ellipsoid of six measured reaches in its own frame (a toward the
 partner, o out of the body, u across): `YapsExtent`, `YapsInside` and the quadratic solves in the

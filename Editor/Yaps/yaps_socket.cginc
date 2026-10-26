@@ -80,8 +80,7 @@ float YapsPlugDepth(float3 socketAt, float3 ownerAnchor)
     [loop]
     for (uint i = 0; i < 4; i++)
     {
-        // Black, or it is real lighting rather than protocol.
-        if (dot(unity_LightColor[i].rgb, unity_LightColor[i].rgb) > 0.0001) continue;
+        if (!YapsLightIsMarker(i)) continue;
 
         int digit = YapsLightDigit(i);
         if (digit != 8 && digit != 9) continue;

@@ -665,32 +665,37 @@ namespace AvatarBridge
             EditorUtility.SetDirty(ctx.CvrAvatar);
         }
 
-        // A contact rebuilt under a rootTransform elsewhere is not under the object the toggle
-        // switches, and a native toggle has no clip for a repoint pass to carry. So its host
-        // joins the toggle, and the contact stops when its object does.
+        // A contact or collider rebuilt under a rootTransform elsewhere is not under the object
+        // the toggle switches, and a native toggle has no clip for a repoint pass to carry. So
+        // its host joins the toggle, and it stops when its object does.
         static List<TargetInfo> WithContactHosts(BridgeContext ctx, List<TargetInfo> targets)
         {
             var all = new List<TargetInfo>(targets);
-            foreach (var pair in ctx.ContactHosts)
+            var hosted = ctx.ContactHosts.Select(p => (path: p.Key.path, hosts: p.Value))
+                .Concat(ctx.PhysicsColliderHosts.Select(p => (path: p.Key, hosts: p.Value)));
+            foreach (var pair in hosted)
             {
                 // The closest target decides: a clip can switch Outfit on and Outfit/Hat off.
-                var owner = targets.Where(t => IsUnder(pair.Key.path, t.Path))
+                var owner = targets.Where(t => IsUnder(pair.path, t.Path))
                     .OrderByDescending(t => t.Path.Length).FirstOrDefault();
                 if (owner == null || BridgeContext.FindByAnimationPath(ctx.Target.transform, owner.Path) == null) continue;
-                foreach (string host in pair.Value)
+                foreach (string host in pair.hosts)
                 {
                     if (IsUnder(host, owner.Path)) continue;
                     var go = BridgeContext.FindByAnimationPath(ctx.Target.transform, host);
                     if (go == null) continue;
-                    // In native mode MatchRestState turns a host off only for a disabled contact,
-                    // and the toggle must not wake it. If that mode ever gets the inactive-ancestor
-                    // rule, this needs the contact's enabled state recorded beside ContactHosts.
-                    if (!go.gameObject.activeSelf) continue;
+                    // A host off because its object starts off is the toggle's to wake; one off
+                    // because its component was off stays off whatever its object does.
+                    if (ctx.DisabledHosts.Contains(host)) continue;
                     all.Add(new TargetInfo { Path = host, OnState = owner.OnState });
                 }
             }
             return all;
         }
+
+        internal static List<string> ContactHostsJoiningForTest(BridgeContext ctx, string target, bool onState) =>
+            WithContactHosts(ctx, new List<TargetInfo> { new TargetInfo { Path = target, OnState = onState } })
+                .Skip(1).Select(t => t.Path).ToList();
 
         static bool IsUnder(string path, string root) =>
             !string.IsNullOrEmpty(root) && path != null

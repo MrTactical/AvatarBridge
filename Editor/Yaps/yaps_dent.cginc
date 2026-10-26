@@ -401,7 +401,7 @@ void YapsHandsPress(YapsPart p, inout float3 hv[4], inout float hr[4])
         else
         {
             uint i = s - arms - hands;
-            if (dot(unity_LightColor[i].rgb, unity_LightColor[i].rgb) > 0.0001) continue;
+            if (!YapsLightIsMarker(i)) continue;
             int digit = YapsLightDigit(i);
             if (digit != 8 && digit != 9) continue;
             float len = unity_LightColor[i].a;

@@ -110,6 +110,9 @@ namespace AvatarBridge
 
         public Dictionary<(string path, bool sender), List<string>> ContactHosts =
             new Dictionary<(string, bool), List<string>>();
+        // Hosts of contacts and colliders whose component shipped switched off. A native toggle
+        // must not wake these with their object, as it does hosts off only because the object is.
+        public HashSet<string> DisabledHosts = new HashSet<string>();
 
         // Zones whose growth one slider owns: the scale pass animates
         // each zone in step with that slider's blendshape curves.

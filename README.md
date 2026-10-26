@@ -927,7 +927,7 @@ keeps its original triggers and layers exactly as authored, and the report says 
 content reads: the contact tags (`TPS_Orf_Root`, `SPSLL_Socket_Front` and the rest) and the
 marker light ranges, with the protocol digit every decoder reads and the trailing digits VRCFury
 emits. So DPS, TPS and SPS plugs find a converted socket, and a converted plug finds DPS and SPS
-sockets: someone wearing an avatar built for another platform's system works with yours without
+sockets, whether their lights are authored black or in the near-black grey some kits use: someone wearing an avatar built for another platform's system works with yours without
 either side knowing this tool exists. A converted plug does not bend toward a socket that
 announces itself by contacts alone, as older TPS ones do (see below). Parameter names elsewhere
 on the avatar are left alone for a second reason: ChilloutVR restores a saved profile by parameter
@@ -1877,7 +1877,8 @@ blendshapes. On a typical VRCFT avatar that's a couple of layers and a few hundr
   aliases, and combined/split rules. An **ARKit avatar** works without renaming anything. Smoother
   and more expressive. Eyes the avatar already turns with a constraint are left to it: the gaze rig
   is not built on them, the report says so, and ChilloutVR's own eye look stays on. It also adds
-  **Eye Tracking** and **Face Tracking** toggles to the menu, both on by default.
+  **Eye Tracking** and **Face Tracking** toggles to the menu, both on by default. Switching either
+  off puts the face back to its resting shapes, so it does not freeze mid-expression.
 - **Keep the avatar's own rig**: nothing is stripped, and this is *not* a do-it-yourself option:
   the existing rig (Jerry's Templates, Pawlygon, OSCmooth setups…) **converts** with the rest of
   the animator. Smoothing proxies VRChat never synced automatically become `#`-local, which costs
@@ -2328,9 +2329,8 @@ Bipeds are unaffected by any of it.
   checks only the collider component's own switch, so on the DynamicBone target a collider whose
   object is switched off may keep colliding; that has not been checked in game. A collider that was
   disabled in VRChat converts switched off too. One under a switched-off object follows that
-  object: off at load, and on when a toggle switches the object on. With the *CVR Native Targets*
-  toggle style, a converted collider placed outside that object stays on instead, since a native
-  toggle switches only the object it names.
+  object: off at load, and on when a toggle switches the object on, a *CVR Native Targets* toggle
+  included. Contacts do the same.
   What can't follow is animation of **live physics values**: a size slider growing a chain's
   radius, gravity changing with an outfit, because the converted physics, MagicaCloth2 or
   DynamicBone, cannot animate them. The chain keeps its converted values, the rest of the

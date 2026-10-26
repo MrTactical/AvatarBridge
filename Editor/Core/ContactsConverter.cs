@@ -1159,16 +1159,18 @@ namespace AvatarBridge
         // A new host is live from load, so a contact that shipped switched off came out always
         // on. The host takes the off state the hierarchy does not already give it: a disabled
         // component, or an inactive object the host is not under (a rootTransform elsewhere).
-        // Animated switching reaches it through the repoint passes.
+        // Animated switching reaches it through the repoint passes, a native toggle through
+        // ToggleNativizer.WithContactHosts, which wakes the host with its object unless the
+        // component itself was off.
         static void MatchRestState(BridgeContext ctx, VRC.Dynamics.ContactBase contact, GameObject host)
         {
             bool live = contact.enabled;
-            // Native toggles switch objects without a clip, and no repoint pass can carry those
-            // onto a host outside the object, so there it stays live as before.
-            bool nativeToggles = ctx.Settings.toggleStyle == ToggleStyle.CvrNativeTargets;
+            if (!live)
+            {
+                ctx.DisabledHosts.Add(BridgeContext.RelativePath(ctx.Target.transform, host.transform));
+            }
             // Judged inside the avatar only: one converted in place may itself be off in the scene.
-            for (var t = contact.transform; live && !nativeToggles && t != null && t != ctx.Target.transform;
-                 t = t.parent)
+            for (var t = contact.transform; live && t != null && t != ctx.Target.transform; t = t.parent)
             {
                 live = t.gameObject.activeSelf || host.transform.IsChildOf(t);
             }
