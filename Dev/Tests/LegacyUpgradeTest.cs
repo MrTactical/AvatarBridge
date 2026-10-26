@@ -9,6 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using ABI.CCK.Components;
 using AvatarBridge.Yaps;
 using UnityEditor;
@@ -79,7 +80,8 @@ namespace AvatarBridge.Regression
             Check(build != null, "the window and the converter share one Build");
             if (build != null)
             {
-                var args = new object[] { root, null };
+                var args = new object[build.GetParameters().Length];
+                args[0] = root;
                 var lines = (List<string>) build.Invoke(null, args);
                 Log("build: " + args[1] + " " + string.Join(" | ", lines));
             }
@@ -115,6 +117,33 @@ namespace AvatarBridge.Regression
             string again = YapsBaker.Tail(YapsNativeBuilder.OnSimpleLit(material, out _), renderer);
             Check(first == again && first == YapsBaker.Tail(material, renderer),
                 $"a Simple Lit stand-in names its bake after the material it stands in for ({first}, {again})");
+
+            // Beside SPS. The plug above stands in for one the SPS route converted, and a second
+            // left as DPS is what the upgrade must still take. It used to run only on an avatar
+            // with no SPS at all, and Build rebuilds every plug and socket, SPS's own included.
+            var leftover = new GameObject("Leftover shaft");
+            leftover.transform.SetParent(root.transform, false);
+            leftover.transform.localPosition = new Vector3(0.3f, 0f, 0f);
+            leftover.AddComponent<MeshFilter>().sharedMesh = go.GetComponent<MeshFilter>().sharedMesh;
+            var leftoverMaterial = new Material(shader) { name = "Leftover penetrator" };
+            leftoverMaterial.SetFloat("_PenetratorEnabled", 1f);
+            AssetDatabase.CreateAsset(leftoverMaterial, Sources + "/leftover penetrator.mat");
+            leftover.AddComponent<MeshRenderer>().sharedMaterial = leftoverMaterial;
+
+            // The two flags Run sets for an avatar it found SPS on; by name, so this builds
+            // against a converter without them.
+            var flags = BindingFlags.NonPublic | BindingFlags.Static;
+            var sps = typeof(YapsConverter).GetField("SpsConverted", flags);
+            Check(sps != null, "the upgrade knows when SPS was converted");
+            typeof(YapsConverter).GetField("LegacyPending", flags)?.SetValue(null, true);
+            sps?.SetValue(null, true);
+            var ctx = new BridgeContext { Target = root, Report = new BridgeReport(), Settings = new BridgeSettings() };
+            YapsConverter.UpgradeLegacy(ctx);
+            var upgraded = ctx.Report.Entries.FirstOrDefault(e => e.Subject.StartsWith("Upgraded this avatar's older penetration"));
+            Log("beside SPS: " + upgraded?.Detail);
+            Check(leftover.GetComponent<YapsPlug>() != null, "the leftover DPS plug was made editable");
+            Check(upgraded != null && upgraded.Detail.StartsWith("Built 1 of 1 plug"),
+                "only the leftover plug was built, not the one already converted");
         }
 
         // A plain mesh along +Z, the frame a plug that is its own object bakes in.

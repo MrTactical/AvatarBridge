@@ -34,14 +34,17 @@ namespace AvatarBridge
         // Plug materials already warned about VRCFury's deform, once each per conversion.
         static readonly HashSet<Material> PrebuiltSps = new HashSet<Material>();
 
-        // DPS or TPS with no SPS, upgraded once the avatar is finished.
+        // DPS or TPS, upgraded once the avatar is finished. Beside SPS the upgrade takes only
+        // what the SPS route left.
         static bool LegacyPending;
+        static bool SpsConverted;
 
         public static void Run(BridgeContext ctx)
         {
             PendingVariants.Clear();
             PrebuiltSps.Clear();
             LegacyPending = false;
+            SpsConverted = false;
             if (!ctx.Settings.convertYapsSystems)
             {
                 return;
@@ -49,11 +52,14 @@ namespace AvatarBridge
 
             var plugRoots = Named(ctx, "BakedSpsPlug");
             var socketRoots = Named(ctx, "BakedSpsSocket");
+            // Always: an avatar can carry SPS and leftover DPS or TPS parts, and those were
+            // left as they were whenever SPS was found.
+            LegacyPending = true;
             if (plugRoots.Count == 0 && socketRoots.Count == 0)
             {
-                LegacyPending = true;
                 return;
             }
+            SpsConverted = true;
 
             RemoveAtlasJunk(ctx);
             YapsLock.Animate(ctx.Target.transform, ctx.MergedController?.animationClips);
@@ -1306,8 +1312,12 @@ namespace AvatarBridge
             if (!LegacyPending) return;
             LegacyPending = false;
             var scan = YapsScanner.Scan(ctx.Target);
-            if (!scan.Plugs.Concat(scan.Sockets).Any(f => !f.IsYapsAlready)) return;
-            var lines = YapsNativeBuilder.BuildAvatar(ctx.Target, out string headline);
+            var legacy = scan.Plugs.Concat(scan.Sockets).Where(f => !f.IsYapsAlready).ToList();
+            if (legacy.Count == 0) return;
+            // Beside SPS, only what it left. Build rebuilds every plug and socket, which would
+            // rename the SPS sockets and remake reactions they keep exactly as authored.
+            var only = SpsConverted ? legacy.Where(f => f.Root != null).Select(f => f.Root).ToList() : null;
+            var lines = YapsNativeBuilder.BuildAvatar(ctx.Target, out string headline, only);
             var bad = lines.Where(l => l.StartsWith("✗") || l.Contains("⚠")).ToList();
             var good = lines.Except(bad).Select(l => l.TrimStart('✓', ' ')).ToList();
             ctx.Report.Converted(Category, "Upgraded this avatar's older penetration setup to YAPS",

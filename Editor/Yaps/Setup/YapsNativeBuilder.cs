@@ -1289,8 +1289,10 @@ namespace AvatarBridge
 
         // The YAPS window's Build, for the window and the converter alike: every plug and socket
         // found made editable, the plugs baked, the sockets built, the surface and the channel
-        // added. One door, so a reconvert comes out as pressing the button left it.
-        public static List<string> BuildAvatar(GameObject target, out string headline)
+        // added. One door, so a reconvert comes out as pressing the button left it. `only`
+        // limits the bakes and socket builds to those roots, for the converter's upgrade beside
+        // SPS, which must not rebuild what the SPS route made.
+        public static List<string> BuildAvatar(GameObject target, out string headline, ICollection<Transform> only = null)
         {
             // Adopt first, so bare converted sockets and plugs get components.
             int adopted = 0;
@@ -1309,6 +1311,7 @@ namespace AvatarBridge
             int edits = YapsToggles.Edits;
             foreach (var p in target.GetComponentsInChildren<YapsPlug>(true))
             {
+                if (only != null && !only.Contains(p.transform)) continue;
                 plugsTried++;
                 var o = Bake(p);
                 if (o.Ok) plugsOk++;
@@ -1321,6 +1324,7 @@ namespace AvatarBridge
             if (menu != null) lines.Add(menu);
             foreach (var s in target.GetComponentsInChildren<YapsSocket>(true))
             {
+                if (only != null && !only.Contains(s.transform)) continue;
                 socketsBuilt++;
                 lines.AddRange(BuildSocket(s));
             }

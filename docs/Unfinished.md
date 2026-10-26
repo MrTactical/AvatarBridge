@@ -709,7 +709,11 @@ due on the Nightly branch within days; none of this is in stable yet.
   5 FAIL before, PASS after. Kar reconverted twice in batch with Joe's saved settings, scene unsaved:
   "Built 1 of 1 plug and 6 sockets", plug patched from Poiyomi 7.3 Pro, DPS switch 0, the copy's
   `CGI_PoiPenetration` at 0, no shader errors, the second run reused `Peen _YAPS_ 38c45deb9450`.
-  Open: an avatar with SPS AND leftover DPS/TPS parts still upgrades only the SPS ones.
+  ~~Open: an avatar with SPS AND leftover DPS/TPS parts still upgrades only the SPS ones.~~
+  **Fixed on dev 2026-10-26 [M]:** `YapsConverter.Run` schedules the upgrade whether or not SPS
+  was found, and beside SPS `BuildAvatar` bakes and builds only the parts the SPS route left
+  (`only`), since its Build renames sockets and remakes reactions the SPS route keeps as authored.
+  `LegacyUpgradeTest`'s new SPS case: red before (the whole avatar rebuilt), green after.
   Joe to look in game: Poiyomi plug, DPS bend off, sockets.
 - **Sockets all on in game: FIXED on dev [M]** (Joe, Krystal screenshot: seven socket readouts
   showing). Socket toggles defaulted to the socket's own state (on) until 949789f, and

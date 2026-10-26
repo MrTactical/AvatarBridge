@@ -936,11 +936,12 @@ name, so renaming one would quietly stop your saved settings from loading.
 the DPS/TPS/SPS material by each system's own definition and written onto the YAPS one; anything
 with no counterpart is named in the report.
 
-**An older avatar with DPS or TPS and no SPS bake** is upgraded in place once the rest of the
-conversion is done, exactly as the YAPS window's **Bake every plug and verify** would do it: the plug
+**DPS or TPS parts** are upgraded in place once the rest of the conversion is done, beside an SPS
+bake or not, exactly as the YAPS window's **Bake every plug and verify** would do it: the plug
 is baked with the author's values carried across, and each socket gains the markers every plug family
-reads (see *Upgrade in place* below). Converting again does it again, so nothing the window made is
-lost to a reconvert. *Remove* strips both. The report lists what was built, and anything that could
+reads (see *Upgrade in place* below). Beside SPS only the parts SPS did not cover are built, so
+the converted SPS ones stay as they are. Converting again does it again, so nothing the window made
+is lost to a reconvert. *Remove* strips both. The report lists what was built, and anything that could
 not be.
 
 **How a plug finds a socket.** Two routes, and an avatar uses whichever ones are available to it:
@@ -1112,7 +1113,7 @@ off: a TPS or SPS plug keeps its shader (`_TPS_PenetratorEnabled` / `_SPS_Enable
 plug on Poiyomi's built-in DPS penetrator (`_PenetratorEnabled` off; a locked material has the switch
 baked in, so it is turned off in YAPS's copy of the shader, never in yours). A plug on Raliv's own DPS
 shader moves to *YAPS Simple Lit* because that deform has no switch. The converter does the same for
-an avatar with DPS or TPS and no SPS. Check the plug's **Root Bone** on a
+DPS and TPS parts, beside SPS or not. Check the plug's **Root Bone** on a
 skinned mesh before you Build. TPS upgrades are tested in game, on both props and avatars.
 
 **Make this a prop.** Select the top object of a plug or socket meant to be spawned in ChilloutVR
