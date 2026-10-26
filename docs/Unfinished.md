@@ -1288,7 +1288,7 @@ the other's surface turns side-on, so the radius takes over there and pushes the
 groove. The line and the radius want opposite things at the one place the line is seen, so no
 threshold keeps both. Not adopted; the committed seam keeps the line and its jag fix stands.
 
-**Squeezing deleted mass, MEASURED 2026-10-26, fixed on dev, Joe to check in game.** Joe, on the side-by-side films: "boobs
+**Squeezing deleted mass, MEASURED 2026-10-26; the give-back WITHDRAWN the same day, see below.** Joe, on the side-by-side films: "boobs
 suddenly delete mass the moment they squeeze together"; the swell at three and five times (wider
 too) still read wrong, and the hybrid's clean merge read as the two clipping into each other.
 `SquashPlayProbe -spSeamFilm` now counts at rest and mid hold of each of its six presses the
@@ -1318,7 +1318,7 @@ growth tore the fold under the part, where Kar's weights step from 0.65 to 0.23 
 across the press (both dragged, body over 3x 4 to 34, worst 3.2x to 5.0x), and grown forward from
 the deepest skin, as the fold under a hanging part lies well in front of the chest wall (one
 dragged, over 3x 4 to 54). Not committed.
-**Adopted, the give-back baked from the part's own skin.** `YapsSquash.Fill` runs the shader's seam
+**Adopted, then WITHDRAWN (below): the give-back baked from the part's own skin.** `YapsSquash.Fill` runs the shader's seam
 (the stop, the rounding, the swell; flat, and bowed round the partner's front) on the part's skin at
 rest at 32 depths and sums the mesh volume it moves, over what the part gains grown by 1.
 `YapsSquash.Base` fits the plane the part meets the body in (its skin a quarter to three quarters
@@ -1342,6 +1342,33 @@ generated shader is imported with it hooked, so run each case unfiltered first a
 reuses the import; `YapsCompileBisect -ycbDump` writes the vertex programs as DXBC for the
 out-of-Unity `filt.py`, where both versions pass. A rebuild piles numbered material copies, so read
 the newest, not `Kar 0`. Next: Joe in game.
+**WITHDRAWN 2026-10-26: real tissue does not grow, it moves.** Joe, on the film: no visible
+difference, the squeezed volume still goes "into the fold void, not bubble out the top", the
+clothing should decide where it goes, and "remove the marshmallow effect"; build a real soft body
+outside CVR's limits and film it side by side. `Dev/Probes/SoftBodyReference.cs`, filmed with
+`SquashPlayProbe -spSeamFilm <file> -spReference`: XPBD on tetrahedra, the chest voxelised from the
+skin at rest (1.35 cm cubes on Kar, about 35k particles, 109k tetrahedra), every tetrahedron held to
+its volume (the tissue keeps it within 0.3 to 1.4% under the hands), held still behind each part's
+`Base` plane and wherever the skin carries no part, the parts sliding on each other and landing on
+the ribs and belly, the hands the shader's own capsules, and under clothing the tissue unable to go
+out past the cloth along the line from its part's centre, so free only where the cloth is open.
+Two traps on the way: Kar's body is two whole shells, the skin and an inside-out copy just under it
+(462 and 445 litres), so the inside count read a hollow skin until pieces facing in were dropped;
+and the cloth turned off lets its bones back to their own pose, so the reference is built after 30
+frames with it off. What it shows, Joe: "the actual soft body simulation is completely different
+to how we had it, that's what I expected". Squeezed, the whole part moves: the pair slides
+together, closes the cleavage and pushes forward, the shape changing everywhere, where the shader
+dents under the hand, flattens the seam and leaves the rest still; the volume moves to where body
+and clothing leave room, it is never added. The growth came off dev on Joe's word. **Next, Joe's
+go 2026-10-26: bake the soft body into the shader.** At conversion, run this sim on the avatar for a
+few unit presses per part (from outside, from the partner, from the front, from below, from
+above, the pair squeezed together) and store each one's move per skin vertex in a texture; in game
+the shader projects each hand's and the partner's press onto those directions and sums the stored
+moves (soft tissue is near linear for moderate presses), the dent staying for the hand's own
+imprint. Joe: "we should feel GPU wise how heavy this is gonna be, we should not obliterate
+someone's system": the sim is bake-time only; in game about six texture reads per skin vertex on a
+part, the rest skipping it, measured against today's squash with the probe's cost mode before it
+ships, replacing the seam's swell rather than adding to it.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 

@@ -53,8 +53,6 @@ namespace AvatarBridge
             public Transform mover, restOn, follow;
             public List<(Transform bone, float weight)> carriers;
             public List<Vector3> points;
-            // The renderer the points came from, the skin the seam's give-back is measured on.
-            public Skin skin;
             public Vector3 centre;
             // Where the part hangs from: the top of its chain, which the physics hold still.
             public Vector3 hangsFrom;
@@ -440,10 +438,6 @@ namespace AvatarBridge
             var hangAcross = Vector4.zero;
             // Each part's own surface, or null where the ellipsoid of its reaches stays.
             var surfaces = new List<float[]>();
-            // Per part, what the seam takes off it pressed in, flat and round its partner.
-            var fills = new List<float[]>();
-            // And the plane each meets the body in, which it grows out from.
-            var bases = new List<Vector3>();
             var pair = new Vector4(0f, 0.5f, 0f, 0.5f);
             for (int k = 0; k < pairCount; k++)
             {
@@ -477,7 +471,6 @@ namespace AvatarBridge
                 var socket = sockets.Where(x => Gap(x) < Mathf.Min(a.reach, b.reach)).OrderBy(Gap).FirstOrDefault();
                 between.Add(socket);
                 if (socket != null) log.Add($"{label}: a plug in \"{socket.name}\" parts it");
-                var shapes = new List<Func<Vector3, float>>();
                 foreach (var p in measured)
                 {
                     p.follow = Child(p.mover, FollowName);
@@ -503,7 +496,6 @@ namespace AvatarBridge
                     var reaches = new[] { p.reach, Reach(p, -toward), Reach(p, o), Reach(p, -o), Reach(p, u), Reach(p, -u) };
                     MeasuredForTest?.Invoke(p.name, p.centre, toward, o, p.points, reaches, unit);
                     surfaces.Add(Surface(p.points, p.centre, toward, o, reaches, unit, out float mapOff, out float ellipsoidOff));
-                    shapes.Add(Shape(surfaces[surfaces.Count - 1], reaches, unit, toward, o));
                     log.Add($"{p.name}: {(surfaces[surfaces.Count - 1] != null ? "its own surface" : "the ellipsoid")}, " +
                             $"{mapOff * 100f:0.0} cm off its skin against {ellipsoidOff * 100f:0.0}");
                     var hang = (p.hangsFrom - p.centre) / Unit(rest);
@@ -511,20 +503,6 @@ namespace AvatarBridge
                     hangOut[parts.Count] = Vector3.Dot(hang, o);
                     hangAcross[parts.Count] = Vector3.Dot(hang, u);
                     parts.Add(p);
-                }
-                if (MeasuredForTest == null)
-                {
-                    for (int j = 0; j < 2; j++)
-                    {
-                        var p = measured[j];
-                        var toward = j == 0 ? axis : -axis;
-                        var on = p.skin.share.Select(x => x[2 * k + j]).ToArray();
-                        var (grow, above) = Base(p.skin.at, on, p.centre, toward, o, p.reach, Reach(p, -o));
-                        bases.Add(new Vector3(Vector3.Dot(grow, o), Vector3.Dot(grow, Vector3.Cross(toward, o)), above / Unit(p.follow)));
-                        fills.Add(Fill(p.skin.at, on, p.skin.smr.sharedMesh.triangles, p.centre, toward, o, p.reach, grow, above, shapes[j], shapes[1 - j], out double grows));
-                        log.Add($"{p.name}: grows {grows * 1e6:0} cm3 a unit out from {above * 100f:0.0} cm behind its centre, {Mathf.Acos(Mathf.Clamp(Vector3.Dot(grow, o), -1f, 1f)) * Mathf.Rad2Deg:0} degrees off out; " +
-                                $"pressed a quarter of its reach in, the seam takes {fills[fills.Count - 1][12] * 100f:0.0}% of what it grows by flat, {fills[fills.Count - 1][44] * 100f:0.0}% round the other");
-                    }
                 }
                 pair[i] = start / Unit(a.follow);
                 pair[i + 1] = share;
@@ -534,7 +512,7 @@ namespace AvatarBridge
             if (parts.Count == 0) return string.Join("; ", log);
             Lap("Measure");
             if (MeasuredForTest != null) return string.Join("; ", log);
-            var surface = SurfaceTexture(surfaces, fills, bases, folder, $"{root.name} surface.asset");
+            var surface = surfaces.Any(x => x != null) ? SurfaceTexture(surfaces, folder, $"{root.name} surface.asset") : null;
             var surfaceOn = Vector4.zero;
             for (int m = 0; m < surfaces.Count && m < 4; m++) surfaceOn[m] = surfaces[m] != null ? 1f : 0f;
 
@@ -1376,7 +1354,6 @@ namespace AvatarBridge
         {
             var carried = new[] { new Dictionary<Transform, float>(), new Dictionary<Transform, float>() };
             List<Vector3>[] best = null;
-            Skin bestSkin = null;
             int bestCount = 0;
             foreach (var s in skins)
             {
@@ -1401,7 +1378,7 @@ namespace AvatarBridge
                     for (int side = 0; side < 2; side++) if (s.share[v][2 * k + side] >= 0.5f) points[side].Add(s.at[v]);
                 }
                 int count = points[0].Count + points[1].Count;
-                if (count > bestCount) { bestCount = count; best = points; bestSkin = s; }
+                if (count > bestCount) { bestCount = count; best = points; }
             }
             if (best == null || best.Any(p => p.Count < 20)) return null;
 
@@ -1412,7 +1389,6 @@ namespace AvatarBridge
                 var p = new Part
                 {
                     points = best[i],
-                    skin = bestSkin,
                     centre = best[i].Aggregate(Vector3.zero, (s, x) => s + x) / best[i].Count,
                     carriers = carried[i].Select(kv => (kv.Key, kv.Value / total)).Where(x => x.Item2 >= 0.03f)
                         .OrderBy(x => Depth(x.Key)).ToList(),
@@ -1582,22 +1558,17 @@ namespace AvatarBridge
             return 1f / Mathf.Sqrt(Mathf.Max(Term(d.x, r[0], r[1]) + Term(d.z, r[2], r[3]) + Term(d.y, r[4], r[5]), 1e-8f));
         }
 
-        // Every part's grid stacked, part m in rows 32m to 32m + 31, zero for one on the ellipsoid,
-        // then each part's two rows of what the seam takes off it, then a row each of the plane it
-        // grows out from. Halves, point-sampled: the shader reads its texels itself, so no part
-        // bleeds into the next.
-        internal static Texture2D SurfaceTexture(List<float[]> surfaces, List<float[]> fills, List<Vector3> bases, string folder, string file)
+        // Every part's grid stacked, part m in rows 32m to 32m + 31, zero for one on the ellipsoid.
+        // Halves, point-sampled: the shader reads its four texels itself, so no part bleeds into the
+        // next.
+        internal static Texture2D SurfaceTexture(List<float[]> surfaces, string folder, string file)
         {
             const int n = SurfaceSize;
-            var halves = new ushort[n * (n * 4 + 12)];
+            var halves = new ushort[n * n * 4];
             for (int m = 0; m < surfaces.Count && m < 4; m++)
                 if (surfaces[m] != null)
                     for (int k = 0; k < n * n; k++) halves[m * n * n + k] = Mathf.FloatToHalf(surfaces[m][k]);
-            for (int m = 0; m < (fills?.Count ?? 0) && m < 4; m++)
-                for (int k = 0; k < 2 * n; k++) halves[4 * n * n + 2 * n * m + k] = Mathf.FloatToHalf(fills[m][k]);
-            for (int m = 0; m < (bases?.Count ?? 0) && m < 4; m++)
-                for (int k = 0; k < 3; k++) halves[(4 * n + 8 + m) * n + k] = Mathf.FloatToHalf(bases[m][k]);
-            var tex = new Texture2D(n, n * 4 + 12, TextureFormat.RHalf, false, true) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
+            var tex = new Texture2D(n, n * 4, TextureFormat.RHalf, false, true) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
             tex.SetPixelData(halves, 0);
             tex.Apply(false);
             if (folder == null) return tex;
@@ -1609,24 +1580,11 @@ namespace AvatarBridge
             return tex;
         }
 
-
-        // The part's reach toward a unit vector w, in metres, as YapsExtent reads it: its own surface
-        // where one was baked, else the ellipsoid of its six reaches.
-        static Func<Vector3, float> Shape(float[] map, float[] reaches, float unit, Vector3 toward, Vector3 o)
-        {
-            var u = Vector3.Cross(toward, o);
-            return w =>
-            {
-                var q = new Vector3(Vector3.Dot(w, toward), Vector3.Dot(w, u), Vector3.Dot(w, o));
-                return map != null ? unit * SurfaceAt(map, q) : Ellipsoid(reaches, q);
-            };
-        }
-
         // The plane a part meets the body in, fitted to its skin half on it: the way out of the body
-        // through the part, square to the line to its partner so growing along it never moves the
-        // front the seam presses, and how far the part's centre stands above it. Grown from there,
-        // the ring where its weights step off into the body stays put; grown from its centre, or
-        // forward from the deepest of its skin, the fold under the part tore where they step.
+        // through the part, square to the line to its partner, and how far the part's centre stands
+        // above it. What lies behind it is the body's and stays still while the part moves; the
+        // ring where its weights step off lies in it, and a part moved from anywhere else tore the
+        // fold where they step.
         internal static (Vector3 normal, float above) Base(Vector3[] at, float[] share, Vector3 centre, Vector3 toward, Vector3 o,
             float reach, float inward)
         {
@@ -1656,112 +1614,6 @@ namespace AvatarBridge
             return above > 0f ? (n, above) : (o, inward);
         }
 
-        // What the shader's seam takes off a part pressed into its partner, over what the part gains
-        // grown by 1 out from where it meets the body: the seam run on the part's own skin at
-        // rest, every vertex the shader would press, its volume summed off the mesh. Flat, then
-        // bowed round the partner's front as when the partner leads, each at 32 depths past the
-        // front from an eighth of the reach short. Below 0 where the seam's swell adds more than it
-        // cuts, as it does pressed shallow on a ball. The constants are yaps_dent.cginc's: the
-        // give-back is only as good as this copy of the seam.
-        internal static float[] Fill(Vector3[] at, float[] share, int[] tris, Vector3 centre, Vector3 toward, Vector3 o,
-            float reach, Vector3 grow, float above, Func<Vector3, float> own, Func<Vector3, float> other, out double grows)
-        {
-            grows = 0;
-            const float Keep = 0.2f, Meet = 0.03f, Round = 1f;
-            const int n = SurfaceSize;
-            var fill = new float[2 * n];
-            float front = own(toward), stop = Meet * reach;
-            var index = Enumerable.Repeat(-1, at.Length).ToArray();
-            var near = new List<int>();
-            for (int v = 0; v < at.Length; v++)
-                if (share[v] > 0f && (at[v] - centre).sqrMagnitude <= 16f * reach * reach) { index[v] = near.Count; near.Add(v); }
-            if (near.Count == 0) return fill;
-            var faces = new List<int>();
-            for (int t = 0; t < tris.Length; t += 3)
-                if (index[tris[t]] >= 0 || index[tris[t + 1]] >= 0 || index[tris[t + 2]] >= 0) faces.Add(t);
-
-            // Where the partner's front falls back from its pole at this far off the line, toward
-            // the part: the hollow the seam takes when the partner leads. Past its outline, never.
-            var w = -toward;
-            float pole = other(w);
-            bool Inside(Vector3 x) { float r = x.magnitude; return r < 1e-6f || r <= other(x / r); }
-            float Fall(Vector3 side)
-            {
-                float top = 1.5f * pole, step = 3f * pole / 60f;
-                if (Inside(side + w * top)) return pole - top;
-                for (int j = 1; j <= 60; j++)
-                {
-                    float lo = top - j * step;
-                    if (!Inside(side + w * lo)) continue;
-                    float hi = lo + step;
-                    for (int b = 0; b < 12; b++)
-                    {
-                        float mid = 0.5f * (lo + hi);
-                        if (Inside(side + w * mid)) lo = mid; else hi = mid;
-                    }
-                    return pole - lo;
-                }
-                return float.PositiveInfinity;
-            }
-
-            int c = near.Count;
-            var along = new float[c];
-            var sides = new Vector3[c];
-            var held = new float[c];
-            var fall = new float[c];
-            for (int i = 0; i < c; i++)
-            {
-                var d = at[near[i]] - centre;
-                along[i] = Vector3.Dot(d, toward);
-                sides[i] = d - toward * along[i];
-                float sl = sides[i].magnitude;
-                float onSeam = sl > 1e-6f ? 1f - Mathf.SmoothStep(0f, 1f, (sl / own(sides[i] / sl) - 1f) / 0.5f) : 1f;
-                held[i] = share[near[i]] * onSeam;
-                fall[i] = held[i] > 0f ? Fall(sides[i]) : 0f;
-            }
-
-            // The volume the moves add, summed off the faces they touch, which cancels as long as
-            // the mesh's open edges stay put. Unity winds front faces clockwise, so it is negated.
-            var moved = new Vector3[c];
-            double Gain()
-            {
-                double sum = 0;
-                foreach (int t in faces)
-                {
-                    Vector3 a0 = at[tris[t]] - centre, b0 = at[tris[t + 1]] - centre, c0 = at[tris[t + 2]] - centre;
-                    int ia = index[tris[t]], ib = index[tris[t + 1]], ic = index[tris[t + 2]];
-                    Vector3 a1 = ia >= 0 ? a0 + moved[ia] : a0, b1 = ib >= 0 ? b0 + moved[ib] : b0, c1 = ic >= 0 ? c0 + moved[ic] : c0;
-                    sum -= ((double) Vector3.Dot(a1, Vector3.Cross(b1, c1)) - Vector3.Dot(a0, Vector3.Cross(b0, c0))) / 6.0;
-                }
-                return sum;
-            }
-            const float By = 0.01f;
-            for (int i = 0; i < c; i++)
-                moved[i] = grow * (share[near[i]] * (Vector3.Dot(at[near[i]] - centre, grow) + above) * By);
-            grows = Gain() / By;
-            if (grows <= 0) return fill;
-
-            for (int bowed = 0; bowed < 2; bowed++)
-                for (int k = 0; k < n; k++)
-                {
-                    float x = reach * (k - 4) / n;
-                    float deep = Mathf.Max(x, 0f), width = Mathf.Max(Round * deep, stop);
-                    float ring = Mathf.Sqrt(Mathf.Max(2f * reach * deep, 1e-12f));
-                    for (int i = 0; i < c; i++)
-                    {
-                        moved[i] = Vector3.zero;
-                        float v = along[i] - (front - x) + stop - (bowed == 1 ? fall[i] : 0f);
-                        if (held[i] <= 0f || v <= -10f * width) continue;
-                        float to = v < 0f ? Keep * v + (1f - Keep) * v * (1f - Mathf.Exp(v / width))
-                            : 0.95f * stop * (1f - Mathf.Exp(-v * Keep / (0.95f * stop)));
-                        float behind = Mathf.Max(-v, 0f) / width;
-                        float swell = reach * deep * deep / (4f * ring * width) * held[i] * (1f + behind) * Mathf.Exp(-behind);
-                        moved[i] = sides[i] / Mathf.Max(sides[i].magnitude, ring) * swell - toward * ((v - to) * held[i]);
-                    }
-                    fill[bowed * n + k] = (float) (-Gain() / grows);
-                }
-            return fill;
-        }
 
         // The 98th percentile, so one stray vertex does not set it.
         static float Reach(Part p, Vector3 way)

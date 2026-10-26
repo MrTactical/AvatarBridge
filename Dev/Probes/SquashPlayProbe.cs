@@ -248,7 +248,7 @@ namespace AvatarBridge.Regression
                 YapsSquash.MeasuredForTest = null;
                 UnityEngine.Object.DestroyImmediate(copy);
             }
-            var tex = YapsSquash.SurfaceTexture(surfaces, null, null, null, null);
+            var tex = YapsSquash.SurfaceTexture(surfaces, null, null);
             tex.hideFlags = HideFlags.DontSave;
             var on = Vector4.zero;
             for (int m = 0; m < surfaces.Count && m < 4; m++) on[m] = surfaces[m] != null ? 1f : 0f;
@@ -1086,15 +1086,6 @@ namespace AvatarBridge.Regression
                 "        if (held > 0.5 && v > yapsCutRead.x) yapsCutRead = float3(v, deep, length(side));\n        world += away * swell - seamN * (dot(seamN, facing) * back);\n",
                 "    // The own arms and hands, a capsule per bone from one joint to the next.",
                 "    position = mul(unity_WorldToObject, float4(start + yapsCutRead, 1)).xyz;\n    return;\n    // The own arms and hands, a capsule per bone from one joint to the next." }),
-            // What the part gives back where the pair meets, on its own skin: how deep the seam
-            // presses it as a share of its reach, how much of what it grows by the bake says that
-            // cuts (contact and spill in), and how far it grows.
-            ("fillv", new[] {
-                "        float gx = 1;\n", "        float gx = 1, fillR = 0;\n",
-                "            gx = min(1 / (1 - clamp(r, -0.5, 0.5)), _YAPS_SquashShape.z);\n",
-                "            gx = min(1 / (1 - clamp(r, -0.5, 0.5)), _YAPS_SquashShape.z);\n            fillR = r;\n",
-                "mapped += (moved - world) * shares[m] + shunt * swings[m] * swingOut;",
-                "mapped += float3(fillAt / reach, fillR, gx - 1) * (shares[m] > 0.9);", Stop, StopTo }),
             // Coloured in place of the shading, by the contact holding the vertex most: on the
             // leader, red where its depth in the other won over the seam, green bands a quarter
             // width apart of where it is pressed to; grey on the part pressed; bluer on either
@@ -2051,14 +2042,6 @@ namespace AvatarBridge.Regression
                     if (past.Count > 0)
                         Debug.Log($"[SquashPlay] cut {smr.name}: {past.Count} vertices past the seam, deepest {100f * cut[past[0]].x:0.00} cm, {100f * cut[past[0]].z:0.00} cm off the line, " +
                                   $"the part pass left {100f * cut.Max(x => x.y):0.00} cm to press");
-                    var fill = Read(Staged(tearShaders, JumpShader, "SquashJump", "fillv"), out _);
-                    for (int side = 0; side < 2; side++)
-                    {
-                        var own = Enumerable.Range(0, fill.Length).Where(x => (side == 0 ? share[x].x : share[x].y) >= 0.9f).ToList();
-                        if (own.Count == 0) continue;
-                        var f = own.Select(x => fill[x]).OrderBy(x => x.z).ElementAt(own.Count / 2);
-                        Debug.Log($"[SquashPlay] fill {smr.name} part {side}: pressed {100f * f.x:0.0}% of its reach in, takes {100f * f.y:0.00}% of what it grows by, grows {100f * f.z:0.00}%");
-                    }
                     Debug.Log($"[SquashPlay] out {smr.name}: under 1 {bins[0]}, 1-1.25 {bins[1]}, 1.25-1.5 {bins[2]}, 1.5-2 {bins[3]}, 2-3 {bins[4]}, over 3 {bins[5]}");
                 }
                 // Baked in world units in the renderer's axes (the flag to scale it left a 0.12 body
