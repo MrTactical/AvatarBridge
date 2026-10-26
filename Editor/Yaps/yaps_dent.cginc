@@ -56,12 +56,22 @@
 // How close two squeezes count as level, as a share of the stronger: within it their lines
 // share the flattening, wholly when exactly level.
 #define YAPS_SQUASH_LEVEL 0.3
+// Of what one part drives into the other further, the share both squash by rather than the
+// other swinging away.
+#define YAPS_SQUASH_GIVE 0.3
 #define YAPS_DENT_SPAN 2.4494897   // the dent's shoulder, in t; root 6 makes it hold what the bowl moved
 
 float _YAPS_DentPower;
 float _YAPS_DentSpill;
 Texture2D _YAPS_DentOwn;       // per vertex: its share of parts 0 to 3 in r, g, b, a
 Texture2D _YAPS_DentSwing;     // per vertex: the weight each part's chain of bones carries, the same way
+// Each part's own surface: how far its skin reaches from its centre each way, follow units, on an
+// octahedral grid of YAPS_SURFACE squared directions in its frame, part m in rows from m times
+// that. Read only where its flag is set: a material patched before it reads whatever Unity binds
+// for a texture it never set, and an unset flag reads 0.
+Texture2D _YAPS_SquashSurface;
+float4 _YAPS_SquashSurfaceOn;
+#define YAPS_SURFACE 32
 float4 _YAPS_DentOwn_TexelSize;
 // Slots, as the provider writes them. One with nothing in it holds a node scaled to zero,
 // which reads as absent.
@@ -180,7 +190,7 @@ struct YapsPart
     // The six reaches as 1 / reach^2, toward +a, +o, +u and away from each.
     float3 front, back;
     float unit, reach;
-    bool framed;
+    bool framed, own;
 };
 
 YapsPart YapsPartAt(int m, float3 centre, float unit)
@@ -196,6 +206,7 @@ YapsPart YapsPartAt(int m, float3 centre, float unit)
     p.front = 0;
     p.back = 0;
     p.framed = false;
+    p.own = false;
     int back = 16 + (m >> 1);
     if (YapsUnit(4 + m) > 0 && YapsUnit(4 + (m ^ 1)) > 0 && YapsUnit(back) > 0
         && _YAPS_SquashAway[m] > 0 && _YAPS_SquashOut[m] > 0 && _YAPS_SquashIn[m] > 0
@@ -214,6 +225,7 @@ YapsPart YapsPartAt(int m, float3 centre, float unit)
                 p.o = normalize(o);
                 p.u = cross(p.a, p.o);
                 p.framed = true;
+                p.own = _YAPS_SquashSurfaceOn[m] > 0;
                 p.front = 1 / float3(_YAPS_SquashReach[m] * _YAPS_SquashReach[m], _YAPS_SquashOut[m] * _YAPS_SquashOut[m], _YAPS_SquashSideA[m] * _YAPS_SquashSideA[m]);
                 p.back = 1 / float3(_YAPS_SquashAway[m] * _YAPS_SquashAway[m], _YAPS_SquashIn[m] * _YAPS_SquashIn[m], _YAPS_SquashSideB[m] * _YAPS_SquashSideB[m]);
             }
@@ -222,14 +234,64 @@ YapsPart YapsPartAt(int m, float3 centre, float unit)
     return p;
 }
 
-// How far the part reaches toward w, a unit vector: the ellipsoid of its six measured reaches.
-// A ball of the reach toward the partner was far too wide at the sides, and an arm hanging
-// there pressed it all the time.
+// The part's own surface toward c, a direction in its frame (toward, out, across), in follow
+// units: bilinear between texel centres, read four texels at a time so no part bleeds into the
+// next. Octahedral, folded on the side into the body, where a part has no skin of its own, so its
+// skin is one continuous diamond with no poles. YapsSquash.SurfaceCell builds the same grid.
+float YapsSurfaceAt(int m, float3 c)
+{
+    float3 q = float3(c.x, c.z, c.y);
+    q /= max(abs(q.x) + abs(q.y) + abs(q.z), 1e-12);
+    float2 e = q.z >= 0 ? q.xy : (1 - abs(q.yx)) * (q.xy >= 0 ? 1 : -1);
+    float2 f = (e * 0.5 + 0.5) * YAPS_SURFACE - 0.5;
+    int2 i0 = clamp((int2) floor(f), 0, YAPS_SURFACE - 1);
+    int2 i1 = min(i0 + 1, YAPS_SURFACE - 1);
+    float2 t = saturate(f - (float2) i0);
+    int row = m * YAPS_SURFACE;
+    float r00 = _YAPS_SquashSurface.Load(int3(i0.x, row + i0.y, 0)).r;
+    float r10 = _YAPS_SquashSurface.Load(int3(i1.x, row + i0.y, 0)).r;
+    float r01 = _YAPS_SquashSurface.Load(int3(i0.x, row + i1.y, 0)).r;
+    float r11 = _YAPS_SquashSurface.Load(int3(i1.x, row + i1.y, 0)).r;
+    return lerp(lerp(r00, r10, t.x), lerp(r01, r11, t.x), t.y);
+}
+
+// How far the part reaches toward w, a unit vector: its own surface where one was baked, else the
+// ellipsoid of its six measured reaches, which missed real skin by up to 13 cm toward the
+// partner. A ball of the reach toward the partner was far too wide at the sides, and an arm
+// hanging there pressed it all the time.
 float YapsExtent(YapsPart p, float3 w)
 {
     if (!p.framed) return p.reach;
     float3 c = float3(dot(w, p.a), dot(w, p.o), dot(w, p.u));
+    if (p.own) return p.unit * YapsSurfaceAt(p.m, c);
     return p.unit * rsqrt(max(dot(c * c, c >= 0 ? p.front : p.back), 1e-8));
+}
+
+// Where the line S + D s, centred on the part and in its frame, D a unit vector, leaves the part's
+// own surface toward +D, from where it leaves the ellipsoid, s: one step as if the line ran
+// straight out from the centre there, then three secant steps, unrolled since ChilloutVR's shader
+// filter cuts loops short. Eased back to s where the steps end off the surface, as where the line
+// passes outside it, so the answer never jumps.
+float YapsLeave(YapsPart p, float3 S, float3 D, float s)
+{
+    if (!p.own) return s;
+    float3 P = S + D * s;
+    float s0 = s, g0 = length(P) - p.unit * YapsSurfaceAt(p.m, P);
+    float s1 = s0 - g0 / max(dot(D, P) * rsqrt(max(dot(P, P), 1e-12)), 0.3);
+    P = S + D * s1;
+    float g1 = length(P) - p.unit * YapsSurfaceAt(p.m, P);
+    [unroll]
+    for (int k = 0; k < 3; k++)
+    {
+        float dg = g1 - g0;
+        float s2 = abs(dg) > 1e-7 * p.unit ? s1 - g1 * (s1 - s0) / dg : s1;
+        s0 = s1;
+        g0 = g1;
+        s1 = s2;
+        P = S + D * s1;
+        g1 = length(P) - p.unit * YapsSurfaceAt(p.m, P);
+    }
+    return lerp(s, s1, saturate(2 - abs(g1) / (0.05 * p.reach)));
 }
 
 // How far x lies inside the part's shape, back along w, a unit vector, to where it leaves it on
@@ -240,11 +302,12 @@ float YapsInside(YapsPart p, float3 x, float3 w)
     float3 Q = p.framed ? float3(dot(q, p.a), dot(q, p.o), dot(q, p.u)) : q;
     float3 D = p.framed ? float3(dot(w, p.a), dot(w, p.o), dot(w, p.u)) : w;
     float3 S = Q - D * dot(Q, D);
-    float3 P0 = S + D * YapsExtent(p, w);
+    // The ellipsoid's answer first, which the part's own surface starts from.
+    float3 P0 = S + D * (p.framed ? p.unit * rsqrt(max(dot(D * D, D >= 0 ? p.front : p.back), 1e-8)) : p.reach);
     float3 Wt = p.framed ? (P0 >= 0 ? p.front : p.back) / (p.unit * p.unit) : 1 / (p.reach * p.reach);
     float qa = dot(Wt, D * D), qb = dot(Wt, S * D), qc = dot(Wt, S * S) - 1;
     float disc = qb * qb - qa * qc;
-    return (-qb + sign(disc) * sqrt(abs(disc))) / max(qa, 1e-12) - dot(Q, D);
+    return YapsLeave(p, S, D, (-qb + sign(disc) * sqrt(abs(disc))) / max(qa, 1e-12)) - dot(Q, D);
 }
 
 // v turned as f turns onto t, both unit vectors, the shortest way.
@@ -605,12 +668,17 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
                 other += dot(YapsSlot(4 + (m ^ 1)) - YapsSlot(m ^ 1), axis);
             }
             float lead = clamp((other - self) / max(meet, YAPS_SQUASH_SOFT * reach), -1, 1);
-            float takes = lead > 0 ? lerp(share, 1, lead) : share * (1 + lead);
+            // Of what one drove in further, the other swings away from all but GIVE, and both
+            // squash by that, each its share: flesh gives where it is pushed as well as moving.
+            // Swung away by all of it, a pushed part squashed nothing and neither did the one
+            // pushing it. The seam still bows by the whole lead.
+            float drive = lead * (1 - YAPS_SQUASH_GIVE);
+            float takes = drive > 0 ? lerp(share, 1, drive) : share * (1 + drive);
             squashBow[m] = lead;
             squashDeep[m] = max(meet, 0) * takes;
             // Swung away from the leader below. The seam stays at the leader's front, so what it
             // swings away is pressed no more.
-            shunt = -axis * min(max(meet, 0) * max(lead, 0), reach);
+            shunt = -axis * min(max(meet, 0) * max(drive, 0), reach);
             // Test builds show where the slots came from by where the pulse plays: both pairs
             // for the skinned buffer, the first pair alone when it reads empty, the second when
             // it reads wrong. It squeezes from the outside, as a share of the start, so the pair
@@ -916,7 +984,9 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         float pole = YapsExtent(L, w);
         float3 S = L.framed ? float3(dot(side, L.a), dot(side, L.o), dot(side, L.u)) : float3(length(side), 0, 0);
         float3 Wd = L.framed ? float3(dot(w, L.a), dot(w, L.o), dot(w, L.u)) : float3(0, 1, 0);
-        float3 P0 = S + Wd * pole;
+        // The ellipsoid's pole picks its octant: the solve below is the ellipsoid's, and the part's
+        // own surface is found from it.
+        float3 P0 = S + Wd * (L.framed ? L.unit * rsqrt(max(dot(Wd * Wd, Wd >= 0 ? L.front : L.back), 1e-8)) : pole);
         float3 Wt = L.framed ? (P0 >= 0 ? L.front : L.back) / (L.unit * L.unit) : 1 / (L.reach * L.reach);
         float qa = dot(Wt, Wd * Wd), qb = dot(Wt, S * Wd), qc = dot(Wt, S * S) - 1;
         float disc = qb * qb - qa * qc;
@@ -924,6 +994,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         // stays whole at any lead. Curving back on the leader's own side, it dragged the skin
         // past the fitted shape back into a point.
         float leave = (-qb + (bow > 0 ? sign(disc) : 1) * sqrt(abs(disc))) / max(qa, 1e-12);
+        leave = YapsLeave(L, S, Wd, leave);
         float v = along - (squashPlane[c] - dot(squashCentre[c], facing) + bow * (pole - leave)) + stop;
         // Leading, it gives only where it is inside the other, as far as it leads: pressed all
         // over its front, its edge creased where nothing touched it. Driven alike, both go to the

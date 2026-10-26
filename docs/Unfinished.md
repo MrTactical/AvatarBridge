@@ -1064,7 +1064,32 @@ material without one reads 0 and falls back. The build's Console line names each
 map, 0.12 cm off against 1.52, its radius read back within 3.9% on the skin's side, 1.1% at a
 corner, and a follow scaled 2 halves every value. Note from it: with the build's 98th-percentile
 reaches even an ellipsoid-shaped part sits 0.6 cm outside its own ellipsoid, so the map wins there
-too, rightly.
+too, rightly. ~~The patcher declares the texture (black), so a material without one reads 0.~~
+**Corrected in Step 2:** presence is a per-part flag, `_YAPS_SquashSurfaceOn`, not the texture.
+A material patched before it never declared the texture, and what Unity binds for an unset one is
+not known to be black; an unset vector reads 0.
+
+**Step 2 DONE on dev 2026-10-26, Gate 2 PARTLY.** `yaps_dent.cginc`: `YapsSurfaceAt` (octahedral,
+bilinear by four Loads per part block, the same grid as `YapsSquash.SurfaceCell`); `YapsExtent`
+reads it where the part's flag is set, so the contact, the swing, the dents, the seam's pole, the
+flattening's widths and the stretch all take the real shape; `YapsLeave`, one radial step and three
+secant steps, unrolled, from the ellipsoid's answer, eased back to it where the steps end off the
+surface, gives `YapsInside` and the seam's line solve the real surface. The seam's normal stays the
+ellipsoid's. Patched shaders INLINE this code: an avatar sees it only once its squash is rebuilt.
+**Step 3, first half, Joe's aim:** `YAPS_SQUASH_GIVE` 0.3. Before it, a part pushed by its partner
+swung away by all the overlap and its squash netted to exactly 0, and the leader's share was 0 too:
+a one-sided push squashed nothing. Now the pushed part swings by 0.7 of the lead and both squash by
+the 0.3 left, each its share; the seam still bows by the whole lead (a flat one-sided seam was
+rejected 2026-10-25). README Squash paragraph says both.
+Gate 2 so far: `SquashPlayProbe -spLook -spSwing -spMeet` on Kar's prefab, new `-spSurface` (the
+surfaces measured from a copy and set on the materials in memory, put back on quitting; Kar's
+squash `.mat` md5s unchanged after every run). The look shader reads the deployed include, so these
+are the new code; the real-material shots are not until a rebuild. Ellipsoid against surface alone:
+one-sided pushes subtly rounder, both-sided unchanged (a flat seam is right for two parts driven
+alike), zebra equally smooth. With GIVE: the hard one-sided push shows both parts pressed where the
+pushed one used to slide away whole. Still to run: a rebuilt copy for real materials, drag tear
+counts, `-spPush`, `-spCost`, the patched shader's compile time, the filtered path; then Joe in
+game. Open for Step 3's second half: pressing along the partner's surface normal.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 

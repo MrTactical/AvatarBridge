@@ -53,7 +53,7 @@ namespace AvatarBridge.Regression
                     var go = (GameObject) PrefabUtility.InstantiatePrefab(prefab);
                     PrefabUtility.UnpackPrefabInstance(go, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
                     var parts = new List<Part>();
-                    YapsSquash.MeasuredForTest = (name, centre, toward, o, points, reach) => parts.Add(new Part
+                    YapsSquash.MeasuredForTest = (name, centre, toward, o, points, reach, _) => parts.Add(new Part
                     {
                         name = name, centre = centre, a = toward, o = o, u = Vector3.Cross(toward, o),
                         reach = reach, points = points,

@@ -1572,8 +1572,10 @@ meshes stay with the first copy. **Not yet confirmed in game.**
 
 An opt-in in the YAPS add-on: breasts and butt press into each other where they meet, and dent
 under a hand. With **Meet**, on by default, a part swung or pushed into a still partner keeps its
-round front and pushes the partner aside, swinging it about where it meets the body by as much as
-it pushed in; where the two still meet, the partner takes a rounded hollow. Pushed together from
+round front and pushes the partner aside, swinging it about where it meets the body by most of how
+far it pushed in; the rest both parts give where they meet, as flesh does, and the partner takes a
+rounded hollow there. Each part meets the other with its own shape, measured from its skin when
+the squash is built; a part too small or too folded to measure well uses a smooth stand-in. Pushed together from
 both sides, each part gives as a whole first, flattening toward the other and growing the other ways
 to keep its volume, and only the rest presses flat where they meet. What the press pushes back swells out
 round the contact, keeping its volume (not yet confirmed in game); with Meet off, what overlaps

@@ -74,6 +74,8 @@
 // -spGrabTimes N pushes N times a frame with -spGrab, as mouse drag events can come.
 // -spNoContact switches off the converter's soft body spheres once a drag starts, on builds that
 // still put them on "SoftBodyContact" children.
+// -spSurface gives each part its own surface for the run, as a build with it would: measured from
+// a copy of the avatar and set on its squash materials in memory, put back on quitting.
 //
 // Batch, never -nographics: the frames are rendered.
 
@@ -197,10 +199,60 @@ namespace AvatarBridge.Regression
                     var t = scene.GetRootGameObjects().Where(r => r.activeSelf).SelectMany(r => r.GetComponentsInChildren<Transform>(true)).FirstOrDefault(x => x.name == n);
                     return t == null ? "" : string.Join(";", n, JsonUtility.ToJson(t.localPosition), JsonUtility.ToJson(t.localEulerAngles), JsonUtility.ToJson(t.localScale));
                 }).Where(x => x.Length > 0)));
+            if (Environment.GetCommandLineArgs().Contains("-spSurface"))
+                Surface(scene.GetRootGameObjects().First(r => r.activeSelf && r.GetComponentInChildren<CVRAvatar>(true) != null));
             // Nothing is on screen in batch, and the cloth culls with the Animator.
             foreach (var a in UnityEngine.Object.FindObjectsOfType<Animator>()) a.cullingMode = AnimatorCullingMode.AlwaysAnimate;
             EditorApplication.update += Tick;
             EditorApplication.EnterPlaymode();
+        }
+
+        // Measured on a copy, since a build strips the squash it measures, in the same part order
+        // the build writes. The materials are the project's own: put back on quitting, as batch Unity
+        // saves what is left changed on them.
+        static void Surface(GameObject avatar)
+        {
+            var copy = UnityEngine.Object.Instantiate(avatar);
+            var surfaces = new List<float[]>();
+            var said = new List<string>();
+            try
+            {
+                YapsSquash.MeasuredForTest = (name, centre, toward, o, points, reaches, unit) =>
+                {
+                    surfaces.Add(YapsSquash.Surface(points, centre, toward, o, reaches, unit, out float mapOff, out float ellipsoidOff));
+                    said.Add($"{name} {(surfaces[surfaces.Count - 1] != null ? "own" : "ellipsoid")} {mapOff * 100f:0.00}/{ellipsoidOff * 100f:0.00} cm");
+                };
+                YapsSquash.Add(copy.GetComponentInChildren<CVRAvatar>(true).transform, "Assets/__SquashPlaySurface", out _);
+            }
+            finally
+            {
+                YapsSquash.MeasuredForTest = null;
+                UnityEngine.Object.DestroyImmediate(copy);
+            }
+            var tex = YapsSquash.SurfaceTexture(surfaces, null, null);
+            tex.hideFlags = HideFlags.DontSave;
+            var on = Vector4.zero;
+            for (int m = 0; m < surfaces.Count && m < 4; m++) on[m] = surfaces[m] != null ? 1f : 0f;
+            var mats = avatar.GetComponentsInChildren<Renderer>(true).SelectMany(r => r.sharedMaterials)
+                .Where(m => m != null && m.HasProperty("_YAPS_DentPower")).Distinct().ToList();
+            // A build from before the surface never declared it: nothing to keep.
+            var was = mats.ToDictionary(m => m, m => (
+                m.HasProperty("_YAPS_SquashSurface") ? m.GetTexture("_YAPS_SquashSurface") : null,
+                m.HasProperty("_YAPS_SquashSurfaceOn") ? m.GetVector("_YAPS_SquashSurfaceOn") : Vector4.zero));
+            foreach (var m in mats)
+            {
+                m.SetTexture("_YAPS_SquashSurface", tex);
+                m.SetVector("_YAPS_SquashSurfaceOn", on);
+            }
+            EditorApplication.quitting += () =>
+            {
+                foreach (var kv in was)
+                {
+                    kv.Key.SetTexture("_YAPS_SquashSurface", kv.Value.Item1);
+                    kv.Key.SetVector("_YAPS_SquashSurfaceOn", kv.Value.Item2);
+                }
+            };
+            Debug.Log($"[SquashPlay] surfaces on {mats.Count} materials: {string.Join(", ", said)}");
         }
 
         static void Tick()

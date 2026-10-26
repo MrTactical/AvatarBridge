@@ -43,6 +43,7 @@ namespace AvatarBridge
             "_YAPS_SquashShape", "_YAPS_SquashPulse", "_YAPS_SquashPush", "_YAPS_SquashLimbL", "_YAPS_SquashLimbR",
             "_YAPS_SquashHands", "_YAPS_SquashMotion", "_YAPS_SquashPlug", "_YAPS_DentSpill",
             "_YAPS_SquashHangToward", "_YAPS_SquashHangOut", "_YAPS_SquashHangAcross", "_YAPS_SquashSurface",
+            "_YAPS_SquashSurfaceOn",
         };
 
         sealed class Part
@@ -217,9 +218,9 @@ namespace AvatarBridge
 
         // The YAPS tool's build: the squash, then the toggles' swaps pointed at it.
         // The last build's whole message, measurements and all, for the setup window's diagnostics.
-        // SquashShapeProbe: each part's skin and the six reaches of its ellipsoid, in world units, in
-        // the frame the shader builds. Set, a build stops once it has measured.
-        internal static Action<string, Vector3, Vector3, Vector3, List<Vector3>, float[]> MeasuredForTest;
+        // Probes: each part's skin and the six reaches of its ellipsoid, in world units, in the frame
+        // the shader builds, and its follow's unit. Set, a build stops once it has measured.
+        internal static Action<string, Vector3, Vector3, Vector3, List<Vector3>, float[], float> MeasuredForTest;
 
         internal static string LastSaid;
         internal static bool LastBuilt;
@@ -493,7 +494,7 @@ namespace AvatarBridge
                     sideA[parts.Count] = Reach(p, u) / unit;
                     sideB[parts.Count] = Reach(p, -u) / unit;
                     var reaches = new[] { p.reach, Reach(p, -toward), Reach(p, o), Reach(p, -o), Reach(p, u), Reach(p, -u) };
-                    MeasuredForTest?.Invoke(p.name, p.centre, toward, o, p.points, reaches);
+                    MeasuredForTest?.Invoke(p.name, p.centre, toward, o, p.points, reaches, unit);
                     surfaces.Add(Surface(p.points, p.centre, toward, o, reaches, unit, out float mapOff, out float ellipsoidOff));
                     log.Add($"{p.name}: {(surfaces[surfaces.Count - 1] != null ? "its own surface" : "the ellipsoid")}, " +
                             $"{mapOff * 100f:0.0} cm off its skin against {ellipsoidOff * 100f:0.0}");
@@ -512,6 +513,8 @@ namespace AvatarBridge
             Lap("Measure");
             if (MeasuredForTest != null) return string.Join("; ", log);
             var surface = surfaces.Any(x => x != null) ? SurfaceTexture(surfaces, folder, $"{root.name} surface.asset") : null;
+            var surfaceOn = Vector4.zero;
+            for (int m = 0; m < surfaces.Count && m < 4; m++) surfaceOn[m] = surfaces[m] != null ? 1f : 0f;
 
             // A pair with too little skin is dropped, and the ones after it move up a slot.
             foreach (var s in skins)
@@ -608,6 +611,7 @@ namespace AvatarBridge
                     copy.SetVector("_YAPS_SquashHangOut", hangOut);
                     copy.SetVector("_YAPS_SquashHangAcross", hangAcross);
                     if (surface != null) copy.SetTexture("_YAPS_SquashSurface", surface);
+                    copy.SetVector("_YAPS_SquashSurfaceOn", surfaceOn);
                     // A test build's pulse: the pair squeezes and lets go every few seconds with
                     // nobody moving it, which only happens if the provider is writing the follows.
                     copy.SetFloat("_YAPS_SquashPulse", pulse);
@@ -1557,7 +1561,7 @@ namespace AvatarBridge
         // Every part's grid stacked, part m in rows 32m to 32m + 31, zero for one on the ellipsoid.
         // Halves, point-sampled: the shader reads its four texels itself, so no part bleeds into the
         // next.
-        static Texture2D SurfaceTexture(List<float[]> surfaces, string folder, string file)
+        internal static Texture2D SurfaceTexture(List<float[]> surfaces, string folder, string file)
         {
             const int n = SurfaceSize;
             var halves = new ushort[n * n * 4];
@@ -1567,6 +1571,7 @@ namespace AvatarBridge
             var tex = new Texture2D(n, n * 4, TextureFormat.RHalf, false, true) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
             tex.SetPixelData(halves, 0);
             tex.Apply(false);
+            if (folder == null) return tex;
             tex = Asset(folder, tex, file);
             var flags = new SerializedObject(tex);
             flags.FindProperty("m_IsReadable").boolValue = false;
