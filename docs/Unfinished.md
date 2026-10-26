@@ -1399,10 +1399,55 @@ The bake went from 45 minutes on one core to **14.0 s**:
 Off the slow reference that costs 0.6 to 0.8 cm rms at a quarter and 0.8 to 1.8 at a half; four
 substeps broke it (2.3 to 3.1). Users would run it at conversion, so it has to stay seconds.
 
+**Refined 2026-10-26, Joe on the film: a crease where the pair met.** It came from the coarse
+cubes, not the summing; the 1/12 lattice showed none. Four fixes:
+- The lattice was rounded up from one side, so the split between the parts sat up to a cube off
+  the middle and one part owned a column of its partner. It is centred now.
+- Skin off its cube moves as the cube's nearest point does, instead of carried past its corners.
+- The summed skin is smoothed, 10 passes over its neighbours. The steps were the skin following
+  2.7 cm cubes beside the held breastbone. Averaging is linear, so the bake can smooth each answer.
+- The seam and the capsule push-out run per skin vertex after the sum, as the shader's own stages
+  do. Pressed flat in the tissue, the seam showed the cubes as a staircase.
+
+The bake is now 11.5 s (the skin no longer redrawn every frame of it).
+
+**How the hands are read, tuned offline on 11 presses.** The probe gained eight more shots: from
+the front, below, above, out and front, out and high, one deep with the other light, a light
+squeeze, and both lifted from below. `-spDump <dir>` writes the answers, the skin and each shot.
+A Python copy of the summing reproduces the probe's numbers to the hundredth, a variant takes a
+second, and a fitted best mix of the stored answers gives the floor each reading can reach.
+
+The floor (0.3 to 1.5 cm rms, 2.4 for the deep squeeze) is about half of what the reading got, so
+the answers are fine and the reading was not. The reading kept:
+- Each capsule is checked for touching by its true distance.
+- It is then read square to its own axis, as a palm presses along its normal. Measured to its
+  nearest end, the forearm above a part read as a press from above.
+- Each way's depth is taken on that way's own line through the centre, as its answer was baked.
+- cos² shares over the five ways, the deepest capsule per way, and a squeeze where both outsides
+  are pressed.
+
+Against the solved tissue, cm rms of the most moved (best fit in brackets):
+- one hand 0.99 of 11.6 (0.71); light squeeze 0.46 of 4.1 (0.30); halfway 1.86 of 12.8 (1.19);
+- front 1.29 of 6.7 (0.71); below 0.81 of 7.6 (0.50); above 0.54 of 5.1 (0.46);
+- out and front 1.52 of 8.7 (1.11); high 1.11 of 10.1 (0.71); deep and light 0.78 of 10.5 (0.65);
+- both lifted 1.77 of 8.1 (1.51); deep squeeze 5.60 of 18.1 (2.44).
+
+Tried and dropped:
+- Squaring to the palm without the touch check: a palm under one part lifted its partner.
+- Squaring only along the palm's length: brought the forearm back.
+- Each way read on its own line with a falloff off it: an oblique palm counted on two ways (5 to 6
+  cm).
+- Dropping the squeeze answer.
+- Pressing deeper by a factor: fitted to three poses; held back as overfitting.
+
 Next:
-1. One part's answers mirrored onto the other (about 8 s), and the cost of starting each batch.
-2. The shader: the answers stored per part on a sphere round its centre, direction by depth in one
-   texture so the hardware interpolates the depth, measured against today's squash with `-spCost`.
+1. The shader. The answers are stored per vertex, as `_YAPS_DentOwn` already is: each squashed
+   renderer gets a per-vertex index into a compact table holding only the vertices that move, one
+   texel per way and depth with the move and the normal's turn packed together. A pressed vertex
+   then reads the index plus two texels per way it is pressed from. The hands are read with each
+   part's analytic extent, which the bake must then place its palms by too.
+2. Measured against today's squash with `-spCost` before it ships.
+3. One part's answers mirrored onto the other, and the cost of starting each batch.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 

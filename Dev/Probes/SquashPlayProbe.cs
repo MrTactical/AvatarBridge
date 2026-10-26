@@ -1464,7 +1464,22 @@ namespace AvatarBridge.Regression
         };
         // The reference has no bones to swing, so it films the hands alone, each eased in from rest.
         static readonly bool Reference = Environment.GetCommandLineArgs().Contains("-spReference");
-        static readonly (string name, int kind, float amount)[] SeamOn = Reference ? SeamShots.Where(x => x.kind >= 4).ToArray() : SeamShots;
+        // And more ways to press, so the summing is tuned on more than one squeeze: each hand a
+        // part, the way it comes from (out of the pair, up, forward), and how deep in reaches.
+        static readonly (string name, (int part, Vector3 way, float depth)[] hands)[] Varied =
+        {
+            ("A hand from the front", new[] { (0, new Vector3(0f, 0f, 1f), 0.3f) }),
+            ("A hand lifting from below", new[] { (0, new Vector3(0f, -1f, 0f), 0.3f) }),
+            ("A hand pressing down from above", new[] { (0, new Vector3(0f, 1f, 0f), 0.3f) }),
+            ("A hand from outside and in front", new[] { (0, new Vector3(1f, 0f, 1f), 0.35f) }),
+            ("A hand from outside, held high", new[] { (0, new Vector3(1f, 0.6f, 0.3f), 0.35f) }),
+            ("One pressed deep, the other light", new[] { (0, new Vector3(1f, 0f, 0f), 0.4f), (1, new Vector3(1f, 0f, 0f), 0.15f) }),
+            ("A light squeeze", new[] { (0, new Vector3(1f, 0f, 0f), 0.15f), (1, new Vector3(1f, 0f, 0f), 0.15f) }),
+            ("Both lifted from below in front", new[] { (0, new Vector3(0f, -1f, 1f), 0.3f), (1, new Vector3(0f, -1f, 1f), 0.3f) }),
+        };
+        static readonly (string name, int kind, float amount)[] SeamOn = Reference
+            ? SeamShots.Where(x => x.kind >= 4).Concat(Varied.Select((v, i) => (v.name, 6, (float) i))).ToArray()
+            : SeamShots;
         static SoftBodyReference[] refs;
         static List<Renderer>[] refShown;
         static SkinnedMeshRenderer refBody;
@@ -1552,6 +1567,11 @@ namespace AvatarBridge.Regression
             }
             if (kind <= 1) { dragSet = s; Place(); }
             else if (kind <= 3) Swing(slots, mats, amount, kind == 2 ? 1f : 0.5f, s);
+            else if (kind == 6)
+            {
+                Swing(slots, mats, 0.001f, 0.5f, s);
+                HandsOn(slots, mats, Varied[(int) amount].hands, s);
+            }
             else
             {
                 // Two hands push the pair into each other as well as denting it.
@@ -1563,7 +1583,11 @@ namespace AvatarBridge.Regression
                 if (t % SeamFrames == 0) foreach (var r in refs) r.Reset();
                 var hands = Hands();
                 foreach (var r in refs) if (r != summed) r.Step(hands);
-                if (summed != null) summed.Show(Summed(hands));
+                if (summed != null)
+                {
+                    summed.PushOut = hands;
+                    summed.Show(Summed(hands));
+                }
             }
             // Mid hold, the tear and the volume the squash adds, with the live include or -spDent's.
             if (t % SeamFrames == SeamFrames / 2) seamRead = name;
@@ -1629,7 +1653,13 @@ namespace AvatarBridge.Regression
                     worst = Mathf.Max(worst, e);
                     most = Mathf.Max(most, moved);
                 }
-                Debug.Log($"[SoftBody] summed against solved, {seamRead}: {count} vertices moved, {100f * most:0.0} cm at most; off by {100f * Math.Sqrt(se / Math.Max(count, 1)):0.00} cm rms, {100f * worst:0.0} cm at worst; {summedRead}");
+                Debug.Log($"[SoftBody] summed against solved, {seamRead}: {count} vertices moved, {100f * most:0.0} cm at most; off by {100f * Math.Sqrt(se / Math.Max(count, 1)):0.00} cm rms, {100f * worst:0.0} cm at worst; {summedRead}; seam: {summed.SeamRead}");
+                if (Dump != null)
+                {
+                    File.WriteAllLines(Path.Combine(Dump, $"shot{dumped}.txt"), new[] { seamRead }.Concat(Hands().Select(c => Floats(c.a, c.b) + " " + c.r.ToString("R", CultureInfo.InvariantCulture))));
+                    WriteFloats(Path.Combine(Dump, $"shot{dumped}.f32"), solved.SelectMany(v => new[] { v.x, v.y, v.z }));
+                    dumped++;
+                }
             }
             DragTear();
             seamRead = null;
@@ -1696,13 +1726,13 @@ namespace AvatarBridge.Regression
             }
             // -spBasis: a column more, the bare tissue's answers to single presses summed for the
             // hands each frame, as a bake would store and the shader add, beside it solving them.
-            // -spBasisBake "<cube divisor>,<substeps>,<frames>,<hold>": baked as a build would, on
+            // -spBasisBake "<cube divisor>,<substeps>,<frames>,<hold>[,<smoothing passes>]": baked as a build would, on
             // its own coarser tissue, to a quarter and a half of the reach, the cache unused.
             var bake = Arg("-spBasisBake")?.Split(',').Select(x => float.Parse(x, CultureInfo.InvariantCulture)).ToArray();
             if (Environment.GetCommandLineArgs().Contains("-spBasis"))
             {
                 summed = new SoftBodyReference("summed", refRest, refBody.sharedMesh.triangles, share, c0, c1, reach, root.up, root.forward, null, reach / (bake?[0] ?? 16f))
-                    { Substeps = bake != null ? (int) bake[1] : 12 };
+                    { Substeps = bake != null ? (int) bake[1] : 12, Clamp = bake != null, Seam = true, Smooth = bake != null && bake.Length > 4 ? (int) bake[4] : 0 };
                 refShown = refShown.Append(new List<Renderer> { Copy(refBody, refRest, out var sumMesh) }).ToArray();
                 summed.Embed(sumMesh, refRest);
                 refs = refs.Append(summed).ToArray();
@@ -1713,6 +1743,37 @@ namespace AvatarBridge.Regression
 
         static SoftBodyReference summed;
         static string summedRead, summedHands;
+        // -spDump <dir>: the summing's inputs and the solved skin at each shot, to try other sums
+        // offline: the answers as skin moves, the skin at rest, its faces and welds, which of it
+        // rides the tissue, each part's share, and each shot's hands.
+        static readonly string Dump = Arg("-spDump");
+        static int dumped;
+
+        static string Floats(params Vector3[] vs) => string.Join(" ", vs.SelectMany(v => new[] { v.x, v.y, v.z }).Select(f => f.ToString("R", CultureInfo.InvariantCulture)));
+
+        static void WriteFloats(string path, IEnumerable<float> values)
+        {
+            using (var w = new BinaryWriter(File.Create(path)))
+                foreach (var f in values) w.Write(f);
+        }
+
+        static void DumpBasis(Vector2[] share)
+        {
+            Directory.CreateDirectory(Dump);
+            File.WriteAllLines(Path.Combine(Dump, "meta.txt"), new[]
+            {
+                $"vertices {refRest.Length}",
+                "depths " + string.Join(" ", basisDepths.Select(d => d.ToString("R", CultureInfo.InvariantCulture))),
+                "parts " + Floats(partAt[0], partAt[1]),
+                "out " + Floats(partOut[0], partOut[1]),
+            }.Concat(basisWays.Select(w => $"way {w.part} " + Floats(w.dir))));
+            WriteFloats(Path.Combine(Dump, "rest.f32"), refRest.SelectMany(v => new[] { v.x, v.y, v.z }));
+            WriteFloats(Path.Combine(Dump, "share.f32"), share.SelectMany(v => new[] { v.x, v.y }));
+            File.WriteAllBytes(Path.Combine(Dump, "tris.i32"), refBody.sharedMesh.triangles.SelectMany(BitConverter.GetBytes).ToArray());
+            File.WriteAllBytes(Path.Combine(Dump, "riding.u8"), summed.Riding.Select(b => (byte) (b ? 1 : 0)).ToArray());
+            File.WriteAllLines(Path.Combine(Dump, "welds.txt"), summed.SkinWelds.Select(g => string.Join(" ", g)));
+            WriteFloats(Path.Combine(Dump, "basis.f32"), basis.SelectMany(b => b.at).SelectMany(f => summed.SkinMoves(f)).SelectMany(v => float.IsNaN(v.x) ? new[] { 0f, 0f, 0f } : new[] { v.x, v.y, v.z }));
+        }
         // The bare tissue's answers: which part a palm pressed (2 both, squeezed), from which way, and
         // its moves at each depth.
         static List<(int part, Vector3 dir, Vector3[][] at)> basis;
@@ -1754,6 +1815,7 @@ namespace AvatarBridge.Regression
             foreach (var (part, dir) in basisWays)
                 basis.Add((part, dir, tissue.Respond(Palms(part, dir), basisDepths, bake != null ? (int) bake[2] : 40, bake != null ? (int) bake[3] : 30)));
             Debug.Log($"[SoftBody] the basis baked in {clock.Elapsed.TotalSeconds:0.0} s, {basisWays.Count} ways to {basisDepths.Length} depths ({tissue.Timing})");
+            if (Dump != null) DumpBasis(share);
             if (cache == null) return;
             using (var w = new BinaryWriter(File.Create(cache)))
             {
@@ -1858,22 +1920,28 @@ namespace AvatarBridge.Regression
             foreach (var (a, b, r) in hands)
                 for (int j = 0; j < 2; j++)
                 {
-                    // How far the capsule is in past the part's skin at rest, along the line from
-                    // its centre: the shader's press without its cap at that distance. Capped, a
-                    // hand pushing the part ahead of it read as a touch; measured as how deep it
-                    // sat in the rest skin, it stopped growing once it was deeper than it is wide.
+                    // How far the capsule is in past the part's skin at rest, uncapped: capped, a
+                    // hand pushing the part ahead of it read as a touch. Square to the capsule, as
+                    // a palm presses along its normal: measured to its nearest end, a palm held
+                    // above the centre read as pressing from above. Each way's depth is taken on
+                    // that way's own line, as its answer was baked.
                     var ab = b - a;
                     var to = a + ab * Mathf.Clamp01(Vector3.Dot(partAt[j] - a, ab) / Mathf.Max(ab.sqrMagnitude, 1e-10f)) - partAt[j];
+                    // Touching at all first, by the true distance: square to it, a palm lying under
+                    // one part read as lifting its partner, its line running on under both.
+                    if (to.magnitude < 1e-6f || Extent(j, to.normalized) + r - to.magnitude <= 0f) continue;
+                    var along = ab.normalized;
+                    to -= along * Vector3.Dot(to, along);
                     float dist = to.magnitude;
                     if (dist < 1e-6f) continue;
                     var w = to / dist;
-                    float press = Extent(j, w) + r - dist;
-                    if (press <= 0f) continue;
+                    if (Extent(j, w) + r - dist <= 0f) continue;
                     summedHands += $" [{j}: {100f * dist:0.0} from the centre, skin at {100f * Extent(j, w):0.0}, radius {100f * r:0.0}]";
                     for (int k = 0; k < 5; k++)
                     {
-                        float c = Mathf.Max(Vector3.Dot(w, basis[5 * j + k].dir), 0f);
-                        amount[j, k] = Mathf.Max(amount[j, k], c * c * press);
+                        var dir = basis[5 * j + k].dir;
+                        float c = Mathf.Max(Vector3.Dot(w, dir), 0f), press = Extent(j, dir) + r - Vector3.Dot(to, dir);
+                        if (press > 0f) amount[j, k] = Mathf.Max(amount[j, k], c * c * press);
                     }
                 }
             float squeeze = Mathf.Min(amount[0, 0], amount[1, 0]);
@@ -2046,6 +2114,27 @@ namespace AvatarBridge.Regression
             if (both) Press(On(0), On(1));
             else Press(On(0));
             if (swingWait == 0) Debug.Log($"[SquashPlay] hand {depth:0.0} reach in, line {(away + rad - depth * reach) / reach:0.00} reach out, radius {rad / reach:0.00}");
+        }
+
+        // Open hands with the palm flat to its part from each way, in so deep that the palm's line
+        // sits the skin's reach there plus the hand's radius out, less the depth, eased in by s.
+        // Upright from the sides and front, lying across under or over the part.
+        static void HandsOn(Transform[] slots, Material[] mats, (int part, Vector3 way, float depth)[] hands, float s)
+        {
+            if (ghost == null) HandOn(slots, mats, 0f);
+            float unit = Unit(slots[0]), rad = handRadius * Tall / 1.6f, len = 0.11f * Tall - rad;
+            Vector3 up = animator.transform.up, forward = animator.transform.forward;
+            Press(hands.Select(h =>
+            {
+                Vector3 P = slots[h.part].position;
+                var outP = Vector3.ProjectOnPlane(P - slots[h.part ^ 1].position, up).normalized;
+                var w = (outP * h.way.x + up * h.way.y + forward * h.way.z).normalized;
+                float reach = mats[0].GetVector("_YAPS_SquashReach")[h.part] * unit;
+                float skin = partSkin != null ? Extent(h.part, w) : mats[0].GetVector("_YAPS_SquashAway")[h.part] * unit;
+                var centre = P + w * (skin + rad - h.depth * s * reach);
+                var axis = Mathf.Abs(Vector3.Dot(w, up)) > 0.7f ? outP : up;
+                return (centre + axis * (len / 2f), -axis, -1f);
+            }).ToArray());
         }
 
         static float Beats(float u, int n) => Mathf.Pow(Mathf.Sin(Mathf.PI * Mathf.Repeat(u * n, 1f)), 2f);

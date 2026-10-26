@@ -67,6 +67,8 @@ namespace AvatarBridge.Regression
         public float Compliance = 1e-4f;
         public int Substeps = 12;
         public bool Threads = true;
+        // Skin off its cube moves as the cube's nearest point does.
+        public bool Clamp;
         readonly System.Diagnostics.Stopwatch[] clocks = Enumerable.Range(0, 7).Select(_ => new System.Diagnostics.Stopwatch()).ToArray();
         static readonly string[] ClockNames = { "finding contacts", "moving", "contacts", "cloth", "hands", "edges", "volumes" };
         public string Timing => string.Join(", ", ClockNames.Select((s, i) => $"{s} {clocks[i].Elapsed.TotalSeconds:0.0} s"));
@@ -88,10 +90,14 @@ namespace AvatarBridge.Regression
             mid = 0.5f * (c0 + c1);
             apart = Vector3.Dot(c1 - c0, X);
             float half = 0.5f * apart + 1.3f * reach, back = 1.3f * reach, front = 1.8f * reach, tall = 1.5f * reach;
-            nx = Mathf.CeilToInt(2f * half / h);
+            // Even across and centred, so the cubes split between the parts on the middle itself:
+            // rounded up from one side, the split sat up to a cube over, and coarse cubes gave one
+            // part a column of its partner's tissue.
+            int across = Mathf.CeilToInt(half / h);
+            nx = 2 * across;
             ny = Mathf.CeilToInt(2f * tall / h);
             nz = Mathf.CeilToInt((back + front) / h);
-            origin = mid - X * half - Y * tall - Z * back;
+            origin = mid - X * (across * h) - Y * tall - Z * back;
 
             // Inside the skin, cube by cube: down each column of cube centres from the front,
             // counting the skin's faces in front of each. A piece turned inside out, as an outline
@@ -507,7 +513,9 @@ namespace AvatarBridge.Regression
                 if (cube == null || cube.All(p => inv[p] == 0f)) continue;
                 e.who[v] = at.Count;
                 corners.AddRange(cube);
-                at.Add(l - from);
+                // Off the cube, its nearest point in it: carried on past its corners, a vertex up to a
+                // cube outside swung with every shear, and coarse cubes threw the skin into steps.
+                at.Add(Clamp ? Vector3.Min(Vector3.one, Vector3.Max(Vector3.zero, l - from)) : l - from);
             }
             e.corner = corners.ToArray();
             e.at = at.ToArray();
@@ -563,7 +571,7 @@ namespace AvatarBridge.Regression
         }
 
         // One frame under these capsules, in substeps, then the embedded meshes.
-        public void Step(IList<(Vector3 a, Vector3 b, float r)> hands, float dt = 1f / 60f)
+        public void Step(IList<(Vector3 a, Vector3 b, float r)> hands, float dt = 1f / 60f, bool draw = true)
         {
             float sdt = dt / Substeps, alpha = Compliance / (sdt * sdt);
             int n = x.Length;
@@ -649,7 +657,7 @@ namespace AvatarBridge.Regression
                 Each(n, null, p => vel[p] = (x[p] - prev[p]) / sdt);
                 clocks[1].Stop();
             }
-            foreach (var e in skins) Move(e);
+            if (draw) foreach (var e in skins) Move(e);
         }
 
         // In floats: Mono calls every Vector3 operator, and this runs most.
@@ -760,9 +768,12 @@ namespace AvatarBridge.Regression
                 var f = e.at[k];
                 var sum = Vector3.zero;
                 for (int b = 0; b < 8; b++)
-                    sum += x[e.corner[8 * k + b]] * (((b & 1) != 0 ? f.x : 1f - f.x) * ((b & 2) != 0 ? f.y : 1f - f.y) * ((b & 4) != 0 ? f.z : 1f - f.z));
-                e.now[v] = sum;
+                    sum += (x[e.corner[8 * k + b]] - x0[e.corner[8 * k + b]]) * (((b & 1) != 0 ? f.x : 1f - f.x) * ((b & 2) != 0 ? f.y : 1f - f.y) * ((b & 4) != 0 ? f.z : 1f - f.z));
+                e.now[v] = e.rest[v] + sum;
             }
+            if (Smooth > 0 && e.skin == null) SmoothSkin(e);
+            if (Seam && e.skin == null) SeamSkin(e);
+            if (PushOut != null && e.skin == null) PushSkin(e);
             e.mesh.vertices = e.now;
             e.mesh.RecalculateNormals();
             var normals = e.mesh.normals;
@@ -779,6 +790,8 @@ namespace AvatarBridge.Regression
         public Vector3[] Rest(int which) => skins[which].rest;
         public Vector3[] Now(int which) => skins[which].now;
         public Vector3[] Particles => x0;
+        public bool[] Riding => skins[0].who.Select(k => k >= 0).ToArray();
+        public int[][] SkinWelds => skins[0].welds;
 
         // The first embedded skin's moves for these particle moves, NaN where it rides nothing: so
         // two tissues of different cubes can be set side by side.
@@ -816,7 +829,7 @@ namespace AvatarBridge.Regression
                 {
                     float d = Mathf.Lerp(from, depths[k], Mathf.SmoothStep(0f, 1f, Mathf.Min(f / (float) frames, 1f)));
                     for (int i = 0; i < hand.Count; i++) moved[i] = (hand[i].a + hand[i].by * d, hand[i].b + hand[i].by * d, hand[i].r);
-                    Step(moved);
+                    Step(moved, draw: false);
                     if (settle > 0f && f >= frames && Settled(settle)) break;
                 }
                 from = depths[k];
@@ -841,6 +854,101 @@ namespace AvatarBridge.Regression
                 count++;
             }
             return sum / System.Math.Max(count, 1) < perFrame * perFrame * 3600f;
+        }
+
+        // The pair kept apart as the shader's seam keeps them, vertex by vertex on the skin: answers
+        // summed from single presses each push their part into its partner with nothing pushing
+        // back, and the skins crossed in a crease. Where they overlap across the middle, both go
+        // flat on the plane half way between their inner sides. Pressed flat in the tissue instead,
+        // the skin riding the cubes showed them as steps.
+        public bool Seam;
+        public string SeamRead = "";
+
+        // The skin's moves averaged with their neighbours' this many times, as a bake would smooth
+        // what it stores: on coarse cubes the skin beside held tissue followed the cubes in steps,
+        // where solved tissue moves smoothly. Averaging is linear, so the sum smoothed is the
+        // answers smoothed. Skin riding nothing counts as still.
+        public int Smooth;
+        int[][] neighbours;
+
+        // Skin inside these capsules put back on their surface, as the shader's push-out does
+        // after the dent: smoothed, the answers lost the palm's imprint and the skin came through
+        // the hand.
+        public IList<(Vector3 a, Vector3 b, float r)> PushOut;
+
+        void PushSkin(Embedded e)
+        {
+            foreach (var (a, b, r) in PushOut)
+            {
+                var seg = b - a;
+                float l2 = Mathf.Max(seg.sqrMagnitude, 1e-12f);
+                for (int v = 0; v < e.rest.Length; v++)
+                {
+                    if (e.who[v] < 0) continue;
+                    var at = a + seg * Mathf.Clamp01(Vector3.Dot(e.now[v] - a, seg) / l2);
+                    var d = e.now[v] - at;
+                    float dist = d.magnitude;
+                    if (dist < r && dist > 1e-6f) e.now[v] = at + d * (r / dist);
+                }
+            }
+        }
+
+        void SmoothSkin(Embedded e)
+        {
+            int n = e.rest.Length;
+            if (neighbours == null)
+            {
+                var sets = new HashSet<int>[n];
+                for (int v = 0; v < n; v++) sets[v] = new HashSet<int>();
+                var tris = e.mesh.triangles;
+                for (int t = 0; t < tris.Length; t += 3)
+                    for (int a = 0; a < 3; a++)
+                        for (int b = 0; b < 3; b++)
+                            if (a != b) sets[tris[t + a]].Add(tris[t + b]);
+                foreach (var g in e.welds)
+                    foreach (int v in g)
+                        foreach (int u in g)
+                            if (u != v) sets[v].UnionWith(sets[u]);
+                neighbours = sets.Select(x => x.ToArray()).ToArray();
+            }
+            var d = new Vector3[n];
+            var next = new Vector3[n];
+            for (int v = 0; v < n; v++) d[v] = e.now[v] - e.rest[v];
+            for (int pass = 0; pass < Smooth; pass++)
+            {
+                for (int v = 0; v < n; v++)
+                {
+                    if (e.who[v] < 0) { next[v] = d[v]; continue; }
+                    var sum = d[v];
+                    foreach (int u in neighbours[v]) sum += d[u];
+                    next[v] = sum / (neighbours[v].Length + 1);
+                }
+                (d, next) = (next, d);
+            }
+            for (int v = 0; v < n; v++) e.now[v] = e.rest[v] + d[v];
+        }
+
+        void SeamSkin(Embedded e)
+        {
+            float in0 = float.MinValue, in1 = float.MaxValue;
+            for (int v = 0; v < e.rest.Length; v++)
+            {
+                if (e.who[v] < 0) continue;
+                float d = Vector3.Dot(e.now[v] - mid, X);
+                if (Vector3.Dot(e.rest[v] - mid, X) < 0f) in0 = Mathf.Max(in0, d);
+                else in1 = Mathf.Min(in1, d);
+            }
+            SeamRead = $"inner sides {100f * in0:0.0} and {100f * in1:0.0} cm off the middle";
+            if (in0 <= in1) return;
+            float plane = 0.5f * (in0 + in1);
+            int moved = 0;
+            for (int v = 0; v < e.rest.Length; v++)
+            {
+                if (e.who[v] < 0) continue;
+                float d = Vector3.Dot(e.now[v] - mid, X);
+                if (Vector3.Dot(e.rest[v] - mid, X) < 0f ? d > plane : d < plane) { e.now[v] += X * (plane - d); moved++; }
+            }
+            SeamRead += $", {moved} vertices pressed flat";
         }
 
         // The tissue drawn at these particle positions, solving nothing.
