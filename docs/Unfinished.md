@@ -646,6 +646,19 @@ due on the Nightly branch within days; none of this is in stable yet.
    through cells sized for a plug 1.6 times as long), one 90° walk-in and one scenario, are not yet
    separated from that. Existing plugs need a re-bake. Still open: sockets and squash reach under
    scaling, and all of it in ChilloutVR.
+   **The 1.6 leftovers separated, 2026-10-26 [M]** (`YapsBendTester -yapsScale`, Alexa reconverted
+   on dev first: its plug in Non Corpus Zone had come out of a 10-25 00:04 conversion unbaked,
+   `_YAPS_VertexCount` 0 though that report said baked; a reconvert bakes it, so not reproduced).
+   The neighbour pair's 6 cm was the one test place that did not scale with the avatar; scaled,
+   10 cm at 1.6 is taken 50 of 50, so that was cell resolution against the plug's length, not
+   scale. The other two are one cause: above the top level (1.28 m cells) the coverage block ends
+   at 1.23 lengths for a 1.04 m plug while engagement is full to 1.6, so a socket walking out
+   leaves the scan still fully engaged (the 90° walk jumps 1178 mm at 1.232L, scenario 3 966 mm at
+   1.33L). Tried ending the fade inside the block (far 0.99 of the top cell): 1 and 0.5 still
+   pass, but 1.6 fails 6, because the marker-light route takes over at the new edge on its own
+   curve (300-500 mm jumps at 1.22L), and 2 and 5 fail 16 and 20, since a plug longer than the top
+   cell has its tip out of reach. Reverted. The fix is a fifth level (5.12 m cells), which changes
+   the atlas layout and protocol: Joe's call. Tester now: 1 and 0.5 pass, 1.6 fails 2 (was 3).
    **A skinned socket mesh opens at its baked size, measured 2026-10-24 [M]**
    (`Dev/Probes/SocketScaleProbe`, one scale per Unity process: re-scaling the root inside one left
    the skin at the first size. `-sockMaterial` put an orphaned body-socket bake back on its body,

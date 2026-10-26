@@ -366,7 +366,8 @@ namespace AvatarBridge.Regression
                             block.SetFloat("_YAPS_Owner", pair.owner);
                             r.SetPropertyBlock(block);
                         }
-                    foreach (float apart in new[] { 0.06f, 0.25f })
+                    // The gap is a test place too, so it scales with the avatar.
+                    foreach (float apart in new[] { 0.06f * scale, 0.25f * scale })
                     {
                         int seen = 0, hidden = 0, none = 0, other = 0, tried = 0;
                         var wrongAt = new List<string>();
