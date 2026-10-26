@@ -110,9 +110,24 @@ ENDCG } } }";
             Debug.Log($"[ShaderFilter] limit {limit}, canary {Draw(Canary):F4}, vertex canary {Draw(VertexCanary):F4}, asset canary {AssetCanary()} (0.6323 unfiltered)");
         }
 
+        // -sfReplace "old1;new1;old2;new2": the text of each old file swapped for its new one in the
+        // source before it compiles, so a patched shader, which carries the YAPS includes inlined,
+        // runs an edited include without patching the avatar again.
         static Shader RuntimeCopy(Shader shader)
         {
-            var copy = ShaderUtil.CreateShaderAsset(System.IO.File.ReadAllText(AssetDatabase.GetAssetPath(shader)), false);
+            string source = System.IO.File.ReadAllText(AssetDatabase.GetAssetPath(shader)).Replace("\r\n", "\n");
+            var args = Environment.GetCommandLineArgs();
+            int r = Array.IndexOf(args, "-sfReplace");
+            var pairs = r >= 0 ? args[r + 1].Split(';') : new string[0];
+            for (int i = 0; i + 1 < pairs.Length; i += 2)
+            {
+                string from = System.IO.File.ReadAllText(pairs[i]).Replace("\r\n", "\n");
+                string to = System.IO.File.ReadAllText(pairs[i + 1]).Replace("\r\n", "\n");
+                int found = (source.Length - source.Replace(from, "").Length) / Math.Max(from.Length, 1);
+                Debug.Log($"[ShaderFilter] {shader.name}: {System.IO.Path.GetFileName(pairs[i])} found {found} time(s)");
+                source = source.Replace(from, to);
+            }
+            var copy = ShaderUtil.CreateShaderAsset(source, false);
             Debug.Log($"[ShaderFilter] runtime copy of {shader.name}: {(ShaderUtil.ShaderHasError(copy) ? "ERROR " + string.Join(" | ", ShaderUtil.GetShaderMessages(copy).Select(m => m.message).Take(3)) : "ok")}");
             return copy;
         }

@@ -3147,10 +3147,12 @@ Work down the list; the first that fits is usually it.
   [how a plug finds a socket](#what-a-conversion-does).
 - **Does the person who sees it wrong have Shader Filtering on?** ChilloutVR's *Settings ▸
   Experimental ▸ Enable Shader Filtering* is off unless you turn it on. When on, it cuts short every
-  loop in every shader, and a plug finds its socket and follows its curve in loops. At every loop
-  limit, a viewer with it on sees a plug pass by a socket the screen atlas would have found, and a
-  plug that a marker light found bend into a thin, flat strip. It is that viewer's own setting, so
-  nothing on the avatar can change it.
+  loop in every shader, and a plug looks for its socket in loops. At every loop limit, a viewer with
+  it on sees a plug pass by a socket the screen atlas would have found. At the highest loop limit
+  (2048) a plug still bends into a socket its marker lights find; at lower limits it may stay
+  straight. It is that viewer's own setting, so nothing on the avatar can change it: turning it off,
+  or the limit up to 2048, is the fix. Plugs converted before 5.0.0 also bend into a thin, flat strip
+  with it on; convert again to fix that.
 - **Does the report say some penetration animation curves "change nothing"?** Every curve the
   conversion writes for a plug is checked against the finished avatar, and those are the ones
   Unity could not attach to anything, so the menu rows or size changes they belong to do nothing

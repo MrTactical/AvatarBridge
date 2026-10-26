@@ -540,6 +540,20 @@ because patched shaders inline the include. No fix has been seen in game yet.
    route only and changes the walk everyone sees, so it needs the bend tester and Joe's eye; the
    atlas scan cannot fit any limit as a loop. Shape keys past the first are lost at 128 (bytecode
    only, not rendered).
+   **(b) DONE on dev 2026-10-26, Joe: "do B, see what happens, if compile time explodes, we
+   advise".** `YapsWalk` unrolled: eight steps measured by Simpson's rule on the curve's speed and
+   one Newton step on the landing, its speed floored at half the step's mean. Offline against a
+   4000-step walk on 400 random plug-to-socket curves: mean 0.0025% of the curve, 99th percentile
+   0.027%, worst 0.26% (a near cusp); the old 48 chords 0.04% worst; eight chords alone were 2.6%
+   worst, and one Newton step unfloored flew 2% at the cusp. Measured (`ShaderFilterProbe.Plug`,
+   Sally's plug re-patched from the deployed include in the run): unfiltered every case within 4 px
+   of the old walk's bend; at 2048 the marker-light route bends exactly as unfiltered (82,567 colour
+   px, the strip gone), the atlas route still 0; at 128 one light case of two passes, either way
+   round from run to run, since the four light loops get a pass each and only slot 0 is read.
+   Shadows straight at every limit as before. Compile, one plug vertex variant: 2.8 s to 3.9 s,
+   72 to 100 KB; all roles 11.5 to 13.7 s. Not an explosion; README now says the limit at 2048 or
+   the filter off is the fix, and that older plugs need converting again. Patched shaders inline
+   it: avatars see it on reconversion. Left: the bend tester for Joe's eye, then in game.
 
 ### 20. The atlas paints dots on viewers' screens. Joe, 2026-10-24, fixed on dev, Joe to check in game
 
@@ -1113,7 +1127,9 @@ ellipsoid's. Patched shaders INLINE this code: an avatar sees it only once its s
 swung away by all the overlap and its squash netted to exactly 0, and the leader's share was 0 too:
 a one-sided push squashed nothing. Now the pushed part swings by 0.7 of the lead and both squash by
 the 0.3 left, each its share; the seam still bows by the whole lead (a flat one-sided seam was
-rejected 2026-10-25). README Squash paragraph says both.
+rejected 2026-10-25). README Squash paragraph says both. **Joe 2026-10-26, from the film
+(`SquashPlayProbe -spVideo -spRebuild`, with a new one-sided push shot): looks right, 0.3 stays,
+no knob.**
 Gate 2 so far: `SquashPlayProbe -spLook -spSwing -spMeet` on Kar's prefab, new `-spSurface` (the
 surfaces measured from a copy and set on the materials in memory, put back on quitting; Kar's
 squash `.mat` md5s unchanged after every run). The look shader reads the deployed include, so these

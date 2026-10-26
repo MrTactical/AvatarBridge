@@ -35,7 +35,7 @@ namespace AvatarBridge.Regression
             ("squash+socket", "#define YAPS_NO_PLUG\n", null, null),
             ("all", "", null, null),
             ("plug+dup", "#define YAPS_NO_SOCKET\n#define YAPS_NO_SQUASH\n#define YAPS_DUPLICATE\n", null, null),
-            ("plug walk4", "#define YAPS_NO_SOCKET\n#define YAPS_NO_SQUASH\n", "#define YAPS_WALK_STEPS 48", "#define YAPS_WALK_STEPS 4"),
+            ("plug walk4", "#define YAPS_NO_SOCKET\n#define YAPS_NO_SQUASH\n", "#define YAPS_WALK_STEPS 8", "#define YAPS_WALK_STEPS 4"),
             ("plug radius0", "#define YAPS_NO_SOCKET\n#define YAPS_NO_SQUASH\n", "#define YAPS_ATLAS_RADIUS 1", "#define YAPS_ATLAS_RADIUS 0"),
         };
 
