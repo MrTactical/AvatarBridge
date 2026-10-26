@@ -1278,8 +1278,15 @@ Kar `-spRebuild`, against the committed seam:
 - Dragged alike: bra turned over 73 to 1; body opened over 1 cm 0 to 498.
 - Swing, both deep: the line between the two is gone, the pair reads as one shape. Real flesh
   keeps that line; the seam's crease is what draws it.
-Next if pursued: push along the line inside the contact and turn to the radius only toward its
-edge (the paper's single mapping direction), and keep the crease where both meet.
+Hybrid, tried next (Joe: "use both methods"): along the line where the other's surface faces the
+push, turning to the radius as it turns past 50° to 80° from it. Bra better than the committed seam
+(drag over 2x 6 to 0, turned over 25 to 6, opened 2 to 0; alike turned over 73 to 1), body alike
+about level (opened 0 to 0, turned over 173 to 141), body led mixed (opened 282 to 190, but over 2x
+28 to 52, over 3x 4 to 8, widest 3.2 to 4.5 cm). The line between two pressed alike is still gone,
+same as the radius spike: the crease shows at the rim of the contact, and the rim is exactly where
+the other's surface turns side-on, so the radius takes over there and pushes the skin out into the
+groove. The line and the radius want opposite things at the one place the line is seen, so no
+threshold keeps both. Not adopted; the committed seam keeps the line and its jag fix stands.
 Probe notes: the client's filter DLL crashes the editor (SIGSEGV in `DoFilterShader`) when a freshly
 generated shader is imported with it hooked, so run each case unfiltered first and the filtered run
 reuses the import; `YapsCompileBisect -ycbDump` writes the vertex programs as DXBC for the
