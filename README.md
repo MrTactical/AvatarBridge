@@ -613,7 +613,8 @@ after, and *Fit colliders to the mesh* turns it off.
 
 **So does the feel.** Each chain's `pull`, `spring` and `stiffness` are converted into
 MagicaCloth2's damping and angle restoration along its whole length, so a curve that loosens a
-chain in the middle comes across too, `gravity` into the pull that settles the chain where
+chain in the middle comes across too, and into how much of each swing back carries on as bounce,
+`gravity` into the pull that settles the chain where
 VRChat settles it, and `immobile` into its inertia. Every adjustment is named in the report
 alongside the PhysBone's original numbers. The conversion was checked by driving original avatars
 and their conversions through the same motion in Unity and comparing how far each chain swings,
@@ -634,6 +635,14 @@ per step, and PhysBone's `stiffness` isn't an independent axis at all (the algeb
 a scale on the other two, and Simplified integration never reads it). PhysBone 1.0 applies
 stiffness differently again, and a 1.0 chain with stiffness *s* moves exactly like a 1.1 chain with
 *s* / (1 + *s*), so that is what the conversion uses for it.
+
+One coefficient has no PhysBone counterpart. MagicaCloth2 takes part of every restoring move back
+out of the chain's velocity (its restoration *velocity attenuation*), where a PhysBone keeps all of
+it as momentum, and its damping tops out well short of what most PhysBones lose a step. So the
+attenuation is worked out per chain rather than left at the preset's: the converted chain's
+slowest motion dies away at its PhysBone's rate or, for a chain that rings, rings at its rate. A
+dead chain ends up near 1 and springy hair near 0.3, where the presets carried one value per kind
+of chain.
 
 Gravity differs in kind. PhysBone 1.1 leans each bone's rest pose toward straight down by the
 gravity fraction; PhysBone 1.0 applies it as a force that pull holds off; MagicaCloth2 applies an
@@ -733,7 +742,7 @@ sharing one.
 |---|---|---|
 | **Match a preset to each chain** | on | Hair, tail, skirt, cape, accessory and more, read from the bone's name or, failing that, the nearest parent object whose name says what it is; otherwise a soft/middle/hard spring by how firmly the PhysBone held its rest pose |
 | **Fit the preset to the PhysBone** | on | The converted gravity, immobile, wind, the preset's angle limit and depth inertia, all as above, and the raised speed limits. Turn it off to leave those at the preset's values; `Is Animated` applies either way |
-| **Derive physics from the PhysBone** | on | Converts pull, spring and stiffness into damping and angle restoration. The preset's damping stays as a floor. Restoration has none on a hanging chain, because holding it at the preset's value made loose hair several times stiffer than its PhysBone and swing about half as far; a soft body keeps the preset's restoration as its floor, since without it a breast swung many times further than its PhysBone. The report gives the preset's numbers beside the converted ones. Turn it off to keep the preset's own damping and restoration |
+| **Derive physics from the PhysBone** | on | Converts pull, spring and stiffness into damping, angle restoration and its velocity attenuation. The preset's damping stays as a floor. Restoration has none on a hanging chain, because holding it at the preset's value made loose hair several times stiffer than its PhysBone and swing about half as far; a soft body keeps the preset's restoration as its floor, since without it a breast swung many times further than its PhysBone. The report gives the preset's numbers beside the converted ones. Turn it off to keep the preset's own damping, restoration and attenuation |
 | **Size particles from the mesh** | on | MagicaCloth2's radius is the collision body of a simulated bone. Left alone it is whatever the matched preset shipped: the same size on a breast as on a hair strand, so collision covers a fraction of what you see. This measures the mesh those bones move: with your blendshapes applied, so a body slider left part-way up is measured as you actually wear it, and sizes each chain to it. The source PhysBone's radius is deliberately *not* used: in VRChat it only governs contact with PhysBone colliders, so it is routinely near zero |
 | **Size for the largest a slider makes the body** | on | MagicaCloth2 can't animate a radius, so collision sized for one position of a blendshape body slider is wrong at every other. This measures the mesh again with every animated blendshape pushed as far as the animator can take it and keeps the larger reading: a little generous with the slider down rather than inside the body with it up. Shapes that *shrink* cost nothing. On the DynamicBone path the same measurement grows chain radii and converted colliders |
 | **Fit colliders to the mesh** | on | Measures the body part each collider sits on and fits MagicaCloth2's capsule to it, with a start and an end radius so it tapers the way the limb does (a sphere collider takes the narrower end). The measurement *replaces* the source's numbers, which are routinely one default stamped onto every collider; only the host bone's own vertices are read. Off keeps the source's sizes. The report gives the before and after for each |

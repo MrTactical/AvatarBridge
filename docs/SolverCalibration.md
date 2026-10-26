@@ -87,6 +87,46 @@ default PhysBone works out near 0.66. That one is a real difference in intent. V
 default chain is nearly dead and creators raise spring to 0.6+ for hair, which lands back
 in MagicaCloth2's territory.
 
+## The bounce: restoration's velocity attenuation
+
+MagicaCloth2 re-derives velocity from the position delta, but `AngleConstraint` moves the
+velocity reference along with each restoring move, by `velocityAttenuation` (default 0.8):
+
+    velocityPosArray[p] += restoringMove * velocityAttenuation
+
+so only `1 - attenuation` of each restoring move carries on into the next step. A PhysBone keeps
+all of it: term B lands in `zero`, and `zero` is the next step's `prevVelocity`.
+
+On one bone with offset y from rest and velocity v, both steps are linear maps on (y, v):
+
+    PhysBone, 60 Hz:      trace 1 - q + r,               determinant r
+    MagicaCloth2, 90 Hz:  trace 1 - k + c - c(1 - a)k,   determinant c(1 - k)
+
+with r and q the retention and restoring fraction above, c = 1 - 0.2 * damping, k the
+restoration's per-step fraction after its three iterations, and a the attenuation. Rebasing
+raises each eigenvalue to the power 60/90.
+
+Damping saturates. c goes no lower than 0.8, a retention of 0.72 at 60 Hz, where a default
+PhysBone retains 0.16 and hair at spring 0.6 about 0.48, so derived damping is 1 for nearly every
+chain and the determinant, how fast motion dies overall, is out of reach. The attenuation moves
+the trace alone, so `PhysBoneSolverMap.RestorationAttenuation` uses it to put MagicaCloth2's slower
+eigenvalue where the PhysBone's rebased one is; for a ringing chain, whose eigenvalues are complex,
+it matches the ringing frequency instead. It is averaged over the 16 depths, since a cloth has one.
+
+On the single-bone step response that lands within 0.008 of the best attenuation found by brute
+force, across pull 0.05 to 0.8 and spring 0 to 0.95, where a preset's fixed value was up to 0.08
+out on a loose chain. The best values run from about 0.95 for a dead chain to 0.15-0.3 for a
+springy one; the presets carried 0.35 to 0.8 by class. `PhysBoneBounceTest` checks the writer
+against it.
+
+In Play mode against the original PhysBones on five avatars (2026-10-26), hair and the other
+non-soft chains: peak swing error 24.4 to 21.6 degrees (605 chains nearer, 321 further), overshoot
+error 0.125 to 0.103 (404 nearer, 109 further), settling time error 0.26 to 0.31 s (263 nearer,
+278 further), and a few chains now ring past the window where their PhysBones stop. Soft bodies
+came out about even. Even at attenuation 0 the copies overshoot less than the originals, so the
+rest of that gap is elsewhere in the cloth. A stand-in for a slide-type add-on keeps its preset's
+value: it is calibrated against the add-on, not its PhysBone.
+
 ## PhysBone to DynamicBone
 
 PhysBone gravity, applied entirely through m_Force.

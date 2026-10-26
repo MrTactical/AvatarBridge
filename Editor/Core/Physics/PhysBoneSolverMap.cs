@@ -74,6 +74,37 @@ namespace AvatarBridge
             return Mathf.Clamp01(inspector);
         }
 
+        // MagicaCloth2 takes this fraction of every restoring move back out of the velocity, so
+        // only the rest carries on as bounce; a PhysBone keeps all of it. Damping sits at its
+        // ceiling for nearly every chain (MagicaCloth2 sheds at most a fifth a step), so this is
+        // the one coefficient left, and it puts the chain's slow mode where the PhysBone's is.
+        // A preset's fixed value gave a dead chain a springy one's bounce and the other way round.
+        public static float RestorationAttenuation(float pull, float spring, float stiffness, bool advanced,
+            float damping, float restoration)
+        {
+            float keep = Mathf.Clamp01(1f - damping * DampingScale);
+            float k = 1f - Mathf.Pow(1f - Mathf.Clamp01(restoration * RestorationScale), RestorationIterations);
+            if (keep * k < 1e-6f) return 1f;
+
+            // A PhysBone step on (offset, velocity) has trace 1 - q + r and determinant r.
+            // MagicaCloth2's determinant is keep * (1 - k) whatever the attenuation; only its trace moves.
+            float r = Retention60(pull, spring, stiffness, advanced);
+            float trace = 1f - Restore60(pull, spring, stiffness, advanced) + r;
+            float disc = trace * trace - 4f * r, det = keep * (1f - k), wanted;
+            if (disc >= 0f)
+            {
+                float slow = Rebase((trace + Mathf.Sqrt(disc)) * 0.5f);
+                if (slow < 1e-6f) return 1f;
+                wanted = slow + det / slow;
+            }
+            else
+            {
+                // A ringing chain: its decay is out of reach, so match how fast it rings.
+                wanted = 2f * Mathf.Sqrt(det) * Mathf.Cos(Mathf.Atan2(Mathf.Sqrt(-disc), trace) * PhysBoneHz / MagicaHz);
+            }
+            return Mathf.Clamp01(1f - (1f - k + keep - wanted) / (keep * k));
+        }
+
         public static void MapCurve(float atRoot, float atTip, out float value,
             out float curveStart, out float curveEnd, out bool useCurve)
         {

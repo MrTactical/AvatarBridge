@@ -626,7 +626,7 @@ namespace AvatarBridge
             // samples its own curves at.
             var damp = new float[16];
             var rest = new float[16];
-            float dampDerived = 0f;
+            float dampDerived = 0f, attenuation = 0f;
             bool saturated = false;
             for (int i = 0; i < damp.Length; i++)
             {
@@ -641,16 +641,22 @@ namespace AvatarBridge
                 rest[i] = Mathf.Max(restFloor,
                     PhysBoneSolverMap.RestorationStiffness(pull, spring, stiff, advanced, out bool sat));
                 saturated |= sat;
+                attenuation += PhysBoneSolverMap.RestorationAttenuation(pull, spring, stiff, advanced, damp[i], rest[i]) / damp.Length;
             }
             float dampValue = SetAlongChain(sdata.damping, damp);
             float restValue = SetAlongChain(sdata.angleRestorationConstraint.stiffness, rest);
             sdata.angleRestorationConstraint.useAngleRestoration = restValue > 0.0001f;
+            // One value per cloth. A stand-in keeps the preset's: it follows the add-on, not this PhysBone.
+            float attenPreset = sdata.angleRestorationConstraint.velocityAttenuation;
+            if (!data.StandIn) sdata.angleRestorationConstraint.velocityAttenuation = attenuation;
 
             bool dampFloored = dampValue > dampDerived + 0.0001f;
             ctx.Report.Approximated(Category, data.Label,
                 $"Physics derived from the PhysBone ({(advanced ? "Advanced" : "Simplified")} integration): " +
-                $"damping {dampValue:0.###}, angle restoration {restValue:0.###}, from 60 Hz to 90 Hz " +
-                $"(the preset had damping {dampFloor:0.###}, restoration {restPreset:0.###})." +
+                $"damping {dampValue:0.###}, angle restoration {restValue:0.###}, " +
+                $"its velocity attenuation {sdata.angleRestorationConstraint.velocityAttenuation:0.##}, from 60 Hz to 90 Hz " +
+                $"(the preset had damping {dampFloor:0.###}, restoration {restPreset:0.###}, " +
+                $"attenuation {attenPreset:0.##})." +
                 (dampFloored ? $" Damping held at the preset's; derived it would have been {dampDerived:0.###}." : ""));
 
             if (saturated)

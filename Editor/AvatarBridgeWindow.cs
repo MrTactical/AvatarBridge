@@ -654,7 +654,7 @@ namespace AvatarBridge
                     "Converts gravity and immobile, zeroes wind, which VRChat never had, turns off the preset's angle limit and depth inertia, and raises its speed limits.",
                     settings.fitToPhysBone, v => settings.fitToPhysBone = v));
                 t.Add(BridgeElements.Bind("Derive physics from the PhysBone",
-                    "Converts pull, spring and stiffness into damping and angle restoration, derived from both solvers.",
+                    "Converts pull, spring and stiffness into damping, angle restoration and its velocity attenuation, derived from both solvers.",
                     settings.derivePhysicsFromPhysBone, v => settings.derivePhysicsFromPhysBone = v));
                 t.Add(BridgeElements.Bind("Size particles from the mesh",
                     "Sizes each chain's collision to the mesh it moves, not the preset's one size for all.",

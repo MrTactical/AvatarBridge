@@ -91,7 +91,7 @@ namespace AvatarBridge
         // pull, spring and stiffness. Both solvers are position
         // integrators at fixed rates (60 Hz vs 90 Hz), so a real
         // conversion exists; PhysBoneSolverMap holds it. Replaces the
-        // preset's damping and restoration only.
+        // preset's damping, restoration and its velocity attenuation only.
         public bool derivePhysicsFromPhysBone = true;
         // Size each chain's particles from the mesh those bones move.
         // The source PhysBone radius is not used; in VRChat it only

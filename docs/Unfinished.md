@@ -158,6 +158,17 @@ ranked by how visible it should be:
    3.7.0 removed for vibrating; the README says it is off) stays on from LongHair 75, Skirt 60, Cape
    45, FrontHair 15 and others, even for a source with no limit. `velocityAttenuation` 0.55-0.8 stays,
    so only part of each restoring move becomes momentum. `particleSpeedLimit` 2-4 m/s stays (hunch).
+   - **velocityAttenuation fixed 2026-10-26 [M], Joe: "ship it".** Derived damping is 1 (MC2's
+     ceiling) for nearly every chain, so the attenuation is the one free coefficient: it now puts
+     MC2's slow eigenvalue on the PhysBone's rebased one, or matches the ringing frequency for a
+     complex pair (`PhysBoneSolverMap.RestorationAttenuation`, docs/SolverCalibration.md). Stand-ins
+     keep the preset's. `PhysBoneBounceTest`: old code WRONG on a loose chain (step error 0.103),
+     new PASS (0.006, 0.004, 0.004). Physics A/B, five-avatar set, scale 1, non-soft chains: peak
+     error 24.4 to 21.6, overshoot 0.125 to 0.103, settle 0.26 to 0.31 s (mixed, 263 nearer, 278
+     further), a few head chains on one avatar now never settle in the window. Forcing 0 everywhere
+     overshot nearer still but settled faster than the originals. Copies still overshoot less than
+     the originals even at 0, so the rest of that gap is not here.
+     `D:/Claude/scratch/bounceab/{scaleab/P1,attnab/s0,attnab/s0.4,fixab/sderived}`.
 3. **Damping lands at a fifth.** MC2 scales inspector damping by 0.2 (`ClothSerializeDataFunction.cs:181`)
    and `PhysBoneSolverMap.Damping` never divides it back, unlike restoration. The 2026-08-06 preset
    floors cover for it, and the restoration floor reads the preset's ROOT value and flattens the
