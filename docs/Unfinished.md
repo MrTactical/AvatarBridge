@@ -999,6 +999,26 @@ only its outer surface. Cost: a 4 KB texture per avatar and a few texture reads 
 **First move tomorrow:** the Gate 1 probe on Kar's prefab (`-spPrefab`, since the scene copy is
 older than the conversion).
 
+### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
+
+A user: a grip squeeze in VRChat became a trigger squeeze after conversion. The converter fed
+GestureLeftWeight/RightWeight from the parameter stream's TriggerLeft/RightValue on every
+controller. VRChat's weight follows whatever closes the fist: the grip on Quest and most
+controllers, the trigger on Index (its docs say "analog trigger"; its feedback board says the grip
+on most). ChilloutVR makes the same choice per controller for its own GestureLeft/Right, 0 to 1
+while the fist closes (the client's `CVRXRModule.Update_Gestures`: the grip by default, the trigger
+on Vive and Windows MR, finger curl from the trigger on Index), and its movement data carries that
+float to remote copies.
+
+Fixed: `FeedGestureWeights` works the weight out from GestureLeft/Right on every copy with an
+Animator Driver: the squeeze in a fist, 1 in any other pose, 0 open, as VRChat gives it. The two
+stream entries are gone, and the weights go local ("#") since every copy computes its own. The
+known-answer test `GestureWeightFeedTest` runs the CCK's own task code: red before the fix (two
+trigger entries, no driver), green after.
+
+Open [GAME]: on a grip controller, a half squeeze half-closes a weight-driven fist, and a second
+client sees the same; on Index the trigger still does it. In-game checklist R13.
+
 ## 5.0.1
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).

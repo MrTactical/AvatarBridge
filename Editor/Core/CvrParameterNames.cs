@@ -13,7 +13,7 @@ namespace AvatarBridge
     {
         // VRChat parameter -> ChilloutVR core parameter.
         // GestureLeftWeight/RightWeight stay unrenamed.
-        // A CVRParameterStream feeds them instead.
+        // The merger works them out from GestureLeft/Right instead.
         internal static readonly Dictionary<string, string> RenameMap = new Dictionary<string, string>
         {
             { "Viseme", "VisemeIdx" },
@@ -138,8 +138,7 @@ namespace AvatarBridge
         // so sync is the sole path to other clients.
         internal static readonly HashSet<string> StreamFed = new HashSet<string>
         {
-            "GestureLeftWeight", "GestureRightWeight", "MuteSelf", "VRMode",
-            "Upright", "TrackingType", "EyeHeightAsMeters"
+            "MuteSelf", "VRMode", "Upright", "TrackingType", "EyeHeightAsMeters"
             // The rest of the scale family is derived locally from
             // EyeHeightAsMeters by FeedScaleParameters. Cheaper than sync.
         };

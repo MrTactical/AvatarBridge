@@ -299,6 +299,8 @@ namespace AvatarBridge
             Lap("CreateParameterStreams");
             FeedVelocityMagnitude(master, ctx);
             Lap("FeedVelocityMagnitude");
+            FeedGestureWeights(master, ctx);
+            Lap("FeedGestureWeights");
             RehomeVolatileAssets(master, vrcLayers, ctx);
             Lap("RehomeVolatileAssets");
             DeduplicateLayers(master, ctx);
@@ -1105,8 +1107,8 @@ namespace AvatarBridge
                 }
                 else
                 {
-                    // GestureLeftWeight/RightWeight conditions pass through unchanged: a
-                    // CVRParameterStream feeds those parameters the real trigger values.
+                    // GestureLeftWeight/RightWeight conditions pass through unchanged:
+                    // FeedGestureWeights works those parameters out from the fist.
                     options = new List<List<AnimatorCondition>> { new List<AnimatorCondition> { condition } };
                 }
 
@@ -1277,7 +1279,7 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category, $"{layer.name}: analog fist curl rebuilt",
                     $"\"{fist.name}\" now blends from \"{idleClip.name}\" (grip 0.1) to \"{fistClip.name}\" " +
                     "(full grip) on the gesture float: the CCK's own Relaxed/Fist idiom, matching how " +
-                    "VRChat eases the fist in by trigger pressure instead of snapping to the full pose.");
+                    "VRChat eases the fist in by how far it is squeezed instead of snapping to the full pose.");
             }
         }
 
@@ -5217,8 +5219,6 @@ namespace AvatarBridge
             // ChilloutVR boolean becomes one of VRChat's numbered states.
             var streamables = new[]
             {
-                (bare: "GestureLeftWeight", streamType: "TriggerLeftValue", app: "Override", lo: 0f, hi: 0f),
-                (bare: "GestureRightWeight", streamType: "TriggerRightValue", app: "Override", lo: 0f, hi: 0f),
                 (bare: "MuteSelf", streamType: "LocalPlayerMuted", app: "Override", lo: 0f, hi: 0f),
                 (bare: "VRMode", streamType: "DeviceMode", app: "Override", lo: 0f, hi: 0f),
 
@@ -5262,7 +5262,7 @@ namespace AvatarBridge
             if (entryType == null || typeEnum == null)
             {
                 ctx.Report.Warning(Category, "CVRParameterStream entries unavailable on this CCK version",
-                    "GestureLeftWeight/MuteSelf/VRMode parameters keep their defaults.");
+                    "MuteSelf/VRMode parameters keep their defaults.");
                 return;
             }
 
@@ -5274,8 +5274,8 @@ namespace AvatarBridge
             {
                 { "Override", 0 }, { "Remap", 201 }, { "ClampRemap", 202 },
                 { "DeviceMode", 20 }, { "LocalPlayerMuted", 210 },
-                { "LocalPlayerFullBodyEnabled", 260 }, { "TriggerLeftValue", 270 },
-                { "TriggerRightValue", 280 }, { "AvatarHeight", 400 }, { "AvatarUpright", 401 },
+                { "LocalPlayerFullBodyEnabled", 260 },
+                { "AvatarHeight", 400 }, { "AvatarUpright", 401 },
                 { "AvatarAnimator", 2 },
             };
             object ParseEnum(Type enumType, string name)
@@ -5812,6 +5812,13 @@ namespace AvatarBridge
             return list.ToArray();
         }
 
+        internal static void FeedGameParametersForTest(AnimatorController master, BridgeContext ctx)
+        {
+            CreateParameterStreams(master, ctx);
+            FeedVelocityMagnitude(master, ctx);
+            FeedGestureWeights(master, ctx);
+        }
+
         static void FeedVelocityMagnitude(AnimatorController master, BridgeContext ctx)
         {
             AnimatorControllerParameter target = null;
@@ -5918,6 +5925,121 @@ namespace AvatarBridge
 
             ctx.Report.Converted(Category, $"\"{target.name}\" computed from the native velocity",
                 "From VelocityX/Y/Z on every client, local and free.");
+        }
+
+        // VRChat's fist weight follows whatever closes the fist: the grip on most controllers, the
+        // trigger on Index and Vive. ChilloutVR makes the same choice per controller for its own
+        // gesture float, 0 to 1 while the fist closes, so the weight is worked out from that on
+        // every copy. Fed from the trigger stream instead, a fist closed with the grip read 0.
+        static void FeedGestureWeights(AnimatorController master, BridgeContext ctx)
+        {
+            var weights = master.parameters
+                .Where(p => p.type == AnimatorControllerParameterType.Float
+                            && GestureMap.GestureWeightParameters.Contains(p.name.TrimStart('#')))
+                .Select(p => p.name)
+                .ToList();
+            if (weights.Count == 0)
+            {
+                return;
+            }
+            if (!TryOperator(out var moreThan, "MoreThan", "MoreThen")
+                || !TryOperator(out var lessThan, "LessThan", "LessThen"))
+            {
+                ctx.Report.Warning(Category, "Gesture weights left at 0",
+                    "This CCK's Animator Driver has no comparison operators, so GestureLeftWeight/RightWeight keep their defaults.");
+                return;
+            }
+
+            var parameters = master.parameters.ToList();
+            void Ensure(string name)
+            {
+                if (parameters.All(p => p.name != name))
+                {
+                    parameters.Add(new AnimatorControllerParameter
+                    {
+                        name = name,
+                        type = AnimatorControllerParameterType.Float,
+                        defaultFloat = 0f
+                    });
+                }
+            }
+
+            AnimatorDriverTask Task(string targetName, AnimatorDriverTask.Operator op,
+                string aParam, string bParam, float bStatic = 0f)
+            {
+                var task = new AnimatorDriverTask
+                {
+                    targetType = AnimatorDriverTask.ParameterType.Float,
+                    targetName = targetName,
+                    op = op,
+                    aType = AnimatorDriverTask.SourceType.Parameter,
+                    aParamType = AnimatorDriverTask.ParameterType.Float,
+                    aName = aParam
+                };
+                if (bParam != null)
+                {
+                    task.bType = AnimatorDriverTask.SourceType.Parameter;
+                    task.bParamType = AnimatorDriverTask.ParameterType.Float;
+                    task.bName = bParam;
+                }
+                else
+                {
+                    task.bType = AnimatorDriverTask.SourceType.Static;
+                    task.bValue = bStatic;
+                }
+                return task;
+            }
+
+            var tick = new AnimationClip { name = "Gesture Weight Tick" };
+            tick.SetCurve("", typeof(Animator), "#GestureWeightTick", AnimationCurve.Constant(0f, 1f / 60f, 0f));
+
+            var machine = new AnimatorStateMachine
+            {
+                name = "Gesture Weight Feed",
+                hideFlags = HideFlags.HideInHierarchy
+            };
+            var state = machine.AddState("Recompute");
+            state.writeDefaultValues = false;
+            state.motion = tick;
+            machine.defaultState = state;
+
+            var loop = state.AddTransition(state);
+            loop.hasExitTime = true;
+            loop.exitTime = 1f;
+            loop.hasFixedDuration = true;
+            loop.duration = 0f;
+
+            var driver = state.AddStateMachineBehaviour<AnimatorDriver>();
+            driver.localOnly = false; // remote copies receive the gesture float, so they compute it too
+            foreach (string w in weights)
+            {
+                string bare = w.TrimStart('#');
+                string g = bare.Replace("Weight", "");
+                string s = "#" + bare + "Calc";
+                Ensure(g);
+                Ensure(s);
+                // W = G + S * (1 - G), S = 1 outside the fist's 0 to 1: VRChat gives 1 in any other pose.
+                driver.EnterTasks.Add(Task(s, moreThan, g, null, 1f));
+                driver.EnterTasks.Add(Task(w, lessThan, g, null, 0f));
+                driver.EnterTasks.Add(Task(s, AnimatorDriverTask.Operator.Addition, s, w));
+                driver.EnterTasks.Add(Task(w, AnimatorDriverTask.Operator.Multiplication, g, null, -1f));
+                driver.EnterTasks.Add(Task(w, AnimatorDriverTask.Operator.Addition, w, null, 1f));
+                driver.EnterTasks.Add(Task(w, AnimatorDriverTask.Operator.Multiplication, s, w));
+                driver.EnterTasks.Add(Task(w, AnimatorDriverTask.Operator.Addition, w, g));
+                ctx.Report.Converted(Category, $"\"{w}\" follows the fist's own squeeze",
+                    $"Worked out on every copy from \"{g}\", which ChilloutVR fills from the grip on most " +
+                    "controllers and the trigger on Index and Vive, as VRChat does. Needs no sync.");
+            }
+            master.parameters = parameters.ToArray();
+
+            var layers = master.layers.ToList();
+            layers.Add(new AnimatorControllerLayer
+            {
+                name = "Gesture Weight Feed",
+                defaultWeight = 1f,
+                stateMachine = machine
+            });
+            master.layers = layers.ToArray();
         }
 
         internal static string SanitizeParameterName(string source)
@@ -8876,6 +8998,7 @@ namespace AvatarBridge
         {
             var gameFed = new HashSet<string>(CvrCoreParameters);
             gameFed.UnionWith(StreamFedParameters);
+            gameFed.UnionWith(GestureMap.GestureWeightParameters);
             gameFed.Add("VisemeLoudness");
             gameFed.Add("Upright");
 
