@@ -1303,6 +1303,16 @@ centre. Three times the swell gave back 23 cm3 of 311. Next: size what comes bac
 press itself, calibrated on these six to keep volume, with the spill reaching marshmallow
 (`marshmallow-pb` grows a squeezed part 1.5 to 1.9 times) at its top; exact needs the shader to
 sample the part's baked surface round the contact.
+Tried, in memory: the swell sized from the overlap and spread a share of the reach wide gave back
+nothing, two reasons. Behind a bowed seam, the pressed part's skin all lies far behind it, so the
+falloff by depth behind it gave it no swell. And near the seam the skin faces the other part, so
+pushed out from the line between them it only slides along itself. What worked: the whole part
+grows across the press (the part pass's flatten lines, scaled by how near square to the pair's
+line), by the lens two balls of its reach overlap by, its share, over its own volume, the free
+skin top, bottom and front taking it. At twice that lens, Kar's presses keep their volume within
+2% (both swung deep 0.0%, two hands +0.2%, both dragged -1.6%, one swung -1.2%), and at rest -1.0%
+as built; one dragged by its root overshoots +6% (the follows read a deep overlap the cloth never
+made), and a hand's dent, its own mechanism, still loses 2%. Filmed at 2, 4 and 8 times for Joe.
 Probe notes: the client's filter DLL crashes the editor (SIGSEGV in `DoFilterShader`) when a freshly
 generated shader is imported with it hooked, so run each case unfiltered first and the filtered run
 reuses the import; `YapsCompileBisect -ycbDump` writes the vertex programs as DXBC for the
