@@ -16,6 +16,7 @@
 // A/B:    -executeMethod AvatarBridge.Regression.PhysicsAbProbe.Run -abScenes "a.unity;b.unity" -abOut <dir>
 //   no -quit: it walks the list, in and out of Play mode, and exits itself.
 //   -abScale s resizes both avatars through a parent; the drive's moves stay in metres.
+//   -abScaleLive s resizes them only once the cloths have built, as Universal Scaling does.
 #if CVR_CCK_EXISTS && AVATARBRIDGE_MAGICA && VRC_SDK_VRCSDK3
 using System;
 using ABI.CCK.Components;
@@ -90,7 +91,7 @@ namespace AvatarBridge.Regression
         static List<Pair> pairs;
         static List<(string name, Transform s, Transform d, List<Vector3> sp, List<Vector3> dp)> traced;
         static Body srcBody, dstBody;
-        static int startFrame = -1, playFrames;
+        static int startFrame = -1, playFrames, liveAt = -1;
         static float walked;
         static bool hooked, installed;
         static double waitingSince;
@@ -390,11 +391,13 @@ namespace AvatarBridge.Regression
             // -abScale s: both resized through a parent, as Universal Scaling or a height slider
             // does. Not on the root, which an avatar's own animator can write back every frame.
             // Positions scale with it, so the two stay apart; the drive's moves stay in metres.
-            if (float.TryParse(Arg("-abScale"), NumberStyles.Float, CultureInfo.InvariantCulture, out float abScale))
+            // -abScaleLive s: the parents stay at 1 until the cloths have built (DriveStep).
+            bool scaleLive = Arg("-abScaleLive") != null;
+            if (float.TryParse(Arg(scaleLive ? "-abScaleLive" : "-abScale"), NumberStyles.Float, CultureInfo.InvariantCulture, out float abScale))
                 foreach (var root in new[] { descriptor.transform.root, converted.transform.root }.Distinct())
                 {
                     var parent = new GameObject("PhysicsAb scale").transform;
-                    parent.localScale = Vector3.one * abScale;
+                    parent.localScale = Vector3.one * (scaleLive ? 1f : abScale);
                     root.SetParent(parent, false);
                 }
             // A calibration sweep scales every cloth's gravity here, on the copy only.
@@ -773,6 +776,7 @@ namespace AvatarBridge.Regression
                 installed = true;
                 startFrame = -1;
                 playFrames = 0;
+                liveAt = -1;
                 walked = 0;
                 return;
             }
@@ -900,6 +904,23 @@ namespace AvatarBridge.Regression
                 var cloths = dstBody.avatar.GetComponentsInChildren<MagicaCloth>(true).Where(c => c.isActiveAndEnabled).ToArray();
                 bool built = cloths.All(c => c.IsValid());
                 if (playFrames < Fps || (!built && playFrames < 10 * Fps)) return;
+                // -abScaleLive s: resized only once every cloth has built, as Universal Scaling does
+                // in game, then a second to settle. A cloth that starts at its final size keeps its
+                // gravity in metres; one resized after it starts scales its forces with it
+                // (MagicaCloth2's scaleRatio). The presses scale too, so their size keeps to the chains.
+                if (float.TryParse(Arg("-abScaleLive"), NumberStyles.Float, CultureInfo.InvariantCulture, out float live))
+                {
+                    if (liveAt < 0)
+                    {
+                        foreach (var p in UnityEngine.Object.FindObjectsOfType<Transform>().Where(p => p.name == "PhysicsAb scale" || p.name == "PhysicsAb presses"))
+                            p.localScale = Vector3.one * live;
+                        liveAt = playFrames;
+                        return;
+                    }
+                    if (playFrames < liveAt + Fps) return;
+                    srcBody.pos0 = srcBody.avatar.position;
+                    dstBody.pos0 = dstBody.avatar.position;
+                }
                 startFrame = Time.frameCount;
                 Debug.Log($"[PhysicsAb] timeline starts, {cloths.Count(c => c.IsValid())}/{cloths.Length} cloth(s) built");
             }

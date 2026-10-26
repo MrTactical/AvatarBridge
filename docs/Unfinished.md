@@ -655,6 +655,26 @@ due on the Nightly branch within days; none of this is in stable yet.
    scaling the root measured nothing. Read, not measured: other players' hands are sized by their
    viewpoint height, own arms by their own bones. Physics under scaling (the cloth's gravity is in
    metres) and all of it in ChilloutVR are still open.
+   **Cloth under scaling, measured 2026-10-26 [M]** (`PhysicsAbProbe -abScale` / `-abScaleLive`,
+   the five-avatar set, 0.2, 1 and 5 through a parent). Every metric is an angle, a ratio or a
+   time; the original PhysBones hang the same at every scale (rest sag 2.9 deg, lying 13.9). The
+   cloth depends on WHEN the size changes. MagicaCloth2 multiplies gravity, wind and outside force
+   by `scaleRatio`, the cloth's world scale over its scale when it STARTED. Resized after it
+   starts (`-abScaleLive`, a second to settle, as Universal Scaling does in play): it holds. Short
+   hair lying 8.5 / 8.1 / 7.8 deg at 0.2 / 1 / 5 against 10.2 for the original; what is left is long
+   hair and loose chains a little heavier when shrunk (long hair rest sag 11 deg against 3 at 1).
+   Started at the new size (`-abScale`, the cloth never sees a change): gravity stays in metres,
+   so a small avatar's hair droops (long hair lying 72 deg against 43 at 1, rest sag 22 against 3)
+   and a big one's goes stiff (13 lying). The converter is not the cause: `ConvertedGravity`
+   already sizes gravity by each chain's world length, so an avatar AUTHORED small is right.
+   Read, not measured: MagicaCloth2 takes its start scale from `initData` (written by its editor
+   when a cloth is edited in the inspector) or Pre-Build data when either is valid, else from the
+   transform at start; the converter writes neither. So which case a user sees turns on whether
+   ChilloutVR applies a saved scale before an avatar's cloths start. In game: resize small with
+   Universal Scaling and note the long hair's hang; then switch avatars and back with the size
+   kept. Heavier the second time = ChilloutVR scales before the cloths start, and writing
+   `initData` or Pre-Build at conversion (start scale pinned to the converted size) is the likely
+   fix. The probe's press metrics are meaningless at live 0.2 (the press never reached).
 3. **Prop partial sync**: the server hands out control per part of a prop, and Disallow Theft is now
    enforced. `YapsPropBuilder` already leaves it off on fresh props, but who writes a prop's synced
    value changes: retest the prop contact channel on the Nightly.
