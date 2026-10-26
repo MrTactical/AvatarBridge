@@ -10,15 +10,18 @@
 // -executeMethod AvatarBridge.Regression.ShaderFilterProbe.Run -sfLimit <0|128|256|512|1024|2048>
 //     -spScene <scene> -spOut <dir> [any SquashPlayProbe mode]
 //
-// -sfRuntime swaps each squash material's shader for a copy compiled at run time, which the hook
+// -executeMethod AvatarBridge.Regression.ShaderFilterProbe.Plug -sfLimit <n> [-ghostAvatar ...]
+//     runs PlugGhostProbe with the plug's shader compiled at run time, so its bends are filtered.
+//
+// -sfRuntime swaps each squash or plug material's shader for a copy compiled at run time, which the hook
 // does reach in the editor (an imported shader never passes through it here).
 //
 // 0 leaves the filter off. Before handing over it draws a canary: a 1000-step loop whose result
 // reads 0.632 unfiltered and far less when the hook is live, logged as "[ShaderFilter] canary".
 // Batch, never -nographics.
 //
-// -executeMethod AvatarBridge.Regression.ShaderFilterProbe.Dump -spScene <scene> -sfDump <dir>
-//     writes the D3D11 vertex program of every squash material's passes in that scene, compiled with
+// -executeMethod AvatarBridge.Regression.ShaderFilterProbe.Dump -spScene <scene> | -spPrefab <prefab> -sfDump <dir>
+//     writes the D3D11 vertex program of every squash or plug material's passes in that scene, compiled with
 //     its keywords (plus -sfKeywords "A B"), as <material>.<pass>.dxbc, to run through the filter
 //     outside Unity.
 
@@ -79,6 +82,24 @@ ENDCG } } }";
         public static void Run()
         {
             var args = Environment.GetCommandLineArgs();
+            Filter(args);
+            SessionState.SetBool("ShaderFilterProbe.again", true);
+            SessionState.SetBool("ShaderFilterProbe.runtime", args.Contains("-sfRuntime"));
+            Again();
+            SquashPlayProbe.Run();
+        }
+
+        // The plug ghost probe's scenes with the plug's shader compiled at run time, so a socket bend
+        // is drawn as a client with the filter on draws it. -sfLimit as above, -ghost* as that probe.
+        public static void Plug()
+        {
+            Filter(Environment.GetCommandLineArgs());
+            PlugGhostProbe.Swap = m => IsYaps(m) ? new Material(m) { shader = RuntimeCopy(m.shader) } : m;
+            PlugGhostProbe.Run();
+        }
+
+        static void Filter(string[] args)
+        {
             int at = Array.IndexOf(args, "-sfLimit");
             int limit = at >= 0 && at + 1 < args.Length ? int.Parse(args[at + 1]) : 0;
             // The client's defaults beside the loop limit: tessellation 50 / 10, geometry 60.
@@ -86,12 +107,14 @@ ENDCG } } }";
             SetGeometryLimit(60);
             if (limit > 0) SetLoopLimit(limit);
             SetFilteringState(limit > 0, limit > 0, limit > 0);
-
             Debug.Log($"[ShaderFilter] limit {limit}, canary {Draw(Canary):F4}, vertex canary {Draw(VertexCanary):F4}, asset canary {AssetCanary()} (0.6323 unfiltered)");
-            SessionState.SetBool("ShaderFilterProbe.again", true);
-            SessionState.SetBool("ShaderFilterProbe.runtime", args.Contains("-sfRuntime"));
-            Again();
-            SquashPlayProbe.Run();
+        }
+
+        static Shader RuntimeCopy(Shader shader)
+        {
+            var copy = ShaderUtil.CreateShaderAsset(System.IO.File.ReadAllText(AssetDatabase.GetAssetPath(shader)), false);
+            Debug.Log($"[ShaderFilter] runtime copy of {shader.name}: {(ShaderUtil.ShaderHasError(copy) ? "ERROR " + string.Join(" | ", ShaderUtil.GetShaderMessages(copy).Select(m => m.message).Take(3)) : "ok")}");
+            return copy;
         }
 
         public static void Dump()
@@ -101,9 +124,18 @@ ENDCG } } }";
             System.IO.Directory.CreateDirectory(dir);
             int ek = Array.IndexOf(args, "-sfKeywords");
             var extra = ek >= 0 ? args[ek + 1].Split(' ') : new string[0];
-            UnityEditor.SceneManagement.EditorSceneManager.OpenScene(args[Array.IndexOf(args, "-spScene") + 1]);
-            var mats = UnityEngine.Object.FindObjectsOfType<Renderer>(true).SelectMany(r => r.sharedMaterials)
-                .Where(m => m != null && m.HasProperty("_YAPS_DentPower")).Distinct();
+            int pf = Array.IndexOf(args, "-spPrefab");
+            Renderer[] renderers;
+            if (pf >= 0)
+            {
+                renderers = AssetDatabase.LoadAssetAtPath<GameObject>(args[pf + 1]).GetComponentsInChildren<Renderer>(true);
+            }
+            else
+            {
+                UnityEditor.SceneManagement.EditorSceneManager.OpenScene(args[Array.IndexOf(args, "-spScene") + 1]);
+                renderers = UnityEngine.Object.FindObjectsOfType<Renderer>(true);
+            }
+            var mats = renderers.SelectMany(r => r.sharedMaterials).Where(IsYaps).Distinct();
             foreach (var mat in mats)
             {
                 var sub = ShaderUtil.GetShaderData(mat.shader).GetSubshader(0);
@@ -132,6 +164,10 @@ ENDCG } } }";
             EditorApplication.Exit(0);
         }
 
+        // A squash material, or a plug's: the plug's bake reads shape keys and walks its curve in
+        // loops of its own.
+        static bool IsYaps(Material m) => m != null && (m.HasProperty("_YAPS_DentPower") || m.HasProperty("_YAPS_Bake"));
+
         // Again once Play mode starts, whether or not it reloads the scripts.
         [InitializeOnLoadMethod]
         static void Again()
@@ -157,7 +193,7 @@ ENDCG } } }";
         {
             var swapped = new System.Collections.Generic.Dictionary<Material, Shader>();
             foreach (var mat in UnityEngine.Object.FindObjectsOfType<Renderer>(true).SelectMany(r => r.sharedMaterials)
-                .Where(m => m != null && m.HasProperty("_YAPS_DentPower")).Distinct())
+                .Where(IsYaps).Distinct())
             {
                 string path = AssetDatabase.GetAssetPath(mat.shader);
                 var copy = ShaderUtil.CreateShaderAsset(System.IO.File.ReadAllText(path), false);

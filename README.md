@@ -3143,6 +3143,12 @@ Work down the list; the first that fits is usually it.
   lights, which cannot carry tags, one-way rings or a wearer's own sockets. Nothing reports this,
   because from the inside it looks exactly like a socket that decided not to answer. See
   [how a plug finds a socket](#what-a-conversion-does).
+- **Does the person who sees it wrong have Shader Filtering on?** ChilloutVR's *Settings ▸
+  Experimental ▸ Enable Shader Filtering* is off unless you turn it on. When on, it cuts short every
+  loop in every shader, and a plug finds its socket and follows its curve in loops. At every loop
+  limit, a viewer with it on sees a plug pass by a socket the screen atlas would have found, and a
+  plug that a marker light found bend into a thin, flat strip. It is that viewer's own setting, so
+  nothing on the avatar can change it.
 - **Does the report say some penetration animation curves "change nothing"?** Every curve the
   conversion writes for a plug is checked against the finished avatar, and those are the ones
   Unity could not attach to anything, so the menu rows or size changes they belong to do nothing

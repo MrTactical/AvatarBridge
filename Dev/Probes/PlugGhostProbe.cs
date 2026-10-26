@@ -54,6 +54,9 @@ namespace AvatarBridge.Regression
 
         static void Log(string s) => Debug.Log(Tag + s);
 
+        // ShaderFilterProbe.Plug swaps in a copy compiled at run time, which its filter hook reaches.
+        internal static Func<Material, Material> Swap;
+
         public static void Run()
         {
             int code = 1;
@@ -89,6 +92,7 @@ namespace AvatarBridge.Regression
                 skin.sharedMaterials = skin.sharedMaterials.Select(m => m != null && YapsShaderPatcher.IsStale(m) ? Repatched(m) : m).ToArray();
                 YapsOwner.Relays(avatar);
             }
+            if (Swap != null) skin.sharedMaterials = skin.sharedMaterials.Select(Swap).ToArray();
             var relay = avatar.GetComponentsInChildren<SkinnedMeshRenderer>(true).FirstOrDefault(r => YapsAtlas.IsRelay(r.sharedMaterial));
             Log(relay == null ? "no light relay built" : $"relay \"{relay.name}\" under \"{relay.transform.parent.name}\": bounds {relay.bounds.center:F3} {relay.bounds.size:F3}, the plug's {skin.bounds.center:F3} {skin.bounds.size:F3}");
             skin.updateWhenOffscreen = true;

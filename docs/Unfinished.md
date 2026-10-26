@@ -519,11 +519,27 @@ because patched shaders inline the include. No fix has been seen in game yet.
    player's hand is lost, as expected (the hand loop gets one pass, the own upper arm). `YapsDiffProbe`
    old vs new, filter off: 0 of 400 scenes differ on seeds 1 and 2 (0.0006 mm, normals 0.00001);
    `-ydWild` still passes. README notes the lost presses.
-   Same filter, not fixed: **plugs**. The bake's shape-key loop and the walk along the curve are
-   loops, so with the filter on a plug with active shape keys reads its rest shape short of them,
-   and the walk stops after a pass or two and lands on the curve's end. Not measured in the editor
-   yet (`-sfRuntime` on a plug scene would show it). Unrolling the walk costs compile time on every
-   plug variant, so it waits on Joe.
+   Same filter, not fixed: **plugs. MEASURED 2026-10-26, broken at every limit; README
+   troubleshooting says so.** `ShaderFilterProbe.Plug` (PlugGhostProbe with the plug's shader
+   compiled at run time, Sally's plug, sockets at 35 and 60 degrees) at limit 0 / 128 / 2048:
+   - atlas route: bends 32k / 54k px off straight unfiltered, **0 px at 128 and 2048**, the plug
+     straight past the socket;
+   - marker-light route: bends at 2048 (and at 128 at 60 degrees), but the plug draws 60k px
+     against 82k unfiltered: **a thin flat strip** to the socket (picture checked);
+   - at 128 the forward and caster passes disagree (44k colour-only px), since their loops differ.
+   Why, from the filtered bytecode of the same program (vertex, 61 KB): one counter for the whole
+   program, loops in this order with their cost a pass: shape keys 121, the light slots 69 (18
+   inside) and 68 (18 inside), the atlas scan 39 > 9 > 9 > 36 > home 37 > octant 351 (32 and 18
+   inside), the walk 135. At 128 every loop after the shape loop's second pass gets one pass;
+   at 2048 one occupied atlas cell's eight octants alone cost 2808, so the scan stops at about
+   the first socket it meets and the walk, last, always gets one pass of 48 and lands on the
+   curve's end. The socket's atlas writer was NOT filtered in this run (imported shaders never
+   are in the editor), so in game it can only be worse.
+   Options for Joe, none started: (a) leave it, the README line (done); (b) the walk without a
+   loop (eight unrolled arc samples and an interpolated landing), which mends the marker-light
+   route only and changes the walk everyone sees, so it needs the bend tester and Joe's eye; the
+   atlas scan cannot fit any limit as a loop. Shape keys past the first are lost at 128 (bytecode
+   only, not rendered).
 
 ### 20. The atlas paints dots on viewers' screens. Joe, 2026-10-24, fixed on dev, Joe to check in game
 
@@ -955,6 +971,14 @@ plane collider"; and take a playbook from Poiyomi's glass squish.
 
 Joe: "boob mesh to boob mesh squishy, genuine soft body", then "plan that for tomorrow". Ask him
 first: 5.0.0 or 5.1.0 (on 10-24 he put new squash ideas in 5.1.0). **Decided 2026-10-26 (Joe): 5.0.0.**
+
+**The aim, in Joe's words (2026-10-26):** "when you push the boob into the other, even though it
+pushes the boob, it still squishes a small amount, and can dynamically fix the problem about the
+flat plane not being dynamic enough". So one contact against the partner's real surface replaces
+the flat meeting plane, and that one contact's depth drives both answers: how far the partner
+swings away and how much each part squishes, never one without the other. The current squash is
+the baseline he approved ("FINALLY, BEAUTIFUL!!", 2026-10-25): every gate below compares
+against it, and nothing it does well may get worse.
 
 **Today.** Each part is an ellipsoid of six measured reaches in its own frame (a toward the
 partner, o out of the body, u across): `YapsExtent`, `YapsInside` and the quadratic solves in the
