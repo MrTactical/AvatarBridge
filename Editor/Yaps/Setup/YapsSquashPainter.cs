@@ -173,7 +173,7 @@ namespace AvatarBridge
             // out of Play mode: the regions live on the component, which goes back when it ends.
             bool playing = EditorApplication.isPlaying;
             into.Add(playing
-                ? BridgeElements.Notice(Tone.Info, "The painted areas hide in Play mode, so they never cover a press. Paint outside Play mode: what is painted in it would go when it ends.")
+                ? (VisualElement) BridgeElements.Notice(Tone.Info, "The painted areas hide in Play mode, so they never cover a press. Paint outside Play mode: what is painted in it would go when it ends.")
                 : BridgeElements.Hint("The painted areas are coloured on the body in the Scene view, except while the preview runs, so they never cover a press."));
             if (!string.IsNullOrEmpty(_status)) into.Add(BridgeElements.Notice(_tone, _status));
             if (_w == null)
