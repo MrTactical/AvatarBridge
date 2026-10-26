@@ -1072,7 +1072,9 @@ not known to be black; an unset vector reads 0.
 **Step 2 DONE on dev 2026-10-26, Gate 2 PARTLY.** `yaps_dent.cginc`: `YapsSurfaceAt` (octahedral,
 bilinear by four Loads per part block, the same grid as `YapsSquash.SurfaceCell`); `YapsExtent`
 reads it where the part's flag is set, so the contact, the swing, the dents, the seam's pole, the
-flattening's widths and the stretch all take the real shape; `YapsLeave`, one radial step and three
+flattening's widths and the stretch all take the real shape (CORRECTED below: the flattening's
+widths, the stretch's pivot, a hand's deepest and the lying-back press went back to the ellipsoid,
+`YapsSpan`, for the compile time); `YapsLeave`, one radial step and three
 secant steps, unrolled, from the ellipsoid's answer, eased back to it where the steps end off the
 surface, gives `YapsInside` and the seam's line solve the real surface. The seam's normal stays the
 ellipsoid's. Patched shaders INLINE this code: an avatar sees it only once its squash is rebuilt.
@@ -1090,6 +1092,33 @@ alike), zebra equally smooth. With GIVE: the hard one-sided push shows both part
 pushed one used to slide away whole. Still to run: a rebuilt copy for real materials, drag tear
 counts, `-spPush`, `-spCost`, the patched shader's compile time, the filtered path; then Joe in
 game. Open for Step 3's second half: pressing along the partner's surface normal.
+
+**Gate 2 DONE in the editor 2026-10-26**, Kar's prefab, the built materials (old) against a
+`-spRebuild` copy (new), same frames:
+- Compile, one vertex variant (`YapsCompileBisect -ycbCases`, twice, steady to 10%): squash only
+  4.3 s old, 48-50 s with the map in every `YapsExtent`; squash+socket 4.7 s, 54 s. Bisected by
+  call site on edited copies of the patched shader: the secant solve (40 inlined reads, outside the
+  per-part loop) costs nothing; neither one filtered sample for the four Loads, nor read-then-select,
+  nor `[branch]` helps; the cost is the four sites in the per-part loop that only SCALE something
+  (a hand's deepest, the lying-back press, the flattening's six widths, the stretch's pivot). Those
+  went back to the ellipsoid as `YapsSpan`: squash only 7.2-7.5 s, squash+socket 8.5 s. All three
+  roles: 11.5 s old, 16 s new, the fix does not move it. Not chased further.
+- Accuracy of the solve on Kar's real map (a Python copy of `YapsLeave`, 1500 lines a part, against
+  a bisected exit): three secant steps and two agree (mean 0.01-0.05% of the reach); one step 0.05-
+  0.16%, 95th percentile at most 0.3% (0.6 mm); the rare large misses are grazing lines that pick
+  another crossing and do not shrink with more steps. Kept at three; one is there if cost matters.
+- Tears, drag one part 21 cm: worst stretch 4.05x old, 3.77x new; seams opened over 1 cm 214, 262;
+  over 2x 40, 62 (GIVE squashes both now, so more edges move). Drag both: worst 3.58x, 3.20x;
+  opened 16, 0. Push hard and hand dents: the same to the eye, zebra smooth.
+- GPU, the probe's frame (ms, one avatar): squash on alone 1.44 old, 1.70 new; 64 players' hands on
+  one part 6.2, 8.6. Ten avatars: 3.19, 3.60; 8.9, 11.7.
+- Shader Filtering at 128 against off, new code: a few small patches where the parts meet differ,
+  at rest too; nothing breaks broadly. Old code under the filter not run.
+- CORRECTION to "md5s unchanged after every run" above: true of the `-spSurface` runs; the look
+  runs on the built materials (no `-spRebuild`) saved `_YAPS_SquashPulse` 0.6 into them on exit.
+  Restored from the backup; the probe now puts the pulse and the meet flag back (84147d2), checked
+  by md5 after a `-spPush -spLook -spMeet` run.
+Next: Joe in game, on a reconverted avatar.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 

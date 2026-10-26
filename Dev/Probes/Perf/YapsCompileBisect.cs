@@ -4,7 +4,7 @@
 // the YAPS vertex stage costs about 60x the host's per variant (UploadCostProbe).
 //
 //   -executeMethod AvatarBridge.Regression.YapsCompileBisect.Run
-//       -ycbSource <a patched .shader> [-ycbEntry vertBase] [-ycbTarget 4.0]
+//       -ycbSource <a patched .shader> [-ycbEntry vertBase] [-ycbTarget 4.0] [-ycbCases squash,all]
 //
 // Lifts the YAPS block out of a patched shader, wraps it in a bare vertex
 // shader, and compiles one vertex variant per case: roles switched on and off,
@@ -32,6 +32,7 @@ namespace AvatarBridge.Regression
             ("plug", "#define YAPS_NO_SOCKET\n#define YAPS_NO_SQUASH\n", null, null),
             ("socket", "#define YAPS_NO_PLUG\n#define YAPS_NO_SQUASH\n", null, null),
             ("squash", "#define YAPS_NO_PLUG\n#define YAPS_NO_SOCKET\n", null, null),
+            ("squash+socket", "#define YAPS_NO_PLUG\n", null, null),
             ("all", "", null, null),
             ("plug+dup", "#define YAPS_NO_SOCKET\n#define YAPS_NO_SQUASH\n#define YAPS_DUPLICATE\n", null, null),
             ("plug walk4", "#define YAPS_NO_SOCKET\n#define YAPS_NO_SQUASH\n", "#define YAPS_WALK_STEPS 48", "#define YAPS_WALK_STEPS 4"),
@@ -63,7 +64,8 @@ namespace AvatarBridge.Regression
 
             Directory.CreateDirectory(Root);
             var paths = new List<(string name, string path)>();
-            foreach (var c in Cases)
+            var only = Arg("-ycbCases")?.Split(',');
+            foreach (var c in Cases.Where(c => only == null || only.Contains(c.name)))
             {
                 string body = c.from == null ? block : block.Replace(c.from, c.to);
                 if (c.from != null && body == block) Log($"{c.name}: \"{c.from}\" not found, case is the plain one");

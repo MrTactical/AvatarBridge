@@ -267,6 +267,16 @@ float YapsExtent(YapsPart p, float3 w)
     return p.unit * rsqrt(max(dot(c * c, c >= 0 ? p.front : p.back), 1e-8));
 }
 
+// The part's size toward w, the ellipsoid alone, where a reach only scales something: how deep a
+// hand goes, how wide the part flattens, where it hangs from. The surface read at these few sites
+// took a vertex variant from 6 s to 47 s to compile, and they never place skin.
+float YapsSpan(YapsPart p, float3 w)
+{
+    if (!p.framed) return p.reach;
+    float3 c = float3(dot(w, p.a), dot(w, p.o), dot(w, p.u));
+    return p.unit * rsqrt(max(dot(c * c, c >= 0 ? p.front : p.back), 1e-8));
+}
+
 // Where the line S + D s, centred on the part and in its frame, D a unit vector, leaves the part's
 // own surface toward +D, from where it leaves the ellipsoid, s: one step as if the line ran
 // straight out from the centre there, then three secant steps, unrolled since ChilloutVR's shader
@@ -626,7 +636,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
                 float in0 = length(hv[h]) * strength;
                 if (in0 <= 1e-6) continue;
                 float3 w = hv[h] / length(hv[h]);
-                float deepest = _YAPS_SquashTune.w * YapsExtent(pq, w);
+                float deepest = _YAPS_SquashTune.w * YapsSpan(pq, w);
                 float local = deepest > 0 ? deepest * (1 - exp(-in0 / deepest)) : 0;
                 Fq += w * (in0 - local);
                 if (who == 0)
@@ -709,7 +719,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         }
         // Lying back, its weight presses the part into the body from the front.
         if (p.framed && _YAPS_SquashTune.x > 0)
-            YapsAdd(S, M, p.o * (_YAPS_SquashTune.x * smoothstep(0.3, 1, p.o.y) * YapsExtent(p, p.o) * strength));
+            YapsAdd(S, M, p.o * (_YAPS_SquashTune.x * smoothstep(0.3, 1, p.o.y) * YapsSpan(p, p.o) * strength));
         F += squeeze;
         // What the dents leave, from one side, bends the part away, swinging about where it
         // meets the body, and each hand is that much less far in. Squeezed from both sides it
@@ -816,7 +826,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         for (int b0 = 0; b0 < 3; b0++)
         {
             onL[b0] = dot(ax[b0], mul(M, ax[b0]));
-            float rF = YapsExtent(p, ax[b0]), rB = YapsExtent(p, -ax[b0]);
+            float rF = YapsSpan(p, ax[b0]), rB = YapsSpan(p, -ax[b0]);
             wide[b0] = rF + rB;
             off[b0] = 0.5 * (rF - rB);
         }
@@ -875,7 +885,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
                 stretchW = swing / sl;
                 float by = _YAPS_SquashMotion.x * off / reach * -dot(stretchW, hang);
                 stretch = clamp(1 + by, 1 / _YAPS_SquashMotion.z, _YAPS_SquashMotion.z);
-                hangAt = hang * YapsExtent(p, hang);
+                hangAt = hang * YapsSpan(p, hang);
             }
         }
         if (pressAll <= 0 && dot(swung, swung) <= 0 && !dented && stretch == 1) continue;
