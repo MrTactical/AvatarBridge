@@ -169,6 +169,17 @@ ranked by how visible it should be:
      overshot nearer still but settled faster than the originals. Copies still overshoot less than
      the originals even at 0, so the rest of that gap is not here.
      `D:/Claude/scratch/bounceab/{scaleab/P1,attnab/s0,attnab/s0.4,fixab/sderived}`.
+   - **The rest of the bounce gap, measured 2026-10-26 [M]: no setting the converter writes.** Same
+     A/B, one variant each, head overshoot against the originals' 0.215 (copies 0.062): swing leash
+     off 0.060; movement smoothing 0 (MC2 default 0.4, never written) 0.061, though jump peaks
+     came nearer (error 33 to 26) and shake peaks went further (28 to 38); particle speed limit
+     off 0.063; rotation speed limits off 0.061; world and local inertia 1 0.062. What is left is
+     MC2's own fixed attenuation of constraint moves (distance 0.3, tether 0.7, `SystemDefine`),
+     which ChilloutVR's copy of MC2 fixes too. Writing less damping makes up for it at a price:
+     half the derived damping brings head and turn overshoot error to 0.098 and 0.095 (from 0.157
+     and 0.110) but swings 2-5 degrees further and walks 5, mean relative error 1.006 of today's;
+     a quarter 1.22, none 2.02. Left as it is: a trade, not a fix. `D:/Claude/scratch/bounceab/`
+     holds the leash, inertia, rotation and damping runs too.
 3. **Damping lands at a fifth.** MC2 scales inspector damping by 0.2 (`ClothSerializeDataFunction.cs:181`)
    and `PhysBoneSolverMap.Damping` never divides it back, unlike restoration. The 2026-08-06 preset
    floors cover for it, and the restoration floor reads the preset's ROOT value and flattens the
