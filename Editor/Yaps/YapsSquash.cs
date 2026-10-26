@@ -42,7 +42,7 @@ namespace AvatarBridge
             "_YAPS_SquashIn", "_YAPS_SquashSideA", "_YAPS_SquashSideB", "_YAPS_SquashTune", "_YAPS_SquashPair",
             "_YAPS_SquashShape", "_YAPS_SquashPulse", "_YAPS_SquashPush", "_YAPS_SquashLimbL", "_YAPS_SquashLimbR",
             "_YAPS_SquashHands", "_YAPS_SquashMotion", "_YAPS_SquashPlug", "_YAPS_DentSpill",
-            "_YAPS_SquashHangToward", "_YAPS_SquashHangOut", "_YAPS_SquashHangAcross",
+            "_YAPS_SquashHangToward", "_YAPS_SquashHangOut", "_YAPS_SquashHangAcross", "_YAPS_SquashSurface",
         };
 
         sealed class Part
@@ -435,6 +435,8 @@ namespace AvatarBridge
             var hangToward = Vector4.zero;
             var hangOut = Vector4.zero;
             var hangAcross = Vector4.zero;
+            // Each part's own surface, or null where the ellipsoid of its reaches stays.
+            var surfaces = new List<float[]>();
             var pair = new Vector4(0f, 0.5f, 0f, 0.5f);
             for (int k = 0; k < pairCount; k++)
             {
@@ -490,8 +492,11 @@ namespace AvatarBridge
                     inward[parts.Count] = Reach(p, -o) / unit;
                     sideA[parts.Count] = Reach(p, u) / unit;
                     sideB[parts.Count] = Reach(p, -u) / unit;
-                    MeasuredForTest?.Invoke(p.name, p.centre, toward, o, p.points,
-                        new[] { p.reach, Reach(p, -toward), Reach(p, o), Reach(p, -o), Reach(p, u), Reach(p, -u) });
+                    var reaches = new[] { p.reach, Reach(p, -toward), Reach(p, o), Reach(p, -o), Reach(p, u), Reach(p, -u) };
+                    MeasuredForTest?.Invoke(p.name, p.centre, toward, o, p.points, reaches);
+                    surfaces.Add(Surface(p.points, p.centre, toward, o, reaches, unit, out float mapOff, out float ellipsoidOff));
+                    log.Add($"{p.name}: {(surfaces[surfaces.Count - 1] != null ? "its own surface" : "the ellipsoid")}, " +
+                            $"{mapOff * 100f:0.0} cm off its skin against {ellipsoidOff * 100f:0.0}");
                     var hang = (p.hangsFrom - p.centre) / Unit(rest);
                     hangToward[parts.Count] = Vector3.Dot(hang, toward);
                     hangOut[parts.Count] = Vector3.Dot(hang, o);
@@ -506,6 +511,7 @@ namespace AvatarBridge
             if (parts.Count == 0) return string.Join("; ", log);
             Lap("Measure");
             if (MeasuredForTest != null) return string.Join("; ", log);
+            var surface = surfaces.Any(x => x != null) ? SurfaceTexture(surfaces, folder, $"{root.name} surface.asset") : null;
 
             // A pair with too little skin is dropped, and the ones after it move up a slot.
             foreach (var s in skins)
@@ -601,6 +607,7 @@ namespace AvatarBridge
                     copy.SetVector("_YAPS_SquashHangToward", hangToward);
                     copy.SetVector("_YAPS_SquashHangOut", hangOut);
                     copy.SetVector("_YAPS_SquashHangAcross", hangAcross);
+                    if (surface != null) copy.SetTexture("_YAPS_SquashSurface", surface);
                     // A test build's pulse: the pair squeezes and lets go every few seconds with
                     // nobody moving it, which only happens if the provider is writing the follows.
                     copy.SetFloat("_YAPS_SquashPulse", pulse);
@@ -1028,7 +1035,7 @@ namespace AvatarBridge
         static void Carry(Material from, Material to, string name)
         {
             if (!from.HasProperty(name) || !to.HasProperty(name)) return;
-            if (name == "_YAPS_DentOwn" || name == "_YAPS_DentSwing") to.SetTexture(name, from.GetTexture(name));
+            if (name == "_YAPS_DentOwn" || name == "_YAPS_DentSwing" || name == "_YAPS_SquashSurface") to.SetTexture(name, from.GetTexture(name));
             else if (name == "_YAPS_DentPower" || name == "_YAPS_SquashPulse" || name == "_YAPS_SquashPlug" || name == "_YAPS_DentSpill") to.SetFloat(name, from.GetFloat(name));
             else to.SetVector(name, from.GetVector(name));
         }
@@ -1333,7 +1340,7 @@ namespace AvatarBridge
                 .Concat(new UnityEngine.Object[] { skin?.sharedMesh, skin?.sharedMaterial }).Where(o => o != null).ToArray();
             return new HashSet<string>(EditorUtility.CollectDependencies(from)
                 .Where(o => !(o is Material m) || SourceOf(m) != null || (skin != null && o == skin.sharedMaterial)).Select(AssetDatabase.GetAssetPath)
-                .Where(p => p.EndsWith(".mat") || p.EndsWith(" shares.asset") || p.EndsWith(" swings.asset") || p.EndsWith(" squash skin.asset")));
+                .Where(p => p.EndsWith(".mat") || p.EndsWith(" shares.asset") || p.EndsWith(" swings.asset") || p.EndsWith(" surface.asset") || p.EndsWith(" squash skin.asset")));
         }
 
         // Pair `k` as the skin carries it, posed as it stands: points from the renderer carrying
@@ -1435,6 +1442,139 @@ namespace AvatarBridge
             return c[0, 0] * (c[1, 1] * c[2, 2] - c[1, 2] * c[2, 1]) - c[0, 1] * (c[1, 0] * c[2, 2] - c[1, 2] * c[2, 0])
                  + c[0, 2] * (c[1, 0] * c[2, 1] - c[1, 1] * c[2, 0]);
         }
+
+        internal const int SurfaceSize = 32;
+
+        // How far a part's skin reaches from its centre toward each direction of an octahedral grid
+        // in its frame, in follow units, so the squash meets the partner's real shape and not the
+        // ellipsoid of its six reaches, which missed skin by up to 13 cm toward the partner. Built
+        // from every other vertex and judged on the rest against that ellipsoid; null unless it is
+        // clearly closer, which leaves a part of a few dozen vertices, or one a line from its
+        // centre crosses twice, on the ellipsoid. Measured on six avatars, 2026-10-26.
+        internal static float[] Surface(List<Vector3> points, Vector3 centre, Vector3 toward, Vector3 o, float[] reaches,
+            float unit, out float mapOff, out float ellipsoidOff)
+        {
+            var u = Vector3.Cross(toward, o);
+            var at = points.Select(x => x - centre).Where(x => x.sqrMagnitude > 1e-12f)
+                .Select(x => new Vector3(Vector3.Dot(x, toward), Vector3.Dot(x, u), Vector3.Dot(x, o))).ToList();
+            var fit = SurfaceMap(at.Where((_, i) => i % 2 == 0));
+            var test = at.Where((_, i) => i % 2 == 1).ToList();
+            mapOff = test.Count > 0 ? test.Average(q => Mathf.Abs(q.magnitude - SurfaceAt(fit, q))) : 0f;
+            ellipsoidOff = test.Count > 0 ? test.Average(q => Mathf.Abs(q.magnitude - Ellipsoid(reaches, q))) : 0f;
+            if (test.Count == 0 || mapOff > 0.75f * ellipsoidOff || ellipsoidOff - mapOff < 0.02f * reaches.Average()) return null;
+            var map = SurfaceMap(at);
+            for (int i = 0; i < map.Length; i++) map[i] /= unit;
+            return map;
+        }
+
+        // A direction in the frame (toward, across, out) as a place on the grid: octahedral, folded
+        // on the side into the body, where a part has no skin of its own, so its skin is one
+        // continuous diamond with no poles. 0 to 1 both ways.
+        internal static Vector2 SurfaceCell(Vector3 q)
+        {
+            q /= Mathf.Abs(q.x) + Mathf.Abs(q.y) + Mathf.Abs(q.z);
+            var e = new Vector2(q.x, q.y);
+            if (q.z < 0f) e = new Vector2((1f - Mathf.Abs(q.y)) * Mathf.Sign(q.x), (1f - Mathf.Abs(q.x)) * Mathf.Sign(q.y));
+            return e * 0.5f + Vector2.one * 0.5f;
+        }
+
+        // The outermost skin in each cell, empty cells filled from their neighbours ring by ring,
+        // then one texel of smoothing.
+        static float[] SurfaceMap(IEnumerable<Vector3> at)
+        {
+            const int n = SurfaceSize;
+            var map = new float[n * n];
+            var set = new bool[n * n];
+            foreach (var q in at)
+            {
+                var c = SurfaceCell(q);
+                int k = Mathf.Clamp((int) (c.y * n), 0, n - 1) * n + Mathf.Clamp((int) (c.x * n), 0, n - 1);
+                map[k] = Mathf.Max(map[k], q.magnitude);
+                set[k] = true;
+            }
+            if (!set.Any(x => x)) return map;
+            while (!set.All(x => x))
+            {
+                var next = (float[]) map.Clone();
+                var nextSet = (bool[]) set.Clone();
+                for (int j = 0; j < n; j++)
+                for (int i = 0; i < n; i++)
+                {
+                    if (set[j * n + i]) continue;
+                    float sum = 0f;
+                    int count = 0;
+                    for (int dj = -1; dj <= 1; dj++)
+                    for (int di = -1; di <= 1; di++)
+                    {
+                        int a = i + di, b = j + dj;
+                        if (a < 0 || b < 0 || a >= n || b >= n || !set[b * n + a]) continue;
+                        sum += map[b * n + a];
+                        count++;
+                    }
+                    if (count > 0) { next[j * n + i] = sum / count; nextSet[j * n + i] = true; }
+                }
+                map = next;
+                set = nextSet;
+            }
+            var smooth = new float[n * n];
+            for (int j = 0; j < n; j++)
+            for (int i = 0; i < n; i++)
+            {
+                float sum = 4f * map[j * n + i], weight = 4f;
+                for (int dj = -1; dj <= 1; dj++)
+                for (int di = -1; di <= 1; di++)
+                {
+                    int a = i + di, b = j + dj;
+                    if ((di == 0 && dj == 0) || a < 0 || b < 0 || a >= n || b >= n) continue;
+                    sum += map[b * n + a];
+                    weight += 1f;
+                }
+                smooth[j * n + i] = sum / weight;
+            }
+            return smooth;
+        }
+
+        // Bilinear between texel centres, as the shader reads it.
+        internal static float SurfaceAt(float[] map, Vector3 q)
+        {
+            const int n = SurfaceSize;
+            var f = SurfaceCell(q) * n - Vector2.one * 0.5f;
+            int i0 = Mathf.Clamp(Mathf.FloorToInt(f.x), 0, n - 1), j0 = Mathf.Clamp(Mathf.FloorToInt(f.y), 0, n - 1);
+            int i1 = Mathf.Min(i0 + 1, n - 1), j1 = Mathf.Min(j0 + 1, n - 1);
+            float s = Mathf.Clamp01(f.x - i0), t = Mathf.Clamp01(f.y - j0);
+            return Mathf.Lerp(Mathf.Lerp(map[j0 * n + i0], map[j0 * n + i1], s), Mathf.Lerp(map[j1 * n + i0], map[j1 * n + i1], s), t);
+        }
+
+        // The shader's YapsExtent at q's direction: per octant of the frame, the front reaches where
+        // a component is positive. Reaches toward, away, out, in, across, across back.
+        static float Ellipsoid(float[] r, Vector3 q)
+        {
+            var d = q.normalized;
+            float Term(float x, float pos, float neg) { float k = x >= 0f ? pos : neg; return x * x / (k * k); }
+            return 1f / Mathf.Sqrt(Mathf.Max(Term(d.x, r[0], r[1]) + Term(d.z, r[2], r[3]) + Term(d.y, r[4], r[5]), 1e-8f));
+        }
+
+        // Every part's grid stacked, part m in rows 32m to 32m + 31, zero for one on the ellipsoid.
+        // Halves, point-sampled: the shader reads its four texels itself, so no part bleeds into the
+        // next.
+        static Texture2D SurfaceTexture(List<float[]> surfaces, string folder, string file)
+        {
+            const int n = SurfaceSize;
+            var halves = new ushort[n * n * 4];
+            for (int m = 0; m < surfaces.Count && m < 4; m++)
+                if (surfaces[m] != null)
+                    for (int k = 0; k < n * n; k++) halves[m * n * n + k] = Mathf.FloatToHalf(surfaces[m][k]);
+            var tex = new Texture2D(n, n * 4, TextureFormat.RHalf, false, true) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
+            tex.SetPixelData(halves, 0);
+            tex.Apply(false);
+            tex = Asset(folder, tex, file);
+            var flags = new SerializedObject(tex);
+            flags.FindProperty("m_IsReadable").boolValue = false;
+            flags.FindProperty("m_StreamingMipmaps").boolValue = true;
+            flags.ApplyModifiedPropertiesWithoutUndo();
+            return tex;
+        }
+
 
         // The 98th percentile, so one stray vertex does not set it.
         static float Reach(Part p, Vector3 way)

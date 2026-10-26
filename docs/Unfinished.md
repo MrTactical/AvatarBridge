@@ -1053,6 +1053,19 @@ where a part has no skin of its own, so the skin's side is one continuous diamon
 map does not beat it on the held-out half, which covers the low-poly and folded parts above
 without a vertex-count rule. Next: Step 1, the bake and texture, then Gate 2.
 
+**Step 1 DONE on dev 2026-10-26 (build only, no shader reads it yet).** `YapsSquash.Surface` per
+part: map from every other vertex judged on the rest; the map is kept when its mean is at most
+0.75 of the ellipsoid's AND at least 2% of the mean reach better, then rebuilt from every vertex,
+in follow units. `_YAPS_SquashSurface`, RHalf 32 x 128 (part m in rows 32m to 32m + 31, zero for a
+part on the ellipsoid), point-sampled, saved non-readable with streaming mips, `<avatar>
+surface.asset`, carried by `Carry` and listed by `Owned`; the patcher declares it (black), so a
+material without one reads 0 and falls back. The build's Console line names each part's choice.
+`SquashSurfaceTest`: an ellipsoid with exact reaches keeps the ellipsoid; a rounded box gets the
+map, 0.12 cm off against 1.52, its radius read back within 3.9% on the skin's side, 1.1% at a
+corner, and a follow scaled 2 halves every value. Note from it: with the build's 98th-percentile
+reaches even an ellipsoid-shaped part sits 0.6 cm outside its own ellipsoid, so the map wins there
+too, rightly.
+
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 
 A user: a grip squeeze in VRChat became a trigger squeeze after conversion. The converter fed
