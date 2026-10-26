@@ -63,7 +63,8 @@
 // squash stretches past two and three times, how many open by a centimetre, how many triangles
 // it turns over; tear_edges.tsv lists the worst with where they lie, their shares and how far
 // off the skin. -spLookStages draws and counts it again with each stage of the squash switched
-// off in turn, in memory.
+// off in turn, in memory, each squashed layer alone too (_look_<layer>_<stage>); the branch stage
+// colours the seam's choices in place of the shading.
 // -spDestroy <name> destroys the prefab copy's objects so named before Play.
 // -spPose <a,b> logs those bones' local moves at the drag's end against before Play.
 // -spPrefab <asset path> plays that converted prefab in place of the scene's own avatar, logging
@@ -799,6 +800,9 @@ namespace AvatarBridge.Regression
         // as each vertex's share of them.
         const string Stop = "    world += mapped;\n";
         const string StopTo = "    position = mul(unity_WorldToObject, float4(start + mapped, 1)).xyz;\n    return;\n";
+        // The leader's give, where it is inside the other, and how the colour stage takes a vertex.
+        const string Cut = "            v = lerp(v, min(v, inside * abs(dot(N, facing)) * rsqrt(max(dot(N, N), 1e-12))), -bow);\n";
+        const string Pick = "        if (shares[c] * squashContact[c] > yapsLookHeld) { yapsLookHeld = shares[c] * squashContact[c]; yapsLookDebug = ";
         static readonly (string name, string[] swaps)[] JumpStages =
         {
             ("full", new string[0]),
@@ -860,6 +864,9 @@ namespace AvatarBridge.Regression
             #pragma fragment frag
             #pragma target 5.0
             #include ""UnityCG.cginc""
+            // Written by the look's branch stage, which this compiles too.
+            static float4 yapsLookDebug;
+            static float yapsLookHeld, yapsLeaveFit;
             #include ""Assets/AvatarBridge/Editor/Yaps/yaps_socket.cginc""
             #include ""Assets/AvatarBridge/Editor/Yaps/yaps_dent.cginc""
             float _JumpWidth, _JumpHeight;
@@ -1053,6 +1060,7 @@ namespace AvatarBridge.Regression
             ("nostretch", new[] { "stretch = clamp(1 + by, 1 / _YAPS_SquashMotion.z, _YAPS_SquashMotion.z);", "stretch = 1;" }),
             ("noflat", new[] { "squashed += ax[c3] * (dot(d, ax[c3]) * along[c3] + shift[c3]);", "squashed += ax[c3] * dot(d, ax[c3]);" }),
             ("nopart", new[] { "mapped += (moved - world) * shares[m] + shunt * swings[m] * swingOut;", "mapped += 0;" }),
+            ("nocut", new[] { Cut, "" }),
         };
         // Read out in place of the move, for the edges the tear finds: each vertex's shares (the
         // first part, the second, the rest), and the second part's lean, bend and how far out of
@@ -1063,6 +1071,17 @@ namespace AvatarBridge.Regression
             ("lean", new[] { "mapped += (moved - world) * shares[m] + shunt * swings[m] * swingOut;", "mapped += float3(onSeam, squashContact[m], length(world - p.centre) / YapsExtent(p, normalize(world - p.centre))) * ((m & 1) == 1);", Stop, StopTo }),
             ("slots", new[] { "    yapsSkin = YapsSkinState();\n", "    yapsSkin = YapsSkinState();\n    position = mul(unity_WorldToObject, float4(mul(unity_ObjectToWorld, float4(position, 1)).xyz + float3(yapsSkin, 100 * distance(YapsSlot(0), _YAPS_SquashFollow[0]._m03_m13_m23), 100 * distance(YapsSlot(0), YapsSlot(4))), 1)).xyz;\n    return;\n" }),
             ("swing", new[] { "mapped += (moved - world) * shares[m] + shunt * swings[m] * swingOut;", "mapped += float3(swings[m], shares[m], length(shunt)) * ((m & 1) == 1);", Stop, StopTo }),
+            // Coloured in place of the shading, by the contact holding the vertex most: on the
+            // leader, red where its depth in the other won over the seam, green bands a quarter
+            // width apart of where it is pressed to; grey on the part pressed; bluer on either
+            // where the last surface solve eased back to the fitted shape.
+            ("branch", new[] {
+                "    return lerp(s, s1, saturate(2 - abs(g1) / (0.05 * p.reach)));",
+                "    yapsLeaveFit = saturate(2 - abs(g1) / (0.05 * p.reach));\n    return lerp(s, s1, yapsLeaveFit);",
+                "        if (bow < 0)\n        {\n            YapsPart P", "        float dbgV = v;\n        if (bow < 0)\n        {\n            YapsPart P",
+                "        if (v <= -10 * width) continue;\n",
+                Pick + "bow < 0 ? float4(v < dbgV - 1e-5, frac(v / width * 4), 0.3 + 0.7 * (1 - yapsLeaveFit), 1) : float4(0.4, 0.4, 0.4 + 0.6 * (1 - yapsLeaveFit), 1); }\n" +
+                "        if (v <= -10 * width) continue;\n" }),
         };
 
         // Made in memory, so nothing is written into the project. A stage inlines its copy of the
@@ -1098,6 +1117,9 @@ namespace AvatarBridge.Regression
             #pragma fragment frag
             #pragma target 5.0
             #include ""UnityCG.cginc""
+            // Written by the branch stage in place of the shading, alpha 1 where set.
+            static float4 yapsLookDebug;
+            static float yapsLookHeld, yapsLeaveFit;
             #include ""Assets/AvatarBridge/Editor/Yaps/yaps_socket.cginc""
             #include ""Assets/AvatarBridge/Editor/Yaps/yaps_dent.cginc""
             sampler2D _MainTex;
@@ -1106,12 +1128,15 @@ namespace AvatarBridge.Regression
             float _LookRaw;
             float4 _LookTint;
             struct A { float4 vertex : POSITION; float3 normal : NORMAL; float4 tangent : TANGENT; float2 uv : TEXCOORD0; uint id : SV_VertexID; };
-            struct V { float4 pos : SV_POSITION; float3 n : TEXCOORD0; float3 w : TEXCOORD1; float2 uv : TEXCOORD2; float4 share : TEXCOORD3; };
+            struct V { float4 pos : SV_POSITION; float3 n : TEXCOORD0; float3 w : TEXCOORD1; float2 uv : TEXCOORD2; float4 share : TEXCOORD3; float4 debug : TEXCOORD4; };
             V vert(A v)
             {
                 float3 p = v.vertex.xyz, n = v.normal, t = v.tangent.xyz;
+                yapsLookDebug = 0;
+                yapsLookHeld = 0;
                 if (_LookRaw < 0.5) YapsDentDeform(p, n, t, v.id);
                 V o;
+                o.debug = yapsLookDebug;
                 o.pos = UnityObjectToClipPos(float4(p, 1));
                 o.w = mul(unity_ObjectToWorld, float4(p, 1)).xyz;
                 o.n = UnityObjectToWorldNormal(n);
@@ -1130,6 +1155,7 @@ namespace AvatarBridge.Regression
             float4 frag(V i) : SV_Target
             {
                 float3 n = normalize(i.n);
+                if (i.debug.a > 0.5) return float4(i.debug.rgb, 1);
                 // 1 the part shares, 2 stripes on the shader's normals, 3 stripes on the drawn
                 // triangles themselves, so a normal that disagrees with the shape shows.
                 if (_LookMode > 0.5 && _LookMode < 1.5)
@@ -1952,7 +1978,11 @@ namespace AvatarBridge.Regression
             foreach (var only in squashed)
             {
                 foreach (var r in shown) r.enabled = r == only;
-                Grab($"{name}_look_{string.Concat(only.name.Split(Path.GetInvalidFileNameChars()))}");
+                string layer = string.Concat(only.name.Split(Path.GetInvalidFileNameChars()));
+                Grab($"{name}_look_{layer}");
+                // A layer under another shows its stages only alone.
+                if (name.EndsWith("_239") && Environment.GetCommandLineArgs().Contains("-spLookStages"))
+                    foreach (var s in ChosenStages()) Grab($"{name}_look_{layer}_{s.name}", s.name);
             }
             foreach (var r in shown)
             {

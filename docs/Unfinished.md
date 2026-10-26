@@ -1218,8 +1218,8 @@ flat, and off a bowed front it slides round it. Kar's prefab, `-spRebuild`, agai
 include, same frames:
 - Looks: one-sided swing and drag, the long crack down the meeting line is gone (the part Joe
   circled, 2026-10-26); both-sided swings within 0.3% of pixels, both-sided drag identical to the
-  digit. **Open (Joe: "still being jagged"):** a short sawtooth sliver at the bottom of the contact
-  on the deepest drag, and faint lumps near its top.
+  digit. Joe: "still being jagged": a short sawtooth sliver at the bottom of the contact on the
+  deepest drag, and faint lumps near its top. Fixed below.
 - Drag one part 22 cm: body edges turned over 365 to 119, over 2x 62 to 36, worst 3.77x to 3.59x,
   widest opening 3.9 to 3.2 cm, but opened over 1 cm 262 to 330; bra turned over 112 to 56, worst
   2.78x to 3.20x, over 3x 0 to 4.
@@ -1232,6 +1232,34 @@ Tried and dropped, both on Joe's "needs some smoothing": the normal read three t
 the shading turned over twice the press's width. Each made the band along the meeting line darker
 (the contact face is turned toward the partner, so that band is right; spreading it shows more of
 it), and the wider read changed the drag only within noise.
+
+**The jag, FIXED on dev 2026-10-26 [S].** Cause, instrumented: the leader gives only where it is
+inside the other, `min(v, YapsInside(...))`, and that depth was read along the line between them.
+Near the other's outline the line only grazes its surface, so the depth jumped from about 3 cm to
+nothing between neighbouring vertices: body edges wholly on the leader stretched 2x in a band down
+its front, a steep step that shaded dark and followed the triangles. Now the depth is read square
+to the other's fitted shape (times the cosine of the line against the ellipsoid's normal where it
+leaves), which cannot change faster than the skin does; at the middle of the contact the cosine is
+1. How it was found, `SquashPlayProbe -spLookStages`, now drawn per layer too:
+- `branch` colours the seam's choices; the sliver sat where the leader's depth won, not on a
+  missed line or an eased surface solve.
+- Pushing the pressed part's skin, then the leader's, a centimetre further back left the streak:
+  not the two skins crossing. `nocut` removed it, and creased the leader's front everywhere else.
+- Read off the stop margin (`inside + stop`) and against the partner's eased skin: thinner, not
+  gone. The surface map's own normal in place of the ellipsoid's: the same within noise, at four
+  more surface reads, so not taken.
+Measured, Kar `-spRebuild`, against the committed include:
+- Drag one part 22 cm: body over 2x 36 to 28, opened over 1 cm 330 to 282, squashed edges from the
+  start 1068 to 1008; bra over 2x 28 to 6, over 3x 4 to 0, worst 3.20x to 2.19x, turned over 56 to
+  25, opened over 1 cm 30 to 2. The sliver is a faint line, the lump near its top gone, and the bra
+  over it no longer tears open along the meeting line.
+- Both dragged alike: identical (the cut scales with the lead). Swing, push, hand: summaries
+  identical; looks differ only near the one-sided meetings, no new crease.
+- Compile, alternated twice each: squash 8.6/9.1 s to 9.0/8.2 s, all roles 18.3/19.3 s to
+  18.8/20.6 s; 1% more bytes.
+- Shader Filtering at 128 against off: 20 of 25 looks differ by a few thousand pixels, as before
+  the change (20 of 25).
+Next: Joe in game on the deepest one-sided press.
 Probe notes: the client's filter DLL crashes the editor (SIGSEGV in `DoFilterShader`) when a freshly
 generated shader is imported with it hooked, so run each case unfiltered first and the filtered run
 reuses the import; `YapsCompileBisect -ycbDump` writes the vertex programs as DXBC for the

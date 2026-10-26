@@ -1023,7 +1023,18 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         // Leading, it gives only where it is inside the other, as far as it leads: pressed all
         // over its front, its edge creased where nothing touched it. Driven alike, both go to the
         // seam, as the other's fitted shape misses some of its skin and the two tore apart there.
-        if (bow < 0) v = lerp(v, min(v, YapsInside(YapsTurned(YapsPartAt(c ^ 1, YapsSlot(c ^ 1), YapsUnit(c ^ 1))), world, -facing)), -bow);
+        // How deep is read square to the other's fitted shape: along the line it ran to its full
+        // depth a vertex away from where the line only grazed the other, and the skin stepped there.
+        if (bow < 0)
+        {
+            YapsPart P = YapsTurned(YapsPartAt(c ^ 1, YapsSlot(c ^ 1), YapsUnit(c ^ 1)));
+            float inside = YapsInside(P, world, -facing);
+            float3 Q = world - facing * inside - P.centre;
+            float3 N = P.framed ? float3(dot(Q, P.a), dot(Q, P.o), dot(Q, P.u)) : Q;
+            if (P.framed) N *= N >= 0 ? P.front : P.back;
+            N = P.framed ? P.a * N.x + P.o * N.y + P.u * N.z : N;
+            v = lerp(v, min(v, inside * abs(dot(N, facing)) * rsqrt(max(dot(N, N), 1e-12))), -bow);
+        }
         if (v <= -10 * width) continue;
         // The seam's own facing there, which the pressed skin turns to and is pressed out along:
         // the leader's front, as much as it leads, from its own surface where one was baked.
