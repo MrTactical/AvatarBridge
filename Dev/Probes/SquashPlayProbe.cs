@@ -74,6 +74,8 @@
 // -spGrabTimes N pushes N times a frame with -spGrab, as mouse drag events can come.
 // -spNoContact switches off the converter's soft body spheres once a drag starts, on builds that
 // still put them on "SoftBodyContact" children.
+// -spRebuild builds the squash again on the played copy, into Assets/__SquashPlayRebuild, so the
+// real materials run the deployed code; clear that folder and the new patched shaders after.
 // -spSurface gives each part its own surface for the run, as a build with it would: measured from
 // a copy of the avatar and set on its squash materials in memory, put back on quitting.
 //
@@ -199,6 +201,18 @@ namespace AvatarBridge.Regression
                     var t = scene.GetRootGameObjects().Where(r => r.activeSelf).SelectMany(r => r.GetComponentsInChildren<Transform>(true)).FirstOrDefault(x => x.name == n);
                     return t == null ? "" : string.Join(";", n, JsonUtility.ToJson(t.localPosition), JsonUtility.ToJson(t.localEulerAngles), JsonUtility.ToJson(t.localScale));
                 }).Where(x => x.Length > 0)));
+            // -spRebuild: the squash built again on the played copy, into a folder of its own, so its
+            // real materials run the deployed code, which a patched shader carries inlined. Never
+            // saved; the folder and the shaders the patch wrote are cleared from outside after the run.
+            if (Environment.GetCommandLineArgs().Contains("-spRebuild"))
+            {
+                var played = scene.GetRootGameObjects().First(r => r.activeSelf && r.GetComponentInChildren<CVRAvatar>(true) != null);
+                if (PrefabUtility.IsPartOfPrefabInstance(played))
+                    PrefabUtility.UnpackPrefabInstance(played, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+                string said = YapsSquash.Add(played.GetComponentInChildren<CVRAvatar>(true).transform, "Assets/__SquashPlayRebuild", out bool built);
+                YapsShaderPatcher.EndPass(null, null);
+                Debug.Log($"[SquashPlay] rebuilt {built}: {said}");
+            }
             if (Environment.GetCommandLineArgs().Contains("-spSurface"))
                 Surface(scene.GetRootGameObjects().First(r => r.activeSelf && r.GetComponentInChildren<CVRAvatar>(true) != null));
             // Nothing is on screen in batch, and the cloth culls with the Animator.
@@ -557,6 +571,7 @@ namespace AvatarBridge.Regression
         static Vector3 outside;
         static Material[] glass;
         static float pulseWas;
+        static Vector4[] shapeWas;
         static YapsSquashSettings knobs;
         static bool stretchWas;
         static float styleWas;
@@ -1282,6 +1297,10 @@ namespace AvatarBridge.Regression
                 var shader = Look();
                 if (shader == null || ShaderUtil.ShaderHasError(shader))
                     Debug.LogError("[SquashPlay] look shader: " + (shader == null ? "missing" : string.Join(" | ", ShaderUtil.GetShaderMessages(shader).Select(m => m.message))));
+                // The shots below write to the material assets, which outlive Play mode and are saved
+                // on exit: a look run left a built avatar pulsing.
+                pulseWas = mats.Length > 0 ? mats[0].GetFloat("_YAPS_SquashPulse") : 0f;
+                shapeWas = mats.Select(m => m.GetVector("_YAPS_SquashShape")).ToArray();
                 // -spMeet: the pair's contact on, which a fresh build leaves off.
                 if (Environment.GetCommandLineArgs().Contains("-spMeet"))
                     foreach (var m in mats) { var s = m.GetVector("_YAPS_SquashShape"); m.SetVector("_YAPS_SquashShape", new Vector4(s.x, s.y, s.z, 1f)); }
@@ -1322,6 +1341,7 @@ namespace AvatarBridge.Regression
             }
             if (lookAt >= (LookSwing ? SwingShots.Length : LookHand ? HandShots.Length : LookShots.Length))
             {
+                for (int i = 0; i < mats.Length; i++) { mats[i].SetFloat("_YAPS_SquashPulse", pulseWas); mats[i].SetVector("_YAPS_SquashShape", shapeWas[i]); }
                 Debug.Log("[SquashPlay] look done " + outDir);
                 SessionState.SetInt(K + "on", 0);
                 EditorApplication.Exit(0);

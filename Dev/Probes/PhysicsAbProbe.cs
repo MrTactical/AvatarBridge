@@ -15,6 +15,7 @@
 //   every avatar scene in the project, its active chains counted by class.
 // A/B:    -executeMethod AvatarBridge.Regression.PhysicsAbProbe.Run -abScenes "a.unity;b.unity" -abOut <dir>
 //   no -quit: it walks the list, in and out of Play mode, and exits itself.
+//   -abScale s resizes both avatars through a parent; the drive's moves stay in metres.
 #if CVR_CCK_EXISTS && AVATARBRIDGE_MAGICA && VRC_SDK_VRCSDK3
 using System;
 using ABI.CCK.Components;
@@ -386,6 +387,16 @@ namespace AvatarBridge.Regression
                 descriptor = bakedSource.GetComponent<VRCAvatarDescriptor>();
                 Debug.Log($"[PhysicsAb] comparing against the baked original, {descriptor.GetComponentsInChildren<VRCPhysBone>(true).Length} PhysBone(s)");
             }
+            // -abScale s: both resized through a parent, as Universal Scaling or a height slider
+            // does. Not on the root, which an avatar's own animator can write back every frame.
+            // Positions scale with it, so the two stay apart; the drive's moves stay in metres.
+            if (float.TryParse(Arg("-abScale"), NumberStyles.Float, CultureInfo.InvariantCulture, out float abScale))
+                foreach (var root in new[] { descriptor.transform.root, converted.transform.root }.Distinct())
+                {
+                    var parent = new GameObject("PhysicsAb scale").transform;
+                    parent.localScale = Vector3.one * abScale;
+                    root.SetParent(parent, false);
+                }
             // A calibration sweep scales every cloth's gravity here, on the copy only.
             if (float.TryParse(SessionState.GetString(K + "gravityScale", ""), NumberStyles.Float, CultureInfo.InvariantCulture, out float gravityScale))
             {
