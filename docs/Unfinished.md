@@ -1288,7 +1288,7 @@ the other's surface turns side-on, so the radius takes over there and pushes the
 groove. The line and the radius want opposite things at the one place the line is seen, so no
 threshold keeps both. Not adopted; the committed seam keeps the line and its jag fix stands.
 
-**Squeezing deletes mass, MEASURED 2026-10-26, open [M].** Joe, on the side-by-side films: "boobs
+**Squeezing deleted mass, MEASURED 2026-10-26, fixed on dev, Joe to check in game.** Joe, on the side-by-side films: "boobs
 suddenly delete mass the moment they squeeze together"; the swell at three and five times (wider
 too) still read wrong, and the hybrid's clean merge read as the two clipping into each other.
 `SquashPlayProbe -spSeamFilm` now counts at rest and mid hold of each of its six presses the
@@ -1313,6 +1313,30 @@ skin top, bottom and front taking it. At twice that lens, Kar's presses keep the
 2% (both swung deep 0.0%, two hands +0.2%, both dragged -1.6%, one swung -1.2%), and at rest -1.0%
 as built; one dragged by its root overshoots +6% (the follows read a deep overlap the cloth never
 made), and a hand's dent, its own mechanism, still loses 2%. Filmed at 2, 4 and 8 times for Joe.
+Joe chose keeping volume and asked for the exact version too ("full send it"). Gated, the lens
+growth tore the fold under the part, where Kar's weights step from 0.65 to 0.23 in one edge: grown
+across the press (both dragged, body over 3x 4 to 34, worst 3.2x to 5.0x), and grown forward from
+the deepest skin, as the fold under a hanging part lies well in front of the chest wall (one
+dragged, over 3x 4 to 54). Not committed.
+**Adopted, the give-back baked from the part's own skin.** `YapsSquash.Fill` runs the shader's seam
+(the stop, the rounding, the swell; flat, and bowed round the partner's front) on the part's skin at
+rest at 32 depths and sums the mesh volume it moves, over what the part gains grown by 1.
+`YapsSquash.Base` fits the plane the part meets the body in (its skin a quarter to three quarters
+on it), and the part grows out of that plane, square to the pair's line, so the ring where its
+weights step off stays put and the press's front never moves; both ride under the surfaces in the
+surface texture. The shader reads the table at the seam's own depth (after the swing-away and the
+bulk), on the part flattened that far along the line, as bowed as the lead. Tears back at the
+committed seam's (one dragged over 3x 4 to 4, worst 3.59x to 3.61x; both dragged 4 to 6, 3.20x to
+3.34x; more edges over 2x, the part growing). Known answer `SquashFillTest`: on a ball, the growth's
+volume does not move with its plane, and the tables match a separate numpy count within 0.03%.
+Read back per part (`-spSeamFilm`'s `fill` line), the bake alone gave back 40%: the follows put the
+seam 2 to 3 cm in where real skin lay 4 to 8 cm past it, carried ahead of the follow's bone by the
+cloth. `YAPS_SQUASH_REFILL` 2.3 gives back that much more; Kar's six presses: at rest -0.1%, one
+dragged +2.2% (was +6.2%), both dragged -1.6%, one swung +0.5%, both deep -1.9%, a hand +1.5%, two
+hands +0.2%. One-sided presses want less (1.3 to 1.4), two-sided more (2.2 to 2.9). Gate: five
+scenes, compile bisect, shader filter off and at 128 clean; vertex compile level with the
+committed shader. Next: Joe in game; a follow on the chain's tip, which the skin's front rides,
+could make the depth itself right and let the 2.3 go.
 Probe notes: the client's filter DLL crashes the editor (SIGSEGV in `DoFilterShader`) when a freshly
 generated shader is imported with it hooked, so run each case unfiltered first and the filtered run
 reuses the import; `YapsCompileBisect -ycbDump` writes the vertex programs as DXBC for the

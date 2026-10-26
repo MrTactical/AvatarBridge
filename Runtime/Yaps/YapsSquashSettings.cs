@@ -40,7 +40,7 @@ namespace AvatarBridge.Yaps
         [Header("The pair")]
         [Tooltip("Off, what overlaps passes through. On, the part driven further keeps its round front and pushes the other aside by as much as it pushed in, the other taking a rounded hollow where they still meet; pushed alike from both sides, the two press flat against each other, swelling out round the contact.")]
         public bool meet = true;
-        [Range(0f, 2f), Tooltip("How much of what the meeting pushes back swells out round the contact: 1 keeps its volume.")]
+        [Range(0f, 2f), Tooltip("How much of what the meeting presses away comes back, as each part bulging out of the body and swelling out round the contact: 1 keeps their volume, 2 puffs them up.")]
         public float spill = 1f;
 
         [Header("In motion")]

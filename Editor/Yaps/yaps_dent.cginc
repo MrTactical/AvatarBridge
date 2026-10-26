@@ -20,8 +20,8 @@
 // its volume. Neither part of a pair is ever moved away from the other: with the
 // contact on, what overlaps is pressed in where the two meet, the part driven
 // further keeping its round front and the other taking a hollow its shape, and
-// what that pushes back swells out round it. Then the own arms and hands, as
-// capsules, ease the skin out of their way.
+// what that pushes back swells out round it and grows each part out of the body.
+// Then the own arms and hands, as capsules, ease the skin out of their way.
 //
 // How big a part is toward any side is an ellipsoid of six reaches measured at
 // rest, in a frame from bones no cloth moves: toward the partner, away from it,
@@ -59,6 +59,11 @@
 // Of what one part drives into the other further, the share both squash by rather than the
 // other swinging away.
 #define YAPS_SQUASH_GIVE 0.3
+// What the seam cuts that the bake cannot see: the cloth carries the skin ahead of the bone the part
+// follows, so real skin lay 4 to 8 cm past the seam where the follows put it 2 to 3 cm in. Given back
+// at this many times what the bake reads, six presses each kept their volume within 2%; at 1, the
+// pair still lost up to 6%.
+#define YAPS_SQUASH_REFILL 2.3
 #define YAPS_DENT_SPAN 2.4494897   // the dent's shoulder, in t; root 6 makes it hold what the bowl moved
 
 float _YAPS_DentPower;
@@ -253,6 +258,30 @@ float YapsSurfaceAt(int m, float3 c)
     float r01 = _YAPS_SquashSurface.Load(int3(i0.x, row + i1.y, 0)).r;
     float r11 = _YAPS_SquashSurface.Load(int3(i1.x, row + i1.y, 0)).r;
     return lerp(lerp(r00, r10, t.x), lerp(r01, r11, t.x), t.y);
+}
+
+// What the seam takes off part m pressed x of its reach past its front, flat and as far bowed round
+// its partner's front as bow, over what the part gains grown out of the body by 1: two rows a part below the
+// surfaces, 32 depths from an eighth of the reach short, baked from its own skin by YapsSquash.Fill.
+float YapsFill(int m, float x, float bow)
+{
+    float f = clamp(x * 32 + 4, 0, 31);
+    int i0 = min((int) f, 30);
+    float t = f - i0;
+    int row = 4 * YAPS_SURFACE + 2 * m;
+    float flat = lerp(_YAPS_SquashSurface.Load(int3(i0, row, 0)).r, _YAPS_SquashSurface.Load(int3(i0 + 1, row, 0)).r, t);
+    float bowed = lerp(_YAPS_SquashSurface.Load(int3(i0, row + 1, 0)).r, _YAPS_SquashSurface.Load(int3(i0 + 1, row + 1, 0)).r, t);
+    return lerp(flat, bowed, saturate(bow));
+}
+
+// The plane part m meets the body in, baked by YapsSquash.Base: the way out of it, square to the
+// partner, as shares of the part's out and across, and how far the part's centre stands above it in
+// follow units. Below the fills.
+float3 YapsBase(int m)
+{
+    int row = 4 * YAPS_SURFACE + 8 + m;
+    return float3(_YAPS_SquashSurface.Load(int3(0, row, 0)).r, _YAPS_SquashSurface.Load(int3(1, row, 0)).r,
+        _YAPS_SquashSurface.Load(int3(2, row, 0)).r);
 }
 
 // How far the part reaches toward w, a unit vector: its own surface where one was baked, else the
@@ -589,6 +618,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         float3 S = 0;
         float3x3 M = 0;
         float3 shunt = 0;
+        float gap = 0, fillAt = 0, fillBy = 0;
         float3 squeeze = 0;
         float strength = _YAPS_SquashTune.y;
         float3 toward = YapsSlot(m ^ 1) - p.centre;
@@ -700,6 +730,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
             float takes = drive > 0 ? lerp(share, 1, drive) : share * (1 + drive);
             squashBow[m] = lead;
             squashDeep[m] = max(meet, 0) * takes;
+            gap = min(meet, 0) * takes;
             // Swung away from the leader below. The seam stays at the leader's front, so what it
             // swings away is pressed no more.
             shunt = -axis * min(max(meet, 0) * max(drive, 0), reach);
@@ -786,6 +817,10 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
                 YapsAdd(S, M, squashAxis[m] * bulk);
                 squashDeep[m] -= bulk;
             }
+            // How deep the seam presses the part, signed below 0 short of it, and how hard: read
+            // before the cut-off, which differs vertex to vertex, so the part grows as one.
+            fillAt = squashDeep[m] > 0 ? squashDeep[m] : gap;
+            fillBy = squashContact[m];
             squashContact[m] *= onSeam;
         }
 
@@ -876,6 +911,25 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         along[0] = flat[0] * min(grow[1] * grow[2], _YAPS_SquashShape.z);
         along[1] = flat[1] * min(grow[0] * grow[2], _YAPS_SquashShape.z);
         along[2] = flat[2] * min(grow[0] * grow[1], _YAPS_SquashShape.z);
+        // What the seam cuts off the part comes back as it growing out of the body, as flesh
+        // squeezed against another bulges out where it is free: what the seam takes off its own
+        // skin pressed as deep, on the part flattened that far along the line, baked at build, and
+        // grown with the part as the cut is. Given back as two balls' lens instead, one avatar
+        // needed twice the lens and a part swung away got far too much. Swollen round the seam,
+        // the skin there faces the other part and only slid along itself.
+        float gx = 1;
+        if (fillBy > 0 && p.framed)
+        {
+            float fa = 0;
+            [unroll]
+            for (int b2 = 0; b2 < 3; b2++)
+            {
+                float t = dot(ax[b2], axis);
+                fa += flat[b2] * t * t;
+            }
+            float r = YAPS_SQUASH_REFILL * _YAPS_DentSpill * fillBy * YapsFill(m, fillAt / (max(fa, 0.2) * reach), squashBow[m]);
+            gx = min(1 / (1 - clamp(r, -0.5, 0.5)), _YAPS_SquashShape.z);
+        }
         bool dented = dentDepth[0] + dentDepth[1] + dentDepth[2] + dentDepth[3] > 0;
 
         // In motion: the physics swing the part off its rest, and the flesh stretches away from
@@ -902,7 +956,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
                 hangAt = hang * YapsSpan(p, hang);
             }
         }
-        if (pressAll <= 0 && dot(swung, swung) <= 0 && !dented && stretch == 1) continue;
+        if (pressAll <= 0 && gx == 1 && dot(swung, swung) <= 0 && !dented && stretch == 1) continue;
         float3 nmS = n;
         if (stretch != 1)
         {
@@ -917,6 +971,14 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         float3 squashed = 0;
         [unroll]
         for (int c3 = 0; c3 < 3; c3++) squashed += ax[c3] * (dot(d, ax[c3]) * along[c3] + shift[c3]);
+        // Grown out from the plane it meets the body in, which stays put.
+        float3 nb = 0;
+        if (gx != 1)
+        {
+            float3 base = YapsBase(m);
+            nb = p.o * base.x + p.u * base.y;
+            squashed += nb * ((dot(squashed, nb) + base.z * unit) * (gx - 1));
+        }
         float lean = saturate((dot(squashed, p.o) + bendFrom) / bendSpan);
         float3 moved = p.centre + squashed + bend * lean;
         float3 nm = nmS;
@@ -924,6 +986,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         {
             if (pressAll > 0)
                 nm = normalize(ax[0] * (dot(ax[0], nm) / along[0]) + ax[1] * (dot(ax[1], nm) / along[1]) + ax[2] * (dot(ax[2], nm) / along[2]));
+            if (gx != 1) nm = normalize(nm - nb * (dot(nb, nm) * (1 - 1 / gx)));
             if (lean > 0 && lean < 1) nm = normalize(nm - p.o * dot(bend / bendSpan, nm));
         }
         // Each dent, centred where the hand meets the part at rest. Inside, the skin lies on the

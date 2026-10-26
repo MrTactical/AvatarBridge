@@ -1592,9 +1592,9 @@ rounded hollow there, its skin sliding round the other's front rather than press
 Each part meets the other with its own shape, measured from its skin when
 the squash is built; a part too small or too folded to measure well uses a smooth stand-in. Pushed together from
 both sides, each part gives as a whole first, flattening toward the other and growing the other ways
-to keep its volume, and only the rest presses flat where they meet. What the press pushes back swells out
-round the contact, keeping its volume (not yet confirmed in game); with Meet off, what overlaps
-passes through. It is done in the body's shader, so every layer
+to keep its volume, and only the rest presses flat where they meet. What that press cuts away comes
+back: each part bulges out from where it meets the body, and swells out round the contact, so a squeezed pair keeps its volume rather than shrinking (not yet confirmed in game); with
+Meet off, what overlaps passes through. It is done in the body's shader, so every layer
 over the skin (a bra, a shirt, piercings) takes the same move and nothing comes through. It
 costs no synced parameters and uses no contacts. The wearer's own arms press it, and so do other
 players' hands, from the hand positions ChilloutVR hands every shader, so neither avatar needs
