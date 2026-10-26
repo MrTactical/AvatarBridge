@@ -941,6 +941,11 @@ plane collider"; and take a playbook from Poiyomi's glass squish.
      -spDragScale 2`): the grabbed breast stops at 4.97 cm instead of 5.77 cm, and its partner does
      not move (0.07 cm, as at rest). So the option stops a part at the other's rest and never
      pushes the other aside; the window hint and README now say so.
+     **Removed 2026-10-26 (Joe: "remove the top one").** With Soft body shape doing what can be
+     seen, the physics option only stopped a part at the other's rest, under a second control
+     that read like the first. The setting, its pass, the Toolkit's Soft bodies card and
+     `SoftBodyContact.cs` are gone; an avatar converted with it keeps its spheres until converted
+     again. Joe, the same day, of the squash on Kar: "FINALLY, BEAUTIFUL!!"
 
 ### 25. Mesh-to-mesh squash contact. Joe, 2026-10-25. PLAN, to start 2026-10-26
 
@@ -1935,7 +1940,7 @@ Unity's importer adds and replaces files and never removes them [M `Dev/Build/RE
 
 #### What the Toolkit package ships
 
-- **The file list:** `toolkit_files()` = today's `yaps_files()` minus `Editor/Yaps` and `Runtime`, plus `Editor/Core/Physics/SoftBodyContact.cs` **and the `Editor/Core/Physics` folder entry**. [M emulated in scratch: 191 entries]
+- **The file list:** `toolkit_files()` = today's `yaps_files()` minus `Editor/Yaps` and `Runtime`, plus `Editor/Core/Physics/SoftBodyContact.cs` **and the `Editor/Core/Physics` folder entry** (both gone 2026-10-26 with the soft body card: the Toolkit now reaches no Physics file). [M emulated in scratch: 191 entries]
   - Without the folder entry, Unity would make that folder with a fresh GUID. A later import of the public package would then bring the real GUID for the same path. [R]
   - That leaves:
     - `Editor/Toolkit` and `Editor/UI`

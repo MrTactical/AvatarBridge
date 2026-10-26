@@ -24,12 +24,9 @@ yaps_files() {
   {
     # Folders whose contents come whole, and the folder entries themselves.
     find Editor/Yaps Editor/UI Editor/Toolkit Runtime AvatarScaler FaceTracking -mindepth 0
-    printf '%s\n' Editor Editor/Core Editor/Core/Physics
+    printf '%s\n' Editor Editor/Core
     printf '%s\n' Editor/BridgeDefines.cs Editor/BridgeLinks.cs LICENSE.md README.md
     for name in $YAPS_CORE; do printf '%s\n' "Editor/Core/$name.cs"; done
-    # The Toolkit's soft-body card, the one Physics file it reaches. The folder entry keeps
-    # the public package's GUID for it, or the two packages disagree on one path.
-    printf '%s\n' Editor/Core/Physics/SoftBodyContact.cs
   } | while IFS= read -r p; do
     case "$p" in *.meta) continue ;; esac
     [ -e "$p" ] || { echo "  !! missing from the YAPS list: $p" >&2; continue; }

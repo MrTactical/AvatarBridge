@@ -121,9 +121,6 @@ namespace AvatarBridge
             _pages.Add(Audio());
             _pages.Add(Bounds());
             if (ConvertPhysBones != null) _pages.Add(PhysBones());
-#if AVATARBRIDGE_MAGICA
-            _pages.Add(SoftBodies());
-#endif
             _pages.Add(Height());
             _pages.Add(Description());
             _pages.Add(MergeAnimators());
@@ -524,17 +521,6 @@ namespace AvatarBridge
                 "No PhysBones on it.");
         }
 
-#if AVATARBRIDGE_MAGICA
-        BridgeElements.Card SoftBodies() => Tool("Soft bodies", Changes,
-            BridgeElements.Hint("Lets soft bodies near each other, like breasts or thighs, push apart instead of passing through. VRChat did not do this."),
-            "Let soft bodies push each other", ButtonKind.Strong, () =>
-            {
-                var report = new BridgeReport();
-                SoftBodyContact.Link(_target, report);
-                return report;
-            }, "Nothing to link.");
-
-#endif
         BridgeElements.Card Height() => Tool("Height slider", Changes,
             BridgeElements.Hint("Adds a Height slider, 0.25x to 4x, to the menu. Edits the avatar's controller asset."),
             "Add height slider", ButtonKind.Strong, () =>

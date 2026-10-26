@@ -679,13 +679,6 @@ namespace AvatarBridge
                 b.Add(BridgeElements.Bind("Auto-assign nearby colliders",
                     "Lets each cloth collide with body colliders it could swing into, which VRChat did not. Check before uploading.",
                     settings.autoAssignNearbyColliders, v => settings.autoAssignNearbyColliders = v));
-                b.Add(BridgeElements.Bind("Soft body physics: keep parts from passing through",
-                    "Breasts, thighs and other soft bodies near each other stop passing through, which VRChat did not do. Check before uploading.",
-                    settings.softBodiesCollide, v => settings.softBodiesCollide = v));
-#if AVATARBRIDGE_YAPS
-                // Two labels that sounded alike, in two places: each says what the other is.
-                b.Add(BridgeElements.Hint("Stops a part where the other one rests. The other giving way, and their shape where they meet, is Opt-ins ▸ Soft parts ▸ Soft body shape; use both."));
-#endif
             }
             return card;
         }
@@ -909,7 +902,7 @@ namespace AvatarBridge
                 "As the physics swing them they stretch and squash too. Found by bone name, or by regions painted with " +
                 "Tools ▸ YAPS ▸ Squash regions; tuned on the YAPS Squash component the build adds. No sync cost.",
                 settings.squashSoftParts, v => { settings.squashSoftParts = v; ScheduleRebuild(); }));
-            optIns.Add(BridgeElements.Hint("Changes the skin's shape where breasts, butt, a hand or a plug press. Keeping whole parts from passing through is Physics ▸ Your call ▸ Soft body physics; use both."));
+            optIns.Add(BridgeElements.Hint("Changes the skin's shape where breasts, butt, a hand or a plug press."));
             if (settings.squashSoftParts)
             {
                 optIns.Add(BridgeElements.Hint(

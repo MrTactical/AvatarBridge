@@ -218,8 +218,8 @@ but only the game shows gestures, contacts, synced parameters and physics actual
 - **A [Toolkit](#chilloutvr-toolkit) for any ChilloutVR avatar**: the converter's passes as
   standalone cards: check what the game will break, say what the avatar does and what it costs
   (and trim what can go), clear out empty layers and unused parameters, patch stereo shaders,
-  wire visemes and blink, clamp audio, fix mesh bounds, turn leftover PhysBones into cloth, let
-  soft bodies push apart, add the height slider, write the description, and merge animators. **Open in the Avatar Tester** hands the picked avatar
+  wire visemes and blink, clamp audio, fix mesh bounds, turn leftover PhysBones into cloth, add
+  the height slider, write the description, and merge animators. **Open in the Avatar Tester** hands the picked avatar
   straight to the tester.
 
 *(No VRChat SDK installed? The tool still runs in [Setup mode](#setup-mode) and prepares any
@@ -736,7 +736,6 @@ sharing one.
 | **Convert toe PhysBones** | off | Toes are left out of the simulation entirely: both chains *rooted* at them and toe branches found part-way down a longer chain (a leg or skirt chain that runs through the feet), for MagicaCloth2 and DynamicBone alike. Simulated toes splay and swing while IK plants the foot, which reads as broken feet rather than as physics. Turn on if the toe physics are deliberate |
 | **Bound swing to the source's limit** | on | A PhysBone's angle limit is often the only thing keeping a deliberately loose chain presentable: convert the looseness without it and the chain swings much further here than it did in VRChat. This bounds how far each bone may travel from rest, worked out from that limit, which VRChat applies at every joint, along the chain's own bones, easing to nothing at the root. Breasts and a belly get the limit as an angle limit instead, since MagicaCloth2 turns distance bounds off for a soft body; builds before 5.0.0 left them unbounded, so they could swing far past where their PhysBone stopped on a walk. Thighs and a butt are left without one: measured against their PhysBones, an angle limit made them swing further, and their spring holds them near rest. Elsewhere it's a *distance* bound rather than an angle limit, so it removes motion instead of adding a restoring force and can't set the chain vibrating |
 | **Auto-assign nearby colliders** | off | Gives each cloth the avatar's own colliders it could swing into. Improves on the original rather than copying it, so check before uploading |
-| **Soft body physics: keep parts from passing through** | off | Soft bodies near each other, like the two breasts or thighs, collide instead of passing through: a sphere on each one's collision bone, given to the others. A part swung into another stops where the other rests; the other is not pushed aside by it (the YAPS squash shows that). VRChat collides chains only with colliders, never with each other, so this too improves on the original. Also a Toolkit card, for an avatar already converted, which also mends one linked before 5.0.0, whose pair sat spread apart in game |
 | **Add physics to toggled rigs that have none** | off | A toggled style (usually add-on hair) carrying its own rig and mesh but no PhysBone was rigid in VRChat too; this synthesizes a MagicaCloth for it, preset by classification, wired to the style's toggle. Off because it invents physics the author never made |
 
 ## Contacts
@@ -1595,8 +1594,7 @@ its shape, meet and swing, but hands and plugs mostly stop pressing it: the filt
 loop in a shader, and those presses are read in loops.
 
 **Two ways on.** Converting: *Manual options ▸ Opt-ins ▸ Soft parts ▸ Soft body shape: squash
-where parts press together*. It changes the parts' shape where they meet; *Physics ▸ Your call ▸
-Soft body physics* stops a part where the other rests. They are separate, and work together.
+where parts press together*.
 Already on ChilloutVR: *Tools ▸ YAPS ▸ Setup*, the **Squash** card, **Set up squash**. It selects the
 avatar's **YAPS Squash** component and shows it in the Inspector, adding it first if the avatar has
 none. Like a plug or socket, the component sits on the bone the parts hang from (the chest for one
@@ -1953,7 +1951,6 @@ without it a PhysBone is a missing script with nothing to read.
 | **Audio limits** | Clamps every audio source to settings ChilloutVR handles: doppler off, distance floors and caps, fully 3D. One `minDistance 0` source on a wearer can mute the whole game |
 | **Mesh bounds** | Resizes skinned mesh bounds to the avatar's own volume plus clearance, so meshes stop vanishing at the screen's edge |
 | **PhysBones to cloth** | For an avatar already on ChilloutVR that still carries its PhysBones, a port that kept its VRChat descriptor included. Converts them in place to MagicaCloth2 or DynamicBone with the Convert tab's [Physics options](#physics-which-solver-and-how-the-chains-feel), all but **Add physics to toggled rigs that have none**: the converter's own physics pass, colliders and grouping included. Animations that switch or animate a PhysBone or a collider, and toggles that hide a part with physics, are rewired as a conversion rewires them, into a copy of the avatar's controller (and of its override controller) in its output folder; its own controller and clips are never edited. Refused on a VRChat avatar (a VRChat descriptor and no CVRAvatar), which converts in the Convert tab instead, and while the avatar already carries converted cloth, since a second set fights the first. When its override controller swaps in a clip that drives physics, animations are left as they are and the report says which. Helper-rig chains get no physics, and **Size for the largest a slider makes the body** measures the mesh as it stands. Ctrl+Z undoes the whole run; the copy stays in the folder, unused |
-| **Soft bodies** | MagicaCloth2 only. Lets soft bodies that sit near each other, like the two breasts or thighs, push apart instead of passing through: a sphere on each one's collision bone, given to the others. Neither VRChat nor MagicaCloth2 does this on its own, so it improves on the original. A soft body carrying both sides on one cloth is named, since those two cannot push each other. Running it twice changes nothing |
 | **Height slider** | Adds the quick-menu Height slider (0.25×–4×, centred on the original size) to the controller ChilloutVR uploads (the one under the avatar's override controller, else its base controller) and to its advanced settings. Its menu entry goes first in the Advanced Settings list, where people look for it. Refused, with a warning, while that controller is the CCK's own stock one, since layers added there would reach every avatar in the project. Not added, with a warning, when the avatar already has its own parameter or menu entry called "Height" |
 | **Store description** | Writes the [description](#store-description) from what the avatar has, types it into the upload page when that window is open and its Description box is empty, and copies it to the clipboard either way |
 | **Merge animators** | Any sources into a target: layers and parameters copied (clips and masks are shared, not duplicated), layers after the target's own, same-named layers renamed, a parameter present in both with different types named and the target's type kept. A synced layer is left out and named, since a copy of one would play nothing. Written to a copy beside the target by default; sources are never edited |
@@ -2046,8 +2043,8 @@ cloth** card uses these same options, all but **Add physics to toggled rigs that
 
 **Convert toe PhysBones** and **Size for the largest a slider makes the body** sit under these for
 both solvers. On MagicaCloth 2 the card adds *Advanced physics tuning*, folded away, and a **Your
-call** section with the three that depend on intent rather than measurement: **Add physics to toggled
-rigs that have none**, **Auto-assign nearby colliders** and **Soft body physics: keep parts from passing through**. All of them are in the
+call** section with the two that depend on intent rather than measurement: **Add physics to toggled
+rigs that have none** and **Auto-assign nearby colliders**. Both are in the
 [physics table](#options) above and not repeated here.
 
 ### Manual options: what the avatar can't tell you

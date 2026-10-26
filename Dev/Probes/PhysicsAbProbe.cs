@@ -204,7 +204,6 @@ namespace AvatarBridge.Regression
             SessionState.SetString(K + "capture", Arg("-abCapture") ?? "");
             SessionState.SetInt(K + "bake", Array.IndexOf(Environment.GetCommandLineArgs(), "-abBake") >= 0 ? 1 : 0);
             SessionState.SetInt(K + "softShots", Array.IndexOf(Environment.GetCommandLineArgs(), "-abSoftShots") >= 0 ? 1 : 0);
-            SessionState.SetInt(K + "softCollide", Array.IndexOf(Environment.GetCommandLineArgs(), "-abSoftCollide") >= 0 ? 1 : 0);
             SessionState.SetInt(K + "live", Array.IndexOf(Environment.GetCommandLineArgs(), "-abLive") >= 0 ? 1 : 0);
             SessionState.SetString(K + "bones", Arg("-abBones") ?? "");
             SessionState.SetString(K + "trace", Arg("-abTrace") ?? "");
@@ -303,11 +302,6 @@ namespace AvatarBridge.Regression
                 slimTexturesOnConvert = false,
                 physicsTarget = PhysicsTarget.MagicaCloth2,
             };
-            // By name, so the probe still builds against a converter from before the option.
-            if (SessionState.GetInt(K + "softCollide", 0) == 1)
-            {
-                typeof(BridgeSettings).GetField("softBodiesCollide")?.SetValue(settings, true);
-            }
             // -abBake: an avatar whose PhysBones only exist after VRCFury or NDMF has run (marshmallow
             // PB adds its own at build) is compared against a baked copy, the way an upload sees it.
             // Baked BEFORE converting, from the untouched original; NDMF decides for itself whether

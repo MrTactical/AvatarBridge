@@ -81,8 +81,8 @@ namespace AvatarBridge.Regression
             Step(t, "Analyse this avatar", true, Clip(Notices(converter.Content)));
             WindowShot(converter, dir, "01 converter analysed", null);
 
-            // 2. The three options a person wanting soft thighs would turn on.
-            foreach (var label in new[] { "Soft body shape: squash where parts press together", "Soft body physics: keep parts from passing through", "Keep the converted avatar a prefab" })
+            // 2. The options a person wanting soft thighs would turn on.
+            foreach (var label in new[] { "Soft body shape: squash where parts press together", "Keep the converted avatar a prefab" })
             {
                 var toggle = converter.Content.Query<Toggle>().ToList().FirstOrDefault(x => Label(x) == label);
                 if (toggle == null) { Step(t, "turn on: " + label, false, "no such toggle"); continue; }
