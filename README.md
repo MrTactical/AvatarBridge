@@ -641,6 +641,11 @@ acceleration that restoration holds off, and carries a chain's weight down to it
 conversion works out where the chain would settle in VRChat, version and falloff included, and
 solves for the MagicaCloth2 gravity that settles it there.
 
+That gravity is for the size the avatar was converted at. Each cloth records that size, and
+MagicaCloth2 scales its gravity by how far the avatar has been resized since, so a chain hangs the
+same on a small or a large avatar, a size ChilloutVR restores when the avatar loads included.
+Without the record, a cloth that started at a saved small size hung several times heavier.
+
 The check that it's right: push MagicaCloth2's *own* default restoration back through the mapping
 in reverse and you get a PhysBone restoring **0.168** per step, against the **0.160** a default
 PhysBone (pull 0.2, spring 0.2) actually restores. Two authors who never spoke, five percent apart.

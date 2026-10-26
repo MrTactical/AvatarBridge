@@ -700,6 +700,14 @@ due on the Nightly branch within days; none of this is in stable yet.
    scale, as `buildScale`, but needs an asset per avatar and fails outright when ChilloutVR's own
    MagicaCloth2 rejects the data's version. Failing check first: `PhysicsAbProbe -abScale 0.2`
    (long hair lying 72 deg against 43).
+   **FIXED on dev 2026-10-26 [M]:** pass "Pin cloth start scale" (`MagicaClothWriter.PinStartScale`,
+   after the last hierarchy change) writes every cloth's `initData` the way the editor does
+   (BoneCloth and BoneSpring setups, `ClothInitSerializeData.Serialize`). Same five avatars, built
+   at 0.2 / 1 / 5: long hair rest sag 3.14 / 3.13 / 3.13 deg (was 22.4 / 3.1 / 1.3), lying 43.1 /
+   43.0 / 27.4 (was 72.5 / 43.0 / 13.1); every class alike. At 1 nothing moved (mean errors within
+   0.3 deg of before). Report: "N cloth(s) keep their weight at any avatar size", or a warning
+   naming any that could not record. Untested: ChilloutVR's own MagicaCloth2 accepting the record
+   (it warns and builds as before if not); Joe in game, a saved small size, long hair.
 3. **Prop partial sync**: the server hands out control per part of a prop, and Disallow Theft is now
    enforced. `YapsPropBuilder` already leaves it off on fresh props, but who writes a prop's synced
    value changes: retest the prop contact channel on the Nightly.

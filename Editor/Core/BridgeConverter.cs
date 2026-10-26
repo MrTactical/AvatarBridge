@@ -289,6 +289,10 @@ namespace AvatarBridge
                     // Same reason: the CCK builds a native toggle's clips from
                     // the path written at the merge, and objects have moved since.
                     Pass("Refresh native toggle paths", ToggleNativizer.RefreshTargetPaths),
+#if AVATARBRIDGE_MAGICA
+                    // Once the hierarchy is final: it records each cloth's transforms as they stand.
+                    Pass("Pin cloth start scale", MagicaClothWriter.PinStartScale),
+#endif
                     // Judge the saved file's references only now, after
                     // the self-container fixed what it was going to.
                     Pass("Audit serialized references", AnimatorMerger.AuditSerializedReferences),

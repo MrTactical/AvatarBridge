@@ -1973,6 +1973,65 @@ namespace AvatarBridge
         }
 
         static string PathOf(Transform t) => t != null ? t.name : "(null)";
+
+        // MagicaCloth2 scales gravity by a cloth's scale now over its scale when it started, and
+        // takes that start from initData when it validates, else from wherever the cloth stands
+        // when it starts. ChilloutVR applies a saved avatar size before the cloths start, so a
+        // cloth without initData kept gravity in metres: long hair on a 0.2 avatar lay at 72
+        // degrees against 43. Its editor writes initData only when it draws a cloth's gizmo or
+        // inspector; this writes it the same way for every cloth, once the hierarchy is final.
+        // A record that no longer validates is ignored with a warning and the cloth builds as before.
+        public static void PinStartScale(BridgeContext ctx)
+        {
+            int pinned = 0;
+            var refused = new List<string>();
+            foreach (var cloth in ctx.Target.GetComponentsInChildren<MagicaCloth>(true))
+            {
+                var sdata = cloth.SerializeData;
+                if (!sdata.IsValid())
+                {
+                    refused.Add(cloth.name);
+                    continue;
+                }
+                RenderSetupData setup = null;
+                try
+                {
+                    setup = sdata.clothType == ClothProcess.ClothType.BoneSpring
+                        ? new RenderSetupData(null, RenderSetupData.SetupType.BoneSpring, cloth.ClothTransform, sdata.rootBones,
+                            sdata.colliderCollisionConstraint.collisionBones, RenderSetupData.BoneConnectionMode.Line, cloth.name)
+                        : new RenderSetupData(null, RenderSetupData.SetupType.BoneCloth, cloth.ClothTransform, sdata.rootBones,
+                            null, sdata.connectionMode, cloth.name);
+                    if (setup.IsFaild())
+                    {
+                        refused.Add(cloth.name);
+                        continue;
+                    }
+                    var normal = sdata.normalAlignmentSetting.adjustmentTransform
+                        ? sdata.normalAlignmentSetting.adjustmentTransform
+                        : cloth.ClothTransform;
+                    var init = new ClothInitSerializeData();
+                    init.Serialize(sdata, new TransformRecord(cloth.ClothTransform, read: true),
+                        new TransformRecord(normal, read: true), new List<RenderSetupData> { setup });
+                    cloth.GetSerializeData2().initData = init;
+                    EditorUtility.SetDirty(cloth);
+                    pinned++;
+                }
+                finally
+                {
+                    setup?.Dispose();
+                }
+            }
+            if (pinned > 0)
+            {
+                ctx.Report.Converted(Category, $"{pinned} cloth(s) keep their weight at any avatar size",
+                    "Each records the size it was converted at, so a size ChilloutVR applies before the cloth starts scales its gravity with it.");
+            }
+            if (refused.Count > 0)
+            {
+                ctx.Report.Warning(Category, $"{refused.Count} cloth(s) could not record their size",
+                    string.Join(", ", refused) + ": these hang heavier on a small avatar and stiffer on a large one.");
+            }
+        }
     }
 }
 #endif
