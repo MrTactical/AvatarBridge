@@ -217,6 +217,10 @@ namespace AvatarBridge
 
         // The YAPS tool's build: the squash, then the toggles' swaps pointed at it.
         // The last build's whole message, measurements and all, for the setup window's diagnostics.
+        // SquashShapeProbe: each part's skin and the six reaches of its ellipsoid, in world units, in
+        // the frame the shader builds. Set, a build stops once it has measured.
+        internal static Action<string, Vector3, Vector3, Vector3, List<Vector3>, float[]> MeasuredForTest;
+
         internal static string LastSaid;
         internal static bool LastBuilt;
 
@@ -486,6 +490,8 @@ namespace AvatarBridge
                     inward[parts.Count] = Reach(p, -o) / unit;
                     sideA[parts.Count] = Reach(p, u) / unit;
                     sideB[parts.Count] = Reach(p, -u) / unit;
+                    MeasuredForTest?.Invoke(p.name, p.centre, toward, o, p.points,
+                        new[] { p.reach, Reach(p, -toward), Reach(p, o), Reach(p, -o), Reach(p, u), Reach(p, -u) });
                     var hang = (p.hangsFrom - p.centre) / Unit(rest);
                     hangToward[parts.Count] = Vector3.Dot(hang, toward);
                     hangOut[parts.Count] = Vector3.Dot(hang, o);
@@ -499,6 +505,7 @@ namespace AvatarBridge
             }
             if (parts.Count == 0) return string.Join("; ", log);
             Lap("Measure");
+            if (MeasuredForTest != null) return string.Join("; ", log);
 
             // A pair with too little skin is dropped, and the ones after it move up a slot.
             foreach (var s in skins)

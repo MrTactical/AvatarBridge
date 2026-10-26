@@ -1022,8 +1022,36 @@ partner's own squash; a jiggle that rings on after the contact needs state kept 
 (the CVRBlitter self-update route, its own spike); a shape a ray from the centre crosses twice keeps
 only its outer surface. Cost: a 4 KB texture per avatar and a few texture reads per vertex per part.
 
-**First move tomorrow:** the Gate 1 probe on Kar's prefab (`-spPrefab`, since the scene copy is
-older than the conversion).
+**Gate 1: PASSED for breasts, measured 2026-10-26 [M]** (`Dev/Probes/SquashShapeProbe`, six
+converted prefabs measured by the squash build itself through `YapsSquash.MeasuredForTest`, which
+stops a build after measuring). The map is built from every other part vertex and judged on the
+rest, so it is not graded on its own fit. Radial distance from the part's centre, mean / 95th cm,
+ellipsoid against map 32:
+
+| part | ellipsoid | map32 | worst region, ellipsoid / map32 (95th) |
+|---|---|---|---|
+| Kar breast | 1.6 / 5.2 | 0.33 / 0.84 | top 8.6 / 1.6 |
+| Kar butt | 3.4 / 6.5 | 0.73 / 2.2 | underside 6.1 / 1.0 |
+| Angela breast | 2.4 / 7.6 | 1.2 / 3.0 | toward partner 8.4 / 1.7 |
+| Angela butt R | 4.9 / 10.7 | 1.8 / 4.3 | top 15.5 / 4.5 |
+| Angela butt L | 5.8 / 14.0 | 3.5 / 11.6 | underside 18.4 / 15.7: both wrong |
+| Momscarada breast | 1.6 / 3.2 | 0.63 / 1.5 | top 4.4 / 1.5 |
+| Momscarada butt (41 vertices) | 1.7 / 3.3 | 1.8 / 3.0 | no better |
+| Lady Adrina upper breast | 1.3 / 2.6 | 0.43 / 1.2 | underside 2.9 / 0.6 |
+| Lady Adrina breast | 1.5 / 3.9 | 0.69 / 2.1 | underside 2.9 / 2.5, near even |
+| Pheromosa breast | 7.6 / 16.1 | 1.4 / 3.9 | top 21.3 / 5.0 |
+| Pheromosa butt | 5.4 / 12.3 | 1.6 / 4.1 | underside 10.7 / 4.2 |
+| Alexa breast | 5.6 / 17.2 | 1.5 / 7.7 | top 24.2 / 6.5 |
+
+The ellipsoid's signed error runs up to +13 cm (Pheromosa toward the partner): skin well outside
+it, which is the flat-plane complaint in numbers. Map 16 is too coarse (worse than the ellipsoid on
+two undersides), so 32. Angela's left cheek is not one surface seen from its centre (the section
+picture crosses itself), and neither model fits it.
+Decisions this sets, for Step 1: an octahedral 32 x 32 grid, folded on the side into the body
+where a part has no skin of its own, so the skin's side is one continuous diamond with no poles
+(replaces the 32 x 16 latitude grid above); and the bake keeps the ellipsoid for a part whose
+map does not beat it on the held-out half, which covers the low-poly and folded parts above
+without a vertex-count rule. Next: Step 1, the bake and texture, then Gate 2.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 
