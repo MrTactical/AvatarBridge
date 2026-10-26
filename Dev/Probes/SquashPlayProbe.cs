@@ -66,6 +66,8 @@
 // off in turn, in memory, each squashed layer alone too (_look_<layer>_<stage>); the branch stage
 // colours the seam's choices in place of the shading. -spDent <file> draws and counts everything
 // with that include in place of the live one, in memory: an experiment needs no build.
+// -spSeamFilm <file>[,<file>] films the pair pressed into each other six ways in the look shader,
+// the live include beside each file's, every column drawn from the same frame.
 // -spDestroy <name> destroys the prefab copy's objects so named before Play.
 // -spPose <a,b> logs those bones' local moves at the drag's end against before Play.
 // -spPrefab <asset path> plays that converted prefab in place of the scene's own avatar, logging
@@ -352,6 +354,7 @@ namespace AvatarBridge.Regression
             if (SessionState.GetInt(K + "cost", 0) == 1) { if (frame == Bend) Cost(slots, mats); return; }
             if (SessionState.GetInt(K + "jump", 0) == 1) { if (frame >= Bend) JumpPose(slots, mats); return; }
             if (PivotOn) { if (frame >= Bend) PivotShake(slots); return; }
+            if (SeamFilm != null) { if (frame >= Bend) SeamPose(slots, mats); return; }
             if (SessionState.GetInt(K + "look", 0) == 1) { if (frame >= Bend) LookPose(slots, mats); return; }
             if (SessionState.GetInt(K + "video", 0) == 1) { if (frame >= Bend) Film(slots, mats); return; }
             if (SessionState.GetInt(K + "drag", 0) > 0) { if (frame >= Bend) Drag(slots, mats); return; }
@@ -1427,10 +1430,123 @@ namespace AvatarBridge.Regression
                 foreach (var m in provider.materials) m.SetFloat("_YAPS_SquashPulse", LookShots[lookAt].pulse);
         }
 
+        // -spSeamFilm <file>[,<file>]: the pair pressed into each other six ways, each eased in, held
+        // and let go, drawn from the front and from above in the look shader once with the live
+        // include and once with each file, side by side from the same frame, into <dir>/frames
+        // with segments.tsv. Comparing includes in separate runs would compare two cloth runs too.
+        static readonly string SeamFilm = Arg("-spSeamFilm");
+        static readonly (string name, int kind, float amount)[] SeamShots =
+        {
+            ("One dragged into the other, the cloth running", 0, 1f),
+            ("Both dragged into each other, the cloth running", 1, 1f),
+            ("One swung into a still partner", 2, 0.6f),
+            ("Both swung together, deep", 3, 1.2f),
+            ("A hand pushing one into the other", 4, 0.8f),
+            ("Two hands squeezing them together", 5, 0.8f),
+        };
+        const int SeamFrames = 360, SeamSize = 900;
+        static Camera[] seamCams;
+        static Shader[] seamLooks;
+        static Texture2D seamSheet;
+        static List<string> seamSegments;
+        static int seamFilmed;
+        static bool seamShoot;
+
+        static void SeamPose(Transform[] slots, Material[] mats)
+        {
+            int t = frame - Bend, at = t / SeamFrames;
+            if (seamCams == null)
+            {
+                var root = animator.transform;
+                Vector3 mid = 0.5f * (slots[0].position + slots[1].position);
+                float reach = mats[0].GetVector("_YAPS_SquashReach")[0] * Unit(slots[0]);
+                Camera Make(Vector3 from, Vector3 up)
+                {
+                    var cam = new GameObject("SquashSeam camera").AddComponent<Camera>();
+                    cam.enabled = false;
+                    cam.nearClipPlane = 0.01f;
+                    cam.fieldOfView = 30f;
+                    cam.clearFlags = CameraClearFlags.SolidColor;
+                    cam.backgroundColor = new Color(0.2f, 0.2f, 0.25f);
+                    cam.transform.position = from;
+                    cam.transform.LookAt(mid, up);
+                    cam.targetTexture = new RenderTexture(SeamSize, SeamSize, 24) { antiAliasing = 8 };
+                    return cam;
+                }
+                seamCams = new[] { Make(mid + root.forward * reach * 6f, root.up), Make(mid + root.up * reach * 5.5f, root.forward) };
+                seamLooks = new[] { Look() }.Concat(SeamFilm.Split(',').Select((f, i) => ShaderUtil.CreateShaderAsset(LookShader
+                    .Replace("SquashLook\"", $"SquashLook_film{i}\"")
+                    .Replace($"#include \"{LiveDent}\"", File.ReadAllText(f).Replace("\r\n", "\n"))))).ToArray();
+                foreach (var shader in seamLooks.Where(x => x == null || ShaderUtil.ShaderHasError(x)))
+                    Debug.LogError("[SquashPlay] seam film shader: " + (shader == null ? "missing" : string.Join(" | ", ShaderUtil.GetShaderMessages(shader).Select(m => m.message))));
+                // Every layer its own colour, as the drag's looks, so one coming through another shows.
+                var block = new MaterialPropertyBlock();
+                var shown = animator.GetComponentsInChildren<Renderer>().Where(r => r.enabled).ToList();
+                for (int i = 0; i < shown.Count; i++)
+                {
+                    shown[i].GetPropertyBlock(block);
+                    block.SetColor("_LookTint", Tints[i % Tints.Length]);
+                    shown[i].SetPropertyBlock(block);
+                }
+                seamSheet = new Texture2D(SeamSize * seamLooks.Length, 2 * SeamSize, TextureFormat.RGB24, false);
+                seamSegments = new List<string>();
+                Directory.CreateDirectory(Path.Combine(outDir, "frames"));
+                // Measured once at rest: the second drag starts while the first's cloth still sways.
+                dragBy = (slots[1].position - slots[0].position) * 0.5f;
+            }
+            if (at >= SeamShots.Length)
+            {
+                File.WriteAllLines(Path.Combine(outDir, "segments.tsv"), seamSegments);
+                Debug.Log($"[SquashPlay] seam film {seamFilmed} frames into {outDir}");
+                SessionState.SetInt(K + "on", 0);
+                EditorApplication.Exit(0);
+                return;
+            }
+            var (name, kind, amount) = SeamShots[at];
+            float u = (t % SeamFrames) / (float)SeamFrames;
+            float s = u < 0.35f ? Mathf.SmoothStep(0f, 1f, u / 0.35f) : u < 0.65f ? 1f : Mathf.SmoothStep(1f, 0f, (u - 0.65f) / 0.35f);
+            if (t % SeamFrames == 0)
+            {
+                seamSegments.Add($"{seamFilmed}\t{name}");
+                if (kind <= 1)
+                {
+                    dragged = ChainRoot(slots[0], slots[4]);
+                    dragLocal = dragged.localPosition;
+                    dragged2 = kind == 1 ? ChainRoot(slots[1], slots[5]) : null;
+                    if (dragged2 != null) dragLocal2 = dragged2.localPosition;
+                }
+            }
+            if (kind <= 1) { dragSet = s; Place(); }
+            else if (kind <= 3) Swing(slots, mats, amount, kind == 2 ? 1f : 0.5f, s);
+            else
+            {
+                Swing(slots, mats, 0.001f, 0.5f);
+                HandOn(slots, mats, amount * s, kind == 5);
+            }
+            seamShoot = t % 2 == 0;
+        }
+
+        static void SeamShoot()
+        {
+            seamShoot = false;
+            Shader.SetGlobalFloat("_LookMode", 0f);
+            Shader.SetGlobalFloat("_LookRaw", 0f);
+            for (int c = 0; c < 2; c++)
+                for (int k = 0; k < seamLooks.Length; k++)
+                {
+                    seamCams[c].RenderWithShader(seamLooks[k], "");
+                    RenderTexture.active = seamCams[c].targetTexture;
+                    seamSheet.ReadPixels(new Rect(0, 0, SeamSize, SeamSize), SeamSize * k, c == 0 ? SeamSize : 0);
+                }
+            RenderTexture.active = null;
+            File.WriteAllBytes(Path.Combine(outDir, "frames", $"f_{seamFilmed++:00000}.jpg"), seamSheet.EncodeToJPG(92));
+        }
+
         // Each part's own bone turned so its follow moves toward where the other stood, together
         // closing the gap to where the pair touches and then the overlap, the first taking that
-        // share. Both from their first pose. The cloth is stopped, or it turns them back.
-        static void Swing(Transform[] slots, Material[] mats, float overlap, float first)
+        // share. Both from their first pose. The cloth is stopped, or it turns them back. A scale
+        // under 1 goes that share of the way, so a film moves in from rest.
+        static void Swing(Transform[] slots, Material[] mats, float overlap, float first, float scale = 1f)
         {
             if (swingFrom == null)
             {
@@ -1444,7 +1560,7 @@ namespace AvatarBridge.Regression
             float reach = mats[0].GetVector("_YAPS_SquashReach")[0] * Unit(slots[0]);
             Vector3 p0 = slots[0].position, p1 = slots[1].position;
             float touch = mats[0].GetVector("_YAPS_SquashPair").x * Unit(slots[0]);
-            float total = overlap > 0f ? (p1 - p0).magnitude - touch + overlap * reach : 0f;
+            float total = (overlap > 0f ? (p1 - p0).magnitude - touch + overlap * reach : 0f) * scale;
             float a = total * first / reach, b = total * (1f - first) / reach;
             for (int i = 0; i < 2; i++)
             {
@@ -1496,7 +1612,8 @@ namespace AvatarBridge.Regression
         // An open hand upright against the first part's outer side, so deep into it that the
         // shader's press is that many reaches: the capsule line sits the part's away reach plus the
         // hand's radius out, less the depth. Its ghost capsules stay off the look cameras' layer.
-        static void HandOn(Transform[] slots, Material[] mats, float depth)
+        // Both puts the second part's hand on its outer side too, squeezing the pair together.
+        static void HandOn(Transform[] slots, Material[] mats, float depth, bool both = false)
         {
             if (ghost == null)
             {
@@ -1512,10 +1629,17 @@ namespace AvatarBridge.Regression
             if (depth <= 0f) { Press(); return; }
             float unit = Unit(slots[0]), reach = mats[0].GetVector("_YAPS_SquashReach")[0] * unit;
             float away = mats[0].GetVector("_YAPS_SquashAway")[0] * unit, rad = handRadius * Tall / 1.6f;
-            Vector3 P = slots[0].position, up = animator.transform.up;
-            var outP = Vector3.ProjectOnPlane(P - slots[1].position, up).normalized;
+            Vector3 up = animator.transform.up;
             float len = 0.11f * Tall - rad;
-            Press((P + outP * (away + rad - depth * reach) + up * (len / 2f), -up, -1f));
+            (Vector3, Vector3, float) On(int i)
+            {
+                Vector3 P = slots[i].position;
+                var outP = Vector3.ProjectOnPlane(P - slots[i ^ 1].position, up).normalized;
+                float r = mats[0].GetVector("_YAPS_SquashReach")[i] * unit, a = mats[0].GetVector("_YAPS_SquashAway")[i] * unit;
+                return (P + outP * (a + rad - depth * r) + up * (len / 2f), -up, -1f);
+            }
+            if (both) Press(On(0), On(1));
+            else Press(On(0));
             if (swingWait == 0) Debug.Log($"[SquashPlay] hand {depth:0.0} reach in, line {(away + rad - depth * reach) / reach:0.00} reach out, radius {rad / reach:0.00}");
         }
 
@@ -1596,6 +1720,7 @@ namespace AvatarBridge.Regression
             if (PivotOn) PivotRead(slots);
             if (jumpCam != null) JumpRead();
             if (lookShot != null) LookShoot();
+            if (seamShoot) SeamShoot();
             if (dragRows != null) DragRead();
         }
 
@@ -1622,21 +1747,22 @@ namespace AvatarBridge.Regression
             return dp == 0 ? reach : new Vector4(reach[dp], reach[dp + 1], reach[dp], reach[dp + 1]);
         }
 
+        // The bone under the rest's on the way to the follow: the chain root. Follow and rest on
+        // one bone leave the bone itself.
+        static Transform ChainRoot(Transform follow, Transform rest)
+        {
+            var b = follow;
+            while (b.parent != null && b.parent != rest.parent) b = b.parent;
+            return b == follow || b.parent == null ? follow.parent : b;
+        }
+
         static void Drag(Transform[] slots, Material[] mats)
         {
             slots = Paired(slots);
             int t = frame - Bend;
             if (t == 0)
             {
-                // The bone under the rest's on the way to the follow: the chain root. Follow and
-                // rest on one bone leave the bone itself.
-                Transform Root(Transform follow, Transform rest)
-                {
-                    var b = follow;
-                    while (b.parent != null && b.parent != rest.parent) b = b.parent;
-                    return b == follow || b.parent == null ? follow.parent : b;
-                }
-                dragged = Root(slots[0], slots[4]);
+                dragged = ChainRoot(slots[0], slots[4]);
                 string named = SessionState.GetString(K + "dragName", "");
                 if (named.Length > 0)
                     dragged = provider.GetComponentInParent<CVRAvatar>().GetComponentsInChildren<Transform>(true).First(x => x.name == named);
@@ -1653,7 +1779,7 @@ namespace AvatarBridge.Regression
                 if (float.TryParse(Arg("-spDragScale"), NumberStyles.Float, CultureInfo.InvariantCulture, out float dragScale)) dragBy *= dragScale;
                 if (SessionState.GetInt(K + "drag", 0) == 2)
                 {
-                    dragged2 = Root(slots[1], slots[5]);
+                    dragged2 = ChainRoot(slots[1], slots[5]);
                     dragLocal2 = dragged2.localPosition;
                 }
                 var mid = 0.5f * (slots[0].position + slots[1].position);
