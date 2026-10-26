@@ -1441,8 +1441,9 @@ namespace AvatarBridge.Regression
             ("Both dragged into each other, the cloth running", 1, 1f),
             ("One swung into a still partner", 2, 0.6f),
             ("Both swung together, deep", 3, 1.2f),
-            ("A hand pushing one into the other", 4, 0.8f),
-            ("Two hands squeezing them together", 5, 0.8f),
+            // Past about half a reach a hand's line nears the part's centre, where its press lets go.
+            ("A hand pressing one from outside", 4, 0.45f),
+            ("Two hands squeezing them together", 5, 0.45f),
         };
         const int SeamFrames = 360, SeamSize = 900;
         static Camera[] seamCams;
@@ -1520,7 +1521,8 @@ namespace AvatarBridge.Regression
             else if (kind <= 3) Swing(slots, mats, amount, kind == 2 ? 1f : 0.5f, s);
             else
             {
-                Swing(slots, mats, 0.001f, 0.5f);
+                // Two hands push the pair into each other as well as denting it.
+                Swing(slots, mats, kind == 5 ? 0.001f + 0.6f * s : 0.001f, 0.5f);
                 HandOn(slots, mats, amount * s, kind == 5);
             }
             seamShoot = t % 2 == 0;
