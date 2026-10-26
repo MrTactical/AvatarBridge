@@ -1287,6 +1287,22 @@ same as the radius spike: the crease shows at the rim of the contact, and the ri
 the other's surface turns side-on, so the radius takes over there and pushes the skin out into the
 groove. The line and the radius want opposite things at the one place the line is seen, so no
 threshold keeps both. Not adopted; the committed seam keeps the line and its jag fix stands.
+
+**Squeezing deletes mass, MEASURED 2026-10-26, open [M].** Joe, on the side-by-side films: "boobs
+suddenly delete mass the moment they squeeze together"; the swell at three and five times (wider
+too) still read wrong, and the hybrid's clean merge read as the two clipping into each other.
+`SquashPlayProbe -spSeamFilm` now counts at rest and mid hold of each of its six presses the
+volume the squash adds, each part's own (`volume`) and as seen, counted once where skin overlaps
+(`seen`), and how deep the seam cuts (`cut`). Kar, the live seam: at rest -1.0%; one dragged
+-1.2%, both dragged -6.8%, one swung into a still partner -3.3%, both swung deep -8.1%, a hand
+-2.1%, two hands squeezing -5.5% of the pair's volume. Seam off, the squash keeps it (-7 cm3 of
+311). The swell is sized by the depth the part pass leaves (0.1 to 3 cm), but the seam cuts the
+real skin 4 to 11 cm deep, 7 to 10 cm off the line between the pair: contact on a real pair
+lands off that line, and a part bent or swung about its base sweeps its tip in further than its
+centre. Three times the swell gave back 23 cm3 of 311. Next: size what comes back from the
+press itself, calibrated on these six to keep volume, with the spill reaching marshmallow
+(`marshmallow-pb` grows a squeezed part 1.5 to 1.9 times) at its top; exact needs the shader to
+sample the part's baked surface round the contact.
 Probe notes: the client's filter DLL crashes the editor (SIGSEGV in `DoFilterShader`) when a freshly
 generated shader is imported with it hooked, so run each case unfiltered first and the filtered run
 reuses the import; `YapsCompileBisect -ycbDump` writes the vertex programs as DXBC for the

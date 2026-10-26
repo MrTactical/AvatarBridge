@@ -67,7 +67,8 @@
 // colours the seam's choices in place of the shading. -spDent <file> draws and counts everything
 // with that include in place of the live one, in memory: an experiment needs no build.
 // -spSeamFilm <file>[,<file>] films the pair pressed into each other six ways in the look shader,
-// the live include beside each file's, every column drawn from the same frame.
+// the live include beside each file's, every column drawn from the same frame; "," films the live
+// one alone. Mid hold it counts the tear and the volume the squash adds, as at the drag's end.
 // -spDestroy <name> destroys the prefab copy's objects so named before Play.
 // -spPose <a,b> logs those bones' local moves at the drag's end against before Play.
 // -spPrefab <asset path> plays that converted prefab in place of the scene's own avatar, logging
@@ -1075,6 +1076,16 @@ namespace AvatarBridge.Regression
             ("lean", new[] { "mapped += (moved - world) * shares[m] + shunt * swings[m] * swingOut;", "mapped += float3(onSeam, squashContact[m], length(world - p.centre) / YapsExtent(p, normalize(world - p.centre))) * ((m & 1) == 1);", Stop, StopTo }),
             ("slots", new[] { "    yapsSkin = YapsSkinState();\n", "    yapsSkin = YapsSkinState();\n    position = mul(unity_WorldToObject, float4(mul(unity_ObjectToWorld, float4(position, 1)).xyz + float3(yapsSkin, 100 * distance(YapsSlot(0), _YAPS_SquashFollow[0]._m03_m13_m23), 100 * distance(YapsSlot(0), YapsSlot(4))), 1)).xyz;\n    return;\n" }),
             ("swing", new[] { "mapped += (moved - world) * shares[m] + shunt * swings[m] * swingOut;", "mapped += float3(swings[m], shares[m], length(shunt)) * ((m & 1) == 1);", Stop, StopTo }),
+            // How far the seam cuts: how far past it a vertex it holds lies, the depth the part pass
+            // left it to press, which the swell sizes what it gives back by, and how far off the
+            // line between the pair the vertex lies.
+            ("cutv", new[] {
+                "#define YAPS_DENT_INCLUDED\n", "#define YAPS_DENT_INCLUDED\nstatic float3 yapsCutRead;\n",
+                "    yapsSkin = YapsSkinState();\n", "    yapsSkin = YapsSkinState();\n    yapsCutRead = 0;\n",
+                "        world += away * swell - seamN * (dot(seamN, facing) * back);\n",
+                "        if (held > 0.5 && v > yapsCutRead.x) yapsCutRead = float3(v, deep, length(side));\n        world += away * swell - seamN * (dot(seamN, facing) * back);\n",
+                "    // The own arms and hands, a capsule per bone from one joint to the next.",
+                "    position = mul(unity_WorldToObject, float4(start + yapsCutRead, 1)).xyz;\n    return;\n    // The own arms and hands, a capsule per bone from one joint to the next." }),
             // Coloured in place of the shading, by the contact holding the vertex most: on the
             // leader, red where its depth in the other won over the seam, green bands a quarter
             // width apart of where it is pressed to; grey on the part pressed; bluer on either
@@ -1452,6 +1463,7 @@ namespace AvatarBridge.Regression
         static List<string> seamSegments;
         static int seamFilmed;
         static bool seamShoot;
+        static string seamRead;
 
         static void SeamPose(Transform[] slots, Material[] mats)
         {
@@ -1475,7 +1487,7 @@ namespace AvatarBridge.Regression
                     return cam;
                 }
                 seamCams = new[] { Make(mid + root.forward * reach * 6f, root.up), Make(mid + root.up * reach * 5.5f, root.forward) };
-                seamLooks = new[] { Look() }.Concat(SeamFilm.Split(',').Select((f, i) => ShaderUtil.CreateShaderAsset(LookShader
+                seamLooks = new[] { Look() }.Concat(SeamFilm.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries).Select((f, i) => ShaderUtil.CreateShaderAsset(LookShader
                     .Replace("SquashLook\"", $"SquashLook_film{i}\"")
                     .Replace($"#include \"{LiveDent}\"", File.ReadAllText(f).Replace("\r\n", "\n"))))).ToArray();
                 foreach (var shader in seamLooks.Where(x => x == null || ShaderUtil.ShaderHasError(x)))
@@ -1525,6 +1537,10 @@ namespace AvatarBridge.Regression
                 Swing(slots, mats, kind == 5 ? 0.001f + 0.6f * s : 0.001f, 0.5f);
                 HandOn(slots, mats, amount * s, kind == 5);
             }
+            // Mid hold, the tear and the volume the squash adds, with the live include or -spDent's.
+            if (t % SeamFrames == SeamFrames / 2) seamRead = name;
+            // At rest too, so what the squash does to the pose as built is told from what pressing adds.
+            if (t == 0) seamRead = "at rest";
             seamShoot = t % 2 == 0;
         }
 
@@ -1542,6 +1558,10 @@ namespace AvatarBridge.Regression
                 }
             RenderTexture.active = null;
             File.WriteAllBytes(Path.Combine(outDir, "frames", $"f_{seamFilmed++:00000}.jpg"), seamSheet.EncodeToJPG(92));
+            if (seamRead == null) return;
+            Debug.Log($"[SquashPlay] seam film hold: {seamRead}");
+            DragTear();
+            seamRead = null;
         }
 
         // Each part's own bone turned so its follow moves toward where the other stood, together
@@ -1885,15 +1905,73 @@ namespace AvatarBridge.Regression
         static readonly Dictionary<string, Shader> tearShaders = new Dictionary<string, Shader>();
         static List<string> tearEdges;
         static Vector3[] bodyAt;
+        static readonly Dictionary<string, double> pairVolume = new Dictionary<string, double>();
         static void DragTear()
         {
-            var rows = new List<string> { "stage\trenderer\tedges_moved\tover_2x\tover_3x\tworst_x\tturned_over\topened_1cm\twidest_cm\tskin_opened_from_start\topened_from_start\twidest_from_start_cm" };
+            var rows = new List<string> { "stage\trenderer\tedges_moved\tover_2x\tover_3x\tworst_x\tturned_over\topened_1cm\twidest_cm\tskin_opened_from_start\topened_from_start\twidest_from_start_cm\tvolume_added_cm3" };
             tearEdges = new List<string> { "renderer\ta\tb\tstretch_x\toff_skin_cm\tx_cm\ty_cm\tz_cm\tmove_a_x\tmove_a_y\tmove_a_z\tmove_b_x\tmove_b_y\tmove_b_z\tfirst_a\tsecond_a\t_\tfirst_b\tsecond_b\t_\tlean_a\tbend_a_cm\tout_a\tlean_b\tbend_b_cm\tout_b\tskin_a_x\tskin_a_y\tskin_a_z\tskin_b_x\tskin_b_y\tskin_b_z\tswing_a\tswing_b\tshunt_cm" };
             DragTear("", rows);
             if (Environment.GetCommandLineArgs().Contains("-spLookStages"))
                 foreach (var s in ChosenStages()) DragTear(s.name, rows);
             File.WriteAllLines(Path.Combine(outDir, "tear.tsv"), rows);
             File.WriteAllLines(Path.Combine(outDir, "tear_edges.tsv"), tearEdges);
+        }
+
+        // How much is inside the skin, through a square half wide each way round the pair's middle:
+        // n by n columns from the front, the length along each where the skin wraps it at least
+        // once. Unity winds front faces clockwise, so the outward normal is the cross negated.
+        static double SeenVolume(Vector3[] at, int[] tris, Vector3 mid, Vector3 right, Vector3 up, Vector3 fwd, float half, int n)
+        {
+            float cell = 2f * half / n;
+            var bins = new List<int>[n * n];
+            for (int i = 0; i < tris.Length; i += 3)
+            {
+                float x0 = float.MaxValue, x1 = float.MinValue, y0 = float.MaxValue, y1 = float.MinValue;
+                for (int k = 0; k < 3; k++)
+                {
+                    var p = at[tris[i + k]] - mid;
+                    float x = Vector3.Dot(p, right), y = Vector3.Dot(p, up);
+                    x0 = Mathf.Min(x0, x); x1 = Mathf.Max(x1, x); y0 = Mathf.Min(y0, y); y1 = Mathf.Max(y1, y);
+                }
+                int gx0 = Mathf.Max(0, Mathf.FloorToInt((x0 + half) / cell - 0.5f)), gx1 = Mathf.Min(n - 1, Mathf.CeilToInt((x1 + half) / cell - 0.5f));
+                int gy0 = Mathf.Max(0, Mathf.FloorToInt((y0 + half) / cell - 0.5f)), gy1 = Mathf.Min(n - 1, Mathf.CeilToInt((y1 + half) / cell - 0.5f));
+                for (int gx = gx0; gx <= gx1; gx++)
+                    for (int gy = gy0; gy <= gy1; gy++)
+                        (bins[gx * n + gy] ??= new List<int>()).Add(i);
+            }
+            double volume = 0;
+            var hits = new List<(float d, int s)>();
+            for (int g = 0; g < n * n; g++)
+            {
+                if (bins[g] == null) continue;
+                float px = -half + (g / n + 0.5f) * cell, py = -half + (g % n + 0.5f) * cell;
+                hits.Clear();
+                foreach (int i in bins[g])
+                {
+                    Vector3 a = at[tris[i]] - mid, b = at[tris[i + 1]] - mid, c = at[tris[i + 2]] - mid;
+                    float ax = Vector3.Dot(a, right) - px, ay = Vector3.Dot(a, up) - py;
+                    float bx = Vector3.Dot(b, right) - px, by = Vector3.Dot(b, up) - py;
+                    float cx = Vector3.Dot(c, right) - px, cy = Vector3.Dot(c, up) - py;
+                    float wa = bx * cy - by * cx, wb = cx * ay - cy * ax, wc = ax * by - ay * bx;
+                    if (!((wa >= 0 && wb >= 0 && wc >= 0) || (wa <= 0 && wb <= 0 && wc <= 0))) continue;
+                    float sum = wa + wb + wc;
+                    if (Mathf.Abs(sum) < 1e-12f) continue;
+                    float d = (wa * Vector3.Dot(a, fwd) + wb * Vector3.Dot(b, fwd) + wc * Vector3.Dot(c, fwd)) / sum;
+                    // Walked from the front backward: in where the skin faces forward.
+                    hits.Add((d, Vector3.Dot(-Vector3.Cross(b - a, c - a), fwd) > 0 ? 1 : -1));
+                }
+                hits.Sort((p, q) => q.d.CompareTo(p.d));
+                int wraps = 0;
+                float last = 0f, inside = 0f;
+                foreach (var h in hits)
+                {
+                    if (wraps >= 1) inside += last - h.d;
+                    wraps += h.s;
+                    last = h.d;
+                }
+                volume += inside * cell * cell;
+            }
+            return volume;
         }
 
         static void DragTear(string stage, List<string> rows)
@@ -1959,6 +2037,11 @@ namespace AvatarBridge.Regression
                     var bins = new int[edges.Length];
                     for (int v = 0; v < share.Length; v++)
                         if (share[v].y >= 0.05f && lean[v].z > 0f) bins[Array.FindIndex(edges, e => lean[v].z < e)]++;
+                    var cut = Read(Staged(tearShaders, JumpShader, "SquashJump", "cutv"), out _);
+                    var past = Enumerable.Range(0, cut.Length).Where(x => cut[x].x > 0f).OrderByDescending(x => cut[x].x).ToList();
+                    if (past.Count > 0)
+                        Debug.Log($"[SquashPlay] cut {smr.name}: {past.Count} vertices past the seam, deepest {100f * cut[past[0]].x:0.00} cm, {100f * cut[past[0]].z:0.00} cm off the line, " +
+                                  $"the part pass left {100f * cut.Max(x => x.y):0.00} cm to press");
                     Debug.Log($"[SquashPlay] out {smr.name}: under 1 {bins[0]}, 1-1.25 {bins[1]}, 1.25-1.5 {bins[2]}, 1.5-2 {bins[3]}, 2-3 {bins[4]}, over 3 {bins[5]}");
                 }
                 // Baked in world units in the renderer's axes (the flag to scale it left a 0.12 body
@@ -2053,8 +2136,47 @@ namespace AvatarBridge.Regression
                         worst = Mathf.Max(worst, x);
                     }
                 }
+                // The volume the squash adds to the skinned shape: flesh pressed together keeps its
+                // mass, so a loss here is mass deleted where they meet. Summed from the pair's
+                // middle, which cancels as long as the mesh's open edges stay put. The pair's own
+                // volume, each part's skin coned to its follow, is read with the shares. Unity winds
+                // front faces clockwise, so both sums come out negated.
+                var mid = 0.5f * (provider.transforms[0].position + provider.transforms[1].position) - smr.transform.position;
+                double gained = 0;
+                for (int i = 0; i < tris.Length; i += 3)
+                {
+                    Vector3 Was(int k) => rest[tris[i + k]] - mid;
+                    Vector3 Now(int k) => Was(k) + (seen[tris[i + k]] ? moved[tris[i + k]] : Vector3.zero);
+                    gained -= (Vector3.Dot(Now(0), Vector3.Cross(Now(1), Now(2))) - Vector3.Dot(Was(0), Vector3.Cross(Was(1), Was(2)))) / 6.0;
+                }
+                if (share != null)
+                {
+                    double pair = 0;
+                    for (int i = 0; i < tris.Length; i += 3)
+                        for (int p = 0; p < 2; p++)
+                        {
+                            if (new[] { tris[i], tris[i + 1], tris[i + 2] }.Any(t => (p == 0 ? share[t].x : share[t].y) < 0.5f)) continue;
+                            var c = provider.transforms[p].position - smr.transform.position;
+                            pair -= Vector3.Dot(rest[tris[i]] - c, Vector3.Cross(rest[tris[i + 1]] - c, rest[tris[i + 2]] - c)) / 6.0;
+                        }
+                    pairVolume[smr.name] = pair;
+                }
+                pairVolume.TryGetValue(smr.name, out double pairV);
+                Debug.Log($"[SquashPlay] volume {stage} {smr.name}: the squash adds {gained * 1e6:0} cm3, {100 * gained / Math.Max(Math.Abs(pairV), 1e-9):+0.0;-0.0}% of the pair's {pairV * 1e6:0} cm3");
+                // The same counted once where the skin overlaps itself, as the eye sees it: two
+                // sides of a cleavage already crossing at rest lose that overlap to the seam, which
+                // the sum above reads as volume gone and no one sees.
+                {
+                    var root = animator.transform;
+                    float half = 1.5f * (provider.transforms[0].position - provider.transforms[1].position).magnitude;
+                    var after = rest.Select((x, i) => x + (seen[i] ? moved[i] : Vector3.zero)).ToArray();
+                    double seenBefore = SeenVolume(rest, tris, mid, root.right, root.up, root.forward, half, 160);
+                    double seenAfter = SeenVolume(after, tris, mid, root.right, root.up, root.forward, half, 160);
+                    Debug.Log($"[SquashPlay] seen {stage} {smr.name}: the squash adds {(seenAfter - seenBefore) * 1e6:0} cm3, {100 * (seenAfter - seenBefore) / Math.Max(Math.Abs(pairV), 1e-9):+0.0;-0.0}% of the pair");
+                }
                 rows.Add(string.Join("\t", stage == "" ? "full" : stage, smr.name, count, over2, over3, worst.ToString("0.00", CultureInfo.InvariantCulture), turned,
-                    opened, (100f * widest).ToString("0.0", CultureInfo.InvariantCulture), skinOpened, openedStart, (100f * widestStart).ToString("0.0", CultureInfo.InvariantCulture)));
+                    opened, (100f * widest).ToString("0.0", CultureInfo.InvariantCulture), skinOpened, openedStart, (100f * widestStart).ToString("0.0", CultureInfo.InvariantCulture),
+                    (gained * 1e6).ToString("0", CultureInfo.InvariantCulture)));
                 Debug.Log($"[SquashPlay] tear {stage} {smr.name}: {count} edges moved, {over2} over 2x, {over3} over 3x, worst {worst:0.00}x, {turned} turned over, " +
                           $"{opened} opened over 1 cm, widest {100f * widest:0.0} cm; from the start: skin {skinOpened}, squashed {openedStart}, widest {100f * widestStart:0.0} cm");
                 UnityEngine.Object.DestroyImmediate(baked);
