@@ -64,7 +64,8 @@
 // it turns over; tear_edges.tsv lists the worst with where they lie, their shares and how far
 // off the skin. -spLookStages draws and counts it again with each stage of the squash switched
 // off in turn, in memory, each squashed layer alone too (_look_<layer>_<stage>); the branch stage
-// colours the seam's choices in place of the shading.
+// colours the seam's choices in place of the shading. -spDent <file> draws and counts everything
+// with that include in place of the live one, in memory: an experiment needs no build.
 // -spDestroy <name> destroys the prefab copy's objects so named before Play.
 // -spPose <a,b> logs those bones' local moves at the drag's end against before Play.
 // -spPrefab <asset path> plays that converted prefab in place of the scene's own avatar, logging
@@ -1094,10 +1095,11 @@ namespace AvatarBridge.Regression
             if (made.TryGetValue(stage, out var shader) && shader != null) return shader;
             source = source.Replace(name + "\"", $"{name}_{stage}\"");
             var swaps = LookStages.Concat(ProbeStages).FirstOrDefault(s => s.name == stage).swaps;
-            if (swaps != null)
+            string dent = Arg("-spDent");
+            if (swaps != null || dent != null)
             {
-                string copy = File.ReadAllText(LiveDent).Replace("\r\n", "\n");
-                for (int i = 0; i < swaps.Length; i += 2)
+                string copy = File.ReadAllText(dent ?? LiveDent).Replace("\r\n", "\n");
+                for (int i = 0; i < (swaps?.Length ?? 0); i += 2)
                 {
                     if (!copy.Contains(swaps[i])) Debug.LogError($"[SquashPlay] look stage {stage}: line {i / 2} not found");
                     copy = copy.Replace(swaps[i], swaps[i + 1]);

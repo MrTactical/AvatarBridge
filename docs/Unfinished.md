@@ -1260,6 +1260,26 @@ Measured, Kar `-spRebuild`, against the committed include:
 - Shader Filtering at 128 against off: 20 of 25 looks differ by a few thousand pixels, as before
   the change (20 of 25).
 Next: Joe in game on the deepest one-sided press.
+
+**Field seam, SPIKE 2026-10-26, not adopted [M].** Joe: "think outside the box". The literature:
+implicit contact (Gascuel 1993, Desbrun and Gascuel 1995, Vaillant et al. 2013) and Brunel,
+Bénard and Guennebaud 2021 (a shared contact surface between the two meshes by relative stiffness,
+contact left where either surface turns past 80° from the push, a C1 falloff outside; its falloff
+and bulge need mesh connectivity, so only the contact half carries to a vertex shader). Tried in
+memory only (`SquashPlayProbe -spDent <file>`, the spike built from the live include by a script
+kept outside the repo): the bow, plane and cut replaced by the other part as a shape, its depth read
+along its own radius, this side pushed out along that radius by its share (all of it pressed by a
+leader, half alike), the partner's field moved by the shunt and bulk its own part pass gave it.
+Kar `-spRebuild`, against the committed seam:
+- Drag 22 cm: leader-only bad body edges 51 to 0, the sliver gone, bra over 2x 6 to 0 and turned
+  over 25 to 7; but body over 2x 28 to 150, opened over 1 cm 282 to 548, in the pressed part's
+  hollow (hidden behind the leader from the front): pushed out along the leader's radius, its skin
+  spreads sideways round it.
+- Dragged alike: bra turned over 73 to 1; body opened over 1 cm 0 to 498.
+- Swing, both deep: the line between the two is gone, the pair reads as one shape. Real flesh
+  keeps that line; the seam's crease is what draws it.
+Next if pursued: push along the line inside the contact and turn to the radius only toward its
+edge (the paper's single mapping direction), and keep the crease where both meet.
 Probe notes: the client's filter DLL crashes the editor (SIGSEGV in `DoFilterShader`) when a freshly
 generated shader is imported with it hooked, so run each case unfiltered first and the filtered run
 reuses the import; `YapsCompileBisect -ycbDump` writes the vertex programs as DXBC for the
