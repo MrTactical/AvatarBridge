@@ -44,7 +44,7 @@ namespace AvatarBridge
             "_YAPS_SquashHands", "_YAPS_SquashMotion", "_YAPS_SquashPlug", "_YAPS_DentSpill",
             "_YAPS_SquashHangToward", "_YAPS_SquashHangOut", "_YAPS_SquashHangAcross", "_YAPS_SquashSurface",
             "_YAPS_SquashSurfaceOn", "_YAPS_SoftRow", "_YAPS_SoftTable", "_YAPS_SoftDepth", "_YAPS_SoftOut", "_YAPS_SoftIn",
-            "_YAPS_SoftFront", "_YAPS_SoftSideA", "_YAPS_SoftSideB",
+            "_YAPS_SoftFront", "_YAPS_SoftSideA", "_YAPS_SoftSideB", "_YAPS_SoftBelow",
         };
 
         sealed class Part
@@ -1246,7 +1246,7 @@ namespace AvatarBridge
         {
             public Texture2D table;
             public readonly Dictionary<SkinnedMeshRenderer, Texture2D> rows = new Dictionary<SkinnedMeshRenderer, Texture2D>();
-            public Vector4 depth, outward, inward, front, sideA, sideB;
+            public Vector4 depth, outward, inward, front, sideA, sideB, below;
 
             public void Set(Material copy, SkinnedMeshRenderer smr)
             {
@@ -1258,6 +1258,7 @@ namespace AvatarBridge
                 copy.SetVector("_YAPS_SoftFront", front);
                 copy.SetVector("_YAPS_SoftSideA", sideA);
                 copy.SetVector("_YAPS_SoftSideB", sideB);
+                copy.SetVector("_YAPS_SoftBelow", below);
             }
         }
 
@@ -1300,8 +1301,10 @@ namespace AvatarBridge
                     var s = new Vector4(q.r, q.g, q.b, q.a) / 255f;
                     return new Vector2(s[m0], s[m0 + 1]) / Mathf.Max(s.x + s.y + s.z + s.w, 1f);
                 }).ToArray();
+                // Toward the feet: the avatar stands upright while it is built.
+                bake.below[i] = Vector3.Dot(U, Vector3.down) >= 0f ? 1f : -1f;
                 var (moves, turns, said) = YapsSoftBody.Bake(body.at, tris, welds, share, parts[m0].centre, parts[m0 + 1].centre, parts[m0].reach,
-                    U, O, (j, w) => Extent(m0 + j, w));
+                    U, O, U * bake.below[i], (j, w) => Extent(m0 + j, w));
                 log.Add($"{parts[m0].name}/{parts[m0 + 1].name} soft body: {said}");
                 if (moves == null) continue;
                 SoftBakedForTest?.Invoke(parts[m0].name, body.at, share, moves, new[] { parts[m0].centre, parts[m0 + 1].centre, U, O, new Vector3(parts[m0].reach, units[m0], 0f) });

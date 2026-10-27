@@ -114,7 +114,7 @@ Texture2D _YAPS_SoftRow;
 // depth, the vertex's move in the pair's frame (the first part's toward, out and across), in bytes
 // about 127 scaled by a's share of the first part's reach, then its normal's turn the same way.
 Texture2D _YAPS_SoftTable;
-#define YAPS_SOFT_ENTRIES 22
+#define YAPS_SOFT_ENTRIES 30
 #define YAPS_SOFT_ROWS 32
 float4 _YAPS_SoftDepth;   // the depths pressed to, the first part's follow units: pair 0 in x and y, pair 1 in z and w; 0 unbaked
 // How far each part's skin reaches where each palm pressed it, its follow units: outside, on the
@@ -124,6 +124,9 @@ float4 _YAPS_SoftIn;
 float4 _YAPS_SoftFront;
 float4 _YAPS_SoftSideA;
 float4 _YAPS_SoftSideB;
+// Per pair in x and y: 1 where the first part's across runs toward the feet, -1 the other way, as
+// the slanted press from below was baked under the part whichever way across runs.
+float4 _YAPS_SoftBelow;
 float4 _CVR_PlayerLeftHandPositions[255];
 float4 _CVR_PlayerRightHandPositions[255];
 float4 _CVR_PlayerChestPositions[255];
@@ -624,11 +627,13 @@ void YapsSoftMove(float2 row, inout float3 world, inout float3 n, bool hasNormal
     float3 off0 = world - P0.centre, off1 = world - P1.centre;
     if (dot(off0, off0) > 16 * P0.reach * P0.reach && dot(off1, off1) > 16 * P1.reach * P1.reach) return;
     // Per part: outside, the partner's side, in front, along the first part's across either way.
+    // Then the slanted ways the bake pressed, per part: outside in front, in front from below.
     float3 dirs[10] = { -P0.a, P0.a, P0.o, P0.u, -P0.u, -P1.a, P1.a, P0.o, P0.u, -P0.u };
     float ext[10] = { _YAPS_SoftOut[m0] * unit0, _YAPS_SoftIn[m0] * unit0, _YAPS_SoftFront[m0] * unit0, _YAPS_SoftSideA[m0] * unit0, _YAPS_SoftSideB[m0] * unit0,
         _YAPS_SoftOut[m0 + 1] * unit1, _YAPS_SoftIn[m0 + 1] * unit1, _YAPS_SoftFront[m0 + 1] * unit1, _YAPS_SoftSideA[m0 + 1] * unit1, _YAPS_SoftSideB[m0 + 1] * unit1 };
     // Cleared before the loop, which the shader filter may cut short.
-    float amount[10] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    float amount[14] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    bool downU = _YAPS_SoftBelow[k] > 0;
     int arms, hands, plugs;
     YapsSources(k, arms, hands, plugs);
     float3 ownL = YapsSlot(10), ownR = YapsSlot(14);
@@ -668,15 +673,31 @@ void YapsSoftMove(float2 row, inout float3 world, inout float3 n, bool hasNormal
             if (inside <= 0) continue;
             inPart[q >> 1] = max(inPart[q >> 1], inside * scale);
             int j = 5 * (q & 1);
+            float share[5], press[5];
             [unroll]
             for (int i = 0; i < 5; i++)
             {
                 float c = max(dot(w, dirs[j + i]), 0);
+                share[i] = c * c;
                 // A way leaning off the hand reads its plane, which a round hand crosses before
                 // it touches: capped by the true contact, the press starts at nothing.
-                float press = min(ext[j + i] + cr - dot(to, dirs[j + i]), inside / max(c, 1e-3));
-                if (press > 0) amount[j + i] = max(amount[j + i], c * c * press * scale);
+                press[i] = min(ext[j + i] + cr - dot(to, dirs[j + i]), inside / max(c, 1e-3));
             }
+            // Each slanted way takes what the lesser of the two it lies between gives, so a hand
+            // on it reads it alone; the front's share is split between the two by the others'.
+            float under = downU ? share[3] : share[4];
+            float split = share[0] / max(share[0] + under, 1e-6);
+            float toOut = min(share[2] * split, share[0]), toBelow = min(share[2] * (1 - split), under);
+            share[0] -= toOut;
+            share[2] -= toOut + toBelow;
+            if (downU) share[3] -= toBelow;
+            else share[4] -= toBelow;
+            [unroll]
+            for (int iw = 0; iw < 5; iw++)
+                if (press[iw] > 0) amount[j + iw] = max(amount[j + iw], share[iw] * press[iw] * scale);
+            int js = 10 + 2 * (q & 1);
+            amount[js] = max(amount[js], 2 * toOut * inside * scale);
+            amount[js + 1] = max(amount[js + 1], 2 * toBelow * inside * scale);
         }
         // Not the own arms, which push the skin out of themselves further on.
         if (into == 3)
@@ -696,10 +717,11 @@ void YapsSoftMove(float2 row, inout float3 world, inout float3 n, bool hasNormal
     float far = _YAPS_SquashReach[m0];
     float3 move = 0, turn = 0;
     [loop]
-    for (int e = 0; e < 11; e++)
+    for (int e = 0; e < 15; e++)
     {
-        // Clamped, as both sides of a choice are read: amount[10] is past the end.
-        float d = min((e < 10 ? amount[min(e, 9)] : squeeze) * _YAPS_SquashTune.y, most);
+        // The squeeze is way 10, the slanted ones after it. Clamped, as both sides of a choice are
+        // read: amount[14] is past the end.
+        float d = min((e == 10 ? squeeze : amount[min(e < 10 ? e : e - 1, 13)]) * _YAPS_SquashTune.y, most);
         if (d <= 0) continue;
         float4 t0 = _YAPS_SoftTable.Load(int3(home.x + 4 * e, home.y, 0));
         float3 m0v = YapsSoftBytes(t0) * (t0.w * far);

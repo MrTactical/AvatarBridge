@@ -1131,14 +1131,16 @@ namespace AvatarBridge.Regression
         };
         // Per part out, in, front, across and back, with the squeeze after the first and the lower
         // depth after the second; then the skin's reach each of those ways, the upper depth, and
-        // how many sources were read. _SoftPick 8 gives the pair each vertex rides, plus one.
+        // how many sources were read; then the slanted ways, out in front and in front from below,
+        // per part. _SoftPick 10 gives the pair each vertex rides, plus one.
         static readonly string[] SoftAmountSwaps =
         {
             "void YapsSoftMove(float2 row", "float _SoftPick;\nvoid YapsSoftMove(float2 row",
             "    float most = 1.6 * d1;\n",
-            "    float picked[24] = { amount[0], amount[1], amount[2], amount[3], amount[4], squeeze, amount[5], amount[6], amount[7], amount[8], amount[9], d0,\n" +
-            "        ext[0], ext[1], ext[2], ext[3], ext[4], ext[5], ext[6], ext[7], ext[8], ext[9], d1, (float) (arms + hands + plugs) };\n" +
-            "    int pk = 3 * (int) round(_SoftPick);\n    if (pk >= 24) { world += float3(k + 1, 0, 0); return; }\n    world += (k == 0) * float3(picked[pk], picked[pk + 1], picked[pk + 2]);\n    return;\n" +
+            "    float picked[30] = { amount[0], amount[1], amount[2], amount[3], amount[4], squeeze, amount[5], amount[6], amount[7], amount[8], amount[9], d0,\n" +
+            "        ext[0], ext[1], ext[2], ext[3], ext[4], ext[5], ext[6], ext[7], ext[8], ext[9], d1, (float) (arms + hands + plugs),\n" +
+            "        amount[10], amount[11], amount[12], amount[13], 0, 0 };\n" +
+            "    int pk = 3 * (int) round(_SoftPick);\n    if (pk >= 30) { world += float3(k + 1, 0, 0); return; }\n    world += (k == 0) * float3(picked[pk], picked[pk + 1], picked[pk + 2]);\n    return;\n" +
             "    float most = 1.6 * d1;\n",
             "    YapsSoftMove(softRow, world, n, hasNormal);\n", "    YapsSoftMove(softRow, world, n, hasNormal);\n    position = mul(unity_WorldToObject, float4(world, 1)).xyz;\n    return;\n",
         };
@@ -1160,7 +1162,7 @@ namespace AvatarBridge.Regression
             // _SoftDeep, the second, whatever the hands: the bake itself against the probe's.
             ("softway", new[] {
                 "void YapsSoftMove(float2 row", "float _SoftWay, _SoftDeep;\nvoid YapsSoftMove(float2 row",
-                "        float d = min((e < 10 ? amount[min(e, 9)] : squeeze) * _YAPS_SquashTune.y, most);\n",
+                "        float d = min((e == 10 ? squeeze : amount[min(e < 10 ? e : e - 1, 13)]) * _YAPS_SquashTune.y, most);\n",
                 "        float d = e == (int) round(_SoftWay) ? (_SoftDeep > 0.5 ? d1 : d0) : 0;\n",
                 "    world += (P0.a * move.x + P0.o * move.y + P0.u * move.z) * (unit0 * row.y);\n",
                 "    world += (P0.a * move.x + P0.o * move.y + P0.u * move.z) * (unit0 * row.y * (k == 0));\n",
@@ -1895,6 +1897,9 @@ namespace AvatarBridge.Regression
             for (int j = 0; j < 2; j++)
                 foreach (var dir in new[] { partOut[j], -partOut[j], root.forward, up, -up }) basisWays.Add((j, dir));
             basisWays.Add((2, Vector3.zero));
+            // Slanted, as the build bakes them: outside in front, in front from below.
+            for (int j = 0; j < 2; j++)
+                foreach (var dir in new[] { (partOut[j] + root.forward).normalized, (root.forward - up).normalized }) basisWays.Add((j, dir));
             // -spBasisCache <file>: the answers kept between runs, the presses being slow; read back
             // only when the tissue and the depths match.
             string cache = bake != null ? null : Arg("-spBasisCache");
@@ -2009,12 +2014,13 @@ namespace AvatarBridge.Regression
 
         // The basis summed for these hands. Each capsule presses each part toward it by how far it
         // is in, shared over the five ways by the square of how near it points to each, which sums
-        // to one; the deepest capsule each way counts, as a palm and its fingers press one dent. What both outsides are pressed alike is the squeeze;
+        // to one, the slanted ways taking their part of it; the deepest capsule each way counts, as a palm and its fingers press one dent. What both outsides are pressed alike is the squeeze;
         // the rest each part's own. Each answer read at its depth, straight between the depths
         // baked and on past the last.
         static Vector3[] Summed(IList<(Vector3 a, Vector3 b, float r)> hands)
         {
             var amount = new float[2, 5];
+            var slanted = new float[2, 2];
             summedHands = "";
             foreach (var (a, b, r) in hands)
                 for (int j = 0; j < 2; j++)
@@ -2036,21 +2042,37 @@ namespace AvatarBridge.Regression
                     var w = to / dist;
                     if (Extent(j, w) + r - dist <= 0f) continue;
                     summedHands += $" [{j}: {100f * dist:0.0} from the centre, skin at {100f * Extent(j, w):0.0}, radius {100f * r:0.0}]";
+                    var share = new float[5];
+                    var press = new float[5];
                     for (int k = 0; k < 5; k++)
                     {
                         var dir = basis[5 * j + k].dir;
-                        float c = Mathf.Max(Vector3.Dot(w, dir), 0f), press = Mathf.Min(Extent(j, dir) + r - Vector3.Dot(to, dir), (Extent(j, w) + r - dist) / Mathf.Max(c, 1e-3f));
-                        if (press > 0f) amount[j, k] = Mathf.Max(amount[j, k], c * c * press);
+                        float c = Mathf.Max(Vector3.Dot(w, dir), 0f);
+                        share[k] = c * c;
+                        press[k] = Mathf.Min(Extent(j, dir) + r - Vector3.Dot(to, dir), (Extent(j, w) + r - dist) / Mathf.Max(c, 1e-3f));
                     }
+                    // As the shader shares them: each slanted way takes what the lesser of its two
+                    // gives, the front's split between the two by the others' shares.
+                    float split = share[0] / Mathf.Max(share[0] + share[4], 1e-6f);
+                    float toOut = Mathf.Min(share[2] * split, share[0]), toBelow = Mathf.Min(share[2] * (1f - split), share[4]);
+                    share[0] -= toOut;
+                    share[4] -= toBelow;
+                    share[2] -= toOut + toBelow;
+                    for (int k = 0; k < 5; k++)
+                        if (press[k] > 0f) amount[j, k] = Mathf.Max(amount[j, k], share[k] * press[k]);
+                    slanted[j, 0] = Mathf.Max(slanted[j, 0], 2f * toOut * (Extent(j, w) + r - dist));
+                    slanted[j, 1] = Mathf.Max(slanted[j, 1], 2f * toBelow * (Extent(j, w) + r - dist));
                 }
             float squeeze = Mathf.Min(amount[0, 0], amount[1, 0]);
             amount[0, 0] -= squeeze;
             amount[1, 0] -= squeeze;
             int across = AcrossIsDown ? 4 : 3;
             summedAmounts = new[] { amount[0, 0], amount[0, 1], amount[0, 2], amount[0, across], amount[0, 7 - across],
-                amount[1, 0], amount[1, 1], amount[1, 2], amount[1, across], amount[1, 7 - across], squeeze };
-            summedRead = $"squeezed {100f * squeeze:0.0} cm, then out, in, front, up, down: " +
-                         string.Join(" | ", new[] { 0, 1 }.Select(j => string.Join(" ", Enumerable.Range(0, 5).Select(k => (100f * amount[j, k]).ToString("0.0"))))) + ";" + summedHands;
+                amount[1, 0], amount[1, 1], amount[1, 2], amount[1, across], amount[1, 7 - across], squeeze,
+                slanted[0, 0], slanted[0, 1], slanted[1, 0], slanted[1, 1] };
+            summedRead = $"squeezed {100f * squeeze:0.0} cm, then out, in, front, up, down, out in front, in front from below: " +
+                         string.Join(" | ", new[] { 0, 1 }.Select(j => string.Join(" ", Enumerable.Range(0, 5).Select(k => amount[j, k]).Concat(new[] { slanted[j, 0], slanted[j, 1] })
+                             .Select(a => (100f * a).ToString("0.0"))))) + ";" + summedHands;
             var at = (Vector3[]) summed.Particles.Clone();
             void Add(Vector3[][] fields, float d)
             {
@@ -2064,6 +2086,8 @@ namespace AvatarBridge.Regression
             for (int j = 0; j < 2; j++)
                 for (int k = 0; k < 5; k++) Add(basis[5 * j + k].at, amount[j, k]);
             Add(basis[10].at, squeeze);
+            for (int j = 0; j < 2; j++)
+                for (int k = 0; k < 2; k++) Add(basis[11 + 2 * j + k].at, slanted[j, k]);
             return at;
         }
 
@@ -2748,7 +2772,7 @@ namespace AvatarBridge.Regression
                     // skinning alone, which the cloth moves and the tissue never sees.
                     var solved = refs[0].Now(0);
                     // The second pair's skin, which the tissue solved here leaves out.
-                    Shader.SetGlobalFloat("_SoftPick", 8);
+                    Shader.SetGlobalFloat("_SoftPick", 10);
                     var pairOf = Read(Staged(tearShaders, JumpShader, "SquashJump", "softamt"), out var pairSeen);
                     var otherPair = pairOf.Select((p, i) => pairSeen[i] && p.x > 1.5f).ToArray();
                     string Off(Vector3[] shown)
@@ -2797,8 +2821,8 @@ namespace AvatarBridge.Regression
                     // Every vertex of the first pair reads the same hands, so the largest is the reading.
                     float[] SoftPicks(string with)
                     {
-                        var p = new float[24];
-                        for (int k = 0; k < 8; k++)
+                        var p = new float[30];
+                        for (int k = 0; k < 10; k++)
                         {
                             Shader.SetGlobalFloat("_SoftPick", k);
                             var got = Read(Staged(tearShaders, JumpShader, "SquashJump", with), out var gotSeen);
@@ -2821,19 +2845,19 @@ namespace AvatarBridge.Regression
                     if (gameBasis != null && summedAmounts != null && basis != null)
                     {
                         bool down = AcrossIsDown;
-                        var probeBasis = Enumerable.Range(0, 22).Select(e =>
+                        var probeBasis = Enumerable.Range(0, 2 * YapsSoftBody.Ways).Select(e =>
                         {
                             int w = e / 2, pw = down && w % 5 >= 3 && w < 10 ? w + (w % 5 == 3 ? 1 : -1) : w;
                             return summed.SkinMoves(basis[pw].at[e % 2]).Select(m => float.IsNaN(m.x) ? Vector3.zero : m).ToArray();
                         }).ToArray();
                         var sp = shaderPicks;
-                        var shaderAmounts = new[] { sp[0], sp[1], sp[2], sp[3], sp[4], sp[6], sp[7], sp[8], sp[9], sp[10], sp[5] };
+                        var shaderAmounts = new[] { sp[0], sp[1], sp[2], sp[3], sp[4], sp[6], sp[7], sp[8], sp[9], sp[10], sp[5], sp[24], sp[25], sp[26], sp[27] };
                         float d0 = sp[11], d1 = sp[22];
                         Vector3[] Sum(Vector3[][] b, float[] a)
                         {
                             var m = new Vector3[rest.Length];
                             if (d0 > 0f && d1 > d0)
-                                for (int e = 0; e < 11; e++)
+                                for (int e = 0; e < YapsSoftBody.Ways; e++)
                                 {
                                     float d = Mathf.Min(a[e], 1.6f * d1);
                                     if (d <= 0f) continue;
@@ -2855,13 +2879,13 @@ namespace AvatarBridge.Regression
                         // Each baked way against the probe's way pressing the same side, both its
                         // ups: the shader's across is the cross of toward and out, either way up.
                         var cells = new List<string>();
-                        for (int w = 0; w < 11; w++)
+                        for (int w = 0; w < YapsSoftBody.Ways; w++)
                             for (int k = 0; k < 2; k++)
                             {
                                 Shader.SetGlobalFloat("_SoftWay", w);
                                 Shader.SetGlobalFloat("_SoftDeep", k);
                                 var got = Read(Staged(tearShaders, JumpShader, "SquashJump", "softway"), out var gotSeen);
-                                gameBasis ??= new Vector3[22][];
+                                gameBasis ??= new Vector3[2 * YapsSoftBody.Ways][];
                                 gameBasis[2 * w + k] = got.Select((g, i) => gotSeen[i] ? g : Vector3.zero).ToArray();
                                 string best = "";
                                 double bestOff = double.MaxValue;
@@ -2951,11 +2975,11 @@ namespace AvatarBridge.Regression
                             // 3: upright, the palms placed by the shader's skin.
                             var (moves, _, said) = YapsSoftBody.Bake(sign == 5f ? handAt : sign == 2f || sign == 4f ? editAt : refRest, refBody.sharedMesh.triangles, YapsSquash.Welds(refBody.sharedMesh), basisShare,
                                 sign == 5f ? handMiddles[0] : sign == 4f ? posedAt[0] : partAt[0], sign == 5f ? handMiddles[1] : sign == 4f ? posedAt[1] : partAt[1],
-                                basisReach, (sign > 1f ? 1f : sign) * root.up, root.forward, (j, w) => sign >= 3f ? ShaderSkin(j, w) : Extent(j, w));
+                                basisReach, (sign > 1f ? 1f : sign) * root.up, root.forward, -root.up, (j, w) => sign >= 3f ? ShaderSkin(j, w) : Extent(j, w));
                             if (sign == 4f && moves != null) Debug.Log($"[SoftBody] the build's centres as posed, against Play: {100f * (posedAt[0] - partAt[0]).magnitude:0.0} and {100f * (posedAt[1] - partAt[1]).magnitude:0.0} cm");
                             if (sign >= 3f && moves != null)
                             {
-                                var inOrder = Enumerable.Range(0, 22).Select(e =>
+                                var inOrder = Enumerable.Range(0, 2 * YapsSoftBody.Ways).Select(e =>
                                 {
                                     int w = e / 2, pw = AcrossIsDown && w % 5 >= 3 && w < 10 ? w + (w % 5 == 3 ? 1 : -1) : w;
                                     return moves[2 * pw + e % 2];
@@ -2965,7 +2989,7 @@ namespace AvatarBridge.Regression
                                 else handBasis = inOrder;
                             }
                             var rowsOff = new List<string>();
-                            for (int w = 0; w < 11 && moves != null; w++)
+                            for (int w = 0; w < YapsSoftBody.Ways && moves != null; w++)
                                 for (int k = 0; k < 2; k++)
                                 {
                                     int pw = w % 5 >= 3 && w < 10 && sign < 0f ? w + (w % 5 == 3 ? 1 : -1) : w;
@@ -3011,11 +3035,12 @@ namespace AvatarBridge.Regression
                             var f = new float[raw.Length / 4];
                             Buffer.BlockCopy(raw, 0, f, 0, raw.Length);
                             int n = refRest.Length;
-                            if (f.Length == 3 * (23 * n + 5))
+                            int bakedFields = 2 * YapsSoftBody.Ways + 1;
+                            if (f.Length == 3 * (bakedFields * n + 5))
                             {
                                 Vector3 V(int i) => new Vector3(f[3 * i], f[3 * i + 1], f[3 * i + 2]);
-                                buildBasis = Enumerable.Range(0, 22).Select(e => Enumerable.Range(0, n).Select(v => V(n * (e + 1) + v)).ToArray()).ToArray();
-                                Vector3 c0 = V(23 * n), c1 = V(23 * n + 1), across = V(23 * n + 2), outward = V(23 * n + 3), reach = V(23 * n + 4);
+                                buildBasis = Enumerable.Range(0, 2 * YapsSoftBody.Ways).Select(e => Enumerable.Range(0, n).Select(v => V(n * (e + 1) + v)).ToArray()).ToArray();
+                                Vector3 c0 = V(bakedFields * n), c1 = V(bakedFields * n + 1), across = V(bakedFields * n + 2), outward = V(bakedFields * n + 3), reach = V(bakedFields * n + 4);
                                 string Against(Vector3[][] other)
                                 {
                                     var listed = new List<string>();
@@ -3068,11 +3093,11 @@ namespace AvatarBridge.Regression
                                     if (posedAt != null) runs.Add(("with the probe's middles", buildAt, buildShare, posedAt[0], posedAt[1], across, outward));
                                     foreach (var (label, skinAt, sh, ca, cb, up, fwd) in runs)
                                     {
-                                        var (again, _, _) = YapsSoftBody.Bake(skinAt, refBody.sharedMesh.triangles, YapsSquash.Welds(refBody.sharedMesh), sh, ca, cb, reach.x, up, fwd,
+                                        var (again, _, _) = YapsSoftBody.Bake(skinAt, refBody.sharedMesh.triangles, YapsSquash.Welds(refBody.sharedMesh), sh, ca, cb, reach.x, up, fwd, -animator.transform.up,
                                             (j, w) => ShaderSkin(j, w));
                                         if (again == null) continue;
                                         bool flip = Vector3.Dot(up, across) < 0f;
-                                        var inOrder = Enumerable.Range(0, 22).Select(e =>
+                                        var inOrder = Enumerable.Range(0, 2 * YapsSoftBody.Ways).Select(e =>
                                         {
                                             int w = e / 2, pw = flip && w % 5 >= 3 && w < 10 ? w + (w % 5 == 3 ? 1 : -1) : w;
                                             return again[2 * pw + e % 2];

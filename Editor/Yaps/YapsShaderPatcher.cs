@@ -167,6 +167,7 @@ namespace AvatarBridge
         _YAPS_SoftFront (""YAPS soft body reach per part, in front"", Vector) = (0,0,0,0)
         _YAPS_SoftSideA (""YAPS soft body reach per part, across one way"", Vector) = (0,0,0,0)
         _YAPS_SoftSideB (""YAPS soft body reach per part, across the other way"", Vector) = (0,0,0,0)
+        _YAPS_SoftBelow (""YAPS soft body across toward the feet per pair, 1 or -1"", Vector) = (0,0,0,0)
 ";
 
         // The name the patch of `original` would carry if it were made now.

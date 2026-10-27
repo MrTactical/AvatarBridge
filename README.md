@@ -1604,10 +1604,11 @@ do; how far is a knob, from real flesh to anime.
 
 **Under a hand.** A hand presses the pair as soft tissue. When the squash is built, each pair is
 solved as flesh held to its volume, pressed by a palm from outside, from between them, from the
-front, from above and from below, and from both outsides at once, each to two depths; the shader
-adds those answers up for wherever the hands are. Pressed flesh moves out of the way, round the
+front, from above and from below, slanted from outside in front and from in front below, and from
+both outsides at once, each to two depths; the shader adds those answers up for wherever the hands
+are. Pressed flesh moves out of the way, round the
 hand and into the partner, rather than growing, and whatever the answers leave inside a hand is
-eased out to just off it. Building takes about ten seconds more a pair, and
+eased out to just off it. Building takes about fifteen seconds more a pair, and
 the answers keep only the skin that moves, at about a byte a number. The tissue is solved for the
 body as it is drawn at the build, its shape keys as they are set then: a key changed in game keeps
 the answers made for the shape it was built with. In the editor it costs less to draw than the

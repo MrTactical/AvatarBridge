@@ -1522,9 +1522,27 @@ hand shows through it; creases near the hand from below and from above; a ragged
 lifted. Likely the clothing standing more than 3 cm off the skin, which fades off the tissue and
 so neither follows it nor gets eased out of the hand in full. Not yet measured.
 
+**Slanted presses baked.** Joe, 2026-10-27: "bake two slanted options". The slanted presses were
+off the most because the tissue does not add up: a hand in front boxes the flesh in, so one under
+it lifts it further than the two straight answers summed (the probe's own sum missed by as much as
+the shader, so the reading was not at fault). Each part is now also pressed from outside in front
+and from in front below, 15 ways instead of 11; below is toward the feet at the build, carried per
+pair in `_YAPS_SoftBelow` as the first part's across runs either way. A hand reads a slanted way
+alone when it lies on it: each slanted way takes from the two it lies between what the lesser
+gives, the front's share split between its two. Measured [M]: out and front 1.31 to 0.66 cm rms
+(worst 4.7 to 2.2), both lifted 1.40 to 0.92 (worst 3.3 to 2.6), held high 0.95 to 1.06, the
+straight presses unchanged, no new jumps, no skin in a palm. The table 1.40 to 1.91 MB for Kar's
+pair (+36%), the bake 15 presses in 14.6 s.
+
+**The clothing, measured [M].** 572 of the bra's 4928 vertices stand 3 cm or more off the skin
+(324 between 3 and 4 cm, easing off; 248 past 4 cm, which take none of the move). Joe circled the
+result: lobes of the bra standing out past the hands in the squeeze while the skin under them is
+pressed in.
+
 Next:
-1. One part's answers mirrored onto the other, and the cost of starting each batch.
-2. The clothing above, measured: how far off the skin those vertices stand and what weight they ride.
+1. The clothing past 3 cm: follow the tissue as far out as it stands, or ride the skin's move
+   scaled by how far off it is, so a layer bridging a gap comes in with the skin under a hand.
+2. One part's answers mirrored onto the other, and the cost of starting each batch.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 

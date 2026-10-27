@@ -18,7 +18,7 @@ namespace AvatarBridge
 {
     sealed class YapsSoftBody
     {
-        internal const int Ways = 11;
+        internal const int Ways = 15;
         // As shares of the part's reach toward its partner. A third depth at four fifths was not
         // reproducible: two orders of the same constraints differed by 4 cm there.
         internal static readonly float[] Depths = { 0.25f, 0.5f };
@@ -54,10 +54,11 @@ namespace AvatarBridge
 
         // The pair's answers for this skin, world space, per way and depth (way * depths + depth):
         // each vertex's move, and its normal's change. Ways per part, the first then the second,
-        // by where the palm is: outside, on the partner's side, in front, above, below; then both
-        // outsides. Null when the skin gives no tissue.
+        // by where the palm is: outside, on the partner's side, in front, along up, along down; then
+        // both outsides; then per part slanted, outside in front and in front from below. Null when
+        // the skin gives no tissue.
         internal static (Vector3[][] moves, Vector3[][] turns, string log) Bake(Vector3[] at, int[] tris, List<int[]> welds, Vector2[] share,
-            Vector3 c0, Vector3 c1, float reach, Vector3 up, Vector3 outward, System.Func<int, Vector3, float> extent)
+            Vector3 c0, Vector3 c1, float reach, Vector3 up, Vector3 outward, Vector3 below, System.Func<int, Vector3, float> extent)
         {
             var clock = System.Diagnostics.Stopwatch.StartNew();
             var tissue = new YapsSoftBody(at, tris, share, c0, c1, reach, up, outward, reach / 8f, out string built);
@@ -77,6 +78,11 @@ namespace AvatarBridge
                 foreach (var dir in new[] { outs[j], -outs[j], outward, up, -up })
                     presses.Add(new[] { Palm(j, dir) });
             presses.Add(new[] { Palm(0, outs[0]), Palm(1, outs[1]) });
+            // Slanted, where the tissue gives more than the two straight presses added: a hand in
+            // front boxes the flesh in, so one under it lifts it further.
+            for (int j = 0; j < 2; j++)
+                foreach (var dir in new[] { (outs[j] + outward).normalized, (outward + below).normalized })
+                    presses.Add(new[] { Palm(j, dir) });
 
             var depths = Depths.Select(d => d * reach).ToArray();
             var neighbours = Neighbours(at.Length, tris, welds);
