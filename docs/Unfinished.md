@@ -1601,6 +1601,44 @@ Next:
 4. Nothing past 1.6 of the deeper depth is read, a cap set while deep presses baked as chance;
    with the palm gripping it may go further.
 
+**B, where it stands (2026-10-27, uncommitted on dev).** The swing bake follows the bones: the
+tissue a part's bones carry is now spread from the skin riding it (by the skin near a particle it
+turned the tissue under the skin less than the skin), and on identical inputs the bake's tissue
+gives what the control's does, partner 1.7/7.7 against 1.8/7.8 cm rms/most. In the film that is a
+wash: one swung deep 1.63 to 1.90 cm rms, both deep 1.18 to 1.22, one light 0.74 to 0.89, both
+light 0.86 to 0.80; the presses unchanged. Skin-on-skin friction was tried and dropped: it made the
+two directions of a swing agree, and every hand press worse (one from outside 0.71 to 1.30), stick
+and slip being chance again. Withdrawn: "the bake slides where the control pushes" was the carry,
+not friction. Found on the hard presses (slides 19 and 20): a step at the top of the cleavage on
+the inner edge of one part, in BEFORE and AFTER both, first seen between soft30 and soft42, when
+skin began riding its own part's tissue by bone weight. Joe could not see B's difference with the
+bra on; he wants a film without it.
+
+**Rethought from the start, Joe 2026-10-27: "think outside the box, radically ... we are just
+hitting body block after body block".** Every block so far has been a seam between canned answers
+that a shader with no memory adds up: superposition, the way read off the centres, the mirror and
+its evening, knife-edged bakes, embedding seams. Proposed: run the tissue in game, a lattice in a
+render texture stepped by blitters, which deletes the table and every seam and brings dynamics.
+Fallback if the client cannot carry it: a fitted map from contacts to a few baked shapes.
+
+**The jelly spike, 2026-10-27 (Joe: "try it").** `Dev/Probes/JellySpikeBuilder.cs`: 3072 particles
+(one pair's tissue) in a 128x48 float texture, two blitter passes a frame under a render
+controller, each particle pulled toward its 3x3x3 neighbourhood's rigid fit (shape matching,
+rotation by Mueller 2016) and the whole toward its rest on an anchor as a 3 Hz spring, every
+player's hands pushing it as the squash reads them. A block 20 cm across in front of the chest.
+- Cost, measured by the client's own route (temporary, blit, copy back), RTX 4080 [M]: 0.058 ms a
+  pass with no players, 0.125 with 64 (the hands loop); a bare copy 0.018. 12288 particles cost
+  0.062 and 0.145: the lattice's size is nearly free, the passes and the hands are what cost.
+  About 0.12 to 0.25 ms an avatar a frame at two passes.
+- Behaviour [M]: settles to 2.7 cm of sag (g over the spring's rate squared, as it should), a 60
+  degree turn in a sixth of a second swings the front 9 cm past and back, still within half a
+  second. The shape matching alone folded the block 42 cm under its own weight; the spring is what
+  holds it.
+- Editor Play mode with the CCK's own provider and render controller [M]: PASS, the back face exact
+  on the anchor the provider handed.
+- Open [GAME]: Joe wears it; frame time worn against not; a remote copy pink, wobbling and pokeable;
+  avatar switch and back; both VR eyes; the Cameras content filter off shows it red.
+
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 
 A user: a grip squeeze in VRChat became a trigger squeeze after conversion. The converter fed
