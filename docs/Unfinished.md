@@ -1636,8 +1636,13 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
   holds it.
 - Editor Play mode with the CCK's own provider and render controller [M]: PASS, the back face exact
   on the anchor the provider handed.
-- Open [GAME]: Joe wears it; frame time worn against not; a remote copy pink, wobbling and pokeable;
-  avatar switch and back; both VR eyes; the Cameras content filter off shows it red.
+- **Works in game, 2026-10-27 [GAME]** (Joe, on Kar): pink and wobbling, and both Joe and a
+  remote user push it with their default hands, so the step runs every frame on the avatar, keeps
+  its state, and reads every player's hands from the client's globals.
+- Still open [GAME]: frame time worn against not; the remote user's own view of it; avatar switch
+  and back; both VR eyes; the Cameras content filter off shows it red.
+- The menu item rebuilt the assets with the preview scene, which replaced the open scene: it now
+  only adds the prefab, building it without the scene if it is missing.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 

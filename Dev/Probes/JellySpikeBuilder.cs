@@ -68,7 +68,8 @@ namespace AvatarBridge.Regression
                 EditorUtility.DisplayDialog("Jelly spike", "Select a humanoid avatar in the scene first.", "OK");
                 return;
             }
-            var prefab = Make();
+            // Built once; building again would make the preview scene, which replaces the open one.
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(Prefab) ?? Make(preview: false);
             if (prefab == null) return;
             var root = avatar.transform;
             var head = animator.GetBoneTransform(HumanBodyBones.Head);
@@ -82,7 +83,7 @@ namespace AvatarBridge.Regression
             Debug.Log($"[Jelly] added under {chest.name}, {0.35f * tall / 1.5f:0.00} m in front, scaled for a {tall:0.00} m head height");
         }
 
-        static GameObject Make()
+        static GameObject Make(bool preview = true)
         {
             if (!AssetDatabase.IsValidFolder(Folder)) AssetDatabase.CreateFolder("Assets", "AvatarBridge_Jelly");
             File.WriteAllText(Folder + "/JellyStep.shader", StepShader);
@@ -142,6 +143,11 @@ namespace AvatarBridge.Regression
                 return null;
             }
 
+            if (!preview)
+            {
+                AssetDatabase.SaveAssets();
+                return prefab;
+            }
             // A scene to press Play in: the spike on a stand that swings, and a camera on it.
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             var stand = new GameObject("Swing");
