@@ -2002,6 +2002,17 @@ a whole skin needs it sparser. Thinking so far, nothing built:
   pair on DynamicBone instead of MagicaCloth2: the squash reads only where the part bones are,
   but the colliders press option and the follow points under DynamicBone need checking.
 
+**6. A whole bone physics system on the blitter. Joe, 2026-10-27: "we can make a
+physbones/magicacloth system? all of it???" Answered, NOT PLANNED.** Possible in principle: the
+blitter's self-update keeps state frame to frame, a material data provider feeds it the bones, and
+the hands come from the client's globals. But it is draw-only: nothing writes a bone back, so
+whatever hangs on a bone (props, lights, particles, contacts, a renderer whose shader is not
+patched) stays where the bone rests, and every material on the moved skin needs the patch. A
+viewer with the Cameras content filter off loses the components, so the hair would freeze; Shader
+Filtering cuts the solver's loops; the blitter on remote copies is still unproven. MagicaCloth2 is
+built into the client and moves real bones, and physics match the source. The part worth having,
+soft tissue that answers everyone's hands without colliders on their side, is point 4 and item 25.
+
 **Order proposed:** 1 first (the biggest ask; every piece is already proven in game), then 2 tier 1
 (reuses the hand code), then 4 (half spiked), then 3 (client read first), then 2 tier 2 (after item
 20). Not in 5.0.0, which is in its release gate.
