@@ -70,7 +70,14 @@ namespace AvatarBridge.Regression
         public static void Build() => EditorApplication.Exit(Make() != null ? 0 : 1);
 
         [MenuItem("Tools/AvatarBridge Dev/Jelly spike: add to the selected avatar")]
-        static void AddToSelected()
+        static void AddToSelected() => Add(meter: false);
+
+        // The meter's load costs 32 passes every other half second, far more than the jelly, so it
+        // goes on only when asked for.
+        [MenuItem("Tools/AvatarBridge Dev/Jelly spike: add with the cost meter")]
+        static void AddWithMeter() => Add(meter: true);
+
+        static void Add(bool meter)
         {
             var avatar = Selection.activeGameObject;
             var animator = avatar != null ? avatar.GetComponentInChildren<Animator>() : null;
@@ -84,7 +91,7 @@ namespace AvatarBridge.Regression
             }
             // Rebuilt without the preview scene, which would replace the open one, and any earlier one
             // on the avatar taken off, so the avatar always carries the newest.
-            var prefab = Make(preview: false);
+            var prefab = Make(preview: false, meter: meter);
             if (prefab == null) return;
             // Every earlier one goes, on any avatar in any open scene: each build makes the assets anew,
             // so an older copy points at deleted materials and draws magenta. An instance is named
@@ -106,7 +113,7 @@ namespace AvatarBridge.Regression
             Debug.Log($"[Jelly] added under {chest.name}, {0.35f * tall / 1.5f:0.00} m in front, scaled for a {tall:0.00} m head height; {stale.Count} earlier one(s) taken off");
         }
 
-        static GameObject Make(bool preview = true)
+        static GameObject Make(bool preview = true, bool meter = true)
         {
             if (!AssetDatabase.IsValidFolder(Folder)) AssetDatabase.CreateFolder("Assets", Path.GetFileName(Folder));
             File.WriteAllText(Folder + "/JellyCommon.cginc", CommonInclude);
@@ -207,35 +214,38 @@ namespace AvatarBridge.Regression
             pointer.destinationTextures = new RenderTexture[0];
             controller.cvrRenderComponents.Add(pointer);
 
-            // The cost meter: its clock, and the load, which steps a lattice nobody draws in the odd
-            // phases and leaves it be in the even ones.
-            var ticker = tissue.AddComponent<CVRBlitter>();
-            ticker.originTexture = ticks;
-            ticker.destinationTexture = ticks;
-            ticker.blitMaterial = clockMat;
-            ticker.destinationTextures = new RenderTexture[0];
-            controller.cvrRenderComponents.Add(ticker);
-            var loader = new GameObject("Load");
-            loader.transform.SetParent(root.transform, false);
-            var loadController = loader.AddComponent<CVRRenderController>();
-            for (int i = 0; i < Load; i++)
+            if (meter)
             {
-                var blitter = loader.AddComponent<CVRBlitter>();
-                blitter.originTexture = load;
-                blitter.destinationTexture = load;
-                blitter.blitMaterial = loadMat;
-                blitter.destinationTextures = new RenderTexture[0];
-                loadController.cvrRenderComponents.Add(blitter);
+                // The cost meter: its clock, and the load, which steps a lattice nobody draws in the odd
+                // phases and leaves it be in the even ones.
+                var ticker = tissue.AddComponent<CVRBlitter>();
+                ticker.originTexture = ticks;
+                ticker.destinationTexture = ticks;
+                ticker.blitMaterial = clockMat;
+                ticker.destinationTextures = new RenderTexture[0];
+                controller.cvrRenderComponents.Add(ticker);
+                var loader = new GameObject("Load");
+                loader.transform.SetParent(root.transform, false);
+                var loadController = loader.AddComponent<CVRRenderController>();
+                for (int i = 0; i < Load; i++)
+                {
+                    var blitter = loader.AddComponent<CVRBlitter>();
+                    blitter.originTexture = load;
+                    blitter.destinationTexture = load;
+                    blitter.blitMaterial = loadMat;
+                    blitter.destinationTextures = new RenderTexture[0];
+                    loadController.cvrRenderComponents.Add(blitter);
+                }
+                var face = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                face.name = "Meter";
+                Object.DestroyImmediate(face.GetComponent<Collider>());
+                face.transform.SetParent(root.transform, false);
+                face.transform.localPosition = new Vector3(0f, 0.15f, 0.1f);
+                var faceRenderer = face.GetComponent<MeshRenderer>();
+                faceRenderer.sharedMaterial = meterMat;
+                faceRenderer.shadowCastingMode = ShadowCastingMode.Off;
+                faceRenderer.receiveShadows = false;
             }
-            var face = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            face.name = "Meter";
-            Object.DestroyImmediate(face.GetComponent<Collider>());
-            face.transform.SetParent(root.transform, false);
-            face.transform.localPosition = new Vector3(0f, 0.15f, 0.1f);
-            var faceRenderer = face.GetComponent<MeshRenderer>();
-            faceRenderer.sharedMaterial = meterMat;
-            faceRenderer.shadowCastingMode = ShadowCastingMode.Off;
-            faceRenderer.receiveShadows = false;
 
             // The rider, at rest on the front centre, and a plain cube on it.
             var rider = new GameObject("Rider");
@@ -1329,7 +1339,8 @@ yours or another player's.
 
 1. Select the avatar in the scene and run Tools > AvatarBridge Dev > Jelly spike: add to the
    selected avatar. It goes under the chest bone, in front of the chest, sized for the avatar,
-   replacing any earlier one. Move it if it sits inside anything.
+   replacing any earlier one. Move it if it sits inside anything. Jelly spike: add with the cost
+   meter does the same with the meter above it, which costs far more than the jelly.
 2. Upload. Nothing else: no parameters, no menu, no sync.
 
 Before uploading, `Jelly_Preview.unity` shows it in the editor: open it and press Play.
