@@ -77,6 +77,24 @@ namespace AvatarBridge.Regression
         [MenuItem("Tools/AvatarBridge Dev/Jelly spike: add with the cost meter")]
         static void AddWithMeter() => Add(withMeter: true);
 
+        // The jelly alone as a prop, its cost told apart from any avatar's.
+        [MenuItem("Tools/AvatarBridge Dev/Jelly spike: make a prop in the open scene")]
+        static void MakeProp()
+        {
+            var prefab = Make(preview: false, withMeter: false);
+            if (prefab == null) return;
+            var old = GameObject.Find("Jelly Prop");
+            if (old != null) Undo.DestroyObjectImmediate(old);
+            var prop = new GameObject("Jelly Prop");
+            prop.AddComponent<CVRSpawnable>();
+            var made = (GameObject) PrefabUtility.InstantiatePrefab(prefab, prop.transform);
+            // At chest height above the floor it is placed on.
+            made.transform.localPosition = new Vector3(0f, 1.2f, 0f);
+            Undo.RegisterCreatedObjectUndo(prop, "Make the jelly prop");
+            Selection.activeGameObject = prop;
+            Debug.Log("[Jelly] made Jelly Prop in the open scene; upload it from the CCK Control Panel");
+        }
+
         static void Add(bool withMeter)
         {
             var avatar = Selection.activeGameObject;
@@ -93,11 +111,9 @@ namespace AvatarBridge.Regression
             // on the avatar taken off, so the avatar always carries the newest.
             var prefab = Make(preview: false, withMeter: withMeter);
             if (prefab == null) return;
-            // Every earlier one goes, on any avatar in any open scene: each build makes the assets anew,
-            // so an older copy points at deleted materials and draws magenta. An instance is named
-            // after the prefab's file, Jelly_Spike; older builds left Jelly Spike.
-            var stale = Enumerable.Range(0, EditorSceneManager.sceneCount).Select(EditorSceneManager.GetSceneAt).Where(s => s.isLoaded)
-                .SelectMany(s => s.GetRootGameObjects()).SelectMany(g => g.GetComponentsInChildren<Transform>(true))
+            // Any earlier one on the avatar goes. An instance is named after the prefab's file,
+            // Jelly_Spike; older builds left Jelly Spike.
+            var stale = avatar.GetComponentsInChildren<Transform>(true)
                 .Where(t => t.name == prefab.name || t.name == "Jelly Spike").Select(t => t.gameObject).ToList();
             foreach (var old in stale)
                 if (old != null) Undo.DestroyObjectImmediate(old);
