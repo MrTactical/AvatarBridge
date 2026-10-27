@@ -1659,6 +1659,22 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
   load of 32 more step passes on an undrawn lattice switched on and off every 5 s; the
   difference over 32 is one pass's own work on that machine. Editor [M]: the clock reads 11.10
   ms at a locked 90 fps.
+- **In game, same day [GAME]:** Joe's own frame 4.3 ms, yellow 0.001 (CPU-bound, the work hid in
+  GPU slack); remote viewers 32 ms / 0.079 and 18 ms / 0.062 a pass, jumping 0.001 to 0.1 (two
+  5 s means differenced over 32 is noisy at 30 to 55 fps). The client never culls blitters
+  (`CVRRenderController` runs them every frame while active, no distance or visibility check), so
+  every viewer pays for every jelly; CVR's own Avatar Distance Disabling is the far-off answer.
+- **Made cheaper, 2026-10-27 [M]:** the right half holds where each particle was, not its
+  velocity, so half the texture does next to no work; the passes go into a twin texture and back
+  instead of the client's temporary and copy; a near pass picks out up to eight hands in reach
+  once a frame, unrolled, so the step reads eight however many players and Shader Filtering
+  leaves it whole; the fit reads each neighbour once and takes 3 rotation steps, not 6; and above
+  72 fps one pass steps, `_Stiff` now over a 180th of a second so one pass or two feel alike.
+  Low end measured on the CPU's own Radeon (2 CUs, `-force-device-index 1`), a frame at 90 fps:
+  0.246 to 0.107 ms empty, 0.646 to 0.092 with 64 players, 2.19 to 0.239 for 12288 particles
+  with 64. The turn trace matches the old within about a centimetre, a touch more damped. The
+  4080's figures need a rerun with the game closed (0.029 and 0.094 for the same code while it
+  ran). Verify passes with the CCK's components.
 - **Order, Joe 2026-10-27:** the squash shader working on MagicaCloth first and 5.0.0 shipped; the
   live tissue and the rest of his ideas after, in 5.1.
 - The menu item rebuilt the assets with the preview scene, which replaced the open scene: it now

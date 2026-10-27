@@ -1,11 +1,12 @@
 // The jelly spike: can ChilloutVR run a soft body on an avatar, every frame, and at what cost?
 //
-// A lattice of particles lives in a float render texture, positions in its left half and
-// velocities in its right. Blitters run by a render controller step it in place once a frame
-// each: every particle is pulled toward where the rigid fit of its 3x3x3 neighbourhood puts it
-// (shape matching), the back face is held on an anchor the material data provider hands in, and
-// every player's hands push it out of the way. A mesh draws the lattice's surface from the same
-// texture. Nothing is baked, nothing is synced, and each client steps its own copy.
+// A lattice of particles lives in a float render texture, where each particle is in its left half
+// and where it was a pass before in its right. Blitters run by a render controller step it from
+// that texture into a twin and back, a pass each, no temporary and no copy: every particle is
+// pulled toward where the rigid fit of its 3x3x3 neighbourhood puts it (shape matching), the back
+// face is held on an anchor the material data provider hands in, and the hands a near pass found
+// in reach push it out of the way. A mesh draws the lattice's surface from the same texture.
+// Nothing is baked, nothing is synced, and each client steps its own copy.
 //
 // A plain cube rides the front: one more blitter writes where the front centre is, and how its
 // neighbourhood has turned, into a 2x1 texture, and a texture parser writes those into a
@@ -20,9 +21,11 @@
 //   -executeMethod AvatarBridge.Regression.JellySpikeBuilder.Bench -jellyOut <dir>
 //   -executeMethod AvatarBridge.Regression.JellySpikeBuilder.Verify -jellyOut <dir>
 //
-// Bench times the step the way the client runs a self-updating blitter (temporary, blit, copy
-// back) against a bare copy, for one pair's lattice and four times that, with no players and
-// with 64, and checks the tissue settles and swings back sanely. Verify plays the prefab in
+// Bench times a frame the way the client runs the prefab's blitters (the near pass, then the two
+// step passes, one texture into the other) at 90 fps, where one pass steps, and at 60, where both
+// do, against a bare blit, for one pair's lattice and four times that, with no players, 64 far
+// off, and 64 with eight hands in reach, and checks the tissue settles and swings back sanely.
+// Pass -force-device-index 1 to run it on a second GPU, the CPU's own, for a low-end machine. Verify plays the prefab in
 // batch with the CCK's own render controller and a swinging anchor. Batch, never -nographics.
 #if CVR_CCK_EXISTS && UNITY_EDITOR
 using System;
@@ -104,6 +107,7 @@ namespace AvatarBridge.Regression
             File.WriteAllText(Folder + "/JellyDraw.shader", DrawShader);
             File.WriteAllText(Folder + "/JellyClock.shader", ClockShader);
             File.WriteAllText(Folder + "/JellyMeter.shader", MeterShader);
+            File.WriteAllText(Folder + "/JellyNear.shader", NearShader);
             File.WriteAllText(Folder + "/README.md", Readme);
             AssetDatabase.Refresh();
             var step = AssetDatabase.LoadAssetAtPath<Shader>(Folder + "/JellyStep.shader");
@@ -111,7 +115,8 @@ namespace AvatarBridge.Regression
             var points = AssetDatabase.LoadAssetAtPath<Shader>(Folder + "/JellyPoints.shader");
             var clock = AssetDatabase.LoadAssetAtPath<Shader>(Folder + "/JellyClock.shader");
             var meter = AssetDatabase.LoadAssetAtPath<Shader>(Folder + "/JellyMeter.shader");
-            var shaders = new[] { step, draw, points, clock, meter };
+            var near = AssetDatabase.LoadAssetAtPath<Shader>(Folder + "/JellyNear.shader");
+            var shaders = new[] { step, draw, points, clock, meter, near };
             if (shaders.Any(x => x == null || ShaderUtil.ShaderHasError(x)))
             {
                 Debug.Log("[Jelly] BUILD ABORT: a shader did not import or has errors");
@@ -119,7 +124,13 @@ namespace AvatarBridge.Regression
             }
 
             var state = Save(State(Size), "/Jelly_State.renderTexture");
-            var stepMat = Save(StepMaterial(step, Size), "/Jelly_Step.mat");
+            var twin = Save(State(Size), "/Jelly_State_B.renderTexture");
+            var close = Save(Strip(16), "/Jelly_Near.renderTexture");
+            var nearMat = new Material(near);
+            nearMat.SetVector("_Lattice", new Vector4(Size.x, Size.y, Size.z, Spacing));
+            nearMat = Save(nearMat, "/Jelly_Near.mat");
+            var stepMat = Save(StepMaterial(step, Size, close, 0), "/Jelly_Step.mat");
+            var stepMat2 = Save(StepMaterial(step, Size, close, 1), "/Jelly_Step_2.mat");
             var drawMat = new Material(draw);
             drawMat.SetTexture("_State", state);
             drawMat = Save(drawMat, "/Jelly_Draw.mat");
@@ -136,7 +147,7 @@ namespace AvatarBridge.Regression
             pointsMat = Save(pointsMat, "/Jelly_Points.mat");
             var plain = Save(new Material(Shader.Find("Standard")) { color = new Color(1f, 0.85f, 0.1f) }, "/Jelly_Rider.mat");
             var load = Save(State(Size), "/Jelly_Load.renderTexture");
-            var loadMat = StepMaterial(step, Size);
+            var loadMat = StepMaterial(step, Size, close, 0);
             loadMat.SetFloat("_Stress", 1f);
             loadMat = Save(loadMat, "/Jelly_Load.mat");
             var ticks = Save(new RenderTexture(4, 1, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear)
@@ -156,21 +167,27 @@ namespace AvatarBridge.Regression
             var tissue = new GameObject("Tissue");
             tissue.transform.SetParent(root.transform, false);
             var provider = tissue.AddComponent<CVRMaterialDataProvider>();
-            provider.materials = new[] { stepMat, pointsMat, loadMat };
+            provider.materials = new[] { nearMat, stepMat, stepMat2, pointsMat, loadMat };
             provider.dataMode = CVRMaterialDataProvider.DataMode.TransformLocalToWorld;
             provider.transforms = new[] { root.transform };
             provider.shaderPropertyName = "_JellyAnchor";
             var controller = tissue.AddComponent<CVRRenderController>();
             // The anchor first, then the passes, in the order the client runs them.
             controller.cvrRenderComponents.Add(provider);
+            var nearer = tissue.AddComponent<CVRBlitter>();
+            nearer.originTexture = state;
+            nearer.destinationTexture = close;
+            nearer.blitMaterial = nearMat;
+            nearer.destinationTextures = new RenderTexture[0];
+            controller.cvrRenderComponents.Add(nearer);
             for (int i = 0; i < Passes; i++)
             {
                 var blitter = tissue.AddComponent<CVRBlitter>();
-                // The same texture in and out: the client renders into a temporary and copies it
-                // back, its own route for a self-update.
-                blitter.originTexture = state;
-                blitter.destinationTexture = state;
-                blitter.blitMaterial = stepMat;
+                // Into the twin and back: a texture in and out the same would make the client
+                // render into a temporary and copy it back, every pass.
+                blitter.originTexture = i == 0 ? state : twin;
+                blitter.destinationTexture = i == 0 ? twin : state;
+                blitter.blitMaterial = i == 0 ? stepMat : stepMat2;
                 blitter.destinationTextures = new RenderTexture[0];
                 controller.cvrRenderComponents.Add(blitter);
             }
@@ -307,12 +324,32 @@ namespace AvatarBridge.Regression
                 targetIndex = element,
             };
 
-        static Material StepMaterial(Shader step, Vector3Int n)
+        // A row of texels for a pass's few answers.
+        static RenderTexture Strip(int width) => new RenderTexture(width, 1, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp,
+            useMipMap = false,
+            autoGenerateMips = false,
+        };
+
+        static Material StepMaterial(Shader step, Vector3Int n, RenderTexture close, int pass)
         {
             var m = new Material(step);
             m.SetVector("_Lattice", new Vector4(n.x, n.y, n.z, Spacing));
-            m.SetFloat("_Passes", Passes);
+            m.SetTexture("_Near", close);
+            m.SetFloat("_Pass", pass);
             return m;
+        }
+
+        // The near pass and the frame's two step passes, as the prefab wires them, on one anchor.
+        static Material[] Rigged(Shader step, Shader near, Vector3Int n, RenderTexture close, Matrix4x4 anchor)
+        {
+            var reach = new Material(near);
+            reach.SetVector("_Lattice", new Vector4(n.x, n.y, n.z, Spacing));
+            var mats = new[] { reach, StepMaterial(step, n, close, 0), StepMaterial(step, n, close, 1) };
+            foreach (var m in mats) m.SetMatrixArray("_JellyAnchor", new[] { anchor });
+            return mats;
         }
 
         // The lattice's six faces as a grid of quads, each vertex naming its particle's texel.
@@ -392,35 +429,60 @@ namespace AvatarBridge.Regression
             }
             string dir = Out();
             var step = AssetDatabase.LoadAssetAtPath<Shader>(Folder + "/JellyStep.shader");
+            var near = AssetDatabase.LoadAssetAtPath<Shader>(Folder + "/JellyNear.shader");
             var copy = new Material(Shader.Find("Hidden/BlitCopy"));
             var lines = new List<string> { $"[Jelly] bench on {SystemInfo.graphicsDeviceName}, {SystemInfo.graphicsDeviceType}" };
             bool ok = true;
+            var still = Matrix4x4.TRS(new Vector3(0f, 1.3f, 0.3f), Quaternion.identity, Vector3.one);
 
             foreach (var n in new[] { Size, new Vector3Int(32, 24, 16) })
-                foreach (int players in new[] { 0, 64 })
+                foreach (var (players, inReach) in new[] { (0, 0), (64, 0), (64, 8) })
                 {
-                    Players(players);
-                    var mat = StepMaterial(step, n);
-                    mat.SetFloat("_FixedDt", 1f / 90f);
-                    mat.SetFloat("_Passes", 1f);
-                    var rt = State(n);
-                    rt.Create();
-                    var anchor = Matrix4x4.TRS(new Vector3(0f, 1.3f, 0.3f), Quaternion.identity, Vector3.one);
-                    mat.SetMatrixArray("_JellyAnchor", new[] { anchor });
-                    double sim = Timed(rt, mat, 600, out double simCpu);
-                    double bare = Timed(rt, copy, 600, out double bareCpu);
-                    lines.Add($"[Jelly] {n.x * n.y * n.z} particles, {players} players: a step {sim:0.000} ms a run ({simCpu:0.000} to submit), " +
-                              $"a bare copy by the same route {bare:0.000} ({bareCpu:0.000}); the step's own work {sim - bare:0.000} ms");
-                    rt.Release();
+                    Players(players, inReach);
+                    var a = State(n);
+                    var b = State(n);
+                    var close = Strip(16);
+                    a.Create();
+                    b.Create();
+                    close.Create();
+                    var mats = Rigged(step, near, n, close, still);
+                    void Frame()
+                    {
+                        Graphics.Blit(a, close, mats[0]);
+                        Graphics.Blit(a, b, mats[1]);
+                        Graphics.Blit(b, a, mats[2]);
+                    }
+                    var at = new List<string>();
+                    foreach (int fps in new[] { 90, 60 })
+                    {
+                        mats[1].SetFloat("_FixedDt", 1f / fps);
+                        mats[2].SetFloat("_FixedDt", 1f / fps);
+                        double frame = Timed(Frame, a, 600, out double cpu);
+                        at.Add($"{frame:0.000} ms a frame at {fps} fps ({cpu:0.000} to submit)");
+                    }
+                    double bare = Timed(() => Graphics.Blit(a, b, copy), b, 600, out _);
+                    // Each kept hand's second texel is its tip, w 1.
+                    int kept = Read(close).Count(t => t.w == 1f);
+                    ok &= kept == inReach;
+                    lines.Add($"[Jelly] {n.x * n.y * n.z} particles, {players} players, {inReach} hands in reach, the near pass kept {kept}: " +
+                              $"{string.Join(", ", at)}; a bare blit {bare:0.000}");
+                    a.Release();
+                    b.Release();
+                    close.Release();
                 }
 
-            // Behaviour, on one pair's lattice at 90 fps with the real two passes a frame: settle
-            // under gravity, then the anchor turns 60 degrees in a sixth of a second and holds.
+            // Behaviour, on one pair's lattice at 90 fps, where one pass a frame steps: settle under
+            // gravity, then the anchor turns 60 degrees in a sixth of a second and holds.
             Players(0);
-            var real = StepMaterial(step, Size);
-            real.SetFloat("_FixedDt", 1f / 90f);
             var state = State(Size);
+            var twin = State(Size);
+            var reach = Strip(16);
             state.Create();
+            twin.Create();
+            reach.Create();
+            var real = Rigged(step, near, Size, reach, still);
+            real[1].SetFloat("_FixedDt", 1f / 90f);
+            real[2].SetFloat("_FixedDt", 1f / 90f);
             var view = Viewer(state, out var shots);
             var trace = new List<string>();
             var strip = new List<Texture2D>();
@@ -430,9 +492,11 @@ namespace AvatarBridge.Regression
             {
                 float turn = f < 0 ? 0f : 60f * Mathf.SmoothStep(0f, 1f, Mathf.Min(f / 15f, 1f));
                 var anchor = Matrix4x4.TRS(hang, Quaternion.Euler(0f, turn, 0f), Vector3.one);
-                real.SetMatrixArray("_JellyAnchor", new[] { anchor });
+                foreach (var m in real) m.SetMatrixArray("_JellyAnchor", new[] { anchor });
                 view.transform.SetPositionAndRotation(hang, Quaternion.Euler(0f, turn, 0f));
-                for (int p = 0; p < Passes; p++) Run(state, real);
+                Graphics.Blit(state, reach, real[0]);
+                Graphics.Blit(state, twin, real[1]);
+                Graphics.Blit(twin, state, real[2]);
                 if (f == -1 || f >= 0 && (f % 5 == 0 || shotsAt.Contains(f)))
                 {
                     var s = Read(state);
@@ -454,34 +518,35 @@ namespace AvatarBridge.Regression
             EditorApplication.Exit(ok ? 0 : 1);
         }
 
-        // Every player's hands somewhere far off, so the step pays for the loop and finds nothing.
-        static void Players(int count)
+        // Every player's hands somewhere far off, so the near pass looks at them all and keeps none;
+        // the first inReach of them poking the bench tissue's front, from in front of it.
+        static void Players(int count, int inReach = 0)
         {
-            var far = Enumerable.Repeat(new Vector4(50f, 50f, 50f, 0f), 255).ToArray();
+            var left = Enumerable.Repeat(new Vector4(50f, 50f, 50f, 0f), 255).ToArray();
+            var right = (Vector4[]) left.Clone();
+            var chest = (Vector4[]) left.Clone();
             var root = Enumerable.Repeat(new Vector4(50f, 0f, 50f, 1.6f), 255).ToArray();
-            Shader.SetGlobalVectorArray("_CVR_PlayerLeftHandPositions", far);
-            Shader.SetGlobalVectorArray("_CVR_PlayerRightHandPositions", far);
-            Shader.SetGlobalVectorArray("_CVR_PlayerChestPositions", far);
+            for (int e = 0; e < inReach; e++)
+            {
+                var at = new Vector4(-0.07f + 0.02f * e, 1.3f, 0.55f, 0f);
+                if ((e & 1) == 0) left[e >> 1] = at;
+                else right[e >> 1] = at;
+                chest[e >> 1] = new Vector4(0f, 1.3f, 1f, 0f);
+            }
+            Shader.SetGlobalVectorArray("_CVR_PlayerLeftHandPositions", left);
+            Shader.SetGlobalVectorArray("_CVR_PlayerRightHandPositions", right);
+            Shader.SetGlobalVectorArray("_CVR_PlayerChestPositions", chest);
             Shader.SetGlobalVectorArray("_CVR_PlayerRootPositions", root);
             Shader.SetGlobalVector("CVRGlobalParams1", new Vector4(0f, count, 0f, 0f));
         }
 
-        // The client's self-update, exactly: a temporary like the target, a blit, a copy back.
-        static void Run(RenderTexture rt, Material mat)
+        // Per call, with the GPU waited on at the end, and the part that is only submitting.
+        static double Timed(Action run, RenderTexture rt, int runs, out double submit)
         {
-            var temp = RenderTexture.GetTemporary(rt.descriptor);
-            Graphics.Blit(rt, temp, mat);
-            Graphics.CopyTexture(temp, rt);
-            RenderTexture.ReleaseTemporary(temp);
-        }
-
-        // Per run, with the GPU waited on at the end, and the part that is only submitting.
-        static double Timed(RenderTexture rt, Material mat, int runs, out double submit)
-        {
-            for (int i = 0; i < 30; i++) Run(rt, mat);
+            for (int i = 0; i < 30; i++) run();
             AsyncGPUReadback.Request(rt).WaitForCompletion();
             var clock = System.Diagnostics.Stopwatch.StartNew();
-            for (int i = 0; i < runs; i++) Run(rt, mat);
+            for (int i = 0; i < runs; i++) run();
             submit = clock.Elapsed.TotalMilliseconds / runs;
             AsyncGPUReadback.Request(rt).WaitForCompletion();
             return clock.Elapsed.TotalMilliseconds / runs;
@@ -508,12 +573,12 @@ namespace AvatarBridge.Regression
                     {
                         int p = (k * n.y + j) * n.x + i;
                         var x = s[(p / Row) * width + p % Row];
-                        var v = s[(p / Row) * width + Row + p % Row];
-                        if (float.IsNaN(x.x + x.y + x.z + v.x + v.y + v.z)) { bad++; continue; }
+                        var was = s[(p / Row) * width + Row + p % Row];
+                        if (float.IsNaN(x.x + x.y + x.z + was.x + was.y + was.z + was.w)) { bad++; continue; }
                         float away = ((Vector3) x - anchor.MultiplyPoint3x4(Rest(i, j, k))).magnitude;
                         if (k == 0) held = Mathf.Max(held, away);
                         if (away > worst) { worst = away; worstAt = new Vector3Int(i, j, k); }
-                        fastest = Mathf.Max(fastest, ((Vector3) v).magnitude);
+                        fastest = Mathf.Max(fastest, ((Vector3) x - (Vector3) was).magnitude / Mathf.Max(was.w, 1e-4f));
                     }
             int front = ((n.z - 1) * n.y + n.y / 2) * n.x + n.x / 2;
             var tip = (Vector3) s[(front / Row) * width + front % Row];
@@ -650,19 +715,23 @@ namespace AvatarBridge.Regression
 
         const string StepShader = @"// The jelly spike's step. Written by JellySpikeBuilder; edits here are overwritten.
 //
-// One run moves the lattice one pass on. Left half of the texture: positions, w the _Time.y of
-// the last pass (negative while no anchor arrives). Right half: velocities, w 1 once started.
+// One run moves the lattice one pass on, from one texture into its twin. Left half: where each
+// particle is, w the _Time.y of the last pass (negative while no anchor arrives). Right half: where
+// it was a pass before, w the h that pass took, so a velocity is only ever read off the two. Below
+// 72 fps both of a frame's passes step; above it the second only hands the first's state on.
 Shader ""Hidden/AvatarBridge/JellyStep""
 {
     Properties
     {
         _MainTex (""Last pass's state"", 2D) = ""black"" {}
+        // Declared, not only set: the client points a material's render textures at the avatar
+        // copy's own by walking its declared properties.
+        _Near (""The hands in reach, from the near pass"", 2D) = ""black"" {}
         _Lattice (""Particles across, up and deep; spacing in metres"", Vector) = (16, 12, 16, 0.0133)
-        _Stiff (""Pull toward the neighbourhood's shape, a pass"", Range(0, 1)) = 0.5
+        _Stiff (""Pull toward the neighbourhood's shape over a 180th of a second"", Range(0, 1)) = 0.5
         _Hz (""Wobble a second, toward its rest on the chest"", Float) = 3
         _Damp (""Damping a second"", Float) = 4
-        _Passes (""Passes a frame"", Float) = 2
-        _Hand (""Hand radius at a 1.6 m viewpoint"", Float) = 0.05
+        _Pass (""Which of the frame's two passes this is"", Float) = 0
         _FixedDt (""Fixed frame time, 0 for the real one"", Float) = 0
         _Stress (""The cost meter's load: steps only in odd phases"", Float) = 0
     }
@@ -679,18 +748,19 @@ Shader ""Hidden/AvatarBridge/JellyStep""
 
             #include ""JellyCommon.cginc""
 
-            float _Stiff, _Hz, _Damp, _Passes, _Hand, _FixedDt, _Stress;
-            float4 _CVR_PlayerLeftHandPositions[255];
-            float4 _CVR_PlayerRightHandPositions[255];
-            float4 _CVR_PlayerChestPositions[255];
-            float4 _CVR_PlayerRootPositions[255];
-            float4 CVRGlobalParams1;
+            Texture2D<float4> _Near;
+            float _Stiff, _Hz, _Pass, _FixedDt, _Stress;
 
             float4 frag(v2f_img i) : SV_Target
             {
                 int2 px = int2(i.pos.xy);
+                float4 here = _MainTex.Load(int3(px, 0));
                 // The cost meter's load rests in even phases, as cheap as a pass can be.
-                if (_Stress > 0 && fmod(floor(_Time.y / Window), 2) < 0.5) return _MainTex.Load(int3(px, 0));
+                if (_Stress > 0 && fmod(floor(_Time.y / Window), 2) < 0.5) return here;
+                float dt = _FixedDt > 0 ? _FixedDt : clamp(unity_DeltaTime.x, 1.0 / 240, 1.0 / 30);
+                int passes = dt > 1.0 / 72 ? 2 : 1;
+                if (_Pass >= passes) return here;
+                float h = dt / passes;
                 int half_ = px.x / Row;
                 int p = px.x % Row + px.y * Row;
                 int3 n = Count();
@@ -702,14 +772,14 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 if (!(scale > 1e-6)) return half_ == 0 ? float4(0, 0, 0, -1) : 0;
                 float3 home = mul(m, float4(Rest(l), 1)).xyz;
                 float4 s = _MainTex.Load(Texel(p, 0));
-                float4 u = _MainTex.Load(Texel(p, 1));
+                float4 was = _MainTex.Load(Texel(p, 1));
                 // A fresh texture, a new copy of the avatar, garbage, or a teleport: start at rest.
-                bool fresh = !(u.w == 1) || !(abs(s.x) + abs(s.y) + abs(s.z) + abs(u.x) + abs(u.y) + abs(u.z) < 1e6)
+                bool fresh = !(was.w > 0 && was.w < 0.1) || !(abs(s.x) + abs(s.y) + abs(s.z) + abs(was.x) + abs(was.y) + abs(was.z) < 1e6)
                     || !(distance(s.xyz, home) < 1);
-                if (fresh) return half_ == 0 ? float4(home, _Time.y) : float4(0, 0, 0, 1);
+                if (fresh) return float4(home, half_ == 0 ? _Time.y : h);
+                // The right half only moves along, so half the texture does next to no work.
+                if (half_ == 1) return float4(s.xyz, h);
 
-                float h = (_FixedDt > 0 ? _FixedDt : clamp(unity_DeltaTime.x, 1.0 / 240, 1.0 / 30)) / max(_Passes, 1);
-                float3 x = s.xyz;
                 float3 ahead = Ahead(l, m, h);
                 float3 next = ahead;
                 if (l.z > 0)
@@ -718,36 +788,29 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     float3 c, rc;
                     float4 q = Fit(l, m, scale, h, c, rc);
                     float3 goal = mul(Turn(q), (Rest(l) - rc) * scale) + c;
-                    next = lerp(ahead, goal, _Stiff);
+                    // _Stiff is the pull over a 180th of a second, so the tissue feels the same
+                    // whether a frame takes one pass or two.
+                    next = lerp(ahead, goal, 1 - pow(1 - _Stiff, h * 180));
                     // And the whole of it toward its rest on the anchor, as a spring of _Hz: the
                     // neighbourhoods alone keep the shape near each particle but let a block 16
                     // across fold under its own weight, 42 cm at the front.
                     float spring = 6.2831853 * _Hz * h;
                     next = lerp(next, home, min(spring * spring, 1));
 
-                    // Every player's hands, as the squash reads them: from the wrist, away from that
-                    // player's chest, a ninth of their viewpoint height. Last, so a loop cut short
-                    // by Shader Filtering only loses hands.
-                    int hands = 2 * min((int) round(CVRGlobalParams1.y), 64);
-                    [loop] for (int e = 0; e < hands; e++)
+                    // The hands the near pass found in reach, each from the wrist to its tip with a
+                    // radius. Unrolled, so Shader Filtering leaves it whole.
+                    [unroll] for (int e = 0; e < 8; e++)
                     {
-                        int who = e >> 1;
-                        float3 wrist = (e & 1) == 0 ? _CVR_PlayerLeftHandPositions[who].xyz : _CVR_PlayerRightHandPositions[who].xyz;
-                        if (dot(wrist, wrist) < 1e-6) continue;
-                        float tall = _CVR_PlayerRootPositions[who].w;
-                        tall = tall > 0.1 ? tall : 1.6;
-                        float r = _Hand * tall / 1.6;
-                        float3 arm = wrist - _CVR_PlayerChestPositions[who].xyz;
-                        float3 tip = wrist + (dot(arm, arm) > 1e-6 ? normalize(arm) : 0) * max(0.11 * tall - r, 0);
-                        float3 seg = tip - wrist;
-                        float3 closest = wrist + seg * saturate(dot(next - wrist, seg) / max(dot(seg, seg), 1e-9));
+                        float4 a = _Near.Load(int3(2 * e, 0, 0)), b = _Near.Load(int3(2 * e + 1, 0, 0));
+                        if (!(b.w > 0.5)) continue;
+                        float3 seg = b.xyz - a.xyz;
+                        float3 closest = a.xyz + seg * saturate(dot(next - a.xyz, seg) / max(dot(seg, seg), 1e-9));
                         float3 off = next - closest;
                         float d2 = dot(off, off);
-                        if (d2 < r * r && d2 > 1e-12) next = closest + off * (r * rsqrt(d2));
+                        if (d2 < a.w * a.w && d2 > 1e-12) next = closest + off * (a.w * rsqrt(d2));
                     }
                 }
-                if (half_ == 0) return float4(next, _Time.y);
-                return float4((next - x) / h * exp(-_Damp * h), 1);
+                return float4(next, _Time.y);
             }
             ENDCG
         }
@@ -763,10 +826,14 @@ Shader ""Hidden/AvatarBridge/JellyStep""
 Texture2D<float4> _MainTex;
 float4 _Lattice;
 float4x4 _JellyAnchor[1];
+float _Damp;
 
 static const int Row = 64;
 static const float Window = 5;
 static const float3 Gravity = float3(0, -9.81, 0);
+// The rigid fit's rotation steps. Each starts from the anchor's turn, which a neighbourhood's own
+// is never far from, so three land where six did.
+static const int Turns = 3;
 
 int3 Count() { return int3(_Lattice.xyz); }
 int Index(int3 l) { int3 n = Count(); return (l.z * n.y + l.y) * n.x + l.x; }
@@ -775,12 +842,14 @@ int3 Texel(int p, int half_) { return int3(p % Row + half_ * Row, p / Row, 0); }
 float3 Rest(int3 l) { int3 n = Count(); return float3(l.x - 0.5 * (n.x - 1), l.y - 0.5 * (n.y - 1), l.z) * _Lattice.w; }
 
 // Where particle l would go h on with nothing pulling it, where it is at h 0; the back face rides
-// the anchor.
+// the anchor. Its velocity is read off where it was a pass before, over the h that pass took.
 float3 Ahead(int3 l, float4x4 m, float h)
 {
     if (l.z == 0) return mul(m, float4(Rest(l), 1)).xyz;
     int p = Index(l);
-    return _MainTex.Load(Texel(p, 0)).xyz + _MainTex.Load(Texel(p, 1)).xyz * h + Gravity * h * h;
+    float4 x = _MainTex.Load(Texel(p, 0)), was = _MainTex.Load(Texel(p, 1));
+    float3 v = (x.xyz - was.xyz) / max(was.w, 1e-4) * exp(-_Damp * was.w);
+    return x.xyz + v * h + Gravity * h * h;
 }
 
 float4 Mul(float4 a, float4 b) { return float4(a.w * b.xyz + b.w * a.xyz + cross(a.xyz, b.xyz), a.w * b.w - dot(a.xyz, b.xyz)); }
@@ -806,11 +875,13 @@ float4 Quat(float3x3 m)
 
 // The best rigid fit of l's 3x3x3 neighbourhood, from where each of them is headed h on: its
 // rotation (Mueller and others, 2016, started from the anchor's), its centre and its rest centre.
+// One sweep, each neighbour read once: the sums are taken about l's own place, so they keep their
+// digits, and the spread about the centre comes off the end.
 float4 Fit(int3 l, float4x4 m, float scale, float h, out float3 c, out float3 rc)
 {
     int3 n = Count();
-    c = 0;
-    rc = 0;
+    float3 o0 = Ahead(l, m, h), r0 = Rest(l), sd = 0, sr = 0;
+    float3x3 a = 0;
     float k = 0;
     [unroll] for (int dz = -1; dz <= 1; dz++)
     [unroll] for (int dy = -1; dy <= 1; dy++)
@@ -818,24 +889,17 @@ float4 Fit(int3 l, float4x4 m, float scale, float h, out float3 c, out float3 rc
     {
         int3 o = l + int3(dx, dy, dz);
         if (any(o < 0) || any(o >= n)) continue;
-        c += Ahead(o, m, h);
-        rc += Rest(o);
+        float3 d = Ahead(o, m, h) - o0, r = Rest(o) - r0;
+        sd += d;
+        sr += r;
+        a += float3x3(d.x * r, d.y * r, d.z * r);
         k += 1;
     }
-    c /= k;
-    rc /= k;
-    float3x3 a = 0;
-    [unroll] for (int ez = -1; ez <= 1; ez++)
-    [unroll] for (int ey = -1; ey <= 1; ey++)
-    [unroll] for (int ex = -1; ex <= 1; ex++)
-    {
-        int3 o = l + int3(ex, ey, ez);
-        if (any(o < 0) || any(o >= n)) continue;
-        float3 d = Ahead(o, m, h) - c, r = Rest(o) - rc;
-        a += float3x3(d.x * r, d.y * r, d.z * r);
-    }
+    c = o0 + sd / k;
+    rc = r0 + sr / k;
+    a -= float3x3(sd.x * sr, sd.y * sr, sd.z * sr) / k;
     float4 q = Quat((float3x3) m / scale);
-    [unroll] for (int it = 0; it < 6; it++)
+    [unroll] for (int it = 0; it < Turns; it++)
     {
         float3x3 t = Turn(q);
         float3 t0 = float3(t[0][0], t[1][0], t[2][0]), t1 = float3(t[0][1], t[1][1], t[2][1]), t2 = float3(t[0][2], t[1][2], t[2][2]);
@@ -1051,6 +1115,82 @@ Shader ""AvatarBridge/Jelly Meter""
 }
 ";
 
+        const string NearShader = @"// The jelly spike's near pass. Written by JellySpikeBuilder; edits here are overwritten.
+//
+// Once a frame, before the steps: which hands could touch the tissue. Eight slots of two texels,
+// (wrist, radius) then (tip, 1), an empty slot all 0. Each slot looks through every player's hands
+// and keeps the one it is due, so the step reads eight however many players there are.
+Shader ""Hidden/AvatarBridge/JellyNear""
+{
+    Properties
+    {
+        _MainTex (""Unread; a blit needs a source"", 2D) = ""black"" {}
+        _Lattice (""Particles across, up and deep; spacing in metres"", Vector) = (16, 12, 16, 0.0133)
+        _Hand (""Hand radius at a 1.6 m viewpoint"", Float) = 0.05
+    }
+    SubShader
+    {
+        Cull Off ZWrite Off ZTest Always
+        Pass
+        {
+            CGPROGRAM
+            #pragma vertex vert_img
+            #pragma fragment frag
+            #pragma target 4.5
+            #include ""UnityCG.cginc""
+            #include ""JellyCommon.cginc""
+
+            float _Hand;
+            float4 _CVR_PlayerLeftHandPositions[255];
+            float4 _CVR_PlayerRightHandPositions[255];
+            float4 _CVR_PlayerChestPositions[255];
+            float4 _CVR_PlayerRootPositions[255];
+            float4 CVRGlobalParams1;
+
+            float4 frag(v2f_img i) : SV_Target
+            {
+                int x = int(i.pos.x), slot = x >> 1;
+                float4x4 m = _JellyAnchor[0];
+                float scale = length(m._m00_m10_m20);
+                if (!(scale > 1e-6)) return 0;
+                int3 n = Count();
+                // A sphere round the lattice at rest, with room for it to bulge.
+                float3 centre = mul(m, float4(0, 0, 0.5 * (n.z - 1) * _Lattice.w, 1)).xyz;
+                float reach = (0.5 * length(float3(n - 1)) * _Lattice.w + 0.05) * scale;
+                int players = min((int) round(CVRGlobalParams1.y), 64);
+                int found = 0;
+                float4 kept = 0;
+                // Every player's hands as the squash reads them: from the wrist, away from that
+                // player's chest, a ninth of their viewpoint height. Unrolled over 64 players, so
+                // Shader Filtering leaves it whole.
+                [unroll] for (int e = 0; e < 128; e++)
+                {
+                    int who = e >> 1;
+                    float3 wrist = (e & 1) == 0 ? _CVR_PlayerLeftHandPositions[who].xyz : _CVR_PlayerRightHandPositions[who].xyz;
+                    if (who >= players || dot(wrist, wrist) < 1e-6) continue;
+                    float tall = _CVR_PlayerRootPositions[who].w;
+                    tall = tall > 0.1 ? tall : 1.6;
+                    float r = _Hand * tall / 1.6;
+                    float3 arm = wrist - _CVR_PlayerChestPositions[who].xyz;
+                    float3 tip = wrist + (dot(arm, arm) > 1e-6 ? normalize(arm) : 0) * max(0.11 * tall - r, 0);
+                    float3 seg = tip - wrist;
+                    float3 closest = wrist + seg * saturate(dot(centre - wrist, seg) / max(dot(seg, seg), 1e-9));
+                    if (distance(centre, closest) > reach + r) continue;
+                    // ponytail: eight hands at most, the first in player order; a crowd round one
+                    // jelly needs more slots.
+                    // Kept, not returned: a return inside the unrolled loop fails D3D11's validation.
+                    if (found == slot) kept = (x & 1) == 0 ? float4(wrist, r) : float4(tip, 1);
+                    found++;
+                }
+                return kept;
+            }
+            ENDCG
+        }
+    }
+    Fallback Off
+}
+";
+
         const string DrawShader = @"// The jelly spike's surface. Written by JellySpikeBuilder; edits here are overwritten.
 //
 // Every vertex goes where its particle is. Pink while the tissue steps; red once it has not
@@ -1136,7 +1276,9 @@ Shader ""AvatarBridge/Jelly Spike""
 Does a soft body run on a ChilloutVR avatar, stepped every frame on the GPU, and what does it cost?
 
 A block of jelly about 20 cm across hangs in front of the chest. Its 3072 particles live in a
-render texture that two blitters step every frame; nothing is baked and nothing is synced. It
+render texture that blitters step every frame, into a twin and back; nothing is baked and nothing
+is synced. A near pass first picks out the hands in reach, eight at most, so a full instance costs
+no more than an empty one. Above 72 fps one pass a frame steps, below it two. It
 should sag a little, wobble when you turn or bounce, and dent and jiggle when any hand pokes it,
 yours or another player's.
 
@@ -1159,9 +1301,8 @@ Before uploading, `Jelly_Preview.unity` shows it in the editor: open it and pres
 
 The meter above it has four rows: white, your frame time in ms; green, the average over the last
 five seconds with the load off; red, the five before or after with it on; yellow, what one pass of
-the step's own work costs, the difference over the load's 32 passes (the copy every blitter run
-pays comes on top, 0.018 ms on an RTX 4080). The jelly runs two passes a frame. The
-load only says something with the frame rate uncapped, on desktop: under VR or vsync the frame
+the step's own work costs, the difference over the load's 32 passes. The load steps in place, so
+each of its runs also pays a copy back the jelly's own passes do not. The load only says something with the frame rate uncapped, on desktop: under VR or vsync the frame
 time sits at the cap whatever the work. A yellow near zero on a CPU-bound frame means the GPU did
 the work in time it was waiting anyway: no cost to that frame.
 
