@@ -70,14 +70,14 @@ namespace AvatarBridge.Regression
         public static void Build() => EditorApplication.Exit(Make() != null ? 0 : 1);
 
         [MenuItem("Tools/AvatarBridge Dev/Jelly spike: add to the selected avatar")]
-        static void AddToSelected() => Add(meter: false);
+        static void AddToSelected() => Add(withMeter: false);
 
         // The meter's load costs 32 passes every other half second, far more than the jelly, so it
         // goes on only when asked for.
         [MenuItem("Tools/AvatarBridge Dev/Jelly spike: add with the cost meter")]
-        static void AddWithMeter() => Add(meter: true);
+        static void AddWithMeter() => Add(withMeter: true);
 
-        static void Add(bool meter)
+        static void Add(bool withMeter)
         {
             var avatar = Selection.activeGameObject;
             var animator = avatar != null ? avatar.GetComponentInChildren<Animator>() : null;
@@ -91,7 +91,7 @@ namespace AvatarBridge.Regression
             }
             // Rebuilt without the preview scene, which would replace the open one, and any earlier one
             // on the avatar taken off, so the avatar always carries the newest.
-            var prefab = Make(preview: false, meter: meter);
+            var prefab = Make(preview: false, withMeter: withMeter);
             if (prefab == null) return;
             // Every earlier one goes, on any avatar in any open scene: each build makes the assets anew,
             // so an older copy points at deleted materials and draws magenta. An instance is named
@@ -113,7 +113,7 @@ namespace AvatarBridge.Regression
             Debug.Log($"[Jelly] added under {chest.name}, {0.35f * tall / 1.5f:0.00} m in front, scaled for a {tall:0.00} m head height; {stale.Count} earlier one(s) taken off");
         }
 
-        static GameObject Make(bool preview = true, bool meter = true)
+        static GameObject Make(bool preview = true, bool withMeter = true)
         {
             if (!AssetDatabase.IsValidFolder(Folder)) AssetDatabase.CreateFolder("Assets", Path.GetFileName(Folder));
             File.WriteAllText(Folder + "/JellyCommon.cginc", CommonInclude);
@@ -214,7 +214,7 @@ namespace AvatarBridge.Regression
             pointer.destinationTextures = new RenderTexture[0];
             controller.cvrRenderComponents.Add(pointer);
 
-            if (meter)
+            if (withMeter)
             {
                 // The cost meter: its clock, and the load, which steps a lattice nobody draws in the odd
                 // phases and leaves it be in the even ones.
