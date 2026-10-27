@@ -1038,17 +1038,18 @@ Shader ""Hidden/AvatarBridge/JellyClock""
                 {
                     if (turned) return float4(0, 0, phase, t);
                     // The first tenth of a second of a phase is left out: the GPU runs a frame or two
-                    // behind, so the switch shows in the frame time late.
-                    return t - b.w > 0.1 ? float4(b.x + ms, b.y + 1, b.z, b.w) : b;
+                    // behind, so the switch shows in the frame time late. So is a hitch, a frame half
+                    // as long again as the usual, which says nothing about the load.
+                    return t - b.w > 0.1 && ms < 1.5 * a.x ? float4(b.x + ms, b.y + 1, b.z, b.w) : b;
                 }
                 if (fresh) return 0;
                 if (turned && b.y > 2)
                 {
                     float mean = b.x / b.y;
-                    // Each a running mean over about four phases, so it moves every half second
-                    // without jumping at every hitch.
-                    return fmod(b.z, 2) < 0.5 ? float4(c.z > 0 ? lerp(c.x, mean, 0.25) : mean, c.y, 1, c.w)
-                                              : float4(c.x, c.w > 0 ? lerp(c.y, mean, 0.25) : mean, c.z, 1);
+                    // Each a running mean over about ten phases, so it moves every half second and
+                    // settles over five.
+                    return fmod(b.z, 2) < 0.5 ? float4(c.z > 0 ? lerp(c.x, mean, 0.1) : mean, c.y, 1, c.w)
+                                              : float4(c.x, c.w > 0 ? lerp(c.y, mean, 0.1) : mean, c.z, 1);
                 }
                 return c;
             }
@@ -1345,7 +1346,8 @@ The meter above it has four rows: white, your frame time in ms; green, its avera
 off; red, with it on; the load switching every half second; yellow, what one pass of
 the step's own work costs, the difference over the load's 32 passes. The load steps in place, so
 each of its runs also pays a copy back the jelly's own passes do not. The load only says something with the frame rate uncapped, on desktop: under VR or vsync the frame
-time sits at the cap whatever the work. A yellow near zero on a CPU-bound frame means the GPU did
+time sits at the cap whatever the work. The load itself costs 32 passes every other half second,
+so it, not the jelly, is most of the frame rate a viewer loses with the meter running. A yellow near zero on a CPU-bound frame means the GPU did
 the work in time it was waiting anyway: no cost to that frame.
 
 A plain yellow cube sits on the front. Its shader knows nothing of the tissue: a texture parser
