@@ -45,7 +45,9 @@ namespace AvatarBridge.Regression
     [InitializeOnLoad]
     public static class JellySpikeBuilder
     {
-        const string Folder = "Assets/AvatarBridge_Jelly";
+        // A new folder from 2026-10-27: an editor that rebuilt the old one by delete and remake
+        // could no longer load its materials at all, so its assets start again under new GUIDs.
+        const string Folder = "Assets/AvatarBridge_JellySpike";
         const string Prefab = Folder + "/Jelly_Spike.prefab";
         const string Scene = Folder + "/Jelly_Preview.unity";
         const string K = "JellySpike.";
@@ -106,7 +108,7 @@ namespace AvatarBridge.Regression
 
         static GameObject Make(bool preview = true)
         {
-            if (!AssetDatabase.IsValidFolder(Folder)) AssetDatabase.CreateFolder("Assets", "AvatarBridge_Jelly");
+            if (!AssetDatabase.IsValidFolder(Folder)) AssetDatabase.CreateFolder("Assets", Path.GetFileName(Folder));
             File.WriteAllText(Folder + "/JellyCommon.cginc", CommonInclude);
             File.WriteAllText(Folder + "/JellyStep.shader", StepShader);
             File.WriteAllText(Folder + "/JellyPoints.shader", PointsShader);
