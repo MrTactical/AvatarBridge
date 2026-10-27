@@ -84,8 +84,14 @@ namespace AvatarBridge.Regression
             // on the avatar taken off, so the avatar always carries the newest.
             var prefab = Make(preview: false);
             if (prefab == null) return;
-            foreach (var old in avatar.GetComponentsInChildren<Transform>(true).Where(t => t.name == "Jelly Spike").ToList())
-                Undo.DestroyObjectImmediate(old.gameObject);
+            // Every earlier one goes, on any avatar in any open scene: each build makes the assets anew,
+            // so an older copy points at deleted materials and draws magenta. An instance is named
+            // after the prefab's file, Jelly_Spike; older builds left Jelly Spike.
+            var stale = Enumerable.Range(0, EditorSceneManager.sceneCount).Select(EditorSceneManager.GetSceneAt).Where(s => s.isLoaded)
+                .SelectMany(s => s.GetRootGameObjects()).SelectMany(g => g.GetComponentsInChildren<Transform>(true))
+                .Where(t => t.name == prefab.name || t.name == "Jelly Spike").Select(t => t.gameObject).ToList();
+            foreach (var old in stale)
+                if (old != null) Undo.DestroyObjectImmediate(old);
             var root = avatar.transform;
             var head = animator.GetBoneTransform(HumanBodyBones.Head);
             // Sized and placed for the avatar's height, so it hangs clear of the chest on anyone.
@@ -95,7 +101,7 @@ namespace AvatarBridge.Regression
             made.transform.localScale = Vector3.one * (tall / 1.5f / Mathf.Max(chest.lossyScale.x, 1e-6f));
             Undo.RegisterCreatedObjectUndo(made, "Add the jelly spike");
             Selection.activeGameObject = made;
-            Debug.Log($"[Jelly] added under {chest.name}, {0.35f * tall / 1.5f:0.00} m in front, scaled for a {tall:0.00} m head height");
+            Debug.Log($"[Jelly] added under {chest.name}, {0.35f * tall / 1.5f:0.00} m in front, scaled for a {tall:0.00} m head height; {stale.Count} earlier one(s) taken off");
         }
 
         static GameObject Make(bool preview = true)
@@ -402,11 +408,34 @@ namespace AvatarBridge.Regression
             return mesh;
         }
 
+        // Kept where it already exists, its values brought up to date in place: an asset deleted and
+        // made again at the same path in one session leaves the scene's jelly pointing at a dead
+        // object (Missing), and copying a whole new object over it does the same.
         static T Save<T>(T asset, string file) where T : Object
         {
-            AssetDatabase.DeleteAsset(Folder + file);
-            AssetDatabase.CreateAsset(asset, Folder + file);
-            return AssetDatabase.LoadAssetAtPath<T>(Folder + file);
+            var old = AssetDatabase.LoadAssetAtPath<T>(Folder + file);
+            if (old == null)
+            {
+                AssetDatabase.DeleteAsset(Folder + file);
+                AssetDatabase.CreateAsset(asset, Folder + file);
+                return AssetDatabase.LoadAssetAtPath<T>(Folder + file);
+            }
+            if (old is Material m && asset is Material fresh)
+            {
+                m.shader = fresh.shader;
+                m.CopyPropertiesFromMaterial(fresh);
+                EditorUtility.SetDirty(m);
+            }
+            if (old is RenderTexture rt && asset is RenderTexture want && (rt.width != want.width || rt.height != want.height || rt.format != want.format))
+            {
+                rt.Release();
+                rt.width = want.width;
+                rt.height = want.height;
+                rt.format = want.format;
+                EditorUtility.SetDirty(rt);
+            }
+            // ponytail: the surface mesh is kept as it is; it only changes with the lattice's size.
+            return old;
         }
 
         static string Out()
@@ -630,6 +659,9 @@ namespace AvatarBridge.Regression
                 EditorApplication.Exit(1);
                 return;
             }
+            // Built again in the same session, as the menu item does on every add: the scene's jelly must
+            // still reach every asset after it.
+            Make(preview: false);
             SessionState.SetString(K + "out", Out());
             SessionState.SetInt(K + "on", 1);
             EditorSceneManager.OpenScene(Scene, OpenSceneMode.Single);
@@ -697,6 +729,10 @@ namespace AvatarBridge.Regression
             var clockNow = Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_Clock.renderTexture"));
             said += $"; the meter's clock: {clockNow[0].x:0.00} ms now, last phases off {clockNow[2].x:0.00} and on {clockNow[2].y:0.00} ({clockNow[2].z:0}/{clockNow[2].w:0})";
             ok &= Mathf.Abs(clockNow[0].x - 1000f / 90f) < 0.5f;
+            int dead = jelly.GetComponentsInChildren<Renderer>(true).Count(r => r.sharedMaterial == null)
+                + jelly.GetComponentsInChildren<CVRBlitter>(true).Count(b => b.blitMaterial == null || b.originTexture == null || b.destinationTexture == null);
+            ok &= dead == 0;
+            said += $"; built twice, {dead} missing references";
             said += $"; the rider's texels: at {100f * read.x:0.0}/{100f * read.y:0.0}/{100f * read.z:0.0} cm against the front centre's " +
                     $"{100f * frontAt.x:0.0}/{100f * frontAt.y:0.0}/{100f * frontAt.z:0.0}, turned {turn.x:0.0}/{turn.y:0.0}/{turn.z:0.0} degrees";
             if (verifyShots.Count > 0)
