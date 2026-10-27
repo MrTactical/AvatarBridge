@@ -672,7 +672,9 @@ void YapsSoftMove(float2 row, inout float3 world, inout float3 n, bool hasNormal
             for (int i = 0; i < 5; i++)
             {
                 float c = max(dot(w, dirs[j + i]), 0);
-                float press = ext[j + i] + cr - dot(to, dirs[j + i]);
+                // A way leaning off the hand reads its plane, which a round hand crosses before
+                // it touches: capped by the true contact, the press starts at nothing.
+                float press = min(ext[j + i] + cr - dot(to, dirs[j + i]), inside / max(c, 1e-3));
                 if (press > 0) amount[j + i] = max(amount[j + i], c * c * press * scale);
             }
         }

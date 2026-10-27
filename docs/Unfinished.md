@@ -1505,8 +1505,26 @@ tenth of a radius off, over a fifth either side, the normal turning to the capsu
 press: out and front 1.77 to 1.44 cm rms, the worst vertex 2.8 to 2.1 outside, 2.9 to 2.2 in the
 squeeze, 3.0 to 2.1 from above, 4.9 to 4.3 both lifted.
 
+**No jump at the first touch.** The side-by-side film showed the whole pair jump in the one frame a
+hand first touched it on a slant (out and front, both lifted from below): each way read the hand
+against its own flat plane, which a round hand crosses before it reaches the skin, so a way leaning
+off the hand started at a sizeable press. Each way's press is now capped by the true contact over
+its lean (`inside / c`), so it starts at nothing; a hand straight along a way reads as before.
+Measured [M] (frame-to-frame change, the shader's column against the solved one): the six contact
+jumps of 2.6 to 3.0 went to 0.2 to 0.4, the solved tissue's own 0.3; closer on the slanted presses,
+out and front 1.44 to 1.31 cm rms, held high 0.99 to 0.95, both lifted 1.81 to 1.40 (worst 4.3 to
+3.3); the straight presses unchanged. A one-frame blip of about 1.0 at each release is in the old
+film too and moves the hair as much as the pair, so it is not the squash.
+
+**Seen in the film, open.** Clothing over the pair: under an outside press the lower outer rim of
+the clothing pokes out past the hand (before the push-out as well); from outside and in front the
+hand shows through it; creases near the hand from below and from above; a ragged edge with both
+lifted. Likely the clothing standing more than 3 cm off the skin, which fades off the tissue and
+so neither follows it nor gets eased out of the hand in full. Not yet measured.
+
 Next:
 1. One part's answers mirrored onto the other, and the cost of starting each batch.
+2. The clothing above, measured: how far off the skin those vertices stand and what weight they ride.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 

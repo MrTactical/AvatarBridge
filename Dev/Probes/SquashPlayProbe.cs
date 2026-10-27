@@ -2039,7 +2039,7 @@ namespace AvatarBridge.Regression
                     for (int k = 0; k < 5; k++)
                     {
                         var dir = basis[5 * j + k].dir;
-                        float c = Mathf.Max(Vector3.Dot(w, dir), 0f), press = Extent(j, dir) + r - Vector3.Dot(to, dir);
+                        float c = Mathf.Max(Vector3.Dot(w, dir), 0f), press = Mathf.Min(Extent(j, dir) + r - Vector3.Dot(to, dir), (Extent(j, w) + r - dist) / Mathf.Max(c, 1e-3f));
                         if (press > 0f) amount[j, k] = Mathf.Max(amount[j, k], c * c * press);
                     }
                 }
