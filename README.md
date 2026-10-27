@@ -1704,7 +1704,8 @@ them instead of the bone names. **Build the squash** (or **Rebuild the squash**)
 them, and the banner at the top says whether the squash is built and whether strokes since need a rebuild; under **Start over**, **Remove the regions** clears them and keeps the knobs. The parts
 are measured on one skin: of the meshes carrying every part, the one weighted to the most bones, so
 the body and not a dense piece of clothing with more vertices. The painter starts on the
-same mesh, and its **Body** field picks another. Clothing follows the skin under it, within 3 cm.
+same mesh, and its **Body** field picks another. Clothing follows the skin under it, within 3 cm, and
+within 5 cm where a hand presses it.
 
 **Layers left alone.** **Materials left alone**, a fold in the first step that shows how many it holds, lists materials the squash never
 touches: they keep their own shader and stay still while the skin under them squashes, so a press
@@ -2287,7 +2288,7 @@ Bipeds are unaffected by any of it.
   nothing is built and the report says why. A layer casts its shadow unsquashed when the shadow
   comes from somewhere the conversion cannot reach, such as another shader's caster or a Fallback
   that cuts alpha; Unity's standard caster and an opaque Fallback bend with it. From painted regions, a layer more than 3 cm off the skin
-  holds still. How deep a hand dents and how two parts meet is tuned by eye: it can only be
+  holds still as the parts meet, and more than 5 cm off under a hand. How deep a hand dents and how two parts meet is tuned by eye: it can only be
   judged in ChilloutVR. An arm pushed right through the middle of a part lets it go rather than
   pushing it aside, since the shader cannot remember which side the arm came in from. The stretch
   in motion reads the swing the avatar's own physics give, so stiff physics show little of it, and

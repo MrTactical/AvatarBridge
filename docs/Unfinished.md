@@ -1539,10 +1539,15 @@ pair (+36%), the bake 15 presses in 14.6 s.
 result: lobes of the bra standing out past the hands in the squeeze while the skin under them is
 pressed in.
 
+**The clothing rides further out.** Joe: "try 1 and then 2 if 1 fails" (1: ride the skin's move
+further out; 2: the bake answering for points off the skin). A layer takes the move of the skin
+nearest it in full to 5 cm off and eases off to 6, where it was 3 to 4 as the shares are; the
+grid's cells grew to 3 cm so the two either side reach 6. The bra's farthest vertex stands 4.5 cm
+off, so all of it now rides. Seen [M]: the lobes standing out past the hands in the squeeze and
+the outside press are gone; the skin's numbers unchanged. No memory. Option 2 not needed.
+
 Next:
-1. The clothing past 3 cm: follow the tissue as far out as it stands, or ride the skin's move
-   scaled by how far off it is, so a layer bridging a gap comes in with the skin under a hand.
-2. One part's answers mirrored onto the other, and the cost of starting each batch.
+1. One part's answers mirrored onto the other, and the cost of starting each batch.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 

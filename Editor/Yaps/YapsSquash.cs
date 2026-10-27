@@ -1265,8 +1265,9 @@ namespace AvatarBridge
         // Each pair solved as tissue on the body's skin (YapsSoftBody), its answers stored in the
         // frame the shader builds from the rests: toward the second part, out of the body, across.
         // The palms are placed by the extent the shader reads, so a hand reads as pressing where
-        // the bake pressed. A layer rides the skin vertex nearest it, easing off from 3 cm off the
-        // skin to 4 as its shares do. Null when no pair gave tissue.
+        // the bake pressed. A layer rides the skin vertex nearest it, easing off from 5 cm off the
+        // skin to 6: eased off from 3 as its shares are, a cup standing out past the skin stayed
+        // where it was while the skin under a hand went in. Null when no pair gave tissue.
         static SoftBake SoftBody(Skin body, List<(SkinnedMeshRenderer smr, Texture2D own, Vector4[] shares)> shared, List<Skin> skins, List<Part> parts,
             List<Vector3> towards, List<float> units, List<float[]> reaches, List<float[]> surfaces, List<Vector3> outs, string name, string folder, List<string> log)
         {
@@ -1360,7 +1361,8 @@ namespace AvatarBridge
                     texels[(r / Rows) * width + (r % Rows) * 2 * entries + e] = table[r][e];
             bake.table = Saved(new Texture2D(width, height, TextureFormat.RGBA32, false, true), texels, folder, $"{name} soft.asset");
 
-            const float Cell = 0.02f, Near = 0.03f, Fade = 0.04f;
+            // Cells half the fade, so the two either side reach it.
+            const float Cell = 0.03f, Near = 0.05f, Fade = 0.06f;
             var grid = new Dictionary<Vector3Int, List<int>>();
             Vector3Int Key(Vector3 x) => new Vector3Int(Mathf.FloorToInt(x.x / Cell), Mathf.FloorToInt(x.y / Cell), Mathf.FloorToInt(x.z / Cell));
             for (int v = 0; v < body.at.Length; v++)
