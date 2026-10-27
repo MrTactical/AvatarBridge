@@ -1565,6 +1565,13 @@ namespace AvatarBridge.Regression
             ("One pressed deep, the other light", new[] { (0, new Vector3(1f, 0f, 0f), 0.4f), (1, new Vector3(1f, 0f, 0f), 0.15f) }),
             ("A light squeeze", new[] { (0, new Vector3(1f, 0f, 0f), 0.15f), (1, new Vector3(1f, 0f, 0f), 0.15f) }),
             ("Both lifted from below in front", new[] { (0, new Vector3(0f, -1f, 1f), 0.3f), (1, new Vector3(0f, -1f, 1f), 0.3f) }),
+            // Harder, past the depths baked: how far the answers carry on, and where they let go.
+            ("Squeezed hard together", new[] { (0, new Vector3(1f, 0f, 0f), 0.55f), (1, new Vector3(1f, 0f, 0f), 0.55f) }),
+            ("One shoved hard into the other", new[] { (0, new Vector3(1f, 0f, 0f), 0.6f) }),
+            ("A hand deep from the front", new[] { (0, new Vector3(0f, 0f, 1f), 0.5f) }),
+            ("Both pushed up hard from below", new[] { (0, new Vector3(0f, -1f, 0.3f), 0.45f), (1, new Vector3(0f, -1f, 0.3f), 0.45f) }),
+            ("Both pressed hard from the front", new[] { (0, new Vector3(0f, 0f, 1f), 0.45f), (1, new Vector3(0f, 0f, 1f), 0.45f) }),
+            ("One grabbed from above and below", new[] { (0, new Vector3(0f, 1f, 0.2f), 0.3f), (0, new Vector3(0f, -1f, 0.2f), 0.3f) }),
         };
         static readonly (string name, int kind, float amount)[] SeamOn = Reference
             ? SeamShots.Where(x => x.kind >= 4).Concat(Varied.Select((v, i) => (v.name, 6, (float) i))).ToArray()

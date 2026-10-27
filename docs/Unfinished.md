@@ -1558,9 +1558,26 @@ eases the contact in over it as over the last of a gap; a pair apart at rest rea
 0.31 to 0.23, from below 0.55 to 0.48, the squeeze 0.86 to 0.89; no new jumps. Joe: "looks right
 with A, i like it".
 
+**Jagged under a hand, part way.** Joe: the control's skin under a hand is smooth, ours "slightly
+jagged". It is the clothing: the bare skin's edge along the hand is smooth. Not the row each layer
+vertex rides [M]: the bra's move is no rougher across it (0.07 cm rms against its neighbours) than
+the skin's own (0.09). The push-out put everything inside a palm on one shell, so a layer standing
+off the skin, deep in the palm, folded there; now what is deeper keeps a tenth of its order. [M]
+outside and in front 42 to 16 flipped bra triangles, the edge along the hand smoother in the film;
+the squeeze still 35, so most of the folding is something else. Open: where those edges are.
+
+**Harder presses in the film** (Joe: "squish them harder"): squeezed hard together (0.55 of the
+reach), one shoved hard into the other (0.6), a hand deep from the front (0.5), both pushed up hard
+from below (0.45), both pressed hard from the front (0.45), one grabbed above and below (0.3).
+[M] against the solved tissue: 0.97, 0.98, 1.68 (worst 7.1), 1.15 (worst 5.8), 1.36 (worst 6.3),
+0.54 cm rms. The deep front presses fail: the hand goes through the bra, which tears round it,
+and both pushed up lift less than the tissue does.
+
 Next:
-1. One part's answers mirrored onto the other, and the cost of starting each batch.
-2. B, if pushed together hard the flat contact looks wrong in game.
+1. Deep presses past the bake: the front ones let the hand through.
+2. Where the bra's remaining folds are (35 flipped in the squeeze).
+3. One part's answers mirrored onto the other, and the cost of starting each batch.
+4. B, if pushed together hard the flat contact looks wrong in game.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 

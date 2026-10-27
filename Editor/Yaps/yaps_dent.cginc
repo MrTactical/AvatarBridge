@@ -742,7 +742,9 @@ void YapsSoftMove(float2 row, inout float3 world, inout float3 n, bool hasNormal
     // Then out of the two capsules in deepest, to a tenth of a radius off them, eased in over a
     // fifth either side. The answers come within a centimetre or two of the tissue solved under the
     // same hands, which stays a few millimetres off the palm; the rest showed through the palm, and
-    // skin pushed exactly onto it speckled where the two drew on one spot.
+    // skin pushed exactly onto it speckled where the two drew on one spot. Deeper in, each keeps a
+    // tenth of its order: all put on the one shell, a layer standing off the skin, deep in the
+    // palm, folded over itself along the hand's edge.
     [unroll]
     for (int kc = 0; kc < 2; kc++)
     {
@@ -753,7 +755,7 @@ void YapsSoftMove(float2 row, inout float3 world, inout float3 n, bool hasNormal
         float easing = 0.2 * keptR[kc];
         float past = 1.1 * keptR[kc] - gap;
         if (past <= -easing || gap < 1e-6) continue;
-        float pushed = past >= easing ? past : (past + easing) * (past + easing) / (4 * easing);
+        float pushed = past >= easing ? 0.9 * past + 0.1 * easing : (past + easing) * (past + easing) / (4 * easing);
         float follow = past >= easing ? 1 : (past + easing) / (2 * easing);
         float3 away = off / gap;
         world += away * (pushed * row.y);
