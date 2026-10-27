@@ -159,6 +159,14 @@ namespace AvatarBridge
         _YAPS_SquashTune (""YAPS squash: lying-back weight, strength, bend give, deepest dent"", Vector) = (0.25,1,0.35,0.35)
         _YAPS_SquashMotion (""YAPS squash in motion: stretch per reach, swing ignored below, longest"", Vector) = (0,0.1,1.12,0)
         _YAPS_SquashPlug (""YAPS squash plug press gain"", Range(0,2)) = 1
+        [NoScaleOffset] _YAPS_SoftRow (""YAPS soft body rows, per vertex"", 2D) = ""black"" {}
+        [NoScaleOffset] _YAPS_SoftTable (""YAPS soft body answers"", 2D) = ""black"" {}
+        _YAPS_SoftDepth (""YAPS soft body depths per pair, 0 unbaked"", Vector) = (0,0,0,0)
+        _YAPS_SoftOut (""YAPS soft body reach per part, outside"", Vector) = (0,0,0,0)
+        _YAPS_SoftIn (""YAPS soft body reach per part, the partner's side"", Vector) = (0,0,0,0)
+        _YAPS_SoftFront (""YAPS soft body reach per part, in front"", Vector) = (0,0,0,0)
+        _YAPS_SoftSideA (""YAPS soft body reach per part, across one way"", Vector) = (0,0,0,0)
+        _YAPS_SoftSideB (""YAPS soft body reach per part, across the other way"", Vector) = (0,0,0,0)
 ";
 
         // The name the patch of `original` would carry if it were made now.

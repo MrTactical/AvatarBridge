@@ -898,7 +898,7 @@ namespace AvatarBridge
 
             optIns.Add(BridgeElements.SubHeading("Soft parts"));
             optIns.Add(BridgeElements.Bind("Soft body shape: squash where parts press together",
-                "In the body shader: pressed together they flatten and meet, anyone's hand dents them, and a plug in a socket between them parts them. " +
+                "In the body shader: pressed together they flatten and meet, anyone's hand presses them as soft tissue solved when the squash is built, and a plug in a socket between them parts them. " +
                 "As the physics swing them they stretch and squash too. Found by bone name, or by regions painted with " +
                 "Tools ▸ YAPS ▸ Squash regions; tuned on the YAPS Squash component the build adds. No sync cost.",
                 settings.squashSoftParts, v => { settings.squashSoftParts = v; ScheduleRebuild(); }));

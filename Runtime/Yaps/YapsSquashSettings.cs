@@ -30,10 +30,6 @@ namespace AvatarBridge.Yaps
         public float widest = 1.5f;
         [Range(0f, 1f), Tooltip("1 keeps the volume, so it widens as it flattens. Lower lets some of it go.")]
         public float volumeKept = 1f;
-        [Range(0f, 1f), Tooltip("How far a part swings away from a press before it squashes, as a share of its reach out of the body.")]
-        public float bendGive = 0.35f;
-        [Range(0f, 1f), Tooltip("How deep a hand dents before the whole part moves, as a share of its depth.")]
-        public float deepestDent = 0.35f;
         [Range(0f, 1f), Tooltip("Lying back, how much its own weight flattens it into the body.")]
         public float lyingBack = 0.25f;
 

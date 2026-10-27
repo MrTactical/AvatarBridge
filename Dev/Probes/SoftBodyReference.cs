@@ -47,8 +47,8 @@ namespace AvatarBridge.Regression
         readonly float[] coveredRest;
         readonly List<Embedded> skins = new List<Embedded>();
         // Each kind of constraint in batches that share no particle, so a batch runs on every core
-        // at once and still solves as one pass in some order would. A cube's six tetrahedra share
-        // two corners, so they go together, one after another.
+        // at once and still solves as one pass in some order would. A cube's five tetrahedra share
+        // corners, so they go together, one after another.
         readonly int[][] edgeBatches, coveredBatches, cubeBatches;
         readonly int[] cubeTets;
 
@@ -162,9 +162,8 @@ namespace AvatarBridge.Regression
                 side.Add(s);
                 return p;
             }
-            // Kuhn's six: every order of the axes from one corner to the far one, so neighbouring
-            // cubes' faces split alike.
-            var orders = new[] { new[] { 0, 1, 2 }, new[] { 0, 2, 1 }, new[] { 1, 0, 2 }, new[] { 1, 2, 0 }, new[] { 2, 0, 1 }, new[] { 2, 1, 0 } };
+            // Five to a cube, alternating, as YapsSoftBody: its mirror image is itself, where
+            // Kuhn's six leaned on one long diagonal and gave one way more than its mirror.
             var tetList = new List<int>();
             var tetCube = new List<int>();
             for (int i = 0; i < nx; i++)
@@ -176,13 +175,16 @@ namespace AvatarBridge.Regression
                         var c = new int[8];
                         for (int b = 0; b < 8; b++) c[b] = Corner(s, i + (b & 1), j + ((b >> 1) & 1), k + ((b >> 2) & 1));
                         cubes[(i * ny + j) * nz + k] = c;
-                        foreach (var o in orders)
+                        int parity = (i + j + k) & 1;
+                        var middle = new List<int>();
+                        for (int b = 0; b < 8; b++)
                         {
-                            int at = 0;
+                            if ((((b & 1) + ((b >> 1) & 1) + ((b >> 2) & 1)) & 1) == parity) { middle.Add(c[b]); continue; }
                             tetCube.Add(cubes.Count);
-                            tetList.Add(c[at]);
-                            for (int q = 0; q < 3; q++) { at |= 1 << o[q]; tetList.Add(c[at]); }
+                            tetList.AddRange(new[] { c[b], c[b ^ 1], c[b ^ 2], c[b ^ 4] });
                         }
+                        tetCube.Add(cubes.Count);
+                        tetList.AddRange(middle);
                     }
             int n = start.Count;
             x = start.ToArray();
@@ -207,11 +209,11 @@ namespace AvatarBridge.Regression
             edges = edgeList.ToArray();
             edgeRest = new float[edges.Length / 2];
             for (int e = 0; e < edgeRest.Length; e++) edgeRest[e] = (x[edges[2 * e]] - x[edges[2 * e + 1]]).magnitude;
-            var degree = new int[n];
-            foreach (int p in edges) degree[p]++;
-            // A corner inside the tissue has fourteen neighbours: six along the axes, six across
-            // the faces, two through the cube.
-            surface = degree.Select(d => d < 14).ToArray();
+            // A corner inside the tissue is a corner of eight cubes.
+            var around = new int[n];
+            foreach (var cc in cubes.Values)
+                foreach (int p in cc) around[p]++;
+            surface = around.Select(d => d < 8).ToArray();
 
             // Held: behind the plane its part meets the body in, near skin that is no part's, or at
             // the box's walls.
@@ -365,7 +367,7 @@ namespace AvatarBridge.Regression
                 for (int i = 0; i < count; i++) body(items == null ? i : items[i]);
                 return;
             }
-            // Small chunks: a cube is six tetrahedra, and chunked as a light item is, its batches ran
+            // Small chunks: a cube is five tetrahedra, and chunked as a light item is, its batches ran
             // on two cores.
             int chunks = Mathf.Min(4 * System.Environment.ProcessorCount, count / 32);
             System.Threading.Tasks.Parallel.For(0, chunks, c =>

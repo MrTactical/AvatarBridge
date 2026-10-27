@@ -105,6 +105,25 @@ float4 _YAPS_SquashHands;   // x own arms' press gain, y other players' hand rad
 float4 _YAPS_SquashTune;    // x lying-back weight, as a share of the reach out; y strength of every press; z bend give, as a share of the reach out; w deepest dent, as a share of the reach toward the hand
 float4 _YAPS_SquashMotion;  // x stretch per reach of swing, y swing ignored below this share of the reach, z longest stretch, w unused
 float _YAPS_SquashPlug;     // a plug's press gain
+// The pair as soft tissue, solved at the build (YapsSoftBody.cs). Per renderer, laid out as
+// _YAPS_DentOwn, sixteen bits a number: in r each vertex's row in the table plus one, 0 for none;
+// in g the top bit set for the second pair, and below it how much of the row the vertex takes, a
+// layer easing off it as it stands off the skin.
+Texture2D _YAPS_SoftRow;
+// YAPS_SOFT_ENTRIES pairs of texels a row, YAPS_SOFT_ROWS rows to a line: for each press and
+// depth, the vertex's move in the pair's frame (the first part's toward, out and across), in bytes
+// about 127 scaled by a's share of the first part's reach, then its normal's turn the same way.
+Texture2D _YAPS_SoftTable;
+#define YAPS_SOFT_ENTRIES 22
+#define YAPS_SOFT_ROWS 32
+float4 _YAPS_SoftDepth;   // the depths pressed to, the first part's follow units: pair 0 in x and y, pair 1 in z and w; 0 unbaked
+// How far each part's skin reaches where each palm pressed it, its follow units: outside, on the
+// partner's side, in front, and along the first part's across either way.
+float4 _YAPS_SoftOut;
+float4 _YAPS_SoftIn;
+float4 _YAPS_SoftFront;
+float4 _YAPS_SoftSideA;
+float4 _YAPS_SoftSideB;
 float4 _CVR_PlayerLeftHandPositions[255];
 float4 _CVR_PlayerRightHandPositions[255];
 float4 _CVR_PlayerChestPositions[255];
@@ -404,6 +423,108 @@ void YapsMerge(inout float3 v, inout float r, float3 v2, float r2)
     r = (r * wa + r2 * wb) / max(wa + wb, 1e-36);
 }
 
+// How many presses each source gives pair k: both own arms' bones, every player's hands, and a
+// plug in the socket between the pair.
+void YapsSources(int k, out int arms, out int hands, out int plugs)
+{
+    arms = _YAPS_SquashPush.w > 0 && _YAPS_SquashHands.x > 0 ? 6 : 0;
+    // Every player's hands, the wearer's among them, which the arms above already are: a
+    // hand by either own hand is skipped. Capped at 64 players for cost.
+    hands = _YAPS_SquashHands.z > 0 && _YAPS_SquashHands.y > 0 ? 2 * min((int) round(CVRGlobalParams1.y), 64) : 0;
+    plugs = _YAPS_SquashPlug > 0 && YapsUnit(18 + k) > 0 ? 4 : 0;
+}
+
+// Press s of those: a capsule from a to b of radius r, pressing by scale, and with a finger out a
+// thinner one from fa to fb of radius rf; into is the arm it belongs to, 3 for any other. False
+// when it is absent, or too far from c to press: near past c, a hand's length and its radius.
+// ownL and ownR are the own hands, at the socket between the pair.
+bool YapsSource(int s, int arms, int hands, float3 c, float near, float3 ownL, float3 ownR, float3 at,
+    out float3 a, out float3 b, out float r, out float scale, out bool finger, out float3 fa, out float3 fb, out float rf, out int into)
+{
+    a = 0;
+    b = 0;
+    r = 0;
+    scale = 0;
+    finger = false;
+    fa = 0;
+    fb = 0;
+    rf = 0;
+    into = 3;
+    if (s < arms)
+    {
+        uint k = s;
+        uint slot = 8 + (k / 3) * 4 + k % 3;
+        if (YapsUnit(slot) <= 0 || YapsUnit(slot + 1) <= 0) return false;
+        a = YapsSlot(slot);
+        b = YapsSlot(slot + 1);
+        r = YapsLimb(k);
+        scale = _YAPS_SquashHands.x;
+        into = k / 3;
+    }
+    else if (s < arms + hands)
+    {
+        // The globals carry only the wrist, a palm's length out from the skin while the palm is
+        // on it, so a ball there never reached the part: the hand runs on from it, away from that
+        // player's chest, for a ninth of their viewpoint height.
+        // The gesture rides in each hand's w, the numbers an avatar's GestureLeft reads: -1 open,
+        // 0 to 1 a fist closing, 2 thumbs up, 3 finger gun, 4 point, 5 victory, 6 rock and roll.
+        // A fist ends at the knuckles; a finger out runs on, thin, to where the fingertips are.
+        // Which way the palm faces is not carried, so two fingers out are one thicker one.
+        // ponytail: the line from the chest stands in for the forearm, which the globals do not carry.
+        int i = (s - arms) >> 1;
+        float tall = _CVR_PlayerRootPositions[i].w;
+        tall = tall > 0.1 ? tall : 1.6;
+        r = _YAPS_SquashHands.y * tall / 1.6;
+        float mine = 2.25 * r * r;
+        float3 chest = _CVR_PlayerChestPositions[i].xyz;
+        float4 hand = ((s - arms) & 1) == 0 ? _CVR_PlayerLeftHandPositions[i] : _CVR_PlayerRightHandPositions[i];
+        float3 h = hand.xyz;
+        float g = hand.w;
+        // Most hands in a full room are nowhere near: out past the part's reach, a hand's
+        // length and its radius, it cannot press. Saves the press for the ones that can.
+        float reachable = near + 0.11 * tall + r;
+        if (dot(h - c, h - c) > reachable * reachable) return false;
+        if (dot(h, h) < 1e-6) return false;
+        // Eased out by either own hand rather than cut, since the globals and the slots
+        // are read at different moments and a quick own hand would flicker in as another's.
+        float own = saturate(min(dot(h - ownL, h - ownL), dot(h - ownR, h - ownR)) / mine - 1);
+        if (own <= 0) return false;
+        float3 arm = h - chest;
+        float3 dir = dot(chest, chest) > 1e-6 && dot(arm, arm) > 1e-6 ? normalize(arm) : 0;
+        float fist = g > 1.5 ? 1 : saturate(g);
+        a = h;
+        b = h + dir * max(lerp(0.11, 0.06, fist) * tall - r, 0);
+        scale = _YAPS_SquashHands.z * own;
+        finger = g > 2.5;
+        rf = (g > 4.5 && g < 5.5 ? 0.35 : 0.2) * r;
+        fa = h + dir * (0.06 * tall);
+        fb = h + dir * max(0.11 * tall - rf, 0.06 * tall);
+    }
+    else
+    {
+        // A plug in the socket, anyone's, from the light it announces itself with: its base and
+        // its length. The light gives no direction, so the shaft runs from the base through the
+        // socket for the plug's length, and presses like another hand. Only while it reaches the
+        // socket, so a plug merely near the pair parts nothing, easing out over the last fifth of
+        // its length rather than letting go at once.
+        // ponytail: the radius is a tenth of the length, since the light carries none; 6 cm at most
+        // (3.5 cm drew a long thick plug thin). Real girth needs a channel the light does not have.
+        uint i = s - arms - hands;
+        if (!YapsLightIsMarker(i)) return false;
+        int digit = YapsLightDigit(i);
+        if (digit != 8 && digit != 9) return false;
+        float len = unity_LightColor[i].a;
+        float3 base = YapsLightPosition(i);
+        float d = distance(at, base);
+        if (len <= 0.0001 || d >= len || d <= 1e-4) return false;
+        r = clamp(0.1 * len, 0.012, 0.06);
+        a = base;
+        b = base + (at - base) / d * len;
+        scale = _YAPS_SquashPlug * saturate((len - d) / (0.2 * len));
+    }
+    return true;
+}
+
 // The hands reaching into the part, as presses toward each hand by how far it is in, with its
 // radius: both own arms first, then other hands, the deepest and the rest merged.
 // One loop over every source, arms, then hands, then plugs, so the press and the merge are
@@ -413,93 +534,18 @@ void YapsHandsPress(YapsPart p, inout float3 hv[4], inout float hr[4])
 {
     // Per arm, its bones merged, the deepest leading: upper arm, forearm and hand overlap at
     // the joints, and adding all three pressed one forearm in twice.
-    int arms = _YAPS_SquashPush.w > 0 && _YAPS_SquashHands.x > 0 ? 6 : 0;
-    // Every player's hands, the wearer's among them, which the arms above already are: a
-    // hand by either own hand is skipped. Capped at 64 players for cost. The globals carry
-    // only the wrist, a palm's length out from the skin while the palm is on it, so a ball
-    // there never reached the part: the hand runs on from it, away from that player's chest,
-    // for a ninth of their viewpoint height.
-    // The gesture rides in each hand's w, the numbers an avatar's GestureLeft reads: -1 open,
-    // 0 to 1 a fist closing, 2 thumbs up, 3 finger gun, 4 point, 5 victory, 6 rock and roll.
-    // A fist ends at the knuckles; a finger out runs on, thin, to where the fingertips are.
-    // Which way the palm faces is not carried, so two fingers out are one thicker one.
-    // ponytail: the line from the chest stands in for the forearm, which the globals do not carry.
+    int arms, hands, plugs;
+    YapsSources(p.m >> 1, arms, hands, plugs);
     float3 ownL = YapsSlot(10), ownR = YapsSlot(14);
-    int hands = _YAPS_SquashHands.z > 0 && _YAPS_SquashHands.y > 0 ? 2 * min((int) round(CVRGlobalParams1.y), 64) : 0;
-    // A plug in the socket between the pair, anyone's, from the light it announces itself with:
-    // its base and its length. The light gives no direction, so the shaft runs from the base
-    // through the socket for the plug's length, and presses like another hand. Only while it
-    // reaches the socket, so a plug merely near the pair parts nothing, easing out over the last
-    // fifth of its length rather than letting go at once.
-    // ponytail: the radius is a tenth of the length, since the light carries none; 6 cm at most
-    // (3.5 cm drew a long thick plug thin). Real girth needs a channel the light does not have.
-    int socket = 18 + (p.m >> 1);
-    int plugs = _YAPS_SquashPlug > 0 && YapsUnit(socket) > 0 ? 4 : 0;
-    float3 at = YapsSlot(socket);
+    float3 at = YapsSlot(18 + (p.m >> 1));
     [loop]
     for (int s = 0; s < arms + hands + plugs; s++)
     {
-        float3 a, b, fa = 0, fb = 0;
-        float r, rf = 0, scale;
-        bool finger = false;
-        int into = 3;
-        if (s < arms)
-        {
-            uint k = s;
-            uint slot = 8 + (k / 3) * 4 + k % 3;
-            if (YapsUnit(slot) <= 0 || YapsUnit(slot + 1) <= 0) continue;
-            a = YapsSlot(slot);
-            b = YapsSlot(slot + 1);
-            r = YapsLimb(k);
-            scale = _YAPS_SquashHands.x;
-            into = k / 3;
-        }
-        else if (s < arms + hands)
-        {
-            int i = (s - arms) >> 1;
-            float tall = _CVR_PlayerRootPositions[i].w;
-            tall = tall > 0.1 ? tall : 1.6;
-            r = _YAPS_SquashHands.y * tall / 1.6;
-            float mine = 2.25 * r * r;
-            float3 chest = _CVR_PlayerChestPositions[i].xyz;
-            float4 hand = ((s - arms) & 1) == 0 ? _CVR_PlayerLeftHandPositions[i] : _CVR_PlayerRightHandPositions[i];
-            float3 h = hand.xyz;
-            float g = hand.w;
-            // Most hands in a full room are nowhere near: out past the part's reach, a hand's
-            // length and its radius, it cannot press. Saves the press for the ones that can.
-            float near = 3 * p.reach + 0.11 * tall + r;
-            if (dot(h - p.centre, h - p.centre) > near * near) continue;
-            if (dot(h, h) < 1e-6) continue;
-            // Eased out by either own hand rather than cut, since the globals and the slots
-            // are read at different moments and a quick own hand would flicker in as another's.
-            float own = saturate(min(dot(h - ownL, h - ownL), dot(h - ownR, h - ownR)) / mine - 1);
-            if (own <= 0) continue;
-            float3 arm = h - chest;
-            float3 dir = dot(chest, chest) > 1e-6 && dot(arm, arm) > 1e-6 ? normalize(arm) : 0;
-            float fist = g > 1.5 ? 1 : saturate(g);
-            a = h;
-            b = h + dir * max(lerp(0.11, 0.06, fist) * tall - r, 0);
-            scale = _YAPS_SquashHands.z * own;
-            finger = g > 2.5;
-            rf = (g > 4.5 && g < 5.5 ? 0.35 : 0.2) * r;
-            fa = h + dir * (0.06 * tall);
-            fb = h + dir * max(0.11 * tall - rf, 0.06 * tall);
-        }
-        else
-        {
-            uint i = s - arms - hands;
-            if (!YapsLightIsMarker(i)) continue;
-            int digit = YapsLightDigit(i);
-            if (digit != 8 && digit != 9) continue;
-            float len = unity_LightColor[i].a;
-            float3 base = YapsLightPosition(i);
-            float d = distance(at, base);
-            if (len <= 0.0001 || d >= len || d <= 1e-4) continue;
-            r = clamp(0.1 * len, 0.012, 0.06);
-            a = base;
-            b = base + (at - base) / d * len;
-            scale = _YAPS_SquashPlug * saturate((len - d) / (0.2 * len));
-        }
+        float3 a, b, fa, fb;
+        float r, rf, scale;
+        bool finger;
+        int into;
+        if (!YapsSource(s, arms, hands, p.centre, 3 * p.reach, ownL, ownR, at, a, b, r, scale, finger, fa, fb, rf, into)) continue;
         float3 v = YapsPress(p, a, b, r) * scale;
         float vr = r;
         if (finger) YapsMerge(v, vr, YapsPress(p, fa, fb, rf) * scale, rf);
@@ -519,6 +565,178 @@ void YapsHandsPress(YapsPart p, inout float3 hv[4], inout float hr[4])
     }
 }
 
+// The two capsules in deepest so far, kept to push the skin out of: this one in their place if it
+// is in further than either.
+void YapsKeep(float3 a, float3 b, float r, float by, inout float3 keptA[2], inout float3 keptB[2], inout float keptR[2], inout float keptBy[2])
+{
+    if (by <= keptBy[1]) return;
+    if (by > keptBy[0])
+    {
+        keptA[1] = keptA[0];
+        keptB[1] = keptB[0];
+        keptR[1] = keptR[0];
+        keptBy[1] = keptBy[0];
+        keptA[0] = a;
+        keptB[0] = b;
+        keptR[0] = r;
+        keptBy[0] = by;
+        return;
+    }
+    keptA[1] = a;
+    keptB[1] = b;
+    keptR[1] = r;
+    keptBy[1] = by;
+}
+
+// Three bytes as the table stores them, 127 for none.
+float3 YapsSoftBytes(float4 t)
+{
+    return (round(t.xyz * 255) - 127) / 127;
+}
+
+// The pair's soft body, baked at the build: how far every hand is into each part each way a palm
+// pressed it there, and the answers to those presses added up. A capsule presses a part only once
+// it is in past the skin by the true distance; then square to the capsule, as a palm presses
+// along its normal, shared over the part's five ways by the square of how near it points to
+// each, and each way's depth taken on that way's own line, as its answer was baked. Measured to
+// the nearest end instead, a palm held above the centre read as pressing from above; read square
+// to it alone, a palm under one part read as lifting its partner. The deepest capsule each way
+// counts, as a palm and its fingers press one dent. What both outsides are pressed alike is the
+// squeeze, both pressed at once at the bake: summed from one side each, a squeeze counted the
+// partner shoved away twice. Each answer read at its depth, straight between the two baked and on
+// past the second. row is the vertex's row plus one, negative for the second pair, and its share.
+void YapsSoftMove(float2 row, inout float3 world, inout float3 n, bool hasNormal)
+{
+    if (row.x == 0 || row.y <= 0) return;
+    int k = row.x > 0 ? 0 : 1;
+    int m0 = 2 * k;
+    float unit0 = YapsUnit(m0), unit1 = YapsUnit(m0 + 1);
+    float d0 = _YAPS_SoftDepth[2 * k] * unit0, d1 = _YAPS_SoftDepth[2 * k + 1] * unit0;
+    if (unit0 <= 0 || unit1 <= 0 || d0 <= 0 || d1 <= d0) return;
+    YapsPart P0 = YapsPartAt(m0, YapsSlot(m0), unit0);
+    YapsPart P1 = YapsPartAt(m0 + 1, YapsSlot(m0 + 1), unit1);
+    if (!P0.framed || !P1.framed) return;
+    // Two copies of one avatar sharing a material would share each other's follows: a vertex far
+    // from the pair it belongs to is not this copy's, and stays. As far as the parts' own test
+    // below: out to twice the pair's span, a copy standing a metre off took this one's hands.
+    float3 mid = 0.5 * (P0.centre + P1.centre);
+    float span = P0.reach + P1.reach + distance(P0.centre, P1.centre);
+    float3 off0 = world - P0.centre, off1 = world - P1.centre;
+    if (dot(off0, off0) > 16 * P0.reach * P0.reach && dot(off1, off1) > 16 * P1.reach * P1.reach) return;
+    // Per part: outside, the partner's side, in front, along the first part's across either way.
+    float3 dirs[10] = { -P0.a, P0.a, P0.o, P0.u, -P0.u, -P1.a, P1.a, P0.o, P0.u, -P0.u };
+    float ext[10] = { _YAPS_SoftOut[m0] * unit0, _YAPS_SoftIn[m0] * unit0, _YAPS_SoftFront[m0] * unit0, _YAPS_SoftSideA[m0] * unit0, _YAPS_SoftSideB[m0] * unit0,
+        _YAPS_SoftOut[m0 + 1] * unit1, _YAPS_SoftIn[m0 + 1] * unit1, _YAPS_SoftFront[m0 + 1] * unit1, _YAPS_SoftSideA[m0 + 1] * unit1, _YAPS_SoftSideB[m0 + 1] * unit1 };
+    // Cleared before the loop, which the shader filter may cut short.
+    float amount[10] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    int arms, hands, plugs;
+    YapsSources(k, arms, hands, plugs);
+    float3 ownL = YapsSlot(10), ownR = YapsSlot(14);
+    float3 at = YapsSlot(18 + k);
+    float3 keptA[2] = { float3(0, 0, 0), float3(0, 0, 0) }, keptB[2] = { float3(0, 0, 0), float3(0, 0, 0) };
+    float keptR[2] = { 0, 0 }, keptBy[2] = { 0, 0 };
+    [loop]
+    for (int s = 0; s < arms + hands + plugs; s++)
+    {
+        float3 a, b, fa, fb;
+        float r, rf, scale;
+        bool finger;
+        int into;
+        if (!YapsSource(s, arms, hands, mid, span, ownL, ownR, at, a, b, r, scale, finger, fa, fb, rf, into)) continue;
+        // How far the palm and the finger are into either part.
+        float inPart[2] = { 0, 0 };
+        // Each part, and again for a finger out: one loop, so the reading compiles once.
+        [loop]
+        for (int q = 0; q < (finger ? 4 : 2); q++)
+        {
+            YapsPart P = P0;
+            if ((q & 1) == 1) P = P1;
+            float3 ca = q < 2 ? a : fa, cb = q < 2 ? b : fb;
+            float cr = q < 2 ? r : rf;
+            float3 ab = cb - ca;
+            float3 to = ca + ab * saturate(dot(P.centre - ca, ab) / max(dot(ab, ab), 1e-10)) - P.centre;
+            float dist = length(to);
+            // Well clear of the ellipsoid first, which reads no texture.
+            if (dist < 1e-6 || dist - cr > YapsSpan(P, to / dist) + P.reach) continue;
+            if (YapsExtent(P, to / dist) + cr - dist <= 0) continue;
+            float3 along = ab * rsqrt(max(dot(ab, ab), 1e-20));
+            to -= along * dot(to, along);
+            dist = length(to);
+            if (dist < 1e-6) continue;
+            float3 w = to / dist;
+            float inside = YapsExtent(P, w) + cr - dist;
+            if (inside <= 0) continue;
+            inPart[q >> 1] = max(inPart[q >> 1], inside * scale);
+            int j = 5 * (q & 1);
+            [unroll]
+            for (int i = 0; i < 5; i++)
+            {
+                float c = max(dot(w, dirs[j + i]), 0);
+                float press = ext[j + i] + cr - dot(to, dirs[j + i]);
+                if (press > 0) amount[j + i] = max(amount[j + i], c * c * press * scale);
+            }
+        }
+        // Not the own arms, which push the skin out of themselves further on.
+        if (into == 3)
+        {
+            YapsKeep(a, b, r, inPart[0], keptA, keptB, keptR, keptBy);
+            if (finger) YapsKeep(fa, fb, rf, inPart[1], keptA, keptB, keptR, keptBy);
+        }
+    }
+    float squeeze = min(amount[0], amount[5]);
+    amount[0] -= squeeze;
+    amount[5] -= squeeze;
+    // ponytail: past four fifths of the reach the bake answers differently each time it is solved,
+    // so nothing deeper is read; a hand going further only goes into the skin.
+    float most = 1.6 * d1;
+    uint entry = (uint) (abs(row.x) - 1);
+    int2 home = int2((entry % YAPS_SOFT_ROWS) * 2 * YAPS_SOFT_ENTRIES, entry / YAPS_SOFT_ROWS);
+    float far = _YAPS_SquashReach[m0];
+    float3 move = 0, turn = 0;
+    [loop]
+    for (int e = 0; e < 11; e++)
+    {
+        // Clamped, as both sides of a choice are read: amount[10] is past the end.
+        float d = min((e < 10 ? amount[min(e, 9)] : squeeze) * _YAPS_SquashTune.y, most);
+        if (d <= 0) continue;
+        float4 t0 = _YAPS_SoftTable.Load(int3(home.x + 4 * e, home.y, 0));
+        float3 m0v = YapsSoftBytes(t0) * (t0.w * far);
+        float3 n0 = YapsSoftBytes(_YAPS_SoftTable.Load(int3(home.x + 4 * e + 1, home.y, 0)));
+        if (d <= d0)
+        {
+            move += m0v * (d / d0);
+            turn += n0 * (d / d0);
+            continue;
+        }
+        float4 t1 = _YAPS_SoftTable.Load(int3(home.x + 4 * e + 2, home.y, 0));
+        float f = (d - d0) / (d1 - d0);
+        move += lerp(m0v, YapsSoftBytes(t1) * (t1.w * far), f);
+        turn += lerp(n0, YapsSoftBytes(_YAPS_SoftTable.Load(int3(home.x + 4 * e + 3, home.y, 0))), f);
+    }
+    world += (P0.a * move.x + P0.o * move.y + P0.u * move.z) * (unit0 * row.y);
+    if (hasNormal) n = normalize(n + (P0.a * turn.x + P0.o * turn.y + P0.u * turn.z) * row.y);
+    // Then out of the two capsules in deepest, to a tenth of a radius off them, eased in over a
+    // fifth either side. The answers come within a centimetre or two of the tissue solved under the
+    // same hands, which stays a few millimetres off the palm; the rest showed through the palm, and
+    // skin pushed exactly onto it speckled where the two drew on one spot.
+    [unroll]
+    for (int kc = 0; kc < 2; kc++)
+    {
+        if (keptBy[kc] <= 0) continue;
+        float3 kab = keptB[kc] - keptA[kc];
+        float3 off = world - (keptA[kc] + kab * saturate(dot(world - keptA[kc], kab) / max(dot(kab, kab), 1e-10)));
+        float gap = length(off);
+        float easing = 0.2 * keptR[kc];
+        float past = 1.1 * keptR[kc] - gap;
+        if (past <= -easing || gap < 1e-6) continue;
+        float pushed = past >= easing ? past : (past + easing) * (past + easing) / (4 * easing);
+        float follow = past >= easing ? 1 : (past + easing) / (2 * easing);
+        float3 away = off / gap;
+        world += away * (pushed * row.y);
+        if (hasNormal) n = normalize(lerp(n, away, follow * row.y));
+    }
+}
+
 void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tangent, uint vertexId)
 {
     if (_YAPS_DentPower <= 0) return;
@@ -530,7 +748,15 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
     // down the cleavage where its neighbours took less.
     own /= max(own.r + own.g + own.b + own.a, 1);
     float partShare = saturate(own.r + own.g + own.b + own.a);
-    if (partShare <= 0) return;
+    // Read only where a pair was baked: a material patched before reads whatever Unity binds for
+    // a texture it never set. Skin around the parts that is none of theirs moves with them too.
+    float2 softRow = 0;
+    if (any(_YAPS_SoftDepth != 0))
+    {
+        uint2 packed = (uint2) round(_YAPS_SoftRow.Load(int3(vertexId % width, vertexId / width, 0)).rg * 65535);
+        softRow = float2((packed.y & 32768) != 0 ? -(float) packed.x : (float) packed.x, (packed.y & 32767) / 32767.0);
+    }
+    if (partShare <= 0 && softRow.x == 0) return;
     float shares[4] = { own.r, own.g, own.b, own.a };
     float4 swing = _YAPS_DentSwing.Load(int3(vertexId % width, vertexId / width, 0));
     float swings[4] = { swing.r, swing.g, swing.b, swing.a };
@@ -544,6 +770,9 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
     n = hasNormal ? normalize(n) : 0;
     float3 start = world;
     float3 startN = n;
+    // The hands on a baked pair, first, so the shader filter's cut leaves them; the parts below
+    // then only meet each other.
+    YapsSoftMove(softRow, world, n, hasNormal);
 
     float3 squashAxis[4], squashCentre[4], partN[4];
     float squashPlane[4], squashReach[4], squashContact[4], squashDeep[4], squashBow[4], partDone[4];
@@ -641,7 +870,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
             }
             float3 hv[4] = { float3(0, 0, 0), float3(0, 0, 0), float3(0, 0, 0), float3(0, 0, 0) };
             float hr[4] = { 0, 0, 0, 0 };
-            YapsHandsPress(pq, hv, hr);
+            if (_YAPS_SoftDepth[pq.m & 2] <= 0) YapsHandsPress(pq, hv, hr);
             float3 Fq = 0;
             [unroll]
             for (int h = 0; h < 4; h++)

@@ -43,7 +43,7 @@ namespace AvatarBridge
         // Inside each fold: what it is and how to see it, which the header alone never said.
         static readonly System.Collections.Generic.Dictionary<string, string> FoldHints = new System.Collections.Generic.Dictionary<string, string>
         {
-            { "How it gives", "How a part answers any press: how flat it goes, how wide it spreads to keep its volume, how far it swings away first. See it in the Avatar Tester with Squeeze or the test hand." },
+            { "How it gives", "How a part answers any press: how flat it goes and how wide it spreads to keep its volume. See it in the Avatar Tester with Squeeze or the test hand." },
             { "The pair", "With Meet on, a part swung or pushed into a still partner keeps its round front and pushes the partner aside by as much as it pushed in, the partner taking a rounded hollow where they still meet. Pushed alike from both sides, the two press flat against each other, swelling out round the contact. With Meet off, what overlaps passes through. See it in the Avatar Tester: Squeeze presses from both sides, and in Play mode Push one in shoves one part into the other." },
             { "In motion", "As the physics swing a part, it stretches away from where it hangs and squashes back. See it in the Avatar Tester with Bounce, or move the avatar in Play mode." },
             { "What presses it", "What dents the parts besides each other, each with its own strength. See hands in the Avatar Tester with the test hand." },

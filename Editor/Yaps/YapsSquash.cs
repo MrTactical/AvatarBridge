@@ -43,7 +43,8 @@ namespace AvatarBridge
             "_YAPS_SquashShape", "_YAPS_SquashPulse", "_YAPS_SquashPush", "_YAPS_SquashLimbL", "_YAPS_SquashLimbR",
             "_YAPS_SquashHands", "_YAPS_SquashMotion", "_YAPS_SquashPlug", "_YAPS_DentSpill",
             "_YAPS_SquashHangToward", "_YAPS_SquashHangOut", "_YAPS_SquashHangAcross", "_YAPS_SquashSurface",
-            "_YAPS_SquashSurfaceOn",
+            "_YAPS_SquashSurfaceOn", "_YAPS_SoftRow", "_YAPS_SoftTable", "_YAPS_SoftDepth", "_YAPS_SoftOut", "_YAPS_SoftIn",
+            "_YAPS_SoftFront", "_YAPS_SoftSideA", "_YAPS_SoftSideB",
         };
 
         sealed class Part
@@ -166,11 +167,15 @@ namespace AvatarBridge
             EditorApplication.ExecuteMenuItem("Window/General/Inspector");
         }
 
+        // The old hand dent's swing away and depth, for a pair no soft body was built for. Knobs
+        // until the soft body, which moves under a hand as its tissue was solved and reads neither.
+        const float BendGive = 0.35f, DeepestDent = 0.35f;
+
         // The knobs onto one squash material. The skin stride in the hands' w is the build's.
         public static void WriteKnobs(YapsSquashSettings s, Material m)
         {
             var hands = m.GetVector("_YAPS_SquashHands");
-            m.SetVector("_YAPS_SquashTune", new Vector4(s.lyingBack, s.strength, s.bendGive, s.deepestDent));
+            m.SetVector("_YAPS_SquashTune", new Vector4(s.lyingBack, s.strength, BendGive, DeepestDent));
             m.SetVector("_YAPS_SquashShape", new Vector4(s.flattest, s.volumeKept, s.widest, s.meet ? 1f : 0f));
             m.SetFloat("_YAPS_DentSpill", s.spill);
             // The push's dead zone and the arms' soft edge are not knobs.
@@ -221,6 +226,9 @@ namespace AvatarBridge
         // Probes: each part's skin and the six reaches of its ellipsoid, in world units, in the frame
         // the shader builds, and its follow's unit. Set, a build stops once it has measured.
         internal static Action<string, Vector3, Vector3, Vector3, List<Vector3>, float[], float> MeasuredForTest;
+        // Probes: each pair's soft body as baked, its skin and shares, its moves per way and depth,
+        // and its centres, across, out and reach, before the table stores them.
+        internal static Action<string, Vector3[], Vector2[], Vector3[][], Vector3[]> SoftBakedForTest;
 
         internal static string LastSaid;
         internal static bool LastBuilt;
@@ -438,6 +446,12 @@ namespace AvatarBridge
             var hangAcross = Vector4.zero;
             // Each part's own surface, or null where the ellipsoid of its reaches stays.
             var surfaces = new List<float[]>();
+            // Per part its way toward the partner, unit and six reaches in metres, and per pair the
+            // way out of the body: the frame the shader reads the soft body's answers in.
+            var towards = new List<Vector3>();
+            var units = new List<float>();
+            var reachesOf = new List<float[]>();
+            var outs = new List<Vector3>();
             var pair = new Vector4(0f, 0.5f, 0f, 0.5f);
             for (int k = 0; k < pairCount; k++)
             {
@@ -461,6 +475,7 @@ namespace AvatarBridge
                 var level = Vector3.ProjectOnPlane(Vector3.ProjectOnPlane(mid - restBone.position, Vector3.up), axis);
                 if (level.sqrMagnitude < 1e-6f) level = Vector3.ProjectOnPlane(Vector3.ProjectOnPlane(root.forward, Vector3.up), axis);
                 var o = level.normalized;
+                outs.Add(o);
                 var back = Child(restBone, BackName);
                 back.position = mid - o * a.reach;
                 backs.Add(back);
@@ -502,6 +517,9 @@ namespace AvatarBridge
                     hangToward[parts.Count] = Vector3.Dot(hang, toward);
                     hangOut[parts.Count] = Vector3.Dot(hang, o);
                     hangAcross[parts.Count] = Vector3.Dot(hang, u);
+                    towards.Add(toward);
+                    units.Add(unit);
+                    reachesOf.Add(reaches);
                     parts.Add(p);
                 }
                 pair[i] = start / Unit(a.follow);
@@ -551,6 +569,8 @@ namespace AvatarBridge
             var shared = Shares(skins, bodySkin, root.name, folder);
             var swings = Swings(shared, skins, bodySkin, parts, root.name, folder, log);
             Lap("Shares");
+            var soft = SoftBody(bodySkin, shared, skins, parts, towards, units, reachesOf, surfaces, outs, root.name, folder, log);
+            Lap("Soft body");
             // Layers the wearer left out stay on their own material, still, by their choice. So
             // does a baked plug: it bends on its own and lies on no skin, so it is never what a
             // squashed part shows through, and a share on top of the bend only adds a compile.
@@ -617,6 +637,7 @@ namespace AvatarBridge
                     copy.SetFloat("_YAPS_SquashPulse", pulse);
                     copy.SetVector("_YAPS_SquashLimbL", limbs[0]);
                     copy.SetVector("_YAPS_SquashLimbR", limbs[1]);
+                    if (soft != null) soft.Set(copy, smr);
                     saving.Start();
                     copy = Save(copy, source, folder, $"{root.name} {smr.name} {slot}.mat");
                     saving.Stop();
@@ -638,6 +659,11 @@ namespace AvatarBridge
             {
                 foreach (int m in still) { reach[m] = 0f; reach[m + 1] = 0f; }
                 foreach (var copy in copies) copy.SetVector("_YAPS_SquashReach", reach);
+                if (soft != null)
+                {
+                    foreach (int m in still) { soft.depth[m] = 0f; soft.depth[m + 1] = 0f; }
+                    foreach (var copy in copies) copy.SetVector("_YAPS_SoftDepth", soft.depth);
+                }
             }
             Lap($"Slots (ShaderFor {shaderFor.ElapsedMilliseconds}, Save {saving.ElapsedMilliseconds}, Basis {basis.ElapsedMilliseconds} (key {YapsLock.KeyTime.ElapsedMilliseconds}, load {YapsLock.LoadTime.ElapsedMilliseconds}), Assign {assign.ElapsedMilliseconds}, {copies.Count} copies)");
 
@@ -1039,7 +1065,8 @@ namespace AvatarBridge
         static void Carry(Material from, Material to, string name)
         {
             if (!from.HasProperty(name) || !to.HasProperty(name)) return;
-            if (name == "_YAPS_DentOwn" || name == "_YAPS_DentSwing" || name == "_YAPS_SquashSurface") to.SetTexture(name, from.GetTexture(name));
+            if (name == "_YAPS_DentOwn" || name == "_YAPS_DentSwing" || name == "_YAPS_SquashSurface" || name == "_YAPS_SoftRow" || name == "_YAPS_SoftTable")
+                to.SetTexture(name, from.GetTexture(name));
             else if (name == "_YAPS_DentPower" || name == "_YAPS_SquashPulse" || name == "_YAPS_SquashPlug" || name == "_YAPS_DentSpill") to.SetFloat(name, from.GetFloat(name));
             else to.SetVector(name, from.GetVector(name));
         }
@@ -1093,7 +1120,7 @@ namespace AvatarBridge
             return found[found.Count / 2] / ab.magnitude;
         }
 
-        // Every skinned renderer posed as it stands, shares still empty.
+        // Every skinned renderer posed as it stands, its blend shapes on, shares still empty.
         static List<Skin> Skins(Transform root)
         {
             var list = new List<Skin>();
@@ -1106,7 +1133,7 @@ namespace AvatarBridge
                 if (mesh == null || (built != null && smr.transform.IsChildOf(built))) continue;
                 var rb = smr.bones;
                 var weights = mesh.boneWeights;
-                var verts = mesh.vertices;
+                var verts = Shaped(smr);
                 var bind = mesh.bindposes;
                 var skin = rb.Select((t, i) => t != null && i < bind.Length ? t.localToWorldMatrix * bind[i] : Matrix4x4.zero).ToArray();
                 int count = Mathf.Min(weights.Length, verts.Length);
@@ -1121,6 +1148,41 @@ namespace AvatarBridge
                 list.Add(new Skin { smr = smr, bones = rb, weights = weights, at = at, share = new Vector4[count] });
             }
             return list;
+        }
+
+        // The mesh as drawn, before skinning: each blend shape on at its weight, between the frames
+        // either side of it, as Unity adds them. Measured off the bare mesh, a body with a shape
+        // holding its chest up baked tissue for a chest that was not there.
+        static Vector3[] Shaped(SkinnedMeshRenderer smr)
+        {
+            var mesh = smr.sharedMesh;
+            var verts = mesh.vertices;
+            var frame = new Vector3[verts.Length];
+            var next = new Vector3[verts.Length];
+            var normals = new Vector3[verts.Length];
+            var tangents = new Vector3[verts.Length];
+            for (int b = 0; b < mesh.blendShapeCount; b++)
+            {
+                float w = smr.GetBlendShapeWeight(b);
+                int frames = mesh.GetBlendShapeFrameCount(b);
+                if (w == 0f || frames == 0) continue;
+                // Past the last frame and short of the first, on along the nearest one.
+                int k = 0;
+                while (k + 1 < frames && mesh.GetBlendShapeFrameWeight(b, k) < w) k++;
+                float wk = mesh.GetBlendShapeFrameWeight(b, k);
+                mesh.GetBlendShapeFrameVertices(b, k, frame, normals, tangents);
+                if (k == 0 || w >= wk)
+                {
+                    float t = wk != 0f ? w / wk : 0f;
+                    for (int v = 0; v < verts.Length; v++) verts[v] += frame[v] * t;
+                    continue;
+                }
+                float wp = mesh.GetBlendShapeFrameWeight(b, k - 1);
+                mesh.GetBlendShapeFrameVertices(b, k - 1, next, normals, tangents);
+                float f = (w - wp) / (wk - wp);
+                for (int v = 0; v < verts.Length; v++) verts[v] += Vector3.LerpUnclamped(next[v], frame[v], f);
+            }
+            return verts;
         }
 
         // Each renderer's texture of its shares, in r, g, b, a. The skin is the painted body, or
@@ -1176,6 +1238,186 @@ namespace AvatarBridge
                 result.Add((m.smr, PerVertex(m.share, folder, $"{name} {m.smr.name} shares.asset"), m.share));
             }
             return result;
+        }
+
+        // The pairs' soft body for the shader: every answer in one table, only for the skin that
+        // moves, and per renderer its vertices' rows into it.
+        sealed class SoftBake
+        {
+            public Texture2D table;
+            public readonly Dictionary<SkinnedMeshRenderer, Texture2D> rows = new Dictionary<SkinnedMeshRenderer, Texture2D>();
+            public Vector4 depth, outward, inward, front, sideA, sideB;
+
+            public void Set(Material copy, SkinnedMeshRenderer smr)
+            {
+                copy.SetTexture("_YAPS_SoftTable", table);
+                copy.SetTexture("_YAPS_SoftRow", rows[smr]);
+                copy.SetVector("_YAPS_SoftDepth", depth);
+                copy.SetVector("_YAPS_SoftOut", outward);
+                copy.SetVector("_YAPS_SoftIn", inward);
+                copy.SetVector("_YAPS_SoftFront", front);
+                copy.SetVector("_YAPS_SoftSideA", sideA);
+                copy.SetVector("_YAPS_SoftSideB", sideB);
+            }
+        }
+
+        // Each pair solved as tissue on the body's skin (YapsSoftBody), its answers stored in the
+        // frame the shader builds from the rests: toward the second part, out of the body, across.
+        // The palms are placed by the extent the shader reads, so a hand reads as pressing where
+        // the bake pressed. A layer rides the skin vertex nearest it, easing off from 3 cm off the
+        // skin to 4 as its shares do. Null when no pair gave tissue.
+        static SoftBake SoftBody(Skin body, List<(SkinnedMeshRenderer smr, Texture2D own, Vector4[] shares)> shared, List<Skin> skins, List<Part> parts,
+            List<Vector3> towards, List<float> units, List<float[]> reaches, List<float[]> surfaces, List<Vector3> outs, string name, string folder, List<string> log)
+        {
+            if (body == null || shared.Count == 0) return null;
+            var mesh = body.smr.sharedMesh;
+            var tris = mesh.triangles;
+            var welds = Welds(mesh);
+            var bake = new SoftBake();
+            int depths = YapsSoftBody.Depths.Length, entries = YapsSoftBody.Ways * depths;
+            var table = new List<Color32[]>();
+            // Per body vertex its row plus one, negative for the second pair, 0 for none.
+            var rowOf = new float[body.at.Length];
+            byte Q(float c) => (byte) (Mathf.Clamp(Mathf.RoundToInt(c * 127f), -127, 127) + 127);
+            for (int i = 0; 2 * i + 1 < parts.Count; i++)
+            {
+                int m0 = 2 * i;
+                Vector3 A = towards[m0], O = outs[i], U = Vector3.Cross(A, O);
+                // The shader's YapsExtent: the part's own surface, or the ellipsoid of its reaches.
+                float Extent(int m, Vector3 w)
+                {
+                    var t = towards[m];
+                    var q = new Vector3(Vector3.Dot(w, t), Vector3.Dot(w, Vector3.Cross(t, O)), Vector3.Dot(w, O));
+                    return surfaces[m] != null ? SurfaceAt(surfaces[m], q) * units[m] : Ellipsoid(reaches[m], q);
+                }
+                // As the shader reads them: a byte each, scaled back to one in all where a vertex
+                // between the parts carries more. Raw, the cleavage left the ring each part meets the
+                // body in, its plane tilted, and the tissue answered a deep press from the front
+                // the other way from the tissue solved under the same hand.
+                var share = body.share.Select(x =>
+                {
+                    var q = Stored(x);
+                    var s = new Vector4(q.r, q.g, q.b, q.a) / 255f;
+                    return new Vector2(s[m0], s[m0 + 1]) / Mathf.Max(s.x + s.y + s.z + s.w, 1f);
+                }).ToArray();
+                var (moves, turns, said) = YapsSoftBody.Bake(body.at, tris, welds, share, parts[m0].centre, parts[m0 + 1].centre, parts[m0].reach,
+                    U, O, (j, w) => Extent(m0 + j, w));
+                log.Add($"{parts[m0].name}/{parts[m0 + 1].name} soft body: {said}");
+                if (moves == null) continue;
+                SoftBakedForTest?.Invoke(parts[m0].name, body.at, share, moves, new[] { parts[m0].centre, parts[m0 + 1].centre, U, O, new Vector3(parts[m0].reach, units[m0], 0f) });
+                for (int j = 0; j < 2; j++)
+                {
+                    int m = m0 + j;
+                    bake.outward[m] = Extent(m, -towards[m]) / units[m];
+                    bake.inward[m] = Extent(m, towards[m]) / units[m];
+                    bake.front[m] = Extent(m, O) / units[m];
+                    bake.sideA[m] = Extent(m, U) / units[m];
+                    bake.sideB[m] = Extent(m, -U) / units[m];
+                }
+                bake.depth[m0] = YapsSoftBody.Depths[0] * parts[m0].reach / units[m0];
+                bake.depth[m0 + 1] = YapsSoftBody.Depths[1] * parts[m0].reach / units[m0];
+                int first = table.Count;
+                for (int v = 0; v < rowOf.Length; v++)
+                {
+                    // A tenth of a millimetre, or a step of the stored turn.
+                    if (rowOf[v] != 0f || !Enumerable.Range(0, entries).Any(e => moves[e][v].sqrMagnitude > 1e-8f || turns[e][v].sqrMagnitude > 6e-5f)) continue;
+                    // Each answer in bytes: its move about 127, scaled by the fourth byte's share of
+                    // the part's reach, so a small move is as fine as a large one; then its normal's
+                    // turn the same way, unscaled. Under half a millimetre from the floats, at a
+                    // quarter of their size.
+                    var row = new Color32[2 * entries];
+                    float far = parts[m0].reach / units[m0];
+                    for (int e = 0; e < entries; e++)
+                    {
+                        Vector3 mv = moves[e][v] / units[m0], t = turns[e][v];
+                        var m = new Vector3(Vector3.Dot(mv, A), Vector3.Dot(mv, O), Vector3.Dot(mv, U));
+                        byte scale = (byte) Mathf.Clamp(Mathf.CeilToInt(Mathf.Max(Mathf.Abs(m.x), Mathf.Abs(m.y), Mathf.Abs(m.z)) / far * 255f), 1, 255);
+                        m /= scale / 255f * far;
+                        row[2 * e] = new Color32(Q(m.x), Q(m.y), Q(m.z), scale);
+                        row[2 * e + 1] = new Color32(Q(Vector3.Dot(t, A)), Q(Vector3.Dot(t, O)), Q(Vector3.Dot(t, U)), 0);
+                    }
+                    table.Add(row);
+                    rowOf[v] = (i == 0 ? 1 : -1) * table.Count;
+                }
+                log.Add($"{parts[m0].name}/{parts[m0 + 1].name} soft body: {table.Count - first} of {rowOf.Length} skin vertices move");
+            }
+            if (table.Count == 0) return null;
+            // A row is sixteen bits in the per-vertex texture.
+            if (table.Count > ushort.MaxValue)
+            {
+                log.Add($"soft body left out: {table.Count} skin vertices move, more than the {ushort.MaxValue} a row number holds");
+                return null;
+            }
+
+            const int Rows = 32;
+            int width = 2 * entries * Rows, height = (table.Count + Rows - 1) / Rows;
+            var texels = new Color32[width * height];
+            for (int r = 0; r < table.Count; r++)
+                for (int e = 0; e < 2 * entries; e++)
+                    texels[(r / Rows) * width + (r % Rows) * 2 * entries + e] = table[r][e];
+            bake.table = Saved(new Texture2D(width, height, TextureFormat.RGBA32, false, true), texels, folder, $"{name} soft.asset");
+
+            const float Cell = 0.02f, Near = 0.03f, Fade = 0.04f;
+            var grid = new Dictionary<Vector3Int, List<int>>();
+            Vector3Int Key(Vector3 x) => new Vector3Int(Mathf.FloorToInt(x.x / Cell), Mathf.FloorToInt(x.y / Cell), Mathf.FloorToInt(x.z / Cell));
+            for (int v = 0; v < body.at.Length; v++)
+            {
+                var k = Key(body.at[v]);
+                if (!grid.TryGetValue(k, out var list)) grid[k] = list = new List<int>();
+                list.Add(v);
+            }
+            foreach (var (smr, _, _) in shared)
+            {
+                var s = skins.First(x => x.smr == smr);
+                var rows = new Vector2[s.at.Length];
+                for (int v = 0; v < rows.Length; v++)
+                {
+                    if (s == body) { rows[v] = new Vector2(rowOf[v], 1f); continue; }
+                    var k = Key(s.at[v]);
+                    int nearest = -1;
+                    float best = Fade * Fade;
+                    for (int x = -2; x <= 2; x++)
+                        for (int y = -2; y <= 2; y++)
+                            for (int z = -2; z <= 2; z++)
+                            {
+                                if (!grid.TryGetValue(k + new Vector3Int(x, y, z), out var list)) continue;
+                                foreach (int b in list)
+                                {
+                                    float d = (body.at[b] - s.at[v]).sqrMagnitude;
+                                    if (d < best) { best = d; nearest = b; }
+                                }
+                            }
+                    if (nearest >= 0 && rowOf[nearest] != 0f)
+                        rows[v] = new Vector2(rowOf[nearest], Mathf.SmoothStep(0f, 1f, (Fade - Mathf.Sqrt(best)) / (Fade - Near)));
+                }
+                // As wide as the shares, so the shader finds both at one place. Sixteen bits each:
+                // the row plus one, and the second pair's top bit over the share it takes.
+                int w = 1024, h = Mathf.Max(1, (rows.Length + w - 1) / w);
+                var data = new ushort[2 * w * h];
+                for (int v = 0; v < rows.Length; v++)
+                {
+                    data[2 * v] = (ushort) Mathf.Abs(rows[v].x);
+                    data[2 * v + 1] = (ushort) ((rows[v].x < 0f ? 32768 : 0) + Mathf.RoundToInt(Mathf.Clamp01(rows[v].y) * 32767f));
+                }
+                bake.rows[smr] = Saved(new Texture2D(w, h, TextureFormat.RG32, false, true), data, folder, $"{name} {smr.name} soft rows.asset");
+            }
+            return bake;
+        }
+
+        // Numbers, not colours: linear, point-sampled, and flagged as the CCK's upload checks ask
+        // of an avatar texture, as PerVertex does.
+        static Texture2D Saved<T>(Texture2D tex, T[] data, string folder, string file) where T : struct
+        {
+            tex.filterMode = FilterMode.Point;
+            tex.wrapMode = TextureWrapMode.Clamp;
+            tex.SetPixelData(data, 0);
+            tex.Apply(false);
+            tex = Asset(folder, tex, file);
+            var flags = new SerializedObject(tex);
+            flags.FindProperty("m_IsReadable").boolValue = false;
+            flags.FindProperty("m_StreamingMipmaps").boolValue = true;
+            flags.ApplyModifiedPropertiesWithoutUndo();
+            return tex;
         }
 
         // Four numbers per vertex as a texture the shader loads by vertex id.
@@ -1344,7 +1586,7 @@ namespace AvatarBridge
                 .Concat(new UnityEngine.Object[] { skin?.sharedMesh, skin?.sharedMaterial }).Where(o => o != null).ToArray();
             return new HashSet<string>(EditorUtility.CollectDependencies(from)
                 .Where(o => !(o is Material m) || SourceOf(m) != null || (skin != null && o == skin.sharedMaterial)).Select(AssetDatabase.GetAssetPath)
-                .Where(p => p.EndsWith(".mat") || p.EndsWith(" shares.asset") || p.EndsWith(" swings.asset") || p.EndsWith(" surface.asset") || p.EndsWith(" squash skin.asset")));
+                .Where(p => p.EndsWith(".mat") || p.EndsWith(" shares.asset") || p.EndsWith(" swings.asset") || p.EndsWith(" surface.asset") || p.EndsWith(" squash skin.asset") || p.EndsWith(" soft.asset") || p.EndsWith(" soft rows.asset")));
         }
 
         // Pair `k` as the skin carries it, posed as it stands: points from the renderer carrying

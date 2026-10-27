@@ -1440,14 +1440,73 @@ Tried and dropped:
 - Dropping the squeeze answer.
 - Pressing deeper by a factor: fitted to three poses; held back as overfitting.
 
+**The bake in the build, uncommitted on dev 2026-10-27 [M].** `YapsSoftBody.cs` solves each pair
+when the squash is built (about 11 s a pair on Kar) and the shader adds up its answers
+(`YapsSoftMove`); a baked pair skips the old hand press. First in-game reading against the solved
+tissue was 5 to 12 cm off from the sides. Three causes, each instrumented before it was fixed:
+- **The tetrahedra leaned one way.** All six of a Kuhn cube share one long diagonal, so the
+  tissue gave more one way than its mirror, and the answers changed with which way was up (the
+  build's up points down on Kar). Five to a cube, alternating cube to cube, is its own mirror:
+  up and down now agree (cos 0.94 to 1.00).
+- **Shares as the shader reads them.** The bake read raw shares, which sum past one in the
+  cleavage; the ring each part meets the body in came out tilted, and a deep press from the
+  front answered the other way. It now reads them as the shader does: a byte each, scaled back to
+  one in all.
+- **Shape keys.** The skin was hand-skinned from the bare mesh, so a body holding a shape key
+  (Kar's "Bra ON", up to 3.8 cm) baked tissue for a chest that was not drawn. `Shaped` adds each
+  key at its weight first, as Unity does; this changes every squash measurement, not only the
+  bake's.
+- Withdrawn, not a cause: the probe's own reference merged both pairs' shares, so the other
+  pair's ring tilted the truth; it reads pair 0 alone now.
+
+After the three, the shader against the solved tissue, cm rms (skinning alone in brackets):
+outside 0.85 (2.59), squeeze 0.91 (3.58), halfway 0.45 (1.78), front 0.66 (1.77), below 0.56
+(2.32), above 0.39 (1.57), out and front 1.77 (2.82), held high 1.00 (2.57), deep and light 0.65
+(2.27), light squeeze 0.34 (0.88), both lifted 1.86 (3.83). The two combined presses are where
+summing single presses runs out.
+
+**Answers by place, TRIED 2026-10-27 and NOT ADOPTED.** Joe: "try 1", then, on the numbers: "go
+back to per vertex, we need to save as much memory as we can and keep this thing thin". In place
+of the per-vertex table, each press's moves were kept on the tissue's cube corners (a box per
+part, anchored at its centre) and read where the skin is drawn, so a shape key moved in game or a
+layer over the skin would read the tissue where it is. Against the solved tissue it tied the
+table to a few hundredths of a centimetre on all eleven presses (worst vertex better on three,
+worse on two), at 20 MB of RGBAHalf against 2.6 MB, since the skin that moves fills most of the
+box (a tighter crop measured offline still left 5 MB a pair). It could not have fixed a shape key
+moved in game either way: a hand reads as touching from the surface measured at the build, so a
+grown part takes a hand in before it presses. Making that surface follow the key is the lever,
+if it is ever wanted. The code is kept outside the repository for the whole-skin idea (Squash
+anywhere, point 5).
+
+**Thinner, 2026-10-27 [M].** Joe: "save as much memory as we can". The table went from floats to
+bytes: each answer's move about 127, scaled by a fourth byte's share of the part's reach, and its
+normal's turn beside it, two texels where there was one. Offline on Kar's answers the moves land
+under 0.4 mm from the floats, at a quarter of the size; Kar's table goes from about 2.8 MB to 1.4
+MB. The per-vertex rows went from two floats to two 16-bit numbers (the row, then the second
+pair's top bit over the share), lossless, half the size; a body with more than 65535 moving
+vertices builds no soft body and says so.
+
+**Cost, `-spCost` in the editor [M].** Measured in turns, three each, against the same build with
+the soft body off (the old hand dent). First it was 46% heavier in a room of ten copies: a vertex
+was cut only past twice the pair's span, so copies sharing a material, a metre off, read this
+avatar's hands and pressed with them. Cut now as the parts' own test is, past four reaches of
+both parts. After it, 64 players' hands on one part: 5.15 ms against 8.60 alone, 7.40 against
+11.85 among ten; nobody near, 1.53 against 1.85 and 3.26 against 3.62. Lighter everywhere.
+
+**Two knobs gone.** *Bend give* and *Deepest dent* shaped only the old hand dent, which a pair
+built with its soft body skips. Joe: "remove the bend give and deepest dent". A pair no soft body
+was built for keeps their old defaults (`YapsSquash.BendGive`, `DeepestDent`).
+
+**Out of the hands.** The summed skin went up to 5 cm into a palm, where the solved tissue stays a
+few millimetres off it. `YapsSoftMove` keeps the two capsules in deepest while it reads the hands
+(not the own arms, which have their own push), and after the move eases the skin out of them to a
+tenth of a radius off, over a fifth either side, the normal turning to the capsule's. Measured
+[M]: no skin left in a palm (one vertex 1 mm in, once), and closer to the solved tissue on every
+press: out and front 1.77 to 1.44 cm rms, the worst vertex 2.8 to 2.1 outside, 2.9 to 2.2 in the
+squeeze, 3.0 to 2.1 from above, 4.9 to 4.3 both lifted.
+
 Next:
-1. The shader. The answers are stored per vertex, as `_YAPS_DentOwn` already is: each squashed
-   renderer gets a per-vertex index into a compact table holding only the vertices that move, one
-   texel per way and depth with the move and the normal's turn packed together. A pressed vertex
-   then reads the index plus two texels per way it is pressed from. The hands are read with each
-   part's analytic extent, which the bake must then place its palms by too.
-2. Measured against today's squash with `-spCost` before it ships.
-3. One part's answers mirrored onto the other, and the cost of starting each batch.
+1. One part's answers mirrored onto the other, and the cost of starting each batch.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 
@@ -1903,6 +1962,27 @@ texels hold the hands' last positions, so a hand's speed at contact is known; a 
 impact point, time and strength, and the vertex shader adds a damped wave spreading from it over
 the part plus a wobble of the whole part. Own hands and other players' hands both work, from
 positions the shader already has. Open: the blitter on remote copies, its cost, both VR eyes.
+
+**5. The soft body over the whole skin, the brush choosing what is soft.** Joe, 2026-10-27: "expand
+that system to include the entire skin of the body, and the paint brush can determine which parts
+actually move and squish, similar to the MagicaCloth paint tool". Item 25 bakes the tissue per pair
+and keeps its answers per vertex. Its answers-by-place variant (a box of cube corners per part,
+not adopted for its memory) would not care what a part is called, but costs about 5 MB a pair, so
+a whole skin needs it sparser. Thinking so far, nothing built:
+- The painted weight decides the tissue: free where painted, held where not, the way the shares
+  hold the tissue behind each part today.
+- Pairs become islands: each painted island gets its own presses (straight in and a few slanted
+  ones round its surface) in place of the eleven ways a pair has, and the shader reads a hand
+  against the island nearest it.
+- Bake time is about a second a press, so a belly, thighs and arms add up to a minute or so. Each
+  island's box is a few hundred KB to a few MB.
+- Open: islands pressing each other (a thigh into the belly when sitting), which is the pair's
+  partner logic made general; and how the shader picks islands without a loop over all of them.
+- Open, Joe, 2026-10-27: how far it can be optimised, which decides it; local and remote players
+  (the squash already runs on every viewer's own client from bone positions and the hands the
+  client hands every shader, so no sync); two avatars' soft parts close together (point 2); and a
+  pair on DynamicBone instead of MagicaCloth2: the squash reads only where the part bones are,
+  but the colliders press option and the follow points under DynamicBone need checking.
 
 **Order proposed:** 1 first (the biggest ask; every piece is already proven in game), then 2 tier 1
 (reuses the hand code), then 4 (half spiked), then 3 (client read first), then 2 tier 2 (after item
