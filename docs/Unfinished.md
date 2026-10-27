@@ -1675,6 +1675,10 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
   with 64. The turn trace matches the old within about a centimetre, a touch more damped. The
   4080's figures need a rerun with the game closed (0.029 and 0.094 for the same code while it
   ran). Verify passes with the CCK's components.
+- **The cheaper build in game, same evening [GAME]:** the meter's yellow (one pass's own work),
+  four viewers on discrete GPUs: 0.000, 0.000, 0.001 to 0.002, 0.016 to 0.020 ms, against 0.062
+  and 0.079 before. One viewer on a Ryzen 7840U's integrated graphics, no GPU: 0.116 ms a pass,
+  so about 0.25 ms a frame below 72 fps where both passes step.
 - **Order, Joe 2026-10-27:** the squash shader working on MagicaCloth first and 5.0.0 shipped; the
   live tissue and the rest of his ideas after, in 5.1.
 - The menu item rebuilt the assets with the preview scene, which replaced the open scene: it now
