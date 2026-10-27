@@ -1650,6 +1650,15 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
   2x1 texture one more blitter writes (the front centre's place and turn in the anchor's space,
   each between its task's bounds). Editor [M]: the texels decode to the front centre exactly, 20.8
   cm out. If it rides in game, anything on a bone can follow the tissue, a frame or two late.
+- **The parser reads 8 bits a channel [M, client code]:** its manager downloads each texture
+  async, once a frame, as RGBA32, whatever the texture's own format. So a value has 256 steps
+  across its task's bounds: the cube's ±0.5 m and ±180° are ~4 mm and ~1.4° steps, which the
+  editor check (full float) cannot see. For 5.1: tight bounds around rest (±5 cm, ±30° gives 0.4
+  mm, 0.24°). The blitter itself never reads back: temp, blit, copy, all on the GPU.
+- **A cost meter (2026-10-27, Joe to try):** a billboard over the jelly, frame time in ms, and a
+  load of 32 more step passes on an undrawn lattice switched on and off every 5 s; the
+  difference over 32 is one pass's own work on that machine. Editor [M]: the clock reads 11.10
+  ms at a locked 90 fps.
 - **Order, Joe 2026-10-27:** the squash shader working on MagicaCloth first and 5.0.0 shipped; the
   live tissue and the rest of his ideas after, in 5.1.
 - The menu item rebuilt the assets with the preview scene, which replaced the open scene: it now

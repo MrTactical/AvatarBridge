@@ -12,6 +12,10 @@
 // transform's local position and Euler angles. Nothing on the cube's own shader knows the tissue,
 // so its riding says whether anything attached to a bone could follow the tissue too.
 //
+// A cost meter floats above it: the frame time, and every five seconds a load of 32 more copies of
+// the step, on a second lattice nobody draws, switched on and off, the difference read as what one
+// pass costs on that machine.
+//
 //   -executeMethod AvatarBridge.Regression.JellySpikeBuilder.Build
 //   -executeMethod AvatarBridge.Regression.JellySpikeBuilder.Bench -jellyOut <dir>
 //   -executeMethod AvatarBridge.Regression.JellySpikeBuilder.Verify -jellyOut <dir>
@@ -45,7 +49,7 @@ namespace AvatarBridge.Regression
         // One pair's tissue is about 3000 particles; this is 3072, 20 cm across at 1.33 cm.
         static readonly Vector3Int Size = new Vector3Int(16, 12, 16);
         const float Spacing = 0.2f / 15f;
-        const int Row = 64, Passes = 2, Frames = 300;
+        const int Row = 64, Passes = 2, Frames = 300, Load = 32;
         struct Late { }
 
         static int frame;
@@ -98,12 +102,17 @@ namespace AvatarBridge.Regression
             File.WriteAllText(Folder + "/JellyStep.shader", StepShader);
             File.WriteAllText(Folder + "/JellyPoints.shader", PointsShader);
             File.WriteAllText(Folder + "/JellyDraw.shader", DrawShader);
+            File.WriteAllText(Folder + "/JellyClock.shader", ClockShader);
+            File.WriteAllText(Folder + "/JellyMeter.shader", MeterShader);
             File.WriteAllText(Folder + "/README.md", Readme);
             AssetDatabase.Refresh();
             var step = AssetDatabase.LoadAssetAtPath<Shader>(Folder + "/JellyStep.shader");
             var draw = AssetDatabase.LoadAssetAtPath<Shader>(Folder + "/JellyDraw.shader");
             var points = AssetDatabase.LoadAssetAtPath<Shader>(Folder + "/JellyPoints.shader");
-            if (step == null || draw == null || points == null || ShaderUtil.ShaderHasError(step) || ShaderUtil.ShaderHasError(draw) || ShaderUtil.ShaderHasError(points))
+            var clock = AssetDatabase.LoadAssetAtPath<Shader>(Folder + "/JellyClock.shader");
+            var meter = AssetDatabase.LoadAssetAtPath<Shader>(Folder + "/JellyMeter.shader");
+            var shaders = new[] { step, draw, points, clock, meter };
+            if (shaders.Any(x => x == null || ShaderUtil.ShaderHasError(x)))
             {
                 Debug.Log("[Jelly] BUILD ABORT: a shader did not import or has errors");
                 return null;
@@ -126,12 +135,28 @@ namespace AvatarBridge.Regression
             pointsMat.SetVector("_Lattice", new Vector4(Size.x, Size.y, Size.z, Spacing));
             pointsMat = Save(pointsMat, "/Jelly_Points.mat");
             var plain = Save(new Material(Shader.Find("Standard")) { color = new Color(1f, 0.85f, 0.1f) }, "/Jelly_Rider.mat");
+            var load = Save(State(Size), "/Jelly_Load.renderTexture");
+            var loadMat = StepMaterial(step, Size);
+            loadMat.SetFloat("_Stress", 1f);
+            loadMat = Save(loadMat, "/Jelly_Load.mat");
+            var ticks = Save(new RenderTexture(4, 1, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear)
+            {
+                filterMode = FilterMode.Point,
+                wrapMode = TextureWrapMode.Clamp,
+                useMipMap = false,
+                autoGenerateMips = false,
+            }, "/Jelly_Clock.renderTexture");
+            var clockMat = Save(new Material(clock), "/Jelly_Clock.mat");
+            var meterMat = new Material(meter);
+            meterMat.SetTexture("_Clock", ticks);
+            meterMat.SetFloat("_Load", Load);
+            meterMat = Save(meterMat, "/Jelly_Meter.mat");
 
             var root = new GameObject("Jelly Spike");
             var tissue = new GameObject("Tissue");
             tissue.transform.SetParent(root.transform, false);
             var provider = tissue.AddComponent<CVRMaterialDataProvider>();
-            provider.materials = new[] { stepMat, pointsMat };
+            provider.materials = new[] { stepMat, pointsMat, loadMat };
             provider.dataMode = CVRMaterialDataProvider.DataMode.TransformLocalToWorld;
             provider.transforms = new[] { root.transform };
             provider.shaderPropertyName = "_JellyAnchor";
@@ -156,6 +181,36 @@ namespace AvatarBridge.Regression
             pointer.blitMaterial = pointsMat;
             pointer.destinationTextures = new RenderTexture[0];
             controller.cvrRenderComponents.Add(pointer);
+
+            // The cost meter: its clock, and the load, which steps a lattice nobody draws in the odd
+            // phases and leaves it be in the even ones.
+            var ticker = tissue.AddComponent<CVRBlitter>();
+            ticker.originTexture = ticks;
+            ticker.destinationTexture = ticks;
+            ticker.blitMaterial = clockMat;
+            ticker.destinationTextures = new RenderTexture[0];
+            controller.cvrRenderComponents.Add(ticker);
+            var loader = new GameObject("Load");
+            loader.transform.SetParent(root.transform, false);
+            var loadController = loader.AddComponent<CVRRenderController>();
+            for (int i = 0; i < Load; i++)
+            {
+                var blitter = loader.AddComponent<CVRBlitter>();
+                blitter.originTexture = load;
+                blitter.destinationTexture = load;
+                blitter.blitMaterial = loadMat;
+                blitter.destinationTextures = new RenderTexture[0];
+                loadController.cvrRenderComponents.Add(blitter);
+            }
+            var face = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            face.name = "Meter";
+            Object.DestroyImmediate(face.GetComponent<Collider>());
+            face.transform.SetParent(root.transform, false);
+            face.transform.localPosition = new Vector3(0f, 0.15f, 0.1f);
+            var faceRenderer = face.GetComponent<MeshRenderer>();
+            faceRenderer.sharedMaterial = meterMat;
+            faceRenderer.shadowCastingMode = ShadowCastingMode.Off;
+            faceRenderer.receiveShadows = false;
 
             // The rider, at rest on the front centre, and a plain cube on it.
             var rider = new GameObject("Rider");
@@ -574,6 +629,9 @@ namespace AvatarBridge.Regression
             var read = (Vector3) where[0] - Vector3.one * 0.5f;
             var turn = ((Vector3) where[1] - Vector3.one * 0.5f) * 360f;
             ok &= (read - frontAt).magnitude < 1e-3f && where[0].w == 1f;
+            var clockNow = Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_Clock.renderTexture"));
+            said += $"; the meter's clock: {clockNow[0].x:0.00} ms now, last phases off {clockNow[2].x:0.00} and on {clockNow[2].y:0.00} ({clockNow[2].z:0}/{clockNow[2].w:0})";
+            ok &= Mathf.Abs(clockNow[0].x - 1000f / 90f) < 0.5f;
             said += $"; the rider's texels: at {100f * read.x:0.0}/{100f * read.y:0.0}/{100f * read.z:0.0} cm against the front centre's " +
                     $"{100f * frontAt.x:0.0}/{100f * frontAt.y:0.0}/{100f * frontAt.z:0.0}, turned {turn.x:0.0}/{turn.y:0.0}/{turn.z:0.0} degrees";
             if (verifyShots.Count > 0)
@@ -606,6 +664,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _Passes (""Passes a frame"", Float) = 2
         _Hand (""Hand radius at a 1.6 m viewpoint"", Float) = 0.05
         _FixedDt (""Fixed frame time, 0 for the real one"", Float) = 0
+        _Stress (""The cost meter's load: steps only in odd phases"", Float) = 0
     }
     SubShader
     {
@@ -620,7 +679,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
 
             #include ""JellyCommon.cginc""
 
-            float _Stiff, _Hz, _Damp, _Passes, _Hand, _FixedDt;
+            float _Stiff, _Hz, _Damp, _Passes, _Hand, _FixedDt, _Stress;
             float4 _CVR_PlayerLeftHandPositions[255];
             float4 _CVR_PlayerRightHandPositions[255];
             float4 _CVR_PlayerChestPositions[255];
@@ -630,6 +689,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             float4 frag(v2f_img i) : SV_Target
             {
                 int2 px = int2(i.pos.xy);
+                // The cost meter's load rests in even phases, as cheap as a pass can be.
+                if (_Stress > 0 && fmod(floor(_Time.y / Window), 2) < 0.5) return _MainTex.Load(int3(px, 0));
                 int half_ = px.x / Row;
                 int p = px.x % Row + px.y * Row;
                 int3 n = Count();
@@ -704,6 +765,7 @@ float4 _Lattice;
 float4x4 _JellyAnchor[1];
 
 static const int Row = 64;
+static const float Window = 5;
 static const float3 Gravity = float3(0, -9.81, 0);
 
 int3 Count() { return int3(_Lattice.xyz); }
@@ -838,6 +900,157 @@ Shader ""Hidden/AvatarBridge/JellyPoints""
 }
 ";
 
+        const string ClockShader = @"// The jelly spike's cost meter clock. Written by JellySpikeBuilder; edits here are overwritten.
+//
+// Texel 0: the frame time in ms, smoothed over about a second. Texel 1: this phase's running sum
+// and count, its number and when it began. Texel 2: the last whole phase's average with the load
+// off (x) and on (y), z and w 1 once each is in. Phases are Window seconds, the load on in odd ones.
+Shader ""Hidden/AvatarBridge/JellyClock""
+{
+    Properties
+    {
+        _MainTex (""Last frame's clock"", 2D) = ""black"" {}
+    }
+    SubShader
+    {
+        Cull Off ZWrite Off ZTest Always
+        Pass
+        {
+            CGPROGRAM
+            #pragma vertex vert_img
+            #pragma fragment frag
+            #pragma target 4.5
+            #include ""UnityCG.cginc""
+            #include ""JellyCommon.cginc""
+
+            float4 frag(v2f_img i) : SV_Target
+            {
+                int x = int(i.pos.x);
+                float t = _Time.y, ms = unity_DeltaTime.x * 1000;
+                float4 a = _MainTex.Load(int3(0, 0, 0)), b = _MainTex.Load(int3(1, 0, 0)), c = _MainTex.Load(int3(2, 0, 0));
+                float phase = floor(t / Window);
+                bool fresh = !(a.w == 1) || !(b.x >= 0 && b.y >= 0);
+                if (x == 0) return float4(fresh ? ms : lerp(a.x, ms, 0.02), 0, 0, 1);
+                bool turned = fresh || b.z != phase;
+                if (x == 1)
+                {
+                    if (turned) return float4(0, 0, phase, t);
+                    // The first half second of a phase is left out, while the frame settles.
+                    return t - b.w > 0.5 ? float4(b.x + ms, b.y + 1, b.z, b.w) : b;
+                }
+                if (fresh) return 0;
+                if (turned && b.y > 10)
+                {
+                    float mean = b.x / b.y;
+                    return fmod(b.z, 2) < 0.5 ? float4(mean, c.y, 1, c.w) : float4(c.x, mean, c.z, 1);
+                }
+                return c;
+            }
+            ENDCG
+        }
+    }
+    Fallback Off
+}
+";
+
+        const string MeterShader = @"// The jelly spike's cost meter. Written by JellySpikeBuilder; edits here are overwritten.
+//
+// Four rows, a number each: white the frame time now in ms; green the last whole phase's with the
+// load off; red with it on; yellow what one pass of the step costs, the difference over the load's
+// passes. Dark red while the clock has never run.
+Shader ""AvatarBridge/Jelly Meter""
+{
+    Properties
+    {
+        // Declared, not only set: the client points a material's render textures at the avatar
+        // copy's own by walking its declared properties.
+        _Clock (""The meter's clock"", 2D) = ""black"" {}
+        _Load (""Passes in the load"", Float) = 32
+        _Size (""Width in metres"", Float) = 0.12
+    }
+    SubShader
+    {
+        Tags { ""Queue"" = ""Overlay"" ""RenderType"" = ""Overlay"" ""IgnoreProjector"" = ""True"" }
+        Pass
+        {
+            ZTest Always ZWrite Off Cull Off
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #pragma target 4.5
+            #pragma multi_compile_instancing
+            #include ""UnityCG.cginc""
+
+            Texture2D<float4> _Clock;
+            float _Load, _Size;
+
+            struct appdata
+            {
+                float4 vertex : POSITION;
+                float2 uv : TEXCOORD0;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
+            };
+
+            struct v2f
+            {
+                float4 pos : SV_POSITION;
+                float2 uv : TEXCOORD0;
+                UNITY_VERTEX_OUTPUT_STEREO
+            };
+
+            v2f vert(appdata v)
+            {
+                v2f o;
+                UNITY_SETUP_INSTANCE_ID(v);
+                UNITY_INITIALIZE_OUTPUT(v2f, o);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
+                // A view-space billboard at the object, so it faces every eye and mirror.
+                float3 centre = mul(UNITY_MATRIX_V, float4(mul(unity_ObjectToWorld, float4(0, 0, 0, 1)).xyz, 1)).xyz;
+                float2 off = (v.uv - 0.5) * float2(_Size, _Size * 6.0 / 7.0);
+                o.pos = mul(UNITY_MATRIX_P, float4(centre + float3(off, 0), 1));
+                o.uv = v.uv;
+                return o;
+            }
+
+            // Digits and the point in 3 by 5, a bit a pixel, the top left first.
+            static const uint Font[11] = { 0x7B6F, 0x2C97, 0x73E7, 0x73CF, 0x5BC9, 0x79CF, 0x79EF, 0x7249, 0x7BEF, 0x7BCF, 0x0002 };
+            static const int Cells = 7;
+            // A table, not pow: pow(10, 3) can come out a hair under 1000 and drop a digit.
+            static const float Ten[7] = { 1, 10, 100, 1000, 10000, 100000, 1000000 };
+
+            // The glyph in cell `cell` of a number right aligned in Cells, blank before its first digit.
+            uint GlyphOf(float value, int decimals, int cell)
+            {
+                int k = Cells - 1 - cell;
+                if (k == decimals) return Font[10];
+                int place = k < decimals ? k : k - 1;
+                float whole = floor(max(value, 0) * Ten[decimals] + 0.5);
+                if (k > decimals + 1 && whole < Ten[place]) return 0;
+                return Font[(int) fmod(floor(whole / Ten[place]), 10)];
+            }
+
+            fixed4 frag(v2f i) : SV_Target
+            {
+                float4 a = _Clock.Load(int3(0, 0, 0)), c = _Clock.Load(int3(2, 0, 0));
+                if (!(a.w == 1)) return fixed4(0.3, 0.05, 0.05, 1);
+                float down = (1 - i.uv.y) * 4;
+                int row = (int) floor(down);
+                int cell = (int) floor(i.uv.x * Cells);
+                // A glyph is 3 by 5 in a 4 by 6 cell.
+                int gx = (int) floor(frac(i.uv.x * Cells) * 4), gy = (int) floor(frac(down) * 6);
+                float value = row == 0 ? a.x : row == 1 ? c.x : row == 2 ? c.y : (c.z > 0 && c.w > 0 ? max(c.y - c.x, 0) / max(_Load, 1) : 0);
+                float3 colour = row == 0 ? float3(1, 1, 1) : row == 1 ? float3(0.3, 1, 0.4) : row == 2 ? float3(1, 0.35, 0.3) : float3(1, 0.85, 0.2);
+                uint g = GlyphOf(value, row == 3 ? 3 : 2, cell);
+                bool lit = gx < 3 && gy < 5 && ((g >> (14 - (gy * 3 + gx))) & 1) != 0;
+                return fixed4(lit ? colour : float3(0.05, 0.05, 0.07), 1);
+            }
+            ENDCG
+        }
+    }
+    Fallback Off
+}
+";
+
         const string DrawShader = @"// The jelly spike's surface. Written by JellySpikeBuilder; edits here are overwritten.
 //
 // Every vertex goes where its particle is. Pink while the tissue steps; red once it has not
@@ -943,6 +1156,14 @@ Before uploading, `Jelly_Preview.unity` shows it in the editor: open it and pres
 | Pink | The tissue is stepping |
 | Red | It has not stepped for a quarter second: the blitters are not running for this copy |
 | Purple | The anchor never arrived: the material data provider is not running |
+
+The meter above it has four rows: white, your frame time in ms; green, the average over the last
+five seconds with the load off; red, the five before or after with it on; yellow, what one pass of
+the step's own work costs, the difference over the load's 32 passes (the copy every blitter run
+pays comes on top, 0.018 ms on an RTX 4080). The jelly runs two passes a frame. The
+load only says something with the frame rate uncapped, on desktop: under VR or vsync the frame
+time sits at the cap whatever the work. A yellow near zero on a CPU-bound frame means the GPU did
+the work in time it was waiting anyway: no cost to that frame.
 
 A plain yellow cube sits on the front. Its shader knows nothing of the tissue: a texture parser
 moves it, from where the front centre is. It should ride the front as the jelly wobbles and as it
