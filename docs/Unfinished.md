@@ -1639,8 +1639,12 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
 - **Works in game, 2026-10-27 [GAME]** (Joe, on Kar): pink and wobbling, and both Joe and a
   remote user push it with their default hands, so the step runs every frame on the avatar, keeps
   its state, and reads every player's hands from the client's globals.
-- Still open [GAME]: frame time worn against not; the remote user's own view of it; avatar switch
-  and back; both VR eyes; the Cameras content filter off shows it red.
+- **And the rest, same session [GAME]:** frame time "practically nothing"; the remote user saw it
+  pink and wobbling on their own screen; switching avatar and back starts it again; both VR eyes
+  alike. CVR's Shader Performance Viewer (instructions, texture fetches, surface instructions)
+  draws the jelly's surface darkest on screen, cheaper than the body's own shader.
+- Still open: the Cameras content filter off should show it red (viewers so set get no blitters,
+  so a live squash needs a fallback for them).
 - The menu item rebuilt the assets with the preview scene, which replaced the open scene: it now
   only adds the prefab, building it without the scene if it is missing.
 
