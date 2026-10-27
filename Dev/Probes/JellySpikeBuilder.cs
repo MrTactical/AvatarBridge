@@ -7,6 +7,11 @@
 // every player's hands push it out of the way. A mesh draws the lattice's surface from the same
 // texture. Nothing is baked, nothing is synced, and each client steps its own copy.
 //
+// A plain cube rides the front: one more blitter writes where the front centre is, and how its
+// neighbourhood has turned, into a 2x1 texture, and a texture parser writes those into a
+// transform's local position and Euler angles. Nothing on the cube's own shader knows the tissue,
+// so its riding says whether anything attached to a bone could follow the tissue too.
+//
 //   -executeMethod AvatarBridge.Regression.JellySpikeBuilder.Build
 //   -executeMethod AvatarBridge.Regression.JellySpikeBuilder.Bench -jellyOut <dir>
 //   -executeMethod AvatarBridge.Regression.JellySpikeBuilder.Verify -jellyOut <dir>
@@ -68,9 +73,12 @@ namespace AvatarBridge.Regression
                 EditorUtility.DisplayDialog("Jelly spike", "Select a humanoid avatar in the scene first.", "OK");
                 return;
             }
-            // Built once; building again would make the preview scene, which replaces the open one.
-            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(Prefab) ?? Make(preview: false);
+            // Rebuilt without the preview scene, which would replace the open one, and any earlier one
+            // on the avatar taken off, so the avatar always carries the newest.
+            var prefab = Make(preview: false);
             if (prefab == null) return;
+            foreach (var old in avatar.GetComponentsInChildren<Transform>(true).Where(t => t.name == "Jelly Spike").ToList())
+                Undo.DestroyObjectImmediate(old.gameObject);
             var root = avatar.transform;
             var head = animator.GetBoneTransform(HumanBodyBones.Head);
             // Sized and placed for the avatar's height, so it hangs clear of the chest on anyone.
@@ -86,13 +94,16 @@ namespace AvatarBridge.Regression
         static GameObject Make(bool preview = true)
         {
             if (!AssetDatabase.IsValidFolder(Folder)) AssetDatabase.CreateFolder("Assets", "AvatarBridge_Jelly");
+            File.WriteAllText(Folder + "/JellyCommon.cginc", CommonInclude);
             File.WriteAllText(Folder + "/JellyStep.shader", StepShader);
+            File.WriteAllText(Folder + "/JellyPoints.shader", PointsShader);
             File.WriteAllText(Folder + "/JellyDraw.shader", DrawShader);
             File.WriteAllText(Folder + "/README.md", Readme);
             AssetDatabase.Refresh();
             var step = AssetDatabase.LoadAssetAtPath<Shader>(Folder + "/JellyStep.shader");
             var draw = AssetDatabase.LoadAssetAtPath<Shader>(Folder + "/JellyDraw.shader");
-            if (step == null || draw == null || ShaderUtil.ShaderHasError(step) || ShaderUtil.ShaderHasError(draw))
+            var points = AssetDatabase.LoadAssetAtPath<Shader>(Folder + "/JellyPoints.shader");
+            if (step == null || draw == null || points == null || ShaderUtil.ShaderHasError(step) || ShaderUtil.ShaderHasError(draw) || ShaderUtil.ShaderHasError(points))
             {
                 Debug.Log("[Jelly] BUILD ABORT: a shader did not import or has errors");
                 return null;
@@ -104,12 +115,23 @@ namespace AvatarBridge.Regression
             drawMat.SetTexture("_State", state);
             drawMat = Save(drawMat, "/Jelly_Draw.mat");
             var mesh = Save(Surface(Size), "/Jelly_Surface.asset");
+            var where = Save(new RenderTexture(2, 1, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear)
+            {
+                filterMode = FilterMode.Point,
+                wrapMode = TextureWrapMode.Clamp,
+                useMipMap = false,
+                autoGenerateMips = false,
+            }, "/Jelly_Points.renderTexture");
+            var pointsMat = new Material(points);
+            pointsMat.SetVector("_Lattice", new Vector4(Size.x, Size.y, Size.z, Spacing));
+            pointsMat = Save(pointsMat, "/Jelly_Points.mat");
+            var plain = Save(new Material(Shader.Find("Standard")) { color = new Color(1f, 0.85f, 0.1f) }, "/Jelly_Rider.mat");
 
             var root = new GameObject("Jelly Spike");
             var tissue = new GameObject("Tissue");
             tissue.transform.SetParent(root.transform, false);
             var provider = tissue.AddComponent<CVRMaterialDataProvider>();
-            provider.materials = new[] { stepMat };
+            provider.materials = new[] { stepMat, pointsMat };
             provider.dataMode = CVRMaterialDataProvider.DataMode.TransformLocalToWorld;
             provider.transforms = new[] { root.transform };
             provider.shaderPropertyName = "_JellyAnchor";
@@ -127,6 +149,34 @@ namespace AvatarBridge.Regression
                 blitter.destinationTextures = new RenderTexture[0];
                 controller.cvrRenderComponents.Add(blitter);
             }
+            // Last, from the stepped state: where the front is, for the parser.
+            var pointer = tissue.AddComponent<CVRBlitter>();
+            pointer.originTexture = state;
+            pointer.destinationTexture = where;
+            pointer.blitMaterial = pointsMat;
+            pointer.destinationTextures = new RenderTexture[0];
+            controller.cvrRenderComponents.Add(pointer);
+
+            // The rider, at rest on the front centre, and a plain cube on it.
+            var rider = new GameObject("Rider");
+            rider.transform.SetParent(root.transform, false);
+            rider.transform.localPosition = new Vector3(0f, 0f, (Size.z - 1) * Spacing);
+            var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            cube.name = "Plain cube";
+            Object.DestroyImmediate(cube.GetComponent<Collider>());
+            cube.transform.SetParent(rider.transform, false);
+            cube.transform.localPosition = new Vector3(0f, 0f, 0.025f);
+            cube.transform.localScale = Vector3.one * 0.05f;
+            cube.GetComponent<MeshRenderer>().sharedMaterial = plain;
+            var parser = tissue.AddComponent<CVRTexturePropertyParser>();
+            parser.textureType = CVRTexturePropertyParser.TextureType.LocalTexture;
+            parser.texture = where;
+            // Vector3 properties are type 4, an element each; the texels hold each value between
+            // its task's bounds, so a clamped remap and an unclamped one read the same.
+            for (int i = 0; i < 3; i++)
+                parser.tasks.Add(Task(rider, 0, i, "localPosition", -0.5f, 0.5f));
+            for (int i = 0; i < 3; i++)
+                parser.tasks.Add(Task(rider, 1, i, "localEulerAngles", -180f, 180f));
             var body = new GameObject("Surface");
             body.transform.SetParent(root.transform, false);
             body.AddComponent<MeshFilter>().sharedMesh = mesh;
@@ -186,6 +236,21 @@ namespace AvatarBridge.Regression
                 autoGenerateMips = false,
             };
         }
+
+        static CVRTexturePropertyParserTask Task(GameObject target, int x, int element, string property, float min, float max) =>
+            new CVRTexturePropertyParserTask
+            {
+                x = x,
+                y = 0,
+                channel = (CVRTexturePropertyParserTask.Channel) element,
+                minValue = min,
+                maxValue = max,
+                target = target,
+                component = target.transform,
+                propertyName = property,
+                typeIndex = 4,
+                targetIndex = element,
+            };
 
         static Material StepMaterial(Shader step, Vector3Int n)
         {
@@ -500,7 +565,17 @@ namespace AvatarBridge.Regression
 
             string dir = SessionState.GetString(K + "out", "Jelly");
             var state = AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture");
-            bool ok = Health(Read(state), Size, seen, out string said);
+            var tissueNow = Read(state);
+            bool ok = Health(tissueNow, Size, seen, out string said);
+            // The rider's texels, decoded as the parser's tasks would, against the front centre.
+            var where = Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_Points.renderTexture"));
+            int front = ((Size.z - 1) * Size.y + Size.y / 2) * Size.x + Size.x / 2;
+            var frontAt = seen.inverse.MultiplyPoint3x4((Vector3) tissueNow[(front / Row) * 2 * Row + front % Row]);
+            var read = (Vector3) where[0] - Vector3.one * 0.5f;
+            var turn = ((Vector3) where[1] - Vector3.one * 0.5f) * 360f;
+            ok &= (read - frontAt).magnitude < 1e-3f && where[0].w == 1f;
+            said += $"; the rider's texels: at {100f * read.x:0.0}/{100f * read.y:0.0}/{100f * read.z:0.0} cm against the front centre's " +
+                    $"{100f * frontAt.x:0.0}/{100f * frontAt.y:0.0}/{100f * frontAt.z:0.0}, turned {turn.x:0.0}/{turn.y:0.0}/{turn.z:0.0} degrees";
             if (verifyShots.Count > 0)
             {
                 int w = verifyShots[0].width, h = verifyShots[0].height;
@@ -543,53 +618,14 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             #pragma target 4.5
             #include ""UnityCG.cginc""
 
-            Texture2D<float4> _MainTex;
-            float4 _Lattice;
+            #include ""JellyCommon.cginc""
+
             float _Stiff, _Hz, _Damp, _Passes, _Hand, _FixedDt;
-            float4x4 _JellyAnchor[1];
             float4 _CVR_PlayerLeftHandPositions[255];
             float4 _CVR_PlayerRightHandPositions[255];
             float4 _CVR_PlayerChestPositions[255];
             float4 _CVR_PlayerRootPositions[255];
             float4 CVRGlobalParams1;
-
-            static const int Row = 64;
-            static const float3 Gravity = float3(0, -9.81, 0);
-
-            int3 Count() { return int3(_Lattice.xyz); }
-            int Index(int3 l) { int3 n = Count(); return (l.z * n.y + l.y) * n.x + l.x; }
-            int3 Place(int p) { int3 n = Count(); return int3(p % n.x, (p / n.x) % n.y, p / (n.x * n.y)); }
-            int3 Texel(int p, int half_) { return int3(p % Row + half_ * Row, p / Row, 0); }
-            float3 Rest(int3 l) { int3 n = Count(); return float3(l.x - 0.5 * (n.x - 1), l.y - 0.5 * (n.y - 1), l.z) * _Lattice.w; }
-
-            // Where particle l would go this pass with nothing pulling it; the back face rides the anchor.
-            float3 Ahead(int3 l, float4x4 m, float h)
-            {
-                if (l.z == 0) return mul(m, float4(Rest(l), 1)).xyz;
-                int p = Index(l);
-                return _MainTex.Load(Texel(p, 0)).xyz + _MainTex.Load(Texel(p, 1)).xyz * h + Gravity * h * h;
-            }
-
-            float4 Mul(float4 a, float4 b) { return float4(a.w * b.xyz + b.w * a.xyz + cross(a.xyz, b.xyz), a.w * b.w - dot(a.xyz, b.xyz)); }
-
-            float3x3 Turn(float4 q)
-            {
-                float x = q.x, y = q.y, z = q.z, w = q.w;
-                return float3x3(1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w),
-                                2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w),
-                                2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y));
-            }
-
-            float4 Quat(float3x3 m)
-            {
-                float t = m[0][0] + m[1][1] + m[2][2];
-                float4 q;
-                if (t > 0) { float s = sqrt(t + 1) * 2; q = float4((m[2][1] - m[1][2]) / s, (m[0][2] - m[2][0]) / s, (m[1][0] - m[0][1]) / s, 0.25 * s); }
-                else if (m[0][0] > m[1][1] && m[0][0] > m[2][2]) { float s = sqrt(1 + m[0][0] - m[1][1] - m[2][2]) * 2; q = float4(0.25 * s, (m[0][1] + m[1][0]) / s, (m[0][2] + m[2][0]) / s, (m[2][1] - m[1][2]) / s); }
-                else if (m[1][1] > m[2][2]) { float s = sqrt(1 + m[1][1] - m[0][0] - m[2][2]) * 2; q = float4((m[0][1] + m[1][0]) / s, 0.25 * s, (m[1][2] + m[2][1]) / s, (m[0][2] - m[2][0]) / s); }
-                else { float s = sqrt(1 + m[2][2] - m[0][0] - m[1][1]) * 2; q = float4((m[0][2] + m[2][0]) / s, (m[1][2] + m[2][1]) / s, 0.25 * s, (m[1][0] - m[0][1]) / s); }
-                return normalize(q);
-            }
 
             float4 frag(v2f_img i) : SV_Target
             {
@@ -618,41 +654,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 if (l.z > 0)
                 {
                     // The neighbourhood's best rigid fit, from where each of its particles is headed.
-                    float3 c = 0, rc = 0;
-                    float k = 0;
-                    [unroll] for (int dz = -1; dz <= 1; dz++)
-                    [unroll] for (int dy = -1; dy <= 1; dy++)
-                    [unroll] for (int dx = -1; dx <= 1; dx++)
-                    {
-                        int3 o = l + int3(dx, dy, dz);
-                        if (any(o < 0) || any(o >= n)) continue;
-                        c += Ahead(o, m, h);
-                        rc += Rest(o);
-                        k += 1;
-                    }
-                    c /= k;
-                    rc /= k;
-                    float3x3 a = 0;
-                    [unroll] for (int ez = -1; ez <= 1; ez++)
-                    [unroll] for (int ey = -1; ey <= 1; ey++)
-                    [unroll] for (int ex = -1; ex <= 1; ex++)
-                    {
-                        int3 o = l + int3(ex, ey, ez);
-                        if (any(o < 0) || any(o >= n)) continue;
-                        float3 d = Ahead(o, m, h) - c, r = Rest(o) - rc;
-                        a += float3x3(d.x * r, d.y * r, d.z * r);
-                    }
-                    // Its rotation (Mueller and others, 2016), started from the anchor's.
-                    float4 q = Quat((float3x3) m / scale);
-                    [unroll] for (int it = 0; it < 6; it++)
-                    {
-                        float3x3 t = Turn(q);
-                        float3 t0 = float3(t[0][0], t[1][0], t[2][0]), t1 = float3(t[0][1], t[1][1], t[2][1]), t2 = float3(t[0][2], t[1][2], t[2][2]);
-                        float3 a0 = float3(a[0][0], a[1][0], a[2][0]), a1 = float3(a[0][1], a[1][1], a[2][1]), a2 = float3(a[0][2], a[1][2], a[2][2]);
-                        float3 spin = (cross(t0, a0) + cross(t1, a1) + cross(t2, a2)) / (abs(dot(t0, a0) + dot(t1, a1) + dot(t2, a2)) + 1e-12);
-                        float w = length(spin);
-                        if (w > 1e-9) q = normalize(Mul(float4(spin / w * sin(0.5 * w), cos(0.5 * w)), q));
-                    }
+                    float3 c, rc;
+                    float4 q = Fit(l, m, scale, h, c, rc);
                     float3 goal = mul(Turn(q), (Rest(l) - rc) * scale) + c;
                     next = lerp(ahead, goal, _Stiff);
                     // And the whole of it toward its rest on the anchor, as a spring of _Hz: the
@@ -684,6 +687,149 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 }
                 if (half_ == 0) return float4(next, _Time.y);
                 return float4((next - x) / h * exp(-_Damp * h), 1);
+            }
+            ENDCG
+        }
+    }
+    Fallback Off
+}
+";
+
+        const string CommonInclude = @"// The jelly spike's lattice, shared by its passes. Written by JellySpikeBuilder; edits here are overwritten.
+#ifndef JELLY_COMMON
+#define JELLY_COMMON
+
+Texture2D<float4> _MainTex;
+float4 _Lattice;
+float4x4 _JellyAnchor[1];
+
+static const int Row = 64;
+static const float3 Gravity = float3(0, -9.81, 0);
+
+int3 Count() { return int3(_Lattice.xyz); }
+int Index(int3 l) { int3 n = Count(); return (l.z * n.y + l.y) * n.x + l.x; }
+int3 Place(int p) { int3 n = Count(); return int3(p % n.x, (p / n.x) % n.y, p / (n.x * n.y)); }
+int3 Texel(int p, int half_) { return int3(p % Row + half_ * Row, p / Row, 0); }
+float3 Rest(int3 l) { int3 n = Count(); return float3(l.x - 0.5 * (n.x - 1), l.y - 0.5 * (n.y - 1), l.z) * _Lattice.w; }
+
+// Where particle l would go h on with nothing pulling it, where it is at h 0; the back face rides
+// the anchor.
+float3 Ahead(int3 l, float4x4 m, float h)
+{
+    if (l.z == 0) return mul(m, float4(Rest(l), 1)).xyz;
+    int p = Index(l);
+    return _MainTex.Load(Texel(p, 0)).xyz + _MainTex.Load(Texel(p, 1)).xyz * h + Gravity * h * h;
+}
+
+float4 Mul(float4 a, float4 b) { return float4(a.w * b.xyz + b.w * a.xyz + cross(a.xyz, b.xyz), a.w * b.w - dot(a.xyz, b.xyz)); }
+
+float3x3 Turn(float4 q)
+{
+    float x = q.x, y = q.y, z = q.z, w = q.w;
+    return float3x3(1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w),
+                    2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w),
+                    2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y));
+}
+
+float4 Quat(float3x3 m)
+{
+    float t = m[0][0] + m[1][1] + m[2][2];
+    float4 q;
+    if (t > 0) { float s = sqrt(t + 1) * 2; q = float4((m[2][1] - m[1][2]) / s, (m[0][2] - m[2][0]) / s, (m[1][0] - m[0][1]) / s, 0.25 * s); }
+    else if (m[0][0] > m[1][1] && m[0][0] > m[2][2]) { float s = sqrt(1 + m[0][0] - m[1][1] - m[2][2]) * 2; q = float4(0.25 * s, (m[0][1] + m[1][0]) / s, (m[0][2] + m[2][0]) / s, (m[2][1] - m[1][2]) / s); }
+    else if (m[1][1] > m[2][2]) { float s = sqrt(1 + m[1][1] - m[0][0] - m[2][2]) * 2; q = float4((m[0][1] + m[1][0]) / s, 0.25 * s, (m[1][2] + m[2][1]) / s, (m[0][2] - m[2][0]) / s); }
+    else { float s = sqrt(1 + m[2][2] - m[0][0] - m[1][1]) * 2; q = float4((m[0][2] + m[2][0]) / s, (m[1][2] + m[2][1]) / s, 0.25 * s, (m[1][0] - m[0][1]) / s); }
+    return normalize(q);
+}
+
+// The best rigid fit of l's 3x3x3 neighbourhood, from where each of them is headed h on: its
+// rotation (Mueller and others, 2016, started from the anchor's), its centre and its rest centre.
+float4 Fit(int3 l, float4x4 m, float scale, float h, out float3 c, out float3 rc)
+{
+    int3 n = Count();
+    c = 0;
+    rc = 0;
+    float k = 0;
+    [unroll] for (int dz = -1; dz <= 1; dz++)
+    [unroll] for (int dy = -1; dy <= 1; dy++)
+    [unroll] for (int dx = -1; dx <= 1; dx++)
+    {
+        int3 o = l + int3(dx, dy, dz);
+        if (any(o < 0) || any(o >= n)) continue;
+        c += Ahead(o, m, h);
+        rc += Rest(o);
+        k += 1;
+    }
+    c /= k;
+    rc /= k;
+    float3x3 a = 0;
+    [unroll] for (int ez = -1; ez <= 1; ez++)
+    [unroll] for (int ey = -1; ey <= 1; ey++)
+    [unroll] for (int ex = -1; ex <= 1; ex++)
+    {
+        int3 o = l + int3(ex, ey, ez);
+        if (any(o < 0) || any(o >= n)) continue;
+        float3 d = Ahead(o, m, h) - c, r = Rest(o) - rc;
+        a += float3x3(d.x * r, d.y * r, d.z * r);
+    }
+    float4 q = Quat((float3x3) m / scale);
+    [unroll] for (int it = 0; it < 6; it++)
+    {
+        float3x3 t = Turn(q);
+        float3 t0 = float3(t[0][0], t[1][0], t[2][0]), t1 = float3(t[0][1], t[1][1], t[2][1]), t2 = float3(t[0][2], t[1][2], t[2][2]);
+        float3 a0 = float3(a[0][0], a[1][0], a[2][0]), a1 = float3(a[0][1], a[1][1], a[2][1]), a2 = float3(a[0][2], a[1][2], a[2][2]);
+        float3 spin = (cross(t0, a0) + cross(t1, a1) + cross(t2, a2)) / (abs(dot(t0, a0) + dot(t1, a1) + dot(t2, a2)) + 1e-12);
+        float w = length(spin);
+        if (w > 1e-9) q = normalize(Mul(float4(spin / w * sin(0.5 * w), cos(0.5 * w)), q));
+    }
+    return q;
+}
+
+#endif
+";
+
+        const string PointsShader = @"// The jelly spike's riding point. Written by JellySpikeBuilder; edits here are overwritten.
+//
+// Two texels for the texture parser, each a range read back between its task's bounds: the front
+// centre's place in the anchor's own space, x, y and z each from -0.5 to 0.5; and how its
+// neighbourhood has turned against the anchor, as Unity's Euler angles, each from -180 to 180.
+Shader ""Hidden/AvatarBridge/JellyPoints""
+{
+    Properties
+    {
+        _MainTex (""The tissue's state"", 2D) = ""black"" {}
+        _Lattice (""Particles across, up and deep; spacing in metres"", Vector) = (16, 12, 16, 0.0133)
+    }
+    SubShader
+    {
+        Cull Off ZWrite Off ZTest Always
+        Pass
+        {
+            CGPROGRAM
+            #pragma vertex vert_img
+            #pragma fragment frag
+            #pragma target 4.5
+            #include ""UnityCG.cginc""
+            #include ""JellyCommon.cginc""
+
+            float4 frag(v2f_img i) : SV_Target
+            {
+                int3 n = Count();
+                int3 l = int3(n.x / 2, n.y / 2, n.z - 1);
+                float4x4 m = _JellyAnchor[0];
+                float scale = length(m._m00_m10_m20);
+                if (!(scale > 1e-6)) return float4(0.5, 0.5, 0.5, 0);
+                float3x3 r = (float3x3) m / scale;
+                if (int(i.pos.x) == 0)
+                {
+                    float3 at = mul(transpose(r), _MainTex.Load(Texel(Index(l), 0)).xyz - m._m03_m13_m23) / scale;
+                    return float4(saturate(at + 0.5), 1);
+                }
+                float3 c, rc;
+                float3x3 t = mul(transpose(r), Turn(Fit(l, m, scale, 0, c, rc)));
+                // Unity turns by z, then x, then y: t = Ry Rx Rz.
+                float3 euler = degrees(float3(asin(clamp(-t[1][2], -1, 1)), atan2(t[0][2], t[2][2]), atan2(t[1][0], t[1][1])));
+                return float4(saturate(euler / 360 + 0.5), 1);
             }
             ENDCG
         }
@@ -784,8 +930,8 @@ yours or another player's.
 ## Setting it up
 
 1. Select the avatar in the scene and run Tools > AvatarBridge Dev > Jelly spike: add to the
-   selected avatar. It goes under the chest bone, in front of the chest, sized for the avatar.
-   Move it if it sits inside anything.
+   selected avatar. It goes under the chest bone, in front of the chest, sized for the avatar,
+   replacing any earlier one. Move it if it sits inside anything.
 2. Upload. Nothing else: no parameters, no menu, no sync.
 
 Before uploading, `Jelly_Preview.unity` shows it in the editor: open it and press Play.
@@ -797,6 +943,11 @@ Before uploading, `Jelly_Preview.unity` shows it in the editor: open it and pres
 | Pink | The tissue is stepping |
 | Red | It has not stepped for a quarter second: the blitters are not running for this copy |
 | Purple | The anchor never arrived: the material data provider is not running |
+
+A plain yellow cube sits on the front. Its shader knows nothing of the tissue: a texture parser
+moves it, from where the front centre is. It should ride the front as the jelly wobbles and as it
+is poked, tilting with it, a frame or two behind. If the jelly wobbles and the cube stays put, the
+parser is not running.
 
 ## What to try
 

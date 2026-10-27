@@ -1645,6 +1645,13 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
   draws the jelly's surface darkest on screen, cheaper than the body's own shader.
 - Still open: the Cameras content filter off should show it red (viewers so set get no blitters,
   so a live squash needs a fallback for them).
+- **Attached things, the next proof (built 2026-10-27, Joe to try):** a plain yellow cube on the
+  front, its shader knowing nothing of the tissue, moved by a `CVRTexturePropertyParser` reading a
+  2x1 texture one more blitter writes (the front centre's place and turn in the anchor's space,
+  each between its task's bounds). Editor [M]: the texels decode to the front centre exactly, 20.8
+  cm out. If it rides in game, anything on a bone can follow the tissue, a frame or two late.
+- **Order, Joe 2026-10-27:** the squash shader working on MagicaCloth first and 5.0.0 shipped; the
+  live tissue and the rest of his ideas after, in 5.1.
 - The menu item rebuilt the assets with the preview scene, which replaced the open scene: it now
   only adds the prefab, building it without the scene if it is missing.
 
