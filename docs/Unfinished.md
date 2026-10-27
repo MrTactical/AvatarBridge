@@ -1546,8 +1546,21 @@ grid's cells grew to 3 cm so the two either side reach 6. The bra's farthest ver
 off, so all of it now rides. Seen [M]: the lobes standing out past the hands in the squeeze and
 the outside press are gone; the skin's numbers unchanged. No memory. Option 2 not needed.
 
+**The meet line at rest, gone.** Joe, 2026-10-27: "why does ours in the video still have the meet
+line?" Not the soft body's: the part pass presses whatever the two overlap against the seam, each
+side stopping 3% of the reach short, and the pair's mesh overlapped about 2 cm at rest, so it met
+in a straight slot with nobody near. Of the two ways put to Joe (A: keep the overlap the mesh has
+at rest; B: bake the two pressing each other into the soft body and retire the part pass) he took
+A, "B if it looks wrong", judged by his eyes. The shader reads the rest overlap from what it
+carries (each part's reach toward the other less the pair's start), takes it off the overlap, and
+eases the contact in over it as over the last of a gap; a pair apart at rest reads as before. Kar
+[M]: at rest 0.25 to 0.16 cm rms against the solved tissue (worst 2.1 to 0.8), a light squeeze
+0.31 to 0.23, from below 0.55 to 0.48, the squeeze 0.86 to 0.89; no new jumps. Joe: "looks right
+with A, i like it".
+
 Next:
 1. One part's answers mirrored onto the other, and the cost of starting each batch.
+2. B, if pushed together hard the flat contact looks wrong in game.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 

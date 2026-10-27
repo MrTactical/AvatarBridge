@@ -866,6 +866,11 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
             if (po.framed) frontO = YapsExtent(YapsTurned(po), -axis);
         }
         float over = frontS + frontO - length(toward);
+        // A pair modelled overlapping keeps that overlap as its rest: only what it is pressed past
+        // it flattens, and the contact eases in over it as over the last of a gap. Flattened from
+        // the touch, the pair met in a straight slot with nobody near.
+        float rested = paired ? max(reach + _YAPS_SquashReach[m ^ 1] * YapsUnit(m ^ 1) - start, 0) : 0;
+        over -= rested;
 
         // The hands on this part, and on its partner when that could reach this one: of the
         // partner only how far its hands bend it this way is kept, so a hand pushing one part into
@@ -970,7 +975,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
             squashPlane[m] = dot(axis, p.centre) + frontS + bendSelf - meet * takes;
             // Eased in over the last of the gap: switched on at the touch, the skin by the seam
             // jumped back onto it.
-            squashContact[m] = takes > 0 && _YAPS_SquashShape.w > 0 ? saturate(1 + meet / (YAPS_SQUASH_SOFT * reach)) : 0;
+            squashContact[m] = takes > 0 && _YAPS_SquashShape.w > 0 ? saturate(1 + (meet - min(rested, YAPS_SQUASH_SOFT * reach)) / (YAPS_SQUASH_SOFT * reach)) : 0;
         }
         // Pushed off its rest by anything its cloth collides with: pressed from the side the
         // push came from. Downward is left out, or the sag the cloth settles into would read
