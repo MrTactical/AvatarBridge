@@ -1683,6 +1683,30 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
   barely any cost from the prop; the loss was another player's avatar, and the meter's own load
   (32 passes every other half second) had been most of the rest. The meter is now opt-in (its own
   menu item), and a menu item makes the prop.
+- **A slap jiggles it [GAME], Joe 2026-10-27:** a hand pushes the lattice and it wobbles back, the
+  jiggle planned for the squash. Every player's hands do it with nothing on their avatar, where
+  MagicaCloth needs a collider on the other player's hand.
+- **Cheaper still, ideas ranked 2026-10-27 (not started):**
+  1. Fix the bench first: a longer warm-up, interleaved repeats with the median, the points pass
+     and an RGBA32 readback in the timed frame, and rows for K dependent copy passes, so a pass's
+     fixed cost reads apart from the step's own work. On the 2-CU Radeon half of today's 0.092 ms
+     is the near pass and the copy-throughs, not the step.
+  2. Uniform `[branch]` gates: skip the hand block when slot 0 is empty, branch the near scan and
+     the rotation. 5 to 13% on the 2-CU Radeon; the look is untouched.
+  3. The fit's 27-neighbour sweep rewritten exactly: one damping factor per pass, integer offsets
+     times the spacing, uniform texel offsets, no signed division in Place. About 13 to 27% on the
+     2-CU Radeon; rounding only, so the turn trace must match at print precision. Gravity does not
+     cancel for the back face's neighbours and goes into the per-pass constant.
+  4. Four blits to two: the rider out of its own pass, the near scan folded into pass 0. Two fewer
+     `Graphics.Blit` per copy per viewer, the only real CPU lever (each copy pays on every viewer,
+     nothing is culled), and 25 to 35% of the GPU chain on a fast card.
+  5. Then try 1 rotation step not 3, and predicting once above 72 fps. A distance gate for other
+     people's copies saves the most with many wearers but changes the look at range: Joe to decide.
+  - The AMD readings (6700 XT 0.16 to 0.30, 7840U 0.116) do not fit the 2-CU part's 0.043 ms of
+    step work: most likely the GPU clocked down in a CPU-bound frame, so not real cost. Check the
+    clock and GPU-busy in game before optimising for them.
+  - Ruled out: a double-buffered CustomRenderTexture (the client cannot drive one); a brick
+    layout, dropping the right half by MRT, and a coarser lattice cost more than they save.
 - **Order, Joe 2026-10-27:** the squash shader working on MagicaCloth first and 5.0.0 shipped; the
   live tissue and the rest of his ideas after, in 5.1.
 - The menu item rebuilt the assets with the preview scene, which replaced the open scene: it now
