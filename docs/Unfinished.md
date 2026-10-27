@@ -1679,6 +1679,10 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
   four viewers on discrete GPUs: 0.000, 0.000, 0.001 to 0.002, 0.016 to 0.020 ms, against 0.062
   and 0.079 before. One viewer on a Ryzen 7840U's integrated graphics, no GPU: 0.116 ms a pass,
   so about 0.25 ms a frame below 72 fps where both passes step.
+- **The jelly alone, as a prop [GAME]:** a viewer who lost about 20 fps around the avatar saw
+  barely any cost from the prop; the loss was another player's avatar, and the meter's own load
+  (32 passes every other half second) had been most of the rest. The meter is now opt-in (its own
+  menu item), and a menu item makes the prop.
 - **Order, Joe 2026-10-27:** the squash shader working on MagicaCloth first and 5.0.0 shipped; the
   live tissue and the rest of his ideas after, in 5.1.
 - The menu item rebuilt the assets with the preview scene, which replaced the open scene: it now
