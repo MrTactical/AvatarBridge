@@ -13,7 +13,7 @@
 // transform's local position and Euler angles. Nothing on the cube's own shader knows the tissue,
 // so its riding says whether anything attached to a bone could follow the tissue too.
 //
-// A cost meter floats above it: the frame time, and every five seconds a load of 32 more copies of
+// A cost meter floats above it: the frame time, and every half second a load of 32 more copies of
 // the step, on a second lattice nobody draws, switched on and off, the difference read as what one
 // pass costs on that machine.
 //
@@ -867,7 +867,7 @@ float4x4 _JellyAnchor[1];
 float _Damp;
 
 static const int Row = 64;
-static const float Window = 5;
+static const float Window = 0.5;
 static const float3 Gravity = float3(0, -9.81, 0);
 // The rigid fit's rotation steps. Each starts from the anchor's turn, which a neighbourhood's own
 // is never far from, so three land where six did.
@@ -1005,8 +1005,8 @@ Shader ""Hidden/AvatarBridge/JellyPoints""
         const string ClockShader = @"// The jelly spike's cost meter clock. Written by JellySpikeBuilder; edits here are overwritten.
 //
 // Texel 0: the frame time in ms, smoothed over about a second. Texel 1: this phase's running sum
-// and count, its number and when it began. Texel 2: the last whole phase's average with the load
-// off (x) and on (y), z and w 1 once each is in. Phases are Window seconds, the load on in odd ones.
+// and count, its number and when it began. Texel 2: running means of the phases' averages with the
+// load off (x) and on (y), z and w 1 once each is in. Phases are Window seconds, the load on in odd ones.
 Shader ""Hidden/AvatarBridge/JellyClock""
 {
     Properties
@@ -1037,14 +1037,18 @@ Shader ""Hidden/AvatarBridge/JellyClock""
                 if (x == 1)
                 {
                     if (turned) return float4(0, 0, phase, t);
-                    // The first half second of a phase is left out, while the frame settles.
-                    return t - b.w > 0.5 ? float4(b.x + ms, b.y + 1, b.z, b.w) : b;
+                    // The first tenth of a second of a phase is left out: the GPU runs a frame or two
+                    // behind, so the switch shows in the frame time late.
+                    return t - b.w > 0.1 ? float4(b.x + ms, b.y + 1, b.z, b.w) : b;
                 }
                 if (fresh) return 0;
-                if (turned && b.y > 10)
+                if (turned && b.y > 2)
                 {
                     float mean = b.x / b.y;
-                    return fmod(b.z, 2) < 0.5 ? float4(mean, c.y, 1, c.w) : float4(c.x, mean, c.z, 1);
+                    // Each a running mean over about four phases, so it moves every half second
+                    // without jumping at every hitch.
+                    return fmod(b.z, 2) < 0.5 ? float4(c.z > 0 ? lerp(c.x, mean, 0.25) : mean, c.y, 1, c.w)
+                                              : float4(c.x, c.w > 0 ? lerp(c.y, mean, 0.25) : mean, c.z, 1);
                 }
                 return c;
             }
@@ -1057,8 +1061,8 @@ Shader ""Hidden/AvatarBridge/JellyClock""
 
         const string MeterShader = @"// The jelly spike's cost meter. Written by JellySpikeBuilder; edits here are overwritten.
 //
-// Four rows, a number each: white the frame time now in ms; green the last whole phase's with the
-// load off; red with it on; yellow what one pass of the step costs, the difference over the load's
+// Four rows, a number each: white the frame time now in ms; green its running mean with the load
+// off; red with it on; yellow what one pass of the step costs, the difference over the load's
 // passes. Dark red while the clock has never run.
 Shader ""AvatarBridge/Jelly Meter""
 {
@@ -1337,8 +1341,8 @@ Before uploading, `Jelly_Preview.unity` shows it in the editor: open it and pres
 | Red | It has not stepped for a quarter second: the blitters are not running for this copy |
 | Purple | The anchor never arrived: the material data provider is not running |
 
-The meter above it has four rows: white, your frame time in ms; green, the average over the last
-five seconds with the load off; red, the five before or after with it on; yellow, what one pass of
+The meter above it has four rows: white, your frame time in ms; green, its average with the load
+off; red, with it on; the load switching every half second; yellow, what one pass of
 the step's own work costs, the difference over the load's 32 passes. The load steps in place, so
 each of its runs also pays a copy back the jelly's own passes do not. The load only says something with the frame rate uncapped, on desktop: under VR or vsync the frame
 time sits at the cap whatever the work. A yellow near zero on a CPU-bound frame means the GPU did

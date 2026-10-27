@@ -1656,7 +1656,7 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
   editor check (full float) cannot see. For 5.1: tight bounds around rest (±5 cm, ±30° gives 0.4
   mm, 0.24°). The blitter itself never reads back: temp, blit, copy, all on the GPU.
 - **A cost meter (2026-10-27, Joe to try):** a billboard over the jelly, frame time in ms, and a
-  load of 32 more step passes on an undrawn lattice switched on and off every 5 s; the
+  load of 32 more step passes on an undrawn lattice switched on and off every 5 s (every 0.5 s from the same evening, each side a running mean); the
   difference over 32 is one pass's own work on that machine. Editor [M]: the clock reads 11.10
   ms at a locked 90 fps.
 - **In game, same day [GAME]:** Joe's own frame 4.3 ms, yellow 0.001 (CPU-bound, the work hid in
