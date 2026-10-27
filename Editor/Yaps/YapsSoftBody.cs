@@ -19,6 +19,10 @@ namespace AvatarBridge
     sealed class YapsSoftBody
     {
         internal const int Ways = 15;
+        // The way pressing the other part alike, mirrored across the middle: each part's five
+        // swapped, the squeeze itself, each part's two slanted swapped. The shader reads the same.
+        internal static int MirrorWay(int w) => w < 10 ? (w + 5) % 10 : w == 10 ? 10 : ((w - 11) ^ 2) + 11;
+        static bool OnSecond(int w) => (w >= 5 && w < 10) || w >= 13;
         // As shares of the part's reach toward its partner. A third depth at four fifths was not
         // reproducible: two orders of the same constraints differed by 4 cm there.
         internal static readonly float[] Depths = { 0.25f, 0.5f };
@@ -43,6 +47,8 @@ namespace AvatarBridge
         // Corners of the two parts on one spot, where they touched at rest: kept from crossing in X.
         readonly int[] pairs;
         readonly Dictionary<int, int[]> cubes = new Dictionary<int, int[]>();
+        // Where each palm was the frame before, for the skin under it to move with it.
+        Vector3[] palmWas;
         // Each kind of constraint in batches that share no particle, so a batch runs on every core
         // at once and still solves as one pass in some order would. A cube's five tetrahedra share
         // corners, so they go together, one after another.
@@ -56,9 +62,12 @@ namespace AvatarBridge
         // each vertex's move, and its normal's change. Ways per part, the first then the second,
         // by where the palm is: outside, on the partner's side, in front, along up, along down; then
         // both outsides; then per part slanted, outside in front and in front from below. Null when
-        // the skin gives no tissue.
+        // the skin gives no tissue. With twins, each vertex's across the avatar's middle (-1 for
+        // none) and the pair's toward, the second part is not pressed: its answers are the first's
+        // at the twin, reflected along the toward as the shader flips a shared row.
         internal static (Vector3[][] moves, Vector3[][] turns, string log) Bake(Vector3[] at, int[] tris, List<int[]> welds, Vector2[] share,
-            Vector3 c0, Vector3 c1, float reach, Vector3 up, Vector3 outward, Vector3 below, System.Func<int, Vector3, float> extent)
+            Vector3 c0, Vector3 c1, float reach, Vector3 up, Vector3 outward, Vector3 below, System.Func<int, Vector3, float> extent,
+            int[] twins = null, Vector3 middle = default)
         {
             var clock = System.Diagnostics.Stopwatch.StartNew();
             var tissue = new YapsSoftBody(at, tris, share, c0, c1, reach, up, outward, reach / 8f, out string built);
@@ -89,8 +98,11 @@ namespace AvatarBridge
             var rest = Normals(at, tris, welds);
             var moves = new Vector3[Ways * depths.Length][];
             var turns = new Vector3[moves.Length][];
+            int solved = 0;
             for (int w = 0; w < Ways; w++)
             {
+                if (twins != null && OnSecond(w)) continue;
+                solved++;
                 var fields = tissue.Respond(presses[w], depths);
                 for (int k = 0; k < depths.Length; k++)
                 {
@@ -100,7 +112,43 @@ namespace AvatarBridge
                     turns[w * depths.Length + k] = now.Select((n, i) => n - rest[i]).ToArray();
                 }
             }
-            return (moves, turns, $"{built}, {Ways} presses in {clock.Elapsed.TotalSeconds:0.0} s");
+            if (twins != null)
+                for (int w = 0; w < Ways; w++)
+                {
+                    if (!OnSecond(w)) continue;
+                    for (int k = 0; k < depths.Length; k++)
+                    {
+                        Vector3[] move = moves[MirrorWay(w) * depths.Length + k], turn = turns[MirrorWay(w) * depths.Length + k];
+                        moves[w * depths.Length + k] = twins.Select(t => t < 0 ? Vector3.zero : Vector3.Reflect(move[t], middle)).ToArray();
+                        turns[w * depths.Length + k] = twins.Select(t => t < 0 ? Vector3.zero : Vector3.Reflect(turn[t], middle)).ToArray();
+                    }
+                }
+            // A way pressing both sides alike comes out a little lopsided, and skin reading its
+            // twin's row mirrored then disagreed with its neighbour reading its own: the clothing
+            // over the two folded. Each takes the mean of its own and its twin's mirrored.
+            string lopsided = "";
+            if (twins != null)
+                for (int w = 0; w < Ways; w++)
+                {
+                    if (MirrorWay(w) != w) continue;
+                    for (int k = 0; k < depths.Length; k++)
+                    {
+                        int e = w * depths.Length + k;
+                        Vector3[] move = moves[e], turn = turns[e];
+                        double off = 0;
+                        int count = 0;
+                        moves[e] = move.Select((m, v) =>
+                        {
+                            if (twins[v] < 0) return m;
+                            var r = Vector3.Reflect(move[twins[v]], middle);
+                            if (m.sqrMagnitude > 1e-6f) { off += (m - r).sqrMagnitude; count++; }
+                            return 0.5f * (m + r);
+                        }).ToArray();
+                        turns[e] = turn.Select((n, v) => twins[v] < 0 ? n : 0.5f * (n + Vector3.Reflect(turn[twins[v]], middle))).ToArray();
+                        if (k == depths.Length - 1) lopsided += $", way {w} {100 * System.Math.Sqrt(off / System.Math.Max(count, 1)):0.00} cm lopsided deepest";
+                    }
+                }
+            return (moves, turns, $"{built}, {solved} presses{(twins != null ? ", the second side mirrored" : "")}{lopsided} in {clock.Elapsed.TotalSeconds:0.0} s");
         }
 
         YapsSoftBody(Vector3[] bodyAt, int[] bodyTris, Vector2[] share, Vector3 c0, Vector3 c1, float reach, Vector3 up, Vector3 outward, float voxel,
@@ -428,6 +476,7 @@ namespace AvatarBridge
         {
             System.Array.Copy(x0, x, x.Length);
             System.Array.Clear(vel, 0, vel.Length);
+            palmWas = null;
         }
 
         // Each skin vertex rides the cube it lies in, or the nearest one of its own part within a
@@ -472,6 +521,8 @@ namespace AvatarBridge
             float sdt = 1f / 60f / Substeps, alpha = Compliance / (sdt * sdt);
             int n = x.Length;
             FindContacts();
+            var palmMoved = hands.Select((c, i) => palmWas != null && palmWas.Length == hands.Count ? c.a - palmWas[i] : Vector3.zero).ToArray();
+            palmWas = hands.Select(c => c.a).ToArray();
             for (int step = 0; step < Substeps; step++)
             {
                 Each(n, null, p =>
@@ -490,9 +541,14 @@ namespace AvatarBridge
                     x[b] -= X * (gap * inv[b] / w);
                 });
                 Batched(contactBatches, Contact);
-                foreach (var (ha, hb, hr) in hands)
+                // Skin under a palm moves with it across its face, as on a real hand: sliding
+                // freely, flesh pressed square on its crown went off to whichever side a millimetre
+                // leaned it, 7 cm between the two.
+                for (int i = 0; i < hands.Count; i++)
                 {
+                    var (ha, hb, hr) = hands[i];
                     var seg = hb - ha;
+                    var moved = step == 0 ? palmMoved[i] : Vector3.zero;
                     float l2 = Mathf.Max(seg.sqrMagnitude, 1e-12f), keep = hr + 0.5f * h;
                     Each(n, null, p =>
                     {
@@ -500,7 +556,11 @@ namespace AvatarBridge
                         var at = ha + seg * Mathf.Clamp01(Vector3.Dot(x[p] - ha, seg) / l2);
                         var d = x[p] - at;
                         float dist = d.magnitude;
-                        if (dist < keep) x[p] = at + (dist > 1e-6f ? d / dist : Z) * keep;
+                        if (dist >= keep) return;
+                        var nrm = dist > 1e-6f ? d / dist : Z;
+                        x[p] = at + nrm * keep;
+                        var slid = x[p] - prev[p] - moved;
+                        x[p] -= slid - nrm * Vector3.Dot(slid, nrm);
                     });
                 }
                 // In floats: Mono calls every Vector3 operator, and this runs most.

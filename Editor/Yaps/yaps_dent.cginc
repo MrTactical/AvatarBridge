@@ -608,7 +608,7 @@ float3 YapsSoftBytes(float4 t)
 // squeeze, both pressed at once at the bake: summed from one side each, a squeeze counted the
 // partner shoved away twice. Each answer read at its depth, straight between the two baked and on
 // past the second. row is the vertex's row plus one, negative for the second pair, and its share.
-void YapsSoftMove(float2 row, inout float3 world, inout float3 n, bool hasNormal)
+void YapsSoftMove(float3 row, inout float3 world, inout float3 n, bool hasNormal)
 {
     if (row.x == 0 || row.y <= 0) return;
     int k = row.x > 0 ? 0 : 1;
@@ -716,6 +716,9 @@ void YapsSoftMove(float2 row, inout float3 world, inout float3 n, bool hasNormal
     int2 home = int2((entry % YAPS_SOFT_ROWS) * 2 * YAPS_SOFT_ENTRIES, entry / YAPS_SOFT_ROWS);
     float far = _YAPS_SquashReach[m0];
     float3 move = 0, turn = 0;
+    // A vertex reading its twin's row across the middle reads the way pressing the other part
+    // alike: each part's five swapped, the squeeze itself, each part's two slanted swapped.
+    bool flip = row.z > 0;
     [loop]
     for (int e = 0; e < 15; e++)
     {
@@ -723,19 +726,26 @@ void YapsSoftMove(float2 row, inout float3 world, inout float3 n, bool hasNormal
         // read: amount[14] is past the end.
         float d = min((e == 10 ? squeeze : amount[min(e < 10 ? e : e - 1, 13)]) * _YAPS_SquashTune.y, most);
         if (d <= 0) continue;
-        float4 t0 = _YAPS_SoftTable.Load(int3(home.x + 4 * e, home.y, 0));
+        int es = !flip ? e : e < 10 ? (e + 5) % 10 : e == 10 ? 10 : ((e - 11) ^ 2) + 11;
+        float4 t0 = _YAPS_SoftTable.Load(int3(home.x + 4 * es, home.y, 0));
         float3 m0v = YapsSoftBytes(t0) * (t0.w * far);
-        float3 n0 = YapsSoftBytes(_YAPS_SoftTable.Load(int3(home.x + 4 * e + 1, home.y, 0)));
+        float3 n0 = YapsSoftBytes(_YAPS_SoftTable.Load(int3(home.x + 4 * es + 1, home.y, 0)));
         if (d <= d0)
         {
             move += m0v * (d / d0);
             turn += n0 * (d / d0);
             continue;
         }
-        float4 t1 = _YAPS_SoftTable.Load(int3(home.x + 4 * e + 2, home.y, 0));
+        float4 t1 = _YAPS_SoftTable.Load(int3(home.x + 4 * es + 2, home.y, 0));
         float f = (d - d0) / (d1 - d0);
         move += lerp(m0v, YapsSoftBytes(t1) * (t1.w * far), f);
-        turn += lerp(n0, YapsSoftBytes(_YAPS_SoftTable.Load(int3(home.x + 4 * e + 3, home.y, 0))), f);
+        turn += lerp(n0, YapsSoftBytes(_YAPS_SoftTable.Load(int3(home.x + 4 * es + 3, home.y, 0))), f);
+    }
+    // And turned back across the middle, along the pair's toward.
+    if (flip)
+    {
+        move.x = -move.x;
+        turn.x = -turn.x;
     }
     world += (P0.a * move.x + P0.o * move.y + P0.u * move.z) * (unit0 * row.y);
     if (hasNormal) n = normalize(n + (P0.a * turn.x + P0.o * turn.y + P0.u * turn.z) * row.y);
@@ -776,11 +786,11 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
     float partShare = saturate(own.r + own.g + own.b + own.a);
     // Read only where a pair was baked: a material patched before reads whatever Unity binds for
     // a texture it never set. Skin around the parts that is none of theirs moves with them too.
-    float2 softRow = 0;
+    float3 softRow = 0;
     if (any(_YAPS_SoftDepth != 0))
     {
         uint2 packed = (uint2) round(_YAPS_SoftRow.Load(int3(vertexId % width, vertexId / width, 0)).rg * 65535);
-        softRow = float2((packed.y & 32768) != 0 ? -(float) packed.x : (float) packed.x, (packed.y & 32767) / 32767.0);
+        softRow = float3((packed.y & 32768) != 0 ? -(float) packed.x : (float) packed.x, (packed.y & 16383) / 16383.0, (packed.y & 16384) != 0);
     }
     if (partShare <= 0 && softRow.x == 0) return;
     float shares[4] = { own.r, own.g, own.b, own.a };

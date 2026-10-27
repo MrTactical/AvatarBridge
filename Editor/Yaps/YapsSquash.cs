@@ -569,7 +569,7 @@ namespace AvatarBridge
             var shared = Shares(skins, bodySkin, root.name, folder);
             var swings = Swings(shared, skins, bodySkin, parts, root.name, folder, log);
             Lap("Shares");
-            var soft = SoftBody(bodySkin, shared, skins, parts, towards, units, reachesOf, surfaces, outs, root.name, folder, log);
+            var soft = SoftBody(bodySkin, shared, skins, parts, towards, units, reachesOf, surfaces, outs, root, folder, log);
             Lap("Soft body");
             // Layers the wearer left out stay on their own material, still, by their choice. So
             // does a baked plug: it bends on its own and lies on no skin, so it is never what a
@@ -1269,17 +1269,28 @@ namespace AvatarBridge
         // skin to 6: eased off from 3 as its shares are, a cup standing out past the skin stayed
         // where it was while the skin under a hand went in. Null when no pair gave tissue.
         static SoftBake SoftBody(Skin body, List<(SkinnedMeshRenderer smr, Texture2D own, Vector4[] shares)> shared, List<Skin> skins, List<Part> parts,
-            List<Vector3> towards, List<float> units, List<float[]> reaches, List<float[]> surfaces, List<Vector3> outs, string name, string folder, List<string> log)
+            List<Vector3> towards, List<float> units, List<float[]> reaches, List<float[]> surfaces, List<Vector3> outs, Transform root, string folder, List<string> log)
         {
             if (body == null || shared.Count == 0) return null;
+            string name = root.name;
+            // Across the avatar's middle, which a symmetric avatar is modelled about.
+            Vector3 middle = root.right, origin = root.position;
+            Vector3 Mirrored(Vector3 x) => x - 2f * Vector3.Dot(x - origin, middle) * middle;
+            var twins = Twins(body.at, Mirrored, 0.01f);
+            // What the mirrored answers are read from: the twin, or for the few with none that near
+            // the nearest within 5 cm. Left out, they stood still beside skin that moved, and the
+            // clothing over them folded.
+            var fill = Twins(body.at, Mirrored, 0.05f, twins);
             var mesh = body.smr.sharedMesh;
             var tris = mesh.triangles;
             var welds = Welds(mesh);
             var bake = new SoftBake();
             int depths = YapsSoftBody.Depths.Length, entries = YapsSoftBody.Ways * depths;
             var table = new List<Color32[]>();
-            // Per body vertex its row plus one, negative for the second pair, 0 for none.
+            // Per body vertex its row plus one, negative for the second pair, 0 for none; and whether
+            // it reads its twin's row mirrored.
             var rowOf = new float[body.at.Length];
+            var flipOf = new bool[body.at.Length];
             byte Q(float c) => (byte) (Mathf.Clamp(Mathf.RoundToInt(c * 127f), -127, 127) + 127);
             for (int i = 0; 2 * i + 1 < parts.Count; i++)
             {
@@ -1304,9 +1315,15 @@ namespace AvatarBridge
                 }).ToArray();
                 // Toward the feet: the avatar stands upright while it is built.
                 bake.below[i] = Vector3.Dot(U, Vector3.down) >= 0f ? 1f : -1f;
+                // A pair whose two sides mirror each other is pressed on its first side only, half
+                // the presses, and the second side's skin reads its twin's row, half the table.
+                var ofPair = Enumerable.Range(0, share.Length).Where(v => share[v].x + share[v].y > 0f).ToArray();
+                bool mirrors = ofPair.Length > 0 && ofPair.Count(v => twins[v] >= 0) >= 0.95f * ofPair.Length;
                 var (moves, turns, said) = YapsSoftBody.Bake(body.at, tris, welds, share, parts[m0].centre, parts[m0 + 1].centre, parts[m0].reach,
-                    U, O, U * bake.below[i], (j, w) => Extent(m0 + j, w));
-                log.Add($"{parts[m0].name}/{parts[m0 + 1].name} soft body: {said}");
+                    U, O, U * bake.below[i], (j, w) => Extent(m0 + j, w), mirrors ? fill : null, A);
+                log.Add($"{parts[m0].name}/{parts[m0 + 1].name} soft body: {said}" +
+                        (mirrors ? $", {ofPair.Count(v => twins[v] < 0)} of its {ofPair.Length} skin vertices with no twin within 1 cm, {ofPair.Count(v => fill[v] < 0)} within 5 cm, " +
+                                   $"the pair's toward {Mathf.Acos(Mathf.Min(Mathf.Abs(Vector3.Dot(A, middle)), 1f)) * Mathf.Rad2Deg:0.0} degrees off the middle's normal" : ""));
                 if (moves == null) continue;
                 SoftBakedForTest?.Invoke(parts[m0].name, body.at, share, moves, new[] { parts[m0].centre, parts[m0 + 1].centre, U, O, new Vector3(parts[m0].reach, units[m0], 0f) });
                 for (int j = 0; j < 2; j++)
@@ -1321,10 +1338,14 @@ namespace AvatarBridge
                 bake.depth[m0] = YapsSoftBody.Depths[0] * parts[m0].reach / units[m0];
                 bake.depth[m0 + 1] = YapsSoftBody.Depths[1] * parts[m0].reach / units[m0];
                 int first = table.Count;
+                // On the second part's side, a twin within 3 mm on the first's: its row, mirrored.
+                float second = Mathf.Sign(Vector3.Dot(parts[m0 + 1].centre - origin, middle));
+                bool Shares(int v) => mirrors && twins[v] >= 0 && Vector3.Dot(body.at[v] - origin, middle) * second > 0.001f &&
+                                      (body.at[twins[v]] - Mirrored(body.at[v])).sqrMagnitude <= 0.003f * 0.003f;
                 for (int v = 0; v < rowOf.Length; v++)
                 {
                     // A tenth of a millimetre, or a step of the stored turn.
-                    if (rowOf[v] != 0f || !Enumerable.Range(0, entries).Any(e => moves[e][v].sqrMagnitude > 1e-8f || turns[e][v].sqrMagnitude > 6e-5f)) continue;
+                    if (rowOf[v] != 0f || Shares(v) || !Enumerable.Range(0, entries).Any(e => moves[e][v].sqrMagnitude > 1e-8f || turns[e][v].sqrMagnitude > 6e-5f)) continue;
                     // Each answer in bytes: its move about 127, scaled by the fourth byte's share of
                     // the part's reach, so a small move is as fine as a large one; then its normal's
                     // turn the same way, unscaled. Under half a millimetre from the floats, at a
@@ -1343,7 +1364,16 @@ namespace AvatarBridge
                     table.Add(row);
                     rowOf[v] = (i == 0 ? 1 : -1) * table.Count;
                 }
-                log.Add($"{parts[m0].name}/{parts[m0 + 1].name} soft body: {table.Count - first} of {rowOf.Length} skin vertices move");
+                int shared2 = 0;
+                for (int v = 0; v < rowOf.Length; v++)
+                    if (rowOf[v] == 0f && Shares(v) && rowOf[twins[v]] * (i == 0 ? 1 : -1) > 0f)
+                    {
+                        rowOf[v] = rowOf[twins[v]];
+                        flipOf[v] = true;
+                        shared2++;
+                    }
+                log.Add($"{parts[m0].name}/{parts[m0 + 1].name} soft body: {table.Count - first} rows for the skin that moves" +
+                        (mirrors ? $", and {shared2} more of it reading its twin's row mirrored" : ", the two sides too unlike to mirror"));
             }
             if (table.Count == 0) return null;
             // A row is sixteen bits in the per-vertex texture.
@@ -1374,10 +1404,10 @@ namespace AvatarBridge
             foreach (var (smr, _, _) in shared)
             {
                 var s = skins.First(x => x.smr == smr);
-                var rows = new Vector2[s.at.Length];
+                var rows = new Vector3[s.at.Length];
                 for (int v = 0; v < rows.Length; v++)
                 {
-                    if (s == body) { rows[v] = new Vector2(rowOf[v], 1f); continue; }
+                    if (s == body) { rows[v] = new Vector3(rowOf[v], 1f, flipOf[v] ? 1f : 0f); continue; }
                     var k = Key(s.at[v]);
                     int nearest = -1;
                     float best = Fade * Fade;
@@ -1393,20 +1423,55 @@ namespace AvatarBridge
                                 }
                             }
                     if (nearest >= 0 && rowOf[nearest] != 0f)
-                        rows[v] = new Vector2(rowOf[nearest], Mathf.SmoothStep(0f, 1f, (Fade - Mathf.Sqrt(best)) / (Fade - Near)));
+                        rows[v] = new Vector3(rowOf[nearest], Mathf.SmoothStep(0f, 1f, (Fade - Mathf.Sqrt(best)) / (Fade - Near)), flipOf[nearest] ? 1f : 0f);
                 }
                 // As wide as the shares, so the shader finds both at one place. Sixteen bits each:
-                // the row plus one, and the second pair's top bit over the share it takes.
+                // the row plus one, and the second pair's top bit, then the mirrored bit, over the
+                // share it takes.
                 int w = 1024, h = Mathf.Max(1, (rows.Length + w - 1) / w);
                 var data = new ushort[2 * w * h];
                 for (int v = 0; v < rows.Length; v++)
                 {
                     data[2 * v] = (ushort) Mathf.Abs(rows[v].x);
-                    data[2 * v + 1] = (ushort) ((rows[v].x < 0f ? 32768 : 0) + Mathf.RoundToInt(Mathf.Clamp01(rows[v].y) * 32767f));
+                    data[2 * v + 1] = (ushort) ((rows[v].x < 0f ? 32768 : 0) + (rows[v].z > 0f ? 16384 : 0) + Mathf.RoundToInt(Mathf.Clamp01(rows[v].y) * 16383f));
                 }
                 bake.rows[smr] = Saved(new Texture2D(w, h, TextureFormat.RG32, false, true), data, folder, $"{name} {smr.name} soft rows.asset");
             }
             return bake;
+        }
+
+        // Each vertex's twin across the avatar's middle: the nearest within cell of its mirror image,
+        // or -1; where have has one already, that.
+        static int[] Twins(Vector3[] at, System.Func<Vector3, Vector3> mirrored, float Cell, int[] have = null)
+        {
+            var grid = new Dictionary<Vector3Int, List<int>>();
+            for (int v = 0; v < at.Length; v++)
+            {
+                var k = Vector3Int.FloorToInt(at[v] / Cell);
+                if (!grid.TryGetValue(k, out var list)) grid[k] = list = new List<int>();
+                list.Add(v);
+            }
+            var twins = new int[at.Length];
+            for (int v = 0; v < at.Length; v++)
+            {
+                twins[v] = have != null ? have[v] : -1;
+                if (twins[v] >= 0) continue;
+                var p = mirrored(at[v]);
+                var k = Vector3Int.FloorToInt(p / Cell);
+                float best = Cell * Cell;
+                for (int x = -1; x <= 1; x++)
+                    for (int y = -1; y <= 1; y++)
+                        for (int z = -1; z <= 1; z++)
+                        {
+                            if (!grid.TryGetValue(k + new Vector3Int(x, y, z), out var list)) continue;
+                            foreach (int b in list)
+                            {
+                                float d = (at[b] - p).sqrMagnitude;
+                                if (d < best) { best = d; twins[v] = b; }
+                            }
+                        }
+            }
+            return twins;
         }
 
         // Numbers, not colours: linear, point-sampled, and flagged as the CCK's upload checks ask

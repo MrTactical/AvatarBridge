@@ -1135,7 +1135,7 @@ namespace AvatarBridge.Regression
         // per part. _SoftPick 10 gives the pair each vertex rides, plus one.
         static readonly string[] SoftAmountSwaps =
         {
-            "void YapsSoftMove(float2 row", "float _SoftPick;\nvoid YapsSoftMove(float2 row",
+            "void YapsSoftMove(float3 row", "float _SoftPick;\nvoid YapsSoftMove(float3 row",
             "    float most = 1.6 * d1;\n",
             "    float picked[30] = { amount[0], amount[1], amount[2], amount[3], amount[4], squeeze, amount[5], amount[6], amount[7], amount[8], amount[9], d0,\n" +
             "        ext[0], ext[1], ext[2], ext[3], ext[4], ext[5], ext[6], ext[7], ext[8], ext[9], d1, (float) (arms + hands + plugs),\n" +
@@ -1161,7 +1161,7 @@ namespace AvatarBridge.Regression
             // One baked answer as the shader applies it, way _SoftWay at the first depth or, with
             // _SoftDeep, the second, whatever the hands: the bake itself against the probe's.
             ("softway", new[] {
-                "void YapsSoftMove(float2 row", "float _SoftWay, _SoftDeep;\nvoid YapsSoftMove(float2 row",
+                "void YapsSoftMove(float3 row", "float _SoftWay, _SoftDeep;\nvoid YapsSoftMove(float3 row",
                 "        float d = min((e == 10 ? squeeze : amount[min(e < 10 ? e : e - 1, 13)]) * _YAPS_SquashTune.y, most);\n",
                 "        float d = e == (int) round(_SoftWay) ? (_SoftDeep > 0.5 ? d1 : d0) : 0;\n",
                 "    world += (P0.a * move.x + P0.o * move.y + P0.u * move.z) * (unit0 * row.y);\n",
@@ -1954,9 +1954,11 @@ namespace AvatarBridge.Regression
             return new[] { (touch - axis * (len / 2f), touch + axis * (len / 2f), rad, -dir) };
         }
 
-        // -spBakeTest "<cube divisor>,<substeps>,<frames>,<hold>,<settle mm>[,<threads 0/1>]_...":
+        // -spBakeTest "<cube divisor>,<substeps>,<frames>,<hold>,<settle mm>[,<threads 0/1>[,<grip 0/1>]]_...":
         // the basis's presses again on a tissue so built, for each setting, timed, its skin's moves
-        // set against the reference's answers; -spBakeWays "<i>,..." only those ways.
+        // set against the reference's answers; -spBakeWays "<i>,..." only those ways. -spBakeNudge
+        // "<mm>" presses each way again with its palms that far either side across, and logs how far
+        // the two answers part: a press whose answer turns on a millimetre bakes as chance.
         static void BakeTest(Vector2[] share, Vector3 c0, Vector3 c1, float reach)
         {
             var root = animator.transform;
@@ -1967,7 +1969,7 @@ namespace AvatarBridge.Regression
                 var f = spec.Split(',').Select(s => float.Parse(s, CultureInfo.InvariantCulture)).ToArray();
                 var build = System.Diagnostics.Stopwatch.StartNew();
                 var fast = new SoftBodyReference($"fast {spec}", refRest, refBody.sharedMesh.triangles, share, c0, c1, reach, root.up, root.forward, null, reach / f[0])
-                    { Substeps = (int) f[1], Threads = f.Length < 6 || f[5] != 0f };
+                    { Substeps = (int) f[1], Threads = f.Length < 6 || f[5] != 0f, Grip = f.Length < 7 || f[6] != 0f };
                 fast.Embed(new Mesh { indexFormat = UnityEngine.Rendering.IndexFormat.UInt32, vertices = refRest, triangles = refBody.sharedMesh.triangles }, refRest);
                 build.Stop();
                 var press = System.Diagnostics.Stopwatch.StartNew();
@@ -1997,6 +1999,28 @@ namespace AvatarBridge.Regression
                         all += sum;
                         allCount += count;
                         cells.Add($"{100 * Math.Sqrt(sum / Math.Max(count, 1)):0.00}/{100 * worst:0.0} of {100 * most:0.0}" + (lost > 0 ? $" ({lost} lost)" : ""));
+                    }
+                    if (Arg("-spBakeNudge") != null)
+                    {
+                        float mm = float.Parse(Arg("-spBakeNudge"), CultureInfo.InvariantCulture) / 1000f;
+                        Vector3[][] Nudged(float by) => fast.Respond(Palms(basisWays[ways[i]].part, basisWays[ways[i]].dir)
+                            .Select(c => (c.Item1 + partOut[1] * by, c.Item2 + partOut[1] * by, c.Item3, c.Item4)).ToArray(), basisDepths, (int) f[2], (int) f[3], f[4] / 1000f);
+                        var (left, right) = (Nudged(-mm), Nudged(mm));
+                        for (int k = 0; k < basisDepths.Length; k++)
+                        {
+                            Vector3[] l = fast.SkinMoves(left[k]), r = fast.SkinMoves(right[k]);
+                            double sum = 0, worst = 0;
+                            int count = 0;
+                            for (int v = 0; v < l.Length; v++)
+                            {
+                                if (float.IsNaN(l[v].x) || float.IsNaN(r[v].x) || Mathf.Max(l[v].magnitude, r[v].magnitude) < 1e-3f) continue;
+                                double e = (l[v] - r[v]).magnitude;
+                                sum += e * e;
+                                worst = Math.Max(worst, e);
+                                count++;
+                            }
+                            cells[k] += $" [{1000f * mm:0.#} mm either side parts {100 * Math.Sqrt(sum / Math.Max(count, 1)):0.00}/{100 * worst:0.0}]";
+                        }
                     }
                     rows.Add($"way {ways[i]} " + string.Join(", ", cells));
                 }

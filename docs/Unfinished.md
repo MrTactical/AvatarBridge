@@ -1573,11 +1573,33 @@ from below (0.45), both pressed hard from the front (0.45), one grabbed above an
 0.54 cm rms. The deep front presses fail: the hand goes through the bra, which tears round it,
 and both pushed up lift less than the tissue does.
 
+**One side pressed, the other mirrored** (Joe: "mirror and bake"). A pair whose skin has a twin
+across the avatar's middle (95% of it within 1 cm) is pressed on its first side only: 8 presses
+where there were 15, 7.8 s against 14.6 for Kar's breasts. The second side's skin within 3 mm of
+its twin reads the twin's row with a flip bit, so the table holds 3461 rows where it held 6076
+(2.18 MB on disk against 3.83). [M] presses on one part exactly as before; those loading both lost
+0.03 to 0.2 cm and folded the bra more (35 to 52 flipped in the squeeze). Not twinless skin (8 of
+6927 vertices) and not the pair's toward off the middle (0.3 degrees): the squeeze, pressed on both
+sides at once, came out 0.93 cm lopsided at its deepest, so skin reading its twin's row disagreed
+with its neighbour reading its own. Each now takes the mean of its own and its twin's mirrored: the
+squeeze 0.83 to 0.69 cm rms and 56 to 37 flipped, squeezed hard 0.99 to 0.82 and 63 to 52.
+
+**The palm grips.** The front press baked as chance: with the palm frictionless, a 1 mm nudge either
+side moved the second part's deep front answer by 6.67 cm rms (15.5 worst) and the out press's by
+1.13, flesh pressed square on its crown sliding off to whichever side it leaned. Skin under a palm
+now moves with it across its face, in the bake and the control both; the same nudge moves them 0.49
+and 0.14. [M] a hand deep from the front 1.68 to 0.45 cm rms (worst 7.1 to 1.7), both pressed hard
+from the front 1.36 to 0.68 (6.3 to 2.8), shoved hard 0.98 to 0.81, a hand from outside 0.83 to
+0.70. The hand no longer breaks through the bra on the deep front press. Joe: "yep that looks good".
+
 Next:
-1. Deep presses past the bake: the front ones let the hand through.
-2. Where the bra's remaining folds are (35 flipped in the squeeze).
-3. One part's answers mirrored onto the other, and the cost of starting each batch.
-4. B, if pushed together hard the flat contact looks wrong in game.
+1. B (Joe: "Go"): the two swung into each other baked, the part pass retired for a soft pair, the
+   control taught to swing so it can be measured.
+2. Where the bra's remaining folds are: 37 flipped in the squeeze, 38 outside and in front, 66 and
+   103 on the deep front presses.
+3. Both pushed up hard still lifts less than the tissue (1.01 cm rms, worst 5.1).
+4. Nothing past 1.6 of the deeper depth is read, a cap set while deep presses baked as chance;
+   with the palm gripping it may go further.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 

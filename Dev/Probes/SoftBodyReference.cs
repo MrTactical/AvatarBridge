@@ -69,6 +69,10 @@ namespace AvatarBridge.Regression
         public bool Threads = true;
         // Skin off its cube moves as the cube's nearest point does.
         public bool Clamp;
+        // Skin under a palm moves with it across its face, as on a real hand, where sliding freely
+        // flesh pressed square on its crown may go off to either side.
+        public bool Grip = true;
+        Vector3[] palmWas;
         readonly System.Diagnostics.Stopwatch[] clocks = Enumerable.Range(0, 7).Select(_ => new System.Diagnostics.Stopwatch()).ToArray();
         static readonly string[] ClockNames = { "finding contacts", "moving", "contacts", "cloth", "hands", "edges", "volumes" };
         public string Timing => string.Join(", ", ClockNames.Select((s, i) => $"{s} {clocks[i].Elapsed.TotalSeconds:0.0} s"));
@@ -483,6 +487,7 @@ namespace AvatarBridge.Regression
         {
             System.Array.Copy(x0, x, x.Length);
             System.Array.Clear(vel, 0, vel.Length);
+            palmWas = null;
             foreach (var e in skins) Move(e);
         }
 
@@ -580,6 +585,9 @@ namespace AvatarBridge.Regression
             clocks[0].Start();
             FindContacts();
             clocks[0].Stop();
+            // How far each palm came since the last frame, all of it in the first substep.
+            var palmMoved = hands.Select((c, i) => palmWas != null && palmWas.Length == hands.Count ? c.a - palmWas[i] : Vector3.zero).ToArray();
+            palmWas = hands.Select(c => c.a).ToArray();
             for (int step = 0; step < Substeps; step++)
             {
                 clocks[1].Start();
@@ -616,9 +624,11 @@ namespace AvatarBridge.Regression
                 });
                 clocks[3].Stop();
                 clocks[4].Start();
-                foreach (var (ha, hb, hr) in hands)
+                for (int i = 0; i < hands.Count; i++)
                 {
+                    var (ha, hb, hr) = hands[i];
                     var seg = hb - ha;
+                    var moved = step == 0 ? palmMoved[i] : Vector3.zero;
                     float l2 = Mathf.Max(seg.sqrMagnitude, 1e-12f), keep = hr + 0.5f * h;
                     Each(n, null, p =>
                     {
@@ -626,7 +636,12 @@ namespace AvatarBridge.Regression
                         var at = ha + seg * Mathf.Clamp01(Vector3.Dot(x[p] - ha, seg) / l2);
                         var d = x[p] - at;
                         float dist = d.magnitude;
-                        if (dist < keep) x[p] = at + (dist > 1e-6f ? d / dist : Z) * keep;
+                        if (dist >= keep) return;
+                        var nrm = dist > 1e-6f ? d / dist : Z;
+                        x[p] = at + nrm * keep;
+                        if (!Grip) return;
+                        var slid = x[p] - prev[p] - moved;
+                        x[p] -= slid - nrm * Vector3.Dot(slid, nrm);
                     });
                 }
                 clocks[4].Stop();
