@@ -1686,24 +1686,45 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
 - **A slap jiggles it [GAME], Joe 2026-10-27:** a hand pushes the lattice and it wobbles back, the
   jiggle planned for the squash. Every player's hands do it with nothing on their avatar, where
   MagicaCloth needs a collider on the other player's hand.
-- **Cheaper still, ideas ranked 2026-10-27 (not started):**
-  1. Fix the bench first: a longer warm-up, interleaved repeats with the median, the points pass
-     and an RGBA32 readback in the timed frame, and rows for K dependent copy passes, so a pass's
-     fixed cost reads apart from the step's own work. On the 2-CU Radeon half of today's 0.092 ms
-     is the near pass and the copy-throughs, not the step.
-  2. Uniform `[branch]` gates: skip the hand block when slot 0 is empty, branch the near scan and
-     the rotation. 5 to 13% on the 2-CU Radeon; the look is untouched.
-  3. The fit's 27-neighbour sweep rewritten exactly: one damping factor per pass, integer offsets
-     times the spacing, uniform texel offsets, no signed division in Place. About 13 to 27% on the
-     2-CU Radeon; rounding only, so the turn trace must match at print precision. Gravity does not
-     cancel for the back face's neighbours and goes into the per-pass constant.
-  4. Four blits to two: the rider out of its own pass, the near scan folded into pass 0. Two fewer
-     `Graphics.Blit` per copy per viewer, the only real CPU lever (each copy pays on every viewer,
-     nothing is culled), and 25 to 35% of the GPU chain on a fast card.
-  5. Then try 1 rotation step not 3, and predicting once above 72 fps. A distance gate for other
-     people's copies saves the most with many wearers but changes the look at range: Joe to decide.
-  - The AMD readings (6700 XT 0.16 to 0.30, 7840U 0.116) do not fit the 2-CU part's 0.043 ms of
-    step work: most likely the GPU clocked down in a CPU-bound frame, so not real cost. Check the
+- **Cheaper still, done overnight 2026-10-27 [M], Joe to try in game:** Joe: "do all of them".
+  - The bench first: every row timed five times, the rows interleaved, a third of a second's
+    warm-up, medians with their range; chains of plain copies for what a pass costs before it
+    works (0.0025 ms on the 4080, 0.0073 on the 2-CU Radeon); the parser's readback timed apart,
+    since thousands in flight inside a row timed Unity draining its queue.
+  - Three blitters, not four. The first pass also looks for the hands in reach, into a spare row
+    after the lattice; the second writes the rider's two texels there; a third copies those into
+    the 2x1 texture the parser reads. Two passes was the plan, but the parser reads back a whole
+    texture, and the whole state cost it 0.095 ms a frame against 0.008 for two texels.
+  - Above 72 fps the first pass works out where each particle is headed and the second fits, so
+    each neighbour is read once; below it each pass steps. The fit's sweep rewritten: one damping
+    factor a pass, neighbour offsets the whole pass shares, sums signed by offset in place of the
+    outer product, Place in floats. The turn traces at 90 and 60 fps match the old build's at
+    their printed precision (46 values, none differ).
+  - The hand scan passes over a player on where they stand, eight players a branch, and only the
+    first pass carries the player arrays (a shader keyword). Reading every hand cost the 4080
+    0.024 ms a pass with 64 players far off, and the old near pass paid that even alone.
+  - Far switch, at Joe's 6 m: past it from the viewer's head (the client's first head position,
+    the local player's) another player's copy hangs at rest, rigid, back within 5.5 m. No head, as
+    with no humanoid avatar, counts as near; the wearer's own copy never switches.
+  - Below 72 fps the first pass's own step pushes against the hands as they were the frame before;
+    the second, which is drawn, against this frame's.
+  - Tried and left: 1 or 2 rotation steps save 8% or 4% on the 2-CU Radeon but move the fast turn
+    by up to 8 mm or 3 mm, so three stay.
+  - A frame in ms, 3072 particles, before and after:
+
+    | | 4080 | 2-CU Radeon |
+    | --- | --- | --- |
+    | Alone, 90 fps | 0.044 to 0.011 | 0.098 to 0.051 |
+    | Alone, 60 fps | 0.051 to 0.012 | 0.140 to 0.072 |
+    | 64 players far off | 0.045 to 0.017 | 0.099 to 0.059 |
+    | 64 players, 8 hands in reach | 0.044 to 0.021 | 0.098 to 0.064 |
+    | The viewer 20 m off | 0.044 to 0.011 | 0.098 to 0.036 |
+    | 12288 particles, 64 players | 0.046 to 0.018 | 0.221 to 0.160 |
+
+    CPU to submit a frame: 0.012 to 0.010 ms. Verify passes with the CCK's render controller, the
+    rider exact, built twice with nothing missing.
+  - Still open: the AMD readings (6700 XT 0.16 to 0.30, 7840U 0.116) do not fit the 2-CU part's
+    numbers, most likely a GPU clocked down in a CPU-bound frame, so not real cost. Check the GPU
     clock and GPU-busy in game before optimising for them.
   - Ruled out: a double-buffered CustomRenderTexture (the client cannot drive one); a brick
     layout, dropping the right half by MRT, and a coarser lattice cost more than they save.
