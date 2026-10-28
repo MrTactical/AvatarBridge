@@ -2225,8 +2225,11 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
         ahead of the anchor. Checked: the squash moves no pixel the jelly draws (0.000% at rest,
         a finger, turning, the squeeze, the arm across), now part of the verify.
         Open, Joe to pick: switching far avatars off with the parser (0.011 to 0.004 each, plus a
-        readback per avatar only the client can time); one pass instead of two (halves the fixed
-        price, changes how a particle predicts its neighbours, so a film first). Stepping every
+        readback per avatar only the client can time). **One pass instead of two, tried and
+        reverted 2026-10-29:** one avatar 0.017 against 0.025, but 16 avatars 0.243 either way
+        (independent avatars' passes already overlap, so the saved fixed price is hidden in a
+        crowd), and the look changed (a particle predicting from last frame's neighbours: the turn
+        swung 157 mm against 109, the held shake 0.309 against 0.212). Not worth a film. Stepping every
         other frame was weighed and left: the skipped frame still pays the two passes, the
         stepped one the slower two-step path, about 20% off for a frame of lag.
         **The same breasts, squash against jelly (run106, one camera render on Kar):** the
