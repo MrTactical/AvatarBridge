@@ -2171,6 +2171,15 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
         Now a particle behind the line from the limb to the centre is left be, as hands do. The
         verify: the held arm settles to 0.008 mm a frame, the squeeze 136.8 and 64.3 mm as
         before. The shot filmed alone (`-spOnly Own`) against film29: Joe, "fixed".
+      - **The skin jags at the sleeve for a frame or two as the arm comes and goes.** Joe's crop of
+        film29 (held) was the sticking, fixed by never pulling. Tried and taken out, 2026-10-28: the
+        skin held to its own thicker radius, the 90th percentile of every shown mesh round the bone
+        between the tissue's and 1.4 times it (Kar: upper arm 118, forearm 91, hand 56, thigh 222
+        mm; untamed, a thigh took in Kar's hips at 376 and a hand its other fingers at 97). Pushed
+        out the nearest way on every side, it wrapped the arm in a tube of breast over the sleeve
+        (film30, worse); on the centre's side alone, its edge stood outside the sleeve as notches
+        all the while the arm was held, where the thinner radius hides the same fold inside it.
+        Open: the frame or two of jags as the arm arrives and leaves.
       - **A little more pillow (Joe):** the particles' pull to their rest `_Hz` 2.4 from 3.
     - **The finishing pass:** the draw already pressed other players' hands into every vertex
       (`YapsJellyPress`; said wrongly to Joe that nothing finished the skin). Added: the own
