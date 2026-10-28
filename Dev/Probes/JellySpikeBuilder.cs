@@ -846,11 +846,27 @@ namespace AvatarBridge.Regression
             Players(1, 2);
             sleeper.Passes();
             bool wokeHand = !sleeper.Asleep();
-            ok &= slept && Mathf.Abs(sagAsleep - sagAwake) < 5e-4f && wokeMoved && followed && sleptAgain && wokeHand;
+            // Frames as uneven as a game's: the step must hold, since where the tissue rests moves
+            // with it, or it never sleeps. The real frame time, not the bench's fixed one.
+            var uneven = new Rig(Lattice, rider: false);
+            uneven.Anchor(still);
+            uneven.Sleep(0.5f, true);
+            uneven.Dt(0f);
+            Players(0);
+            var jitter = new System.Random(7);
+            for (int i = 0; i < 920; i++)
+            {
+                Shader.SetGlobalVector("unity_DeltaTime", new Vector4(1f / 230f * (1f + 0.4f * (float) (jitter.NextDouble() * 2 - 1)), 0f, 0f, 0f));
+                uneven.Passes();
+            }
+            bool sleptUneven = uneven.Asleep();
+            uneven.Release();
+            ok &= slept && Mathf.Abs(sagAsleep - sagAwake) < 5e-4f && wokeMoved && followed && sleptAgain && wokeHand && sleptUneven;
             lines.Add($"[Jelly] asleep after {(fellAt + 1) / 90f:0.00} s still, front {100f * sagAsleep:0.00} cm off rigid against {100f * sagAwake:0.00} awake; " +
                       $"a frame at 90 fps, alone and with 64 players: asleep {Spread(naps["asleep 0"])} and {Spread(naps["asleep 64"])} ms, " +
                       $"awake as a prop {Spread(naps["prop 0"])} and {Spread(naps["prop 64"])}, as worn {Spread(naps["worn 0"])} and {Spread(naps["worn 64"])}; " +
-                      $"woken by the anchor moving 1 mm: {wokeMoved}, back face on it the frame after: {followed}; asleep again: {sleptAgain}, woken by a hand: {wokeHand}");
+                      $"woken by the anchor moving 1 mm: {wokeMoved}, back face on it the frame after: {followed}; asleep again: {sleptAgain}, woken by a hand: {wokeHand}; " +
+                      $"asleep at 230 fps with frame times 40% uneven: {sleptUneven}");
             foreach (var r in new[] { sleeper, awake, prop }) r.Release();
 
             // Packed: three regions in one texture and one pair of passes, against three apart, the
@@ -1217,7 +1233,8 @@ namespace AvatarBridge.Regression
 // pass before, w the h that pass took, so a velocity is only ever read off the two. The row after
 // the lattice: the hands in reach (texels 0 to 15), the rider (16, 17), the far switch and
 // whether it sleeps (18), how long it has stood still (19), where the anchor was the last time it
-// stepped (20 to 22), and the rider a frame before (23, 24).
+// stepped (20 to 22), the rider a frame before (23, 24), and the step held with the smoothed frame
+// time (25).
 // Below 72 fps each pass takes a step. Above it the first only works out where each particle is
 // headed and the second fits, so each neighbour is read once. The first pass also looks for the
 // hands, so the second pushes against where they are this frame; below 72 fps the first pass's own
@@ -1461,7 +1478,14 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float4x4 m = _JellyAnchor[min(region, 3)];
                 float scale = length(m._m00_m10_m20);
                 bool anchored = scale > 1e-6;
-                float dt = _FixedDt > 0 ? _FixedDt : clamp(unity_DeltaTime.x, 1.0 / 240, 1.0 / 30);
+                // The step is held while the frame time, smoothed, stays within 15% of it: where the
+                // tissue rests moves with the step, so stepping each uneven frame by its own time
+                // kept a settled prop trembling, never asleep. The first pass decides; the second
+                // reads its answer.
+                float4 clock = _MainTex.Load(int3(25, side, 0));
+                float real = clamp(unity_DeltaTime.x, 1.0 / 240, 1.0 / 30), smooth = clock.y > 0 ? lerp(clock.y, real, 0.05) : real;
+                float held = _Pass > 0.5 ? max(clock.x, 1.0 / 240) : clock.x > 0 && abs(smooth - clock.x) < 0.15 * clock.x ? clock.x : smooth;
+                float dt = _FixedDt > 0 ? _FixedDt : held;
                 int passes = dt > 1.0 / 72 ? 2 : 1;
                 float h = dt / passes;
                 // The meter's load always takes a whole step, the cost it is there to show.
@@ -1491,6 +1515,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     if (_Pass < 0.5)
                     {
                         if (px.x == 18) return float4(distant, asleep, 0, 1);
+                        if (px.x == 25) return float4(held, smooth, 0, 1);
 #ifdef JELLY_SCAN
                         [branch] if (px.x < 16)
                         {

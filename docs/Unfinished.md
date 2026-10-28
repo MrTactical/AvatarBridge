@@ -1855,6 +1855,20 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
   manager and tasks, emulated from the decompile on the real prefab, switch the steps off far and
   back on near), Joe's content filters, a client update, the load log. **Rebuilt, pink and
   wobbling in game the same morning [GAME]** (Joe, screenshot).
+- **Never still, never asleep in game, fixed 2026-10-28 [M]** (Joe: "always very finely moving",
+  blue "sometimes, but not for everyone"; the far switch works [GAME]). Where the tissue rests
+  moves with the step (the shape pull grows with the step, gravity with its square), so stepping
+  each frame by its own time shook it at every uneven frame. Measured through `unity_DeltaTime`,
+  frames 40% uneven: 40 to 80 mm/s and never asleep, at 45 to 230 fps, any lattice, near the
+  origin or 300 m out; at a steady frame time it settles to 0.000. Each viewer steps their own
+  copy at their own pacing, hence blue for some. Now the first pass holds the step while the
+  smoothed frame time stays within 15% of it (side-row texel 25): every case above asleep, the
+  physics untouched (the turn traces at a fixed step match the last bench byte for byte). The
+  bench checks it (40% uneven at 230 fps must sleep). Tried and left: both pulls as springs over
+  the step squared, solved together, rests exactly at any step but nearly doubles the swing on a
+  turn (the shape pull dilutes the chest spring).
+- **Open from the same report:** a deep hand stretches the coarse surface and folds its
+  triangles; Joe asked to remove "the collider" (which one, asked).
 - **Order, Joe 2026-10-27:** the squash shader working on MagicaCloth first and 5.0.0 shipped; the
   live tissue and the rest of his ideas after, in 5.1.
 - The menu item rebuilt the assets with the preview scene, which replaced the open scene: it now
