@@ -2180,6 +2180,17 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
         (film30, worse); on the centre's side alone, its edge stood outside the sleeve as notches
         all the while the arm was held, where the thinner radius hides the same fold inside it.
         Open: the frame or two of jags as the arm arrives and leaves.
+        **Found 2026-10-29, the film's, not the jelly's:** the film probe drew each frame at the
+        start of the frame, before that frame's step, so the jelly it drew was a step behind
+        everything else. Measured at each render (`-spOnly Own`): the forearm end the draw presses
+        with lay up to 12.0 mm off the wrist as drawn while the arm moved, 0 held; drawn after the
+        step, as the client draws (`-spRenderLate`), 0.0 every frame. Every jelly film before this
+        drew its presses a frame late on anything moving, other players' hands included (the
+        squash works its hands out in the draw, so it was not late), so jelly films now pass
+        `-spRenderLate`. Open [GAME]: in VR, whether VRIK moves the arms and chest before or after
+        the step. Both run in a LateUpdate at the default order (the client's late events manager
+        and FinalIK's solver), so the step may see the arms before IK places them: a forearm held
+        under the breast and moved slowly should dent at the sleeve, not off it.
       - **A little more pillow (Joe):** the particles' pull to their rest `_Hz` 2.4 from 3.
       - **The avatar's own colliders press the jelly instead of moving the bones (Joe: "deform the
         mesh, not move the bone"), 2026-10-28.** The MagicaCloth spheres and capsules and the
