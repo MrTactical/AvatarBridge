@@ -2351,6 +2351,9 @@ namespace AvatarBridge.Regression
 
         static Vector3Int breastN;
         static float breastSpacing, restMost, pokeMost, swingMost, noise, poked;
+        // Whether the squash still moves anything the jelly draws: the picture with the squash on
+        // against the same frame with it off, the jelly on in both; and the same picture twice.
+        static readonly List<string> squashOver = new List<string>();
         static Vector3[] innerOff, innerOn, regionsAt;
         static Vector3 secondAt;
         // The own arm's stage: the arm's rest, the state before it, and what it found.
@@ -2757,6 +2760,18 @@ namespace AvatarBridge.Regression
                 slapMost = Mathf.Max(slapMost, off);
                 if (frame >= 1180) slapLater = Mathf.Max(slapLater, off);
             }
+            // At rest, a finger in, turning, the hands' squeeze and the arm across.
+            if (frame == 100 || frame == 160 || frame == 300 || frame == 975 || frame == 1990)
+            {
+                var dented = YapsSquash.Materials(swing).Where(mm => mm.HasProperty("_YAPS_DentPower") && mm.GetFloat("_YAPS_DentPower") > 0).ToList();
+                var powers = dented.Select(mm => mm.GetFloat("_YAPS_DentPower")).ToList();
+                Texture2D with = Shot(eye), again = Shot(eye);
+                foreach (var mm in dented) mm.SetFloat("_YAPS_DentPower", 0f);
+                var without = Shot(eye);
+                for (int k = 0; k < dented.Count; k++) dented[k].SetFloat("_YAPS_DentPower", powers[k]);
+                squashOver.Add($"frame {frame} {100f * Changed(with, without):0.000}% (twice alike {100f * Changed(with, again):0.000}%)");
+                foreach (var shot in new[] { with, again, without }) Object.DestroyImmediate(shot);
+            }
             if (++frame < BreastFrames) return;
             foreach (var b in blits) b.SetFloat("_Solid", solid0);
             // What the breasts cost a viewer at rest: the client's chain of passes timed alone, and
@@ -2774,6 +2789,7 @@ namespace AvatarBridge.Regression
             }
             Object.DestroyImmediate(bareCopy);
             Debug.Log($"[Jelly] the wearer's own arm across one, held: {ownSaid}");
+            Debug.Log($"[Jelly] the picture's pixels the squash changes with the jelly on: {string.Join(", ", squashOver)}");
             Debug.Log($"[Jelly] breasts' cost at rest on {SystemInfo.graphicsDeviceName}: {chain.Count} passes, {Spread(chainTimes)} ms a frame ({Median(chainSubmits):0.000} to submit); " +
                       $"the same passes only copying {Spread(copyTimes)} ms");
             // -jellyCost: the chain at a 90th (one predicted step) and a 60th (two whole ones), far off,
