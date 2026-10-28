@@ -2833,12 +2833,15 @@ namespace AvatarBridge.Regression
                 var drawn = YapsSquash.Materials(swing).Where(mm => mm.HasProperty("_YAPS_JellyLattice") && mm.GetVector("_YAPS_JellyLattice").x > 0).ToList();
                 var lat = drawn.Select(mm => mm.GetVector("_YAPS_JellyLattice")).ToList();
                 var power = drawn.Select(mm => mm.GetFloat("_YAPS_DentPower")).ToList();
-                void Drawn(bool jelly, bool squash)
+                var parts = drawn.Select(mm => mm.GetVector("_YAPS_JellyParts")).ToList();
+                // handed: the jelly's parts given back to the squash, as before there was a jelly.
+                void Drawn(bool jelly, bool squash, bool handed = false)
                 {
                     for (int k = 0; k < drawn.Count; k++)
                     {
                         drawn[k].SetVector("_YAPS_JellyLattice", jelly ? lat[k] : Vector4.zero);
                         drawn[k].SetFloat("_YAPS_DentPower", squash ? power[k] : 0f);
+                        drawn[k].SetVector("_YAPS_JellyParts", handed ? Vector4.zero : parts[k]);
                     }
                 }
                 // Far is the viewer's head past _Far; none reads as near.
@@ -2856,6 +2859,7 @@ namespace AvatarBridge.Regression
                     ("two copies", () => { }, () => { Graphics.Blit(pa, pb, copyMat); Graphics.Blit(pb, pa, copyMat); }, pb, 1000),
                     ($"the avatar drawn ({drawn.Count} materials) with the squash and the jelly", () => Drawn(true, true), () => eye.Render(), eye.targetTexture, 200),
                     ("the squash alone", () => Drawn(false, true), () => eye.Render(), eye.targetTexture, 200),
+                    ("the squash on every part, the breasts handed back to it", () => Drawn(false, true, true), () => eye.Render(), eye.targetTexture, 200),
                     ("neither", () => Drawn(false, false), () => eye.Render(), eye.targetTexture, 200),
                 };
                 var got = timed.Select(r => new List<double>()).ToArray();

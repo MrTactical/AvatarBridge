@@ -2229,6 +2229,13 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
         price, changes how a particle predicts its neighbours, so a film first). Stepping every
         other frame was weighed and left: the skipped frame still pays the two passes, the
         stepped one the slower two-step path, about 20% off for a frame of lag.
+        **The same breasts, squash against jelly (run106, one camera render on Kar):** the
+        squash on them costs 0.047 ms a render (0.354 with the breasts handed back to it against
+        0.307 with it on the second pair alone); the jelly's draw on them 0.021 a render, plus its
+        step 0.015 to 0.025 a frame. Even at one render a frame; every further render (shadows, a
+        mirror) the jelly wins by 0.026. Joe 2026-10-29: the squash never shipped, and if the
+        jelly can do everything it does and costs less, the jelly replaces it. Not yet everything:
+        the jelly carries breasts only, and parting a pair for a plug is the squash's.
     - **The finishing pass:** the draw already pressed other players' hands into every vertex
       (`YapsJellyPress`; said wrongly to Joe that nothing finished the skin). Added: the own
       capsules, and last a guard at the plane midway between the two skins (each breast's skin's
