@@ -93,9 +93,18 @@ namespace AvatarBridge.Regression
             var made = (GameObject) PrefabUtility.InstantiatePrefab(prefab, prop.transform);
             // At chest height above the floor it is placed on.
             made.transform.localPosition = new Vector3(0f, 1.2f, 0f);
+            // Grabbable. The pickup goes on the spawnable itself, which the client syncs as the
+            // prop's own place, and its collider on the same object, round the jelly and the cube.
+            // With no rigidbody the client adds a kinematic one, so a jelly let go hangs where it
+            // was left.
+            prop.AddComponent<CVRPickupObject>();
+            var box = prop.AddComponent<BoxCollider>();
+            var span = (Vector3) (Size - Vector3Int.one) * Spacing;
+            box.center = new Vector3(0f, 1.2f, 0.5f * span.z + 0.025f);
+            box.size = span + new Vector3(0.06f, 0.06f, 0.11f);
             Undo.RegisterCreatedObjectUndo(prop, "Make the jelly prop");
             Selection.activeGameObject = prop;
-            Debug.Log("[Jelly] made Jelly Prop in the open scene; upload it from the CCK Control Panel");
+            Debug.Log("[Jelly] made Jelly Prop in the open scene, grabbable; upload it from the CCK Control Panel");
         }
 
         static void Add(bool withMeter)
@@ -1519,6 +1528,9 @@ turn or bounce, and dent and jiggle when any hand pokes it, yours or another pla
    replacing any earlier one. Move it if it sits inside anything. Jelly spike: add with the cost
    meter does the same with the meter above it, which costs far more than the jelly.
 2. Upload. Nothing else: no parameters, no menu, no sync.
+
+Or as a prop on its own: Jelly spike: make a prop in the open scene, then upload it from the CCK
+Control Panel. Grab it in game and shake it; let go and it hangs where you left it.
 
 Before uploading, `Jelly_Preview.unity` shows it in the editor: open it and press Play.
 

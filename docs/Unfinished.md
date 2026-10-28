@@ -1682,7 +1682,8 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
 - **The jelly alone, as a prop [GAME]:** a viewer who lost about 20 fps around the avatar saw
   barely any cost from the prop; the loss was another player's avatar, and the meter's own load
   (32 passes every other half second) had been most of the rest. The meter is now opt-in (its own
-  menu item), and a menu item makes the prop.
+  menu item), and a menu item makes the prop. From 2026-10-28 the prop can be grabbed (Joe): a
+  pickup and a box round the jelly on the spawnable itself; let go, it hangs where it was left.
 - **A slap jiggles it [GAME], Joe 2026-10-27:** a hand pushes the lattice and it wobbles back, the
   jiggle planned for the squash. Every player's hands do it with nothing on their avatar, where
   MagicaCloth needs a collider on the other player's hand.
