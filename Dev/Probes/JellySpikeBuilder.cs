@@ -2776,26 +2776,67 @@ namespace AvatarBridge.Regression
             Debug.Log($"[Jelly] the wearer's own arm across one, held: {ownSaid}");
             Debug.Log($"[Jelly] breasts' cost at rest on {SystemInfo.graphicsDeviceName}: {chain.Count} passes, {Spread(chainTimes)} ms a frame ({Median(chainSubmits):0.000} to submit); " +
                       $"the same passes only copying {Spread(copyTimes)} ms");
-            // -jellyCost: the chain at a 90th (one predicted step) and a 60th (two whole ones) against
-            // two copies, and the avatar drawn reading the jelly and not, each round interleaved so a
-            // clock change moves every row alike.
+            // -jellyCost: the chain at a 90th (one predicted step) and a 60th (two whole ones), far off,
+            // the far switch's parser pass alone, against two copies; then 4 and 16 avatars' chains one
+            // after another, as a crowd's run; then the avatar drawn reading the jelly and the squash,
+            // the squash alone, and neither. Each round interleaved, so a clock change moves every row
+            // alike.
             if (Environment.GetCommandLineArgs().Contains("-jellyCost"))
             {
                 var mats = chain.Select(c => c.blitMaterial).Distinct().ToList();
                 RenderTexture pa = chain[0].originTexture, pb = chain[0].destinationTexture;
                 var copyMat = new Material(Shader.Find("Hidden/BlitCopy"));
                 void Chain() { foreach (var c in chain) Graphics.Blit(c.originTexture, c.destinationTexture, c.blitMaterial); }
+                // A crowd: each avatar its own state and twin, the same passes.
+                var crowd = Enumerable.Range(0, 16).Select(k =>
+                {
+                    var x = new RenderTexture(pa.descriptor);
+                    var y = new RenderTexture(pb.descriptor);
+                    x.Create();
+                    y.Create();
+                    Graphics.CopyTexture(pa, x);
+                    Graphics.CopyTexture(pb, y);
+                    return (x, y);
+                }).ToList();
+                void Crowd(int many)
+                {
+                    for (int k = 0; k < many; k++)
+                        foreach (var c in chain)
+                            Graphics.Blit(c.originTexture == pa ? crowd[k].x : crowd[k].y, c.destinationTexture == pa ? crowd[k].x : crowd[k].y, c.blitMaterial);
+                }
+                // The parser's pass, as the far switch's build adds it: the second pass's material on its
+                // third pass.
+                var points = new Material(chain[chain.Count - 1].blitMaterial);
+                points.SetFloat("_Pass", 2f);
+                var strip = Strip(3);
+                strip.Create();
                 var drawn = YapsSquash.Materials(swing).Where(mm => mm.HasProperty("_YAPS_JellyLattice") && mm.GetVector("_YAPS_JellyLattice").x > 0).ToList();
                 var lat = drawn.Select(mm => mm.GetVector("_YAPS_JellyLattice")).ToList();
-                void Lattice(bool on) { for (int k = 0; k < drawn.Count; k++) drawn[k].SetVector("_YAPS_JellyLattice", on ? lat[k] : Vector4.zero); }
-                void Dt(float dt) { foreach (var mm in mats) mm.SetFloat("_FixedDt", dt); }
+                var power = drawn.Select(mm => mm.GetFloat("_YAPS_DentPower")).ToList();
+                void Drawn(bool jelly, bool squash)
+                {
+                    for (int k = 0; k < drawn.Count; k++)
+                    {
+                        drawn[k].SetVector("_YAPS_JellyLattice", jelly ? lat[k] : Vector4.zero);
+                        drawn[k].SetFloat("_YAPS_DentPower", squash ? power[k] : 0f);
+                    }
+                }
+                // Far is the viewer's head past _Far; none reads as near.
+                void Head(float off) => Shader.SetGlobalVectorArray("_CVR_PlayerHeadPositions", Enumerable.Repeat(off > 0 ? (Vector4) (swing.position + swing.forward * off) : Vector4.zero, 255).ToArray());
+                void Near(float dt) { Head(0f); foreach (var mm in mats) mm.SetFloat("_FixedDt", dt); }
                 var timed = new (string name, Action set, Action run, RenderTexture rt, int runs)[]
                 {
-                    ("the step at 90 fps", () => Dt(1f / 90f), Chain, pb, 1000),
-                    ("at 60 fps", () => Dt(1f / 60f), Chain, pb, 1000),
+                    ("the step at 90 fps", () => Near(1f / 90f), Chain, pb, 1000),
+                    ("at 60 fps", () => Near(1f / 60f), Chain, pb, 1000),
+                    ("4 avatars' at 90", () => Near(1f / 90f), () => Crowd(4), pb, 300),
+                    ("16 avatars'", () => Near(1f / 90f), () => Crowd(16), pb, 100),
+                    ("20 m off", () => { Near(1f / 90f); Head(20f); }, Chain, pb, 1000),
+                    ("16 avatars 20 m off", () => { Near(1f / 90f); Head(20f); }, () => Crowd(16), pb, 100),
+                    ("the far switch's parser pass alone", () => Near(1f / 90f), () => Graphics.Blit(pa, strip, points), strip, 1000),
                     ("two copies", () => { }, () => { Graphics.Blit(pa, pb, copyMat); Graphics.Blit(pb, pa, copyMat); }, pb, 1000),
-                    ($"the avatar drawn ({drawn.Count} materials) reading the jelly", () => Lattice(true), () => eye.Render(), eye.targetTexture, 200),
-                    ("not reading it", () => Lattice(false), () => eye.Render(), eye.targetTexture, 200),
+                    ($"the avatar drawn ({drawn.Count} materials) with the squash and the jelly", () => Drawn(true, true), () => eye.Render(), eye.targetTexture, 200),
+                    ("the squash alone", () => Drawn(false, true), () => eye.Render(), eye.targetTexture, 200),
+                    ("neither", () => Drawn(false, false), () => eye.Render(), eye.targetTexture, 200),
                 };
                 var got = timed.Select(r => new List<double>()).ToArray();
                 for (int round = 0; round < 7; round++)
@@ -2804,9 +2845,12 @@ namespace AvatarBridge.Regression
                         timed[v].set();
                         got[v].Add(Timed(timed[v].run, timed[v].rt, timed[v].runs, out _));
                     }
-                Dt(0f);
-                Lattice(true);
+                Near(0f);
+                Drawn(true, true);
                 Object.DestroyImmediate(copyMat);
+                Object.DestroyImmediate(points);
+                strip.Release();
+                foreach (var (x, y) in crowd) { x.Release(); y.Release(); }
                 Debug.Log($"[Jelly] cost on {SystemInfo.graphicsDeviceName}, ms: " + string.Join("; ", timed.Select((r, v) => $"{r.name} {Spread(got[v])}")));
             }
             // The bodies' doing: how much further from the other the first's facing side was held
