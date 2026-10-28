@@ -1601,7 +1601,7 @@ players' hands, from the hand positions ChilloutVR hands every shader, so neithe
 anything set up for it. The physics are untouched: the parts still swing as their cloth makes
 them, and the squash works from where they swung to. As they swing they also stretch away from
 where they hang and squash back toward it, keeping their volume, which a bone chain alone cannot
-do; how far is a knob, from real flesh to anime.
+do, as far as real flesh would.
 
 **Under a hand.** A hand presses the pair as soft tissue. When the squash is built, each pair is
 solved as flesh held to its volume, pressed by a palm from outside, from between them, from the
@@ -1652,9 +1652,8 @@ shader another avatar already patched is reused instead of compiled again.
 testing in the Avatar Tester, one place each. Its knobs write straight to the materials as you move them, so nothing
 needs rebuilding: **Tune how it feels** holds how flat a part presses and where the volume goes, whether the
 pair meets (on by default), the stretch in motion, and what presses it (own arms, other players' hands, plugs, and
-the physics' own colliders, off by default). **Motion Style** runs from 0, like real flesh (a small
-stretch, small swings ignored), to 1, like anime (a long stretch and a deep squash on every
-bounce). **Test in the Avatar Tester**, at the top of that step once built, opens the Avatar Tester on the avatar with the
+the physics' own colliders, off by default). The stretch is real flesh's: a small one, with small swings
+ignored. **Test in the Avatar Tester**, at the top of that step once built, opens the Avatar Tester on the avatar with the
 squash preview running under **Interaction lab ▸ Squash**, starting half squeezed outside Play mode so every knob
 shows as it moves there: **Squeeze** is another player's two open hands pushing each pair together from
 outside, so *Other players' hands* scales it, **Bounce** swings each part as a jump would, and **Test hand** puts another player's open hand in

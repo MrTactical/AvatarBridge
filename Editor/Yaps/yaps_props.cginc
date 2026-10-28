@@ -227,6 +227,6 @@ float _YAPS_CopyStart;
 // and leave the squash. Here, not in yaps_jelly.cginc, since the dent reads _YAPS_JellyParts.
 Texture2D<float4> _YAPS_JellyState;
 float4 _YAPS_JellyLattice;  // particles across, up and deep; spacing in metres. 0: no lattice
-float4 _YAPS_JellyParts;    // 1 for each part (r, g, b, a of _YAPS_DentOwn) the lattice carries
+float4 _YAPS_JellyParts;    // for each part (r, g, b, a of _YAPS_DentOwn) a lattice region carries, that region's index plus one
 
 #endif

@@ -43,9 +43,6 @@ namespace AvatarBridge.Yaps
         [Tooltip("As its physics swing it, a part stretches away from where it hangs and squashes back toward it, " +
                  "keeping its volume. The swing is the physics' own, unchanged.")]
         public bool stretchInMotion = true;
-        [Range(0f, 1f), Tooltip("0 like real flesh: a small stretch, and small swings ignored. 1 like anime: a long " +
-                                "stretch and a deep squash on every bounce.")]
-        public float motionStyle = 0f;
 
         [Header("What presses it")]
         [Range(0f, 2f), Tooltip("The wearer's own arms and hands. 0 leaves them out.")]

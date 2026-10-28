@@ -6,7 +6,7 @@
 // "thighs": somebody wants their thighs to squash and jiggle. Convert with Soft body shape, Soft body
 // physics and Keep the converted avatar a prefab on; in Squash regions keep the
 // chest pair and repaint the second pair onto the thighs from their jiggle bones, then one brush
-// stroke; rebuild, turn Motion Style to anime, test it in the Avatar Tester with Squeeze, Bounce and
+// stroke; rebuild, turn Spill up, test it in the Avatar Tester with Squeeze, Bounce and
 // Test hand, a knob moved meanwhile showing on the running preview; apply the
 // prefab overrides; then in Play mode Walk, Jump and Shake in the Interaction lab while the thighs
 // are filmed and their jiggle measured. Pictures in <out>/pics, film frames in <out>/film/<move>.
@@ -227,7 +227,7 @@ namespace AvatarBridge.Regression
             UpperLegNote(t, avatar, thighL);
             painter.Dispose();
 
-            // 5. Rebuild from the regions, and the jiggle a person dials in: Motion Style to anime.
+            // 5. Rebuild from the regions, and a knob a person dials in: Spill up.
             UiOffscreenProbe.Inspector.Target = settings;
             var inspector = UiOffscreenProbe.Mount(typeof(UiOffscreenProbe.Inspector), Width, StoryHeight, false);
             yield return Settle(inspector);
@@ -243,13 +243,13 @@ namespace AvatarBridge.Regression
                 Step(t, "Rebuild", YapsSquash.Has(root) && !dropped, (dropped ? "a pair dropped for too little skin: " : "") + Clip(said));
             }
             Pairs(t, settings, "built from");
-            var motion = Field<Slider>(inspector.Content, "Motion Style");
-            if (motion == null) Step(t, "Motion Style to 1 (anime)", false, "no Motion Style slider");
+            var spill = Field<Slider>(inspector.Content, "Spill");
+            if (spill == null) Step(t, "Spill to 2", false, "no Spill slider");
             else
             {
-                motion.value = 1f;
+                spill.value = 2f;
                 yield return Settle(inspector);
-                Step(t, "Motion Style to 1 (anime)", Mathf.Approximately(settings.motionStyle, 1f), $"component reads {settings.motionStyle}, material _YAPS_SquashMotion {Motion(root)}");
+                Step(t, "Spill to 2", Mathf.Approximately(settings.spill, 2f), $"component reads {settings.spill}, material _YAPS_DentSpill {Spill(root)}");
             }
             WindowShot(inspector, dir, "07 squash component", null);
 
@@ -333,8 +333,8 @@ namespace AvatarBridge.Regression
                 PrefabUtility.ApplyPrefabInstance(avatar, InteractionMode.AutomatedAction);
                 var asset = PrefabUtility.GetCorrespondingObjectFromSource(avatar);
                 var kept = asset != null ? asset.GetComponentInChildren<YapsSquashSettings>(true) : null;
-                Step(t, "Overrides > Apply All", kept != null && kept.pairs.Select(p => p.name).Contains("Thighs") && Mathf.Approximately(kept.motionStyle, 1f),
-                    $"overrides before: {overrides}; the prefab now holds {(kept != null ? string.Join(", ", kept.pairs.Select(p => p.name)) + $", Motion Style {kept.motionStyle}" : "no squash component")}");
+                Step(t, "Overrides > Apply All", kept != null && kept.pairs.Select(p => p.name).Contains("Thighs") && Mathf.Approximately(kept.spill, 2f),
+                    $"overrides before: {overrides}; the prefab now holds {(kept != null ? string.Join(", ", kept.pairs.Select(p => p.name)) + $", Spill {kept.spill}" : "no squash component")}");
             }
 
             // 8. Into Play mode through the tester, as its own button does it.
@@ -740,10 +740,10 @@ namespace AvatarBridge.Regression
             return p.Count > 0 ? p[0] : bone.position;
         }
 
-        static string Motion(Transform root)
+        static string Spill(Transform root)
         {
             var m = YapsSquash.Materials(root).FirstOrDefault();
-            return m != null && m.HasProperty("_YAPS_SquashMotion") ? m.GetVector("_YAPS_SquashMotion").ToString("0.00") : "absent";
+            return m != null && m.HasProperty("_YAPS_DentSpill") ? m.GetFloat("_YAPS_DentSpill").ToString("0.00") : "absent";
         }
 
         // Where a person lays a hand on the thigh: the front of the skin halfway down the jiggle

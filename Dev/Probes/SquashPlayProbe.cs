@@ -13,7 +13,7 @@
 //
 // -spVideo films one continuous run instead, three views a frame at 30 fps into <dir>/frames,
 // with segments.tsv naming each segment's first frame: the avatar hopping with the stretch in
-// motion off, as real flesh and as anime, a plug parting the pair, another player's hand in each shape,
+// motion off and on, a plug parting the pair, another player's hand in each shape,
 // pokes round the part, quick and deep, two players at once, hands between, squeezing and
 // grabbing, a hand from below, the own arm, then the pair pulse. Other players' hands are drawn
 // as glass capsules the size the shader presses with.
@@ -642,7 +642,6 @@ namespace AvatarBridge.Regression
         static Vector4[] shapeWas;
         static YapsSquashSettings knobs;
         static bool stretchWas;
-        static float styleWas;
         static Vector3 standing;
 
         // Each shot eases in over its first third, holds, and eases out, so s runs 0, 1, 0.
@@ -657,7 +656,7 @@ namespace AvatarBridge.Regression
                 // The pulse shot set it on the material assets, which outlive Play mode: the
                 // build it filmed was left pulsing a little in game.
                 foreach (var m in mats) m.SetFloat("_YAPS_SquashPulse", pulseWas);
-                if (knobs != null) { knobs.stretchInMotion = stretchWas; knobs.motionStyle = styleWas; YapsSquash.Apply(animator.transform); }
+                if (knobs != null) { knobs.stretchInMotion = stretchWas; YapsSquash.Apply(animator.transform); }
                 animator.transform.position = standing;
                 File.WriteAllLines(Path.Combine(outDir, "push.tsv"), rows);
                 AssetDatabase.SaveAssets();
@@ -698,7 +697,7 @@ namespace AvatarBridge.Regression
             Directory.CreateDirectory(Path.Combine(outDir, "frames"));
             pulseWas = mats.Length > 0 ? mats[0].GetFloat("_YAPS_SquashPulse") : 0f;
             knobs = YapsSquash.SettingsOf(animator.transform);
-            if (knobs != null) { stretchWas = knobs.stretchInMotion; styleWas = knobs.motionStyle; }
+            if (knobs != null) { stretchWas = knobs.stretchInMotion; }
             // A stale copy of a renamed script can own the settings' GUID, and the knob shots then
             // film identical frames with nothing failing.
             else Debug.LogWarning("[SquashPlay] no squash settings under the avatar: the stretch and style shots will look the same");
@@ -782,14 +781,13 @@ namespace AvatarBridge.Regression
                 var (wrist, dir, shape) = Tip(front, -f, g, Mathf.Lerp(-0.04f, deep, s));
                 Press((wrist + outP * (0.07f * s * Mathf.Sin(4f * Mathf.PI * u)), dir, shape));
             };
-            // Five hops, landing hard, with the motion knobs set as named. Once a hop in the
-            // anime one, the same frame rendered with the stretch off as well.
-            Action<float, float> Hops(bool stretch, float style, string tag) => (s, u) =>
+            // Five hops, landing hard, the stretch in motion on or off. Given a tag, once a hop the
+            // same frame rendered with the stretch off as well.
+            Action<float, float> Hops(bool stretch, string tag) => (s, u) =>
             {
-                if (knobs != null && (knobs.stretchInMotion != stretch || knobs.motionStyle != style))
+                if (knobs != null && knobs.stretchInMotion != stretch)
                 {
                     knobs.stretchInMotion = stretch;
-                    knobs.motionStyle = style;
                     YapsSquash.Apply(root);
                 }
                 root.position = standing + up * (0.12f * Mathf.Abs(Mathf.Sin(Mathf.PI * u * 5f)));
@@ -804,9 +802,8 @@ namespace AvatarBridge.Regression
             float shaft = Mathf.Clamp(0.1f * PlugLength, 0.012f, 0.06f);
             film = new List<Shot>
             {
-                new Shot { name = "Hopping: the physics alone", frames = 240, at = mid + f * 0.05f + up * 0.06f, width = 1f, profile = true, pose = Hops(false, 0f, null) },
-                new Shot { name = "Hopping: stretch in motion, real flesh", frames = 240, at = mid + f * 0.05f + up * 0.06f, width = 1f, profile = true, pose = Hops(true, 0f, "real") },
-                new Shot { name = "Hopping: stretch in motion, anime", frames = 240, at = mid + f * 0.05f + up * 0.06f, width = 1f, profile = true, pose = Hops(true, 1f, "anime") },
+                new Shot { name = "Hopping: the physics alone", frames = 240, at = mid + f * 0.05f + up * 0.06f, width = 1f, profile = true, pose = Hops(false, null) },
+                new Shot { name = "Hopping: stretch in motion, real flesh", frames = 240, at = mid + f * 0.05f + up * 0.06f, width = 1f, profile = true, pose = Hops(true, "real") },
                 new Shot { name = "A plug in a socket between them", frames = 300, at = mid + f * 0.05f, width = 0.8f, pose = (s, u) =>
                 {
                     root.position = standing;

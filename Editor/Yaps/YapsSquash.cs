@@ -182,12 +182,9 @@ namespace AvatarBridge
             m.SetVector("_YAPS_SquashPush", new Vector4(s.clothPush, 0.03f, 0.25f, s.ownArms > 0f ? 1f : 0f));
             m.SetVector("_YAPS_SquashHands", new Vector4(s.ownArms, s.handSize, s.othersHands, hands.w));
             m.SetFloat("_YAPS_SquashPlug", s.plugs);
-            // From real flesh to anime: the stretch per reach of swing, the swing ignored as the
-            // sag the physics settle into, and the longest it gets.
-            float t = s.motionStyle;
-            m.SetVector("_YAPS_SquashMotion", s.stretchInMotion
-                ? new Vector4(Mathf.Lerp(0.6f, 3.5f, t), Mathf.Lerp(0.1f, 0.03f, t), Mathf.Lerp(1.12f, 1.8f, t), 0f)
-                : Vector4.zero);
+            // Like real flesh: the stretch per reach of swing, the swing ignored as the sag the physics
+            // settle into, and the longest it gets. An anime style stretched every hop into a teardrop.
+            m.SetVector("_YAPS_SquashMotion", s.stretchInMotion ? new Vector4(0.6f, 0.1f, 1.12f, 0f) : Vector4.zero);
         }
 
         // Every material the build's providers write, alternates included.
