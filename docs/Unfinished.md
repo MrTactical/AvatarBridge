@@ -1754,8 +1754,49 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
   - The parser's switch-off left out of the wear build: its readback and pass cost every copy, near
     or far, every frame (0.019 ms on the 4080, 0.015 on the 2-CU part), and save a far copy 0.005
     to 0.010 or 0.033. It never pays on the 4080; on the 2-CU part it pays once about half the
-    copies are far, as in a crowd. Joe's call.
+    copies are far, as in a crowd. Joe's call: a menu item of its own, below.
   - Verify passes on the test build, the bench on both GPUs; the wear build is benched, not played.
+- **Far copies cheaper, far copies off when worn, a prop that sleeps, 2026-10-28 [M], Joe: "do 1 to
+  3":**
+  - Jelly spike: add to wear, far copies switched off: the third pass and the parser kept for the
+    far switch alone, no rider. The bench builds both wear builds and counts their parts.
+  - The far path, timed pass by pass against a light shader holding only the far test, and two
+    plain copies (ms a frame; the Radeon is the 2-CU part):
+
+    | | 4080 | Radeon |
+    | --- | --- | --- |
+    | A far copy, two passes | 0.008 | 0.032 |
+    | The far test alone, in a light shader | 0.006 | 0.019 |
+    | Two plain copies | 0.005 | 0.016 |
+
+    The rest is the shader's size: without the hand scan the Radeon's first pass drops from 0.012
+    to 0.009, and the fit's code is the remainder. Shedding either needs a third pass or a frame's
+    lag on the hands. A discard in the second pass, writing nothing, takes 0.002 off the Radeon.
+    A discard anywhere in the first, even one it never reaches, cost the 4080 0.003 to 0.004 a
+    near frame with players, so it is compiled into the second pass's variant alone.
+  - The prop sleeps: still for half a second (the rider's texels a frame apart, the front centre
+    under 2 mm/s and its turn under a degree a second, the anchor under 2 mm/s), no hand in reach,
+    the anchor within 0.1 mm of where it last stepped. Then both passes leave it be, the second
+    stamping it so it reads as stepping, and it draws blue. The second pass decides a frame ahead,
+    so a move or a hand wakes it the frame after, from where it lay. In the bench it fell asleep
+    1.93 s after settling, with the same sag as an awake twin (2.64 cm against 2.64), woke to a
+    1 mm move with the back face on the anchor the frame after, slept again, and woke to a hand.
+    Ms a frame, alone and with 64 players:
+
+    | | 4080 | Radeon |
+    | --- | --- | --- |
+    | Asleep | 0.017, 0.026 | 0.043, 0.048 |
+    | Awake, as a prop | 0.018, 0.027 | 0.057, 0.064 |
+    | Worn, no sleep compiled in | 0.018, 0.027 | 0.056, 0.063 |
+
+    A quarter saved on the Radeon, nothing on the 4080, where the fixed cost and the hand scan are
+    most of a frame. Worn builds leave it out (a keyword): the avatar's idle sway would keep it
+    awake [R], and compiled in, the test costs the Radeon 2 to 4% alone.
+  - Tried first: the stillness test in the first pass, beside the hand scan, cost the 4080 0.004 a
+    frame with players (the old shader beside the new in one run). Now in the second pass.
+  - With ChilloutVR open on desktop the 4080 reads about half as slow again with wide ranges, so the
+    numbers above compare inside one run; across runs they do not. Verify passes, both benches pass.
+    Blue in game, and waking on a real hand, are [GAME].
 - **Order, Joe 2026-10-27:** the squash shader working on MagicaCloth first and 5.0.0 shipped; the
   live tissue and the rest of his ideas after, in 5.1.
 - The menu item rebuilt the assets with the preview scene, which replaced the open scene: it now

@@ -6,7 +6,8 @@
 // pulled toward where the rigid fit of its 3x3x3 neighbourhood puts it (shape matching), the back
 // face is held on an anchor the material data provider hands in, and the hands the first pass
 // found in reach push it out of the way. Past 6 m from the viewer's head it hangs rigid and does
-// next to no work. A mesh draws the lattice's surface from the same texture. Nothing is baked,
+// next to no work; as a prop, settled, untouched and on an anchor that has not moved, it sleeps,
+// the same, until a hand or the anchor wakes it. A mesh draws the lattice's surface from the same texture. Nothing is baked,
 // nothing is synced, and each client steps its own copy.
 //
 // A plain cube rides the front: the second pass writes where the front centre is, and how its
@@ -28,7 +29,7 @@
 // Bench times a frame the way a viewer pays for the prefab (its two passes, one texture into the
 // other, and the rider's copy; the parser's readback apart) at 90 fps, where the first pass predicts and the second fits,
 // and at 60, where each steps, for one pair's lattice and four times that, with no players, 64 far
-// off, 64 with eight hands in reach, and the viewer 1 m and 20 m off; times chains of plain copies,
+// off, 64 with eight hands in reach, and the viewer 1 m and 20 m off, and asleep; times chains of plain copies,
 // for what a pass costs before it works; and checks the tissue settles and swings back sanely.
 // Pass -force-device-index 1 to run it on a second GPU, the CPU's own, for a low-end machine. Verify plays the prefab in
 // batch with the CCK's own render controller and a swinging anchor. Batch, never -nographics.
@@ -79,7 +80,12 @@ namespace AvatarBridge.Regression
 
         // To wear: no test cube, so one pass, its readback and its parser fewer.
         [MenuItem("Tools/AvatarBridge Dev/Jelly spike: add to wear, without the test cube")]
-        static void AddToWear() => Add(withMeter: false, withRider: false);
+        static void AddToWear() => Add(withMeter: false, withRider: false, offFar: false);
+
+        // The same with the pass and the parser kept for the far switch alone: dearer near, cheaper
+        // far, so it pays on a slow GPU in a crowd.
+        [MenuItem("Tools/AvatarBridge Dev/Jelly spike: add to wear, far copies switched off")]
+        static void AddToWearOffFar() => Add(withMeter: false, withRider: false, offFar: true);
 
         // The meter's load costs 32 passes every other half second, far more than the jelly, so it
         // goes on only when asked for.
@@ -113,7 +119,7 @@ namespace AvatarBridge.Regression
             Debug.Log("[Jelly] made Jelly Prop in the open scene, grabbable; upload it from the CCK Control Panel");
         }
 
-        static void Add(bool withMeter, bool withRider = true)
+        static void Add(bool withMeter, bool withRider = true, bool offFar = true)
         {
             var avatar = Selection.activeGameObject;
             var animator = avatar != null ? avatar.GetComponentInChildren<Animator>() : null;
@@ -127,7 +133,7 @@ namespace AvatarBridge.Regression
             }
             // Rebuilt without the preview scene, which would replace the open one, and any earlier one
             // on the avatar taken off, so the avatar always carries the newest.
-            var prefab = Make(preview: false, withMeter: withMeter, withRider: withRider);
+            var prefab = Make(preview: false, withMeter: withMeter, withRider: withRider, offFar: offFar, sleeps: false);
             if (prefab == null) return;
             // Any earlier one on the avatar goes. An instance is named after the prefab's file,
             // Jelly_Spike; older builds left Jelly Spike.
@@ -147,7 +153,7 @@ namespace AvatarBridge.Regression
             Debug.Log($"[Jelly] added under {chest.name}, {0.35f * tall / 1.5f:0.00} m in front, scaled for a {tall:0.00} m head height; {stale.Count} earlier one(s) taken off");
         }
 
-        static GameObject Make(bool preview = true, bool withMeter = true, bool withRider = true)
+        static GameObject Make(bool preview = true, bool withMeter = true, bool withRider = true, bool offFar = true, bool sleeps = true)
         {
             if (!AssetDatabase.IsValidFolder(Folder)) AssetDatabase.CreateFolder("Assets", Path.GetFileName(Folder));
             File.WriteAllText(Folder + "/JellyCommon.cginc", CommonInclude);
@@ -175,6 +181,14 @@ namespace AvatarBridge.Regression
             var twin = Save(State(Size), "/Jelly_State_B.renderTexture");
             var stepMat = Save(StepMaterial(step, Size, 0), "/Jelly_Step.mat");
             var stepMat2 = Save(StepMaterial(step, Size, 1), "/Jelly_Step_2.mat");
+            // Only a prop sleeps: worn, the avatar's own sway keeps it awake, and the test alone costs
+            // a slow GPU a few percent. Set on the saved materials, which a rebuild keeps.
+            foreach (var mat in new[] { stepMat, stepMat2 })
+            {
+                if (sleeps) mat.EnableKeyword("JELLY_SLEEP");
+                else mat.DisableKeyword("JELLY_SLEEP");
+                EditorUtility.SetDirty(mat);
+            }
             var drawMat = new Material(draw);
             drawMat.SetTexture("_State", state);
             drawMat = Save(drawMat, "/Jelly_Draw.mat");
@@ -205,7 +219,7 @@ namespace AvatarBridge.Regression
             }
             // Last, the rider's texels and the far switch out of the stepped state, for the parser.
             RenderTexture where = null;
-            if (withRider)
+            if (withRider || offFar)
             {
                 where = Save(Strip(3), "/Jelly_Points.renderTexture");
                 var pointsMat = Save(StepMaterial(step, Size, 2), "/Jelly_Points.mat");
@@ -272,45 +286,49 @@ namespace AvatarBridge.Regression
 
             provider.materials = fed.ToArray();
 
-            if (withRider)
+            if (where != null)
             {
-                // The rider, at rest on the front centre, and a plain cube on it.
-                var plain = Save(new Material(Shader.Find("Standard")) { color = new Color(1f, 0.85f, 0.1f) }, "/Jelly_Rider.mat");
-                var rider = new GameObject("Rider");
-                rider.transform.SetParent(root.transform, false);
-                rider.transform.localPosition = new Vector3(0f, 0f, (Size.z - 1) * Spacing);
-                var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                cube.name = "Plain cube";
-                Object.DestroyImmediate(cube.GetComponent<Collider>());
-                cube.transform.SetParent(rider.transform, false);
-                cube.transform.localPosition = new Vector3(0f, 0f, 0.025f);
-                cube.transform.localScale = Vector3.one * 0.05f;
-                cube.GetComponent<MeshRenderer>().sharedMaterial = plain;
                 var parser = tissue.AddComponent<CVRTexturePropertyParser>();
                 parser.textureType = CVRTexturePropertyParser.TextureType.LocalTexture;
                 parser.texture = where;
-                // Vector3 properties are type 4, an element each; the texels hold each value between
-                // its task's bounds, so a clamped remap and an unclamped one read the same.
-                for (int i = 0; i < 3; i++)
-                    parser.tasks.Add(Task(rider, 0, i, "localPosition", -0.5f, 0.5f));
-                for (int i = 0; i < 3; i++)
-                    parser.tasks.Add(Task(rider, 1, i, "localEulerAngles", -180f, 180f));
+                if (withRider)
+                {
+                    // The rider, at rest on the front centre, and a plain cube on it.
+                    var plain = Save(new Material(Shader.Find("Standard")) { color = new Color(1f, 0.85f, 0.1f) }, "/Jelly_Rider.mat");
+                    var rider = new GameObject("Rider");
+                    rider.transform.SetParent(root.transform, false);
+                    rider.transform.localPosition = new Vector3(0f, 0f, (Size.z - 1) * Spacing);
+                    var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    cube.name = "Plain cube";
+                    Object.DestroyImmediate(cube.GetComponent<Collider>());
+                    cube.transform.SetParent(rider.transform, false);
+                    cube.transform.localPosition = new Vector3(0f, 0f, 0.025f);
+                    cube.transform.localScale = Vector3.one * 0.05f;
+                    cube.GetComponent<MeshRenderer>().sharedMaterial = plain;
+                    // Vector3 properties are type 4, an element each; the texels hold each value between
+                    // its task's bounds, so a clamped remap and an unclamped one read the same.
+                    for (int i = 0; i < 3; i++)
+                        parser.tasks.Add(Task(rider, 0, i, "localPosition", -0.5f, 0.5f));
+                    for (int i = 0; i < 3; i++)
+                        parser.tasks.Add(Task(rider, 1, i, "localEulerAngles", -180f, 180f));
+                }
                 // The far switch: the client binds any public property, so the third texel turns both
                 // steps' blitters off (a bool, set at 0.5 and up) far from the viewer, and the pass
                 // that writes it, which stays on, turns them back on.
-                foreach (var blitter in steps)
-                    parser.tasks.Add(new CVRTexturePropertyParserTask
-                    {
-                        x = 2,
-                        y = 0,
-                        channel = CVRTexturePropertyParserTask.Channel.r,
-                        minValue = 0f,
-                        maxValue = 1f,
-                        target = tissue,
-                        component = blitter,
-                        propertyName = "enabled",
-                        typeIndex = 2,
-                    });
+                if (offFar)
+                    foreach (var blitter in steps)
+                        parser.tasks.Add(new CVRTexturePropertyParserTask
+                        {
+                            x = 2,
+                            y = 0,
+                            channel = CVRTexturePropertyParserTask.Channel.r,
+                            minValue = 0f,
+                            maxValue = 1f,
+                            target = tissue,
+                            component = blitter,
+                            propertyName = "enabled",
+                            typeIndex = 2,
+                        });
             }
             var body = new GameObject("Surface");
             body.transform.SetParent(root.transform, false);
@@ -427,7 +445,22 @@ namespace AvatarBridge.Regression
                 side = Side(n);
                 var step = AssetDatabase.LoadAssetAtPath<Shader>(Folder + "/JellyStep.shader");
                 Mats = new[] { StepMaterial(step, n, 0), StepMaterial(step, n, 1), StepMaterial(step, n, 2) };
+                // As worn, so a row times the work; the sleep's own rows compile it in.
+                Sleep(0f, false);
             }
+
+            // A sleep time, 0 for never; compiled in or out, as a prop or worn.
+            public void Sleep(float after, bool compiled)
+            {
+                foreach (var mat in Mats)
+                {
+                    mat.SetFloat("_Sleep", after);
+                    if (compiled) mat.EnableKeyword("JELLY_SLEEP");
+                    else mat.DisableKeyword("JELLY_SLEEP");
+                }
+            }
+
+            public bool Asleep() => Read(State)[side * 2 * Row + 18].y > 0.5f;
 
             public void Anchor(Matrix4x4 m)
             {
@@ -678,9 +711,63 @@ namespace AvatarBridge.Regression
                 Add(builds, "off", Timed(far20.Third, far20.State, 600, out _));
             }
             lines.Add($"[Jelly] 3072 particles at 90 fps, 64 players, 8 hands in reach: worn, two passes, {Spread(builds["worn"])} ms a frame; " +
-                      $"with the test cube's third {Spread(builds["test"])}; one pass in place instead of two {Spread(builds["one"])}");
+                      $"with the third pass, the test cube's or the far switch's, {Spread(builds["test"])}; one pass in place instead of two {Spread(builds["one"])}");
             lines.Add($"[Jelly] the viewer 20 m off: {Spread(builds["far"])} ms a frame with the steps running at rest, " +
                       $"{Spread(builds["off"])} once the parser has switched them off");
+            foreach (var r in new[] { worn, test, far20 }) r.Release();
+
+            // Asleep: four seconds still beside a twin that never sleeps, the same sag on both; what a
+            // frame costs asleep; then woken by the anchor moving a millimetre, and again by a hand.
+            var sleeper = new Rig(Size, rider: false);
+            var awake = new Rig(Size, rider: false);
+            var prop = new Rig(Size, rider: false);
+            foreach (var r in new[] { sleeper, awake, prop })
+            {
+                r.Anchor(still);
+                r.Dt(1f / 90f);
+            }
+            sleeper.Sleep(0.5f, true);
+            prop.Sleep(0f, true);
+            Players(0);
+            int fellAt = -1;
+            for (int i = 0; i < 360; i++)
+            {
+                sleeper.Passes();
+                awake.Passes();
+                if (fellAt < 0 && sleeper.Asleep()) fellAt = i;
+            }
+            Health(Read(sleeper.State), Size, still, out _, out float sagAsleep);
+            Health(Read(awake.State), Size, still, out _, out float sagAwake);
+            var naps = new Dictionary<string, List<double>>();
+            for (int rep = 0; rep < Reps; rep++)
+            {
+                foreach (int players in new[] { 0, 64 })
+                {
+                    Players(players, 0);
+                    Add(naps, $"worn {players}", Timed(awake.Passes, awake.State, 600, out _));
+                    Add(naps, $"prop {players}", Timed(prop.Passes, prop.State, 600, out _));
+                    Add(naps, $"asleep {players}", Timed(sleeper.Passes, sleeper.State, 600, out _));
+                }
+            }
+            bool slept = fellAt >= 0 && sleeper.Asleep();
+            var nudged = Matrix4x4.TRS(new Vector3(0.001f, 1.3f, 0.3f), Quaternion.identity, Vector3.one);
+            sleeper.Anchor(nudged);
+            sleeper.Passes();
+            bool wokeMoved = !sleeper.Asleep();
+            sleeper.Passes();
+            bool followed = Health(Read(sleeper.State), Size, nudged, out _, out _);
+            Players(0);
+            for (int i = 0; i < 360; i++) sleeper.Passes();
+            bool sleptAgain = sleeper.Asleep();
+            Players(1, 2);
+            sleeper.Passes();
+            bool wokeHand = !sleeper.Asleep();
+            ok &= slept && Mathf.Abs(sagAsleep - sagAwake) < 5e-4f && wokeMoved && followed && sleptAgain && wokeHand;
+            lines.Add($"[Jelly] asleep after {(fellAt + 1) / 90f:0.00} s still, front {100f * sagAsleep:0.00} cm off rigid against {100f * sagAwake:0.00} awake; " +
+                      $"a frame at 90 fps, alone and with 64 players: asleep {Spread(naps["asleep 0"])} and {Spread(naps["asleep 64"])} ms, " +
+                      $"awake as a prop {Spread(naps["prop 0"])} and {Spread(naps["prop 64"])}, as worn {Spread(naps["worn 0"])} and {Spread(naps["worn 64"])}; " +
+                      $"woken by the anchor moving 1 mm: {wokeMoved}, back face on it the frame after: {followed}; asleep again: {sleptAgain}, woken by a hand: {wokeHand}");
+            foreach (var r in new[] { sleeper, awake, prop }) r.Release();
             lines.Add("[Jelly] chained copies, a frame: " + string.Join(", ", chain.Select(k => $"{k}: {Spread(copies[k])}")) +
                       $"; so a pass costs {(Median(copies[8]) - Median(copies[1])) / 7:0.0000} ms before it works");
             lines.Add($"[Jelly] the parser's readback, at 90 fps: {Spread(bare)} ms a frame without, {Spread(read)} with");
@@ -722,6 +809,19 @@ namespace AvatarBridge.Regression
             for (int i = 0; i < strip.Count && i < 8; i++)
                 sheet.SetPixels((i % 4) * strip[0].width, (1 - i / 4) * strip[0].height, strip[0].width, strip[0].height, strip[i].GetPixels());
             File.WriteAllBytes(Path.Combine(dir, "turn.png"), sheet.EncodeToPNG());
+            // The two wear builds, last, since each replaces the prefab: two blitters and no parser, or
+            // the third pass and a parser that only switches the steps.
+            int Count<T>(GameObject go) where T : Component => go.GetComponentsInChildren<T>(true).Length;
+            var wear = Make(preview: false, withMeter: false, withRider: false, offFar: false, sleeps: false);
+            int wearBlits = Count<CVRBlitter>(wear), wearParsers = Count<CVRTexturePropertyParser>(wear);
+            var wearOff = Make(preview: false, withMeter: false, withRider: false, offFar: true, sleeps: false);
+            var switches = wearOff.GetComponentsInChildren<CVRTexturePropertyParser>(true).SelectMany(p => p.tasks).ToList();
+            bool sleepless = wear.GetComponentsInChildren<CVRBlitter>(true).All(b => !b.blitMaterial.IsKeywordEnabled("JELLY_SLEEP"));
+            bool built = sleepless && wearBlits == 2 && wearParsers == 0 && Count<CVRBlitter>(wearOff) == 3 && switches.Count == 2
+                && switches.All(t => t.propertyName == "enabled" && t.component is CVRBlitter) && wearOff.transform.Find("Rider") == null;
+            ok &= built;
+            lines.Add($"[Jelly] the wear builds: {wearBlits} blitters and {wearParsers} parsers; far copies switched off, " +
+                      $"{Count<CVRBlitter>(wearOff)} blitters and {switches.Count} parser tasks, {(built ? "as they should be" : "WRONG")}");
             lines.Add($"[Jelly] {(ok ? "PASS" : "FAIL")}, frames at {string.Join(", ", shotsAt)} in {Path.Combine(dir, "turn.png")}");
             foreach (var l in lines) Debug.Log(l);
             File.WriteAllLines(Path.Combine(dir, "bench.txt"), lines);
@@ -956,7 +1056,9 @@ namespace AvatarBridge.Regression
 // The frame's two passes, from one texture into its twin and back. Left half: where each particle
 // is, w the _Time.y of the last pass (negative while no anchor arrives). Right half: where it was a
 // pass before, w the h that pass took, so a velocity is only ever read off the two. The row after
-// the lattice: the hands in reach (texels 0 to 15), the rider (16, 17) and the far switch (18).
+// the lattice: the hands in reach (texels 0 to 15), the rider (16, 17), the far switch and
+// whether it sleeps (18), how long it has stood still (19), where the anchor was the last time it
+// stepped (20 to 22), and the rider a frame before (23, 24).
 // Below 72 fps each pass takes a step. Above it the first only works out where each particle is
 // headed and the second fits, so each neighbour is read once. The first pass also looks for the
 // hands, so the second pushes against where they are this frame; below 72 fps the first pass's own
@@ -975,6 +1077,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _Pass (""Which of the frame's passes this is: 2 copies the rider out"", Float) = 0
         _FixedDt (""Fixed frame time, 0 for the real one"", Float) = 0
         _Stress (""The cost meter's load: steps only in odd phases"", Float) = 0
+        _Sleep (""Rests after standing still this many seconds, untouched and unmoved; 0 never"", Float) = 0.5
     }
     SubShader
     {
@@ -987,10 +1090,12 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             #pragma target 4.5
             // Only the first pass looks for hands, so only it carries every player's positions.
             #pragma multi_compile_local __ JELLY_SCAN
+            // Only a prop sleeps; worn, it is compiled out.
+            #pragma multi_compile_local __ JELLY_SLEEP
             #include ""UnityCG.cginc""
             #include ""JellyCommon.cginc""
 
-            float _Stiff, _Hz, _Hand, _Far, _Pass, _FixedDt, _Stress;
+            float _Stiff, _Hz, _Hand, _Far, _Pass, _FixedDt, _Stress, _Sleep;
             // The client's first is the local player's head; only it is read.
             float4 _CVR_PlayerHeadPositions[1];
 
@@ -1137,6 +1242,36 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 return float4(saturate(euler / 360 + 0.5), 1);
             }
 
+            // The anchor's move since it last stepped, at the lattice's far corner, about 0.2 of the
+            // anchor's units out.
+            float AnchorMoved(float4x4 m, uint side)
+            {
+                float3 x = _MainTex.Load(int3(20, side, 0)).xyz, y = _MainTex.Load(int3(21, side, 0)).xyz, at = _MainTex.Load(int3(22, side, 0)).xyz;
+                return distance(at, m._m03_m13_m23) + 0.2 * (distance(x, m._m00_m10_m20) + distance(y, m._m01_m11_m21));
+            }
+
+            // How long the tissue has stood still, in summed frame times so it holds at any frame
+            // rate: the rider's texels a frame apart, the front centre under 2 mm/s and its
+            // neighbourhood's turn under a degree a second, and the anchor under 2 mm/s. Read off
+            // the second pass's own row, since a stillness test in the first, beside the hand scan,
+            // slowed every step a fast GPU took near other players.
+            float4 Still(float4 here, float4x4 m, float scale, float dt, bool distant, uint side)
+            {
+                float3 front = _MainTex.Load(int3(16, side, 0)).xyz - _MainTex.Load(int3(23, side, 0)).xyz;
+                float3 turn = _MainTex.Load(int3(17, side, 0)).xyz - _MainTex.Load(int3(24, side, 0)).xyz;
+                bool still = !distant && AnchorMoved(m, side) < 0.002 * dt && length(front) * scale < 0.002 * dt && length(turn) * 360 < dt;
+                return float4(still ? here.x + dt : 0, 0, 0, 1);
+            }
+
+            // Whether both passes may leave the tissue be next frame: still long enough, no hand in
+            // reach this frame, and the anchor within 0.1 mm of where it last stepped. Decided here,
+            // a frame ahead, since a pass cannot read its own row.
+            bool Sleepy(float4x4 m, bool distant, uint side)
+            {
+                bool hand = _MainTex.Load(int3(1, side, 0)).w == 1;
+                return _Sleep > 0 && !(_Stress > 0) && !distant && !hand && AnchorMoved(m, side) < 1e-4 && _MainTex.Load(int3(19, side, 0)).x >= _Sleep;
+            }
+
             float4 frag(v2f_img i) : SV_Target
             {
                 int2 px = int2(i.pos.xy);
@@ -1169,19 +1304,28 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // Far from the viewer's head the tissue hangs rigid. The first pass decides, with half
                 // a metre's give so it does not flicker at the edge, and the second reads its answer.
                 // No head, as without a humanoid avatar, counts as near.
-                bool wasDistant = _MainTex.Load(int3(18, side, 0)).x > 0.5, distant = wasDistant;
+                float4 switches = _MainTex.Load(int3(18, side, 0));
+                bool wasDistant = switches.x > 0.5, distant = wasDistant;
                 if (_Pass < 0.5)
                 {
                     float3 head = _CVR_PlayerHeadPositions[0].xyz;
                     distant = !(_Stress > 0) && dot(head, head) > 1e-6 && distance(head, m._m03_m13_m23) > _Far - (wasDistant ? 0.5 : 0);
                 }
+                // Asleep: settled, untouched, on an anchor that has not moved. The second pass decided
+                // it last frame, so both passes take the same way; a moved anchor or a hand wakes it
+                // the frame after.
+#ifdef JELLY_SLEEP
+                bool asleep = switches.y > 0.5 && !distant;
+#else
+                bool asleep = false;
+#endif
 
                 if ((uint) px.y == side)
                 {
                     if (!anchored) return 0;
-                    if (px.x == 18) return float4(distant, 0, 0, 1);
                     if (_Pass < 0.5)
                     {
+                        if (px.x == 18) return float4(distant, asleep, 0, 1);
 #ifdef JELLY_SCAN
                         [branch] if (px.x < 16)
                         {
@@ -1191,13 +1335,33 @@ Shader ""Hidden/AvatarBridge/JellyStep""
 #endif
                         return here;
                     }
+#ifdef JELLY_SLEEP
+                    if (px.x == 18) return float4(distant, Sleepy(m, distant, side), 0, 1);
+                    if (asleep) return here;
+                    if (px.x == 19) return Still(here, m, scale, dt, distant, side);
+                    if (px.x >= 20 && px.x <= 22) return float4(px.x == 20 ? m._m00_m10_m20 : px.x == 21 ? m._m01_m11_m21 : m._m03_m13_m23, 1);
+                    if (px.x == 23 || px.x == 24) return _MainTex.Load(int3(px.x - 7, side, 0));
+#else
+                    if (px.x == 18) return float4(distant, 0, 0, 1);
+#endif
                     [branch] if (px.x == 16 || px.x == 17) return Rider(px.x, m, scale, h, predicted, distant, side);
                     return here;
                 }
 
                 // Far off, both passes leave the state be, as cheap as a pass can be: the surface
                 // draws the rest shape off the far switch, and a stale state starts again at rest.
-                [branch] if (distant) return here;
+                // The second discards, writing nothing. Compiled into its variant alone: a discard
+                // anywhere in the first, which carries the hand scan, slowed a fast GPU's near steps,
+                // even one it never reached.
+                [branch] if (distant)
+                {
+#ifndef JELLY_SCAN
+                    if (_Pass > 0.5) discard;
+#endif
+                    return here;
+                }
+                // Asleep, the same, but stamped, so it reads as stepping and wakes where it lay.
+                [branch] if (asleep) return _Pass > 0.5 && (uint) px.x < Row ? float4(here.xyz, _Time.y) : here;
                 uint p = (uint) px.x % Row + (uint) px.y * Row;
                 if (p >= count) return 0;
                 int half_ = (uint) px.x >= Row;
@@ -1528,7 +1692,8 @@ Shader ""AvatarBridge/Jelly Meter""
         const string DrawShader = @"// The jelly spike's surface. Written by JellySpikeBuilder; edits here are overwritten.
 //
 // Every vertex goes where its particle is. Pink while the tissue steps, or at rest past the far
-// switch; red once it has not stepped for a quarter second; purple while no anchor reaches it.
+// switch; blue asleep; red once it has not stepped for a quarter second; purple while no anchor
+// reaches it.
 Shader ""AvatarBridge/Jelly Spike""
 {
     Properties
@@ -1582,12 +1747,13 @@ Shader ""AvatarBridge/Jelly Spike""
                 // surface takes its rest shape on the anchor.
                 uint wide, rows;
                 _State.GetDimensions(wide, rows);
-                bool away = _State.Load(int3(18, rows - 1, 0)).x > 0.5;
+                float4 switches = _State.Load(int3(18, rows - 1, 0));
                 float3 at = s.xyz;
                 o.tint = _Color.rgb;
-                if (away) at = mul(unity_ObjectToWorld, v.vertex).xyz;
+                if (switches.x > 0.5) at = mul(unity_ObjectToWorld, v.vertex).xyz;
                 else if (s.w < 0) o.tint = float3(0.6, 0.2, 0.9);
                 else if (abs(_Time.y - s.w) > 0.25) o.tint = float3(0.9, 0.1, 0.1);
+                else if (switches.y > 0.5) o.tint = float3(0.35, 0.55, 1);
                 // Never written: drawn where the mesh rests, so it shows at all.
                 if (!(dot(at, at) > 1e-8 && dot(at, at) < 1e8)) at = mul(unity_ObjectToWorld, v.vertex).xyz;
                 o.at = at;
@@ -1620,8 +1786,9 @@ render texture that two blitters step every frame, into a twin and back; nothing
 nothing is synced. The first pass also picks out the hands in reach, eight at most, so a full
 instance costs no more than an empty one. Below 72 fps each pass takes a step; above it the first
 works out where each particle is headed and the second fits. More than 6 m from you, another
-player's jelly hangs rigid and costs next to nothing. It should sag a little, wobble when you
-turn or bounce, and dent and jiggle when any hand pokes it, yours or another player's.
+player's jelly hangs rigid and costs next to nothing, and so does the prop left still and
+untouched, asleep. It should sag a little, wobble when you turn or bounce, and dent and jiggle when any hand
+pokes it, yours or another player's.
 
 ## Setting it up
 
@@ -1630,7 +1797,9 @@ turn or bounce, and dent and jiggle when any hand pokes it, yours or another pla
    replacing any earlier one. Move it if it sits inside anything. Jelly spike: add with the cost
    meter does the same with the meter above it, which costs far more than the jelly. Jelly spike:
    add to wear, without the test cube, leaves the yellow cube off, and with it a pass, a readback
-   and a parser: the one to keep on.
+   and a parser: the one to keep on. Jelly spike: add to wear, far copies switched off, keeps the
+   pass and the parser for the far switch alone: each copy near you costs a little more, each far
+   one less, so it only pays on a slow GPU in a crowd.
 2. Upload. Nothing else: no parameters, no menu, no sync.
 
 Or as a prop on its own: Jelly spike: make a prop in the open scene, then upload it from the CCK
@@ -1643,6 +1812,7 @@ Before uploading, `Jelly_Preview.unity` shows it in the editor: open it and pres
 | Colour | Means |
 | --- | --- |
 | Pink | The tissue is stepping |
+| Blue | The prop asleep: still for half a second, untouched, not moving; a hand or a move wakes it |
 | Red | It has not stepped for a quarter second: the blitters are not running for this copy |
 | Purple | The anchor never arrived: the material data provider is not running |
 
@@ -1660,8 +1830,13 @@ is poked, tilting with it, a frame or two behind. If the jelly wobbles and the c
 parser is not running.
 
 Past 6 m it should go still and keep its rest shape, without the sag, and pick the wobble up again
-once you are back within 5.5 m. With the cube, the parser switches its stepping off out there
-altogether; worn without, the steps still run but leave it be.
+once you are back within 5.5 m. With the cube, or worn with far copies switched off, the parser
+switches its stepping off out there altogether; worn without, the steps still run but leave it be.
+
+The prop, left still for half a second, untouched and not moving, goes to sleep and turns blue,
+costing about what a far copy does; a hand in reach or any move wakes it the frame after, from
+where it lay. Worn, it never sleeps: the avatar's own idle sway would keep it awake anyway, and the
+test alone costs a slow GPU a few percent, so the worn builds leave it out.
 
 ## What to try
 
@@ -1674,6 +1849,8 @@ altogether; worn without, the steps still run but leave it be.
 6. Optional: somebody with the Cameras content filter off should see it red, frozen.
 7. Have somebody walk more than 6 m away from you and back: still and rigid out there, wobbling
    again once close, with no jump as it switches.
+8. Set the prop down and leave it: blue within a couple of seconds, pink the moment a hand comes
+   near or it is picked up, with no jump either way.
 ";
     }
 }
