@@ -7,7 +7,8 @@
 // face is held on an anchor the material data provider hands in, and the hands the first pass
 // found in reach push it out of the way. Past 6 m from the viewer's head it hangs rigid and does
 // next to no work; as a prop, settled, untouched and on an anchor that has not moved, it sleeps,
-// the same, until a hand or the anchor wakes it. A mesh draws the lattice's surface from the same texture. Nothing is baked,
+// the same, until a hand or the anchor wakes it. Several regions can share the texture and the two
+// passes, each a block of rows on an anchor of its own. A mesh draws the lattice's surface from the same texture. Nothing is baked,
 // nothing is synced, and each client steps its own copy.
 //
 // A plain cube rides the front: the second pass writes where the front centre is, and how its
@@ -87,6 +88,14 @@ namespace AvatarBridge.Regression
         [MenuItem("Tools/AvatarBridge Dev/Jelly spike: add to wear, far copies switched off")]
         static void AddToWearOffFar() => Add(withMeter: false, withRider: false, offFar: true);
 
+        // Three regions packed into one texture and one pair of passes: on the chest, behind the
+        // hips and above the head, each on its own bone.
+        [MenuItem("Tools/AvatarBridge Dev/Jelly spike: add three to wear, packed")]
+        static void AddPacked() => Add(withMeter: false, withRider: false, offFar: false, regions: 3);
+
+        [MenuItem("Tools/AvatarBridge Dev/Jelly spike: make a prop of three, packed")]
+        static void MakePackedProp() => MakeProp(3);
+
         // The meter's load costs 32 passes every other half second, far more than the jelly, so it
         // goes on only when asked for.
         [MenuItem("Tools/AvatarBridge Dev/Jelly spike: add with the cost meter")]
@@ -94,9 +103,11 @@ namespace AvatarBridge.Regression
 
         // The jelly alone as a prop, its cost told apart from any avatar's.
         [MenuItem("Tools/AvatarBridge Dev/Jelly spike: make a prop in the open scene")]
-        static void MakeProp()
+        static void MakeOneProp() => MakeProp(1);
+
+        static void MakeProp(int regions)
         {
-            var prefab = Make(preview: false, withMeter: false);
+            var prefab = Make(preview: false, withMeter: false, regions: regions);
             if (prefab == null) return;
             var old = GameObject.Find("Jelly Prop");
             if (old != null) Undo.DestroyObjectImmediate(old);
@@ -113,13 +124,13 @@ namespace AvatarBridge.Regression
             var box = prop.AddComponent<BoxCollider>();
             var span = (Vector3) (Size - Vector3Int.one) * Spacing;
             box.center = new Vector3(0f, 1.2f, 0.5f * span.z + 0.025f);
-            box.size = span + new Vector3(0.06f, 0.06f, 0.11f);
+            box.size = span + new Vector3(0.06f + 0.3f * (regions - 1), 0.06f, 0.11f);
             Undo.RegisterCreatedObjectUndo(prop, "Make the jelly prop");
             Selection.activeGameObject = prop;
             Debug.Log("[Jelly] made Jelly Prop in the open scene, grabbable; upload it from the CCK Control Panel");
         }
 
-        static void Add(bool withMeter, bool withRider = true, bool offFar = true)
+        static void Add(bool withMeter, bool withRider = true, bool offFar = true, int regions = 1)
         {
             var avatar = Selection.activeGameObject;
             var animator = avatar != null ? avatar.GetComponentInChildren<Animator>() : null;
@@ -133,12 +144,12 @@ namespace AvatarBridge.Regression
             }
             // Rebuilt without the preview scene, which would replace the open one, and any earlier one
             // on the avatar taken off, so the avatar always carries the newest.
-            var prefab = Make(preview: false, withMeter: withMeter, withRider: withRider, offFar: offFar, sleeps: false);
+            var prefab = Make(preview: false, withMeter: withMeter, withRider: withRider, offFar: offFar, sleeps: false, regions: regions);
             if (prefab == null) return;
             // Any earlier one on the avatar goes. An instance is named after the prefab's file,
             // Jelly_Spike; older builds left Jelly Spike.
             var stale = avatar.GetComponentsInChildren<Transform>(true)
-                .Where(t => t.name == prefab.name || t.name == "Jelly Spike").Select(t => t.gameObject).ToList();
+                .Where(t => t.name == prefab.name || t.name == "Jelly Spike" || t.name.StartsWith("Jelly Region")).Select(t => t.gameObject).ToList();
             foreach (var old in stale)
                 if (old != null) Undo.DestroyObjectImmediate(old);
             var root = avatar.transform;
@@ -148,12 +159,28 @@ namespace AvatarBridge.Regression
             var made = (GameObject) PrefabUtility.InstantiatePrefab(prefab, chest);
             made.transform.SetPositionAndRotation(chest.position + root.forward * (0.35f * tall / 1.5f), root.rotation);
             made.transform.localScale = Vector3.one * (tall / 1.5f / Mathf.Max(chest.lossyScale.x, 1e-6f));
+            if (regions > 1)
+            {
+                // Each region onto its own bone, the lattice standing out of it: in front of the
+                // chest, behind the hips, above the head. Unpacked, so the regions can leave it.
+                PrefabUtility.UnpackPrefabInstance(made, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+                var bones = new[] { chest, animator.GetBoneTransform(HumanBodyBones.Hips), head };
+                var out_ = new[] { root.forward * 0.35f, -root.forward * 0.3f, root.up * 0.3f };
+                var turn = new[] { Quaternion.identity, Quaternion.Euler(0f, 180f, 0f), Quaternion.Euler(-90f, 0f, 0f) };
+                for (int r = 0; r < regions && r < bones.Length; r++)
+                {
+                    var region = made.transform.Find($"Jelly Region {r}");
+                    if (region == null || bones[r] == null) continue;
+                    region.SetParent(bones[r], true);
+                    region.SetPositionAndRotation(bones[r].position + out_[r] * (tall / 1.5f), root.rotation * turn[r]);
+                }
+            }
             Undo.RegisterCreatedObjectUndo(made, "Add the jelly spike");
             Selection.activeGameObject = made;
             Debug.Log($"[Jelly] added under {chest.name}, {0.35f * tall / 1.5f:0.00} m in front, scaled for a {tall:0.00} m head height; {stale.Count} earlier one(s) taken off");
         }
 
-        static GameObject Make(bool preview = true, bool withMeter = true, bool withRider = true, bool offFar = true, bool sleeps = true)
+        static GameObject Make(bool preview = true, bool withMeter = true, bool withRider = true, bool offFar = true, bool sleeps = true, int regions = 1)
         {
             if (!AssetDatabase.IsValidFolder(Folder)) AssetDatabase.CreateFolder("Assets", Path.GetFileName(Folder));
             File.WriteAllText(Folder + "/JellyCommon.cginc", CommonInclude);
@@ -177,8 +204,8 @@ namespace AvatarBridge.Regression
                 return null;
             }
 
-            var state = Save(State(Size), "/Jelly_State.renderTexture");
-            var twin = Save(State(Size), "/Jelly_State_B.renderTexture");
+            var state = Save(State(Size, regions), "/Jelly_State.renderTexture");
+            var twin = Save(State(Size, regions), "/Jelly_State_B.renderTexture");
             var stepMat = Save(StepMaterial(step, Size, 0), "/Jelly_Step.mat");
             var stepMat2 = Save(StepMaterial(step, Size, 1), "/Jelly_Step_2.mat");
             // Only a prop sleeps: worn, the avatar's own sway keeps it awake, and the test alone costs
@@ -192,13 +219,26 @@ namespace AvatarBridge.Regression
             var drawMat = new Material(draw);
             drawMat.SetTexture("_State", state);
             drawMat = Save(drawMat, "/Jelly_Draw.mat");
-            var mesh = Save(Surface(Size), "/Jelly_Surface.asset");
             var root = new GameObject("Jelly Spike");
+            // Each region an anchor of its own. Packed, they sit side by side to be moved; alone, the
+            // root is the anchor.
+            var anchors = new List<Transform> { root.transform };
+            if (regions > 1)
+            {
+                anchors.Clear();
+                for (int r = 0; r < regions; r++)
+                {
+                    var anchor = new GameObject($"Jelly Region {r}").transform;
+                    anchor.SetParent(root.transform, false);
+                    anchor.localPosition = new Vector3((r - 0.5f * (regions - 1)) * 0.3f, 0f, 0f);
+                    anchors.Add(anchor);
+                }
+            }
             var tissue = new GameObject("Tissue");
             tissue.transform.SetParent(root.transform, false);
             var provider = tissue.AddComponent<CVRMaterialDataProvider>();
             provider.dataMode = CVRMaterialDataProvider.DataMode.TransformLocalToWorld;
-            provider.transforms = new[] { root.transform };
+            provider.transforms = anchors.ToArray();
             provider.shaderPropertyName = "_JellyAnchor";
             var controller = tissue.AddComponent<CVRRenderController>();
             // The anchor first, then the passes, in the order the client runs them.
@@ -296,7 +336,7 @@ namespace AvatarBridge.Regression
                     // The rider, at rest on the front centre, and a plain cube on it.
                     var plain = Save(new Material(Shader.Find("Standard")) { color = new Color(1f, 0.85f, 0.1f) }, "/Jelly_Rider.mat");
                     var rider = new GameObject("Rider");
-                    rider.transform.SetParent(root.transform, false);
+                    rider.transform.SetParent(anchors[0], false);
                     rider.transform.localPosition = new Vector3(0f, 0f, (Size.z - 1) * Spacing);
                     var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
                     cube.name = "Plain cube";
@@ -330,13 +370,17 @@ namespace AvatarBridge.Regression
                             typeIndex = 2,
                         });
             }
-            var body = new GameObject("Surface");
-            body.transform.SetParent(root.transform, false);
-            body.AddComponent<MeshFilter>().sharedMesh = mesh;
-            var renderer = body.AddComponent<MeshRenderer>();
-            renderer.sharedMaterial = drawMat;
-            renderer.shadowCastingMode = ShadowCastingMode.Off;
-            renderer.receiveShadows = false;
+            // A surface a region, on its anchor, so past the far switch each draws its own rest shape.
+            for (int r = 0; r < regions; r++)
+            {
+                var body = new GameObject(r == 0 ? "Surface" : $"Surface {r}");
+                body.transform.SetParent(anchors[r], false);
+                body.AddComponent<MeshFilter>().sharedMesh = Save(Surface(Size, r), r == 0 ? "/Jelly_Surface.asset" : $"/Jelly_Surface_{r}.asset");
+                var renderer = body.AddComponent<MeshRenderer>();
+                renderer.sharedMaterial = drawMat;
+                renderer.shadowCastingMode = ShadowCastingMode.Off;
+                renderer.receiveShadows = false;
+            }
 
             var prefab = PrefabUtility.SaveAsPrefabAsset(root, Prefab);
             Object.DestroyImmediate(root);
@@ -380,10 +424,10 @@ namespace AvatarBridge.Regression
         // The row after the lattice's: the hands in reach, the rider and the far switch.
         static int Side(Vector3Int n) => (n.x * n.y * n.z + Row - 1) / Row;
 
-        static RenderTexture State(Vector3Int n)
+        static RenderTexture State(Vector3Int n, int regions = 1)
         {
             // Float, so positions keep their digits; point and no mips, so a texel is only ever itself.
-            return new RenderTexture(2 * Row, Side(n) + 1, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear)
+            return new RenderTexture(2 * Row, (Side(n) + 1) * regions, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear)
             {
                 filterMode = FilterMode.Point,
                 wrapMode = TextureWrapMode.Clamp,
@@ -435,11 +479,11 @@ namespace AvatarBridge.Regression
             readonly int side;
             readonly bool rider;
 
-            public Rig(Vector3Int n, bool rider = true)
+            public Rig(Vector3Int n, bool rider = true, int regions = 1)
             {
                 this.rider = rider;
-                State = JellySpikeBuilder.State(n);
-                Twin = JellySpikeBuilder.State(n);
+                State = JellySpikeBuilder.State(n, regions);
+                Twin = JellySpikeBuilder.State(n, regions);
                 Where = Strip(3);
                 foreach (var t in new[] { State, Twin, Where }) t.Create();
                 side = Side(n);
@@ -462,9 +506,9 @@ namespace AvatarBridge.Regression
 
             public bool Asleep() => Read(State)[side * 2 * Row + 18].y > 0.5f;
 
-            public void Anchor(Matrix4x4 m)
+            public void Anchor(params Matrix4x4[] m)
             {
-                foreach (var mat in Mats) mat.SetMatrixArray("_JellyAnchor", new[] { m });
+                foreach (var mat in Mats) mat.SetMatrixArray("_JellyAnchor", m);
             }
 
             public void Dt(float dt)
@@ -510,8 +554,9 @@ namespace AvatarBridge.Regression
         }
 
         // The lattice's six faces as a grid of quads, each vertex naming its particle's texel.
-        static Mesh Surface(Vector3Int n)
+        static Mesh Surface(Vector3Int n, int region = 0)
         {
+            int rows = Side(n) + 1, first = region * rows;
             var at = new List<Vector3>();
             var uv = new List<Vector2>();
             var tris = new List<int>();
@@ -522,7 +567,7 @@ namespace AvatarBridge.Regression
                 if (index.TryGetValue(p, out int v)) return v;
                 index[p] = at.Count;
                 at.Add(new Vector3((i - 0.5f * (n.x - 1)) * Spacing, (j - 0.5f * (n.y - 1)) * Spacing, k * Spacing));
-                uv.Add(new Vector2(p % Row + 0.5f, p / Row + 0.5f));
+                uv.Add(new Vector2(p % Row + 0.5f, first + p / Row + 0.5f));
                 return at.Count - 1;
             }
             void Face(int axis, int fixedAt)
@@ -552,6 +597,7 @@ namespace AvatarBridge.Regression
             var mesh = new Mesh { name = "Jelly surface" };
             mesh.SetVertices(at);
             mesh.SetUVs(0, uv);
+            mesh.SetUVs(1, Enumerable.Repeat(new Vector2(first + rows - 1 + 0.5f, 0f), uv.Count).ToList());
             mesh.SetTriangles(tris, 0);
             // The shader puts every vertex where the tissue is, so the renderer's box has to hold
             // wherever that goes.
@@ -585,7 +631,17 @@ namespace AvatarBridge.Regression
                 rt.format = want.format;
                 EditorUtility.SetDirty(rt);
             }
-            // ponytail: the surface mesh is kept as it is; it only changes with the lattice's size.
+            // A surface rebuilt in place, so instances keep pointing at it: its uvs name the region.
+            if (old is Mesh keep && asset is Mesh made)
+            {
+                keep.Clear();
+                keep.vertices = made.vertices;
+                keep.uv = made.uv;
+                keep.uv2 = made.uv2;
+                keep.triangles = made.triangles;
+                keep.bounds = made.bounds;
+                EditorUtility.SetDirty(keep);
+            }
             return old;
         }
 
@@ -768,6 +824,54 @@ namespace AvatarBridge.Regression
                       $"awake as a prop {Spread(naps["prop 0"])} and {Spread(naps["prop 64"])}, as worn {Spread(naps["worn 0"])} and {Spread(naps["worn 64"])}; " +
                       $"woken by the anchor moving 1 mm: {wokeMoved}, back face on it the frame after: {followed}; asleep again: {sleptAgain}, woken by a hand: {wokeHand}");
             foreach (var r in new[] { sleeper, awake, prop }) r.Release();
+
+            // Packed: three regions in one texture and one pair of passes, against three apart, the
+            // hands in reach of the first alone. From fresh, each packed region must step exactly as
+            // its lone twin does.
+            var places = Enumerable.Range(0, 3).Select(r => Matrix4x4.TRS(new Vector3(0.6f * r, 1.3f, 0.3f), Quaternion.Euler(0f, 0f, 10f * r), Vector3.one)).ToArray();
+            var packed = new Rig(Size, rider: false, regions: 3);
+            var apart = places.Select(_ => new Rig(Size, rider: false)).ToArray();
+            packed.Anchor(places);
+            packed.Dt(1f / 90f);
+            for (int r = 0; r < 3; r++)
+            {
+                apart[r].Anchor(places[r]);
+                apart[r].Dt(1f / 90f);
+            }
+            Players(64, 8);
+            for (int i = 0; i < 200; i++)
+            {
+                packed.Passes();
+                foreach (var r in apart) r.Passes();
+            }
+            int block = (Side(Size) + 1) * 2 * Row, lattice = Side(Size) * 2 * Row;
+            var packedState = Read(packed.State);
+            float apartBy = 0f;
+            var keptBy = new int[3];
+            for (int r = 0; r < 3; r++)
+            {
+                var alone = Read(apart[r].State);
+                for (int i = 0; i < lattice; i++)
+                    apartBy = Mathf.Max(apartBy, ((Vector3) packedState[r * block + i] - (Vector3) alone[i]).magnitude);
+                keptBy[r] = Enumerable.Range(0, 8).Count(e => packedState[r * block + lattice + 2 * e + 1].w == 1f);
+            }
+            var packs = new Dictionary<string, List<double>>();
+            for (int rep = 0; rep < Reps; rep++)
+                foreach (var (players, inReach) in new[] { (0, 0), (64, 0), (64, 8) })
+                {
+                    Players(players, inReach);
+                    bool flip = (rep & 1) == 1;
+                    void Packed() => Add(packs, $"packed {players} {inReach}", Timed(packed.Passes, packed.State, 600, out _));
+                    void Apart() => Add(packs, $"apart {players} {inReach}", Timed(() => { foreach (var r in apart) r.Passes(); }, apart[2].State, 600, out _));
+                    if (flip) { Apart(); Packed(); }
+                    else { Packed(); Apart(); }
+                }
+            ok &= apartBy == 0f && keptBy[0] == 8 && keptBy[1] == 0 && keptBy[2] == 0;
+            lines.Add($"[Jelly] three regions packed against apart, 3072 particles each, 90 fps: alone {Spread(packs["packed 0 0"])} ms against {Spread(packs["apart 0 0"])}, " +
+                      $"64 players {Spread(packs["packed 64 0"])} against {Spread(packs["apart 64 0"])}, 8 hands on the first {Spread(packs["packed 64 8"])} against {Spread(packs["apart 64 8"])}; " +
+                      $"packed and apart {1000f * apartBy:0.000} mm apart after 200 frames, hands kept {string.Join("/", keptBy)}");
+            packed.Release();
+            foreach (var r in apart) r.Release();
             lines.Add("[Jelly] chained copies, a frame: " + string.Join(", ", chain.Select(k => $"{k}: {Spread(copies[k])}")) +
                       $"; so a pass costs {(Median(copies[8]) - Median(copies[1])) / 7:0.0000} ms before it works");
             lines.Add($"[Jelly] the parser's readback, at 90 fps: {Spread(bare)} ms a frame without, {Spread(read)} with");
@@ -816,12 +920,21 @@ namespace AvatarBridge.Regression
             int wearBlits = Count<CVRBlitter>(wear), wearParsers = Count<CVRTexturePropertyParser>(wear);
             var wearOff = Make(preview: false, withMeter: false, withRider: false, offFar: true, sleeps: false);
             var switches = wearOff.GetComponentsInChildren<CVRTexturePropertyParser>(true).SelectMany(p => p.tasks).ToList();
+            // Counted now: the packed build below replaces the same prefab.
+            int offBlits = Count<CVRBlitter>(wearOff);
             bool sleepless = wear.GetComponentsInChildren<CVRBlitter>(true).All(b => !b.blitMaterial.IsKeywordEnabled("JELLY_SLEEP"));
-            bool built = sleepless && wearBlits == 2 && wearParsers == 0 && Count<CVRBlitter>(wearOff) == 3 && switches.Count == 2
+            bool built = sleepless && wearBlits == 2 && wearParsers == 0 && offBlits == 3 && switches.Count == 2
                 && switches.All(t => t.propertyName == "enabled" && t.component is CVRBlitter) && wearOff.transform.Find("Rider") == null;
+            var three = Make(preview: false, withMeter: false, withRider: false, offFar: false, sleeps: false, regions: 3);
+            var feeds = three.GetComponentsInChildren<CVRMaterialDataProvider>(true).Single().transforms;
+            int surfaces = Count<MeshRenderer>(three), stateRows = AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture").height;
+            bool packs3 = feeds.Length == 3 && surfaces == 3 && Count<CVRBlitter>(three) == 2 && stateRows == 3 * (Side(Size) + 1)
+                && Enumerable.Range(0, 3).All(r => three.transform.Find($"Jelly Region {r}/{(r == 0 ? "Surface" : $"Surface {r}")}") != null);
+            built &= packs3;
             ok &= built;
+            lines.Add($"[Jelly] packed three: {feeds.Length} anchors, {surfaces} surfaces, {Count<CVRBlitter>(three)} blitters, {stateRows} state rows, {(packs3 ? "as they should be" : "WRONG")}");
             lines.Add($"[Jelly] the wear builds: {wearBlits} blitters and {wearParsers} parsers; far copies switched off, " +
-                      $"{Count<CVRBlitter>(wearOff)} blitters and {switches.Count} parser tasks, {(built ? "as they should be" : "WRONG")}");
+                      $"{offBlits} blitters and {switches.Count} parser tasks, {(built ? "as they should be" : "WRONG")}");
             lines.Add($"[Jelly] {(ok ? "PASS" : "FAIL")}, frames at {string.Join(", ", shotsAt)} in {Path.Combine(dir, "turn.png")}");
             foreach (var l in lines) Debug.Log(l);
             File.WriteAllLines(Path.Combine(dir, "bench.txt"), lines);
@@ -1293,7 +1406,13 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float4 here = _MainTex.Load(int3(px, 0));
                 // The cost meter's load rests in even phases, as cheap as a pass can be.
                 if (_Stress > 0 && fmod(floor(_Time.y / Window), 2) < 0.5) return here;
-                float4x4 m = _JellyAnchor[0];
+                // Packed regions share the passes, the scan's player arrays and the draw's texture:
+                // each is a block of rows with its own anchor, and from here on side is its own side
+                // row. The third pass reads the first region's.
+                uint region = (uint) px.y / (side + 1);
+                Base = region * (side + 1);
+                side += Base;
+                float4x4 m = _JellyAnchor[min(region, 3)];
                 float scale = length(m._m00_m10_m20);
                 bool anchored = scale > 1e-6;
                 float dt = _FixedDt > 0 ? _FixedDt : clamp(unity_DeltaTime.x, 1.0 / 240, 1.0 / 30);
@@ -1362,7 +1481,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 }
                 // Asleep, the same, but stamped, so it reads as stepping and wakes where it lay.
                 [branch] if (asleep) return _Pass > 0.5 && (uint) px.x < Row ? float4(here.xyz, _Time.y) : here;
-                uint p = (uint) px.x % Row + (uint) px.y * Row;
+                uint p = (uint) px.x % Row + ((uint) px.y - Base) * Row;
                 if (p >= count) return 0;
                 int half_ = (uint) px.x >= Row;
                 int3 l = Place(p);
@@ -1409,8 +1528,11 @@ Shader ""Hidden/AvatarBridge/JellyStep""
 
 Texture2D<float4> _MainTex;
 float4 _Lattice;
-float4x4 _JellyAnchor[1];
+// One anchor a region. Packed, each region is a block of rows of the state, its side row last.
+float4x4 _JellyAnchor[4];
 float _Damp;
+// The first row of this pixel's region, set once a pixel and added to every lattice texel.
+static uint Base = 0;
 
 static const uint Row = 64;
 static const float Window = 0.5;
@@ -1430,7 +1552,7 @@ int3 Place(uint p)
     return int3(p - row * n.x, row - slab * n.y, slab);
 }
 // Unsigned, so a neighbour's index wrapped below 0 lands outside the texture, where a load reads 0.
-int3 Texel(uint p, int half_) { return int3(p % Row + half_ * Row, p / Row, 0); }
+int3 Texel(uint p, int half_) { return int3(p % Row + half_ * Row, p / Row + Base, 0); }
 float3 Rest(int3 l) { int3 n = Count(); return float3(l.x - 0.5 * (n.x - 1), l.y - 0.5 * (n.y - 1), l.z) * _Lattice.w; }
 
 // A fresh texture, a new copy of the avatar, garbage, a teleport, or a state left still a tenth
@@ -1725,6 +1847,8 @@ Shader ""AvatarBridge/Jelly Spike""
             {
                 float4 vertex : POSITION;
                 float2 uv : TEXCOORD0;
+                // The row of switches for this vertex's region.
+                float2 side : TEXCOORD1;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
@@ -1743,11 +1867,9 @@ Shader ""AvatarBridge/Jelly Spike""
                 UNITY_INITIALIZE_OUTPUT(v2f, o);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
                 float4 s = _State.Load(int3(int2(v.uv), 0));
-                // The far switch, texel 18 of the state's last row: far off nothing steps, so the
+                // The far switch, texel 18 of the region's side row: far off nothing steps, so the
                 // surface takes its rest shape on the anchor.
-                uint wide, rows;
-                _State.GetDimensions(wide, rows);
-                float4 switches = _State.Load(int3(18, rows - 1, 0));
+                float4 switches = _State.Load(int3(18, int(v.side.x), 0));
                 float3 at = s.xyz;
                 o.tint = _Color.rgb;
                 if (switches.x > 0.5) at = mul(unity_ObjectToWorld, v.vertex).xyz;
@@ -1799,7 +1921,10 @@ pokes it, yours or another player's.
    add to wear, without the test cube, leaves the yellow cube off, and with it a pass, a readback
    and a parser: the one to keep on. Jelly spike: add to wear, far copies switched off, keeps the
    pass and the parser for the far switch alone: each copy near you costs a little more, each far
-   one less, so it only pays on a slow GPU in a crowd.
+   one less, so it only pays on a slow GPU in a crowd. Jelly spike: add three to wear, packed,
+   puts three in one texture and one pair of passes, each on its own bone: in front of the chest,
+   behind the hips and above the head. Jelly spike: make a prop of three, packed, sets three side
+   by side on one prop.
 2. Upload. Nothing else: no parameters, no menu, no sync.
 
 Or as a prop on its own: Jelly spike: make a prop in the open scene, then upload it from the CCK
@@ -1851,6 +1976,8 @@ test alone costs a slow GPU a few percent, so the worn builds leave it out.
    again once close, with no jump as it switches.
 8. Set the prop down and leave it: blue within a couple of seconds, pink the moment a hand comes
    near or it is picked up, with no jump either way.
+9. Wear the packed three: each wobbles with its own bone, and a hand on one leaves the others be.
+   Your frame time against wearing one should barely move.
 ";
     }
 }

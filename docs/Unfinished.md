@@ -1797,6 +1797,33 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
   - With ChilloutVR open on desktop the 4080 reads about half as slow again with wide ranges, so the
     numbers above compare inside one run; across runs they do not. Verify passes, both benches pass.
     Blue in game, and waking on a real hand, are [GAME].
+- **Many jellies, 2026-10-28 [M], Joe: "the main problem is numbers of avatars with it ... I want
+  it to look as good as possible while remain as optimised as possible":**
+  - Across players nothing can be shared: the client instantiates every render texture and
+    material per avatar copy (`SharedFilter.GetInstancedRenderTexture`, from `AssetFilter`), so
+    each copy steps private textures. That is also why two players in the same avatar never fight
+    over one state.
+  - Within one avatar, regions pack (Joe: "do a, prototype it in the spike now"): every region is a
+    block of rows in one state texture, its side row last, its own anchor from the provider's
+    transform list, so one pair of passes, one scan's player arrays and one texture serve them
+    all. Jelly spike: add three to wear, packed (chest, behind the hips, above the head) and make a
+    prop of three. Three regions, ms a frame at 90 fps, packed against apart:
+
+    | | 4080 | Radeon |
+    | --- | --- | --- |
+    | Alone | 0.023 / 0.038 | 0.141 / 0.177 |
+    | 64 players | 0.041 / 0.085 | 0.150 / 0.225 |
+    | 8 hands on the first | 0.047 / 0.103 | 0.158 / 0.232 |
+
+    Each packed region steps exactly as its lone twin (0.000 mm apart after 200 frames), the
+    hands kept by the first alone. One surface a region, on its anchor, so the far rest shape
+    stays right; the draw finds its region's switches from a second uv. ChilloutVR was open.
+  - Skipping copies behind the viewer, researched (Joe: "research it"): the client hands shaders
+    no camera direction, only player positions; the render controller steps in
+    `LateEventsManager.OnPostLateUpdate`, before any camera renders; and the material data
+    provider's UAV slot is bound globally, so a draw cannot flag "seen" per copy (the last copy
+    bound wins). What is left is the camera values Unity leaves set from the last camera of the
+    frame before, being probed in batch; which camera that is in game, and mirrors, are [GAME].
 - **Order, Joe 2026-10-27:** the squash shader working on MagicaCloth first and 5.0.0 shipped; the
   live tissue and the rest of his ideas after, in 5.1.
 - The menu item rebuilt the assets with the preview scene, which replaced the open scene: it now
