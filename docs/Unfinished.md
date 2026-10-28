@@ -1867,8 +1867,12 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
   bench checks it (40% uneven at 230 fps must sleep). Tried and left: both pulls as springs over
   the step squared, solved together, rests exactly at any step but nearly doubles the swing on a
   turn (the shape pull dilutes the chest spring).
-- **Open from the same report:** a deep hand stretches the coarse surface and folds its
-  triangles; Joe asked to remove "the collider" (which one, asked).
+- **A deep hand folded the coarse surface, 2026-10-28 [M]** (same report). The particles sit a
+  cell apart, so a hand in deep dragged whole cells and the triangles between them folded. Now the
+  surface itself is pushed out of every hand in reach too, by the same wrist-to-tip capsules the
+  step reads: the dent follows the fingers and stays round (batch poke, before and after). The
+  prop's box collider is now a trigger (Joe: still takes the grab, never pushes a player).
+  Joe to check both in game.
 - **Order, Joe 2026-10-27:** the squash shader working on MagicaCloth first and 5.0.0 shipped; the
   live tissue and the rest of his ideas after, in 5.1.
 - The menu item rebuilt the assets with the preview scene, which replaced the open scene: it now

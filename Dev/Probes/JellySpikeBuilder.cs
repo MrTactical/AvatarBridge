@@ -142,6 +142,8 @@ namespace AvatarBridge.Regression
             var span = (Vector3) (Lattice - Vector3Int.one) * SpacingOf(Lattice);
             box.center = new Vector3(0f, 1.2f, 0.5f * span.z + 0.025f);
             box.size = span + new Vector3(0.06f + 0.3f * (regions - 1), 0.06f, 0.11f);
+            // A trigger, so it still takes the grab but never pushes a player away.
+            box.isTrigger = true;
             Undo.RegisterCreatedObjectUndo(prop, "Make the jelly prop");
             Selection.activeGameObject = prop;
             Debug.Log("[Jelly] made Jelly Prop in the open scene, grabbable; upload it from the CCK Control Panel");
@@ -1974,6 +1976,22 @@ Shader ""AvatarBridge/Jelly Spike""
                 else if (s.w < 0) o.tint = float3(0.6, 0.2, 0.9);
                 else if (abs(_Time.y - s.w) > 0.25) o.tint = float3(0.9, 0.1, 0.1);
                 else if (switches.y > 0.5) o.tint = float3(0.35, 0.55, 1);
+                // The hands in reach push the surface too, as the step reads them (texels 0 to 15
+                // of the row, wrist and tip, w the radius): the particles sit a cell apart, so on a
+                // coarse lattice a deep hand dragged whole cells and the surface between folded.
+                [branch] if (!(switches.x > 0.5) && _State.Load(int3(1, row, 0)).w > 0.5)
+                {
+                    [unroll] for (int e = 0; e < 8; e++)
+                    {
+                        float4 a = _State.Load(int3(2 * e, row, 0)), b = _State.Load(int3(2 * e + 1, row, 0));
+                        if (!(b.w > 0.5)) continue;
+                        float3 seg = b.xyz - a.xyz;
+                        float3 closest = a.xyz + seg * saturate(dot(at - a.xyz, seg) / max(dot(seg, seg), 1e-9));
+                        float3 off = at - closest;
+                        float d2 = dot(off, off);
+                        if (d2 < a.w * a.w && d2 > 1e-12) at = closest + off * (a.w * rsqrt(d2));
+                    }
+                }
                 // Never written: drawn where the mesh rests, so it shows at all.
                 if (!(dot(at, at) > 1e-8 && dot(at, at) < 1e8)) at = mul(unity_ObjectToWorld, v.vertex).xyz;
                 o.at = at;
