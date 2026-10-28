@@ -2181,6 +2181,18 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
         all the while the arm was held, where the thinner radius hides the same fold inside it.
         Open: the frame or two of jags as the arm arrives and leaves.
       - **A little more pillow (Joe):** the particles' pull to their rest `_Hz` 2.4 from 3.
+      - **The avatar's own colliders press the jelly instead of moving the bones (Joe: "deform the
+        mesh, not move the bone"), 2026-10-28.** The MagicaCloth spheres and capsules and the
+        DynamicBone outside colliders in the breasts' cloth lists come off those lists and press as
+        the own limbs do (eight at most, nearest the chest first), each handed as two child ends at
+        its capsule's ends, anchors 16 to 31, side-row texels 64 to 79, mask bits 8 to 15. Taking
+        the jelly off puts them back. One within a lattice cell of the breasts' skin as built stays
+        in the cloth: the lattice reaches past the skin, so it would dent it for good (a 6 cm sphere
+        in the cleavage, pressing, left the tissue 41 mm off its rest; left in the cloth, the cloth
+        shoved the bones 3.5 cm apart, as any cloth would). The verify, with a capsule round each
+        forearm and a 1.5 cm sphere in the cleavage: all three pressing, settled 0.8 mm, held arm,
+        squeeze and lift as before. A cone presses as a cylinder of its larger end. Kar's breast
+        cloths list no colliders, so on it this changes nothing.
     - **The finishing pass:** the draw already pressed other players' hands into every vertex
       (`YapsJellyPress`; said wrongly to Joe that nothing finished the skin). Added: the own
       capsules, and last a guard at the plane midway between the two skins (each breast's skin's

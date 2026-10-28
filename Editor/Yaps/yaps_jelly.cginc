@@ -13,7 +13,7 @@
 // row: the hands in reach in texels 0 to 15, the far switch in 18, the anchor the last pass stepped
 // on in 26 to 29 (its x, y and z axes with its scale, then its place, w 1), the swing's centre in 30,
 // which of the wearer's own capsules are in reach in 41 (a bit each) and their ends in 42 to 57 as
-// the hands' slots are, the plane between the pair in 58 (its normal toward the other, its offset)
+// the hands' slots are, the avatar's colliders pressing likewise in 64 to 79, the plane between the pair in 58 (its normal toward the other, its offset)
 // and 59 (its give, 0 for none).
 #ifndef YAPS_JELLY_INCLUDED
 #define YAPS_JELLY_INCLUDED
@@ -126,11 +126,12 @@ float3 YapsJellyRegion(uint r, float3 world, float3 nw, out float3 bend)
         float3 at = world + move;
         float4 mass = _YAPS_JellyState.Load(int3(30, side, 0));
         float3 centre = mass.w > 0 ? mass.xyz : place.xyz + az * (0.5 * (n.z - 1) * spacing);
-        [unroll] for (uint c = 0; c < 8; c++)
+        [unroll] for (uint c = 0; c < 16; c++)
         {
             [branch] if (own & (1u << c))
             {
-                float4 a = _YAPS_JellyState.Load(int3(42 + 2 * c, side, 0)), b = _YAPS_JellyState.Load(int3(43 + 2 * c, side, 0));
+                uint t = c < 8 ? 42 + 2 * c : 48 + 2 * c;
+                float4 a = _YAPS_JellyState.Load(int3(t, side, 0)), b = _YAPS_JellyState.Load(int3(t + 1, side, 0));
                 move += YapsJellyPress(at, a.xyz, b.xyz, a.w, centre, 0);
             }
         }

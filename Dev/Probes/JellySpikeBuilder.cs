@@ -210,6 +210,12 @@ namespace AvatarBridge.Regression
         // Jelly_Spike; older builds left Jelly Spike.
         static int Unworn(Transform avatar)
         {
+#if AVATARBRIDGE_YAPS
+            // The colliders that pressed instead, back in the breasts' cloth: their ends mark them.
+            var ends = avatar.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith("Jelly collider ") && t.parent != null).ToList();
+            BreastCollide(avatar, ends.Select(t => t.parent).Distinct().SelectMany(t => t.GetComponents<Component>()).Where(IsCollider), with: true);
+            foreach (var end in ends) Undo.DestroyObjectImmediate(end.gameObject);
+#endif
             var stale = avatar.GetComponentsInChildren<Transform>(true)
                 .Where(t => t.name == Path.GetFileNameWithoutExtension(Prefab) || t.name == "Jelly Spike" || t.name.StartsWith("Jelly Region")).Select(t => t.gameObject).ToList();
             foreach (var old in stale)
@@ -584,17 +590,56 @@ namespace AvatarBridge.Regression
                 // little thin sinks in a touch first, which reads as soft.
                 if (near.Count >= 8) ownRadii[c] = near.OrderBy(d => d).ElementAt(near.Count * 3 / 10);
             }
+            // The avatar's own MagicaCloth and DynamicBone colliders that its breasts' cloth collides
+            // with press the breasts as its limbs do, and come out of that cloth's lists, so they dent
+            // the skin and no longer move the bones (Joe: "deform the mesh, not move the bone"). Each
+            // is handed as two ends, a child at either end of its capsule, so it rides its bone as the
+            // limbs do. Not one within a cell of the breasts' skin as built: it moves the lattice
+            // round that skin at rest and would dent it for good (a sphere in the cleavage left the
+            // tissue 41 mm off its rest), so it stays in the cloth, moving the bones as before.
+            var breastSkin = Enumerable.Range(0, Mathf.Min(at.Length, shares.Length))
+                .Where(v => shares[v][2 * pair] >= 0.5f || shares[v][2 * pair + 1] >= 0.5f)
+                .Select(v => body.transform.position + body.transform.rotation * at[v]).ToArray();
+            var pressing = new List<(Component c, Vector3 a, Vector3 b, float r)>();
+            var touching = new List<string>();
+            foreach (var c in BreastColliders(root).OrderBy(c => (c.transform.position - chest.position).sqrMagnitude))
+            {
+                if (!Capsule(c, out var ca, out var cb, out float cr)) continue;
+                if (breastSkin.Any(p => Seg(p, ca, cb) < cr + spacing)) touching.Add(c.name);
+                // ponytail: eight, the nearest the chest first; more need anchors past the 32 handed.
+                else if (pressing.Count < 8) pressing.Add((c, ca, cb, cr));
+            }
+            BreastCollide(root, pressing.Select(p => p.c), with: false);
+            var colRadii = new float[8];
+            var colEnds = new List<Transform>();
+            for (int i = 0; i < pressing.Count; i++)
+            {
+                foreach (var (end, place) in new[] { ("a", pressing[i].a), ("b", pressing[i].b) })
+                {
+                    var t = new GameObject($"Jelly collider {i} {end}").transform;
+                    Undo.RegisterCreatedObjectUndo(t.gameObject, "Put the breasts on the jelly");
+                    t.SetParent(pressing[i].c.transform, false);
+                    t.position = place;
+                    colEnds.Add(t);
+                }
+                colRadii[i] = pressing[i].r;
+            }
+            string collided = (pressing.Count > 0 ? $"{pressing.Count} of its colliders pressing instead of moving the bones ({string.Join(", ", pressing.Select(p => p.c.name))})" : "none of its colliders pressing") +
+                              (touching.Count > 0 ? $", {touching.Count} left in the cloth as touching the breasts at rest ({string.Join(", ", touching)})" : "");
             var anchors = made.GetComponentsInChildren<CVRMaterialDataProvider>(true).First(q => q.transforms != null && q.transforms.Length > 0);
             Undo.RecordObject(anchors, "Put the breasts on the jelly");
             var handed = anchors.transforms.ToList();
             // Without the cloth the hang slots are never read; the regions fill them.
             while (handed.Count < 4) handed.Add(handed[handed.Count - 2]);
             handed.AddRange(ownBones.Select(b => b != null ? b : chest));
+            handed.AddRange(colEnds);
             anchors.transforms = handed.ToArray();
             foreach (var mat in anchors.materials)
             {
                 mat.SetVector("_JellyOwn0", new Vector4(ownRadii[0], ownRadii[1], ownRadii[2], ownRadii[3]));
                 mat.SetVector("_JellyOwn1", new Vector4(ownRadii[4], ownRadii[5], ownRadii[6], ownRadii[7]));
+                mat.SetVector("_JellyCol0", new Vector4(colRadii[0], colRadii[1], colRadii[2], colRadii[3]));
+                mat.SetVector("_JellyCol1", new Vector4(colRadii[4], colRadii[5], colRadii[6], colRadii[7]));
                 EditorUtility.SetDirty(mat);
             }
 
@@ -633,7 +678,7 @@ namespace AvatarBridge.Regression
                    $"{patched} of {mats.Count} squash materials read it{(left.Count > 0 ? " (left as they were: " + string.Join(", ", left) + ")" : "")}; " +
                    (cloth ? (off.Count > 0 ? "switched back on: " + string.Join(", ", off) : "its cloth left on")
                        : off.Count > 0 ? "switched off: " + string.Join(", ", off) : "no cloth or dynamic bones found on the pair, so if anything else swings it, switch that off") +
-                   $"; {stale} earlier jelly taken off. Upload as it is.";
+                   $"; {collided}; {stale} earlier jelly taken off. Upload as it is.";
         }
 
         internal static string BreastsOff(Transform picked)
@@ -697,6 +742,89 @@ namespace AvatarBridge.Regression
                 if (roots.Any(t => t != null && chains.Contains(t))) found.Add(b);
             }
             return found;
+        }
+
+        static bool IsCollider(Component c) => c != null && (c.GetType().Name == "MagicaCapsuleCollider" || c.GetType().Name == "MagicaSphereCollider" || c.GetType().Name == "DynamicBoneCollider");
+
+        // The colliders the breasts' cloth and dynamic bones collide with, read off their lists.
+        static List<Component> BreastColliders(Transform root)
+        {
+            var found = new List<Component>();
+            foreach (var b in BreastCloth(root))
+            {
+                var list = new SerializedObject(b).FindProperty(b.GetType().Name == "MagicaCloth" ? "serializeData.colliderCollisionConstraint.colliderList" : "m_Colliders");
+                if (list == null || !list.isArray) continue;
+                for (int i = 0; i < list.arraySize; i++)
+                    if (list.GetArrayElementAtIndex(i).objectReferenceValue is Component c && IsCollider(c) && !found.Contains(c)) found.Add(c);
+            }
+            return found;
+        }
+
+        // The breasts' cloth and dynamic bones made to collide with these or not, each with its own
+        // kind. ponytail: put back into every breast cloth of its kind, not only the ones it was in.
+        static void BreastCollide(Transform root, IEnumerable<Component> colliders, bool with)
+        {
+            var set = colliders.ToList();
+            if (set.Count == 0) return;
+            foreach (var b in BreastCloth(root))
+            {
+                bool magica = b.GetType().Name == "MagicaCloth";
+                var so = new SerializedObject(b);
+                var list = so.FindProperty(magica ? "serializeData.colliderCollisionConstraint.colliderList" : "m_Colliders");
+                if (list == null || !list.isArray) continue;
+                var have = Enumerable.Range(0, list.arraySize).Select(i => list.GetArrayElementAtIndex(i).objectReferenceValue as Component).ToList();
+                var want = with ? have.Concat(set.Where(c => !have.Contains(c) && c.GetType().Name.StartsWith("Magica") == magica)).ToList() : have.Where(c => !set.Contains(c)).ToList();
+                if (want.Count == have.Count) continue;
+                list.arraySize = want.Count;
+                for (int i = 0; i < want.Count; i++) list.GetArrayElementAtIndex(i).objectReferenceValue = want[i];
+                so.ApplyModifiedProperties();
+            }
+        }
+
+        // A collider as a capsule in the world, its ends and radius: MagicaCloth's spheres and
+        // capsules, DynamicBone's outside ones. Planes and inside bounds are not a shape to press with.
+        static bool Capsule(Component c, out Vector3 a, out Vector3 b, out float r)
+        {
+            a = b = Vector3.zero;
+            r = 0f;
+#if AVATARBRIDGE_MAGICA
+            if (c is MagicaCloth2.MagicaSphereCollider sphere)
+            {
+                a = b = sphere.transform.TransformPoint(sphere.center);
+                r = sphere.GetSize().x * Mathf.Abs(sphere.transform.lossyScale.x);
+                return r > 0f;
+            }
+            if (c is MagicaCloth2.MagicaCapsuleCollider cap)
+            {
+                // As MagicaCloth draws it: centred, or from the centre back along its direction.
+                var size = cap.GetSize();
+                var dir = cap.GetLocalDir();
+                float from = cap.alignedOnCenter ? 0.5f * size.z : 0f, to = cap.alignedOnCenter ? 0.5f * size.z : size.z - size.x;
+                a = cap.transform.TransformPoint(cap.center + dir * Mathf.Max(from - size.x, 0f));
+                b = cap.transform.TransformPoint(cap.center - dir * Mathf.Max(to - size.y, 0f));
+                // ponytail: a cone as a cylinder of its larger end.
+                r = Mathf.Max(size.x, size.y) * Mathf.Abs(cap.transform.lossyScale.x);
+                return r > 0f;
+            }
+#endif
+#if AVATARBRIDGE_DYNBONE
+            if (c is DynamicBoneCollider db && db.m_Bound != DynamicBoneColliderBase.Bound.Inside)
+            {
+                var dir = db.m_Direction == DynamicBoneColliderBase.Direction.X ? Vector3.right : db.m_Direction == DynamicBoneColliderBase.Direction.Y ? Vector3.up : Vector3.forward;
+                float half = Mathf.Max(0.5f * db.m_Height - db.m_Radius, 0f);
+                a = db.transform.TransformPoint(db.m_Center - dir * half);
+                b = db.transform.TransformPoint(db.m_Center + dir * half);
+                r = db.m_Radius * Mathf.Abs(db.transform.lossyScale.x);
+                return r > 0f;
+            }
+#endif
+            return false;
+        }
+
+        static float Seg(Vector3 p, Vector3 a, Vector3 b)
+        {
+            var s = b - a;
+            return Vector3.Distance(p, a + s * Mathf.Clamp01(Vector3.Dot(p - a, s) / Mathf.Max(s.sqrMagnitude, 1e-12f)));
         }
 
         // The bone carrying most of part k's skin, below the chest: the one its cloth swings.
@@ -1839,6 +1967,38 @@ namespace AvatarBridge.Regression
             // its anchor to both.
             foreach (var other in Object.FindObjectsOfType<CVRRenderController>())
                 if (avatar != null && !other.transform.IsChildOf(avatar.transform)) other.gameObject.SetActive(false);
+#if AVATARBRIDGE_MAGICA
+            // Three MagicaCloth colliders in the breasts' cloth, as an avatar's own: one round each
+            // forearm, which the own-arm stage brings in, and a small one in the cleavage, clear of the
+            // skin and the cloth at rest, which must not move it (at 6 cm it was left out, in the cloth).
+            if (avatar != null)
+            {
+                var anim = avatar.GetComponentInChildren<Animator>();
+                var tested = new List<MagicaCloth2.ColliderComponent>();
+                foreach (var (lower, hand) in new[] { (HumanBodyBones.LeftLowerArm, HumanBodyBones.LeftHand), (HumanBodyBones.RightLowerArm, HumanBodyBones.RightHand) })
+                {
+                    Transform f = anim.GetBoneTransform(lower), t = anim.GetBoneTransform(hand);
+                    var holder = new GameObject($"Test collider {f.name}").transform;
+                    holder.SetParent(f, false);
+                    holder.SetPositionAndRotation(0.5f * (f.position + t.position), Quaternion.FromToRotation(Vector3.up, t.position - f.position));
+                    var cap = holder.gameObject.AddComponent<MagicaCloth2.MagicaCapsuleCollider>();
+                    cap.direction = MagicaCloth2.MagicaCapsuleCollider.Direction.Y;
+                    cap.alignedOnCenter = true;
+                    float s0 = Mathf.Abs(holder.lossyScale.x);
+                    cap.SetSize(0.04f / s0, 0.04f / s0, Vector3.Distance(f.position, t.position) / s0);
+                    tested.Add(cap);
+                }
+                var chestBone = anim.GetBoneTransform(HumanBodyBones.UpperChest) ?? anim.GetBoneTransform(HumanBodyBones.Chest);
+                var inChest = new GameObject("Test collider in the chest").transform;
+                inChest.SetParent(chestBone, false);
+                inChest.position = chestBone.position + avatar.transform.forward * 0.12f - avatar.transform.up * 0.05f;
+                var sphere = inChest.gameObject.AddComponent<MagicaCloth2.MagicaSphereCollider>();
+                sphere.SetSize(0.015f / Mathf.Abs(inChest.lossyScale.x));
+                tested.Add(sphere);
+                foreach (var cloth in BreastCloth(avatar.transform).OfType<MagicaCloth2.MagicaCloth>())
+                    cloth.SerializeData.colliderCollisionConstraint.colliderList.AddRange(tested);
+            }
+#endif
             string said = avatar != null ? BreastsOn(avatar.transform) : "no avatar with a squash in the scene";
             Debug.Log("[Jelly] breasts: " + said);
             if (avatar == null || !said.StartsWith("On "))
@@ -2515,7 +2675,7 @@ namespace AvatarBridge.Regression
                 var anchorsHanded = jelly.GetComponentsInChildren<CVRMaterialDataProvider>(true).First(q => q.transforms != null && q.transforms.Length > 0);
                 var stepMat = anchorsHanded.materials[0];
                 ownSaid = $"in reach {(int) st[sr + 41].x} (bits), the provider handing {anchorsHanded.transforms.Length} transforms, radii {stepMat.GetVector("_JellyOwn0") * 1000f:F0} and {stepMat.GetVector("_JellyOwn1") * 1000f:F0} mm, " +
-                          $"upper arm {st[sr + 42]:F3} to {st[sr + 43]:F3}, forearm {st[sr + 44]:F3} to {st[sr + 45]:F3}; its particles moved {1000f * moved:0.0} mm at most, " +
+                          $"upper arm {st[sr + 42]:F3} to {st[sr + 43]:F3}, forearm {st[sr + 44]:F3} to {st[sr + 45]:F3}, the first collider {st[sr + 64]:F3} to {st[sr + 65]:F3} radii {stepMat.GetVector("_JellyCol0") * 1000f:F0}; its particles moved {1000f * moved:0.0} mm at most, " +
                           $"held, {1000f * ownShake:0.000} mm a frame on average, {1000f * ownMost:0.00} at most";
             }
             if (frame > 230 && frame <= 330)
@@ -2665,6 +2825,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _PairSkin (""Each region's skin's reach toward the other off its centre at rest; x 0 none"", Vector) = (0, 0, 0, 0)
         _JellyOwn0 (""The wearer's own capsules' radii: the left upper arm, forearm, hand and thigh; 0 none"", Vector) = (0, 0, 0, 0)
         _JellyOwn1 (""The same for the right"", Vector) = (0, 0, 0, 0)
+        _JellyCol0 (""The avatar's own colliders' radii, those pressing; 0 none"", Vector) = (0, 0, 0, 0)
+        _JellyCol1 (""The next four"", Vector) = (0, 0, 0, 0)
         _JellyOffsetAt0 (""The first region's place on the bone it rides, in the bone's units, w its scale on it; w 0 rides none"", Vector) = (0, 0, 0, 0)
         _JellyOffsetTurn0 (""The first region's turn on that bone"", Vector) = (0, 0, 0, 1)
         _JellyOffsetAt1 (""The second region's place on its bone"", Vector) = (0, 0, 0, 0)
@@ -2692,7 +2854,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             float _MassHz, _MassCarried, _MassDamp, _Give, _MassRadius, _Limit, _Pair, _PairKeep, _Squish, _Viscous, _Solid;
             // The frame's time, for how fast the homes move.
             static float FrameDt;
-            float4 _Motion, _PairOffset, _PairReach, _PairSkin, _JellyOwn0, _JellyOwn1, _JellyOffsetAt0, _JellyOffsetTurn0, _JellyOffsetAt1, _JellyOffsetTurn1;
+            float4 _Motion, _PairOffset, _PairReach, _PairSkin, _JellyOwn0, _JellyOwn1, _JellyCol0, _JellyCol1, _JellyOffsetAt0, _JellyOffsetTurn0, _JellyOffsetAt1, _JellyOffsetTurn1;
             // A helper mesh skinned four points to each region's bone and four to where it hangs on
             // the chest, as the squash's slots, bound as the provider's copy of its skinned buffer.
             ByteAddressBuffer _JellySkin;
@@ -2818,14 +2980,15 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 return next + off * (r * rsqrt(d2) - 1);
             }
 
-            // The wearer's own capsule c of the eight, bone to bone after the four anchors: the left
-            // upper arm, forearm, hand and thigh, then the right's. r 0 for none.
+            // The wearer's own capsule c of the sixteen, end to end after the four anchors: the left
+            // upper arm, forearm, hand and thigh, then the right's, bone to bone; then the avatar's
+            // colliders, each between its two ends. r 0 for none.
             void Own(uint c, float scale, out float3 a, out float3 b, out float r)
             {
-                uint s = 4 + (c >> 2) * 6 + ((c & 3) < 3 ? (c & 3) : 4);
+                uint s = c < 8 ? 4 + (c >> 2) * 6 + ((c & 3) < 3 ? (c & 3) : 4) : 2 * c;
                 a = _JellyAnchor[s]._m03_m13_m23;
                 b = _JellyAnchor[s + 1]._m03_m13_m23;
-                r = (c < 4 ? _JellyOwn0[c & 3] : _JellyOwn1[c & 3]) * scale;
+                r = (c < 4 ? _JellyOwn0[c & 3] : c < 8 ? _JellyOwn1[c & 3] : c < 12 ? _JellyCol0[c & 3] : _JellyCol1[c & 3]) * scale;
             }
 
             // How far a capsule from a to b of radius r leans the mass's spring target at p: c of its
@@ -3274,7 +3437,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 {
                     float4 mass = _MainTex.Load(int3(30, side, 0));
                     float3 centre = mass.w > 0 ? mass.xyz : mul(m, float4(0, 0, 0.5 * (Count().z - 1) * _Lattice.w, 1)).xyz;
-                    [unroll] for (uint c = 0; c < 8; c++)
+                    [unroll] for (uint c = 0; c < 16; c++)
                     {
                         [branch] if (own & (1u << c))
                         {
@@ -3445,7 +3608,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             float3 centre = mul(m, float4(0, 0, 0.5 * (Count().z - 1) * _Lattice.w, 1)).xyz;
                             float reach = (0.5 * length(float3(Count() - 1)) * _Lattice.w + 0.05) * scale;
                             uint bits = 0;
-                            [unroll] for (uint c = 0; c < 8; c++)
+                            [unroll] for (uint c = 0; c < 16; c++)
                             {
                                 float3 a, b;
                                 float r;
@@ -3455,11 +3618,11 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             }
                             return float4(distant ? 0 : bits, 0, 0, 1);
                         }
-                        [branch] if (px.x >= 42 && px.x <= 57)
+                        [branch] if ((px.x >= 42 && px.x <= 57) || (px.x >= 64 && px.x <= 79))
                         {
                             float3 a, b;
                             float r;
-                            Own((uint) (px.x - 42) >> 1, scale, a, b, r);
+                            Own(px.x < 64 ? (uint) (px.x - 42) >> 1 : 8 + ((uint) (px.x - 64) >> 1), scale, a, b, r);
                             return (px.x & 1) == 0 ? float4(a, r) : float4(b, 0);
                         }
                         // The draw's last guard: the plane midway between the two skins where they reach
@@ -3565,7 +3728,7 @@ Texture2D<float4> _MainTex;
 float4 _Lattice;
 // One anchor a region. Packed, each region is a block of rows of the state, its side row last.
 // After the four, the wearer's own bones (JellySpikeBuilder's ownBones).
-float4x4 _JellyAnchor[16];
+float4x4 _JellyAnchor[32];
 float _Damp;
 // The first row of this pixel's region, set once a pixel and added to every lattice texel.
 static uint Base = 0;
