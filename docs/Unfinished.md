@@ -1845,6 +1845,16 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     own cost is lost in a camera's (0.12 to 0.34 ms to render the surface, the same within noise
     on every lattice). Verify passes on the coarse default. ChilloutVR was open. In game: dents
     under a finger are broader, [GAME].
+- **Red and frozen in game, fixed 2026-10-28 [M]** (Joe, prop and avatar, screenshots): the
+  surface red at its rest shape from the first frame while the yellow cube wobbled, so the
+  tissue stepped and the surface never read it. The surface's `_Lattice` was set on its material
+  but not declared by its shader, so the saved material (what is uploaded) never held it: in game
+  the lattice read 0 and every lookup missed. Batch never saw it, the value still in memory from
+  the same session. Now declared, and Verify reads the material file itself (it failed before the
+  fix, passes after). Ruled out on the way: the client's texture parser and its far switch (its
+  manager and tasks, emulated from the decompile on the real prefab, switch the steps off far and
+  back on near), Joe's content filters, a client update, the load log. Joe to rebuild both and
+  look in game.
 - **Order, Joe 2026-10-27:** the squash shader working on MagicaCloth first and 5.0.0 shipped; the
   live tissue and the rest of his ideas after, in 5.1.
 - The menu item rebuilt the assets with the preview scene, which replaced the open scene: it now

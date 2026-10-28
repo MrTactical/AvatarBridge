@@ -1189,6 +1189,11 @@ namespace AvatarBridge.Regression
                 + jelly.GetComponentsInChildren<CVRBlitter>(true).Count(b => b.blitMaterial == null || b.originTexture == null || b.destinationTexture == null);
             ok &= dead == 0;
             said += $"; built twice, {dead} missing references";
+            // The upload is the material file, so the surface's lattice must be in it: a value its
+            // shader does not declare never reaches it, and in game every lookup missed the tissue.
+            bool sized = File.ReadAllText(Folder + "/Jelly_Draw.mat").Contains($"_Lattice: {{r: {n.x}, g: {n.y}, b: {n.z}");
+            ok &= sized;
+            said += sized ? "; the surface's material file holds its lattice" : "; the surface's material file has NO lattice";
             said += $"; the rider's texels: at {100f * read.x:0.0}/{100f * read.y:0.0}/{100f * read.z:0.0} cm against the front centre's " +
                     $"{100f * frontAt.x:0.0}/{100f * frontAt.y:0.0}/{100f * frontAt.z:0.0}, turned {turn.x:0.0}/{turn.y:0.0}/{turn.z:0.0} degrees";
             if (verifyShots.Count > 0)
@@ -1866,6 +1871,9 @@ Shader ""AvatarBridge/Jelly Spike""
         // reading the asset, which nothing writes.
         _State (""Tissue state"", 2D) = ""black"" {}
         _Color (""Colour"", Color) = (0.95, 0.55, 0.65, 1)
+        // Declared too: an undeclared value never reaches the saved material, and without it every
+        // lookup misses the tissue.
+        _Lattice (""Particles across, up and deep; spacing in metres"", Vector) = (16, 12, 16, 0.0133)
     }
     SubShader
     {
