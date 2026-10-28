@@ -1729,6 +1729,33 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     clock and GPU-busy in game before optimising for them.
   - Ruled out: a double-buffered CustomRenderTexture (the client cannot drive one); a brick
     layout, dropping the right half by MRT, and a coarser lattice cost more than they save.
+- **A wear build, far copies off, one pass benched, 2026-10-28 [M], Joe: "do 1 and bench 2 and do
+  3":**
+  - A third menu item builds it to wear: no test cube, so no third pass, readback or parser.
+  - Far off, both passes now leave the state be, and the surface draws the rest shape off the far
+    switch; a state that has not stepped for a tenth of a second starts again at rest. In the test
+    build the third pass also writes whether the steps should run, and the parser hands that to
+    both step blitters' `enabled` (a bool task; the client binds any public property), so a far
+    copy runs only the 3x1 pass, back on within 5.5 m. That the client binds an inherited
+    `Behaviour.enabled` is [GAME]: if it does not, the copy steps as before, still at rest.
+  - A frame in ms, 3072 particles at 90 fps:
+
+    | | 4080 | 2-CU Radeon |
+    | --- | --- | --- |
+    | Worn, 64 players, 8 hands in reach | 0.021 | 0.061 |
+    | With the test cube | 0.023 | 0.066 |
+    | One pass stepping in place, the client's temporary and copy back | 0.027 | 0.055 |
+    | The viewer 20 m off, the steps running at rest | 0.011 to 0.016 | 0.037 |
+    | The same, switched off by the parser | 0.006 | 0.004 |
+    | The parser's readback, on top | 0.017 | 0.010 |
+
+  - One pass: a wash, 0.006 ms dearer on the 4080 and 0.006 cheaper on the 2-CU part, and below
+    72 fps it halves the steps. Two stay.
+  - The parser's switch-off left out of the wear build: its readback and pass cost every copy, near
+    or far, every frame (0.019 ms on the 4080, 0.015 on the 2-CU part), and save a far copy 0.005
+    to 0.010 or 0.033. It never pays on the 4080; on the 2-CU part it pays once about half the
+    copies are far, as in a crowd. Joe's call.
+  - Verify passes on the test build, the bench on both GPUs; the wear build is benched, not played.
 - **Order, Joe 2026-10-27:** the squash shader working on MagicaCloth first and 5.0.0 shipped; the
   live tissue and the rest of his ideas after, in 5.1.
 - The menu item rebuilt the assets with the preview scene, which replaced the open scene: it now
