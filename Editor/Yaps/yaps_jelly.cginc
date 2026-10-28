@@ -62,7 +62,8 @@ float3 YapsJellyRegion(uint r, float3 world, float3 nw, out float3 bend)
 {
     bend = 0;
     int3 n = int3(_YAPS_JellyLattice.xyz);
-    uint rows = (uint) (n.x * n.y * n.z + 63) / 64;
+    // Padded to a whole number of eight with the side row (JellySpikeBuilder's Side).
+    uint rows = ((uint) (n.x * n.y * n.z + 63) / 64 + 8) / 8 * 8 - 1;
     uint base = r * (rows + 1), side = base + rows;
     float4 place = _YAPS_JellyState.Load(int3(29, side, 0));
     float far = _YAPS_JellyState.Load(int3(18, side, 0)).x;

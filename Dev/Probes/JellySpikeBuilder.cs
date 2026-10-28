@@ -898,6 +898,9 @@ namespace AvatarBridge.Regression
             {
                 if (sleeps) mat.EnableKeyword("JELLY_SLEEP");
                 else mat.DisableKeyword("JELLY_SLEEP");
+                // The rider's texels are read only by the parser's pass and the sleep: worn without
+                // either, stepping them cost a particle's whole step on two texels a region.
+                mat.SetFloat("_Rider", withRider || sleeps ? 1f : 0f);
                 mat.SetFloat("_Lift", lift);
                 EditorUtility.SetDirty(mat);
             }
@@ -1107,8 +1110,10 @@ namespace AvatarBridge.Regression
         static void SceneManager_Move(GameObject go, UnityEngine.SceneManagement.Scene scene) =>
             UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(go, scene);
 
-        // The row after the lattice's: the hands in reach, the rider and the far switch.
-        static int Side(Vector3Int n) => (n.x * n.y * n.z + Row - 1) / Row;
+        // The row after the lattice's: the hands in reach, the rider and the far switch. Its rows
+        // padded so each region is a whole number of eight: a GPU runs pixels in blocks of rows,
+        // and a block with the side row and particles in it ran both their work one after the other.
+        static int Side(Vector3Int n) => ((n.x * n.y * n.z + Row - 1) / Row + 8) / 8 * 8 - 1;
 
         // An arm's two bones turned so the wrist reaches goal, bending about the plane it was in.
         static void TwoBone(Transform shoulder, Transform elbow, Transform wrist, Vector3 goal, Vector3 hint)
@@ -1928,6 +1933,28 @@ namespace AvatarBridge.Regression
             EditorApplication.Exit(ok ? 0 : 1);
         }
 
+#if AVATARBRIDGE_MAGICA
+        // A MagicaCloth capsule from bone to bone, radius in metres, as an avatar's own.
+        static List<MagicaCloth2.ColliderComponent> TestCapsules(Animator anim, float radius, params (HumanBodyBones from, HumanBodyBones to)[] bones)
+        {
+            var made = new List<MagicaCloth2.ColliderComponent>();
+            foreach (var (from, to) in bones)
+            {
+                Transform f = anim.GetBoneTransform(from), t = anim.GetBoneTransform(to);
+                var holder = new GameObject($"Test collider {f.name}").transform;
+                holder.SetParent(f, false);
+                holder.SetPositionAndRotation(0.5f * (f.position + t.position), Quaternion.FromToRotation(Vector3.up, t.position - f.position));
+                var cap = holder.gameObject.AddComponent<MagicaCloth2.MagicaCapsuleCollider>();
+                cap.direction = MagicaCloth2.MagicaCapsuleCollider.Direction.Y;
+                cap.alignedOnCenter = true;
+                float s0 = Mathf.Abs(holder.lossyScale.x);
+                cap.SetSize(radius / s0, radius / s0, Vector3.Distance(f.position, t.position) / s0);
+                made.Add(cap);
+            }
+            return made;
+        }
+#endif
+
 #if AVATARBRIDGE_YAPS
         // The scene's avatar with a squash, its breasts put on the jelly, played with the CCK's own
         // render controller: settled, then a finger pushed 3 cm into one breast and taken away, then
@@ -1974,20 +2001,7 @@ namespace AvatarBridge.Regression
             if (avatar != null)
             {
                 var anim = avatar.GetComponentInChildren<Animator>();
-                var tested = new List<MagicaCloth2.ColliderComponent>();
-                foreach (var (lower, hand) in new[] { (HumanBodyBones.LeftLowerArm, HumanBodyBones.LeftHand), (HumanBodyBones.RightLowerArm, HumanBodyBones.RightHand) })
-                {
-                    Transform f = anim.GetBoneTransform(lower), t = anim.GetBoneTransform(hand);
-                    var holder = new GameObject($"Test collider {f.name}").transform;
-                    holder.SetParent(f, false);
-                    holder.SetPositionAndRotation(0.5f * (f.position + t.position), Quaternion.FromToRotation(Vector3.up, t.position - f.position));
-                    var cap = holder.gameObject.AddComponent<MagicaCloth2.MagicaCapsuleCollider>();
-                    cap.direction = MagicaCloth2.MagicaCapsuleCollider.Direction.Y;
-                    cap.alignedOnCenter = true;
-                    float s0 = Mathf.Abs(holder.lossyScale.x);
-                    cap.SetSize(0.04f / s0, 0.04f / s0, Vector3.Distance(f.position, t.position) / s0);
-                    tested.Add(cap);
-                }
+                var tested = TestCapsules(anim, 0.04f, (HumanBodyBones.LeftLowerArm, HumanBodyBones.LeftHand), (HumanBodyBones.RightLowerArm, HumanBodyBones.RightHand));
                 var chestBone = anim.GetBoneTransform(HumanBodyBones.UpperChest) ?? anim.GetBoneTransform(HumanBodyBones.Chest);
                 var inChest = new GameObject("Test collider in the chest").transform;
                 inChest.SetParent(chestBone, false);
@@ -2031,7 +2045,22 @@ namespace AvatarBridge.Regression
                 if (other != null && other.GetComponentInParent<CVRAvatar>(true) == null) Object.DestroyImmediate(other.transform.root.gameObject);
             var made = (GameObject) PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(args[from + 1]), scene);
             PrefabUtility.UnpackPrefabInstance(made, PrefabUnpackMode.OutermostRoot, InteractionMode.AutomatedAction);
+            // -jellyHandColliders after|before: a MagicaCloth capsule on each hand in the breasts'
+            // cloth, as a PhysBones conversion lists them; after, put on first so the jelly presses
+            // with them instead, before, put on last so they stay in the cloth and move the bones.
+            int hc = Array.IndexOf(args, "-jellyHandColliders");
+            string hands = hc >= 0 && hc + 1 < args.Length ? args[hc + 1] : null;
+            void HandColliders()
+            {
+#if AVATARBRIDGE_MAGICA
+                var cols = TestCapsules(made.GetComponentInChildren<Animator>(), 0.045f, (HumanBodyBones.LeftHand, HumanBodyBones.LeftMiddleDistal), (HumanBodyBones.RightHand, HumanBodyBones.RightMiddleDistal));
+                foreach (var cloth in BreastCloth(made.transform).OfType<MagicaCloth2.MagicaCloth>())
+                    cloth.SerializeData.colliderCollisionConstraint.colliderList.AddRange(cols);
+#endif
+            }
+            if (hands == "after") HandColliders();
             string said = BreastsOn(made.transform);
+            if (hands == "before") HandColliders();
             Debug.Log("[Jelly] film: " + said);
             if (!said.StartsWith("On "))
             {
@@ -2581,7 +2610,7 @@ namespace AvatarBridge.Regression
             {
                 // What runs the step, for a lattice that never moved.
                 var s = Read(stateRt);
-                int side = (n.x * n.y * n.z + Row - 1) / Row;
+                int side = Side(n);
                 var control = jelly.GetComponentInChildren<CVRRenderController>(true);
                 var provider = jelly.GetComponentInChildren<CVRMaterialDataProvider>(true);
                 var handed = control.cvrRenderComponents.OfType<CVRBlitter>().First().blitMaterial.GetMatrixArray("_JellyAnchor");
@@ -2742,6 +2771,39 @@ namespace AvatarBridge.Regression
             Debug.Log($"[Jelly] the wearer's own arm across one, held: {ownSaid}");
             Debug.Log($"[Jelly] breasts' cost at rest on {SystemInfo.graphicsDeviceName}: {chain.Count} passes, {Spread(chainTimes)} ms a frame ({Median(chainSubmits):0.000} to submit); " +
                       $"the same passes only copying {Spread(copyTimes)} ms");
+            // -jellyCost: the chain at a 90th (one predicted step) and a 60th (two whole ones) against
+            // two copies, and the avatar drawn reading the jelly and not, each round interleaved so a
+            // clock change moves every row alike.
+            if (Environment.GetCommandLineArgs().Contains("-jellyCost"))
+            {
+                var mats = chain.Select(c => c.blitMaterial).Distinct().ToList();
+                RenderTexture pa = chain[0].originTexture, pb = chain[0].destinationTexture;
+                var copyMat = new Material(Shader.Find("Hidden/BlitCopy"));
+                void Chain() { foreach (var c in chain) Graphics.Blit(c.originTexture, c.destinationTexture, c.blitMaterial); }
+                var drawn = YapsSquash.Materials(swing).Where(mm => mm.HasProperty("_YAPS_JellyLattice") && mm.GetVector("_YAPS_JellyLattice").x > 0).ToList();
+                var lat = drawn.Select(mm => mm.GetVector("_YAPS_JellyLattice")).ToList();
+                void Lattice(bool on) { for (int k = 0; k < drawn.Count; k++) drawn[k].SetVector("_YAPS_JellyLattice", on ? lat[k] : Vector4.zero); }
+                void Dt(float dt) { foreach (var mm in mats) mm.SetFloat("_FixedDt", dt); }
+                var timed = new (string name, Action set, Action run, RenderTexture rt, int runs)[]
+                {
+                    ("the step at 90 fps", () => Dt(1f / 90f), Chain, pb, 1000),
+                    ("at 60 fps", () => Dt(1f / 60f), Chain, pb, 1000),
+                    ("two copies", () => { }, () => { Graphics.Blit(pa, pb, copyMat); Graphics.Blit(pb, pa, copyMat); }, pb, 1000),
+                    ($"the avatar drawn ({drawn.Count} materials) reading the jelly", () => Lattice(true), () => eye.Render(), eye.targetTexture, 200),
+                    ("not reading it", () => Lattice(false), () => eye.Render(), eye.targetTexture, 200),
+                };
+                var got = timed.Select(r => new List<double>()).ToArray();
+                for (int round = 0; round < 7; round++)
+                    for (int v = 0; v < timed.Length; v++)
+                    {
+                        timed[v].set();
+                        got[v].Add(Timed(timed[v].run, timed[v].rt, timed[v].runs, out _));
+                    }
+                Dt(0f);
+                Lattice(true);
+                Object.DestroyImmediate(copyMat);
+                Debug.Log($"[Jelly] cost on {SystemInfo.graphicsDeviceName}, ms: " + string.Join("; ", timed.Select((r, v) => $"{r.name} {Spread(got[v])}")));
+            }
             // The bodies' doing: how much further from the other the first's facing side was held
             // with them than without.
             var away = breastRegions[0].position - secondAt;
@@ -2807,6 +2869,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _Pass (""Which of the frame's passes this is: 2 copies the rider out"", Float) = 0
         _FixedDt (""Fixed frame time, 0 for the real one"", Float) = 0
         _Stress (""The cost meter's load: steps only in odd phases"", Float) = 0
+        _Rider (""Steps the rider's texels, for the parser and the sleep"", Float) = 1
         _Sleep (""Rests after standing still this many seconds, untouched and unmoved; 0 never"", Float) = 0.5
         _Lift (""1 lifts its rest by the sag gravity gives, along the anchor's up: modelled tissue hangs already"", Float) = 0
         _Gravity (""Share of gravity the tissue feels"", Float) = 1
@@ -2850,7 +2913,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             #include ""UnityCG.cginc""
             #include ""JellyCommon.cginc""
 
-            float _Stiff, _Hz, _Hand, _Far, _Pass, _FixedDt, _Stress, _Sleep, _Lift;
+            float _Stiff, _Hz, _Hand, _Far, _Pass, _FixedDt, _Stress, _Sleep, _Lift, _Rider;
             float _MassHz, _MassCarried, _MassDamp, _Give, _MassRadius, _Limit, _Pair, _PairKeep, _Squish, _Viscous, _Solid;
             // The frame's time, for how fast the homes move.
             static float FrameDt;
@@ -2916,9 +2979,11 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 return a;
             }
 
-            // Worked out once a pixel, as each is read many times over.
-            static float4x4 Anchors[2];
-            float4x4 Anchor(uint r) { return r < 2 ? Anchors[r] : _JellyAnchor[min(r, 3)]; }
+            // Worked out once a pixel, as each is read many times over: its own region's alone, since
+            // through skinning each is sixteen reads, and only a few texels need the other's.
+            static float4x4 Mine;
+            static uint Region;
+            float4x4 Anchor(uint r) { return r == Region ? Mine : AnchorOf(r); }
 
             // A world point in an anchor's rest frame, metres from it along its axes.
             float3 Into(float4x4 a, float3 x)
@@ -3005,10 +3070,12 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             float4 _CVR_PlayerHeadPositions[1];
 
 #ifdef JELLY_SCAN
-            float4 _CVR_PlayerLeftHandPositions[255];
-            float4 _CVR_PlayerRightHandPositions[255];
-            float4 _CVR_PlayerChestPositions[255];
-            float4 _CVR_PlayerRootPositions[255];
+            // The first 64 of the client's 255, all the scan reads: the whole arrays made every first
+            // pass upload 16 kB of constants.
+            float4 _CVR_PlayerLeftHandPositions[64];
+            float4 _CVR_PlayerRightHandPositions[64];
+            float4 _CVR_PlayerChestPositions[64];
+            float4 _CVR_PlayerRootPositions[64];
             float4 CVRGlobalParams1;
 
             // Hand slot texel x of the eight, two texels each, (wrist, radius) then (an open hand's
@@ -3391,7 +3458,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     float zc = 0.5 * (Count().z - 1) * _Lattice.w;
                     float4 ta = _MainTex.Load(int3(30, side, 0)), tb = _MainTex.Load(int3(30, ps, 0));
                     float3 ca = ta.w > 0 ? ta.xyz : mul(m, float4(0, 0, zc, 1)).xyz;
-                    float3 cb = tb.w > 0 ? tb.xyz : mul(Anchor(other), float4(0, 0, zc, 1)).xyz;
+                    float3 cb = tb.xyz;
+                    [branch] if (!(tb.w > 0)) cb = mul(Anchor(other), float4(0, 0, zc, 1)).xyz;
                     float dist = distance(ca, cb), wa = (other == 1 ? _PairReach.x : _PairReach.y) * scale;
                     float e = 0.5 * max((length(_PairOffset.xyz) - _PairReach.z) * scale - dist, 0);
                     [branch] if (e > 0 && dist > 1e-4)
@@ -3513,11 +3581,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
 
             float4 frag(v2f_img i) : SV_Target
             {
-                Anchors[0] = AnchorOf(0);
-                Anchors[1] = AnchorOf(1);
                 int2 px = int2(i.pos.xy);
                 int3 n = Count();
-                uint count = n.x * n.y * n.z, side = (count + Row - 1) / Row;
+                uint count = n.x * n.y * n.z, side = Rows();
                 // A third pass, where there is a rider, copies its two texels into a texture of their
                 // own: the texture parser reads back a whole texture, and the whole state costs it
                 // ten times two texels. Its third texel says whether the steps should run at all: the
@@ -3528,7 +3594,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     if (px.x < 2) return _MainTex.Load(int3(16 + px.x, side, 0));
                     float3 head = _CVR_PlayerHeadPositions[0].xyz;
                     bool wasAway = _MainTex.Load(int3(18, side, 0)).x > 0.5;
-                    bool away = dot(head, head) > 1e-6 && distance(head, Anchor(0)._m03_m13_m23) > _Far - (wasAway ? 0.5 : 0);
+                    bool away = dot(head, head) > 1e-6 && distance(head, AnchorOf(0)._m03_m13_m23) > _Far - (wasAway ? 0.5 : 0);
                     return float4(away ? 0 : 1, 0, 0, 1);
                 }
                 float4 here = _MainTex.Load(int3(px, 0));
@@ -3540,7 +3606,11 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 uint region = (uint) px.y / (side + 1);
                 Base = region * (side + 1);
                 side += Base;
-                float4x4 m = Anchor(region);
+                // The rows padding the region out, before any work.
+                if ((uint) px.y != side && (uint) px.x % Row + ((uint) px.y - Base) * Row >= count) return 0;
+                Region = region;
+                Mine = AnchorOf(region);
+                float4x4 m = Mine;
                 float scale = length(m._m00_m10_m20);
                 bool anchored = scale > 1e-6;
                 // The step is held while the frame time, smoothed, stays within 15% of it: where the
@@ -3597,7 +3667,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             uint ps = (region ^ 1) * (side - Base + 1) + side - Base;
                             float4 ta = _MainTex.Load(int3(30, side, 0)), tb = _MainTex.Load(int3(30, ps, 0));
                             float3 ca = ta.w > 0 ? ta.xyz : mul(m, float4(0, 0, zc, 1)).xyz;
-                            float3 cb = tb.w > 0 ? tb.xyz : mul(Anchor(region ^ 1), float4(0, 0, zc, 1)).xyz;
+                            float3 cb = tb.xyz;
+                            [branch] if (!(tb.w > 0)) cb = mul(Anchor(region ^ 1), float4(0, 0, zc, 1)).xyz;
                             return float4(distance(ca, cb), length(_PairOffset.xyz) * scale, _PairReach.z * scale, scale);
                         }
                         // Which of the wearer's own capsules are in reach, a bit each, then each one's
@@ -3635,7 +3706,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             uint ps = (region ^ 1) * (side - Base + 1) + side - Base;
                             float4 ta = _MainTex.Load(int3(30, side, 0)), tb = _MainTex.Load(int3(30, ps, 0));
                             float3 ca = ta.w > 0 ? ta.xyz : mul(m, float4(0, 0, zc, 1)).xyz;
-                            float3 cb = tb.w > 0 ? tb.xyz : mul(Anchor(region ^ 1), float4(0, 0, zc, 1)).xyz;
+                            float3 cb = tb.xyz;
+                            [branch] if (!(tb.w > 0)) cb = mul(Anchor(region ^ 1), float4(0, 0, zc, 1)).xyz;
                             float dist = distance(ca, cb);
                             if (!(dist > 1e-4)) return 0;
                             float self = (region == 0 ? _PairSkin.x : _PairSkin.y) * scale, partner = (region == 0 ? _PairSkin.y : _PairSkin.x) * scale;
@@ -3661,7 +3733,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
 #else
                     if (px.x == 18) return float4(distant, 0, 0, 1);
 #endif
-                    [branch] if (px.x == 16 || px.x == 17) return Rider(px.x, m, scale, h, predicted, distant, side);
+                    [branch] if ((px.x == 16 || px.x == 17) && _Rider > 0) return Rider(px.x, m, scale, h, predicted, distant, side);
                     return here;
                 }
 
@@ -3743,6 +3815,9 @@ float _Gravity;
 static const int Turns = 3;
 
 int3 Count() { return int3(_Lattice.xyz); }
+// A region's lattice rows, padded so with its side row it is a whole number of eight: a block of
+// rows the GPU runs together never holds both a side row's work and particles'.
+uint Rows() { int3 n = Count(); return ((uint) (n.x * n.y * n.z + Row - 1) / Row + 8) / 8 * 8 - 1; }
 int Index(int3 l) { int3 n = Count(); return (l.z * n.y + l.y) * n.x + l.x; }
 // In floats, where a division is cheap and exact enough for any lattice a texture holds; integer
 // division by a value only known at run time is emulated, a few dozen instructions.
@@ -4093,7 +4168,7 @@ Shader ""AvatarBridge/Jelly Spike""
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
                 // On a particle, it alone; between, the eight round it, weighted by nearness.
                 int3 n = int3(_Lattice.xyz);
-                int row = int(v.side.y), first = row - (n.x * n.y * n.z + 63) / 64;
+                int row = int(v.side.y), first = row - (int) (((uint) (n.x * n.y * n.z + 63) / 64 + 8) / 8 * 8 - 1);
                 float3 c = float3(v.uv, v.side.x);
                 int3 c0 = min(int3(c + 1e-4), n - 1);
                 float3 t = saturate(c - c0);

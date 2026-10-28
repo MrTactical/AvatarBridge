@@ -2193,6 +2193,26 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
         forearm and a 1.5 cm sphere in the cleavage: all three pressing, settled 0.8 mm, held arm,
         squeeze and lift as before. A cone presses as a cylinder of its larger end. Kar's breast
         cloths list no colliders, so on it this changes nothing.
+      - **Optimisation pass, first round, 2026-10-28.** Every verify number unchanged. The step,
+        timed as the client chains its two passes (each waits on the last): 0.064 ms a frame to
+        0.022 at 90 fps on the 4080, 0.031 at 60 fps (two whole steps), two copies 0.005. What did
+        it, measured one at a time:
+        - Each region's rows padded to a whole number of eight with its side row. A GPU runs
+          pixels in blocks of rows, and the block holding a side row held particles too, so it
+          ran the side row's work and theirs one after the other. Most of the gain.
+        - The rider's texels skipped where nothing reads them (worn: no parser pass, no sleep).
+          They stepped a whole particle twice a region.
+        - The scan's player arrays declared at the 64 it reads, not the client's 255: 16 kB of
+          constants every first pass. The head array was already declared short.
+        - Each pixel works out its own region's anchor alone (sixteen skinned reads a region).
+        Tried and no gain: no discard in the second pass; the draw's side texels read before
+        its first branch. Measured, a pixel class at a time: particles about 9 us, the side row
+        3 us, a pass that returns at once 4.5 us (a copy 2.5).
+        Open: **the draw now costs about what the step does**, 0.02 to 0.04 ms a camera render
+        on Kar (`-jellyCost`), nearly all in the breast vertices' region work. Next: the own
+        capsules' reach is a sphere round the lattice that takes in the thighs at rest (mask 265
+        and 401 with the arm down), so every breast vertex and particle tests them; a box round
+        the mass would leave them out. Then skin with a sliver of a share skipping the region.
     - **The finishing pass:** the draw already pressed other players' hands into every vertex
       (`YapsJellyPress`; said wrongly to Joe that nothing finished the skin). Added: the own
       capsules, and last a guard at the plane midway between the two skins (each breast's skin's
