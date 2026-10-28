@@ -1822,8 +1822,29 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     no camera direction, only player positions; the render controller steps in
     `LateEventsManager.OnPostLateUpdate`, before any camera renders; and the material data
     provider's UAV slot is bound globally, so a draw cannot flag "seen" per copy (the last copy
-    bound wins). What is left is the camera values Unity leaves set from the last camera of the
-    frame before, being probed in batch; which camera that is in game, and mirrors, are [GAME].
+    bound wins). Nor are Unity's own camera values left over: a batch probe rendered two cameras
+    and then blitted a shader writing `_WorldSpaceCameraPos`, `unity_CameraToWorld` and the view
+    matrix, and every one read the origin and identity, before and after either camera. A blit
+    resets them, and `CVRBlitter` blits. **Closed: content cannot know where a camera looks;** it
+    would take the client handing one in.
+  - Coarse lattice, smooth surface (Joe: "do it"): the surface is now finer than the particles, each
+    of its points blended from the eight round it (one load where it sits on a particle), so the
+    lattice is a setting. Jelly spike: coarse lattice, ticked by default, builds 8x6x8 (384
+    particles, 2.86 cm apart); unticked, the 16x12x16 one. Settled sag 2.6 / 2.6 / 2.5 cm (16, 12,
+    8 across), and the 60 degree turn within 0.2 cm of the fine lattice at 12x9x12 and 0.6 cm at
+    8x6x8, a little more damped; the pictures side by side show the same shape. Ms a frame at
+    90 fps:
+
+    | | 4080 | Radeon |
+    | --- | --- | --- |
+    | 3072 alone / 64 players, 8 hands | 0.019 / 0.037 | 0.066 / 0.076 |
+    | 1296 alone / 64 players, 8 hands | 0.021 / 0.039 | 0.042 / 0.053 |
+    | 384 alone / 64 players, 8 hands | 0.020 / 0.035 | 0.032 / 0.043 |
+
+    The 4080 does not see the particle count, only the passes; the Radeon pays half. The blend's
+    own cost is lost in a camera's (0.12 to 0.34 ms to render the surface, the same within noise
+    on every lattice). Verify passes on the coarse default. ChilloutVR was open. In game: dents
+    under a finger are broader, [GAME].
 - **Order, Joe 2026-10-27:** the squash shader working on MagicaCloth first and 5.0.0 shipped; the
   live tissue and the rest of his ideas after, in 5.1.
 - The menu item rebuilt the assets with the preview scene, which replaced the open scene: it now

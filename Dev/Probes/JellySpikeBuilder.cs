@@ -60,7 +60,24 @@ namespace AvatarBridge.Regression
         const string K = "JellySpike.";
         // One pair's tissue is about 3000 particles; this is 3072, 20 cm across at 1.33 cm.
         static readonly Vector3Int Size = new Vector3Int(16, 12, 16);
-        const float Spacing = 0.2f / 15f;
+        // A coarse lattice the surface blends between, an eighth of the fine one's particles. The
+        // default: it sags and turns within millimetres of the fine one and costs a slow GPU about
+        // half; the menu's tick takes the fine one back.
+        static readonly Vector3Int Mid = new Vector3Int(12, 9, 12), Coarse = new Vector3Int(8, 6, 8);
+        // 20 cm deep whatever the lattice.
+        static float SpacingOf(Vector3Int n) => 0.2f / (n.z - 1);
+        const string CoarseKey = "AvatarBridge.JellySpike.Coarse";
+        static Vector3Int Lattice => EditorPrefs.GetBool(CoarseKey, true) ? Coarse : Size;
+
+        [MenuItem("Tools/AvatarBridge Dev/Jelly spike: coarse lattice")]
+        static void ToggleCoarse() => EditorPrefs.SetBool(CoarseKey, !EditorPrefs.GetBool(CoarseKey, true));
+
+        [MenuItem("Tools/AvatarBridge Dev/Jelly spike: coarse lattice", true)]
+        static bool ToggleCoarseShown()
+        {
+            Menu.SetChecked("Tools/AvatarBridge Dev/Jelly spike: coarse lattice", EditorPrefs.GetBool(CoarseKey, true));
+            return true;
+        }
         const int Row = 64, Passes = 2, Frames = 300, Load = 32;
         struct Late { }
 
@@ -122,7 +139,7 @@ namespace AvatarBridge.Regression
             // was left.
             prop.AddComponent<CVRPickupObject>();
             var box = prop.AddComponent<BoxCollider>();
-            var span = (Vector3) (Size - Vector3Int.one) * Spacing;
+            var span = (Vector3) (Lattice - Vector3Int.one) * SpacingOf(Lattice);
             box.center = new Vector3(0f, 1.2f, 0.5f * span.z + 0.025f);
             box.size = span + new Vector3(0.06f + 0.3f * (regions - 1), 0.06f, 0.11f);
             Undo.RegisterCreatedObjectUndo(prop, "Make the jelly prop");
@@ -204,10 +221,11 @@ namespace AvatarBridge.Regression
                 return null;
             }
 
-            var state = Save(State(Size, regions), "/Jelly_State.renderTexture");
-            var twin = Save(State(Size, regions), "/Jelly_State_B.renderTexture");
-            var stepMat = Save(StepMaterial(step, Size, 0), "/Jelly_Step.mat");
-            var stepMat2 = Save(StepMaterial(step, Size, 1), "/Jelly_Step_2.mat");
+            var n = Lattice;
+            var state = Save(State(n, regions), "/Jelly_State.renderTexture");
+            var twin = Save(State(n, regions), "/Jelly_State_B.renderTexture");
+            var stepMat = Save(StepMaterial(step, n, 0), "/Jelly_Step.mat");
+            var stepMat2 = Save(StepMaterial(step, n, 1), "/Jelly_Step_2.mat");
             // Only a prop sleeps: worn, the avatar's own sway keeps it awake, and the test alone costs
             // a slow GPU a few percent. Set on the saved materials, which a rebuild keeps.
             foreach (var mat in new[] { stepMat, stepMat2 })
@@ -218,6 +236,7 @@ namespace AvatarBridge.Regression
             }
             var drawMat = new Material(draw);
             drawMat.SetTexture("_State", state);
+            drawMat.SetVector("_Lattice", new Vector4(n.x, n.y, n.z, SpacingOf(n)));
             drawMat = Save(drawMat, "/Jelly_Draw.mat");
             var root = new GameObject("Jelly Spike");
             // Each region an anchor of its own. Packed, they sit side by side to be moved; alone, the
@@ -262,7 +281,7 @@ namespace AvatarBridge.Regression
             if (withRider || offFar)
             {
                 where = Save(Strip(3), "/Jelly_Points.renderTexture");
-                var pointsMat = Save(StepMaterial(step, Size, 2), "/Jelly_Points.mat");
+                var pointsMat = Save(StepMaterial(step, n, 2), "/Jelly_Points.mat");
                 fed.Add(pointsMat);
                 var pointer = tissue.AddComponent<CVRBlitter>();
                 pointer.originTexture = state;
@@ -276,8 +295,8 @@ namespace AvatarBridge.Regression
             {
                 // The cost meter: its clock, and the load, which steps a lattice nobody draws in the odd
                 // phases and leaves it be in the even ones.
-                var load = Save(State(Size), "/Jelly_Load.renderTexture");
-                var loadMat = StepMaterial(step, Size, 0);
+                var load = Save(State(n), "/Jelly_Load.renderTexture");
+                var loadMat = StepMaterial(step, n, 0);
                 loadMat.SetFloat("_Stress", 1f);
                 // The step alone, without the first pass's look for hands.
                 loadMat.DisableKeyword("JELLY_SCAN");
@@ -337,7 +356,7 @@ namespace AvatarBridge.Regression
                     var plain = Save(new Material(Shader.Find("Standard")) { color = new Color(1f, 0.85f, 0.1f) }, "/Jelly_Rider.mat");
                     var rider = new GameObject("Rider");
                     rider.transform.SetParent(anchors[0], false);
-                    rider.transform.localPosition = new Vector3(0f, 0f, (Size.z - 1) * Spacing);
+                    rider.transform.localPosition = new Vector3(0f, 0f, (n.z - 1) * SpacingOf(n));
                     var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
                     cube.name = "Plain cube";
                     Object.DestroyImmediate(cube.GetComponent<Collider>());
@@ -375,7 +394,7 @@ namespace AvatarBridge.Regression
             {
                 var body = new GameObject(r == 0 ? "Surface" : $"Surface {r}");
                 body.transform.SetParent(anchors[r], false);
-                body.AddComponent<MeshFilter>().sharedMesh = Save(Surface(Size, r), r == 0 ? "/Jelly_Surface.asset" : $"/Jelly_Surface_{r}.asset");
+                body.AddComponent<MeshFilter>().sharedMesh = Save(Surface(n, r), r == 0 ? "/Jelly_Surface.asset" : $"/Jelly_Surface_{r}.asset");
                 var renderer = body.AddComponent<MeshRenderer>();
                 renderer.sharedMaterial = drawMat;
                 renderer.shadowCastingMode = ShadowCastingMode.Off;
@@ -463,7 +482,7 @@ namespace AvatarBridge.Regression
         static Material StepMaterial(Shader step, Vector3Int n, int pass)
         {
             var m = new Material(step);
-            m.SetVector("_Lattice", new Vector4(n.x, n.y, n.z, Spacing));
+            m.SetVector("_Lattice", new Vector4(n.x, n.y, n.z, SpacingOf(n)));
             m.SetFloat("_Pass", pass);
             // The first pass looks for the hands in reach.
             if (pass == 0) m.EnableKeyword("JELLY_SCAN");
@@ -554,26 +573,35 @@ namespace AvatarBridge.Regression
         }
 
         // The lattice's six faces as a grid of quads, each vertex naming its particle's texel.
+        // As fine as the fine lattice whatever the lattice: a coarse one's surface puts f vertices
+        // to a particle's spacing, each blended from the eight particles round it. Each vertex names
+        // where on the lattice it sits, in particles, and its region's row of switches.
         static Mesh Surface(Vector3Int n, int region = 0)
         {
-            int rows = Side(n) + 1, first = region * rows;
+            int rows = Side(n) + 1, sideRow = region * rows + rows - 1;
+            int f = Mathf.Max(1, Mathf.RoundToInt(15f / (n.z - 1)));
+            var g = (n - Vector3Int.one) * f + Vector3Int.one;
+            float spacing = SpacingOf(n);
             var at = new List<Vector3>();
             var uv = new List<Vector2>();
+            var uv2 = new List<Vector2>();
             var tris = new List<int>();
             var index = new Dictionary<int, int>();
             int Vertex(int i, int j, int k)
             {
-                int p = (k * n.y + j) * n.x + i;
+                int p = (k * g.y + j) * g.x + i;
                 if (index.TryGetValue(p, out int v)) return v;
                 index[p] = at.Count;
-                at.Add(new Vector3((i - 0.5f * (n.x - 1)) * Spacing, (j - 0.5f * (n.y - 1)) * Spacing, k * Spacing));
-                uv.Add(new Vector2(p % Row + 0.5f, first + p / Row + 0.5f));
+                var c = new Vector3(i, j, k) / f;
+                at.Add(new Vector3((c.x - 0.5f * (n.x - 1)) * spacing, (c.y - 0.5f * (n.y - 1)) * spacing, c.z * spacing));
+                uv.Add(new Vector2(c.x, c.y));
+                uv2.Add(new Vector2(c.z, sideRow + 0.5f));
                 return at.Count - 1;
             }
             void Face(int axis, int fixedAt)
             {
                 int a = (axis + 1) % 3, b = (axis + 2) % 3;
-                int na = n[a], nb = n[b];
+                int na = g[a], nb = g[b];
                 for (int u = 0; u < na - 1; u++)
                     for (int w = 0; w < nb - 1; w++)
                     {
@@ -592,12 +620,12 @@ namespace AvatarBridge.Regression
             for (int axis = 0; axis < 3; axis++)
             {
                 Face(axis, 0);
-                Face(axis, n[axis] - 1);
+                Face(axis, g[axis] - 1);
             }
             var mesh = new Mesh { name = "Jelly surface" };
             mesh.SetVertices(at);
             mesh.SetUVs(0, uv);
-            mesh.SetUVs(1, Enumerable.Repeat(new Vector2(first + rows - 1 + 0.5f, 0f), uv.Count).ToList());
+            mesh.SetUVs(1, uv2);
             mesh.SetTriangles(tris, 0);
             // The shader puts every vertex where the tissue is, so the renderer's box has to hold
             // wherever that goes.
@@ -674,7 +702,7 @@ namespace AvatarBridge.Regression
             // the tissue, 0 for none.
             const int Reps = 5;
             var configs = new List<(Vector3Int n, int players, int inReach, float head)>();
-            foreach (var n in new[] { Size, new Vector3Int(32, 24, 16) })
+            foreach (var n in new[] { Size, Mid, Coarse, new Vector3Int(32, 24, 16) })
                 foreach (var (players, inReach, head) in new[] { (0, 0, 0f), (64, 0, 0f), (64, 8, 0f), (64, 8, 1f), (64, 0, 20f) })
                     configs.Add((n, players, inReach, head));
             var rigs = configs.Select(c => new Rig(c.n)).ToList();
@@ -883,11 +911,12 @@ namespace AvatarBridge.Regression
             var strip = new List<Texture2D>();
             int[] shotsAt = { 0, 6, 12, 20, 30, 45, 70, 100 };
             Vector3 hang = new Vector3(0f, 1.3f, 0.3f);
-            foreach (int fps in new[] { 90, 60 })
+            // The coarse lattices at 90 fps beside the fine one, each with its own pictures.
+            foreach (var (n, fps) in new[] { (Size, 90), (Size, 60), (Mid, 90), (Coarse, 90) })
             {
-                var rig = new Rig(Size);
+                var rig = new Rig(n);
                 rig.Dt(1f / fps);
-                var view = Viewer(rig.State, out var shots);
+                var view = Viewer(rig.State, n, out var shots);
                 var trace = new List<string>();
                 for (int f = -2 * fps; f <= 120 * fps / 90; f++)
                 {
@@ -898,20 +927,29 @@ namespace AvatarBridge.Regression
                     rig.Passes();
                     if (f == -1 || f >= 0 && (f % 5 == 0 || fps == 90 && shotsAt.Contains(f)))
                     {
-                        var health = Health(Read(rig.State), Size, anchor, out string said, out _);
+                        var health = Health(Read(rig.State), n, anchor, out string said, out _);
                         ok &= health;
-                        if (f == -1) lines.Add($"[Jelly] at {fps} fps, settled after 2 s: {said}");
+                        if (f == -1) lines.Add($"[Jelly] {n.x}x{n.y}x{n.z} at {fps} fps, settled after 2 s: {said}");
                         else trace.Add($"{f}: {said}");
                     }
                     if (fps == 90 && f >= 0 && shotsAt.Contains(f)) strip.Add(Shot(shots));
                 }
-                lines.Add($"[Jelly] at {fps} fps, turned 60 degrees in a sixth of a second then held, frame: " + string.Join(" | ", trace));
+                lines.Add($"[Jelly] {n.x}x{n.y}x{n.z} at {fps} fps, turned 60 degrees in a sixth of a second then held, frame: " + string.Join(" | ", trace));
+                if (fps == 90)
+                {
+                    // The surface drawn alone, by a camera that also clears: the blend's cost shows
+                    // against the fine lattice's one load a vertex.
+                    var draws = Enumerable.Range(0, Reps).Select(i => Timed(() => shots.Render(), rig.State, 300, out _)).ToList();
+                    lines.Add($"[Jelly] {n.x}x{n.y}x{n.z}: a camera drawing the surface {Spread(draws)} ms");
+                }
                 Object.DestroyImmediate(view);
                 rig.Release();
             }
-            var sheet = new Texture2D(strip[0].width * 4, strip[0].height * 2, TextureFormat.RGB24, false);
-            for (int i = 0; i < strip.Count && i < 8; i++)
-                sheet.SetPixels((i % 4) * strip[0].width, (1 - i / 4) * strip[0].height, strip[0].width, strip[0].height, strip[i].GetPixels());
+            // A row a lattice, fine at the top, the frames across.
+            int lattices = strip.Count / shotsAt.Length;
+            var sheet = new Texture2D(strip[0].width * shotsAt.Length, strip[0].height * lattices, TextureFormat.RGB24, false);
+            for (int i = 0; i < strip.Count; i++)
+                sheet.SetPixels((i % shotsAt.Length) * strip[0].width, (lattices - 1 - i / shotsAt.Length) * strip[0].height, strip[0].width, strip[0].height, strip[i].GetPixels());
             File.WriteAllBytes(Path.Combine(dir, "turn.png"), sheet.EncodeToPNG());
             // The two wear builds, last, since each replaces the prefab: two blitters and no parser, or
             // the third pass and a parser that only switches the steps.
@@ -928,7 +966,7 @@ namespace AvatarBridge.Regression
             var three = Make(preview: false, withMeter: false, withRider: false, offFar: false, sleeps: false, regions: 3);
             var feeds = three.GetComponentsInChildren<CVRMaterialDataProvider>(true).Single().transforms;
             int surfaces = Count<MeshRenderer>(three), stateRows = AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture").height;
-            bool packs3 = feeds.Length == 3 && surfaces == 3 && Count<CVRBlitter>(three) == 2 && stateRows == 3 * (Side(Size) + 1)
+            bool packs3 = feeds.Length == 3 && surfaces == 3 && Count<CVRBlitter>(three) == 2 && stateRows == 3 * (Side(Lattice) + 1)
                 && Enumerable.Range(0, 3).All(r => three.transform.Find($"Jelly Region {r}/{(r == 0 ? "Surface" : $"Surface {r}")}") != null);
             built &= packs3;
             ok &= built;
@@ -1008,7 +1046,8 @@ namespace AvatarBridge.Regression
             int width = 2 * Row, bad = 0;
             float held = 0f, fastest = 0f, worst = 0f;
             var worstAt = Vector3Int.zero;
-            Vector3 Rest(int i, int j, int k) => new Vector3((i - 0.5f * (n.x - 1)) * Spacing, (j - 0.5f * (n.y - 1)) * Spacing, k * Spacing);
+            float spacing = SpacingOf(n);
+            Vector3 Rest(int i, int j, int k) => new Vector3((i - 0.5f * (n.x - 1)) * spacing, (j - 0.5f * (n.y - 1)) * spacing, k * spacing);
             for (int k = 0; k < n.z; k++)
                 for (int j = 0; j < n.y; j++)
                     for (int i = 0; i < n.x; i++)
@@ -1032,12 +1071,13 @@ namespace AvatarBridge.Regression
         }
 
         // A camera on the tissue for the bench's pictures, drawing the surface from its state.
-        static GameObject Viewer(RenderTexture state, out Camera cam)
+        static GameObject Viewer(RenderTexture state, Vector3Int n, out Camera cam)
         {
             var draw = new Material(AssetDatabase.LoadAssetAtPath<Shader>(Folder + "/JellyDraw.shader"));
             draw.SetTexture("_State", state);
+            draw.SetVector("_Lattice", new Vector4(n.x, n.y, n.z, SpacingOf(n)));
             var go = new GameObject("Jelly bench") { hideFlags = HideFlags.HideAndDontSave };
-            go.AddComponent<MeshFilter>().sharedMesh = Surface(Size);
+            go.AddComponent<MeshFilter>().sharedMesh = Surface(n);
             go.AddComponent<MeshRenderer>().sharedMaterial = draw;
             var look = new GameObject("Jelly bench camera") { hideFlags = HideFlags.HideAndDontSave };
             look.transform.position = new Vector3(0.55f, 1.45f, 0.75f);
@@ -1132,10 +1172,11 @@ namespace AvatarBridge.Regression
             string dir = SessionState.GetString(K + "out", "Jelly");
             var state = AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture");
             var tissueNow = Read(state);
-            bool ok = Health(tissueNow, Size, seen, out string said, out _);
+            var n = Lattice;
+            bool ok = Health(tissueNow, n, seen, out string said, out _);
             // The rider's texels, decoded as the parser's tasks would, against the front centre.
             var where = Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_Points.renderTexture"));
-            int front = ((Size.z - 1) * Size.y + Size.y / 2) * Size.x + Size.x / 2;
+            int front = ((n.z - 1) * n.y + n.y / 2) * n.x + n.x / 2;
             var frontAt = seen.inverse.MultiplyPoint3x4((Vector3) tissueNow[(front / Row) * 2 * Row + front % Row]);
             var read = (Vector3) where[0] - Vector3.one * 0.5f;
             var turn = ((Vector3) where[1] - Vector3.one * 0.5f) * 360f;
@@ -1842,12 +1883,19 @@ Shader ""AvatarBridge/Jelly Spike""
 
             Texture2D<float4> _State;
             float4 _Color;
+            float4 _Lattice;
+
+            float4 Particle(int3 l, int3 n, int first)
+            {
+                int p = (l.z * n.y + l.y) * n.x + l.x;
+                return _State.Load(int3(p % 64, first + p / 64, 0));
+            }
 
             struct appdata
             {
                 float4 vertex : POSITION;
                 float2 uv : TEXCOORD0;
-                // The row of switches for this vertex's region.
+                // z of the lattice place, the region's row of switches.
                 float2 side : TEXCOORD1;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
             };
@@ -1866,11 +1914,28 @@ Shader ""AvatarBridge/Jelly Spike""
                 UNITY_SETUP_INSTANCE_ID(v);
                 UNITY_INITIALIZE_OUTPUT(v2f, o);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
-                float4 s = _State.Load(int3(int2(v.uv), 0));
+                // On a particle, it alone; between, the eight round it, weighted by nearness.
+                int3 n = int3(_Lattice.xyz);
+                int row = int(v.side.y), first = row - (n.x * n.y * n.z + 63) / 64;
+                float3 c = float3(v.uv, v.side.x);
+                int3 c0 = min(int3(c + 1e-4), n - 1);
+                float3 t = saturate(c - c0);
+                float4 s = Particle(c0, n, first);
+                float3 blend = s.xyz;
+                [branch] if (any(t > 1e-4))
+                {
+                    blend = 0;
+                    [unroll] for (int k = 0; k < 8; k++)
+                    {
+                        int3 d = int3(k & 1, (k >> 1) & 1, k >> 2);
+                        float3 w = d ? t : 1 - t;
+                        blend += w.x * w.y * w.z * Particle(min(c0 + d, n - 1), n, first).xyz;
+                    }
+                }
                 // The far switch, texel 18 of the region's side row: far off nothing steps, so the
                 // surface takes its rest shape on the anchor.
-                float4 switches = _State.Load(int3(18, int(v.side.x), 0));
-                float3 at = s.xyz;
+                float4 switches = _State.Load(int3(18, row, 0));
+                float3 at = blend;
                 o.tint = _Color.rgb;
                 if (switches.x > 0.5) at = mul(unity_ObjectToWorld, v.vertex).xyz;
                 else if (s.w < 0) o.tint = float3(0.6, 0.2, 0.9);
@@ -1903,9 +1968,12 @@ Shader ""AvatarBridge/Jelly Spike""
 
 Does a soft body run on a ChilloutVR avatar, stepped every frame on the GPU, and what does it cost?
 
-A block of jelly about 20 cm across hangs in front of the chest. Its 3072 particles live in a
+A block of jelly about 20 cm across hangs in front of the chest. Its 384 particles live in a
 render texture that two blitters step every frame, into a twin and back; nothing is baked and
-nothing is synced. The first pass also picks out the hands in reach, eight at most, so a full
+nothing is synced. The surface is finer than the particles: each of its points is blended from
+the eight particles round it, so it stays smooth. Tools > AvatarBridge Dev > Jelly spike: coarse
+lattice, ticked by default, untick it for the fine lattice of 3072 particles, which costs a slow
+GPU about twice as much and looks the same within millimetres. The first pass also picks out the hands in reach, eight at most, so a full
 instance costs no more than an empty one. Below 72 fps each pass takes a step; above it the first
 works out where each particle is headed and the second fits. More than 6 m from you, another
 player's jelly hangs rigid and costs next to nothing, and so does the prop left still and
