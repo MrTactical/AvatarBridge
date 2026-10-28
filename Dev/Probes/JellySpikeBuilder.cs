@@ -303,7 +303,11 @@ namespace AvatarBridge.Regression
                 his[side] = hi + new Vector3(0.01f, 0.01f, 0.01f);
             }
             var size = Vector3.Max(his[0] - los[0], his[1] - los[1]);
-            float cell = Mathf.Pow(size.x * size.y * size.z / BreastCells, 1f / 3f);
+            // -jellyCells: another count, for weighing a coarser lattice's look against its cost.
+            var given = Environment.GetCommandLineArgs();
+            int ci = Array.IndexOf(given, "-jellyCells");
+            float cells = ci >= 0 && ci + 1 < given.Length && float.TryParse(given[ci + 1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float asked) ? asked : BreastCells;
+            float cell = Mathf.Pow(size.x * size.y * size.z / cells, 1f / 3f);
             // Each breast's volume, blend shapes as set: from the plane of its base ring, where its own
             // skin ends on the body, out to its frontmost skin, over a grid of a hundredth of the box.
             // Its skin can be a shell, its inner faces turned in under its outer ones (a signed sum

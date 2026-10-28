@@ -2213,6 +2213,22 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
         capsules' reach is a sphere round the lattice that takes in the thighs at rest (mask 265
         and 401 with the arm down), so every breast vertex and particle tests them; a box round
         the mass would leave them out. Then skin with a sliver of a share skipping the region.
+        **Second round, 2026-10-28/29.** Reach is each breast's skin box (`_JellyBox0/1`) plus
+        8 cm and the mass's swing, not a sphere round the lattice: at rest on Kar each breast
+        keeps its own side's upper arm and thigh (the thighs stay in: the breasts hang low and
+        the thigh capsule's round top sits up in the hip). `-jellyCost` now times a crowd: one
+        avatar 0.025 ms, 16 avatars 0.243 (0.015 each), 20 m off 0.015 (16: 0.174), the far
+        switch's parser pass alone 0.004, two copies 0.005; the squash's draw about 0.06 to 0.08
+        a render on Kar's second pair, the jelly's little. **A coarser lattice saves nothing:**
+        8x8x8 (512 particles, `-jellyCells 300`) costs 0.026 against 10x10x10's 0.025; the
+        passes' own price is the cost, not the particles. Tried and no gain: the far decision
+        ahead of the anchor. Checked: the squash moves no pixel the jelly draws (0.000% at rest,
+        a finger, turning, the squeeze, the arm across), now part of the verify.
+        Open, Joe to pick: switching far avatars off with the parser (0.011 to 0.004 each, plus a
+        readback per avatar only the client can time); one pass instead of two (halves the fixed
+        price, changes how a particle predicts its neighbours, so a film first). Stepping every
+        other frame was weighed and left: the skipped frame still pays the two passes, the
+        stepped one the slower two-step path, about 20% off for a frame of lag.
     - **The finishing pass:** the draw already pressed other players' hands into every vertex
       (`YapsJellyPress`; said wrongly to Joe that nothing finished the skin). Added: the own
       capsules, and last a guard at the plane midway between the two skins (each breast's skin's
