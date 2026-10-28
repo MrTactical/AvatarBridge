@@ -2103,14 +2103,84 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
       a particle past it went all the way behind it however lightly they pressed. Now a particle
       goes no further back than its own home, which the plane eases by how hard they press. PASS
       at 60 fps: settled 0.4 mm, the contact 114.2 mm, the squeeze's volume 0.967. Film23 sent.
-  - **Suggested next, Joe to choose after film23:** keep the 1000-point lattice and finish each
-    vertex after it in the draw: a vertex still inside a hand goes out to its surface with a soft
-    rim (the squash's own dents are off on jelly parts, `own *= 1 - _YAPS_JellyParts`, so a
-    fingertip is only as sharp as a 4.6 cm cell), and a vertex past the pair's plane sits on it,
-    both breasts on the one plane, so they cannot cross. Then cubic in place of trilinear sampling
-    (8 reads a vertex now), so a hard squish creases nowhere at the cells' faces.
-    - Still baked and no longer read by the step if the plane holds: the bodies' distance fields
-      (`Jelly_Bodies`, `Body`, `_Shape`); take them out once Joe has seen the plane.
+  - **Joe on film23 (2026-10-28): "the best-looking physics I've ever seen".** Committed 5b894b6.
+    His order after it: the timing, the old bake out, the wearer's whole body as contacts, the
+    finishing pass, a film, commit. Cubic sampling rejected (3 to 8 times the reads).
+    - **Cost, Joe's bar:** "as low as humanly possible ... if it's going to go on multiple avatars
+      with multiple pairs, with multiple players, we need it batched, instanced ... this will not
+      increase overhead. Period." First measure, in the breast verify (the client's chain timed
+      alone, RTX 4080): 0.029 ms a frame at rest for the two passes, 0.009 of it to submit; the
+      same passes only copying 0.006 ms, so the step's own work is about 0.023. Seen in reading,
+      not yet measured: every pixel of the state works out both regions' cloth anchors through the
+      skinned helper (eight buffer loads, an inverse, three matrix products) and every particle
+      works out the plane again, where once a region would do.
+    - The distance-field bake (`Jelly_Bodies`, `Bodies()`, `_Shape`, `_ShapeBox`, `Body()`) taken
+      out; nothing read it since the plane.
+    - **The wearer's own body as contacts:** the client's arrays hold every player's hands, the
+      wearer's included, never arms, so the film's own arm went through the breast. Now eight
+      capsules bone to bone, upper arm, forearm, hand and thigh a side, the bones after the four
+      anchors in the provider's transforms (`_JellyAnchor[16]`), each as thick as the median
+      distance of the skin its bones carry. A bit each in the side row's texel 41 says which are in
+      reach, so with the arms away a particle pays one read. They push the particles out the
+      nearest way, never pulling (hands plow toward the centre, see below); only the own hands
+      lean the mass (an arm resting at the side would shove the whole away); the
+      draw presses them in per vertex with no rim.
+      - Measured (the verify's own-arm stage, wrist taken to between the pair and held): every
+        capsule in reach found, the provider handing 16 transforms, the particles moved up to
+        213 mm. The radii as first taken (the median of the skin round the whole bone) were fat:
+        upper arm 98 mm, forearm 73, hand 56, thigh 236 (Kar). Now the skin round the middle
+        three fifths, its 30th percentile. Film24's own hand looked unchanged; the shot filmed
+        alone (`-spOnly Own`, readout of texels 41 to 45) showed the step finding the arm and
+        the breast riding up on the forearm while the squash's went through it.
+      - Not yet contacts: the head, the belly and hips (the breasts rest on the belly, so it needs
+        the rest-relative rule the pair's plane has), knees, shins, feet. Joe asked why not every
+        part; cost grows with the contacts in reach, not with how many exist. The bounding test is
+        a ball round the whole lattice (about 40 cm on Kar), so arms resting near count as in
+        reach: 0.029 to 0.034 ms at rest after the contacts went in.
+      - **Film25: the breast shook under the held arm (Joe: "why does the titty violently jiggle
+        like that during the arm press").** The film's frame differences: the squash still while
+        the arm held, the jelly moving every frame. The verify's trace: a held palm settles to
+        0.000 mm a frame, the held arm kept 0.4 mm on average with one particle jumping 20 to 54
+        mm a frame. Instrumented: the jumping ones were edge particles whose rest lay behind the
+        forearm (84 mm behind its line, outside it). Plowed toward the centre as hands are, each
+        slid round the arm toward its rest and, near the line, was thrown back over the top, a
+        5 frame orbit. Turning the plow toward the particle's own side near the line halved it but
+        left a 7 frame orbit at the upper arm and cut the hands' squeeze by 30%. Now the wearer's
+        own capsules push out the nearest way, hands unchanged: the held arm settles to 0.000 mm a
+        frame within half a second (worst 26.5 mm while it arrives), the hands' squeeze 136.3 and
+        57.7 mm as before. Turning moved the tissue 107 mm against 124: the resting upper arm now
+        stops the swing at its surface instead of plowing it back. The verify reports the held
+        arm's shake. Film26 showed it: still under the held arm, as the squash.
+      - **Lifted from below, it dents more than it rises (Joe on film26's new shot, both palms
+        under: "why is it deforming the titty rather than lifting?").** Every press moves the
+        whole by `_Give` 0.35 of its reach into the mass and no further than `_Limit` 0.2 of its
+        length (41 mm on Kar), the rest left to dent: a palm 8 cm up lifts the whole 35.3 mm.
+        LEFT AS IT IS, Joe 2026-10-28: "leave gravity and all that to Magicka ... people can deal
+        with it later". What was tried:
+        - Film27, the jelly lifting on its own: each lean's upward part as far as `_GiveUp` 0.8
+          would, weighted by how nearly straight up it points (summed, two hands squeezing from
+          either side, each a little low, took the pair 325 mm off rest), the whole allowed to
+          0.45 of its length, and weight of its own once risen. A palm 8 cm up lifted it 72.8 mm.
+          Out: "i don't want it to collide and double stack magica and my own gravity".
+        - Film28, the cloth holding it: a MagicaCloth capsule on each film hand (the film probe's
+          `-spMagicaHands`, as on a player whose hand carries one, which moves the wearer's bones
+          in game), gravity the cloth's alone. Both rows lifted; Joe: "that just looks broken".
+        The verify keeps a readout of how far the whole rose under each held palm.
+      - **Film29: the breast stuck to the arm (Joe: "its sticking", the own hand shot).** Pushed out
+        the nearest way on either side, an arm moving off dragged the tissue it had passed with it.
+        Now a particle behind the line from the limb to the centre is left be, as hands do. The
+        verify: the held arm settles to 0.008 mm a frame, the squeeze 136.8 and 64.3 mm as
+        before. The shot filmed alone (`-spOnly Own`) against film29: Joe, "fixed".
+      - **A little more pillow (Joe):** the particles' pull to their rest `_Hz` 2.4 from 3.
+    - **The finishing pass:** the draw already pressed other players' hands into every vertex
+      (`YapsJellyPress`; said wrongly to Joe that nothing finished the skin). Added: the own
+      capsules, and last a guard at the plane midway between the two skins (each breast's skin's
+      reach toward the other baked as `_PairSkin`, moved on by half any overlap as built): skin past
+      it eases back to within 4 mm, the deeper the further, so layers keep their order. The box's
+      half width, which the particles' plane still uses as approved on film23, sits past the skin
+      (7 cm into the other's box on Kar), so two such planes never meet.
+  - **Idea, Joe 2026-10-28:** two avatars wearing the same YAPS could press each other's tissue
+    through these contacts, body to body. Not started.
   - Check:
     the squash's skinned slots are tested against world matrices within half a metre, which in
     batch only holds with its host at the world's origin.

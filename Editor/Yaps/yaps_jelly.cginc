@@ -11,7 +11,10 @@
 // The state, as Dev/Probes/JellySpikeBuilder.cs writes it: a block of rows a region, each rows of
 // 64 particles, each where it is in the left half (w the _Time.y of the last pass), then a side
 // row: the hands in reach in texels 0 to 15, the far switch in 18, the anchor the last pass stepped
-// on in 26 to 29 (its x, y and z axes with its scale, then its place, w 1), the swing's centre in 30.
+// on in 26 to 29 (its x, y and z axes with its scale, then its place, w 1), the swing's centre in 30,
+// which of the wearer's own capsules are in reach in 41 (a bit each) and their ends in 42 to 57 as
+// the hands' slots are, the plane between the pair in 58 (its normal toward the other, its offset)
+// and 59 (its give, 0 for none).
 #ifndef YAPS_JELLY_INCLUDED
 #define YAPS_JELLY_INCLUDED
 #ifndef YAPS_NO_JELLY
@@ -38,8 +41,8 @@ void YapsJellyHand(float4 a, float4 b, out float3 pb, out float3 fa, out float3 
 }
 
 // How far a capsule from a to b of radius r pushes skin at at on, toward centre: out of it, and
-// the crater's rim eased out to twice its radius, further the nearer the axis.
-float3 YapsJellyPress(float3 at, float3 a, float3 b, float r, float3 centre)
+// with rim the crater's rim eased out to twice its radius, further the nearer the axis.
+float3 YapsJellyPress(float3 at, float3 a, float3 b, float r, float3 centre, float rim)
 {
     float3 seg = b - a, in_ = centre - (a + 0.5 * seg);
     if (!(dot(in_, in_) > 1e-8) || !(r > 0)) return 0;
@@ -48,7 +51,7 @@ float3 YapsJellyPress(float3 at, float3 a, float3 b, float r, float3 centre)
     float d2 = dot(off, off), along = dot(off, way);
     float ease = saturate(1 - sqrt(d2) / (2 * r));
     float through = d2 < r * r ? sqrt(max(along * along - d2 + r * r, 0)) - along : 0;
-    return way * max(through, r * ease * ease);
+    return way * max(through, rim * r * ease * ease);
 }
 
 // How far region r's lattice round world has moved off its rest, and in bend how the surface there
@@ -111,9 +114,36 @@ float3 YapsJellyRegion(uint r, float3 world, float3 nw, out float3 bend)
             float3 pb, fa, fb;
             float rf;
             YapsJellyHand(a, b, pb, fa, fb, rf);
-            move += YapsJellyPress(at, a.xyz, pb, a.w, centre);
-            if (rf > 0) move += YapsJellyPress(at, fa, fb, rf, centre);
+            move += YapsJellyPress(at, a.xyz, pb, a.w, centre, 1);
+            if (rf > 0) move += YapsJellyPress(at, fa, fb, rf, centre, 1);
         }
+    }
+    // The wearer's own arms, hands and thighs, with no rim: an arm resting at the side would dent
+    // it from a hand's width off.
+    uint own = (uint) _YAPS_JellyState.Load(int3(41, side, 0)).x;
+    [branch] if (own != 0)
+    {
+        float3 at = world + move;
+        float4 mass = _YAPS_JellyState.Load(int3(30, side, 0));
+        float3 centre = mass.w > 0 ? mass.xyz : place.xyz + az * (0.5 * (n.z - 1) * spacing);
+        [unroll] for (uint c = 0; c < 8; c++)
+        {
+            [branch] if (own & (1u << c))
+            {
+                float4 a = _YAPS_JellyState.Load(int3(42 + 2 * c, side, 0)), b = _YAPS_JellyState.Load(int3(43 + 2 * c, side, 0));
+                move += YapsJellyPress(at, a.xyz, b.xyz, a.w, centre, 0);
+            }
+        }
+    }
+    // Last, skin past the plane between the pair, further than they overlapped as built, eased back
+    // to within its give of it, the deeper the further, so layers keep their order: the lattice keeps
+    // the two apart a few centimetres coarse, and here they cannot cross.
+    float4 give = _YAPS_JellyState.Load(int3(59, side, 0));
+    [branch] if (give.x > 0)
+    {
+        float4 plane = _YAPS_JellyState.Load(int3(58, side, 0));
+        float x = dot(world + move, plane.xyz) - plane.w;
+        if (x > 0) move -= plane.xyz * (x - give.x * (1 - exp(-x / give.x)));
     }
     return move;
 }

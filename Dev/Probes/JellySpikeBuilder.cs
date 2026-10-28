@@ -87,7 +87,7 @@ namespace AvatarBridge.Regression
             Menu.SetChecked("Tools/AvatarBridge Dev/Jelly spike: coarse lattice", EditorPrefs.GetBool(CoarseKey, true));
             return true;
         }
-        const int Row = 64, Passes = 2, Frames = 300, Load = 32, BreastFrames = 1840;
+        const int Row = 64, Passes = 2, Frames = 300, Load = 32, BreastFrames = 2040;
         struct Late { }
 
         static int frame;
@@ -237,55 +237,6 @@ namespace AvatarBridge.Regression
             EditorUtility.DisplayDialog("Jelly spike", said, "OK");
         }
 
-        const int BodyCells = 16;
-
-        // Each breast's body for the other to squash against: a signed distance field over its
-        // lattice's box in the region's own frame, BodyCells a side, negative inside (under its
-        // frontmost skin and above its base ring's plane, from the volume's envelope), the way out in
-        // rgb; the regions one above the other, BodyCells slices each. The distance is to the nearest
-        // of its skin's vertices, which sit far closer together than a cell.
-        static Texture3D Bodies(Vector3Int n, float spacing, Vector3[] los, Vector3[] his, float[][] fronts, float[] bases, Func<int, List<Vector3>> skinOf)
-        {
-            const int C = BodyCells, Grid = 100;
-            var box = new Vector3((n.x - 1) * spacing, (n.y - 1) * spacing, (n.z - 1) * spacing);
-            var cell = new Vector3(box.x / C, box.y / C, box.z / C);
-            var all = new Color[C * C * C * 2];
-            for (int side = 0; side < 2; side++)
-            {
-                var skin = skinOf(side);
-                var lo = los[side];
-                var span = his[side] - lo;
-                var anchorAt = new Vector3(0.5f * (lo.x + his[side].x), 0.5f * (lo.y + his[side].y), lo.z);
-                var dist = new float[C * C * C];
-                for (int z = 0; z < C; z++)
-                    for (int y = 0; y < C; y++)
-                        for (int x = 0; x < C; x++)
-                        {
-                            var at = new Vector3((x + 0.5f) * cell.x - 0.5f * box.x, (y + 0.5f) * cell.y - 0.5f * box.y, (z + 0.5f) * cell.z) + anchorAt;
-                            float near = float.MaxValue;
-                            foreach (var v in skin) near = Mathf.Min(near, (v - at).sqrMagnitude);
-                            int ex = Mathf.FloorToInt((at.x - lo.x) / span.x * Grid), ey = Mathf.FloorToInt((at.y - lo.y) / span.y * Grid);
-                            float out_ = at.z - lo.z;
-                            bool inside = ex >= 0 && ey >= 0 && ex < Grid && ey < Grid && fronts[side][ey * Grid + ex] > 0f
-                                && out_ > bases[side] && out_ < fronts[side][ey * Grid + ex];
-                            dist[(z * C + y) * C + x] = (inside ? -1f : 1f) * Mathf.Sqrt(near);
-                        }
-                float At(int x, int y, int z) => dist[(Mathf.Clamp(z, 0, C - 1) * C + Mathf.Clamp(y, 0, C - 1)) * C + Mathf.Clamp(x, 0, C - 1)];
-                for (int z = 0; z < C; z++)
-                    for (int y = 0; y < C; y++)
-                        for (int x = 0; x < C; x++)
-                        {
-                            var way = new Vector3((At(x + 1, y, z) - At(x - 1, y, z)) / cell.x, (At(x, y + 1, z) - At(x, y - 1, z)) / cell.y, (At(x, y, z + 1) - At(x, y, z - 1)) / cell.z);
-                            way = way.sqrMagnitude > 1e-12f ? way.normalized : Vector3.forward;
-                            all[((side * C + z) * C + y) * C + x] = new Color(way.x, way.y, way.z, At(x, y, z));
-                        }
-            }
-            var made = new Texture3D(C, C, 2 * C, TextureFormat.RGBAHalf, false) { wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
-            made.SetPixels(all);
-            made.Apply();
-            return made;
-        }
-
         // A point off a box's corner in grid cells across and up, and in metres out.
         static Vector3 Cell(Vector3 p, Vector3 span, int grid) => new Vector3(p.x / span.x * grid, p.y / span.y * grid, p.z);
 
@@ -354,8 +305,6 @@ namespace AvatarBridge.Regression
             // each spot counts; from the chest bone's plane it took in the ribs (35 litres).
             var tris = body.sharedMesh.triangles;
             var volume = new float[2];
-            var fronts = new float[2][];
-            var bases = new float[2];
             for (int side = 0; side < 2; side++)
             {
                 int k = 2 * pair + side;
@@ -398,8 +347,6 @@ namespace AvatarBridge.Regression
                         }
                 }
                 volume[side] = front.Sum(z => Mathf.Max(z - baseZ, 0f)) * (span.x / Grid) * (span.y / Grid);
-                fronts[side] = front;
-                bases[side] = baseZ;
             }
             float kilos = 950f * 0.5f * (volume[0] + volume[1]);
             // The same tissue at another size: about 2 Hz at half a kilogram, going as one over the
@@ -439,24 +386,20 @@ namespace AvatarBridge.Regression
 
             var prefab = Make(preview: false, withMeter: false, withRider: false, offFar: false, sleeps: false, regions: 2, lattice: n, spacing: spacing, surface: false, lift: 1f);
             if (prefab == null) return "The jelly did not build; the console says why.";
-            var bodies = Bodies(n, spacing, los, his, fronts, bases, side => Enumerable.Range(0, Mathf.Min(at.Length, shares.Length))
-                .Where(v => shares[v][2 * pair + side] >= 0.5f).Select(v => undo * (body.transform.position + body.transform.rotation * at[v] - chest.position)).ToList());
-            // Rebuilt in place, so what already points at it keeps pointing at it.
-            var kept = AssetDatabase.LoadAssetAtPath<Texture3D>(Folder + "/Jelly_Bodies.asset");
-            if (kept != null && kept.width == bodies.width && kept.height == bodies.height && kept.depth == bodies.depth && kept.format == bodies.format)
-            {
-                kept.SetPixels(bodies.GetPixels());
-                kept.Apply();
-                EditorUtility.SetDirty(kept);
-                Object.DestroyImmediate(bodies);
-                bodies = kept;
-            }
-            else
-            {
-                AssetDatabase.DeleteAsset(Folder + "/Jelly_Bodies.asset");
-                AssetDatabase.CreateAsset(bodies, Folder + "/Jelly_Bodies.asset");
-            }
             float radius = (size.x + size.y + size.z) / 6f - 0.01f;
+            // How far each breast's own skin reaches toward the other off its centre: where the two
+            // actually meet, for the draw's last guard. The box's half width sits past the skin, 7 cm
+            // into the other's box on Kar.
+            var across = new Vector3(0.5f * (los[1].x + his[1].x - los[0].x - his[0].x), 0.5f * (los[1].y + his[1].y - los[0].y - his[0].y), los[1].z - los[0].z).normalized;
+            var skinReach = new float[2];
+            for (int side = 0; side < 2; side++)
+            {
+                var c = new Vector3(0.5f * (los[side].x + his[side].x), 0.5f * (los[side].y + his[side].y), los[side].z + 0.5f * (n.z - 1) * spacing);
+                var way = side == 0 ? across : -across;
+                for (int v = 0; v < Mathf.Min(at.Length, shares.Length); v++)
+                    if (shares[v][2 * pair + side] >= 0.5f)
+                        skinReach[side] = Mathf.Max(skinReach[side], Vector3.Dot(undo * (body.transform.position + body.transform.rotation * at[v] - chest.position) - c, way));
+            }
             foreach (var step in new[] { "/Jelly_Step.mat", "/Jelly_Step_2.mat" })
             {
                 var mat = AssetDatabase.LoadAssetAtPath<Material>(Folder + step);
@@ -466,6 +409,8 @@ namespace AvatarBridge.Regression
                 mat.SetFloat("_MassCarried", cloth ? 1f : 0f);
                 mat.SetFloat("_Limit", cloth ? 0.2f : 0.6f);
                 mat.SetFloat("_MassRadius", radius);
+                // A little more pillow (Joe): the tissue's pull to its rest 2.4 a second, from 3.
+                mat.SetFloat("_Hz", 2.4f);
                 mat.SetFloat("_Pair", 1f);
                 var apart = new Vector3(0.5f * (los[1].x + his[1].x - los[0].x - his[0].x), 0.5f * (los[1].y + his[1].y - los[0].y - his[0].y), los[1].z - los[0].z);
                 mat.SetVector("_PairOffset", apart);
@@ -475,11 +420,10 @@ namespace AvatarBridge.Regression
                 // -jellyNoPlane leaves the plane out, for telling its doing from the rest's.
                 bool plane = !Environment.GetCommandLineArgs().Contains("-jellyNoPlane");
                 mat.SetVector("_PairReach", plane ? new Vector4(wide0, wide1, Mathf.Max(apart.magnitude - wide0 - wide1, 0f), 0f) : Vector4.zero);
+                mat.SetVector("_PairSkin", plane ? new Vector4(skinReach[0], skinReach[1], 0f, 0f) : Vector4.zero);
                 mat.SetVector("_JellyOffsetAt0", Vector4.zero);
                 mat.SetVector("_JellyOffsetAt1", Vector4.zero);
                 mat.SetFloat("_JellySkinStride", 0f);
-                mat.SetTexture("_Shape", bodies);
-                mat.SetVector("_ShapeBox", new Vector4((n.x - 1) * spacing, (n.y - 1) * spacing, (n.z - 1) * spacing, BodyCells));
                 // Flesh barely changes volume but gives easily in shear, so nearly all of each
                 // neighbourhood's own squash is kept: half kept, it sprang back like rubber.
                 mat.SetFloat("_Squish", 0.9f);
@@ -603,6 +547,55 @@ namespace AvatarBridge.Regression
                 var renders = provider.GetComponent<CVRRenderController>();
                 Undo.RecordObject(renders, "Put the breasts on the jelly");
                 renders.cvrRenderComponents.Insert(renders.cvrRenderComponents.IndexOf(provider) + 1, skinned);
+            }
+
+            // The wearer's own arms, hands and thighs press the breasts as other players' hands do:
+            // eight capsules bone to bone, the bones after the four anchors in the provider's
+            // transforms, each as thick as the body's skin round it (the median distance of the skin
+            // its bones carry). Other players' hands come from the client's arrays; the wearer's arm
+            // went through the breast in the film, as the arrays hold hands alone.
+            var ownBones = new[]
+            {
+                HumanBodyBones.LeftUpperArm, HumanBodyBones.LeftLowerArm, HumanBodyBones.LeftHand, HumanBodyBones.LeftMiddleDistal, HumanBodyBones.LeftUpperLeg, HumanBodyBones.LeftLowerLeg,
+                HumanBodyBones.RightUpperArm, HumanBodyBones.RightLowerArm, HumanBodyBones.RightHand, HumanBodyBones.RightMiddleDistal, HumanBodyBones.RightUpperLeg, HumanBodyBones.RightLowerLeg,
+            }.Select(b => animator.GetBoneTransform(b)).ToArray();
+            var ownRadii = new float[8];
+            var weights = body.sharedMesh.boneWeights;
+            for (int c = 0; c < 8; c++)
+            {
+                int s0 = (c >> 2) * 6 + ((c & 3) < 3 ? (c & 3) : 4);
+                Transform from = ownBones[s0], to = ownBones[s0 + 1];
+                if (from == null || to == null) continue;
+                // The skin whose strongest bone hangs from this one and not from the next (twist bones
+                // and, for the hand, its fingers), round the middle of the bone alone: taken to the
+                // ends it took in the shoulder and the hip, an upper arm 98 mm thick, a thigh 184.
+                var near = new List<float>();
+                for (int v = 0; v < Mathf.Min(at.Length, weights.Length); v++)
+                {
+                    var bone = body.bones[weights[v].boneIndex0];
+                    if (bone == null || !bone.IsChildOf(from) || bone.IsChildOf(to)) continue;
+                    var w = body.transform.position + body.transform.rotation * at[v];
+                    var seg = to.position - from.position;
+                    float along = Vector3.Dot(w - from.position, seg) / Mathf.Max(seg.sqrMagnitude, 1e-9f);
+                    if (along > 0.2f && along < 0.8f) near.Add(Vector3.Distance(w, from.position + seg * along));
+                }
+                // ponytail: a low share, as a capsule is round and a limb is not: the median left Kar's
+                // hand 56 mm thick and a thigh 236, pushing skin before they reached it. A limb a
+                // little thin sinks in a touch first, which reads as soft.
+                if (near.Count >= 8) ownRadii[c] = near.OrderBy(d => d).ElementAt(near.Count * 3 / 10);
+            }
+            var anchors = made.GetComponentsInChildren<CVRMaterialDataProvider>(true).First(q => q.transforms != null && q.transforms.Length > 0);
+            Undo.RecordObject(anchors, "Put the breasts on the jelly");
+            var handed = anchors.transforms.ToList();
+            // Without the cloth the hang slots are never read; the regions fill them.
+            while (handed.Count < 4) handed.Add(handed[handed.Count - 2]);
+            handed.AddRange(ownBones.Select(b => b != null ? b : chest));
+            anchors.transforms = handed.ToArray();
+            foreach (var mat in anchors.materials)
+            {
+                mat.SetVector("_JellyOwn0", new Vector4(ownRadii[0], ownRadii[1], ownRadii[2], ownRadii[3]));
+                mat.SetVector("_JellyOwn1", new Vector4(ownRadii[4], ownRadii[5], ownRadii[6], ownRadii[7]));
+                EditorUtility.SetDirty(mat);
             }
 
             var state = AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture");
@@ -988,6 +981,21 @@ namespace AvatarBridge.Regression
 
         // The row after the lattice's: the hands in reach, the rider and the far switch.
         static int Side(Vector3Int n) => (n.x * n.y * n.z + Row - 1) / Row;
+
+        // An arm's two bones turned so the wrist reaches goal, bending about the plane it was in.
+        static void TwoBone(Transform shoulder, Transform elbow, Transform wrist, Vector3 goal, Vector3 hint)
+        {
+            float a = Vector3.Distance(shoulder.position, elbow.position), b = Vector3.Distance(elbow.position, wrist.position);
+            float c = Mathf.Clamp(Vector3.Distance(shoulder.position, goal), Mathf.Abs(a - b) + 1e-4f, a + b - 1e-4f);
+            var upper = elbow.position - shoulder.position;
+            var lower = wrist.position - elbow.position;
+            var axis = Vector3.Cross(upper, lower);
+            if (axis.sqrMagnitude < 1e-10f) axis = Vector3.Cross(upper, hint);
+            float now = Vector3.Angle(-upper, lower);
+            float want = Mathf.Acos(Mathf.Clamp((a * a + b * b - c * c) / (2f * a * b), -1f, 1f)) * Mathf.Rad2Deg;
+            elbow.rotation = Quaternion.AngleAxis(now - want, axis.normalized) * elbow.rotation;
+            shoulder.rotation = Quaternion.FromToRotation(wrist.position - shoulder.position, goal - shoulder.position) * shoulder.rotation;
+        }
 
         static RenderTexture State(Vector3Int n, int regions = 1)
         {
@@ -2152,11 +2160,16 @@ namespace AvatarBridge.Regression
         static float breastSpacing, restMost, pokeMost, swingMost, noise, poked;
         static Vector3[] innerOff, innerOn, regionsAt;
         static Vector3 secondAt;
+        // The own arm's stage: the arm's rest, the state before it, and what it found.
+        static Quaternion[] armRest;
+        static Vector4[] ownBefore;
+        static string ownSaid = "not reached";
+        static float ownShake, ownMost;
         static float handsApart, handsCloser, handsOuter, handsInner, handsVolume, slapMost, slapLater, solid0;
-        static readonly float[] pressShake = new float[3], pressMost = new float[3], pressAnchor = new float[3];
+        static readonly float[] pressShake = new float[3], pressMost = new float[3], pressAnchor = new float[3], pressRise = new float[3];
+        static float riseFrom;
         static Vector3[] pressWas;
         static Vector3 anchorWas;
-        static Vector4 shapeBox;
         static bool anchorOk = true;
         static readonly List<Texture2D> breastShots = new List<Texture2D>();
 
@@ -2299,12 +2312,10 @@ namespace AvatarBridge.Regression
             Shader.SetGlobalVectorArray("_CVR_PlayerChestPositions", chestAt);
             Shader.SetGlobalVectorArray("_CVR_PlayerRootPositions", root);
             Shader.SetGlobalVectorArray("_CVR_PlayerHeadPositions", new Vector4[255]);
-            // Then, once the turn has rung out, the film's squeeze twice, the bodies off for the first:
-            // two players, a hand each on the pair's outer sides, pointing back at the chest, from 3 cm
-            // off the skin to 13 cm in (SquashPlayProbe's shot). The masses go alike both times, so
-            // what differs is the bodies'. Pressing one anchor toward the other showed nothing of
-            // them: a particle is pushed only past where it lay at rest on its own anchor, as both
-            // anchors ride the one chest in game.
+            // Then, once the turn has rung out, the film's squeeze twice, the pair's contact off for the
+            // first: two players, a hand each on the pair's outer sides, pointing back at the chest,
+            // from 3 cm off the skin to 13 cm in (SquashPlayProbe's shot). The masses go alike both
+            // times, so what differs is the contact's.
             float squeezing = frame >= 600 && frame < 750 ? Mathf.Clamp01((frame - 600) / 30f) - Mathf.Clamp01((frame - 690) / 30f)
                 : frame >= 870 && frame < 1050 ? Mathf.Clamp01((frame - 870) / 30f) - Mathf.Clamp01((frame - 990) / 30f) : -1f;
             if (squeezing >= 0f)
@@ -2352,6 +2363,23 @@ namespace AvatarBridge.Regression
                 root[0] = new Vector4(chestAt[0].x, swing.position.y, chestAt[0].z, 1.6f);
                 hand[1] = new Vector4(50f, 50f, 50f, 0f);
             }
+            // Then the wearer's own arm across the first's lower front, as the film's own hand: the
+            // wrist taken to between the pair, held, put back.
+            if (frame >= 1840)
+            {
+                var anim = swing.GetComponentInChildren<Animator>();
+                bool left = Vector3.Dot(breastRegions[0].position - swing.position, swing.right) < 0f;
+                var upperArm = anim.GetBoneTransform(left ? HumanBodyBones.LeftUpperArm : HumanBodyBones.RightUpperArm);
+                var lowerArm = anim.GetBoneTransform(left ? HumanBodyBones.LeftLowerArm : HumanBodyBones.RightLowerArm);
+                var wristBone = anim.GetBoneTransform(left ? HumanBodyBones.LeftHand : HumanBodyBones.RightHand);
+                if (frame == 1840) armRest = new[] { upperArm.rotation, lowerArm.rotation };
+                upperArm.rotation = armRest[0];
+                lowerArm.rotation = armRest[1];
+                float across = Mathf.Clamp01((frame - 1840) / 40f) - Mathf.Clamp01((frame - 2000) / 30f);
+                var up = breastRegions[0].up;
+                var under = breastRegions[0].position + breastRegions[0].forward * (0.6f * (n.z - 1) * breastSpacing) - up * (0.3f * (n.y - 1) * breastSpacing);
+                if (across > 0f) TwoBone(upperArm, lowerArm, wristBone, Vector3.Lerp(wristBone.position, under + 0.5f * (secondAt - breastRegions[0].position), across), swing.forward);
+            }
             Shader.SetGlobalVectorArray("_CVR_PlayerLeftHandPositions", hand);
             Shader.SetGlobalVectorArray("_CVR_PlayerChestPositions", chestAt);
             Shader.SetGlobalVectorArray("_CVR_PlayerRootPositions", root);
@@ -2360,7 +2388,6 @@ namespace AvatarBridge.Regression
             float t = Mathf.Max(frame - 230, 0) / 90f;
             swing.rotation = Quaternion.Euler(0f, 50f * Mathf.Sin(t * Mathf.PI * 2f * 0.7f) * Mathf.Min(t * 3f, 1f) * Mathf.Clamp01((330 - frame) / 30f), 0f);
             var blits = jelly.GetComponentInChildren<CVRRenderController>(true).cvrRenderComponents.OfType<CVRBlitter>().Select(b => b.blitMaterial).ToList();
-            if (frame == 0) shapeBox = blits[0].GetVector("_ShapeBox");
             if (frame == 580) foreach (var b in blits) b.SetFloat("_Pair", 0f);
             if (frame == 740) foreach (var b in blits) b.SetFloat("_Pair", 1f);
             if (frame == 0) solid0 = blits[0].GetFloat("_Solid");
@@ -2457,16 +2484,40 @@ namespace AvatarBridge.Regression
                 float anchorStep = (anchorNow - anchorWas).magnitude;
                 anchorWas = anchorNow;
                 line.Append($",step {1000f * shakeStep:0.000} most {1000f * shakeMost:0.00} at ({shakeAt % n.x} {shakeAt / n.x % n.y} {shakeAt / (n.x * n.y)}) by ({shakeBy.x:0.00} {shakeBy.y:0.00} {shakeBy.z:0.00}) anchor {1000f * anchorStep:0.000}");
+                if (frame >= 1900 && frame < 1990)
+                {
+                    ownShake += shakeStep / 90f;
+                    ownMost = Mathf.Max(ownMost, shakeMost);
+                }
+                if (frame == 1299) riseFrom = s[side * 2 * Row + 30].y;
                 int hold = (frame - 1300) / 180, inHold = (frame - 1300) % 180;
                 if (frame >= 1300 && hold < 3 && inHold >= 60 && inHold < 170)
                 {
                     pressShake[hold] += shakeStep / 110f;
                     pressMost[hold] = Mathf.Max(pressMost[hold], shakeMost);
                     pressAnchor[hold] += anchorStep / 110f;
+                    pressRise[hold] = Mathf.Max(pressRise[hold], s[side * 2 * Row + 30].y - riseFrom);
                 }
                 breastTrace.Add(line.ToString());
             }
             if (frame == 205) pokeMost = Furthest(Read(stateRt), breastRegions);
+            if (frame == 1839) ownBefore = Read(stateRt);
+            if (frame == 1990)
+            {
+                var st = Read(stateRt);
+                int sr = Side(n) * 2 * Row;
+                float moved = 0f;
+                for (int q = 0; q < n.x * n.y * n.z; q++)
+                {
+                    int i = q / Row * 2 * Row + q % Row;
+                    moved = Mathf.Max(moved, ((Vector3) st[i] - (Vector3) ownBefore[i]).magnitude);
+                }
+                var anchorsHanded = jelly.GetComponentsInChildren<CVRMaterialDataProvider>(true).First(q => q.transforms != null && q.transforms.Length > 0);
+                var stepMat = anchorsHanded.materials[0];
+                ownSaid = $"in reach {(int) st[sr + 41].x} (bits), the provider handing {anchorsHanded.transforms.Length} transforms, radii {stepMat.GetVector("_JellyOwn0") * 1000f:F0} and {stepMat.GetVector("_JellyOwn1") * 1000f:F0} mm, " +
+                          $"upper arm {st[sr + 42]:F3} to {st[sr + 43]:F3}, forearm {st[sr + 44]:F3} to {st[sr + 45]:F3}; its particles moved {1000f * moved:0.0} mm at most, " +
+                          $"held, {1000f * ownShake:0.000} mm a frame on average, {1000f * ownMost:0.00} at most";
+            }
             if (frame > 230 && frame <= 330)
             {
                 swingMost = Mathf.Max(swingMost, Furthest(Read(stateRt), breastRegions));
@@ -2513,7 +2564,24 @@ namespace AvatarBridge.Regression
                 if (frame >= 1180) slapLater = Mathf.Max(slapLater, off);
             }
             if (++frame < BreastFrames) return;
-            foreach (var b in blits) { b.SetVector("_ShapeBox", shapeBox); b.SetFloat("_Solid", solid0); }
+            foreach (var b in blits) b.SetFloat("_Solid", solid0);
+            // What the breasts cost a viewer at rest: the client's chain of passes timed alone, and
+            // the same passes only copying, the floor any pass pays before it does any work.
+            var chain = jelly.GetComponentInChildren<CVRRenderController>(true).cvrRenderComponents.OfType<CVRBlitter>().ToList();
+            var bareCopy = new Material(Shader.Find("Hidden/BlitCopy"));
+            var chainTimes = new List<double>();
+            var chainSubmits = new List<double>();
+            var copyTimes = new List<double>();
+            for (int rep = 0; rep < 5; rep++)
+            {
+                chainTimes.Add(Timed(() => { foreach (var c in chain) Graphics.Blit(c.originTexture, c.destinationTexture, c.blitMaterial); }, chain[0].destinationTexture, 600, out double sent));
+                chainSubmits.Add(sent);
+                copyTimes.Add(Timed(() => { foreach (var c in chain) Graphics.Blit(c.originTexture, c.destinationTexture, bareCopy); }, chain[0].destinationTexture, 600, out _));
+            }
+            Object.DestroyImmediate(bareCopy);
+            Debug.Log($"[Jelly] the wearer's own arm across one, held: {ownSaid}");
+            Debug.Log($"[Jelly] breasts' cost at rest on {SystemInfo.graphicsDeviceName}: {chain.Count} passes, {Spread(chainTimes)} ms a frame ({Median(chainSubmits):0.000} to submit); " +
+                      $"the same passes only copying {Spread(copyTimes)} ms");
             // The bodies' doing: how much further from the other the first's facing side was held
             // with them than without.
             var away = breastRegions[0].position - secondAt;
@@ -2541,7 +2609,7 @@ namespace AvatarBridge.Regression
             Debug.Log($"[Jelly] a slap, a palm 5 cm into one side for a tenth of a second: the whole went {1000f * slapMost:0.0} mm, still swinging {1000f * slapLater:0.0} mm a second on");
             for (int k = 0; k < 3; k++)
                 Debug.Log($"[Jelly] a palm {(k == 2 ? 12 : 8)} cm up under one, held, {(k == 1 ? "the pair's contact off" : "as built")}: " +
-                          $"its particles moved {1000f * pressShake[k]:0.000} mm a frame on average, {1000f * pressMost[k]:0.00} mm at most, its anchor {1000f * pressAnchor[k]:0.000} mm a frame");
+                          $"its particles moved {1000f * pressShake[k]:0.000} mm a frame on average, {1000f * pressMost[k]:0.00} mm at most, its anchor {1000f * pressAnchor[k]:0.000} mm a frame, the whole rose {1000f * pressRise[k]:0.0} mm");
             SessionState.SetInt(K + "on", 0);
             EditorApplication.Exit(ok ? 0 : 1);
         }
@@ -2591,11 +2659,12 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _Motion (""Stretch in motion, the squash's own: x per reach of swing, y swing ignored below this share of the reach, z longest stretch; x 0 none"", Vector) = (0, 0, 1, 0)
         _Pair (""1: regions 0 and 1 are a pair, each keeping off the other"", Float) = 0
         _PairKeep (""Nearest the pair's centres come, as a share of their distance at rest"", Float) = 0.85
-        _Shape (""Each region's body for its partner: the way out, then the signed distance; the regions one above the other"", 3D) = """" {}
-        _ShapeBox (""The lattice's box, across, up and deep in metres; the body's cells a side, 0 none"", Vector) = (0, 0, 0, 0)
         _Squish (""Share of each neighbourhood's own squash and stretch it keeps, at constant volume; 0 rigid"", Range(0, 1)) = 0
         _PairOffset (""The second region's place in the first's frame at rest, both turned alike"", Vector) = (0, 0, 0, 0)
         _PairReach (""Each region's half width toward the other at rest, and the gap between them then; x 0 no plane"", Vector) = (0, 0, 0, 0)
+        _PairSkin (""Each region's skin's reach toward the other off its centre at rest; x 0 none"", Vector) = (0, 0, 0, 0)
+        _JellyOwn0 (""The wearer's own capsules' radii: the left upper arm, forearm, hand and thigh; 0 none"", Vector) = (0, 0, 0, 0)
+        _JellyOwn1 (""The same for the right"", Vector) = (0, 0, 0, 0)
         _JellyOffsetAt0 (""The first region's place on the bone it rides, in the bone's units, w its scale on it; w 0 rides none"", Vector) = (0, 0, 0, 0)
         _JellyOffsetTurn0 (""The first region's turn on that bone"", Vector) = (0, 0, 0, 1)
         _JellyOffsetAt1 (""The second region's place on its bone"", Vector) = (0, 0, 0, 0)
@@ -2623,8 +2692,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             float _MassHz, _MassCarried, _MassDamp, _Give, _MassRadius, _Limit, _Pair, _PairKeep, _Squish, _Viscous, _Solid;
             // The frame's time, for how fast the homes move.
             static float FrameDt;
-            float4 _Motion, _ShapeBox, _PairOffset, _PairReach, _JellyOffsetAt0, _JellyOffsetTurn0, _JellyOffsetAt1, _JellyOffsetTurn1;
-            sampler3D _Shape;
+            float4 _Motion, _PairOffset, _PairReach, _PairSkin, _JellyOwn0, _JellyOwn1, _JellyOffsetAt0, _JellyOffsetTurn0, _JellyOffsetAt1, _JellyOffsetTurn1;
             // A helper mesh skinned four points to each region's bone and four to where it hangs on
             // the chest, as the squash's slots, bound as the provider's copy of its skinned buffer.
             ByteAddressBuffer _JellySkin;
@@ -2697,16 +2765,6 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 return float3(dot(d, ax), dot(d, a._m01_m11_m21), dot(d, a._m02_m12_m22)) / dot(ax, ax);
             }
 
-            // Region r's body at a point of its rest frame: the way out in its anchor's axes, and how
-            // far outside it is, negative inside. The point must lie in the lattice's box.
-            float4 Body(uint r, float3 local)
-            {
-                float cells = _ShapeBox.w;
-                float3 u = (local + float3(0.5 * _ShapeBox.x, 0.5 * _ShapeBox.y, 0)) / _ShapeBox.xyz;
-                u.xy = clamp(u.xy, 0.5 / cells, 1 - 0.5 / cells);
-                return tex3Dlod(_Shape, float4(u.xy, (r * cells + clamp(u.z * cells, 0.5, cells - 0.5)) / (2 * cells), 0));
-            }
-
             // A kept hand from its slot's texels a (wrist, radius) and b (an open hand's tip, 10 plus the
             // gesture), as the squash reads one (yaps_dent.cginc): the palm from a to pb, ending at the
             // knuckles as it closes to a fist, and a finger out, thin, from fa to fb of radius rf, 0
@@ -2744,6 +2802,30 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float along = dot(off, way);
                 if (along < 0) return next;
                 return next + way * (sqrt(max(along * along - d2 + r * r, 0)) - along);
+            }
+
+            // next out of a capsule the nearest way, as the wearer's own body pushes. Plowed toward
+            // the centre like a hand, a particle whose rest lay behind a held arm slid round it and
+            // was thrown back over the top, 50 mm a frame, round and round. One behind the line from
+            // the limb to centre is left be, as hands do: pushed out either way, an arm moving off
+            // dragged the tissue it had passed with it, and the breast stuck to it.
+            float3 Out(float3 next, float3 a, float3 b, float r, float3 centre)
+            {
+                float3 seg = b - a;
+                float3 off = next - (a + seg * saturate(dot(next - a, seg) / max(dot(seg, seg), 1e-9)));
+                float d2 = dot(off, off);
+                if (d2 >= r * r || d2 < 1e-12 || dot(off, centre - (a + 0.5 * seg)) < 0) return next;
+                return next + off * (r * rsqrt(d2) - 1);
+            }
+
+            // The wearer's own capsule c of the eight, bone to bone after the four anchors: the left
+            // upper arm, forearm, hand and thigh, then the right's. r 0 for none.
+            void Own(uint c, float scale, out float3 a, out float3 b, out float r)
+            {
+                uint s = 4 + (c >> 2) * 6 + ((c & 3) < 3 ? (c & 3) : 4);
+                a = _JellyAnchor[s]._m03_m13_m23;
+                b = _JellyAnchor[s + 1]._m03_m13_m23;
+                r = (c < 4 ? _JellyOwn0[c & 3] : _JellyOwn1[c & 3]) * scale;
             }
 
             // How far a capsule from a to b of radius r leans the mass's spring target at p: c of its
@@ -3040,6 +3122,23 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         if (rf > 0) pushed += Lean(tip.xyz, fa, fb, rf, radius, c * rf / a.w);
                     }
                 }
+                // The wearer's own hands too; their arms and thighs only dent it, or an arm resting
+                // against its side would shove the whole away.
+                uint own = (uint) _MainTex.Load(int3(41, side, 0)).x & 0x44u;
+                [branch] if (own != 0)
+                {
+                    float c = min(_Give, 0.95) / (1 - min(_Give, 0.95));
+                    [unroll] for (uint k = 2; k < 8; k += 4)
+                    {
+                        [branch] if (own & (1u << k))
+                        {
+                            float3 a, b;
+                            float r;
+                            Own(k, scale, a, b, r);
+                            pushed += Lean(tip.xyz, a, b, r, radius, c);
+                        }
+                    }
+                }
                 next = lerp(next, rest + lift + pushed, min(spring * spring, 1));
                 [branch] if (_Pair > 0)
                 {
@@ -3167,6 +3266,23 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         Hand(a, b, pb, fa, fb, rf);
                         next = Plow(next, a.xyz, pb, a.w, centre);
                         if (rf > 0) next = Plow(next, fa, fb, rf, centre);
+                    }
+                }
+                // The wearer's own arms, hands and thighs in reach. None in reach, one read.
+                uint own = (uint) _MainTex.Load(int3(41, side, 0)).x;
+                [branch] if (own != 0)
+                {
+                    float4 mass = _MainTex.Load(int3(30, side, 0));
+                    float3 centre = mass.w > 0 ? mass.xyz : mul(m, float4(0, 0, 0.5 * (Count().z - 1) * _Lattice.w, 1)).xyz;
+                    [unroll] for (uint c = 0; c < 8; c++)
+                    {
+                        [branch] if (own & (1u << c))
+                        {
+                            float3 a, b;
+                            float r;
+                            Own(c, scale, a, b, r);
+                            next = Out(next, a, b, r, centre);
+                        }
                     }
                 }
                 // A particle the hands drive past the plane goes half the way back to its home's side of
@@ -3321,6 +3437,49 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             float3 cb = tb.w > 0 ? tb.xyz : mul(Anchor(region ^ 1), float4(0, 0, zc, 1)).xyz;
                             return float4(distance(ca, cb), length(_PairOffset.xyz) * scale, _PairReach.z * scale, scale);
                         }
+                        // Which of the wearer's own capsules are in reach, a bit each, then each one's
+                        // ends for the draw, as the hands' slots are. Read a frame late by the first
+                        // pass, so the reach has room.
+                        [branch] if (px.x == 41)
+                        {
+                            float3 centre = mul(m, float4(0, 0, 0.5 * (Count().z - 1) * _Lattice.w, 1)).xyz;
+                            float reach = (0.5 * length(float3(Count() - 1)) * _Lattice.w + 0.05) * scale;
+                            uint bits = 0;
+                            [unroll] for (uint c = 0; c < 8; c++)
+                            {
+                                float3 a, b;
+                                float r;
+                                Own(c, scale, a, b, r);
+                                float3 seg = b - a, q = a + seg * saturate(dot(centre - a, seg) / max(dot(seg, seg), 1e-9));
+                                if (r > 0 && distance(centre, q) <= reach + r) bits |= 1u << c;
+                            }
+                            return float4(distant ? 0 : bits, 0, 0, 1);
+                        }
+                        [branch] if (px.x >= 42 && px.x <= 57)
+                        {
+                            float3 a, b;
+                            float r;
+                            Own((uint) (px.x - 42) >> 1, scale, a, b, r);
+                            return (px.x & 1) == 0 ? float4(a, r) : float4(b, 0);
+                        }
+                        // The draw's last guard: the plane midway between the two skins where they reach
+                        // toward each other, moved on by half however far they overlapped as built, and
+                        // the give it eases skin past it into.
+                        [branch] if (px.x == 58 || px.x == 59)
+                        {
+                            if (!(_Pair > 0 && _PairSkin.x > 0) || distant) return 0;
+                            float zc = 0.5 * (Count().z - 1) * _Lattice.w;
+                            uint ps = (region ^ 1) * (side - Base + 1) + side - Base;
+                            float4 ta = _MainTex.Load(int3(30, side, 0)), tb = _MainTex.Load(int3(30, ps, 0));
+                            float3 ca = ta.w > 0 ? ta.xyz : mul(m, float4(0, 0, zc, 1)).xyz;
+                            float3 cb = tb.w > 0 ? tb.xyz : mul(Anchor(region ^ 1), float4(0, 0, zc, 1)).xyz;
+                            float dist = distance(ca, cb);
+                            if (!(dist > 1e-4)) return 0;
+                            float self = (region == 0 ? _PairSkin.x : _PairSkin.y) * scale, partner = (region == 0 ? _PairSkin.y : _PairSkin.x) * scale;
+                            float overlap = max(self + partner - length(_PairOffset.xyz) * scale, 0);
+                            float3 u = (cb - ca) / dist;
+                            return px.x == 58 ? float4(u, dot(ca, u) + 0.5 * (self + dist - partner) + 0.5 * overlap) : float4(0.004 * scale, 0, 0, 1);
+                        }
                         [branch] if ((px.x == 30 || px.x == 31) && _MassHz > 0)
                         {
                             uint side0 = side - Base;
@@ -3405,7 +3564,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
 Texture2D<float4> _MainTex;
 float4 _Lattice;
 // One anchor a region. Packed, each region is a block of rows of the state, its side row last.
-float4x4 _JellyAnchor[4];
+// After the four, the wearer's own bones (JellySpikeBuilder's ownBones).
+float4x4 _JellyAnchor[16];
 float _Damp;
 // The first row of this pixel's region, set once a pixel and added to every lattice texel.
 static uint Base = 0;
