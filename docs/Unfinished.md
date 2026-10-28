@@ -1853,8 +1853,8 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
   the same session. Now declared, and Verify reads the material file itself (it failed before the
   fix, passes after). Ruled out on the way: the client's texture parser and its far switch (its
   manager and tasks, emulated from the decompile on the real prefab, switch the steps off far and
-  back on near), Joe's content filters, a client update, the load log. Joe to rebuild both and
-  look in game.
+  back on near), Joe's content filters, a client update, the load log. **Rebuilt, pink and
+  wobbling in game the same morning [GAME]** (Joe, screenshot).
 - **Order, Joe 2026-10-27:** the squash shader working on MagicaCloth first and 5.0.0 shipped; the
   live tissue and the rest of his ideas after, in 5.1.
 - The menu item rebuilt the assets with the preview scene, which replaced the open scene: it now
