@@ -427,6 +427,10 @@ namespace AvatarBridge.Regression
                 bool plane = !Environment.GetCommandLineArgs().Contains("-jellyNoPlane");
                 mat.SetVector("_PairReach", plane ? new Vector4(wide0, wide1, Mathf.Max(apart.magnitude - wide0 - wide1, 0f), 0f) : Vector4.zero);
                 mat.SetVector("_PairSkin", plane ? new Vector4(skinReach[0], skinReach[1], 0f, 0f) : Vector4.zero);
+                // Each breast's skin on its region's frame, what the own capsules and hands are kept
+                // in reach of: the lattice is the larger's box, past the smaller's skin.
+                for (int side = 0; side < 2; side++)
+                    mat.SetVector($"_JellyBox{side}", new Vector4(0.5f * (his[side].x - los[side].x), 0.5f * (his[side].y - los[side].y), his[side].z - los[side].z, 0f));
                 mat.SetVector("_JellyOffsetAt0", Vector4.zero);
                 mat.SetVector("_JellyOffsetAt1", Vector4.zero);
                 mat.SetFloat("_JellySkinStride", 0f);
@@ -2618,7 +2622,8 @@ namespace AvatarBridge.Regression
                           $"and {provider.transforms.Length} transforms, {Object.FindObjectsOfType<MonoBehaviour>().Count(b => b.GetType().Name == "LateEventsManager")} late events managers, " +
                           $"anchor handed {(handed != null ? handed[0].GetColumn(3).ToString("F3") : "none")} against {breastRegions[0].position.ToString("F3")}, particle 0 {s[0].ToString("F3")}, switches {s[side * 2 * Row + 18]}, " +
                           $"centres {s[side * 2 * Row + 30].ToString("F3")} and {s[(2 * side + 1) * 2 * Row + 30].ToString("F3")}, " +
-                          $"plane (centres apart, as built, gap, scale) {s[side * 2 * Row + 40].ToString("F4")} and {s[(2 * side + 1) * 2 * Row + 40].ToString("F4")}");
+                          $"plane (centres apart, as built, gap, scale) {s[side * 2 * Row + 40].ToString("F4")} and {s[(2 * side + 1) * 2 * Row + 40].ToString("F4")}, " +
+                          $"own capsules in reach at rest {(int) s[side * 2 * Row + 41].x} and {(int) s[(2 * side + 1) * 2 * Row + 41].x} (bits)");
             }
             {
                 var s = Read(stateRt);
@@ -2890,6 +2895,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _JellyOwn1 (""The same for the right"", Vector) = (0, 0, 0, 0)
         _JellyCol0 (""The avatar's own colliders' radii, those pressing; 0 none"", Vector) = (0, 0, 0, 0)
         _JellyCol1 (""The next four"", Vector) = (0, 0, 0, 0)
+        _JellyBox0 (""The first region's skin on its anchor: half width, half height, depth; 0 the lattice's box"", Vector) = (0, 0, 0, 0)
+        _JellyBox1 (""The same for the second"", Vector) = (0, 0, 0, 0)
         _JellyOffsetAt0 (""The first region's place on the bone it rides, in the bone's units, w its scale on it; w 0 rides none"", Vector) = (0, 0, 0, 0)
         _JellyOffsetTurn0 (""The first region's turn on that bone"", Vector) = (0, 0, 0, 1)
         _JellyOffsetAt1 (""The second region's place on its bone"", Vector) = (0, 0, 0, 0)
@@ -2917,7 +2924,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             float _MassHz, _MassCarried, _MassDamp, _Give, _MassRadius, _Limit, _Pair, _PairKeep, _Squish, _Viscous, _Solid;
             // The frame's time, for how fast the homes move.
             static float FrameDt;
-            float4 _Motion, _PairOffset, _PairReach, _PairSkin, _JellyOwn0, _JellyOwn1, _JellyCol0, _JellyCol1, _JellyOffsetAt0, _JellyOffsetTurn0, _JellyOffsetAt1, _JellyOffsetTurn1;
+            float4 _Motion, _PairOffset, _PairReach, _PairSkin, _JellyOwn0, _JellyOwn1, _JellyCol0, _JellyCol1, _JellyBox0, _JellyBox1, _JellyOffsetAt0, _JellyOffsetTurn0, _JellyOffsetAt1, _JellyOffsetTurn1;
             // A helper mesh skinned four points to each region's bone and four to where it hangs on
             // the chest, as the squash's slots, bound as the provider's copy of its skinned buffer.
             ByteAddressBuffer _JellySkin;
@@ -3066,6 +3073,22 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 return d < r + radius && d > 1e-6 ? off * (c * (r + radius - d) / d) : 0;
             }
 
+            // Whether a capsule from a to b of radius r can reach the skin: within a margin of its box on
+            // the anchor (the lattice's, where none is set), 8 cm for what a press bulges out of it plus
+            // however far its mass has swung off its rest. A sphere round the lattice took in the
+            // thighs below it, so every particle and breast vertex tested them with the arms down.
+            // Nine points along the capsule, each a sixteenth of it from the next at most.
+            bool InReach(float3 a, float3 b, float r, float4x4 m, float scale, uint side)
+            {
+                float4 box = Region == 0 ? _JellyBox0 : _JellyBox1;
+                float3 half = box.z > 0 ? float3(box.xy, 0.5 * box.z) : 0.5 * (float3) (Count() - 1) * _Lattice.w, mid = float3(0, 0, half.z);
+                float4 mass = _MainTex.Load(int3(30, side, 0));
+                float swung = mass.w > 0 ? distance(mass.xyz, mul(m, float4(0, 0, 0.5 * (Count().z - 1) * _Lattice.w, 1)).xyz) : 0;
+                float most = 1e9;
+                [unroll] for (int k = 0; k <= 8; k++) most = min(most, length(max(abs(Into(m, lerp(a, b, k / 8.0)) - mid) - half, 0)));
+                return most * scale <= r + 0.08 * scale + swung + distance(a, b) / 16;
+            }
+
             // The client's first is the local player's head; only it is read.
             float4 _CVR_PlayerHeadPositions[1];
 
@@ -3081,7 +3104,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // Hand slot texel x of the eight, two texels each, (wrist, radius) then (an open hand's
             // tip, 10 plus the gesture), an empty one 0. Each looks through every player's hands and keeps the one it is due, so a
             // pass reads eight however many players there are.
-            float4 Scan(int x, float4x4 m, float scale)
+            float4 Scan(int x, float4x4 m, float scale, uint side)
             {
                 int slot = x >> 1;
                 int3 n = Count();
@@ -3121,11 +3144,10 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                                     float3 wrist = held.xyz;
                                     float3 arm = wrist - chest;
                                     float3 tip = wrist + (dot(arm, arm) > 1e-6 ? normalize(arm) : 0) * max(0.11 * tall - r, 0);
-                                    float3 seg = tip - wrist;
-                                    float3 closest = wrist + seg * saturate(dot(centre - wrist, seg) / max(dot(seg, seg), 1e-9));
                                     // ponytail: eight hands at most, the first in player order; a crowd round one
                                     // jelly needs more slots.
-                                    bool hit = dot(wrist, wrist) >= 1e-6 && distance(centre, closest) <= reach + r;
+                                    // Twice the radius, the skin's rim the draw eases out round a hand.
+                                    bool hit = dot(wrist, wrist) >= 1e-6 && InReach(wrist, tip, 2 * r, m, scale, side);
                                     // Kept, not returned: a return inside the unrolled loop fails D3D11's validation.
                                     kept = hit && found == slot ? ((x & 1) == 0 ? float4(wrist, r) : float4(tip, 10 + held.w)) : kept;
                                     found += hit;
@@ -3656,7 +3678,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         [branch] if (px.x < 16)
                         {
                             if (distant) return 0;
-                            return Scan(px.x, m, scale);
+                            return Scan(px.x, m, scale, side);
                         }
 #endif
                         [branch] if (px.x >= 32 && px.x <= 34 && _Solid > 0) return Bulk(px.x - 32, m, distant, side);
@@ -3676,16 +3698,13 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         // pass, so the reach has room.
                         [branch] if (px.x == 41)
                         {
-                            float3 centre = mul(m, float4(0, 0, 0.5 * (Count().z - 1) * _Lattice.w, 1)).xyz;
-                            float reach = (0.5 * length(float3(Count() - 1)) * _Lattice.w + 0.05) * scale;
                             uint bits = 0;
                             [unroll] for (uint c = 0; c < 16; c++)
                             {
                                 float3 a, b;
                                 float r;
                                 Own(c, scale, a, b, r);
-                                float3 seg = b - a, q = a + seg * saturate(dot(centre - a, seg) / max(dot(seg, seg), 1e-9));
-                                if (r > 0 && distance(centre, q) <= reach + r) bits |= 1u << c;
+                                if (r > 0 && InReach(a, b, r, m, scale, side)) bits |= 1u << c;
                             }
                             return float4(distant ? 0 : bits, 0, 0, 1);
                         }
