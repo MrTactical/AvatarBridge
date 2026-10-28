@@ -1873,6 +1873,42 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
   step reads: the dent follows the fingers and stays round (batch poke, before and after). The
   prop's box collider is now a trigger (Joe: still takes the grab, never pushes a player).
   Joe to check both in game.
+- **The breasts on the jelly, started 2026-10-28 [M]** (Joe: "start the implementation of the
+  titties for it"). Jelly spike: put the selected avatar's breasts on the jelly, on an avatar with
+  the squash built:
+  - One lattice over the pair, so one pushed into the other pushes it too, as the flesh between
+    does. Fitted to the skin the squash gives the pair at least half of, with a centimetre of room
+    and its back face half a centimetre into the chest wall, about 300 cells, standing on the chest.
+  - The body's squash materials gain a new YAPS role, Jelly (`yaps_jelly.cginc`, dormant unless asked
+    for by name). Each vertex moves as the eight particles round it have moved off their rest, by
+    the squash's own share of the pair, so every layer at a point takes the same move. Its normal is
+    turned by the move's gradient, and it is pushed out of the hands in reach, out to twice the
+    radius and never past it, so layers keep their order. The squash leaves the pair to it
+    (`_YAPS_JellyParts` masks their shares and their soft rows).
+  - The step writes the anchor it stepped on into side-row texels 26 to 29, so a body's shader finds
+    the lattice from the state alone, which the client points at each copy's own.
+  - `_Lift` holds the rest above by the sag gravity gives (g (1 - (wh)^2) / w^2), so upright the
+    tissue keeps the modelled shape.
+  - The cloth or dynamic bones whose roots are on the pair's chains are switched off. A second menu
+    item takes it all off again.
+- **On Kar, batch Play mode with the CCK's render controller, the squash built on a copy [M]:**
+  - A lattice of 12x7x7 (588 particles, 6.9 cm apart, 76 x 41 x 41 cm); 7 of 7 materials patched; the
+    breast and piercing cloths switched off.
+  - Settled 0.8 mm off the modelled shape (2.6 cm without the lift).
+  - A finger 3 cm in moved the tissue 33 mm and 1.75% of the picture's pixels, against 0.05% frame to
+    frame; a 50 degree turn swung it 9.3 cm.
+  - The jelly as before is unchanged: Verify gives the same numbers, and the bench's turn traces match
+    the last bench line for line.
+- **Found on the way:** in the editor every jelly in a scene shares the step's materials (the client
+  makes each copy its own, the editor does not), so a jelly prop in the same scene handed its anchor
+  to the avatar's lattice. The check switches other jellies off first.
+- **Open:** Kar's conversion has no squash now, so it needs reconverting with the squash ticked before
+  the menu item [GAME]. In game:
+  - the look at rest, the jiggle, the dents, the pair pushing each other;
+  - whether the piercings, whose cloth went off with the pair's, still sit on the skin.
+  Lying down, the lift, along the chest's up, holds the pair about 2.6 cm toward the head [R].
+  Viewers with no blitters (the Cameras content filter) and far copies see the rest shape, with no
+  squash either.
 - **Order, Joe 2026-10-27:** the squash shader working on MagicaCloth first and 5.0.0 shipped; the
   live tissue and the rest of his ideas after, in 5.1.
 - The menu item rebuilt the assets with the preview scene, which replaced the open scene: it now

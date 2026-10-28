@@ -222,4 +222,11 @@ float _YAPS_PortalSpan;
 // the patcher defines for a material whose value is above 0.
 float _YAPS_CopyStart;
 
+// --- live tissue (the jelly) -----------------------------------------
+// A lattice of particles the avatar's blitters step every frame; parts it carries move with it
+// and leave the squash. Here, not in yaps_jelly.cginc, since the dent reads _YAPS_JellyParts.
+Texture2D<float4> _YAPS_JellyState;
+float4 _YAPS_JellyLattice;  // particles across, up and deep; spacing in metres. 0: no lattice
+float4 _YAPS_JellyParts;    // 1 for each part (r, g, b, a of _YAPS_DentOwn) the lattice carries
+
 #endif

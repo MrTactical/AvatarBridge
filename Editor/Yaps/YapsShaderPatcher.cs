@@ -26,8 +26,10 @@ namespace AvatarBridge
 
         // Which deforms a patch compiles. Each one costs its compile in every pass whether the
         // material calls it or not: the plug's took most of a squash copy's wait, 10 s of 12.
+        // Jelly, the live tissue, is only ever asked for by name, so All keeps meaning what a patch
+        // made before roles compiled.
         [Flags]
-        public enum Roles { Plug = 1, Socket = 2, Squash = 4, All = Plug | Socket | Squash }
+        public enum Roles { Plug = 1, Socket = 2, Squash = 4, All = Plug | Socket | Squash, Jelly = 8 }
 
         public const string RolesProperty = "_YAPS_Roles";
 
@@ -159,6 +161,9 @@ namespace AvatarBridge
         _YAPS_SquashTune (""YAPS squash: lying-back weight, strength, bend give, deepest dent"", Vector) = (0.25,1,0.35,0.35)
         _YAPS_SquashMotion (""YAPS squash in motion: stretch per reach, swing ignored below, longest"", Vector) = (0,0.1,1.12,0)
         _YAPS_SquashPlug (""YAPS squash plug press gain"", Range(0,2)) = 1
+        [NoScaleOffset] _YAPS_JellyState (""YAPS live tissue state"", 2D) = ""black"" {}
+        _YAPS_JellyLattice (""YAPS live tissue: particles across, up, deep; spacing"", Vector) = (0,0,0,0)
+        _YAPS_JellyParts (""YAPS live tissue: the parts it carries"", Vector) = (0,0,0,0)
         [NoScaleOffset] _YAPS_SoftRow (""YAPS soft body rows, per vertex"", 2D) = ""black"" {}
         [NoScaleOffset] _YAPS_SoftTable (""YAPS soft body answers"", 2D) = ""black"" {}
         _YAPS_SoftDepth (""YAPS soft body depths per pair, 0 unbaked"", Vector) = (0,0,0,0)
@@ -1187,7 +1192,8 @@ namespace AvatarBridge
         static string DeformCalls(string id) =>
             $"#ifndef YAPS_NO_PLUG\n    YapsDeform(yapsPosition, yapsNormal, yapsTangent, {id});\n#endif\n" +
             $"#ifndef YAPS_NO_SOCKET\n    YapsSocketDeform(yapsPosition, yapsNormal, yapsTangent, {id});\n#endif\n" +
-            $"#ifndef YAPS_NO_SQUASH\n    YapsDentDeform(yapsPosition, yapsNormal, yapsTangent, {id});\n#endif\n";
+            $"#ifndef YAPS_NO_SQUASH\n    YapsDentDeform(yapsPosition, yapsNormal, yapsTangent, {id});\n#endif\n" +
+            $"#ifndef YAPS_NO_JELLY\n    YapsJellyDeform(yapsPosition, yapsNormal, yapsTangent, {id});\n#endif\n";
 
         // Unity's own caster: a wrapper with its exact signature deforms the input, then calls
         // it. The signature is read from the editor's own copy, the one the shader compiles
@@ -1425,6 +1431,7 @@ namespace AvatarBridge
             if ((roles & Roles.Plug) == 0) yaps = "#define YAPS_NO_PLUG\n" + yaps;
             if ((roles & Roles.Socket) == 0) yaps = "#define YAPS_NO_SOCKET\n" + yaps;
             if ((roles & Roles.Squash) == 0) yaps = "#define YAPS_NO_SQUASH\n" + yaps;
+            if ((roles & Roles.Jelly) == 0) yaps = "#define YAPS_NO_JELLY\n" + yaps;
             return duplicate ? "#define YAPS_DUPLICATE\n" + yaps : yaps;
         }
 
@@ -1450,7 +1457,7 @@ namespace AvatarBridge
             string[] names =
             {
                 "yaps_props.cginc", "yaps_atlas.cginc", "yaps_resolve.cginc", "yaps_deform.cginc",
-                "yaps_socket.cginc", "yaps_dent.cginc",
+                "yaps_socket.cginc", "yaps_dent.cginc", "yaps_jelly.cginc",
             };
             var read = new string[names.Length];
             for (int i = 0; i < names.Length; i++)

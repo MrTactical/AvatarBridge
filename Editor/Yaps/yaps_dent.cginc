@@ -779,6 +779,8 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
 
     uint width = (uint) round(abs(1.0 / _YAPS_DentOwn_TexelSize.x));
     float4 own = _YAPS_DentOwn.Load(int3(vertexId % width, vertexId / width, 0));
+    // Parts the live tissue carries are left to it (yaps_jelly.cginc), their baked presses too.
+    own *= 1 - saturate(_YAPS_JellyParts);
     // Between two parts a vertex carries a share of each, both eased toward their peaks at the
     // build, so they can come to more than one: it took most of both moves, and the pair tore
     // down the cleavage where its neighbours took less.
@@ -791,6 +793,8 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
     {
         uint2 packed = (uint2) round(_YAPS_SoftRow.Load(int3(vertexId % width, vertexId / width, 0)).rg * 65535);
         softRow = float3((packed.y & 32768) != 0 ? -(float) packed.x : (float) packed.x, (packed.y & 16383) / 16383.0, (packed.y & 16384) != 0);
+        // A negative row is the second pair's.
+        if (softRow.x != 0 && _YAPS_JellyParts[softRow.x > 0 ? 0 : 2] > 0) softRow = 0;
     }
     if (partShare <= 0 && softRow.x == 0) return;
     float shares[4] = { own.r, own.g, own.b, own.a };
