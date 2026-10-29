@@ -2988,23 +2988,35 @@ namespace AvatarBridge.Regression
                 RenderTexture pa = chain[0].originTexture, pb = chain[0].destinationTexture;
                 var copyMat = new Material(Shader.Find("Hidden/BlitCopy"));
                 void Chain() { foreach (var c in chain) Graphics.Blit(c.originTexture, c.destinationTexture, c.blitMaterial); }
-                // A crowd: each avatar its own state and twin, the same passes.
+                // A crowd: each avatar its own state, twin and far switch's three texels, the same passes.
                 var crowd = Enumerable.Range(0, 16).Select(k =>
                 {
                     var x = new RenderTexture(pa.descriptor);
                     var y = new RenderTexture(pb.descriptor);
+                    var z = Strip(3);
                     x.Create();
                     y.Create();
+                    z.Create();
                     Graphics.CopyTexture(pa, x);
                     Graphics.CopyTexture(pb, y);
-                    return (x, y);
+                    return (x, y, z);
                 }).ToList();
-                void Crowd(int many)
+                // Every other texture is the far switch's own: taken for the twin, a crowd paid a whole
+                // state's worth of it per avatar; shared by all, each waited on the last.
+                RenderTexture Mapped(RenderTexture t, int k) => t == pa ? crowd[k].x : t == pb ? crowd[k].y : crowd[k].z;
+                // passes: the first that many of the chain, the far switch's left out below its three.
+                void Crowd(int many, int passes = 99)
                 {
                     for (int k = 0; k < many; k++)
-                        foreach (var c in chain)
-                            Graphics.Blit(c.originTexture == pa ? crowd[k].x : crowd[k].y, c.destinationTexture == pa ? crowd[k].x : crowd[k].y, c.blitMaterial);
+                        foreach (var c in chain.Take(passes))
+                            Graphics.Blit(Mapped(c.originTexture, k), Mapped(c.destinationTexture, k), c.blitMaterial);
                 }
+                // The anchor straight from the provider, its skinned swing left out, for that swing's price.
+                var stride = mats.Select(mm => mm.GetFloat("_JellySkinStride")).ToList();
+                void Unskinned(bool off) { for (int k = 0; k < mats.Count; k++) mats[k].SetFloat("_JellySkinStride", off ? 0f : stride[k]); }
+                // The far switch's rest test off, as for a copy awake.
+                var rests = mats.Select(mm => mm.GetFloat("_Rest")).ToList();
+                void Rested(bool on) { for (int k = 0; k < mats.Count; k++) mats[k].SetFloat("_Rest", on ? rests[k] : 0f); }
                 // The parser's pass, as the far switch's build adds it: the second pass's material on its
                 // third pass.
                 var points = new Material(chain[chain.Count - 1].blitMaterial);
@@ -3066,14 +3078,18 @@ namespace AvatarBridge.Regression
                     ("the step at 90 fps", () => Near(1f / 90f), Chain, pb, 1000),
                     ("at 60 fps", () => Near(1f / 60f), Chain, pb, 1000),
                     ("4 avatars' at 90", () => Near(1f / 90f), () => Crowd(4), pb, 300),
-                    ("16 avatars'", () => Near(1f / 90f), () => Crowd(16), pb, 100),
-                    ("20 m off", () => { Near(1f / 90f); Head(20f); }, Chain, pb, 1000),
+                    ("16 avatars'", () => { Near(1f / 90f); Unskinned(false); }, () => Crowd(16), pb, 100),
+                    ("16 avatars', no far switch pass", () => Near(1f / 90f), () => Crowd(16, 2), pb, 100),
+                    ("16 avatars', awake (no rest test)", () => { Near(1f / 90f); Rested(false); }, () => Crowd(16), pb, 100),
+                    ("16 avatars', the anchor unskinned", () => { Near(1f / 90f); Rested(true); Unskinned(true); }, () => Crowd(16), pb, 100),
+                    ("20 m off", () => { Near(1f / 90f); Unskinned(false); Head(20f); }, Chain, pb, 1000),
                     ("16 avatars 20 m off", () => { Near(1f / 90f); Head(20f); }, () => Crowd(16), pb, 100),
                     ("the far switch's parser pass alone", () => Near(1f / 90f), () => Graphics.Blit(pa, strip, points), strip, 1000),
                     ("two copies", () => { }, () => { Graphics.Blit(pa, pb, copyMat); Graphics.Blit(pb, pa, copyMat); }, pb, 1000),
                     ($"the avatar drawn ({drawn.Count} materials) with the squash and the jelly", () => { Drawn(true, true); Fake(false, false); }, () => eye.Render(), eye.targetTexture, 200),
                     ("the jelly, 8 hands in reach", () => { Drawn(true, true); Fake(true, false); }, () => eye.Render(), eye.targetTexture, 200),
                     ("the jelly, 8 hands and a slap's ring", () => { Drawn(true, true); Fake(true, true); }, () => eye.Render(), eye.targetTexture, 200),
+                    ("the jelly alone, no squash", () => { Drawn(true, false); Fake(false, false); }, () => eye.Render(), eye.targetTexture, 200),
                     ("the squash alone", () => { Drawn(false, true); Fake(false, false); }, () => eye.Render(), eye.targetTexture, 200),
                     ("the squash on every part, the breasts handed back to it", () => Drawn(false, true, true), () => eye.Render(), eye.targetTexture, 200),
                     ("neither", () => Drawn(false, false), () => eye.Render(), eye.targetTexture, 200),
@@ -3092,7 +3108,7 @@ namespace AvatarBridge.Regression
                 Object.DestroyImmediate(copyMat);
                 Object.DestroyImmediate(points);
                 strip.Release();
-                foreach (var (x, y) in crowd) { x.Release(); y.Release(); }
+                foreach (var (x, y, z) in crowd) { x.Release(); y.Release(); z.Release(); }
                 Debug.Log($"[Jelly] cost on {SystemInfo.graphicsDeviceName}, ms: " + string.Join("; ", timed.Select((r, v) => $"{r.name} {Spread(got[v])}")));
             }
             // The bodies' doing: how much further from the other the first's facing side was held

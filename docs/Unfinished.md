@@ -2511,6 +2511,37 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
       wavelength, fade; 1, 1 m/s, 10 cm, 0.4 s). Filmed on Kar: three slaps at 2.9 cm, a ripple
       over the front for about six frames; a squeeze's hands arriving at 2 m/s fire one too. Next:
       the jelly step's 1.8x (bisect), then Joe on the ring's look and settings.
+  - **The 1.8x, bisected 2026-10-29: no regression, the far switch's own pass.** The 28 Oct code
+    on today's machine reads its old figures (0.025 one avatar, 0.243 for 16), so the code moved,
+    not the machine; `801254b` fast, `db9ee21` slow, and that commit turned the far switch on for
+    the breasts, a third pass. The crowd bench gave each avatar its own state and twin but mapped
+    that pass's three texels onto the twin; now each has its own strip. Measured, 16 avatars: as
+    built 0.418, without the far switch's pass 0.250, awake (its rest test off) 0.417, the anchor
+    unskinned 0.411. So the pass costs 0.010 ms an avatar in a crowd whatever it computes: the
+    fixed price of a pass (its target and shader changed per avatar), as the steps' own ~0.008
+    each is mostly (the same passes only copying cost 0.008). Tried and reverted, no gain: the far
+    test decided in texel 18 alone (HLSL's `?:` and `&&` work out both sides, so it needs a real
+    branch), and the rest test returning before its walk of the players.
+  - **Joe 2026-10-29: "64 all close is an even bigger problem... more avatars barely increases
+    ms".** On the 4080 a crowd's cost is per-pass fixed price, so the floor with a blitter per
+    avatar is about 0.016 ms an awake avatar (two passes) plus the switch's 0.010, and 0.014 to
+    submit on the CPU; on a weak GPU it is the pixel work, which the far, view and rest switches
+    take away. (2) Working the anchor out once a region: 1.5% (the unskinned row), dropped. (3)
+    Half rate past a couple of metres by the parser switching the steps off every other frame:
+    about 30% off a mid-distance copy on the 4080, more on a weak GPU; not built, Joe to choose.
+    (4) One pass for every avatar through a shared screen texture, the YAPS atlas's transport: not
+    viable for a state. A named grab runs per camera (each eye, the portrait, the CVR camera, every
+    mirror, each its own size) and each overwrites the one texture, so nothing persists from one
+    frame to the next; the atlas works because it writes and reads within one camera.
+    **Joe also asked (2026-10-29) whether MagicaCloth's colliders could dent the jelly.** Already
+    half done: the wearer's own colliders press it (texels 64 to 79) and the cloth-swung bones are
+    its anchor. A shader cannot read a component, but MagicaCloth moves bones and bones reach the
+    step through skinning, so a probe net (a dozen small cloth bones on the skin, collision on)
+    pushed by any collider the cloth is given would read as dents, fingers included where the
+    toucher's avatar has finger colliders. MagicaCloth ties colliders to each cloth's own list
+    (`ColliderManager.Register` reads `colliderCollisionConstraint.colliderList`), so the client
+    must add other players' at run time: Joe has seen them push cloth in game, the code path is
+    unconfirmed. Not started.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 
