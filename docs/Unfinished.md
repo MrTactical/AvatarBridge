@@ -2527,8 +2527,19 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     avatar is about 0.016 ms an awake avatar (two passes) plus the switch's 0.010, and 0.014 to
     submit on the CPU; on a weak GPU it is the pixel work, which the far, view and rest switches
     take away. (2) Working the anchor out once a region: 1.5% (the unskinned row), dropped. (3)
-    Half rate past a couple of metres by the parser switching the steps off every other frame:
-    about 30% off a mid-distance copy on the 4080, more on a weak GPU; not built, Joe to choose.
+    Half rate, built 2026-10-29 (Joe: "build the half rate"): past `_Half` (2 m) of the viewer's
+    head and short of `_Far`, the far switch's pass turns the steps off every other 90th of a
+    second by the clock, so the parser's lag only shifts which frames, and never under 60 fps.
+    The step after a skip takes the frames it missed (texel 25: z the last step's time, w its
+    count, 2 or 3 against this frame's own time; a longer gap is a wake and steps one). The draw
+    follows the bones every frame and only reads the jiggle off the last step, so it is the
+    jiggle that drops to 45 Hz, never the body. Verify: the head 3 m off, the steps ran 40 of 80
+    frames, each taking 2. Bench, 16 avatars: 0.433 at the full rate, 0.259 at the half (40%
+    off); the committed code read 0.431 the same day, so the full rate costs what it did. First
+    built asking "is it halved" in the steps: `&&` works out both sides, and that alone put 10% on
+    every step. Next: Joe in game, whether a 45 Hz jiggle shows at 2 to 4 m, and whether the
+    client's parser, read back a few frames late, keeps the steps alternating (the verify's
+    parser is by hand and same-frame).
     (4) One pass for every avatar through a shared screen texture, the YAPS atlas's transport: not
     viable for a state. A named grab runs per camera (each eye, the portrait, the CVR camera, every
     mirror, each its own size) and each overwrites the one texture, so nothing persists from one

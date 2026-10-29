@@ -87,7 +87,7 @@ namespace AvatarBridge.Regression
             Menu.SetChecked("Tools/AvatarBridge Dev/Jelly spike: coarse lattice", EditorPrefs.GetBool(CoarseKey, true));
             return true;
         }
-        const int Row = 64, Passes = 2, Frames = 300, Load = 32, BreastFrames = 2300, ViewFrames = 260;
+        const int Row = 64, Passes = 2, Frames = 300, Load = 32, BreastFrames = 2400, ViewFrames = 360;
         struct Late { }
 
         static int frame;
@@ -2509,7 +2509,8 @@ namespace AvatarBridge.Regression
         static ComputeBuffer viewBuffer;
         static readonly List<string> viewSaid = new List<string>();
         static readonly List<bool> viewRan = new List<bool>();
-        static float viewBack;
+        static float viewBack, halfMost;
+        static int halfOn, halfFrames;
         // When the parser switched the steps off and on, as the rest and the view decide.
         static readonly List<string> restSaid = new List<string>();
         static bool wasStepping;
@@ -2542,6 +2543,8 @@ namespace AvatarBridge.Regression
             viewSaid.Clear();
             viewRan.Clear();
             viewBack = 0f;
+            halfMost = 0f;
+            halfOn = halfFrames = 0;
             restSaid.Clear();
             wasStepping = true;
             secondAt = breastRegions[1].position;
@@ -2644,7 +2647,7 @@ namespace AvatarBridge.Regression
                 var sw = Read(switched);
                 foreach (var task in breastParser.tasks)
                     if (task.component is Behaviour b && task.propertyName == "enabled") stepping &= b.enabled = sw[task.x].x >= 0.5f;
-                if (stepping != wasStepping && restSaid.Count < 40) restSaid.Add($"{(stepping ? "on" : "off")} {frame}");
+                if (stepping != wasStepping && restSaid.Count < 40 && frame < BreastFrames - ViewFrames + 260) restSaid.Add($"{(stepping ? "on" : "off")} {frame}");
                 wasStepping = stepping;
             }
             // Last, the viewer's camera 3 m in front of the pair: looking at it, away, back at it, and
@@ -2669,6 +2672,15 @@ namespace AvatarBridge.Regression
                     viewSaid.Add($"{(v < 60 ? "looking at it" : v < 120 ? "looking away" : v < 200 ? "looking back" : "1.2 m off, looking away")}, the steps {(stepping ? "on" : "off")}");
                 }
                 if (v >= 125 && v < 200) viewBack = Mathf.Max(viewBack, Furthest(Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture")), breastRegions));
+                // Then the viewer's head 3 m off, past the half rate's 2 m: the steps every other
+                // frame, each taking the frame it missed.
+                if (v >= 280)
+                {
+                    halfFrames++;
+                    if (stepping) halfOn++;
+                    var st = Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture"));
+                    halfMost = Mathf.Max(halfMost, st[Side(n) * 2 * Row + 25].w);
+                }
             }
             // One player, its finger into the first region's breast from the front, 3 cm past the
             // lattice's front less its centimetre of room, between frames 120 and 210.
@@ -2691,7 +2703,9 @@ namespace AvatarBridge.Regression
             Shader.SetGlobalVectorArray("_CVR_PlayerRightHandPositions", far);
             Shader.SetGlobalVectorArray("_CVR_PlayerChestPositions", chestAt);
             Shader.SetGlobalVectorArray("_CVR_PlayerRootPositions", root);
-            Shader.SetGlobalVectorArray("_CVR_PlayerHeadPositions", new Vector4[255]);
+            var heads = new Vector4[255];
+            if (frame >= BreastFrames - ViewFrames + 260) heads[0] = 0.5f * (breastRegions[0].position + breastRegions[1].position) + swing.forward * 3f;
+            Shader.SetGlobalVectorArray("_CVR_PlayerHeadPositions", heads);
             // Then, once the turn has rung out, the film's squeeze twice, the pair's contact off for the
             // first: two players, a hand each on the pair's outer sides, pointing back at the chest,
             // from 3 cm off the skin to 13 cm in (SquashPlayProbe's shot). The masses go alike both
@@ -3004,11 +3018,12 @@ namespace AvatarBridge.Regression
                 // Every other texture is the far switch's own: taken for the twin, a crowd paid a whole
                 // state's worth of it per avatar; shared by all, each waited on the last.
                 RenderTexture Mapped(RenderTexture t, int k) => t == pa ? crowd[k].x : t == pb ? crowd[k].y : crowd[k].z;
-                // passes: the first that many of the chain, the far switch's left out below its three.
-                void Crowd(int many, int passes = 99)
+                // passes: the first that many of the chain, the far switch's left out below its three;
+                // skip: that many left off the front, the far switch's alone past the steps.
+                void Crowd(int many, int passes = 99, int skip = 0)
                 {
                     for (int k = 0; k < many; k++)
-                        foreach (var c in chain.Take(passes))
+                        foreach (var c in chain.Skip(skip).Take(passes))
                             Graphics.Blit(Mapped(c.originTexture, k), Mapped(c.destinationTexture, k), c.blitMaterial);
                 }
                 // The anchor straight from the provider, its skinned swing left out, for that swing's price.
@@ -3073,6 +3088,8 @@ namespace AvatarBridge.Regression
                 // Far is the viewer's head past _Far; none reads as near.
                 void Head(float off) => Shader.SetGlobalVectorArray("_CVR_PlayerHeadPositions", Enumerable.Repeat(off > 0 ? (Vector4) (swing.position + swing.forward * off) : Vector4.zero, 255).ToArray());
                 void Near(float dt) { Head(0f); foreach (var mm in mats) mm.SetFloat("_FixedDt", dt); }
+                // The half rate: every other frame the whole chain at twice the frame, the far switch's alone between.
+                int halfTick = 0;
                 var timed = new (string name, Action set, Action run, RenderTexture rt, int runs)[]
                 {
                     ("the step at 90 fps", () => Near(1f / 90f), Chain, pb, 1000),
@@ -3081,6 +3098,8 @@ namespace AvatarBridge.Regression
                     ("16 avatars'", () => { Near(1f / 90f); Unskinned(false); }, () => Crowd(16), pb, 100),
                     ("16 avatars', no far switch pass", () => Near(1f / 90f), () => Crowd(16, 2), pb, 100),
                     ("16 avatars', awake (no rest test)", () => { Near(1f / 90f); Rested(false); }, () => Crowd(16), pb, 100),
+                    ("16 avatars' at the half rate, 3 m off", () => { Near(1f / 45f); Rested(true); Unskinned(false); Head(3f); },
+                        () => { if (halfTick++ % 2 == 0) Crowd(16); else Crowd(16, 99, chain.Count - 1); }, pb, 100),
                     ("16 avatars', the anchor unskinned", () => { Near(1f / 90f); Rested(true); Unskinned(true); }, () => Crowd(16), pb, 100),
                     ("20 m off", () => { Near(1f / 90f); Unskinned(false); Head(20f); }, Chain, pb, 1000),
                     ("16 avatars 20 m off", () => { Near(1f / 90f); Head(20f); }, () => Crowd(16), pb, 100),
@@ -3121,7 +3140,8 @@ namespace AvatarBridge.Regression
 
             noise = Changed(breastShots[0], breastShots[1]);
             poked = Changed(breastShots[1], breastShots[3]);
-            bool viewOk = viewRan.SequenceEqual(new[] { true, false, true, true }) && viewBack < 0.006f;
+            bool viewOk = viewRan.SequenceEqual(new[] { true, false, true, true }) && viewBack < 0.006f
+                && halfFrames > 0 && Mathf.Abs((float) halfOn / halfFrames - 0.5f) < 0.15f && halfMost >= 2f && halfMost <= 3f;
             bool ok = anchorOk && restMost < 0.006f && pokeMost > 0.01f && poked > 3f * noise + 0.002f && swingMost > 0.005f && bodies > 0.003f && handsOuter > 0.05f && viewOk;
             string dir = SessionState.GetString(K + "out", "Jelly");
             int w = breastShots[0].width, h = breastShots[0].height;
@@ -3135,7 +3155,8 @@ namespace AvatarBridge.Regression
                       $"and {100f * poked:0.00}% of the picture's pixels against {100f * noise:0.00}% frame to frame; turning, {1000f * swingMost:0.0} mm; " +
                       $"squeezed together, the pair's contact held the side facing the other {1000f * bodies:0.0} mm further off than without");
             Debug.Log($"[Jelly] the steps switched by the parser: {(restSaid.Count > 0 ? string.Join(", ", restSaid) : "never")}");
-            Debug.Log($"[Jelly] the viewer's camera, 3 m off: {string.Join("; ", viewSaid)}; woken, the furthest particle {1000f * viewBack:0.0} mm off its rest (6 at most)");
+            Debug.Log($"[Jelly] the viewer's camera, 3 m off: {string.Join("; ", viewSaid)}; woken, the furthest particle {1000f * viewBack:0.0} mm off its rest (6 at most); " +
+                      $"its head 3 m off, the steps ran {halfOn} of {halfFrames} frames, the most a step took {halfMost:0}");
             Debug.Log($"[Jelly] hands squeeze, 13 cm into each outer side: the masses {1000f * handsCloser:0.0} mm closer, the first's outer side {1000f * handsOuter:0.0} mm " +
                       $"and inner side {1000f * handsInner:0.0} mm off rest, its volume {handsVolume:0.000}");
             Debug.Log($"[Jelly] a slap, a palm 5 cm into one side for a tenth of a second: the whole went {1000f * slapMost:0.0} mm, still swinging {1000f * slapLater:0.0} mm a second on");
@@ -3178,6 +3199,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _Far (""Hangs rigid past this many metres from the viewer's head"", Float) = 4
         _Behind (""Hangs rigid more than this many degrees off where the viewer's camera looks, 0 never"", Float) = 100
         _Near (""Never hangs rigid for being out of view within this many metres of the viewer's camera"", Float) = 2
+        _Half (""Steps every other frame past this many metres from the viewer's head, short of _Far; 0 never"", Float) = 2
         _Pass (""Which of the frame's passes this is: 2 copies the rider out"", Float) = 0
         _Slap (""Slaps: metres a second to fire, depth per m/s, deepest, life in seconds"", Vector) = (0.5, 0.01, 0.03, 1.5)
         _FixedDt (""Fixed frame time, 0 for the real one"", Float) = 0
@@ -3232,7 +3254,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             #include ""UnityCG.cginc""
             #include ""JellyCommon.cginc""
 
-            float _Stiff, _Hz, _Hand, _Far, _Behind, _Near, _Pass, _FixedDt, _Stress, _Sleep, _Lift, _Rider, _Rest, _Regions;
+            float _Stiff, _Hz, _Hand, _Far, _Behind, _Near, _Half, _Pass, _FixedDt, _Stress, _Sleep, _Lift, _Rider, _Rest, _Regions;
             float _MassHz, _MassCarried, _MassDamp, _Give, _MassRadius, _Limit, _Pair, _PairKeep, _Squish, _Viscous, _Solid;
             float4 _Slap;
             // The frame's time, for how fast the homes move.
@@ -3489,6 +3511,14 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float3 head = _CVR_PlayerHeadPositions[0].xyz, at = a._m03_m13_m23;
                 return dot(head, head) > 1e-6 && distance(head, at) > _Far - (was ? 0.5 : 0)
                     || Unseen(at, 2 * length(float3(Count()) * _Lattice.w) * length(a._m00_m10_m20), was);
+            }
+
+            // Past _Half of the viewer's head the parser runs the steps every other frame, the
+            // crowd's cost halved where a jiggle at half the rate does not show.
+            bool Halved()
+            {
+                float3 head = _CVR_PlayerHeadPositions[0].xyz;
+                return _Half > 0 && dot(head, head) > 1e-6 && distance(head, AnchorOf(0)._m03_m13_m23) > _Half;
             }
 
 #if defined(JELLY_SCAN) || defined(JELLY_POINTS)
@@ -4166,6 +4196,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
 #ifdef JELLY_POINTS
                     [branch] if (!off && _Rest > 0) off = Resting();
 #endif
+                    // Every other 90th of a second by the clock, not by frames, so the parser's few
+                    // frames of lag only shift which. Never under 60 fps, where half is too few.
+                    [branch] if (!off && Halved()) off = _MainTex.Load(int3(25, side, 0)).x < 1.0 / 60 && frac(_Time.y * 45 + 0.25) >= 0.5;
                     return float4(off ? 0 : 1, 0, 0, 1);
                 }
                 float4 here = _MainTex.Load(int3(px, 0));
@@ -4191,7 +4224,18 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float4 clock = _MainTex.Load(int3(25, side, 0));
                 float real = clamp(unity_DeltaTime.x, 1.0 / 240, 1.0 / 30), smooth = clock.y > 0 ? lerp(clock.y, real, 0.05) : real;
                 float held = _Pass > 0.5 ? max(clock.x, 1.0 / 240) : clock.x > 0 && abs(smooth - clock.x) < 0.15 * clock.x ? clock.x : smooth;
-                float dt = _FixedDt > 0 ? _FixedDt : held;
+                // Skipped by the half rate, the step takes the frames it missed, counted against this
+                // frame's own time so a slow frame is not taken twice. A longer gap is a wake and
+                // steps one frame, as before. The first pass counts; the second reads its count.
+                // Not asked whether it is halved: && runs both sides, and that alone cost every step 10%.
+                float frames = clock.w;
+                [branch] if (_Pass < 0.5)
+                {
+                    float f = clock.z > 0 ? round((_Time.y - clock.z) / real) : 1;
+                    frames = f >= 2 && f <= 3 ? f : 1;
+                }
+                frames = max(frames, 1);
+                float dt = min((_FixedDt > 0 ? _FixedDt : held) * frames, 1.0 / 30);
                 FrameDt = dt;
                 int passes = dt > 1.0 / 72 ? 2 : 1;
                 float h = dt / passes;
@@ -4218,7 +4262,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     if (_Pass < 0.5)
                     {
                         if (px.x == 18) return float4(distant, asleep, 0, 1);
-                        if (px.x == 25) return float4(held, smooth, 0, 1);
+                        if (px.x == 25) return float4(held, smooth, _Time.y, frames);
 #ifdef JELLY_SCAN
                         [branch] if (px.x < 16)
                         {
