@@ -87,7 +87,7 @@ namespace AvatarBridge.Regression
             Menu.SetChecked("Tools/AvatarBridge Dev/Jelly spike: coarse lattice", EditorPrefs.GetBool(CoarseKey, true));
             return true;
         }
-        const int Row = 64, Passes = 2, Frames = 300, Load = 32, BreastFrames = 2520, ViewFrames = 480, ProbesPer = 8;
+        const int Row = 64, Passes = 2, Frames = 300, Load = 32, BreastFrames = 2580, ViewFrames = 540, ProbesPer = 8;
         struct Late { }
 
         static int frame;
@@ -2605,10 +2605,12 @@ namespace AvatarBridge.Regression
         static readonly List<string> viewSaid = new List<string>();
         static readonly List<bool> viewRan = new List<bool>();
         static float viewBack, halfMost, probeBefore, probeDent, probeMoved;
-        static int halfOn, halfFrames, probeSlots, probeSlotsBefore;
-        static readonly List<string> probeSaid = new List<string>(), probeSeries = new List<string>();
-        static bool probed;
+        static int halfOn, halfFrames, probeSlots, probeSlotsBefore, ringsSlow, ringsProbe, ringsBoth;
+        static readonly List<string> probeSaid = new List<string>(), probeSeries = new List<string>(), ringSaid = new List<string>();
+        static bool probed, remoteHand;
         static Transform remoteBall;
+        static Vector3 remoteWrist;
+        static Vector2 ringWas;
         static List<Transform> probeTs;
         static List<Vector3> probeRest;
         static List<Transform> probeHang;
@@ -2792,8 +2794,11 @@ namespace AvatarBridge.Regression
                 // Last, another player's collider: a ball of a hand's size put in the probes' cloth and
                 // dynamic bones as the client puts it, from 7 cm off the first breast's frontmost probe to
                 // 3 cm past it, with no player's hand in the arrays, so only the probes can dent it.
+                // Then the same ball as a slap, 10 cm in three frames, and that slap again with a
+                // player's hand on its path, as the client gives a hand both: a ring each, the second
+                // the arrays', the probes' taken for it.
                 var nets = jelly.GetComponentsInChildren<Behaviour>(true).Where(c => c.name.StartsWith("Jelly Probes")).ToList();
-                if (nets.Count > 0 && v >= 360 && v <= 470)
+                if (nets.Count > 0 && v >= 360 && v <= 535)
                 {
                     probed = true;
                     if (v == 360)
@@ -2817,9 +2822,23 @@ namespace AvatarBridge.Regression
                                       $"{100f * Vector3.Dot(probeTs[0].position - breastRegions[0].position, breastRegions[0].forward):0.0} cm out on its region");
                     }
                     var front = probeHang[0].TransformPoint(probeRest[0]);
-                    float pressed = Mathf.Clamp01((v - 370) / 30f) - Mathf.Clamp01((v - 430) / 30f);
+                    float slapped = Mathf.Clamp01(1f - Mathf.Abs(v - 517) / 3f);
+                    float pressed = Mathf.Clamp01((v - 370) / 30f) - Mathf.Clamp01((v - 430) / 30f) + Mathf.Clamp01(1f - Mathf.Abs(v - 487) / 3f) + slapped;
                     remoteBall.position = front + breastRegions[0].forward * (0.045f + 0.07f - 0.1f * pressed);
+                    remoteHand = v >= 505 && v < 535;
+                    remoteWrist = front + breastRegions[0].forward * (0.126f + 0.07f - 0.1f * slapped);
                     var st = Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture"));
+                    // The first breast's rings: a slot's time new since last frame is one fired.
+                    var rings = new Vector2(st[Side(n) * 2 * Row + 80].w, st[Side(n) * 2 * Row + 82].w);
+                    if (v > 360)
+                        for (int e = 0; e < 2; e++)
+                            if (rings[e] != ringWas[e])
+                            {
+                                if (v < 470) ringsSlow++; else if (v < 505) ringsProbe++; else ringsBoth++;
+                                ringSaid.Add($"{v}: {1000f * st[Side(n) * 2 * Row + 81 + 2 * e].w:0.0} mm deep, " +
+                                             $"{100f * ((Vector3) st[Side(n) * 2 * Row + 80 + 2 * e] - front).magnitude:0.0} cm off the frontmost probe's rest");
+                            }
+                    ringWas = rings;
                     float most = Furthest(st, breastRegions);
                     int slots = 0;
                     for (int e = 0; e < 8; e++) if (st[Side(n) * 2 * Row + 2 * e + 1].w > 0.5f) slots++;
@@ -2842,8 +2861,9 @@ namespace AvatarBridge.Regression
                         probeSlots = Mathf.Max(probeSlots, slots);
                         probeMoved = Mathf.Max(probeMoved, moved);
                     }
-                    if (v == 470)
+                    if (v == 535)
                     {
+                        remoteHand = false;
 #if AVATARBRIDGE_MAGICA
                         foreach (var net in nets.OfType<MagicaCloth2.MagicaCloth>())
                         {
@@ -2946,6 +2966,12 @@ namespace AvatarBridge.Regression
                 var up = breastRegions[0].up;
                 var under = breastRegions[0].position + breastRegions[0].forward * (0.6f * (n.z - 1) * breastSpacing) - up * (0.3f * (n.y - 1) * breastSpacing);
                 if (across > 0f) TwoBone(upperArm, lowerArm, wristBone, Vector3.Lerp(wristBone.position, under + 0.5f * (secondAt - breastRegions[0].position), across), swing.forward);
+            }
+            if (remoteHand)
+            {
+                hand[0] = remoteWrist;
+                chestAt[0] = remoteWrist + breastRegions[0].forward * 0.45f;
+                root[0] = new Vector4(chestAt[0].x, swing.position.y, chestAt[0].z, 1.6f);
             }
             Shader.SetGlobalVectorArray("_CVR_PlayerLeftHandPositions", hand);
             Shader.SetGlobalVectorArray("_CVR_PlayerChestPositions", chestAt);
@@ -3315,7 +3341,7 @@ namespace AvatarBridge.Regression
             poked = Changed(breastShots[1], breastShots[3]);
             bool viewOk = viewRan.SequenceEqual(new[] { true, false, true, true }) && viewBack < 0.006f
                 && halfFrames > 0 && Mathf.Abs((float) halfOn / halfFrames - 0.5f) < 0.15f && halfMost >= 2f && halfMost <= 3f;
-            bool probeOk = !probed || probeDent > probeBefore + 0.005f && probeSlots > probeSlotsBefore;
+            bool probeOk = !probed || probeDent > probeBefore + 0.005f && probeSlots > probeSlotsBefore && ringsSlow == 0 && ringsProbe == 1 && ringsBoth == 1;
             bool ok = anchorOk && restMost < 0.006f && pokeMost > 0.01f && poked > 3f * noise + 0.002f && swingMost > 0.005f && bodies > 0.003f && handsOuter > 0.05f && viewOk && probeOk;
             string dir = SessionState.GetString(K + "out", "Jelly");
             int w = breastShots[0].width, h = breastShots[0].height;
@@ -3337,6 +3363,8 @@ namespace AvatarBridge.Regression
                           $"the probes moved {1000f * probeMoved:0.0} mm at most; {probeSlotsBefore} slots held before it came (the slap's palm, parked 3 cm off the outer side)");
             if (probed) Debug.Log($"[Jelly] the probes: {string.Join("; ", probeSaid)}");
             if (probed) Debug.Log($"[Jelly] the probes' press, the furthest particle in mm by frame: {string.Join(", ", probeSeries)}");
+            if (probed) Debug.Log($"[Jelly] the probes' slaps, rings fired: {ringsSlow} in the slow press (0 wanted), {ringsProbe} for the ball's slap alone (1), " +
+                                  $"{ringsBoth} for it with a hand in the arrays (1); {(ringSaid.Count > 0 ? string.Join("; ", ringSaid) : "none")}");
             Debug.Log($"[Jelly] hands squeeze, 13 cm into each outer side: the masses {1000f * handsCloser:0.0} mm closer, the first's outer side {1000f * handsOuter:0.0} mm " +
                       $"and inner side {1000f * handsInner:0.0} mm off rest, its volume {handsVolume:0.000}");
             Debug.Log($"[Jelly] a slap, a palm 5 cm into one side for a tenth of a second: the whole went {1000f * slapMost:0.0} mm, still swinging {1000f * slapLater:0.0} mm a second on");
@@ -4383,7 +4411,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // nothing, nor does the first frame after a gap. Each lands as a ring for the draw (80 and
             // 81, 82 and 83: where and when, then its depth in w, _Slap.y a metre a second up to
             // _Slap.z), in the slot with less left of its own, never over a live stronger one. The
-            // hands are the slots the scan wrote last frame.
+            // hands are the slots the scan wrote last frame, less the probes', which ring below.
             float4 Slap(int x, float4x4 m, float scale, float dt, bool distant, uint side)
             {
                 float4 box = Region == 0 ? _JellyBox0 : _JellyBox1;
@@ -4396,7 +4424,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     [unroll] for (int e = 0; e < 8; e++)
                     {
                         float4 a = _MainTex.Load(int3(2 * e, side, 0)), b = _MainTex.Load(int3(2 * e + 1, side, 0));
-                        if (!(b.w > 0.5)) continue;
+                        // A probe's ball has no length. Taken as a palm, its first frame read as the
+                        // nearest palm closing from wherever another one was.
+                        if (!(b.w > 0.5) || all(b.xyz == a.xyz)) continue;
                         float3 pb, fa, fb;
                         float rf;
                         Hand(a, b, pb, fa, fb, rf);
@@ -4412,11 +4442,38 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 }
                 if (x == 84) return float4(near, 0, 0, _Time.y);
                 float4 keep = _MainTex.Load(int3(x, side, 0)), last = _MainTex.Load(int3(84, side, 0));
-                float speed = (last.x - near) / max(dt, 1e-4);
-                if (!(last.w > 0 && _Time.y - last.w < 0.1 && last.x > 0 && last.x < 0.5 && near <= 0 && speed > _Slap.x)) return keep;
-                float depth = min(_Slap.y * speed, _Slap.z);
                 float4 r0 = _MainTex.Load(int3(80, side, 0)), s0 = _MainTex.Load(int3(81, side, 0));
                 float4 r1 = _MainTex.Load(int3(82, side, 0)), s1 = _MainTex.Load(int3(83, side, 0));
+                bool timed = last.w > 0 && _Time.y - last.w < 0.1;
+                float speed = (last.x - near) / max(dt, 1e-4);
+                bool fired = timed && last.x > 0 && last.x < 0.5 && near <= 0 && speed > _Slap.x;
+                // A collider only the probes know of has no frame off the skin to close from, so a
+                // probe pushed in faster than a palm must come rings at its rest. Last frame's push is
+                // the readout's, from 88. Past 2 mm, not from under it: the cloth and the helper's
+                // skin spread a slap's first push over two frames, 3 mm then 45. A ring under 0.2 s
+                // old within 10 cm is the same slap: this push's next frames, or a hand carrying a
+                // collider as well, rung through the arrays three or four frames before the probes.
+                float4x4 back;
+                [branch] if (!fired && timed && !distant && Probing(Region, back))
+                {
+                    speed = _Slap.x;
+                    [loop] for (uint k = 0; k < min((uint) _JellyProbes, 16u); k++)
+                    {
+                        float3 tip, way;
+                        float gone = Probe(Region, k, back, tip, way), was = _MainTex.Load(int3(88 + k, side, 0)).w;
+                        float rate = (gone - was) / max(dt, 1e-4);
+                        float3 rest = tip - way * gone;
+                        bool rung = _Time.y - r0.w < 0.2 && distance(r0.xyz, rest) < 0.1 * scale || _Time.y - r1.w < 0.2 && distance(r1.xyz, rest) < 0.1 * scale;
+                        [flatten] if (gone > 0.002 && was >= 0 && rate > speed && !rung)
+                        {
+                            speed = rate;
+                            at = rest;
+                            fired = true;
+                        }
+                    }
+                }
+                if (!fired) return keep;
+                float depth = min(_Slap.y * speed, _Slap.z);
                 float left0 = s0.w > 0 ? s0.w * saturate(1 - (_Time.y - r0.w) / _Slap.w) : 0;
                 float left1 = s1.w > 0 ? s1.w * saturate(1 - (_Time.y - r1.w) / _Slap.w) : 0;
                 int slot = left0 <= left1 ? 0 : 1;
@@ -4580,7 +4637,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             return Mass(px.x, m, scale, dt, distant, side, region, (region ^ 1) * (side0 + 1) + side0);
                         }
                         if (px.x >= 80 && px.x <= 84) return Slap(px.x, m, scale, dt, distant, side);
-                        // A readout for the verify: each probe as the scan reads it, where it is and how far pushed.
+                        // Each probe as the scan reads it, where it is and how far pushed: the slaps' last
+                        // frame, and a readout for the verify.
                         [branch] if (px.x >= 88 && px.x < 104)
                         {
                             float4x4 back;

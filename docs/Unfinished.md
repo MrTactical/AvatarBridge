@@ -2585,6 +2585,18 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     `-jellyProbes` is a flag now. Open [GAME]: a toucher whose avatar has no MagicaCloth collider of
     its own still pushes cloth. That is the client's capsule, read from code only; Joe believed only
     DynamicBone colliders were placed.
+    **Probe slaps, 2026-10-29** (Joe, on the two-row film: "why is magica cloth not doing the slap
+    ring right?", then "build it, check, verify, film"). A ring fired only for a palm that was off
+    the skin last frame and on it now, closing faster than 0.5 m/s. A probe's ball exists only once
+    it is pushed, so a collider alone never rang. Now a probe pushed past 2 mm and getting deeper
+    faster than 0.5 m/s rings at its rest. Last frame's push is the readout's texel, so nothing new
+    is kept. Not from under 2 mm: the cloth and the helper's skin spread a slap's first push over
+    two frames, 3 mm then 45. A ring under 0.2 s old within 10 cm is the same slap. That covers this
+    push's next frames, and a hand that also carries a collider: it rings through the arrays three
+    or four frames before the probes. The palm path skips the probes' balls (no length): taken as
+    a palm, one read as the nearest palm closing from wherever another was. Verify (two slaps, 10
+    cm in three frames, after the slow press): the slow press 0 rings; the ball alone 1, 30 mm
+    deep at the probe's rest; the ball with a hand on its path in the arrays 1, the arrays'.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 
