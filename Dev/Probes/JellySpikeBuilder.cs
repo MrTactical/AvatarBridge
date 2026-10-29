@@ -211,9 +211,11 @@ namespace AvatarBridge.Regression
         static int Unworn(Transform avatar)
         {
 #if AVATARBRIDGE_YAPS
-            // The colliders that pressed instead, back in the breasts' cloth: their ends mark them.
+            // The colliders that pressed instead, back in their pair's cloth: their ends mark them and
+            // name the pair, the breasts when they name none, as before any other pair.
             var ends = avatar.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith("Jelly collider ") && t.parent != null).ToList();
-            BreastCollide(avatar, ends.Select(t => t.parent).Distinct().SelectMany(t => t.GetComponents<Component>()).Where(IsCollider), with: true);
+            foreach (var pair in ends.GroupBy(t => t.name.Split(new[] { ' ' }, 5).ElementAtOrDefault(4)))
+                PairCollide(avatar, pair.Key != null ? PartOf(pair.Key) : Breast, pair.Select(t => t.parent).Distinct().SelectMany(t => t.GetComponents<Component>()).Where(IsCollider), with: true);
             foreach (var end in ends) Undo.DestroyObjectImmediate(end.gameObject);
 #endif
             var stale = avatar.GetComponentsInChildren<Transform>(true)
@@ -225,6 +227,10 @@ namespace AvatarBridge.Regression
 
 #if AVATARBRIDGE_YAPS
         static readonly Regex Breast = new Regex("breast|boob", RegexOptions.IgnoreCase);
+        static readonly Regex Other = new Regex("^(?!.*(breast|boob))", RegexOptions.IgnoreCase);
+
+        // A pair's bones, cloth and colliders by the name the squash gives it.
+        static Regex PartOf(string name) => new Regex(Regex.Escape(name), RegexOptions.IgnoreCase);
         const float BreastCells = 600f;
 
         [MenuItem("Tools/AvatarBridge Dev/Jelly spike: put the selected avatar's breasts on the jelly")]
@@ -235,7 +241,15 @@ namespace AvatarBridge.Regression
             EditorUtility.DisplayDialog("Jelly spike", said, "OK");
         }
 
-        [MenuItem("Tools/AvatarBridge Dev/Jelly spike: take the jelly off the selected avatar's breasts")]
+        [MenuItem("Tools/AvatarBridge Dev/Jelly spike: put the selected avatar's other pair on the jelly")]
+        static void OtherOnSelected()
+        {
+            string said = PairOn(Selection.activeGameObject != null ? Selection.activeGameObject.transform : null, Other);
+            Debug.Log("[Jelly] " + said);
+            EditorUtility.DisplayDialog("Jelly spike", said, "OK");
+        }
+
+        [MenuItem("Tools/AvatarBridge Dev/Jelly spike: take the jelly off the selected avatar")]
         static void BreastsOffSelected()
         {
             string said = BreastsOff(Selection.activeGameObject != null ? Selection.activeGameObject.transform : null);
@@ -260,29 +274,40 @@ namespace AvatarBridge.Regression
         // each vertex by the squash's own share of each breast, and the squash leaves the pair to it.
         // The cloth or dynamic bones swinging the pair are switched off, or they and the lattice
         // would both swing it.
-        internal static string BreastsOn(Transform picked)
+        internal static string BreastsOn(Transform picked) => PairOn(picked, Breast);
+
+        // The same for the first of the squash's pairs whose name want matches, hung from the trunk
+        // bone its skin's bones hang from.
+        internal static string PairOn(Transform picked, Regex want)
         {
             var root = AvatarOf(picked);
             var animator = root != null ? root.GetComponentInChildren<Animator>() : null;
-            var chest = animator != null && animator.isHuman
-                ? animator.GetBoneTransform(HumanBodyBones.UpperChest) ?? animator.GetBoneTransform(HumanBodyBones.Chest)
-                : null;
-            if (chest == null) return "Select a humanoid avatar in the scene first.";
+            if (animator == null || !animator.isHuman) return "Select a humanoid avatar in the scene first.";
             var mats = YapsSquash.Materials(root);
             if (mats.Count == 0) return $"{root.name} has no YAPS squash built. The jelly moves each vertex by the squash's own part shares, so build the squash first.";
             var body = YapsSquash.NamedBody(root);
             List<string> names = null;
             string none = "no skin carries both parts";
             var shares = body != null ? YapsSquash.NamedShares(root, body, out names, out none) : null;
-            int pair = names != null ? names.FindIndex(x => Breast.IsMatch(x)) : -1;
+            int pair = names != null ? names.FindIndex(want.IsMatch) : -1;
             if (shares == null || pair < 0 || pair > 1)
-                return $"No breast pair in {root.name}'s squash: {none ?? "its pairs are " + string.Join(", ", names)}.";
+                return $"No such pair in {root.name}'s squash: {none ?? "its pairs are " + string.Join(", ", names)}.";
+            var part = PartOf(names[pair]);
+            var trunk = new[] { HumanBodyBones.Hips, HumanBodyBones.Spine, HumanBodyBones.Chest, HumanBodyBones.UpperChest }.Select(animator.GetBoneTransform).Where(t => t != null).ToList();
+            var chest = Carrier(body, shares, 2 * pair, root);
+            while (chest != null && !trunk.Contains(chest)) chest = chest.parent;
+            if (chest == null) return $"{root.name}'s {names[pair]} hangs from no bone of the trunk.";
 
             var baked = new Mesh();
             body.BakeMesh(baked);
             var at = baked.vertices;
             Object.DestroyImmediate(baked);
-            var turn = root.rotation;
+            var pairSkin = Enumerable.Range(0, Mathf.Min(at.Length, shares.Length))
+                .Where(v => shares[v][2 * pair] >= 0.5f || shares[v][2 * pair + 1] >= 0.5f)
+                .Select(v => body.transform.position + body.transform.rotation * at[v]).ToArray();
+            // A pair behind its bone, as a seat, faces back: the lattice's front is always out of the body.
+            bool back = pairSkin.Length > 0 && Vector3.Dot(pairSkin.Aggregate(Vector3.zero, (sum, v) => sum + v) / pairSkin.Length - chest.position, root.forward) < 0f;
+            var turn = back ? root.rotation * Quaternion.Euler(0f, 180f, 0f) : root.rotation;
             var undo = Quaternion.Inverse(turn);
             var los = new Vector3[2];
             var his = new Vector3[2];
@@ -600,6 +625,31 @@ namespace AvatarBridge.Regression
                 // little thin sinks in a touch first, which reads as soft.
                 if (near.Count >= 8) ownRadii[c] = near.OrderBy(d => d).ElementAt(near.Count * 3 / 10);
             }
+            // None reaching a particle of the pair's lattices as built, on the side it pushes them from:
+            // there it would hold the tissue dented for good, as the thighs held a seat 18.7 mm in. Each
+            // is thinned to clear them by half a centimetre, so it presses only past where it rests.
+            var thinned = new List<string>();
+            for (int c = 0; c < 8; c++)
+            {
+                int s0 = (c >> 2) * 6 + ((c & 3) < 3 ? (c & 3) : 4);
+                if (!(ownRadii[c] > 0f)) continue;
+                Vector3 a = ownBones[s0].position, s = ownBones[s0 + 1].position - a;
+                float was = ownRadii[c];
+                for (int side = 0; side < 2; side++)
+                {
+                    var region = made.transform.Find($"Jelly Region {side}");
+                    var centre = region.TransformPoint(0f, 0f, 0.5f * (n.z - 1) * spacing);
+                    for (int x = 0; x < n.x; x++)
+                        for (int y = 0; y < n.y; y++)
+                            for (int z = 0; z < n.z; z++)
+                            {
+                                var p = region.TransformPoint(new Vector3(x - 0.5f * (n.x - 1), y - 0.5f * (n.y - 1), z) * spacing);
+                                var foot = a + s * Mathf.Clamp01(Vector3.Dot(p - a, s) / Mathf.Max(s.sqrMagnitude, 1e-12f));
+                                if (Vector3.Dot(p - foot, centre - (a + 0.5f * s)) >= 0f) ownRadii[c] = Mathf.Min(ownRadii[c], Mathf.Max((p - foot).magnitude - 0.005f, 0f));
+                            }
+                }
+                if (ownRadii[c] < was) thinned.Add($"{ownBones[s0].name} {1000f * was:0} to {1000f * ownRadii[c]:0} mm");
+            }
             // The avatar's own MagicaCloth and DynamicBone colliders that its breasts' cloth collides
             // with press the breasts as its limbs do, and come out of that cloth's lists, so they dent
             // the skin and no longer move the bones (Joe: "deform the mesh, not move the bone"). Each
@@ -607,26 +657,23 @@ namespace AvatarBridge.Regression
             // limbs do. Not one within a cell of the breasts' skin as built: it moves the lattice
             // round that skin at rest and would dent it for good (a sphere in the cleavage left the
             // tissue 41 mm off its rest), so it stays in the cloth, moving the bones as before.
-            var breastSkin = Enumerable.Range(0, Mathf.Min(at.Length, shares.Length))
-                .Where(v => shares[v][2 * pair] >= 0.5f || shares[v][2 * pair + 1] >= 0.5f)
-                .Select(v => body.transform.position + body.transform.rotation * at[v]).ToArray();
             var pressing = new List<(Component c, Vector3 a, Vector3 b, float r)>();
             var touching = new List<string>();
-            foreach (var c in BreastColliders(root).OrderBy(c => (c.transform.position - chest.position).sqrMagnitude))
+            foreach (var c in PairColliders(root, part).OrderBy(c => (c.transform.position - chest.position).sqrMagnitude))
             {
                 if (!Capsule(c, out var ca, out var cb, out float cr)) continue;
-                if (breastSkin.Any(p => Seg(p, ca, cb) < cr + spacing)) touching.Add(c.name);
+                if (pairSkin.Any(p => Seg(p, ca, cb) < cr + spacing)) touching.Add(c.name);
                 // ponytail: eight, the nearest the chest first; more need anchors past the 32 handed.
                 else if (pressing.Count < 8) pressing.Add((c, ca, cb, cr));
             }
-            BreastCollide(root, pressing.Select(p => p.c), with: false);
+            PairCollide(root, part, pressing.Select(p => p.c), with: false);
             var colRadii = new float[8];
             var colEnds = new List<Transform>();
             for (int i = 0; i < pressing.Count; i++)
             {
                 foreach (var (end, place) in new[] { ("a", pressing[i].a), ("b", pressing[i].b) })
                 {
-                    var t = new GameObject($"Jelly collider {i} {end}").transform;
+                    var t = new GameObject($"Jelly collider {i} {end} {names[pair]}").transform;
                     Undo.RegisterCreatedObjectUndo(t.gameObject, "Put the breasts on the jelly");
                     t.SetParent(pressing[i].c.transform, false);
                     t.position = place;
@@ -680,7 +727,7 @@ namespace AvatarBridge.Regression
             AssetDatabase.SaveAssets();
             // On with the cloth, off with the mass. !cloth here switched the cloth off while it was
             // meant to carry the regions, and the pair hung still on the chest.
-            var off = BreastPhysics(root, on: cloth);
+            var off = PairPhysics(root, part, on: cloth);
             return $"On {root.name}: {names[pair]} on two lattices of {n.x}x{n.y}x{n.z} ({n.x * n.y * n.z} particles each, {100f * spacing:0.0} cm apart, " +
                    $"{100f * (n.x - 1) * spacing:0} x {100f * (n.y - 1) * spacing:0} x {100f * (n.z - 1) * spacing:0} cm) under {chest.name}; " +
                    (cloth ? $"{1000f * volume[0]:0.0} and {1000f * volume[1]:0.0} litres, riding {carriers[0] ?? "nothing"} and {carriers[1] ?? "nothing"}, which the cloth swings, a hand moving the whole by {give:0.00} of its press; "
@@ -688,7 +735,7 @@ namespace AvatarBridge.Regression
                    $"{patched} of {mats.Count} squash materials read it{(left.Count > 0 ? " (left as they were: " + string.Join(", ", left) + ")" : "")}; " +
                    (cloth ? (off.Count > 0 ? "switched back on: " + string.Join(", ", off) : "its cloth left on")
                        : off.Count > 0 ? "switched off: " + string.Join(", ", off) : "no cloth or dynamic bones found on the pair, so if anything else swings it, switch that off") +
-                   $"; {collided}; {stale} earlier jelly taken off. Upload as it is.";
+                   $"; {collided}; {(thinned.Count > 0 ? "thinned to clear it as built: " + string.Join(", ", thinned) : "none of the wearer's limbs reaching it as built")}; {stale} earlier jelly taken off. Upload as it is.";
         }
 
         internal static string BreastsOff(Transform picked)
@@ -706,18 +753,21 @@ namespace AvatarBridge.Regression
                 cleared++;
             }
             AssetDatabase.SaveAssets();
-            var on = BreastPhysics(root, on: true);
+            var body = YapsSquash.NamedBody(root);
+            List<string> names = null;
+            if (body != null) YapsSquash.NamedShares(root, body, out names, out _);
+            var on = (names ?? new List<string>()).SelectMany(x => PairPhysics(root, PartOf(x), on: true)).ToList();
             int stale = Unworn(root);
             return $"Off {root.name}: {cleared} squash materials back on the squash alone, {stale} jelly taken off, " +
-                   (on.Count > 0 ? "switched back on: " + string.Join(", ", on) : "no breast cloth or dynamic bones were off");
+                   (on.Count > 0 ? "switched back on: " + string.Join(", ", on) : "no pair's cloth or dynamic bones were off");
         }
 
-        // The cloth and dynamic bones whose roots are on the breasts' bone chains, switched on or off;
+        // The cloth and dynamic bones whose roots are on the pair's bone chains, switched on or off;
         // what was switched.
-        static List<string> BreastPhysics(Transform root, bool on)
+        static List<string> PairPhysics(Transform root, Regex part, bool on)
         {
             var said = new List<string>();
-            foreach (var b in BreastCloth(root))
+            foreach (var b in PairCloth(root, part))
             {
                 if (b.enabled == on) continue;
                 Undo.RecordObject(b, on ? "Take the breasts off the jelly" : "Put the breasts on the jelly");
@@ -727,12 +777,12 @@ namespace AvatarBridge.Regression
             return said;
         }
 
-        // The cloth and dynamic bones whose roots are on the breasts' bone chains, found as the squash
+        // The cloth and dynamic bones whose roots are on the pair's bone chains, found as the squash
         // finds the chains, by name and side.
-        static List<Behaviour> BreastCloth(Transform root)
+        static List<Behaviour> PairCloth(Transform root, Regex part)
         {
             var side = new Regex(@"left|right|[._ ]?[lr](?=$|[._ ])", RegexOptions.IgnoreCase);
-            bool Sided(Transform t) => t != null && Breast.IsMatch(t.name) && side.IsMatch(t.name);
+            bool Sided(Transform t) => t != null && part.IsMatch(t.name) && side.IsMatch(t.name);
             var chains = new HashSet<Transform>(root.GetComponentsInChildren<Transform>(true)
                 .Where(t => Sided(t) && !Sided(t.parent)).SelectMany(t => t.GetComponentsInChildren<Transform>(true)));
             var found = new List<Behaviour>();
@@ -756,11 +806,11 @@ namespace AvatarBridge.Regression
 
         static bool IsCollider(Component c) => c != null && (c.GetType().Name == "MagicaCapsuleCollider" || c.GetType().Name == "MagicaSphereCollider" || c.GetType().Name == "DynamicBoneCollider");
 
-        // The colliders the breasts' cloth and dynamic bones collide with, read off their lists.
-        static List<Component> BreastColliders(Transform root)
+        // The colliders the pair's cloth and dynamic bones collide with, read off their lists.
+        static List<Component> PairColliders(Transform root, Regex part)
         {
             var found = new List<Component>();
-            foreach (var b in BreastCloth(root))
+            foreach (var b in PairCloth(root, part))
             {
                 var list = new SerializedObject(b).FindProperty(b.GetType().Name == "MagicaCloth" ? "serializeData.colliderCollisionConstraint.colliderList" : "m_Colliders");
                 if (list == null || !list.isArray) continue;
@@ -770,13 +820,13 @@ namespace AvatarBridge.Regression
             return found;
         }
 
-        // The breasts' cloth and dynamic bones made to collide with these or not, each with its own
-        // kind. ponytail: put back into every breast cloth of its kind, not only the ones it was in.
-        static void BreastCollide(Transform root, IEnumerable<Component> colliders, bool with)
+        // The pair's cloth and dynamic bones made to collide with these or not, each with its own
+        // kind. ponytail: put back into every cloth of the pair of its kind, not only the ones it was in.
+        static void PairCollide(Transform root, Regex part, IEnumerable<Component> colliders, bool with)
         {
             var set = colliders.ToList();
             if (set.Count == 0) return;
-            foreach (var b in BreastCloth(root))
+            foreach (var b in PairCloth(root, part))
             {
                 bool magica = b.GetType().Name == "MagicaCloth";
                 var so = new SerializedObject(b);
@@ -1986,6 +2036,9 @@ namespace AvatarBridge.Regression
                 return;
             }
             EditorSceneManager.OpenScene(args[at + 1], OpenSceneMode.Single);
+            // -jellyPair: another of the squash's pairs, by a pattern its name matches.
+            int pairAt = Array.IndexOf(args, "-jellyPair");
+            SessionState.SetString(K + "pair", pairAt >= 0 && pairAt + 1 < args.Length ? args[pairAt + 1] : Breast.ToString());
             // A scene's avatar can be older than the conversion, so a prefab can stand in, alone.
             int from = Array.IndexOf(args, "-jellyPrefab");
             if (from >= 0 && from + 1 < args.Length)
@@ -2023,11 +2076,11 @@ namespace AvatarBridge.Regression
                 var sphere = inChest.gameObject.AddComponent<MagicaCloth2.MagicaSphereCollider>();
                 sphere.SetSize(0.015f / Mathf.Abs(inChest.lossyScale.x));
                 tested.Add(sphere);
-                foreach (var cloth in BreastCloth(avatar.transform).OfType<MagicaCloth2.MagicaCloth>())
+                foreach (var cloth in PairCloth(avatar.transform, Wanted()).OfType<MagicaCloth2.MagicaCloth>())
                     cloth.SerializeData.colliderCollisionConstraint.colliderList.AddRange(tested);
             }
 #endif
-            string said = avatar != null ? BreastsOn(avatar.transform) : "no avatar with a squash in the scene";
+            string said = avatar != null ? PairOn(avatar.transform, Wanted()) : "no avatar with a squash in the scene";
             Debug.Log("[Jelly] breasts: " + said);
             if (avatar == null || !said.StartsWith("On "))
             {
@@ -2039,6 +2092,8 @@ namespace AvatarBridge.Regression
             EditorApplication.update += Hook;
             EditorApplication.EnterPlaymode();
         }
+
+        static Regex Wanted() => new Regex(SessionState.GetString(K + "pair", Breast.ToString()), RegexOptions.IgnoreCase);
 
         // For the squash probe's film (-spVideo), which presses with the same player globals the
         // jelly reads: the scene without its other jellies, and the avatar's prefab with its breasts
@@ -2068,7 +2123,7 @@ namespace AvatarBridge.Regression
             {
 #if AVATARBRIDGE_MAGICA
                 var cols = TestCapsules(made.GetComponentInChildren<Animator>(), 0.045f, (HumanBodyBones.LeftHand, HumanBodyBones.LeftMiddleDistal), (HumanBodyBones.RightHand, HumanBodyBones.RightMiddleDistal));
-                foreach (var cloth in BreastCloth(made.transform).OfType<MagicaCloth2.MagicaCloth>())
+                foreach (var cloth in PairCloth(made.transform, Breast).OfType<MagicaCloth2.MagicaCloth>())
                     cloth.SerializeData.colliderCollisionConstraint.colliderList.AddRange(cols);
 #endif
             }
@@ -2396,11 +2451,10 @@ namespace AvatarBridge.Regression
             // Held in the scene's pose and the rest of its cloth still, so only the tissue moves the
             // pixels: all but the pair's own cloth, left on where it swings the regions' bones.
             animator.enabled = false;
-            var swings = new HashSet<Behaviour>(BreastCloth(avatar.transform).Where(b => b.enabled));
+            var swings = new HashSet<Behaviour>(PairCloth(avatar.transform, Wanted()).Where(b => b.enabled));
             foreach (var b in avatar.GetComponentsInChildren<MonoBehaviour>(true))
                 if ((b.GetType().Name.StartsWith("MagicaCloth") || b.GetType().Name == "DynamicBone") && !swings.Contains(b)) b.enabled = false;
-            var chest = animator.GetBoneTransform(HumanBodyBones.UpperChest) ?? animator.GetBoneTransform(HumanBodyBones.Chest);
-            jelly = chest.GetComponentsInChildren<Transform>(true).First(t => t.name == Path.GetFileNameWithoutExtension(Prefab));
+            jelly = avatar.GetComponentsInChildren<Transform>(true).First(t => t.name == Path.GetFileNameWithoutExtension(Prefab));
             breastRegions = Enumerable.Range(0, 2).Select(r => avatar.GetComponentsInChildren<Transform>(true).First(t => t.name == $"Jelly Region {r}")).ToArray();
             // Riding bones, the step is handed the bones and the regions' places on them; the regions
             // themselves are put there each frame, as everything here measures from them.
@@ -2436,7 +2490,7 @@ namespace AvatarBridge.Regression
             // Back by twice the pair's width, whatever the avatar's size.
             float wide = Vector3.Distance(breastRegions[0].position, breastRegions[1].position) + (breastN.x - 1) * breastSpacing;
             var middle = 0.5f * (breastRegions[0].position + breastRegions[1].position) + jelly.forward * (0.5f * (breastN.z - 1) * breastSpacing);
-            look.transform.position = middle + swing.forward * (2f * wide) + swing.up * (0.3f * wide);
+            look.transform.position = middle + jelly.forward * (2f * wide) + jelly.up * (0.3f * wide);
             look.transform.LookAt(middle);
             eye = look.AddComponent<Camera>();
             eye.enabled = false;

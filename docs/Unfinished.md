@@ -2266,7 +2266,21 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
         arms down, on as the finger comes, off and on round each squeeze, every number as before,
         0.031 ms awake. While it rests and the body sways, the held shape can sit up to 1 cm off
         the body before it wakes (Joe's accepted trade). Open [GAME]: how often a worn avatar
-        rests in VR. **One pass instead of two, tried and
+        rests in VR.
+        **Any pair, not only the breasts.** The worn build takes the first of the squash's pairs a
+        name matches (a menu for the pair that is not the breasts). It hangs from the trunk bone
+        the pair's skin's bones hang from, Hips for a seat, Chest for Kar's breasts as before, and
+        a pair behind that bone is framed facing back, so the lattice's front is always out of the
+        body. Its cloth and colliders are found by the pair's name; each collider's ends name the
+        pair, so taking the jelly off puts it back in that pair's cloth. Kar's seat (run118) failed
+        settled at 18.7 mm: both thighs as built reached the lattice and held it dented for good.
+        Each of the wearer's capsules is now thinned to clear the pair's particles as built, half a
+        centimetre of room, so it presses only past where it rests (thighs 159 to 96 and 84 mm on
+        the seat; one arm 89 to 84 mm on the breasts). Seat (run119): PASS, settled 0.8 mm, a
+        finger 147 mm and 1.86% of the picture, the contact 93 mm, rests at frame 60. Breasts
+        (run120): every number as run117 bar turning, 109.0 from 109.2. The verify's camera now
+        stands at the pair's own front. Next: both pairs at once (four regions); a pair whose
+        outside is sideways, as thighs, still gets a front or back frame. **One pass instead of two, tried and
         reverted 2026-10-29:** one avatar 0.017 against 0.025, but 16 avatars 0.243 either way
         (independent avatars' passes already overlap, so the saved fixed price is hidden in a
         crowd), and the look changed (a particle predicting from last frame's neighbours: the turn
