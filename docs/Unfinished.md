@@ -2248,7 +2248,25 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
         state restarted 1.2 mm off rest; every other number as before (run108). Open [GAME]:
         whether the stable client has the rendering buffer (Joe runs the beta), whether the parser
         runs on remote copies, the readback's cost; an avatar behind the viewer seen only in a
-        mirror keeps its rest shape. **One pass instead of two, tried and
+        mirror keeps its rest shape.
+        **Resting, switched off too (Joe: the sleep "a little bit more aggressive").** The breasts
+        never slept: the prop's sleep was compiled out of the worn build, and wanted the anchor
+        still to 0.1 mm, which a worn chest never is. Now a worn region rests after half a second
+        (`_Rest`) still against its anchor: no hand kept, the nine front particles under 1 cm/s
+        against it (less the step of gravity the first pass's prediction carries, 1.2 mm a frame
+        at 90, which first read as 10 cm/s), the wearer's capsules in reach under 2 cm/s against
+        it. Still, not at rest, so an arm on it rests with its dent (Joe picked this over resting
+        only untouched: Kar's upper arms overlap the breasts' boxes by 17 to 23 mm at rest). The
+        third pass then switches the steps off and the draw keeps the state as it lies; it wakes
+        them when the anchor moves 1 cm or turns 3 degrees from its last step, a capsule in reach
+        moves 1 cm against it or one comes into reach, or a hand comes within 8 cm of either box
+        (three points a hand: nine, over two regions and 64 players unrolled, would not compile).
+        The third pass now takes the breasts' settings too: without their skin boxes it judged
+        reach on the whole lattice and woke at once. The verify (run117): off at frame 60 with the
+        arms down, on as the finger comes, off and on round each squeeze, every number as before,
+        0.031 ms awake. While it rests and the body sways, the held shape can sit up to 1 cm off
+        the body before it wakes (Joe's accepted trade). Open [GAME]: how often a worn avatar
+        rests in VR. **One pass instead of two, tried and
         reverted 2026-10-29:** one avatar 0.017 against 0.025, but 16 avatars 0.243 either way
         (independent avatars' passes already overlap, so the saved fixed price is hidden in a
         crowd), and the look changed (a particle predicting from last frame's neighbours: the turn

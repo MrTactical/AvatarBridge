@@ -410,9 +410,11 @@ namespace AvatarBridge.Regression
                     if (shares[v][2 * pair + side] >= 0.5f)
                         skinReach[side] = Mathf.Max(skinReach[side], Vector3.Dot(undo * (body.transform.position + body.transform.rotation * at[v] - chest.position) - c, way));
             }
-            foreach (var step in new[] { "/Jelly_Step.mat", "/Jelly_Step_2.mat" })
+            // The third pass too, which judges the same reach to wake a rest.
+            foreach (var step in new[] { "/Jelly_Step.mat", "/Jelly_Step_2.mat", "/Jelly_Points.mat" })
             {
                 var mat = AssetDatabase.LoadAssetAtPath<Material>(Folder + step);
+                if (mat == null) continue;
                 mat.SetFloat("_MassHz", hz);
                 mat.SetFloat("_MassDamp", 2f * zeta * 2f * Mathf.PI * hz);
                 mat.SetFloat("_Give", give);
@@ -910,6 +912,7 @@ namespace AvatarBridge.Regression
                 // either, stepping them cost a particle's whole step on two texels a region.
                 mat.SetFloat("_Rider", withRider || sleeps ? 1f : 0f);
                 mat.SetFloat("_Lift", lift);
+                mat.SetFloat("_Regions", regions);
                 EditorUtility.SetDirty(mat);
             }
             var drawMat = new Material(draw);
@@ -959,7 +962,9 @@ namespace AvatarBridge.Regression
             if (withRider || offFar)
             {
                 where = Save(Strip(3), "/Jelly_Points.renderTexture");
-                var pointsMat = Save(StepMaterial(step, n, 2, spacing), "/Jelly_Points.mat");
+                var pointsMat = StepMaterial(step, n, 2, spacing);
+                pointsMat.SetFloat("_Regions", regions);
+                pointsMat = Save(pointsMat, "/Jelly_Points.mat");
                 fed.Add(pointsMat);
                 var pointer = tissue.AddComponent<CVRBlitter>();
                 pointer.originTexture = state;
@@ -1179,8 +1184,9 @@ namespace AvatarBridge.Regression
             var m = new Material(step);
             m.SetVector("_Lattice", new Vector4(n.x, n.y, n.z, spacing > 0f ? spacing : SpacingOf(n)));
             m.SetFloat("_Pass", pass);
-            // The first pass looks for the hands in reach.
+            // The first pass looks for the hands in reach, the third for whatever wakes a rest.
             if (pass == 0) m.EnableKeyword("JELLY_SCAN");
+            if (pass == 2) m.EnableKeyword("JELLY_POINTS");
             return m;
         }
 
@@ -2378,6 +2384,9 @@ namespace AvatarBridge.Regression
         static readonly List<string> viewSaid = new List<string>();
         static readonly List<bool> viewRan = new List<bool>();
         static float viewBack;
+        // When the parser switched the steps off and on, as the rest and the view decide.
+        static readonly List<string> restSaid = new List<string>();
+        static bool wasStepping;
 
         static void HookBreasts()
         {
@@ -2408,6 +2417,8 @@ namespace AvatarBridge.Regression
             viewSaid.Clear();
             viewRan.Clear();
             viewBack = 0f;
+            restSaid.Clear();
+            wasStepping = true;
             secondAt = breastRegions[1].position;
             regionsAt = breastRegions.Select(r => swing.InverseTransformPoint(r.position)).ToArray();
             innerOff = innerOn = null;
@@ -2508,12 +2519,18 @@ namespace AvatarBridge.Regression
                 var sw = Read(switched);
                 foreach (var task in breastParser.tasks)
                     if (task.component is Behaviour b && task.propertyName == "enabled") stepping &= b.enabled = sw[task.x].x >= 0.5f;
+                if (stepping != wasStepping && restSaid.Count < 40) restSaid.Add($"{(stepping ? "on" : "off")} {frame}");
+                wasStepping = stepping;
             }
             // Last, the viewer's camera 3 m in front of the pair: looking at it, away, back at it, and
             // then 1.2 m off looking away, within the near limit.
             if (frame >= BreastFrames - ViewFrames)
             {
                 int v = frame - (BreastFrames - ViewFrames);
+                // The view alone decides here: no rest.
+                if (v == 0)
+                    foreach (var c in jelly.GetComponentInChildren<CVRRenderController>(true).cvrRenderComponents.OfType<CVRBlitter>())
+                        c.blitMaterial.SetFloat("_Rest", 0f);
                 var middle = 0.5f * (breastRegions[0].position + breastRegions[1].position);
                 bool close = v >= 200;
                 var cam = middle + swing.forward * (close ? 1.2f : 3f);
@@ -2668,7 +2685,8 @@ namespace AvatarBridge.Regression
                           $"anchor handed {(handed != null ? handed[0].GetColumn(3).ToString("F3") : "none")} against {breastRegions[0].position.ToString("F3")}, particle 0 {s[0].ToString("F3")}, switches {s[side * 2 * Row + 18]}, " +
                           $"centres {s[side * 2 * Row + 30].ToString("F3")} and {s[(2 * side + 1) * 2 * Row + 30].ToString("F3")}, " +
                           $"plane (centres apart, as built, gap, scale) {s[side * 2 * Row + 40].ToString("F4")} and {s[(2 * side + 1) * 2 * Row + 40].ToString("F4")}, " +
-                          $"own capsules in reach at rest {(int) s[side * 2 * Row + 41].x} and {(int) s[(2 * side + 1) * 2 * Row + 41].x} (bits)");
+                          $"own capsules in reach at rest {(int) s[side * 2 * Row + 41].x} and {(int) s[(2 * side + 1) * 2 * Row + 41].x} (bits), " +
+                          $"the rest's count {s[side * 2 * Row + 35].x:0.000} and {s[(2 * side + 1) * 2 * Row + 35].x:0.000} s");
             }
             {
                 var s = Read(stateRt);
@@ -2938,6 +2956,7 @@ namespace AvatarBridge.Regression
                       $"settled, the furthest particle {1000f * restMost:0.0} mm off its modelled rest (6 at most); a finger 3 cm in moved it {1000f * pokeMost:0.0} mm " +
                       $"and {100f * poked:0.00}% of the picture's pixels against {100f * noise:0.00}% frame to frame; turning, {1000f * swingMost:0.0} mm; " +
                       $"squeezed together, the pair's contact held the side facing the other {1000f * bodies:0.0} mm further off than without");
+            Debug.Log($"[Jelly] the steps switched by the parser: {(restSaid.Count > 0 ? string.Join(", ", restSaid) : "never")}");
             Debug.Log($"[Jelly] the viewer's camera, 3 m off: {string.Join("; ", viewSaid)}; woken, the furthest particle {1000f * viewBack:0.0} mm off its rest (6 at most)");
             Debug.Log($"[Jelly] hands squeeze, 13 cm into each outer side: the masses {1000f * handsCloser:0.0} mm closer, the first's outer side {1000f * handsOuter:0.0} mm " +
                       $"and inner side {1000f * handsInner:0.0} mm off rest, its volume {handsVolume:0.000}");
@@ -2986,6 +3005,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _Stress (""The cost meter's load: steps only in odd phases"", Float) = 0
         _Rider (""Steps the rider's texels, for the parser and the sleep"", Float) = 1
         _Sleep (""Rests after standing still this many seconds, untouched and unmoved; 0 never"", Float) = 0.5
+        _Rest (""Worn: stops the steps after lying still this many seconds with no hand near; 0 never"", Float) = 0.5
+        _Regions (""How many regions the state packs"", Float) = 1
         _Lift (""1 lifts its rest by the sag gravity gives, along the anchor's up: modelled tissue hangs already"", Float) = 0
         _Gravity (""Share of gravity the tissue feels"", Float) = 1
         _MassHz (""The whole region as one piece, swinging on its root: wobbles a second, 0 off"", Float) = 0
@@ -3027,10 +3048,12 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             #pragma multi_compile_local __ JELLY_SCAN
             // Only a prop sleeps; worn, it is compiled out.
             #pragma multi_compile_local __ JELLY_SLEEP
+            // The third pass, which wakes a resting jelly, reads the players' hands too.
+            #pragma multi_compile_local __ JELLY_POINTS
             #include ""UnityCG.cginc""
             #include ""JellyCommon.cginc""
 
-            float _Stiff, _Hz, _Hand, _Far, _Behind, _Near, _Pass, _FixedDt, _Stress, _Sleep, _Lift, _Rider;
+            float _Stiff, _Hz, _Hand, _Far, _Behind, _Near, _Pass, _FixedDt, _Stress, _Sleep, _Lift, _Rider, _Rest, _Regions;
             float _MassHz, _MassCarried, _MassDamp, _Give, _MassRadius, _Limit, _Pair, _PairKeep, _Squish, _Viscous, _Solid;
             // The frame's time, for how fast the homes move.
             static float FrameDt;
@@ -3183,12 +3206,10 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 return d < r + radius && d > 1e-6 ? off * (c * (r + radius - d) / d) : 0;
             }
 
-            // Whether a capsule from a to b of radius r can reach the skin: within a margin of its box on
-            // the anchor (the lattice's, where none is set), 8 cm for what a press bulges out of it plus
-            // however far its mass has swung off its rest. A sphere round the lattice took in the
-            // thighs below it, so every particle and breast vertex tested them with the arms down.
-            // Nine points along the capsule, each a sixteenth of it from the next at most.
-            bool InReach(float3 a, float3 b, float r, float4x4 m, float scale, uint side)
+            // How far a capsule from a to b of radius r is off the skin: off its box on the anchor (the
+            // lattice's, where none is set), less its radius and however far the mass has swung off its
+            // rest. Nine points along the capsule, each a sixteenth of it from the next at most.
+            float Gap(float3 a, float3 b, float r, float4x4 m, float scale, uint side)
             {
                 float4 box = Region == 0 ? _JellyBox0 : _JellyBox1;
                 float3 half = box.z > 0 ? float3(box.xy, 0.5 * box.z) : 0.5 * (float3) (Count() - 1) * _Lattice.w, mid = float3(0, 0, half.z);
@@ -3196,7 +3217,40 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float swung = mass.w > 0 ? distance(mass.xyz, mul(m, float4(0, 0, 0.5 * (Count().z - 1) * _Lattice.w, 1)).xyz) : 0;
                 float most = 1e9;
                 [unroll] for (int k = 0; k <= 8; k++) most = min(most, length(max(abs(Into(m, lerp(a, b, k / 8.0)) - mid) - half, 0)));
-                return most * scale <= r + 0.08 * scale + swung + distance(a, b) / 16;
+                return most * scale - r - swung - distance(a, b) / 16;
+            }
+
+            // Whether it can reach the skin: within 8 cm, for what a press bulges out of the box. A sphere
+            // round the lattice took in the thighs below it, so every particle and breast vertex tested
+            // them with the arms down.
+            bool InReach(float3 a, float3 b, float r, float4x4 m, float scale, uint side) { return Gap(a, b, r, m, scale, side) <= 0.08 * scale; }
+
+            // How far the wearer's capsules in reach have moved against the anchor since the state at
+            // side was stepped: their ends as it kept them (texels 42 to 57 and 64 to 79) on its anchor
+            // then (26 to 29), against where they are now on m. Fresh, the reach is judged again and
+            // one newly in it counts as a metre; otherwise those in reach then, which the count, run
+            // every frame, can afford.
+            float Shifted(float4x4 m, float scale, uint side, bool fresh)
+            {
+                float4 x0 = _MainTex.Load(int3(26, side, 0)), y0 = _MainTex.Load(int3(27, side, 0)), z0 = _MainTex.Load(int3(28, side, 0)), o0 = _MainTex.Load(int3(29, side, 0));
+                float4x4 last = float4x4(x0.x, y0.x, z0.x, o0.x, x0.y, y0.y, z0.y, o0.y, x0.z, y0.z, z0.z, o0.z, 0, 0, 0, 1);
+                uint was = (uint) _MainTex.Load(int3(41, side, 0)).x;
+                float most = 0;
+                [unroll] for (uint c = 0; c < 16; c++)
+                {
+                    float3 a, b;
+                    float r;
+                    Own(c, scale, a, b, r);
+                    bool kept = (was & (1u << c)) != 0;
+                    [branch] if (r > 0 && (fresh ? InReach(a, b, r, m, scale, side) : kept))
+                    {
+                        uint t = c < 8 ? 42 + 2 * c : 48 + 2 * c;
+                        float3 ka = _MainTex.Load(int3(t, side, 0)).xyz, kb = _MainTex.Load(int3(t + 1, side, 0)).xyz;
+                        float moved = max(length(Into(m, a) - Into(last, ka)), length(Into(m, b) - Into(last, kb))) * scale;
+                        most = max(most, kept ? moved : 1);
+                    }
+                }
+                return most;
             }
 
             // The client's first is the local player's head; only it is read.
@@ -3244,7 +3298,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     || Unseen(at, 2 * length(float3(Count()) * _Lattice.w) * length(a._m00_m10_m20), was);
             }
 
-#ifdef JELLY_SCAN
+#if defined(JELLY_SCAN) || defined(JELLY_POINTS)
             // The first 64 of the client's 255, all the scan reads: the whole arrays made every first
             // pass upload 16 kB of constants.
             float4 _CVR_PlayerLeftHandPositions[64];
@@ -3309,6 +3363,81 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     }
                 }
                 return kept;
+            }
+#endif
+
+#ifdef JELLY_POINTS
+            // How far point p is off region r's box on its anchor m, in metres.
+            float BoxGap(float3 p, float4x4 m, float scale, uint r)
+            {
+                float4 box = r == 0 ? _JellyBox0 : _JellyBox1;
+                float3 half = box.z > 0 ? float3(box.xy, 0.5 * box.z) : 0.5 * (float3) (Count() - 1) * _Lattice.w, mid = float3(0, 0, half.z);
+                return length(max(abs(Into(m, p) - mid) - half, 0)) * scale;
+            }
+
+            // Every region resting by its own count, and nothing changed since its last step: the
+            // anchor within 1 cm and 3 degrees of where it was, nothing of the wearer's in reach moved
+            // a centimetre against it or come into reach, and no player's hand where the scan would
+            // keep it, its wrist, middle or tip within 8 cm of either box. The steps' blitters are off
+            // meanwhile, so this pass alone wakes them. The players walked as the scan walks them.
+            bool Resting()
+            {
+                uint rows = Rows(), regions = (uint) round(_Regions);
+                int players = min((int) round(CVRGlobalParams1.y), 64);
+                bool resting = regions > 0;
+                float4x4 on[2];
+                float scales[2];
+                float3 mid = 0;
+                // ponytail: two regions, a pair; a second pair needs four here.
+                [unroll] for (uint r = 0; r < 2; r++)
+                {
+                    float4x4 m = AnchorOf(min(r, regions - 1));
+                    float scale = length(m._m00_m10_m20);
+                    on[r] = m;
+                    scales[r] = scale;
+                    mid += 0.5 * m._m03_m13_m23;
+                    [branch] if (r < regions)
+                    {
+                        uint side = r * (rows + 1) + rows;
+                        float4 x0 = _MainTex.Load(int3(26, side, 0)), z0 = _MainTex.Load(int3(28, side, 0)), o0 = _MainTex.Load(int3(29, side, 0));
+                        Region = r;
+                        resting = resting && _MainTex.Load(int3(18, side, 0)).y > 0.5 && scale > 1e-6 && distance(m._m03_m13_m23, o0.xyz) < 0.01 * scale
+                            && dot(normalize(m._m00_m10_m20), normalize(x0.xyz)) > 0.9986 && dot(normalize(m._m02_m12_m22), normalize(z0.xyz)) > 0.9986
+                            && Shifted(m, scale, side, true) < 0.01 * scale;
+                    }
+                }
+                float reach = (length(float3(Count() - 1)) * _Lattice.w + 0.3) * scales[0];
+                bool near = false;
+                [unroll] for (int g = 0; g < 8; g++)
+                {
+                    [branch] if (g * 8 < players)
+                    {
+                        [unroll] for (int k = 0; k < 8; k++)
+                        {
+                            int who = g * 8 + k;
+                            float4 root = _CVR_PlayerRootPositions[who];
+                            float tall = root.w > 0.1 ? root.w : 1.6;
+                            float3 to = mid - root.xyz;
+                            float around = reach + 1.5 * tall + 0.5;
+                            [branch] if (who < players && dot(to, to) < around * around)
+                            {
+                                float hr = _Hand * tall / 1.6;
+                                float3 chest = _CVR_PlayerChestPositions[who].xyz;
+                                [unroll] for (int hand = 0; hand < 2; hand++)
+                                {
+                                    float3 wrist = (hand == 0 ? _CVR_PlayerLeftHandPositions[who] : _CVR_PlayerRightHandPositions[who]).xyz, arm = wrist - chest;
+                                    float3 tip = wrist + (dot(arm, arm) > 1e-6 ? normalize(arm) : 0) * max(0.11 * tall - hr, 0);
+                                    [unroll] for (uint r = 0; r < 2; r++)
+                                    {
+                                        float gap = min(min(BoxGap(wrist, on[r], scales[r], r), BoxGap(0.5 * (wrist + tip), on[r], scales[r], r)), BoxGap(tip, on[r], scales[r], r));
+                                        near = near || dot(wrist, wrist) >= 1e-6 && gap < 2 * hr + 0.08 * scales[r];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                return resting && !near;
             }
 #endif
 
@@ -3744,6 +3873,29 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 return float4(still ? here.x + dt : 0, 0, 0, 1);
             }
 
+            // How long the region has lain still with no hand near, in x, counted at _Time.y in y: no
+            // hand kept, nothing of the wearer's in reach moving 2 cm a second against the anchor
+            // (texel 37, the first pass's), and nine particles of the front moving under 1 cm a second
+            // against it. Still, not at rest, so an arm resting on it rests with its dent. Counted
+            // afresh after any gap, as when the parser switched the steps off, so a wake needs _Rest
+            // of quiet before it rests again. Predicted, the first pass's places carry a step of
+            // gravity the fit takes back, 1.2 mm a frame at 90: taken off here.
+            float4 Settling(float4 here, float4x4 m, float scale, float dt, bool distant, uint side, float3 fall)
+            {
+                float4 x0 = _MainTex.Load(int3(26, side, 0)), y0 = _MainTex.Load(int3(27, side, 0)), z0 = _MainTex.Load(int3(28, side, 0)), o0 = _MainTex.Load(int3(29, side, 0));
+                float4x4 last = float4x4(x0.x, y0.x, z0.x, o0.x, x0.y, y0.y, z0.y, o0.y, x0.z, y0.z, z0.z, o0.z, 0, 0, 0, 1);
+                bool quiet = !distant && o0.w > 0.5 && !(_MainTex.Load(int3(1, side, 0)).w > 0.5) && _MainTex.Load(int3(37, side, 0)).x < 0.02 * scale * dt;
+                int3 n = Count();
+                [unroll] for (int k = 0; k < 9; k++)
+                {
+                    uint p = (uint) Index(int3((k % 3) * (n.x - 1) / 2, (k / 3) * (n.y - 1) / 2, n.z - 1));
+                    float3 now = _MainTex.Load(Texel(p, 0)).xyz - fall, was = _MainTex.Load(Texel(p, 1)).xyz;
+                    quiet = quiet && length(Into(m, now) - Into(last, was)) * scale < 0.01 * scale * dt;
+                }
+                bool counting = here.y > 0 && _Time.y - here.y < 0.1;
+                return float4(quiet ? (counting ? here.x : 0) + dt : 0, _Time.y, 0, 1);
+            }
+
             // Whether both passes may leave the tissue be next frame: still long enough, no hand in
             // reach this frame, and the anchor within 0.1 mm of where it last stepped. Decided here,
             // a frame ahead, since a pass cannot read its own row.
@@ -3767,7 +3919,11 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 if (_Pass > 1.5)
                 {
                     if (px.x < 2) return _MainTex.Load(int3(16 + px.x, side, 0));
-                    return float4(Away(_MainTex.Load(int3(18, side, 0)).x > 0.5) ? 0 : 1, 0, 0, 1);
+                    bool off = Away(_MainTex.Load(int3(18, side, 0)).x > 0.5);
+#ifdef JELLY_POINTS
+                    [branch] if (!off && _Rest > 0) off = Resting();
+#endif
+                    return float4(off ? 0 : 1, 0, 0, 1);
                 }
                 float4 here = _MainTex.Load(int3(px, 0));
                 // The cost meter's load rests in even phases, as cheap as a pass can be.
@@ -3828,6 +3984,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         }
 #endif
                         [branch] if (px.x >= 32 && px.x <= 34 && _Solid > 0) return Bulk(px.x - 32, m, distant, side);
+                        // How far the wearer's capsules in reach moved against the anchor since last frame,
+                        // for the rest's count.
+                        [branch] if (px.x == 37) return float4(Shifted(m, scale, side, false), 0, 0, 1);
                         // A readout for the verify: the plane's distances as the step reads them.
                         [branch] if (px.x == 40)
                         {
@@ -3896,7 +4055,14 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     if (px.x >= 20 && px.x <= 22) return float4(px.x == 20 ? m._m00_m10_m20 : px.x == 21 ? m._m01_m11_m21 : m._m03_m13_m23, 1);
                     if (px.x == 23 || px.x == 24) return _MainTex.Load(int3(px.x - 7, side, 0));
 #else
-                    if (px.x == 18) return float4(distant, 0, 0, 1);
+                    // Worn, resting: the third pass then switches the steps off and the draw keeps the
+                    // state as it lies. Only after a count stepped without a gap.
+                    if (px.x == 18)
+                    {
+                        float4 rest = _MainTex.Load(int3(35, side, 0));
+                        return float4(distant, _Rest > 0 && !distant && rest.y > 0 && _Time.y - rest.y < 0.1 && rest.x >= _Rest, 0, 1);
+                    }
+                    if (px.x == 35) return Settling(here, m, scale, dt, distant, side, predicted ? Gravity * h * h : 0);
 #endif
                     [branch] if ((px.x == 16 || px.x == 17) && _Rider > 0) return Rider(px.x, m, scale, h, predicted, distant, side);
                     return here;
