@@ -2312,7 +2312,21 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
         each cheek's middle. It now takes the squash's own body, and the squeeze aims at each
         cheek's widest outside, level with its crown, where the skin the squash gives it at least
         half of stands out furthest behind (y 1.24 against the bones' 1.375 on Kar). Films thigh6
-        and butt9 sent. Open: Joe's verdict on them. **One pass instead of two, tried and
+        and butt9 sent. Open: Joe's verdict on them. **"The thighs look really bad" (thigh6,
+        2026-10-29): the crossed thigh pressed into a blade.** As the crossed leg lifted off and
+        swung back, the jelly flattened it into a sheet reaching down and out for a third of a
+        second. Plane off, gone; the draw's guard alone off, still there: the step's plane did it,
+        though it pressed only 3.9 cm, 0.15 of the half width. The plane is where a pair built side
+        by side and turned alike meet; a thigh turned across the other (68 degrees between their
+        frames at most, against 9 at rest and 28 knees together) lay past it with nothing to meet,
+        and every home past it was laid flat. The plane, in the step and the draw's guard, now
+        holds by the turn between the two frames, the partner's as its row last wrote it: all of
+        it to 40 degrees, none from 55. thigh10: the blade gone, every frame under 40 degrees as
+        before; breasts turned 3.5 and the seat 4.7 at most in their films, so theirs is as it
+        was. The film tool logs the turn and the plane each frame (-spPlaneLog). Open: crossed thighs now meet nothing, so they can sink into each other; the
+        proper contact is each lattice out of the other leg's capsule at its true width, which
+        means skipping its own carrier's capsule (both thinned to 27 mm today only because each
+        lattice also carried its own leg's). **One pass instead of two, tried and
         reverted 2026-10-29:** one avatar 0.017 against 0.025, but 16 avatars 0.243 either way
         (independent avatars' passes already overlap, so the saved fixed price is hidden in a
         crowd), and the look changed (a particle predicting from last frame's neighbours: the turn

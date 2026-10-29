@@ -3317,6 +3317,19 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 r = (c < 4 ? _JellyOwn0[c & 3] : c < 8 ? _JellyOwn1[c & 3] : c < 12 ? _JellyCol0[c & 3] : _JellyCol1[c & 3]) * scale;
             }
 
+            // How much of the pair's plane holds, from the turn between the two frames, the partner's
+            // as its row last wrote it. Built side by side and turned alike, the plane is where they
+            // press; a limb turned across the other, as a thigh crossed over its partner some 55 to 75
+            // degrees off it, lay past the plane with nothing there to meet and was pressed into a
+            // blade. All of it to 40 degrees, none from 55; knees pressed together turn 31.
+            float Meet(float4x4 m, uint ps)
+            {
+                float4 x = _MainTex.Load(int3(26, ps, 0)), y = _MainTex.Load(int3(27, ps, 0)), z = _MainTex.Load(int3(28, ps, 0));
+                if (!(x.w > 0.5)) return 1;
+                float t = dot(normalize(m._m00_m10_m20), normalize(x.xyz)) + dot(normalize(m._m01_m11_m21), normalize(y.xyz)) + dot(normalize(m._m02_m12_m22), normalize(z.xyz));
+                return smoothstep(0.5736, 0.7660, 0.5 * (t - 1));
+            }
+
             // How far a capsule from a to b of radius r leans the mass's spring target at p: c of its
             // overlap with the mass's radius.
             float3 Lean(float3 p, float3 a, float3 b, float r, float radius, float c)
@@ -3874,7 +3887,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // distance field: the lens between them was pressed to half and lost, and a hard push
                 // passed through.
                 float3 held = home, pn = 0;
-                float pd = 0;
+                float pd = 0, meet = 0;
                 bool plane = false;
                 [branch] if (_Pair > 0 && _PairReach.x > 0)
                 {
@@ -3886,7 +3899,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     [branch] if (!(tb.w > 0)) cb = mul(Anchor(other), float4(0, 0, zc, 1)).xyz;
                     float dist = distance(ca, cb), wa = (other == 1 ? _PairReach.x : _PairReach.y) * scale;
                     float e = 0.5 * max((length(_PairOffset.xyz) - _PairReach.z) * scale - dist, 0);
-                    [branch] if (e > 0 && dist > 1e-4)
+                    meet = e > 0 ? Meet(m, ps) : 0;
+                    [branch] if (e > 0 && dist > 1e-4 && meet > 0)
                     {
                         plane = true;
                         pn = (cb - ca) / dist;
@@ -3901,6 +3915,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         float a = dot(held, pn) - pd, soft = 0.08 * wa;
                         float eased = min(a, 0) - soft * log(1 + exp(-abs(a) / soft));
                         held += pn * ((eased - a) * saturate(e / soft));
+                        held = lerp(home, held, meet);
                     }
                 }
                 next = lerp(next, held + lift, min(spring * spring, 1));
@@ -3949,7 +3964,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     // Never further back than its own home, eased by how hard they press: sent onto
                     // the plane outright, the edge moved 13.6 mm with the pair resting as built.
                     float a = dot(next, pn) - pd, hb = dot(held, pn) - pd;
-                    if (a > max(hb, 0)) next -= pn * (0.5 * (a - hb));
+                    if (a > max(hb, 0)) next -= pn * (0.5 * (a - hb) * meet);
                 }
                 return next;
             }
@@ -4158,7 +4173,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             float self = (region == 0 ? _PairSkin.x : _PairSkin.y) * scale, partner = (region == 0 ? _PairSkin.y : _PairSkin.x) * scale;
                             float overlap = max(self + partner - length(_PairOffset.xyz) * scale, 0);
                             float3 u = (cb - ca) / dist;
-                            return px.x == 58 ? float4(u, dot(ca, u) + 0.5 * (self + dist - partner) + 0.5 * overlap) : float4(0.004 * scale, 0, 0, 1);
+                            float meet = Meet(m, ps);
+                            if (!(meet > 0)) return 0;
+                            return px.x == 58 ? float4(u, dot(ca, u) + 0.5 * (self + dist - partner) + 0.5 * overlap) : float4(0.004 * scale, meet, 0, 1);
                         }
                         [branch] if ((px.x == 30 || px.x == 31) && _MassHz > 0)
                         {

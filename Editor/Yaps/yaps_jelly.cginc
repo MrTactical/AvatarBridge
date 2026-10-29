@@ -141,13 +141,14 @@ float3 YapsJellyRegion(uint r, float3 world, float3 nw, out float3 bend)
     }
     // Last, skin past the plane between the pair, further than they overlapped as built, eased back
     // to within its give of it, the deeper the further, so layers keep their order: the lattice keeps
-    // the two apart a few centimetres coarse, and here they cannot cross.
+    // the two apart a few centimetres coarse, and here they cannot cross. By give's y, how much the
+    // pair still meet there: a limb turned across the other lies past it with nothing to meet.
     float4 give = _YAPS_JellyState.Load(int3(59, side, 0));
     [branch] if (give.x > 0)
     {
         float4 plane = _YAPS_JellyState.Load(int3(58, side, 0));
         float x = dot(world + move, plane.xyz) - plane.w;
-        if (x > 0) move -= plane.xyz * (x - give.x * (1 - exp(-x / give.x)));
+        if (x > 0) move -= plane.xyz * ((x - give.x * (1 - exp(-x / give.x))) * give.y);
     }
     return move;
 }

@@ -2627,10 +2627,36 @@ namespace AvatarBridge.Regression
             shoulder.rotation = Quaternion.FromToRotation(wrist.position - shoulder.position, goal - shoulder.position) * shoulder.rotation;
         }
 
+        static RenderTexture planeRt;
+
+        // The jelly's pair plane as its step reads it, each frame: texel 40 (centres apart now, as
+        // built, gap, scale) and the masses, texel 30, for both regions.
+        static void PlaneLog()
+        {
+            if (planeRt == null)
+            {
+                planeRt = AssetDatabase.LoadAssetAtPath<RenderTexture>("Assets/AvatarBridge_JellySpike/Jelly_State.renderTexture");
+                var bm = Resources.FindObjectsOfTypeAll<Material>().FirstOrDefault(x => x.HasProperty("_PairReach") && x.GetVector("_PairReach").x > 0);
+                // -spNoGuard: the draw's plane guard off, the step's plane left on.
+                if (Environment.GetCommandLineArgs().Contains("-spNoGuard"))
+                    foreach (var x in Resources.FindObjectsOfTypeAll<Material>().Where(x => x.HasProperty("_PairSkin"))) x.SetVector("_PairSkin", Vector4.zero);
+                Debug.Log($"[SquashPlay] plane reach {(bm != null ? bm.GetVector("_PairReach").ToString("F4") : "none")}, state {(planeRt != null ? planeRt.width + "x" + planeRt.height : "none")}");
+                if (planeRt == null) return;
+            }
+            var req = UnityEngine.Rendering.AsyncGPUReadback.Request(planeRt);
+            req.WaitForCompletion();
+            var st = req.GetData<Vector4>();
+            int w = planeRt.width, side = planeRt.height / 2 - 1, r0 = side * w, r1 = (2 * side + 1) * w;
+            float t = 0f;
+            for (int c = 0; c < 3; c++) t += Vector3.Dot(((Vector3) (Vector4) st[r0 + 26 + c]).normalized, ((Vector3) (Vector4) st[r1 + 26 + c]).normalized);
+            Debug.Log($"[SquashPlay] plane {filmed} turned {Mathf.Rad2Deg * Mathf.Acos(Mathf.Clamp(0.5f * (t - 1f), -1f, 1f)):0.0} {((Vector4) st[r0 + 40]).ToString("F4")} {((Vector4) st[r1 + 40]).ToString("F4")} masses {((Vector4) st[r0 + 30]).ToString("F3")} {((Vector4) st[r1 + 30]).ToString("F3")}");
+        }
+
         static void OnLate()
         {
             if (!EditorApplication.isPlaying || provider == null) return;
             if (renderLate) { renderLate = false; Shoot(); }
+            if (Environment.GetCommandLineArgs().Contains("-spPlaneLog")) PlaneLog();
             var slots = provider.transforms;
             for (int p = 0; p < 4; p++) late[p] = (slots[p].position - slots[4 + p].position).magnitude;
             lastEnd = slots.Select(t => t.position).ToArray();
