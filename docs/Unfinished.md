@@ -2235,8 +2235,20 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
         passes' own price is the cost, not the particles. Tried and no gain: the far decision
         ahead of the anchor. Checked: the squash moves no pixel the jelly draws (0.000% at rest,
         a finger, turning, the squeeze, the arm across), now part of the verify.
-        Open, Joe to pick: switching far avatars off with the parser (0.011 to 0.004 each, plus a
-        readback per avatar only the client can time). **One pass instead of two, tried and
+        **Far and out of view, switched off by the parser (Joe 2026-10-29: "eat that cost", far
+        4 m not 6, and cull by camera):** the breasts' build now carries the third pass and the
+        texture parser that switch both steps' blitters off, far from the viewer's head (4 m, back
+        on within 3.5) or well behind their camera (more than 100 degrees off where it looks, less
+        the pair's own angle there, ten more to go than to come back; never within 2 m, which keeps
+        the wearer's own copy on). The camera is the client's `_CVRRenderingBuffer`, the local
+        player's camera position and rotation a frame late; unbound, as in the editor, nothing
+        counts as out of view. Off, a copy costs the third pass, 0.004 ms, and the parser's
+        readback; near, the third pass adds 0.005 (0.031 against 0.026 at rest). The verify plays
+        the parser by hand and turns a camera 3 m off away and back: the steps off, on again, the
+        state restarted 1.2 mm off rest; every other number as before (run108). Open [GAME]:
+        whether the stable client has the rendering buffer (Joe runs the beta), whether the parser
+        runs on remote copies, the readback's cost; an avatar behind the viewer seen only in a
+        mirror keeps its rest shape. **One pass instead of two, tried and
         reverted 2026-10-29:** one avatar 0.017 against 0.025, but 16 avatars 0.243 either way
         (independent avatars' passes already overlap, so the saved fixed price is hidden in a
         crowd), and the look changed (a particle predicting from last frame's neighbours: the turn

@@ -87,7 +87,7 @@ namespace AvatarBridge.Regression
             Menu.SetChecked("Tools/AvatarBridge Dev/Jelly spike: coarse lattice", EditorPrefs.GetBool(CoarseKey, true));
             return true;
         }
-        const int Row = 64, Passes = 2, Frames = 300, Load = 32, BreastFrames = 2040;
+        const int Row = 64, Passes = 2, Frames = 300, Load = 32, BreastFrames = 2300, ViewFrames = 260;
         struct Late { }
 
         static int frame;
@@ -394,7 +394,7 @@ namespace AvatarBridge.Regression
             var n = new Vector3Int(Mathf.Max(3, Mathf.CeilToInt(size.x / cell) + 1), Mathf.Max(3, Mathf.CeilToInt(size.y / cell) + 1), Mathf.Max(3, Mathf.CeilToInt(size.z / cell) + 1));
             float spacing = Mathf.Max(size.x / (n.x - 1), size.y / (n.y - 1), size.z / (n.z - 1));
 
-            var prefab = Make(preview: false, withMeter: false, withRider: false, offFar: false, sleeps: false, regions: 2, lattice: n, spacing: spacing, surface: false, lift: 1f);
+            var prefab = Make(preview: false, withMeter: false, withRider: false, offFar: true, sleeps: false, regions: 2, lattice: n, spacing: spacing, surface: false, lift: 1f);
             if (prefab == null) return "The jelly did not build; the console says why.";
             float radius = (size.x + size.y + size.z) / 6f - 0.01f;
             // How far each breast's own skin reaches toward the other off its centre: where the two
@@ -2372,6 +2372,12 @@ namespace AvatarBridge.Regression
         static Vector3 anchorWas;
         static bool anchorOk = true;
         static readonly List<Texture2D> breastShots = new List<Texture2D>();
+        // The far switch as the client's parser works it, and the viewer's camera for the view test.
+        static CVRTexturePropertyParser breastParser;
+        static ComputeBuffer viewBuffer;
+        static readonly List<string> viewSaid = new List<string>();
+        static readonly List<bool> viewRan = new List<bool>();
+        static float viewBack;
 
         static void HookBreasts()
         {
@@ -2398,6 +2404,10 @@ namespace AvatarBridge.Regression
                 return at.w > 0f ? Matrix4x4.TRS(at, new Quaternion(q.x, q.y, q.z, q.w), Vector3.one * at.w) : Matrix4x4.identity;
             }).ToArray();
             CarryRegions();
+            breastParser = jelly.GetComponentInChildren<CVRTexturePropertyParser>(true);
+            viewSaid.Clear();
+            viewRan.Clear();
+            viewBack = 0f;
             secondAt = breastRegions[1].position;
             regionsAt = breastRegions.Select(r => swing.InverseTransformPoint(r.position)).ToArray();
             innerOff = innerOn = null;
@@ -2490,6 +2500,34 @@ namespace AvatarBridge.Regression
         {
             CarryRegions();
             var n = breastN;
+            // The client's parser, by hand since the CCK's never runs: the far switch read back each
+            // frame and the steps' blitters set by it.
+            bool stepping = true;
+            if (breastParser != null && breastParser.texture is RenderTexture switched)
+            {
+                var sw = Read(switched);
+                foreach (var task in breastParser.tasks)
+                    if (task.component is Behaviour b && task.propertyName == "enabled") stepping &= b.enabled = sw[task.x].x >= 0.5f;
+            }
+            // Last, the viewer's camera 3 m in front of the pair: looking at it, away, back at it, and
+            // then 1.2 m off looking away, within the near limit.
+            if (frame >= BreastFrames - ViewFrames)
+            {
+                int v = frame - (BreastFrames - ViewFrames);
+                var middle = 0.5f * (breastRegions[0].position + breastRegions[1].position);
+                bool close = v >= 200;
+                var cam = middle + swing.forward * (close ? 1.2f : 3f);
+                var q = Quaternion.LookRotation(v >= 60 && v < 120 || close ? cam - middle : middle - cam, Vector3.up);
+                viewBuffer ??= new ComputeBuffer(1, 64);
+                viewBuffer.SetData(new[] { 0f, 0f, 0f, cam.x, cam.y, cam.z, cam.x, cam.y, cam.z, q.x, q.y, q.z, q.w, 0f, 0f, 0f });
+                Shader.SetGlobalBuffer("_CVRRenderingBuffer", viewBuffer);
+                if (v == 59 || v == 119 || v == 199 || v == 259)
+                {
+                    viewRan.Add(stepping);
+                    viewSaid.Add($"{(v < 60 ? "looking at it" : v < 120 ? "looking away" : v < 200 ? "looking back" : "1.2 m off, looking away")}, the steps {(stepping ? "on" : "off")}");
+                }
+                if (v >= 125 && v < 200) viewBack = Mathf.Max(viewBack, Furthest(Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture")), breastRegions));
+            }
             // One player, its finger into the first region's breast from the front, 3 cm past the
             // lattice's front less its centimetre of room, between frames 120 and 210.
             var fwd = swing.forward;
@@ -2887,7 +2925,8 @@ namespace AvatarBridge.Regression
 
             noise = Changed(breastShots[0], breastShots[1]);
             poked = Changed(breastShots[1], breastShots[3]);
-            bool ok = anchorOk && restMost < 0.006f && pokeMost > 0.01f && poked > 3f * noise + 0.002f && swingMost > 0.005f && bodies > 0.003f && handsOuter > 0.05f;
+            bool viewOk = viewRan.SequenceEqual(new[] { true, false, true, true }) && viewBack < 0.006f;
+            bool ok = anchorOk && restMost < 0.006f && pokeMost > 0.01f && poked > 3f * noise + 0.002f && swingMost > 0.005f && bodies > 0.003f && handsOuter > 0.05f && viewOk;
             string dir = SessionState.GetString(K + "out", "Jelly");
             int w = breastShots[0].width, h = breastShots[0].height;
             int rows = (breastShots.Count + 3) / 4;
@@ -2899,6 +2938,7 @@ namespace AvatarBridge.Regression
                       $"settled, the furthest particle {1000f * restMost:0.0} mm off its modelled rest (6 at most); a finger 3 cm in moved it {1000f * pokeMost:0.0} mm " +
                       $"and {100f * poked:0.00}% of the picture's pixels against {100f * noise:0.00}% frame to frame; turning, {1000f * swingMost:0.0} mm; " +
                       $"squeezed together, the pair's contact held the side facing the other {1000f * bodies:0.0} mm further off than without");
+            Debug.Log($"[Jelly] the viewer's camera, 3 m off: {string.Join("; ", viewSaid)}; woken, the furthest particle {1000f * viewBack:0.0} mm off its rest (6 at most)");
             Debug.Log($"[Jelly] hands squeeze, 13 cm into each outer side: the masses {1000f * handsCloser:0.0} mm closer, the first's outer side {1000f * handsOuter:0.0} mm " +
                       $"and inner side {1000f * handsInner:0.0} mm off rest, its volume {handsVolume:0.000}");
             Debug.Log($"[Jelly] a slap, a palm 5 cm into one side for a tenth of a second: the whole went {1000f * slapMost:0.0} mm, still swinging {1000f * slapLater:0.0} mm a second on");
@@ -2938,7 +2978,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _Damp (""Damping a second"", Float) = 4
         _Viscous (""Damping a second of what the tissue does apart from its home's own move: as _Damp a jelly, far more flesh"", Float) = 4
         _Hand (""Hand radius at a 1.6 m viewpoint"", Float) = 0.05
-        _Far (""Hangs rigid past this many metres from the viewer's head"", Float) = 6
+        _Far (""Hangs rigid past this many metres from the viewer's head"", Float) = 4
+        _Behind (""Hangs rigid more than this many degrees off where the viewer's camera looks, 0 never"", Float) = 100
+        _Near (""Never hangs rigid for being out of view within this many metres of the viewer's camera"", Float) = 2
         _Pass (""Which of the frame's passes this is: 2 copies the rider out"", Float) = 0
         _FixedDt (""Fixed frame time, 0 for the real one"", Float) = 0
         _Stress (""The cost meter's load: steps only in odd phases"", Float) = 0
@@ -2988,7 +3030,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             #include ""UnityCG.cginc""
             #include ""JellyCommon.cginc""
 
-            float _Stiff, _Hz, _Hand, _Far, _Pass, _FixedDt, _Stress, _Sleep, _Lift, _Rider;
+            float _Stiff, _Hz, _Hand, _Far, _Behind, _Near, _Pass, _FixedDt, _Stress, _Sleep, _Lift, _Rider;
             float _MassHz, _MassCarried, _MassDamp, _Give, _MassRadius, _Limit, _Pair, _PairKeep, _Squish, _Viscous, _Solid;
             // The frame's time, for how fast the homes move.
             static float FrameDt;
@@ -3159,6 +3201,48 @@ Shader ""Hidden/AvatarBridge/JellyStep""
 
             // The client's first is the local player's head; only it is read.
             float4 _CVR_PlayerHeadPositions[1];
+
+            // The client's rendering buffer: where the local player's camera is and how it is turned,
+            // a frame late. Unbound, as in the editor or on a client without it, it reads zeros and
+            // nothing counts as out of view.
+            struct CVRRenderingData
+            {
+                int renderingCamera;
+                int renderingMirroredView;
+                int renderingCullingMask;
+                float3 renderingCameraPos;
+                float3 renderingPlayerCameraPos;
+                float4 renderingPlayerCameraRot;
+                float3 padding;
+            };
+            StructuredBuffer<CVRRenderingData> _CVRRenderingBuffer;
+
+            // Well behind the viewer: past _Near of the camera and more than _Behind degrees off where
+            // it looks, less the angle size takes up there. Waking comes back through the parser's
+            // readback a few frames late, so it takes ten degrees more to go than to come back.
+            bool Unseen(float3 at, float size, bool was)
+            {
+                if (!(_Behind > 0)) return false;
+                CVRRenderingData d = _CVRRenderingBuffer[0];
+                float4 q = d.renderingPlayerCameraRot;
+                if (abs(dot(q, q) - 1) > 0.01) return false;
+                float3 look = float3(2 * (q.x * q.z + q.w * q.y), 2 * (q.y * q.z - q.w * q.x), 1 - 2 * (q.x * q.x + q.y * q.y));
+                float3 to = at - d.renderingPlayerCameraPos;
+                float gone = length(to);
+                if (!(gone > _Near)) return false;
+                float off = degrees(acos(clamp(dot(look, to / gone), -1, 1))) - degrees(asin(saturate(size / gone)));
+                return off > _Behind + (was ? 0 : 10);
+            }
+
+            // Far from the viewer's head or well behind their camera, judged on the first region for
+            // every region alike, half a metre's give on the distance so it does not flicker.
+            bool Away(bool was)
+            {
+                float4x4 a = AnchorOf(0);
+                float3 head = _CVR_PlayerHeadPositions[0].xyz, at = a._m03_m13_m23;
+                return dot(head, head) > 1e-6 && distance(head, at) > _Far - (was ? 0.5 : 0)
+                    || Unseen(at, 2 * length(float3(Count()) * _Lattice.w) * length(a._m00_m10_m20), was);
+            }
 
 #ifdef JELLY_SCAN
             // The first 64 of the client's 255, all the scan reads: the whole arrays made every first
@@ -3677,15 +3761,13 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // A third pass, where there is a rider, copies its two texels into a texture of their
                 // own: the texture parser reads back a whole texture, and the whole state costs it
                 // ten times two texels. Its third texel says whether the steps should run at all: the
-                // parser switches their blitters off far from the viewer and on again within 5.5 m.
-                // Off, the state keeps its last far switch, so the same rule brings them back.
+                // parser switches their blitters off far from the viewer or well behind them, and on
+                // again once near and in view. Off, the state keeps its last far switch, so the same
+                // rule brings them back.
                 if (_Pass > 1.5)
                 {
                     if (px.x < 2) return _MainTex.Load(int3(16 + px.x, side, 0));
-                    float3 head = _CVR_PlayerHeadPositions[0].xyz;
-                    bool wasAway = _MainTex.Load(int3(18, side, 0)).x > 0.5;
-                    bool away = dot(head, head) > 1e-6 && distance(head, AnchorOf(0)._m03_m13_m23) > _Far - (wasAway ? 0.5 : 0);
-                    return float4(away ? 0 : 1, 0, 0, 1);
+                    return float4(Away(_MainTex.Load(int3(18, side, 0)).x > 0.5) ? 0 : 1, 0, 0, 1);
                 }
                 float4 here = _MainTex.Load(int3(px, 0));
                 // The cost meter's load rests in even phases, as cheap as a pass can be.
@@ -3716,16 +3798,12 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float h = dt / passes;
                 // The meter's load always takes a whole step, the cost it is there to show.
                 bool predicted = passes == 1 && !(_Stress > 0);
-                // Far from the viewer's head the tissue hangs rigid. The first pass decides, with half
-                // a metre's give so it does not flicker at the edge, and the second reads its answer.
-                // No head, as without a humanoid avatar, counts as near.
+                // Far from the viewer's head or well behind them the tissue hangs rigid. The first pass
+                // decides and the second reads its answer. No head, as without a humanoid avatar, counts
+                // as near.
                 float4 switches = _MainTex.Load(int3(18, side, 0));
                 bool wasDistant = switches.x > 0.5, distant = wasDistant;
-                if (_Pass < 0.5)
-                {
-                    float3 head = _CVR_PlayerHeadPositions[0].xyz;
-                    distant = !(_Stress > 0) && dot(head, head) > 1e-6 && distance(head, m._m03_m13_m23) > _Far - (wasDistant ? 0.5 : 0);
-                }
+                if (_Pass < 0.5) distant = !(_Stress > 0) && Away(wasDistant);
                 // Asleep: settled, untouched, on an anchor that has not moved. The second pass decided
                 // it last frame, so both passes take the same way; a moved anchor or a hand wakes it
                 // the frame after.
