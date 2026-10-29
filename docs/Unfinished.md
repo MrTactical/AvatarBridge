@@ -2619,8 +2619,13 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     rings once, 30 mm. The same slap from 15 cm off with a hand in the arrays rings once, 30 mm,
     the arrays', in one slot. The earlier hand test started 7 cm off, already touching the box: it
     closed on nothing and its ring was the frame it came.
-    Cost at rest: 0.036 ms at a 2 cm reach against 0.033 at eight probes. At 4 cm it is not yet
-    measured clean (ChilloutVR was open on the desktop).
+    Cost (RTX 4080, one run each, the build before the probes alongside): an avatar without
+    probes 0.033 ms at rest and 0.432 for 16, as before them (0.033, 0.440); with them 0.035 and
+    0.461; a collider pressing two probes 0.044. The first build put 0.003 ms and 10% of a crowd
+    on every avatar, probes or not, and 0.058 on a press: `&&` works out both sides, so the
+    skinned hang's sixteen reads, the readout's 24 and InReach for all 24 balls ran wherever a
+    test meant to skip them. Each is a nested `[branch]` now, and the merge skips probes not
+    pushed.
     Known: a finger's collider can still pass between probes. The film's palm, slowing as it
     reaches the skin, rings 22 mm from the probes against 29 from the arrays, which time it at the
     box.
