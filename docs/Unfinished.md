@@ -2280,7 +2280,21 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
         finger 147 mm and 1.86% of the picture, the contact 93 mm, rests at frame 60. Breasts
         (run120): every number as run117 bar turning, 109.0 from 109.2. The verify's camera now
         stands at the pair's own front. Next: both pairs at once (four regions); a pair whose
-        outside is sideways, as thighs, still gets a front or back frame. **One pass instead of two, tried and
+        outside is sideways, as thighs, still gets a front or back frame.
+        **Painted pairs, and pairs with no cloth.** The worn build reads painted regions first,
+        as the squash does, so a painted pair (thighs) goes on the jelly too. A pair no cloth of
+        its own swings rides its most weighted bone, not one hanging from it (a thigh would have
+        ridden its shin), and has no stretch in motion: its bone is the limb, and a seated thigh
+        read as swung a quarter turn off where it hangs. Filmed for Joe 2026-10-29 against the
+        squash alone, each pair rebuilt alone on Kar's squash so it is the one filmed: the seat
+        (butt3: hops, pokes, slaps, squeezes, a hand between, from behind and below, never
+        straight behind, where her tail hides it, or above, where her back does) and the thighs
+        painted from the upper legs' weights (thigh1: sat down, knees turned in 12 and 22
+        degrees, quickly in and out). Squeezed hard, the jelly's thighs meet flat at the pair's
+        plane and spill outward; the squash's pass into each other. The film tool now takes
+        the pair's own front, films late after the jelly's step on dev too, and has a slap shot
+        and a seat mode. Open: Joe's verdict on both films; the thighs' frame is still front or
+        back, so the plane's spill is weighted toward the lattice's front. **One pass instead of two, tried and
         reverted 2026-10-29:** one avatar 0.017 against 0.025, but 16 avatars 0.243 either way
         (independent avatars' passes already overlap, so the saved fixed price is hidden in a
         crowd), and the look changed (a particle predicting from last frame's neighbours: the turn

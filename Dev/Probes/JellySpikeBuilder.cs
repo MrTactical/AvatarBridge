@@ -285,10 +285,21 @@ namespace AvatarBridge.Regression
             if (animator == null || !animator.isHuman) return "Select a humanoid avatar in the scene first.";
             var mats = YapsSquash.Materials(root);
             if (mats.Count == 0) return $"{root.name} has no YAPS squash built. The jelly moves each vertex by the squash's own part shares, so build the squash first.";
-            var body = YapsSquash.NamedBody(root);
+            // Painted regions first, as the squash takes them; else the pairs found by name or picked.
+            var painted = YapsSquash.RegionsOf(root, out string unpainted);
+            var body = painted != null ? painted.body : YapsSquash.NamedBody(root);
             List<string> names = null;
-            string none = "no skin carries both parts";
-            var shares = body != null ? YapsSquash.NamedShares(root, body, out names, out none) : null;
+            string none = unpainted ?? "no skin carries both parts";
+            Vector4[] shares = null;
+            if (painted != null)
+            {
+                none = null;
+                names = painted.pairs.Take(2).Select(x => x.name).ToList();
+                var p0 = painted.pairs[0];
+                var p1 = painted.pairs.Count > 1 ? painted.pairs[1] : null;
+                shares = Enumerable.Range(0, painted.vertexCount).Select(v => new Vector4(p0.a[v], p0.b[v], p1 != null ? p1.a[v] : 0, p1 != null ? p1.b[v] : 0) / 255f).ToArray();
+            }
+            else if (body != null) shares = YapsSquash.NamedShares(root, body, out names, out none);
             int pair = names != null ? names.FindIndex(want.IsMatch) : -1;
             if (shares == null || pair < 0 || pair > 1)
                 return $"No such pair in {root.name}'s squash: {none ?? "its pairs are " + string.Join(", ", names)}.";
@@ -435,6 +446,12 @@ namespace AvatarBridge.Regression
                     if (shares[v][2 * pair + side] >= 0.5f)
                         skinReach[side] = Mathf.Max(skinReach[side], Vector3.Dot(undo * (body.transform.position + body.transform.rotation * at[v] - chest.position) - c, way));
             }
+            // The squash's stretch in motion, as the conversion set it; none for a pair no cloth of its
+            // own swings, as thighs: the bone it rides is the limb, and a seated thigh would read as
+            // swung a quarter turn off where it hangs.
+            var motion = mats[0].GetVector("_YAPS_SquashMotion");
+            bool clothed = PairCloth(root, part).Count > 0;
+            if (!clothed) motion.x = 0f;
             // The third pass too, which judges the same reach to wake a rest.
             foreach (var step in new[] { "/Jelly_Step.mat", "/Jelly_Step_2.mat", "/Jelly_Points.mat" })
             {
@@ -473,8 +490,7 @@ namespace AvatarBridge.Regression
                 // Solid: the homes take 0.7 of the whole's own squash at constant volume, so a squeeze
                 // bulges it the other ways and it comes back when let go.
                 mat.SetFloat("_Solid", 0.7f);
-                // The squash's stretch in motion, as the conversion set it.
-                mat.SetVector("_Motion", mats[0].GetVector("_YAPS_SquashMotion"));
+                mat.SetVector("_Motion", motion);
                 EditorUtility.SetDirty(mat);
             }
             int stale = Unworn(root);
@@ -496,7 +512,7 @@ namespace AvatarBridge.Regression
                 Undo.RecordObject(provider, "Put the breasts on the jelly");
                 for (int side = 0; side < 2; side++)
                 {
-                    var bone = Carrier(body, shares, 2 * pair + side, chest);
+                    var bone = Carrier(body, shares, 2 * pair + side, chest, clothed);
                     if (bone == null) continue;
                     var region = made.transform.Find($"Jelly Region {side}");
                     var placed = bone.InverseTransformPoint(region.position);
@@ -888,7 +904,7 @@ namespace AvatarBridge.Regression
         }
 
         // The bone carrying most of part k's skin, below the chest: the one its cloth swings.
-        static Transform Carrier(SkinnedMeshRenderer body, Vector4[] shares, int k, Transform chest)
+        static Transform Carrier(SkinnedMeshRenderer body, Vector4[] shares, int k, Transform chest, bool clothed = true)
         {
             var weights = body.sharedMesh.boneWeights;
             var bones = body.bones;
@@ -915,7 +931,9 @@ namespace AvatarBridge.Regression
                 if (sum[b] > most) { most = sum[b]; best = bones[b]; }
                 if (sum[b] > mostHung && carrying.Contains(bones[b].parent)) { mostHung = sum[b]; hung = bones[b]; }
             }
-            return hung ?? best;
+            // With no cloth there is no still root to pass over: a thigh rides its leg, not the shin
+            // hanging from it.
+            return clothed ? hung ?? best : best;
         }
 #endif
 
@@ -2113,7 +2131,27 @@ namespace AvatarBridge.Regression
             foreach (var other in Object.FindObjectsOfType<CVRRenderController>(true))
                 if (other != null && other.GetComponentInParent<CVRAvatar>(true) == null) Object.DestroyImmediate(other.transform.root.gameObject);
             var made = (GameObject) PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(args[from + 1]), scene);
-            PrefabUtility.UnpackPrefabInstance(made, PrefabUnpackMode.OutermostRoot, InteractionMode.AutomatedAction);
+            // -jellyPick <left bone>,<right bone> or -jellyThighs: the squash rebuilt on this copy with
+            // that pair alone, picked or the thighs painted, so it is the first pair, the one the squash
+            // probe films.
+            int pick = Array.IndexOf(args, "-jellyPick");
+            bool thighs = args.Contains("-jellyThighs");
+            PrefabUtility.UnpackPrefabInstance(made, pick >= 0 || thighs ? PrefabUnpackMode.Completely : PrefabUnpackMode.OutermostRoot, InteractionMode.AutomatedAction);
+            const string Film = "Assets/__JellyFilm";
+            if (!AssetDatabase.IsValidFolder(Film)) AssetDatabase.CreateFolder("Assets", "__JellyFilm");
+            if (pick >= 0 || thighs)
+            {
+                var avatar = made.GetComponentInChildren<CVRAvatar>(true).transform;
+                var settings = YapsSquash.SettingsOf(avatar) ?? avatar.gameObject.AddComponent<Yaps.YapsSquashSettings>();
+                settings.partBones.Clear();
+                settings.pairs.Clear();
+                if (thighs) PaintThighs(avatar, settings);
+                else settings.partBones.AddRange(args[pick + 1].Split(',').Select(x => avatar.GetComponentsInChildren<Transform>(true).First(t => t.name == x)));
+                if (!AssetDatabase.IsValidFolder(Film + "/Squash")) AssetDatabase.CreateFolder(Film, "Squash");
+                string squash = YapsSquash.Add(avatar, Film + "/Squash", out bool built);
+                YapsShaderPatcher.EndPass(null, null);
+                Debug.Log($"[Jelly] film: squash built {built}: {squash}");
+            }
             // -jellyHandColliders after|before: a MagicaCloth capsule on each hand in the breasts'
             // cloth, as a PhysBones conversion lists them; after, put on first so the jelly presses
             // with them instead, before, put on last so they stay in the cloth and move the bones.
@@ -2128,7 +2166,11 @@ namespace AvatarBridge.Regression
 #endif
             }
             if (hands == "after") HandColliders();
-            string said = BreastsOn(made.transform);
+            // -jellyPair: the pair by a pattern its name matches, the breasts unless given; -jellyNone:
+            // the squash alone.
+            int pairAt = Array.IndexOf(args, "-jellyPair");
+            bool bare = args.Contains("-jellyNone");
+            string said = bare ? "On the squash alone" : PairOn(made.transform, pairAt >= 0 && pairAt + 1 < args.Length ? new Regex(args[pairAt + 1], RegexOptions.IgnoreCase) : Breast);
             if (hands == "before") HandColliders();
             Debug.Log("[Jelly] film: " + said);
             if (!said.StartsWith("On "))
@@ -2136,14 +2178,39 @@ namespace AvatarBridge.Regression
                 EditorApplication.Exit(1);
                 return;
             }
-            const string Film = "Assets/__JellyFilm";
-            if (!AssetDatabase.IsValidFolder(Film)) AssetDatabase.CreateFolder("Assets", "__JellyFilm");
-            string path = $"{Film}/{made.name} jelly.prefab";
+            string path = $"{Film}/{made.name} {(bare ? "squash" : "jelly")}.prefab";
             var saved = PrefabUtility.SaveAsPrefabAsset(made, path);
             Object.DestroyImmediate(made);
             bool kept = EditorSceneManager.SaveScene(scene, $"{Film}/Film.unity");
             Debug.Log($"[Jelly] film: {(saved != null && kept ? "ready" : "FAIL")}, {path} and {Film}/Film.unity");
             EditorApplication.Exit(saved != null && kept ? 0 : 1);
+        }
+
+        // Thighs painted as a pair for the squash: each vertex's weight on an upper leg and the bones
+        // under it short of the knee, the avatar's left A.
+        static void PaintThighs(Transform avatar, Yaps.YapsSquashSettings settings)
+        {
+            var animator = avatar.GetComponentInChildren<Animator>();
+            var legs = new[] { (HumanBodyBones.LeftUpperLeg, HumanBodyBones.LeftLowerLeg), (HumanBodyBones.RightUpperLeg, HumanBodyBones.RightLowerLeg) }
+                .Select(x => (thigh: animator.GetBoneTransform(x.Item1), knee: animator.GetBoneTransform(x.Item2))).ToArray();
+            var body = YapsSquash.NamedBody(avatar) ?? avatar.GetComponentsInChildren<SkinnedMeshRenderer>(true).Where(r => r.sharedMesh != null).OrderByDescending(r => r.sharedMesh.vertexCount).First();
+            var mesh = body.sharedMesh;
+            var weights = mesh.boneWeights;
+            var pair = new Yaps.YapsSquashSettings.Pair { name = "Thighs", a = new byte[mesh.vertexCount], b = new byte[mesh.vertexCount] };
+            for (int v = 0; v < weights.Length; v++)
+            {
+                var w = weights[v];
+                var on = new float[2];
+                foreach (var (i, weight) in new[] { (w.boneIndex0, w.weight0), (w.boneIndex1, w.weight1), (w.boneIndex2, w.weight2), (w.boneIndex3, w.weight3) })
+                    for (int side = 0; side < 2; side++)
+                        if (weight > 0f && body.bones[i] != null && body.bones[i].IsChildOf(legs[side].thigh) && !body.bones[i].IsChildOf(legs[side].knee)) on[side] += weight;
+                pair.a[v] = (byte) Mathf.RoundToInt(255f * Mathf.Clamp01(on[0]));
+                pair.b[v] = (byte) Mathf.RoundToInt(255f * Mathf.Clamp01(on[1]));
+            }
+            settings.body = body;
+            settings.vertexCount = mesh.vertexCount;
+            settings.fingerprint = YapsSquash.Fingerprint(mesh);
+            settings.pairs.Add(pair);
         }
 
         // The jelly against the avatar's own breast cloth: two copies side by side, one swinging its

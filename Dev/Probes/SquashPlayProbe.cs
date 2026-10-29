@@ -123,6 +123,8 @@ namespace AvatarBridge.Regression
         static Transform shoulder, elbow, wrist;
         static Quaternion shoulderRest, elbowRest;
         static Vector3 target;
+        // The pair's own front: the avatar's, or behind it for a seat.
+        static Vector3 facing;
         static Camera front, side;
         static List<string> rows;
         static string outDir;
@@ -139,6 +141,12 @@ namespace AvatarBridge.Regression
             SessionState.SetInt(K + "other", Environment.GetCommandLineArgs().Contains("-spOther") ? 1 : 0);
             SessionState.SetInt(K + "part", Environment.GetCommandLineArgs().Contains("-spPart") ? int.Parse(Arg("-spPart")) : -1);
             SessionState.SetInt(K + "video", Environment.GetCommandLineArgs().Contains("-spVideo") ? 1 : 0);
+            // -spRenderLate films each frame after the jelly's step, as the client draws, not before it.
+            SessionState.SetInt(K + "renderLate", Environment.GetCommandLineArgs().Contains("-spRenderLate") ? 1 : 0);
+            // -spOnly keeps the shots whose name holds the text, or any of several joined by +.
+            SessionState.SetString(K + "only", Environment.GetCommandLineArgs().Contains("-spOnly") ? Arg("-spOnly") : "");
+            // -spSeat films the avatar sat down with its knees brought together instead.
+            SessionState.SetInt(K + "seat", Environment.GetCommandLineArgs().Contains("-spSeat") ? 1 : 0);
             SessionState.SetInt(K + "plug", Environment.GetCommandLineArgs().Contains("-spPlug") ? 1 : 0);
             SessionState.SetInt(K + "cost", Environment.GetCommandLineArgs().Contains("-spCost") ? 1 : 0);
             SessionState.SetInt(K + "jump", Environment.GetCommandLineArgs().Contains("-spJump") ? 1 : 0);
@@ -395,7 +403,9 @@ namespace AvatarBridge.Regression
                 float reach = mats[0].GetVector("_YAPS_SquashReach")[left ? 0 : 1] * Unit(part);
                 var chest = animator.GetBoneTransform(HumanBodyBones.Chest) ?? animator.GetBoneTransform(HumanBodyBones.Spine);
                 var outward = Vector3.ProjectOnPlane(part.position - chest.position, Vector3.up).normalized;
-                target = part.position + root.forward * reach * 0.6f + outward * reach * 0.2f;
+                bool behind = Vector3.Dot(0.5f * (slots[0].position + slots[1].position) - animator.GetBoneTransform(HumanBodyBones.Hips).position, root.forward) < 0f;
+                facing = behind && SessionState.GetInt(K + "seat", 0) == 0 ? -root.forward : root.forward;
+                target = part.position + facing * reach * 0.6f + outward * reach * 0.2f;
                 SetUpCameras(part.position, reach);
                 Shoot("rest_animated");
             }
@@ -647,7 +657,12 @@ namespace AvatarBridge.Regression
         // Each shot eases in over its first third, holds, and eases out, so s runs 0, 1, 0.
         static void Film(Transform[] slots, Material[] mats)
         {
-            if (film == null) StartFilm(slots, mats);
+            if (film == null)
+            {
+                StartFilm(slots, mats);
+                string only = SessionState.GetString(K + "only", "");
+                if (only.Length > 0) film.RemoveAll(x => !only.Split('+').Any(o => x.name.Contains(o)));
+            }
             bool cut = frame == Bend;
             while (shotIndex < film.Count && frame - shotStart >= film[shotIndex].frames) { shotStart += film[shotIndex++].frames; cut = true; }
             if (shotIndex == film.Count)
@@ -668,10 +683,15 @@ namespace AvatarBridge.Regression
             var shot = film[shotIndex];
             if (cut)
             {
-                segments.Add($"{filmed}\t{shot.name}");
+                // The views named after it: a seat is never filmed straight behind or from above,
+                // where a tail or the back hides it.
+                bool back = Vector3.Dot(facing, animator.transform.forward) < 0f;
+                segments.Add($"{filmed}\t{shot.name}\t{(shot.profile ? "side on" : back ? "behind, right" : "front")}\t{(back ? "behind, left" : "three quarter")}\t{(back ? "low, right" : "from above")}");
                 float away = shot.width / 2f / Mathf.Tan(15f * Mathf.Deg2Rad);
                 var root = animator.transform;
-                var from = new[] { shot.profile ? outside : root.forward, (root.forward - root.right).normalized, (root.forward * 0.75f + root.up * 0.66f).normalized };
+                var from = back
+                    ? new[] { shot.profile ? outside : (facing + 0.7f * root.right).normalized, (facing - root.right).normalized, (facing + root.right - 0.5f * root.up).normalized }
+                    : new[] { shot.profile ? outside : facing, (facing - root.right).normalized, (facing * 0.75f + root.up * 0.66f).normalized };
                 for (int v = 0; v < 3; v++) { views[v].transform.position = shot.at + from[v] * away; views[v].transform.LookAt(shot.at); }
             }
             float u = (frame - shotStart) / (float)shot.frames;
@@ -680,6 +700,14 @@ namespace AvatarBridge.Regression
             if (plug != null) plug.enabled = false;
             shot.pose(s, u);
             if ((frame - Bend) % 2 != 0) return;
+            if (SessionState.GetInt(K + "renderLate", 0) == 1) { renderLate = true; return; }
+            Shoot();
+        }
+
+        static bool renderLate;
+
+        static void Shoot()
+        {
             for (int v = 0; v < 3; v++)
             {
                 // Faint where it would hide the dent, plain from above.
@@ -707,7 +735,7 @@ namespace AvatarBridge.Regression
             sheet = new Texture2D(1920, 640, TextureFormat.RGB24, false);
             handRadius = mats[0].GetVector("_YAPS_SquashHands").y;
             var root = animator.transform;
-            Vector3 f = root.forward, up = root.up;
+            Vector3 f = facing, up = root.up;
             views = Enumerable.Range(0, 3).Select(_ =>
             {
                 var cam = new GameObject("SquashPlay view").AddComponent<Camera>();
@@ -825,6 +853,11 @@ namespace AvatarBridge.Regression
                 } },
                 new Shot { name = "Quick pokes", frames = 180, at = front, width = 0.45f, profile = true, pose = (s, u) => Press(Tip(front, -f, 4f, Mathf.Lerp(-0.03f, 0.05f, Beats(u, 5)))) },
                 new Shot { name = "A deep poke", frames = 240, pose = Front(4f, 0.16f), at = front, width = 0.45f, profile = true },
+                new Shot { name = "Slaps", frames = 270, at = front, width = 0.5f, profile = true, pose = (s, u) =>
+                {
+                    float t = Mathf.Repeat(u * 3f, 1f), hit = t > 0.45f && t < 0.55f ? Mathf.Sin(Mathf.PI * (t - 0.45f) / 0.1f) : 0f;
+                    Press((front - up * (0.5f * hand) + f * (r + Mathf.Lerp(0.1f, -0.05f, hit)), up, -1f));
+                } },
                 new Shot { name = "A finger between them", frames = 210, at = between, width = 0.6f, pose = (s, u) => Press(Tip(between, -f, 4f, Mathf.Lerp(-0.04f, 0.09f, s))) },
                 new Shot { name = "Two players poking at once", frames = 240, at = mid + f * 0.05f, width = 0.9f, pose = (s, u) =>
                     Press(Tip(front, -f, 4f, Mathf.Lerp(-0.03f, 0.06f, Beats(u, 3))), Tip(frontQ, -f, 4f, Mathf.Lerp(-0.03f, 0.06f, Beats(u + 1f / 6f, 3)))) },
@@ -854,6 +887,39 @@ namespace AvatarBridge.Regression
                 {
                     foreach (var m in mats) m.SetFloat("_YAPS_SquashPulse", 0.3f * Mathf.Clamp01(Mathf.Min(u, 1f - u) / 0.1f));
                 } },
+            };
+            if (SessionState.GetInt(K + "seat", 0) == 1) film = Seat(root);
+        }
+
+        // Sat down, thighs a quarter turn forward and shins straight down, then each knee turned in
+        // toward the other by up to inward degrees, held and let go.
+        static List<Shot> Seat(Transform root)
+        {
+            var legs = new[] { HumanBodyBones.LeftUpperLeg, HumanBodyBones.RightUpperLeg }.Select(animator.GetBoneTransform).ToArray();
+            var shins = new[] { HumanBodyBones.LeftLowerLeg, HumanBodyBones.RightLowerLeg }.Select(animator.GetBoneTransform).ToArray();
+            var legRest = legs.Select(t => t.rotation).ToArray();
+            var shinRest = shins.Select(t => t.rotation).ToArray();
+            float thigh = Vector3.Distance(legs[0].position, shins[0].position);
+            Vector3 f = root.forward, up = root.up, right = root.right;
+            void Sit(float sat, float inward)
+            {
+                for (int i = 0; i < 2; i++)
+                {
+                    var turnIn = Quaternion.AngleAxis((i == 0 ? 1f : -1f) * inward, up);
+                    legs[i].rotation = turnIn * Quaternion.AngleAxis(-90f * sat, right) * legRest[i];
+                    shins[i].rotation = turnIn * shinRest[i];
+                }
+            }
+            var at = 0.5f * (legs[0].position + legs[1].position) + f * (0.55f * thigh) - up * (0.1f * thigh);
+            float wide = 2.2f * thigh;
+            float Rise(float u) => Mathf.SmoothStep(0f, 1f, Mathf.Min(u / 0.6f, 1f));
+            return new List<Shot>
+            {
+                new Shot { name = "Sitting down", frames = 180, at = at, width = wide, pose = (s, u) => Sit(Rise(u), 0f) },
+                new Shot { name = "Knees together", frames = 360, at = at, width = wide, pose = (s, u) => Sit(1f, 12f * s) },
+                new Shot { name = "Knees squeezed hard together", frames = 360, at = at, width = wide, pose = (s, u) => Sit(1f, 22f * s) },
+                new Shot { name = "Knees together and apart, quickly", frames = 360, at = at, width = wide, pose = (s, u) => Sit(1f, 18f * Beats(u, 4)) },
+                new Shot { name = "Standing up", frames = 180, at = at, width = wide, pose = (s, u) => Sit(1f - Rise(u), 0f) },
             };
         }
 
@@ -2362,6 +2428,7 @@ namespace AvatarBridge.Regression
         static void OnLate()
         {
             if (!EditorApplication.isPlaying || provider == null) return;
+            if (renderLate) { renderLate = false; Shoot(); }
             var slots = provider.transforms;
             for (int p = 0; p < 4; p++) late[p] = (slots[p].position - slots[4 + p].position).magnitude;
             lastEnd = slots.Select(t => t.position).ToArray();
