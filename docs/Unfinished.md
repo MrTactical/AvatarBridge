@@ -2326,7 +2326,10 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
         was. The film tool logs the turn and the plane each frame (-spPlaneLog). Open: crossed thighs now meet nothing, so they can sink into each other; the
         proper contact is each lattice out of the other leg's capsule at its true width, which
         means skipping its own carrier's capsule (both thinned to 27 mm today only because each
-        lattice also carried its own leg's). **One pass instead of two, tried and
+        lattice also carried its own leg's). **Thighs parked (Joe, 2026-10-29):** "still not
+        looking good on the thighs, due to thighs having a lot less loose skin, they aren't boobs
+        or ass, ignore the thighs for now". The jelly is tuned as loose tissue; a thigh wants a
+        firmer one, back at a later date. **One pass instead of two, tried and
         reverted 2026-10-29:** one avatar 0.017 against 0.025, but 16 avatars 0.243 either way
         (independent avatars' passes already overlap, so the saved fixed price is hidden in a
         crowd), and the look changed (a particle predicting from last frame's neighbours: the turn
