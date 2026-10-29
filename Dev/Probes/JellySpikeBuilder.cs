@@ -232,6 +232,10 @@ namespace AvatarBridge.Regression
         // A pair's bones, cloth and colliders by the name the squash gives it.
         static Regex PartOf(string name) => new Regex(Regex.Escape(name), RegexOptions.IgnoreCase);
         const float BreastCells = 600f;
+        // -jellyImpulse: impulse skin, the shoot-out's winner, instead of the lattice: one pass that
+        // steps the side row alone (the mass, the hands, the slaps), a lattice of a few cells only
+        // for the frame the draw reads, and the draw moving skin by the mass and drawing slaps as rings.
+        static bool Impulse => Environment.GetCommandLineArgs().Contains("-jellyImpulse");
 
         [MenuItem("Tools/AvatarBridge Dev/Jelly spike: put the selected avatar's breasts on the jelly")]
         static void BreastsOnSelected()
@@ -427,7 +431,10 @@ namespace AvatarBridge.Regression
             int givenAt = Array.IndexOf(said, "-jellyGive"), zetaAt = Array.IndexOf(said, "-jellyZeta");
             if (givenAt >= 0 && givenAt + 1 < said.Length) give = float.Parse(said[givenAt + 1], System.Globalization.CultureInfo.InvariantCulture);
             float zeta = zetaAt >= 0 && zetaAt + 1 < said.Length ? float.Parse(said[zetaAt + 1], System.Globalization.CultureInfo.InvariantCulture) : cloth ? 1f : 0.6f;
-            var n = new Vector3Int(Mathf.Max(3, Mathf.CeilToInt(size.x / cell) + 1), Mathf.Max(3, Mathf.CeilToInt(size.y / cell) + 1), Mathf.Max(3, Mathf.CeilToInt(size.z / cell) + 1));
+            // Impulse skin's lattice is only a frame and a depth, three a side so its middle is the
+            // skin's: rounded up from eight cells, a 40 cm breast came out four deep, 59 cm, its centre
+            // 9 cm forward of the skin's and its front at 0.4 of the depth.
+            var n = Impulse ? new Vector3Int(3, 3, 3) : new Vector3Int(Mathf.Max(3, Mathf.CeilToInt(size.x / cell) + 1), Mathf.Max(3, Mathf.CeilToInt(size.y / cell) + 1), Mathf.Max(3, Mathf.CeilToInt(size.z / cell) + 1));
             float spacing = Mathf.Max(size.x / (n.x - 1), size.y / (n.y - 1), size.z / (n.z - 1));
 
             var prefab = Make(preview: false, withMeter: false, withRider: false, offFar: true, sleeps: false, regions: 2, lattice: n, spacing: spacing, surface: false, lift: 1f);
@@ -446,6 +453,55 @@ namespace AvatarBridge.Regression
                     if (shares[v][2 * pair + side] >= 0.5f)
                         skinReach[side] = Mathf.Max(skinReach[side], Vector3.Dot(undo * (body.transform.position + body.transform.rotation * at[v] - chest.position) - c, way));
             }
+            // How far each breast's skin reaches from its centre, every way, for impulse skin's step to
+            // measure a hand's dent on the skin as it rests: the outermost skin in each of 8 by 8
+            // octahedral bins, an empty one the mean of its filled neighbours, a region a block of rows.
+            // A texture, since a material keeps no array.
+            var reach = AssetDatabase.LoadAssetAtPath<Texture2D>(Folder + "/Jelly_Reach.asset");
+            if (reach == null)
+            {
+                reach = new Texture2D(8, 16, TextureFormat.RFloat, false, true);
+                AssetDatabase.CreateAsset(reach, Folder + "/Jelly_Reach.asset");
+            }
+            var bins = new float[8 * 16];
+            for (int side = 0; side < 2; side++)
+            {
+                var c = new Vector3(0.5f * (los[side].x + his[side].x), 0.5f * (los[side].y + his[side].y), los[side].z + 0.5f * (n.z - 1) * spacing);
+                for (int v = 0; v < Mathf.Min(at.Length, shares.Length); v++)
+                {
+                    if (shares[v][2 * pair + side] < 0.5f) continue;
+                    var d = undo * (body.transform.position + body.transform.rotation * at[v] - chest.position) - c;
+                    var o = d / (Mathf.Abs(d.x) + Mathf.Abs(d.y) + Mathf.Abs(d.z) + 1e-9f);
+                    var uv = d.z >= 0 ? new Vector2(o.x, o.y) : new Vector2((1 - Mathf.Abs(o.y)) * (o.x >= 0 ? 1 : -1), (1 - Mathf.Abs(o.x)) * (o.y >= 0 ? 1 : -1));
+                    int bx = Mathf.Clamp((int) ((uv.x * 0.5f + 0.5f) * 8), 0, 7), by = Mathf.Clamp((int) ((uv.y * 0.5f + 0.5f) * 8), 0, 7);
+                    bins[(by + 8 * side) * 8 + bx] = Mathf.Max(bins[(by + 8 * side) * 8 + bx], d.magnitude);
+                }
+                for (bool empty = true; empty;)
+                {
+                    empty = false;
+                    var was = (float[]) bins.Clone();
+                    for (int k = 0; k < 64; k++)
+                    {
+                        int i = 64 * side + k;
+                        if (was[i] > 0) continue;
+                        float sum = 0f;
+                        int got = 0;
+                        foreach (var (dx, dy) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+                        {
+                            int x = k % 8 + dx, y = k / 8 + dy;
+                            if (x < 0 || x > 7 || y < 0 || y > 7 || !(was[64 * side + y * 8 + x] > 0)) continue;
+                            sum += was[64 * side + y * 8 + x];
+                            got++;
+                        }
+                        if (got > 0) bins[i] = sum / got;
+                        else empty = true;
+                    }
+                }
+            }
+            reach.SetPixelData(bins, 0);
+            reach.filterMode = FilterMode.Point;
+            reach.Apply(false);
+            EditorUtility.SetDirty(reach);
             // The squash's stretch in motion, as the conversion set it; none for a pair no cloth of its
             // own swings, as thighs: the bone it rides is the limb, and a seated thigh would read as
             // swung a quarter turn off where it hangs.
@@ -463,6 +519,8 @@ namespace AvatarBridge.Regression
                 mat.SetFloat("_MassCarried", cloth ? 1f : 0f);
                 mat.SetFloat("_Limit", cloth ? 0.2f : 0.6f);
                 mat.SetFloat("_MassRadius", radius);
+                mat.SetTexture("_JellyReach", reach);
+                mat.SetVector("_JellyVolume", new Vector4(volume[0], volume[1], 0f, 0f));
                 // A little more pillow (Joe): the tissue's pull to its rest 2.4 a second, from 3.
                 mat.SetFloat("_Hz", 2.4f);
                 mat.SetFloat("_Pair", 1f);
@@ -736,6 +794,7 @@ namespace AvatarBridge.Regression
                 YapsShaderPatcher.Wear(m, shader);
                 m.SetTexture("_YAPS_JellyState", state);
                 m.SetVector("_YAPS_JellyLattice", new Vector4(n.x, n.y, n.z, spacing));
+                m.SetVector("_YAPS_JellyImpulse", Impulse ? new Vector4(1.5f, 1f, 0.1f, 0.4f) : Vector4.zero);
                 m.SetVector("_YAPS_JellyParts", parts);
                 EditorUtility.SetDirty(m);
                 patched++;
@@ -1013,21 +1072,22 @@ namespace AvatarBridge.Regression
             controller.cvrRenderComponents.Add(provider);
             var steps = new List<CVRBlitter>();
             var fed = new List<Material> { stepMat, stepMat2 };
-            for (int i = 0; i < Passes; i++)
+            for (int i = 0; i < (Impulse ? 1 : Passes); i++)
             {
                 var blitter = tissue.AddComponent<CVRBlitter>();
                 steps.Add(blitter);
                 // Into the twin and back: a texture in and out the same would make the client
-                // render into a temporary and copy it back, every pass.
+                // render into a temporary and copy it back, every pass. Impulse skin's one pass does
+                // just that, cheaper than a second.
                 blitter.originTexture = i == 0 ? state : twin;
-                blitter.destinationTexture = i == 0 ? twin : state;
+                blitter.destinationTexture = i == 0 && !Impulse ? twin : state;
                 blitter.blitMaterial = i == 0 ? stepMat : stepMat2;
                 blitter.destinationTextures = new RenderTexture[0];
                 controller.cvrRenderComponents.Add(blitter);
             }
             // Last, the rider's texels and the far switch out of the stepped state, for the parser.
             RenderTexture where = null;
-            if (withRider || offFar)
+            if (!Impulse && (withRider || offFar))
             {
                 where = Save(Strip(3), "/Jelly_Points.renderTexture");
                 var pointsMat = StepMaterial(step, n, 2, spacing);
@@ -1252,6 +1312,7 @@ namespace AvatarBridge.Regression
             var m = new Material(step);
             m.SetVector("_Lattice", new Vector4(n.x, n.y, n.z, spacing > 0f ? spacing : SpacingOf(n)));
             m.SetFloat("_Pass", pass);
+            m.SetFloat("_Impulse", Impulse ? 1f : 0f);
             // The first pass looks for the hands in reach, the third for whatever wakes a rest.
             if (pass == 0) m.EnableKeyword("JELLY_SCAN");
             if (pass == 2) m.EnableKeyword("JELLY_POINTS");
@@ -2983,7 +3044,21 @@ namespace AvatarBridge.Regression
                 var mats = chain.Select(c => c.blitMaterial).Distinct().ToList();
                 RenderTexture pa = chain[0].originTexture, pb = chain[0].destinationTexture;
                 var copyMat = new Material(Shader.Find("Hidden/BlitCopy"));
-                void Chain() { foreach (var c in chain) Graphics.Blit(c.originTexture, c.destinationTexture, c.blitMaterial); }
+                // A pass in and out the same texture as the client runs one: into a temporary, then a
+                // copy back.
+                void Pass(RenderTexture from, RenderTexture to, Material with)
+                {
+                    if (from != to)
+                    {
+                        Graphics.Blit(from, to, with);
+                        return;
+                    }
+                    var temporary = RenderTexture.GetTemporary(from.descriptor);
+                    Graphics.Blit(from, temporary, with);
+                    Graphics.CopyTexture(temporary, from);
+                    RenderTexture.ReleaseTemporary(temporary);
+                }
+                void Chain() { foreach (var c in chain) Pass(c.originTexture, c.destinationTexture, c.blitMaterial); }
                 // A crowd: each avatar its own state and twin, the same passes.
                 var crowd = Enumerable.Range(0, 16).Select(k =>
                 {
@@ -2999,7 +3074,7 @@ namespace AvatarBridge.Regression
                 {
                     for (int k = 0; k < many; k++)
                         foreach (var c in chain)
-                            Graphics.Blit(c.originTexture == pa ? crowd[k].x : crowd[k].y, c.destinationTexture == pa ? crowd[k].x : crowd[k].y, c.blitMaterial);
+                            Pass(c.originTexture == pa ? crowd[k].x : crowd[k].y, c.destinationTexture == pa ? crowd[k].x : crowd[k].y, c.blitMaterial);
                 }
                 // The parser's pass, as the far switch's build adds it: the second pass's material on its
                 // third pass.
@@ -3012,13 +3087,55 @@ namespace AvatarBridge.Regression
                 var power = drawn.Select(mm => mm.GetFloat("_YAPS_DentPower")).ToList();
                 var parts = drawn.Select(mm => mm.GetVector("_YAPS_JellyParts")).ToList();
                 // handed: the jelly's parts given back to the squash, as before there was a jelly.
-                void Drawn(bool jelly, bool squash, bool handed = false)
+                // impulse: impulse skin drawn from the same state instead of the lattice.
+                void Drawn(bool jelly, bool squash, bool handed = false, bool impulse = false)
                 {
                     for (int k = 0; k < drawn.Count; k++)
                     {
                         drawn[k].SetVector("_YAPS_JellyLattice", jelly ? lat[k] : Vector4.zero);
                         drawn[k].SetFloat("_YAPS_DentPower", squash ? power[k] : 0f);
                         drawn[k].SetVector("_YAPS_JellyParts", handed ? Vector4.zero : parts[k]);
+                        drawn[k].SetVector("_YAPS_JellyImpulse", impulse ? new Vector4(1.5f, 1f, 0.1f, 0.4f) : Vector4.zero);
+                    }
+                }
+                // The draw's inputs written straight into the state it reads, as no step runs between
+                // its renders: eight hands 40 cm out in front, in reach of every vertex's sums and
+                // touching none, and each region a slap 50 ms old, so its ring is live. Off, both zeroed.
+                // bare: the own capsules in reach and the pair's plane zeroed too, for their price.
+                var read = (drawn.Count > 0 ? drawn[0].GetTexture("_YAPS_JellyState") as RenderTexture : null) ?? pa;
+                var fake = new Texture2D(93, 1, TextureFormat.RGBAFloat, false);
+                void Fake(bool hands, bool ring, bool bare = false)
+                {
+                    for (int r = 0; r < 2; r++)
+                    {
+                        var px = new Color[93];
+                        Vector3 front = breastRegions[r].position + swing.forward * 0.4f;
+                        for (int e = 0; hands && e < 8; e++)
+                        {
+                            Vector3 wrist = front + swing.right * (0.03f * e);
+                            px[2 * e] = new Color(wrist.x, wrist.y, wrist.z, 0.04f);
+                            Vector3 tip = wrist + swing.up * 0.15f;
+                            px[2 * e + 1] = new Color(tip.x, tip.y, tip.z, 10f);
+                            px[85 + e] = new Color(0.02f, 0f, 0f, 1f);
+                        }
+                        if (ring)
+                        {
+                            Vector3 hit = breastRegions[r].position + swing.forward * 0.15f;
+                            px[80] = new Color(hit.x, hit.y, hit.z, Time.timeSinceLevelLoad - 0.05f);
+                            px[81] = new Color(0f, 0f, 0f, 0.01f);
+                        }
+                        fake.SetPixels(px);
+                        fake.Apply();
+                        // Texels 16 to 79 are the step's own; only the hands', the slap's and the dents are written.
+                        int row = r * (Side(n) + 1) + Side(n);
+                        Graphics.CopyTexture(fake, 0, 0, 0, 0, 16, 1, read, 0, 0, 0, row);
+                        Graphics.CopyTexture(fake, 0, 0, 80, 0, 4, 1, read, 0, 0, 80, row);
+                        Graphics.CopyTexture(fake, 0, 0, 85, 0, 8, 1, read, 0, 0, 85, row);
+                        if (bare)
+                        {
+                            Graphics.CopyTexture(fake, 0, 0, 20, 0, 1, 1, read, 0, 0, 41, row);
+                            Graphics.CopyTexture(fake, 0, 0, 20, 0, 1, 1, read, 0, 0, 59, row);
+                        }
                     }
                 }
                 // Far is the viewer's head past _Far; none reads as near.
@@ -3034,8 +3151,12 @@ namespace AvatarBridge.Regression
                     ("16 avatars 20 m off", () => { Near(1f / 90f); Head(20f); }, () => Crowd(16), pb, 100),
                     ("the far switch's parser pass alone", () => Near(1f / 90f), () => Graphics.Blit(pa, strip, points), strip, 1000),
                     ("two copies", () => { }, () => { Graphics.Blit(pa, pb, copyMat); Graphics.Blit(pb, pa, copyMat); }, pb, 1000),
-                    ($"the avatar drawn ({drawn.Count} materials) with the squash and the jelly", () => Drawn(true, true), () => eye.Render(), eye.targetTexture, 200),
-                    ("the squash alone", () => Drawn(false, true), () => eye.Render(), eye.targetTexture, 200),
+                    ($"the avatar drawn ({drawn.Count} materials) with the squash and the jelly", () => { Drawn(true, true); Fake(false, false); }, () => eye.Render(), eye.targetTexture, 200),
+                    ("the jelly, 8 hands in reach", () => { Drawn(true, true); Fake(true, false); }, () => eye.Render(), eye.targetTexture, 200),
+                    ("impulse skin at rest", () => { Drawn(true, true, impulse: true); Fake(false, false); }, () => eye.Render(), eye.targetTexture, 200),
+                    ("impulse skin at rest, no own arms or pair plane", () => { Drawn(true, true, impulse: true); Fake(false, false, true); }, () => eye.Render(), eye.targetTexture, 200),
+                    ("impulse skin, a slap's ring and 8 hands", () => { Drawn(true, true, impulse: true); Fake(true, true); }, () => eye.Render(), eye.targetTexture, 200),
+                    ("the squash alone", () => { Drawn(false, true); Fake(false, false); }, () => eye.Render(), eye.targetTexture, 200),
                     ("the squash on every part, the breasts handed back to it", () => Drawn(false, true, true), () => eye.Render(), eye.targetTexture, 200),
                     ("neither", () => Drawn(false, false), () => eye.Render(), eye.targetTexture, 200),
                 };
@@ -3048,6 +3169,8 @@ namespace AvatarBridge.Regression
                     }
                 Near(0f);
                 Drawn(true, true);
+                Fake(false, false);
+                Object.DestroyImmediate(fake);
                 Object.DestroyImmediate(copyMat);
                 Object.DestroyImmediate(points);
                 strip.Release();
@@ -3122,6 +3245,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _Behind (""Hangs rigid more than this many degrees off where the viewer's camera looks, 0 never"", Float) = 100
         _Near (""Never hangs rigid for being out of view within this many metres of the viewer's camera"", Float) = 2
         _Pass (""Which of the frame's passes this is: 2 copies the rider out"", Float) = 0
+        _Impulse (""Impulse skin: the side row stepped alone, no lattice, one pass"", Float) = 0
+        _Slap (""Impulse skin's slaps: metres a second to fire, depth per m/s, deepest, life in seconds"", Vector) = (0.5, 0.01, 0.03, 1.5)
         _FixedDt (""Fixed frame time, 0 for the real one"", Float) = 0
         _Stress (""The cost meter's load: steps only in odd phases"", Float) = 0
         _Rider (""Steps the rider's texels, for the parser and the sleep"", Float) = 1
@@ -3149,6 +3274,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _JellyCol1 (""The next four"", Vector) = (0, 0, 0, 0)
         _JellyBox0 (""The first region's skin on its anchor: half width, half height, depth; 0 the lattice's box"", Vector) = (0, 0, 0, 0)
         _JellyBox1 (""The same for the second"", Vector) = (0, 0, 0, 0)
+        _JellyReach (""Impulse skin: how far each region's skin reaches from its centre, octahedral 8 by 8 a region"", 2D) = ""black"" {}
+        _JellyVolume (""Impulse skin: each region's volume as built, cubic metres in the anchor's units"", Vector) = (0, 0, 0, 0)
+        _Hold (""Impulse skin: how far round a hand its dent spreads, in hand radii, the draw's _YAPS_JellyImpulse.x"", Float) = 1.5
         _JellyOffsetAt0 (""The first region's place on the bone it rides, in the bone's units, w its scale on it; w 0 rides none"", Vector) = (0, 0, 0, 0)
         _JellyOffsetTurn0 (""The first region's turn on that bone"", Vector) = (0, 0, 0, 1)
         _JellyOffsetAt1 (""The second region's place on its bone"", Vector) = (0, 0, 0, 0)
@@ -3175,7 +3303,11 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             #include ""JellyCommon.cginc""
 
             float _Stiff, _Hz, _Hand, _Far, _Behind, _Near, _Pass, _FixedDt, _Stress, _Sleep, _Lift, _Rider, _Rest, _Regions;
-            float _MassHz, _MassCarried, _MassDamp, _Give, _MassRadius, _Limit, _Pair, _PairKeep, _Squish, _Viscous, _Solid;
+            float _MassHz, _MassCarried, _MassDamp, _Give, _MassRadius, _Limit, _Pair, _PairKeep, _Squish, _Viscous, _Solid, _Impulse;
+            float4 _Slap;
+            Texture2D<float> _JellyReach;
+            float4 _JellyVolume;
+            float _Hold;
             // The frame's time, for how fast the homes move.
             static float FrameDt;
             float4 _Motion, _PairOffset, _PairReach, _PairSkin, _JellyOwn0, _JellyOwn1, _JellyCol0, _JellyCol1, _JellyBox0, _JellyBox1, _JellyOffsetAt0, _JellyOffsetTurn0, _JellyOffsetAt1, _JellyOffsetTurn1;
@@ -4041,6 +4173,129 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 return _Sleep > 0 && !(_Stress > 0) && !distant && !hand && AnchorMoved(m, side) < 1e-4 && _MainTex.Load(int3(19, side, 0)).x >= _Sleep;
             }
 
+            // Impulse skin's slaps, texels 80 to 84. A slap is a hand reaching the skin faster than
+            // _Slap.x metres a second, judged on the skin's box taken as an ellipsoid: 84 keeps the
+            // nearest palm's distance off it from last frame, so a hand already resting in fires
+            // nothing, nor does the first frame after a gap. Each lands as a ring for the draw (80 and
+            // 81, 82 and 83: where and when, then its depth in w, _Slap.y a metre a second up to
+            // _Slap.z), in the slot with less left of its own, never over a live stronger one. The
+            // hands are the slots the scan wrote last frame.
+            float4 Slap(int x, float4x4 m, float scale, float dt, bool distant, uint side)
+            {
+                float4 box = Region == 0 ? _JellyBox0 : _JellyBox1;
+                float3 half = box.z > 0 ? float3(box.xy, 0.5 * box.z) : 0.5 * (float3) (Count() - 1) * _Lattice.w, mid = float3(0, 0, half.z);
+                float near = 1e9;
+                float3 at = 0;
+                [branch] if (!distant && _MainTex.Load(int3(1, side, 0)).w > 0.5)
+                {
+                    float3 centre = mul(m, float4(mid, 1)).xyz;
+                    [unroll] for (int e = 0; e < 8; e++)
+                    {
+                        float4 a = _MainTex.Load(int3(2 * e, side, 0)), b = _MainTex.Load(int3(2 * e + 1, side, 0));
+                        if (!(b.w > 0.5)) continue;
+                        float3 pb, fa, fb;
+                        float rf;
+                        Hand(a, b, pb, fa, fb, rf);
+                        float3 seg = pb - a.xyz, p = a.xyz + seg * saturate(dot(centre - a.xyz, seg) / max(dot(seg, seg), 1e-9));
+                        float3 q = (Into(m, p) - mid) / half;
+                        float lq = max(length(q), 1e-6), d = (lq - 1) * min(half.x, min(half.y, half.z)) * scale - a.w;
+                        if (d < near)
+                        {
+                            near = d;
+                            at = mul(m, float4(mid + q / lq * half, 1)).xyz;
+                        }
+                    }
+                }
+                if (x == 84) return float4(near, 0, 0, _Time.y);
+                float4 keep = _MainTex.Load(int3(x, side, 0)), last = _MainTex.Load(int3(84, side, 0));
+                float speed = (last.x - near) / max(dt, 1e-4);
+                if (!(last.w > 0 && _Time.y - last.w < 0.1 && last.x > 0 && last.x < 0.5 && near <= 0 && speed > _Slap.x)) return keep;
+                float depth = min(_Slap.y * speed, _Slap.z);
+                float4 r0 = _MainTex.Load(int3(80, side, 0)), s0 = _MainTex.Load(int3(81, side, 0));
+                float4 r1 = _MainTex.Load(int3(82, side, 0)), s1 = _MainTex.Load(int3(83, side, 0));
+                float left0 = s0.w > 0 ? s0.w * saturate(1 - (_Time.y - r0.w) / _Slap.w) : 0;
+                float left1 = s1.w > 0 ? s1.w * saturate(1 - (_Time.y - r1.w) / _Slap.w) : 0;
+                int slot = left0 <= left1 ? 0 : 1;
+                if (min(left0, left1) > depth || (x - 80) / 2 != slot) return keep;
+                return (x & 1) == 0 ? float4(at, _Time.y) : float4(0, 0, 0, depth);
+            }
+
+            // How far the skin as it rests reaches from the region's centre toward local point q (off
+            // that centre, in the anchor's own units): the reach table, bilinear.
+            float Reach(float3 q)
+            {
+                float3 o = q / max(abs(q.x) + abs(q.y) + abs(q.z), 1e-9);
+                float2 uv = o.z >= 0 ? o.xy : (1 - abs(o.yx)) * float2(o.x >= 0 ? 1 : -1, o.y >= 0 ? 1 : -1);
+                float2 f = clamp((uv * 0.5 + 0.5) * 8 - 0.5, 0, 7);
+                int2 c = min(int2(f), 6);
+                f -= c;
+                int y = c.y + 8 * Region;
+                return lerp(lerp(_JellyReach.Load(int3(c.x, y, 0)), _JellyReach.Load(int3(c.x + 1, y, 0)), f.x),
+                            lerp(_JellyReach.Load(int3(c.x, y + 1, 0)), _JellyReach.Load(int3(c.x + 1, y + 1, 0)), f.x), f.y);
+            }
+
+            // How far past the resting skin, grown by grown, a capsule from a to b of radius r reaches
+            // toward the mass, in metres: where its nearest point to the mass is, off it as the skin
+            // has swung.
+            float Sunk(float3 a, float3 b, float r, float3 mass, float4x4 m, float scale, float grown)
+            {
+                float3 seg = b - a, p = a + seg * saturate(dot(mass - a, seg) / max(dot(seg, seg), 1e-9));
+                float3 q = Into(m, p) - Into(m, mass);
+                return max(Reach(q) * scale * (1 + grown) - (length(q) * scale - r), 0);
+            }
+
+            // The volume of a dent the draw spreads as its bump: depth d under (1 - x^2)^2 out to R.
+            float Pressed(float d, float r)
+            {
+                float R = max(r * (1 + _Hold), 2.2 * sqrt(r * d));
+                return d * 3.14159265 * R * R / 3;
+            }
+
+            // Impulse skin's swell, texel 93: volume for volume, what its hands pressed in comes back
+            // out where nothing holds it, the whole grown about its mass by x, across the way they
+            // push (yzw, as long as they agree on it): squeezed from one side it grows the other
+            // two ways, from all sides evenly. The dents are measured on the skin grown so. Pressed
+            // in alone, a pair squeezed from outside met flat where the lattice's pillowed into each
+            // other; grown evenly, it swelled square.
+            float4 Swell(float scale, uint side)
+            {
+                float v = (Region == 0 ? _JellyVolume.x : _JellyVolume.y) * scale * scale * scale, pressed = 0;
+                float3 way = 0, mass = _MainTex.Load(int3(30, side, 0)).xyz;
+                [unroll] for (int k = 0; k < 8; k++)
+                {
+                    float4 a = _MainTex.Load(int3(2 * k, side, 0)), b = _MainTex.Load(int3(2 * k + 1, side, 0));
+                    if (!(b.w > 0.5)) continue;
+                    float3 pb, fa, fb;
+                    float rf;
+                    Hand(a, b, pb, fa, fb, rf);
+                    float2 d = _MainTex.Load(int3(85 + k, side, 0)).zw;
+                    float took = Pressed(d.x, a.w) + (rf > 0 ? Pressed(d.y, rf) : 0);
+                    float3 in_ = mass - 0.5 * (a.xyz + pb);
+                    pressed += took;
+                    if (dot(in_, in_) > 1e-8) way += normalize(in_) * took;
+                }
+                if (!(v > 0) || !(pressed > 0)) return 0;
+                float grow = v / (v - min(pressed, 0.5 * v)), agree = length(way) / pressed;
+                return float4(lerp(pow(grow, 1.0 / 3), sqrt(grow), agree) - 1, way / pressed);
+            }
+
+            // Impulse skin's dents, texels 85 to 92, one a hand slot: how far its palm (x) and any
+            // finger out (y) reach past the skin, grown by its swell, which the draw spreads as one
+            // smooth bump, so every layer at a spot moves alike; then both past the skin as built
+            // (z, w), the tissue the hand took the place of. Measured on the grown skin, the swell
+            // fed its own dent and ran to its cap in a few frames.
+            float4 Dent(int x, float4x4 m, float scale, uint side)
+            {
+                float4 a = _MainTex.Load(int3(2 * (x - 85), side, 0)), b = _MainTex.Load(int3(2 * (x - 85) + 1, side, 0)), mass = _MainTex.Load(int3(30, side, 0));
+                if (!(b.w > 0.5) || !(mass.w > 0)) return 0;
+                float3 pb, fa, fb;
+                float rf;
+                Hand(a, b, pb, fa, fb, rf);
+                float grown = _MainTex.Load(int3(93, side, 0)).x;
+                return float4(Sunk(a.xyz, pb, a.w, mass.xyz, m, scale, grown), rf > 0 ? Sunk(fa, fb, rf, mass.xyz, m, scale, grown) : 0,
+                              Sunk(a.xyz, pb, a.w, mass.xyz, m, scale, 0), rf > 0 ? Sunk(fa, fb, rf, mass.xyz, m, scale, 0) : 0);
+            }
+
             float4 frag(v2f_img i) : SV_Target
             {
                 int2 px = int2(i.pos.xy);
@@ -4072,6 +4327,15 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 side += Base;
                 // The rows padding the region out, before any work.
                 if ((uint) px.y != side && (uint) px.x % Row + ((uint) px.y - Base) * Row >= count) return 0;
+                // Impulse skin has no lattice to step: its particles only stamp the time, which the draw
+                // reads as running, and the side texels it never writes keep theirs, both before the
+                // anchor, sixteen skinned reads a pixel. Far copies cost what near ones did without.
+                [branch] if (_Impulse > 0)
+                {
+                    if ((uint) px.y != side) return (uint) px.x < Row ? float4(here.xyz, _Time.y) : here;
+                    uint t = (uint) px.x;
+                    if (!(t < 16 || t == 18 || t == 25 || (t >= 26 && t <= 31) || (t >= 40 && t <= 59) || (t >= 64 && t <= 93))) return here;
+                }
                 Region = region;
                 Mine = AnchorOf(region);
                 float4x4 m = Mine;
@@ -4175,12 +4439,44 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             float3 u = (cb - ca) / dist;
                             float meet = Meet(m, ps);
                             if (!(meet > 0)) return 0;
-                            return px.x == 58 ? float4(u, dot(ca, u) + 0.5 * (self + dist - partner) + 0.5 * overlap) : float4(0.004 * scale, meet, 0, 1);
+                            // In z, for impulse skin, which has no lattice to spread: how far the skin
+                            // grows across the plane for the volume pressed past it, as the homes do.
+                            float wa = (region == 0 ? _PairReach.x : _PairReach.y) * scale, e = 0.5 * max((length(_PairOffset.xyz) - _PairReach.z) * scale - dist, 0);
+                            // Its hands too: the draw gives the whole half of each dent, and what heads
+                            // at the partner presses the pair together as the masses do, which their
+                            // keep holds no more than 5 cm closer. Left out, a pair squeezed from
+                            // outside 14 cm deep met flat, never pillowed.
+                            [branch] if (_Impulse > 0)
+                            {
+                                [unroll] for (int k = 0; k < 8; k++)
+                                {
+                                    float4 ha = _MainTex.Load(int3(2 * k, side, 0)), hb = _MainTex.Load(int3(2 * k + 1, side, 0));
+                                    if (!(hb.w > 0.5)) continue;
+                                    float3 pb, fa, fb;
+                                    float rf;
+                                    Hand(ha, hb, pb, fa, fb, rf);
+                                    float2 d = _MainTex.Load(int3(85 + k, side, 0)).xy;
+                                    e += 0.5 * (d.x + d.y * rf / max(ha.w, 1e-5)) * saturate(dot(normalize(ca - 0.5 * (ha.xyz + pb)), u));
+                                }
+                                e = min(e, wa);
+                            }
+                            float cap = wa > 0 ? e * e * (3 * wa - e) / (4 * wa * wa * wa) : 0;
+                            return px.x == 58 ? float4(u, dot(ca, u) + 0.5 * (self + dist - partner) + 0.5 * overlap) : float4(0.004 * scale, meet, (rsqrt(max(1 - cap, 0.5)) - 1) * meet, 1);
                         }
                         [branch] if ((px.x == 30 || px.x == 31) && _MassHz > 0)
                         {
                             uint side0 = side - Base;
                             return Mass(px.x, m, scale, dt, distant, side, region, (region ^ 1) * (side0 + 1) + side0);
+                        }
+                        // Impulse skin steps in this pass alone: the anchor the draw reads, which the
+                        // second pass writes for the lattice, then the slaps.
+                        [branch] if (_Impulse > 0)
+                        {
+                            if (px.x >= 26 && px.x <= 29)
+                                return float4(px.x == 26 ? m._m00_m10_m20 : px.x == 27 ? m._m01_m11_m21 : px.x == 28 ? m._m02_m12_m22 : m._m03_m13_m23, 1);
+                            if (px.x >= 80 && px.x <= 84) return Slap(px.x, m, scale, dt, distant, side);
+                            if (px.x >= 85 && px.x <= 92) return Dent(px.x, m, scale, side);
+                            if (px.x == 93) return Swell(scale, side);
                         }
                         return here;
                     }

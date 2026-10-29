@@ -2461,6 +2461,48 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     crowd, 0.005 at 20 m; (3) a film, a 3 m/s palm slap on the seat peaking 10 cm off at least 6
     frames after the impact point, a resting hand firing no ring, Joe judging flesh or decal; (4) one
     upload, a remote player slaps it. If (1) fails, Skinfield next.
+  - **Spike, built 2026-10-29 behind `-jellyImpulse`** (`_YAPS_JellyImpulse.x` above 0 in the draw,
+    `_Impulse` on the step; off by default, the lattice path untouched). Joe kept own-arm contact and
+    the pair's push ("bruh" at dropping them) and asked for the squish between them, so the step
+    still writes the own capsules, the pair plane and its spill growth (texel 59 z), and the draw
+    grows the skin across the plane by it. Slaps are caught on the skin's box taken as an ellipsoid
+    (texel 84 the nearest palm last frame, 80 to 83 two rings).
+    - Measured (4080, `-jellyCost`): draw the same as the jelly's within noise; step 0.020 ms a copy
+      against 0.031, 0.310 for 16 against 0.449 to 0.461, 0.021 at 20 m. Only 1.5x, not the 3x
+      estimated. Returning early for every texel the impulse path does not use gained nothing, so
+      the fixed cost looks like the big step shader's size (registers, occupancy) and the in-place
+      copy. Next lever: a small step shader of its own.
+    - **Open: the jelly's own step reads 1.8x its 28 Oct figure** (0.243 to 0.449 for 16, the far
+      copies too), unexplained. Bisect before trusting either number.
+    - The film: slaps fire (three in the slap shot, 1.15 cm at about 2.9 m/s), but the ring read
+      as a shimmer in the highlights only, so the defaults grew: 1 cm a m/s to 3 cm, wavelength
+      10 cm, fade 0.4 s. Joe: the jelly squeezes better and hands clip through on impulse. Cause:
+      the draw's press only cleared the ball round the capsule's nearest point (skin beside a
+      finger poked straight in stayed inside) and its rim was a fixed quarter radius (a deep hand
+      sat in a hole of its own width), where the lattice drags a cell's width of skin in first. An
+      exact exit from the capsule fixed the clipping and tore instead (Joe, second 16 of the film: a
+      pointing finger): pushed point by point onto the hand's surface, the top and the skin under it
+      met on one surface. Now the step measures each hand's dent once (texels 85 to 92, palm and
+      finger) against the skin as it rests, an 8 by 8 octahedral table of its reach from the centre
+      baked at build (`Jelly_Reach.asset`, a texture since a material keeps no array), and the draw
+      spreads it as one smooth bump (`YapsJellyBump`) wide enough to stay outside the hand's curve.
+      Also a bug of the spike's own: its lattice, rounded up from 8 cells, came out 59 cm deep for
+      40 cm of skin, the centre 9 cm forward and the front at 0.4 of the depth, so hands pushed
+      toward a point near the front and the whole-breast swing reached 40% at the skin. Now 3 a side.
+      Joe: the jelly's two-hand squeeze still pushes the pair together and impulse's does not.
+    - Joe asked whether impulse keeps weight, size and volume: weight, size and the swing yes (the
+      measured litres set the mass's rate, as the jelly's), volume no, a dent only took it away. Now
+      each hand gives the whole half its dent (the pair's spill fed by it too) and the step adds up
+      the volume the dents took, against the skin as built (`_JellyVolume`; measured on the grown
+      skin, the swell fed its own dent and hit its cap in a few frames), and grows the region about
+      its mass by as much, across the way the hands push (texel 93). The cutout between a squeezed
+      pair closes as the jelly's does, but the pair swells tall and square where the jelly's
+      pillows, and a pointing finger tore a sliver again. Each piece of the lattice's job rebuilt in
+      closed form brought its own artefact.
+    - **Verdict so far: the saving does not pay for the look.** Same frame: draw equal, step 0.020
+      ms an avatar against 0.031, about a tenth of the whole avatar's cost, and every piece added to
+      look like the jelly adds step work. The jelly's own step reading 1.8x its 28 Oct figure may be
+      worth more than impulse saves. Joe to choose.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 

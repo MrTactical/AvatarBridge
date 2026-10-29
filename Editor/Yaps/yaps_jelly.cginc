@@ -14,7 +14,9 @@
 // on in 26 to 29 (its x, y and z axes with its scale, then its place, w 1), the swing's centre in 30,
 // which of the wearer's own capsules are in reach in 41 (a bit each) and their ends in 42 to 57 as
 // the hands' slots are, the avatar's colliders pressing likewise in 64 to 79, the plane between the pair in 58 (its normal toward the other, its offset)
-// and 59 (its give, 0 for none).
+// and 59 (its give, 0 for none; then how much the pair still meet there, and for impulse skin the
+// skin's growth across the plane); for impulse skin, slaps in 80 to 84, each hand slot's dent
+// in 85 to 92 (its palm's, then any finger's) and the swell they give back in 93.
 #ifndef YAPS_JELLY_INCLUDED
 #define YAPS_JELLY_INCLUDED
 #ifndef YAPS_NO_JELLY
@@ -54,6 +56,59 @@ float3 YapsJellyPress(float3 at, float3 a, float3 b, float r, float3 centre, flo
     return way * max(through, rim * r * ease * ease);
 }
 
+// Impulse skin's hand: the step's measure of how far it reaches past the skin as it rests (dent),
+// spread as one smooth bump round the line it pushes along, toward centre. A function of where a
+// point is alone, near enough, so every layer at a spot moves alike: pushed out of the capsule
+// point by point, skin and a top met on one surface and the skin tore through. Wide enough, past
+// skirt hand radii, to stay outside the hand's own curve however deep; skin deeper than the hand
+// gives less, over at least twice the dent, so layers keep their gap there too. Nowhere less than
+// give: the whole region yielding to it, so a squeeze carries through to the far side as the
+// lattice's does, and a pair squeezed from outside press into each other.
+float3 YapsJellyBump(float3 at, float3 a, float3 b, float r, float3 centre, float dent, float skirt, float give)
+{
+    float3 seg = b - a, in_ = centre - (a + 0.5 * seg);
+    if (!(dent > 0) || !(r > 0) || !(dot(in_, in_) > 1e-8)) return 0;
+    float3 w = normalize(in_), e = a - at;
+    float ss = dot(seg, seg), sw = dot(seg, w), den = ss - sw * sw;
+    // The line at + t w's closest approach to the segment; along it, the end deeper in.
+    float s = den > 1e-9 ? saturate((sw * dot(e, w) - dot(e, seg)) / den) : (sw > 0 ? 1 : 0);
+    float t = dot(e, w) + s * sw;
+    float x = saturate(length(e + s * seg - t * w) / max(r * (1 + skirt), 2.2 * sqrt(r * dent)));
+    return w * max(dent * (1 - x * x) * (1 - x * x) * exp(min(t + r, 0) / max(2 * r, 2 * dent)), give);
+}
+
+// Impulse skin, the lattice's cheap stand-in (_YAPS_JellyImpulse.x on): no particle is read. The
+// region swings as one piece by its mass's offset off its rest centre, the back face held (depth 0
+// at the back, 1 at the front), and each slap the step caught rides out across the skin as a damped
+// ring a wavelength wide, at the tissue's wave speed, fading in time and as it spreads. A slap is
+// two texels, 80 and 81 then 82 and 83: where it landed and when (its _Time.y), then how deep in w,
+// 0 for none. Its slope tilts the normal, which is where a ripple shows.
+float3 YapsImpulse(uint side, float3 world, float3 nw, float3 centre, float depth, out float3 bend)
+{
+    bend = 0;
+    float4 mass = _YAPS_JellyState.Load(int3(30, side, 0));
+    float3 move = mass.w > 0 ? (mass.xyz - centre) * depth : 0;
+    float speed = _YAPS_JellyImpulse.y, len = max(_YAPS_JellyImpulse.z, 1e-3), fade = max(_YAPS_JellyImpulse.w, 1e-3), k2 = 6.2831853 / len;
+    [unroll] for (int k = 0; k < 2; k++)
+    {
+        float4 hit = _YAPS_JellyState.Load(int3(80 + 2 * k, side, 0)), how = _YAPS_JellyState.Load(int3(81 + 2 * k, side, 0));
+        float age = _Time.y - hit.w;
+        [branch] if (how.w > 0 && age >= 0 && age < 4 * fade)
+        {
+            float3 out_ = world - hit.xyz;
+            float d = length(out_), x = d - speed * age;
+            float env = how.w * exp(-age / fade - x * x / (len * len)) / (1 + d / len);
+            float h = env * cos(k2 * x);
+            move -= nw * h;
+            float dh = -env * (k2 * sin(k2 * x) + 2 * x / (len * len) * cos(k2 * x)) - h / (len + d);
+            float3 across = out_ - nw * dot(out_, nw);
+            float al = length(across);
+            if (al > 1e-5) bend -= across * (dh / al);
+        }
+    }
+    return move;
+}
+
 // How far region r's lattice round world has moved off its rest, and in bend how the surface there
 // turns: to first order, the move's gradient taken through the normal nw. Past its sides, the edge's:
 // the part's share already eases skin out, and eased out here too, skin with a share but outside
@@ -81,24 +136,47 @@ float3 YapsJellyRegion(uint r, float3 world, float3 nw, out float3 bend)
     float3 rel = world - place.xyz;
     float3 c = float3(dot(rel, ax), dot(rel, ay), dot(rel, az)) * per + float3(0.5 * (n.x - 1), 0.5 * (n.y - 1), 0);
     c = clamp(c, 0, n - 1);
-    int3 c0 = min(int3(c), n - 2);
-    float3 t = c - c0;
-    float3 move = 0, gx = 0, gy = 0, gz = 0;
-    [unroll] for (int k = 0; k < 8; k++)
+    float3 move = 0;
+    bool impulse = _YAPS_JellyImpulse.x > 0;
+    [branch] if (impulse)
     {
-        int3 d = int3(k & 1, (k >> 1) & 1, k >> 2);
-        int3 l = c0 + d;
-        float3 rest = float3(l.x - 0.5 * (n.x - 1), l.y - 0.5 * (n.y - 1), l.z) * spacing;
-        float3 home = place.xyz + ax * rest.x + ay * rest.y + az * rest.z;
-        float3 off = YapsJellyTexel((uint) ((l.z * n.y + l.y) * n.x + l.x), base).xyz - home;
-        float3 w = d ? t : 1 - t;
-        float3 way = d ? 1 : -1;
-        move += w.x * w.y * w.z * off;
-        gx += way.x * w.y * w.z * off;
-        gy += way.y * w.x * w.z * off;
-        gz += way.z * w.x * w.y * off;
+        float depth = c.z / max(n.z - 1, 1);
+        move = YapsImpulse(side, world, nw, place.xyz + az * (0.5 * (n.z - 1) * spacing), depth, bend);
+        // Pressed together, the skin grows across the plane between the pair by the volume pressed
+        // past it (59's z, from the step), the front most, as the lattice's homes do: flattened
+        // alone, what was pressed went into a void.
+        // Its hands' dents come back out the same way, volume for volume (93's x, from the step), the
+        // whole grown about its mass across the way they push (93's yzw, as long as they agree).
+        float4 spill = _YAPS_JellyState.Load(int3(59, side, 0));
+        float4 mass = _YAPS_JellyState.Load(int3(30, side, 0));
+        float4 swell = _YAPS_JellyState.Load(int3(93, side, 0));
+        [branch] if ((spill.z > 0 || swell.x > 0) && mass.w > 0)
+        {
+            float3 u = _YAPS_JellyState.Load(int3(58, side, 0)).xyz, from = world - mass.xyz;
+            move += ((from - swell.yzw * dot(from, swell.yzw)) * swell.x + (spill.z > 0 ? (from - u * dot(from, u)) * spill.z : 0)) * depth;
+        }
     }
-    bend = per * (ax * dot(gx, nw) + ay * dot(gy, nw) + az * dot(gz, nw));
+    else
+    {
+        int3 c0 = min(int3(c), n - 2);
+        float3 t = c - c0;
+        float3 gx = 0, gy = 0, gz = 0;
+        [unroll] for (int k = 0; k < 8; k++)
+        {
+            int3 d = int3(k & 1, (k >> 1) & 1, k >> 2);
+            int3 l = c0 + d;
+            float3 rest = float3(l.x - 0.5 * (n.x - 1), l.y - 0.5 * (n.y - 1), l.z) * spacing;
+            float3 home = place.xyz + ax * rest.x + ay * rest.y + az * rest.z;
+            float3 off = YapsJellyTexel((uint) ((l.z * n.y + l.y) * n.x + l.x), base).xyz - home;
+            float3 w = d ? t : 1 - t;
+            float3 way = d ? 1 : -1;
+            move += w.x * w.y * w.z * off;
+            gx += way.x * w.y * w.z * off;
+            gy += way.y * w.x * w.z * off;
+            gz += way.z * w.x * w.y * off;
+        }
+        bend = per * (ax * dot(gx, nw) + ay * dot(gy, nw) + az * dot(gz, nw));
+    }
     // The hands in reach push the skin itself on too, the palm and any finger out: the particles sit
     // a few centimetres apart, so a finger between them would sink into the skin. The way the hand
     // presses, toward the region's centre, as the particles go: out of its nearest side, skin went
@@ -117,8 +195,20 @@ float3 YapsJellyRegion(uint r, float3 world, float3 nw, out float3 bend)
             float3 pb, fa, fb;
             float rf;
             YapsJellyHand(a, b, pb, fa, fb, rf);
-            move += YapsJellyPress(at, a.xyz, pb, a.w, centre, 1);
-            if (rf > 0) move += YapsJellyPress(at, fa, fb, rf, centre, 1);
+            [branch] if (impulse)
+            {
+                // Half of each dent given by the whole, from none at the back face to all of it at the
+                // front, a finger's by as much less as it is thinner, as the mass leans.
+                float2 dent = _YAPS_JellyState.Load(int3(85 + e, side, 0)).xy;
+                float give = 0.5 * c.z / max(n.z - 1, 1);
+                move += YapsJellyBump(at, a.xyz, pb, a.w, centre, dent.x, _YAPS_JellyImpulse.x, give * dent.x);
+                if (rf > 0) move += YapsJellyBump(at, fa, fb, rf, centre, dent.y, _YAPS_JellyImpulse.x, give * dent.y * rf / a.w);
+            }
+            else
+            {
+                move += YapsJellyPress(at, a.xyz, pb, a.w, centre, 1);
+                if (rf > 0) move += YapsJellyPress(at, fa, fb, rf, centre, 1);
+            }
         }
     }
     // The wearer's own arms, hands and thighs, with no rim: an arm resting at the side would dent

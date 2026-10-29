@@ -228,5 +228,6 @@ float _YAPS_CopyStart;
 Texture2D<float4> _YAPS_JellyState;
 float4 _YAPS_JellyLattice;  // particles across, up and deep; spacing in metres. 0: no lattice
 float4 _YAPS_JellyParts;    // for each part (r, g, b, a of _YAPS_DentOwn) a lattice region carries, that region's index plus one
+float4 _YAPS_JellyImpulse;  // impulse skin instead of the lattice, on above 0: how far round a hand its dent spreads (hand radii), a slap's ring speed (m/s), wavelength (m), fade (s)
 
 #endif

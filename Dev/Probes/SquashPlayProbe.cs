@@ -2649,7 +2649,9 @@ namespace AvatarBridge.Regression
             int w = planeRt.width, side = planeRt.height / 2 - 1, r0 = side * w, r1 = (2 * side + 1) * w;
             float t = 0f;
             for (int c = 0; c < 3; c++) t += Vector3.Dot(((Vector3) (Vector4) st[r0 + 26 + c]).normalized, ((Vector3) (Vector4) st[r1 + 26 + c]).normalized);
-            Debug.Log($"[SquashPlay] plane {filmed} turned {Mathf.Rad2Deg * Mathf.Acos(Mathf.Clamp(0.5f * (t - 1f), -1f, 1f)):0.0} {((Vector4) st[r0 + 40]).ToString("F4")} {((Vector4) st[r1 + 40]).ToString("F4")} masses {((Vector4) st[r0 + 30]).ToString("F3")} {((Vector4) st[r1 + 30]).ToString("F3")}");
+            Debug.Log($"[SquashPlay] plane {filmed} turned {Mathf.Rad2Deg * Mathf.Acos(Mathf.Clamp(0.5f * (t - 1f), -1f, 1f)):0.0} {((Vector4) st[r0 + 40]).ToString("F4")} {((Vector4) st[r1 + 40]).ToString("F4")} masses {((Vector4) st[r0 + 30]).ToString("F3")} {((Vector4) st[r1 + 30]).ToString("F3")} " +
+                $"slaps {((Vector4) st[r0 + 80]).ToString("F3")} {((Vector4) st[r0 + 81]).w:F4} {((Vector4) st[r0 + 82]).w:F3} {((Vector4) st[r0 + 83]).w:F4} near {((Vector4) st[r0 + 84]).x:F3}, " +
+                $"{((Vector4) st[r1 + 80]).ToString("F3")} {((Vector4) st[r1 + 81]).w:F4} {((Vector4) st[r1 + 82]).w:F3} {((Vector4) st[r1 + 83]).w:F4} near {((Vector4) st[r1 + 84]).x:F3}");
         }
 
         static void OnLate()
