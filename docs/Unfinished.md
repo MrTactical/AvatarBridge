@@ -3861,6 +3861,16 @@ upload (only an upload can say); the per-frame cost of a named grab in VR; wheth
 escapes frustum culling when the socket is off screen (scaling the quad enormously works, since
 the vertex shader ignores its position and only the bounds change); and cell collisions.
 
+**The grab's cost, measured in the editor 2026-10-29** (`Dev/Probes/Perf/GrabPassPerf.cs`, RTX
+4080, D3D11, ARGBHalf, no MSAA, GPU held busy so the copy cannot hide): a named grab adds 0.067 ms a
+camera at both VR eyes' size (4032x2240), 0.030 at 1440p, 0.016 or less at 1080p, and 8 readers of
+one named grab cost what 1 does (+0.079 at VR size). An unnamed grab copies once per reader (8
+readers +0.224 ms at 1440p). The 4080's 64 MB cache holds most of the screen it just drew; the
+screen copy is about 144 MB of traffic at VR size, so a card with a small cache pays its full
+bandwidth, roughly 0.2 ms on a 3080 and 0.6 on a 1070 (estimates, not measured). Still open: an
+MSAA camera resolves before it grabs, and only CVR in game gives the real figure per camera (eyes,
+portrait, CVR camera, mirrors).
+
 **A possible answer to collisions, untested:** give each socket a build-time random id, hash it to
 a cell, and write the id into the cell beside the position. A colliding cell then decodes to some
 other socket's position, which is almost always metres away, and the engagement range gate already
