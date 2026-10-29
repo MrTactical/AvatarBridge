@@ -555,14 +555,12 @@ namespace AvatarBridge.Regression
                 // of loose points on each breast's skin at rest is pushed by them, and where a point
                 // was pushed to says where a collider is. On the chest, not under the breast's bone:
                 // there the breast's own cloth would take each for a bone of its chain.
-                // DynamicBone's the same way: the client adds every other player's DynamicBone colliders
-                // to each DynamicBone too, and a hand gets one of those as well. -jellyProbes takes mc,
-                // db or both.
+                // MagicaCloth only: the same hand gets a DynamicBone collider too, so DynamicBone probes
+                // saw nothing more, and dented a quarter less for the same press.
                 var probes = new List<Transform>[] { new List<Transform>(), new List<Transform>() };
-                int probesAt = Array.IndexOf(given, "-jellyProbes");
-                string kinds = probesAt < 0 ? "" : probesAt + 1 < given.Length && !given[probesAt + 1].StartsWith("-") ? given[probesAt + 1] : "mc";
+                bool probing = Array.IndexOf(given, "-jellyProbes") >= 0;
                 var spotsOf = new List<Vector3>[2];
-                if (kinds != "")
+                if (probing)
                     for (int side = 0; side < 2; side++)
                     {
                         var region = made.transform.Find($"Jelly Region {side}");
@@ -578,10 +576,9 @@ namespace AvatarBridge.Regression
                         spotsOf[side] = spots;
                     }
                 // Each probe a bone lying 3 cm along the skin to its spot, which a collider tips in: a
-                // DynamicBone keeps its length, so a loose point cannot be pushed, and MagicaCloth's spring
-                // point, which could, takes every collider as soft and gave back 85% of each push past its
-                // radius, 12 mm read for 30 in. Each kind on its own bones, the kind's letter in the name.
-                List<Transform> Bones(string kind)
+                // loose spring point takes every collider as soft and gave back 85% of each push past its
+                // radius, 12 mm read for 30 in.
+                List<Transform> Bones()
                 {
                     var bases = new List<Transform>();
                     for (int side = 0; side < 2; side++)
@@ -595,10 +592,10 @@ namespace AvatarBridge.Regression
                             var along = Vector3.Cross(outward, region.right);
                             if (along.sqrMagnitude < 0.01f) along = Vector3.Cross(outward, region.up);
                             along.Normalize();
-                            var b = new GameObject($"Jelly Probe Base {kind} {side} {k}").transform;
+                            var b = new GameObject($"Jelly Probe Base {side} {k}").transform;
                             b.SetParent(hangs[side], false);
                             b.position = w - along * 0.03f;
-                            var tip = new GameObject($"Jelly Probe Tip {kind} {side} {k}").transform;
+                            var tip = new GameObject($"Jelly Probe Tip {side} {k}").transform;
                             tip.SetParent(b, false);
                             tip.position = w;
                             bases.Add(b);
@@ -608,9 +605,9 @@ namespace AvatarBridge.Regression
                     return bases;
                 }
 #if AVATARBRIDGE_MAGICA
-                if (kinds == "mc" || kinds == "both")
+                if (probing)
                 {
-                    var bases = Bones("M");
+                    var bases = Bones();
                     var net = new GameObject("Jelly Probes");
                     net.transform.SetParent(made.transform, false);
                     Undo.RegisterCreatedObjectUndo(net, "Put the breasts on the jelly");
@@ -620,7 +617,9 @@ namespace AvatarBridge.Regression
                     sd.rootBones = bases;
                     sd.radius = new MagicaCloth2.CurveSerializeData(0.005f);
                     sd.gravity = 0f;
-                    // Back within a few frames once a collider lets go.
+                    // Back within a few frames once a collider lets go, and settled, not bouncing: at the
+                    // default damping it still read 2.6 mm a moment after, past the 2 mm a press takes.
+                    sd.damping = new MagicaCloth2.CurveSerializeData(0.5f);
                     sd.angleRestorationConstraint.useAngleRestoration = true;
                     sd.angleRestorationConstraint.stiffness = new MagicaCloth2.CurveSerializeData(1f);
                     // Every viewer's copy, seen or not: it has no renderer of its own to be culled by.
@@ -629,24 +628,6 @@ namespace AvatarBridge.Regression
                     sd.inertiaConstraint.worldInertia = 0f;
                     sd.inertiaConstraint.localInertia = 0f;
                     net.SetActive(true);
-                }
-#endif
-#if AVATARBRIDGE_DYNBONE
-                if (kinds == "db" || kinds == "both")
-                {
-                    var dyn = new GameObject("Jelly Probes DB");
-                    dyn.transform.SetParent(made.transform, false);
-                    Undo.RegisterCreatedObjectUndo(dyn, "Put the breasts on the jelly");
-                    var db = dyn.AddComponent<DynamicBone>();
-                    db.m_Roots = Bones("D");
-                    db.m_Colliders = new List<DynamicBoneColliderBase>();
-                    db.m_UpdateRate = 90f;
-                    db.m_Radius = 0.005f;
-                    // Put back on its rest each step before the colliders push it, so a turn of the body
-                    // cannot leave it behind as a press (m_Inert takes only the body's travel) and it lets
-                    // go the frame a collider does.
-                    db.m_Stiffness = 1f;
-                    db.m_Inert = 1f;
                 }
 #endif
                 // The bones as the cloth swings them reach the step only through skinning, as the
@@ -2625,7 +2606,7 @@ namespace AvatarBridge.Regression
         static readonly List<bool> viewRan = new List<bool>();
         static float viewBack, halfMost, probeBefore, probeDent, probeMoved;
         static int halfOn, halfFrames, probeSlots, probeSlotsBefore;
-        static readonly List<string> probeSaid = new List<string>();
+        static readonly List<string> probeSaid = new List<string>(), probeSeries = new List<string>();
         static bool probed;
         static Transform remoteBall;
         static List<Transform> probeTs;
@@ -2670,6 +2651,7 @@ namespace AvatarBridge.Regression
             probeBefore = probeDent = probeMoved = 0f;
             probeSlots = probeSlotsBefore = 0;
             probeSaid.Clear();
+            probeSeries.Clear();
             probed = false;
             restSaid.Clear();
             wasStepping = true;
@@ -2816,9 +2798,9 @@ namespace AvatarBridge.Regression
                     probed = true;
                     if (v == 360)
                     {
-                        // In the helper's order, each kind's after the last's; the first the first breast's
-                        // frontmost, where its skin is (the lattice's front is a cube's, 20 cm past it).
-                        probeTs = jelly.GetComponentsInChildren<Transform>(true).Where(t => Regex.IsMatch(t.name, @"^Jelly Probe Tip [MD] \d \d+$")).ToList();
+                        // In the helper's order, the first the first breast's frontmost, where its skin is
+                        // (the lattice's front is a cube's, 20 cm past it).
+                        probeTs = jelly.GetComponentsInChildren<Transform>(true).Where(t => Regex.IsMatch(t.name, @"^Jelly Probe Tip \d \d+$")).ToList();
                         probeHang = probeTs.Select(t => t.parent.parent).ToList();
                         probeRest = probeTs.Select((t, k) => probeHang[k].InverseTransformPoint(t.position)).ToList();
                         remoteBall = new GameObject("Remote hand").transform;
@@ -2829,14 +2811,6 @@ namespace AvatarBridge.Regression
                             ball.SetSize(new Vector3(0.045f, 0f, 0f));
                             net.SerializeData.colliderCollisionConstraint.colliderList.Add(ball);
                             net.SetParameterChange();
-                        }
-#endif
-#if AVATARBRIDGE_DYNBONE
-                        foreach (var db in nets.OfType<DynamicBone>())
-                        {
-                            var ball = remoteBall.gameObject.AddComponent<DynamicBoneCollider>();
-                            ball.m_Radius = 0.045f;
-                            db.m_Colliders.Add(ball);
                         }
 #endif
                         probeSaid.Add($"{string.Join(" and ", nets.Select(c => c.GetType().Name))}, {probeTs.Count} probes, the frontmost " +
@@ -2861,6 +2835,7 @@ namespace AvatarBridge.Regression
                         probeBefore = Mathf.Max(probeBefore, most);
                         probeSlotsBefore = Mathf.Max(probeSlotsBefore, slots);
                     }
+                    if (v % 10 == 0) probeSeries.Add($"{v} {1000f * most:0}");
                     if (v >= 400 && v < 430)
                     {
                         probeDent = Mathf.Max(probeDent, most);
@@ -2875,9 +2850,6 @@ namespace AvatarBridge.Regression
                             net.SerializeData.colliderCollisionConstraint.colliderList.RemoveAll(c => c != null && c.transform == remoteBall);
                             net.SetParameterChange();
                         }
-#endif
-#if AVATARBRIDGE_DYNBONE
-                        foreach (var db in nets.OfType<DynamicBone>()) db.m_Colliders.RemoveAll(c => c != null && c.transform == remoteBall);
 #endif
                         Object.Destroy(remoteBall.gameObject);
                     }
@@ -3364,6 +3336,7 @@ namespace AvatarBridge.Regression
                           $"{1000f * probeBefore:0.0} mm off its rest before, {1000f * probeDent:0.0} mm pressed; {probeSlots} of the step's eight hand slots held a probe's press; " +
                           $"the probes moved {1000f * probeMoved:0.0} mm at most; {probeSlotsBefore} slots held before it came (the slap's palm, parked 3 cm off the outer side)");
             if (probed) Debug.Log($"[Jelly] the probes: {string.Join("; ", probeSaid)}");
+            if (probed) Debug.Log($"[Jelly] the probes' press, the furthest particle in mm by frame: {string.Join(", ", probeSeries)}");
             Debug.Log($"[Jelly] hands squeeze, 13 cm into each outer side: the masses {1000f * handsCloser:0.0} mm closer, the first's outer side {1000f * handsOuter:0.0} mm " +
                       $"and inner side {1000f * handsInner:0.0} mm off rest, its volume {handsVolume:0.000}");
             Debug.Log($"[Jelly] a slap, a palm 5 cm into one side for a tenth of a second: the whole went {1000f * slapMost:0.0} mm, still swinging {1000f * slapLater:0.0} mm a second on");
@@ -3826,12 +3799,19 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float4x4 back;
                 [branch] if (Probing(Region, back))
                 {
+                    // Out of the body from the middle of the lattice at rest, through each probe's rest.
+                    float3 mid = mul(_JellyAnchor[2 + Region], float4(0, 0, 0.5 * (Count().z - 1) * _Lattice.w, 1)).xyz;
                     [unroll] for (uint k = 0; k < 16; k++)
                     {
                         float3 at, way;
-                        [branch] if (k < (uint) _JellyProbes && Probe(Region, k, back, at, way) > 0.002)
+                        float gone = Probe(Region, k, back, at, way);
+                        [branch] if (k < (uint) _JellyProbes && gone > 0.002)
                         {
-                            float3 c = at - way * _Hand;
+                            // The ball's centre out from the probe's rest along the skin, its side through
+                            // the tip: taken off the way the tip swung in on its bone, it read deeper.
+                            float3 rest = at - way * gone, out_ = normalize(rest - mid), q = rest - at;
+                            float b = dot(out_, q);
+                            float3 c = rest + out_ * (sqrt(max(b * b - dot(q, q) + _Hand * _Hand, 0)) - b);
                             bool hit = InReach(c, c, _Hand, m, scale, side);
                             kept = hit && found == slot ? ((x & 1) == 0 ? float4(c, _Hand) : float4(c, 10)) : kept;
                             found += hit;

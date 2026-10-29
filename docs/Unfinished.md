@@ -2571,6 +2571,20 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     radius, 12 mm read for 30), and a DynamicBone without full stiffness (m_Inert takes only the
     body's travel, so a turn read as a press). Next: the three-way film for Joe, then the read's
     depth against a press's (an arc, so 26 to 39 mm for 30) and MagicaCloth's release.
+    **MagicaCloth only, 2026-10-29** (Joe, on the film: "I want the magica and dynmaic bone
+    collider have the same behaviour", then "then just use those then? for the dent?"). The
+    DynamicBone probes are gone. The hand that carries a DynamicBone collider carries the client's
+    MagicaCloth capsule too (`ColliderTools.PlaceAvatarDynamicPhysicsCollider`, both kinds on both
+    hands at every avatar load), so they saw nothing more. Their full stiffness puts them back on
+    their rest before the colliders push, every step, so they got one push a step and dented a
+    quarter short (35 mm against 46.5). The breast's own cloth keeps its collision: turning it off
+    for the probes was wrong (Joe: a remote collider moving the bones is what players do in game,
+    and part of the squish). The read takes the ball's centre out from the probe's rest along the
+    skin, not off the way the tip swung in (50 to 46.5 mm for the same press). The probe cloth
+    damps at 0.5, so a moment after the ball left it read 1.3 mm, under the 2 mm a press takes.
+    `-jellyProbes` is a flag now. Open [GAME]: a toucher whose avatar has no MagicaCloth collider of
+    its own still pushes cloth. That is the client's capsule, read from code only; Joe believed only
+    DynamicBone colliders were placed.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 
