@@ -143,7 +143,7 @@ namespace AvatarBridge.Regression
             SessionState.SetInt(K + "video", Environment.GetCommandLineArgs().Contains("-spVideo") ? 1 : 0);
             // -spRenderLate films each frame after the jelly's step, as the client draws, not before it.
             SessionState.SetInt(K + "renderLate", Environment.GetCommandLineArgs().Contains("-spRenderLate") ? 1 : 0);
-            // -spOnly keeps the shots whose name holds the text, or any of several joined by +.
+            // -spOnly keeps the shots whose name holds the text, or any of several joined by +; _ for a space.
             SessionState.SetString(K + "only", Environment.GetCommandLineArgs().Contains("-spOnly") ? Arg("-spOnly") : "");
             // -spSeat films the avatar sat down with its knees brought together instead.
             SessionState.SetInt(K + "seat", Environment.GetCommandLineArgs().Contains("-spSeat") ? 1 : 0);
@@ -661,7 +661,7 @@ namespace AvatarBridge.Regression
             {
                 StartFilm(slots, mats);
                 string only = SessionState.GetString(K + "only", "");
-                if (only.Length > 0) film.RemoveAll(x => !only.Split('+').Any(o => x.name.Contains(o)));
+                if (only.Length > 0) film.RemoveAll(x => !only.Split('+').Any(o => x.name.Contains(o.Replace('_', ' '))));
             }
             bool cut = frame == Bend;
             while (shotIndex < film.Count && frame - shotStart >= film[shotIndex].frames) { shotStart += film[shotIndex++].frames; cut = true; }
@@ -769,8 +769,11 @@ namespace AvatarBridge.Regression
             }).ToArray();
 
             // The rest surface to press from, read off a baked copy of the body. The squash is in the
-            // shader alone, so the bake is the shape before any press.
-            var smr = animator.GetComponentsInChildren<SkinnedMeshRenderer>().FirstOrDefault(r => r.sharedMaterials.Any(m => mats.Contains(m)));
+            // shader alone, so the bake is the shape before any press. The squash's own body first: the
+            // first renderer wearing its materials was a strap round the hips on a seat, and every shot
+            // aimed at the strap.
+            var smr = YapsSquash.RegionsOf(animator.transform, out _)?.body ?? YapsSquash.NamedBody(animator.transform)
+                ?? animator.GetComponentsInChildren<SkinnedMeshRenderer>().FirstOrDefault(r => r.sharedMaterials.Any(m => mats.Contains(m)));
             if (smr != null)
             {
                 var baked = new Mesh();
@@ -888,12 +891,85 @@ namespace AvatarBridge.Regression
                     foreach (var m in mats) m.SetFloat("_YAPS_SquashPulse", 0.3f * Mathf.Clamp01(Mathf.Min(u, 1f - u) / 0.1f));
                 } },
             };
-            if (SessionState.GetInt(K + "seat", 0) == 1) film = Seat(root);
+            // A seat gets its own shots (Joe, 2026-10-29): none of the plug, the pulse, the own hand or
+            // the shots between a pair that never parts.
+            Shot Named(params string[] any) => film.First(x => any.Any(a => x.name.StartsWith(a)));
+            if (SessionState.GetInt(K + "seat", 0) == 1) film = Seat(root, smr);
+            else if (Vector3.Dot(f, root.forward) < 0f)
+            {
+                // The leg under the side pressed first, then the other; back is positive. A leg lifted
+                // forward or both up bend at the knee, the shins left hanging straight down.
+                var hipL = animator.GetBoneTransform(HumanBodyBones.LeftUpperLeg);
+                var hipR = animator.GetBoneTransform(HumanBodyBones.RightUpperLeg);
+                bool leftSide = Vector3.Distance(P, hipL.position) < Vector3.Distance(P, hipR.position);
+                var seatLegs = leftSide ? new[] { hipL, hipR } : new[] { hipR, hipL };
+                var kneeL = animator.GetBoneTransform(HumanBodyBones.LeftLowerLeg);
+                var kneeR = animator.GetBoneTransform(HumanBodyBones.RightLowerLeg);
+                var seatKnees = leftSide ? new[] { kneeL, kneeR } : new[] { kneeR, kneeL };
+                var seatLegRest = seatLegs.Select(t => t.rotation).ToArray();
+                var seatKneeRest = seatKnees.Select(t => t.rotation).ToArray();
+                void Raise(float first, float second, bool bent)
+                {
+                    seatLegs[0].rotation = Quaternion.AngleAxis(first, root.right) * seatLegRest[0];
+                    seatLegs[1].rotation = Quaternion.AngleAxis(second, root.right) * seatLegRest[1];
+                    for (int i = 0; i < 2; i++) seatKnees[i].rotation = bent ? seatKneeRest[i] : Quaternion.AngleAxis(i == 0 ? first : second, root.right) * seatKneeRest[i];
+                }
+                float SlapHit(float u, int n)
+                {
+                    float t = Mathf.Repeat(u * n, 1f);
+                    return t > 0.45f && t < 0.55f ? Mathf.Sin(Mathf.PI * (t - 0.45f) / 0.1f) : 0f;
+                }
+                // The hands squeeze each cheek at its widest on the outside of its back half, level with its
+                // crown, where it stands out furthest behind, flat and fingers down, pushing straight in
+                // toward the other. Aimed at its bone's height they pressed the slope above its middle and
+                // pushed the seat down (Joe). The cheek is the skin the squash gives it at least half of,
+                // as the jelly's lattice is: its bones carry the small of the back as well.
+                var cheekShares = YapsSquash.NamedShares(root, smr, out _, out _);
+                var bakedAt = body.sharedMesh.vertices;
+                var cheeks = Enumerable.Range(0, 2).Select(c => cheekShares == null ? new List<Vector3>() : Enumerable.Range(0, Mathf.Min(bakedAt.Length, cheekShares.Length))
+                    .Where(v => cheekShares[v][c] >= 0.5f).Select(v => body.transform.TransformPoint(bakedAt[v])).ToList()).ToArray();
+                Vector3 Middle(List<Vector3> skin) => skin.Count > 0 ? skin.Aggregate(Vector3.zero, (sum, x) => sum + x) / skin.Count : P;
+                if ((Middle(cheeks[0]) - P).sqrMagnitude > (Middle(cheeks[1]) - P).sqrMagnitude) cheeks = new[] { cheeks[1], cheeks[0] };
+                Vector3 Widest(List<Vector3> cheekSkin, Vector3 way, Vector3 fallback)
+                {
+                    if (cheekSkin.Count == 0) return fallback;
+                    var crown = cheekSkin.OrderByDescending(x => Vector3.Dot(x, f)).First();
+                    return cheekSkin.Where(x => Mathf.Abs(Vector3.Dot(x - crown, up)) < 0.1f * reach && Vector3.Dot(crown - x, f) < 0.5f * reach).DefaultIfEmpty(crown)
+                        .OrderByDescending(x => Vector3.Dot(x, way)).First();
+                }
+                var squeezeP = Widest(cheeks[0], outP, sideP);
+                var squeezeQ = Widest(cheeks[1], -outP, sideQ);
+                Debug.Log($"[SquashPlay] the squeeze at {squeezeP:F3} and {squeezeQ:F3}, the cheeks' middles at {Middle(cheeks[0]):F3} and {Middle(cheeks[1]):F3} ({cheeks[0].Count} and {cheeks[1].Count} vertices), the bones at {P:F3} and {Q:F3}");
+                var fromBelow = Named("Both lifted from below", "A hand lifting from below");
+                fromBelow.name = "Grabbed from below";
+                film = new List<Shot>
+                {
+                    Named("Hopping"),
+                    new Shot { name = "Slaps, one side then the other", frames = 360, at = mid + f * 0.05f, width = 1f, pose = (s, u) =>
+                    {
+                        var spot = Mathf.Repeat(u * 2f, 1f) < 0.5f ? front : frontQ;
+                        Press((spot - up * (0.5f * hand) + f * (r + Mathf.Lerp(0.1f, -0.05f, SlapHit(u, 4))), up, -1f));
+                    } },
+                    new Shot { name = "Two hands squeezing them together", frames = 360, at = mid + f * 0.05f, width = 1f, pose = (s, u) =>
+                    {
+                        float b = Beats(u, 2);
+                        Press((squeezeP + up * (0.5f * hand) + outP * (r + Mathf.Lerp(0.03f, -0.13f, b)), -up, -1f),
+                              (squeezeQ + up * (0.5f * hand) - outP * (r + Mathf.Lerp(0.03f, -0.13f, b)), -up, -1f));
+                    } },
+                    fromBelow,
+                    Named("Quick pokes"),
+                    Named("A deep poke"),
+                    new Shot { name = "A leg lifted back", frames = 300, at = mid + f * 0.05f - up * 0.1f, width = 1.2f, profile = true, pose = (s, u) => Raise(35f * s, 0f, false) },
+                    new Shot { name = "A leg lifted forward", frames = 300, at = mid + f * 0.05f - up * 0.1f, width = 1.2f, profile = true, pose = (s, u) => Raise(-70f * s, 0f, true) },
+                    new Shot { name = "Both legs up, as squatting", frames = 300, at = mid + f * 0.05f - up * 0.1f, width = 1.2f, profile = true, pose = (s, u) => Raise(-100f * s, -100f * s, true) },
+                };
+            }
         }
 
-        // Sat down, thighs a quarter turn forward and shins straight down, then each knee turned in
-        // toward the other by up to inward degrees, held and let go.
-        static List<Shot> Seat(Transform root)
+        // Sat down, thighs a quarter turn forward and shins straight down; the knees in till they touch
+        // and no further, worked out on the mesh, the feet a little apart so the calves never meet
+        // first; the legs crossed; a hand pressing a thigh and a slap; stood up and hopping.
+        static List<Shot> Seat(Transform root, SkinnedMeshRenderer smr)
         {
             var legs = new[] { HumanBodyBones.LeftUpperLeg, HumanBodyBones.RightUpperLeg }.Select(animator.GetBoneTransform).ToArray();
             var shins = new[] { HumanBodyBones.LeftLowerLeg, HumanBodyBones.RightLowerLeg }.Select(animator.GetBoneTransform).ToArray();
@@ -901,25 +977,151 @@ namespace AvatarBridge.Regression
             var shinRest = shins.Select(t => t.rotation).ToArray();
             float thigh = Vector3.Distance(legs[0].position, shins[0].position);
             Vector3 f = root.forward, up = root.up, right = root.right;
-            void Sit(float sat, float inward)
+            // Leg i sat by `sat` of a quarter turn and `raise` degrees more, turned in by `inward`, its
+            // shin turned out by `spread` and forward by `kick`.
+            void Leg(int i, float sat, float raise, float inward, float spread, float kick)
             {
-                for (int i = 0; i < 2; i++)
-                {
-                    var turnIn = Quaternion.AngleAxis((i == 0 ? 1f : -1f) * inward, up);
-                    legs[i].rotation = turnIn * Quaternion.AngleAxis(-90f * sat, right) * legRest[i];
-                    shins[i].rotation = turnIn * shinRest[i];
-                }
+                float side = i == 0 ? 1f : -1f;
+                var turnIn = Quaternion.AngleAxis(side * inward, up);
+                legs[i].rotation = turnIn * Quaternion.AngleAxis(-(90f * sat + raise), right) * legRest[i];
+                shins[i].rotation = turnIn * Quaternion.AngleAxis(-side * spread, f) * Quaternion.AngleAxis(-kick, right) * shinRest[i];
             }
-            var at = 0.5f * (legs[0].position + legs[1].position) + f * (0.55f * thigh) - up * (0.1f * thigh);
+            void Sit(float sat, float inward, float spread)
+            {
+                Leg(0, sat, 0f, inward, spread, 0f);
+                Leg(1, sat, 0f, inward, spread, 0f);
+            }
+
+            // The skin by the leg part its strongest bone is in, every third vertex: the thighs, then
+            // the shins and feet, left then right. Measured on the skinning, as a pose is reached.
+            var bones = smr.bones;
+            var weights = smr.sharedMesh.boneWeights;
+            var parts = Enumerable.Range(0, 4).Select(_ => new List<int>()).ToArray();
+            for (int v = 0; v < weights.Length; v += 3)
+            {
+                var b = bones[weights[v].boneIndex0];
+                for (int i = 0; i < 2 && b != null; i++)
+                    if (b.IsChildOf(shins[i])) parts[2 + i].Add(v);
+                    else if (b.IsChildOf(legs[i])) parts[i].Add(v);
+            }
+            var baked = new Mesh();
+            Vector3[] Skin()
+            {
+                smr.BakeMesh(baked);
+                var t = smr.transform;
+                return baked.vertices.Select(x => t.position + t.rotation * x).ToArray();
+            }
+            float Gap(Vector3[] pts, List<int> a, IEnumerable<int> b)
+            {
+                var them = b.Select(i => pts[i]).ToArray();
+                float least = float.MaxValue;
+                foreach (int i in a)
+                    foreach (var q in them) least = Mathf.Min(least, (pts[i] - q).sqrMagnitude);
+                return Mathf.Sqrt(least);
+            }
+
+            // The thighs' far halves, off the standing skin: crossed, the right one's lies on the left,
+            // where near the hip heavy thighs touch however the leg is held.
+            var upright = Skin();
+            var distal = Enumerable.Range(0, 2).Select(i =>
+            {
+                Vector3 hip = legs[i].position, along = shins[i].position - hip;
+                return parts[i].Where(v => Vector3.Dot(upright[v] - hip, along) > 0.5f * along.sqrMagnitude).ToList();
+            }).ToArray();
+
+            // The knees in, half a degree at a time, till the lower legs' skins come within 5 mm.
+            const float Spread = 8f;
+            float touch = 0f;
+            for (float a = 0.5f; a <= 35f; a += 0.5f)
+            {
+                Sit(1f, a, Spread);
+                if (Gap(Skin(), parts[2], parts[3]) < 0.005f) break;
+                touch = a;
+            }
+            // Crossed, right over left: the right knee taken over the left and up to 24 degrees on past
+            // it, lowered till the thighs meet and 4 cm on, its shin turned out past the left leg and
+            // kicked forward till it clears it. Of those, the way the shin turns and the knee goes past
+            // least: straight over the knee, a heavy thigh rode so high its shin stuck out sideways.
+            Sit(1f, 0f, 0f);
+            float over0 = Mathf.Rad2Deg * Mathf.Asin(Mathf.Clamp01(Vector3.Distance(shins[0].position, shins[1].position) / Mathf.Max(thigh, 1e-4f)));
+            float across = over0, resting = 0f, pressed = 0f, roll = 0f, kick = 0f, best = float.MaxValue;
+            for (float extra = 0f; extra <= 24f; extra += 4f)
+            {
+                float a = over0 + extra, rest = 70f;
+                for (float raise = 70f; raise >= 0f; raise -= 1f)
+                {
+                    Leg(1, 1f, raise, a, 0f, 0f);
+                    if (Gap(Skin(), distal[1], parts[0]) < 0.005f) break;
+                    rest = raise;
+                }
+                float down = Mathf.Max(rest - Mathf.Rad2Deg * Mathf.Atan(0.04f / (0.6f * thigh)), 0f);
+                float here = float.MaxValue, o0 = 0f, k0 = 0f;
+                foreach (float k in new[] { 0f, 15f, 30f, 45f })
+                    for (float o = 0f; o >= -80f; o -= 4f)
+                    {
+                        if (-o + 0.5f * k >= here) break;
+                        Leg(1, 1f, down, a, o, k);
+                        if (Gap(Skin(), parts[3], parts[0].Concat(parts[2])) < 0.01f) continue;
+                        (here, o0, k0) = (-o + 0.5f * k, o, k);
+                        break;
+                    }
+                Debug.Log($"[SquashPlay] seat: crossed {a:0.0} in, the far half of its thigh meeting the other {rest:0} up, " +
+                          (here < float.MaxValue ? $"its shin {-o0:0} out and {k0:0} forward" : "no clear way for its shin"));
+                // A thigh held up off the other reads as a leg in the air, not crossed.
+                float cost = here + 0.5f * extra + 0.5f * Mathf.Max(rest - 30f, 0f);
+                if (cost < best) (best, across, resting, pressed, roll, kick) = (cost, a, rest, down, o0, k0);
+            }
+            bool clear = best < float.MaxValue;
+            // The top of the left thigh halfway along it, sat, for a hand.
+            Sit(1f, 0f, 0f);
+            var seated = Skin();
+            Vector3 a0 = legs[0].position, a1 = shins[0].position;
+            var top = parts[0].Select(i => seated[i]).Where(q => { float t = Vector3.Dot(q - a0, a1 - a0) / Mathf.Max((a1 - a0).sqrMagnitude, 1e-9f); return t > 0.4f && t < 0.65f; })
+                .OrderByDescending(q => Vector3.Dot(q, up)).DefaultIfEmpty(Vector3.Lerp(a0, a1, 0.5f)).First();
+            var hips = 0.5f * (legs[0].position + legs[1].position);
+            Sit(0f, 0f, 0f);
+            UnityEngine.Object.DestroyImmediate(baked);
+            Debug.Log($"[SquashPlay] seat: knees touch {touch:0.0} degrees in, feet {Spread} out; crossed {across:0.0} in ({across - over0:0} past the knee), the thighs meeting {resting:0.0} up, pressed at {pressed:0.0}, " +
+                      $"its shin {-roll:0} out and {kick:0} forward, {(clear ? "clear of the other leg" : "STILL TOUCHING the other leg")}; a hand at {top:F3}");
+
+            float r = handRadius * Tall / 1.6f, hand = 0.11f * Tall;
+            var at = hips + f * (0.55f * thigh) - up * (0.1f * thigh);
             float wide = 2.2f * thigh;
             float Rise(float u) => Mathf.SmoothStep(0f, 1f, Mathf.Min(u / 0.6f, 1f));
+            float Ease(float u, float from, float to) => Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(from, to, u));
+            float Hit(float u, int n)
+            {
+                float t = Mathf.Repeat(u * n, 1f);
+                return t > 0.45f && t < 0.55f ? Mathf.Sin(Mathf.PI * (t - 0.45f) / 0.1f) : 0f;
+            }
             return new List<Shot>
             {
-                new Shot { name = "Sitting down", frames = 180, at = at, width = wide, pose = (s, u) => Sit(Rise(u), 0f) },
-                new Shot { name = "Knees together", frames = 360, at = at, width = wide, pose = (s, u) => Sit(1f, 12f * s) },
-                new Shot { name = "Knees squeezed hard together", frames = 360, at = at, width = wide, pose = (s, u) => Sit(1f, 22f * s) },
-                new Shot { name = "Knees together and apart, quickly", frames = 360, at = at, width = wide, pose = (s, u) => Sit(1f, 18f * Beats(u, 4)) },
-                new Shot { name = "Standing up", frames = 180, at = at, width = wide, pose = (s, u) => Sit(1f - Rise(u), 0f) },
+                new Shot { name = "Sitting down", frames = 180, at = at, width = wide, pose = (s, u) => Sit(Rise(u), 0f, 0f) },
+                new Shot { name = "Knees together till they touch", frames = 360, at = at, width = wide, pose = (s, u) => Sit(1f, touch * s, Spread * s) },
+                new Shot { name = "Knees together and apart, quickly", frames = 300, at = at, width = wide, pose = (s, u) => Sit(1f, touch * Beats(u, 4), Spread) },
+                // Lifted, taken across, laid on the other and held, then back the same way.
+                new Shot { name = "Legs crossed, right over left", frames = 480, at = at, width = wide, pose = (s, u) =>
+                {
+                    float lift = Ease(u, 0f, 0.2f) - Ease(u, 0.85f, 1f), over = Ease(u, 0.15f, 0.35f) - Ease(u, 0.75f, 0.9f), down = Ease(u, 0.35f, 0.5f) - Ease(u, 0.65f, 0.8f);
+                    Leg(0, 1f, 0f, 0f, 0f, 0f);
+                    Leg(1, 1f, over * pressed + 25f * (lift - down), over * across, over * roll, over * kick);
+                } },
+                new Shot { name = "A hand pressing a thigh from above", frames = 240, at = at, width = wide, pose = (s, u) =>
+                {
+                    Sit(1f, 0f, 0f);
+                    Press((top - f * (0.5f * hand) + up * (r + Mathf.Lerp(0.04f, -0.06f, s)), f, -1f));
+                } },
+                new Shot { name = "A slap on a thigh", frames = 270, at = at, width = wide, pose = (s, u) =>
+                {
+                    Sit(1f, 0f, 0f);
+                    Press((top - f * (0.5f * hand) + up * (r + Mathf.Lerp(0.1f, -0.05f, Hit(u, 3))), f, -1f));
+                } },
+                new Shot { name = "Standing up", frames = 180, at = at, width = wide, pose = (s, u) => Sit(1f - Rise(u), 0f, 0f) },
+                new Shot { name = "Hopping", frames = 240, at = hips - up * (0.4f * thigh), width = 2.6f * thigh, pose = (s, u) =>
+                {
+                    Sit(0f, 0f, 0f);
+                    root.position = standing + up * (0.12f * Mathf.Abs(Mathf.Sin(Mathf.PI * u * 5f)));
+                } },
             };
         }
 

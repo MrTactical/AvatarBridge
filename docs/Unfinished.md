@@ -2293,8 +2293,26 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
         degrees, quickly in and out). Squeezed hard, the jelly's thighs meet flat at the pair's
         plane and spill outward; the squash's pass into each other. The film tool now takes
         the pair's own front, films late after the jelly's step on dev too, and has a slap shot
-        and a seat mode. Open: Joe's verdict on both films; the thighs' frame is still front or
-        back, so the plane's spill is weighted toward the lattice's front. **One pass instead of two, tried and
+        and a seat mode. Open: the thighs' frame is still front or back, so the plane's
+        spill is weighted toward the lattice's front.
+        **Joe's notes on those films, and the tests remade (2026-10-29).** "The thighs look off,
+        it's just clipping the shins through each other": the knees went 12 and 22 degrees in,
+        and on Kar the lower legs meet at 15.5, so the hard shot drove them 6.5 degrees through.
+        The seat's film now works its poses out on the mesh, skinning baked each step: the knees in
+        till the lower legs come within 5 mm, feet 8 degrees apart so the calves never meet first;
+        legs crossed right over left, the knee taken past the other's and lowered till the far half
+        of its thigh meets the other, 4 cm on, its shin turned out till it clears (straight over the
+        knee, a 30 cm thigh rode so high its shin stuck out sideways; on Kar a thigh rests on the
+        other only lifted 36 to 64 degrees); a hand on a thigh, a slap, stood up, hops. The seat's
+        film: hops, slaps side to side, both hands squeezing, grabbed from below, pokes, a leg
+        lifted back and forward, both up as a squat; no plug, pulse, own hand or shots between a
+        pair that never parts. "With the cheek squeeze, it's angling the butt down": the film tool
+        took the first renderer wearing a squash material for the body, on the seat's build a strap
+        round the hips, so every shot aimed at the strap and the squeeze pressed the slope above
+        each cheek's middle. It now takes the squash's own body, and the squeeze aims at each
+        cheek's widest outside, level with its crown, where the skin the squash gives it at least
+        half of stands out furthest behind (y 1.24 against the bones' 1.375 on Kar). Films thigh6
+        and butt9 sent. Open: Joe's verdict on them. **One pass instead of two, tried and
         reverted 2026-10-29:** one avatar 0.017 against 0.025, but 16 avatars 0.243 either way
         (independent avatars' passes already overlap, so the saved fixed price is hidden in a
         crowd), and the look changed (a particle predicting from last frame's neighbours: the turn
