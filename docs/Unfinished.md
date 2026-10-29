@@ -2503,6 +2503,14 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
       ms an avatar against 0.031, about a tenth of the whole avatar's cost, and every piece added to
       look like the jelly adds step work. The jelly's own step reading 1.8x its 28 Oct figure may be
       worth more than impulse saves. Joe to choose.
+    - **Binned, Joe 2026-10-29: "jelly main, work on its cost and bring the slap over".** Impulse
+      is gone from the code (kept in f71ad5f for the record). A fallback for far avatars has no
+      job: the far switch already turns the steps off there, cheaper than any stand-in. The slap
+      came over: the step catches it in its first pass (texels 80 to 84, `_Slap`), the draw spreads
+      it as a ring on top of the lattice (`YapsJellySlap`, `_YAPS_JellySlap`: how much, speed,
+      wavelength, fade; 1, 1 m/s, 10 cm, 0.4 s). Filmed on Kar: three slaps at 2.9 cm, a ripple
+      over the front for about six frames; a squeeze's hands arriving at 2 m/s fire one too. Next:
+      the jelly step's 1.8x (bisect), then Joe on the ring's look and settings.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 

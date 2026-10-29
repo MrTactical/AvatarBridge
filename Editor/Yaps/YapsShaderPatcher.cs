@@ -164,7 +164,7 @@ namespace AvatarBridge
         [NoScaleOffset] _YAPS_JellyState (""YAPS live tissue state"", 2D) = ""black"" {}
         _YAPS_JellyLattice (""YAPS live tissue: particles across, up, deep; spacing"", Vector) = (0,0,0,0)
         _YAPS_JellyParts (""YAPS live tissue: the parts it carries"", Vector) = (0,0,0,0)
-        _YAPS_JellyImpulse (""YAPS live tissue as impulse skin: hand dent spread (0 off), ring speed, wavelength, fade"", Vector) = (0,1,0.1,0.4)
+        _YAPS_JellySlap (""YAPS live tissue: a slap's ring, how much (0 none), speed, wavelength, fade"", Vector) = (0,1,0.1,0.4)
         [NoScaleOffset] _YAPS_SoftRow (""YAPS soft body rows, per vertex"", 2D) = ""black"" {}
         [NoScaleOffset] _YAPS_SoftTable (""YAPS soft body answers"", 2D) = ""black"" {}
         _YAPS_SoftDepth (""YAPS soft body depths per pair, 0 unbaked"", Vector) = (0,0,0,0)
