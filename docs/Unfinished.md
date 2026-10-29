@@ -2428,6 +2428,39 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
   live tissue and the rest of his ideas after, in 5.1.
 - The menu item rebuilt the assets with the preview scene, which replaced the open scene: it now
   only adds the prefab, building it without the scene if it is missing.
+- **Cheapest full-body soft body, a design shoot-out (Joe, 2026-10-29).** Joe's brief: full body,
+  any avatar, slaps that radiate, and "the most absolute cheapest in terms of performance, that is
+  number 1, above all else". Five designs, two skeptics (cost, works in CVR), one judge ranking by
+  cost first. All figures ESTIMATES on the 4080 basis from the measured jelly numbers; full text in
+  the session's scratch (`shootout/all.md`).
+  - **Winner: Impulse Skin.** No lattice: about 70 texels a copy (2 KiB against 192), one
+    blitter pass, no parser. A damped jiggle point per region (off where MagicaCloth already swings
+    the bones), the 8 nearest hands from the client's hand globals, 2 slap events. The draw adds the
+    region's offset, presses hands in without state, and draws each slap as a damped ring travelling
+    outward. About 0.05-0.06 ms a near avatar against 0.16 for today's breasts; a 30-player
+    full-body instance 0.4-0.6 ms against about 4.9 for a full-body jelly.
+  - **Grafted:** only a slap fires a ring (a hand entering faster than 0.5 m/s, from first-frame
+    depth over dt); rings 5-8 cm long, slower than 22.5 wavelengths a second so they travel to 45 fps;
+    no deform in shadow and depth passes; the 4 m far cut from the local head with a half-metre fade.
+  - **Gives up:** the bulge under a squeeze and the slow refill, pair and own-limb contact; rings are
+    drawn (circular, fixed speed, no reflections, two at a time). Biggest risk is the look (a ring
+    reading as a decal), then what every design shares: the body's own draw reading the blitted state
+    is not proven in game yet (above, [GAME] open).
+  - **Joe's questions:** modal (DyRT) is about 2x cheaper than the jelly but not the cheapest (8
+    shapes paid at every vertex in every render), and a travelling slap needs about 64 modes, so it
+    draws a ring anyway. Refining the jelly is at its floor for a full body (passes and the draw
+    dominate, particles are free). Runner-up Skinfield, a real wave equation on a surface field, is
+    0.5-0.7 ms at 30 players with the riskiest setup.
+  - **GrabPass for inputs, Joe's hybrid, rejected by its own designer:** every player's hands already
+    reach a shader free through the client's globals, and the blitter steps before any camera
+    renders, so it can never read this frame's grab; it would be a 0.067 ms a camera tax (measured,
+    `GrabPassPerf`) for nothing. It stays a tier for other avatars' real shapes if the YAPS atlas
+    already pays the grab.
+  - **Spike, on Joe's go and not while he is in VR:** (1) draw only, a fake timed state on the breast
+    vertices, passes at 0.010 ms a render at rest or less; (2) step, 0.010 ms a copy in a 16-avatar
+    crowd, 0.005 at 20 m; (3) a film, a 3 m/s palm slap on the seat peaking 10 cm off at least 6
+    frames after the impact point, a resting hand firing no ring, Joe judging flesh or decal; (4) one
+    upload, a remote player slaps it. If (1) fails, Skinfield next.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 
