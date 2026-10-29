@@ -2552,7 +2552,25 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     toucher's avatar has finger colliders. MagicaCloth ties colliders to each cloth's own list
     (`ColliderManager.Register` reads `colliderCollisionConstraint.colliderList`), so the client
     adds other players' at run time; Joe sees remote players' colliders push cloth in game every
-    day, which settles that it works. Not started.
+    day, which settles that it works.
+    **Spiked 2026-10-29 (Joe: "do the magica cloth spike", then "and what about dynamic bone
+    colliders too?"), `-jellyProbes mc|db|both`.** The client (decompiled, `CVRDynamicBoneManager`)
+    adds every other player's MagicaCloth colliders to every MagicaCloth an avatar carries, and its
+    DynamicBone colliders to every DynamicBone, hands only unless the viewer chose hands and
+    fingers or everything, and gives every hand a capsule of each kind sized from its fingers. So
+    eight probes a breast on its front skin at rest, each a 3 cm bone lying along the skin to its
+    spot, on the chest's hang (under the breast's bone its cloth would take them for its chain),
+    in a BoneCloth or a DynamicBone with no colliders of its own. The skinned helper carries each
+    tip and its rest from 16; the scan takes a tip pushed past 2 mm as one more hand slot, a hand's
+    ball whose side is the tip, and the rest test wakes for one. Verify, a 4.5 cm ball 3 cm into the
+    front known only to the probes, no hand in the arrays: DynamicBone, the tip 26 mm, the tissue
+    37 mm, back to 0 the moment it left; MagicaCloth, 39 and 50 mm, 2.6 mm read a little after it
+    left, past the 2 mm threshold, so its press outlasts the hand a moment. A frame late, as the
+    anchor. No cost on the 4080 (16 avatars 0.439 against 0.437). Dead ends, measured: a
+    BoneSpring point (MC2's spring takes every collider as soft and undid 85% of each push past its
+    radius, 12 mm read for 30), and a DynamicBone without full stiffness (m_Inert takes only the
+    body's travel, so a turn read as a press). Next: the three-way film for Joe, then the read's
+    depth against a press's (an arc, so 26 to 39 mm for 30) and MagicaCloth's release.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 

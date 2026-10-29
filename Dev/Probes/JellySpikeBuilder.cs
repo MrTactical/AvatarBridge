@@ -87,7 +87,7 @@ namespace AvatarBridge.Regression
             Menu.SetChecked("Tools/AvatarBridge Dev/Jelly spike: coarse lattice", EditorPrefs.GetBool(CoarseKey, true));
             return true;
         }
-        const int Row = 64, Passes = 2, Frames = 300, Load = 32, BreastFrames = 2400, ViewFrames = 360;
+        const int Row = 64, Passes = 2, Frames = 300, Load = 32, BreastFrames = 2520, ViewFrames = 480, ProbesPer = 8;
         struct Late { }
 
         static int frame;
@@ -548,6 +548,107 @@ namespace AvatarBridge.Regression
                     Undo.RegisterCreatedObjectUndo(hangs[side].gameObject, "Put the breasts on the jelly");
                 }
                 provider.transforms = new[] { provider.transforms[0], provider.transforms[1], hangs[0], hangs[1] };
+                // -jellyProbes: MagicaCloth's colliders, other players' among them, as presses. The
+                // client adds every other player's colliders to every MagicaCloth an avatar carries
+                // (CVRDynamicBoneManager.UpdateComponents), hands only unless the viewer chose more,
+                // and a hand without one is given a capsule sized from its fingers. So a spring cloth
+                // of loose points on each breast's skin at rest is pushed by them, and where a point
+                // was pushed to says where a collider is. On the chest, not under the breast's bone:
+                // there the breast's own cloth would take each for a bone of its chain.
+                // DynamicBone's the same way: the client adds every other player's DynamicBone colliders
+                // to each DynamicBone too, and a hand gets one of those as well. -jellyProbes takes mc,
+                // db or both.
+                var probes = new List<Transform>[] { new List<Transform>(), new List<Transform>() };
+                int probesAt = Array.IndexOf(given, "-jellyProbes");
+                string kinds = probesAt < 0 ? "" : probesAt + 1 < given.Length && !given[probesAt + 1].StartsWith("-") ? given[probesAt + 1] : "mc";
+                var spotsOf = new List<Vector3>[2];
+                if (kinds != "")
+                    for (int side = 0; side < 2; side++)
+                    {
+                        var region = made.transform.Find($"Jelly Region {side}");
+                        var front = Enumerable.Range(0, Mathf.Min(at.Length, shares.Length)).Where(v => shares[v][2 * pair + side] >= 0.5f)
+                            .Select(v => body.transform.position + body.transform.rotation * at[v]).ToList();
+                        float deepest = front.Max(w => region.InverseTransformPoint(w).z);
+                        front = front.Where(w => region.InverseTransformPoint(w).z >= 0.5f * deepest).ToList();
+                        // ponytail: eight a breast, spread farthest first from its frontmost skin;
+                        // a collider between them reaches none.
+                        var spots = new List<Vector3> { front.OrderByDescending(w => region.InverseTransformPoint(w).z).First() };
+                        while (spots.Count < ProbesPer && spots.Count < front.Count)
+                            spots.Add(front.OrderByDescending(w => spots.Min(q => (q - w).sqrMagnitude)).First());
+                        spotsOf[side] = spots;
+                    }
+                // Each probe a bone lying 3 cm along the skin to its spot, which a collider tips in: a
+                // DynamicBone keeps its length, so a loose point cannot be pushed, and MagicaCloth's spring
+                // point, which could, takes every collider as soft and gave back 85% of each push past its
+                // radius, 12 mm read for 30 in. Each kind on its own bones, the kind's letter in the name.
+                List<Transform> Bones(string kind)
+                {
+                    var bases = new List<Transform>();
+                    for (int side = 0; side < 2; side++)
+                    {
+                        var region = made.transform.Find($"Jelly Region {side}");
+                        var mid = region.TransformPoint(0f, 0f, 0.5f * (n.z - 1) * spacing);
+                        for (int k = 0; k < spotsOf[side].Count; k++)
+                        {
+                            var w = spotsOf[side][k];
+                            var outward = (w - mid).normalized;
+                            var along = Vector3.Cross(outward, region.right);
+                            if (along.sqrMagnitude < 0.01f) along = Vector3.Cross(outward, region.up);
+                            along.Normalize();
+                            var b = new GameObject($"Jelly Probe Base {kind} {side} {k}").transform;
+                            b.SetParent(hangs[side], false);
+                            b.position = w - along * 0.03f;
+                            var tip = new GameObject($"Jelly Probe Tip {kind} {side} {k}").transform;
+                            tip.SetParent(b, false);
+                            tip.position = w;
+                            bases.Add(b);
+                            probes[side].Add(tip);
+                        }
+                    }
+                    return bases;
+                }
+#if AVATARBRIDGE_MAGICA
+                if (kinds == "mc" || kinds == "both")
+                {
+                    var bases = Bones("M");
+                    var net = new GameObject("Jelly Probes");
+                    net.transform.SetParent(made.transform, false);
+                    Undo.RegisterCreatedObjectUndo(net, "Put the breasts on the jelly");
+                    net.SetActive(false);
+                    var sd = net.AddComponent<MagicaCloth2.MagicaCloth>().SerializeData;
+                    sd.clothType = MagicaCloth2.ClothProcess.ClothType.BoneCloth;
+                    sd.rootBones = bases;
+                    sd.radius = new MagicaCloth2.CurveSerializeData(0.005f);
+                    sd.gravity = 0f;
+                    // Back within a few frames once a collider lets go.
+                    sd.angleRestorationConstraint.useAngleRestoration = true;
+                    sd.angleRestorationConstraint.stiffness = new MagicaCloth2.CurveSerializeData(1f);
+                    // Every viewer's copy, seen or not: it has no renderer of its own to be culled by.
+                    sd.cullingSettings.cameraCullingMode = MagicaCloth2.CullingSettings.CameraCullingMode.Off;
+                    // Carried rigidly by the chest, or a hop would read as a press.
+                    sd.inertiaConstraint.worldInertia = 0f;
+                    sd.inertiaConstraint.localInertia = 0f;
+                    net.SetActive(true);
+                }
+#endif
+#if AVATARBRIDGE_DYNBONE
+                if (kinds == "db" || kinds == "both")
+                {
+                    var dyn = new GameObject("Jelly Probes DB");
+                    dyn.transform.SetParent(made.transform, false);
+                    Undo.RegisterCreatedObjectUndo(dyn, "Put the breasts on the jelly");
+                    var db = dyn.AddComponent<DynamicBone>();
+                    db.m_Roots = Bones("D");
+                    db.m_Colliders = new List<DynamicBoneColliderBase>();
+                    db.m_UpdateRate = 90f;
+                    db.m_Radius = 0.005f;
+                    // Put back on its rest each step before the colliders push it, so a turn of the body
+                    // cannot leave it behind as a press (m_Inert takes only the body's travel) and it lets
+                    // go the frame a collider does.
+                    db.m_Stiffness = 1f;
+                    db.m_Inert = 1f;
+                }
+#endif
                 // The bones as the cloth swings them reach the step only through skinning, as the
                 // squash's slots do: a helper mesh skinned four points to each region's bone and four to
                 // its still copy. Its triangles have no area, so it draws nothing. "[FPR]" keeps the
@@ -570,6 +671,18 @@ namespace AvatarBridge.Regression
                             skinWeights.Add(new BoneWeight { boneIndex0 = b, weight0 = 1f });
                         }
                     }
+                // Then each probe twice, on itself and at its rest on the hang, from 16: a region's
+                // pairs after the last's.
+                int probed = Mathf.Min(probes[0].Count, probes[1].Count);
+                for (int side = 0; side < 2; side++)
+                    for (int k = 0; k < probed; k++)
+                        foreach (var on in new[] { probes[side][k], hangs[side] })
+                        {
+                            int b = skinBones.IndexOf(on);
+                            if (b < 0) { b = skinBones.Count; skinBones.Add(on); }
+                            points.Add(skin.transform.InverseTransformPoint(probes[side][k].position));
+                            skinWeights.Add(new BoneWeight { boneIndex0 = b, weight0 = 1f });
+                        }
                 // Kept in place when it exists: remade at the same path, scene copies read it Missing.
                 var skinMesh = AssetDatabase.LoadAssetAtPath<Mesh>(Folder + "/Jelly_Skin.asset");
                 if (skinMesh == null)
@@ -593,6 +706,7 @@ namespace AvatarBridge.Regression
                 foreach (var mat in provider.materials)
                 {
                     mat.SetFloat("_JellySkinStride", skinMesh.GetVertexBufferStride(0));
+                    mat.SetFloat("_JellyProbes", probed);
                     EditorUtility.SetDirty(mat);
                 }
                 // The client disposes the skinned buffer it fetched right after binding it, so the
@@ -2509,8 +2623,14 @@ namespace AvatarBridge.Regression
         static ComputeBuffer viewBuffer;
         static readonly List<string> viewSaid = new List<string>();
         static readonly List<bool> viewRan = new List<bool>();
-        static float viewBack, halfMost;
-        static int halfOn, halfFrames;
+        static float viewBack, halfMost, probeBefore, probeDent, probeMoved;
+        static int halfOn, halfFrames, probeSlots, probeSlotsBefore;
+        static readonly List<string> probeSaid = new List<string>();
+        static bool probed;
+        static Transform remoteBall;
+        static List<Transform> probeTs;
+        static List<Vector3> probeRest;
+        static List<Transform> probeHang;
         // When the parser switched the steps off and on, as the rest and the view decide.
         static readonly List<string> restSaid = new List<string>();
         static bool wasStepping;
@@ -2521,9 +2641,11 @@ namespace AvatarBridge.Regression
             swing = avatar.transform;
             var animator = avatar.GetComponentInChildren<Animator>();
             // Held in the scene's pose and the rest of its cloth still, so only the tissue moves the
-            // pixels: all but the pair's own cloth, left on where it swings the regions' bones.
+            // pixels: all but the pair's own cloth, left on where it swings the regions' bones, and
+            // the probes', which move only when a collider reaches them.
             animator.enabled = false;
             var swings = new HashSet<Behaviour>(PairCloth(avatar.transform, Wanted()).Where(b => b.enabled));
+            swings.UnionWith(avatar.GetComponentsInChildren<Behaviour>(true).Where(b => b.name.StartsWith("Jelly Probes")));
             foreach (var b in avatar.GetComponentsInChildren<MonoBehaviour>(true))
                 if ((b.GetType().Name.StartsWith("MagicaCloth") || b.GetType().Name == "DynamicBone") && !swings.Contains(b)) b.enabled = false;
             jelly = avatar.GetComponentsInChildren<Transform>(true).First(t => t.name == Path.GetFileNameWithoutExtension(Prefab));
@@ -2545,6 +2667,10 @@ namespace AvatarBridge.Regression
             viewBack = 0f;
             halfMost = 0f;
             halfOn = halfFrames = 0;
+            probeBefore = probeDent = probeMoved = 0f;
+            probeSlots = probeSlotsBefore = 0;
+            probeSaid.Clear();
+            probed = false;
             restSaid.Clear();
             wasStepping = true;
             secondAt = breastRegions[1].position;
@@ -2674,12 +2800,87 @@ namespace AvatarBridge.Regression
                 if (v >= 125 && v < 200) viewBack = Mathf.Max(viewBack, Furthest(Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture")), breastRegions));
                 // Then the viewer's head 3 m off, past the half rate's 2 m: the steps every other
                 // frame, each taking the frame it missed.
-                if (v >= 280)
+                if (v >= 280 && v < 360)
                 {
                     halfFrames++;
                     if (stepping) halfOn++;
                     var st = Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture"));
                     halfMost = Mathf.Max(halfMost, st[Side(n) * 2 * Row + 25].w);
+                }
+                // Last, another player's collider: a ball of a hand's size put in the probes' cloth and
+                // dynamic bones as the client puts it, from 7 cm off the first breast's frontmost probe to
+                // 3 cm past it, with no player's hand in the arrays, so only the probes can dent it.
+                var nets = jelly.GetComponentsInChildren<Behaviour>(true).Where(c => c.name.StartsWith("Jelly Probes")).ToList();
+                if (nets.Count > 0 && v >= 360 && v <= 470)
+                {
+                    probed = true;
+                    if (v == 360)
+                    {
+                        // In the helper's order, each kind's after the last's; the first the first breast's
+                        // frontmost, where its skin is (the lattice's front is a cube's, 20 cm past it).
+                        probeTs = jelly.GetComponentsInChildren<Transform>(true).Where(t => Regex.IsMatch(t.name, @"^Jelly Probe Tip [MD] \d \d+$")).ToList();
+                        probeHang = probeTs.Select(t => t.parent.parent).ToList();
+                        probeRest = probeTs.Select((t, k) => probeHang[k].InverseTransformPoint(t.position)).ToList();
+                        remoteBall = new GameObject("Remote hand").transform;
+#if AVATARBRIDGE_MAGICA
+                        foreach (var net in nets.OfType<MagicaCloth2.MagicaCloth>())
+                        {
+                            var ball = remoteBall.gameObject.AddComponent<MagicaCloth2.MagicaSphereCollider>();
+                            ball.SetSize(new Vector3(0.045f, 0f, 0f));
+                            net.SerializeData.colliderCollisionConstraint.colliderList.Add(ball);
+                            net.SetParameterChange();
+                        }
+#endif
+#if AVATARBRIDGE_DYNBONE
+                        foreach (var db in nets.OfType<DynamicBone>())
+                        {
+                            var ball = remoteBall.gameObject.AddComponent<DynamicBoneCollider>();
+                            ball.m_Radius = 0.045f;
+                            db.m_Colliders.Add(ball);
+                        }
+#endif
+                        probeSaid.Add($"{string.Join(" and ", nets.Select(c => c.GetType().Name))}, {probeTs.Count} probes, the frontmost " +
+                                      $"{100f * Vector3.Dot(probeTs[0].position - breastRegions[0].position, breastRegions[0].forward):0.0} cm out on its region");
+                    }
+                    var front = probeHang[0].TransformPoint(probeRest[0]);
+                    float pressed = Mathf.Clamp01((v - 370) / 30f) - Mathf.Clamp01((v - 430) / 30f);
+                    remoteBall.position = front + breastRegions[0].forward * (0.045f + 0.07f - 0.1f * pressed);
+                    var st = Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture"));
+                    float most = Furthest(st, breastRegions);
+                    int slots = 0;
+                    for (int e = 0; e < 8; e++) if (st[Side(n) * 2 * Row + 2 * e + 1].w > 0.5f) slots++;
+                    float moved = probeTs.Select((t, k) => (t.position - probeHang[k].TransformPoint(probeRest[k])).magnitude).Max();
+                    // As the step reads them, the first breast's, a frame late through the helper's skin.
+                    int mine = probeTs.Count / 2;
+                    var read = Enumerable.Range(0, Mathf.Min(mine, 16)).Select(k => st[Side(n) * 2 * Row + 88 + k].w).ToList();
+                    if (v == 365 || v == 410 || v == 450)
+                        probeSaid.Add($"{v}: the ball {100f * (0.07f - 0.1f * pressed):0.0} cm off, the probes moved {1000f * moved:0.0} mm, the step reads them " +
+                                      $"{string.Join(" ", read.Select(g => $"{1000f * g:0.0}"))} mm, {slots} slots held");
+                    if (v < 370)
+                    {
+                        probeBefore = Mathf.Max(probeBefore, most);
+                        probeSlotsBefore = Mathf.Max(probeSlotsBefore, slots);
+                    }
+                    if (v >= 400 && v < 430)
+                    {
+                        probeDent = Mathf.Max(probeDent, most);
+                        probeSlots = Mathf.Max(probeSlots, slots);
+                        probeMoved = Mathf.Max(probeMoved, moved);
+                    }
+                    if (v == 470)
+                    {
+#if AVATARBRIDGE_MAGICA
+                        foreach (var net in nets.OfType<MagicaCloth2.MagicaCloth>())
+                        {
+                            net.SerializeData.colliderCollisionConstraint.colliderList.RemoveAll(c => c != null && c.transform == remoteBall);
+                            net.SetParameterChange();
+                        }
+#endif
+#if AVATARBRIDGE_DYNBONE
+                        foreach (var db in nets.OfType<DynamicBone>()) db.m_Colliders.RemoveAll(c => c != null && c.transform == remoteBall);
+#endif
+                        Object.Destroy(remoteBall.gameObject);
+                    }
                 }
             }
             // One player, its finger into the first region's breast from the front, 3 cm past the
@@ -2704,7 +2905,7 @@ namespace AvatarBridge.Regression
             Shader.SetGlobalVectorArray("_CVR_PlayerChestPositions", chestAt);
             Shader.SetGlobalVectorArray("_CVR_PlayerRootPositions", root);
             var heads = new Vector4[255];
-            if (frame >= BreastFrames - ViewFrames + 260) heads[0] = 0.5f * (breastRegions[0].position + breastRegions[1].position) + swing.forward * 3f;
+            if (frame >= BreastFrames - ViewFrames + 260 && frame < BreastFrames - ViewFrames + 360) heads[0] = 0.5f * (breastRegions[0].position + breastRegions[1].position) + swing.forward * 3f;
             Shader.SetGlobalVectorArray("_CVR_PlayerHeadPositions", heads);
             // Then, once the turn has rung out, the film's squeeze twice, the pair's contact off for the
             // first: two players, a hand each on the pair's outer sides, pointing back at the chest,
@@ -3142,7 +3343,8 @@ namespace AvatarBridge.Regression
             poked = Changed(breastShots[1], breastShots[3]);
             bool viewOk = viewRan.SequenceEqual(new[] { true, false, true, true }) && viewBack < 0.006f
                 && halfFrames > 0 && Mathf.Abs((float) halfOn / halfFrames - 0.5f) < 0.15f && halfMost >= 2f && halfMost <= 3f;
-            bool ok = anchorOk && restMost < 0.006f && pokeMost > 0.01f && poked > 3f * noise + 0.002f && swingMost > 0.005f && bodies > 0.003f && handsOuter > 0.05f && viewOk;
+            bool probeOk = !probed || probeDent > probeBefore + 0.005f && probeSlots > probeSlotsBefore;
+            bool ok = anchorOk && restMost < 0.006f && pokeMost > 0.01f && poked > 3f * noise + 0.002f && swingMost > 0.005f && bodies > 0.003f && handsOuter > 0.05f && viewOk && probeOk;
             string dir = SessionState.GetString(K + "out", "Jelly");
             int w = breastShots[0].width, h = breastShots[0].height;
             int rows = (breastShots.Count + 3) / 4;
@@ -3157,6 +3359,11 @@ namespace AvatarBridge.Regression
             Debug.Log($"[Jelly] the steps switched by the parser: {(restSaid.Count > 0 ? string.Join(", ", restSaid) : "never")}");
             Debug.Log($"[Jelly] the viewer's camera, 3 m off: {string.Join("; ", viewSaid)}; woken, the furthest particle {1000f * viewBack:0.0} mm off its rest (6 at most); " +
                       $"its head 3 m off, the steps ran {halfOn} of {halfFrames} frames, the most a step took {halfMost:0}");
+            if (probed)
+                Debug.Log($"[Jelly] another player's collider, a 4.5 cm ball only the probes are given, 3 cm into the first's front: the furthest particle " +
+                          $"{1000f * probeBefore:0.0} mm off its rest before, {1000f * probeDent:0.0} mm pressed; {probeSlots} of the step's eight hand slots held a probe's press; " +
+                          $"the probes moved {1000f * probeMoved:0.0} mm at most; {probeSlotsBefore} slots held before it came (the slap's palm, parked 3 cm off the outer side)");
+            if (probed) Debug.Log($"[Jelly] the probes: {string.Join("; ", probeSaid)}");
             Debug.Log($"[Jelly] hands squeeze, 13 cm into each outer side: the masses {1000f * handsCloser:0.0} mm closer, the first's outer side {1000f * handsOuter:0.0} mm " +
                       $"and inner side {1000f * handsInner:0.0} mm off rest, its volume {handsVolume:0.000}");
             Debug.Log($"[Jelly] a slap, a palm 5 cm into one side for a tenth of a second: the whole went {1000f * slapMost:0.0} mm, still swinging {1000f * slapLater:0.0} mm a second on");
@@ -3234,6 +3441,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _JellyOffsetAt1 (""The second region's place on its bone"", Vector) = (0, 0, 0, 0)
         _JellyOffsetTurn1 (""The second region's turn on its bone"", Vector) = (0, 0, 0, 1)
         _JellySkinStride (""The skinned helper's vertex stride, 0 for none: the bones as the cloth swings them"", Float) = 0
+        _JellyProbes (""MagicaCloth probes a region has in the skinned helper, after its frames, 0 none"", Float) = 0
         _Solid (""Share of the whole's own squash its homes take at constant volume, so squeezed it bulges where nothing holds it; 0 none"", Range(0, 0.95)) = 0
     }
     SubShader
@@ -3263,7 +3471,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // A helper mesh skinned four points to each region's bone and four to where it hangs on
             // the chest, as the squash's slots, bound as the provider's copy of its skinned buffer.
             ByteAddressBuffer _JellySkin;
-            float _JellySkinStride;
+            float _JellySkinStride, _JellyProbes;
 
             // The inverse of a turn, an even scale and a place.
             float4x4 Unrigid(float4x4 m)
@@ -3319,6 +3527,32 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         return mul(_JellyAnchor[2 + r], swung);
                 }
                 return a;
+            }
+
+            // MagicaCloth's probes on region r's hang, as the build put them: back takes the skinned
+            // helper's space to the world through the hang as last skinned, put on the hang as it
+            // is now. false where there are none or the hang reads spoilt.
+            bool Probing(uint r, out float4x4 back)
+            {
+                float4x4 still;
+                back = 0;
+                if (!(_JellyProbes > 0 && _JellySkinStride > 0)) return false;
+                if (!Skinned(8 * r + 4, still)) return false;
+                back = mul(_JellyAnchor[2 + r], Unrigid(still));
+                return true;
+            }
+
+            // Probe k of region r's: where it was pushed to and which way, and how far, 0 for a spoilt
+            // read. Each is two points in the helper from 16, itself then its rest on the hang.
+            float Probe(uint r, uint k, float4x4 back, out float3 at, out float3 way)
+            {
+                uint stride = (uint) _JellySkinStride, i0 = 16 + 2 * (r * min((uint) _JellyProbes, 16u) + k);
+                uint3 rp = _JellySkin.Load3(i0 * stride), rr = _JellySkin.Load3((i0 + 1) * stride);
+                float3 d = mul((float3x3) back, asfloat(rp) - asfloat(rr));
+                float gone = length(d);
+                at = mul(back, float4(asfloat(rp), 1)).xyz;
+                way = gone > 1e-6 ? d / gone : 0;
+                return any((rp & 0x7f800000) == 0x7f800000) || any((rr & 0x7f800000) == 0x7f800000) || !(gone < 0.2) ? 0 : gone;
             }
 
             // Worked out once a pixel, as each is read many times over: its own region's alone, since
@@ -3585,6 +3819,25 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         }
                     }
                 }
+                // Then where MagicaCloth's colliders pushed the probes, each a hand's ball whose side
+                // is the point it pushed: pushed out its nearest way, a probe lies on the collider's
+                // skin, the collider on past it the way it came from. Its push is on the hang, as
+                // last skinned, put on the hang as it is now.
+                float4x4 back;
+                [branch] if (Probing(Region, back))
+                {
+                    [unroll] for (uint k = 0; k < 16; k++)
+                    {
+                        float3 at, way;
+                        [branch] if (k < (uint) _JellyProbes && Probe(Region, k, back, at, way) > 0.002)
+                        {
+                            float3 c = at - way * _Hand;
+                            bool hit = InReach(c, c, _Hand, m, scale, side);
+                            kept = hit && found == slot ? ((x & 1) == 0 ? float4(c, _Hand) : float4(c, 10)) : kept;
+                            found += hit;
+                        }
+                    }
+                }
                 return kept;
             }
 #endif
@@ -3657,6 +3910,19 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+                // Or a probe pushed, a collider's press.
+                [unroll] for (uint q = 0; q < 2; q++)
+                {
+                    float4x4 back;
+                    [branch] if (q < regions && Probing(q, back))
+                    {
+                        [unroll] for (uint k = 0; k < 16; k++)
+                        {
+                            float3 at, way;
+                            [branch] if (k < (uint) _JellyProbes) near = near || Probe(q, k, back, at, way) > 0.002;
                         }
                     }
                 }
@@ -4334,6 +4600,14 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             return Mass(px.x, m, scale, dt, distant, side, region, (region ^ 1) * (side0 + 1) + side0);
                         }
                         if (px.x >= 80 && px.x <= 84) return Slap(px.x, m, scale, dt, distant, side);
+                        // A readout for the verify: each probe as the scan reads it, where it is and how far pushed.
+                        [branch] if (px.x >= 88 && px.x < 104)
+                        {
+                            float4x4 back;
+                            float3 at, way;
+                            float gone = Probing(Region, back) ? Probe(Region, px.x - 88, back, at, way) : -1;
+                            return float4(at, gone);
+                        }
                         return here;
                     }
                     if (px.x >= 26 && px.x <= 29)
