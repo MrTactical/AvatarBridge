@@ -2597,6 +2597,33 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     a palm, one read as the nearest palm closing from wherever another was. Verify (two slaps, 10
     cm in three frames, after the slow press): the slow press 0 rings; the ball alone 1, 30 mm
     deep at the probe's rest; the ball with a hand on its path in the arrays 1, the arrays'.
+    **Probe coverage, 2026-10-29** (Joe, on the film: "option 2", then "fix all thats not right
+    yet"). In the film's slaps the palm passed between the eight probes: none moved, so the
+    collider row had no dent and no ring. Now there are 24 a breast, the state row's room (88 to
+    111). Each probe feels a collider 4 cm off the skin (the probe cloth's radius,
+    `_JellyProbeReach`), on a 10 cm bone so the push has room. The scan rebuilds a ball with its side
+    the reach past the tip. A slot is a collider, not a probe: of the balls within two reaches of
+    each other only the one pushed furthest counts (`Felt`, shared by the scan and the slaps).
+    Within two hands, two probes 8 cm apart took two slots. A probe's ball on a hand the arrays
+    gave last frame is dropped, since the client puts a capsule on every hand. Only that same
+    furthest probe can ring: one met slantwise swings along its bone at twice the collider's speed,
+    so a slow press read as a slap. A ring fires when a probe's push crosses its reach, the
+    collider reaching the skin. A later, stronger reading within two reaches deepens that ring.
+    At a 2 cm reach a 3 m/s slap crossed the whole band within a frame and read 1 m/s (a 10 mm ring
+    against 30). The probes' 4 m/s particle speed cap is off. Their damping is 0.8: at 0.5 the
+    10 cm bone swung back out to 5 mm, past a press (2.5 mm now, with its ball off the skin). The
+    scan skips the probes unless one was pushed last frame. The slaps' loop is `[unroll]`, since
+    Shader Filtering cuts a `[loop]`.
+    Verify: a 4.5 cm ball 3 cm in between the frontmost probe and its nearest pushes two, takes one
+    slot and dents 53.7 mm (46.5 at a 2 cm reach). Slow press 0 rings. The ball's fast slap alone
+    rings once, 30 mm. The same slap from 15 cm off with a hand in the arrays rings once, 30 mm,
+    the arrays', in one slot. The earlier hand test started 7 cm off, already touching the box: it
+    closed on nothing and its ring was the frame it came.
+    Cost at rest: 0.036 ms at a 2 cm reach against 0.033 at eight probes. At 4 cm it is not yet
+    measured clean (ChilloutVR was open on the desktop).
+    Known: a finger's collider can still pass between probes. The film's palm, slowing as it
+    reaches the skin, rings 22 mm from the probes against 29 from the arrays, which time it at the
+    box.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 
