@@ -3639,6 +3639,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 }
                 // Untouched, as nearly always, the pairs are not looked at: the slaps run this every frame.
                 [branch] if (any)
+                {
                     [unroll] for (uint k = 0; k < PROBES; k++)
                         [branch] if (gone[k] > 0)
                         {
@@ -3647,6 +3648,26 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                                 lead = lead && !(j != k && gone[j] > 0 && distance(balls[j], balls[k]) < 2 * reach && (gone[j] > gone[k] || gone[j] == gone[k] && j < k));
                             deep[k] = lead ? gone[k] : 0;
                         }
+                    // A leader's ball and rest are its neighbours' too, weighted by how far each was
+                    // pushed: a probe says how far, never where along the skin, so a palm between two
+                    // rang and dented on the one pushed further, 6 cm off. Leaders are never within
+                    // two reaches of each other, so none reads one already moved.
+                    [unroll] for (uint k = 0; k < PROBES; k++)
+                        [branch] if (deep[k] > 0)
+                        {
+                            float w = 0;
+                            float3 ball = 0, rest = 0;
+                            [unroll] for (uint j = 0; j < PROBES; j++)
+                            {
+                                float g = j == k || deep[j] == 0 && distance(balls[j], balls[k]) < 2 * reach ? gone[j] : 0;
+                                w += g;
+                                ball += balls[j] * g;
+                                rest += rests[j] * g;
+                            }
+                            balls[k] = ball / w;
+                            rests[k] = rest / w;
+                        }
+                }
             }
 
             // Worked out once a pixel, as each is read many times over: its own region's alone, since

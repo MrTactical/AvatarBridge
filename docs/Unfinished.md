@@ -2629,6 +2629,21 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     Known: a finger's collider can still pass between probes. The film's palm, slowing as it
     reaches the skin, rings 22 mm from the probes against 29 from the arrays, which time it at the
     box.
+    **Weighted start, 2026-10-29** (Joe, on the film: "where the wave starts is also different?").
+    A probe says how far it was pushed, never where along the skin, so a palm between two rang
+    and dented on the one pushed further, up to a probe's spacing (6 cm) off. A leader's ball and
+    rest are now its neighbours' within two reaches too, weighted by each one's push. Verify: the
+    press between two probes dents 60.8 mm (53.7 on the one probe); rings and slots unchanged.
+    Film: each slap's ring starts under the palm in both rows (1.3 to 3.7 cm inside the capsule).
+    **Open, from the poke trace (Joe: "why does poking move the top but not bottom"):**
+    (1) The pokes never reach the probes. A poke is the finger, and only the arrays' hand has one;
+    the collider is the palm's (the client sizes its capsule from the palm and finger bases), and
+    at its deepest stopped 0.4 cm off the nearest tip. (2) The 4 cm reach is not what the cloth
+    does: that capsule 0.4 cm off moved the tip 3 mm, not 36, with the radius read as 4 cm and
+    unscaled. Suspect the angle restoration at 1 pulling the tip back; measure a capsule held 2 cm
+    off with it at 1 and off. (3) The deep poke runs over the tips (they end 1 to 5 cm inside the
+    capsule: a 10 cm bone cannot swing clear), and for 25 frames, one probe pushed 80 to 90 mm,
+    no slot was held. Not yet known why.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 
