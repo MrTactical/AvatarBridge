@@ -2540,8 +2540,8 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     pushed by any collider the cloth is given would read as dents, fingers included where the
     toucher's avatar has finger colliders. MagicaCloth ties colliders to each cloth's own list
     (`ColliderManager.Register` reads `colliderCollisionConstraint.colliderList`), so the client
-    must add other players' at run time: Joe has seen them push cloth in game, the code path is
-    unconfirmed. Not started.
+    adds other players' at run time; Joe sees remote players' colliders push cloth in game every
+    day, which settles that it works. Not started.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 
