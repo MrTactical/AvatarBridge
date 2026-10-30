@@ -76,7 +76,9 @@ float3 YapsJellySlap(uint side, float3 world, float3 nw, inout float3 bend)
         {
             float3 out_ = world - hit.xyz;
             float d = length(out_), x = d - speed * age;
-            float env = _YAPS_JellySlap.x * how.w * exp(-age / fade - x * x / (len * len)) / (1 + d / len);
+            // At most 0.08 of a wavelength high, a slope of a half: a 3 cm slap's ring 3 cm high on
+            // a 10 cm wave folded the skin over itself into crinkles.
+            float env = min(_YAPS_JellySlap.x * how.w, 0.08 * len) * exp(-age / fade - x * x / (len * len)) / (1 + d / len);
             float h = env * cos(k2 * x);
             move -= nw * h;
             float dh = -env * (k2 * sin(k2 * x) + 2 * x / (len * len) * cos(k2 * x)) - h / (len + d);

@@ -2714,6 +2714,20 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     and folded. It now pushes as the avatar's draw does (yaps_jelly.cginc), in toward the tissue's
     middle with the rim eased out. A smoothed blend of 27 particles was tried alongside and
     reverted at Joe's word: on the avatar it changed a few dozen pixels and cost nothing measurable.
+    (10) The demo, Joe on films 7 to 9: the prop's draw now rides a slap's ring as the avatar's does
+    (it showed only the lattice's wobble); in the quick pokes a collider pokes the blue, which
+    ignores hands; the colliders-only jelly is drawn blue itself, not only its plate. A ring stood
+    3 cm high on a 10 cm wave and folded the skin into crinkles (Joe: "do we smooth out the
+    waves?"): every ring, avatar and prop, is now held to 0.08 of its wavelength high, a slope of
+    a half. The film slows its rings to a third and lengthens them, so they read at all.
+    (11) Cost pass (Joe, 2026-10-30: "get the ms down as much as possible ... while keeping all of
+    it"). Measured by leaving each block of the step's work undone in turn (a temporary `_Skip`
+    knob), the whole chain timed for one avatar and for sixteen: drawing blocks alone instead
+    misled, the GPU overlapping independent draws and a light load running at a low clock. Texel
+    41, one pixel judging all sixteen of the wearer's capsules in turn, was 12%: each capsule's far
+    texel now judges its own and the second pass gathers the bits. 0.033 to 0.029 ms an avatar,
+    0.444 to 0.388 for sixteen; in-reach bits and the push-through check unchanged. Now: the
+    lattice 0.009, the passes' floor 0.016 (about the CPU's submit, 0.015). Next the lattice.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 

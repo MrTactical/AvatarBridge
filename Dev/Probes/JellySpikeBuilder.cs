@@ -221,6 +221,12 @@ namespace AvatarBridge.Regression
                 mat.SetVector("_JellyArrays", new Vector4(1f, 0f, 1f, 1f));
                 EditorUtility.SetDirty(mat);
             }
+            // The colliders-only jelly drawn blue itself, not just its plate: both pink, the one a
+            // hand passes through read as broken.
+            var blueSkin = regions[1].Find("Surface 1").GetComponent<MeshRenderer>();
+            var blueDraw = Save(new Material(blueSkin.sharedMaterial), "/Jelly_Draw_Colliders.mat");
+            blueDraw.SetColor("_Color", new Color(0.5f, 0.68f, 1f));
+            blueSkin.sharedMaterial = blueDraw;
             // Green under the one that feels both, blue under the colliders' alone.
             for (int r = 0; r < 2; r++)
             {
@@ -499,7 +505,7 @@ namespace AvatarBridge.Regression
             (405, "Turned quickly back and forth"),
             (450, "A player's hand pressed in slowly: the blue ignores hands"),
             (450, "A hand dragged across the skin"),
-            (405, "Quick pokes"),
+            (405, "Quick pokes: a hand on the green, a collider on the blue"),
             (450, "Hand slaps: the green rings"),
             (450, "A MagicaCloth collider pressed in: both dent"),
             (450, "A collider dragged across"),
@@ -522,8 +528,14 @@ namespace AvatarBridge.Regression
             if (frame == 0)
             {
                 // Asleep shows as stillness: blue on the plate already means colliders only.
+                // A ring at its own speed crosses the prop in five frames of the film: slowed to a
+                // third and held twice as long, so it can be seen at all, and a longer wave, which its
+                // steepness cap lets stand higher.
                 foreach (var m in Object.FindObjectsOfType<Renderer>().SelectMany(x => x.sharedMaterials).Where(m => m && m.HasProperty("_SleepTint")))
+                {
                     m.SetFloat("_SleepTint", 0f);
+                    m.SetVector("_Ring", new Vector4(1.5f, 0.35f, 0.16f, 0.8f));
+                }
                 propHands = Enumerable.Range(0, 2).Select(i =>
                 {
                     var c = GameObject.CreatePrimitive(PrimitiveType.Capsule);
@@ -565,13 +577,11 @@ namespace AvatarBridge.Regression
             prop.SetPositionAndRotation(at, Quaternion.Euler(0f, turn, 0f));
             var fronts = regions.Select(t => t.TransformPoint(0f, 0f, (n.z - 1) * spacing)).ToArray();
 
+            // The blue feels colliders only, so a collider pokes it beside the green's hand.
+            float beat = g / 90f, poke = -0.04f + 0.075f * Mathf.Pow(Mathf.Max(0f, Mathf.Sin(2f * Mathf.PI * 2f * beat)), 2f) * Env(0.3f), across = (int) (beat * 2f) % 2 == 0 ? 0.04f : -0.04f;
             if (shot == 4) { float d = Press(0.04f); PropHands(regions, fronts, hand, (0, d, 0f), (1, d, 0f)); }
             else if (shot == 5) { float d = Drag(0.025f), x = 0.07f * Wave(0.6f); PropHands(regions, fronts, hand, (0, d, x), (1, d, x)); }
-            else if (shot == 6)
-            {
-                float beat = g / 90f, poke = Mathf.Pow(Mathf.Max(0f, Mathf.Sin(2f * Mathf.PI * 2f * beat)), 2f) * Env(0.3f), x = (int) (beat * 2f) % 2 == 0 ? 0.04f : -0.04f;
-                PropHands(regions, fronts, hand, (0, -0.04f + 0.075f * poke, x), (1, -0.04f + 0.075f * poke, x));
-            }
+            else if (shot == 6) PropHands(regions, fronts, hand, (0, poke, across));
             else if (shot == 7) { float d = Slaps(); PropHands(regions, fronts, hand, (0, d, 0f), (1, d, 0f)); }
             else if (shot == 13) { float d = g < 270 ? Mathf.Lerp(-0.05f, 0.32f, g / 270f) : g < 330 ? 0.32f : Mathf.Lerp(0.32f, -0.05f, (g - 330) / 90f); PropHands(regions, fronts, hand, (0, d, 0f), (1, d, 0f)); }
             else PropHands(regions, fronts, hand);
@@ -586,6 +596,7 @@ namespace AvatarBridge.Regression
                 PropBalls(regions, fronts, true, (0, d1, -0.06f, 0.03f), (0, d2, 0.06f, -0.03f), (1, d1, -0.06f, 0.03f), (1, d2, 0.06f, -0.03f));
             }
             else if (shot == 12) { float d = Drag(0.02f); PropBalls(regions, fronts, true, (0, d, 0f, 0f), (1, d, 0f, 0f)); }
+            else if (shot == 6) PropBalls(regions, fronts, true, (1, poke, across, 0f));
             else if (propBalls != null) PropBalls(regions, fronts, true);
 
             eye.Render();
@@ -3879,7 +3890,9 @@ namespace AvatarBridge.Regression
                         got[v].Add(Timed(timed[v].run, timed[v].rt, timed[v].runs, out _));
                     }
                 // Each step pass drawn over one block of its texels alone: the texture is small, so a
-                // pass waits on its slowest texel, and the blocks say which work sets its price.
+                // pass waits on its slowest texel, and the blocks say which work sets its price. Each
+                // draw reads the last one's output, as the chain's passes do: drawn independently, the
+                // GPU overlapped them and one block timed dearer than the whole pass.
                 void Quads(Material mat, RenderTexture src, RenderTexture dst, RectInt[] rects, bool flip)
                 {
                     mat.SetTexture("_MainTex", src);
@@ -3917,8 +3930,8 @@ namespace AvatarBridge.Regression
                 var blocks = new (string name, RectInt[] rects)[]
                 {
                     ("whole", new[] { new RectInt(0, 0, pa.width, pa.height) }), ("the lattice", Band(0, 2 * Row, true)), ("the side row", Band(0, 2 * Row, false)),
-                    ("0-15 hands", Band(0, 16, false)), ("16-29", Band(16, 30, false)), ("30-31 mass", Band(30, 32, false)), ("32-41", Band(32, 42, false)),
-                    ("42-79 own", Band(42, 80, false)), ("80-84 slaps", Band(80, 85, false)), ("88+ probes", Band(88, 2 * Row, false)), ("nothing", new RectInt[0]),
+                    ("0-15 hands", Band(0, 16, false)), ("16-29", Band(16, 30, false)), ("30-31 mass", Band(30, 32, false)), ("32-41", Band(32, 42, false)), ("37", Band(37, 38, false)), ("40", Band(40, 41, false)), ("41", Band(41, 42, false)),
+                    ("42-79 own", Band(42, 80, false)), ("80-84 slaps", Band(80, 85, false)), ("88+ probes", Band(88, 112, false)), ("one idle texel", Band(126, 127, false)),
                 };
                 Near(1f / 90f);
                 var blockTimes = new List<string>();
@@ -3928,9 +3941,38 @@ namespace AvatarBridge.Regression
                     var times = blocks.Select(_ => new List<double>()).ToArray();
                     for (int round = 0; round < 5; round++)
                         for (int bi = 0; bi < blocks.Length; bi++)
-                            times[bi].Add(Timed(() => Quads(blit.blitMaterial, blit.originTexture, blit.destinationTexture, blocks[bi].rects, flipped), blit.destinationTexture, 1000, out _));
+                        {
+                            // On copies, so the state the rest of the check reads is left alone.
+                            var ping = new RenderTexture(blit.originTexture.descriptor);
+                            var pong = new RenderTexture(blit.originTexture.descriptor);
+                            ping.Create();
+                            pong.Create();
+                            Graphics.CopyTexture(blit.originTexture, ping);
+                            Graphics.CopyTexture(blit.originTexture, pong);
+                            bool flop = false;
+                            times[bi].Add(Timed(() =>
+                            {
+                                Quads(blit.blitMaterial, flop ? pong : ping, flop ? ping : pong, blocks[bi].rects, flipped);
+                                flop = !flop;
+                            }, pong, 1000, out _));
+                            ping.Release();
+                            pong.Release();
+                        }
                     blockTimes.Add($"pass {k}: " + string.Join(", ", blocks.Select((bl, v) => $"{bl.name} {Spread(times[v])}")));
                 }
+                // Then the whole chain with each block's work left undone: what that work costs, one
+                // avatar and sixteen.
+                var skips = new (string name, int bits)[] { ("all of it", 0), ("no 40", 1), ("no 41", 2), ("no 42-79", 4), ("no scan", 8), ("no mass", 16), ("no slaps", 32), ("no probe readout", 64), ("no 32-37", 256), ("no lattice", 128), ("only the lattice", 0x17f), ("nothing past the first read", 512), ("nothing past the anchor", 1024) };
+                var skipTimes = skips.Select(_ => (one: new List<double>(), crowd: new List<double>())).ToArray();
+                for (int round = 0; round < 5; round++)
+                    for (int v = 0; v < skips.Length; v++)
+                    {
+                        foreach (var mm in mats) mm.SetFloat("_Skip", skips[v].bits);
+                        skipTimes[v].one.Add(Timed(Chain, pb, 1000, out _));
+                        skipTimes[v].crowd.Add(Timed(() => Crowd(16), pb, 100, out _));
+                    }
+                foreach (var mm in mats) mm.SetFloat("_Skip", 0f);
+                blockTimes.Add("the chain with work left out, one avatar / sixteen: " + string.Join(", ", skips.Select((k, v) => $"{k.name} {Spread(skipTimes[v].one)} / {Spread(skipTimes[v].crowd)}")));
                 Debug.Log($"[Jelly] the step's blocks timed alone ({regionsHere} regions, {Mathf.RoundToInt(Shader.GetGlobalVector("CVRGlobalParams1").y)} players, quads {(flipped ? "flipped" : "upright")}), ms: " + string.Join("; ", blockTimes));
                 Near(0f);
                 Drawn(true, true);
@@ -4029,6 +4071,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _Rider (""Steps the rider's texels, for the parser and the sleep"", Float) = 1
         _Sleep (""Rests after standing still this many seconds, untouched and unmoved; 0 never"", Float) = 0.5
         _Rest (""Worn: stops the steps after lying still this many seconds with no hand near; 0 never"", Float) = 0.5
+        _Skip (""Measuring only: work left undone, a bit a block"", Float) = 0
         _Regions (""How many regions the state packs"", Float) = 1
         _Lift (""1 lifts its rest by the sag gravity gives, along the anchor's up: modelled tissue hangs already"", Float) = 0
         _Gravity (""Share of gravity the tissue feels"", Float) = 1
@@ -4080,7 +4123,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             #include ""UnityCG.cginc""
             #include ""JellyCommon.cginc""
 
-            float _Stiff, _Hz, _Hand, _Far, _Behind, _Near, _Half, _Pass, _FixedDt, _Stress, _Sleep, _Lift, _Rider, _Rest, _Regions;
+            float _Stiff, _Hz, _Hand, _Far, _Behind, _Near, _Half, _Pass, _FixedDt, _Stress, _Sleep, _Lift, _Rider, _Rest, _Regions, _Skip;
             float _MassHz, _MassCarried, _MassDamp, _Give, _MassRadius, _Limit, _Pair, _PairKeep, _Squish, _Viscous, _Solid;
             float4 _Slap;
             // The frame's time, for how fast the homes move.
@@ -5314,6 +5357,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     return float4(off ? 0 : 1, 0, 0, 1);
                 }
                 float4 here = _MainTex.Load(int3(px, 0));
+                if ((uint) _Skip & 512) return here;
                 // The cost meter's load rests in even phases, as cheap as a pass can be.
                 if (_Stress > 0 && fmod(floor(_Time.y / Window), 2) < 0.5) return here;
                 // Packed regions share the passes, the scan's player arrays and the draw's texture:
@@ -5327,6 +5371,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 Region = region;
                 Mine = AnchorOf(region);
                 float4x4 m = Mine;
+                if ((uint) _Skip & 1024) return here + m._m03_m13_m23.xyzz * 1e-30;
                 float scale = length(m._m00_m10_m20);
                 bool anchored = scale > 1e-6;
                 // The step is held while the frame time, smoothed, stays within 15% of it: where the
@@ -5382,6 +5427,15 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             return Scan(px.x, m, scale, side);
                         }
 #endif
+                        // ponytail: the cost pass's knob, out once it has measured.
+                        [branch] if (_Skip > 0)
+                        {
+                            uint skip = (uint) _Skip;
+                            if ((skip & 1) && px.x == 40 || (skip & 2) && px.x == 41 || (skip & 4) && px.x >= 42 && px.x <= 79 || (skip & 8) && px.x < 16 ||
+                                (skip & 16) && (px.x == 30 || px.x == 31) || (skip & 32) && px.x >= 80 && px.x <= 84 || (skip & 64) && px.x >= 88 && px.x < 88 + PROBES ||
+                                (skip & 256) && px.x >= 32 && px.x <= 37)
+                                return here;
+                        }
                         [branch] if (px.x >= 32 && px.x <= 34 && _Solid > 0) return Bulk(px.x - 32, m, distant, side);
                         // How far the wearer's capsules in reach moved against the anchor since last frame,
                         // for the rest's count.
@@ -5397,30 +5451,21 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             [branch] if (!(tb.w > 0)) cb = mul(Anchor(region ^ 1), float4(0, 0, zc, 1)).xyz;
                             return float4(distance(ca, cb), length(_PairOffset.xyz) * scale, _PairReach.z * scale, scale);
                         }
-                        // Which of the wearer's own capsules are in reach, a bit each, then each one's
-                        // ends for the draw, as the hands' slots are. Read a frame late by the first
-                        // pass, so the reach has room.
-                        [branch] if (px.x == 41)
-                        {
-                            uint bits = 0;
-                            [unroll] for (uint c = 0; c < 16; c++)
-                            {
-                                float3 a, b;
-                                float r;
-                                Own(c, scale, a, b, r);
-                                if (r > 0 && InReach(a, b, r, m, scale, side)) bits |= 1u << c;
-                            }
-                            return float4(distant ? 0 : bits, 0, 0, 1);
-                        }
+                        // Each of the wearer's own capsules' ends for the draw, as the hands' slots are,
+                        // and on its far end whether it is in reach: judged here side by side, the
+                        // second pass gathers them into 41. One texel judging all sixteen in turn was a
+                        // seventh of the step.
                         [branch] if ((px.x >= 42 && px.x <= 57) || (px.x >= 64 && px.x <= 79))
                         {
                             float3 a, b;
                             float r;
                             uint c = px.x < 64 ? (uint) (px.x - 42) >> 1 : 8 + ((uint) (px.x - 64) >> 1);
                             Own(c, scale, a, b, r);
+                            bool reach = false;
+                            [branch] if ((px.x & 1) && r > 0) reach = InReach(a, b, r, m, scale, side);
                             float hold;
                             [branch] if (c == 2 || c == 6) Held(a, b, r, m, scale, hold);
-                            return (px.x & 1) == 0 ? float4(a, r) : float4(b, 0);
+                            return (px.x & 1) == 0 ? float4(a, r) : float4(b, reach);
                         }
                         // The draw's last guard: the plane midway between the two skins where they reach
                         // toward each other, moved on by half however far they overlapped as built, and
@@ -5462,6 +5507,14 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     }
                     if (px.x >= 26 && px.x <= 29)
                         return float4(px.x == 26 ? m._m00_m10_m20 : px.x == 27 ? m._m01_m11_m21 : px.x == 28 ? m._m02_m12_m22 : m._m03_m13_m23, 1);
+                    // Which of the wearer's own capsules are in reach, a bit each, from the first pass's
+                    // judgements. Read a frame late by the first pass, so the reach has room.
+                    [branch] if (px.x == 41)
+                    {
+                        uint bits = 0;
+                        [unroll] for (uint c = 0; c < 16; c++) bits |= _MainTex.Load(int3(c < 8 ? 43 + 2 * c : 49 + 2 * c, side, 0)).w > 0.5 ? 1u << c : 0;
+                        return float4(distant ? 0 : bits, 0, 0, 1);
+                    }
 #ifdef JELLY_SLEEP
                     if (px.x == 18) return float4(distant, Sleepy(m, distant, side), 0, 1);
                     if (asleep) return here;
@@ -5496,6 +5549,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 }
                 // Asleep, the same, but stamped, so it reads as stepping and wakes where it lay.
                 [branch] if (asleep) return _Pass > 0.5 && (uint) px.x < Row ? float4(here.xyz, _Time.y) : here;
+                if ((uint) _Skip & 128) return here;
                 uint p = (uint) px.x % Row + ((uint) px.y - Base) * Row;
                 if (p >= count) return 0;
                 int half_ = (uint) px.x >= Row;
@@ -5861,6 +5915,7 @@ Shader ""AvatarBridge/Jelly Spike""
         _State (""Tissue state"", 2D) = ""black"" {}
         _Color (""Colour"", Color) = (0.95, 0.55, 0.65, 1)
         _SleepTint (""Blue while asleep; 0 for a film, where sleep should read as stillness"", Float) = 1
+        _Ring (""A slap's ring, as the avatar's _YAPS_JellySlap: how much (0 none), speed, wavelength, fade"", Vector) = (1, 1, 0.1, 0.4)
         // Declared too: an undeclared value never reaches the saved material, and without it every
         // lookup misses the tissue.
         _Lattice (""Particles across, up and deep; spacing in metres"", Vector) = (16, 12, 16, 0.0133)
@@ -5882,6 +5937,7 @@ Shader ""AvatarBridge/Jelly Spike""
             Texture2D<float4> _State;
             float4 _Color;
             float _SleepTint;
+            float4 _Ring;
             float4 _Lattice;
 
             float4 Particle(int3 l, int3 n, int first)
@@ -5991,6 +6047,25 @@ Shader ""AvatarBridge/Jelly Spike""
                         if (rf > 0) move += Press(at, fa, fb, rf, centre);
                     }
                     at += move;
+                }
+                // A slap's ring rides out across the skin as the avatar's draw rides it
+                // (yaps_jelly.cginc's YapsJellySlap), from texels 80 to 83: where and when, then how
+                // deep. Without it the prop showed only the lattice's own wobble.
+                float3 face = (float3) (c >= n - 1 - 1e-3) - (float3) (c <= 1e-3);
+                [branch] if (!(switches.x > 0.5) && _Ring.x > 0 && any(face))
+                {
+                    float3 nw = normalize(mul((float3x3) unity_ObjectToWorld, face));
+                    float len = max(_Ring.z, 1e-3), fade = max(_Ring.w, 1e-3), k2 = 6.2831853 / len;
+                    [unroll] for (int k = 0; k < 2; k++)
+                    {
+                        float4 hit = _State.Load(int3(80 + 2 * k, row, 0)), how = _State.Load(int3(81 + 2 * k, row, 0));
+                        float age = _Time.y - hit.w;
+                        [branch] if (how.w > 0 && age >= 0 && age < 4 * fade)
+                        {
+                            float d = length(blend - hit.xyz), x = d - _Ring.y * age;
+                            at -= nw * (min(_Ring.x * how.w, 0.08 * len) * exp(-age / fade - x * x / (len * len)) / (1 + d / len) * cos(k2 * x));
+                        }
+                    }
                 }
                 // Never written: drawn where the mesh rests, so it shows at all.
                 if (!(dot(at, at) > 1e-8 && dot(at, at) < 1e8)) at = mul(unity_ObjectToWorld, v.vertex).xyz;
