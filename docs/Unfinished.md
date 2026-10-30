@@ -2666,6 +2666,20 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     (3) A sleeping prop woke for no hand at all: `Sleepy` took a slot's w == 1 as a hand, from before
     a slot's w carried 10 and the gesture (5b894b6). Now any filled slot. The blue jelly slept
     through its probes' slot until this.
+    (4) A collider dragged across the skin tore it (Joe, from the demo film: "the blue jelly
+    breaks"). A probe the sliding ball sweeps along, round its side and even out past it, reads a
+    push of 11 cm while the ball is 3 cm in, mostly sideways or outward, and the leader's push alone
+    put the rebuilt ball up to 4.7 cm too deep: a 144 mm dent where a hand from the arrays dragged
+    the same way dents 33. The push never measured depth: at rest the leader's tip slid 6.6 cm round
+    a ball whose overlap was 3.7. Each pushed tip does sit a reach off the centre, so the tips are
+    solved along the line out through the rests, the root on the side each tip was pushed from,
+    weighted to the tips under the centre; the shallower of that and the leader's push holds. Scored
+    against the true ball offline first (the probes' tips dumped over a drag): the tips alone sit 2 cm
+    deep at rest, the push alone 5 cm deep in a drag, the shallower at worst 2.4. The check now drags
+    the ball 7 cm each way and fails past 3 cm too deep or 15% of frames over 1.5 cm (4.7 cm and 22%
+    before); the drag's dent 90 mm, 33 for the hand. Breasts verify: the probe press 59.7 mm (72.1),
+    still passes. Open: the drag still dents more than the hand, mostly as the ball nears a face's
+    edge, where the line out through the rests leans 40 degrees off the face's normal.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 

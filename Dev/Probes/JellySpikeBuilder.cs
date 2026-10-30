@@ -279,6 +279,9 @@ namespace AvatarBridge.Regression
         static Vector4[] propRest;
         static readonly float[] propDent = new float[4], propPushed = new float[4];
         static readonly int[] propSlots = new int[4];
+        static readonly float[] propDragDent = new float[2];
+        static float propDragWorst;
+        static int propDragFrames, propDragDeep, propDragLost;
         static GameObject[] propBalls, propHands;
         static Camera eye2;
         static int propFilmed;
@@ -379,36 +382,68 @@ namespace AvatarBridge.Regression
             // Two players, each a left hand straight into one jelly, its far side 3 cm in.
             float s = Mathf.Clamp01((frame - 150) / 30f);
             if (frame >= 150 && frame < 270) PropHands(regions, fronts, hand, (0, 0.08f * s - 0.05f, 0f), (1, 0.08f * s - 0.05f, 0f));
+            else if (frame >= 900) PropHands(regions, fronts, hand, (0, 0.03f, frame >= 990 ? 0.07f * Mathf.Sin(2f * Mathf.PI * 0.6f * (frame - 990) / 90f) : 0f));
             else PropHands(regions, fronts, hand);
             // Then a 4.5 cm ball into each, given to the probes' cloth as a player's collider is.
             float d = Mathf.Lerp(-0.055f, 0.03f, Mathf.Clamp01((frame - 330) / 30f));
-            if (frame >= 330) PropBalls(regions, fronts, false, (0, d, 0f, 0f), (1, d, 0f, 0f));
+            // Then dragged 7 cm each way across the fronts. Last a hand from the arrays dragged the same
+            // way over the green, which needs no probes: what a drag should dent.
+            float dx = frame >= 540 ? 0.07f * Mathf.Sin(2f * Mathf.PI * 0.6f * (frame - 540) / 90f) : 0f;
+            if (frame >= 900) PropBalls(regions, fronts, false);
+            else if (frame >= 330) PropBalls(regions, fronts, false, (0, d, dx, 0f), (1, d, dx, 0f));
             eye.Render();
             int rows = Side(n), count = n.x * n.y * n.z;
             if (frame == 140) propRest = Read(state);
+            float Dent(Vector4[] now, int r)
+            {
+                float most = 0f;
+                for (int i = 0; i < count; i++)
+                {
+                    int at = (r * (rows + 1) + i / Row) * 2 * Row + i % Row;
+                    most = Mathf.Max(most, Vector3.Distance(now[at], propRest[at]));
+                }
+                return most;
+            }
+            // A sliding collider sweeps probes along, which read far more than it is in: the ball
+            // rebuilt from them, its deepest point along the front against the true ball's.
+            if (frame >= 560 && frame < 900 || frame >= 1000)
+            {
+                var now = Read(state);
+                propDragDent[frame < 900 ? 0 : 1] = Mathf.Max(propDragDent[frame < 900 ? 0 : 1], Dent(now, 0));
+                for (int r = 0; r < 2 && frame < 900; r++)
+                {
+                    int side = (r * (rows + 1) + rows) * 2 * Row;
+                    float truth = regions[r].InverseTransformPoint(propBalls[r].transform.position).z - 0.045f;
+                    var deep = Enumerable.Range(0, 8).Where(e => now[side + 2 * e + 1].w > 0.5f).Select(e => regions[r].InverseTransformPoint(now[side + 2 * e]).z - hand - truth).ToList();
+                    propDragFrames++;
+                    if (deep.Count == 0) propDragLost++;
+                    else
+                    {
+                        propDragWorst = Mathf.Min(propDragWorst, deep.Min());
+                        if (deep.Min() < -0.015f) propDragDeep++;
+                    }
+                }
+            }
             if (frame >= 200 && frame < 270 || frame >= 390 && frame < 450)
             {
                 var now = Read(state);
                 int phase = frame < 300 ? 0 : 2;
                 for (int r = 0; r < 2; r++)
                 {
-                    float most = 0f;
-                    for (int i = 0; i < count; i++)
-                    {
-                        int at = (r * (rows + 1) + i / Row) * 2 * Row + i % Row;
-                        most = Mathf.Max(most, Vector3.Distance(now[at], propRest[at]));
-                    }
                     int side = (r * (rows + 1) + rows) * 2 * Row;
-                    propDent[phase + r] = Mathf.Max(propDent[phase + r], most);
+                    propDent[phase + r] = Mathf.Max(propDent[phase + r], Dent(now, r));
                     propSlots[phase + r] = Mathf.Max(propSlots[phase + r], Enumerable.Range(0, 8).Count(e => now[side + 2 * e + 1].w > 0.5f));
                     propPushed[phase + r] = Mathf.Max(propPushed[phase + r], Enumerable.Range(0, ProbesPer).Max(k => now[side + 88 + k].w));
                 }
             }
-            if (++frame < 450) return;
-            bool ok = propDent[0] > 0.01f && propDent[1] < 0.003f && propDent[2] > 0.01f && propDent[3] > 0.01f && propSlots[1] == 0;
+            if (++frame < 1260) return;
+            bool ok = propDent[0] > 0.01f && propDent[1] < 0.003f && propDent[2] > 0.01f && propDent[3] > 0.01f && propSlots[1] == 0 &&
+                      propDragLost == 0 && propDragWorst > -0.03f && propDragDeep <= 0.15f * propDragFrames;
             Debug.Log($"[Jelly] {(ok ? "PASS" : "FAIL")} prop after {frame} frames: a hand from the arrays 3 cm in dented the green {1000f * propDent[0]:0.0} mm ({propSlots[0]} slots) " +
                       $"and the blue {1000f * propDent[1]:0.0} mm ({propSlots[1]} slots, 0 wanted); a MagicaCloth ball 3 cm in dented the green {1000f * propDent[2]:0.0} mm " +
-                      $"({propSlots[2]} slots, probes pushed {1000f * propPushed[2]:0.0} mm) and the blue {1000f * propDent[3]:0.0} mm ({propSlots[3]} slots, {1000f * propPushed[3]:0.0} mm); hand radius {1000f * hand:0} mm");
+                      $"({propSlots[2]} slots, probes pushed {1000f * propPushed[2]:0.0} mm) and the blue {1000f * propDent[3]:0.0} mm ({propSlots[3]} slots, {1000f * propPushed[3]:0.0} mm); hand radius {1000f * hand:0} mm; " +
+                      $"dragged 7 cm each way, the ball rebuilt from the probes at worst {-100f * propDragWorst:0.0} cm too deep, {propDragDeep} of {propDragFrames} frames over 1.5 cm " +
+                      $"and {propDragLost} without one; the green's dent {1000f * propDragDent[0]:0.0} mm against {1000f * propDragDent[1]:0.0} mm for a hand dragged the same way");
             SessionState.SetInt(K + "on", 0);
             SessionState.SetBool(K + "prop", false);
             EditorApplication.Exit(ok ? 0 : 1);
@@ -4071,7 +4106,29 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     }
                     rest /= max(w, 1e-6);
                     rest2 /= max(w2, 1e-6);
-                    float3 ball = rest + normalize(rest - mid) * (reach - best), ball2 = rest2 + normalize(rest2 - mid) * (reach - next);
+                    // Each pushed tip sits a reach from its collider's centre, on the side the tip was
+                    // pushed away from: solved along the line out through the rests, weighted to the
+                    // tips under the centre and pushed most. A probe a sliding collider sweeps along
+                    // reads far more than the collider is in, so the leader's push alone put a dragged
+                    // ball 5 cm too deep and tore the skin; the tips alone sit 2 cm deep at rest. The
+                    // shallower of the two holds, measured against the true ball over a drag.
+                    float3 out1 = normalize(rest - mid), out2 = normalize(rest2 - mid);
+                    float up = 0, up2 = 0, e = 0, e2 = 0;
+                    [unroll] for (uint k = 0; k < PROBES; k++)
+                    {
+                        bool down = dot(balls[k] - rests[k], normalize(rests[k] - mid)) <= 0;
+                        float3 d = balls[k] - rest, d2 = balls[k] - rest2;
+                        float a = dot(d, out1), a2 = dot(d2, out2);
+                        float s = sqrt(max(reach * reach - dot(d, d) + a * a, 0)), s2 = sqrt(max(reach * reach - dot(d2, d2) + a2 * a2, 0));
+                        float c = gone[k] > 0 && distance(balls[k], lead) < 2 * reach ? s * s * gone[k] : 0;
+                        float c2 = next > 0 && gone[k] > 0 && distance(balls[k], lead2) < 2 * reach ? s2 * s2 * gone[k] : 0;
+                        up += (down ? a + s : a - s) * c;
+                        up2 += (down ? a2 + s2 : a2 - s2) * c2;
+                        e += c;
+                        e2 += c2;
+                    }
+                    float h = max(reach - best, e > 0 ? up / e : reach - best), h2 = max(reach - next, e2 > 0 ? up2 / e2 : reach - next);
+                    float3 ball = rest + out1 * h, ball2 = rest2 + out2 * h2;
                     [unroll] for (uint k = 0; k < PROBES; k++)
                     {
                         bool one = gone[k] == best && all(balls[k] == lead), two = next > 0 && gone[k] == next && all(balls[k] == lead2);
