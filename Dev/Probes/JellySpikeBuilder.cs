@@ -4080,91 +4080,6 @@ namespace AvatarBridge.Regression
                         timed[v].set();
                         got[v].Add(Timed(timed[v].run, timed[v].rt, timed[v].runs, out _));
                     }
-                // Each step pass drawn over one block of its texels alone: the texture is small, so a
-                // pass waits on its slowest texel, and the blocks say which work sets its price. Each
-                // draw reads the last one's output, as the chain's passes do: drawn independently, the
-                // GPU overlapped them and one block timed dearer than the whole pass.
-                void Quads(Material mat, RenderTexture src, RenderTexture dst, RectInt[] rects, bool flip)
-                {
-                    mat.SetTexture("_MainTex", src);
-                    var was = RenderTexture.active;
-                    RenderTexture.active = dst;
-                    GL.PushMatrix();
-                    GL.LoadOrtho();
-                    mat.SetPass(0);
-                    GL.Begin(GL.QUADS);
-                    foreach (var r in rects)
-                    {
-                        float x0 = (float) r.xMin / dst.width, x1 = (float) r.xMax / dst.width, y0 = (float) r.yMin / dst.height, y1 = (float) r.yMax / dst.height;
-                        if (flip) (y0, y1) = (1f - y1, 1f - y0);
-                        GL.Vertex3(x0, y0, 0f);
-                        GL.Vertex3(x1, y0, 0f);
-                        GL.Vertex3(x1, y1, 0f);
-                        GL.Vertex3(x0, y1, 0f);
-                    }
-                    GL.End();
-                    GL.PopMatrix();
-                    RenderTexture.active = was;
-                }
-                // Which way up a quad lands: the first row drawn into a cleared copy, read back.
-                var trial = new RenderTexture(pb.descriptor);
-                trial.Create();
-                var wasActive = RenderTexture.active;
-                RenderTexture.active = trial;
-                GL.Clear(false, true, new Color(7f, 7f, 7f, 7f));
-                RenderTexture.active = wasActive;
-                Quads(chain[0].blitMaterial, chain[0].originTexture, trial, new[] { new RectInt(0, 0, 2 * Row, 1) }, false);
-                bool flipped = Read(trial)[0] == new Vector4(7f, 7f, 7f, 7f);
-                trial.Release();
-                int band = Side(n) + 1, regionsHere = pa.height / band;
-                RectInt[] Band(int x0, int x1, bool lattice) => Enumerable.Range(0, regionsHere).Select(r => lattice ? new RectInt(x0, r * band, x1 - x0, band - 1) : new RectInt(x0, r * band + band - 1, x1 - x0, 1)).ToArray();
-                var blocks = new (string name, RectInt[] rects)[]
-                {
-                    ("whole", new[] { new RectInt(0, 0, pa.width, pa.height) }), ("the lattice", Band(0, 2 * Row, true)), ("the side row", Band(0, 2 * Row, false)),
-                    ("0-15 hands", Band(0, 16, false)), ("16-29", Band(16, 30, false)), ("30-31 mass", Band(30, 32, false)), ("32-41", Band(32, 42, false)), ("37", Band(37, 38, false)), ("40", Band(40, 41, false)), ("41", Band(41, 42, false)),
-                    ("42-79 own", Band(42, 80, false)), ("80-84 slaps", Band(80, 85, false)), ("88+ probes", Band(88, 112, false)), ("one idle texel", Band(126, 127, false)),
-                };
-                Near(1f / 90f);
-                var blockTimes = new List<string>();
-                for (int k = 0; k < Mathf.Min(2, chain.Count); k++)
-                {
-                    var blit = chain[k];
-                    var times = blocks.Select(_ => new List<double>()).ToArray();
-                    for (int round = 0; round < 5; round++)
-                        for (int bi = 0; bi < blocks.Length; bi++)
-                        {
-                            // On copies, so the state the rest of the check reads is left alone.
-                            var ping = new RenderTexture(blit.originTexture.descriptor);
-                            var pong = new RenderTexture(blit.originTexture.descriptor);
-                            ping.Create();
-                            pong.Create();
-                            Graphics.CopyTexture(blit.originTexture, ping);
-                            Graphics.CopyTexture(blit.originTexture, pong);
-                            bool flop = false;
-                            times[bi].Add(Timed(() =>
-                            {
-                                Quads(blit.blitMaterial, flop ? pong : ping, flop ? ping : pong, blocks[bi].rects, flipped);
-                                flop = !flop;
-                            }, pong, 1000, out _));
-                            ping.Release();
-                            pong.Release();
-                        }
-                    blockTimes.Add($"pass {k}: " + string.Join(", ", blocks.Select((bl, v) => $"{bl.name} {Spread(times[v])}")));
-                }
-                // Then the whole chain with each block's work left undone: what that work costs, one
-                // avatar and sixteen.
-                var skips = new (string name, int bits)[] { ("all of it", 0), ("no 40", 1), ("no 41", 2), ("no 42-79", 4), ("no scan", 8), ("no mass", 16), ("no slaps", 32), ("no probe readout", 64), ("no 32-37", 256), ("no lattice", 128), ("only the lattice", 0x17f), ("nothing past the first read", 512), ("nothing past the anchor", 1024) };
-                var skipTimes = skips.Select(_ => (one: new List<double>(), crowd: new List<double>())).ToArray();
-                for (int round = 0; round < 5; round++)
-                    for (int v = 0; v < skips.Length; v++)
-                    {
-                        foreach (var mm in mats) mm.SetFloat("_Skip", skips[v].bits);
-                        skipTimes[v].one.Add(Timed(Chain, pb, 1000, out _));
-                        skipTimes[v].crowd.Add(Timed(() => Crowd(16), pb, 100, out _));
-                    }
-                foreach (var mm in mats) mm.SetFloat("_Skip", 0f);
-                blockTimes.Add("the chain with work left out, one avatar / sixteen: " + string.Join(", ", skips.Select((k, v) => $"{k.name} {Spread(skipTimes[v].one)} / {Spread(skipTimes[v].crowd)}")));
-                Debug.Log($"[Jelly] the step's blocks timed alone ({regionsHere} regions, {Mathf.RoundToInt(Shader.GetGlobalVector("CVRGlobalParams1").y)} players, quads {(flipped ? "flipped" : "upright")}), ms: " + string.Join("; ", blockTimes));
                 Near(0f);
                 Drawn(true, true);
                 Fake(false, false);
@@ -4262,7 +4177,6 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _Rider (""Steps the rider's texels, for the parser and the sleep"", Float) = 1
         _Sleep (""Rests after standing still this many seconds, untouched and unmoved; 0 never"", Float) = 0.5
         _Rest (""Worn: stops the steps after lying still this many seconds with no hand near; 0 never"", Float) = 0.5
-        _Skip (""Measuring only: work left undone, a bit a block"", Float) = 0
         _Regions (""How many regions the state packs"", Float) = 1
         _Lift (""1 lifts its rest by the sag gravity gives, along the anchor's up: modelled tissue hangs already"", Float) = 0
         _Gravity (""Share of gravity the tissue feels"", Float) = 1
@@ -4315,7 +4229,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             #include ""UnityCG.cginc""
             #include ""JellyCommon.cginc""
 
-            float _Stiff, _Hz, _Hand, _Far, _Behind, _Near, _Half, _Pass, _FixedDt, _Stress, _Sleep, _Lift, _Rider, _Rest, _Regions, _Skip;
+            float _Stiff, _Hz, _Hand, _Far, _Behind, _Near, _Half, _Pass, _FixedDt, _Stress, _Sleep, _Lift, _Rider, _Rest, _Regions;
             float _MassHz, _MassCarried, _MassDamp, _Give, _MassRadius, _Limit, _Pair, _PairKeep, _Squish, _Viscous, _Solid;
             float4 _Slap;
             // The frame's time, for how fast the homes move.
@@ -5612,7 +5526,6 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     return float4(off ? 0 : 1, 0, 0, 1);
                 }
                 float4 here = _MainTex.Load(int3(px, 0));
-                if ((uint) _Skip & 512) return here;
                 // The cost meter's load rests in even phases, as cheap as a pass can be.
                 if (_Stress > 0 && fmod(floor(_Time.y / Window), 2) < 0.5) return here;
                 // Packed regions share the passes, the scan's player arrays and the draw's texture:
@@ -5626,7 +5539,6 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 Region = region;
                 Mine = AnchorOf(region);
                 float4x4 m = Mine;
-                if ((uint) _Skip & 1024) return here + m._m03_m13_m23.xyzz * 1e-30;
                 float scale = length(m._m00_m10_m20);
                 bool anchored = scale > 1e-6;
                 // The step is held while the frame time, smoothed, stays within 15% of it: where the
@@ -5682,15 +5594,6 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             return Scan(px.x, m, scale, side);
                         }
 #endif
-                        // ponytail: the cost pass's knob, out once it has measured.
-                        [branch] if (_Skip > 0)
-                        {
-                            uint skip = (uint) _Skip;
-                            if ((skip & 1) && px.x == 40 || (skip & 2) && px.x == 41 || (skip & 4) && px.x >= 42 && px.x <= 79 || (skip & 8) && px.x < 16 ||
-                                (skip & 16) && (px.x == 30 || px.x == 31) || (skip & 32) && px.x >= 80 && px.x <= 84 || (skip & 64) && px.x >= 88 && px.x < 88 + PROBES ||
-                                (skip & 256) && px.x >= 32 && px.x <= 37)
-                                return here;
-                        }
                         [branch] if (px.x >= 32 && px.x <= 34 && _Solid > 0) return Bulk(px.x - 32, m, distant, side);
                         // How far the wearer's capsules in reach moved against the anchor since last frame,
                         // for the rest's count.
@@ -5805,13 +5708,14 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 }
                 // Asleep, the same, but stamped, so it reads as stepping and wakes where it lay.
                 [branch] if (asleep) return _Pass > 0.5 && (uint) px.x < Row ? float4(here.xyz, _Time.y) : here;
-                if ((uint) _Skip & 128) return here;
                 uint p = (uint) px.x % Row + ((uint) px.y - Base) * Row;
                 if (p >= count) return 0;
                 int half_ = (uint) px.x >= Row;
                 int3 l = Place(p);
                 // No anchor yet: nothing to hang from. Marked, so the surface can say so.
                 if (!anchored) return half_ == 0 ? float4(0, 0, 0, -1) : 0;
+                // The fit's right half was settled in the first pass: no home to work out.
+                if (predicted && _Pass > 0.5 && half_ == 1) return here;
                 float4 swing;
                 float3 home = Home(l, m, side, swing);
                 float4 q;
@@ -5828,8 +5732,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 }
                 if (predicted)
                 {
-                    // The fit, from the first pass's predictions; the right half was settled there.
-                    if (half_ == 1) return here;
+                    // The fit, from the first pass's predictions.
                     return float4(Moved(p, l, m, scale, h, home, true, distant, side, swing, q), _Time.y);
                 }
                 // A whole step. The right half only moves along, so half the texture does next to no work.

@@ -2727,7 +2727,12 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     41, one pixel judging all sixteen of the wearer's capsules in turn, was 12%: each capsule's far
     texel now judges its own and the second pass gathers the bits. 0.033 to 0.029 ms an avatar,
     0.444 to 0.388 for sixteen; in-reach bits and the push-through check unchanged. Now: the
-    lattice 0.009, the passes' floor 0.016 (about the CPU's submit, 0.015). Next the lattice.
+    lattice 0.009, the passes' floor 0.016 (about the CPU's submit, 0.015). The lattice is the
+    fit's own sums and turns: the second pass no longer works out a home for the half that only
+    copies, but no trim left there measures past the runs' own 2 to 3% drift (0.030 / 0.399 after,
+    the lattice still 30%). Cutting further means fewer neighbours or turns, which changes the
+    feel, so it stops here; the knob is gone. Two thirds of an avatar's cost is the three blits'
+    fixed price, the client's to pay.
     (12) It rang only when something hit it, never when it hit something (a tester of Joe's, on
     the drop: "you are testing impact toward mass, not mass impact towards object"). Now the
     anchor gaining or losing more than twice a slap's speed in a frame rings it, from the face the

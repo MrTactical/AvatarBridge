@@ -870,6 +870,12 @@ namespace AvatarBridge.Regression
                     float b = Beats(u, 2);
                     Press((sideP + f * 0.1f + outP * (r + Mathf.Lerp(0.03f, -0.13f, b)), -f, -1f), (sideQ + f * 0.1f - outP * (r + Mathf.Lerp(0.03f, -0.13f, b)), -f, -1f));
                 } },
+                // Slapped hard together from outside, fast enough to ring them from where they meet.
+                new Shot { name = "Slapped together from outside", frames = 270, at = mid + f * 0.05f, width = 1f, pose = (s, u) =>
+                {
+                    float t = Mathf.Repeat(u * 3f, 1f), hit = t > 0.45f && t < 0.55f ? Mathf.Sin(Mathf.PI * (t - 0.45f) / 0.1f) : 0f;
+                    Press((sideP + f * 0.1f + outP * (r + Mathf.Lerp(0.1f, -0.06f, hit)), -f, -1f), (sideQ + f * 0.1f - outP * (r + Mathf.Lerp(0.1f, -0.06f, hit)), -f, -1f));
+                } },
                 // One side only: the part pushed leads, and the other gives a little where they meet.
                 new Shot { name = "One hand pushing one into the other", frames = 360, at = mid + f * 0.05f, width = 1f, pose = (s, u) =>
                     Press((sideP + f * 0.1f + outP * (r + Mathf.Lerp(0.03f, -0.13f, Beats(u, 2))), -f, -1f)) },
