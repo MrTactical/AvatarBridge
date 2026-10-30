@@ -2671,15 +2671,17 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     push of 11 cm while the ball is 3 cm in, mostly sideways or outward, and the leader's push alone
     put the rebuilt ball up to 4.7 cm too deep: a 144 mm dent where a hand from the arrays dragged
     the same way dents 33. The push never measured depth: at rest the leader's tip slid 6.6 cm round
-    a ball whose overlap was 3.7. Each pushed tip does sit a reach off the centre, so the tips are
-    solved along the line out through the rests, the root on the side each tip was pushed from,
-    weighted to the tips under the centre; the shallower of that and the leader's push holds. Scored
-    against the true ball offline first (the probes' tips dumped over a drag): the tips alone sit 2 cm
-    deep at rest, the push alone 5 cm deep in a drag, the shallower at worst 2.4. The check now drags
-    the ball 7 cm each way and fails past 3 cm too deep or 15% of frames over 1.5 cm (4.7 cm and 22%
-    before); the drag's dent 90 mm, 33 for the hand. Breasts verify: the probe press 59.7 mm (72.1),
-    still passes. Open: the drag still dents more than the hand, mostly as the ball nears a face's
-    edge, where the line out through the rests leans 40 degrees off the face's normal.
+    a ball whose overlap was 3.7. First fix (e19d17b) solved the tips' positions alongside; the next
+    film still spasmed as the ball left the middle (Joe: "the jelly freaks out"), because there the
+    ball comes in while already moving: the solve flipped roots and the estimate jumped up to 8 cm a
+    frame. Now (8b2bfd9) each push is held to 0.8 of a reach, which no press needs and only a swept
+    probe passes, and the tips' solve is gone. Scored offline against the true ball on two dumped
+    drags first: at worst 1.8 cm too deep (6.2), jumps 0.4 cm a frame (8.4). The check drags as the
+    film does, in while moving, and fails past 3 cm too deep, 15% of frames over 1.5 cm, or a 1.5 cm
+    jump in a frame; now 1.5 cm, none, 0.4. Cost: a press felt only by probes reads at most about
+    3 cm deep. Breasts verify: the probe press 61.9 mm (72.1), still passes. Open: the drag still
+    dents 58 mm to the hand's 27, the rebuilt ball trailing the true one by up to 3 cm sideways; and
+    how deep any press may go at all (Joe, 2026-10-30: skin stops a hand, VR does not), asked.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 
