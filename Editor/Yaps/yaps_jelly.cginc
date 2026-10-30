@@ -116,13 +116,28 @@ float3 YapsJellyRegion(uint r, float3 world, float3 nw, out float3 bend)
     int3 c0 = min(int3(c), n - 2);
     float3 t = c - c0;
     float3 move = 0, gx = 0, gy = 0, gz = 0;
+    // Between steps, as the parser runs them every other frame or fewer, each particle's give carried
+    // on at its last speed: its move over the last step less the anchor's (texel 85), for as long as
+    // it has been since. Its give, not where it is: carried on whole, the body's own walk pushed the
+    // skin ahead of it. Stepped this frame, none; stalled a tenth of a second, none.
+    float since = _Time.y - YapsJellyTexel(0, base).w;
+    float3 carried = _YAPS_JellyState.Load(int3(85, side, 0)).xyz;
+    bool between = since > 1e-4 && since < 0.1;
     [unroll] for (int k = 0; k < 8; k++)
     {
         int3 d = int3(k & 1, (k >> 1) & 1, k >> 2);
         int3 l = c0 + d;
         float3 rest = float3(l.x - 0.5 * (n.x - 1), l.y - 0.5 * (n.y - 1), l.z) * spacing;
         float3 home = place.xyz + ax * rest.x + ay * rest.y + az * rest.z;
-        float3 off = YapsJellyTexel((uint) ((l.z * n.y + l.y) * n.x + l.x), base).xyz - home;
+        uint pi = (uint) ((l.z * n.y + l.y) * n.x + l.x);
+        float4 pt = YapsJellyTexel(pi, base);
+        float3 off = pt.xyz - home;
+        // The step's right half: where it was before the step, and the step's time.
+        [branch] if (between)
+        {
+            float4 was = _YAPS_JellyState.Load(int3(pi % 64 + 64, pi / 64 + base, 0));
+            off += ((pt.xyz - was.xyz) / max(was.w, 1e-4) - carried) * since;
+        }
         float3 w = d ? t : 1 - t;
         float3 way = d ? 1 : -1;
         move += w.x * w.y * w.z * off;

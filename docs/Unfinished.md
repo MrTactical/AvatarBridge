@@ -2829,6 +2829,29 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     side and carried out 11 to 18 cm (now 20 cm deep behind its face). ponytail: a thin world solid
     moving faster than a ball's width a physics step can still pass them; a linear limit with
     projection on the joints would snap one back if that shows in game.
+    (19) The cost pass and the step rate (Joe: "a cost optimisation run after all this"; "lower the
+    refresh to where it still looks pretty smooth"; "add interpolation between frames"). Timed on the
+    breasts at rest, the chain is 0.043 to 0.045 ms a frame, the side row 0.012 of it, the slaps'
+    probe test about 0.008 of that; a wall's faces add 0.009. Loaded timings of one avatar wander
+    (0.089 to 0.161 for the same finger), the GPU clocking down under so light a load, so the 16
+    avatar bench stays the measure. Leaving each block of the step undone in turn found nothing
+    worth cutting: the particles' own work is cheap, and the price is the passes themselves, so the
+    lever is how often they run. The rate film (60 fps, the clap, the grab and the pane, stepped
+    every frame, every second frame, and every second frame carried on in the draw): measured as
+    how unevenly the picture changes on odd and even frames, the clap 1.43 every frame, 1.79 at 30
+    a second, 1.49 carried on; the grab and the pane alike at any rate. Carried on is no closer
+    frame for frame (36.5 dB against 36.9): it runs a little past where the skin turns. Joe chose
+    45 a second near and kept the carrying on, 30 "acceptable". Built: `_Rate` (45, 30), the far
+    switch's pass on for one frame's time in each step's by the clock, 30 past `_Half`; the step
+    after a skip takes any gap under a tenth of a second (was 3 frames at most, too few for 30 a
+    second at 144 fps); the draw (yaps_jelly.cginc) carries each particle's give on at its last
+    step's speed less the anchor's, for the time since. Check: near, the steps ran 30 of 60 frames;
+    3 m off, 27 of 80, each taking 3. The check's furthest-particle measure now reads off the
+    anchor the state was stepped on, as the draw does: off the bones' new place, a frame between
+    steps read the turn's own move as give (turning 161 mm read that way, 111 off the stepped anchor, against 109 stepped every frame). OPEN, in game: the client's
+    parser, read back a few frames late, keeping the pattern; the draw's carrying on is untimed
+    (eight more texels a vertex between steps); it takes off the anchor's move, not its turn, so a
+    fast spin carries the skin on a few millimetres.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 
