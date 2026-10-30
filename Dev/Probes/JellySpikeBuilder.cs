@@ -49,6 +49,7 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using ABI.CCK.Components;
+using ABI.CCK.Scripts;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -89,7 +90,7 @@ namespace AvatarBridge.Regression
             Menu.SetChecked("Tools/AvatarBridge Dev/Jelly spike: coarse lattice", EditorPrefs.GetBool(CoarseKey, true));
             return true;
         }
-        const int Row = 64, Passes = 2, Frames = 300, Load = 32, BreastFrames = 3300, ViewFrames = 540, ProbesPer = 24;
+        const int Row = 64, Passes = 2, Frames = 300, Load = 32, BreastFrames = 3500, ViewFrames = 540, ProbesPer = 24;
         // How far off the skin a collider pushes a probe: the probe cloth's radius.
         const float ProbeReach = 0.04f;
         struct Late { }
@@ -363,9 +364,15 @@ namespace AvatarBridge.Regression
                 worldWall.GetComponent<Renderer>().sharedMaterial = new Material(Shader.Find("Sprites/Default")) { color = new Color(0.75f, 0.9f, 1f, 0.3f) };
             }
             float gap = frame < 150 ? 0.15f : frame < 210 ? Mathf.Lerp(0.15f, -0.03f, (frame - 150) / 60f) : frame < 300 ? -0.03f : Mathf.Lerp(-0.03f, 0.15f, Mathf.Clamp01((frame - 300) / 30f));
-            // Filmed, then slapped on in six frames, held, and taken away.
-            if (film && frame >= 450) gap = frame < 480 ? 0.15f : frame < 486 ? Mathf.Lerp(0.15f, -0.03f, (frame - 480) / 6f) : frame < 520 ? -0.03f : Mathf.Lerp(-0.03f, 0.15f, Mathf.Clamp01((frame - 520) / 20f));
-            worldWall.transform.SetPositionAndRotation(regions[1].TransformPoint(0f, 0f, span.z + 0.05f + gap), regions[1].rotation);
+            // Filmed, then slapped on and straight off, six frames each way: held on, its ring ran
+            // out under it. 7 cm in, a hard slap.
+            if (film && frame >= 450) gap = frame < 480 ? 0.15f : frame < 486 ? Mathf.Lerp(0.15f, -0.07f, (frame - 480) / 6f) : Mathf.Lerp(-0.07f, 0.15f, Mathf.Clamp01((frame - 486) / 6f));
+            // Moved as physics moves a solid once it comes near, as the breasts' film pane is: set
+            // outright, it pushed the balls 31 mm of a 70 mm press, never to the skin, and a slap
+            // rang nothing.
+            var wallAt = regions[1].TransformPoint(0f, 0f, span.z + 0.05f + gap);
+            if (frame < 150) worldWall.transform.SetPositionAndRotation(wallAt, regions[1].rotation);
+            else worldWall.GetComponent<Rigidbody>().MovePosition(wallAt);
             eye.Render();
             if (film)
             {
@@ -387,6 +394,19 @@ namespace AvatarBridge.Regression
                 }
             }
             int rows = Side(n), count = n.x * n.y * n.z;
+            // Filmed, the slap's rings on the orange one, every fourth frame through it; and in the
+            // held press, how far its balls really went against what its probes read.
+            if (film && frame >= 476 && frame <= 512 && frame % 4 == 0 || frame == 270)
+            {
+                var rung = Read(state);
+                int rs = (2 * rows + 1) * 2 * Row;
+                float moved = regions[1].parent.GetComponentsInChildren<Transform>(true).Where(pbx => pbx.name.StartsWith("Jelly Probe Ball 1 "))
+                    .Select(pbx => pbx.parent.Find(pbx.name.Replace("Ball", "Rest"))).Where(prr => prr != null)
+                    .Max(prr => Vector3.Distance(prr.parent.Find(prr.name.Replace("Rest", "Ball")).position, prr.position));
+                Debug.Log($"[Jelly] slap frame {frame}: rings {Time.timeSinceLevelLoad - rung[rs + 80].w:0.00} s old {1000f * rung[rs + 81].w:0.0} mm, " +
+                          $"{Time.timeSinceLevelLoad - rung[rs + 82].w:0.00} s old {1000f * rung[rs + 83].w:0.0} mm; deepest probe {1000f * Enumerable.Range(0, 24).Max(k => rung[rs + 88 + k].w):0.0} mm, " +
+                          $"furthest ball {1000f * moved:0.0} mm off its rest");
+            }
             if (frame == 140) worldRest = Read(state);
             float Dent(Vector4[] now, int r)
             {
@@ -415,7 +435,7 @@ namespace AvatarBridge.Regression
             if (film)
             {
                 string dir = SessionState.GetString(K + "out", "Jelly");
-                File.WriteAllLines(Path.Combine(dir, "segments.txt"), new[] { "0\t150\tAt rest", "150\t450\tA pane of glass, a world solid, pressed 3 cm in, held, taken away", "450\t700\tThe pane slapped on" });
+                File.WriteAllLines(Path.Combine(dir, "segments.txt"), new[] { "0\t150\tAt rest", "150\t450\tA pane of glass, a world solid, pressed 3 cm in, held, taken away", "450\t700\tThe pane slapped on and straight off" });
                 File.WriteAllText(Path.Combine(dir, "legend.txt"), "Green plate: hands and MagicaCloth colliders.   Orange plate: the world's solids.");
                 Debug.Log($"[Jelly] PASS world prop film: {propFilmed} shots of {frame} frames; the pane dented the orange one {1000f * worldDent[0]:0.0} mm");
                 SessionState.SetInt(K + "on", 0);
@@ -1293,13 +1313,17 @@ namespace AvatarBridge.Regression
             // round that skin at rest and would dent it for good (a sphere in the cleavage left the
             // tissue 41 mm off its rest), so it stays in the cloth, moving the bones as before.
             var pressing = new List<(Component c, Vector3 a, Vector3 b, float r)>();
+            // -jellyTwitch, or the squash's Twitch: a transform to kick the mass, which takes the last
+            // collider's anchors.
+            var squashed = YapsSquash.SettingsOf(root);
+            bool twitching = Array.IndexOf(given, "-jellyTwitch") >= 0 || squashed != null && squashed.twitch;
             var touching = new List<string>();
             foreach (var c in PairColliders(root, part).OrderBy(c => (c.transform.position - chest.position).sqrMagnitude))
             {
                 if (!Capsule(c, out var ca, out var cb, out float cr)) continue;
                 if (pairSkin.Any(p => Seg(p, ca, cb) < cr + spacing)) touching.Add(c.name);
                 // ponytail: eight, the nearest the chest first; more need anchors past the 32 handed.
-                else if (pressing.Count < 8) pressing.Add((c, ca, cb, cr));
+                else if (pressing.Count < (twitching ? 7 : 8)) pressing.Add((c, ca, cb, cr));
             }
             PairCollide(root, part, pressing.Select(p => p.c), with: false);
             var colRadii = new float[8];
@@ -1325,6 +1349,14 @@ namespace AvatarBridge.Regression
             while (handed.Count < 4) handed.Add(handed[handed.Count - 2]);
             handed.AddRange(ownBones.Select(b => b != null ? b : chest));
             handed.AddRange(colEnds);
+            Transform twitch = null;
+            if (twitching)
+            {
+                twitch = new GameObject("Jelly Twitch").transform;
+                Undo.RegisterCreatedObjectUndo(twitch.gameObject, "Put the breasts on the jelly");
+                twitch.SetParent(handed[2], false);
+                handed.Add(twitch);
+            }
             anchors.transforms = handed.ToArray();
             foreach (var mat in anchors.materials)
             {
@@ -1332,8 +1364,33 @@ namespace AvatarBridge.Regression
                 mat.SetVector("_JellyOwn1", new Vector4(ownRadii[4], ownRadii[5], ownRadii[6], ownRadii[7]));
                 mat.SetVector("_JellyCol0", new Vector4(colRadii[0], colRadii[1], colRadii[2], colRadii[3]));
                 mat.SetVector("_JellyCol1", new Vector4(colRadii[4], colRadii[5], colRadii[6], colRadii[7]));
+                mat.SetFloat("_JellyTwitch", twitch != null ? handed.Count - 1 : 0);
                 EditorUtility.SetDirty(mat);
             }
+            // What the jelly tells the animator: the points strip's feedback through a driver the
+            // parser fills.
+            var parser = made.GetComponentInChildren<CVRTexturePropertyParser>(true);
+            var driver = Undo.AddComponent<CVRAnimatorDriver>(parser.gameObject);
+            for (int i = 0; i < Told.Length; i++)
+            {
+                driver.animators.Add(animator);
+                driver.animatorParameters.Add(Told[i]);
+                driver.animatorParameterType.Add(0);
+                parser.tasks.Add(new CVRTexturePropertyParserTask
+                {
+                    x = 3 + i,
+                    y = 0,
+                    channel = CVRTexturePropertyParserTask.Channel.r,
+                    minValue = 0f,
+                    maxValue = 1f,
+                    target = parser.gameObject,
+                    component = driver,
+                    propertyName = $"animatorParameter{i + 1:00}",
+                    typeIndex = 0,
+                });
+            }
+            // Batch checks leave the avatar's controllers alone.
+            string wired = Application.isBatchMode ? "the menu and animator left alone in batch" : Wired(root.GetComponent<CVRAvatar>(), twitch, squashed != null ? squashed.twitchSize : 0.02f);
 
             var state = AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture");
             // Each part names its region, one past its index.
@@ -1371,7 +1428,7 @@ namespace AvatarBridge.Regression
                    $"{patched} of {mats.Count} squash materials read it{(left.Count > 0 ? " (left as they were: " + string.Join(", ", left) + ")" : "")}; " +
                    (cloth ? (off.Count > 0 ? "switched back on: " + string.Join(", ", off) : "its cloth left on")
                        : off.Count > 0 ? "switched off: " + string.Join(", ", off) : "no cloth or dynamic bones found on the pair, so if anything else swings it, switch that off") +
-                   $"; {collided}; {(thinned.Count > 0 ? "thinned to clear it as built: " + string.Join(", ", thinned) : "none of the wearer's limbs reaching it as built")}; {stale} earlier jelly taken off. Upload as it is.";
+                   $"; {collided}; {(thinned.Count > 0 ? "thinned to clear it as built: " + string.Join(", ", thinned) : "none of the wearer's limbs reaching it as built")}; {wired}; {stale} earlier jelly taken off. Upload as it is.";
         }
 
         internal static string BreastsOff(Transform picked)
@@ -1394,8 +1451,87 @@ namespace AvatarBridge.Regression
             if (body != null) YapsSquash.NamedShares(root, body, out names, out _);
             var on = (names ?? new List<string>()).SelectMany(x => PairPhysics(root, PartOf(x), on: true)).ToList();
             int stale = Unworn(root);
-            return $"Off {root.name}: {cleared} squash materials back on the squash alone, {stale} jelly taken off, " +
+            string unwired = Wired(root.GetComponent<CVRAvatar>(), null, 0f, told: false);
+            return $"Off {root.name}: {cleared} squash materials back on the squash alone, {stale} jelly taken off, {unwired}, " +
                    (on.Count > 0 ? "switched back on: " + string.Join(", ", on) : "no pair's cloth or dynamic bones were off");
+        }
+
+        // The parameters the jelly tells, local so each viewer's own reading stands: never synced.
+        static readonly string[] Told = { "#Jelly/Squeeze", "#Jelly/Grab", "#Jelly/Slap" };
+        const string TwitchEntry = "Jelly twitch";
+
+        // The told parameters declared in every controller the avatar plays, or taken out; and with a
+        // twitch, a menu toggle whose every flip plays one kick on it, size metres up and back. The
+        // CCK's own toggle layer plays the same clip on and off. What was done.
+        static string Wired(CVRAvatar avatar, Transform twitch, float size, bool told = true)
+        {
+            if (avatar == null) return "no CVRAvatar, so no menu or animator";
+            var controllers = YapsAasAnimator.ControllersOf(avatar);
+            foreach (var controller in controllers)
+            {
+                Undo.RegisterCompleteObjectUndo(controller, "Put the breasts on the jelly");
+                foreach (var name in Told)
+                {
+                    var had = controller.parameters.FirstOrDefault(q => q.name == name);
+                    if (told && had == null) controller.AddParameter(name, AnimatorControllerParameterType.Float);
+                    if (!told && had != null) controller.RemoveParameter(had);
+                }
+                EditorUtility.SetDirty(controller);
+            }
+            var settings = avatar.avatarSettings?.settings;
+            var entry = settings?.FirstOrDefault(e => e != null && e.name == TwitchEntry);
+            string menu;
+            if (twitch == null)
+            {
+                menu = entry == null ? "no twitch" : "the twitch toggle taken out";
+                if (entry != null)
+                {
+                    Undo.RecordObject(avatar, "Take the breasts off the jelly");
+                    settings.Remove(entry);
+                    YapsAasAnimator.Unwire(avatar, entry.machineName);
+                    EditorUtility.SetDirty(avatar);
+                }
+            }
+            else
+            {
+                // Kept in place: remade at the same path, the layer's states read it Missing.
+                string path = Folder + "/Jelly_Twitch.anim";
+                var clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
+                if (clip == null)
+                {
+                    clip = new AnimationClip();
+                    AssetDatabase.CreateAsset(clip, path);
+                }
+                clip.ClearCurves();
+                float up = size / Mathf.Max(Mathf.Abs(twitch.lossyScale.y), 1e-6f);
+                clip.SetCurve(AnimationUtility.CalculateTransformPath(twitch, avatar.transform), typeof(Transform), "m_LocalPosition.y",
+                    new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(0.05f, up), new Keyframe(0.12f, up), new Keyframe(0.2f, 0f)));
+                EditorUtility.SetDirty(clip);
+                if (entry == null)
+                {
+                    Undo.RecordObject(avatar, "Put the breasts on the jelly");
+                    if (avatar.avatarSettings == null) avatar.avatarSettings = new CVRAdvancedAvatarSettings { settings = new List<CVRAdvancedSettingsEntry>(), initialized = true };
+                    avatar.avatarUsesAdvancedSettings = true;
+                    entry = new CVRAdvancedSettingsEntry
+                    {
+                        name = TwitchEntry,
+                        machineName = "JellyTwitch",
+                        type = CVRAdvancedSettingsEntry.SettingsType.Toggle,
+                        toggleSettings = new CVRAdvancesAvatarSettingGameObjectToggle
+                        {
+                            usedType = CVRAdvancesAvatarSettingBase.ParameterType.Bool,
+                            useAnimationClip = true,
+                            animationClip = clip,
+                            offAnimationClip = clip,
+                        },
+                    };
+                    avatar.avatarSettings.settings.Add(entry);
+                    EditorUtility.SetDirty(avatar);
+                }
+                menu = $"a \"{TwitchEntry}\" toggle kicking {100f * size:0.0} cm" + (YapsAasAnimator.Wire(avatar, entry) != null ? ", its layer written" : "");
+            }
+            AssetDatabase.SaveAssets();
+            return $"{menu}; {string.Join(", ", Told)} {(told ? "declared" : "taken out")} in {controllers.Count} controller(s)";
         }
 
         // The cloth and dynamic bones whose roots are on the pair's bone chains, switched on or off;
@@ -1844,7 +1980,7 @@ namespace AvatarBridge.Regression
             RenderTexture where = null;
             if (withRider || offFar)
             {
-                where = Save(Strip(3), "/Jelly_Points.renderTexture");
+                where = Save(Strip(6), "/Jelly_Points.renderTexture");
                 var pointsMat = StepMaterial(step, n, 2, spacing);
                 pointsMat.SetFloat("_Regions", regions);
                 pointsMat = Save(pointsMat, "/Jelly_Points.mat");
@@ -3332,6 +3468,13 @@ namespace AvatarBridge.Regression
         static readonly float[] clap = new float[3];
         static float clapCell;
         static readonly float[] grab = new float[5];
+        // The strain the step reads (texel 86): as the hand came, and the most while it pulled.
+        static readonly float[] taut = new float[2];
+        // What the points strip told the animator: squeeze and grip as the hand came, both pulled,
+        // and the clap's slap. The twitch: each mass's swing, then the furthest two seconds on.
+        static readonly float[] told = new float[5], twitched = new float[3];
+        static readonly Vector3[] twitchFrom = new Vector3[2];
+        static bool twitchSeen;
         static int grabbed;
         static Vector3 grabFrom, grabMass;
         static int grabAt;
@@ -3995,6 +4138,7 @@ namespace AvatarBridge.Regression
                     clap[0] = Vector3.Distance(st[sr * 2 * Row + 30], st[(2 * sr + 1) * 2 * Row + 30]) - (skins.x + skins.y) * sized;
                     clapCell = blits[0].GetVector("_Lattice").w * sized;
                 }
+                told[4] = Mathf.Max(told[4], Read((RenderTexture) jelly.GetComponentInChildren<CVRTexturePropertyParser>(true).texture)[5].x);
                 for (int r = 0; r < 2; r++)
                 {
                     int mine = (r * (sr + 1) + sr) * 2 * Row, theirs = ((1 - r) * (sr + 1) + sr) * 2 * Row;
@@ -4007,6 +4151,28 @@ namespace AvatarBridge.Regression
             // The grab: the first's front middle particle and its mass along the pull, against just
             // before the hand came; how long any slot gripped; the ring as it let go; and how far
             // the skin still was from where it began two seconds on.
+            // The twitch: its transform 2 cm up and back over a fifth of a second, as the menu's clip
+            // moves it, and each mass's swing off where it was.
+            if (frame >= 2745 && frame < 2960)
+            {
+                var twT = jelly.GetComponentsInChildren<Transform>(true).FirstOrDefault(twx => twx.name == "Jelly Twitch");
+                if (twT != null)
+                {
+                    twitchSeen = true;
+                    int twAt = frame - 2750;
+                    float twUp = twAt < 0 ? 0f : twAt < 5 ? twAt / 5f : twAt < 11 ? 1f : twAt < 18 ? 1f - (twAt - 11) / 7f : 0f;
+                    twT.localPosition = Vector3.up * (0.02f * twUp / Mathf.Abs(twT.lossyScale.y));
+                    var twSt = Read(stateRt);
+                    int twSr = Side(n);
+                    for (int tr = 0; tr < 2; tr++)
+                    {
+                        Vector3 twC = twSt[(tr * (twSr + 1) + twSr) * 2 * Row + 30];
+                        if (frame == 2749) twitchFrom[tr] = twC;
+                        else if (frame > 2749 && frame < 2850) twitched[tr] = Mathf.Max(twitched[tr], Vector3.Distance(twC, twitchFrom[tr]));
+                        else if (frame == 2959) twitched[2] = Mathf.Max(twitched[2], Vector3.Distance(twC, twitchFrom[tr]));
+                    }
+                }
+            }
             if (frame >= 2445 && frame < 2740)
             {
                 var st = Read(stateRt);
@@ -4028,7 +4194,12 @@ namespace AvatarBridge.Regression
                 {
                     grab[0] = Mathf.Max(grab[0], Vector3.Dot(p - grabFrom, outward));
                     grab[1] = Mathf.Max(grab[1], Vector3.Dot(c - grabMass, outward));
+                    taut[1] = Mathf.Max(taut[1], st[sr + 86].x);
                 }
+                if (frame == 2445) taut[0] = st[sr + 86].x;
+                var toldNow = Read((RenderTexture) jelly.GetComponentInChildren<CVRTexturePropertyParser>(true).texture);
+                if (frame == 2445) { told[0] = toldNow[3].x; told[1] = toldNow[4].x; }
+                if (frame >= 2530 && frame < 2560) { told[2] = Mathf.Max(told[2], toldNow[3].x); told[3] = Mathf.Max(told[3], toldNow[4].x); }
                 if (frame >= 2560 && frame < 2600)
                     for (int k = 0; k < 2; k++)
                         if (Time.timeSinceLevelLoad - st[sr + 80 + 2 * k].w < 0.05f) grab[2] = Mathf.Max(grab[2], st[sr + 81 + 2 * k].w);
@@ -4130,7 +4301,9 @@ namespace AvatarBridge.Regression
             }
             Object.DestroyImmediate(bareCopy);
             Debug.Log($"[Jelly] the wearer's own arm across one, held: {ownSaid}");
-            Debug.Log($"[Jelly] a fist closed on the first's front and pulled 8 cm straight out: gripped {grabbed} frames; the skin it held came {1000f * grab[0]:0.0} mm, the whole {1000f * grab[1]:0.0} mm; let go, a ring {1000f * grab[2]:0.0} mm, the skin {1000f * grab[3]:0.0} mm off its rest two seconds on ({1000f * grab[4]:0.0} as the hand came)");
+            Debug.Log($"[Jelly] a fist closed on the first's front and pulled 8 cm straight out: gripped {grabbed} frames; the skin it held came {1000f * grab[0]:0.0} mm, the whole {1000f * grab[1]:0.0} mm; let go, a ring {1000f * grab[2]:0.0} mm, the skin {1000f * grab[3]:0.0} mm off its rest two seconds on ({1000f * grab[4]:0.0} as the hand came); the strain {taut[0]:0.00} as it came, {taut[1]:0.00} pulled");
+            Debug.Log($"[Jelly] told the animator: squeeze {told[0]:0.00} and grab {told[1]:0.00} as the hand came, {told[2]:0.00} and {told[3]:0.00} pulled, the clap's slap {told[4]:0.00}; " +
+                      (twitchSeen ? $"a 2 cm twitch swung the masses {1000f * twitched[0]:0.0} and {1000f * twitched[1]:0.0} mm, {1000f * twitched[2]:0.0} mm off two seconds on" : "no twitch"));
             Debug.Log($"[Jelly] the pair clapped together by two hands in six frames, their skins {1000f * clap[0]:0.0} mm apart (a cell {1000f * clapCell:0.0} mm): a ring from between them on the first {1000f * clap[1]:0.0} mm and the second {1000f * clap[2]:0.0} mm");
             Debug.Log($"[Jelly] the wearer's own hand pushed on through one: its particles moved {1000f * ownThrough[0]:0.0} mm at most, {ownThrough[1]:0} over 10 cm, {1000f * ownThrough[2]:0.0} mm with the hand at the chest");
             Debug.Log($"[Jelly] the picture's pixels the squash changes with the jelly on: {string.Join(", ", squashOver)}");
@@ -4291,7 +4464,8 @@ namespace AvatarBridge.Regression
             if (walled) Debug.Log($"[Jelly] its probes feeling the world, a wall 3 cm into the first's front: the first dented {1000f * wallDent[0]:0.0} mm, the second {1000f * wallDent[1]:0.0} mm; the wall gone two thirds of a second, the first {1000f * wallDent[2]:0.0} mm off its rest; its skin {1000f * wallDent[3]:0.0} mm past the wall");
             bool wallOk = !walled || wallDent[0] > 0.01f && wallDent[1] < 0.005f && wallDent[2] < 0.006f && wallDent[3] < 0.008f;
             bool probeOk = wallOk && (!probed || probeDent > probeBefore + 0.005f && probeSlots == probeSlotsBefore + 1 && probePushed >= 2 && bothSlots == 1 && ringsSlow == 0 && ringsProbe == 1 && ringsBoth == 1);
-            bool ok = anchorOk && clap[1] > 0.005f && clap[2] > 0.005f && grabbed > 60 && grab[0] > 0.04f && grab[1] > 0.002f && grab[2] > 0.005f && grab[3] < 0.006f && restMost < 0.006f && pokeMost > 0.01f && poked > 3f * noise + 0.002f && swingMost > 0.005f && bodies > 0.003f && handsOuter > 0.05f && viewOk && probeOk && ownThrough[1] <= 20 && ownThrough[2] < 0.02f;
+            bool ok = anchorOk && told[0] < 0.05f && told[1] < 0.5f && told[2] > 0.3f && told[3] > 0.5f && told[4] > 0.1f
+                       && (!twitchSeen || twitched[0] > 0.004f && twitched[1] > 0.004f && twitched[2] < 0.002f) && clap[1] > 0.005f && clap[2] > 0.005f && grabbed > 60 && grab[0] > 0.04f && grab[1] > 0.002f && grab[2] > 0.005f && grab[3] < 0.006f && taut[0] < 0.05f && taut[1] > 0.3f && restMost < 0.006f && pokeMost > 0.01f && poked > 3f * noise + 0.002f && swingMost > 0.005f && bodies > 0.003f && handsOuter > 0.05f && viewOk && probeOk && ownThrough[1] <= 20 && ownThrough[2] < 0.02f;
             string dir = SessionState.GetString(K + "out", "Jelly");
             int w = breastShots[0].width, h = breastShots[0].height;
             int rows = (breastShots.Count + 3) / 4;
@@ -4374,6 +4548,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _Give (""Share of how far a hand reaches into it that moves the whole; the particles dent the rest"", Range(0, 1)) = 0.5
         _MassRadius (""Its radius against hands, in the anchor's metres"", Float) = 0.1
         _Limit (""Furthest its centre swings off its rest, as a share of its length from the root"", Float) = 0.6
+        _Taut (""How much a loaded region's swing stiffens and damps: fully strained, the spring 1 + _Taut times as stiff, the damping 1 + 3 _Taut times"", Float) = 1
+        _JellyTwitch (""Which handed transform the animator moves off the first hang to kick the mass; 0 none"", Float) = 0
         _Motion (""Stretch in motion, the squash's own: x per reach of swing, y swing ignored below this share of the reach, z longest stretch; x 0 none"", Vector) = (0, 0, 1, 0)
         _Pair (""1: regions 0 and 1 are a pair, each keeping off the other"", Float) = 0
         _PairKeep (""Nearest the pair's centres come, as a share of their distance at rest"", Float) = 0.85
@@ -4420,7 +4596,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             #include ""JellyCommon.cginc""
 
             float _Stiff, _Hz, _Hand, _Far, _Behind, _Near, _Half, _Pass, _FixedDt, _Stress, _Sleep, _Lift, _Rider, _Rest, _Regions;
-            float _MassHz, _MassCarried, _MassDamp, _Give, _MassRadius, _Limit, _Pair, _PairKeep, _Squish, _Viscous, _Solid;
+            float _MassHz, _MassCarried, _MassDamp, _Give, _MassRadius, _Limit, _Pair, _PairKeep, _Squish, _Viscous, _Solid, _Taut, _JellyTwitch;
             float4 _Slap;
             // The frame's time, for how fast the homes move.
             static float FrameDt;
@@ -4491,6 +4667,10 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 }
                 return a;
             }
+
+            // The twitch: a transform the avatar's animator moves off the first hang, kicking both
+            // regions' mass as far as it moved. 0 at rest.
+            float3 Twitch() { return _JellyTwitch > 0 ? _JellyAnchor[(uint) _JellyTwitch]._m03_m13_m23 - _JellyAnchor[2]._m03_m13_m23 : 0; }
 
             // Whether region r's probes are world balls.
             bool SolidRegion(uint r) { return (((uint) round(_JellySolid) >> r) & 1) != 0; }
@@ -5032,6 +5212,30 @@ Shader ""Hidden/AvatarBridge/JellyStep""
 #endif
 
 #ifdef JELLY_POINTS
+            // What the avatar's animator is told, 3 to 5, through the parser and an animator driver:
+            // the most loaded region's strain, 1 while any fist grips, and the last slap's depth
+            // against the deepest, fading over its life. 0 while the step is off.
+            float4 Feedback(uint x)
+            {
+                uint rows = Rows(), regions = (uint) round(_Regions);
+                float felt = 0;
+                // ponytail: two regions, a pair; a second pair needs four here.
+                [unroll] for (uint r = 0; r < 2; r++)
+                [branch] if (r < regions)
+                {
+                    uint side = r * (rows + 1) + rows;
+                    if (!(abs(_Time.y - _MainTex.Load(int3(25, side, 0)).z) < 0.1)) continue;
+                    if (x == 3) felt = max(felt, _MainTex.Load(int3(86, side, 0)).x);
+                    else if (x == 4) { [unroll] for (uint e = 0; e < 8; e++) if (_MainTex.Load(int3(112 + e, side, 0)).w > 0) felt = 1; }
+                    else [unroll] for (uint k = 0; k < 2; k++)
+                    {
+                        float age = _Time.y - _MainTex.Load(int3(80 + 2 * k, side, 0)).w;
+                        felt = max(felt, saturate(_MainTex.Load(int3(81 + 2 * k, side, 0)).w / _Slap.z) * saturate(1 - age / _Slap.w));
+                    }
+                }
+                return float4(felt, 0, 0, 1);
+            }
+
             // How far point p is off region r's box on its anchor m, in metres.
             float BoxGap(float3 p, float4x4 m, float scale, uint r)
             {
@@ -5308,11 +5512,19 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float3 rest = mul(m, float4(0, 0, zc, 1)).xyz;
                 bool fresh = distant || !(tip.w > 0 && abs(_Time.y - tip.w) < 0.1) || !(was.w > 0 && was.w < 0.1) || !(distance(tip.xyz, rest) < 1);
                 if (x == 31) return float4(fresh ? rest : tip.xyz, dt);
-                if (fresh) return float4(rest, _Time.y);
+                if (fresh) return x == 86 ? 0 : float4(rest, _Time.y);
+                // Strained, as last frame's 86 has it, flesh goes taut: pulled out by a fist or
+                // pressed and squeezed, it swings stiffer and settles sooner, from moving, shaking or
+                // a slap alike.
+                float4 strained = _MainTex.Load(int3(86, side, 0));
+                float taut = strained.w > 0 && abs(_Time.y - strained.w) < 0.1 ? _Taut * strained.x : 0;
                 // Carried, the cloth gives the weight its sag, so the mass takes none of its own.
-                float3 next = tip.xyz + (tip.xyz - was.xyz) * (exp(-_MassDamp * dt) * dt / max(was.w, 1e-4)) + (_MassCarried > 0 ? 0 : Gravity * dt * dt);
+                float3 next = tip.xyz + (tip.xyz - was.xyz) * (exp(-_MassDamp * (1 + 3 * taut) * dt) * dt / max(was.w, 1e-4)) + (_MassCarried > 0 ? 0 : Gravity * dt * dt);
                 float spring = 6.2831853 * _MassHz * dt;
                 float3 lift = _Lift > 0 && !(_MassCarried > 0) ? normalize(m._m01_m11_m21) * 9.81 * _Gravity * (1 - spring * spring) / (39.478418 * _MassHz * _MassHz) : 0;
+                // How hard it is loaded: each push and pull on it by its size, so a squeeze from both
+                // sides, which leaves the whole where it was, loads it twice over.
+                float load = 0;
                 // The hands move where the spring holds it, a force, not the mass itself: pushed out
                 // a share of the way each frame, it left any hand within a few frames and the
                 // particles nothing to dent.
@@ -5335,8 +5547,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         float3 pb, fa, fb;
                         float rf, c = min(_Give, 0.95) / (1 - min(_Give, 0.95));
                         Hand(a, b, pb, fa, fb, rf);
-                        pushed += Lean(tip.xyz, a.xyz, pb, a.w, radius, c);
-                        if (rf > 0) pushed += Lean(tip.xyz, fa, fb, rf, radius, c * rf / a.w);
+                        float3 leaned = Lean(tip.xyz, a.xyz, pb, a.w, radius, c) + (rf > 0 ? Lean(tip.xyz, fa, fb, rf, radius, c * rf / a.w) : 0);
+                        pushed += leaned;
+                        load += length(leaned);
                     }
                     // Each grip pulls the whole by the share of a press it takes, the skin it holds
                     // following the hand the rest of the way.
@@ -5345,7 +5558,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         float3 gat;
                         float graw;
                         float4 d = Pulled(gi, m, side, gat, graw);
-                        pushed += mul((float3x3) m, d.xyz) * (d.w * min(_Give, 0.95));
+                        float3 pull = mul((float3x3) m, d.xyz) * (d.w * min(_Give, 0.95));
+                        pushed += pull;
+                        load += length(pull);
                     }
                 }
                 // The wearer's own hands too; their arms and thighs only dent it, or an arm resting
@@ -5364,10 +5579,39 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             float hold;
                             Held(a, b, r, m, scale, hold);
                             Unheld(a, b, hold, m, scale);
-                            pushed += Lean(tip.xyz, a, b, r, radius, c);
+                            float3 leaned = Lean(tip.xyz, a, b, r, radius, c);
+                            pushed += leaned;
+                            load += length(leaned);
                         }
                     }
                 }
+                // A world solid's faces too, by the deepest, as a hand leans: a pane slapped on
+                // shoves the whole and it swings after. The faces alone pressed the front flat and
+                // nothing followed.
+                float4x4 sback;
+                [branch] if (SolidRegion(region) && Pushed(side) && Probing(region, sback))
+                {
+                    float c = min(_Give, 0.95) / (1 - min(_Give, 0.95)), deepest = 0;
+                    float3 along = 0, smid = mul(_JellyAnchor[2 + region], float4(0, 0, zc, 1)).xyz;
+                    [unroll] for (uint fk = 0; fk < PROBES; fk++)
+                    {
+                        float3 fat, fway;
+                        float fg = fk < (uint) _JellyProbes ? Probe(region, fk, sback, fat, fway) : 0;
+                        [branch] if (fg > 0.02)
+                        {
+                            float3 face = fat + normalize(fat - fway * fg - smid) * (_JellyProbeReach - BALL) - fway * BALL;
+                            float over = radius - dot(tip.xyz - face, fway);
+                            if (over > deepest) { deepest = over; along = fway; }
+                        }
+                    }
+                    pushed += along * (c * deepest);
+                    load += c * deepest;
+                }
+                // Strained half way at a load a tenth of its length, wholly well past it.
+                if (x == 86) return float4(load / (load + 0.1 * zc * scale), load, 0, _Time.y);
+                // A twitch kicks it as a hand would, never loading it.
+                pushed += Twitch();
+                spring *= 1 + taut;
                 next = lerp(next, rest + lift + pushed, min(spring * spring, 1));
                 [branch] if (_Pair > 0)
                 {
@@ -5815,7 +6059,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     }
                 }
                 if (!fired) return keep;
-                float depth = min(_Slap.y * speed, _Slap.z);
+                // Taut, it rings less.
+                float4 strained = _MainTex.Load(int3(86, side, 0));
+                float depth = min(_Slap.y * speed, _Slap.z) / (1 + (strained.w > 0 && abs(_Time.y - strained.w) < 0.1 ? _Taut * strained.x : 0));
                 float left0 = s0.w > 0 ? s0.w * saturate(1 - (_Time.y - r0.w) / _Slap.w) : 0;
                 float left1 = s1.w > 0 ? s1.w * saturate(1 - (_Time.y - r1.w) / _Slap.w) : 0;
                 int slot = into >= 0 ? into : left0 <= left1 ? 0 : 1;
@@ -5837,6 +6083,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 if (_Pass > 1.5)
                 {
                     if (px.x < 2) return _MainTex.Load(int3(16 + px.x, side, 0));
+#ifdef JELLY_POINTS
+                    [branch] if (px.x >= 3) return Feedback(px.x);
+#endif
                     bool off = Away(_MainTex.Load(int3(18, side, 0)).x > 0.5);
 #ifdef JELLY_POINTS
                     [branch] if (!off && _Rest > 0) off = Resting();
@@ -5967,7 +6216,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             if (!(meet > 0)) return 0;
                             return px.x == 58 ? float4(u, dot(ca, u) + 0.5 * (self + dist - partner) + 0.5 * overlap) : float4(0.004 * scale, meet, 0, 1);
                         }
-                        [branch] if ((px.x == 30 || px.x == 31) && _MassHz > 0)
+                        [branch] if ((px.x == 30 || px.x == 31 || px.x == 86) && _MassHz > 0)
                         {
                             uint side0 = side - Base;
                             return Mass(px.x, m, scale, dt, distant, side, region, (region ^ 1) * (side0 + 1) + side0);

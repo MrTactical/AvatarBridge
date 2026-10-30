@@ -38,6 +38,7 @@ namespace AvatarBridge
             { "The pair", "whether the two meet in the middle, on by default" },
             { "In motion", "stretch and squash as it swings, real to anime" },
             { "What presses it", "arms, hands, plugs and cloth" },
+            { "Live tissue", "a twitch toggle, and what it tells the animator" },
         };
 
         // Inside each fold: what it is and how to see it, which the header alone never said.
@@ -47,9 +48,14 @@ namespace AvatarBridge
             { "The pair", "With Meet on, a part swung or pushed into a still partner keeps its round front and pushes the partner aside by as much as it pushed in, the partner taking a rounded hollow where they still meet. Pushed alike from both sides, the two press flat against each other, swelling out round the contact. With Meet off, what overlaps passes through. See it in the Avatar Tester: Squeeze presses from both sides, and in Play mode Push one in shoves one part into the other." },
             { "In motion", "As the physics swing a part, it stretches away from where it hangs and squashes back. See it in the Avatar Tester with Bounce, or move the avatar in Play mode." },
             { "What presses it", "What dents the parts besides each other, each with its own strength. See hands in the Avatar Tester with the test hand." },
+            { "Live tissue", "Twitch adds a menu toggle whose every flip kicks the jiggle; put the jelly on again to add or remove it. " +
+                             "Whatever is set here, the jelly tells the animator three floats from 0 to 1 for blend shapes, particles or anything else to follow: " +
+                             "#Jelly/Squeeze, how hard it is pressed or pulled; #Jelly/Grab, 1 while a hand grips it; #Jelly/Slap, how hard the last slap landed, fading. " +
+                             "Each viewer works them out on their own machine, so they never sync." },
         };
 
         static readonly string[] HereNotKnobs = { "partBones", "leaveAlone" };
+        static readonly string[] JellyOnly = { "twitch", "twitchSize" };
 
         const string Animatable =
             "material._YAPS_DentPower        0 off, 1 on\n" +
@@ -156,9 +162,10 @@ namespace AvatarBridge
             var it = serializedObject.GetIterator();
             it.NextVisible(true);   // m_Script
             BridgeElements.Card fold = null;
+            bool jellied = settings.GetComponentsInChildren<Transform>(true).Any(t => t.name.StartsWith("Jelly Region"));
             while (it.NextVisible(false))
             {
-                if (HereNotKnobs.Contains(it.name)) continue;
+                if (HereNotKnobs.Contains(it.name) || !jellied && JellyOnly.Contains(it.name)) continue;
                 var field = typeof(YapsSquashSettings).GetField(it.name);
                 if (field?.GetCustomAttributes(typeof(HeaderAttribute), false).FirstOrDefault() is HeaderAttribute h)
                 {

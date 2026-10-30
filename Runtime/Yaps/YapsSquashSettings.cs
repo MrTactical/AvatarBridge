@@ -57,6 +57,14 @@ namespace AvatarBridge.Yaps
                                 "Off by default: every swing read as a press.")]
         public float clothPush = 0f;
 
+        // The jelly's alone: the inspector shows them only on an avatar wearing it.
+        [Header("Live tissue")]
+        [Tooltip("Adds a Jelly twitch toggle to the menu: each flip kicks the jiggle once. " +
+                 "Anything in the animator can kick it too, by moving the Jelly Twitch object.")]
+        public bool twitch = false;
+        [Range(0.005f, 0.05f), Tooltip("How far a twitch kicks, in metres.")]
+        public float twitchSize = 0.02f;
+
         // Drawn by the inspector's Parts card, not with the knobs: both need a rebuild.
         [Tooltip("Bones picked by hand in place of the name search, two to a pair, one each side, " +
                  "next to each other in the list: cheeks, thighs, anything that comes in two. Two pairs at most. " +

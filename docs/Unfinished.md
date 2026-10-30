@@ -2795,6 +2795,40 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     3 cm in, 31.9 mm, its skin 0.8 mm past the wall, the green 0.0. ponytail: a face is a plane,
     so a ball dropped on it dents as a flat-bottomed cup; spheres from the faces' spread if that
     shows.
+    (18) Taut flesh, a twitch and feedback (the tester: strain "should dampen out the jiggle from
+    movement / shake / slaps", "stiffening of flesh appon squish / tension", "both directions"; and
+    "trigger to make em twitch"; Joe: "build both, make the twitch optional in the inspector").
+    The world faces now lean on the mass as hands do (the deepest face's overlap with its radius),
+    so a pane slapped on moves the whole, not the skin alone. Strain (texel 86): each region's load,
+    the sizes of every lean, grip, own limb and face on it, as load / (load + a tenth of its
+    length); `_Taut` stiffens its spring 1 + taut times and its damping 1 + 3 taut, and shallows its
+    slap rings. The breasts check: 0.00 as the fist came, 0.58 pulled; the ring as it let go 8.9 mm
+    against 14.3 before. The twitch: a "Jelly Twitch" transform under the first hang, the last of
+    the handed transforms (`_JellyTwitch` its index, so it takes the eighth collider's anchors), kicks
+    both masses as far as it moves; anything in the animator may move it. The squash inspector's
+    "Live tissue" fold (shown only on an avatar wearing a jelly) adds a "Jelly twitch" menu toggle,
+    the CCK's own toggle layer playing one up-and-back clip on and off (`-jellyTwitch` in batch,
+    which leaves the controllers alone). Check: a 2 cm kick swung both masses 12.9 mm, 0.1 mm off two
+    seconds on. Feedback: the points strip's texels 3 to 5 (the most strained region, 1 while a fist
+    grips, the last ring's depth against the deepest fading over its life) go through the parser to
+    a `CVRAnimatorDriver` as `#Jelly/Squeeze`, `#Jelly/Grab` and `#Jelly/Slap`. Local, never synced:
+    each viewer works them out, and on another's avatar only with the Cameras content filter on (the
+    parser's gate), which corrects what the tester was first told. Check: 0.00 and 0.00 as the fist
+    came, 0.58 and 1.00 pulled, the clap's slap 0.88. Everything a creator does with them (nipple
+    shapes, particles, a blush, a twitch on a hard slap, arousal from `YAPS/<socket>/Depth`) is their
+    own animator's (Joe: "anything that we can offload, we should to existing systems"). OPEN, in
+    game: the driver writing the local parameters on the wearer and on remote copies; the toggle's
+    kick read on remote copies.
+    The pane film (Joe: "the flat panes are not causing ripples with the slaps"): the slap rings
+    (17 to 27 mm), but the pane held flat over both fronts a quarter of a second, and a ring at 1 m/s
+    fading over 0.4 s ran out under it; slapped on and straight off now, in both films. The prop's
+    slap rang nothing at all: its wall was set outright each frame, which pushed the balls 31 mm of
+    a 70 mm press, never to the skin; moved by physics, 67.6 mm, and the slap rings 18 mm. Two film
+    faults on the way: the film's own body collider, a raycast helper, held balls pressed into it
+    (now ignored), and a 2 cm pane let the balls be slapped and pulled through it, caught on its far
+    side and carried out 11 to 18 cm (now 20 cm deep behind its face). ponytail: a thin world solid
+    moving faster than a ball's width a physics step can still pass them; a linear limit with
+    projection on the joints would snap one back if that shows in game.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 

@@ -784,6 +784,9 @@ namespace AvatarBridge.Regression
                 go.transform.SetPositionAndRotation(smr.transform.position, smr.transform.rotation);
                 body = go.AddComponent<MeshCollider>();
                 body.sharedMesh = baked;
+                // Aimed from, never a solid: the world probes' balls pressed into it stayed inside.
+                foreach (var ballCol in animator.GetComponentsInChildren<SphereCollider>(true).Where(x => x.name.StartsWith("Jelly Probe Ball ")))
+                    Physics.IgnoreCollision(ballCol, body);
             }
             Debug.Log($"[SquashPlay] film body {(smr != null ? smr.name : "none")}");
 
@@ -889,15 +892,22 @@ namespace AvatarBridge.Regression
                     var knuckles = front + f * (pulled - 0.01f);
                     Press((knuckles + f * (Mathf.Lerp(0.11f, 0.06f, Mathf.Clamp01(g)) * Tall), -f, g));
                 } },
-                // A pane of glass, a world solid, pressed flat on the front of both, held and taken
-                // away, then slapped on: only a jelly whose probes feel the world feels it.
+                // A pane of glass, a world solid, pressed 8 cm into the front of both, held and taken
+                // away, then slapped on and straight off, as a slap is: held on, its ring ran out
+                // under it. Only a jelly whose probes feel the world feels it.
                 new Shot { name = "A glass pane pressed against them", frames = 450, at = mid + f * 0.05f, width = 1f, profile = true, pose = (s, u) =>
                 {
                     if (pane == null)
                     {
                         pane = new GameObject("Pane");
-                        pane.AddComponent<BoxCollider>().size = new Vector3(0.8f, 0.6f, 0.02f);
-                        pane.AddComponent<Rigidbody>().isKinematic = true;
+                        // Deep behind its face, as a wall is: 2 cm thick, the slap carried the probes' balls
+                        // through it and drew them out on its far side.
+                        var paneBox = pane.AddComponent<BoxCollider>();
+                        paneBox.size = new Vector3(0.8f, 0.6f, 0.2f);
+                        paneBox.center = new Vector3(0f, 0f, 0.09f);
+                        var paneMade = pane.AddComponent<Rigidbody>();
+                        paneMade.isKinematic = true;
+                        paneMade.interpolation = RigidbodyInterpolation.Interpolate;
                         // Drawn as its rim alone: a see-through face drew solid white in these films.
                         var rim = new Material(Shader.Find("Legacy Shaders/Transparent/Diffuse")) { color = new Color(0.75f, 0.9f, 1f, 1f) };
                         foreach (var (rimAt, rimSize) in new[] { (new Vector3(0f, 0.3f, 0f), new Vector3(0.8f, 0.008f, 0.02f)), (new Vector3(0f, -0.3f, 0f), new Vector3(0.8f, 0.008f, 0.02f)),
@@ -912,9 +922,13 @@ namespace AvatarBridge.Regression
                         }
                     }
                     float t = u * 450f, skin = Mathf.Max(Vector3.Dot(front - mid, f), Vector3.Dot(frontQ - mid, f));
-                    float gap = t < 60f ? 0.12f : t < 150f ? Mathf.Lerp(0.12f, -0.04f, (t - 60f) / 90f) : t < 230f ? -0.04f : t < 260f ? Mathf.Lerp(-0.04f, 0.12f, (t - 230f) / 30f)
-                        : t < 320f ? 0.12f : t < 326f ? Mathf.Lerp(0.12f, -0.04f, (t - 320f) / 6f) : t < 350f ? -0.04f : Mathf.Lerp(-0.04f, 0.12f, Mathf.Clamp01((t - 350f) / 20f));
-                    pane.transform.SetPositionAndRotation(mid + f * (skin + 0.01f + gap), Quaternion.LookRotation(f, up));
+                    float gap = t < 60f ? 0.12f : t < 150f ? Mathf.Lerp(0.12f, -0.08f, (t - 60f) / 90f) : t < 230f ? -0.08f : t < 260f ? Mathf.Lerp(-0.08f, 0.12f, (t - 230f) / 30f)
+                        : t < 320f ? 0.12f : t < 326f ? Mathf.Lerp(0.12f, -0.08f, (t - 320f) / 6f) : Mathf.Lerp(-0.08f, 0.12f, Mathf.Clamp01((t - 326f) / 6f));
+                    // Moved as physics moves a solid, so the probes' balls see it coming: set outright,
+                    // the slap jumped 5 cm a physics step, clean over them, and missed.
+                    var paneBody = pane.GetComponent<Rigidbody>();
+                    paneBody.MovePosition(mid + f * (skin + 0.01f + gap));
+                    paneBody.MoveRotation(Quaternion.LookRotation(f, up));
                     Press();
                 } },
                 // One side only: the part pushed leads, and the other gives a little where they meet.
