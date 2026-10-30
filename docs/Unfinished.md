@@ -2728,6 +2728,18 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     texel now judges its own and the second pass gathers the bits. 0.033 to 0.029 ms an avatar,
     0.444 to 0.388 for sixteen; in-reach bits and the push-through check unchanged. Now: the
     lattice 0.009, the passes' floor 0.016 (about the CPU's submit, 0.015). Next the lattice.
+    (12) It rang only when something hit it, never when it hit something (a tester of Joe's, on
+    the drop: "you are testing impact toward mass, not mass impact towards object"). Now the
+    anchor gaining or losing more than twice a slap's speed in a frame rings it, from the face the
+    tissue's weight carries into (texel 85 keeps the anchor's last velocity; past 8 m/s a frame is
+    a teleport). The prop check drops it 12 cm onto a stop: the landing rings both 12.5 mm; the
+    breasts check's turning fires none.
+    (13) Solid world geometry (Joe: "mesh solid objects in game"). A shader cannot see world
+    colliders, so a new menu builds a prop whose right jelly's probes are physics balls on
+    springs, ProbeReach less their radius off the skin, read through the same probe channel.
+    `VerifyWorldProp`: a wall 3 cm into it dents it 28.0 mm, the green 0.1, back to 0.0 once the
+    wall goes. OPEN, in game: whether the client lets a prop's (and an avatar's) rigidbodies meet
+    the world's colliders.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 
