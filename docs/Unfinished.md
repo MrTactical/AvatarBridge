@@ -2756,6 +2756,25 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     as it drove that way. Their masses could not tell it: two hands squeezing in six frames closed
     them at 0.22 m/s at most, under a slap's 0.5. The breasts check's fast squeeze rings both from
     between them 30.0 mm.
+    (16) Grab and pull (the same tester: "pinch grab pull, and coil back jiggle from pull"), the
+    tissue's answer to VRChat's PhysBone grab, with no client mod. A fist (the hand's gesture past
+    three quarters closed) that closes on the skin grips it there; one that closed off the skin,
+    or came in closed, never does, as a punch is no grab. The skin under the fist goes with it,
+    capped at half the tissue's depth, the neighbourhoods' fit bending the rest; the whole leans
+    after it by the share of a press it takes; let go (or pulled twice the cap), it springs back
+    and rings at the speed the tissue's own spring gives from that far out. Side-row texels 112
+    to 119 hold each slot's grip, 120 to 127 its last pull; a gripping hand neither pushes nor
+    dents. The breasts check: gripped 90 frames, the skin 86.2 mm for an 8 cm pull, the whole
+    20.8 mm, a ring 11.2 mm, back within 0.2 mm two seconds on. OPEN, in game: whether the
+    wearer's own hands reach the slots (they are not in the arrays' gesture), and how it feels.
+    (17) World solids on the avatar (Joe: "also do world collision"): a menu puts the breasts on
+    with their probes physics balls, as the world prop's right one (`-jellyWorld` in batch). The
+    breasts check slides a wall 3 cm into the first's front: 48.4 mm, the second 0.9 mm, back
+    within 1.8 mm. The balls first drew a physics step behind rests that move every frame, and a
+    turn read as pushes (the whole swung 150 mm against 109); stiffer springs (32 Hz) did
+    nothing, extrapolating them took it to 119. Built this way the probes feel no MagicaCloth
+    collider, only the world's solids and the arrays' hands. OPEN, in game: whether the client
+    lets an avatar's bodies meet the world's colliders at all, and the turn's 10 mm left.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 

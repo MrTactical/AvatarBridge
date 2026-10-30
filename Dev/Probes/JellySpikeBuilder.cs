@@ -89,7 +89,7 @@ namespace AvatarBridge.Regression
             Menu.SetChecked("Tools/AvatarBridge Dev/Jelly spike: coarse lattice", EditorPrefs.GetBool(CoarseKey, true));
             return true;
         }
-        const int Row = 64, Passes = 2, Frames = 300, Load = 32, BreastFrames = 3000, ViewFrames = 540, ProbesPer = 24;
+        const int Row = 64, Passes = 2, Frames = 300, Load = 32, BreastFrames = 3300, ViewFrames = 540, ProbesPer = 24;
         // How far off the skin a collider pushes a probe: the probe cloth's radius.
         const float ProbeReach = 0.04f;
         struct Late { }
@@ -827,6 +827,16 @@ namespace AvatarBridge.Regression
             EditorUtility.DisplayDialog("Jelly spike", said, "OK");
         }
 
+        // Its probes physics balls the world's solids push, as the world prop's right one: walls,
+        // doors, tables and dropped props, where the client lets an avatar's bodies meet them.
+        [MenuItem("Tools/AvatarBridge Dev/Jelly spike: put the selected avatar's breasts on the jelly, feeling the world")]
+        static void BreastsWorldOnSelected()
+        {
+            string said = PairOn(Selection.activeGameObject != null ? Selection.activeGameObject.transform : null, Breast, world: true);
+            Debug.Log("[Jelly] " + said);
+            EditorUtility.DisplayDialog("Jelly spike", said, "OK");
+        }
+
         [MenuItem("Tools/AvatarBridge Dev/Jelly spike: put the selected avatar's other pair on the jelly")]
         static void OtherOnSelected()
         {
@@ -864,7 +874,7 @@ namespace AvatarBridge.Regression
 
         // The same for the first of the squash's pairs whose name want matches, hung from the trunk
         // bone its skin's bones hang from.
-        internal static string PairOn(Transform picked, Regex want)
+        internal static string PairOn(Transform picked, Regex want, bool world = false)
         {
             var root = AvatarOf(picked);
             var animator = root != null ? root.GetComponentInChildren<Animator>() : null;
@@ -1140,7 +1150,9 @@ namespace AvatarBridge.Regression
                 // there the breast's own cloth would take each for a bone of its chain.
                 // MagicaCloth only: the same hand gets a DynamicBone collider too, so DynamicBone probes
                 // saw nothing more, and dented a quarter less for the same press.
-                bool probing = Array.IndexOf(given, "-jellyProbes") >= 0;
+                // -jellyWorld: the probes physics balls instead, as the world-feeling menu makes them.
+                world = world || Array.IndexOf(given, "-jellyWorld") >= 0;
+                bool probing = Array.IndexOf(given, "-jellyProbes") >= 0 || world;
                 var spotsOf = new List<Vector3>[2];
                 if (probing)
                     for (int side = 0; side < 2; side++)
@@ -1158,7 +1170,7 @@ namespace AvatarBridge.Regression
                             spots.Add(front.OrderByDescending(w => spots.Min(q => (q - w).sqrMagnitude)).First());
                         spotsOf[side] = spots;
                     }
-                AddSkin(made, provider, hangs, probing ? spotsOf : null, 0.5f * (n.z - 1) * spacing, "Put the breasts on the jelly");
+                AddSkin(made, provider, hangs, probing ? spotsOf : null, 0.5f * (n.z - 1) * spacing, "Put the breasts on the jelly", world ? new[] { true, true } : null);
             }
 
             // The wearer's own arms, hands and thighs press the breasts as other players' hands do:
@@ -1520,18 +1532,21 @@ namespace AvatarBridge.Regression
                 body.useGravity = false;
                 body.mass = 0.05f;
                 body.constraints = RigidbodyConstraints.FreezeRotation;
-                body.interpolation = RigidbodyInterpolation.Interpolate;
+                // Drawn where its speed says it is now: interpolated, it drew a physics step behind a
+                // rest that moves every frame, and a body turning read as pushed.
+                body.interpolation = RigidbodyInterpolation.Extrapolate;
                 body.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
                 var sphere = ball.AddComponent<SphereCollider>();
                 sphere.radius = radius;
                 sphere.sharedMaterial = slick;
-                // Back within a tenth of a second once let go, and not bouncing: 7 Hz, near critical.
+                // 32 Hz and critical: at 7 Hz a body turning lagged each ball a centimetre behind its
+                // rest, read as a push, and the breasts swung half again as far turning.
                 var joint = ball.AddComponent<ConfigurableJoint>();
                 joint.connectedBody = rest.GetComponent<Rigidbody>();
                 joint.autoConfigureConnectedAnchor = false;
                 joint.anchor = Vector3.zero;
                 joint.connectedAnchor = Vector3.zero;
-                joint.xDrive = joint.yDrive = joint.zDrive = new JointDrive { positionSpring = 100f, positionDamper = 4.5f, maximumForce = float.MaxValue };
+                joint.xDrive = joint.yDrive = joint.zDrive = new JointDrive { positionSpring = 2000f, positionDamper = 20f, maximumForce = float.MaxValue };
                 var tip = new GameObject($"Jelly Probe Tip {side} {k}").transform;
                 tip.SetParent(ball.transform, false);
                 tip.position = w;
@@ -3256,6 +3271,10 @@ namespace AvatarBridge.Regression
         static readonly float[] ownThrough = new float[3];
         static readonly float[] clap = new float[3];
         static float clapCell;
+        static readonly float[] grab = new float[5];
+        static int grabbed;
+        static Vector3 grabFrom, grabMass;
+        static int grabAt;
         static float ownShake, ownMost;
         static float handsApart, handsCloser, handsOuter, handsInner, handsVolume, slapMost, slapLater, solid0;
         static readonly float[] pressShake = new float[3], pressMost = new float[3], pressAnchor = new float[3], pressRise = new float[3];
@@ -3273,6 +3292,9 @@ namespace AvatarBridge.Regression
         static int halfOn, halfFrames, probeSlots, probeSlotsBefore, probePushed, bothSlots, ringsSlow, ringsProbe, ringsBoth;
         static readonly List<string> probeSaid = new List<string>(), probeSeries = new List<string>(), ringSaid = new List<string>();
         static bool probed, remoteHand;
+        static Vector4[] wallRest;
+        static readonly float[] wallDent = new float[3];
+        static GameObject breastWall;
         static Transform remoteBall;
         static Vector3 remoteWrist;
         static int probePair;
@@ -3464,6 +3486,38 @@ namespace AvatarBridge.Regression
                 // Then the same ball as a slap, 10 cm in three frames, and that slap again with a
                 // player's hand on its path, as the client gives a hand both: a ring each, the second
                 // the arrays', the probes' taken for it.
+                // Or, its probes feeling the world (-jellyWorld), a wall slid 3 cm into the first's
+                // front, held and taken away, a kinematic body as a moving world solid is: it should
+                // dent the first, barely move the second, and the dent spring back once it goes.
+                bool balls = jelly.GetComponentsInChildren<Transform>(true).Any(t => t.name.StartsWith("Jelly Probe Ball"));
+                if (balls && v >= 360 && v <= 535)
+                {
+                    var box = jelly.GetComponentsInChildren<CVRMaterialDataProvider>(true).First(q => q.transforms != null && q.transforms.Length > 0).materials[0].GetVector("_JellyBox0");
+                    if (breastWall == null)
+                    {
+                        breastWall = new GameObject("Wall");
+                        breastWall.AddComponent<BoxCollider>().size = new Vector3(2f * box.x + 0.02f, 2f * box.y + 0.02f, 0.1f);
+                        breastWall.AddComponent<Rigidbody>().isKinematic = true;
+                    }
+                    float gap = v < 380 ? 0.15f : v < 410 ? Mathf.Lerp(0.15f, -0.03f, (v - 380) / 30f) : v < 445 ? -0.03f : Mathf.Lerp(-0.03f, 0.15f, Mathf.Clamp01((v - 445) / 15f));
+                    breastWall.transform.SetPositionAndRotation(breastRegions[0].TransformPoint(0f, 0f, box.z + 0.05f + gap), breastRegions[0].rotation);
+                    var st = Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture"));
+                    if (v == 375) wallRest = st;
+                    float Off(int r)
+                    {
+                        float most = 0f;
+                        for (int q = 0; q < n.x * n.y * n.z; q++)
+                            most = Mathf.Max(most, ((Vector3) Particle(st, r, q) - (Vector3) Particle(wallRest, r, q)).magnitude);
+                        return most;
+                    }
+                    if (v >= 425 && v < 445)
+                    {
+                        wallDent[0] = Mathf.Max(wallDent[0], Off(0));
+                        wallDent[1] = Mathf.Max(wallDent[1], Off(1));
+                    }
+                    if (v >= 520) wallDent[2] = Mathf.Max(wallDent[2], Off(0));
+                    if (v == 535) Object.DestroyImmediate(breastWall);
+                }
                 var nets = jelly.GetComponentsInChildren<Behaviour>(true).Where(c => c.name.StartsWith("Jelly Probes")).ToList();
                 if (nets.Count > 0 && v >= 360 && v <= 535)
                 {
@@ -3687,6 +3741,23 @@ namespace AvatarBridge.Regression
                 var front = breastRegions[0].TransformPoint(0f, 0f, skin.z);
                 TwoBone(upperArm, lowerArm, wristBone, Vector3.Lerp(front + outward * 0.08f, breastRegions[0].position - outward * 0.02f, push), swing.forward);
             }
+            // Then a hand on the first's front, closed to a fist there, pulled 8 cm straight out over
+            // a third of a second, held, and opened as it goes: what it gripped follows it, the whole
+            // leans after, and let go it springs back with a ring. Its far side a centimetre into the
+            // skin however closed, so closing neither presses nor lets go of it.
+            if (frame >= 2450 && frame < 2740)
+            {
+                var box = jelly.GetComponentsInChildren<CVRMaterialDataProvider>(true).First(q => q.transforms != null && q.transforms.Length > 0).materials[0].GetVector("_JellyBox0");
+                var outward = breastRegions[0].forward;
+                var front = breastRegions[0].TransformPoint(0f, 0f, box.z);
+                float pulled = frame < 2560 ? 0.08f * Mathf.SmoothStep(0f, 1f, (frame - 2480) / 30f) : 0.08f + 0.3f * Mathf.Clamp01((frame - 2560) / 20f);
+                float closed = frame < 2470 ? 0.6f : frame < 2560 ? Mathf.Lerp(0.6f, 1f, (frame - 2470) / 5f) : Mathf.Lerp(1f, 0f, (frame - 2560) / 5f);
+                var wrist = front + outward * (Mathf.Lerp(0.11f, 0.06f, closed) * 1.6f - 0.01f + pulled);
+                hand[0] = new Vector4(wrist.x, wrist.y, wrist.z, frame < 2565 ? closed : -1f);
+                chestAt[0] = wrist + outward * 0.45f;
+                root[0] = new Vector4(chestAt[0].x, swing.position.y, chestAt[0].z, 1.6f);
+                hand[1] = new Vector4(50f, 50f, 50f, 0f);
+            }
             if (remoteHand)
             {
                 hand[0] = remoteWrist;
@@ -3856,6 +3927,42 @@ namespace AvatarBridge.Regression
                             clap[1 + r] = Mathf.Max(clap[1 + r], st[mine + 81 + 2 * k].w);
                 }
             }
+            // The grab: the first's front middle particle and its mass along the pull, against just
+            // before the hand came; how long any slot gripped; the ring as it let go; and how far
+            // the skin still was from where it began two seconds on.
+            if (frame >= 2445 && frame < 2740)
+            {
+                var st = Read(stateRt);
+                int sr = Side(n) * 2 * Row;
+                var outward = breastRegions[0].forward;
+                if (frame == 2445)
+                {
+                    // The particle nearest where the fist will hold: the lattice's front is a cube's,
+                    // well past the skin.
+                    var box = jelly.GetComponentsInChildren<CVRMaterialDataProvider>(true).First(q => q.transforms != null && q.transforms.Length > 0).materials[0].GetVector("_JellyBox0");
+                    var held = breastRegions[0].TransformPoint(0f, 0f, box.z) - outward * 0.01f;
+                    grabAt = Enumerable.Range(0, n.x * n.y * n.z).OrderBy(q => ((Vector3) Particle(st, 0, q) - held).sqrMagnitude).First();
+                }
+                Vector3 p = Particle(st, 0, grabAt), c = st[sr + 30];
+                if (frame == 2445) { grabFrom = p; grabMass = c; }
+                for (int e = 0; e < 8; e++)
+                    if (st[sr + 112 + e].w > 0f) { grabbed++; break; }
+                if (frame >= 2530 && frame < 2560)
+                {
+                    grab[0] = Mathf.Max(grab[0], Vector3.Dot(p - grabFrom, outward));
+                    grab[1] = Mathf.Max(grab[1], Vector3.Dot(c - grabMass, outward));
+                }
+                if (frame >= 2560 && frame < 2600)
+                    for (int k = 0; k < 2; k++)
+                        if (Time.timeSinceLevelLoad - st[sr + 80 + 2 * k].w < 0.05f) grab[2] = Mathf.Max(grab[2], st[sr + 81 + 2 * k].w);
+                // Off its modelled rest on the anchor, as the hand came and two seconds after it let go.
+                if (frame == 2445 || frame == 2739)
+                {
+                    int gx = grabAt % n.x, gy = grabAt / n.x % n.y, gz = grabAt / (n.x * n.y);
+                    float off = (p - breastRegions[0].localToWorldMatrix.MultiplyPoint3x4(new Vector3((gx - 0.5f * (n.x - 1)) * breastSpacing, (gy - 0.5f * (n.y - 1)) * breastSpacing, gz * breastSpacing))).magnitude;
+                    grab[frame == 2445 ? 4 : 3] = off;
+                }
+            }
             if (frame == 1990)
             {
                 var st = Read(stateRt);
@@ -3946,6 +4053,7 @@ namespace AvatarBridge.Regression
             }
             Object.DestroyImmediate(bareCopy);
             Debug.Log($"[Jelly] the wearer's own arm across one, held: {ownSaid}");
+            Debug.Log($"[Jelly] a fist closed on the first's front and pulled 8 cm straight out: gripped {grabbed} frames; the skin it held came {1000f * grab[0]:0.0} mm, the whole {1000f * grab[1]:0.0} mm; let go, a ring {1000f * grab[2]:0.0} mm, the skin {1000f * grab[3]:0.0} mm off its rest two seconds on ({1000f * grab[4]:0.0} as the hand came)");
             Debug.Log($"[Jelly] the pair clapped together by two hands in six frames, their skins {1000f * clap[0]:0.0} mm apart (a cell {1000f * clapCell:0.0} mm): a ring from between them on the first {1000f * clap[1]:0.0} mm and the second {1000f * clap[2]:0.0} mm");
             Debug.Log($"[Jelly] the wearer's own hand pushed on through one: its particles moved {1000f * ownThrough[0]:0.0} mm at most, {ownThrough[1]:0} over 10 cm, {1000f * ownThrough[2]:0.0} mm with the hand at the chest");
             Debug.Log($"[Jelly] the picture's pixels the squash changes with the jelly on: {string.Join(", ", squashOver)}");
@@ -4102,8 +4210,11 @@ namespace AvatarBridge.Regression
             poked = Changed(breastShots[1], breastShots[3]);
             bool viewOk = viewRan.SequenceEqual(new[] { true, false, true, true }) && viewBack < 0.006f
                 && halfFrames > 0 && Mathf.Abs((float) halfOn / halfFrames - 0.5f) < 0.15f && halfMost >= 2f && halfMost <= 3f;
-            bool probeOk = !probed || probeDent > probeBefore + 0.005f && probeSlots == probeSlotsBefore + 1 && probePushed >= 2 && bothSlots == 1 && ringsSlow == 0 && ringsProbe == 1 && ringsBoth == 1;
-            bool ok = anchorOk && clap[1] > 0.005f && clap[2] > 0.005f && restMost < 0.006f && pokeMost > 0.01f && poked > 3f * noise + 0.002f && swingMost > 0.005f && bodies > 0.003f && handsOuter > 0.05f && viewOk && probeOk && ownThrough[1] <= 20 && ownThrough[2] < 0.02f;
+            bool walled = wallRest != null;
+            if (walled) Debug.Log($"[Jelly] its probes feeling the world, a wall 3 cm into the first's front: the first dented {1000f * wallDent[0]:0.0} mm, the second {1000f * wallDent[1]:0.0} mm; the wall gone two thirds of a second, the first {1000f * wallDent[2]:0.0} mm off its rest");
+            bool wallOk = !walled || wallDent[0] > 0.01f && wallDent[1] < 0.005f && wallDent[2] < 0.006f;
+            bool probeOk = wallOk && (!probed || probeDent > probeBefore + 0.005f && probeSlots == probeSlotsBefore + 1 && probePushed >= 2 && bothSlots == 1 && ringsSlow == 0 && ringsProbe == 1 && ringsBoth == 1);
+            bool ok = anchorOk && clap[1] > 0.005f && clap[2] > 0.005f && grabbed > 60 && grab[0] > 0.04f && grab[1] > 0.002f && grab[2] > 0.005f && grab[3] < 0.006f && restMost < 0.006f && pokeMost > 0.01f && poked > 3f * noise + 0.002f && swingMost > 0.005f && bodies > 0.003f && handsOuter > 0.05f && viewOk && probeOk && ownThrough[1] <= 20 && ownThrough[2] < 0.02f;
             string dir = SessionState.GetString(K + "out", "Jelly");
             int w = breastShots[0].width, h = breastShots[0].height;
             int rows = (breastShots.Count + 3) / 4;
@@ -4449,6 +4560,33 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 rf = g > 2.5 ? (g > 4.5 && g < 5.5 ? 0.35 : 0.2) * r : 0;
                 fa = a.xyz + dir * (0.06 * tall);
                 fb = a.xyz + dir * max(0.11 * tall - rf, 0.06 * tall);
+            }
+
+            // Whether a slot's hand is a closed fist: its gesture's 0 to 1 past three quarters.
+            bool Fist(float4 b) { float g = fmod(b.w - 10, 10); return b.w > 0.5 && g > 0.75 && g < 1.5; }
+
+            // Where a fist meets what it closes on: its knuckles' far side.
+            float3 Knuckles(float4 a, float4 b)
+            {
+                float3 pb, fa, fb;
+                float rf;
+                Hand(a, b, pb, fa, fb, rf);
+                float3 seg = b.xyz - a.xyz;
+                return pb + (dot(seg, seg) > 1e-12 ? normalize(seg) : 0) * a.w;
+            }
+
+            // Slot e's grip as last frame left it (texel 112 + e): where on the anchor its fist closed
+            // on the skin, in at; and how far the hand has pulled that since, on the anchor, capped at
+            // half the tissue's depth, w 1; raw, the pull uncapped. 0 with no grip or its hand gone.
+            float4 Pulled(uint e, float4x4 m, uint side, out float3 at, out float raw)
+            {
+                float4 g = _MainTex.Load(int3(112 + e, side, 0)), a = _MainTex.Load(int3(2 * e, side, 0)), b = _MainTex.Load(int3(2 * e + 1, side, 0));
+                at = g.xyz;
+                raw = 0;
+                if (!(g.w > 0 && b.w > 0.5)) return 0;
+                float3 d = Into(m, Knuckles(a, b)) - g.xyz;
+                raw = length(d);
+                return float4(d * min(1, 0.5 * (Count().z - 1) * _Lattice.w / max(raw, 1e-6)), 1);
             }
 
             // next on ahead of a capsule from a to b of radius r toward centre, the way a hand
@@ -5079,6 +5217,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     {
                         float4 a = _MainTex.Load(int3(2 * e, side, 0)), b = _MainTex.Load(int3(2 * e + 1, side, 0));
                         if (!(b.w > 0.5)) continue;
+                        if (_MainTex.Load(int3(112 + e, side, 0)).w > 0) continue;
                         float3 ua = a.xyz, ub = b.xyz;
                         Unheld(ua, ub, floor((b.w - 10) / 10) / 1000, m, scale);
                         a.xyz = ua;
@@ -5091,6 +5230,15 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         Hand(a, b, pb, fa, fb, rf);
                         pushed += Lean(tip.xyz, a.xyz, pb, a.w, radius, c);
                         if (rf > 0) pushed += Lean(tip.xyz, fa, fb, rf, radius, c * rf / a.w);
+                    }
+                    // Each grip pulls the whole by the share of a press it takes, the skin it holds
+                    // following the hand the rest of the way.
+                    [unroll] for (uint gi = 0; gi < 8; gi++)
+                    {
+                        float3 gat;
+                        float graw;
+                        float4 d = Pulled(gi, m, side, gat, graw);
+                        pushed += mul((float3x3) m, d.xyz) * (d.w * min(_Give, 0.95));
                     }
                 }
                 // The wearer's own hands too; their arms and thighs only dent it, or an arm resting
@@ -5238,11 +5386,29 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     {
                         float4 a = _MainTex.Load(int3(2 * e, side, 0)), b = _MainTex.Load(int3(2 * e + 1, side, 0));
                         if (!(b.w > 0.5)) continue;
+                        // A gripping hand carries the skin below rather than pushing it.
+                        if (_MainTex.Load(int3(112 + e, side, 0)).w > 0) continue;
                         float3 pb, fa, fb;
                         float rf;
                         Hand(a, b, pb, fa, fb, rf);
                         next = Plow(next, a.xyz, pb, a.w, centre);
                         if (rf > 0) next = Plow(next, fa, fb, rf, centre);
+                    }
+                    // Each grip takes the skin it closed on along with the hand: all of it at the
+                    // grip, none a hand's breadth off, the neighbourhoods' fit bending what lies
+                    // between. Let go, the tissue's own spring brings it back.
+                    [unroll] for (uint gi = 0; gi < 8; gi++)
+                    {
+                        float3 gat;
+                        float graw;
+                        float4 d = Pulled(gi, m, side, gat, graw);
+                        [branch] if (d.w > 0)
+                        {
+                            float w = smoothstep(2 * _MainTex.Load(int3(2 * gi, side, 0)).w / scale, 0, distance(Rest(l), gat));
+                            // Its rest on the anchor carried by the pull, so the skin under the fist
+                            // sits at the fist: on its home, the whole's lean after the hand counted twice.
+                            next = lerp(next, lerp(home, mul(m, float4(Rest(l) + d.xyz, 1)).xyz, w), w);
+                        }
                     }
                 }
                 // The wearer's own arms, hands and thighs in reach. None in reach, one read.
@@ -5493,6 +5659,27 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         }
                     }
                 }
+                // A grip let go, or slipped: the skin it held springs back from as far as it was
+                // pulled, at the speed the tissue's own spring gives that far out, ringing from where
+                // it was gripped. 120 on keep each one's last pull.
+                [branch] if (!fired && timed && !distant)
+                {
+                    [unroll] for (uint gi = 0; gi < 8; gi++)
+                    {
+                        float3 gat;
+                        float graw;
+                        Pulled(gi, m, side, gat, graw);
+                        float4 hb = _MainTex.Load(int3(2 * gi + 1, side, 0)), pull = _MainTex.Load(int3(120 + gi, side, 0));
+                        bool gripped = _MainTex.Load(int3(112 + gi, side, 0)).w > 0;
+                        float back = length(pull.xyz) * scale * 6.2831853 * _Hz;
+                        [flatten] if (gripped && (!Fist(hb) || graw > (Count().z - 1) * _Lattice.w) && back > max(fired ? speed : 0, _Slap.x))
+                        {
+                            at = mul(m, float4(gat, 1)).xyz;
+                            speed = back;
+                            fired = true;
+                        }
+                    }
+                }
                 if (!fired) return keep;
                 float depth = min(_Slap.y * speed, _Slap.z);
                 float left0 = s0.w > 0 ? s0.w * saturate(1 - (_Time.y - r0.w) / _Slap.w) : 0;
@@ -5653,6 +5840,26 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         }
                         if (px.x >= 80 && px.x <= 84) return Slap(px.x, m, scale, dt, distant, side);
                         if (px.x == 85) return float4(AnchorVelocity(m, dt, side), _Time.y);
+                        // Each hand slot's grip (112 to 119), as Pulled reads it: a fist closed on the
+                        // skin grips it where it closed, until it opens or has pulled twice as far as
+                        // the skin follows; a fist closed off the skin, or that came in closed, never
+                        // grips, as a punch is no grab. Its pull (120 to 127) kept for the ring when
+                        // it lets go.
+                        [branch] if (px.x >= 112)
+                        {
+                            uint e = ((uint) px.x - 112) & 7;
+                            float4 a = _MainTex.Load(int3(2 * e, side, 0)), b = _MainTex.Load(int3(2 * e + 1, side, 0)), was = _MainTex.Load(int3(112 + e, side, 0));
+                            float3 at;
+                            float raw;
+                            float4 d = Pulled(e, m, side, at, raw);
+                            if (px.x >= 120) return float4(d.xyz, d.w > 0 ? _Time.y : 0);
+                            if (distant || !Fist(b)) return 0;
+                            if (was.w > 0) return raw > (Count().z - 1) * _Lattice.w ? float4(0, 0, 0, -1) : was;
+                            float3 pb, fa, fb;
+                            float rf;
+                            Hand(a, b, pb, fa, fb, rf);
+                            return was.w == 0 && Gap(a.xyz, pb, a.w, m, scale, side) <= 0.01 * scale ? float4(Into(m, Knuckles(a, b)), _Time.y) : float4(0, 0, 0, -1);
+                        }
                         // Each probe as the scan reads it, where it is and how far pushed: the slaps' last
                         // frame, and a readout for the verify.
                         [branch] if (px.x >= 88 && px.x < 88 + PROBES)
@@ -6199,6 +6406,7 @@ Shader ""AvatarBridge/Jelly Spike""
                     {
                         float4 a = _State.Load(int3(2 * e, row, 0)), b = _State.Load(int3(2 * e + 1, row, 0));
                         if (!(b.w > 0.5)) continue;
+                        if (_State.Load(int3(112 + e, row, 0)).w > 0) continue;
                         float3 pb, fa, fb;
                         float rf;
                         Hand(a, b, pb, fa, fb, rf);

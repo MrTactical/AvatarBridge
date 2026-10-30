@@ -147,6 +147,8 @@ float3 YapsJellyRegion(uint r, float3 world, float3 nw, out float3 bend)
         {
             float4 a = _YAPS_JellyState.Load(int3(2 * e, side, 0)), b = _YAPS_JellyState.Load(int3(2 * e + 1, side, 0));
             if (!(b.w > 0.5)) continue;
+            // A hand gripping the skin holds it out, and dents nothing.
+            if (_YAPS_JellyState.Load(int3(112 + e, side, 0)).w > 0) continue;
             float3 pb, fa, fb;
             float rf;
             YapsJellyHand(a, b, pb, fa, fb, rf);
