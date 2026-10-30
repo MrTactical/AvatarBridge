@@ -282,6 +282,7 @@ namespace AvatarBridge.Regression
         static readonly float[] propDragDent = new float[2];
         static float propDragWorst, propDragJump;
         static readonly float[] propThrough = new float[3];
+        static float propTwo;
         static readonly float[] propDragLast = { float.NaN, float.NaN };
         static int propDragFrames, propDragDeep, propDragLost;
         static GameObject[] propBalls, propHands;
@@ -401,7 +402,10 @@ namespace AvatarBridge.Regression
             // and dragged. Last a hand from the arrays dragged the same way over the green, which
             // needs no probes: what a drag should dent.
             var (bd, bx) = frame < 540 ? (frame < 450 ? Mathf.Lerp(-0.055f, 0.03f, Mathf.Clamp01((frame - 330) / 30f)) : Mathf.Lerp(0.03f, -0.05f, (frame - 450) / 60f), 0f) : Dragged(frame - 540);
-            if (frame >= 990) PropBalls(regions, fronts, false);
+            // Last two balls 12 cm apart into each, which should take a slot each, not share them.
+            float two = Mathf.Lerp(-0.06f, 0.03f, (frame - 1910) / 40f);
+            if (frame >= 1910) PropBalls(regions, fronts, false, (0, two, -0.06f, 0.03f), (0, two, 0.06f, -0.03f), (1, two, -0.06f, 0.03f), (1, two, 0.06f, -0.03f));
+            else if (frame >= 990) PropBalls(regions, fronts, false);
             else if (frame >= 330) PropBalls(regions, fronts, false, (0, bd, bx, 0f), (1, bd, bx, 0f));
             eye.Render();
             int rows = Side(n), count = n.x * n.y * n.z;
@@ -461,16 +465,24 @@ namespace AvatarBridge.Regression
                 propThrough[1] = Mathf.Max(propThrough[1], Enumerable.Range(0, count).Count(i => Vector3.Distance(now[i / Row * 2 * Row + i % Row], propRest[i / Row * 2 * Row + i % Row]) > 0.1f));
                 if (frame >= 1750 && frame < 1810) propThrough[2] = Mathf.Max(propThrough[2], dent);
             }
-            if (++frame < 1910) return;
+            // On the blue, which only the probes feel: each ball's nearest slot.
+            if (frame >= 1960 && frame < 2010)
+            {
+                var now = Read(state);
+                int sd = (2 * rows + 1) * 2 * Row;
+                var held = Enumerable.Range(0, 8).Where(e => now[sd + 2 * e + 1].w > 0.5f).Select(e => (Vector3) now[sd + 2 * e]).ToList();
+                for (int q = 2; q < 4; q++) propTwo = Mathf.Max(propTwo, held.Count == 0 ? 1f : held.Min(x => Vector3.Distance(x, propBalls[q].transform.position)));
+            }
+            if (++frame < 2010) return;
             bool ok = propDent[0] > 0.01f && propDent[1] < 0.003f && propDent[2] > 0.01f && propDent[3] > 0.01f && propSlots[1] == 0 &&
                       propDragLost == 0 && propDragWorst > -0.03f && propDragDeep <= 0.15f * propDragFrames && propDragJump < 0.015f &&
-                      propThrough[0] < 0.06f && propThrough[1] == 0 && propThrough[2] < 0.01f;
+                      propThrough[0] < 0.06f && propThrough[1] == 0 && propThrough[2] < 0.01f && propTwo < 0.025f;
             Debug.Log($"[Jelly] {(ok ? "PASS" : "FAIL")} prop after {frame} frames: a hand from the arrays 3 cm in dented the green {1000f * propDent[0]:0.0} mm ({propSlots[0]} slots) " +
                       $"and the blue {1000f * propDent[1]:0.0} mm ({propSlots[1]} slots, 0 wanted); a MagicaCloth ball 3 cm in dented the green {1000f * propDent[2]:0.0} mm " +
                       $"({propSlots[2]} slots, probes pushed {1000f * propPushed[2]:0.0} mm) and the blue {1000f * propDent[3]:0.0} mm ({propSlots[3]} slots, {1000f * propPushed[3]:0.0} mm); hand radius {1000f * hand:0} mm; " +
                       $"dragged 7 cm each way, the ball rebuilt from the probes at worst {-100f * propDragWorst:0.0} cm too deep, {propDragDeep} of {propDragFrames} frames over 1.5 cm, its depth jumping {100f * propDragJump:0.0} cm in a frame at most, " +
                       $"and {propDragLost} without one; the green's dent {1000f * propDragDent[0]:0.0} mm against {1000f * propDragDent[1]:0.0} mm for a hand dragged the same way; " +
-                      $"a hand pushed on through dented it {1000f * propThrough[0]:0.0} mm at most, {propThrough[1]:0} particles over 10 cm, {1000f * propThrough[2]:0.0} mm once through");
+                      $"a hand pushed on through dented it {1000f * propThrough[0]:0.0} mm at most, {propThrough[1]:0} particles over 10 cm, {1000f * propThrough[2]:0.0} mm once through; two balls 12 cm apart, each slot within {100f * propTwo:0.0} cm of its ball");
             SessionState.SetInt(K + "on", 0);
             SessionState.SetBool(K + "prop", false);
             EditorApplication.Exit(ok ? 0 : 1);
@@ -3866,6 +3878,60 @@ namespace AvatarBridge.Regression
                         timed[v].set();
                         got[v].Add(Timed(timed[v].run, timed[v].rt, timed[v].runs, out _));
                     }
+                // Each step pass drawn over one block of its texels alone: the texture is small, so a
+                // pass waits on its slowest texel, and the blocks say which work sets its price.
+                void Quads(Material mat, RenderTexture src, RenderTexture dst, RectInt[] rects, bool flip)
+                {
+                    mat.SetTexture("_MainTex", src);
+                    var was = RenderTexture.active;
+                    RenderTexture.active = dst;
+                    GL.PushMatrix();
+                    GL.LoadOrtho();
+                    mat.SetPass(0);
+                    GL.Begin(GL.QUADS);
+                    foreach (var r in rects)
+                    {
+                        float x0 = (float) r.xMin / dst.width, x1 = (float) r.xMax / dst.width, y0 = (float) r.yMin / dst.height, y1 = (float) r.yMax / dst.height;
+                        if (flip) (y0, y1) = (1f - y1, 1f - y0);
+                        GL.Vertex3(x0, y0, 0f);
+                        GL.Vertex3(x1, y0, 0f);
+                        GL.Vertex3(x1, y1, 0f);
+                        GL.Vertex3(x0, y1, 0f);
+                    }
+                    GL.End();
+                    GL.PopMatrix();
+                    RenderTexture.active = was;
+                }
+                // Which way up a quad lands: the first row drawn into a cleared copy, read back.
+                var trial = new RenderTexture(pb.descriptor);
+                trial.Create();
+                var wasActive = RenderTexture.active;
+                RenderTexture.active = trial;
+                GL.Clear(false, true, new Color(7f, 7f, 7f, 7f));
+                RenderTexture.active = wasActive;
+                Quads(chain[0].blitMaterial, chain[0].originTexture, trial, new[] { new RectInt(0, 0, 2 * Row, 1) }, false);
+                bool flipped = Read(trial)[0] == new Vector4(7f, 7f, 7f, 7f);
+                trial.Release();
+                int band = Side(n) + 1, regionsHere = pa.height / band;
+                RectInt[] Band(int x0, int x1, bool lattice) => Enumerable.Range(0, regionsHere).Select(r => lattice ? new RectInt(x0, r * band, x1 - x0, band - 1) : new RectInt(x0, r * band + band - 1, x1 - x0, 1)).ToArray();
+                var blocks = new (string name, RectInt[] rects)[]
+                {
+                    ("whole", new[] { new RectInt(0, 0, pa.width, pa.height) }), ("the lattice", Band(0, 2 * Row, true)), ("the side row", Band(0, 2 * Row, false)),
+                    ("0-15 hands", Band(0, 16, false)), ("16-29", Band(16, 30, false)), ("30-31 mass", Band(30, 32, false)), ("32-41", Band(32, 42, false)),
+                    ("42-79 own", Band(42, 80, false)), ("80-84 slaps", Band(80, 85, false)), ("88+ probes", Band(88, 2 * Row, false)), ("nothing", new RectInt[0]),
+                };
+                Near(1f / 90f);
+                var blockTimes = new List<string>();
+                for (int k = 0; k < Mathf.Min(2, chain.Count); k++)
+                {
+                    var blit = chain[k];
+                    var times = blocks.Select(_ => new List<double>()).ToArray();
+                    for (int round = 0; round < 5; round++)
+                        for (int bi = 0; bi < blocks.Length; bi++)
+                            times[bi].Add(Timed(() => Quads(blit.blitMaterial, blit.originTexture, blit.destinationTexture, blocks[bi].rects, flipped), blit.destinationTexture, 1000, out _));
+                    blockTimes.Add($"pass {k}: " + string.Join(", ", blocks.Select((bl, v) => $"{bl.name} {Spread(times[v])}")));
+                }
+                Debug.Log($"[Jelly] the step's blocks timed alone ({regionsHere} regions, {Mathf.RoundToInt(Shader.GetGlobalVector("CVRGlobalParams1").y)} players, quads {(flipped ? "flipped" : "upright")}), ms: " + string.Join("; ", blockTimes));
                 Near(0f);
                 Drawn(true, true);
                 Fake(false, false);
@@ -4115,8 +4181,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             }
 
             // Region r's probes as colliders: each one's ball and rest, and how far it was pushed, 0
-            // for none and for any but the furthest pushed of the tips within two reaches of each
-            // other, so a slot and a ring are each a collider's, not a probe's: within two hands,
+            // for none and for any but the two leaders below, so a slot and a ring are each a
+            // collider's, not a probe's: within two hands,
             // two probes 8 cm apart took two slots, and the one a collider met slantwise swings
             // along its bone twice as fast as it came, a slow press read as a slap. ponytail: each
             // against its neighbours, not whole clusters, so a capsule longer than two balls can
@@ -4146,22 +4212,29 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // Untouched, as nearly always, none of this is looked at: the slaps run it every frame.
                 [branch] if (any)
                 {
-                    // Tips one collider pushed lie a reach off its centre, so within two of each other:
-                    // the furthest pushed leads, and the furthest pushed past two reaches of it leads a
-                    // second. Each against each, 24 by 24 unrolled at the scan and the slaps, timed
-                    // the shader compiler out. ponytail: two colliders a region; a third reads as one
-                    // of those.
+                    // The furthest pushed leads, and the furthest pushed whose rest is past 1.25 reaches
+                    // of its rest leads a second; each takes the probes resting within 1.2 reaches of
+                    // its own. By the tips, which a collider sweeps round it, two balls 12 cm apart
+                    // shared the probes between them and each slot sat 3 to 5 cm off its ball, drawn
+                    // toward the other; by the rests, 1.5 cm. Scored offline on dumped probes first: a
+                    // lone ball dragged still rebuilds as well, and the second slot it now and then
+                    // takes sits 5 cm shallower than it, outside the skin. Each against each, 24 by 24
+                    // unrolled at the scan and the slaps, timed the shader compiler out. ponytail: two
+                    // colliders a region; a third reads as one of those.
                     float best = 0, next = 0;
-                    float3 lead = 0, lead2 = 0;
+                    float3 lead = 0, lead2 = 0, from = 0, from2 = 0;
                     [unroll] for (uint k = 0; k < PROBES; k++)
                     {
-                        lead = gone[k] > best ? balls[k] : lead;
+                        bool more = gone[k] > best;
+                        lead = more ? balls[k] : lead;
+                        from = more ? rests[k] : from;
                         best = max(best, gone[k]);
                     }
                     [unroll] for (uint k = 0; k < PROBES; k++)
                     {
-                        bool far = gone[k] > next && distance(balls[k], lead) >= 2 * reach;
+                        bool far = gone[k] > next && distance(rests[k], from) >= 1.25 * reach;
                         lead2 = far ? balls[k] : lead2;
+                        from2 = far ? rests[k] : from2;
                         next = far ? gone[k] : next;
                     }
                     // Each one's collider over the rests of the probes it pushed, weighted by their
@@ -4175,7 +4248,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     float3 rest = 0, rest2 = 0;
                     [unroll] for (uint k = 0; k < PROBES; k++)
                     {
-                        float g = distance(balls[k], lead) < 2 * reach ? gone[k] : 0, g2 = next > 0 && distance(balls[k], lead2) < 2 * reach ? gone[k] : 0;
+                        float g = distance(rests[k], from) < 1.2 * reach ? gone[k] : 0, g2 = next > 0 && distance(rests[k], from2) < 1.2 * reach ? gone[k] : 0;
                         w += g;
                         rest += rests[k] * g;
                         w2 += g2;
@@ -5817,6 +5890,36 @@ Shader ""AvatarBridge/Jelly Spike""
                 return _State.Load(int3(p % 64, first + p / 64, 0));
             }
 
+            // A kept hand's palm and finger and how a capsule pushes skin, as yaps_jelly.cginc's
+            // YapsJellyHand and YapsJellyPress, which the avatar draws with.
+            void Hand(float4 a, float4 b, out float3 pb, out float3 fa, out float3 fb, out float rf)
+            {
+                float3 seg = b.xyz - a.xyz;
+                float len = length(seg), g = fmod(b.w - 10, 10), r = a.w;
+                pb = a.xyz;
+                fa = fb = a.xyz;
+                rf = 0;
+                if (len < 1e-6) return;
+                float3 dir = seg / len;
+                float tall = (len + r) / 0.11, fist = g > 1.5 ? 1 : saturate(g);
+                pb = a.xyz + dir * max(lerp(0.11, 0.06, fist) * tall - r, 0);
+                rf = g > 2.5 ? (g > 4.5 && g < 5.5 ? 0.35 : 0.2) * r : 0;
+                fa = a.xyz + dir * (0.06 * tall);
+                fb = a.xyz + dir * max(0.11 * tall - rf, 0.06 * tall);
+            }
+
+            float3 Press(float3 at, float3 a, float3 b, float r, float3 centre)
+            {
+                float3 seg = b - a, in_ = centre - (a + 0.5 * seg);
+                if (!(dot(in_, in_) > 1e-8) || !(r > 0)) return 0;
+                float3 way = normalize(in_);
+                float3 off = at - (a + seg * saturate(dot(at - a, seg) / max(dot(seg, seg), 1e-9)));
+                float d2 = dot(off, off), along = dot(off, way);
+                float ease = saturate(1 - sqrt(d2) / (2 * r));
+                float through = d2 < r * r ? sqrt(max(along * along - d2 + r * r, 0)) - along : 0;
+                return way * max(through, r * ease * ease);
+            }
+
             struct appdata
             {
                 float4 vertex : POSITION;
@@ -5868,20 +5971,26 @@ Shader ""AvatarBridge/Jelly Spike""
                 else if (abs(_Time.y - s.w) > 0.25) o.tint = float3(0.9, 0.1, 0.1);
                 else if (_SleepTint > 0.5 && switches.y > 0.5) o.tint = float3(0.35, 0.55, 1);
                 // The hands in reach push the surface too, as the step reads them (texels 0 to 15
-                // of the row, wrist and tip, w the radius): the particles sit a cell apart, so on a
-                // coarse lattice a deep hand dragged whole cells and the surface between folded.
+                // of the row): the particles sit a cell apart, so on a coarse lattice a deep hand
+                // dragged whole cells and the surface between folded. Pushed as the avatar's skin is,
+                // in toward the tissue's middle with the rim eased out: snapped out from the hand's
+                // axis instead, neighbours went opposite ways round it and the dent's rim tore.
                 [branch] if (!(switches.x > 0.5) && _State.Load(int3(1, row, 0)).w > 0.5)
                 {
+                    float4 mass = _State.Load(int3(30, row, 0));
+                    float3 centre = mass.w > 0 ? mass.xyz : _State.Load(int3(29, row, 0)).xyz + _State.Load(int3(28, row, 0)).xyz * (0.5 * (n.z - 1) * _Lattice.w);
+                    float3 move = 0;
                     [unroll] for (int e = 0; e < 8; e++)
                     {
                         float4 a = _State.Load(int3(2 * e, row, 0)), b = _State.Load(int3(2 * e + 1, row, 0));
                         if (!(b.w > 0.5)) continue;
-                        float3 seg = b.xyz - a.xyz;
-                        float3 closest = a.xyz + seg * saturate(dot(at - a.xyz, seg) / max(dot(seg, seg), 1e-9));
-                        float3 off = at - closest;
-                        float d2 = dot(off, off);
-                        if (d2 < a.w * a.w && d2 > 1e-12) at = closest + off * (a.w * rsqrt(d2));
+                        float3 pb, fa, fb;
+                        float rf;
+                        Hand(a, b, pb, fa, fb, rf);
+                        move += Press(at, a.xyz, pb, a.w, centre);
+                        if (rf > 0) move += Press(at, fa, fb, rf, centre);
                     }
+                    at += move;
                 }
                 // Never written: drawn where the mesh rests, so it shows at all.
                 if (!(dot(at, at) > 1e-8 && dot(at, at) < 1e8)) at = mul(unity_ObjectToWorld, v.vertex).xyz;

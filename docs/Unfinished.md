@@ -2700,11 +2700,20 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     (7) The demo film (Joe on its fifth cut): slaps now come in from 25 cm out and strike, not
     start at the skin and leave; the sleep tint is off in the film (`_SleepTint`), where a still
     jelly read as broken; a new shot pushes a hand right through.
-    (8) OPEN: two colliders on one jelly average (Joe: "not being logically independent"). Two
-    balls 12 cm apart, 3 cm in: the two slots land 2.8 and 5.0 cm off their balls, the second
-    pulled toward the first. Giving each probe to its nearer leader instead scored worse offline
-    (4.3 and 7.8 cm): the probes between the balls are swept by both. Probe tips dumped for the
-    next try.
+    (8) Two colliders on one jelly averaged (Joe: "not being logically independent"). Two balls
+    12 cm apart, 3 cm in: the two slots landed 2.8 and 5.0 cm off their balls, the second pulled
+    toward the first, because leaders and their probes were picked by the tips, which a collider
+    sweeps round it. Giving each probe to its nearer leader instead scored worse offline (4.3 and
+    7.8 cm). Now by the rests: the second leader is the furthest pushed probe resting past 1.25
+    reaches of the first's rest, each taking the probes resting within 1.2 reaches of its own.
+    Scored offline on the dumped probes first (1.5 cm; a lone ball dragged rebuilds as before, and
+    the second slot it now and then takes sits 5 cm shallower, outside the skin), then in the prop
+    check: each slot within 1.5 cm of its ball, which it now fails past 2.5. Drag unchanged.
+    (9) The demo's dent rim tore (Joe: "the dent is not smooth"). The prop's own draw snapped
+    each vertex inside a hand out from the hand's axis, so neighbours went opposite ways round it
+    and folded. It now pushes as the avatar's draw does (yaps_jelly.cginc), in toward the tissue's
+    middle with the rim eased out. A smoothed blend of 27 particles was tried alongside and
+    reverted at Joe's word: on the avatar it changed a few dozen pixels and cost nothing measurable.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 
