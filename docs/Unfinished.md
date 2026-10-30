@@ -2680,8 +2680,31 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     film does, in while moving, and fails past 3 cm too deep, 15% of frames over 1.5 cm, or a 1.5 cm
     jump in a frame; now 1.5 cm, none, 0.4. Cost: a press felt only by probes reads at most about
     3 cm deep. Breasts verify: the probe press 61.9 mm (72.1), still passes. Open: the drag still
-    dents 58 mm to the hand's 27, the rebuilt ball trailing the true one by up to 3 cm sideways; and
-    how deep any press may go at all (Joe, 2026-10-30: skin stops a hand, VR does not), asked.
+    dents 58 mm to the hand's 27, the rebuilt ball trailing the true one by up to 3 cm sideways.
+    (5) How deep a press goes (Joe, 2026-10-30: "skin in real life has an actual limit, but in VR
+    ... you can go threw someone"; he approved three zones). The skin follows a hand to `_Deepest`
+    (5 cm) or a third of the tissue, whichever is less; past that the dent holds and the hand sinks
+    in visibly; once the hand's centre is past the tissue's middle the press fades out over its
+    radius and the skin springs back. Measured on the face the hand came in by: the one the wrist
+    is over while outside, else the one a point 30 cm back along the hand is over (by the wrist
+    alone, a hand through to the back read as pressing from behind). The particles and the draw
+    feel the held hand; the whole (the mass) feels it less only the letting go, carried on the
+    slot's gesture as 10 + gesture + 10 per mm held, or a squeeze no longer met in the middle (0.7
+    mm, from 88). Followed in, an arrays hand 11 cm deep dragged 44 particles over 10 cm and one
+    17 cm deep 120. Prop check, a hand pushed on through: 49.9 mm at most, none over 10 cm, 0.0
+    once through.
+    (6) The wearer's own hands held the same way (Joe: "they should logically"). A hand pushed
+    from in front through to the chest: 110 particles over 10 cm and 43.5 mm left at the chest
+    before; 6 and 9.7 mm after. Breasts check fails past 20 and 20 mm. Squeeze 88.1, finger 95.1,
+    probe press 61.9, unchanged.
+    (7) The demo film (Joe on its fifth cut): slaps now come in from 25 cm out and strike, not
+    start at the skin and leave; the sleep tint is off in the film (`_SleepTint`), where a still
+    jelly read as broken; a new shot pushes a hand right through.
+    (8) OPEN: two colliders on one jelly average (Joe: "not being logically independent"). Two
+    balls 12 cm apart, 3 cm in: the two slots land 2.8 and 5.0 cm off their balls, the second
+    pulled toward the first. Giving each probe to its nearer leader instead scored worse offline
+    (4.3 and 7.8 cm): the probes between the balls are swept by both. Probe tips dumped for the
+    next try.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 

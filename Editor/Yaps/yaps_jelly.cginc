@@ -22,12 +22,13 @@
 float4 YapsJellyTexel(uint p, uint base) { return _YAPS_JellyState.Load(int3(p % 64, p / 64 + base, 0)); }
 
 // A kept hand from its slot's texels a (wrist, radius) and b (an open hand's tip, 10 plus the
-// gesture), as the squash reads one (yaps_dent.cginc): the palm from a to pb, ending at the
-// knuckles as it closes to a fist, and a finger out, thin, from fa to fb of radius rf, 0 for none.
+// gesture, and 10 a millimetre the skin holds it back), as the squash reads one (yaps_dent.cginc):
+// the palm from a to pb, ending at the knuckles as it closes to a fist, and a finger out, thin, from
+// fa to fb of radius rf, 0 for none.
 void YapsJellyHand(float4 a, float4 b, out float3 pb, out float3 fa, out float3 fb, out float rf)
 {
     float3 seg = b.xyz - a.xyz;
-    float len = length(seg), g = b.w - 10, r = a.w;
+    float len = length(seg), g = fmod(b.w - 10, 10), r = a.w;
     pb = a.xyz;
     fa = fb = a.xyz;
     rf = 0;
