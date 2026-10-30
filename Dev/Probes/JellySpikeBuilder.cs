@@ -89,7 +89,7 @@ namespace AvatarBridge.Regression
             Menu.SetChecked("Tools/AvatarBridge Dev/Jelly spike: coarse lattice", EditorPrefs.GetBool(CoarseKey, true));
             return true;
         }
-        const int Row = 64, Passes = 2, Frames = 300, Load = 32, BreastFrames = 2880, ViewFrames = 540, ProbesPer = 24;
+        const int Row = 64, Passes = 2, Frames = 300, Load = 32, BreastFrames = 3000, ViewFrames = 540, ProbesPer = 24;
         // How far off the skin a collider pushes a probe: the probe cloth's radius.
         const float ProbeReach = 0.04f;
         struct Late { }
@@ -229,6 +229,8 @@ namespace AvatarBridge.Regression
             foreach (var mat in provider.materials)
             {
                 mat.SetVector("_JellyArrays", new Vector4(1f, 0f, 1f, 1f));
+                // The plates' tops, which each rests on.
+                mat.SetVector("_Floor", new Vector4(1f, -0.5f * span.y - 0.015f, 0f, 0f));
                 EditorUtility.SetDirty(mat);
             }
             // The colliders-only jelly drawn blue itself, not just its plate: both pink, the one a
@@ -383,6 +385,7 @@ namespace AvatarBridge.Regression
         static readonly float[] propThrough = new float[3];
         static float propTwo;
         static readonly float[] propDropRing = new float[2];
+        static float propDropLow = 1f;
         static readonly float[] propDragLast = { float.NaN, float.NaN };
         static int propDragFrames, propDragDeep, propDragLost;
         static GameObject[] propBalls, propHands;
@@ -576,6 +579,15 @@ namespace AvatarBridge.Regression
                 var held = Enumerable.Range(0, 8).Where(e => now[sd + 2 * e + 1].w > 0.5f).Select(e => (Vector3) now[sd + 2 * e]).ToList();
                 for (int q = 2; q < 4; q++) propTwo = Mathf.Max(propTwo, held.Count == 0 ? 1f : held.Min(x => Vector3.Distance(x, propBalls[q].transform.position)));
             }
+            // Landed, nothing below its board: the lowest particle against the plate's top.
+            if (frame >= 2060 && frame < 2110)
+            {
+                var now = Read(state);
+                float board = -0.5f * (n.y - 1) * spacing - 0.015f;
+                for (int r = 0; r < 2; r++)
+                    for (int i = 0; i < count; i++)
+                        propDropLow = Mathf.Min(propDropLow, regions[r].InverseTransformPoint(now[(r * (rows + 1) + i / Row) * 2 * Row + i % Row]).y - board);
+            }
             // A ring fired in the frames since the landing, as deep as a slap at its speed.
             if (frame == 2075)
             {
@@ -590,13 +602,13 @@ namespace AvatarBridge.Regression
             if (++frame < 2110) return;
             bool ok = propDent[0] > 0.01f && propDent[1] < 0.003f && propDent[2] > 0.01f && propDent[3] > 0.01f && propSlots[1] == 0 &&
                       propDragLost == 0 && propDragWorst > -0.03f && propDragDeep <= 0.15f * propDragFrames && propDragJump < 0.015f &&
-                      propThrough[0] < 0.06f && propThrough[1] == 0 && propThrough[2] < 0.01f && propTwo < 0.025f && propDropRing[0] > 0.005f && propDropRing[1] > 0.005f;
+                      propThrough[0] < 0.06f && propThrough[1] == 0 && propThrough[2] < 0.01f && propTwo < 0.025f && propDropRing[0] > 0.005f && propDropRing[1] > 0.005f && propDropLow > -0.001f;
             Debug.Log($"[Jelly] {(ok ? "PASS" : "FAIL")} prop after {frame} frames: a hand from the arrays 3 cm in dented the green {1000f * propDent[0]:0.0} mm ({propSlots[0]} slots) " +
                       $"and the blue {1000f * propDent[1]:0.0} mm ({propSlots[1]} slots, 0 wanted); a MagicaCloth ball 3 cm in dented the green {1000f * propDent[2]:0.0} mm " +
                       $"({propSlots[2]} slots, probes pushed {1000f * propPushed[2]:0.0} mm) and the blue {1000f * propDent[3]:0.0} mm ({propSlots[3]} slots, {1000f * propPushed[3]:0.0} mm); hand radius {1000f * hand:0} mm; " +
                       $"dragged 7 cm each way, the ball rebuilt from the probes at worst {-100f * propDragWorst:0.0} cm too deep, {propDragDeep} of {propDragFrames} frames over 1.5 cm, its depth jumping {100f * propDragJump:0.0} cm in a frame at most, " +
                       $"and {propDragLost} without one; the green's dent {1000f * propDragDent[0]:0.0} mm against {1000f * propDragDent[1]:0.0} mm for a hand dragged the same way; " +
-                      $"a hand pushed on through dented it {1000f * propThrough[0]:0.0} mm at most, {propThrough[1]:0} particles over 10 cm, {1000f * propThrough[2]:0.0} mm once through; two balls 12 cm apart, each slot within {100f * propTwo:0.0} cm of its ball; dropped 12 cm onto a stop, the landing rang the green {1000f * propDropRing[0]:0.0} mm and the blue {1000f * propDropRing[1]:0.0} mm");
+                      $"a hand pushed on through dented it {1000f * propThrough[0]:0.0} mm at most, {propThrough[1]:0} particles over 10 cm, {1000f * propThrough[2]:0.0} mm once through; two balls 12 cm apart, each slot within {100f * propTwo:0.0} cm of its ball; dropped 12 cm onto a stop, the landing rang the green {1000f * propDropRing[0]:0.0} mm and the blue {1000f * propDropRing[1]:0.0} mm, its lowest particle {1000f * propDropLow:0.0} mm off its board");
             SessionState.SetInt(K + "on", 0);
             SessionState.SetBool(K + "prop", false);
             EditorApplication.Exit(ok ? 0 : 1);
@@ -3242,6 +3254,8 @@ namespace AvatarBridge.Regression
         static string ownSaid = "not reached";
         static Vector4[] throughBefore;
         static readonly float[] ownThrough = new float[3];
+        static readonly float[] clap = new float[3];
+        static float clapCell;
         static float ownShake, ownMost;
         static float handsApart, handsCloser, handsOuter, handsInner, handsVolume, slapMost, slapLater, solid0;
         static readonly float[] pressShake = new float[3], pressMost = new float[3], pressAnchor = new float[3], pressRise = new float[3];
@@ -3590,7 +3604,9 @@ namespace AvatarBridge.Regression
             // from 3 cm off the skin to 13 cm in (SquashPlayProbe's shot). The masses go alike both
             // times, so what differs is the contact's.
             float squeezing = frame >= 600 && frame < 750 ? Mathf.Clamp01((frame - 600) / 30f) - Mathf.Clamp01((frame - 690) / 30f)
-                : frame >= 870 && frame < 1050 ? Mathf.Clamp01((frame - 870) / 30f) - Mathf.Clamp01((frame - 990) / 30f) : -1f;
+                : frame >= 870 && frame < 1050 ? Mathf.Clamp01((frame - 870) / 30f) - Mathf.Clamp01((frame - 990) / 30f)
+                // and once more in six frames, which claps the pair together
+                : frame >= 2350 && frame < 2440 ? Mathf.Clamp01((frame - 2350) / 6f) - Mathf.Clamp01((frame - 2400) / 30f) : -1f;
             if (squeezing >= 0f)
             {
                 float half = 0.5f * (n.x - 1) * breastSpacing - 0.01f, r = 0.05f;
@@ -3609,7 +3625,7 @@ namespace AvatarBridge.Regression
             }
             // Then one slap: a palm 5 cm into the first breast's outer side and out again, a tenth of a
             // second, for how far the whole goes and how long it swings.
-            if (frame >= 1060)
+            if (frame >= 1060 && squeezing < 0f)
             {
                 float slap = Mathf.Clamp01(1f - Mathf.Abs(frame - 1086) / 5f);
                 var outward = breastRegions[0].position - breastRegions[1].position;
@@ -3818,6 +3834,28 @@ namespace AvatarBridge.Regression
                 ownThrough[1] = Mathf.Max(ownThrough[1], torn);
                 if (frame >= 2200 && frame < 2240) ownThrough[2] = Mathf.Max(ownThrough[2], moved);
             }
+            // The clap: each one's ring started from between them, within 3 cm of the middle of their
+            // centres; and how far apart their skins sat as it began, against a cell.
+            if (frame >= 2350 && frame < 2440)
+            {
+                var st = Read(stateRt);
+                int sr = Side(n);
+                if (frame == 2350)
+                {
+                    var skins = blits[0].GetVector("_PairSkin");
+                    float sized = breastRegions[0].lossyScale.x;
+                    clap[0] = Vector3.Distance(st[sr * 2 * Row + 30], st[(2 * sr + 1) * 2 * Row + 30]) - (skins.x + skins.y) * sized;
+                    clapCell = blits[0].GetVector("_Lattice").w * sized;
+                }
+                for (int r = 0; r < 2; r++)
+                {
+                    int mine = (r * (sr + 1) + sr) * 2 * Row, theirs = ((1 - r) * (sr + 1) + sr) * 2 * Row;
+                    var middle = 0.5f * ((Vector3) st[mine + 30] + (Vector3) st[theirs + 30]);
+                    for (int k = 0; k < 2; k++)
+                        if (Time.timeSinceLevelLoad - st[mine + 80 + 2 * k].w < 0.05f && Vector3.Distance(st[mine + 80 + 2 * k], middle) < 0.03f)
+                            clap[1 + r] = Mathf.Max(clap[1 + r], st[mine + 81 + 2 * k].w);
+                }
+            }
             if (frame == 1990)
             {
                 var st = Read(stateRt);
@@ -3908,6 +3946,7 @@ namespace AvatarBridge.Regression
             }
             Object.DestroyImmediate(bareCopy);
             Debug.Log($"[Jelly] the wearer's own arm across one, held: {ownSaid}");
+            Debug.Log($"[Jelly] the pair clapped together by two hands in six frames, their skins {1000f * clap[0]:0.0} mm apart (a cell {1000f * clapCell:0.0} mm): a ring from between them on the first {1000f * clap[1]:0.0} mm and the second {1000f * clap[2]:0.0} mm");
             Debug.Log($"[Jelly] the wearer's own hand pushed on through one: its particles moved {1000f * ownThrough[0]:0.0} mm at most, {ownThrough[1]:0} over 10 cm, {1000f * ownThrough[2]:0.0} mm with the hand at the chest");
             Debug.Log($"[Jelly] the picture's pixels the squash changes with the jelly on: {string.Join(", ", squashOver)}");
             Debug.Log($"[Jelly] breasts' cost at rest on {SystemInfo.graphicsDeviceName}: {chain.Count} passes, {Spread(chainTimes)} ms a frame ({Median(chainSubmits):0.000} to submit); " +
@@ -4149,7 +4188,7 @@ namespace AvatarBridge.Regression
             bool viewOk = viewRan.SequenceEqual(new[] { true, false, true, true }) && viewBack < 0.006f
                 && halfFrames > 0 && Mathf.Abs((float) halfOn / halfFrames - 0.5f) < 0.15f && halfMost >= 2f && halfMost <= 3f;
             bool probeOk = !probed || probeDent > probeBefore + 0.005f && probeSlots == probeSlotsBefore + 1 && probePushed >= 2 && bothSlots == 1 && ringsSlow == 0 && ringsProbe == 1 && ringsBoth == 1;
-            bool ok = anchorOk && restMost < 0.006f && pokeMost > 0.01f && poked > 3f * noise + 0.002f && swingMost > 0.005f && bodies > 0.003f && handsOuter > 0.05f && viewOk && probeOk && ownThrough[1] <= 20 && ownThrough[2] < 0.02f;
+            bool ok = anchorOk && clap[1] > 0.005f && clap[2] > 0.005f && restMost < 0.006f && pokeMost > 0.01f && poked > 3f * noise + 0.002f && swingMost > 0.005f && bodies > 0.003f && handsOuter > 0.05f && viewOk && probeOk && ownThrough[1] <= 20 && ownThrough[2] < 0.02f;
             string dir = SessionState.GetString(K + "out", "Jelly");
             int w = breastShots[0].width, h = breastShots[0].height;
             int rows = (breastShots.Count + 3) / 4;
@@ -4255,6 +4294,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _JellyProbeReach (""How far off the skin a collider pushes a probe, the probes' radius, metres"", Float) = 0
         _Deepest (""How deep a hand presses before the skin holds it, metres; past the tissue's middle it lets go"", Float) = 0.05
         _JellyArrays (""A component a region: 0 leaves the player arrays' hands out, its probes alone"", Vector) = (1, 1, 1, 1)
+        _Floor (""A board under the tissue on its anchor: x 1 for one, y its height there in metres"", Vector) = (0, 0, 0, 0)
         _Solid (""Share of the whole's own squash its homes take at constant volume, so squeezed it bulges where nothing holds it; 0 none"", Range(0, 0.95)) = 0
     }
     SubShader
@@ -4286,6 +4326,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             ByteAddressBuffer _JellySkin;
             float _JellySkinStride, _JellyProbes, _JellyProbeReach, _Deepest;
             float4 _JellyArrays;
+            float4 _Floor;
             // The most probes a region has: its state row's readout, 88 on, has room for no more.
             #define PROBES 24
 
@@ -5320,6 +5361,12 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     float a = dot(next, pn) - pd, hb = dot(held, pn) - pd;
                     if (a > max(hb, 0)) next -= pn * (0.5 * (a - hb) * meet);
                 }
+                // A board under it on its anchor, which it rests on: dropped, it sagged through.
+                [branch] if (_Floor.x > 0)
+                {
+                    float3 lp = Into(m, next);
+                    if (lp.y < _Floor.y) next = mul(m, float4(lp.x, _Floor.y, lp.z, 1)).xyz;
+                }
                 return next;
             }
 
@@ -5501,6 +5548,35 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         at = mul(m, float4(mid + q / max(length(q), 1e-6) * half, 1)).xyz;
                         speed = lost;
                         fired = true;
+                    }
+                }
+                // A slap that drives one of a pair into the other, their skins within a cell, rings
+                // both from where they meet, out from between them, as fast as it drove that way: a
+                // ring either row started on the last step from its far side. Their masses close a
+                // tenth as fast as the hands that squeeze them, so never struck hard enough to ring.
+                [branch] if (!fired && timed && !distant && _Pair > 0 && _PairSkin.x > 0)
+                {
+                    uint ps = (Region ^ 1) * (side - Base + 1) + side - Base;
+                    float4 ta = _MainTex.Load(int3(30, side, 0)), tb = _MainTex.Load(int3(30, ps, 0));
+                    float self = (Region == 0 ? _PairSkin.x : _PairSkin.y) * scale, other = (Region == 0 ? _PairSkin.y : _PairSkin.x) * scale;
+                    float dist = distance(ta.xyz, tb.xyz);
+                    [branch] if (ta.w > 0 && tb.w > 0 && dist > 1e-4 && dist - self - other < _Lattice.w * scale)
+                    {
+                        float3 u = (tb.xyz - ta.xyz) / dist;
+                        float drove = 0;
+                        [unroll] for (uint k = 0; k < 4; k++)
+                        {
+                            uint row = k < 2 ? side : ps;
+                            float4 hit = _MainTex.Load(int3(80 + 2 * (k & 1), row, 0));
+                            float way = dot(normalize((k < 2 ? ta.xyz : tb.xyz) - hit.xyz), k < 2 ? u : -u);
+                            if (hit.w == last.w) drove = max(drove, _MainTex.Load(int3(81 + 2 * (k & 1), row, 0)).w / _Slap.y * way);
+                        }
+                        [branch] if (drove > _Slap.x)
+                        {
+                            at = ta.xyz + (tb.xyz - ta.xyz) * (self / (self + other));
+                            speed = drove;
+                            fired = true;
+                        }
                     }
                 }
                 if (!fired) return keep;

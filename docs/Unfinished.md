@@ -2740,6 +2740,17 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     `VerifyWorldProp`: a wall 3 cm into it dents it 28.0 mm, the green 0.1, back to 0.0 once the
     wall goes. OPEN, in game: whether the client lets a prop's (and an avatar's) rigidbodies meet
     the world's colliders.
+    (14) The prop's tissue sagged through its own board when dropped (Joe, film 11). `_Floor`
+    clamps every particle above a plane on the anchor, at the end of the step's move. The prop
+    check's drop: lowest particle 0.0 mm off the board (was through it). The tissue still hangs
+    off its back face, as a breast off the chest, so a landing swings down from the back wall
+    rather than rising from the board: Joe chose to keep that.
+    (15) A pair slapped into each other rang only where the hands struck (the same tester: "slaps
+    them against each other, hard, jiggle out from impact point"). A slap that drives one of a
+    pair toward the other, their skins within a cell, now rings both from where they meet, as fast
+    as it drove that way. Their masses could not tell it: two hands squeezing in six frames closed
+    them at 0.22 m/s at most, under a slap's 0.5. The breasts check's fast squeeze rings both from
+    between them 30.0 mm.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 
