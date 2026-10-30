@@ -414,23 +414,25 @@ namespace AvatarBridge.Regression
             EditorApplication.Exit(ok ? 0 : 1);
         }
 
-        // The demonstration, frames at 90 a second, each shot's caption in segments.txt for the encode.
-        static readonly (int from, int to, string say)[] PropShots =
+        // The demonstration, each shot's length in frames at 90 a second and its caption, which goes
+        // to segments.txt for the encode. Four seconds and up, each move done more than once: at two
+        // seconds a shot the captions went by too fast to read.
+        static readonly (int frames, string say)[] PropShots =
         {
-            (0, 90, "The prop. Green plate: hands and colliders. Blue plate: MagicaCloth colliders only"),
-            (90, 300, "Carried, shaken side to side"),
-            (300, 450, "Lifted, then dropped onto a stop"),
-            (450, 600, "Turned quickly back and forth"),
-            (600, 760, "A player's hand pressed in slowly: the blue ignores hands"),
-            (760, 940, "A hand dragged across the skin"),
-            (940, 1100, "Quick pokes"),
-            (1100, 1260, "Hand slaps"),
-            (1260, 1420, "A MagicaCloth collider pressed in: both dent"),
-            (1420, 1600, "A collider dragged across"),
-            (1600, 1800, "Collider slaps: both ring"),
-            (1800, 1980, "Two colliders on one jelly"),
-            (1980, 2160, "Shaken with a collider resting on it"),
-            (2160, 2250, "Let go"),
+            (360, "The prop at rest"),
+            (405, "Carried, shaken side to side"),
+            (450, "Lifted, then dropped onto a stop, twice"),
+            (405, "Turned quickly back and forth"),
+            (450, "A player's hand pressed in slowly: the blue ignores hands"),
+            (450, "A hand dragged across the skin"),
+            (405, "Quick pokes"),
+            (450, "Hand slaps: the green rings"),
+            (450, "A MagicaCloth collider pressed in: both dent"),
+            (450, "A collider dragged across"),
+            (450, "Collider slaps: both ring"),
+            (450, "Two colliders on one jelly"),
+            (450, "Shaken with a collider resting on it"),
+            (270, "Let go"),
         };
 
         static void OnLatePropFilm()
@@ -442,8 +444,7 @@ namespace AvatarBridge.Regression
             var regions = new[] { 0, 1 }.Select(r => all.First(t => t.name == $"Jelly Region {r}")).ToArray();
             float hand = AssetDatabase.LoadAssetAtPath<Material>(Folder + "/Jelly_Step.mat").GetFloat("_Hand");
             string dir = SessionState.GetString(K + "out", "Jelly");
-            int f = frame;
-            if (f == 0)
+            if (frame == 0)
             {
                 propHands = Enumerable.Range(0, 2).Select(i =>
                 {
@@ -452,52 +453,63 @@ namespace AvatarBridge.Regression
                     c.GetComponent<MeshRenderer>().sharedMaterial = Glass(new Color(1f, 0.8f, 0.6f, 0.45f));
                     return c;
                 }).ToArray();
-                File.WriteAllLines(Path.Combine(dir, "segments.txt"), PropShots.Select(s => $"{s.from}\t{s.to}\t{s.say}"));
+                int from = 0;
+                File.WriteAllLines(Path.Combine(dir, "segments.txt"), PropShots.Select(s => { from += s.frames; return $"{from - s.frames}\t{from}\t{s.say}"; }));
             }
-            float T(int a, int b) => Mathf.Clamp01((f - a) / (float) (b - a));
-            // Up over ramp seconds at a shot's start, down over its last.
-            float Env(int a, int b, float ramp) => Mathf.Clamp01((f - a) / 90f / ramp) * Mathf.Clamp01((b - f) / 90f / ramp);
-            float Wave(int a, float hz) => Mathf.Sin(2f * Mathf.PI * hz * (f - a) / 90f);
+            // Which shot, and how far into it.
+            int shot = 0, g = frame;
+            while (shot < PropShots.Length - 1 && g >= PropShots[shot].frames) g -= PropShots[shot++].frames;
+            int len = PropShots[shot].frames;
+            float T(int a, int b) => Mathf.Clamp01((g - a) / (float) (b - a));
+            // Up over ramp seconds at the shot's start, down over its last.
+            float Env(float ramp) => Mathf.Clamp01(g / 90f / ramp) * Mathf.Clamp01((len - g) / 90f / ramp);
+            float Wave(float hz) => Mathf.Sin(2f * Mathf.PI * hz * g / 90f);
             // A slap from 12 cm off: in over three frames (5 m/s), held, out over a quarter second.
-            float Slap(int start) { int p = f - start; return p < 0 ? -0.12f : p < 3 ? Mathf.Lerp(-0.12f, 0.03f, (p + 1) / 3f) : p < 30 ? 0.03f : p < 55 ? Mathf.Lerp(0.03f, -0.12f, (p - 30) / 25f) : -0.12f; }
-            // Pressed in slowly, held, out.
-            float Press(int a, int b, float deep) => Mathf.Lerp(-0.05f, deep, Mathf.SmoothStep(0f, 1f, T(a, a + 60))) - Mathf.Lerp(0f, deep + 0.05f, T(b - 40, b));
+            float Slap(int start) { int p = g - start; return p < 0 ? -0.12f : p < 3 ? Mathf.Lerp(-0.12f, 0.03f, (p + 1) / 3f) : p < 30 ? 0.03f : p < 55 ? Mathf.Lerp(0.03f, -0.12f, (p - 30) / 25f) : -0.12f; }
+            float Slaps() => g < 150 ? Slap(45) : g < 285 ? Slap(180) : Slap(315);
+            // In slowly over a second, held, out over the last second.
+            float Press(float deep) => Mathf.Lerp(-0.05f, deep, Mathf.SmoothStep(0f, 1f, T(20, 110))) - Mathf.Lerp(0f, deep + 0.05f, T(len - 100, len - 20));
+            float Drag(float deep) => Mathf.Lerp(-0.05f, deep, Env(0.6f));
 
             // The prop as a player holding it moves it.
             var at = Vector3.zero;
             float turn = 0f;
-            if (f >= 90 && f < 300) at.x = 0.1f * Wave(90, 1.6f) * Env(90, 300, 0.3f);
-            if (f >= 300 && f < 450) at.y = f < 345 ? 0.12f * Mathf.SmoothStep(0f, 1f, T(300, 345)) : f < 380 ? 0.12f : 0.12f * (1f - T(380, 389));
-            if (f >= 450 && f < 600) turn = 35f * Wave(450, 1.2f) * Env(450, 600, 0.3f);
-            if (f >= 1980 && f < 2160) at.x = 0.06f * Wave(1980, 1.6f) * Env(1980, 2160, 0.3f);
+            if (shot == 1) at.x = 0.1f * Wave(1.6f) * Env(0.4f);
+            if (shot == 2)
+            {
+                int h = g % 225;
+                at.y = h < 45 ? 0.12f * Mathf.SmoothStep(0f, 1f, h / 45f) : h < 80 ? 0.12f : 0.12f * (1f - Mathf.Clamp01((h - 80) / 9f));
+            }
+            if (shot == 3) turn = 35f * Wave(1.2f) * Env(0.4f);
+            if (shot == 12) at.x = 0.06f * Wave(1.6f) * Env(0.6f);
             prop.SetPositionAndRotation(at, Quaternion.Euler(0f, turn, 0f));
             var fronts = regions.Select(t => t.TransformPoint(0f, 0f, (n.z - 1) * spacing)).ToArray();
 
-            if (f >= 600 && f < 760) { float d = Press(600, 760, 0.04f); PropHands(regions, fronts, hand, (0, d, 0f), (1, d, 0f)); }
-            else if (f >= 760 && f < 940) { float d = Mathf.Lerp(-0.05f, 0.025f, Env(760, 940, 0.4f)), x = 0.07f * Wave(760, 0.8f); PropHands(regions, fronts, hand, (0, d, x), (1, d, x)); }
-            else if (f >= 940 && f < 1100)
+            if (shot == 4) { float d = Press(0.04f); PropHands(regions, fronts, hand, (0, d, 0f), (1, d, 0f)); }
+            else if (shot == 5) { float d = Drag(0.025f), x = 0.07f * Wave(0.6f); PropHands(regions, fronts, hand, (0, d, x), (1, d, x)); }
+            else if (shot == 6)
             {
-                float beat = (f - 940) / 90f, poke = Mathf.Pow(Mathf.Max(0f, Mathf.Sin(2f * Mathf.PI * 2.5f * beat)), 2f), x = (int) (beat * 2.5f) % 2 == 0 ? 0.04f : -0.04f;
+                float beat = g / 90f, poke = Mathf.Pow(Mathf.Max(0f, Mathf.Sin(2f * Mathf.PI * 2f * beat)), 2f) * Env(0.3f), x = (int) (beat * 2f) % 2 == 0 ? 0.04f : -0.04f;
                 PropHands(regions, fronts, hand, (0, -0.04f + 0.075f * poke, x), (1, -0.04f + 0.075f * poke, x));
             }
-            else if (f >= 1100 && f < 1260) { float d = f < 1190 ? Slap(1125) : Slap(1195); PropHands(regions, fronts, hand, (0, d, 0f), (1, d, 0f)); }
+            else if (shot == 7) { float d = Slaps(); PropHands(regions, fronts, hand, (0, d, 0f), (1, d, 0f)); }
             else PropHands(regions, fronts, hand);
 
-            if (f >= 1260 && f < 1420) { float d = Press(1260, 1420, 0.035f); PropBalls(regions, fronts, true, (0, d, 0f, 0f), (1, d, 0f, 0f)); }
-            else if (f >= 1420 && f < 1600) { float d = Mathf.Lerp(-0.06f, 0.025f, Env(1420, 1600, 0.4f)), x = 0.07f * Wave(1420, 0.8f); PropBalls(regions, fronts, true, (0, d, x, 0f), (1, d, x, 0f)); }
-            else if (f >= 1600 && f < 1800) { float d = f < 1680 ? Slap(1620) : f < 1750 ? Slap(1690) : Slap(1760); PropBalls(regions, fronts, true, (0, d, 0f, 0f), (1, d, 0f, 0f)); }
-            else if (f >= 1800 && f < 1980)
+            if (shot == 8) { float d = Press(0.035f); PropBalls(regions, fronts, true, (0, d, 0f, 0f), (1, d, 0f, 0f)); }
+            else if (shot == 9) { float d = Drag(0.025f), x = 0.07f * Wave(0.6f); PropBalls(regions, fronts, true, (0, d, x, 0f), (1, d, x, 0f)); }
+            else if (shot == 10) { float d = Slaps(); PropBalls(regions, fronts, true, (0, d, 0f, 0f), (1, d, 0f, 0f)); }
+            else if (shot == 11)
             {
-                float d1 = Mathf.Lerp(-0.06f, 0.03f, Mathf.SmoothStep(0f, 1f, T(1810, 1850))) - Mathf.Lerp(0f, 0.09f, T(1940, 1975));
-                float d2 = Mathf.Lerp(-0.06f, 0.03f, Mathf.SmoothStep(0f, 1f, T(1860, 1900))) - Mathf.Lerp(0f, 0.09f, T(1945, 1980));
+                float d1 = Mathf.Lerp(-0.06f, 0.03f, Mathf.SmoothStep(0f, 1f, T(20, 80))) - Mathf.Lerp(0f, 0.09f, T(len - 90, len - 40));
+                float d2 = Mathf.Lerp(-0.06f, 0.03f, Mathf.SmoothStep(0f, 1f, T(130, 190))) - Mathf.Lerp(0f, 0.09f, T(len - 70, len - 20));
                 PropBalls(regions, fronts, true, (0, d1, -0.06f, 0.03f), (0, d2, 0.06f, -0.03f), (1, d1, -0.06f, 0.03f), (1, d2, 0.06f, -0.03f));
             }
-            else if (f >= 1980 && f < 2160) { float d = Mathf.Lerp(-0.06f, 0.02f, Env(1980, 2160, 0.3f)); PropBalls(regions, fronts, true, (0, d, 0f, 0f), (1, d, 0f, 0f)); }
+            else if (shot == 12) { float d = Drag(0.02f); PropBalls(regions, fronts, true, (0, d, 0f, 0f), (1, d, 0f, 0f)); }
             else if (propBalls != null) PropBalls(regions, fronts, true);
 
             eye.Render();
             eye2.Render();
-            if (f % 2 == 0)
+            if (frame % 2 == 0)
             {
                 var was = RenderTexture.active;
                 int w = eye.targetTexture.width, h = eye.targetTexture.height;
@@ -512,7 +524,7 @@ namespace AvatarBridge.Regression
                 File.WriteAllBytes(Path.Combine(frames, $"f_{propFilmed++:00000}.jpg"), sheet.EncodeToJPG(92));
                 Object.DestroyImmediate(sheet);
             }
-            if (++frame < PropShots[PropShots.Length - 1].to) return;
+            if (++frame < PropShots.Sum(x => x.frames)) return;
             Debug.Log($"[Jelly] PASS prop film: {propFilmed} shots of {frame} frames");
             SessionState.SetInt(K + "on", 0);
             SessionState.SetBool(K + "prop", false);
