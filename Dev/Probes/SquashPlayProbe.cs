@@ -637,6 +637,8 @@ namespace AvatarBridge.Regression
         }
 
         const float Tall = 1.7f;
+        // The glass pane shot's world solid, made the first frame it is posed.
+        static GameObject pane;
         struct Shot { public string name; public int frames; public Action<float, float> pose; public Vector3 at; public float width; public bool profile; }
         static List<Shot> film;
         static List<string> segments;
@@ -875,6 +877,45 @@ namespace AvatarBridge.Regression
                 {
                     float t = Mathf.Repeat(u * 3f, 1f), hit = t > 0.45f && t < 0.55f ? Mathf.Sin(Mathf.PI * (t - 0.45f) / 0.1f) : 0f;
                     Press((sideP + f * 0.1f + outP * (r + Mathf.Lerp(0.1f, -0.06f, hit)), -f, -1f), (sideQ + f * 0.1f - outP * (r + Mathf.Lerp(0.1f, -0.06f, hit)), -f, -1f));
+                } },
+                // A fist closed on the front, pulled straight out, held and let go, twice: the skin goes
+                // with the fist, and springs back ringing. Its knuckles a centimetre into the skin
+                // however closed, so closing neither presses nor lets go.
+                new Shot { name = "Grabbed and pulled out", frames = 360, at = front, width = 0.5f, profile = true, pose = (s, u) =>
+                {
+                    float t = Mathf.Repeat(u * 2f, 1f);
+                    float g = t < 0.1f ? 0.6f : t < 0.6f ? Mathf.Lerp(0.6f, 1f, (t - 0.1f) / 0.03f) : t < 0.63f ? Mathf.Lerp(1f, 0f, (t - 0.6f) / 0.03f) : -1f;
+                    float pulled = t < 0.6f ? 0.08f * Mathf.SmoothStep(0f, 1f, (t - 0.15f) / 0.25f) : 0.08f + 0.3f * Mathf.Clamp01((t - 0.6f) / 0.1f);
+                    var knuckles = front + f * (pulled - 0.01f);
+                    Press((knuckles + f * (Mathf.Lerp(0.11f, 0.06f, Mathf.Clamp01(g)) * Tall), -f, g));
+                } },
+                // A pane of glass, a world solid, pressed flat on the front of both, held and taken
+                // away, then slapped on: only a jelly whose probes feel the world feels it.
+                new Shot { name = "A glass pane pressed against them", frames = 450, at = mid + f * 0.05f, width = 1f, profile = true, pose = (s, u) =>
+                {
+                    if (pane == null)
+                    {
+                        pane = new GameObject("Pane");
+                        pane.AddComponent<BoxCollider>().size = new Vector3(0.8f, 0.6f, 0.02f);
+                        pane.AddComponent<Rigidbody>().isKinematic = true;
+                        // Drawn as its rim alone: a see-through face drew solid white in these films.
+                        var rim = new Material(Shader.Find("Legacy Shaders/Transparent/Diffuse")) { color = new Color(0.75f, 0.9f, 1f, 1f) };
+                        foreach (var (rimAt, rimSize) in new[] { (new Vector3(0f, 0.3f, 0f), new Vector3(0.8f, 0.008f, 0.02f)), (new Vector3(0f, -0.3f, 0f), new Vector3(0.8f, 0.008f, 0.02f)),
+                                     (new Vector3(0.4f, 0f, 0f), new Vector3(0.008f, 0.6f, 0.02f)), (new Vector3(-0.4f, 0f, 0f), new Vector3(0.008f, 0.6f, 0.02f)) })
+                        {
+                            var bar = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                            UnityEngine.Object.DestroyImmediate(bar.GetComponent<Collider>());
+                            bar.transform.SetParent(pane.transform, false);
+                            bar.transform.localPosition = rimAt;
+                            bar.transform.localScale = rimSize;
+                            bar.GetComponent<Renderer>().sharedMaterial = rim;
+                        }
+                    }
+                    float t = u * 450f, skin = Mathf.Max(Vector3.Dot(front - mid, f), Vector3.Dot(frontQ - mid, f));
+                    float gap = t < 60f ? 0.12f : t < 150f ? Mathf.Lerp(0.12f, -0.04f, (t - 60f) / 90f) : t < 230f ? -0.04f : t < 260f ? Mathf.Lerp(-0.04f, 0.12f, (t - 230f) / 30f)
+                        : t < 320f ? 0.12f : t < 326f ? Mathf.Lerp(0.12f, -0.04f, (t - 320f) / 6f) : t < 350f ? -0.04f : Mathf.Lerp(-0.04f, 0.12f, Mathf.Clamp01((t - 350f) / 20f));
+                    pane.transform.SetPositionAndRotation(mid + f * (skin + 0.01f + gap), Quaternion.LookRotation(f, up));
+                    Press();
                 } },
                 // One side only: the part pushed leads, and the other gives a little where they meet.
                 new Shot { name = "One hand pushing one into the other", frames = 360, at = mid + f * 0.05f, width = 1f, pose = (s, u) =>

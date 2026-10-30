@@ -2767,6 +2767,12 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     dents. The breasts check: gripped 90 frames, the skin 86.2 mm for an 8 cm pull, the whole
     20.8 mm, a ring 11.2 mm, back within 0.2 mm two seconds on. OPEN, in game: whether the
     wearer's own hands reach the slots (they are not in the arrays' gesture), and how it feels.
+    Then the film's fist never gripped: the scan held every hand back at the skin by its open
+    fingertips, so a closing fist sat 3 cm off the skin and gripped only if the frame its gesture
+    passed three quarters still caught it in (a MagicaCloth hand moved that frame by one and it
+    never did). Held by what the hand reaches as drawn now, the knuckles or a finger out. The check
+    closes the fist in one frame, as a grip button does: before, 0 frames gripped; after, 92, the
+    skin 102.1 mm.
     (17) World solids on the avatar (Joe: "also do world collision"): a menu puts the breasts on
     with their probes physics balls, as the world prop's right one (`-jellyWorld` in batch). The
     breasts check slides a wall 3 cm into the first's front: 48.4 mm, the second 0.9 mm, back
@@ -2774,7 +2780,21 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     turn read as pushes (the whole swung 150 mm against 109); stiffer springs (32 Hz) did
     nothing, extrapolating them took it to 119. Built this way the probes feel no MagicaCloth
     collider, only the world's solids and the arrays' hands. OPEN, in game: whether the client
-    lets an avatar's bodies meet the world's colliders at all, and the turn's 10 mm left.
+    lets an avatar's bodies meet the world's colliders at all.
+    Then a glass pane (Joe: "a collider is solid, why is it only using a ball to deform? the whole
+    pane should press it at once"): the step rebuilt pushed probes as at most two hand balls, so a
+    pane made two dents and the rest showed through. World probes (`_JellySolid`, a bit a region)
+    now take no slot: each pushed one is a flat face where its ball's side met the solid, facing
+    the way it pushed, reaching `_JellyProbePatch` (half again the probes' spacing) across, and
+    the skin in front of any face goes back onto it. Three things found on the way: a pressed
+    jelly fell asleep (sleep counted slots only; `Pushed()` now wakes it); a face offset along the
+    push made a lagging ball in a turn a sideways wall (the turn read 588 mm; offset along the
+    skin's own outward way and only past 2 cm of push, 109, the cloth probes' figure); and balls
+    a 2 cm pane passed over were caught on its far side and dragged out with it, read as presses
+    13 to 18 cm deep after it left (a world ball now reads only an inward push). The prop: a wall
+    3 cm in, 31.9 mm, its skin 0.8 mm past the wall, the green 0.0. ponytail: a face is a plane,
+    so a ball dropped on it dents as a flat-bottomed cup; spheres from the faces' spread if that
+    shows.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 
