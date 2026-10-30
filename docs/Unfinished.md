@@ -2644,6 +2644,28 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     off with it at 1 and off. (3) The deep poke runs over the tips (they end 1 to 5 cm inside the
     capsule: a 10 cm bone cannot swing clear), and for 25 frames, one probe pushed 80 to 90 mm,
     no slot was held. Not yet known why.
+    **Probe prop, 2026-10-30** (Joe: "can you build a prop to demonstrate it?", then two side by
+    side). Menu "make a prop of two, the right one colliders only": two jellies, 24 probes on each
+    front, grabbable; green plate feels hands and colliders, blue plate colliders only
+    (`_JellyArrays`, a component a region, 0 skips the player arrays in the scan). Built in its own
+    folder (`AvatarBridge_JellyProp`), so it never overwrites a worn jelly's assets; the probes and
+    skinned helper are one function (`AddSkin`) shared with the breasts. The client registers a
+    spawnable's MagicaCloth and hands it every player's colliders, as on an avatar (decompile), and
+    props may carry the blitters, so it should work in game; not yet tried. Check
+    (`VerifyProbeProp`): an arrays hand 3 cm in dents green 28.4 mm, blue 0.1 mm with no slot; a
+    MagicaCloth ball 3 cm in dents both 26.1 mm; filmed (`-jellyFilm`), two slaps ring both twice,
+    30 mm. Three fixes on the way, all shared with the breasts:
+    (1) The collider's centre. Out along one probe's normal through its tip, a ball over a face's
+    middle (pushing the probes round it sideways) sat 4 cm too far out to dent at all; fitting it
+    to the tips' middle, a 5 mm error in the collider's size still moved it 3 cm. Now over the
+    push-weighted rests, a reach less the leader's push out: within 1 cm of the real ball. Breasts
+    verify: 72.1 mm dent (60.8 before), rings 0/1/1, one slot.
+    (2) Two leaders a region, found in straight passes. Each probe against each, 24 by 24 unrolled
+    at both the scan and the slaps, timed the shader compiler out. ponytail: a third collider on
+    one jelly reads as one of the two.
+    (3) A sleeping prop woke for no hand at all: `Sleepy` took a slot's w == 1 as a hand, from before
+    a slot's w carried 10 and the gesture (5b894b6). Now any filled slot. The blue jelly slept
+    through its probes' slot until this.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 
