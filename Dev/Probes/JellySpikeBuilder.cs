@@ -252,13 +252,20 @@ namespace AvatarBridge.Regression
                 EditorApplication.Exit(1);
                 return;
             }
-            // -jellyFilm: filmed from above and to the side, where a dent shows, then two slaps.
+            // -jellyFilm: the demonstration instead, two cameras side by side.
             bool film = Environment.GetCommandLineArgs().Contains("-jellyFilm");
             SessionState.SetBool(K + "propFilm", film);
             var cam = new GameObject("Eye").AddComponent<Camera>();
             cam.transform.position = film ? new Vector3(0.55f, 1.45f, 0.75f) : new Vector3(0f, 1.3f, 1.2f);
-            cam.transform.LookAt(new Vector3(0f, 1.2f, film ? 0.12f : 0.1f));
-            if (film) cam.fieldOfView = 28f;
+            cam.transform.LookAt(new Vector3(0f, 1.22f, film ? 0.12f : 0.1f));
+            if (film)
+            {
+                cam.fieldOfView = 34f;
+                var low = new GameObject("Eye 2").AddComponent<Camera>();
+                low.transform.position = new Vector3(-0.6f, 1.3f, 0.7f);
+                low.transform.LookAt(new Vector3(0f, 1.22f, 0.12f));
+                low.fieldOfView = 34f;
+            }
             var sun = new GameObject("Sun").AddComponent<Light>();
             sun.type = LightType.Directional;
             sun.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
@@ -273,8 +280,7 @@ namespace AvatarBridge.Regression
         static readonly float[] propDent = new float[4], propPushed = new float[4];
         static readonly int[] propSlots = new int[4];
         static GameObject[] propBalls, propHands;
-        static readonly float[] propRingAt = new float[4], propRingDepth = new float[2];
-        static readonly int[] propRings = new int[2];
+        static Camera eye2;
         static int propFilmed;
 
         // See-through, so the dent under a hand or ball shows.
@@ -291,92 +297,93 @@ namespace AvatarBridge.Regression
             return m;
         }
 
+        // Players' left hands from the arrays, one player a hand, each straight into its jelly's front
+        // from dx along it, its far side depth past the skin. Shown as see-through capsules.
+        static void PropHands(Transform[] regions, Vector3[] fronts, float hand, params (int r, float depth, float dx)[] hands)
+        {
+            const float tall = 1.6f;
+            var left = Enumerable.Repeat(new Vector4(50f, 50f, 50f, 0f), 255).ToArray();
+            var right = (Vector4[]) left.Clone();
+            var chest = (Vector4[]) left.Clone();
+            var root = Enumerable.Repeat(new Vector4(50f, 0f, 50f, tall), 255).ToArray();
+            for (int i = 0; i < hands.Length; i++)
+            {
+                var (r, depth, dx) = hands[i];
+                var wrist = fronts[r] + regions[r].right * dx + regions[r].forward * (0.11f * tall - depth);
+                left[i] = wrist;
+                chest[i] = wrist + regions[r].forward * 0.3f;
+                root[i] = new Vector4(chest[i].x, 0f, chest[i].z, tall);
+                if (propHands == null || i >= propHands.Length) continue;
+                var tip = wrist - regions[r].forward * Mathf.Max(0.11f * tall - hand, 0f);
+                propHands[i].transform.SetPositionAndRotation(0.5f * (wrist + tip), Quaternion.FromToRotation(Vector3.up, tip - wrist));
+                propHands[i].transform.localScale = new Vector3(2f * hand, 0.5f * (tip - wrist).magnitude + hand, 2f * hand);
+            }
+            if (propHands != null)
+                for (int i = 0; i < propHands.Length; i++) propHands[i].SetActive(i < hands.Length);
+            Shader.SetGlobalVectorArray("_CVR_PlayerLeftHandPositions", left);
+            Shader.SetGlobalVectorArray("_CVR_PlayerRightHandPositions", right);
+            Shader.SetGlobalVectorArray("_CVR_PlayerChestPositions", chest);
+            Shader.SetGlobalVectorArray("_CVR_PlayerRootPositions", root);
+            Shader.SetGlobalVectorArray("_CVR_PlayerHeadPositions", new Vector4[255]);
+            Shader.SetGlobalVector("CVRGlobalParams1", new Vector4(0f, hands.Length, 0f, 0f));
+        }
+
+        // MagicaCloth balls given to the probes' cloth as a player's colliders are, made on first use:
+        // each into its jelly's front from dx, dy along it, its far side depth past the skin; the rest
+        // parked far below.
+        static void PropBalls(Transform[] regions, Vector3[] fronts, bool seen, params (int r, float depth, float dx, float dy)[] balls)
+        {
+            const float radius = 0.045f;
+            if (propBalls == null)
+            {
+                var net = Object.FindObjectsOfType<MagicaCloth2.MagicaCloth>().First(c => c.name == "Jelly Probes");
+                propBalls = Enumerable.Range(0, 4).Select(i =>
+                {
+                    var b = new GameObject($"Test ball {i}");
+                    var ball = b.AddComponent<MagicaCloth2.MagicaSphereCollider>();
+                    ball.SetSize(radius);
+                    net.SerializeData.colliderCollisionConstraint.colliderList.Add(ball);
+                    if (seen)
+                    {
+                        var shown = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                        Object.DestroyImmediate(shown.GetComponent<Collider>());
+                        shown.transform.SetParent(b.transform, false);
+                        shown.transform.localScale = Vector3.one * 2f * radius;
+                        shown.GetComponent<MeshRenderer>().sharedMaterial = Glass(new Color(0.6f, 0.8f, 1f, 0.45f));
+                    }
+                    return b;
+                }).ToArray();
+                net.SetParameterChange();
+            }
+            for (int i = 0; i < propBalls.Length; i++)
+            {
+                if (i >= balls.Length)
+                {
+                    propBalls[i].transform.position = Vector3.down * 50f;
+                    continue;
+                }
+                var (r, depth, dx, dy) = balls[i];
+                propBalls[i].transform.position = fronts[r] + regions[r].right * dx + regions[r].up * dy + regions[r].forward * (radius - depth);
+            }
+        }
+
         static void OnLateProp()
         {
             var n = Lattice;
-            float spacing = SpacingOf(n), tall = 1.6f;
+            float spacing = SpacingOf(n);
             var all = Object.FindObjectsOfType<Transform>();
             var regions = new[] { 0, 1 }.Select(r => all.First(t => t.name == $"Jelly Region {r}")).ToArray();
             var fronts = regions.Select(t => t.TransformPoint(0f, 0f, (n.z - 1) * spacing)).ToArray();
             var state = AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture");
             float hand = AssetDatabase.LoadAssetAtPath<Material>(Folder + "/Jelly_Step.mat").GetFloat("_Hand");
             // Two players, each a left hand straight into one jelly, its far side 3 cm in.
-            bool pressing = frame >= 150 && frame < 270;
             float s = Mathf.Clamp01((frame - 150) / 30f);
-            var left = Enumerable.Repeat(new Vector4(50f, 50f, 50f, 0f), 255).ToArray();
-            var right = (Vector4[]) left.Clone();
-            var chest = (Vector4[]) left.Clone();
-            var root = Enumerable.Repeat(new Vector4(50f, 0f, 50f, tall), 255).ToArray();
-            bool film = SessionState.GetBool(K + "propFilm", false);
-            if (film && frame == 150)
-                propHands = new[] { 0, 1 }.Select(r =>
-                {
-                    var c = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-                    Object.DestroyImmediate(c.GetComponent<Collider>());
-                    c.GetComponent<MeshRenderer>().sharedMaterial = Glass(new Color(1f, 0.8f, 0.6f, 0.45f));
-                    return c;
-                }).ToArray();
-            if (propHands != null) foreach (var h in propHands) h.SetActive(pressing);
-            for (int r = 0; r < 2 && pressing; r++)
-            {
-                var wrist = fronts[r] + regions[r].forward * (0.11f * tall - 0.03f * s + 0.05f * (1f - s));
-                left[r] = wrist;
-                chest[r] = wrist + regions[r].forward * 0.3f;
-                root[r] = new Vector4(chest[r].x, 0f, chest[r].z, tall);
-                if (propHands == null) continue;
-                var tip = wrist - regions[r].forward * Mathf.Max(0.11f * tall - hand, 0f);
-                propHands[r].transform.SetPositionAndRotation(0.5f * (wrist + tip), Quaternion.FromToRotation(Vector3.up, tip - wrist));
-                propHands[r].transform.localScale = new Vector3(2f * hand, 0.5f * (tip - wrist).magnitude + hand, 2f * hand);
-            }
-            Shader.SetGlobalVectorArray("_CVR_PlayerLeftHandPositions", left);
-            Shader.SetGlobalVectorArray("_CVR_PlayerRightHandPositions", right);
-            Shader.SetGlobalVectorArray("_CVR_PlayerChestPositions", chest);
-            Shader.SetGlobalVectorArray("_CVR_PlayerRootPositions", root);
-            Shader.SetGlobalVectorArray("_CVR_PlayerHeadPositions", new Vector4[255]);
-            Shader.SetGlobalVector("CVRGlobalParams1", new Vector4(0f, pressing ? 2f : 0f, 0f, 0f));
+            if (frame >= 150 && frame < 270) PropHands(regions, fronts, hand, (0, 0.08f * s - 0.05f, 0f), (1, 0.08f * s - 0.05f, 0f));
+            else PropHands(regions, fronts, hand);
             // Then a 4.5 cm ball into each, given to the probes' cloth as a player's collider is.
-            if (frame == 330)
-            {
-                var net = Object.FindObjectsOfType<MagicaCloth2.MagicaCloth>().First(c => c.name == "Jelly Probes");
-                propBalls = new GameObject[2];
-                for (int r = 0; r < 2; r++)
-                {
-                    propBalls[r] = new GameObject($"Test ball {r}");
-                    var ball = propBalls[r].AddComponent<MagicaCloth2.MagicaSphereCollider>();
-                    ball.SetSize(0.045f);
-                    propBalls[r].transform.position = fronts[r] + regions[r].forward * 0.1f;
-                    net.SerializeData.colliderCollisionConstraint.colliderList.Add(ball);
-                    if (!film) continue;
-                    var seen = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                    Object.DestroyImmediate(seen.GetComponent<Collider>());
-                    seen.transform.SetParent(propBalls[r].transform, false);
-                    seen.transform.localScale = Vector3.one * 0.09f;
-                    seen.GetComponent<MeshRenderer>().sharedMaterial = Glass(new Color(0.6f, 0.8f, 1f, 0.45f));
-                }
-                net.SetParameterChange();
-            }
-            // Pressed, then filmed slapping every second from 480: in 13.5 cm over three frames
-            // (4 m/s), held, out over a third of a second.
-            int p = (frame - 480) % 90;
-            float off = frame < 450 ? Mathf.Lerp(0.1f, 0.015f, Mathf.Clamp01((frame - 330) / 30f))
-                : frame < 480 ? Mathf.Lerp(0.015f, 0.15f, (frame - 450) / 20f)
-                : p < 3 ? Mathf.Lerp(0.15f, 0.015f, (p + 1) / 3f) : p < 35 ? 0.015f : Mathf.Lerp(0.015f, 0.15f, (p - 35) / 30f);
-            if (propBalls != null)
-                for (int r = 0; r < 2; r++)
-                    propBalls[r].transform.position = fronts[r] + regions[r].forward * off;
+            float d = Mathf.Lerp(-0.055f, 0.03f, Mathf.Clamp01((frame - 330) / 30f));
+            if (frame >= 330) PropBalls(regions, fronts, false, (0, d, 0f, 0f), (1, d, 0f, 0f));
             eye.Render();
-            if (film && frame % 2 == 0)
-            {
-                var was = RenderTexture.active;
-                RenderTexture.active = eye.targetTexture;
-                var shot = new Texture2D(eye.targetTexture.width, eye.targetTexture.height, TextureFormat.RGB24, false);
-                shot.ReadPixels(new Rect(0, 0, shot.width, shot.height), 0, 0);
-                RenderTexture.active = was;
-                string frames = Path.Combine(SessionState.GetString(K + "out", "Jelly"), "frames");
-                Directory.CreateDirectory(frames);
-                File.WriteAllBytes(Path.Combine(frames, $"f_{propFilmed++:00000}.jpg"), shot.EncodeToJPG(92));
-                Object.DestroyImmediate(shot);
-            }
             int rows = Side(n), count = n.x * n.y * n.z;
             if (frame == 140) propRest = Read(state);
             if (frame >= 200 && frame < 270 || frame >= 390 && frame < 450)
@@ -397,22 +404,7 @@ namespace AvatarBridge.Regression
                     propPushed[phase + r] = Mathf.Max(propPushed[phase + r], Enumerable.Range(0, ProbesPer).Max(k => now[side + 88 + k].w));
                 }
             }
-            // A ring is a slot's time moving on by more than 0.2 s; under that it deepened its own.
-            if (frame >= 480)
-            {
-                var now = Read(state);
-                for (int r = 0; r < 2; r++)
-                    for (int q = 0; q < 2; q++)
-                    {
-                        var ring = now[(r * (rows + 1) + rows) * 2 * Row + 80 + 2 * q];
-                        if (ring.w == propRingAt[2 * r + q]) continue;
-                        if (frame > 480 && ring.w - propRingAt[2 * r + q] > 0.2f) propRings[r]++;
-                        propRingAt[2 * r + q] = ring.w;
-                        if (frame > 480) propRingDepth[r] = Mathf.Max(propRingDepth[r], now[(r * (rows + 1) + rows) * 2 * Row + 81 + 2 * q].w);
-                    }
-            }
-            if (++frame < (film ? 660 : 450)) return;
-            if (film) Debug.Log($"[Jelly] prop film: {propFilmed} frames; two slaps rang the green {propRings[0]} times ({1000f * propRingDepth[0]:0} mm) and the blue {propRings[1]} ({1000f * propRingDepth[1]:0} mm)");
+            if (++frame < 450) return;
             bool ok = propDent[0] > 0.01f && propDent[1] < 0.003f && propDent[2] > 0.01f && propDent[3] > 0.01f && propSlots[1] == 0;
             Debug.Log($"[Jelly] {(ok ? "PASS" : "FAIL")} prop after {frame} frames: a hand from the arrays 3 cm in dented the green {1000f * propDent[0]:0.0} mm ({propSlots[0]} slots) " +
                       $"and the blue {1000f * propDent[1]:0.0} mm ({propSlots[1]} slots, 0 wanted); a MagicaCloth ball 3 cm in dented the green {1000f * propDent[2]:0.0} mm " +
@@ -420,6 +412,111 @@ namespace AvatarBridge.Regression
             SessionState.SetInt(K + "on", 0);
             SessionState.SetBool(K + "prop", false);
             EditorApplication.Exit(ok ? 0 : 1);
+        }
+
+        // The demonstration, frames at 90 a second, each shot's caption in segments.txt for the encode.
+        static readonly (int from, int to, string say)[] PropShots =
+        {
+            (0, 90, "The prop. Green plate: hands and colliders. Blue plate: MagicaCloth colliders only"),
+            (90, 300, "Carried, shaken side to side"),
+            (300, 450, "Lifted, then dropped onto a stop"),
+            (450, 600, "Turned quickly back and forth"),
+            (600, 760, "A player's hand pressed in slowly: the blue ignores hands"),
+            (760, 940, "A hand dragged across the skin"),
+            (940, 1100, "Quick pokes"),
+            (1100, 1260, "Hand slaps"),
+            (1260, 1420, "A MagicaCloth collider pressed in: both dent"),
+            (1420, 1600, "A collider dragged across"),
+            (1600, 1800, "Collider slaps: both ring"),
+            (1800, 1980, "Two colliders on one jelly"),
+            (1980, 2160, "Shaken with a collider resting on it"),
+            (2160, 2250, "Let go"),
+        };
+
+        static void OnLatePropFilm()
+        {
+            var n = Lattice;
+            float spacing = SpacingOf(n);
+            var all = Object.FindObjectsOfType<Transform>();
+            var prop = all.First(t => t.name == "Jelly Prop");
+            var regions = new[] { 0, 1 }.Select(r => all.First(t => t.name == $"Jelly Region {r}")).ToArray();
+            float hand = AssetDatabase.LoadAssetAtPath<Material>(Folder + "/Jelly_Step.mat").GetFloat("_Hand");
+            string dir = SessionState.GetString(K + "out", "Jelly");
+            int f = frame;
+            if (f == 0)
+            {
+                propHands = Enumerable.Range(0, 2).Select(i =>
+                {
+                    var c = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                    Object.DestroyImmediate(c.GetComponent<Collider>());
+                    c.GetComponent<MeshRenderer>().sharedMaterial = Glass(new Color(1f, 0.8f, 0.6f, 0.45f));
+                    return c;
+                }).ToArray();
+                File.WriteAllLines(Path.Combine(dir, "segments.txt"), PropShots.Select(s => $"{s.from}\t{s.to}\t{s.say}"));
+            }
+            float T(int a, int b) => Mathf.Clamp01((f - a) / (float) (b - a));
+            // Up over ramp seconds at a shot's start, down over its last.
+            float Env(int a, int b, float ramp) => Mathf.Clamp01((f - a) / 90f / ramp) * Mathf.Clamp01((b - f) / 90f / ramp);
+            float Wave(int a, float hz) => Mathf.Sin(2f * Mathf.PI * hz * (f - a) / 90f);
+            // A slap from 12 cm off: in over three frames (5 m/s), held, out over a quarter second.
+            float Slap(int start) { int p = f - start; return p < 0 ? -0.12f : p < 3 ? Mathf.Lerp(-0.12f, 0.03f, (p + 1) / 3f) : p < 30 ? 0.03f : p < 55 ? Mathf.Lerp(0.03f, -0.12f, (p - 30) / 25f) : -0.12f; }
+            // Pressed in slowly, held, out.
+            float Press(int a, int b, float deep) => Mathf.Lerp(-0.05f, deep, Mathf.SmoothStep(0f, 1f, T(a, a + 60))) - Mathf.Lerp(0f, deep + 0.05f, T(b - 40, b));
+
+            // The prop as a player holding it moves it.
+            var at = Vector3.zero;
+            float turn = 0f;
+            if (f >= 90 && f < 300) at.x = 0.1f * Wave(90, 1.6f) * Env(90, 300, 0.3f);
+            if (f >= 300 && f < 450) at.y = f < 345 ? 0.12f * Mathf.SmoothStep(0f, 1f, T(300, 345)) : f < 380 ? 0.12f : 0.12f * (1f - T(380, 389));
+            if (f >= 450 && f < 600) turn = 35f * Wave(450, 1.2f) * Env(450, 600, 0.3f);
+            if (f >= 1980 && f < 2160) at.x = 0.06f * Wave(1980, 1.6f) * Env(1980, 2160, 0.3f);
+            prop.SetPositionAndRotation(at, Quaternion.Euler(0f, turn, 0f));
+            var fronts = regions.Select(t => t.TransformPoint(0f, 0f, (n.z - 1) * spacing)).ToArray();
+
+            if (f >= 600 && f < 760) { float d = Press(600, 760, 0.04f); PropHands(regions, fronts, hand, (0, d, 0f), (1, d, 0f)); }
+            else if (f >= 760 && f < 940) { float d = Mathf.Lerp(-0.05f, 0.025f, Env(760, 940, 0.4f)), x = 0.07f * Wave(760, 0.8f); PropHands(regions, fronts, hand, (0, d, x), (1, d, x)); }
+            else if (f >= 940 && f < 1100)
+            {
+                float beat = (f - 940) / 90f, poke = Mathf.Pow(Mathf.Max(0f, Mathf.Sin(2f * Mathf.PI * 2.5f * beat)), 2f), x = (int) (beat * 2.5f) % 2 == 0 ? 0.04f : -0.04f;
+                PropHands(regions, fronts, hand, (0, -0.04f + 0.075f * poke, x), (1, -0.04f + 0.075f * poke, x));
+            }
+            else if (f >= 1100 && f < 1260) { float d = f < 1190 ? Slap(1125) : Slap(1195); PropHands(regions, fronts, hand, (0, d, 0f), (1, d, 0f)); }
+            else PropHands(regions, fronts, hand);
+
+            if (f >= 1260 && f < 1420) { float d = Press(1260, 1420, 0.035f); PropBalls(regions, fronts, true, (0, d, 0f, 0f), (1, d, 0f, 0f)); }
+            else if (f >= 1420 && f < 1600) { float d = Mathf.Lerp(-0.06f, 0.025f, Env(1420, 1600, 0.4f)), x = 0.07f * Wave(1420, 0.8f); PropBalls(regions, fronts, true, (0, d, x, 0f), (1, d, x, 0f)); }
+            else if (f >= 1600 && f < 1800) { float d = f < 1680 ? Slap(1620) : f < 1750 ? Slap(1690) : Slap(1760); PropBalls(regions, fronts, true, (0, d, 0f, 0f), (1, d, 0f, 0f)); }
+            else if (f >= 1800 && f < 1980)
+            {
+                float d1 = Mathf.Lerp(-0.06f, 0.03f, Mathf.SmoothStep(0f, 1f, T(1810, 1850))) - Mathf.Lerp(0f, 0.09f, T(1940, 1975));
+                float d2 = Mathf.Lerp(-0.06f, 0.03f, Mathf.SmoothStep(0f, 1f, T(1860, 1900))) - Mathf.Lerp(0f, 0.09f, T(1945, 1980));
+                PropBalls(regions, fronts, true, (0, d1, -0.06f, 0.03f), (0, d2, 0.06f, -0.03f), (1, d1, -0.06f, 0.03f), (1, d2, 0.06f, -0.03f));
+            }
+            else if (f >= 1980 && f < 2160) { float d = Mathf.Lerp(-0.06f, 0.02f, Env(1980, 2160, 0.3f)); PropBalls(regions, fronts, true, (0, d, 0f, 0f), (1, d, 0f, 0f)); }
+            else if (propBalls != null) PropBalls(regions, fronts, true);
+
+            eye.Render();
+            eye2.Render();
+            if (f % 2 == 0)
+            {
+                var was = RenderTexture.active;
+                int w = eye.targetTexture.width, h = eye.targetTexture.height;
+                var sheet = new Texture2D(2 * w, h, TextureFormat.RGB24, false);
+                RenderTexture.active = eye.targetTexture;
+                sheet.ReadPixels(new Rect(0, 0, w, h), 0, 0);
+                RenderTexture.active = eye2.targetTexture;
+                sheet.ReadPixels(new Rect(0, 0, w, h), w, 0);
+                RenderTexture.active = was;
+                string frames = Path.Combine(dir, "frames");
+                Directory.CreateDirectory(frames);
+                File.WriteAllBytes(Path.Combine(frames, $"f_{propFilmed++:00000}.jpg"), sheet.EncodeToJPG(92));
+                Object.DestroyImmediate(sheet);
+            }
+            if (++frame < PropShots[PropShots.Length - 1].to) return;
+            Debug.Log($"[Jelly] PASS prop film: {propFilmed} shots of {frame} frames");
+            SessionState.SetInt(K + "on", 0);
+            SessionState.SetBool(K + "prop", false);
+            EditorApplication.Exit(0);
         }
 #endif
 
@@ -2290,8 +2387,11 @@ namespace AvatarBridge.Regression
 #if AVATARBRIDGE_MAGICA
             if (SessionState.GetInt(K + "on", 0) == 4)
             {
-                eye = Object.FindObjectsOfType<Camera>().First();
-                eye.targetTexture = SessionState.GetBool(K + "propFilm", false) ? new RenderTexture(960, 540, 24) : new RenderTexture(480, 360, 24);
+                bool film = SessionState.GetBool(K + "propFilm", false);
+                eye = Object.FindObjectsOfType<Camera>().First(c => c.name == "Eye");
+                eye.targetTexture = film ? new RenderTexture(960, 540, 24) : new RenderTexture(480, 360, 24);
+                eye2 = film ? Object.FindObjectsOfType<Camera>().First(c => c.name == "Eye 2") : null;
+                if (eye2 != null) eye2.targetTexture = new RenderTexture(960, 540, 24);
             }
             else
 #endif
@@ -2334,7 +2434,8 @@ namespace AvatarBridge.Regression
 #if AVATARBRIDGE_MAGICA
             if (SessionState.GetInt(K + "on", 0) == 4)
             {
-                OnLateProp();
+                if (SessionState.GetBool(K + "propFilm", false)) OnLatePropFilm();
+                else OnLateProp();
                 return;
             }
 #endif
