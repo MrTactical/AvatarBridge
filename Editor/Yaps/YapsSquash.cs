@@ -243,10 +243,15 @@ namespace AvatarBridge
             YapsLock.Animate(null, clips);
             Reuse = Owned(root, clips);
             string said;
+            var jelly = (on: new List<string>(), refused: new List<string>());
             try
             {
                 said = Add(root, folder, out built);
-                if (built) said += " " + FollowSwaps(root, clips, folder, null);
+                if (built)
+                {
+                    said += " " + FollowSwaps(root, clips, folder, null);
+                    jelly = YapsJelly.On(root, folder, null);
+                }
             }
             finally
             {
@@ -258,7 +263,8 @@ namespace AvatarBridge
             LastBuilt = built;
             if (!built) return said.Trim();
             // The measurements stay in the Console: on a card they were a wall nobody read.
-            return $"Squash built on {BridgeElements.Count(Materials(root).Count, "material", "materials")}, parts {PartsFrom(SettingsOf(root))}. The measurements are in the Console.";
+            return $"Squash built on {BridgeElements.Count(Materials(root).Count, "material", "materials")}, parts {PartsFrom(SettingsOf(root))}, " +
+                   $"{BridgeElements.Count(jelly.on.Count, "pair", "pairs")} on the jelly{(jelly.refused.Count > 0 ? ", " + jelly.refused.Count + " kept the squash" : "")}. The measurements are in the Console.";
         }
 
         // Where the build takes its parts from, in the order Add tries them.
@@ -1588,6 +1594,8 @@ namespace AvatarBridge
         public static bool Strip(Transform root, IList<AnimationClip> clips = null)
         {
             if (YapsNativeBuilder.Playing) return false;
+            // The jelly first, while its pairs' materials are still the squash's.
+            if (root.GetComponentsInChildren<Transform>(true).Any(t => t.name.StartsWith(YapsJelly.Worn + " "))) YapsJelly.Off(root);
             var skipped = new SortedSet<string>();
             foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
@@ -1977,6 +1985,10 @@ namespace AvatarBridge
                     said + ". Tune it on the YAPS Squash component on the converted avatar, and test it in the Avatar Tester");
                 if (ctx.MergedController != null) FollowSwaps(root, ctx.MergedController.animationClips, folder, ctx.Report);
                 Lap("FollowSwaps");
+                var (on, refused) = YapsJelly.On(root, folder, ctx.Report);
+                if (on.Count > 0) ctx.Report.Converted(Category, "Soft parts move as live tissue", string.Join(" ", on));
+                foreach (var why in refused) ctx.Report.Warning(Category, "A pair kept the squash alone", why);
+                Lap("Jelly");
             }
             finally
             {

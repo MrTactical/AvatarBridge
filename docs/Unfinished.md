@@ -2925,7 +2925,27 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
        `_YAPS_Jelly*`); the conversion's "Squash soft parts" and the inspector put it on; README,
        window text and report strings with it. The Dev builder keeps its checks and films, calling
        the add-on. Joe's call at this step: whether the jelly replaces the squash outright or stands
-       beside it as a choice.
+       beside it as a choice. Decided (Joe, 2026-10-31): "replaces".
+       DONE on dev: `Editor/Yaps/YapsJelly.cs` holds the worn path (PairOn, AddSkin, the core of
+       Make, Wired, the step's shader text); the squash's Build and the conversion's "Squash soft
+       parts" put the breasts on it after the squash and its swaps, and its Strip takes it off
+       first, so a rebuild puts it back on fresh (no `Properties` or role changes needed). Assets in
+       a folder of the avatar's own beside the squash's copies (`<avatar> Jelly`, `_2` for a second
+       pair), the step shader once in `Assets/YAPS/Generated/Jelly`. The switches are `Options`;
+       the Dev builder fills them from the same switches and builds into its old folders, so its
+       checks and films read what they did. Built straight into the scene, no prefab. Every
+       pair the squash finds goes on (Joe, 2026-10-31: "yes, all parts of jiggle on the avatar,
+       whole body, butt, thighs, anything ... do not forget the painter, and squash and
+       customisation, full implementation"), the butt's three failing checks and the parked
+       thighs with it, to be worked through (item 29). A review of the move found, and it fixed:
+       putting the jelly on, and every Remove, switched on any cloth on the pair a physics toggle
+       had off (only a mass build's own switch-off is undone now); painted pairs looked for their
+       cloth by the painter's name and rode the shoulder (their cloth is found by the sided bones
+       carrying them, `PartFrom`, and they ride what the squash rides, `Carrier`'s quarter rule);
+       the twitch clip's folder was missing when the first pair was refused. Checked on Kar: the
+       breasts as before the move (rest 0.8 mm, poke 95.3, turning 103.9, contact 88.1), the
+       seat failing the same three, the squash's Build twice then Remove leaving nothing. OPEN: a conversion with the opt-in on has not been run with it; the
+       twitch toggle a conversion adds is not yet checked against the passes after it.
     4. **A grip that slides** (Joe, 2026-10-31: "grab but also move your hand up and down? left
        and right? a mobile grab point?", and "make it also an option ... oh you want this?"). A
        fist gripped the skin where it closed and dragged it any way the hand went, but the spot
@@ -3046,6 +3066,69 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
          on average as now, 10.2 at a shorter reach, 8.9 from an elbow hung low off a shoulder guessed
          from chest and head; the real forearm's line, which no shader gets, 5.8, the wrist's bend. A
          fifth better for a head array read and an elbow solve a kept hand: parked for Joe's word.
+
+### 29. The jelly on every part of the skin. Joe, 2026-10-31. PLAN, the order below
+
+Joe: "yes, all parts of jiggle on the avatar, whole body, butt, thighs, anything ... do not forget
+the painter, and squash and customsiation, full implmenetation"; then "since I want universal
+implementation on any part of the skin, would require cooking, re-asses how both ass and thigh
+looks, re do the tests, and even random skin on the body for testing too, plus refined "Presets"
+in the customization for what party parts people decide to put it on, plus another opmistastion
+cost run over (All of it, compile, upload, speed)".
+
+Where it stands (read 2026-10-31, the move into YAPS, item 25 (21) step 3): every pair the squash
+finds goes on the jelly, two pairs at most. The step already runs one copy a part; everything
+feeding the body's draw is four parts: the squash's Vector4 shares and its `Moves` test (which
+layers get a copy at all), `_YAPS_DentOwn` RGBA, the draw's two states and one float4
+`_YAPS_JellyParts`, the painter's four channels, `Picked`'s four bones, and `Add`'s silent
+`Min(..., 2)`. The squash's own dent can stay at four; its build cannot.
+
+1. **Correctness first.** (a) A pair the squash drops for too little skin shifts the kept ones down
+   a slot before `_YAPS_DentOwn` is written, while the jelly indexes the unshifted order: the
+   second jelly then reads the wrong channels or draws nothing. (b) The build's words say "which
+   the cloth swings" and "its cloth left on" for a part no cloth swings. (c) Two avatars of one
+   name share `<avatar> Jelly` in the shared squash folder (the review, 2026-10-31).
+2. **Any part.** No cap in the squash build, the picked bones or the painter; a part may be one
+   side only (a belly, a tail). Per vertex the two strongest jelly parts in a new RGBA32
+   `_YAPS_JellyOwn` (index, share, index, share), written from the part list before any
+   compaction, which also ends (1a). The draw: state slots `_YAPS_JellyState0..3`, about eight
+   parts a mesh, one `Load` and a loop over the vertex's two parts, plug parting gated to the
+   squash's own four. Open: packing every region into one state instead, no ceiling and cheaper
+   on the GPU (three packed 0.023 ms against 0.038 apart on the 4080), at the price of reworking
+   the step whose compile time is still watched. Decided (Joe, 2026-10-31): slots, the queued
+   order. The painter: "Add a part", one-sided parts, the
+   overlay's "other" as every other part. Painted parts find their cloth by their bones
+   (`PartFrom`, done with the move) and ride what the squash rides (`Carrier`'s quarter rule).
+3. **Presets and customisation.** Per-part knobs on the YAPS Squash component, live (Apply writes
+   the step materials too, which `Materials` misses today): firmness (`_Hz`, `_Stiff`), settle
+   (`_Viscous`), give, swing limit, push back (mass Hz and damping), taut, how deep a press goes,
+   slap; and the squash knobs that still mean something (meet as `_Pair`, hand size as `_Hand`,
+   stretch in motion, volume kept as `_Solid`, lying back as `_Gravity`, other players' hands,
+   grip slides live). Presets per part (breasts, butt, thighs, belly, custom), picked from the
+   part's name or bones and changeable. Rebuild-only knobs (detail, feeling the world, collider
+   reach, own swing, twitch) hashed into the status so it says when one needs a rebuild. Dead
+   knobs for jellied parts (flattest, widest, spill, collider push) hidden there. The tester: the
+   jelly runs in Play mode only (the render controller is a runtime component); add a fist, a
+   slap and a twitch, the Squeeze, Grab and Slap bars from one readback, and an edit-mode note.
+4. **The butt and thighs again.** The seat's poke fell from 147.0 mm (run119, 2026-10-29) to 17.8
+   (butt1k, 2026-10-31), contact 93.3 to 9.7, both still passing: bisect before tuning. Its three
+   failing checks look like the breast-shaped test: hands outer aims from the lattice's width
+   along the avatar's forward, the probe ring needs a reach scaled by probe spacing (4 cm fixed
+   over a front twice the size; the prop needed 8), own-through takes the maximum over corners
+   in the air. Thighs (parked 2026-10-29, "they aren't boobs or ass"): a held core near the bone
+   instead of a held back face, the other leg's capsule at its true width skipping each lattice's
+   own carrier, a firmer preset, the lift measured seated. Films to Joe for each.
+5. **Tests.** VerifyBreasts made part-agnostic: the region's forward for every press, thresholds
+   scaled by the part's size, partner checks skipped for a single part, a thigh check (the film's
+   `-jellyThighs` prep in the check). A seeded random-patch generator (pairs over mesh adjacency
+   with `Welds`, single parts once they exist) and a sweep driver that restores the project.
+6. **The cost pass, all of it.** Speed: every worn chain timed and summed, k = 1 to 8 parts on one
+   avatar, the 4080 and the integrated GPU, a 1080p or VR-sized draw row. Compile: the draw role's
+   fxc and driver time against part count (YapsCompileBisect has no jelly case;
+   `fxc-from-builder.py` still reads the old file). Upload: bundle size and upload time, squash
+   alone against the jelly with k parts, cold and warm (UploadCostProbe needs a prefab of the
+   jellied avatar). Baselines: one pair's chain 0.043 ms at rest, sixteen 0.605 ms, the step's
+   heaviest variant 1 to 5 s in fxc, driver 0.61 + 0.20 + 0.07 s.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 

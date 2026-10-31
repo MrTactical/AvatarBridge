@@ -2041,7 +2041,7 @@ namespace AvatarBridge
             return prop != null ? prop.transform : t.root;
         }
 
-        static string Sanitise(string s)
+        internal static string Sanitise(string s)
         {
             foreach (char c in Path.GetInvalidFileNameChars()) s = s.Replace(c, '_');
             return s.Trim();

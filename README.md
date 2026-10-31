@@ -1603,7 +1603,23 @@ them, and the squash works from where they swung to. As they swing they also str
 where they hang and squash back toward it, keeping their volume, which a bone chain alone cannot
 do, as far as real flesh would.
 
-**Under a hand.** A hand presses the pair as soft tissue. When the squash is built, each pair is
+**Live tissue.** On a humanoid avatar, building the squash also puts each of its pairs on the
+jelly: a lattice of flesh the graphics card steps every frame in each viewer's game, drawn by the
+same body shader. Any player's hand dents it and it fills back; a fist grips the skin and pulls
+it, letting go when pulled too far; a slap rings out from where it lands; the pair press against
+each other, and the wearer's own arms and legs press it too. The cloth still swings each part and
+the tissue rides it. The avatar's own MagicaCloth and Dynamic Bone colliders that a pair's cloth
+collides with press the skin instead of moving the bones. With MagicaCloth installed, a net of
+probes on the skin also feels other players' MagicaCloth colliders and the world's solid surfaces:
+walls, tables, dropped props. Past 6 m from a viewer it stops stepping and holds its shape. Nothing
+is synced: each viewer's game steps its own copy. It tells the animator three floats a pair, from 0
+to 1 and never synced, for blend shapes or sounds to follow: `#Jelly/<pair>/Squeeze`,
+`#Jelly/<pair>/Grab` and `#Jelly/<pair>/Slap`. **Live tissue** on the **YAPS Squash** component
+adds a **Jelly twitch** menu toggle that kicks the jiggle, and lets a grip slide along the skin with
+the fist; rebuild after changing either. A non-humanoid avatar, and a pair the jelly cannot fit,
+keep the squash alone; the report says which. **Not yet confirmed in game** on anything but breasts.
+
+**Under a hand.** On a pair not on the jelly, a hand presses it as soft tissue. When the squash is built, each pair is
 solved as flesh held to its volume, pressed by a palm from outside, from between them, from the
 front, from above and from below, slanted from outside in front and from in front below, and from
 both outsides at once, each to two depths, the palm gripping the skin it touches as a hand does;
@@ -2090,7 +2106,7 @@ settle. Leaving all of them alone converts fine.
 | **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
 | **Opt-ins ▸ OSC toys ▸ Keep the OGB / PCS haptics contacts** (YAPS add-on) | off | The toy-app contacts *Penetration* strips with the rest of the stack. Plugs and sockets work either way; these only drive a toy, and each one spends some of the instance's 512 contact pairs. Needs *Penetration* on *Convert to YAPS*; *Remove* strips them regardless. See [OSC toys](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
 | **Opt-ins ▸ OSC toys ▸ Keep OGB haptics synced (OSCGoesBrrr, Lovense)** (YAPS add-on) | off | Off, the kept OGB haptics parameters are local (free); OSCGoesBrrr's automatic detection skips ChilloutVR's `#` names, but its manual avatar-parameter links read them, and the report lists the names. On, they stay synced and automatic detection works with no links to add (ChilloutVR still needs its `--osc-query-prefix=VRChat-Client` launch argument), at 32 sync bits each, about nine per plug and per socket; the report's sync budget entry says where the avatar landed. Needs the contacts above kept and *Penetration* on *Convert to YAPS* |
-| **Opt-ins ▸ Soft parts ▸ Soft body shape: squash where parts press together** (YAPS add-on) | off | Off, the parts swing as their physics make them and pass through each other. On, the body shader flattens them where they press together, presses them under a hand as soft tissue solved when the squash is built, and parts them around a plug in a socket between them, on every layer over the skin, at no sync cost; see [Squash](#squash-soft-parts-that-press-together). The parts are found by bone name, or from regions painted with *Tools ▸ Avatar Bridge ▸ YAPS ▸ Squash regions*; tuned on the **YAPS Squash** component the build adds. Works with *Penetration* on any answer |
+| **Opt-ins ▸ Soft parts ▸ Soft body shape: squash where parts press together** (YAPS add-on) | off | Off, the parts swing as their physics make them and pass through each other. On, the body shader flattens them where they press together, presses them under a hand as soft tissue solved when the squash is built, and parts them around a plug in a socket between them, on every layer over the skin, at no sync cost; on a humanoid avatar the parts also become live tissue the graphics card steps every frame, which any hand dents, grips and slaps; see [Squash](#squash-soft-parts-that-press-together). The parts are found by bone name, or from regions painted with *Tools ▸ Avatar Bridge ▸ YAPS ▸ Squash regions*; tuned on the **YAPS Squash** component the build adds. Works with *Penetration* on any answer |
 | **Opt-ins ▸ Penetration ▸ Show the avatar's OWN depth animations to other players** (YAPS add-on) | off | Not YAPS's socket shapes, which already play for everyone on a synced parameter. This is the bulges and winces the avatar's author animated in VRChat, which are contact-driven, and ChilloutVR runs an avatar's triggers on the wearer's machine alone. Off, each socket's depth parameter is local: free, and only the wearer sees the reaction. On, it syncs and the room sees it, at 32 bits per socket: one depth parameter each, six sockets is about 192 of 3200; a socket that kept several depth parameters as authored pays for each. Needs *Penetration* on *Convert to YAPS* |
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder: you must press **Create Controller** yourself |
 | **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of this avatar's measured height, centred on its original size. Parent-constrained props are re-anchored so they scale with you. Not added, with a warning, when the avatar already has its own parameter or menu entry called "Height": rename that one to get the slider |
@@ -2295,6 +2311,12 @@ Bipeds are unaffected by any of it.
   pushing it aside, since the shader cannot remember which side the arm came in from. The stretch
   in motion reads the swing the avatar's own physics give, so stiff physics show little of it, and
   the editor preview's bounce is a stand-in.
+- **Live tissue (YAPS).** ChilloutVR hands a shader each player's hand position but not which way it
+  faces, so a fist is guessed from the wrist and arm: another player's grip in VR can land about
+  5 cm off their hand. Other players' MagicaCloth colliders press it only for a viewer whose own
+  Dynamic Bone interaction settings take them in, since each viewer runs the cloth with their own.
+  Feeling the world's surfaces (a pane of glass, say) is not reliable yet. What a viewer with the
+  **Cameras** content filter off or **Shader Filtering** on sees of it has not been checked in game.
 - **[Portals](#portals) (YAPS).** An entrance and its exit are worn by the same avatar: a portal
   between two people, or on a prop, is not possible. A conversion never makes one, and one set in
   the YAPS tool on a converted avatar is lost when that avatar is converted again, so set it after

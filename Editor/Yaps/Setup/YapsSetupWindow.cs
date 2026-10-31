@@ -213,6 +213,7 @@ namespace AvatarBridge
             var squash = new BridgeElements.Card("Squash", "soft parts that press together and dent", false).Remember("Yaps.Squash");
             squash.Body.Add(BridgeElements.Hint(
                 "Breasts and butt flatten against each other and dent under anyone's hand, in the body shader. " +
+                "On a humanoid avatar they are live tissue that anyone's hand dents, grips and slaps. " +
                 "No sync cost. Found by bone name, or from regions you paint."));
             // Whether it is there at all, before any button: a tester could not tell.
             _squashState = BridgeElements.Notice(Tone.Info, "");

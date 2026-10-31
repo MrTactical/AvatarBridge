@@ -49,7 +49,7 @@ namespace AvatarBridge
             { "In motion", "As the physics swing a part, it stretches away from where it hangs and squashes back. See it in the Avatar Tester with Bounce, or move the avatar in Play mode." },
             { "What presses it", "What dents the parts besides each other, each with its own strength. See hands in the Avatar Tester with the test hand." },
             { "Live tissue", "Twitch adds a menu toggle whose every flip kicks the jiggle; Grip slides lets a hand that grabs the skin stroke along it, the grip going with the hand. " +
-                             "Put the jelly on again to change either. " +
+                             "Rebuild to change either. " +
                              "Whatever is set here, the jelly tells the animator three floats from 0 to 1 a pair, under the pair's name, for blend shapes, particles or anything else to follow: " +
                              "#Jelly/<pair>/Squeeze, how hard it is pressed or pulled; #Jelly/<pair>/Grab, 1 while a hand grips it; #Jelly/<pair>/Slap, how hard the last slap landed, fading. " +
                              "Each viewer works them out on their own machine, so they never sync." },

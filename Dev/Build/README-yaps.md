@@ -16,7 +16,8 @@ content that is already out there, not only with itself.
 - With AvatarBridge installed as well, its *Avatar Tester* gains **Squash** and **Plugs and
   sockets** in its **Interaction lab** card: preview a socket, drop a test plug or socket, or press
   the squash with a test hand, beside the avatar's motion in Play mode.
-- **Squash** (breasts and butt flattening against each other and denting under a hand) is off
+- **Squash** (breasts and butt flattening against each other and denting under a hand; on a
+  humanoid avatar, as live tissue that anyone's hand dents, grips and slaps) is off
   until you add it: the **Squash** card in *Tools ▸ YAPS ▸ Setup*, **Set up squash**, or the opt-in
   *Soft body shape: squash where parts press together* when converting with AvatarBridge.
 - For a body whose bones do not say which parts squash, paint them: **Paint them** in the
