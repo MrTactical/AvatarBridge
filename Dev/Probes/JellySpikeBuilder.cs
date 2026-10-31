@@ -90,7 +90,7 @@ namespace AvatarBridge.Regression
             Menu.SetChecked("Tools/AvatarBridge Dev/Jelly spike: coarse lattice", EditorPrefs.GetBool(CoarseKey, true));
             return true;
         }
-        const int Row = 64, Passes = 2, Frames = 300, Load = 32, BreastFrames = 3500, ViewFrames = 540, ProbesPer = 24;
+        const int Row = 64, Passes = 2, Frames = 300, Load = 32, BreastFrames = 3680, ViewFrames = 720, ProbesPer = 24;
         // How far off the skin a collider pushes a probe: the probe cloth's radius.
         const float ProbeReach = 0.04f;
         struct Late { }
@@ -189,6 +189,24 @@ namespace AvatarBridge.Regression
             finally { SessionState.SetBool(K + "prop", false); }
         }
 
+        // How far the prop's twitch moves at a full trigger, in metres.
+        const float PropTwitch = 0.02f;
+
+        // Batch, for an upload: the world prop with every feature on, in a scene of its own.
+        public static void MakeWorldPropScene()
+        {
+            SessionState.SetBool(K + "prop", true);
+            try
+            {
+                var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
+                bool made = MakeProbeProp(world: true) != null;
+                EditorSceneManager.SaveScene(scene, Folder + "/Jelly_Prop.unity");
+                Debug.Log(made ? $"[Jelly] made the world prop in {Folder}/Jelly_Prop.unity" : "[Jelly] FAIL the world prop did not build");
+            }
+            finally { SessionState.SetBool(K + "prop", false); }
+            EditorApplication.Exit(0);
+        }
+
         static GameObject MakeProbeProp(bool world = false)
         {
             // No rider: it sat on the left one's front, where the pokes go.
@@ -226,7 +244,9 @@ namespace AvatarBridge.Regression
                     picked.Add(front.OrderByDescending(w => picked.Min(q => (q - w).sqrMagnitude)).First());
                 spots[r] = picked;
             }
-            AddSkin(made, provider, hangs, spots, 0.5f * span.z, "Make the jelly prop", world ? new[] { false, true } : null);
+            // The world one's probes half cloth, half balls, as a breast's feeling the world: the
+            // cloth's still answers players' colliders, which it alone feels.
+            AddSkin(made, provider, hangs, spots, 0.5f * span.z, "Make the jelly prop", world ? new[] { false, true } : null, world ? ProbesPer / 2 : 0);
             foreach (var mat in provider.materials)
             {
                 mat.SetVector("_JellyArrays", new Vector4(1f, 0f, 1f, 1f));
@@ -252,8 +272,93 @@ namespace AvatarBridge.Regression
                 var tint = r == 0 ? new Color(0.2f, 0.8f, 0.3f) : world ? new Color(0.95f, 0.5f, 0.1f) : new Color(0.2f, 0.5f, 1f);
                 plate.GetComponent<MeshRenderer>().sharedMaterial = Save(new Material(Shader.Find("Standard")) { color = tint }, r == 0 ? "/Jelly_Plate_Both.mat" : "/Jelly_Plate_Colliders.mat");
             }
+            // Each whole swings on its root as a breast does, free of any cloth: a breast's rate for
+            // the tissue's weight, about half its box, damped at 0.6 of critical.
+            float hz = 2f * Mathf.Pow(0.5f / (950f * 0.5f * span.x * span.y * span.z), 1f / 3f);
+            // The twitch: the holder's trigger, the prop's own synced value, moves a transform off the
+            // first hang through the prop's animator, kicking both wholes as far as it moves.
+            var twitch = new GameObject("Jelly Twitch").transform;
+            twitch.SetParent(hangs[0], false);
+            provider.transforms = provider.transforms.Append(twitch).ToArray();
+            foreach (var step in new[] { "/Jelly_Step.mat", "/Jelly_Step_2.mat", "/Jelly_Points.mat" })
+            {
+                var mat = AssetDatabase.LoadAssetAtPath<Material>(Folder + step);
+                if (mat == null) continue;
+                mat.SetFloat("_MassHz", hz);
+                mat.SetFloat("_MassDamp", 2f * 0.6f * 2f * Mathf.PI * hz);
+                mat.SetFloat("_Give", 0.1f);
+                mat.SetFloat("_MassCarried", 0f);
+                mat.SetFloat("_Limit", 0.6f);
+                mat.SetFloat("_MassRadius", (span.x + span.y + span.z) / 6f - 0.01f);
+                mat.SetFloat("_JellyTwitch", provider.transforms.Length - 1);
+                EditorUtility.SetDirty(mat);
+            }
+            string path = AnimationUtility.CalculateTransformPath(twitch, prop.transform);
+            AnimationClip Kick(string file, float y)
+            {
+                var clip = Save(new AnimationClip(), file);
+                clip.ClearCurves();
+                clip.SetCurve(path, typeof(Transform), "m_LocalPosition.y", AnimationCurve.Constant(0f, 0f, y));
+                EditorUtility.SetDirty(clip);
+                return clip;
+            }
+            var still = Kick("/Jelly_Twitch_Rest.anim", 0f);
+            var kicked = Kick("/Jelly_Twitch_Up.anim", PropTwitch);
+            // Kept once made, so a prop already in a scene keeps pointing at it.
+            var controller = AssetDatabase.LoadAssetAtPath<UnityEditor.Animations.AnimatorController>(Folder + "/Jelly_Prop.controller");
+            if (controller == null)
+            {
+                controller = UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPath(Folder + "/Jelly_Prop.controller");
+                controller.AddParameter("Twitch", AnimatorControllerParameterType.Float);
+                controller.CreateBlendTreeInController("Twitch", out var tree);
+                tree.blendParameter = "Twitch";
+                tree.AddChild(still, 0f);
+                tree.AddChild(kicked, 1f);
+            }
+            var animator = prop.AddComponent<Animator>();
+            animator.runtimeAnimatorController = controller;
+            var spawnable = prop.GetComponent<CVRSpawnable>();
+            spawnable.useAdditionalValues = true;
+            spawnable.syncValues.Add(new CVRSpawnableValue
+            {
+                name = "Twitch",
+                updatedBy = CVRSpawnableValue.UpdatedBy.OwnerCurrentTrigger,
+                updateMethod = CVRSpawnableValue.UpdateMethod.Override,
+                animator = animator,
+                animatorParameterName = "Twitch",
+            });
+            // What the jelly tells the animator on an avatar, here three bars between the two, each
+            // its height through the parser: yellow the strain, magenta a grip, red the last slap.
+            var parser = made.GetComponentInChildren<CVRTexturePropertyParser>(true);
+            var bars = new[] { ("Squeeze", new Color(1f, 0.85f, 0.1f)), ("Grab", new Color(0.9f, 0.2f, 0.9f)), ("Slap", new Color(0.9f, 0.1f, 0.1f)) };
+            for (int i = 0; i < bars.Length; i++)
+            {
+                var bar = new GameObject($"Jelly {bars[i].Item1} Bar").transform;
+                bar.SetParent(made.transform, false);
+                bar.localPosition = new Vector3(0.03f * (i - 1), 0.5f * span.y + 0.02f, 0.02f);
+                bar.localScale = new Vector3(1f, 0.001f, 1f);
+                var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                Object.DestroyImmediate(cube.GetComponent<Collider>());
+                cube.transform.SetParent(bar, false);
+                cube.transform.localPosition = new Vector3(0f, 0.5f, 0f);
+                cube.transform.localScale = new Vector3(0.02f, 1f, 0.02f);
+                cube.GetComponent<MeshRenderer>().sharedMaterial = Save(new Material(Shader.Find("Standard")) { color = bars[i].Item2 }, $"/Jelly_{bars[i].Item1}_Bar.mat");
+                parser.tasks.Add(new CVRTexturePropertyParserTask
+                {
+                    x = 3 + i,
+                    y = 0,
+                    channel = CVRTexturePropertyParserTask.Channel.r,
+                    minValue = 0.001f,
+                    maxValue = 0.12f,
+                    target = bar.gameObject,
+                    component = bar,
+                    propertyName = "localScale",
+                    typeIndex = 4,
+                    targetIndex = 1,
+                });
+            }
             AssetDatabase.SaveAssets();
-            Debug.Log($"[Jelly] made the probe prop, {spots[0].Count} probes a jelly: green feels hands and colliders, {(world ? "orange the world's solids" : "blue colliders only")}; upload it from the CCK Control Panel");
+            Debug.Log($"[Jelly] made the probe prop, {spots[0].Count} probes a jelly, each swinging at {hz:0.00} Hz: green feels hands and colliders, {(world ? "orange colliders and the world's solids" : "blue colliders only")}; the holder's trigger twitches both; the bars between say strain, grip and slap; upload it from the CCK Control Panel");
             return prop;
         }
 
@@ -462,6 +567,14 @@ namespace AvatarBridge.Regression
         static int propDragFrames, propDragDeep, propDragLost;
         static GameObject[] propBalls, propHands;
         static Camera eye2;
+        // The first hand's gesture, 0 open to 1 a fist, -1 none; its reach shortens as it closes.
+        static float propClosed;
+        // What the strip told: strain, grip and slap, at most; how far the green's whole swung shaken
+        // and twitched; frames gripped.
+        static readonly float[] propTold = new float[3];
+        static readonly float[] propMass = new float[2];
+        static Vector3 propMassRest;
+        static int propGripped;
         static int propFilmed;
 
         // See-through, so the dent under a hand or ball shows.
@@ -490,8 +603,10 @@ namespace AvatarBridge.Regression
             for (int i = 0; i < hands.Length; i++)
             {
                 var (r, depth, dx) = hands[i];
-                var wrist = fronts[r] + regions[r].right * dx + regions[r].forward * (0.11f * tall - depth);
+                float closed = i == 0 ? Mathf.Max(propClosed, 0f) : 0f;
+                var wrist = fronts[r] + regions[r].right * dx + regions[r].forward * (Mathf.Lerp(0.11f, 0.06f, closed) * tall - depth);
                 left[i] = wrist;
+                if (i == 0) left[i].w = propClosed;
                 chest[i] = wrist + regions[r].forward * 0.3f;
                 root[i] = new Vector4(chest[i].x, 0f, chest[i].z, tall);
                 if (propHands == null || i >= propHands.Length) continue;
@@ -580,6 +695,22 @@ namespace AvatarBridge.Regression
             // Last lifted 12 cm and dropped onto a stop: the landing alone should ring each.
             var prop = all.First(t => t.name == "Jelly Prop");
             if (frame >= 2010) prop.position = new Vector3(0f, frame < 2040 ? 0.12f * Mathf.SmoothStep(0f, 1f, (frame - 2010) / 30f) : frame < 2060 ? 0.12f : 0.12f * Mathf.Clamp01((2069 - frame) / 9f), 0f);
+            // Then a fist closed on the green's front, a centimetre in, pulled 6 cm out and let go; the
+            // prop shaken 5 cm side to side at 2 Hz; and its twitch pulled full for a ninth of a second.
+            if (frame >= 2110 && frame < 2240)
+            {
+                int t = frame - 2110;
+                propClosed = t < 20 ? 0.6f : t < 110 ? 1f : t < 115 ? Mathf.Lerp(1f, 0f, (t - 110) / 5f) : -1f;
+                float pulled = t < 30 ? 0f : t < 110 ? 0.06f * Mathf.SmoothStep(0f, 1f, (t - 30) / 30f) : 0.06f + 0.3f * Mathf.Clamp01((t - 110) / 20f);
+                PropHands(regions, fronts, hand, (0, 0.01f - pulled, 0f));
+            }
+            else
+            {
+                propClosed = 0f;
+                if (frame >= 2240) PropHands(regions, fronts, hand);
+            }
+            if (frame >= 2300 && frame < 2390) prop.position += Vector3.right * (0.05f * Mathf.Sin(2f * Mathf.PI * 2f * (frame - 2300) / 90f));
+            if (frame >= 2400) prop.GetComponent<Animator>().SetFloat("Twitch", frame < 2410 ? 1f : 0f);
             // Then two balls 12 cm apart into each, which should take a slot each, not share them.
             float two = Mathf.Lerp(-0.06f, 0.03f, (frame - 1910) / 40f);
             if (frame >= 1910 && frame < 2010) PropBalls(regions, fronts, false, (0, two, -0.06f, 0.03f), (0, two, 0.06f, -0.03f), (1, two, -0.06f, 0.03f), (1, two, 0.06f, -0.03f));
@@ -671,16 +802,30 @@ namespace AvatarBridge.Regression
                         if (Time.timeSinceLevelLoad - now[side + 80 + 2 * k].w < 0.1f) propDropRing[r] = Mathf.Max(propDropRing[r], now[side + 81 + 2 * k].w);
                 }
             }
-            if (++frame < 2110) return;
+            // The strip's feedback and the green's whole: off its rest on the green, as the prop moves.
+            if (frame >= 2050)
+            {
+                var told = Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_Points.renderTexture"));
+                for (int k = 0; k < 3; k++) propTold[k] = Mathf.Max(propTold[k], told[3 + k].x);
+                var now = Read(state);
+                int side = rows * 2 * Row;
+                if (Enumerable.Range(0, 8).Any(e => now[side + 112 + e].w > 0f)) propGripped++;
+                var mass = regions[0].InverseTransformPoint(now[side + 30]);
+                if (frame == 2295 || frame == 2395) propMassRest = mass;
+                if (frame > 2295 && frame < 2395) propMass[0] = Mathf.Max(propMass[0], (mass - propMassRest).magnitude);
+                if (frame > 2395) propMass[1] = Mathf.Max(propMass[1], (mass - propMassRest).magnitude);
+            }
+            if (++frame < 2500) return;
             bool ok = propDent[0] > 0.01f && propDent[1] < 0.003f && propDent[2] > 0.01f && propDent[3] > 0.01f && propSlots[1] == 0 &&
                       propDragLost == 0 && propDragWorst > -0.03f && propDragDeep <= 0.15f * propDragFrames && propDragJump < 0.015f &&
-                      propThrough[0] < 0.06f && propThrough[1] == 0 && propThrough[2] < 0.01f && propTwo < 0.025f && propDropRing[0] > 0.005f && propDropRing[1] > 0.005f && propDropLow > -0.001f;
+                      propThrough[0] < 0.06f && propThrough[1] == 0 && propThrough[2] < 0.01f && propTwo < 0.025f && propDropRing[0] > 0.005f && propDropRing[1] > 0.005f && propDropLow > -0.001f &&
+                      propGripped > 30 && propTold[0] > 0.2f && propTold[1] > 0.5f && propTold[2] > 0.1f && propMass[0] > 0.005f && propMass[1] > 0.003f;
             Debug.Log($"[Jelly] {(ok ? "PASS" : "FAIL")} prop after {frame} frames: a hand from the arrays 3 cm in dented the green {1000f * propDent[0]:0.0} mm ({propSlots[0]} slots) " +
                       $"and the blue {1000f * propDent[1]:0.0} mm ({propSlots[1]} slots, 0 wanted); a MagicaCloth ball 3 cm in dented the green {1000f * propDent[2]:0.0} mm " +
                       $"({propSlots[2]} slots, probes pushed {1000f * propPushed[2]:0.0} mm) and the blue {1000f * propDent[3]:0.0} mm ({propSlots[3]} slots, {1000f * propPushed[3]:0.0} mm); hand radius {1000f * hand:0} mm; " +
                       $"dragged 7 cm each way, the ball rebuilt from the probes at worst {-100f * propDragWorst:0.0} cm too deep, {propDragDeep} of {propDragFrames} frames over 1.5 cm, its depth jumping {100f * propDragJump:0.0} cm in a frame at most, " +
                       $"and {propDragLost} without one; the green's dent {1000f * propDragDent[0]:0.0} mm against {1000f * propDragDent[1]:0.0} mm for a hand dragged the same way; " +
-                      $"a hand pushed on through dented it {1000f * propThrough[0]:0.0} mm at most, {propThrough[1]:0} particles over 10 cm, {1000f * propThrough[2]:0.0} mm once through; two balls 12 cm apart, each slot within {100f * propTwo:0.0} cm of its ball; dropped 12 cm onto a stop, the landing rang the green {1000f * propDropRing[0]:0.0} mm and the blue {1000f * propDropRing[1]:0.0} mm, its lowest particle {1000f * propDropLow:0.0} mm off its board");
+                      $"a fist on the green gripped {propGripped} frames; the bars told strain {propTold[0]:0.00}, grip {propTold[1]:0.00}, slap {propTold[2]:0.00}; the green's whole swung {1000f * propMass[0]:0.0} mm shaken and {1000f * propMass[1]:0.0} mm twitched; a hand pushed on through dented it {1000f * propThrough[0]:0.0} mm at most, {propThrough[1]:0} particles over 10 cm, {1000f * propThrough[2]:0.0} mm once through; two balls 12 cm apart, each slot within {100f * propTwo:0.0} cm of its ball; dropped 12 cm onto a stop, the landing rang the green {1000f * propDropRing[0]:0.0} mm and the blue {1000f * propDropRing[1]:0.0} mm, its lowest particle {1000f * propDropLow:0.0} mm off its board");
             SessionState.SetInt(K + "on", 0);
             SessionState.SetBool(K + "prop", false);
             EditorApplication.Exit(ok ? 0 : 1);
@@ -705,6 +850,8 @@ namespace AvatarBridge.Regression
             (450, "Two colliders on one jelly"),
             (450, "Shaken with a collider resting on it"),
             (450, "A hand pushed right through: the skin holds at 5 cm, then lets go"),
+            (450, "A fist closes on the green and pulls it out, twice: the magenta bar"),
+            (360, "The holder's trigger twitches both, three times"),
             (270, "Let go"),
         };
 
@@ -776,7 +923,16 @@ namespace AvatarBridge.Regression
             else if (shot == 6) PropHands(regions, fronts, hand, (0, poke, across));
             else if (shot == 7) { float d = Slaps(); PropHands(regions, fronts, hand, (0, d, 0f), (1, d, 0f)); }
             else if (shot == 13) { float d = g < 270 ? Mathf.Lerp(-0.05f, 0.32f, g / 270f) : g < 330 ? 0.32f : Mathf.Lerp(0.32f, -0.05f, (g - 330) / 90f); PropHands(regions, fronts, hand, (0, d, 0f), (1, d, 0f)); }
+            else if (shot == 14)
+            {
+                // In open, closed on the skin a centimetre in, pulled 6 cm out, opened, away; twice.
+                int t = g % 225;
+                propClosed = t < 40 ? 0f : t < 130 ? Mathf.Clamp01((t - 40) / 5f) : t < 135 ? Mathf.Lerp(1f, 0f, (t - 130) / 5f) : -1f;
+                float d = t < 40 ? Mathf.Lerp(-0.05f, 0.01f, Mathf.SmoothStep(0f, 1f, t / 40f)) : t < 135 ? 0.01f - 0.06f * Mathf.SmoothStep(0f, 1f, (t - 50) / 40f) : -0.05f - 0.3f * Mathf.Clamp01((t - 135) / 20f);
+                PropHands(regions, fronts, hand, (0, d, 0f));
+            }
             else PropHands(regions, fronts, hand);
+            prop.GetComponent<Animator>().SetFloat("Twitch", shot == 15 && g % 120 >= 30 && g % 120 < 40 ? 1f : 0f);
 
             if (shot == 8) { float d = Press(0.035f); PropBalls(regions, fronts, true, (0, d, 0f, 0f), (1, d, 0f, 0f)); }
             else if (shot == 9) { float d = Drag(0.025f), x = 0.07f * Wave(0.6f); PropBalls(regions, fronts, true, (0, d, x, 0f), (1, d, x, 0f)); }
@@ -791,6 +947,10 @@ namespace AvatarBridge.Regression
             else if (shot == 6) PropBalls(regions, fronts, true, (1, poke, across, 0f));
             else if (propBalls != null) PropBalls(regions, fronts, true);
 
+            // The bars as the client's parser sets them, which the editor never runs.
+            var told = Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_Points.renderTexture"));
+            string[] bars = { "Squeeze", "Grab", "Slap" };
+            for (int k = 0; k < 3; k++) all.First(t => t.name == $"Jelly {bars[k]} Bar").localScale = new Vector3(1f, Mathf.Lerp(0.001f, 0.12f, Mathf.Clamp01(told[3 + k].x)), 1f);
             eye.Render();
             eye2.Render();
             if (frame % 2 == 0)
@@ -907,6 +1067,41 @@ namespace AvatarBridge.Regression
             string said = PairOn(Selection.activeGameObject != null ? Selection.activeGameObject.transform : null, Breast, world: true);
             Debug.Log("[Jelly] " + said);
             EditorUtility.DisplayDialog("Jelly spike", said, "OK");
+        }
+
+        // Batch, for an upload: the squashed avatar in -jellyScene's breasts on the jelly feeling the
+        // world and colliders, its twitch ticked, the menu and animator wired as the menu wires them,
+        // the scene saved.
+        public static void WearBreasts()
+        {
+            var args = Environment.GetCommandLineArgs();
+            var scene = EditorSceneManager.OpenScene(args[Array.IndexOf(args, "-jellyScene") + 1], OpenSceneMode.Single);
+            // -jellyPrefab: the conversion put in the scene, any avatar already there kept but switched off.
+            int from = Array.IndexOf(args, "-jellyPrefab");
+            if (from >= 0 && from + 1 < args.Length)
+            {
+                foreach (var other in Object.FindObjectsOfType<CVRAvatar>()) other.gameObject.SetActive(false);
+                PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(args[from + 1]));
+            }
+            var avatar = Object.FindObjectsOfType<CVRAvatar>().FirstOrDefault(a => YapsSquash.Has(a.transform));
+            if (avatar == null)
+            {
+                Debug.Log("[Jelly] FAIL worn: no avatar with the squash in the scene");
+                EditorApplication.Exit(1);
+                return;
+            }
+            var settings = YapsSquash.SettingsOf(avatar.transform);
+            if (settings != null)
+            {
+                settings.twitch = true;
+                EditorUtility.SetDirty(settings);
+            }
+            string said = PairOn(avatar.transform, Breast, world: true);
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+            AssetDatabase.SaveAssets();
+            Debug.Log($"[Jelly] worn on {avatar.name}: {said}");
+            EditorApplication.Exit(0);
         }
 
         [MenuItem("Tools/AvatarBridge Dev/Jelly spike: put the selected avatar's other pair on the jelly")]
@@ -1242,7 +1437,10 @@ namespace AvatarBridge.Regression
                             spots.Add(front.OrderByDescending(w => spots.Min(q => (q - w).sqrMagnitude)).First());
                         spotsOf[side] = spots;
                     }
-                AddSkin(made, provider, hangs, probing ? spotsOf : null, 0.5f * (n.z - 1) * spacing, "Put the breasts on the jelly", world ? new[] { true, true } : null);
+                // Feeling the world, half of each one's probes are balls, each on a cloth probe's spot:
+                // the first half, spread farthest first over the whole front, so players' colliders and
+                // the world both press it at that spread.
+                AddSkin(made, provider, hangs, probing ? spotsOf : null, 0.5f * (n.z - 1) * spacing, "Put the breasts on the jelly", world ? new[] { true, true } : null, ProbesPer / 2);
             }
 
             // The wearer's own arms, hands and thighs press the breasts as other players' hands do:
@@ -1389,8 +1587,8 @@ namespace AvatarBridge.Regression
                     typeIndex = 0,
                 });
             }
-            // Batch checks leave the avatar's controllers alone.
-            string wired = Application.isBatchMode ? "the menu and animator left alone in batch" : Wired(root.GetComponent<CVRAvatar>(), twitch, squashed != null ? squashed.twitchSize : 0.02f);
+            // Batch checks leave the avatar's controllers alone; a batch build for an upload (-jellyWire) wires them.
+            string wired = Application.isBatchMode && !given.Contains("-jellyWire") ? "the menu and animator left alone in batch" : Wired(root.GetComponent<CVRAvatar>(), twitch, squashed != null ? squashed.twitchSize : 0.02f);
 
             var state = AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture");
             // Each part names its region, one past its index.
@@ -1696,7 +1894,7 @@ namespace AvatarBridge.Regression
         // Region r's probes (spots[r], none for null) and the skinned helper the step reads the regions'
         // frames and the probes through: each region carried by provider.transforms[r], held still by
         // hangs[r], depth its lattice's middle off its anchor.
-        static void AddSkin(GameObject made, CVRMaterialDataProvider provider, Transform[] hangs, List<Vector3>[] spots, float depth, string undo, bool[] solid = null)
+        static void AddSkin(GameObject made, CVRMaterialDataProvider provider, Transform[] hangs, List<Vector3>[] spots, float depth, string undo, bool[] solid = null, int solidFrom = 0)
         {
             var probes = new List<Transform>[] { new List<Transform>(), new List<Transform>() };
             // On a solid side, a ball the world's colliders push, sprung to its rest on the hang: the
@@ -1752,9 +1950,12 @@ namespace AvatarBridge.Regression
                     var mid = region.TransformPoint(0f, 0f, depth);
                     for (int k = 0; k < spots[side].Count; k++)
                     {
-                        var w = spots[side][k];
+                        // A ball sits on a cloth probe's spot, the best spread of the farthest-first picks:
+                        // on the fill-ins after them, a wall's skin stood 14 mm past it on the prop.
+                        bool ball = solid != null && solid[side] && k >= solidFrom;
+                        var w = spots[side][ball ? k - solidFrom : k];
                         var outward = (w - mid).normalized;
-                        if (solid != null && solid[side])
+                        if (ball)
                         {
                             probes[side].Add(Solid(side, k, w, outward));
                             continue;
@@ -1863,14 +2064,18 @@ namespace AvatarBridge.Regression
             // faces overlap and leave no gap for the skin to show through.
             float patch = 0f;
             for (int ps = 0; ps < 2; ps++)
-                if (solid != null && solid[ps] && spots != null && spots[ps].Count > 1)
-                    patch = Mathf.Max(patch, 1.5f * spots[ps].Average(pa => spots[ps].Where(pq => pq != pa).Min(pq => (pa - pq).magnitude)));
+                if (solid != null && solid[ps] && spots != null && spots[ps].Count > solidFrom + 1)
+                {
+                    var balls = spots[ps].Take(spots[ps].Count - solidFrom).ToList();
+                    patch = Mathf.Max(patch, 1.5f * balls.Average(pa => balls.Where(pq => pq != pa).Min(pq => (pa - pq).magnitude)));
+                }
             foreach (var mat in provider.materials)
             {
                 mat.SetFloat("_JellySkinStride", skinMesh.GetVertexBufferStride(0));
                 mat.SetFloat("_JellyProbes", probed);
                 mat.SetFloat("_JellyProbeReach", ProbeReach);
                 mat.SetFloat("_JellySolid", solid == null ? 0 : (solid[0] ? 1 : 0) + (solid[1] ? 2 : 0));
+                mat.SetFloat("_JellySolidFrom", solidFrom);
                 mat.SetFloat("_JellyProbePatch", patch);
                 EditorUtility.SetDirty(mat);
             }
@@ -2206,6 +2411,8 @@ namespace AvatarBridge.Regression
             // The first pass looks for the hands in reach, the third for whatever wakes a rest.
             if (pass == 0) m.EnableKeyword("JELLY_SCAN");
             if (pass == 2) m.EnableKeyword("JELLY_POINTS");
+            // The second pass leaves the first's side row out, which it never runs.
+            if (pass == 1) m.EnableKeyword("JELLY_LATER");
             return m;
         }
 
@@ -3126,6 +3333,9 @@ namespace AvatarBridge.Regression
             // A jelly prop shares the step's materials in the editor and would hand them its anchor.
             foreach (var other in Object.FindObjectsOfType<CVRRenderController>(true))
                 if (other != null && other.GetComponentInParent<CVRAvatar>(true) == null) Object.DestroyImmediate(other.transform.root.gameObject);
+            // Every other avatar off, as the check has it: one already wearing the jelly shares its
+            // step's materials.
+            foreach (var other in Object.FindObjectsOfType<Animator>()) other.gameObject.SetActive(false);
             var made = (GameObject) PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(args[from + 1]), scene);
             // -jellyPick <left bone>,<right bone> or -jellyThighs: the squash rebuilt on this copy with
             // that pair alone, picked or the thighs painted, so it is the first pair, the one the squash
@@ -3734,8 +3944,12 @@ namespace AvatarBridge.Regression
                 // Or, its probes feeling the world (-jellyWorld), a wall slid 3 cm into the first's
                 // front, held and taken away, a kinematic body as a moving world solid is: it should
                 // dent the first, barely move the second, and the dent spring back once it goes.
+                // Both kinds on (the first half of the probes cloth, the second balls), the wall comes once
+                // the collider has gone.
+                bool cloth = jelly.GetComponentsInChildren<Behaviour>(true).Any(c => c.name.StartsWith("Jelly Probes"));
+                int wv = cloth ? v - 180 : v;
                 bool balls = jelly.GetComponentsInChildren<Transform>(true).Any(t => t.name.StartsWith("Jelly Probe Ball"));
-                if (balls && v >= 360 && v <= 535)
+                if (balls && wv >= 360 && wv <= 535)
                 {
                     var box = jelly.GetComponentsInChildren<CVRMaterialDataProvider>(true).First(q => q.transforms != null && q.transforms.Length > 0).materials[0].GetVector("_JellyBox0");
                     if (breastWall == null)
@@ -3745,10 +3959,10 @@ namespace AvatarBridge.Regression
                         breastWall.AddComponent<BoxCollider>().size = new Vector3(2f * box.x + 0.02f, 2f * box.y + 0.02f, 0.02f);
                         breastWall.AddComponent<Rigidbody>().isKinematic = true;
                     }
-                    float gap = v < 380 ? 0.15f : v < 410 ? Mathf.Lerp(0.15f, -0.03f, (v - 380) / 30f) : v < 445 ? -0.03f : Mathf.Lerp(-0.03f, 0.15f, Mathf.Clamp01((v - 445) / 15f));
+                    float gap = wv < 380 ? 0.15f : wv < 410 ? Mathf.Lerp(0.15f, -0.03f, (wv - 380) / 30f) : wv < 445 ? -0.03f : Mathf.Lerp(-0.03f, 0.15f, Mathf.Clamp01((wv - 445) / 15f));
                     breastWall.transform.SetPositionAndRotation(breastRegions[0].TransformPoint(0f, 0f, box.z + 0.01f + gap), breastRegions[0].rotation);
                     var st = Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture"));
-                    if (v == 375) wallRest = st;
+                    if (wv == 375) wallRest = st;
                     float Off(int r)
                     {
                         float most = 0f;
@@ -3756,7 +3970,7 @@ namespace AvatarBridge.Regression
                             most = Mathf.Max(most, ((Vector3) Particle(st, r, q) - (Vector3) Particle(wallRest, r, q)).magnitude);
                         return most;
                     }
-                    if (v >= 425 && v < 445)
+                    if (wv >= 425 && wv < 445)
                     {
                         wallDent[0] = Mathf.Max(wallDent[0], Off(0));
                         wallDent[1] = Mathf.Max(wallDent[1], Off(1));
@@ -3776,9 +3990,9 @@ namespace AvatarBridge.Regression
                             wallDent[3] = Mathf.Max(wallDent[3], breastRegions[0].InverseTransformPoint(Particle(st, 0, wq)).z - (box.z - 0.03f));
                         }
                     }
-                    if (v == 435) wallCost = ChainCost(jelly);
-                    if (v >= 520) wallDent[2] = Mathf.Max(wallDent[2], Off(0));
-                    if (v == 535) Object.DestroyImmediate(breastWall);
+                    if (wv == 435) wallCost = ChainCost(jelly);
+                    if (wv >= 520) wallDent[2] = Mathf.Max(wallDent[2], Off(0));
+                    if (wv == 535) Object.DestroyImmediate(breastWall);
                 }
                 var nets = jelly.GetComponentsInChildren<Behaviour>(true).Where(c => c.name.StartsWith("Jelly Probes")).ToList();
                 if (nets.Count > 0 && v >= 360 && v <= 535)
@@ -3788,7 +4002,7 @@ namespace AvatarBridge.Regression
                     {
                         // In the helper's order, the first the first breast's frontmost, where its skin is
                         // (the lattice's front is a cube's, 20 cm past it).
-                        probeTs = jelly.GetComponentsInChildren<Transform>(true).Where(t => Regex.IsMatch(t.name, @"^Jelly Probe Tip \d \d+$")).ToList();
+                        probeTs = jelly.GetComponentsInChildren<Transform>(true).Where(t => Regex.IsMatch(t.name, @"^Jelly Probe Tip \d \d+$") && t.parent.name.StartsWith("Jelly Probe Base")).ToList();
                         probeHang = probeTs.Select(t => t.parent.parent).ToList();
                         probeRest = probeTs.Select((t, k) => probeHang[k].InverseTransformPoint(t.position)).ToList();
                         // Aimed between the frontmost and its nearest, so the ball pushes both and the
@@ -4433,6 +4647,20 @@ namespace AvatarBridge.Regression
                         Graphics.CopyTexture(fake, 0, 0, 80, 0, 4, 1, read, 0, 0, 80, row);
                     }
                 }
+                // Between steps: particle 0's stamp a 90th of a second old, so the draw carries every
+                // particle on as it does on a frame the rate skips; stepped, this frame's.
+                var at0 = Read(read);
+                var stamp = new Texture2D(1, 1, TextureFormat.RGBAFloat, false);
+                void Between(bool on)
+                {
+                    for (int r = 0; r < 2; r++)
+                    {
+                        var p0 = at0[r * (Side(n) + 1) * 2 * Row];
+                        stamp.SetPixel(0, 0, new Color(p0.x, p0.y, p0.z, Time.timeSinceLevelLoad - (on ? 1f / 90f : 0f)));
+                        stamp.Apply();
+                        Graphics.CopyTexture(stamp, 0, 0, 0, 0, 1, 1, read, 0, 0, 0, r * (Side(n) + 1));
+                    }
+                }
                 // Far is the viewer's head past _Far; none reads as near.
                 void Head(float off) => Shader.SetGlobalVectorArray("_CVR_PlayerHeadPositions", Enumerable.Repeat(off > 0 ? (Vector4) (swing.position + swing.forward * off) : Vector4.zero, 255).ToArray());
                 void Near(float dt) { Head(0f); foreach (var mm in mats) mm.SetFloat("_FixedDt", dt); }
@@ -4456,7 +4684,8 @@ namespace AvatarBridge.Regression
                     ($"the avatar drawn ({drawn.Count} materials) with the squash and the jelly", () => { Drawn(true, true); Fake(false, false); }, () => eye.Render(), eye.targetTexture, 200),
                     ("the jelly, 8 hands in reach", () => { Drawn(true, true); Fake(true, false); }, () => eye.Render(), eye.targetTexture, 200),
                     ("the jelly, 8 hands and a slap's ring", () => { Drawn(true, true); Fake(true, true); }, () => eye.Render(), eye.targetTexture, 200),
-                    ("the jelly alone, no squash", () => { Drawn(true, false); Fake(false, false); }, () => eye.Render(), eye.targetTexture, 200),
+                    ("the jelly alone, no squash", () => { Drawn(true, false); Fake(false, false); Between(false); }, () => eye.Render(), eye.targetTexture, 200),
+                    ("the jelly alone, between steps", () => { Drawn(true, false); Fake(false, false); Between(true); }, () => eye.Render(), eye.targetTexture, 200),
                     ("the squash alone", () => { Drawn(false, true); Fake(false, false); }, () => eye.Render(), eye.targetTexture, 200),
                     ("the squash on every part, the breasts handed back to it", () => Drawn(false, true, true), () => eye.Render(), eye.targetTexture, 200),
                     ("neither", () => Drawn(false, false), () => eye.Render(), eye.targetTexture, 200),
@@ -4471,7 +4700,9 @@ namespace AvatarBridge.Regression
                 Near(0f);
                 Drawn(true, true);
                 Fake(false, false);
+                Between(false);
                 Object.DestroyImmediate(fake);
+                Object.DestroyImmediate(stamp);
                 Object.DestroyImmediate(copyMat);
                 Object.DestroyImmediate(points);
                 strip.Release();
@@ -4496,7 +4727,10 @@ namespace AvatarBridge.Regression
             bool walled = wallRest != null;
             if (walled) Debug.Log($"[Jelly] its probes feeling the world, a wall 3 cm into the first's front: the first dented {1000f * wallDent[0]:0.0} mm, the second {1000f * wallDent[1]:0.0} mm; the wall gone two thirds of a second, the first {1000f * wallDent[2]:0.0} mm off its rest; its skin {1000f * wallDent[3]:0.0} mm past the wall");
             bool wallOk = !walled || wallDent[0] > 0.01f && wallDent[1] < 0.005f && wallDent[2] < 0.006f && wallDent[3] < 0.008f;
-            bool probeOk = wallOk && (!probed || probeDent > probeBefore + 0.005f && probeSlots == probeSlotsBefore + 1 && probePushed >= 2 && bothSlots == 1 && ringsSlow == 0 && ringsProbe == 1 && ringsBoth == 1);
+            // Split, the cloth's twelve probes sit further apart than the 1.25 reaches that make a
+            // second collider, so a ball between two can lead both: a slot more, never one lost.
+            int oneBall = walled ? 2 : 1;
+            bool probeOk = wallOk && (!probed || probeDent > probeBefore + 0.005f && probeSlots > probeSlotsBefore && probeSlots <= probeSlotsBefore + oneBall && probePushed >= 2 && bothSlots >= 1 && bothSlots <= oneBall && ringsSlow == 0 && ringsProbe == 1 && ringsBoth == 1);
             bool ok = anchorOk && told[0] < 0.05f && told[1] < 0.5f && told[2] > 0.3f && told[3] > 0.5f && told[4] > 0.1f
                        && (!twitchSeen || twitched[0] > 0.004f && twitched[1] > 0.004f && twitched[2] < 0.002f) && clap[1] > 0.005f && clap[2] > 0.005f && grabbed > 60 && grab[0] > 0.04f && grab[1] > 0.002f && grab[2] > 0.005f && grab[3] < 0.006f && taut[0] < 0.05f && taut[1] > 0.3f && restMost < 0.006f && pokeMost > 0.01f && poked > 3f * noise + 0.002f && swingMost > 0.005f && bodies > 0.003f && handsOuter > 0.05f && viewOk && probeOk && ownThrough[1] <= 20 && ownThrough[2] < 0.02f;
             string dir = SessionState.GetString(K + "out", "Jelly");
@@ -4515,14 +4749,14 @@ namespace AvatarBridge.Regression
                       $"near, the steps ran {nearOn} of {nearFrames} frames; its head 3 m off, {halfOn} of {halfFrames}, the most a step took {halfMost:0}");
             if (probed)
                 Debug.Log($"[Jelly] another player's collider, a 4.5 cm ball only the probes are given, 3 cm in between the first's frontmost probe and its nearest: the furthest particle " +
-                          $"{1000f * probeBefore:0.0} mm off its rest before, {1000f * probeDent:0.0} mm pressed; {probeSlots} of the step's eight hand slots held a probe's press, {probePushed} probes pushed (two or more, one slot wanted); " +
+                          $"{1000f * probeBefore:0.0} mm off its rest before, {1000f * probeDent:0.0} mm pressed; {probeSlots} of the step's eight hand slots held a probe's press, {probePushed} probes pushed (two or more, {(oneBall == 1 ? "one slot" : "one or two slots")} wanted); " +
                           $"the probes moved {1000f * probeMoved:0.0} mm at most; {probeSlotsBefore} slots held before it came (the slap's palm, parked 3 cm off the outer side)");
             if (probed) Debug.Log($"[Jelly] the probes: {string.Join("; ", probeSaid)}");
             if (probed) Debug.Log($"[Jelly] the probes' press, the furthest particle in mm by frame: {string.Join(", ", probeSeries)}");
             if (probed) Debug.Log($"[Jelly] breasts' cost with a collider pressing two probes: {probeCost} ms a frame");
             Debug.Log($"[Jelly] breasts' cost loaded: a finger 3 cm in {pokeCost}, a wall's faces {wallCost ?? "(no world probes)"}, a fist gripping {gripCost} ms a frame");
             if (probed) Debug.Log($"[Jelly] the probes' slaps, rings fired: {ringsSlow} in the slow press (0 wanted), {ringsProbe} for the ball's slap alone (1), " +
-                                  $"{ringsBoth} for it with a hand in the arrays (1), which held {bothSlots} slots (1); {(ringSaid.Count > 0 ? string.Join("; ", ringSaid) : "none")}");
+                                  $"{ringsBoth} for it with a hand in the arrays (1), which held {bothSlots} slots ({oneBall} at most); {(ringSaid.Count > 0 ? string.Join("; ", ringSaid) : "none")}");
             Debug.Log($"[Jelly] hands squeeze, 13 cm into each outer side: the masses {1000f * handsCloser:0.0} mm closer, the first's outer side {1000f * handsOuter:0.0} mm " +
                       $"and inner side {1000f * handsInner:0.0} mm off rest, its volume {handsVolume:0.000}");
             Debug.Log($"[Jelly] a slap, a palm 5 cm into one side for a tenth of a second: the whole went {1000f * slapMost:0.0} mm, still swinging {1000f * slapLater:0.0} mm a second on");
@@ -4575,7 +4809,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _Sleep (""Rests after standing still this many seconds, untouched and unmoved; 0 never"", Float) = 0.5
         _Rest (""Worn: stops the steps after lying still this many seconds with no hand near; 0 never"", Float) = 0.5
         _Regions (""How many regions the state packs"", Float) = 1
-        _Lift (""1 lifts its rest by the sag gravity gives, along the anchor's up: modelled tissue hangs already"", Float) = 0
+        _Lift (""1 lifts its rest by the sag gravity gives, along the anchor's up: modelled tissue hangs already; a free mass is lifted always"", Float) = 0
         _Gravity (""Share of gravity the tissue feels"", Float) = 1
         _MassHz (""The whole region as one piece, swinging on its root: wobbles a second, 0 off"", Float) = 0
         _MassCarried (""1: the mass rides the anchor's own move, a bone its cloth swings, and only hands move it on it"", Float) = 0
@@ -4606,6 +4840,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _JellyProbes (""MagicaCloth probes a region has in the skinned helper, after its frames, 0 none"", Float) = 0
         _JellyProbeReach (""How far off the skin a collider pushes a probe, the probes' radius, metres"", Float) = 0
         _JellySolid (""Regions whose probes are balls the world's solids push, a bit each: felt as flat faces, not hands"", Float) = 0
+        _JellySolidFrom (""In those regions, the first probe that is a ball; the ones before it the cloth's"", Float) = 0
         _JellyProbePatch (""How far across a world probe's face reaches, metres"", Float) = 0
         _Deepest (""How deep a hand presses before the skin holds it, metres; past the tissue's middle it lets go"", Float) = 0.05
         _JellyArrays (""A component a region: 0 leaves the player arrays' hands out, its probes alone"", Vector) = (1, 1, 1, 1)
@@ -4621,12 +4856,16 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             #pragma vertex vert_img
             #pragma fragment frag
             #pragma target 4.5
+            // shader_feature: an upload builds only the variants its passes use. multi_compile built
+            // all eight, each at the compiler's time limit.
             // Only the first pass looks for hands, so only it carries every player's positions.
-            #pragma multi_compile_local __ JELLY_SCAN
+            #pragma shader_feature_local __ JELLY_SCAN
             // Only a prop sleeps; worn, it is compiled out.
-            #pragma multi_compile_local __ JELLY_SLEEP
+            #pragma shader_feature_local __ JELLY_SLEEP
             // The third pass, which wakes a resting jelly, reads the players' hands too.
-            #pragma multi_compile_local __ JELLY_POINTS
+            #pragma shader_feature_local __ JELLY_POINTS
+            // The second pass, compiled without the first's side row.
+            #pragma shader_feature_local __ JELLY_LATER
             #include ""UnityCG.cginc""
             #include ""JellyCommon.cginc""
 
@@ -4639,7 +4878,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // A helper mesh skinned four points to each region's bone and four to where it hangs on
             // the chest, as the squash's slots, bound as the provider's copy of its skinned buffer.
             ByteAddressBuffer _JellySkin;
-            float _JellySkinStride, _JellyProbes, _JellyProbeReach, _Deepest, _JellySolid, _JellyProbePatch;
+            float _JellySkinStride, _JellyProbes, _JellyProbeReach, _Deepest, _JellySolid, _JellySolidFrom, _JellyProbePatch;
             float4 _JellyArrays;
             float4 _Floor;
             // The most probes a region has: its state row's readout, 88 on, has room for no more.
@@ -4707,8 +4946,10 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // regions' mass as far as it moved. 0 at rest.
             float3 Twitch() { return _JellyTwitch > 0 ? _JellyAnchor[(uint) _JellyTwitch]._m03_m13_m23 - _JellyAnchor[2]._m03_m13_m23 : 0; }
 
-            // Whether region r's probes are world balls.
+            // Whether region r has world balls, and the first of its probes that is one: the ones
+            // before it are the cloth's, PROBES for a region of cloth alone.
             bool SolidRegion(uint r) { return (((uint) round(_JellySolid) >> r) & 1) != 0; }
+            uint WorldFrom(uint r) { return SolidRegion(r) ? (uint) _JellySolidFrom : PROBES; }
 
             // Whether any of a side's probes read pushed last frame.
             bool Pushed(uint side)
@@ -4738,7 +4979,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
 
             // Probe k of region r's: where it was pushed to and which way, and how far, 0 for a spoilt
             // read. Each is two points in the helper from 16, itself then its rest on the hang.
-            float Probe(uint r, uint k, float4x4 back, out float3 at, out float3 way)
+            float Probe(uint r, uint k, float4x4 back, out float3 at, out float3 way, bool sided = true)
             {
                 uint stride = (uint) _JellySkinStride, i0 = 16 + 2 * (r * min((uint) _JellyProbes, (uint) PROBES) + k);
                 uint3 rp = _JellySkin.Load3(i0 * stride), rr = _JellySkin.Load3((i0 + 1) * stride);
@@ -4748,11 +4989,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 way = gone > 1e-6 ? d / gone : 0;
                 // A ball the world pushes is only ever pushed in: one out past its rest is caught on
                 // a solid's far side, as a thin pane passed over it leaves one, and read as a press.
-                [branch] if (SolidRegion(r) && gone > 1e-6)
-                {
-                    float3 mid = mul(_JellyAnchor[2 + r], float4(0, 0, 0.5 * (Count().z - 1) * _Lattice.w, 1)).xyz;
-                    gone = dot(way, normalize(mid - (at - d))) > 0 ? gone : 0;
-                }
+                // A select, not a branch: per probe and unrolled, the branches timed the compiler out.
+                float3 mid = mul(_JellyAnchor[2 + r], float4(0, 0, 0.5 * (Count().z - 1) * _Lattice.w, 1)).xyz;
+                if (sided && k >= WorldFrom(r) && !(dot(way, mid - (at - d)) > 0)) gone = 0;
                 return any((rp & 0x7f800000) == 0x7f800000) || any((rr & 0x7f800000) == 0x7f800000) || !(gone < 0.2) ? 0 : gone;
             }
 
@@ -4763,7 +5002,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // along its bone twice as fast as it came, a slow press read as a slap. ponytail: each
             // against its neighbours, not whole clusters, so a capsule longer than two balls can
             // still take two.
-            void Felt(uint r, float4x4 back, out float3 balls[PROBES], out float3 rests[PROBES], out float deep[PROBES])
+            void Felt(uint r, uint upto, float4x4 back, out float3 balls[PROBES], out float3 rests[PROBES], out float deep[PROBES])
             {
                 // Out of the body from the middle of the lattice at rest, through each probe's rest.
                 float3 mid = mul(_JellyAnchor[2 + r], float4(0, 0, 0.5 * (Count().z - 1) * _Lattice.w, 1)).xyz;
@@ -4781,7 +5020,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     // and out past it, not pressed: one read 12 cm for a ball 3 cm in and rebuilt it 5 cm
                     // too deep in a frame. Held to 0.8 of a reach, a press reads at most about 3 cm deep.
                     // Solving from where the tips sit instead jumped up to 8 cm a frame as roots flipped.
-                    gone[k] = k < (uint) _JellyProbes && g > 0.002 ? min(g, 0.8 * reach) : 0;
+                    gone[k] = k < (uint) _JellyProbes && k < upto && g > 0.002 ? min(g, 0.8 * reach) : 0;
                     deep[k] = 0;
                     any = any || gone[k] > 0;
                 }
@@ -5023,22 +5262,25 @@ Shader ""Hidden/AvatarBridge/JellyStep""
 
             // How far a capsule from a to b of radius r is off the skin: off its box on the anchor (the
             // lattice's, where none is set), less its radius and however far the mass has swung off its
-            // rest. Nine points along the capsule, each a sixteenth of it from the next at most.
-            float Gap(float3 a, float3 b, float r, float4x4 m, float scale, uint side)
+            // rest. Steps + 1 points along the capsule, none more than half a step off any point of it.
+            float Gap(float3 a, float3 b, float r, float4x4 m, float scale, uint side, int steps = 8)
             {
                 float4 box = Region == 0 ? _JellyBox0 : _JellyBox1;
                 float3 half = box.z > 0 ? float3(box.xy, 0.5 * box.z) : 0.5 * (float3) (Count() - 1) * _Lattice.w, mid = float3(0, 0, half.z);
                 float4 mass = _MainTex.Load(int3(30, side, 0));
                 float swung = mass.w > 0 ? distance(mass.xyz, mul(m, float4(0, 0, 0.5 * (Count().z - 1) * _Lattice.w, 1)).xyz) : 0;
+                // Into is affine, so the ends taken in once and the points between found there: a point
+                // at a time, its 128 hands' worth timed the compiler out.
+                float3 ia = Into(m, a) - mid, ib = Into(m, b) - mid;
                 float most = 1e9;
-                [unroll] for (int k = 0; k <= 8; k++) most = min(most, length(max(abs(Into(m, lerp(a, b, k / 8.0)) - mid) - half, 0)));
-                return most * scale - r - swung - distance(a, b) / 16;
+                [unroll] for (int k = 0; k <= steps; k++) most = min(most, length(max(abs(lerp(ia, ib, k / (float) steps)) - half, 0)));
+                return most * scale - r - swung - distance(a, b) / (2 * steps);
             }
 
             // Whether it can reach the skin: within 8 cm, for what a press bulges out of the box. A sphere
             // round the lattice took in the thighs below it, so every particle and breast vertex tested
             // them with the arms down.
-            bool InReach(float3 a, float3 b, float r, float4x4 m, float scale, uint side) { return Gap(a, b, r, m, scale, side) <= 0.08 * scale; }
+            bool InReach(float3 a, float3 b, float r, float4x4 m, float scale, uint side, int steps = 8) { return Gap(a, b, r, m, scale, side, steps) <= 0.08 * scale; }
 
             // How far the wearer's capsules in reach have moved against the anchor since the state at
             // side was stepped: their ends as it kept them (texels 42 to 57 and 64 to 79) on its anchor
@@ -5133,7 +5375,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // Hand slot texel x of the eight, two texels each, (wrist, radius) then (an open hand's
             // tip, 10 plus the gesture), an empty one 0. Each looks through every player's hands and keeps the one it is due, so a
             // pass reads eight however many players there are.
-            float4 Scan(int x, float4x4 m, float scale, uint side)
+            float4 Scan(int x, float4x4 m, float scale, uint side, bool felt, float3 balls[PROBES], float deep[PROBES])
             {
                 int slot = x >> 1;
                 int3 n = Count();
@@ -5175,8 +5417,10 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                                     float3 tip = wrist + (dot(arm, arm) > 1e-6 ? normalize(arm) : 0) * max(0.11 * tall - r, 0);
                                     // ponytail: eight hands at most, the first in player order; a crowd round one
                                     // jelly needs more slots.
-                                    // Twice the radius, the skin's rim the draw eases out round a hand.
-                                    bool hit = dot(wrist, wrist) >= 1e-6 && InReach(wrist, tip, 2 * r, m, scale, side);
+                                    // Twice the radius, the skin's rim the draw eases out round a hand. Three
+                                    // points and a quarter of the hand's slack: nine, 128 times over, timed
+                                    // the compiler out.
+                                    bool hit = dot(wrist, wrist) >= 1e-6 && InReach(wrist, tip, 2 * r, m, scale, side, 2);
                                     // Kept, not returned: a return inside the unrolled loop fails D3D11's validation.
                                     kw = hit && found == slot ? float4(wrist, r) : kw;
                                     kt = hit && found == slot ? float4(tip, 10 + clamp(held.w, 0, 9.9)) : kt;
@@ -5204,29 +5448,28 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // Then where MagicaCloth's colliders pushed the probes, each a hand's ball whose side
                 // is the point it pushed: pushed out its nearest way, a probe lies on the collider's
                 // skin, the collider on past it the way it came from. Its push is on the hang, as
-                // last skinned, put on the hang as it is now.
-                // Only once one was pushed last frame, as the readout from 88 has it: a collider is
-                // felt a reach off the skin, so the frame this starts late by is still short of it.
-                // At rest this is most of the step's cost.
-                // Each test branched: `&&` works out both sides, so the reads and InReach's nine
-                // points ran for every probe, pushed or not.
-                bool pushed = false;
-                // World probes press as flat faces in the step, never as hands.
-                [branch] if (_JellyProbes > 0 && !SolidRegion(Region))
-                    [unroll] for (uint k = 0; k < PROBES; k++) pushed = pushed || k < (uint) _JellyProbes && _MainTex.Load(int3(88 + k, side, 0)).w > 0.001;
-                float4x4 back;
-                [branch] if (pushed)
-                [branch] if (Probing(Region, back))
+                // last skinned, put on the hang as it is now. Felt before the dispatch.
+                [branch] if (felt)
                 {
-                    float3 balls[PROBES], rests[PROBES];
-                    float deep[PROBES];
-                    Felt(Region, back, balls, rests, deep);
+                    // Felt leaves two pressing at most, its leaders: those two, in probe order, are
+                    // all that is tested. Each of the 24 tested in turn timed the compiler out.
+                    float3 led[2] = { (float3) 0, (float3) 0 };
+                    bool on[2] = { false, false };
                     [unroll] for (uint k = 0; k < PROBES; k++)
                     {
+                        bool second = deep[k] > 0 && on[0] && !on[1];
+                        led[1] = second ? balls[k] : led[1];
+                        on[1] = on[1] || second;
+                        led[0] = deep[k] > 0 && !on[0] ? balls[k] : led[0];
+                        on[0] = on[0] || deep[k] > 0;
+                    }
+                    [unroll] for (uint i = 0; i < 2; i++)
+                    {
                         bool hit = false;
-                        [branch] if (deep[k] > 0)
+                        [branch] if (on[i])
                         {
-                            hit = InReach(balls[k], balls[k], _Hand, m, scale, side);
+                            // A point, so its two ends do.
+                            hit = InReach(led[i], led[i], _Hand, m, scale, side, 1);
                             // A collider on a hand the arrays gave last frame is that hand, which has
                             // its slot: the client puts a capsule on every player's hands. The ball
                             // sits up to a reach out from the collider, the way its probe was pushed.
@@ -5234,11 +5477,11 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             {
                                 float4 ha = _MainTex.Load(int3(2 * e, side, 0)), hb = _MainTex.Load(int3(2 * e + 1, side, 0));
                                 float3 seg = hb.xyz - ha.xyz;
-                                float3 p = ha.xyz + seg * saturate(dot(balls[k] - ha.xyz, seg) / max(dot(seg, seg), 1e-12));
-                                hit = hit && !(hb.w > 0.5 && dot(seg, seg) > 1e-12 && distance(balls[k], p) < ha.w + _Hand + _JellyProbeReach);
+                                float3 p = ha.xyz + seg * saturate(dot(led[i] - ha.xyz, seg) / max(dot(seg, seg), 1e-12));
+                                hit = hit && !(hb.w > 0.5 && dot(seg, seg) > 1e-12 && distance(led[i], p) < ha.w + _Hand + _JellyProbeReach);
                             }
                         }
-                        kept = hit && found == slot ? ((x & 1) == 0 ? float4(balls[k], _Hand) : float4(balls[k], 10)) : kept;
+                        kept = hit && found == slot ? ((x & 1) == 0 ? float4(led[i], _Hand) : float4(led[i], 10)) : kept;
                         found += hit;
                     }
                 }
@@ -5351,7 +5594,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         [unroll] for (uint k = 0; k < PROBES; k++)
                         {
                             float3 at, way;
-                            [branch] if (k < (uint) _JellyProbes) near = near || Probe(q, k, back, at, way) > 0.002;
+                            [branch] if (k < (uint) _JellyProbes) near = near || Probe(q, k, back, at, way, false) > 0.002;
                         }
                     }
                 }
@@ -5556,7 +5799,6 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // Carried, the cloth gives the weight its sag, so the mass takes none of its own.
                 float3 next = tip.xyz + (tip.xyz - was.xyz) * (exp(-_MassDamp * (1 + 3 * taut) * dt) * dt / max(was.w, 1e-4)) + (_MassCarried > 0 ? 0 : Gravity * dt * dt);
                 float spring = 6.2831853 * _MassHz * dt;
-                float3 lift = _Lift > 0 && !(_MassCarried > 0) ? normalize(m._m01_m11_m21) * 9.81 * _Gravity * (1 - spring * spring) / (39.478418 * _MassHz * _MassHz) : 0;
                 // How hard it is loaded: each push and pull on it by its size, so a squeeze from both
                 // sides, which leaves the whole where it was, loads it twice over.
                 float load = 0;
@@ -5631,7 +5873,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     [unroll] for (uint fk = 0; fk < PROBES; fk++)
                     {
                         float3 fat, fway;
-                        float fg = fk < (uint) _JellyProbes ? Probe(region, fk, sback, fat, fway) : 0;
+                        float fg = fk < (uint) _JellyProbes && fk >= WorldFrom(region) ? Probe(region, fk, sback, fat, fway) : 0;
                         [branch] if (fg > 0.02)
                         {
                             float3 face = fat + normalize(fat - fway * fg - smid) * (_JellyProbeReach - BALL) - fway * BALL;
@@ -5647,6 +5889,10 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // A twitch kicks it as a hand would, never loading it.
                 pushed += Twitch();
                 spring *= 1 + taut;
+                // Free, lifted by its own sag whatever _Lift says of the tissue: a prop's tissue sags
+                // onto its plate, and a mass let sag dragged the whole down after it. Taken at the taut
+                // spring: lifted for the slack one, a press sprang the whole 10 cm up.
+                float3 lift = !(_MassCarried > 0) ? normalize(m._m01_m11_m21) * 9.81 * _Gravity * (1 - spring * spring) / (39.478418 * _MassHz * _MassHz * (1 + taut) * (1 + taut)) : 0;
                 next = lerp(next, rest + lift + pushed, min(spring * spring, 1));
                 [branch] if (_Pair > 0)
                 {
@@ -5843,7 +6089,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     [unroll] for (uint fk = 0; fk < PROBES; fk++)
                     {
                         float3 fat, fway;
-                        float fg = fk < (uint) _JellyProbes ? Probe(Region, fk, sback, fat, fway) : 0;
+                        float fg = fk < (uint) _JellyProbes && fk >= WorldFrom(Region) ? Probe(Region, fk, sback, fat, fway) : 0;
                         [branch] if (fg > 0.02)
                         {
                             float3 fout = normalize(fat - fway * fg - smid);
@@ -5953,7 +6199,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 return at.w > 0 ? (m._m03_m13_m23 - at.xyz) / max(dt, 1e-4) : 0;
             }
 
-            float4 Slap(int x, float4x4 m, float scale, float dt, bool distant, uint side)
+            float4 Slap(int x, float4x4 m, float scale, float dt, bool distant, uint side, bool felt, float3 rests[PROBES], float deep[PROBES])
             {
                 float4 box = Region == 0 ? _JellyBox0 : _JellyBox1;
                 float3 half = box.z > 0 ? float3(box.xy, 0.5 * box.z) : 0.5 * (float3) (Count() - 1) * _Lattice.w, mid = float3(0, 0, half.z);
@@ -5996,16 +6242,12 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // frames before the probes, and as a palm goes in the probe furthest in changes and
                 // crosses faster. Such a one deepens that ring and never adds a second. Unrolled:
                 // Shader Filtering cuts a [loop] short.
-                float4x4 back;
                 int into = -1;
-                [branch] if (!fired && timed && !distant)
-                [branch] if (Probing(Region, back))
+                // Felt before the dispatch, while timed.
+                [branch] if (!fired && felt)
                 {
                     speed = _Slap.x;
                     float skin = max(_JellyProbeReach, 0.002);
-                    float3 balls[PROBES], rests[PROBES];
-                    float deep[PROBES];
-                    Felt(Region, back, balls, rests, deep);
                     [unroll] for (uint k = 0; k < PROBES; k++)
                     [branch] if (deep[k] >= skin)
                     {
@@ -6134,6 +6376,11 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     }
                     return float4(off ? 0 : 1, 0, 0, 1);
                 }
+#ifdef JELLY_POINTS
+                // A points material only ever runs the block above: the step left out of it, the
+                // compiler took twenty minutes over code it never runs.
+                return 0;
+#else
                 float4 here = _MainTex.Load(int3(px, 0));
                 // The cost meter's load rests in even phases, as cheap as a pass can be.
                 if (_Stress > 0 && fmod(floor(_Time.y / Window), 2) < 0.5) return here;
@@ -6192,15 +6439,48 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 if ((uint) px.y == side)
                 {
                     if (!anchored) return 0;
+                    // The second pass never runs this, so its variant is compiled without it.
+#ifndef JELLY_LATER
                     if (_Pass < 0.5)
                     {
                         if (px.x == 18) return float4(distant, asleep, 0, 1);
                         if (px.x == 25) return float4(held, smooth, _Time.y, frames);
+                        // The probes as Felt has them, for the scan's texels and the slaps': one copy of
+                        // it between them, as a copy each took the compiler past its time limit. The
+                        // scan's only once a cloth probe was pushed last frame, as the readout from 88
+                        // has it: a collider is felt a reach off the skin, so the frame this starts late
+                        // by is still short of it, and at rest this is most of the step's cost. World
+                        // probes press as flat faces in the step, never as hands, so the scan takes the
+                        // cloth's alone. The slaps' while their last frame was timed. Each test
+                        // branched: `&&` works out both sides.
+                        float3 balls[PROBES], rests[PROBES];
+                        float deep[PROBES];
+                        bool feel = false, felt = false;
+                        uint upto = PROBES;
+#ifdef JELLY_SCAN
+                        [branch] if (px.x < 16 && !distant)
+                        {
+                            upto = min((uint) _JellyProbes, WorldFrom(Region));
+                            [unroll] for (uint k = 0; k < PROBES; k++) feel = feel || k < upto && _MainTex.Load(int3(88 + k, side, 0)).w > 0.001;
+                        }
+#endif
+                        [branch] if (px.x >= 80 && px.x < 84 && !distant)
+                        {
+                            float4 last = _MainTex.Load(int3(84, side, 0));
+                            feel = last.w > 0 && _Time.y - last.w < 0.1;
+                        }
+                        float4x4 back;
+                        [branch] if (feel)
+                        [branch] if (Probing(Region, back))
+                        {
+                            Felt(Region, upto, back, balls, rests, deep);
+                            felt = true;
+                        }
 #ifdef JELLY_SCAN
                         [branch] if (px.x < 16)
                         {
                             if (distant) return 0;
-                            return Scan(px.x, m, scale, side);
+                            return Scan(px.x, m, scale, side, felt, balls, deep);
                         }
 #endif
                         [branch] if (px.x >= 32 && px.x <= 34 && _Solid > 0) return Bulk(px.x - 32, m, distant, side);
@@ -6260,7 +6540,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             uint side0 = side - Base;
                             return Mass(px.x, m, scale, dt, distant, side, region, (region ^ 1) * (side0 + 1) + side0);
                         }
-                        if (px.x >= 80 && px.x <= 84) return Slap(px.x, m, scale, dt, distant, side);
+                        if (px.x >= 80 && px.x <= 84) return Slap(px.x, m, scale, dt, distant, side, felt, rests, deep);
                         if (px.x == 85) return float4(AnchorVelocity(m, dt, side), _Time.y);
                         // Each hand slot's grip (112 to 119), as Pulled reads it: a fist closed on the
                         // skin grips it where it closed, until it opens or has pulled twice as far as
@@ -6293,6 +6573,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         }
                         return here;
                     }
+#endif
                     if (px.x >= 26 && px.x <= 29)
                         return float4(px.x == 26 ? m._m00_m10_m20 : px.x == 27 ? m._m01_m11_m21 : px.x == 28 ? m._m02_m12_m22 : m._m03_m13_m23, 1);
                     // Which of the wearer's own capsules are in reach, a bit each, from the first pass's
@@ -6371,6 +6652,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     return float4(Fresh(s, here, home) ? home : s.xyz, h);
                 }
                 return float4(Moved(p, l, m, scale, h, home, false, distant, side, swing, q), _Time.y);
+#endif
             }
             ENDCG
         }

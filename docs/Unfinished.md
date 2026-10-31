@@ -2852,6 +2852,43 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     parser, read back a few frames late, keeping the pattern; the draw's carrying on is untimed
     (eight more texels a vertex between steps); it takes off the anchor's move, not its turn, so a
     fast spin carries the skin on a few millimetres.
+    (20) Every feature on the prop and on the avatar (Joe: "time the interpolation's draw cost and
+    do all features of the jiggle system on the prop and kar"). The draw's carrying on between steps
+    (eight more texels a vertex) is under the bench's noise, 0.03 ms for 16 avatars: the breasts
+    alone, between steps against on a step, read the same. Kar's probes split (Joe chose "Split 12 + 12
+    per breast"): with the world menu on, the first twelve, spread farthest first over the whole front,
+    are the cloth's, and twelve physics balls sit on the same spots (`_JellySolidFrom`, the first
+    world probe), so players' colliders and the world's solids both press one avatar. On the fill-in
+    spots after them, the world prop's wall stood 13.9 mm past its skin. The cost of sparser cloth
+    probes: they sit further apart than the 1.25 reaches that make a second collider, so a ball
+    between two takes two slots (a slot more, never a collider lost). The prop (Joe chose "Add
+    all four"): its green swings as a free whole (about 1.1 Hz, damped 0.6, a tenth of a press moving
+    it); a strain bar, a grip bar and a slap bar each driven through the parser from the points
+    strip; and a twitch on the holder's trigger, the spawnable's synced value moving the "Jelly
+    Twitch" transform through the prop's own animator. A free mass is lifted by its own sag at the
+    spring as taut makes it: lifted for the slack spring, a press sprang the whole 10 cm up (the
+    hand's dent 62.6 mm and a hand pushed through 147.8 mm, against 29.1 and 50.0 before the swing).
+    Checks: the prop's hand dented 29.1 mm and a ball 26.8, a fist gripped 92 frames, the bars read
+    strain 0.47, grip 1.00 and slap 1.00, the whole swung 63.8 mm shaken and 34.8 twitched, a hand
+    pushed through 50.0; the world prop's wall 31.8 mm, its skin 0.0 past it; Kar's wall 33.2 mm,
+    its skin 0.0 past it, a collider 54.9 mm in two slots, the twitch 13.8 mm, the animator told
+    0.58, 1.00 and 0.81, 0.041 ms a frame at rest. OPEN, in game: the prop's bars through a
+    spawnable's parser, and the twitch on other players' copies.
+    The step's shader no longer times Unity's compiler out (Unity gives up on a variant after some
+    minutes; earlier runs had drawn it from the shader cache, so the project only looked as if it
+    had the new shader). Timed one variant at a time in fxc at `/O3`: the scan variant took 189 s
+    and the plain one 69 s, and the plain one still timed out in one run of three, which reads as
+    one variant waiting behind another. Now: the scan 140 s, the second pass 26 s, the points 22 s.
+    What did it: `shader_feature_local` builds only the variants a material uses (`multi_compile`
+    built all eight); a points material leaves the step out (`JELLY_POINTS`); the second pass leaves
+    out the first's side row (`JELLY_LATER`, 69 s to 26 s); a world probe's facing test is a select,
+    not a branch; the 128 hands' reach test takes three points along each with a quarter of its
+    length of slack, not nine; the scan tests only the two probes Felt leads with, not all 24 (189 s
+    to 148 s); and the scan and the slaps share one copy of Felt. Measured and left: flattening the
+    scan's player branches (15 s, but every player's hands read), hoisting the reach test's setup
+    (6 s), three points for the wearer's own capsules (none). OPEN: Unity's own limit, which its
+    message says UNITY_SHADER_COMPILER_TASK_TIMEOUT_MINUTES raises, is not known here; the scan
+    variant is the one to watch.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 
