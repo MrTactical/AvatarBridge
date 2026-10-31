@@ -3036,7 +3036,9 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
          zone at MagicaCloth's default strength moved nothing with or without that. Checks: Kar passes,
          near 60 of 60 frames stepped (a finger 95.3 mm, turning 103.9, the contact 88.1, all a little
          under the every-other-frame run's), the world prop's wall 30.1 mm under that wind, the prop as
-         before (its two-collider FAIL above). In game OPEN.
+         before (its two-collider FAIL above). In game (Joe, same day, 8c9c690): "working way better
+         now, goes blue and grabs work". OPEN: a grab holds the skin away from the hand ("its not at
+         the hand, but its functional"): how far, which way, and whose hand, not yet known.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 
