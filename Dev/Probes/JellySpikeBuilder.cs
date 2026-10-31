@@ -154,14 +154,27 @@ namespace AvatarBridge.Regression
         [MenuItem("Tools/Avatar Bridge/Dev/Jelly/Early spike/Make a prop in the open scene")]
         static void MakeOneProp() => MakeProp(1);
 
-        static GameObject MakeProp(int regions, bool withRider = true)
+        static GameObject MakeProp(int regions, bool withRider = true, string id = null)
         {
             var prefab = Make(preview: false, withMeter: false, withRider: withRider, regions: regions);
             if (prefab == null) return null;
             var old = GameObject.Find("Jelly Prop");
+            // The old prop's content id kept, so an upload replaces it: rebuilt without one, each
+            // upload made another prop on the account.
+            if (string.IsNullOrEmpty(id)) id = PropId(old);
             if (old != null) Undo.DestroyObjectImmediate(old);
             var prop = new GameObject("Jelly Prop");
             prop.AddComponent<CVRSpawnable>();
+            if (!string.IsNullOrEmpty(id))
+            {
+                var info = prop.GetComponent<CVRAssetInfo>();
+                if (info == null)
+                {
+                    info = prop.AddComponent<CVRAssetInfo>();
+                    info.type = CVRAssetInfo.AssetType.Spawnable;
+                }
+                info.objectId = id;
+            }
             var made = (GameObject) PrefabUtility.InstantiatePrefab(prefab, prop.transform);
             // At chest height above the floor it is placed on.
             made.transform.localPosition = new Vector3(0f, 1.2f, 0f);
@@ -178,8 +191,14 @@ namespace AvatarBridge.Regression
             box.isTrigger = true;
             Undo.RegisterCreatedObjectUndo(prop, "Make the jelly prop");
             Selection.activeGameObject = prop;
-            Debug.Log("[Jelly] made Jelly Prop in the open scene, grabbable; upload it from the CCK Control Panel");
+            Debug.Log("[Jelly] made Jelly Prop in the open scene, grabbable" + (string.IsNullOrEmpty(id) ? "" : $", keeping its content id {id}") + "; upload it from the CCK Control Panel");
             return prop;
+        }
+
+        static string PropId(GameObject prop)
+        {
+            var info = prop != null ? prop.GetComponent<CVRAssetInfo>() : null;
+            return info != null ? info.objectId : null;
         }
 
 #if AVATARBRIDGE_MAGICA
@@ -213,19 +232,26 @@ namespace AvatarBridge.Regression
             SessionState.SetBool(K + "prop", true);
             try
             {
+                // The last build's content id, from its own scene: a new scene has no old prop to keep it from.
+                string path = Folder + "/Jelly_Prop.unity", id = null;
+                if (File.Exists(path))
+                {
+                    EditorSceneManager.OpenScene(path, OpenSceneMode.Single);
+                    id = PropId(GameObject.Find("Jelly Prop"));
+                }
                 var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
-                bool made = MakeProbeProp(world: true) != null;
-                EditorSceneManager.SaveScene(scene, Folder + "/Jelly_Prop.unity");
+                bool made = MakeProbeProp(world: true, id: id) != null;
+                EditorSceneManager.SaveScene(scene, path);
                 Debug.Log(made ? $"[Jelly] made the world prop in {Folder}/Jelly_Prop.unity" : "[Jelly] FAIL the world prop did not build");
             }
             finally { SessionState.SetBool(K + "prop", false); }
             EditorApplication.Exit(0);
         }
 
-        static GameObject MakeProbeProp(bool world = false)
+        static GameObject MakeProbeProp(bool world = false, string id = null)
         {
             // No rider: it sat on the left one's front, where the pokes go.
-            var prop = MakeProp(2, withRider: false);
+            var prop = MakeProp(2, withRider: false, id: id);
             if (prop == null) return null;
             var made = prop.transform.GetChild(0).gameObject;
             PrefabUtility.UnpackPrefabInstance(made, PrefabUnpackMode.OutermostRoot, InteractionMode.AutomatedAction);

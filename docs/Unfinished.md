@@ -3007,6 +3007,8 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
          ball 24.5 and 24.2 mm (26.8 at 20 cm), dragged 0 frames over 1.5 cm too deep, a wall 30.1
          mm into the orange one. OPEN: two colliders at once read up to 7.8 cm off each ball
          even 24 cm apart, 1.5 at 20 cm, so the prop check fails there.
+       - **Each upload made another prop** on his account: a rebuild made the prop afresh with no
+         content id. The rebuild keeps the old prop's id now, and the batch build its scene's.
        - **A glass pane** on the world prop to press in (Joe: "to demonstrate squish"): a pickup of
          its own, synced, 4 cm thick and 6 cm past the face all round, as the check's wall.
        - **A slow hand rang a slap** ("very slow speed", his hand, desktop): hands fire at 1.2 m/s
