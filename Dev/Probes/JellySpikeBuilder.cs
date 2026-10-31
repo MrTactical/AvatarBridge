@@ -88,10 +88,12 @@ namespace AvatarBridge.Regression
         // default: it sags and turns within millimetres of the fine one and costs a slow GPU about
         // half; the menu's tick takes the fine one back.
         static readonly Vector3Int Mid = new Vector3Int(12, 9, 12), Coarse = new Vector3Int(8, 6, 8);
-        // 20 cm deep whatever the lattice.
-        static float SpacingOf(Vector3Int n) => 0.2f / (n.z - 1);
+        // 20 cm deep whatever the lattice; the probe prop 40, as people's colliders are big against
+        // 20 cm, on the fine lattice, which keeps the 20 cm coarse one's detail.
+        static bool Probed => SessionState.GetBool(K + "prop", false);
+        static float SpacingOf(Vector3Int n) => (Probed ? 0.4f : 0.2f) / (n.z - 1);
         const string CoarseKey = "AvatarBridge.JellySpike.Coarse";
-        static Vector3Int Lattice => EditorPrefs.GetBool(CoarseKey, true) ? Coarse : Size;
+        static Vector3Int Lattice => Probed || !EditorPrefs.GetBool(CoarseKey, true) ? Size : Coarse;
 
         [MenuItem("Tools/Avatar Bridge/Dev/Jelly/Coarse lattice")]
         static void ToggleCoarse() => EditorPrefs.SetBool(CoarseKey, !EditorPrefs.GetBool(CoarseKey, true));
@@ -104,7 +106,8 @@ namespace AvatarBridge.Regression
         }
         const int Row = 64, Passes = 2, Frames = 300, Load = 32, BreastFrames = 3680, ViewFrames = 720, ProbesPer = 24;
         // How far off the skin a collider pushes a probe: the probe cloth's radius.
-        const float ProbeReach = 0.04f;
+        // The probe prop's twice, as its 24 sit twice as far apart over a face four times the size.
+        static float ProbeReach => Probed ? 0.08f : 0.04f;
         struct Late { }
 
         static int frame;
@@ -273,6 +276,7 @@ namespace AvatarBridge.Regression
             blueDraw.SetColor("_Color", world ? new Color(1f, 0.72f, 0.42f) : new Color(0.5f, 0.68f, 1f));
             blueSkin.sharedMaterial = blueDraw;
             // Green under the one that feels both, blue under the colliders' alone.
+            var held = new Bounds();
             for (int r = 0; r < 2; r++)
             {
                 var plate = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -283,7 +287,15 @@ namespace AvatarBridge.Regression
                 plate.transform.localScale = new Vector3(span.x + 0.06f, 0.01f, span.z + 0.06f);
                 var tint = r == 0 ? new Color(0.2f, 0.8f, 0.3f) : world ? new Color(0.95f, 0.5f, 0.1f) : new Color(0.2f, 0.5f, 1f);
                 plate.GetComponent<MeshRenderer>().sharedMaterial = Save(new Material(Shader.Find("Standard")) { color = tint }, r == 0 ? "/Jelly_Plate_Both.mat" : "/Jelly_Plate_Colliders.mat");
+                var on = plate.GetComponent<MeshRenderer>().bounds;
+                if (r == 0) held = on;
+                else held.Encapsulate(on);
             }
+            // Held by its boards alone: a box round the jellies took every grab, so a fist closing on
+            // one picked the prop up instead of the skin. A little under the boards, none above.
+            var grab = prop.GetComponent<BoxCollider>();
+            grab.center = prop.transform.InverseTransformPoint(held.center) - new Vector3(0f, 0.015f, 0f);
+            grab.size = held.size + new Vector3(0.02f, 0.03f, 0.02f);
             // Each whole swings on its root as a breast does, free of any cloth: a breast's rate for
             // the tissue's weight, about half its box, damped at 0.6 of critical.
             float hz = 2f * Mathf.Pow(0.5f / (950f * 0.5f * span.x * span.y * span.z), 1f / 3f);
@@ -341,6 +353,21 @@ namespace AvatarBridge.Regression
                 animator = animator,
                 animatorParameterName = "Twitch",
             });
+            // On the world one, a pane of glass to grab and press into it, a pickup of its own synced
+            // to everyone: a world solid, as a wall or a table is. 4 cm thick and 6 cm past the face
+            // all round, as the check's wall: thinner, a quick push slipped past the probes' balls.
+            if (world)
+            {
+                var pane = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                pane.name = "Glass Pane";
+                pane.transform.SetParent(prop.transform, false);
+                pane.transform.SetPositionAndRotation(regions[1].TransformPoint(0f, 0f, span.z + 0.1f), regions[1].rotation);
+                pane.transform.localScale = new Vector3(span.x + 0.12f, span.y + 0.12f, 0.04f);
+                pane.GetComponent<MeshRenderer>().sharedMaterial = Save(Glass(new Color(0.75f, 0.9f, 1f, 0.35f)), "/Jelly_Glass.mat");
+                pane.AddComponent<Rigidbody>().isKinematic = true;
+                pane.AddComponent<CVRPickupObject>();
+                spawnable.subSyncs.Add(new CVRSpawnableSubSync { transform = pane.transform, syncBoundary = 2f });
+            }
             // What the jelly tells the animator on an avatar, here three bars between the two, each
             // its height through the parser: yellow the strain, magenta a grip, red the last slap.
             var parser = made.GetComponentInChildren<CVRTexturePropertyParser>(true);
@@ -383,7 +410,8 @@ namespace AvatarBridge.Regression
         {
             SessionState.SetBool(K + "prop", true);
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-            if (MakeProbeProp() == null)
+            // -jellyWorldProp: the world one instead, for the steady check.
+            if (MakeProbeProp(world: Environment.GetCommandLineArgs().Contains("-jellyWorldProp")) == null)
             {
                 SessionState.SetBool(K + "prop", false);
                 Debug.Log("[Jelly] FAIL prop: it did not build");
@@ -395,6 +423,7 @@ namespace AvatarBridge.Regression
             SessionState.SetBool(K + "propFilm", film);
             SessionState.SetBool(K + "propWorld", false);
             SessionState.SetBool(K + "propWorldFilm", false);
+            SessionState.SetBool(K + "propSteady", Environment.GetCommandLineArgs().Contains("-jellySteady"));
             var cam = new GameObject("Eye").AddComponent<Camera>();
             cam.transform.position = film ? new Vector3(0.55f, 1.45f, 0.75f) : new Vector3(0f, 1.3f, 1.2f);
             cam.transform.LookAt(new Vector3(0f, 1.22f, film ? 0.12f : 0.1f));
@@ -738,9 +767,10 @@ namespace AvatarBridge.Regression
             }
             if (frame >= 2300 && frame < 2390) prop.position += Vector3.right * (0.05f * Mathf.Sin(2f * Mathf.PI * 2f * (frame - 2300) / 90f));
             if (frame >= 2400) prop.GetComponent<Animator>().SetFloat("Twitch", frame < 2410 ? 1f : 0f);
-            // Then two balls 12 cm apart into each, which should take a slot each, not share them.
-            float two = Mathf.Lerp(-0.06f, 0.03f, (frame - 1910) / 40f);
-            if (frame >= 1910 && frame < 2010) PropBalls(regions, fronts, false, (0, two, -0.06f, 0.03f), (0, two, 0.06f, -0.03f), (1, two, -0.06f, 0.03f), (1, two, 0.06f, -0.03f));
+            // Then two balls 12 cm apart into each, which should take a slot each, not share them; as
+            // far apart in probes' reaches on the probe prop, whose reach is twice: closer, they read as one.
+            float two = Mathf.Lerp(-0.06f, 0.03f, (frame - 1910) / 40f), wide = ProbeReach / 0.04f;
+            if (frame >= 1910 && frame < 2010) PropBalls(regions, fronts, false, (0, two, -0.06f * wide, 0.03f * wide), (0, two, 0.06f * wide, -0.03f * wide), (1, two, -0.06f * wide, 0.03f * wide), (1, two, 0.06f * wide, -0.03f * wide));
             else if (frame >= 990) PropBalls(regions, fronts, false);
             else if (frame >= 330) PropBalls(regions, fronts, false, (0, bd, bx, 0f), (1, bd, bx, 0f));
             eye.Render();
@@ -852,17 +882,72 @@ namespace AvatarBridge.Regression
             if (++frame < 2700) return;
             bool ok = propDent[0] > 0.01f && propDent[1] < 0.003f && propDent[2] > 0.01f && propDent[3] > 0.01f && propSlots[1] == 0 &&
                       propDragLost == 0 && propDragWorst > -0.03f && propDragDeep <= 0.15f * propDragFrames && propDragJump < 0.015f &&
-                      propThrough[0] < 0.06f && propThrough[1] == 0 && propThrough[2] < 0.01f && propTwo < 0.025f && propDropRing[0] > 0.005f && propDropRing[1] > 0.005f && propDropLow > -0.001f &&
+                      propThrough[0] < 0.06f && propThrough[1] == 0 && propThrough[2] < 0.01f && propTwo < 0.025f * ProbeReach / 0.04f && propDropRing[0] > 0.005f && propDropRing[1] > 0.005f && propDropLow > -0.001f &&
                       propGripped > 30 && propStroke > 0.05f && propStrokeHeld > 90 && propTold[0] > 0.2f && propTold[1] > 0.5f && propTold[2] > 0.1f && propMass[0] > 0.005f && propMass[1] > 0.003f;
             Debug.Log($"[Jelly] {(ok ? "PASS" : "FAIL")} prop after {frame} frames: a hand from the arrays 3 cm in dented the green {1000f * propDent[0]:0.0} mm ({propSlots[0]} slots) " +
                       $"and the blue {1000f * propDent[1]:0.0} mm ({propSlots[1]} slots, 0 wanted); a MagicaCloth ball 3 cm in dented the green {1000f * propDent[2]:0.0} mm " +
                       $"({propSlots[2]} slots, probes pushed {1000f * propPushed[2]:0.0} mm) and the blue {1000f * propDent[3]:0.0} mm ({propSlots[3]} slots, {1000f * propPushed[3]:0.0} mm); hand radius {1000f * hand:0} mm; " +
                       $"dragged 7 cm each way, the ball rebuilt from the probes at worst {-100f * propDragWorst:0.0} cm too deep, {propDragDeep} of {propDragFrames} frames over 1.5 cm, its depth jumping {100f * propDragJump:0.0} cm in a frame at most, " +
                       $"and {propDragLost} without one; the green's dent {1000f * propDragDent[0]:0.0} mm against {1000f * propDragDent[1]:0.0} mm for a hand dragged the same way; " +
-                      $"a fist on the green gripped {propGripped} frames; stroked 8 cm along it, its grip slid {1000f * propStroke:0.0} mm and held {propStrokeHeld} of 110 frames; the bars told strain {propTold[0]:0.00}, grip {propTold[1]:0.00}, slap {propTold[2]:0.00}; the green's whole swung {1000f * propMass[0]:0.0} mm shaken and {1000f * propMass[1]:0.0} mm twitched; a hand pushed on through dented it {1000f * propThrough[0]:0.0} mm at most, {propThrough[1]:0} particles over 10 cm, {1000f * propThrough[2]:0.0} mm once through; two balls 12 cm apart, each slot within {100f * propTwo:0.0} cm of its ball; dropped 12 cm onto a stop, the landing rang the green {1000f * propDropRing[0]:0.0} mm and the blue {1000f * propDropRing[1]:0.0} mm, its lowest particle {1000f * propDropLow:0.0} mm off its board");
+                      $"a fist on the green gripped {propGripped} frames; stroked 8 cm along it, its grip slid {1000f * propStroke:0.0} mm and held {propStrokeHeld} of 110 frames; the bars told strain {propTold[0]:0.00}, grip {propTold[1]:0.00}, slap {propTold[2]:0.00}; the green's whole swung {1000f * propMass[0]:0.0} mm shaken and {1000f * propMass[1]:0.0} mm twitched; a hand pushed on through dented it {1000f * propThrough[0]:0.0} mm at most, {propThrough[1]:0} particles over 10 cm, {1000f * propThrough[2]:0.0} mm once through; two balls {12f * ProbeReach / 0.04f:0} cm apart, each slot within {100f * propTwo:0.0} cm of its ball; dropped 12 cm onto a stop, the landing rang the green {1000f * propDropRing[0]:0.0} mm and the blue {1000f * propDropRing[1]:0.0} mm, its lowest particle {1000f * propDropLow:0.0} mm off its board");
             SessionState.SetInt(K + "on", 0);
             SessionState.SetBool(K + "prop", false);
             EditorApplication.Exit(ok ? 0 : 1);
+        }
+
+        // -jellySteady: the prop at a headset's frame rate (-jellyFps 240), its camera riding with it:
+        // settled, still for a second, then slid at a steady 0.3 m/s. Frame to frame the picture should
+        // hardly change either way; a draw that guesses wrong between steps changes it at the steps'
+        // cadence. -jellyRate sets the steps a second, 0 every frame.
+        static readonly List<float> steadyStill = new List<float>(), steadyMoving = new List<float>();
+        static Texture2D steadyLast;
+        static Vector4 steadyRate;
+
+        static void OnLatePropSteady()
+        {
+            var n = Lattice;
+            var all = Object.FindObjectsOfType<Transform>();
+            var regions = new[] { 0, 1 }.Select(r => all.First(t => t.name == $"Jelly Region {r}")).ToArray();
+            PropHands(regions, regions.Select(t => t.TransformPoint(0f, 0f, (n.z - 1) * SpacingOf(n))).ToArray(), 0f);
+            var blits = Object.FindObjectsOfType<CVRBlitter>().Select(b => b.blitMaterial).Where(m => m != null && m.HasProperty("_Rate")).Distinct().ToList();
+            var args = Environment.GetCommandLineArgs();
+            int at = Array.IndexOf(args, "-jellyRate");
+            if (frame == 0)
+            {
+                steadyRate = blits.Count > 0 ? blits[0].GetVector("_Rate") : Vector4.zero;
+                if (at >= 0 && at + 1 < args.Length)
+                    foreach (var m in blits) m.SetVector("_Rate", new Vector4(int.Parse(args[at + 1]), int.Parse(args[at + 1]), 0f, 0f));
+            }
+            float fps = Time.captureFramerate;
+            int settle = Mathf.RoundToInt(2.5f * fps), still = Mathf.RoundToInt(fps), ramp = Mathf.RoundToInt(0.25f * fps), wait = Mathf.RoundToInt(0.5f * fps);
+            int f = frame - settle - still;
+            if (f > 0)
+            {
+                float move = 0.3f / fps * Mathf.Clamp01(f / (float) ramp);
+                all.First(t => t.name == "Jelly Prop").position += Vector3.right * move;
+                eye.transform.position += Vector3.right * move;
+            }
+            if (frame >= settle)
+            {
+                var shot = Shot(eye);
+                if (steadyLast != null)
+                {
+                    float c = Changed(steadyLast, shot);
+                    if (f <= 0) steadyStill.Add(c);
+                    else if (f > ramp + wait) steadyMoving.Add(c);
+                    Object.DestroyImmediate(steadyLast);
+                }
+                steadyLast = shot;
+            }
+            if (++frame < settle + still + ramp + wait + Mathf.RoundToInt(fps)) return;
+            foreach (var m in blits) m.SetVector("_Rate", steadyRate);
+            string Of(List<float> c) => $"{100f * c.Average():0.000}% a frame on average, {100f * c.Max():0.000}% at most, {c.Count(x => x > 0.002f)} of {c.Count} frames over 0.2%";
+            Debug.Log($"[Jelly] steady at {fps:0} frames a second, the steps at {(at >= 0 ? args[at + 1] : $"{steadyRate.x:0}")} a second: still, the picture changed " +
+                      $"{Of(steadyStill)}; slid at 0.3 m/s with the camera, {Of(steadyMoving)}; the slide's first 30 frames in thousandths: " +
+                      string.Join(" ", steadyMoving.Take(30).Select(x => $"{1000f * x:0}")));
+            SessionState.SetInt(K + "on", 0);
+            SessionState.SetBool(K + "prop", false);
+            EditorApplication.Exit(0);
         }
 
         // The demonstration, each shot's length in frames at 90 a second and its caption, which goes
@@ -2216,7 +2301,7 @@ namespace AvatarBridge.Regression
                 {
                     var anchor = new GameObject($"Jelly Region {r}").transform;
                     anchor.SetParent(root.transform, false);
-                    anchor.localPosition = new Vector3((r - 0.5f * (regions - 1)) * 0.3f, 0f, 0f);
+                    anchor.localPosition = new Vector3((r - 0.5f * (regions - 1)) * ((n.x - 1) * spacing + 0.1f), 0f, 0f);
                     anchors.Add(anchor);
                 }
             }
@@ -3208,6 +3293,7 @@ namespace AvatarBridge.Regression
             {
                 if (SessionState.GetBool(K + "propFilm", false)) OnLatePropFilm();
                 else if (SessionState.GetBool(K + "propWorld", false)) OnLatePropWorld();
+                else if (SessionState.GetBool(K + "propSteady", false)) OnLatePropSteady();
                 else OnLateProp();
                 return;
             }
@@ -4973,7 +5059,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _Half (""Steps at _Rate.y past this many metres from the viewer's head, short of _Far; 0 never"", Float) = 2
         _Rate (""Steps a second near the viewer's head (x) and past _Half (y), the draw carrying the jiggle on between; 0 every frame"", Vector) = (45, 30, 0, 0)
         _Pass (""Which of the frame's passes this is: 2 copies the rider out"", Float) = 0
-        _Slap (""Slaps: metres a second to fire, depth per m/s, deepest, life in seconds"", Vector) = (0.5, 0.01, 0.03, 1.5)
+        _Slap (""Slaps: metres a second to fire, depth per m/s, deepest, life in seconds"", Vector) = (1.2, 0.01, 0.03, 1.5)
+        _Landing (""A landing or a yank rings the tissue past this change of its speed in a step, metres a second"", Float) = 1
         _FixedDt (""Fixed frame time, 0 for the real one"", Float) = 0
         _Stress (""The cost meter's load: steps only in odd phases"", Float) = 0
         _Rider (""Steps the rider's texels, for the parser and the sleep"", Float) = 1
@@ -5044,6 +5131,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             float _Stiff, _Hz, _Hand, _Far, _Behind, _Near, _Half, _Pass, _FixedDt, _Stress, _Sleep, _Lift, _Rider, _Rest, _Regions;
             float _MassHz, _MassCarried, _MassDamp, _Give, _MassRadius, _Limit, _Pair, _PairKeep, _Squish, _Viscous, _Solid, _Taut, _JellyTwitch;
             float4 _Slap, _Rate;
+            float _Landing;
             // The frame's time, for how fast the homes move.
             static float FrameDt;
             float4 _Motion, _PairOffset, _PairReach, _PairSkin, _JellyOwn0, _JellyOwn1, _JellyCol0, _JellyCol1, _JellyBox0, _JellyBox1, _JellyOffsetAt0, _JellyOffsetTurn0, _JellyOffsetAt1, _JellyOffsetTurn1;
@@ -6433,7 +6521,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // Felt before the dispatch, while timed.
                 [branch] if (!fired && felt)
                 {
-                    speed = _Slap.x;
+                    // The probes read a slap about a third as fast as it came, so they fire at 0.4 of
+                    // a hand's speed: a ball slapped in at 3 m/s read 1.05.
+                    speed = 0.4 * _Slap.x;
                     float skin = max(_JellyProbeReach, 0.002);
                     [unroll] for (uint k = 0; k < PROBES; k++)
                     [branch] if (deep[k] >= skin)
@@ -6456,15 +6546,15 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // The tissue's own impact: its anchor stopping short, dropped onto something or
                 // landing, rings it from the face its own weight carries on into, as a slap into that
                 // face would; so does a yank, the tissue lagging into the face it leaves by. Only the
-                // slaps that hit it rang it, never it hitting anything. Fired by more than twice a
-                // slap's speed changed in a frame, at that speed; a frame faster than 8 m/s is a
+                // slaps that hit it rang it, never it hitting anything. Fired by more than
+                // _Landing's change of speed in a frame, at that speed; a frame faster than 8 m/s is a
                 // teleport, not a fall. 85 keeps the anchor's last velocity.
                 [branch] if (!fired && timed && !distant)
                 {
                     float4 was = _MainTex.Load(int3(85, side, 0));
                     float3 v = AnchorVelocity(m, dt, side);
                     float lost = length(was.xyz - v);
-                    [branch] if (was.w > 0 && _Time.y - was.w < 0.1 && length(was.xyz) < 8 && lost > 2 * _Slap.x)
+                    [branch] if (was.w > 0 && _Time.y - was.w < 0.1 && length(was.xyz) < 8 && lost > _Landing)
                     {
                         float3 q = Into(m, m._m03_m13_m23 + was.xyz - v) / half;
                         at = mul(m, float4(mid + q / max(length(q), 1e-6) * half, 1)).xyz;

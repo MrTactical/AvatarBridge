@@ -2966,6 +2966,41 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
        Rolled loops (`[loop]`, uniform bounds) shrink it at a little speed; the measure is the
        compiled size and fxc's time, then the hitch in game. First ask: is it the first spawn only
        (the driver caches what it built) or every spawn, which would be something else.
+    8. **The world prop in game** (Joe, 2026-10-31, desktop at 239 fps). What he found and where
+       each stands:
+       - **The spawn hitch is the first spawn only** ("second was fine"): the driver building the
+         step's 1.3 MB once, item 7.
+       - **"The jelly stutters, plate is smooth", and it never settles.** OPEN, not reproduced. A
+         steady check (`-jellySteady`, at `-jellyFps 240`, the camera riding with the prop: settled,
+         still a second, then slid at 0.3 m/s) changed 0.000% of the picture a frame still and
+         0.001 to 0.027% slid, a fraction of a pixel, on the colliders prop and the world one, at
+         45 steps a second and at every frame. The game's physics runs at the frame cap, 144
+         uncapped on desktop (`FixedDeltaTimeAdjuster`), where batch runs 50; not it either, as 50
+         would show it worse. Next: Joe's clip, stepped through frame by frame.
+       - **MagicaCloth colliders did nothing to it.** ChilloutVR's, not the jelly's: a prop's cloth
+         is nobody's (`isSelf` false, a friend's only when a friend spawned it), and
+         `CVRDynamicBoneManager.UpdateComponents` hands it a collider only by each viewer's
+         Settings > Interaction > Dynamic Bone Interaction: their own colliders by "I can interact
+         with" = Everyone, other players' by "Global Interaction" = Everyone, all three None by
+         default (`CVRSettings`). Each viewer simulates the cloth by their own settings, so most
+         see no collider dent, worn or as a prop; hands through the player arrays have no such
+         filter.
+       - **A fist could not reach the skin**: the prop's grab box wrapped both jellies and 8 cm in
+         front, so a grab picked the prop up. It is the boards' alone now.
+       - **Bigger** ("they're quite small and people's colliders are quite big"): the probe prop is
+         40 cm on the fine lattice, 2.7 cm a cell where the 20 cm coarse one had 2.9, its regions
+         their width and 10 cm apart, its probes' reach 8 cm, as its 24 sit twice as far apart. At
+         4 cm a ball dented it 0.4 mm, between the probes. Checked: a hand 27.9 mm, a MagicaCloth
+         ball 24.5 and 24.2 mm (26.8 at 20 cm), dragged 0 frames over 1.5 cm too deep, a wall 30.1
+         mm into the orange one. OPEN: two colliders at once read up to 7.8 cm off each ball
+         even 24 cm apart, 1.5 at 20 cm, so the prop check fails there.
+       - **A glass pane** on the world prop to press in (Joe: "to demonstrate squish"): a pickup of
+         its own, synced, 4 cm thick and 6 cm past the face all round, as the check's wall.
+       - **A slow hand rang a slap** ("very slow speed", his hand, desktop): hands fire at 1.2 m/s
+         now, where a gentle poke is 0.5 and a slap 2 to 5. The probes read a slap about a third as
+         fast as it came (a ball at 3 m/s read 1.05), so they fire at 0.4 of that, as before;
+         landings and yanks keep their own 1 m/s (`_Landing`, which was twice the hand's). Kar with both pairs passes, its rings as before (the
+         ball's 10.5 mm, the clap's 18.8 and 24.3).
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 
