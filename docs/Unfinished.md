@@ -2983,13 +2983,13 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
        each stands:
        - **The spawn hitch is the first spawn only** ("second was fine"): the driver building the
          step's 1.3 MB once, item 7.
-       - **"The jelly stutters, plate is smooth", and it never settles.** OPEN, not reproduced. A
+       - **"The jelly stutters, plate is smooth", and it never settles.** Reproduced and fixed once the client's parser was in the check: the last bullet. A
          steady check (`-jellySteady`, at `-jellyFps 240`, the camera riding with the prop: settled,
          still a second, then slid at 0.3 m/s) changed 0.000% of the picture a frame still and
          0.001 to 0.027% slid, a fraction of a pixel, on the colliders prop and the world one, at
          45 steps a second and at every frame. The game's physics runs at the frame cap, 144
          uncapped on desktop (`FixedDeltaTimeAdjuster`), where batch runs 50; not it either, as 50
-         would show it worse. Next: Joe's clip, stepped through frame by frame.
+         would show it worse. Neither check had the client's parser, which was the cause.
        - **MagicaCloth colliders did nothing to it.** ChilloutVR's, not the jelly's: a prop's cloth
          is nobody's (`isSelf` false, a friend's only when a friend spawned it), and
          `CVRDynamicBoneManager.UpdateComponents` hands it a collider only by each viewer's
@@ -3020,6 +3020,23 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
          fast as it came (a ball at 3 m/s read 1.05), so they fire at 0.4 of that, as before;
          landings and yanks keep their own 1 m/s (`_Landing`, which was twice the hand's). Kar with both pairs passes, its rings as before (the
          ball's 10.5 mm, the clap's 18.8 and 24.3).
+       - **Flickering untouched, never asleep, red now and then** (Joe, an online instance with
+         players about, and less so alone in a private one; Dynamic Bone Interaction all None changed
+         nothing): the far switch's pass turned the steps on for one frame in each of `_Rate`'s, and
+         the client reads that switch back late and one read at a time
+         (`CVRTexturePropertyParserManager`), so the steps came in bursts and waits. Read that way in
+         batch (`-jellySteady -jellyLag`), at 45 a second and 230 fps: 50 steps a second, 59 straight
+         after another, the picture sliding 0.57% a frame in a five-frame stutter, and never asleep.
+         Every frame: 0.035%, still 0.000%, asleep when left. Batch never saw it: the prop's checks had
+         no parser, so the steps ran every frame, and Kar's read the switch at once. `_Rate` is 0 now:
+         the steps run every frame near, and the parser keeps only the far, behind and asleep switches.
+         That undoes the 45 a second chosen in (19); a step that skips frames by the clock itself, out
+         of the parser's reach, would win it back. A review of item 7's loop rewrite against its parent
+         found no change in behaviour. A world's wind no longer reaches the cloth probes, though a wind
+         zone at MagicaCloth's default strength moved nothing with or without that. Checks: Kar passes,
+         near 60 of 60 frames stepped (a finger 95.3 mm, turning 103.9, the contact 88.1, all a little
+         under the every-other-frame run's), the world prop's wall 30.1 mm under that wind, the prop as
+         before (its two-collider FAIL above). In game OPEN.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 

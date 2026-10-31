@@ -582,6 +582,8 @@ namespace AvatarBridge.Regression
                           $"furthest ball {1000f * moved:0.0} mm off its rest");
             }
             if (frame == 140) worldRest = Read(state);
+            // A world's wind from here on, at MagicaCloth's default strength: it must move nothing.
+            if (frame == 141) new GameObject("Wind").AddComponent<MagicaCloth2.MagicaWindZone>();
             float Dent(Vector4[] now, int r)
             {
                 float most = 0f;
@@ -928,6 +930,13 @@ namespace AvatarBridge.Regression
         static readonly List<float> steadyStill = new List<float>(), steadyMoving = new List<float>();
         static Texture2D steadyLast;
         static Vector4 steadyRate;
+        // -jellyLag: the client's parser as it really reads (CVRTexturePropertyParserManager): one GPU
+        // readback in flight, the blitters set from the last that arrived, black until one has. With
+        // none the steps here ran every frame whatever the switch said.
+        static AsyncGPUReadbackRequest lagRead;
+        static bool lagPending;
+        static Color32[] lagGot;
+        static readonly List<int> steadySteps = new List<int>();
 
         static void OnLatePropSteady()
         {
@@ -943,6 +952,26 @@ namespace AvatarBridge.Regression
                 steadyRate = blits.Count > 0 ? blits[0].GetVector("_Rate") : Vector4.zero;
                 if (at >= 0 && at + 1 < args.Length)
                     foreach (var m in blits) m.SetVector("_Rate", new Vector4(int.Parse(args[at + 1]), int.Parse(args[at + 1]), 0f, 0f));
+            }
+            bool lag = args.Contains("-jellyLag");
+            var parser = Object.FindObjectOfType<CVRTexturePropertyParser>();
+            if (lag && parser != null && parser.texture is RenderTexture switched)
+            {
+                if (lagPending && (lagRead.hasError || lagRead.done))
+                {
+                    if (!lagRead.hasError) lagGot = lagRead.GetData<Color32>().ToArray();
+                    lagPending = false;
+                }
+                if (!lagPending)
+                {
+                    lagRead = AsyncGPUReadback.Request(switched, 0, TextureFormat.RGBA32);
+                    lagPending = true;
+                }
+                bool on = true;
+                foreach (var task in parser.tasks)
+                    if (task.component is Behaviour b && task.propertyName == "enabled")
+                        on &= b.enabled = lagGot != null && lagGot[task.y * switched.width + task.x].r >= 128;
+                if (on) steadySteps.Add(frame);
             }
             float fps = Time.captureFramerate;
             int settle = Mathf.RoundToInt(2.5f * fps), still = Mathf.RoundToInt(fps), ramp = Mathf.RoundToInt(0.25f * fps), wait = Mathf.RoundToInt(0.5f * fps);
@@ -971,6 +1000,16 @@ namespace AvatarBridge.Regression
             Debug.Log($"[Jelly] steady at {fps:0} frames a second, the steps at {(at >= 0 ? args[at + 1] : $"{steadyRate.x:0}")} a second: still, the picture changed " +
                       $"{Of(steadyStill)}; slid at 0.3 m/s with the camera, {Of(steadyMoving)}; the slide's first 30 frames in thousandths: " +
                       string.Join(" ", steadyMoving.Take(30).Select(x => $"{1000f * x:0}")));
+            if (lag)
+            {
+                // Each gap a step's wait in seconds, after the first second's settling: the draw turns
+                // red past a quarter second.
+                var gaps = steadySteps.Where(s => s > fps).Zip(steadySteps.Where(s => s > fps).Skip(1), (a, b) => (b - a) / fps).ToList();
+                float seconds = (frame - fps) / fps;
+                Debug.Log($"[Jelly] steady through the client's lagged parser: {steadySteps.Count(s => s > fps) / seconds:0.0} steps a second, " +
+                          (gaps.Count > 0 ? $"waits {1000f * gaps.Average():0} ms on average, {1000f * gaps.Max():0} at most, {gaps.Count(g => g > 0.25f)} past a quarter second, " +
+                          $"{steadySteps.Zip(steadySteps.Skip(1), (a, b) => b - a == 1).Count(x => x)} steps a frame after the last" : "no steps"));
+            }
             SessionState.SetInt(K + "on", 0);
             SessionState.SetBool(K + "prop", false);
             EditorApplication.Exit(0);
@@ -2162,6 +2201,9 @@ namespace AvatarBridge.Regression
                 // one, and the push crosses the skin at speed, as a palm crosses the box.
                 sd.radius = new MagicaCloth2.CurveSerializeData(ProbeReach);
                 sd.gravity = 0f;
+                // A sensor, not cloth: a world's wind zone reached every probe and read as presses,
+                // which took the slots a hand needed.
+                sd.wind.influence = 0f;
                 // Back within a few frames once a collider lets go, and settled, not bouncing: at the
                 // default damping it still read 2.6 mm a moment after, past the 2 mm a press takes,
                 // and at 0.5 the 10 cm bone swung back out to 5 mm.
@@ -4995,9 +5037,11 @@ namespace AvatarBridge.Regression
             poked = Changed(breastShots[1], breastShots[3]);
             var rate = jelly.GetComponentInChildren<CVRRenderController>(true).cvrRenderComponents.OfType<CVRBlitter>().First().blitMaterial.GetVector("_Rate");
             float fps = Time.captureFramerate;
+            // A rate of 0 steps every frame.
+            float Share(float r) => r > 0f ? Mathf.Min(1f, r / fps) : 1f;
             bool viewOk = viewRan.SequenceEqual(new[] { true, false, true, true }) && viewBack < 0.006f
-                && nearFrames > 0 && Mathf.Abs((float) nearOn / nearFrames - Mathf.Min(1f, rate.x / fps)) < 0.1f
-                && halfFrames > 0 && Mathf.Abs((float) halfOn / halfFrames - Mathf.Min(1f, rate.y / fps)) < 0.1f && Mathf.Abs(halfMost - Mathf.Max(1f, fps / rate.y)) < 1f;
+                && nearFrames > 0 && Mathf.Abs((float) nearOn / nearFrames - Share(rate.x)) < 0.1f
+                && halfFrames > 0 && Mathf.Abs((float) halfOn / halfFrames - Share(rate.y)) < 0.1f && Mathf.Abs(halfMost - 1f / Share(rate.y)) < 1f;
             bool walled = wallRest != null;
             if (walled) Debug.Log($"[Jelly] its probes feeling the world, a wall 3 cm into the first's front: the first dented {1000f * wallDent[0]:0.0} mm, the second {1000f * wallDent[1]:0.0} mm; the wall gone two thirds of a second, the first {1000f * wallDent[2]:0.0} mm off its rest; its skin {1000f * wallDent[3]:0.0} mm past the wall");
             bool wallOk = !walled || wallDent[0] > 0.01f && wallDent[1] < 0.005f && wallDent[2] < 0.006f && wallDent[3] < 0.008f;
@@ -5083,7 +5127,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _Behind (""Hangs rigid more than this many degrees off where the viewer's camera looks, 0 never"", Float) = 100
         _Near (""Never hangs rigid for being out of view within this many metres of the viewer's camera"", Float) = 2
         _Half (""Steps at _Rate.y past this many metres from the viewer's head, short of _Far; 0 never"", Float) = 2
-        _Rate (""Steps a second near the viewer's head (x) and past _Half (y), the draw carrying the jiggle on between; 0 every frame"", Vector) = (45, 30, 0, 0)
+        // Every frame: the client reads the switch back late and one read at a time, so at 45 a
+        // second and 230 fps the steps came in bursts, the draw stuttered and it never slept.
+        _Rate (""Steps a second near the viewer's head (x) and past _Half (y), the draw carrying the jiggle on between; 0 every frame"", Vector) = (0, 0, 0, 0)
         _Pass (""Which of the frame's passes this is: 2 copies the rider out"", Float) = 0
         _Slap (""Slaps: metres a second to fire, depth per m/s, deepest, life in seconds"", Vector) = (1.2, 0.01, 0.03, 1.5)
         _Landing (""A landing or a yank rings the tissue past this change of its speed in a step, metres a second"", Float) = 1
