@@ -3038,7 +3038,14 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
          under the every-other-frame run's), the world prop's wall 30.1 mm under that wind, the prop as
          before (its two-collider FAIL above). In game (Joe, same day, 8c9c690): "working way better
          now, goes blue and grabs work". OPEN: a grab holds the skin away from the hand ("its not at
-         the hand, but its functional"): how far, which way, and whose hand, not yet known.
+         the hand, but its functional"): a remote player in VR, about 5 cm. The client hands a
+         shader positions only (root and view height, hips, chest, head, hand bone, feet;
+         `BetterPlayerShaderPositionsProvider`), so the hand's way is a guess, chest to wrist. Five
+         humanoids posed through 600 seeded reach-and-grab poses each, at a 1.6 m view height, fitted on
+         three and tested on two: the fist (between the middle finger's first two joints) 11.0 cm off
+         on average as now, 10.2 at a shorter reach, 8.9 from an elbow hung low off a shoulder guessed
+         from chest and head; the real forearm's line, which no shader gets, 5.8, the wrist's bend. A
+         fifth better for a head array read and an elbow solve a kept hand: parked for Joe's word.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 
