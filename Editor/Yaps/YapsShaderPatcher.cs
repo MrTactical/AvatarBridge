@@ -163,6 +163,8 @@ namespace AvatarBridge
         _YAPS_SquashPlug (""YAPS squash plug press gain"", Range(0,2)) = 1
         [NoScaleOffset] _YAPS_JellyState (""YAPS live tissue state"", 2D) = ""black"" {}
         _YAPS_JellyLattice (""YAPS live tissue: particles across, up, deep; spacing"", Vector) = (0,0,0,0)
+        [NoScaleOffset] _YAPS_JellyState2 (""YAPS live tissue state, the second pair"", 2D) = ""black"" {}
+        _YAPS_JellyLattice2 (""YAPS live tissue: the second pair's lattice"", Vector) = (0,0,0,0)
         _YAPS_JellyParts (""YAPS live tissue: the parts it carries"", Vector) = (0,0,0,0)
         _YAPS_JellySlap (""YAPS live tissue: a slap's ring, how much (0 none), speed, wavelength, fade"", Vector) = (0,1,0.1,0.4)
         [NoScaleOffset] _YAPS_SoftRow (""YAPS soft body rows, per vertex"", 2D) = ""black"" {}
@@ -267,13 +269,14 @@ namespace AvatarBridge
         public static void Wear(Material m, Shader shader) => ShaderSpiPatcher.Wear(m, shader);
 
         // The shader a material already carrying YAPS needs to take on one more role: its own
-        // when that is compiled in, else its original patched again with both. A plug baked
-        // into a squashed body kept the squash-only copy and would never bend. Null when the
-        // original is gone from the project.
+        // when that is compiled in and current, else its original patched again with both. A
+        // plug baked into a squashed body kept the squash-only copy and would never bend, and a
+        // stale copy that had the role kept the old code: the jelly went on with none of a newer
+        // draw's properties. Null when the original is gone from the project.
         public static Shader WithRole(Material patched, Roles role, BridgeReport report)
         {
             var have = RolesOf(patched.shader);
-            return (have & role) == role ? patched.shader : Repatch(patched, have | role, report);
+            return (have & role) == role && !IsStale(patched) ? patched.shader : Repatch(patched, have | role, report);
         }
 
         static Shader Repatch(Material patched, Roles roles, BridgeReport report)

@@ -64,6 +64,9 @@ namespace AvatarBridge.Yaps
         public bool twitch = false;
         [Range(0.005f, 0.05f), Tooltip("How far a twitch kicks, in metres.")]
         public float twitchSize = 0.02f;
+        [Tooltip("A fist stroking along the skin takes its grip with it, the skin dragging a little behind. " +
+                 "Off, a grip stays where the fist closed and lets go when pulled too far.")]
+        public bool gripSlides = false;
 
         // Drawn by the inspector's Parts card, not with the knobs: both need a rebuild.
         [Tooltip("Bones picked by hand in place of the name search, two to a pair, one each side, " +

@@ -2889,6 +2889,74 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     (6 s), three points for the wearer's own capsules (none). OPEN: Unity's own limit, which its
     message says UNITY_SHADER_COMPILER_TASK_TIMEOUT_MINUTES raises, is not known here; the scan
     variant is the one to watch.
+    (21) What is left before the jelly replaces the squash (Joe, 2026-10-31: "do those three, two
+    pairs at once, parting a pair for a plug, and making it part of YAPS"). PLAN, in this order:
+    1. **Two pairs at once.** DONE: a chain a pair, each with its own state texture, not one chain
+       of four regions. The pairs' lattices differ (Kar's breasts 10x10x10 at 4.6 cm, the butt
+       11x10x9 at 5.1 cm) and the draw takes one lattice a state texture, so four regions in one
+       would have meant one lattice for both or the lattice's size in every side row. The draw reads
+       the second pair's parts from `_YAPS_JellyState2` and `_YAPS_JellyLattice2`; the step is
+       unchanged, so its compile time is too. The builder keeps a chain's assets beside the first's
+       (the shaders shared, as a copy each compiles every variant twice), names each worn jelly after
+       its pair so putting one on takes that one off alone, tells the animator under the pair's name
+       (`#Jelly/<pair>/Squeeze`, `Grab`, `Slap`), and the one twitch toggle kicks every pair.
+       Found on the way: putting a role on a material whose patch already had it kept the patch as
+       it was, however stale (`YapsShaderPatcher.WithRole`), so the jelly went on an avatar
+       converted before a draw change with none of it, and the first checks ran the old draw. It
+       re-patches a stale copy now, which also reaches a plug baked into an older squashed body.
+       Checked on Kar with both pairs worn: the breasts pass every check with the butt on beside them,
+       each figure as with one pair (rest 0.6 mm, a poke 99.8 mm, turning 111.2 mm, contact 89.5
+       mm); the butt fails the same three as alone (item 6).
+    2. **Parting for a plug, as the squash does it.** DONE, drawn: a plug light whose shaft runs
+       through the pair's socket swings each region away by as far as the shaft cuts into the
+       squash's own shape of the part (its ellipsoid, `YapsSpan`), within the squash's bend give,
+       none at the back face and all of it at the front, and presses what skin is still in the
+       shaft out of it; the `plugs` gain and the last fifth's ease as the squash's. Pressing alone
+       moved only the skin on the shaft: 0.09% of the picture where the squash's parting moved
+       8.5%. With the swing: 5.6% on the breasts against the squash's 8.5%, 1.7% on the butt against
+       1.6%. The lattice does not feel it. Kar has no socket in either gap (the squash parts
+       neither for a plug either), so the check puts one between the pair's middles.
+       Later, if wanted: the socket's synced depth trigger (`YAPS/<socket>/Depth`) moving a transform
+       the step reads, so the lattice parts too.
+    3. **Into YAPS.** The build side (PairOn, AddSkin, Make, Wired, the step's shader text) out of
+       Dev into the add-on, writing into the avatar's own output folder instead of one fixed folder;
+       the command-line switches become settings; the squash's Rebuild keeps the jelly (its Strip
+       re-copies the materials and drops the jelly's patch today, and its Properties list carries no
+       `_YAPS_Jelly*`); the conversion's "Squash soft parts" and the inspector put it on; README,
+       window text and report strings with it. The Dev builder keeps its checks and films, calling
+       the add-on. Joe's call at this step: whether the jelly replaces the squash outright or stands
+       beside it as a choice.
+    4. **A grip that slides** (Joe, 2026-10-31: "grab but also move your hand up and down? left
+       and right? a mobile grab point?", and "make it also an option ... oh you want this?"). A
+       fist gripped the skin where it closed and dragged it any way the hand went, but the spot
+       never moved, so a stroke along the skin pulled it out and let go. With the squash settings'
+       **Grip slides** on (Live tissue, off by default) the spot trails the fist across the skin by
+       2 cm at most (`_GripSlip`, 0 off) and goes with it, the skin dragging behind; out of the skin
+       it stays where it is, so a pull straight out still lets go as before. The prop has it on, and
+       the upload build turns it on for trying in game. Across the skin is across the hand's own
+       line, wrist to fingertips: the way out from the lattice's middle tilts on a flat front, so a
+       stroke there read half as a pull and slid 50 mm of 80. A hand closing on the skin edge-on,
+       its fingers along it, would swap which way slides; the client gives a hand two points and no
+       palm, so nothing better to read. Checked: on the prop a fist stroked 8 cm along the skin slid
+       its grip 60.0 mm and held all 110 frames (80 less the 2 cm it trails); on Kar with both
+       pairs and it on, every figure as with it off, the fist pulled straight out letting go after
+       92 frames as before. The step's scan variant at fxc /O3: 165 s
+       alone against 140 s at the last commit; timed beside Unity's own compile of the prop it read
+       214 s before the slide and 939 s after, so it is timed again on a quiet machine.
+    5. **A plug a hand can grab** (Joe, same day: after the jelly is in YAPS, and opt-in, a plug's
+       own "Hands can grab it"). Plugs read no hands today. Every player's hands and their gestures
+       are in the client's globals the jelly reads, so the plug's draw can bend the shaft so a fist
+       round it keeps its grip point in the hand: stateless, so the grip point is wherever the fist
+       is on the shaft, and a stroke along it moves it for free; sideways it bends toward the hand
+       within a stiffness like the socket bend's. Every viewer works it out alike, nothing synced.
+       Cost: a loop over the hands near the plug in its vertex shader, compile time to measure.
+       Skin sliding with the stroke is more again, left out unless wanted.
+    6. **The checks on a seat.** Kar's butt passes every check but three whose test geometry is the
+       breasts': hands 13 cm into each outer side reach 3.9 mm into a 51 cm seat (50 wanted), the
+       probes' ball slap fires no ring, and the wearer's own hand pushed on through leaves the
+       particles 69 mm off with the hand at the body (20 at most). The same alone and beside the
+       breasts, so the two pairs are not it; whether the last is the seat's tissue or the test's
+       path is open.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 

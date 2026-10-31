@@ -227,6 +227,8 @@ float _YAPS_CopyStart;
 // and leave the squash. Here, not in yaps_jelly.cginc, since the dent reads _YAPS_JellyParts.
 Texture2D<float4> _YAPS_JellyState;
 float4 _YAPS_JellyLattice;  // particles across, up and deep; spacing in metres. 0: no lattice
+Texture2D<float4> _YAPS_JellyState2;  // the second pair's, its own lattice in _YAPS_JellyLattice2: two jellies, two steps
+float4 _YAPS_JellyLattice2;
 float4 _YAPS_JellyParts;    // for each part (r, g, b, a of _YAPS_DentOwn) a lattice region carries, that region's index plus one
 float4 _YAPS_JellySlap;     // a slap's ring: how much of its depth (0 none), speed (m/s), wavelength (m), fade (s)
 
