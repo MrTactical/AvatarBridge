@@ -2957,15 +2957,28 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
        particles 69 mm off with the hand at the body (20 at most). The same alone and beside the
        breasts, so the two pairs are not it; whether the last is the seat's tissue or the test's
        path is open.
-    7. **The step is too big to spawn smoothly** (Joe, 2026-10-31: "the jelly is laggy to spawn",
-       and the upload compile: "Compiling shader variants (busy for 09:19) ... JellyStep 6 of 12").
-       The scan variant compiles to 1.3 MB of bytecode (1,295,400 bytes before the slide, 1,297,452
-       after), where a usual shader is a few KB to 100 KB, so the driver's translation of it on first
-       sight is the hitch, for every player who loads it, and the same size is the upload's minutes a
-       variant. What unrolls is the size: the 128 hands, the 24 probes and the lattice's neighbours.
-       Rolled loops (`[loop]`, uniform bounds) shrink it at a little speed; the measure is the
-       compiled size and fxc's time, then the hitch in game. First ask: is it the first spawn only
-       (the driver caches what it built) or every spawn, which would be something else.
+    7. **The step was too big to load smoothly** (Joe, 2026-10-31: "the jelly is laggy to spawn",
+       "its freezing players on initial load of the prop", and "it still takes 6 mins to upload").
+       DONE, in game OPEN. The driver builds a shader at its first draw, not at CreatePixelShader
+       (3 ms), and caches it after: drawn once each in a bare D3D11 device (scratch `d3d-create.py`),
+       the scan variant took 5.9 s on an RTX 4080, the second pass 1.9 and the points 1.2, about 9 s
+       for every player the first time a prop showed. fxc's `/Zi /Fc` listing, counted by source line
+       (`fxc-attr.py`), put its 43,844 instructions in loops written out whole (64 players' two
+       hands, 24 probes at several callers, 16 capsules, 8 slots, the bulk's 64 samples) and the
+       particle step inlined three times. Now those loops are rolled, the step is called once (the
+       rider takes the particles' path), and each region's anchor is built once a pixel, the other's
+       and the probes' frame only where read: 8,465 instructions, the scan variant 211 KB, the driver
+       0.61 + 0.20 + 0.07 s on a quiet machine, about 0.9 s. fxc takes 1 to 5 s a variant where it
+       took 3 minutes, and `skip_variants` drops the stereo copies Unity compiled of each step
+       variant (12 to 4): a blit never renders an eye. The fit's 26 neighbours stay written out, the
+       hot loop. Shader Filtering, opt-in and off by default, now cuts the rolled loops short: player
+       0 is the viewer, so their own hands count; other players' hands, probes past the first and
+       capsules may be missed, and arrays a cut loop fills are cleared first. Checks: Kar passes with
+       every number as before (99.8 mm, 111.2, 89.5), the world prop's wall 30.1 mm, the prop as
+       before (its two-collider FAIL is item 8's). Cost on Kar against the committed step, same GPU, the machine
+       busy: near level (16 avatars 0.605 ms against 0.586, no far switch 0.333 against 0.355), far
+       off 0.022 against 0.019. Next: Joe's upload time and
+       the hitch in game; under ~0.5 s needs the side row split from the particles' pass.
     8. **The world prop in game** (Joe, 2026-10-31, desktop at 239 fps). What he found and where
        each stands:
        - **The spawn hitch is the first spawn only** ("second was fine"): the driver building the

@@ -5115,6 +5115,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             #pragma vertex vert_img
             #pragma fragment frag
             #pragma target 4.5
+            // A blit into the state, never an eye: the stereo copies tripled the upload's compile.
+            #pragma skip_variants UNITY_SINGLE_PASS_STEREO STEREO_INSTANCING_ON STEREO_MULTIVIEW_ON STEREO_CUBEMAP_RENDER_ON
             // shader_feature: an upload builds only the variants its passes use. multi_compile built
             // all eight, each at the compiler's time limit.
             // Only the first pass looks for hands, so only it carries every player's positions.
@@ -5215,8 +5217,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             bool Pushed(uint side)
             {
                 bool any = false;
-                [branch] if (_JellyProbes > 0)
-                    [unroll] for (uint k = 0; k < PROBES; k++) any = any || k < (uint) _JellyProbes && _MainTex.Load(int3(88 + k, side, 0)).w > 0.002;
+                [loop] for (uint k = 0; k < (uint) _JellyProbes && k < PROBES && !any; k++) any = _MainTex.Load(int3(88 + k, side, 0)).w > 0.002;
                 return any;
             }
 
@@ -5269,7 +5270,10 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float reach = _Hand + _JellyProbeReach;
                 float gone[PROBES];
                 bool any = false;
-                [unroll] for (uint k = 0; k < PROBES; k++)
+                // Every loop here rolled, so the probes are written out once, not 24 times at each
+                // caller. Cleared first: Shader Filtering cuts a rolled loop short.
+                [unroll] for (uint z = 0; z < PROBES; z++) { balls[z] = 0; rests[z] = 0; deep[z] = 0; gone[z] = 0; }
+                [loop] for (uint k = 0; k < min(min((uint) _JellyProbes, upto), (uint) PROBES); k++)
                 {
                     float3 at, way;
                     float g = Probe(r, k, back, at, way);
@@ -5298,14 +5302,14 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     // colliders a region; a third reads as one of those.
                     float best = 0, next = 0;
                     float3 lead = 0, lead2 = 0, from = 0, from2 = 0;
-                    [unroll] for (uint k = 0; k < PROBES; k++)
+                    [loop] for (uint k = 0; k < PROBES; k++)
                     {
                         bool more = gone[k] > best;
                         lead = more ? balls[k] : lead;
                         from = more ? rests[k] : from;
                         best = max(best, gone[k]);
                     }
-                    [unroll] for (uint k = 0; k < PROBES; k++)
+                    [loop] for (uint k = 0; k < PROBES; k++)
                     {
                         bool far = gone[k] > next && distance(rests[k], from) >= 1.25 * reach;
                         lead2 = far ? balls[k] : lead2;
@@ -5321,7 +5325,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     // collider's size still moved it 3 cm.
                     float w = 0, w2 = 0;
                     float3 rest = 0, rest2 = 0;
-                    [unroll] for (uint k = 0; k < PROBES; k++)
+                    [loop] for (uint k = 0; k < PROBES; k++)
                     {
                         float g = distance(rests[k], from) < 1.2 * reach ? gone[k] : 0, g2 = next > 0 && distance(rests[k], from2) < 1.2 * reach ? gone[k] : 0;
                         w += g;
@@ -5332,7 +5336,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     rest /= max(w, 1e-6);
                     rest2 /= max(w2, 1e-6);
                     float3 ball = rest + normalize(rest - mid) * (reach - best), ball2 = rest2 + normalize(rest2 - mid) * (reach - next);
-                    [unroll] for (uint k = 0; k < PROBES; k++)
+                    [loop] for (uint k = 0; k < PROBES; k++)
                     {
                         bool one = gone[k] == best && all(balls[k] == lead), two = next > 0 && gone[k] == next && all(balls[k] == lead2);
                         deep[k] = one || two ? gone[k] : 0;
@@ -5342,11 +5346,16 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 }
             }
 
-            // Worked out once a pixel, as each is read many times over: its own region's alone, since
-            // through skinning each is sixteen reads, and only a few texels need the other's.
-            static float4x4 Mine;
-            static uint Region;
-            float4x4 Anchor(uint r) { return r == Region ? Mine : AnchorOf(r); }
+            // Worked out once a pixel at the top of the step, as each is read many times over: through
+            // skinning each is sixteen reads, and inlined at every caller the anchors were a fifth of
+            // the step. Its own region's, Mine; the other's, Theirs, only where it is read. MineOf
+            // stays its region where Region changes to pick a region's box.
+            static float4x4 Mine, Theirs;
+            static uint Region, MineOf;
+            float4x4 Anchor(uint r) { return r == MineOf ? Mine : Theirs; }
+            // Its own region's probes' frame, as Probing gives it: once a pixel too.
+            static float4x4 Back;
+            static bool Probed;
 
             // A world point in an anchor's rest frame, metres from it along its axes.
             float3 Into(float4x4 a, float3 x)
@@ -5568,7 +5577,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float4x4 last = float4x4(x0.x, y0.x, z0.x, o0.x, x0.y, y0.y, z0.y, o0.y, x0.z, y0.z, z0.z, o0.z, 0, 0, 0, 1);
                 uint was = (uint) _MainTex.Load(int3(41, side, 0)).x;
                 float most = 0;
-                [unroll] for (uint c = 0; c < 16; c++)
+                [loop] for (uint c = 0; c < 16; c++)
                 {
                     float3 a, b;
                     float r;
@@ -5624,7 +5633,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // every region alike, half a metre's give on the distance so it does not flicker.
             bool Away(bool was)
             {
-                float4x4 a = AnchorOf(0);
+                float4x4 a = Anchor(0);
                 float3 head = _CVR_PlayerHeadPositions[0].xyz, at = a._m03_m13_m23;
                 return dot(head, head) > 1e-6 && distance(head, at) > _Far - (was ? 0.5 : 0)
                     || Unseen(at, 2 * length(float3(Count()) * _Lattice.w) * length(a._m00_m10_m20), was);
@@ -5635,7 +5644,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             bool Halved()
             {
                 float3 head = _CVR_PlayerHeadPositions[0].xyz;
-                return _Half > 0 && dot(head, head) > 1e-6 && distance(head, AnchorOf(0)._m03_m13_m23) > _Half;
+                return _Half > 0 && dot(head, head) > 1e-6 && distance(head, Anchor(0)._m03_m13_m23) > _Half;
             }
 
 #if defined(JELLY_SCAN) || defined(JELLY_POINTS)
@@ -5661,47 +5670,36 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 int found = 0;
                 float4 kept = 0, kw = 0, kt = 0;
                 // Every player's hands as the squash reads them: from the wrist, away from that
-                // player's chest, a ninth of their viewpoint height. Unrolled over 64 players, so
-                // Shader Filtering leaves it whole. Every lane looks at the same players, so the
-                // branches take them all the same way: eight players to a group, a group past the
-                // player count skipped whole, and inside one the players' places read together.
-                // Most players are passed over on where they stand, since a hand is never further
-                // from its player's feet than half as much again as their height: the hands
-                // themselves, read for everyone, cost 20 us a pass for 64 players on a fast GPU,
-                // most of it waiting on the player arrays.
-                [unroll] for (int g = 0; g < 8; g++)
+                // player's chest, a ninth of their viewpoint height. Rolled: written out for all 64,
+                // the hands were a fifth of a step every player's driver took seconds to build the
+                // first time it saw one. Shader Filtering cuts a rolled loop short, but player 0 is
+                // the viewer, so their own hands always count. Most players are passed over on where
+                // they stand, since a hand is never further from its player's feet than half as much
+                // again as their height.
+                [loop] for (int who = 0; who < players; who++)
                 {
-                    [branch] if (g * 8 < players)
+                    float4 root = _CVR_PlayerRootPositions[who];
+                    float tall = root.w > 0.1 ? root.w : 1.6;
+                    float3 to = centre - root.xyz;
+                    float around = reach + 1.5 * tall + 0.5;
+                    [branch] if (dot(to, to) < around * around)
                     {
-                        [unroll] for (int k = 0; k < 8; k++)
+                        float r = _Hand * tall / 1.6;
+                        float3 chest = _CVR_PlayerChestPositions[who].xyz;
+                        [unroll] for (int hand = 0; hand < 2; hand++)
                         {
-                            int who = g * 8 + k;
-                            float4 root = _CVR_PlayerRootPositions[who];
-                            float tall = root.w > 0.1 ? root.w : 1.6;
-                            float3 to = centre - root.xyz;
-                            float around = reach + 1.5 * tall + 0.5;
-                            [branch] if (who < players && dot(to, to) < around * around)
-                            {
-                                float r = _Hand * tall / 1.6;
-                                float3 chest = _CVR_PlayerChestPositions[who].xyz;
-                                [unroll] for (int hand = 0; hand < 2; hand++)
-                                {
-                                    float4 held = hand == 0 ? _CVR_PlayerLeftHandPositions[who] : _CVR_PlayerRightHandPositions[who];
-                                    float3 wrist = held.xyz;
-                                    float3 arm = wrist - chest;
-                                    float3 tip = wrist + (dot(arm, arm) > 1e-6 ? normalize(arm) : 0) * max(0.11 * tall - r, 0);
-                                    // ponytail: eight hands at most, the first in player order; a crowd round one
-                                    // jelly needs more slots.
-                                    // Twice the radius, the skin's rim the draw eases out round a hand. Three
-                                    // points and a quarter of the hand's slack: nine, 128 times over, timed
-                                    // the compiler out.
-                                    bool hit = dot(wrist, wrist) >= 1e-6 && InReach(wrist, tip, 2 * r, m, scale, side, 2);
-                                    // Kept, not returned: a return inside the unrolled loop fails D3D11's validation.
-                                    kw = hit && found == slot ? float4(wrist, r) : kw;
-                                    kt = hit && found == slot ? float4(tip, 10 + clamp(held.w, 0, 9.9)) : kt;
-                                    found += hit;
-                                }
-                            }
+                            float4 held = hand == 0 ? _CVR_PlayerLeftHandPositions[who] : _CVR_PlayerRightHandPositions[who];
+                            float3 wrist = held.xyz;
+                            float3 arm = wrist - chest;
+                            float3 tip = wrist + (dot(arm, arm) > 1e-6 ? normalize(arm) : 0) * max(0.11 * tall - r, 0);
+                            // ponytail: eight hands at most, the first in player order; a crowd round one
+                            // jelly needs more slots.
+                            // Twice the radius, the skin's rim the draw eases out round a hand. Three
+                            // points: nine, when this was written out 128 times, timed the compiler out.
+                            bool hit = dot(wrist, wrist) >= 1e-6 && InReach(wrist, tip, 2 * r, m, scale, side, 2);
+                            kw = hit && found == slot ? float4(wrist, r) : kw;
+                            kt = hit && found == slot ? float4(tip, 10 + clamp(held.w, 0, 9.9)) : kt;
+                            found += hit;
                         }
                     }
                 }
@@ -5730,7 +5728,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     // all that is tested. Each of the 24 tested in turn timed the compiler out.
                     float3 led[2] = { (float3) 0, (float3) 0 };
                     bool on[2] = { false, false };
-                    [unroll] for (uint k = 0; k < PROBES; k++)
+                    [loop] for (uint k = 0; k < PROBES; k++)
                     {
                         bool second = deep[k] > 0 && on[0] && !on[1];
                         led[1] = second ? balls[k] : led[1];
@@ -5738,7 +5736,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         led[0] = deep[k] > 0 && !on[0] ? balls[k] : led[0];
                         on[0] = on[0] || deep[k] > 0;
                     }
-                    [unroll] for (uint i = 0; i < 2; i++)
+                    [loop] for (uint i = 0; i < 2; i++)
                     {
                         bool hit = false;
                         [branch] if (on[i])
@@ -5748,7 +5746,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             // A collider on a hand the arrays gave last frame is that hand, which has
                             // its slot: the client puts a capsule on every player's hands. The ball
                             // sits up to a reach out from the collider, the way its probe was pushed.
-                            [unroll] for (uint e = 0; e < 8; e++)
+                            [loop] for (uint e = 0; e < 8; e++)
                             {
                                 float4 ha = _MainTex.Load(int3(2 * e, side, 0)), hb = _MainTex.Load(int3(2 * e + 1, side, 0));
                                 float3 seg = hb.xyz - ha.xyz;
@@ -5813,7 +5811,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // ponytail: two regions, a pair; a second pair needs four here.
                 [unroll] for (uint r = 0; r < 2; r++)
                 {
-                    float4x4 m = AnchorOf(min(r, regions - 1));
+                    // The second's here, past the far switch: built for the parser's pass, a far prop cost a fifth more.
+                    float4x4 m = r == 0 || regions < 2 ? Mine : AnchorOf(1);
                     float scale = length(m._m00_m10_m20);
                     on[r] = m;
                     scales[r] = scale;
@@ -5830,46 +5829,40 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 }
                 float reach = (length(float3(Count() - 1)) * _Lattice.w + 0.3) * scales[0];
                 bool near = false;
-                [unroll] for (int g = 0; g < 8; g++)
+                // Rolled, as the scan's: player 0, the viewer, always counts.
+                [loop] for (int who = 0; who < players; who++)
                 {
-                    [branch] if (g * 8 < players)
+                    float4 root = _CVR_PlayerRootPositions[who];
+                    float tall = root.w > 0.1 ? root.w : 1.6;
+                    float3 to = mid - root.xyz;
+                    float around = reach + 1.5 * tall + 0.5;
+                    [branch] if (dot(to, to) < around * around)
                     {
-                        [unroll] for (int k = 0; k < 8; k++)
+                        float hr = _Hand * tall / 1.6;
+                        float3 chest = _CVR_PlayerChestPositions[who].xyz;
+                        [unroll] for (int hand = 0; hand < 2; hand++)
                         {
-                            int who = g * 8 + k;
-                            float4 root = _CVR_PlayerRootPositions[who];
-                            float tall = root.w > 0.1 ? root.w : 1.6;
-                            float3 to = mid - root.xyz;
-                            float around = reach + 1.5 * tall + 0.5;
-                            [branch] if (who < players && dot(to, to) < around * around)
+                            float3 wrist = (hand == 0 ? _CVR_PlayerLeftHandPositions[who] : _CVR_PlayerRightHandPositions[who]).xyz, arm = wrist - chest;
+                            float3 tip = wrist + (dot(arm, arm) > 1e-6 ? normalize(arm) : 0) * max(0.11 * tall - hr, 0);
+                            [unroll] for (uint r = 0; r < 2; r++)
                             {
-                                float hr = _Hand * tall / 1.6;
-                                float3 chest = _CVR_PlayerChestPositions[who].xyz;
-                                [unroll] for (int hand = 0; hand < 2; hand++)
-                                {
-                                    float3 wrist = (hand == 0 ? _CVR_PlayerLeftHandPositions[who] : _CVR_PlayerRightHandPositions[who]).xyz, arm = wrist - chest;
-                                    float3 tip = wrist + (dot(arm, arm) > 1e-6 ? normalize(arm) : 0) * max(0.11 * tall - hr, 0);
-                                    [unroll] for (uint r = 0; r < 2; r++)
-                                    {
-                                        float gap = min(min(BoxGap(wrist, on[r], scales[r], r), BoxGap(0.5 * (wrist + tip), on[r], scales[r], r)), BoxGap(tip, on[r], scales[r], r));
-                                        near = near || dot(wrist, wrist) >= 1e-6 && gap < 2 * hr + 0.08 * scales[r];
-                                    }
-                                }
+                                float gap = min(min(BoxGap(wrist, on[r], scales[r], r), BoxGap(0.5 * (wrist + tip), on[r], scales[r], r)), BoxGap(tip, on[r], scales[r], r));
+                                near = near || dot(wrist, wrist) >= 1e-6 && gap < 2 * hr + 0.08 * scales[r];
                             }
                         }
                     }
                 }
                 // Or a probe pushed, a collider's press.
-                [unroll] for (uint q = 0; q < 2; q++)
+                [loop] for (uint q = 0; q < 2; q++)
                 {
                     float4x4 back;
                     [branch] if (q < regions)
                     [branch] if (Probing(q, back))
                     {
-                        [unroll] for (uint k = 0; k < PROBES; k++)
+                        [loop] for (uint k = 0; k < (uint) _JellyProbes && k < PROBES; k++)
                         {
                             float3 at, way;
-                            [branch] if (k < (uint) _JellyProbes) near = near || Probe(q, k, back, at, way, false) > 0.002;
+                            near = near || Probe(q, k, back, at, way, false) > 0.002;
                         }
                     }
                 }
@@ -5967,8 +5960,10 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 if (distant) return none;
                 int3 n = Count();
                 float3 pc = 0, qc = 0, qq = 0, c0 = 0, c1 = 0, c2 = 0;
-                // Summed as each is loaded, not held, so the pass keeps few registers.
-                [unroll] for (int i = 0; i < 64; i++)
+                // Summed as each is loaded, not held, so the pass keeps few registers. Rolled, and
+                // divided by as many as it took: Shader Filtering cuts it short, to the back layers.
+                float taken = 0;
+                [loop] for (int i = 0; i < 64; i++)
                 {
                     int3 l = int3(round(float3(i % 4, (i / 4) % 4, i / 16) * (n - 1) / 3.0));
                     float3 p = Into(m, _MainTex.Load(Texel((uint) Index(l), 0)).xyz), q = Rest(l);
@@ -5978,15 +5973,16 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     c0 += p * q.x;
                     c1 += p * q.y;
                     c2 += p * q.z;
+                    taken++;
                 }
-                pc /= 64;
-                qc /= 64;
+                pc /= max(taken, 1);
+                qc /= max(taken, 1);
                 // Over a box of rest places the rest's own spread is diagonal, an axis a column.
-                float3 spread = qq - 64 * qc * qc;
+                float3 spread = qq - taken * qc * qc;
                 if (!all(spread > 1e-12)) return none;
-                c0 = (c0 - 64 * pc * qc.x) / spread.x;
-                c1 = (c1 - 64 * pc * qc.y) / spread.y;
-                c2 = (c2 - 64 * pc * qc.z) / spread.z;
+                c0 = (c0 - taken * pc * qc.x) / spread.x;
+                c1 = (c1 - taken * pc * qc.y) / spread.y;
+                c2 = (c2 - taken * pc * qc.z) / spread.z;
                 float4 q = float4(0, 0, 0, 1);
                 [unroll] for (int it = 0; it < 4; it++)
                 {
@@ -6084,7 +6080,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float3 pushed = 0;
                 [branch] if (_MainTex.Load(int3(1, side, 0)).w > 0.5)
                 {
-                    [unroll] for (int e = 0; e < 8; e++)
+                    [loop] for (int e = 0; e < 8; e++)
                     {
                         float4 a = _MainTex.Load(int3(2 * e, side, 0)), b = _MainTex.Load(int3(2 * e + 1, side, 0));
                         if (!(b.w > 0.5)) continue;
@@ -6105,7 +6101,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     }
                     // Each grip pulls the whole by the share of a press it takes, the skin it holds
                     // following the hand the rest of the way.
-                    [unroll] for (uint gi = 0; gi < 8; gi++)
+                    [loop] for (uint gi = 0; gi < 8; gi++)
                     {
                         float3 gat;
                         float graw;
@@ -6121,7 +6117,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 [branch] if (own != 0)
                 {
                     float c = min(_Give, 0.95) / (1 - min(_Give, 0.95));
-                    [unroll] for (uint k = 2; k < 8; k += 4)
+                    [loop] for (uint k = 2; k < 8; k += 4)
                     {
                         [branch] if (own & (1u << k))
                         {
@@ -6140,15 +6136,15 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // A world solid's faces too, by the deepest, as a hand leans: a pane slapped on
                 // shoves the whole and it swings after. The faces alone pressed the front flat and
                 // nothing followed.
-                float4x4 sback;
-                [branch] if (SolidRegion(region) && Pushed(side) && Probing(region, sback))
+                [branch] if (SolidRegion(region) && Probed)
+                [branch] if (Pushed(side))
                 {
                     float c = min(_Give, 0.95) / (1 - min(_Give, 0.95)), deepest = 0;
                     float3 along = 0, smid = mul(_JellyAnchor[2 + region], float4(0, 0, zc, 1)).xyz;
-                    [unroll] for (uint fk = 0; fk < PROBES; fk++)
+                    [loop] for (uint fk = WorldFrom(region); fk < (uint) _JellyProbes && fk < PROBES; fk++)
                     {
                         float3 fat, fway;
-                        float fg = fk < (uint) _JellyProbes && fk >= WorldFrom(region) ? Probe(region, fk, sback, fat, fway) : 0;
+                        float fg = Probe(region, fk, Back, fat, fway);
                         [branch] if (fg > 0.02)
                         {
                             float3 face = fat + normalize(fat - fway * fg - smid) * (_JellyProbeReach - BALL) - fway * BALL;
@@ -6222,8 +6218,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // rest while the homes moved, each particle was pulled two ways, and the lattice's sides
                 // flickered a frame apart under a held press.
                 float3x3 sw = ShapedAt(l, Shape(side));
-                [branch] if (predicted) q = Fit(p, l, ahead, base, kh, m, h, home, q, true, sw, c, rc, lin);
-                else q = Fit(p, l, ahead, base, kh, m, h, home, q, false, sw, c, rc, lin);
+                q = Fit(p, l, ahead, base, kh, m, h, home, q, predicted, sw, c, rc, lin);
                 // Rigid, or keeping _Squish of its neighbourhood's own squash and stretch at constant
                 // volume, so flesh pressed in one way bulges out the others.
                 float3 rigid = mul(Turn(q), mul(sw, Rest(l) - rc) * scale);
@@ -6258,7 +6253,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     float4 ta = _MainTex.Load(int3(30, side, 0)), tb = _MainTex.Load(int3(30, ps, 0));
                     float3 ca = ta.w > 0 ? ta.xyz : mul(m, float4(0, 0, zc, 1)).xyz;
                     float3 cb = tb.xyz;
-                    [branch] if (!(tb.w > 0)) cb = mul(Anchor(other), float4(0, 0, zc, 1)).xyz;
+                    // Its own copy: a particle never has the other's anchor to hand.
+                    [branch] if (!(tb.w > 0)) cb = mul(AnchorOf(other), float4(0, 0, zc, 1)).xyz;
                     float dist = distance(ca, cb), wa = (other == 1 ? _PairReach.x : _PairReach.y) * scale;
                     float e = 0.5 * max((length(_PairOffset.xyz) - _PairReach.z) * scale - dist, 0);
                     meet = e > 0 ? Meet(m, ps) : 0;
@@ -6282,14 +6278,14 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 }
                 next = lerp(next, held + lift, min(spring * spring, 1));
                 // The hands found in reach, each from the wrist to its tip with a radius. Slots fill in
-                // order, so an empty first one means there are none. Unrolled, so Shader Filtering
-                // leaves it whole.
+                // order, so an empty first one means there are none. Rolled, as every loop here over
+                // slots, capsules and probes: Shader Filtering cuts them short, the first slots first.
                 // Each goes on ahead of the palm and any finger out, toward the region's centre.
                 [branch] if (_MainTex.Load(int3(1, side, 0)).w > 0.5)
                 {
                     float4 mass = _MainTex.Load(int3(30, side, 0));
                     float3 centre = mass.w > 0 ? mass.xyz : mul(m, float4(0, 0, 0.5 * (Count().z - 1) * _Lattice.w, 1)).xyz;
-                    [unroll] for (int e = 0; e < 8; e++)
+                    [loop] for (int e = 0; e < 8; e++)
                     {
                         float4 a = _MainTex.Load(int3(2 * e, side, 0)), b = _MainTex.Load(int3(2 * e + 1, side, 0));
                         if (!(b.w > 0.5)) continue;
@@ -6304,7 +6300,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     // Each grip takes the skin it closed on along with the hand: all of it at the
                     // grip, none a hand's breadth off, the neighbourhoods' fit bending what lies
                     // between. Let go, the tissue's own spring brings it back.
-                    [unroll] for (uint gi = 0; gi < 8; gi++)
+                    [loop] for (uint gi = 0; gi < 8; gi++)
                     {
                         float3 gat;
                         float graw;
@@ -6324,7 +6320,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 {
                     float4 mass = _MainTex.Load(int3(30, side, 0));
                     float3 centre = mass.w > 0 ? mass.xyz : mul(m, float4(0, 0, 0.5 * (Count().z - 1) * _Lattice.w, 1)).xyz;
-                    [unroll] for (uint c = 0; c < 16; c++)
+                    [loop] for (uint c = 0; c < 16; c++)
                     {
                         [branch] if (own & (1u << c))
                         {
@@ -6357,14 +6353,14 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // skin's own outward way as the build set it: offset along the push instead, a ball
                 // lagging sideways in a turn made a sideways wall that threw the tissue 59 cm. And only
                 // past 2 cm: a frontal solid reaches the skin at 4, and a turn's lag is millimetres.
-                float4x4 sback;
-                [branch] if (SolidRegion(Region) && Pushed(side) && Probing(Region, sback))
+                [branch] if (SolidRegion(Region) && Probed)
+                [branch] if (Pushed(side))
                 {
                     float3 smid = mul(_JellyAnchor[2 + Region], float4(0, 0, 0.5 * (Count().z - 1) * _Lattice.w, 1)).xyz;
-                    [unroll] for (uint fk = 0; fk < PROBES; fk++)
+                    [loop] for (uint fk = WorldFrom(Region); fk < (uint) _JellyProbes && fk < PROBES; fk++)
                     {
                         float3 fat, fway;
-                        float fg = fk < (uint) _JellyProbes && fk >= WorldFrom(Region) ? Probe(Region, fk, sback, fat, fway) : 0;
+                        float fg = Probe(Region, fk, Back, fat, fway);
                         [branch] if (fg > 0.02)
                         {
                             float3 fout = normalize(fat - fway * fg - smid);
@@ -6386,14 +6382,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // The texture parser's two texels, each a range between its task's bounds: where the
             // front centre is in the anchor's own space, x, y and z each from -0.5 to 0.5; and how its
             // neighbourhood has turned against the anchor, as Unity's Euler angles, each from -180 to
-            // 180. From the same step the front centre's own texel takes.
-            float4 Rider(int x, float4x4 m, float scale, float h, bool predicted, bool distant, uint side)
+            // 180. From the same step the front centre's own texel takes, at and q.
+            float4 Rider(int x, float4x4 m, float scale, float3 at, float4 q)
             {
-                int3 n = Count();
-                int3 l = int3(n.x / 2, n.y / 2, n.z - 1);
-                float3 home = mul(m, float4(Rest(l), 1)).xyz;
-                float4 q;
-                float3 at = Moved((uint) Index(l), l, m, scale, h, home, predicted, distant, side, float4(0, 0, 0, 1), q);
                 float3x3 r = (float3x3) m / scale;
                 if (x == 16) return float4(saturate(mul(transpose(r), at - m._m03_m13_m23) / scale + 0.5), 1);
                 float3x3 t = mul(transpose(r), Turn(q));
@@ -6483,7 +6474,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 [branch] if (!distant && _MainTex.Load(int3(1, side, 0)).w > 0.5)
                 {
                     float3 centre = mul(m, float4(mid, 1)).xyz;
-                    [unroll] for (int e = 0; e < 8; e++)
+                    [loop] for (int e = 0; e < 8; e++)
                     {
                         float4 a = _MainTex.Load(int3(2 * e, side, 0)), b = _MainTex.Load(int3(2 * e + 1, side, 0));
                         // A probe's ball has no length. Taken as a palm, its first frame read as the
@@ -6515,8 +6506,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // frame's push is the readout's, from 88. A ring under 0.2 s old within two reaches
                 // is the same collider's: a hand carrying one as well rang through the arrays a few
                 // frames before the probes, and as a palm goes in the probe furthest in changes and
-                // crosses faster. Such a one deepens that ring and never adds a second. Unrolled:
-                // Shader Filtering cuts a [loop] short.
+                // crosses faster. Such a one deepens that ring and never adds a second.
                 int into = -1;
                 // Felt before the dispatch, while timed.
                 [branch] if (!fired && felt)
@@ -6525,7 +6515,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     // a hand's speed: a ball slapped in at 3 m/s read 1.05.
                     speed = 0.4 * _Slap.x;
                     float skin = max(_JellyProbeReach, 0.002);
-                    [unroll] for (uint k = 0; k < PROBES; k++)
+                    [loop] for (uint k = 0; k < PROBES; k++)
                     [branch] if (deep[k] >= skin)
                     {
                         float gone = deep[k], was = _MainTex.Load(int3(88 + k, side, 0)).w;
@@ -6596,7 +6586,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // it was gripped. 120 on keep each one's last pull.
                 [branch] if (!fired && timed && !distant)
                 {
-                    [unroll] for (uint gi = 0; gi < 8; gi++)
+                    [loop] for (uint gi = 0; gi < 8; gi++)
                     {
                         float3 gat;
                         float graw;
@@ -6628,6 +6618,23 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 int2 px = int2(i.pos.xy);
                 int3 n = Count();
                 uint count = n.x * n.y * n.z, side = Rows();
+                // The cost meter's load rests in even phases, as cheap as a pass can be.
+                if (_Pass < 1.5 && _Stress > 0 && fmod(floor(_Time.y / Window), 2) < 0.5) return _MainTex.Load(int3(px, 0));
+                // Packed regions share the passes, the scan's player arrays and the draw's texture:
+                // each is a block of rows with its own anchor, and from here on side is its own side
+                // row. The third pass draws one row, so reads the first region's.
+                uint region = (uint) px.y / (side + 1);
+                Base = region * (side + 1);
+                side += Base;
+                // The rows padding the region out, before any work.
+                if ((uint) px.y != side && (uint) px.x % Row + ((uint) px.y - Base) * Row >= count) return 0;
+                Region = region;
+                MineOf = region;
+                Mine = AnchorOf(region);
+                // The other region's only where it is read: the far switch measures from the first's,
+                // and the side row's pair plane. Built for every pixel, far-off steps cost half again.
+                Theirs = Mine;
+                [branch] if (_Regions > 1.5 && (region == 1 && _Pass < 0.5 || (uint) px.y == side)) Theirs = AnchorOf(region ^ 1);
                 // A third pass, where there is a rider, copies its two texels into a texture of their
                 // own: the texture parser reads back a whole texture, and the whole state costs it
                 // ten times two texels. Its third texel says whether the steps should run at all: the
@@ -6659,18 +6666,6 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 return 0;
 #else
                 float4 here = _MainTex.Load(int3(px, 0));
-                // The cost meter's load rests in even phases, as cheap as a pass can be.
-                if (_Stress > 0 && fmod(floor(_Time.y / Window), 2) < 0.5) return here;
-                // Packed regions share the passes, the scan's player arrays and the draw's texture:
-                // each is a block of rows with its own anchor, and from here on side is its own side
-                // row. The third pass reads the first region's.
-                uint region = (uint) px.y / (side + 1);
-                Base = region * (side + 1);
-                side += Base;
-                // The rows padding the region out, before any work.
-                if ((uint) px.y != side && (uint) px.x % Row + ((uint) px.y - Base) * Row >= count) return 0;
-                Region = region;
-                Mine = AnchorOf(region);
                 float4x4 m = Mine;
                 float scale = length(m._m00_m10_m20);
                 bool anchored = scale > 1e-6;
@@ -6712,7 +6707,12 @@ Shader ""Hidden/AvatarBridge/JellyStep""
 #else
                 bool asleep = false;
 #endif
+                // The probes' frame only where it is read: the side row, and an awake step of a region
+                // the world pushes.
+                Probed = false;
+                [branch] if ((uint) px.y == side || SolidRegion(region) && !distant && !asleep) Probed = Probing(region, Back);
 
+                bool rider = false;
                 if ((uint) px.y == side)
                 {
                     if (!anchored) return 0;
@@ -6738,7 +6738,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         [branch] if (px.x < 16 && !distant)
                         {
                             upto = min((uint) _JellyProbes, WorldFrom(Region));
-                            [unroll] for (uint k = 0; k < PROBES; k++) feel = feel || k < upto && _MainTex.Load(int3(88 + k, side, 0)).w > 0.001;
+                            [loop] for (uint k = 0; k < upto && k < PROBES && !feel; k++) feel = _MainTex.Load(int3(88 + k, side, 0)).w > 0.001;
                         }
 #endif
                         [branch] if (px.x >= 80 && px.x < 84 && !distant)
@@ -6746,11 +6746,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             float4 last = _MainTex.Load(int3(84, side, 0));
                             feel = last.w > 0 && _Time.y - last.w < 0.1;
                         }
-                        float4x4 back;
-                        [branch] if (feel)
-                        [branch] if (Probing(Region, back))
+                        [branch] if (feel && Probed)
                         {
-                            Felt(Region, upto, back, balls, rests, deep);
+                            Felt(Region, upto, Back, balls, rests, deep);
                             felt = true;
                         }
 #ifdef JELLY_SCAN
@@ -6843,9 +6841,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         // frame, and a readout for the verify.
                         [branch] if (px.x >= 88 && px.x < 88 + PROBES)
                         {
-                            float4x4 back;
                             float3 at, way;
-                            float gone = Probing(Region, back) ? Probe(Region, px.x - 88, back, at, way) : -1;
+                            float gone = Probed ? Probe(Region, px.x - 88, Back, at, way) : -1;
                             return float4(at, gone);
                         }
                         return here;
@@ -6877,58 +6874,70 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     }
                     if (px.x == 35) return Settling(here, m, scale, dt, distant, side, predicted ? Gravity * h * h : 0);
 #endif
-                    [branch] if ((px.x == 16 || px.x == 17) && _Rider > 0) return Rider(px.x, m, scale, h, predicted, distant, side);
-                    return here;
+                    // The rider takes the particles' own path below, so the step is written out once.
+                    rider = (px.x == 16 || px.x == 17) && _Rider > 0;
+                    if (!rider) return here;
                 }
-
-                // Far off, both passes leave the state be, as cheap as a pass can be: the surface
-                // draws the rest shape off the far switch, and a stale state starts again at rest.
-                // The second discards, writing nothing. Compiled into its variant alone: a discard
-                // anywhere in the first, which carries the hand scan, slowed a fast GPU's near steps,
-                // even one it never reached.
-                [branch] if (distant)
+                int3 l;
+                uint p;
+                float3 home;
+                float4 swing = float4(0, 0, 0, 1), q;
+                [branch] if (rider)
                 {
+                    // The front centre, homed on the anchor alone.
+                    int3 n = Count();
+                    l = int3(n.x / 2, n.y / 2, n.z - 1);
+                    p = (uint) Index(l);
+                    home = mul(m, float4(Rest(l), 1)).xyz;
+                }
+                else
+                {
+                    // Far off, both passes leave the state be, as cheap as a pass can be: the surface
+                    // draws the rest shape off the far switch, and a stale state starts again at rest.
+                    // The second discards, writing nothing. Compiled into its variant alone: a discard
+                    // anywhere in the first, which carries the hand scan, slowed a fast GPU's near steps,
+                    // even one it never reached.
+                    [branch] if (distant)
+                    {
 #ifndef JELLY_SCAN
-                    if (_Pass > 0.5) discard;
+                        if (_Pass > 0.5) discard;
 #endif
-                    return here;
+                        return here;
+                    }
+                    // Asleep, the same, but stamped, so it reads as stepping and wakes where it lay.
+                    [branch] if (asleep) return _Pass > 0.5 && (uint) px.x < Row ? float4(here.xyz, _Time.y) : here;
+                    p = (uint) px.x % Row + ((uint) px.y - Base) * Row;
+                    if (p >= count) return 0;
+                    int half_ = (uint) px.x >= Row;
+                    l = Place(p);
+                    // No anchor yet: nothing to hang from. Marked, so the surface can say so.
+                    if (!anchored) return half_ == 0 ? float4(0, 0, 0, -1) : 0;
+                    // The fit's right half was settled in the first pass: no home to work out.
+                    if (predicted && _Pass > 0.5 && half_ == 1) return here;
+                    home = Home(l, m, side, swing);
+                    if (predicted && _Pass < 0.5)
+                    {
+                        // Where each particle is headed, for the second pass to fit, w 0 for one put back
+                        // at rest; the right half already takes where it was.
+                        float4 s = _MainTex.Load(Texel(p, 0)), was = _MainTex.Load(Texel(p, 1));
+                        bool rest = Fresh(s, was, home);
+                        if (half_ == 1) return float4(rest ? home : s.xyz, h);
+                        if (rest) return float4(home, 0);
+                        if (l.z == 0) return float4(home, 1);
+                        return float4(Ahead(s, was, l, side, home, h) + Gravity * h * h, 1);
+                    }
+                    // A whole step's right half only moves along, so half the texture does next to no work.
+                    if (!predicted && half_ == 1)
+                    {
+                        float4 s = _MainTex.Load(Texel(p, 0));
+                        return float4(Fresh(s, here, home) ? home : s.xyz, h);
+                    }
                 }
-                // Asleep, the same, but stamped, so it reads as stepping and wakes where it lay.
-                [branch] if (asleep) return _Pass > 0.5 && (uint) px.x < Row ? float4(here.xyz, _Time.y) : here;
-                uint p = (uint) px.x % Row + ((uint) px.y - Base) * Row;
-                if (p >= count) return 0;
-                int half_ = (uint) px.x >= Row;
-                int3 l = Place(p);
-                // No anchor yet: nothing to hang from. Marked, so the surface can say so.
-                if (!anchored) return half_ == 0 ? float4(0, 0, 0, -1) : 0;
-                // The fit's right half was settled in the first pass: no home to work out.
-                if (predicted && _Pass > 0.5 && half_ == 1) return here;
-                float4 swing;
-                float3 home = Home(l, m, side, swing);
-                float4 q;
-                if (predicted && _Pass < 0.5)
-                {
-                    // Where each particle is headed, for the second pass to fit, w 0 for one put back
-                    // at rest; the right half already takes where it was.
-                    float4 s = _MainTex.Load(Texel(p, 0)), was = _MainTex.Load(Texel(p, 1));
-                    bool rest = Fresh(s, was, home);
-                    if (half_ == 1) return float4(rest ? home : s.xyz, h);
-                    if (rest) return float4(home, 0);
-                    if (l.z == 0) return float4(home, 1);
-                    return float4(Ahead(s, was, l, side, home, h) + Gravity * h * h, 1);
-                }
-                if (predicted)
-                {
-                    // The fit, from the first pass's predictions.
-                    return float4(Moved(p, l, m, scale, h, home, true, distant, side, swing, q), _Time.y);
-                }
-                // A whole step. The right half only moves along, so half the texture does next to no work.
-                if (half_ == 1)
-                {
-                    float4 s = _MainTex.Load(Texel(p, 0));
-                    return float4(Fresh(s, here, home) ? home : s.xyz, h);
-                }
-                return float4(Moved(p, l, m, scale, h, home, false, distant, side, swing, q), _Time.y);
+                // The fit from the first pass's predictions, or a whole step. One call: each call
+                // writes the whole step out again.
+                float3 at = Moved(p, l, m, scale, h, home, predicted, distant, side, swing, q);
+                [branch] if (rider) return Rider(px.x, m, scale, at, q);
+                return float4(at, _Time.y);
 #endif
             }
             ENDCG
@@ -7039,14 +7048,12 @@ float4 Fit(uint p, int3 l, float3 ahead, float3 base, float kh, float4x4 m, floa
         {
             bool ok = (dx < 0 ? lo.x : dx > 0 ? hi.x : true) && (dy < 0 ? lo.y : dy > 0 ? hi.y : true) && (dz < 0 ? lo.z : dz > 0 ? hi.z : true);
             uint o = p + (uint) (dx + dy * sy + dz * sz);
-            float3 d;
-            if (predicted) d = _MainTex.Load(Texel(o, 0)).xyz - ahead;
-            else
-            {
-                float3 x = _MainTex.Load(Texel(o, 0)).xyz, w = _MainTex.Load(Texel(o, 1)).xyz;
-                d = x + (x - w) * kh - base;
-                if (dz < 0) d = l.z == 1 ? behind + dx * mx + dy * my - base : d;
-            }
+            // Predicted, where each is headed is the first pass's, with no velocity to read. One
+            // body for both: the step's single Moved call carries predicted as it comes.
+            float3 x = _MainTex.Load(Texel(o, 0)).xyz, w = x;
+            [branch] if (!predicted) w = _MainTex.Load(Texel(o, 1)).xyz;
+            float3 d = predicted ? x - ahead : x + (x - w) * kh - base;
+            if (!predicted && dz < 0) d = l.z == 1 ? behind + dx * mx + dy * my - base : d;
             d = ok ? d : 0;
             sd += d;
             if (dx != 0) ax += dx * d;
