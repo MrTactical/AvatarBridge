@@ -11,7 +11,7 @@ namespace AvatarBridge.Regression
     // past the conversion's and VRCFury's wrappers to the author's own object.
     public static class PlugLabelTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: plug labels")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Plug labels")]
         public static void Run()
         {
             int fail = 0;

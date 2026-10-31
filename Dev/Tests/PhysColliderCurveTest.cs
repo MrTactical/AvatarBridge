@@ -19,7 +19,7 @@ namespace AvatarBridge.Regression
     // WITH a warning, and both outcomes appear in the report.
     public static class PhysColliderCurveTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: collider enable curves")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Collider enable curves")]
         public static void Run()
         {
             int fail = 0;

@@ -34,7 +34,7 @@ namespace AvatarBridge.Regression
         const string Temp = "Packages/com.vrcfury.temp/__ABTextureRehomeTest";
         const string Output = "Assets/__ABTextureRehomeTest";
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: texture rescue out of temp")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Texture rescue out of temp")]
         public static void Run()
         {
             int fail = 0;

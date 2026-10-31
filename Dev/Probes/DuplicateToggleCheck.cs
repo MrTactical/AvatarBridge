@@ -14,7 +14,7 @@
 // Running it over the corpus finds every affected avatar at once, which
 // beats reproducing one.
 //
-//   Tools/AvatarBridge/Dev/Duplicate menu toggles (this avatar)
+//   Tools/Avatar Bridge/Dev/Probes/Duplicate menu toggles (this avatar)
 //   -executeMethod AvatarBridge.Probes.DuplicateToggleCheck.RunBatch
 #if CVR_CCK_EXISTS
 using System;
@@ -43,7 +43,7 @@ namespace AvatarBridge.Probes
             public Route How;
         }
 
-        [MenuItem("Tools/AvatarBridge/Dev/Duplicate menu toggles (this avatar)")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Probes/Duplicate menu toggles (this avatar)")]
         static void RunHere()
         {
             var avatar = UnityEngine.Object.FindObjectOfType<CVRAvatar>();

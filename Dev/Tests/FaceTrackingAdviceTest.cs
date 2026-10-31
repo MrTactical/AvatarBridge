@@ -19,7 +19,7 @@ namespace AvatarBridge.Regression
     {
         const string KeepRig = "Keep the avatar's own face-tracking rig";
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: face-tracking advice")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Face-tracking advice")]
         public static void Run()
         {
             int fail = 0;

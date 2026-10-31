@@ -23,7 +23,7 @@ namespace AvatarBridge.Regression
     SubShader { Pass { } }
 }";
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: legacy plug or socket")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Legacy plug or socket")]
         public static void Run()
         {
             int fail = 0;

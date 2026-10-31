@@ -15,7 +15,7 @@ namespace AvatarBridge.Regression
         const string Dir = "Assets/ThryLockFirstTest";
         static int failures;
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: Poiyomi locked before the YAPS patch")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Poiyomi locked before the YAPS patch")]
         public static void Run()
         {
             failures = 0;

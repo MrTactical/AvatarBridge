@@ -32,7 +32,7 @@ namespace AvatarBridge
     public static class YapsReapply
     {
         const string Prefix = "_YAPS_";
-        const string MenuPath = "Tools/YAPS/Re-apply YAPS to selected materials";
+        const string MenuPath = "Tools/Avatar Bridge/YAPS/Re-apply YAPS to selected materials";
 
         [MenuItem(MenuPath, true)]
         static bool Validate() => Selected().Count > 0;

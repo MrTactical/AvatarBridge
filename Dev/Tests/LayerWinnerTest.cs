@@ -14,7 +14,7 @@ namespace AvatarBridge.Regression
     {
         static int failures;
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: layer winners")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Layer winners")]
         public static void Run()
         {
             failures = 0;

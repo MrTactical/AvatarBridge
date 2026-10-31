@@ -12,7 +12,7 @@ namespace AvatarBridge.Regression
     // the target lacks must still be listed.
     public static class RolesCopyTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: roles copy")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Roles copy")]
         public static void Run()
         {
             int fail = 0;

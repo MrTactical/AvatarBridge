@@ -20,7 +20,7 @@ namespace AvatarBridge.Regression
     // component.
     public static class HeadChopCurveTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: head-chop curve polarity")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Head-chop curve polarity")]
         public static void Run()
         {
             int fail = 0;

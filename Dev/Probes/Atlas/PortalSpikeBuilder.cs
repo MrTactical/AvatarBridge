@@ -1,9 +1,9 @@
 // Phase 4 of the portal plan: a hand-wired portal on a real avatar, for the
 // in-game gate G2. Nothing here ships.
 //
-//   Tools/AvatarBridge Dev/Portal spike: build on the selection
+//   Tools/Avatar Bridge/Dev/Portal/Portal spike: build on the selection
 //       the exit socket, and with Ctrl the bone the entrance goes on
-//   Tools/AvatarBridge Dev/Portal spike: remove
+//   Tools/Avatar Bridge/Dev/Portal/Portal spike: remove
 //   -executeMethod AvatarBridge.Regression.PortalSpikeBuilder.Verify
 //
 // The build adds three things to the avatar:
@@ -54,7 +54,7 @@ namespace AvatarBridge.Regression
         const string IndicatorShader = "YAPS/Portal Spike Indicator";
         const string SocketShader = "YAPS/Atlas Socket";
 
-        [MenuItem("Tools/AvatarBridge Dev/Portal spike: build on the selection")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Portal/Portal spike: build on the selection")]
         static void BuildMenu()
         {
             var picked = Selection.gameObjects;
@@ -65,7 +65,7 @@ namespace AvatarBridge.Regression
             else Debug.Log(Tag + done);
         }
 
-        [MenuItem("Tools/AvatarBridge Dev/Portal spike: remove")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Portal/Portal spike: remove")]
         static void RemoveMenu()
         {
             var at = Selection.activeGameObject;
@@ -225,7 +225,7 @@ namespace AvatarBridge.Regression
         const string AvatarName = "__PortalSpikeAvatar";
         static int _fail;
 
-        [MenuItem("Tools/AvatarBridge Dev/Probe: Portal spike")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Portal/Portal spike")]
         public static void Verify()
         {
             // It opens an empty scene and deletes the build's own material folder, so in a real

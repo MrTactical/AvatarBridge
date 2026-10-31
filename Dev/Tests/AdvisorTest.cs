@@ -26,7 +26,7 @@ namespace AvatarBridge.Regression
     // twelve plausibly-named blendshapes would only be testing this file's guess at the naming.
     public static class AdvisorTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: avatar advisor")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Avatar advisor")]
         public static void Run()
         {
             int fail = 0;

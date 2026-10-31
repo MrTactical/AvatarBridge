@@ -33,7 +33,7 @@ namespace AvatarBridge.Regression
         const float Padding = 5f;
         const float RowWidthLimit = 60f;
 
-        [MenuItem("Tools/AvatarBridge Dev/Scenes: build \"all converted\" test scene")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Scenes/Build \"all converted\" test scene")]
         public static void Build()
         {
             var prefabs = AssetDatabase.FindAssets("t:Prefab", new[] { OutputFolder })

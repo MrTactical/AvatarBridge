@@ -14,7 +14,7 @@ namespace AvatarBridge.Regression
         const string Path = "Assets/PreflightTest.prefab";
         static int failures;
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: upload preflight")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Upload preflight")]
         public static void Run()
         {
             failures = 0;

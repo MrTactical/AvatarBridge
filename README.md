@@ -152,7 +152,7 @@ but only the game shows gestures, contacts, synced parameters and physics actual
   add-on installed: DPS, TPS and SPS become YAPS, the plug bends into sockets and sockets
   open, in game, for everyone, with the author's tuning carried over, and it reads and is read by
   every system already on the platform. **Converting carries the sockets over; finish them in the
-  YAPS tool** (*Tools ▸ YAPS ▸ Setup*, drop the converted avatar in, Build): that is what gives a
+  YAPS tool** (*Tools ▸ Avatar Bridge ▸ YAPS ▸ Setup*, drop the converted avatar in, Build): that is what gives a
   socket its gizmo in the scene and makes it answer a plug in game. The same tool sets penetration
   up on any ChilloutVR avatar or prop, VRChat history or not.
 - **Budgets freed**: GoGo Loco removed, and the haptics stacks stripped with their contacts, so
@@ -889,7 +889,7 @@ plug mesh stays, straight, and where to get the add-on. Installed, it is two thi
 - **A pass in the converter.** With *Penetration* left on its default, *Convert to YAPS
   (recommended)*, a VRChat avatar's plug bends into sockets in game, for everyone in the instance,
   and its sockets open around plugs, with the author's own tuning carried across.
-- **The YAPS tool**, *Tools ▸ YAPS ▸ Setup*, for any ChilloutVR avatar or prop, no VRChat
+- **The YAPS tool**, *Tools ▸ Avatar Bridge ▸ YAPS ▸ Setup*, for any ChilloutVR avatar or prop, no VRChat
   history needed: add sockets, make a plug, turn a hole into a [portal](#portals) that a plug comes
   out of somewhere else, tune every knob, preview in the editor. The same
   system and the same shader either way, so a converted avatar and a native one are the same
@@ -1042,7 +1042,7 @@ range it stays exactly as it is.
 `_SelfNotOnHips` twin beside it, and a socket's own self trigger listens for the twin ALONE: the
 bare tag is what everyone ELSE reads. A socket carrying only the bare tag works perfectly for
 other people and does nothing for the person wearing it. Sockets built with the YAPS tool before
-4.3.0 are in exactly that state: **rebuild them** from *Tools ▸ YAPS ▸ Setup* and the twin is
+4.3.0 are in exactly that state: **rebuild them** from *Tools ▸ Avatar Bridge ▸ YAPS ▸ Setup* and the twin is
 written in, along with current marker light ranges if the socket came from an older prefab. A
 conversion rebuilds every socket from scratch, so converted avatars get the twins by default.
 
@@ -1078,12 +1078,12 @@ are candidates, exactly as in VRChat.
 **A converted avatar is editable.** Every socket and plug the converter builds carries a `YAPS
 Socket` / `YAPS Plug` component: the tool below reads them, so you can retune what the author
 set and run **Bake every plug and verify** again. **Edited the material in Poiyomi?**
-*Tools ▸ YAPS ▸ Re-apply YAPS to selected materials* puts the deform back after an
+*Tools ▸ Avatar Bridge ▸ YAPS ▸ Re-apply YAPS to selected materials* puts the deform back after an
 unlock/edit/re-lock.
 
 ### The YAPS tool
 
-*Tools ▸ YAPS ▸ Setup.* Three steps, like the converter's:
+*Tools ▸ Avatar Bridge ▸ YAPS ▸ Setup.* Three steps, like the converter's:
 
 1. **Pick your avatar or prop.** Drag it into the box, or anything under it: a bone, a mesh, a
    socket. The tool takes the avatar or prop above whatever you dropped and says so, and the list
@@ -1148,18 +1148,18 @@ touches it; making the prop again takes it off too. **Verify prop** before each 
 the prop's synced values, repairs a blank parameter name where it can, and says when a prop from
 an early build has its grab collider in the wrong place.
 
-**Universal socket prefabs**: *Tools ▸ YAPS ▸ Create universal socket prefabs* writes `YAPS Hole`
+**Universal socket prefabs**: *Tools ▸ Avatar Bridge ▸ YAPS ▸ Create universal socket prefabs* writes `YAPS Hole`
 and `YAPS Ring` to `Assets/YAPS/Prefabs`. Drag one under a bone, point its +Z the way a plug
 should enter, and every plug on the platform reads it: DPS marker lights at VRCFury's exact
 ranges, TPS and SPS pointers, and a front so plugs thread rather than aim. Nothing to understand.
 
-**A plug prop prefab**: *Tools ▸ YAPS ▸ Create a plug prop prefab* writes `YAPS Plug Prop` and
+**A plug prop prefab**: *Tools ▸ Avatar Bridge ▸ YAPS ▸ Create a plug prop prefab* writes `YAPS Plug Prop` and
 its mesh, `YAPS Plug Prop Mesh`, beside them: a whole spawnable in one click, built and baked on
 the current shader with its pickup and grab collider wired, finding sockets through the screen
 atlas and by their marker lights where the atlas cannot answer. Drop it in a scene and upload it
 from the CCK as a prop.
 
-**After updating AvatarBridge**: *Tools ▸ YAPS ▸ Update every YAPS shader in this project*. Building
+**After updating AvatarBridge**: *Tools ▸ Avatar Bridge ▸ YAPS ▸ Update every YAPS shader in this project*. Building
 an avatar updates its shader as a matter of course, and nothing builds a prop, so a prop keeps the
 shader it was made with: an old one bending oddly next to a current avatar is that, not a fault in
 the avatar. This walks every material in the project instead, so it also reaches avatars in scenes
@@ -1167,12 +1167,12 @@ you have not opened and anything you were sent. Upload the prop again afterwards
 already on the platform is the one it went up with.
 
 Each update also names its patched shaders afresh, so `Assets/YAPS/Generated/Shaders` keeps the last
-version's set beside the new one. *Tools ▸ YAPS ▸ Remove unused patched shaders* moves every shader
+version's set beside the new one. *Tools ▸ Avatar Bridge ▸ YAPS ▸ Remove unused patched shaders* moves every shader
 no material or scene in the project uses to the trash, with its includes, and asks first. A shader
 still in use stays. The same button then offers the locked Poiyomi copies in
 `Assets/YAPS/Generated/Locked` that no material wears or was patched from.
 
-**A ring-and-socket prop prefab**: *Tools ▸ YAPS ▸ Create a ring-and-socket prop prefab* writes
+**A ring-and-socket prop prefab**: *Tools ▸ Avatar Bridge ▸ YAPS ▸ Create a ring-and-socket prop prefab* writes
 `YAPS Ring and Socket Prop` to `Assets/YAPS/Prefabs` too: the plug prop's other half, a spawnable
 carrying a ring to pass through above and a hole to enter below, facing opposite ways so one prop
 serves both. Resize the body and move the sockets before uploading. Its grab box fits the body; builds before 5.0.0 fitted it to the sockets' screen-atlas meshes, which are a kilometre across so they never cull, so make the prefab again and re-upload one made earlier. The same goes for a socket made a prop with *Make selected object a prop*. Both sockets carry marker
@@ -1468,7 +1468,7 @@ it alone. Properties your animations drive stay live through the lock. A propert
 *Rename Animated* keeps its renamed name on every copy YAPS makes, locked or not, so the animations
 that drive it still reach it after the copy is unlocked and locked again. The copy is reused until the
 material's settings change, so converting again locks nothing new. A change of settings adds a new
-copy and the old one stays. *Tools ▸ YAPS ▸ Remove unused patched shaders* clears the copies no
+copy and the old one stays. *Tools ▸ Avatar Bridge ▸ YAPS ▸ Remove unused patched shaders* clears the copies no
 material wears or was patched from, and asks first. Deleting the folder by hand never breaks a
 built avatar, since every patched shader is a complete copy of its own in
 `Assets/YAPS/Generated/Shaders`, but *Update every YAPS shader* cannot refresh a material whose
@@ -1503,7 +1503,7 @@ is none, and it arrives with Preview on: every baked plug in the scene bends tow
 move it. **Test plug** drops a baked capsule in front of the camera. **Make the selected test object
 a prop** does the rest; upload each from the CCK and try them with a second person. The tab's
 *Props and prefabs* card also carries the three prefab buttons, **Update every YAPS shader in
-this project** and **Remove unused patched shaders**, the same as their *Tools ▸ YAPS* menu items
+this project** and **Remove unused patched shaders**, the same as their *Tools ▸ Avatar Bridge ▸ YAPS* menu items
 above.
 
 **No contact channel is built.** A plug finds a socket you placed by hand the way it finds a
@@ -1627,7 +1627,7 @@ loop in a shader, and those presses are read in loops.
 
 **Two ways on.** Converting: *Manual options ▸ Opt-ins ▸ Soft parts ▸ Soft body shape: squash
 where parts press together*.
-Already on ChilloutVR: *Tools ▸ YAPS ▸ Setup*, the **Squash** card, **Set up squash**. It selects the
+Already on ChilloutVR: *Tools ▸ Avatar Bridge ▸ YAPS ▸ Setup*, the **Squash** card, **Set up squash**. It selects the
 avatar's **YAPS Squash** component and shows it in the Inspector, adding it first if the avatar has
 none. Like a plug or socket, the component sits on the bone the parts hang from (the chest for one
 pair, the hips when there are two), or on the avatar root while no part is found; one an older build
@@ -1684,7 +1684,7 @@ painted regions, picked bones or the bone names. **Pick bones instead** there op
 anything that comes in two (cheeks, thighs): two to a pair, one each side, next to each other in
 the list, each with every bone under it. Painted regions win over picked bones, and the list says
 so while both are set. A body whose bones don't say, or where the names take too much or too little, can have its
-regions painted in the same step (*Tools ▸ YAPS ▸ Squash regions* opens the same component).
+regions painted in the same step (*Tools ▸ Avatar Bridge ▸ YAPS ▸ Squash regions* opens the same component).
 With nothing painted, the step names the pairs the bone names give and colours them on the body in
 the Scene view, and **Change these areas** starts painting from exactly that. With nothing found
 by name it says so, and **Paint a pair** starts one empty; with picked bones, **Paint a pair
@@ -2090,7 +2090,7 @@ settle. Leaving all of them alone converts fine.
 | **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
 | **Opt-ins ▸ OSC toys ▸ Keep the OGB / PCS haptics contacts** (YAPS add-on) | off | The toy-app contacts *Penetration* strips with the rest of the stack. Plugs and sockets work either way; these only drive a toy, and each one spends some of the instance's 512 contact pairs. Needs *Penetration* on *Convert to YAPS*; *Remove* strips them regardless. See [OSC toys](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
 | **Opt-ins ▸ OSC toys ▸ Keep OGB haptics synced (OSCGoesBrrr, Lovense)** (YAPS add-on) | off | Off, the kept OGB haptics parameters are local (free); OSCGoesBrrr's automatic detection skips ChilloutVR's `#` names, but its manual avatar-parameter links read them, and the report lists the names. On, they stay synced and automatic detection works with no links to add (ChilloutVR still needs its `--osc-query-prefix=VRChat-Client` launch argument), at 32 sync bits each, about nine per plug and per socket; the report's sync budget entry says where the avatar landed. Needs the contacts above kept and *Penetration* on *Convert to YAPS* |
-| **Opt-ins ▸ Soft parts ▸ Soft body shape: squash where parts press together** (YAPS add-on) | off | Off, the parts swing as their physics make them and pass through each other. On, the body shader flattens them where they press together, presses them under a hand as soft tissue solved when the squash is built, and parts them around a plug in a socket between them, on every layer over the skin, at no sync cost; see [Squash](#squash-soft-parts-that-press-together). The parts are found by bone name, or from regions painted with *Tools ▸ YAPS ▸ Squash regions*; tuned on the **YAPS Squash** component the build adds. Works with *Penetration* on any answer |
+| **Opt-ins ▸ Soft parts ▸ Soft body shape: squash where parts press together** (YAPS add-on) | off | Off, the parts swing as their physics make them and pass through each other. On, the body shader flattens them where they press together, presses them under a hand as soft tissue solved when the squash is built, and parts them around a plug in a socket between them, on every layer over the skin, at no sync cost; see [Squash](#squash-soft-parts-that-press-together). The parts are found by bone name, or from regions painted with *Tools ▸ Avatar Bridge ▸ YAPS ▸ Squash regions*; tuned on the **YAPS Squash** component the build adds. Works with *Penetration* on any answer |
 | **Opt-ins ▸ Penetration ▸ Show the avatar's OWN depth animations to other players** (YAPS add-on) | off | Not YAPS's socket shapes, which already play for everyone on a synced parameter. This is the bulges and winces the avatar's author animated in VRChat, which are contact-driven, and ChilloutVR runs an avatar's triggers on the wearer's machine alone. Off, each socket's depth parameter is local: free, and only the wearer sees the reaction. On, it syncs and the room sees it, at 32 bits per socket: one depth parameter each, six sockets is about 192 of 3200; a socket that kept several depth parameters as authored pays for each. Needs *Penetration* on *Convert to YAPS* |
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder: you must press **Create Controller** yourself |
 | **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of this avatar's measured height, centred on its original size. Parent-constrained props are re-anchored so they scale with you. Not added, with a warning, when the avatar already has its own parameter or menu entry called "Height": rename that one to get the slider |
@@ -2633,7 +2633,7 @@ fine. **Convert again**; if it persists, that's worth an issue.
 
 On a YAPS avatar it can also be `Assets/YAPS/Generated/Shaders`: the patched shaders of every
 avatar in the project live there, so deleting it turns all their YAPS materials magenta. Convert
-again to bring them back. To tidy the folder, use *Tools ▸ YAPS ▸ Remove unused patched shaders*
+again to bring them back. To tidy the folder, use *Tools ▸ Avatar Bridge ▸ YAPS ▸ Remove unused patched shaders*
 instead: it keeps every shader something still uses.
 
 ### A mesh renders white, washed out, or loses its eyes
@@ -3460,10 +3460,10 @@ every entry at the cost of regenerating the controller.
 ## Reporting a bug
 
 Hit **Report an issue** at the foot of the AvatarBridge window (the ChilloutVR Toolkit, the Avatar
-Tester and *Tools ▸ YAPS ▸ Setup* carry it too): it opens a pre-filled GitHub issue with
+Tester and *Tools ▸ Avatar Bridge ▸ YAPS ▸ Setup* carry it too): it opens a pre-filled GitHub issue with
 your versions and detected packages already in it. After a conversion the window's link adds the
 run's counts, and **Copy diagnostics** under the report puts the same text on your clipboard.
-*Tools ▸ YAPS ▸ Setup* writes no report file, so its link adds the last Build's counts instead, and
+*Tools ▸ Avatar Bridge ▸ YAPS ▸ Setup* writes no report file, so its link adds the last Build's counts instead, and
 **Copy diagnostics** in its footer copies those along with what Build and the squash said, line by
 line. The link leaves the lines out because they name parts of your avatar, so you choose where to
 paste them. A bug somebody hit while wearing an avatar comes before any other open work.

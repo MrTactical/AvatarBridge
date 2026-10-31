@@ -9,7 +9,7 @@ namespace AvatarBridge.Regression
     // left the build behind. The status line every squash window shows must say both.
     public static class SquashStatusTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: squash status")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Squash status")]
         public static void Run()
         {
             int fail = 0;

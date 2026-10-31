@@ -35,7 +35,7 @@ namespace AvatarBridge.Regression
     // one avatar read 4856 of 3200 bits with 2016 of them clip-driven.
     public static class CompressorSlotTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: parameter compressor slots")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Parameter compressor slots")]
         public static void Run()
         {
             int fail = 0;

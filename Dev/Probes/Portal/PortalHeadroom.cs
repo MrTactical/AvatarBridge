@@ -45,7 +45,7 @@ namespace AvatarBridge.Regression
         // Socket and dent are untouched by the spike.
         static readonly string[] Parts = { "yaps_props", "yaps_atlas", "yaps_resolve", "yaps_deform" };
 
-        [MenuItem("Tools/AvatarBridge Dev/Probe: Portal headroom")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Portal/Portal headroom")]
         public static void Run()
         {
             int code = 1;

@@ -72,7 +72,7 @@ namespace AvatarBridge.Regression
             public readonly bool[] dumped = new bool[2];
         }
 
-        [MenuItem("Tools/AvatarBridge Dev/Probe: Portal copy")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Portal/Portal copy")]
         public static void Run()
         {
             int code = 1;

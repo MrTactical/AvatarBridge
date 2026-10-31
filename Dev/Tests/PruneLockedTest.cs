@@ -23,7 +23,7 @@ namespace AvatarBridge.Regression
             "float4 v(float4 p : POSITION) : SV_POSITION { return UnityObjectToClipPos(p); }\n" +
             "float4 f() : SV_Target { return 1; }\nENDCG } } }\n";
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: Remove unused locked copies")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Remove unused locked copies")]
         public static void Run()
         {
             failures = 0;

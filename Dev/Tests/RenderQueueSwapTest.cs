@@ -16,7 +16,7 @@ namespace AvatarBridge.Regression
         const string Temp = "Packages/com.vrcfury.temp/__ABRenderQueueSwapTest";
         const string Output = "Assets/__ABRenderQueueSwapTest";
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: render queue across a shader swap")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Render queue across a shader swap")]
         public static void Run()
         {
             int fail = 0;

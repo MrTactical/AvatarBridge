@@ -31,7 +31,7 @@ namespace AvatarBridge.Regression
 }
 ";
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: squash with every layer refused")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Squash with every layer refused")]
         public static void Run()
         {
             int failures = 0;

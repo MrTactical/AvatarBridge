@@ -15,7 +15,7 @@ namespace AvatarBridge.Regression
         const string Used = "PruneTest_YAPS_0000aaaa", Unused = "PruneTest_YAPS_0000bbbb";
         static int failures;
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: Remove unused patched shaders")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Remove unused patched shaders")]
         public static void Run()
         {
             failures = 0;

@@ -41,7 +41,7 @@ namespace AvatarBridge.Regression
 }
 ";
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: Thry lock mark on a patch")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Thry lock mark on a patch")]
         public static void Run()
         {
             failures = 0;

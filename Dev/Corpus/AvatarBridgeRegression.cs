@@ -167,13 +167,13 @@ namespace AvatarBridge.Regression
             return set;
         }
 
-        [MenuItem("Tools/AvatarBridge Dev/Regression: run quick set")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Corpus/Regression: run quick set")]
         public static void RunQuick() => Run(QuickSet(), "quick");
 
-        [MenuItem("Tools/AvatarBridge Dev/Regression: run all scenes")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Corpus/Regression: run all scenes")]
         public static void RunAll() => Run(AllAvatarScenes(), "all");
 
-        [MenuItem("Tools/AvatarBridge Dev/Regression: accept current as baseline")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Corpus/Regression: accept current as baseline")]
         public static void AcceptCurrent()
         {
             if (!Directory.Exists(CurrentDir))

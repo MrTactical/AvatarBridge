@@ -2,7 +2,7 @@
 //
 // Dev only, pruned from public builds.
 //
-//   Tools > YAPS > Atlas: Poiyomi headroom
+//   Tools > Avatar Bridge > Dev > Atlas > Poiyomi headroom
 //
 // Every atlas spike so far used a clean twenty-line shader. A real plug wears
 // somebody's Poiyomi, already patched, already doing vertex work, and
@@ -26,7 +26,7 @@ public static class PoiyomiHeadroom
 {
     const string OutDir = "Assets/YapsSpike/Headroom";
 
-    [MenuItem("Tools/YAPS/Atlas: Poiyomi headroom")]
+    [MenuItem("Tools/Avatar Bridge/Dev/Atlas/Poiyomi headroom")]
     static void Run()
     {
         var plug = Object.FindObjectsOfType<YapsPlug>(true).FirstOrDefault(p => p != null && p.Target != null);

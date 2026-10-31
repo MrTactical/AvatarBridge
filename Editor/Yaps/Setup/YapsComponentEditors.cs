@@ -266,7 +266,7 @@ namespace AvatarBridge
             {
                 EditorUtility.DisplayDialog("YAPS preview",
                     "This plug has not been baked yet, so there is nothing to bend. Bake it from " +
-                    "Tools ▸ YAPS ▸ Setup, then preview.", "OK");
+                    "Tools ▸ Avatar Bridge ▸ YAPS ▸ Setup, then preview.", "OK");
                 return;
             }
             // WITH lights, like a real socket. It was built without them so a light
@@ -328,7 +328,7 @@ namespace AvatarBridge
             !Application.isPlaying || AssetDatabase.LoadAssetAtPath<GameObject>(YapsSocketBuilder.PlugPropPrefabPath) != null;
 
         public const string NoPlugPrefab =
-            "In Play mode the test plug comes from the plug prop prefab; create it under Tools ▸ YAPS ▸ Setup ▸ Test it.";
+            "In Play mode the test plug comes from the plug prop prefab; create it under Tools ▸ Avatar Bridge ▸ YAPS ▸ Setup ▸ Test it.";
 
         public static void RemoveTestSocket()
         {
@@ -499,7 +499,7 @@ namespace AvatarBridge
             {
                 EditorUtility.DisplayDialog("YAPS preview",
                     "In Play mode the test plug comes from the plug prop prefab, and this project has none. " +
-                    "Create it under Tools ▸ YAPS ▸ Setup ▸ Test it, or drop the test plug before pressing Play.", "OK");
+                    "Create it under Tools ▸ Avatar Bridge ▸ YAPS ▸ Setup ▸ Test it, or drop the test plug before pressing Play.", "OK");
                 return;
             }
             // Keep the socket selected; its inspector holds the stop button.

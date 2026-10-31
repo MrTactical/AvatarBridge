@@ -13,7 +13,7 @@ namespace AvatarBridge.Regression
     // PhysBone stopped at its limit. Breasts and a belly now carry the limit as an angle limit.
     public static class SoftBodyLimitTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: soft body angle limit")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Soft body angle limit")]
         public static void Run()
         {
             int fail = 0;

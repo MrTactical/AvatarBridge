@@ -28,7 +28,7 @@ namespace AvatarBridge.Regression
         static string Folder => YapsNativeBuilder.OutputRoot + "/" + Name;
         static int failures;
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: two at once round trip")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Two at once round trip")]
         public static void Run()
         {
             failures = 0;

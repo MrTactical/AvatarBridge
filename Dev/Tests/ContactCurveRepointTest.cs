@@ -16,7 +16,7 @@ namespace AvatarBridge.Regression
     // Create and are never read again, so those drop with the warning.
     public static class ContactCurveRepointTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: contact curve repointing")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Contact curve repointing")]
         public static void Run()
         {
             int fail = 0;

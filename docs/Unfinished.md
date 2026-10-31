@@ -2957,6 +2957,15 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
        particles 69 mm off with the hand at the body (20 at most). The same alone and beside the
        breasts, so the two pairs are not it; whether the last is the seat's tissue or the test's
        path is open.
+    7. **The step is too big to spawn smoothly** (Joe, 2026-10-31: "the jelly is laggy to spawn",
+       and the upload compile: "Compiling shader variants (busy for 09:19) ... JellyStep 6 of 12").
+       The scan variant compiles to 1.3 MB of bytecode (1,295,400 bytes before the slide, 1,297,452
+       after), where a usual shader is a few KB to 100 KB, so the driver's translation of it on first
+       sight is the hitch, for every player who loads it, and the same size is the upload's minutes a
+       variant. What unrolls is the size: the 128 hands, the 24 probes and the lattice's neighbours.
+       Rolled loops (`[loop]`, uniform bounds) shrink it at a little speed; the measure is the
+       compiled size and fxc's time, then the hitch in game. First ask: is it the first spawn only
+       (the driver caches what it built) or every spawn, which would be something else.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 
@@ -3009,6 +3018,18 @@ now: "I would plan it for 5.1 ... because I want this out at some point".
   evaluate first: the toggle states found from the bra's `m_IsActive` curves, copies of the clips
   (never the shared ones), and whether a turned-off GameObject's child still reaches the provider.
 - **Cost:** build time for the bake; at run time one read and a multiply a particle.
+
+### 28. One menu for everything. Joe, 2026-10-31, done on dev
+
+Joe: "we have Avatar Bridge, and then we have Tools, Avatar Bridge, and Avatar Dev ... Let's just
+put it all in one place and organize it." Everything is under *Tools ▸ Avatar Bridge* now: the three
+windows first, then **YAPS** (the add-on's menu, moved from *Tools ▸ YAPS*, Joe's pick), then
+**Dev**, which no package carries (Jelly with its Early spike, Tests, Corpus, Checks, Probes,
+Scenes, Joint spike, Portal, Atlas, YAPS). The Hierarchy's right-click *YAPS ▸ Add a hole here*
+stays, as Unity only shows `GameObject/` items there. Four finished probes went: pose height,
+root motion, bake orientation, the MagicaCloth stacking repro (git keeps them). Other projects
+keep the old names until their next deploy.
+- **Release notes:** one line, "YAPS moved: *Tools ▸ YAPS* is now *Tools ▸ Avatar Bridge ▸ YAPS*."
 
 ### 15. Moved out of 5.0.0 (Joe, 2026-10-22)
 

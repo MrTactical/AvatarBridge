@@ -19,7 +19,7 @@ namespace AvatarBridge.Regression
     {
         const string Dir = "Assets/RenameSuffixTest";
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: Poiyomi rename suffix on YAPS copies")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Poiyomi rename suffix on YAPS copies")]
         public static void Run()
         {
             int failures = 0;

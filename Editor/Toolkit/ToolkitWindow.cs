@@ -154,7 +154,7 @@ namespace AvatarBridge
                     () => EditorApplication.ExecuteMenuItem("Tools/Avatar Bridge/VRChat to ChilloutVR Converter")));
             if (BridgeDefines.HasYaps)
                 Item("YAPS adds penetration to any avatar or prop.",
-                    BridgeElements.Btn("YAPS", () => EditorApplication.ExecuteMenuItem("Tools/YAPS/Setup")));
+                    BridgeElements.Btn("YAPS", () => EditorApplication.ExecuteMenuItem("Tools/Avatar Bridge/YAPS/Setup")));
             else
                 Item("YAPS, a separate 18+ add-on, adds penetration to any avatar or prop.",
                     BridgeElements.ExternalLink("Get the YAPS add-on", BridgeLinks.YapsRepo));
@@ -674,7 +674,7 @@ namespace AvatarBridge
     // not a second implementation.
     public class ToolkitWindow : EditorWindow
     {
-        [MenuItem("Tools/Avatar Bridge/ChilloutVR Toolkit")]
+        [MenuItem("Tools/Avatar Bridge/ChilloutVR Toolkit", false, 982)]
         public static void Open()
         {
             var w = GetWindow<ToolkitWindow>();

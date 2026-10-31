@@ -13,7 +13,7 @@ namespace AvatarBridge.Regression
     // Run: -executeMethod AvatarBridge.Regression.GreyedButtonTooltipTest.Run -quit
     public static class GreyedButtonTooltipTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: greyed button tooltips")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Greyed button tooltips")]
         public static void Run()
         {
             var root = new VisualElement();

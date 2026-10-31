@@ -13,7 +13,7 @@ namespace AvatarBridge.Regression
     {
         static int failures;
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: toy mod length")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Toy mod length")]
         public static void Run()
         {
             failures = 0;

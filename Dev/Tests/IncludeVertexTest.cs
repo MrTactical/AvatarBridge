@@ -204,7 +204,7 @@ fixed4 frag (v2f i) : SV_Target { return _Color; }
 
         static readonly string NoPosition = Include.Replace("float4 vertex : POSITION;", "float4 vertex : TEXCOORD5;");
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: include vertex function")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Include vertex function")]
         public static void Run()
         {
             failures = 0;

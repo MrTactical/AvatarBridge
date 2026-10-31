@@ -22,7 +22,7 @@ namespace AvatarBridge.Regression
         const string Dir = "Assets/__MarkerLightColourTest";
         const string Include = "Assets/AvatarBridge/Editor/Yaps/yaps_resolve.cginc";
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: marker light colour")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Marker light colour")]
         public static void Run()
         {
             int fail = 0;

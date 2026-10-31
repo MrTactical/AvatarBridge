@@ -15,7 +15,7 @@
 // that changes with no squash means the parser is the link that failed.
 // Only ChilloutVR can say.
 //
-//   Menu: select the converted avatar, Tools/YAPS/Dev/Add the squash test (an
+//   Menu: select the converted avatar, Tools/Avatar Bridge/Dev/YAPS/Add the squash test (an
 //         earlier test on it is stripped and rebuilt, no conversion needed)
 //   Batch: -executeMethod AvatarBridge.Regression.SquashTestBuilder.Batch
 //          -squashScene <scene> -squashOut <scene to save>
@@ -57,14 +57,14 @@ namespace AvatarBridge.Regression
         // checks, so a failed check shows on the readout instead of reading as rest.
         static bool Diagnostic;
 
-        [MenuItem("Tools/YAPS/Dev/Add the squash test (diagnostic)")]
+        [MenuItem("Tools/Avatar Bridge/Dev/YAPS/Add the squash test (diagnostic)")]
         static void DiagnosticMenu()
         {
             Diagnostic = true;
             try { Menu(); } finally { Diagnostic = false; }
         }
 
-        [MenuItem("Tools/YAPS/Dev/Add the squash test")]
+        [MenuItem("Tools/Avatar Bridge/Dev/YAPS/Add the squash test")]
         static void Menu()
         {
             var avatar = Selection.activeGameObject != null ? Selection.activeGameObject.GetComponentInParent<CVRAvatar>() : null;
@@ -578,14 +578,14 @@ namespace AvatarBridge.Regression
         // materials take what it writes, and does the squash look right. A shader the patcher
         // refuses is reported and its layer left as it was.
 
-        [MenuItem("Tools/YAPS/Dev/Add the squash test (shader, diagnostic)")]
+        [MenuItem("Tools/Avatar Bridge/Dev/YAPS/Add the squash test (shader, diagnostic)")]
         static void ShaderDiagnosticMenu()
         {
             Diagnostic = true;
             try { ShaderMenu(); } finally { Diagnostic = false; }
         }
 
-        [MenuItem("Tools/YAPS/Dev/Add the squash test (shader)")]
+        [MenuItem("Tools/Avatar Bridge/Dev/YAPS/Add the squash test (shader)")]
         static void ShaderMenu()
         {
             var avatar = Selection.activeGameObject != null ? Selection.activeGameObject.GetComponentInParent<CVRAvatar>() : null;

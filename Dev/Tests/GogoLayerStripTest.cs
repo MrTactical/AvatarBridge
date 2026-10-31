@@ -20,7 +20,7 @@ namespace AvatarBridge.Regression
     // precisely because a substring test would look like it worked.
     public static class GogoLayerStripTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: GoGo layer strip")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/GoGo layer strip")]
         public static void Run()
         {
             int fail = 0;

@@ -23,7 +23,7 @@ namespace AvatarBridge.Regression
         const string ControllerPath = "Assets/__PortalRoundTripTest.controller";
         static int failures;
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: portal round trip")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Portal round trip")]
         public static void Run()
         {
             failures = 0;

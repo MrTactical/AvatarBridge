@@ -10,7 +10,7 @@ namespace AvatarBridge.Regression
     // The judgement is on the stored byte, not the float, since that is what the shader reads.
     public static class SquashSlotTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: squash slots")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Squash slots")]
         public static void Run()
         {
             int fail = 0;

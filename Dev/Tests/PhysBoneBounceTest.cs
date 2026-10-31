@@ -12,7 +12,7 @@ namespace AvatarBridge.Regression
     // chain's step response, from the coefficients the writer wrote, has to follow its PhysBone's.
     public static class PhysBoneBounceTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: PhysBone bounce")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/PhysBone bounce")]
         public static void Run()
         {
             int fail = 0;

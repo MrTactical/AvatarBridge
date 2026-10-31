@@ -93,13 +93,13 @@ namespace AvatarBridge.Regression
         const string CoarseKey = "AvatarBridge.JellySpike.Coarse";
         static Vector3Int Lattice => EditorPrefs.GetBool(CoarseKey, true) ? Coarse : Size;
 
-        [MenuItem("Tools/AvatarBridge Dev/Jelly spike: coarse lattice")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Jelly/Coarse lattice")]
         static void ToggleCoarse() => EditorPrefs.SetBool(CoarseKey, !EditorPrefs.GetBool(CoarseKey, true));
 
-        [MenuItem("Tools/AvatarBridge Dev/Jelly spike: coarse lattice", true)]
+        [MenuItem("Tools/Avatar Bridge/Dev/Jelly/Coarse lattice", true)]
         static bool ToggleCoarseShown()
         {
-            Menu.SetChecked("Tools/AvatarBridge Dev/Jelly spike: coarse lattice", EditorPrefs.GetBool(CoarseKey, true));
+            Menu.SetChecked("Tools/Avatar Bridge/Dev/Jelly/Coarse lattice", EditorPrefs.GetBool(CoarseKey, true));
             return true;
         }
         const int Row = 64, Passes = 2, Frames = 300, Load = 32, BreastFrames = 3680, ViewFrames = 720, ProbesPer = 24;
@@ -122,33 +122,33 @@ namespace AvatarBridge.Regression
 
         public static void Build() => EditorApplication.Exit(Make() != null ? 0 : 1);
 
-        [MenuItem("Tools/AvatarBridge Dev/Jelly spike: add to the selected avatar")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Jelly/Early spike/Add to the selected avatar")]
         static void AddToSelected() => Add(withMeter: false);
 
         // To wear: no test cube, so one pass, its readback and its parser fewer.
-        [MenuItem("Tools/AvatarBridge Dev/Jelly spike: add to wear, without the test cube")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Jelly/Early spike/Add to wear, without the test cube")]
         static void AddToWear() => Add(withMeter: false, withRider: false, offFar: false);
 
         // The same with the pass and the parser kept for the far switch alone: dearer near, cheaper
         // far, so it pays on a slow GPU in a crowd.
-        [MenuItem("Tools/AvatarBridge Dev/Jelly spike: add to wear, far copies switched off")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Jelly/Early spike/Add to wear, far copies switched off")]
         static void AddToWearOffFar() => Add(withMeter: false, withRider: false, offFar: true);
 
         // Three regions packed into one texture and one pair of passes: on the chest, behind the
         // hips and above the head, each on its own bone.
-        [MenuItem("Tools/AvatarBridge Dev/Jelly spike: add three to wear, packed")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Jelly/Early spike/Add three to wear, packed")]
         static void AddPacked() => Add(withMeter: false, withRider: false, offFar: false, regions: 3);
 
-        [MenuItem("Tools/AvatarBridge Dev/Jelly spike: make a prop of three, packed")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Jelly/Early spike/Make a prop of three, packed")]
         static void MakePackedProp() => MakeProp(3);
 
         // The meter's load costs 32 passes every other half second, far more than the jelly, so it
         // goes on only when asked for.
-        [MenuItem("Tools/AvatarBridge Dev/Jelly spike: add with the cost meter")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Jelly/Early spike/Add with the cost meter")]
         static void AddWithMeter() => Add(withMeter: true);
 
         // The jelly alone as a prop, its cost told apart from any avatar's.
-        [MenuItem("Tools/AvatarBridge Dev/Jelly spike: make a prop in the open scene")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Jelly/Early spike/Make a prop in the open scene")]
         static void MakeOneProp() => MakeProp(1);
 
         static GameObject MakeProp(int regions, bool withRider = true)
@@ -183,7 +183,7 @@ namespace AvatarBridge.Regression
         // Two jellies on one prop, MagicaCloth probes on each one's front: the left feels the player
         // arrays' hands too, the right its probes alone, so a poke that dents the right one in game
         // is a collider's, the client's capsule on the hand.
-        [MenuItem("Tools/AvatarBridge Dev/Jelly spike: make a prop of two, the right one colliders only")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Jelly/Make a prop of two, the right one colliders only")]
         static void MakeProbePropMenu()
         {
             SessionState.SetBool(K + "prop", true);
@@ -193,7 +193,7 @@ namespace AvatarBridge.Regression
 
         // The same with the right one's probes physics balls the world's solid colliders push, for
         // whether a wall or a table dents it in game. Its plate and skin orange.
-        [MenuItem("Tools/AvatarBridge Dev/Jelly spike: make a prop of two, the right one feeling the world")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Jelly/Make a prop of two, the right one feeling the world")]
         static void MakeWorldPropMenu()
         {
             SessionState.SetBool(K + "prop", true);
@@ -1087,7 +1087,7 @@ namespace AvatarBridge.Regression
         // wavelength (m), fade (s).
         static readonly Vector4 Slapped = new Vector4(1f, 1f, 0.1f, 0.4f);
 
-        [MenuItem("Tools/AvatarBridge Dev/Jelly spike: put the selected avatar's breasts on the jelly")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Jelly/Put the selected avatar's breasts on the jelly")]
         static void BreastsOnSelected()
         {
             string said = BreastsOn(Selection.activeGameObject != null ? Selection.activeGameObject.transform : null);
@@ -1097,7 +1097,7 @@ namespace AvatarBridge.Regression
 
         // Its probes physics balls the world's solids push, as the world prop's right one: walls,
         // doors, tables and dropped props, where the client lets an avatar's bodies meet them.
-        [MenuItem("Tools/AvatarBridge Dev/Jelly spike: put the selected avatar's breasts on the jelly, feeling the world")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Jelly/Put the selected avatar's breasts on the jelly, feeling the world")]
         static void BreastsWorldOnSelected()
         {
             string said = PairOn(Selection.activeGameObject != null ? Selection.activeGameObject.transform : null, Breast, world: true);
@@ -1142,7 +1142,7 @@ namespace AvatarBridge.Regression
             EditorApplication.Exit(0);
         }
 
-        [MenuItem("Tools/AvatarBridge Dev/Jelly spike: put the selected avatar's other pair on the jelly")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Jelly/Put the selected avatar's other pair on the jelly")]
         static void OtherOnSelected()
         {
             string said = PairOn(Selection.activeGameObject != null ? Selection.activeGameObject.transform : null, Other);
@@ -1150,7 +1150,7 @@ namespace AvatarBridge.Regression
             EditorUtility.DisplayDialog("Jelly spike", said, "OK");
         }
 
-        [MenuItem("Tools/AvatarBridge Dev/Jelly spike: take the jelly off the selected avatar")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Jelly/Take the jelly off the selected avatar")]
         static void BreastsOffSelected()
         {
             string said = BreastsOff(Selection.activeGameObject != null ? Selection.activeGameObject.transform : null);
@@ -1958,6 +1958,7 @@ namespace AvatarBridge.Regression
         static void AddSkin(GameObject made, CVRMaterialDataProvider provider, Transform[] hangs, List<Vector3>[] spots, float depth, string undo, bool[] solid = null, int solidFrom = 0)
         {
             var probes = new List<Transform>[] { new List<Transform>(), new List<Transform>() };
+#if AVATARBRIDGE_MAGICA
             // On a solid side, a ball the world's colliders push, sprung to its rest on the hang: the
             // step reads it as it reads a cloth probe, through a tip on the skin it carries. The ball
             // sits ProbeReach less its radius out, so a surface is felt from ProbeReach off the skin
@@ -2036,7 +2037,6 @@ namespace AvatarBridge.Regression
                 }
                 return bases;
             }
-#if AVATARBRIDGE_MAGICA
             var bases = spots != null ? Bones() : new List<Transform>();
             if (bases.Count > 0)
             {
@@ -7355,8 +7355,8 @@ Does a soft body run on a ChilloutVR avatar, stepped every frame on the GPU, and
 A block of jelly about 20 cm across hangs in front of the chest. Its 384 particles live in a
 render texture that two blitters step every frame, into a twin and back; nothing is baked and
 nothing is synced. The surface is finer than the particles: each of its points is blended from
-the eight particles round it, so it stays smooth. Tools > AvatarBridge Dev > Jelly spike: coarse
-lattice, ticked by default, untick it for the fine lattice of 3072 particles, which costs a slow
+the eight particles round it, so it stays smooth. Tools > Avatar Bridge > Dev > Jelly >
+Coarse lattice, ticked by default, untick it for the fine lattice of 3072 particles, which costs a slow
 GPU about twice as much and looks the same within millimetres. The first pass also picks out the hands in reach, eight at most, so a full
 instance costs no more than an empty one. Below 72 fps each pass takes a step; above it the first
 works out where each particle is headed and the second fits. More than 6 m from you, another
@@ -7366,29 +7366,29 @@ pokes it, yours or another player's.
 
 ## Setting it up
 
-1. Select the avatar in the scene and run Tools > AvatarBridge Dev > Jelly spike: add to the
-   selected avatar. It goes under the chest bone, in front of the chest, sized for the avatar,
-   replacing any earlier one. Move it if it sits inside anything. Jelly spike: add with the cost
-   meter does the same with the meter above it, which costs far more than the jelly. Jelly spike:
-   add to wear, without the test cube, leaves the yellow cube off, and with it a pass, a readback
-   and a parser: the one to keep on. Jelly spike: add to wear, far copies switched off, keeps the
+1. Select the avatar in the scene and run Tools > Avatar Bridge > Dev > Jelly > Early spike >
+   Add to the selected avatar. It goes under the chest bone, in front of the chest, sized for the avatar,
+   replacing any earlier one. Move it if it sits inside anything. Early spike > Add with the cost
+   meter does the same with the meter above it, which costs far more than the jelly. Early spike >
+   Add to wear, without the test cube, leaves the yellow cube off, and with it a pass, a readback
+   and a parser: the one to keep on. Early spike > Add to wear, far copies switched off, keeps the
    pass and the parser for the far switch alone: each copy near you costs a little more, each far
-   one less, so it only pays on a slow GPU in a crowd. Jelly spike: add three to wear, packed,
+   one less, so it only pays on a slow GPU in a crowd. Early spike > Add three to wear, packed,
    puts three in one texture and one pair of passes, each on its own bone: in front of the chest,
-   behind the hips and above the head. Jelly spike: make a prop of three, packed, sets three side
+   behind the hips and above the head. Early spike > Make a prop of three, packed, sets three side
    by side on one prop.
 2. Upload. Nothing else: no parameters, no menu, no sync.
 
-On the avatar's own breasts: build the YAPS squash first, select the avatar and run Jelly spike:
-put the selected avatar's breasts on the jelly. One lattice is fitted over the pair, standing on
+On the avatar's own breasts: build the YAPS squash first, select the avatar and run Jelly >
+Put the selected avatar's breasts on the jelly. One lattice is fitted over the pair, standing on
 the chest bone with its back face on the chest wall, and the body's squash materials are patched
 to move each of the pair's vertices with it (the first time takes a minute or two a shader); the
 squash leaves the pair to it, and the cloth or dynamic bones swinging the pair are switched off.
-It rests on the modelled shape when upright. Jelly spike: take the jelly off the selected
-avatar's breasts puts the squash and the physics back. Building the squash again takes the jelly
+It rests on the modelled shape when upright. Jelly > Take the jelly off the selected
+avatar puts the squash and the physics back. Building the squash again takes the jelly
 off its materials; run the menu again after.
 
-Or as a prop on its own: Jelly spike: make a prop in the open scene, then upload it from the CCK
+Or as a prop on its own: Jelly > Early spike > Make a prop in the open scene, then upload it from the CCK
 Control Panel. Grab it in game and shake it; let go and it hangs where you left it.
 
 Before uploading, `Jelly_Preview.unity` shows it in the editor: open it and press Play.

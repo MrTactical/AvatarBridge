@@ -30,20 +30,20 @@ namespace AvatarBridge.Regression
 
         public const float LagSpring = 30f;       // layered: how hard a body chases its rest place
 
-        [MenuItem("Tools/AvatarBridge Dev/Joint spike: selected chain roots")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Joint spike/Selected chain roots")]
         static void BuildOnSelection()
         {
             foreach (var root in Selection.transforms) Build(root, true, null, false);
         }
 
         // Sphere colliders on the bodies, so two chains squash against each other.
-        [MenuItem("Tools/AvatarBridge Dev/Joint spike: selected chain roots, colliding")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Joint spike/Selected chain roots, colliding")]
         static void BuildCollidingOnSelection()
         {
             foreach (var root in Selection.transforms) Build(root, true, null, true);
         }
 
-        [MenuItem("Tools/AvatarBridge Dev/Joint spike: selected chain roots, layered on MagicaCloth2")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Joint spike/Selected chain roots, layered on MagicaCloth2")]
         static void BuildLayeredOnSelection()
         {
             foreach (var root in Selection.transforms) BuildLayered(root, true, null);

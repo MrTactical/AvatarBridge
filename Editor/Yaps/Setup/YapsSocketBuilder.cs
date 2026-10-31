@@ -54,7 +54,7 @@ namespace AvatarBridge
 
         // --- the prefabs ------------------------------------------------
 
-        [MenuItem("Tools/YAPS/Create universal socket prefabs")]
+        [MenuItem("Tools/Avatar Bridge/YAPS/Create universal socket prefabs")]
         public static void CreatePrefabs()
         {
             EnsureFolder(PrefabFolder);
@@ -66,12 +66,12 @@ namespace AvatarBridge
                       "under a bone, point its +Z the way a plug should enter, and it works for " +
                       "DPS, TPS and SPS plugs and for converted ones. A socket with a mesh of its " +
                       "own can open as a plug goes in: pick that mesh and its shapes on the " +
-                      "component, then bake from Tools ▸ YAPS ▸ Setup.");
+                      "component, then bake from Tools ▸ Avatar Bridge ▸ YAPS ▸ Setup.");
         }
 
         // A plug prop ready to upload, over the same file each time. An
         // uploaded prop keeps the bake and shader it was built with.
-        [MenuItem("Tools/YAPS/Create a plug prop prefab")]
+        [MenuItem("Tools/Avatar Bridge/YAPS/Create a plug prop prefab")]
         public static void CreatePlugPropPrefab()
         {
             EnsureFolder(PrefabFolder);
@@ -115,7 +115,7 @@ namespace AvatarBridge
         // A prop that is two sockets rather than a plug: a ring to pass
         // through and a hole to enter, on one body somebody can spawn and
         // hand around. The plug prop above is its other half.
-        [MenuItem("Tools/YAPS/Create a ring-and-socket prop prefab")]
+        [MenuItem("Tools/Avatar Bridge/YAPS/Create a ring-and-socket prop prefab")]
         public static void CreateSocketPropPrefab()
         {
             EnsureFolder(PrefabFolder);

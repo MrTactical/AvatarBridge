@@ -12,7 +12,7 @@ namespace AvatarBridge.Regression
     {
         static int failures;
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: conversion diff")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Conversion diff")]
         public static void Run()
         {
             failures = 0;

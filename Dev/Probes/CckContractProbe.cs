@@ -60,7 +60,7 @@ namespace AvatarBridge.Regression
             }),
         };
 
-        [MenuItem("Tools/AvatarBridge Dev/Check the CCK still has what we name")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Checks/CCK still has what we name")]
         public static void Run()
         {
             int missingTypes = 0, missingMembers = 0, checkedMembers = 0;

@@ -12,7 +12,7 @@ namespace AvatarBridge.Regression
     {
         static int failures;
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: child Animator keeps a renderer live")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Child Animator keeps a renderer live")]
         public static void Run()
         {
             failures = 0;

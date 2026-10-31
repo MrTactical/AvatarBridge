@@ -9,7 +9,7 @@ namespace AvatarBridge.Regression
     // animations, auto mode, Init Behaviours, and on some avatars the shared FrameTime Counter.
     public static class SpsOptionStripTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: SPS option strip")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/SPS option strip")]
         public static void Run()
         {
             int fail = 0;

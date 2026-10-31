@@ -21,7 +21,7 @@ namespace AvatarBridge.Regression
             "v2f vert (appdata v) { v2f o; o.pos = UnityObjectToClipPos(v.vertex); return o; }\n" +
             "float4 frag (v2f i) : SV_Target { return 1; }\nENDCG } } }\n";
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: a patch finds its own source among twins")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/A patch finds its own source among twins")]
         public static void Run()
         {
             failures = 0;

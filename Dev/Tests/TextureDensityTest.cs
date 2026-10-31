@@ -12,7 +12,7 @@ namespace AvatarBridge.Regression
     // tiling are one surface again; a different tiling stays apart.
     public static class TextureDensityTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: texture density")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Texture density")]
         public static void Run()
         {
             int fail = 0;

@@ -44,7 +44,7 @@ namespace AvatarBridge.Regression
 
         // Batch for the corpus machine, a menu item for a project already
         // open: the editor here is usually the one holding the avatar.
-        [MenuItem("Tools/YAPS/Dev/Build the D2 grab probe")]
+        [MenuItem("Tools/Avatar Bridge/Dev/YAPS/Build the D2 grab probe")]
         public static void Build()
         {
             if (!AssetDatabase.IsValidFolder(Folder))

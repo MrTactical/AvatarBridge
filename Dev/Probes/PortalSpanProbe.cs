@@ -231,7 +231,7 @@ namespace AvatarBridge.Regression
             Debug.Log(Tag + (ok ? "PASS " : "FAIL ") + what);
         }
 
-        [MenuItem("Tools/AvatarBridge Dev/Probe: Portal span")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Portal/Portal span")]
         public static void Run()
         {
             failures = 0;

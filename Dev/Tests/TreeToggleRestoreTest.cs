@@ -33,7 +33,7 @@ namespace AvatarBridge.Regression
     //     it. Each end gets the others' at rest, on a copy, so a clip shared elsewhere is untouched.
     public static class TreeToggleRestoreTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: blend-tree toggle restore")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Blend-tree toggle restore")]
         public static void Run()
         {
             int fail = 0;

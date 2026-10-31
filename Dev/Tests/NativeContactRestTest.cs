@@ -22,7 +22,7 @@ namespace AvatarBridge.Regression
     // toggle skipped every host that was off.
     public static class NativeContactRestTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: contact rest state under native toggles")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Contact rest state under native toggles")]
         public static void Run()
         {
             int fail = 0;

@@ -79,7 +79,7 @@ namespace AvatarBridge.Regression
 
         enum Content { A, AB, B }
 
-        [MenuItem("Tools/AvatarBridge Dev/Probe: Duplicate perf")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Portal/Duplicate perf")]
         public static void Run()
         {
             int code = 1;

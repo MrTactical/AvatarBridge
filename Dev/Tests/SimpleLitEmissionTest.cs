@@ -22,7 +22,7 @@ namespace AvatarBridge.Regression
     SubShader { Pass { } }
 }";
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: Simple Lit emission")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Simple Lit emission")]
         public static void Run()
         {
             int fail = 0;

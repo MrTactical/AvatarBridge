@@ -17,7 +17,7 @@ namespace AvatarBridge.Regression
     {
         const string Dir = "Assets/SquashPartsTest";
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: squash picked bones and materials left alone")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Squash picked bones and materials left alone")]
         public static void Run()
         {
             int failures = 0;

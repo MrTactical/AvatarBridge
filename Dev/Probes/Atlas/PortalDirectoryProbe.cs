@@ -66,7 +66,7 @@ namespace AvatarBridge.Regression
             public Matrix4x4 m;
         }
 
-        [MenuItem("Tools/AvatarBridge Dev/Probe: Portal directory")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Portal/Portal directory")]
         public static void Run()
         {
             int code = 1;

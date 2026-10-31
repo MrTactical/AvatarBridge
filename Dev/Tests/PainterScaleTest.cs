@@ -10,7 +10,7 @@ namespace AvatarBridge.Regression
     // every vertex where the skinning does, whatever scale the root or the body carries.
     public static class PainterScaleTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: squash painter on a scaled avatar")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Squash painter on a scaled avatar")]
         public static void Run()
         {
             int fail = 0;

@@ -14,7 +14,7 @@ namespace AvatarBridge.Regression
     // Run: -executeMethod AvatarBridge.Regression.YapsRolesTest.Run
     public static class YapsRolesTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: YAPS patch roles")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/YAPS patch roles")]
         public static void Run()
         {
             int failures = 0;

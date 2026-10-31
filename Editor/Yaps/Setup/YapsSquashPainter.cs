@@ -17,7 +17,7 @@ namespace AvatarBridge
     public class YapsSquashPainter : EditorWindow
     {
         // The old window's menu entry, now the component, where the painting lives.
-        [MenuItem("Tools/YAPS/Squash regions")]
+        [MenuItem("Tools/Avatar Bridge/YAPS/Squash regions")]
         static void OpenFromMenu()
         {
             var root = Selection.activeTransform != null ? YapsNativeBuilder.AvatarRoot(Selection.activeTransform) : null;

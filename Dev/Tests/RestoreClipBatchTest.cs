@@ -17,7 +17,7 @@ namespace AvatarBridge.Regression
     // filler's clip and left its toggle with nothing to switch off.
     public static class RestoreClipBatchTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: restore clips in batches")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Restore clips in batches")]
         public static void Run()
         {
             int fail = 0;

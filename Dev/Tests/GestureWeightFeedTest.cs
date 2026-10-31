@@ -19,7 +19,7 @@ namespace AvatarBridge.Regression
     // The tasks run through the CCK's own Execute, so the operators are the client's, not a copy.
     public static class GestureWeightFeedTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: gesture weight follows the fist")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Gesture weight follows the fist")]
         public static void Run()
         {
             int fail = 0;

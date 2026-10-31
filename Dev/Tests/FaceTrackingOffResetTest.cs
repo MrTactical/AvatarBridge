@@ -20,7 +20,7 @@ namespace AvatarBridge.Regression
         const string Face = "Body";
         const string Prefix = "blendShape.";
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: face lets go when tracking turns off")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Face lets go when tracking turns off")]
         public static void Run()
         {
             int fail = 0;

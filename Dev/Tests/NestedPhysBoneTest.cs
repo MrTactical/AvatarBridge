@@ -12,7 +12,7 @@ namespace AvatarBridge.Regression
     // conversion never read the flag, so the outer chain also moved the nested one's bones.
     public static class NestedPhysBoneTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: nested PhysBones")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Nested PhysBones")]
         public static void Run()
         {
             int fail = 0;

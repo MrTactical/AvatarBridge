@@ -73,7 +73,7 @@ namespace AvatarBridge.Regression
 
         public static SweepResult LastResult;
 
-        [MenuItem("Tools/AvatarBridge Dev/Sweep every toggle for stuck objects")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Corpus/Sweep every toggle for stuck objects")]
         public static void Run()
         {
             var avatar = Resolve();

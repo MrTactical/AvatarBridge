@@ -12,7 +12,7 @@ namespace AvatarBridge.Regression
     // differing only in those ids, must give one order.
     public static class LightOrderTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: light order")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Light order")]
         public static void Run()
         {
             int fail = 0;

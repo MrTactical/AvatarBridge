@@ -82,7 +82,7 @@ namespace AvatarBridge
 
         // What the YAPS window last did goes after the versions, since the tool writes no report.
         public static string YapsDiagnostics(string last) =>
-            "Tool:          YAPS (Tools ▸ YAPS ▸ Setup)\n" + BuildDiagnostics(null) + last;
+            "Tool:          YAPS (Tools ▸ Avatar Bridge ▸ YAPS ▸ Setup)\n" + BuildDiagnostics(null) + last;
 
         public static void CopyDiagnostics(BridgeReport report = null)
         {

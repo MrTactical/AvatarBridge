@@ -12,7 +12,7 @@ namespace AvatarBridge.Regression
     // along the chain now.
     public static class PhysBoneCurveTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: PhysBone curves along the chain")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/PhysBone curves along the chain")]
         public static void Run()
         {
             int fail = 0;

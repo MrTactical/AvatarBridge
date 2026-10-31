@@ -10,7 +10,7 @@
 // all: two bodies, the fake hips switched on, and the two material flags. Each
 // of them fails by rejecting nothing, which reads exactly like a pass.
 //
-//   Tools/YAPS/Own-body test: wire fake players
+//   Tools/Avatar Bridge/Dev/Atlas/Own-body test: wire fake players
 #if CVR_CCK_EXISTS && UNITY_EDITOR
 using System.Collections.Generic;
 using System.Linq;
@@ -24,7 +24,7 @@ namespace AvatarBridge.Regression
 {
     public static class OwnBodyScene
     {
-        [MenuItem("Tools/YAPS/Own-body test: wire fake players")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Atlas/Own-body test: wire fake players")]
         static void Wire()
         {
             var avatars = Object.FindObjectsOfType<CVRAvatar>(true);
@@ -41,7 +41,7 @@ namespace AvatarBridge.Regression
             report.AppendLine($"OWN-BODY: {hips} hip(s) available, one per avatar.");
             report.AppendLine(YapsFakePlayers.On
                 ? "  Fake players are ON, so the ownership test runs."
-                : "  Fake players are OFF. Turn them on: Tools/YAPS/Fake CVR player hips. " +
+                : "  Fake players are OFF. Turn them on: Tools/Avatar Bridge/Dev/Atlas/Fake CVR player hips. " +
                   "Until then the hips are zero, YapsSameBodyAt claims nothing, and NO socket " +
                   "is rejected: the test would pass without running.");
             if (avatars.Length < 2)

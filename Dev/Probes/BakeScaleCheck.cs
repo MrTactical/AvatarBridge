@@ -30,7 +30,7 @@ namespace AvatarBridge.Dev
         static readonly StringBuilder Log = new StringBuilder();
         static int _failed;
 
-        [MenuItem("AvatarBridge/Spike/Check the bake-scale mirror")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Probes/Check the bake-scale mirror")]
         public static void Run()
         {
             Log.Clear();

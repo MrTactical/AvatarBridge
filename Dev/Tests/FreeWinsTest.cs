@@ -16,7 +16,7 @@ namespace AvatarBridge.Regression
         const string Dir = "Assets/FreeWinsTest";
         static int failures;
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: Free wins on a shared override")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Free wins on a shared override")]
         public static void Run()
         {
             failures = 0;

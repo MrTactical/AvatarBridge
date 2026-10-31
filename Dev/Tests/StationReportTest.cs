@@ -11,7 +11,7 @@ namespace AvatarBridge.Regression
     // anyone (that half is verified in the wild on a GoGo corpus avatar).
     public static class StationReportTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: seat report")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Seat report")]
         public static void Run()
         {
             int fail = 0;

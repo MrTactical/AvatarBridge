@@ -68,7 +68,7 @@ namespace AvatarBridge.Regression
 
         enum Content { None, Keyless, Miss, Portal, Partial }
 
-        [MenuItem("Tools/AvatarBridge Dev/Probe: Portal deform perf")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Portal/Portal deform perf")]
         public static void Run()
         {
             int code = 1;

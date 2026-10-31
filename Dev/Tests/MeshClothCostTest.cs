@@ -13,7 +13,7 @@ namespace AvatarBridge.Regression
     // Skips when MagicaCloth 2 is not in the project.
     public static class MeshClothCostTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: MeshCloth cost")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/MeshCloth cost")]
         public static void Run()
         {
             int fail = 0;

@@ -22,7 +22,7 @@ namespace AvatarBridge.Regression
         const string Dir = "Assets/PhysBonesInPlaceTest";
         static int failures;
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: PhysBones to cloth card")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/PhysBones to cloth card")]
         public static void Run()
         {
             failures = 0;

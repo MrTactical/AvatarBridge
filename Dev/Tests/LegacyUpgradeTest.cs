@@ -29,7 +29,7 @@ namespace AvatarBridge.Regression
         const string Sources = "Assets/" + Name;
         static int failures;
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: legacy plug upgrade")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Legacy plug upgrade")]
         public static void Run()
         {
             failures = 0;

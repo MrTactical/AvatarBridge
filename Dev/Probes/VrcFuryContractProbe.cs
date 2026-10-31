@@ -41,7 +41,7 @@ namespace AvatarBridge.Regression
 
         const BindingFlags Any = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
 
-        [MenuItem("Tools/AvatarBridge Dev/Probe: VRCFury SPS contract")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Checks/VRCFury SPS contract")]
         public static void Run()
         {
             int fail = 0;

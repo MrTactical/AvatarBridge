@@ -16,7 +16,8 @@ namespace AvatarBridge
     // UI Toolkit, like the CCK and the SDK; see BridgeTheme.
     public class AvatarBridgeWindow : EditorWindow
     {
-        [MenuItem("Tools/Avatar Bridge/VRChat to ChilloutVR Converter")]
+        // 980 to 982 list the windows first, a separator above YAPS (995) and Dev (the default 1000).
+        [MenuItem("Tools/Avatar Bridge/VRChat to ChilloutVR Converter", false, 980)]
         static void Open()
         {
             var window = GetWindow<AvatarBridgeWindow>();
@@ -771,7 +772,7 @@ namespace AvatarBridge
             // The other door. The add-on builds and tunes penetration on an
             // avatar already here; this converts.
             b.Add(BridgeElements.Hint(
-                "Already on ChilloutVR? Tools ▸ YAPS ▸ Setup adds penetration to any avatar or prop."));
+                "Already on ChilloutVR? Tools ▸ Avatar Bridge ▸ YAPS ▸ Setup adds penetration to any avatar or prop."));
 #endif
             b.Add(BridgeElements.Bind("Remove animation that can't do anything (recommended)",
                 "Curves for material properties a locked shader baked away. They did nothing in VRChat either.",
@@ -900,7 +901,7 @@ namespace AvatarBridge
             optIns.Add(BridgeElements.Bind("Soft body shape: squash where parts press together",
                 "In the body shader: pressed together they flatten and meet, anyone's hand presses them as soft tissue solved when the squash is built, and a plug in a socket between them parts them. " +
                 "As the physics swing them they stretch and squash too. Found by bone name, or by regions painted with " +
-                "Tools ▸ YAPS ▸ Squash regions; tuned on the YAPS Squash component the build adds. No sync cost.",
+                "Tools ▸ Avatar Bridge ▸ YAPS ▸ Squash regions; tuned on the YAPS Squash component the build adds. No sync cost.",
                 settings.squashSoftParts, v => { settings.squashSoftParts = v; ScheduleRebuild(); }));
             optIns.Add(BridgeElements.Hint("Changes the skin's shape where breasts, butt, a hand or a plug press."));
             if (settings.squashSoftParts)

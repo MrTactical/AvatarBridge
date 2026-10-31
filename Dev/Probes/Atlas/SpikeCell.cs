@@ -2,7 +2,7 @@
 //
 // Dev only, pruned from public builds.
 //
-//   Tools > YAPS > Screen atlas: rendezvous
+//   Tools > Avatar Bridge > Dev > Atlas > Screen atlas: rendezvous
 //
 // Two sockets and a plug, all draggable. Each socket publishes into a cell
 // derived from its own world position. The plug derives ITS cell, reads its
@@ -29,7 +29,7 @@ using UnityEngine;
 
 public class SpikeCell : EditorWindow
 {
-    [MenuItem("Tools/YAPS/Screen atlas: rendezvous")]
+    [MenuItem("Tools/Avatar Bridge/Dev/Atlas/Screen atlas: rendezvous")]
     static void Open() { GetWindow<SpikeCell>("Atlas rendezvous"); }
 
     const string Root = "YAPS Atlas Rendezvous Spike";

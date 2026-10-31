@@ -11,7 +11,7 @@ namespace AvatarBridge.Regression
     // package that is loaded here must read as installed.
     public static class DiagnosticsPackagesTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: diagnostics packages")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Diagnostics packages")]
         public static void Run()
         {
             int fail = 0;

@@ -36,10 +36,10 @@ namespace AvatarBridge.Regression
             "/Samples/", "/Scenes/SampleScene", "/MISC/",
         };
 
-        [MenuItem("Tools/AvatarBridge Dev/Scenes: list what would be cleaned (dry run)")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Scenes/List what would be cleaned (dry run)")]
         public static void DryRun() => Run(false);
 
-        [MenuItem("Tools/AvatarBridge Dev/Scenes: clean and SAVE all scenes")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Scenes/Clean and SAVE all scenes")]
         public static void CleanAndSave()
         {
             if (!EditorUtility.DisplayDialog(

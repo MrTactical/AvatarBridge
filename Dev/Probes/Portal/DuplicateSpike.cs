@@ -333,7 +333,7 @@ namespace AvatarBridge.Regression
             new Case { name = "two holes, bent", socks = new[] { A, B }, bend = 20, first = "A", second = "B" },
         };
 
-        [MenuItem("Tools/AvatarBridge Dev/Probe: Duplicate spike")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Portal/Duplicate spike")]
         public static void Run()
         {
             int code = 1;

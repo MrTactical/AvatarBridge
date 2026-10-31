@@ -12,7 +12,7 @@ namespace AvatarBridge.Regression
     // Run: -executeMethod AvatarBridge.Regression.YapsDiagnosticsTest.Run
     public static class YapsDiagnosticsTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: YAPS setup diagnostics")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/YAPS setup diagnostics")]
         public static void Run()
         {
             int failures = 0;

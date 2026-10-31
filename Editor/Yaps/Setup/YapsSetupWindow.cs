@@ -1,4 +1,4 @@
-﻿// Tools > YAPS > Setup. The toolkit's window for any ChilloutVR avatar
+﻿// Tools > Avatar Bridge > YAPS > Setup. The toolkit's window for any ChilloutVR avatar
 // or prop, on the converter's own elements. Pick, scan and add, build.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
@@ -14,7 +14,7 @@ namespace AvatarBridge
 {
     public class YapsSetupWindow : EditorWindow
     {
-        [MenuItem("Tools/YAPS/Setup")]
+        [MenuItem("Tools/Avatar Bridge/YAPS/Setup", false, 995)]
         public static void Open()
         {
             var w = GetWindow<YapsSetupWindow>();
@@ -409,7 +409,7 @@ namespace AvatarBridge
         }
 
         // Every patched material in the project, not just what a bake reaches.
-        [MenuItem("Tools/YAPS/Update every YAPS shader in this project")]
+        [MenuItem("Tools/Avatar Bridge/YAPS/Update every YAPS shader in this project")]
         static void RefreshShaders()
         {
             string said = YapsShaderPatcher.SweepProject();
@@ -418,7 +418,7 @@ namespace AvatarBridge
         }
 
         // The sets earlier versions left in the shared folder, which nothing uses any more.
-        [MenuItem("Tools/YAPS/Remove unused patched shaders")]
+        [MenuItem("Tools/Avatar Bridge/YAPS/Remove unused patched shaders")]
         static void PruneShaders()
         {
             string said = YapsShaderPatcher.PruneUnused(n => EditorUtility.DisplayDialog("YAPS",

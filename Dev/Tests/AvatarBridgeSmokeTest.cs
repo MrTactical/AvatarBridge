@@ -22,7 +22,7 @@ namespace AvatarBridge.Regression
         static readonly List<(string name, bool ok, string note)> Results = new List<(string, bool, string)>();
         const string ScratchDir = "Assets/AvatarBridgeOutput/SmokeTest";
 
-        [MenuItem("Tools/Avatar Bridge/DevTools/Smoke test every button")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Smoke test every button")]
         public static void Run()
         {
             Results.Clear();
@@ -529,7 +529,7 @@ namespace AvatarBridge.Regression
                 ("Window > VRChat to ChilloutVR Converter", "Tools/Avatar Bridge/VRChat to ChilloutVR Converter"),
                 ("Window > Avatar Tester", "Tools/Avatar Bridge/Avatar Tester"),
                 ("Window > ChilloutVR Toolkit", "Tools/Avatar Bridge/ChilloutVR Toolkit"),
-                ("Window > YAPS Setup", "Tools/YAPS/Setup"),
+                ("Window > YAPS Setup", "Tools/Avatar Bridge/YAPS/Setup"),
             })
             {
                 Step(name, () =>

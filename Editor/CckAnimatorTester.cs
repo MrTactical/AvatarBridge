@@ -26,7 +26,7 @@ namespace AvatarBridge
         partial void PhysicsSelectionChanged();
         partial void AddPhysicsCard(VisualElement scroll, CVRAvatar avatar, bool live);
 
-        [MenuItem("Tools/Avatar Bridge/Avatar Tester")]
+        [MenuItem("Tools/Avatar Bridge/Avatar Tester", false, 981)]
         static void Open()
         {
             var window = GetWindow<CckAnimatorTester>();

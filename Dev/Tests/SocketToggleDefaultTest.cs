@@ -13,7 +13,7 @@ namespace AvatarBridge.Regression
 {
     public static class SocketToggleDefaultTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: socket toggles default off")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Socket toggles default off")]
         public static void Run()
         {
             int fail = 0;

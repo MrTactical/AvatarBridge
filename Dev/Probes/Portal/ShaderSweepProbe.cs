@@ -61,7 +61,7 @@ namespace AvatarBridge.Regression
 
         enum State { Off, Rest, Bend, Open }
 
-        [MenuItem("Tools/AvatarBridge Dev/Probe: Shader sweep")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Portal/Shader sweep")]
         public static void Run()
         {
             int code = 1;

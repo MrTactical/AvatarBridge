@@ -23,7 +23,7 @@ namespace AvatarBridge.Regression
     {
         const string Asset = "Assets/GeneratedShaderTest.abgenshader";
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: generated shader refusal")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Generated shader refusal")]
         public static void Run()
         {
             int failures = 0;

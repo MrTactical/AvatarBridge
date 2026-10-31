@@ -17,7 +17,7 @@ namespace AvatarBridge.Regression
     // Run: -executeMethod AvatarBridge.Regression.SquashSurfaceTest.Run
     public static class SquashSurfaceTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: squash part surface")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Squash part surface")]
         public static void Run()
         {
             int fail = 0;

@@ -37,7 +37,7 @@ namespace AvatarBridge.Regression
     }
 ";
 
-        [MenuItem("Tools/AvatarBridge Dev/Test: squash shadow caster")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Squash shadow caster")]
         public static void Run()
         {
             failures = 0;
