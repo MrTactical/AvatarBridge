@@ -3011,6 +3011,10 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
          content id. The rebuild keeps the old prop's id now, and the batch build its scene's.
        - **A glass pane** on the world prop to press in (Joe: "to demonstrate squish"): a pickup of
          its own, synced, 4 cm thick and 6 cm past the face all round, as the check's wall.
+         In game it dents the orange one in an online instance and passes through it in an offline
+         one (Joe, after d55233c): the client's prop sync, not the step, which the batch wall passes
+         on the same build. Which part of the offline path lets it slip the balls is not pinned. Its
+         probes are all on the front face, so a press from the top or a side never dents it.
        - **A slow hand rang a slap** ("very slow speed", his hand, desktop): hands fire at 1.2 m/s
          now, where a gentle poke is 0.5 and a slap 2 to 5. The probes read a slap about a third as
          fast as it came (a ball at 3 m/s read 1.05), so they fire at 0.4 of that, as before;
