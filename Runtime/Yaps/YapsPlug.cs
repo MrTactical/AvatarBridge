@@ -132,7 +132,7 @@ namespace AvatarBridge.Yaps
                  "distance. On, the tip light carries a hidden mesh at the base, of the measured length, for them " +
                  "to find. Needs the tip light; Bake again after changing it.")]
         [YapsFrom("DPS")]
-        public bool toyModLength = false;
+        public bool toyModLength = true;
 
         [Tooltip("The tip pointers TPS and SPS sockets read.")]
         [YapsFrom("TPS · SPS")]

@@ -340,10 +340,13 @@ namespace AvatarBridge
             // The same markers the toolkit builds for a native plug, on the measured
             // frame: DPS tracker light, TPS and SPS pointers. Fury's own rig goes
             // first, or its tracker doubles the fresh one and its pointers win the
-            // announce's dedupe.
+            // announce's dedupe. The toy mod length as the plug's own switch says,
+            // on unless a plug already there turned it off.
             YapsSocketRebuilder.StripPlugRig(plugRoot);
+            var had = plugRoot.GetComponent<YapsPlug>();
             YapsNativeBuilder.AnnouncePlug(plugRoot, result.Origin, result.Rotation,
-                result.Length * toMetres, result.Radius * toMetres, tipLight: true, pointers: true);
+                result.Length * toMetres, result.Radius * toMetres, tipLight: true, pointers: true,
+                toyLengthDir: had == null || had.toyModLength ? ctx.OutputDir + "/YAPS" : null);
 
             // The authoring component, read back off the patched material,
             // so a re-bake writes the same thing. No slot named: a named slot

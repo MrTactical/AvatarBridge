@@ -1250,9 +1250,10 @@ authoring +0.003, which DPS reads and no toy mod does, so the wearer's own toys 
 
 Even current builds measure from the wrong place: the mod takes the plug's position and length from
 the first mesh it finds above the tip light, and on an avatar that is usually the body or a hat. A
-plug's **Toy Mod Length** (its inspector, *How sockets find it*, off by default) puts a hidden mesh of
+plug's **Toy Mod Length** (its inspector, *How sockets find it*, on by default) puts a hidden mesh of
 the measured length at the base for the mod to find instead, so a toy responds to the plug itself,
-within one plug length. Bake again after ticking it.
+within one plug length, and other players' controllers stop buzzing near the rest of the body. A
+plug set up while it was off by default keeps its own setting: tick it and Bake again.
 
 A dark socket still engages: a YAPS plug finds it through the screen atlas. What a dark socket
 loses is old DPS plugs, which carry lights and nothing else, and a YAPS plug in a view too small
