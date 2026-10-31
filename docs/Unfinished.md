@@ -4682,6 +4682,23 @@ Small features, after 5.0.0, none started.
 - A per-plug menu choice. `_YAPS_SelfSockets` is a plain float, so a dropdown could animate it
   between a few sets, at the cost of one synced parameter a plug so every viewer bends alike.
 
+### Own sockets through the material data provider, no lights (after SPS3)
+
+- VRCFury's SPS3 beta (1.1436.1-beta.9, read 2026-10-31) drops lights and the grab for a new VRChat
+  SDK feature: a contact receiver with `writeToMaterials` writes each matched sender's world matrix
+  into the plug's renderer, and the socket packs its type, guide stop and flags into the sender's
+  world scale, held by a scale constraint. ChilloutVR has nothing that hands one avatar another's
+  transforms, so the cross-avatar half does not carry over. The self half does: a
+  `CVRMaterialDataProvider` already hands a material its own avatar's transforms, same frame, on
+  remote copies too (the squash and the jelly run on it). A plug would find its own sockets with no
+  light and no atlas cell: none a frame late, none lost in a view too small for the atlas, bent in
+  the shadow and depth passes (the ghost, YSH-18, for own sockets), no four-slot eviction, and
+  guide stops on own sockets (the path idea under Major Ideas). Sockets keep their lights and atlas
+  cell for everyone else's plugs. A socket on a part cloth swings reads at rest through the
+  provider and needs the skinned helper, a frame or two late. Costs: another source in the plug's
+  search, a provider wired a plug, every patched shader stale. Not wanted until self-use problems
+  are reported (Joe, 2026-10-31: "yeah queue it", after the jelly into YAPS).
+
 ### An id for prop and world sockets
 
 - Props and world sockets carry no id and fall back to the vote. `SeedInstance` would give a
