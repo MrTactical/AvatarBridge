@@ -242,6 +242,7 @@ namespace AvatarBridge
             var clips = YapsSwapFollow.RunnableClips(root);
             YapsLock.Animate(null, clips);
             Reuse = Owned(root, clips);
+            string jellyAt = YapsJelly.FolderFor(root, folder);
             string said;
             var jelly = (on: new List<string>(), refused: new List<string>());
             try
@@ -250,7 +251,7 @@ namespace AvatarBridge
                 if (built)
                 {
                     said += " " + FollowSwaps(root, clips, folder, null);
-                    jelly = YapsJelly.On(root, folder, null);
+                    jelly = YapsJelly.On(root, jellyAt, null);
                 }
             }
             finally
@@ -1985,7 +1986,7 @@ namespace AvatarBridge
                     said + ". Tune it on the YAPS Squash component on the converted avatar, and test it in the Avatar Tester");
                 if (ctx.MergedController != null) FollowSwaps(root, ctx.MergedController.animationClips, folder, ctx.Report);
                 Lap("FollowSwaps");
-                var (on, refused) = YapsJelly.On(root, folder, ctx.Report);
+                var (on, refused) = YapsJelly.On(root, folder + "/" + YapsNativeBuilder.Sanitise(root.name) + " Jelly", ctx.Report);
                 if (on.Count > 0) ctx.Report.Converted(Category, "Soft parts move as live tissue", string.Join(" ", on));
                 foreach (var why in refused) ctx.Report.Warning(Category, "A pair kept the squash alone", why);
                 Lap("Jelly");

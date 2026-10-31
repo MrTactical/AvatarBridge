@@ -596,18 +596,30 @@ namespace AvatarBridge
             var off = cloth ? restored : PairPhysics(root, part, on: false);
             return $"On {root.name}: {names[pair]} on two lattices of {n.x}x{n.y}x{n.z} ({n.x * n.y * n.z} particles each, {100f * spacing:0.0} cm apart, " +
                    $"{100f * (n.x - 1) * spacing:0} x {100f * (n.y - 1) * spacing:0} x {100f * (n.z - 1) * spacing:0} cm) under {chest.name}; " +
-                   (cloth ? $"{1000f * volume[0]:0.0} and {1000f * volume[1]:0.0} litres, riding {carriers[0] ?? "nothing"} and {carriers[1] ?? "nothing"}, which the cloth swings, a hand moving the whole by {give:0.00} of its press; "
+                   (cloth ? $"{1000f * volume[0]:0.0} and {1000f * volume[1]:0.0} litres, riding {carriers[0] ?? "nothing"} and {carriers[1] ?? "nothing"}{(clothed ? ", which the cloth swings" : ", which no cloth swings")}, a hand moving the whole by {give:0.00} of its press; "
                        : $"{1000f * volume[0]:0.0} and {1000f * volume[1]:0.0} litres, {kilos:0.0} kg each, so it swings at {hz:0.00} Hz and a hand moves the whole by {give:0.00} of its push; ") +
                    $"{patched} of {mats.Count} squash materials read it{(left.Count > 0 ? " (left as they were: " + string.Join(", ", left) + ")" : "")}; " +
-                   (cloth ? (off.Count > 0 ? "switched back on: " + string.Join(", ", off) : "its cloth left on")
+                   (cloth ? (off.Count > 0 ? "switched back on: " + string.Join(", ", off) : clothed ? "its cloth left on" : "no cloth on it")
                        : off.Count > 0 ? "switched off: " + string.Join(", ", off) : "no cloth or dynamic bones found on the pair, so if anything else swings it, switch that off") +
                    $"; {collided}; {(thinned.Count > 0 ? "thinned to clear it as built: " + string.Join(", ", thinned) : "none of the wearer's limbs reaching it as built")}; {wired}; {stale} earlier jelly taken off.";
         }
 
-        // Every pair the squash found put on the jelly with a user's defaults, its assets in a folder
-        // of the avatar's own under folder; a pair it refuses keeps the squash. What was said, as put
-        // on or refused.
-        internal static (List<string> on, List<string> refused) On(Transform root, string folder, BridgeReport report)
+        // The folder for an avatar's jelly beside the squash's in folder: the one its last jelly was
+        // built in, read off its materials, so a rebuild writes over its own copies; else one of its
+        // own, as two avatars of one name share the squash's folder. Read before the squash strips it.
+        internal static string FolderFor(Transform root, string folder)
+        {
+            var mats = root.GetComponentsInChildren<Renderer>(true).SelectMany(r => r.sharedMaterials).Where(m => m != null).ToList();
+            string Of(string name, string suffix) => mats.Where(m => m.HasProperty(name)).Select(m => m.GetTexture(name)).Where(t => t != null)
+                .Select(t => Path.GetDirectoryName(AssetDatabase.GetAssetPath(t)).Replace('\\', '/')).Where(d => d.EndsWith(suffix))
+                .Select(d => d.Substring(0, d.Length - suffix.Length)).FirstOrDefault();
+            return Of("_YAPS_JellyState", "") ?? Of("_YAPS_JellyState2", "_2")
+                   ?? AssetDatabase.GenerateUniqueAssetPath(folder + "/" + YapsNativeBuilder.Sanitise(root.name) + " Jelly");
+        }
+
+        // Every pair the squash found put on the jelly with a user's defaults, its assets in the
+        // folder into; a pair it refuses keeps the squash. What was said, as put on or refused.
+        internal static (List<string> on, List<string> refused) On(Transform root, string into, BridgeReport report)
         {
             var on = new List<string>();
             var refused = new List<string>();
@@ -617,7 +629,7 @@ namespace AvatarBridge
             if (body != null) YapsSquash.NamedShares(root, body, out names, out _);
             foreach (var name in names ?? new List<string>())
             {
-                string said = PairOn(root, new Regex("^" + Regex.Escape(name) + "$", RegexOptions.IgnoreCase), folder + "/" + YapsNativeBuilder.Sanitise(root.name) + " Jelly", Shaders, new Options(), report);
+                string said = PairOn(root, new Regex("^" + Regex.Escape(name) + "$", RegexOptions.IgnoreCase), into, Shaders, new Options(), report);
                 Debug.Log("[YAPS] Jelly: " + said);
                 (said.StartsWith("On ") ? on : refused).Add(said);
             }

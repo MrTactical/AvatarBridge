@@ -3087,7 +3087,10 @@ layers get a copy at all), `_YAPS_DentOwn` RGBA, the draw's two states and one f
    a slot before `_YAPS_DentOwn` is written, while the jelly indexes the unshifted order: the
    second jelly then reads the wrong channels or draws nothing. (b) The build's words say "which
    the cloth swings" and "its cloth left on" for a part no cloth swings. (c) Two avatars of one
-   name share `<avatar> Jelly` in the shared squash folder (the review, 2026-10-31).
+   name share `<avatar> Jelly` in the shared squash folder (the review, 2026-10-31). (b) and (c)
+   DONE 2026-10-31: the words follow whether any cloth swings the part; the squash's Build reads
+   the folder its last jelly used off the materials before stripping them, else makes one of the
+   avatar's own (two builds in a row wrote one folder). (a) comes with step 2.
 2. **Any part.** No cap in the squash build, the picked bones or the painter; a part may be one
    side only (a belly, a tail). Per vertex the two strongest jelly parts in a new RGBA32
    `_YAPS_JellyOwn` (index, share, index, share), written from the part list before any
