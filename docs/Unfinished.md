@@ -3198,6 +3198,13 @@ layers get a copy at all), `_YAPS_DentOwn` RGBA, the draw's two states and one f
    arm reaches); the thighs' probes (the ball never reaches a probe) and own through (47.2); the
    belly's partner checks and hands outer, 33.6 mm against a threshold set on breasts (it passed
    at 51.1 on the caving), step 5. In game: a poke now dents and no longer sinks the whole part.
+   Own through, s4f: the seat's wrist reached where it was sent (0.0 cm off, 40.1 cm in), so its
+   68.7 mm is something else left in the cheek, most likely the forearm, which reaching behind
+   the body lies through it (the next run logs the furthest particle's distance to the wrist and
+   to the forearm); the thighs' wrist stopped 21.3 cm short, the arm unable to reach, so its hand
+   stays in and holds. Both are the breast's "through to the chest" asked where no arm goes (step
+   5). Next: that run (breasts, seat, thighs, which also logs each part's probe spacing, for a
+   probe reach scaled to it), then films of the seat and thighs for Joe.
 5. **Tests.** VerifyBreasts made part-agnostic: the region's forward for every press, thresholds
    scaled by the part's size, partner checks skipped for a single part, a thigh check (the film's
    `-jellyThighs` prep in the check). A seeded random-patch generator (pairs over mesh adjacency

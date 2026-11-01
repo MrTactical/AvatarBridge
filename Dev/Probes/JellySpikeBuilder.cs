@@ -3358,7 +3358,8 @@ namespace AvatarBridge.Regression
                         }
 #endif
                         probeSaid.Add($"{string.Join(" and ", nets.Select(c => c.GetType().Name))}, {probeTs.Count} probes, the frontmost " +
-                                      $"{100f * Vector3.Dot(probeTs[0].position - breastRegions[0].position, breastRegions[0].forward):0.0} cm out on its region");
+                                      $"{100f * Vector3.Dot(probeTs[0].position - breastRegions[0].position, breastRegions[0].forward):0.0} cm out on its region, " +
+                                      $"{100f * probeTs.Take(probeTs.Count / 2).Average(pa => probeTs.Take(probeTs.Count / 2).Where(pq => pq != pa).Min(pq => (pa.position - pq.position).magnitude)):0.0} cm from its nearest on average");
                     }
                     var front = 0.5f * (probeHang[0].TransformPoint(probeRest[0]) + probeHang[probePair].TransformPoint(probeRest[probePair]));
                     // The second slap from 15 cm off, the hand with it: from 7 cm a palm already
@@ -3541,7 +3542,17 @@ namespace AvatarBridge.Regression
                 var target = Vector3.Lerp(front + outward * 0.08f, breastRegions[0].position - outward * 0.02f, push);
                 TwoBone(upperArm, lowerArm, wristBone, target, swing.forward);
                 // Whether the arm reaches: behind the body a seat's base can be out of it.
-                if (frame == 2220) ownReach = $"the wrist {100f * Vector3.Distance(wristBone.position, target):0.0} cm off where it was sent, {100f * Vector3.Dot(front - wristBone.position, outward):0.0} cm in from the front";
+                if (frame == 2220)
+                {
+                    // And what holds the furthest particle there: the hand, or the forearm lying in it.
+                    var heldSt = ReadState();
+                    int heldQ = Enumerable.Range(0, n.x * n.y * n.z).OrderByDescending(q => ((Vector3) heldSt[q / Row * 2 * Row + q % Row] - (Vector3) throughBefore[q / Row * 2 * Row + q % Row]).sqrMagnitude).First();
+                    var heldAt = (Vector3) heldSt[heldQ / Row * 2 * Row + heldQ % Row];
+                    var armAlong = wristBone.position - lowerArm.position;
+                    var onArm = lowerArm.position + armAlong * Mathf.Clamp01(Vector3.Dot(heldAt - lowerArm.position, armAlong) / armAlong.sqrMagnitude);
+                    ownReach = $"the wrist {100f * Vector3.Distance(wristBone.position, target):0.0} cm off where it was sent, {100f * Vector3.Dot(front - wristBone.position, outward):0.0} cm in from the front; " +
+                               $"the furthest particle {100f * Vector3.Distance(heldAt, wristBone.position):0.0} cm off the wrist, {100f * Vector3.Distance(heldAt, onArm):0.0} cm off the forearm";
+                }
             }
             // Then a hand on the first's front, closed to a fist there, pulled 8 cm straight out over
             // a third of a second, held, and opened as it goes: what it gripped follows it, the whole
