@@ -2341,7 +2341,8 @@ namespace AvatarBridge.Regression
 #if AVATARBRIDGE_YAPS
             if (SessionState.GetInt(K + "on", 0) == 2)
             {
-                OnLateBreasts();
+                if (testerRun) OnLateTester();
+                else OnLateBreasts();
                 return;
             }
             if (SessionState.GetInt(K + "on", 0) == 3)
@@ -2949,10 +2950,78 @@ namespace AvatarBridge.Regression
         static readonly List<string> restSaid = new List<string>();
         static bool wasStepping;
 
+        // -jellyTester: the Avatar Tester's own presses on the first part, as a user makes them in Play
+        // mode, the probe writing no hands of its own: the test hand closed on its front (Grab told),
+        // opened a hand's length off and slapped (Slap told), and the twitch (the mass kicked). Its
+        // bars read back as the tester draws them.
+        static bool testerRun;
+        static UnityEngine.UIElements.VisualElement testerUi;
+        static readonly float[] testerSaw = new float[5];
+        static Vector3 testerFrom;
+
+        static void OnLateTester()
+        {
+            CarryRegions();
+            var settings = YapsSquash.SettingsOf(swing);
+            var told = Read((RenderTexture) jelly.GetComponentInChildren<CVRTexturePropertyParser>(true).texture);
+            var box = jelly.GetComponentsInChildren<CVRMaterialDataProvider>(true).First(q => q.transforms != null && q.transforms.Length > 0).materials[0].GetVector("_JellyBox0");
+            var outward = breastRegions[0].forward;
+            var front = breastRegions[0].TransformPoint(0f, 0f, box.z);
+            var st = ReadState();
+            int side = Side(breastN);
+            Vector3 centre = (Vector3) st[side * 2 * Row + 30] - breastRegions[0].TransformPoint(0f, 0f, 0.5f * (breastN.z - 1) * breastSpacing);
+            List<UnityEngine.UIElements.ProgressBar> Bars() => testerUi != null ? UnityEngine.UIElements.UQueryExtensions.Query<UnityEngine.UIElements.ProgressBar>(testerUi).ToList() : new List<UnityEngine.UIElements.ProgressBar>();
+            UnityEngine.UIElements.ProgressBar Bar(int k) => Bars().ElementAtOrDefault(k);
+            if (frame == 60)
+            {
+                YapsSquashPreview.Start(settings);
+                YapsSquashPreview.Hand = true;
+                testerUi = new UnityEngine.UIElements.VisualElement();
+                YapsSquashPreview.Controls(testerUi, settings, () => { });
+            }
+            // A fist's knuckles a centimetre into the skin, as the probe's own grab holds it.
+            if (frame >= 60 && frame < 200)
+            {
+                YapsSquashPreview.Fist = frame >= 90;
+                YapsSquashPreview.HandAt(front + outward * (0.06f * YapsSquashPreview.Tall - 0.01f));
+            }
+            if (frame >= 120 && frame < 200)
+            {
+                testerSaw[0] = Mathf.Max(testerSaw[0], told[4].x);
+                testerSaw[1] = Mathf.Max(testerSaw[1], Bar(1)?.value ?? 0f);
+            }
+            if (frame == 200)
+            {
+                YapsSquashPreview.Fist = false;
+                YapsSquashPreview.HandAt(front + outward * 0.25f);
+            }
+            if (frame == 260) YapsSquashPreview.Slap();
+            if (frame >= 260 && frame < 340)
+            {
+                testerSaw[2] = Mathf.Max(testerSaw[2], told[5].x);
+                testerSaw[3] = Mathf.Max(testerSaw[3], Bar(2)?.value ?? 0f);
+            }
+            if (frame == 400)
+            {
+                YapsSquashPreview.Hand = false;
+                testerFrom = centre;
+                YapsSquashPreview.Twitch();
+            }
+            if (frame > 400 && frame < 480) testerSaw[4] = Mathf.Max(testerSaw[4], (centre - testerFrom).magnitude);
+            if (++frame < 520) return;
+            YapsSquashPreview.Stop();
+            int bars = Bars().Count;
+            bool ok = testerSaw[0] > 0.5f && testerSaw[1] > 0.5f && testerSaw[2] > 0.2f && testerSaw[3] > 0.2f && testerSaw[4] > 0.004f && bars >= 3;
+            Debug.Log($"[Jelly] {(ok ? "PASS" : "FAIL")} tester: its fist on the first's front told Grab {testerSaw[0]:0.00} (its bar {testerSaw[1]:0.00}), " +
+                      $"its slap told Slap {testerSaw[2]:0.00} (its bar {testerSaw[3]:0.00}), its twitch swung the mass {1000f * testerSaw[4]:0.0} mm; {bars} bars");
+            EditorApplication.Exit(ok ? 0 : 1);
+        }
+
         static void HookBreasts()
         {
             var avatar = Object.FindObjectsOfType<CVRAvatar>().First(a => YapsSquash.Has(a.transform));
             swing = avatar.transform;
+            testerRun = Environment.GetCommandLineArgs().Contains("-jellyTester");
             var animator = avatar.GetComponentInChildren<Animator>();
             // Held in the scene's pose and the rest of its cloth still, so only the tissue moves the
             // pixels: all but the pair's own cloth, left on where it swings the regions' bones, and

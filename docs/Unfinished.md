@@ -3151,8 +3151,15 @@ layers get a copy at all), `_YAPS_DentOwn` RGBA, the draw's two states and one f
    twitch change now reads as needing a rebuild. Kar, painted: Breast, Belly, Butt and Thighs
    guessed right (2.40, 2.16, 3.00, 3.60 Hz), one part's firmness at 2 moved its steps alone;
    breasts PASS with the same numbers. Open: the presets past Breasts are guesses (step 4 tunes
-   them on film and in game), other players' hands and stretch in motion not yet live, and the
-   tester's Play-mode presses (3b).
+   them on film and in game), and other players' hands and stretch in motion not yet live.
+   (b) BUILT 2026-11-01: the Avatar Tester in Play mode, with the live tissue on: Fist (the test
+   hand closed), Slap (the test hand in and out in an eighth of a second, game time) and Twitch
+   (each Jelly Twitch moved as the toggle's clip moves it, in `PreLateUpdate` after the animator
+   and before the CCK's render controller), and a Squeeze, Grab and Slap bar a part read back off
+   its points strip; out of Play mode, a note that the tissue steps there alone. Kar,
+   `-jellyTester`: the tester's fist told Grab 1.00 (its bar 1.00), its slap Slap 1.00 (0.90),
+   its twitch swung the mass 12.9 mm. Not shown: the twitch against a running animator (the
+   probe holds it off), so the PreLateUpdate order is read from the CCK, not measured.
 4. **The butt and thighs again.** The seat's poke fell from 147.0 mm (run119, 2026-10-29) to 17.8
    (butt1k, 2026-10-31), contact 93.3 to 9.7, both still passing: bisect before tuning. Its three
    failing checks look like the breast-shaped test: hands outer aims from the lattice's width

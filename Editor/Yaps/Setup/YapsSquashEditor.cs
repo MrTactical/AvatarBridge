@@ -6,11 +6,13 @@
 // cloth, so there the preview also swings the rests under it.
 #if CVR_CCK_EXISTS
 using System.Linq;
+using ABI.CCK.Components;
 using AvatarBridge.Yaps;
 using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
 using UnityEngine.LowLevel;
+using UnityEngine.Rendering;
 using UnityEngine.UIElements;
 
 namespace AvatarBridge
@@ -312,7 +314,12 @@ namespace AvatarBridge
     {
         public static YapsSquashSettings On { get; private set; }
         public static float Squeeze, Push;
-        public static bool Bounce, Hand;
+        public static bool Bounce, Hand, Fist;
+        // The live tissue's slap and twitch, started by their buttons; -1 none.
+        static float _slapAt = -1f, _twitchAt = -1f;
+        // Each worn part's tells as bars, and when they were last read back.
+        static readonly System.Collections.Generic.List<(Transform worn, ProgressBar[] bars)> _tells = new System.Collections.Generic.List<(Transform, ProgressBar[])>();
+        static float _toldAt;
         // The hand's player's viewpoint height, which sizes the hand as it does in the shader.
         // Kept between previews, unlike the rest.
         public static float Tall = 1.7f;
@@ -367,6 +374,7 @@ namespace AvatarBridge
                 Hand, b => { Hand = b; SceneView.RepaintAll(); }));
             into.Add(BridgeElements.SliderField("Player height", "How tall the hand's player is, in metres. A hand is sized to its player, so lower it for a smaller hand pressing a smaller spot.",
                 0.3f, 2.5f, Tall, v => { Tall = v; SceneView.RepaintAll(); }));
+            Tissue(into);
             return row;
         }
 
@@ -440,7 +448,9 @@ namespace AvatarBridge
             On = null;
             _root = null;
             Squeeze = 0f;
-            Bounce = Hand = false;
+            Bounce = Hand = Fist = false;
+            _slapAt = _twitchAt = -1f;
+            _tells.Clear();
             SceneView.RepaintAll();
         }
 
@@ -454,6 +464,7 @@ namespace AvatarBridge
             var m = slots.Select(t => t != null ? t.localToWorldMatrix : Matrix4x4.zero).ToArray();
             if (!Application.isPlaying) Stand(root, m, mats);
             Press(root, slots, mats[0].GetVector("_YAPS_SquashReach"), Nearest(slots, root.TransformPoint(_wrist)));
+            if (Application.isPlaying) Told();
             SceneView.RepaintAll();
         }
 
@@ -474,6 +485,67 @@ namespace AvatarBridge
             foreach (var mat in mats) mat.SetMatrixArray("_YAPS_SquashFollow", m);
         }
 
+        // The live tissue's own: it steps in Play mode alone, the CCK's render controller being a
+        // runtime component. There a fist, a slap, a twitch, and what it tells the animator.
+        static void Tissue(VisualElement into)
+        {
+            _tells.Clear();
+            var worn = _root.GetComponentsInChildren<Transform>(true).Where(w => w.name.StartsWith(YapsJelly.Worn + " ")).ToList();
+            if (worn.Count == 0) return;
+            if (!Application.isPlaying)
+            {
+                into.Add(BridgeElements.Hint("The live tissue steps in Play mode only. Enter Play mode to press, grip and slap it here; out of it nothing presses it."));
+                return;
+            }
+            into.Add(BridgeElements.Bind("Fist", "Closes the test hand. On the skin it grips it: drag the hand and the skin comes with it, letting go when pulled too far.",
+                Fist, b => Fist = b));
+            var slap = BridgeElements.Btn("Slap", Slap,
+                "The test hand slaps the part nearest it and comes back, as fast as a slap lands.");
+            bool twitches = _root.GetComponentsInChildren<Transform>(true).Any(w => w.name == "Jelly Twitch");
+            var twitch = BridgeElements.Btn("Twitch", Twitch,
+                twitches ? "Kicks each part once, as the Jelly twitch toggle does in game." : "Turn on Twitch under Live tissue on the YAPS Squash component, then rebuild.");
+            twitch.SetEnabled(twitches);
+            into.Add(BridgeElements.ButtonRow(slap, twitch));
+            into.Add(BridgeElements.Hint("What each part tells the animator, from 0 to 1: #Jelly/<part>/Squeeze, Grab and Slap."));
+            foreach (var w in worn)
+            {
+                var line = new VisualElement();
+                line.AddToClassList("ab-field");
+                line.Add(new Label(w.name.Substring(YapsJelly.Worn.Length + 1)));
+                var bars = new[] { "Squeeze", "Grab", "Slap" }.Select(x => new ProgressBar { title = x, lowValue = 0f, highValue = 1f }).ToArray();
+                foreach (var b in bars) line.Add(b);
+                into.Add(line);
+                _tells.Add((w, bars));
+            }
+        }
+
+        internal static void Slap() => _slapAt = Time.time;
+        internal static void Twitch() => _twitchAt = Time.time;
+        // The test hand's wrist, as its handle drags it.
+        internal static void HandAt(Vector3 world)
+        {
+            if (_root != null) _wrist = _root.InverseTransformPoint(world);
+        }
+
+        // The tells read back off each part's points strip ten times a second, where the client's
+        // parser reads them: texels 3 to 5 of its first row.
+        static void Told()
+        {
+            if (_tells.Count == 0 || Time.realtimeSinceStartup - _toldAt < 0.1f) return;
+            _toldAt = Time.realtimeSinceStartup;
+            foreach (var (worn, bars) in _tells)
+            {
+                var rt = worn != null ? worn.GetComponentInChildren<CVRTexturePropertyParser>(true)?.texture as RenderTexture : null;
+                if (rt == null) continue;
+                AsyncGPUReadback.Request(rt, 0, r =>
+                {
+                    if (r.hasError) return;
+                    var d = r.GetData<Vector4>();
+                    for (int i = 0; i < 3 && 3 + i < d.Length; i++) bars[i].value = Mathf.Clamp01(d[3 + i].x);
+                });
+            }
+        }
+
         // The part the hand reaches for. The first part always was, so a hand dragged onto a
         // second pair faced up toward the first and never pressed in.
         static Vector3 Nearest(Transform[] slots, Vector3 wrist) =>
@@ -488,12 +560,21 @@ namespace AvatarBridge
             var right = new Vector4[255];
             var chests = new Vector4[255];
             var roots = new Vector4[255];
-            if (Hand)
+            bool slapping = _slapAt >= 0f && Application.isPlaying;
+            if (Hand || slapping)
             {
                 var wrist = root.TransformPoint(_wrist);
                 var aim = (part - wrist).normalized;
                 var chest = wrist - aim * 0.45f;
-                left[1] = new Vector4(wrist.x, wrist.y, wrist.z, -1f);
+                // In most of the way to the part's middle and out again in an eighth of a second:
+                // from a hand's length off, about 3 m a second, past the speed a slap fires at.
+                if (slapping)
+                {
+                    float s = (Time.time - _slapAt) / 0.12f;
+                    if (s >= 1f) _slapAt = -1f;
+                    wrist = Vector3.Lerp(wrist, part, 0.8f * Mathf.Sin(Mathf.PI * Mathf.Clamp01(s)));
+                }
+                left[1] = new Vector4(wrist.x, wrist.y, wrist.z, Fist && !slapping ? 1f : -1f);
                 chests[1] = chest;
                 roots[1] = new Vector4(chest.x, 0f, chest.z, Tall);
             }
@@ -510,7 +591,7 @@ namespace AvatarBridge
             Shader.SetGlobalVectorArray("_CVR_PlayerRightHandPositions", right);
             Shader.SetGlobalVectorArray("_CVR_PlayerChestPositions", chests);
             Shader.SetGlobalVectorArray("_CVR_PlayerRootPositions", roots);
-            Shader.SetGlobalVector("CVRGlobalParams1", new Vector4(_params.x, Hand || Squeeze > 0f ? 3f : 0f, _params.z, _params.w));
+            Shader.SetGlobalVector("CVRGlobalParams1", new Vector4(_params.x, Hand || slapping || Squeeze > 0f ? 3f : 0f, _params.z, _params.w));
         }
 
         // An open hand on the far side of part i from its partner, fingers up so its side presses:
@@ -540,6 +621,19 @@ namespace AvatarBridge
         // back to their pose, before the animator and the cloth read them. Set between frames, as
         // the Move tool sets them, the cloth undid it before it read them (measured).
         struct PushStep { }
+        struct TwitchStep { }
+
+        // Each part's Jelly Twitch up and back as the toggle's clip moves it, after the animator has
+        // written its own pose and before the CCK's render controller hands it to the step.
+        static void TwitchNow()
+        {
+            if (_twitchAt < 0f || _root == null || On == null) return;
+            float at = Time.time - _twitchAt, size = On.twitchSize;
+            float up = at < 0.05f ? at / 0.05f : at < 0.12f ? 1f : at < 0.2f ? 1f - (at - 0.12f) / 0.08f : 0f;
+            foreach (var w in _root.GetComponentsInChildren<Transform>(true).Where(w => w.name == "Jelly Twitch"))
+                w.localPosition = Vector3.up * (size * up / Mathf.Max(Mathf.Abs(w.lossyScale.y), 1e-6f));
+            if (at >= 0.2f) _twitchAt = -1f;
+        }
         static Transform _pushed;
         static Vector3 _pushedFrom, _pushBy;
 
@@ -548,6 +642,13 @@ namespace AvatarBridge
             var loop = PlayerLoop.GetCurrentPlayerLoop();
             for (int i = 0; i < loop.subSystemList.Length; i++)
             {
+                if (loop.subSystemList[i].type == typeof(UnityEngine.PlayerLoop.PreLateUpdate))
+                {
+                    var late = loop.subSystemList[i].subSystemList.Where(x => x.type != typeof(TwitchStep)).ToList();
+                    int after = late.FindIndex(x => x.type == typeof(UnityEngine.PlayerLoop.PreLateUpdate.DirectorUpdateAnimationEnd));
+                    if (on) late.Insert(after + 1, new PlayerLoopSystem { type = typeof(TwitchStep), updateDelegate = TwitchNow });
+                    loop.subSystemList[i].subSystemList = late.ToArray();
+                }
                 if (loop.subSystemList[i].type != typeof(UnityEngine.PlayerLoop.Update)) continue;
                 var list = loop.subSystemList[i].subSystemList.Where(x => x.type != typeof(PushStep)).ToList();
                 if (on) list.Insert(0, new PlayerLoopSystem { type = typeof(PushStep), updateDelegate = PushNow });

@@ -1691,7 +1691,11 @@ the same knobs answer the real thing. In Play mode the cloth in the tester is re
 swings it, and **Squeeze** and **Test hand** press it, moving with the avatar; pause Play mode to hold
 the cloth still while they press. There Squeeze starts at 0, and **Push one in** moves one part of the
 first pair toward its partner by its bone, as a swing or a shove would, so the partner can be
-seen giving way; with Squeeze as well, pushed from both sides, both give and meet. The Move tool
+seen giving way; with Squeeze as well, pushed from both sides, both give and meet. The live tissue
+steps in Play mode only, and there the tester adds **Fist**, which closes the test hand so that on
+the skin it grips it and drags it, **Slap**, which slaps the part nearest the hand, and **Twitch**
+(with Twitch on under *Live tissue*), and shows each part's **Squeeze**, **Grab** and **Slap** as bars,
+what it tells the animator. The Move tool
 cannot push a part in Play mode: the cloth puts its bones back every frame. Knobs moved in Play mode go back when it ends, as every
 component's do. Each fold under **Tune how it feels** says what it does and how to see it, and its fold
 **Animate it** lists the material properties to key. The last step, **Build**, says whether the
