@@ -3168,6 +3168,16 @@ layers get a copy at all), `_YAPS_DentOwn` RGBA, the draw's two states and one f
    in the air. Thighs (parked 2026-10-29, "they aren't boobs or ass"): a held core near the bone
    instead of a held back face, the other leg's capsule at its true width skipping each lattice's
    own carrier, a firmer preset, the lift measured seated. Films to Joe for each.
+   Bisected 2026-11-01: the drop is a fix, not a loss. In run119 the particle under the finger
+   (5 4 8) went 147 mm in at the 6 mm a frame cap and the lattice fell to 0.87 of its volume: a
+   3 cm finger drove the skin 15 cm in, which a later change ended (not bisected to one). Today
+   the furthest particle is a lattice corner (10 9 8), out in the air, and the whole moves 3.3 mm;
+   the breasts' 95.3 is front corners too, their whole 20.6. Ruled out by runs: taut (0 against
+   1, both 17.3), the world solids and twitch (17.3 without them), and the poke read against the
+   live bones as before 57fae09 (17.3, the steps every frame since `_Rate` 0). The pixels say the
+   same: 1.86% then, 1.81% now. So the poke check moves to the skin under the finger and the
+   whole's move, off the furthest particle, before the seat is tuned. The contact's fall (93.3 to
+   9.7) is not read yet. `-jellyKnobs` sets every part's eight knobs for a run (eight values).
 5. **Tests.** VerifyBreasts made part-agnostic: the region's forward for every press, thresholds
    scaled by the part's size, partner checks skipped for a single part, a thigh check (the film's
    `-jellyThighs` prep in the check). A seeded random-patch generator (pairs over mesh adjacency

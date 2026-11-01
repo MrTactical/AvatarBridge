@@ -2510,6 +2510,18 @@ namespace AvatarBridge.Regression
                 EditorApplication.Exit(1);
                 return;
             }
+            // -jellyKnobs: every part's eight feel knobs, comma separated, over its preset, so a run
+            // can stand at the feel of an older one or with one knob off.
+            int knobsAt = Array.IndexOf(args, "-jellyKnobs");
+            if (knobsAt >= 0 && knobsAt + 1 < args.Length)
+            {
+                var k = args[knobsAt + 1].Split(',').Select(v => float.Parse(v, CultureInfo.InvariantCulture)).ToArray();
+                var s = YapsSquash.SettingsOf(avatar.transform);
+                foreach (var f in s.feels)
+                    (f.firmness, f.settle, f.give, f.swing, f.springBack, f.taut, f.depth, f.slap) = (k[0], k[1], k[2], k[3], k[4], k[5], k[6], k[7]);
+                foreach (var worn in avatar.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith(YapsJelly.Worn + " ")))
+                    Debug.Log($"[Jelly] knobs {args[knobsAt + 1]} on {worn.name}: {YapsJelly.Retune(worn, s)} materials");
+            }
             SessionState.SetString(K + "out", Out());
             SessionState.SetInt(K + "on", 2);
             EditorApplication.update += Hook;
