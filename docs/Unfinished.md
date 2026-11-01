@@ -3102,6 +3102,30 @@ layers get a copy at all), `_YAPS_DentOwn` RGBA, the draw's two states and one f
    order. The painter: "Add a part", one-sided parts, the
    overlay's "other" as every other part. Painted parts find their cloth by their bones
    (`PartFrom`, done with the move) and ride what the squash rides (`Carrier`'s quarter rule).
+   BUILT 2026-10-31, as planned with these differences: a slot is the part's place among every
+   part found (`YapsSquash.PartsOf`), so four parts an avatar, a jelly each (a pair is two of
+   its regions), the fifth on refused by name; the states keep their names and add 3 and 4
+   (`_YAPS_JellyState`, `State2` to `State4`). `_YAPS_JellyOwn` is written by the squash's build
+   per renderer (part and side ids 2 part + side + 1, of the first four parts), and the squash
+   copies every layer a jelly part moves, building with no pair of its own when only the jelly
+   has parts. `_YAPS_JellyParts` now maps the squash's own four channels to those ids, through
+   the pairs its dent kept (`YapsSquashSettings.dented`, names as `PartsOf` gives them), so a
+   dropped pair no longer shifts the jelly's channels (1a). The painter: Add a pair, Add a part
+   alone, Remove this part, no cap; picked bones uncapped, pairs only. Review (one agent, eight
+   findings, all fixed but the painted fit now reading weld-averaged shares): swapped-in looks
+   missing the parts texture, alike names, two painter crashes, numbered texture copies, a
+   single part with its own mass, three stale probe checks.
+   Kar, 2026-10-31: breasts PASS unchanged on the new draw (95.3 mm, 3.55% of pixels, 103.9,
+   88.1); the seat as before (17.3, 9.7); painted, Breast, Butt, a Belly alone and Thighs on
+   their four slots, Back refused, every material on all four, Remove clean. 2026-11-01, Play
+   mode on the painted slots: both step, settle 0.8 mm off rest, and answer a poke, a turn and a
+   grab. The thighs (slot 4) fail only the probes' ball and the own hand at the chest, both
+   placed for a breast (step 5), on a box 56 x 77 x 56 cm a side (step 4). The belly alone
+   (slot 3) fails eight, most from having no partner (clap, contact) or a breast's approach
+   (squeeze 0.86 before the hand arrives), but two are open: a 2 cm twitch still 17.8 mm off two
+   seconds on (the pairs 0.0), and 149.8 mm off just after the steps wake (the pairs 0.8).
+   Instrument those before step 4 calls the belly done. Then in game. The draw role's compile
+   time unmeasured (step 6).
 3. **Presets and customisation.** Per-part knobs on the YAPS Squash component, live (Apply writes
    the step materials too, which `Materials` misses today): firmness (`_Hz`, `_Stiff`), settle
    (`_Viscous`), give, swing limit, push back (mass Hz and damping), taut, how deep a press goes,

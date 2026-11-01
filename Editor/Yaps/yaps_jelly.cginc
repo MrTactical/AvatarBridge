@@ -90,9 +90,11 @@ float3 YapsJellySlap(Texture2D<float4> state, uint side, float3 world, float3 nw
     return move;
 }
 
-float3 YapsJellyRegion(Texture2D<float4> state, float4 lattice, uint pair, uint r, float3 world, float3 nw, out float3 bend)
+// m is the squash's own part for it (yaps_dent.cginc's), -1 for one the squash does not carry.
+float3 YapsJellyRegion(Texture2D<float4> state, float4 lattice, int m, uint r, float3 world, float3 nw, out float3 bend)
 {
     bend = 0;
+    if (!(lattice.x > 0)) return 0;
     int3 n = int3(lattice.xyz);
     // Padded to a whole number of eight with the side row (JellySpikeBuilder's Side).
     uint rows = ((uint) (n.x * n.y * n.z + 63) / 64 + 8) / 8 * 8 - 1;
@@ -196,14 +198,13 @@ float3 YapsJellyRegion(Texture2D<float4> state, float4 lattice, uint pair, uint 
     // the squash's own give, none at the back face and all of it at the front; the skin then still
     // in the shaft is pressed out of it. The press alone moved only skin on the shaft: the squash's
     // parting moved the pair a hundred times as much of the picture.
-    [branch] if (_YAPS_SquashPlug > 0 && YapsUnit(18 + pair) > 0)
+    [branch] if (_YAPS_SquashPlug > 0 && m >= 0 && YapsUnit(18 + (m >> 1)) > 0)
     {
         // The squash sets this per vertex, and leaves a vertex the jelly carries before it does.
         yapsSkin = YapsSkinState();
-        float3 socket = YapsSlot(18 + pair);
+        float3 socket = YapsSlot(18 + (m >> 1));
         float4 mass = state.Load(int3(30, side, 0));
         float3 centre = mass.w > 0 ? mass.xyz : place.xyz + az * (0.5 * (n.z - 1) * spacing);
-        uint m = 2 * pair + r;
         // The squash's own part, from its own centre: its reaches are measured from there, and a
         // wide part's lattice box is centred elsewhere, which left the shaft short of a seat.
         YapsPart part = YapsPartAt(m, YapsSlot(m), YapsUnit(m));
@@ -244,30 +245,41 @@ float3 YapsJellyRegion(Texture2D<float4> state, float4 lattice, uint pair, uint 
 
 void YapsJellyDeform(inout float3 position, inout float3 normal, inout float3 tangent, uint vertexId)
 {
-    if (!(_YAPS_JellyLattice.x > 0 || _YAPS_JellyLattice2.x > 0)) return;
-    uint width = (uint) round(abs(1.0 / _YAPS_DentOwn_TexelSize.x));
-    float4 own = _YAPS_DentOwn.Load(int3(vertexId % width, vertexId / width, 0));
-    own /= max(own.r + own.g + own.b + own.a, 1);
-    // Each part a region carries names it, one past its index.
-    if (!any(own * _YAPS_JellyParts > 0)) return;
+    if (!(_YAPS_JellyLattice.x > 0 || _YAPS_JellyLattice2.x > 0 || _YAPS_JellyLattice3.x > 0 || _YAPS_JellyLattice4.x > 0)) return;
+    uint width = (uint) round(abs(1.0 / _YAPS_JellyOwn_TexelSize.x));
+    float4 own = _YAPS_JellyOwn.Load(int3(vertexId % width, vertexId / width, 0));
+    uint2 part = (uint2) round(own.xz * 255);
+    if (!(part.x > 0 && own.y > 0 || part.y > 0 && own.w > 0)) return;
 
     float3 world = mul(unity_ObjectToWorld, float4(position, 1)).xyz;
     float3 n0 = mul(normal, (float3x3)unity_WorldToObject);
     bool hasNormal = dot(n0, n0) > 0;
     float3 nw = hasNormal ? normalize(n0) : 0;
     float3 move = 0, bend = 0;
-    // Skin between two parts takes each one's move by its share; a part whose pair has no lattice, none.
-    [unroll] for (int k = 0; k < 4; k++)
+    // Skin between two parts takes each one's move by its share; a part with no lattice, none.
+    // Rolled, the four slots' calls in it once: unrolled, each would be drawn twice.
+    [loop] for (uint j = 0; j < 2; j++)
     {
-        [branch] if (own[k] > 0 && _YAPS_JellyParts[k] > 0 && (k < 2 ? _YAPS_JellyLattice.x : _YAPS_JellyLattice2.x) > 0)
+        uint p = part[j];
+        float s = j == 0 ? own.y : own.w;
+        [branch] if (p > 0 && s > 0)
         {
-            // The first pair's parts on the first state, the second's on their own.
-            float3 b, m;
-            uint r = (uint) round(_YAPS_JellyParts[k]) - 1;
-            if (k < 2) m = YapsJellyRegion(_YAPS_JellyState, _YAPS_JellyLattice, 0, r, world, nw, b);
-            else m = YapsJellyRegion(_YAPS_JellyState2, _YAPS_JellyLattice2, 1, r, world, nw, b);
-            move += own[k] * m;
-            bend += own[k] * b;
+            uint slot = (p - 1) >> 1, r = (p - 1) & 1;
+            int m = -1;
+            [unroll] for (int c = 0; c < 4; c++) if ((uint) round(_YAPS_JellyParts[c]) == p) m = c;
+            float3 b, mv;
+            [branch] if (slot == 0) mv = YapsJellyRegion(_YAPS_JellyState, _YAPS_JellyLattice, m, r, world, nw, b);
+            else
+            {
+                [branch] if (slot == 1) mv = YapsJellyRegion(_YAPS_JellyState2, _YAPS_JellyLattice2, m, r, world, nw, b);
+                else
+                {
+                    [branch] if (slot == 2) mv = YapsJellyRegion(_YAPS_JellyState3, _YAPS_JellyLattice3, m, r, world, nw, b);
+                    else mv = YapsJellyRegion(_YAPS_JellyState4, _YAPS_JellyLattice4, m, r, world, nw, b);
+                }
+            }
+            move += s * mv;
+            bend += s * b;
         }
     }
     world += move;

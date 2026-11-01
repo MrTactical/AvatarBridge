@@ -72,12 +72,17 @@ namespace AvatarBridge.Regression
         // The second pair's jelly is a chain of its own, its assets beside the first's and the
         // shaders shared: a copy each would compile every variant twice.
         static int chain;
-        static string Folder => Home + (chain > 0 ? "_2" : "");
+        static string Folder => Home + (chain > 0 ? "_" + (chain + 1) : "");
         // The chain a worn jelly is, from where its step's materials sit.
         // A draw property as the chain's pair reads it: the second pair's slot ends in 2.
-        static string Slot(string name) => chain > 0 ? name + "2" : name;
-        static int ChainOf(Transform jelly) => AssetDatabase.GetAssetPath(jelly.GetComponentsInChildren<CVRMaterialDataProvider>(true)
-            .First(q => q.transforms != null && q.transforms.Length > 0).materials[0]).StartsWith(Home + "_2/") ? 1 : 0;
+        static string Slot(string name) => chain > 0 ? name + (chain + 1) : name;
+        static int ChainOf(Transform jelly)
+        {
+            string at = AssetDatabase.GetAssetPath(jelly.GetComponentsInChildren<CVRMaterialDataProvider>(true).First(q => q.transforms != null && q.transforms.Length > 0).materials[0]);
+            for (int s = YapsSquash.JellySlots; s > 1; s--)
+                if (at.StartsWith($"{Home}_{s}/")) return s - 1;
+            return 0;
+        }
         static string Prefab => Folder + "/Jelly_Spike.prefab";
         static string Scene => Folder + "/Jelly_Preview.unity";
         const string K = "JellySpike.";
@@ -1261,9 +1266,51 @@ namespace AvatarBridge.Regression
             EditorApplication.Exit(0);
         }
 
+        // -jellyPaint: the avatar's parts painted in place of the name search, as a user paints them:
+        // its pairs found by name, then a belly alone, the thighs, and a back alone past the jelly's
+        // four. A vertex's strongest bone decides the ones no name finds, skin a named pair has left out.
+        static void PaintTest(Transform root)
+        {
+            var settings = YapsSquash.Ensure(root);
+            var body = YapsSquash.NamedBody(root);
+            var named = YapsSquash.NamedChannels(root, body, out var names, out _);
+            var anim = root.GetComponentInChildren<Animator>();
+            var mesh = body.sharedMesh;
+            int n = mesh.vertexCount;
+            var baked = new Mesh();
+            body.BakeMesh(baked);
+            var at = baked.vertices;
+            Object.DestroyImmediate(baked);
+            var weights = mesh.boneWeights;
+            byte B(float x) => (byte) Mathf.Clamp(Mathf.RoundToInt(x * 255f), 0, 255);
+            settings.pairs.Clear();
+            settings.body = body;
+            settings.vertexCount = n;
+            settings.fingerprint = YapsSquash.Fingerprint(mesh);
+            var taken = new float[n];
+            for (int k = 0; k < names.Count; k++)
+            {
+                settings.pairs.Add(new AvatarBridge.Yaps.YapsSquashSettings.Pair { name = names[k], a = named[2 * k].Select(B).ToArray(), b = named[2 * k + 1].Select(B).ToArray() });
+                for (int v = 0; v < n; v++) taken[v] += named[2 * k][v] + named[2 * k + 1][v];
+            }
+            Transform Strongest(int v) => body.bones[weights[v].boneIndex0];
+            Vector3 World(int v) => body.transform.position + body.transform.rotation * at[v];
+            var spine = anim.GetBoneTransform(HumanBodyBones.Spine);
+            var chest = anim.GetBoneTransform(HumanBodyBones.Chest);
+            var legs = new[] { anim.GetBoneTransform(HumanBodyBones.LeftUpperLeg), anim.GetBoneTransform(HumanBodyBones.RightUpperLeg) };
+            byte[] Where(Func<int, bool> on) => Enumerable.Range(0, n).Select(v => on(v) && taken[v] < 0.05f ? (byte) 255 : (byte) 0).ToArray();
+            float Front(int v) => Vector3.Dot(World(v) - spine.position, root.forward);
+            settings.pairs.Add(new AvatarBridge.Yaps.YapsSquashSettings.Pair { name = "Belly", a = Where(v => Strongest(v) == spine && Front(v) > 0f) });
+            settings.pairs.Add(new AvatarBridge.Yaps.YapsSquashSettings.Pair { name = "Thighs", a = Where(v => Strongest(v) == legs[0]), b = Where(v => Strongest(v) == legs[1]) });
+            settings.pairs.Add(new AvatarBridge.Yaps.YapsSquashSettings.Pair { name = "Back", a = Where(v => (Strongest(v) == spine || Strongest(v) == chest) && Front(v) < 0f) });
+            EditorUtility.SetDirty(settings);
+            Debug.Log("[Jelly] painted: " + string.Join(", ", settings.pairs.Select(p => $"{p.name} {p.a.Count(x => x > 127)}/{p.b.Count(x => x > 127)}")));
+        }
+
         // Batch: the user's route on -jellyPrefab's avatar, alone in -jellyScene: the squash's own
-        // Build, which puts the jelly on over it, twice, then its Strip. Each build one jelly a pair
-        // and the squash materials reading it; stripped, nothing of the jelly left. It writes to the
+        // Build, which puts the jelly on over it, twice, then its Strip. Each build one jelly a part,
+        // each on its own slot, and the squash materials reading it; stripped, nothing of the jelly
+        // left. With -jellyPaint the painted parts, four on and the fifth refused. It writes to the
         // conversion's own materials and controllers, which the script running it puts back.
         public static void BuildCheck()
         {
@@ -1273,16 +1320,24 @@ namespace AvatarBridge.Regression
             var made = (GameObject) PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(args[Array.IndexOf(args, "-jellyPrefab") + 1]));
             PrefabUtility.UnpackPrefabInstance(made, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
             var root = made.GetComponentInChildren<CVRAvatar>(true).transform;
+            bool paint = args.Contains("-jellyPaint");
+            if (paint) PaintTest(root);
             bool ok = true;
             for (int round = 1; round <= 2; round++)
             {
                 string said = YapsSquash.Build(root, out bool built);
                 var worn = root.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith(Worn + " ")).Select(t => t.name).ToList();
                 var mats = YapsSquash.Materials(root);
-                int reading = mats.Count(m => m.HasProperty("_YAPS_JellyParts") && m.GetVector("_YAPS_JellyParts") != Vector4.zero);
-                bool fine = built && worn.Count > 0 && worn.Distinct().Count() == worn.Count && reading > 0;
+                bool Lit(Material m, int s) => m.HasProperty(LatticeOf(s)) && m.GetVector(LatticeOf(s)).x > 0;
+                int reading = mats.Count(m => Enumerable.Range(0, YapsSquash.JellySlots).Any(s => Lit(m, s)));
+                var slots = Enumerable.Range(0, YapsSquash.JellySlots).Select(s => mats.Count(m => Lit(m, s))).ToList();
+                int owned = mats.Count(m => m.HasProperty("_YAPS_JellyOwn") && m.GetTexture("_YAPS_JellyOwn") != null);
+                var carried = mats.Select(m => m.GetVector("_YAPS_JellyParts")).FirstOrDefault(p => p != Vector4.zero);
+                bool fine = built && worn.Count > 0 && worn.Distinct().Count() == worn.Count && reading > 0 && owned > 0 && slots.Take(worn.Count).All(c => c > 0)
+                            && (!paint || worn.Count == YapsSquash.JellySlots && said.Contains("not on it"));
                 ok &= fine;
-                Debug.Log($"[Jelly] build {round} {(fine ? "ok" : "BAD")}: {said} Worn: {string.Join(", ", worn)}; {reading} of {mats.Count} squash materials read it");
+                Debug.Log($"[Jelly] build {round} {(fine ? "ok" : "BAD")}: {said} Worn: {string.Join(", ", worn)}; {reading} of {mats.Count} squash materials read it, " +
+                          $"per slot {string.Join("/", slots)}, {owned} with the parts texture, the squash's parts carried as {carried}");
             }
             YapsSquash.Strip(root);
             var left = root.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith("Jelly")).Select(t => t.name).ToList();
@@ -2092,6 +2147,13 @@ namespace AvatarBridge.Regression
             return req.GetData<Vector4>().ToArray();
         }
 
+        // The probed jelly's state. A part alone has one region's rows: the partner checks read them twice.
+        static Vector4[] ReadState()
+        {
+            var got = Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture"));
+            return breastRegions != null && breastRegions[0] == breastRegions[1] ? got.Concat(got).ToArray() : got;
+        }
+
         // No NaN, the back face on the anchor, how far the front centre sits from where the rigid
         // shape would put it, and the fastest particle.
         static bool Health(Vector4[] s, Vector3Int n, Matrix4x4 anchor, out string said, out float frontOff)
@@ -2357,6 +2419,7 @@ namespace AvatarBridge.Regression
                 if (args.Contains("-jellySquash"))
                 {
                     PrefabUtility.UnpackPrefabInstance(made, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+                    if (args.Contains("-jellyPaint")) PaintTest(made.GetComponentInChildren<CVRAvatar>(true).transform);
                     string squash = YapsSquash.Add(made.GetComponentInChildren<CVRAvatar>(true).transform, "Assets/__JellySquash", out bool built);
                     YapsShaderPatcher.EndPass(null, null);
                     Debug.Log($"[Jelly] squash built {built}: {squash}");
@@ -2722,7 +2785,7 @@ namespace AvatarBridge.Regression
                 tuneTrace.Clear();
             }
             Shader.SetGlobalVector("CVRGlobalParams1", Vector4.zero);
-            var state = Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture"));
+            var state = ReadState();
             var now = new Vector3[4];
             for (int s = 0; s < 2; s++)
             {
@@ -2861,15 +2924,17 @@ namespace AvatarBridge.Regression
                 if ((b.GetType().Name.StartsWith("MagicaCloth") || b.GetType().Name == "DynamicBone") && !swings.Contains(b)) b.enabled = false;
             jelly = avatar.GetComponentsInChildren<Transform>(true).First(t => t.name.StartsWith(Worn + " ") && Wanted().IsMatch(t.name.Substring(Worn.Length + 1)));
             chain = ChainOf(jelly);
-            breastRegions = Enumerable.Range(0, 2).Select(r => jelly.Find($"Jelly Region {r}")).ToArray();
+            // A part alone stands in for both of a pair: the partner checks read it twice.
+            breastRegions = Enumerable.Range(0, 2).Select(r => jelly.Find($"Jelly Region {r}") ?? jelly.Find("Jelly Region 0")).ToArray();
+            bool alone = breastRegions[0] == breastRegions[1];
             // Riding bones, the step is handed the bones and the regions' places on them; the regions
             // themselves are put there each frame, as everything here measures from them.
             var anchors = jelly.GetComponentInChildren<CVRMaterialDataProvider>(true);
             breastBones = anchors.transforms;
             breastOn = Enumerable.Range(0, 2).Select(r =>
             {
-                var at = anchors.materials[0].GetVector($"_JellyOffsetAt{r}");
-                var q = anchors.materials[0].GetVector($"_JellyOffsetTurn{r}");
+                var at = anchors.materials[0].GetVector($"_JellyOffsetAt{(alone ? 0 : r)}");
+                var q = anchors.materials[0].GetVector($"_JellyOffsetTurn{(alone ? 0 : r)}");
                 return at.w > 0f ? Matrix4x4.TRS(at, new Quaternion(q.x, q.y, q.z, q.w), Vector3.one * at.w) : Matrix4x4.identity;
             }).ToArray();
             CarryRegions();
@@ -3025,14 +3090,14 @@ namespace AvatarBridge.Regression
                     nearFrames++;
                     if (stepping) nearOn++;
                 }
-                if (v >= 125 && v < 200) viewBack = Mathf.Max(viewBack, Furthest(Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture")), breastRegions));
+                if (v >= 125 && v < 200) viewBack = Mathf.Max(viewBack, Furthest(ReadState(), breastRegions));
                 // Then the viewer's head 3 m off, past _Half's 2 m: the steps at _Rate.y, each taking
                 // the frames it missed.
                 if (v >= 280 && v < 360)
                 {
                     halfFrames++;
                     if (stepping) halfOn++;
-                    var st = Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture"));
+                    var st = ReadState();
                     halfMost = Mathf.Max(halfMost, st[Side(n) * 2 * Row + 25].w);
                 }
                 // Last, another player's collider: a ball of a hand's size put in the probes' cloth and
@@ -3061,7 +3126,7 @@ namespace AvatarBridge.Regression
                     }
                     float gap = wv < 380 ? 0.15f : wv < 410 ? Mathf.Lerp(0.15f, -0.03f, (wv - 380) / 30f) : wv < 445 ? -0.03f : Mathf.Lerp(-0.03f, 0.15f, Mathf.Clamp01((wv - 445) / 15f));
                     breastWall.transform.SetPositionAndRotation(breastRegions[0].TransformPoint(0f, 0f, box.z + 0.01f + gap), breastRegions[0].rotation);
-                    var st = Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture"));
+                    var st = ReadState();
                     if (wv == 375) wallRest = st;
                     float Off(int r)
                     {
@@ -3130,7 +3195,7 @@ namespace AvatarBridge.Regression
                     remoteBall.position = front + breastRegions[0].forward * (0.045f + off);
                     remoteHand = v >= 505 && v < 535;
                     remoteWrist = front + breastRegions[0].forward * (0.126f + off);
-                    var st = Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture"));
+                    var st = ReadState();
                     // The first breast's rings: a slot's time new since last frame is one fired, unless
                     // under 0.2 s after its last, the same ring deepened.
                     var rings = new Vector2(st[Side(n) * 2 * Row + 80].w, st[Side(n) * 2 * Row + 82].w);
@@ -3337,7 +3402,6 @@ namespace AvatarBridge.Regression
             if (frame == 1480) foreach (var b in blits) b.SetFloat("_Pair", 0f);
             if (frame == 1660) foreach (var b in blits) b.SetFloat("_Pair", 1f);
             eye.Render();
-            var stateRt = AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture");
             if (frame == 110 || frame == 119 || frame == 160 || frame == 205 || frame == 250 || frame == 262 || frame == 274 || frame == 286 || frame == 599 || frame == 689 || frame == 989)
             {
                 var was = RenderTexture.active;
@@ -3349,7 +3413,7 @@ namespace AvatarBridge.Regression
             }
             if (frame == 119)
             {
-                var s = Read(stateRt);
+                var s = ReadState();
                 restMost = Furthest(s, breastRegions);
                 int side = Side(n);
                 for (int r = 0; r < 2; r++)
@@ -3363,7 +3427,7 @@ namespace AvatarBridge.Regression
             if (frame == 119)
             {
                 // What runs the step, for a lattice that never moved.
-                var s = Read(stateRt);
+                var s = ReadState();
                 int side = Side(n);
                 var control = jelly.GetComponentInChildren<CVRRenderController>(true);
                 var provider = jelly.GetComponentInChildren<CVRMaterialDataProvider>(true);
@@ -3377,7 +3441,7 @@ namespace AvatarBridge.Regression
                           $"the rest's count {s[side * 2 * Row + 35].x:0.000} and {s[(2 * side + 1) * 2 * Row + 35].x:0.000} s");
             }
             {
-                var s = Read(stateRt);
+                var s = ReadState();
                 int side = Side(n);
                 float zc = 0.5f * (n.z - 1) * breastSpacing;
                 var line = new System.Text.StringBuilder($"{frame}");
@@ -3447,14 +3511,14 @@ namespace AvatarBridge.Regression
             }
             if (frame == 205)
             {
-                pokeMost = Furthest(Read(stateRt), breastRegions);
+                pokeMost = Furthest(ReadState(), breastRegions);
                 pokeCost = ChainCost(jelly);
             }
-            if (frame == 1839) ownBefore = Read(stateRt);
-            if (frame == 2039) throughBefore = Read(stateRt);
+            if (frame == 1839) ownBefore = ReadState();
+            if (frame == 2039) throughBefore = ReadState();
             if (frame >= 2040 && frame < 2340)
             {
-                var st = Read(stateRt);
+                var st = ReadState();
                 float moved = 0f;
                 int torn = 0;
                 for (int q = 0; q < n.x * n.y * n.z; q++)
@@ -3472,7 +3536,7 @@ namespace AvatarBridge.Regression
             // centres; and how far apart their skins sat as it began, against a cell.
             if (frame >= 2350 && frame < 2440)
             {
-                var st = Read(stateRt);
+                var st = ReadState();
                 int sr = Side(n);
                 if (frame == 2350)
                 {
@@ -3505,7 +3569,7 @@ namespace AvatarBridge.Regression
                     int twAt = frame - 2750;
                     float twUp = twAt < 0 ? 0f : twAt < 5 ? twAt / 5f : twAt < 11 ? 1f : twAt < 18 ? 1f - (twAt - 11) / 7f : 0f;
                     twT.localPosition = Vector3.up * (0.02f * twUp / Mathf.Abs(twT.lossyScale.y));
-                    var twSt = Read(stateRt);
+                    var twSt = ReadState();
                     int twSr = Side(n);
                     for (int tr = 0; tr < 2; tr++)
                     {
@@ -3518,7 +3582,7 @@ namespace AvatarBridge.Regression
             }
             if (frame >= 2445 && frame < 2740)
             {
-                var st = Read(stateRt);
+                var st = ReadState();
                 int sr = Side(n) * 2 * Row;
                 var outward = breastRegions[0].forward;
                 if (frame == 2445)
@@ -3557,7 +3621,7 @@ namespace AvatarBridge.Regression
             }
             if (frame == 1990)
             {
-                var st = Read(stateRt);
+                var st = ReadState();
                 int sr = Side(n) * 2 * Row;
                 float moved = 0f;
                 for (int q = 0; q < n.x * n.y * n.z; q++)
@@ -3573,7 +3637,7 @@ namespace AvatarBridge.Regression
             }
             if (frame > 230 && frame <= 330)
             {
-                swingMost = Mathf.Max(swingMost, Furthest(Read(stateRt), breastRegions));
+                swingMost = Mathf.Max(swingMost, Furthest(ReadState(), breastRegions));
                 // Riding bones, the cloth swings the anchors: how far, in the avatar's own frame.
                 for (int r = 0; r < 2; r++) swingMost = Mathf.Max(swingMost, (swing.InverseTransformPoint(breastRegions[r].position) - regionsAt[r]).magnitude);
             }
@@ -3582,7 +3646,7 @@ namespace AvatarBridge.Regression
             // Where those columns' particles are over each squeeze's held second half, averaged.
             if ((frame >= 660 && frame < 690) || (frame >= 960 && frame < 990))
             {
-                var st = Read(stateRt);
+                var st = ReadState();
                 var held = frame < 700 ? (innerOff ??= new Vector3[2 * n.y * n.z]) : (innerOn ??= new Vector3[2 * n.y * n.z]);
                 int q = 0;
                 for (int k = 0; k < n.z; k++)
@@ -3594,7 +3658,7 @@ namespace AvatarBridge.Regression
             // the inner side's give, the first breast's, each from its rest on the anchor.
             if (frame == 869 || (frame >= 960 && frame < 990))
             {
-                var st = Read(stateRt);
+                var st = ReadState();
                 int sideRow = Side(n);
                 float apart = Vector3.Distance(st[sideRow * 2 * Row + 30], st[(2 * sideRow + 1) * 2 * Row + 30]);
                 if (frame == 869) { handsApart = apart; handsVolume = Volume(st, 0); }
@@ -3608,9 +3672,9 @@ namespace AvatarBridge.Regression
                 }
             }
             // The slap: the first's mass, furthest from its rest after it, and still a second after.
-            if (frame >= 1080 && frame < 1290 && Read(stateRt)[Side(n) * 2 * Row + 30].w > 0)
+            if (frame >= 1080 && frame < 1290 && ReadState()[Side(n) * 2 * Row + 30].w > 0)
             {
-                var st = Read(stateRt);
+                var st = ReadState();
                 float zcm = 0.5f * (n.z - 1) * breastSpacing;
                 float off = ((Vector3) st[Side(n) * 2 * Row + 30] - breastRegions[0].TransformPoint(0f, 0f, zcm)).magnitude;
                 slapMost = Mathf.Max(slapMost, off);
@@ -3667,10 +3731,15 @@ namespace AvatarBridge.Regression
                 lamp.transform.position = socket.position - (swing.up - 0.3f * breastRegions[0].forward).normalized * 0.2f;
                 var drawn = YapsSquash.Materials(swing).Where(mm => mm.HasProperty("_YAPS_JellyParts")).ToList();
                 var carried = drawn.Select(mm => mm.GetVector("_YAPS_JellyParts")).ToList();
+                var lit = drawn.Select(mm => mm.GetVector(Slot("_YAPS_JellyLattice"))).ToList();
                 var plugShare = new float[3];
                 for (int alone = 0; alone < 2; alone++)
                 {
-                    for (int k = 0; k < drawn.Count; k++) drawn[k].SetVector("_YAPS_JellyParts", alone == 1 ? Vector4.zero : carried[k]);
+                    for (int k = 0; k < drawn.Count; k++)
+                    {
+                        drawn[k].SetVector("_YAPS_JellyParts", alone == 1 ? Vector4.zero : carried[k]);
+                        drawn[k].SetVector(Slot("_YAPS_JellyLattice"), alone == 1 ? Vector4.zero : lit[k]);
+                    }
                     lamp.enabled = true;
                     Texture2D with = Shot(eye), again = Shot(eye);
                     lamp.enabled = false;
@@ -3679,7 +3748,11 @@ namespace AvatarBridge.Regression
                     if (alone == 0) plugShare[2] = Changed(with, again);
                     foreach (var shot in new[] { with, again, without }) Object.DestroyImmediate(shot);
                 }
-                for (int k = 0; k < drawn.Count; k++) drawn[k].SetVector("_YAPS_JellyParts", carried[k]);
+                for (int k = 0; k < drawn.Count; k++)
+                {
+                    drawn[k].SetVector("_YAPS_JellyParts", carried[k]);
+                    drawn[k].SetVector(Slot("_YAPS_JellyLattice"), lit[k]);
+                }
                 // Whether the pair's jelly draws at all just now: the plug in, its lattice off against on.
                 lamp.enabled = true;
                 var latticed = drawn.Select(mm => mm.GetVector(Slot("_YAPS_JellyLattice"))).ToList();
@@ -3691,7 +3764,7 @@ namespace AvatarBridge.Regression
                 Object.DestroyImmediate(drawnOn);
                 Object.DestroyImmediate(drawnOff);
                 Object.DestroyImmediate(lamp.gameObject);
-                var stNow = Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture"));
+                var stNow = ReadState();
                 int sideN = Side(breastN);
                 string regionsNow = string.Join(" and ", Enumerable.Range(0, 2).Select(r =>
                 {

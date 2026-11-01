@@ -225,11 +225,20 @@ float _YAPS_CopyStart;
 // --- live tissue (the jelly) -----------------------------------------
 // A lattice of particles the avatar's blitters step every frame; parts it carries move with it
 // and leave the squash. Here, not in yaps_jelly.cginc, since the dent reads _YAPS_JellyParts.
+// Four slots, a jelly each, its own step and lattice: the first part's, then the second's.
 Texture2D<float4> _YAPS_JellyState;
 float4 _YAPS_JellyLattice;  // particles across, up and deep; spacing in metres. 0: no lattice
-Texture2D<float4> _YAPS_JellyState2;  // the second pair's, its own lattice in _YAPS_JellyLattice2: two jellies, two steps
+Texture2D<float4> _YAPS_JellyState2;
 float4 _YAPS_JellyLattice2;
-float4 _YAPS_JellyParts;    // for each part (r, g, b, a of _YAPS_DentOwn) a lattice region carries, that region's index plus one
+Texture2D<float4> _YAPS_JellyState3;
+float4 _YAPS_JellyLattice3;
+Texture2D<float4> _YAPS_JellyState4;
+float4 _YAPS_JellyLattice4;
+// Per vertex its two strongest jelly parts, each as 2 slot + region plus one over 255 (0 none),
+// then its share: (part, share, part, share).
+Texture2D<float4> _YAPS_JellyOwn;
+float4 _YAPS_JellyOwn_TexelSize;
+float4 _YAPS_JellyParts;    // for each of the squash's parts (r, g, b, a of _YAPS_DentOwn) the jelly carries, its jelly part as _YAPS_JellyOwn names it
 float4 _YAPS_JellySlap;     // a slap's ring: how much of its depth (0 none), speed (m/s), wavelength (m), fade (s)
 
 #endif

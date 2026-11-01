@@ -1604,8 +1604,9 @@ them, and the squash works from where they swung to. As they swing they also str
 where they hang and squash back toward it, keeping their volume, which a bone chain alone cannot
 do, as far as real flesh would.
 
-**Live tissue.** On a humanoid avatar, building the squash also puts each of its pairs on the
-jelly: a lattice of flesh the graphics card steps every frame in each viewer's game, drawn by the
+**Live tissue.** On a humanoid avatar, building the squash also puts each of its parts on the
+jelly, up to four on one avatar: a pair, or a part painted on one side alone (a belly, a tail). The
+jelly is a lattice of flesh the graphics card steps every frame in each viewer's game, drawn by the
 same body shader. Any player's hand dents it and it fills back; a fist grips the skin and pulls
 it, letting go when pulled too far; a slap rings out from where it lands; the pair press against
 each other, and the wearer's own arms and legs press it too. The cloth still swings each part and
@@ -1613,12 +1614,13 @@ the tissue rides it. The avatar's own MagicaCloth and Dynamic Bone colliders tha
 collides with press the skin instead of moving the bones. With MagicaCloth installed, a net of
 probes on the skin also feels other players' MagicaCloth colliders and the world's solid surfaces:
 walls, tables, dropped props. Past 6 m from a viewer it stops stepping and holds its shape. Nothing
-is synced: each viewer's game steps its own copy. It tells the animator three floats a pair, from 0
-to 1 and never synced, for blend shapes or sounds to follow: `#Jelly/<pair>/Squeeze`,
-`#Jelly/<pair>/Grab` and `#Jelly/<pair>/Slap`. **Live tissue** on the **YAPS Squash** component
+is synced: each viewer's game steps its own copy. It tells the animator three floats a part, from 0
+to 1 and never synced, for blend shapes or sounds to follow: `#Jelly/<part>/Squeeze`,
+`#Jelly/<part>/Grab` and `#Jelly/<part>/Slap`. **Live tissue** on the **YAPS Squash** component
 adds a **Jelly twitch** menu toggle that kicks the jiggle, and lets a grip slide along the skin with
-the fist; rebuild after changing either. A non-humanoid avatar, and a pair the jelly cannot fit,
-keep the squash alone; the report says which. **Not yet confirmed in game** on anything but breasts.
+the fist; rebuild after changing either. A non-humanoid avatar, a part the jelly cannot fit and
+any past the fourth keep the squash, where the squash takes them (its first two pairs), and
+otherwise stay as they are; the report says which. **Not yet confirmed in game** on anything but breasts.
 
 **Under a hand.** On a pair not on the jelly, a hand presses it as soft tissue. When the squash is built, each pair is
 solved as flesh held to its volume, pressed by a palm from outside, from between them, from the
@@ -1695,8 +1697,8 @@ regions alike, and ChilloutVR strips it at upload.
 
 **Where the parts are.** By default, bones whose names say breast, boob, butt, booty or glute, one
 each side with every bone under it (a pair is named after those top bones), each vertex taking the weight those bones carry, whole where they carry most and fading
-toward the edge, so the squash fades into the body the way the avatar was weight painted. Two pairs
-at most. The component's first step, **Which parts squash**, says first where the parts come from:
+toward the edge, so the squash fades into the body the way the avatar was weight painted. Any
+number of parts: the squash takes the first two pairs, the live tissue the first four parts. The component's first step, **Which parts squash**, says first where the parts come from:
 painted regions, picked bones or the bone names. **Pick bones instead** there opens **Part bones**, to pick the bones by hand, for
 anything that comes in two (cheeks, thighs): two to a pair, one each side, next to each other in
 the list, each with every bone under it. Painted regions win over picked bones, and the list says
@@ -1710,7 +1712,11 @@ avatar, and the parts are drawn on the body, faintly where something hides them.
 while a squash is being tested, by the tester's preview or in Play mode, so they never cover it,
 and the step says so. Painting waits for Play mode to end, since the regions live on the component
 and what was painted in it would go when it ends.
-The fold **More for this pair** holds the pair's name, and **Fill this side from**, which takes
+**Add a pair** adds two sides that press against each other, **Add a part alone** one side with no
+partner (a belly, a tail, the back), and **Remove this part** takes the one picked under **Part**
+out; past the fourth part the step names the ones that stay as they are. A part alone has no side
+to pick and no **Copy to other side**.
+The fold **More for this pair** (**More for this part** on a part alone) holds the pair's name, and **Fill this side from**, which takes
 **The bone** (picked in its **Bone** field) or **The shape key** instead of painting (a size slider for the part is
 usually exactly the right skin), and **Clear this side**. Each
 starts whole where it reaches most and fades toward the edge, so a jiggle bone weighted at a tenth
@@ -2318,6 +2324,8 @@ Bipeds are unaffected by any of it.
   Dynamic Bone interaction settings take them in, since each viewer runs the cloth with their own.
   Feeling the world's surfaces (a pane of glass, say) is not reliable yet. What a viewer with the
   **Cameras** content filter off or **Shader Filtering** on sees of it has not been checked in game.
+  It takes four parts on one avatar, a jelly each, and two parts do not press each other: the
+  wearer's own arms and legs press every one, but a thigh does not push the belly it meets.
 - **[Portals](#portals) (YAPS).** An entrance and its exit are worn by the same avatar: a portal
   between two people, or on a prop, is not possible. A conversion never makes one, and one set in
   the YAPS tool on a converted avatar is lost when that avatar is converted again, so set it after

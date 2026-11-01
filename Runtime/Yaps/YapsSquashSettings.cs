@@ -17,7 +17,8 @@ namespace AvatarBridge.Yaps
         {
             public string name = "Pair";
             // Per vertex of the body mesh, 0 to 255. A is the side toward the avatar's left
-            // (its -x), B the other. Bytes, so a body's worth stays small in the scene file.
+            // (its -x), B the other; B empty for a part with one side alone, which only the jelly
+            // takes. Bytes, so a body's worth stays small in the scene file.
             public byte[] a = new byte[0], b = new byte[0];
         }
 
@@ -70,7 +71,7 @@ namespace AvatarBridge.Yaps
 
         // Drawn by the inspector's Parts card, not with the knobs: both need a rebuild.
         [Tooltip("Bones picked by hand in place of the name search, two to a pair, one each side, " +
-                 "next to each other in the list: cheeks, thighs, anything that comes in two. Two pairs at most. " +
+                 "next to each other in the list: cheeks, thighs, anything that comes in two. The squash takes the first two pairs, the live tissue the first four. " +
                  "Painted regions win over these.")]
         public List<Transform> partBones = new List<Transform>();
         [Tooltip("Materials the squash never touches. A layer left out stays still while the skin under it " +
@@ -82,7 +83,8 @@ namespace AvatarBridge.Yaps
         [HideInInspector]
         public SkinnedMeshRenderer body;
 
-        // Two at most: the shader has room for four parts, a pair each.
+        // Any number, a pair or one side each: the squash takes the first two pairs, the live tissue
+        // the first four parts.
         [HideInInspector]
         public List<Pair> pairs = new List<Pair>();
 
@@ -93,5 +95,9 @@ namespace AvatarBridge.Yaps
 
         // The regions the last build read, so the windows can say a stroke since needs a rebuild.
         [HideInInspector] public int builtFrom;
+
+        // The pairs the last build's squash carries, in its order, for the live tissue to take
+        // over from it.
+        [HideInInspector] public List<string> dented = new List<string>();
     }
 }

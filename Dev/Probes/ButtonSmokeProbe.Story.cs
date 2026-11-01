@@ -154,16 +154,16 @@ namespace AvatarBridge.Regression
             if (settings.pairs.Count < 2) yield return PressNamed(t, painter, "Add a pair");
             else
             {
-                // Two pairs is the cap, and the button says so by greying out.
-                var add = painter.Content.Query<Button>().ToList().FirstOrDefault(b => Label(b) == "Add a pair" && Shown(b, painter.Content));
-                Step(t, "Add a pair greyed at two pairs", add != null && !add.enabledInHierarchy, add == null ? "no Add a pair button" : add.enabledInHierarchy ? "pressable" : "greyed");
+                // No cap: a part alone is offered beside the pairs.
+                var add = painter.Content.Query<Button>().ToList().FirstOrDefault(b => Label(b) == "Add a part alone" && Shown(b, painter.Content));
+                Step(t, "Add a part alone offered at two pairs", add != null && add.enabledInHierarchy, add == null ? "no Add a part alone button" : add.enabledInHierarchy ? "pressable" : "greyed");
             }
-            var pairPopup = Field<PopupField<string>>(painter.Content, "Pair");
+            var pairPopup = Field<PopupField<string>>(painter.Content, "Part");
             if (pairPopup != null && settings.pairs.Count >= 2)
             {
                 pairPopup.index = 1;
                 yield return Settle(painter);
-                yield return PressNamed(t, painter, "Remove this pair");
+                yield return PressNamed(t, painter, "Remove this part");
                 yield return PressNamed(t, painter, "Add a pair");
             }
             else if (settings.pairs.Count < 2)

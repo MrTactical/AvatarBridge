@@ -113,10 +113,12 @@ namespace AvatarBridge
         // The cloth or dynamic bones swinging the pair are switched off, or they and the lattice
         // would both swing it.
         //
-        // The first of the squash's pairs whose name want matches, hung from the trunk bone its
-        // skin's bones hang from. Its assets in folder, the second pair's in folder_2; the step
-        // shader in shaders. What was done, starting "On " when it was.
-        internal static string PairOn(Transform picked, Regex want, string folder, string shaders, Options o, BridgeReport report)
+        // The first of the squash's parts whose name want matches, a pair or one side alone, hung
+        // from the trunk bone its skin's bones hang from, in the slot its place among the parts gives
+        // it (found, when given, the parts as YapsSquash.PartsOf reads them). Its assets in folder,
+        // the nth part's in folder_n; the step shader in shaders. What was done, starting "On " when
+        // it was.
+        internal static string PairOn(Transform picked, Regex want, string folder, string shaders, Options o, BridgeReport report, YapsSquash.SoftParts found = null)
         {
             var root = AvatarOf(picked);
             var animator = root != null ? root.GetComponentInChildren<Animator>() : null;
@@ -124,27 +126,22 @@ namespace AvatarBridge
             var mats = YapsSquash.Materials(root);
             if (mats.Count == 0) return $"{root.name} has no YAPS squash built. The jelly moves each vertex by the squash's own part shares, so build the squash first.";
             // Painted regions first, as the squash takes them; else the pairs found by name or picked.
-            var painted = YapsSquash.RegionsOf(root, out string unpainted);
-            var body = painted != null ? painted.body : YapsSquash.NamedBody(root);
-            List<string> names = null;
-            string none = unpainted ?? "no skin carries both parts";
-            Vector4[] shares = null;
-            if (painted != null)
-            {
-                none = null;
-                names = painted.pairs.Take(2).Select(x => x.name).ToList();
-                var p0 = painted.pairs[0];
-                var p1 = painted.pairs.Count > 1 ? painted.pairs[1] : null;
-                shares = Enumerable.Range(0, painted.vertexCount).Select(v => new Vector4(p0.a[v], p0.b[v], p1 != null ? p1.a[v] : 0, p1 != null ? p1.b[v] : 0) / 255f).ToArray();
-            }
-            else if (body != null) shares = YapsSquash.NamedShares(root, body, out names, out none);
+            string none = null;
+            if (found == null) found = YapsSquash.PartsOf(root, out none);
+            var names = found?.parts.Select(x => x.name).ToList();
             int pair = names != null ? names.FindIndex(want.IsMatch) : -1;
-            if (shares == null || pair < 0 || pair > 1)
-                return $"No such pair in {root.name}'s squash: {none ?? "its pairs are " + string.Join(", ", names)}.";
-            string into = folder + (pair > 0 ? "_2" : "");
+            if (pair < 0) return $"No such part in {root.name}'s squash: {(found == null ? none : "its parts are " + string.Join(", ", names))}.";
+            var dented = YapsSquash.SettingsOf(root)?.dented ?? new List<string>();
+            if (pair >= YapsSquash.JellySlots)
+                return $"{names[pair]} is past the {YapsSquash.JellySlots} parts the jelly takes on one avatar, so it {(dented.Contains(names[pair]) ? "keeps the squash" : "stays as it is")}.";
+            var body = found.body;
+            // Each side's share of every vertex of the body, one side for a part alone.
+            int sides = found.parts[pair].sides;
+            var shares = Enumerable.Range(0, sides).Select(s => found.shares[body][2 * pair + s]).ToArray();
+            string into = folder + (pair > 0 ? "_" + (pair + 1) : "");
             var skeleton = Skeleton(animator);
             var trunk = new[] { HumanBodyBones.Hips, HumanBodyBones.Spine, HumanBodyBones.Chest, HumanBodyBones.UpperChest }.Select(animator.GetBoneTransform).Where(t => t != null).ToList();
-            var chest = Carrier(body, shares, 2 * pair, root, skeleton);
+            var chest = Carrier(body, shares[0], root, skeleton);
             // The pair's cloth and colliders found by the bones carrying its skin: a painted pair's
             // name is the painter's ("Chest"), which names no bone.
             var part = PartFrom(chest, skeleton) ?? PartOf(names[pair]);
@@ -155,22 +152,22 @@ namespace AvatarBridge
             body.BakeMesh(baked);
             var at = baked.vertices;
             Object.DestroyImmediate(baked);
-            var pairSkin = Enumerable.Range(0, Mathf.Min(at.Length, shares.Length))
-                .Where(v => shares[v][2 * pair] >= 0.5f || shares[v][2 * pair + 1] >= 0.5f)
+            var pairSkin = Enumerable.Range(0, Mathf.Min(at.Length, shares[0].Length))
+                .Where(v => shares.Any(s => s[v] >= 0.5f))
                 .Select(v => body.transform.position + body.transform.rotation * at[v]).ToArray();
             // A pair behind its bone, as a seat, faces back: the lattice's front is always out of the body.
             bool back = pairSkin.Length > 0 && Vector3.Dot(pairSkin.Aggregate(Vector3.zero, (sum, v) => sum + v) / pairSkin.Length - chest.position, root.forward) < 0f;
             var turn = back ? root.rotation * Quaternion.Euler(0f, 180f, 0f) : root.rotation;
             var undo = Quaternion.Inverse(turn);
-            var los = new Vector3[2];
-            var his = new Vector3[2];
-            for (int side = 0; side < 2; side++)
+            var los = new Vector3[sides];
+            var his = new Vector3[sides];
+            for (int side = 0; side < sides; side++)
             {
                 var skin = new List<Vector3>();
-                for (int v = 0; v < at.Length && v < shares.Length; v++)
-                    if (shares[v][2 * pair + side] >= 0.5f)
+                for (int v = 0; v < at.Length && v < shares[side].Length; v++)
+                    if (shares[side][v] >= 0.5f)
                         skin.Add(undo * (body.transform.position + body.transform.rotation * at[v] - chest.position));
-                if (skin.Count < 20) return $"Only {skin.Count} vertices of {body.name} belong to one of the pair; too few to fit a lattice to.";
+                if (skin.Count < 20) return $"Only {skin.Count} vertices of {body.name} belong to {(sides == 2 ? "one side of " : "")}{names[pair]}; too few to fit a lattice to.";
                 Vector3 lo = skin[0], hi = skin[0];
                 foreach (var x in skin)
                 {
@@ -180,7 +177,8 @@ namespace AvatarBridge
                 los[side] = lo - new Vector3(0.01f, 0.01f, 0.005f);
                 his[side] = hi + new Vector3(0.01f, 0.01f, 0.01f);
             }
-            var size = Vector3.Max(his[0] - los[0], his[1] - los[1]);
+            var size = his[0] - los[0];
+            for (int side = 1; side < sides; side++) size = Vector3.Max(size, his[side] - los[side]);
             float cells = o.cells;
             float cell = Mathf.Pow(size.x * size.y * size.z / cells, 1f / 3f);
             // Each breast's volume, blend shapes as set: from the plane of its base ring, where its own
@@ -189,10 +187,10 @@ namespace AvatarBridge
             // over one avatar left a centimetre-thick shell, 1 litre), so only the frontmost surface over
             // each spot counts; from the chest bone's plane it took in the ribs (35 litres).
             var tris = body.sharedMesh.triangles;
-            var volume = new float[2];
-            for (int side = 0; side < 2; side++)
+            var volume = new float[sides];
+            for (int side = 0; side < sides; side++)
             {
-                int k = 2 * pair + side;
+                var share = shares[side];
                 var lo = los[side];
                 var span = his[side] - lo;
                 const int Grid = 100;
@@ -202,7 +200,7 @@ namespace AvatarBridge
                 for (int t = 0; t + 2 < tris.Length; t += 3)
                 {
                     int a = tris[t], b = tris[t + 1], c = tris[t + 2];
-                    if (a >= shares.Length || b >= shares.Length || c >= shares.Length || shares[a][k] < 0.5f || shares[b][k] < 0.5f || shares[c][k] < 0.5f) continue;
+                    if (a >= share.Length || b >= share.Length || c >= share.Length || share[a] < 0.5f || share[b] < 0.5f || share[c] < 0.5f) continue;
                     foreach (var (e0, e1) in new[] { (a, b), (b, c), (c, a) })
                     {
                         var key = e0 < e1 ? (e0, e1) : (e1, e0);
@@ -214,7 +212,7 @@ namespace AvatarBridge
                 for (int t = 0; t + 2 < tris.Length; t += 3)
                 {
                     int a = tris[t], b = tris[t + 1], c = tris[t + 2];
-                    if (a >= shares.Length || b >= shares.Length || c >= shares.Length || shares[a][k] < 0.5f || shares[b][k] < 0.5f || shares[c][k] < 0.5f) continue;
+                    if (a >= share.Length || b >= share.Length || c >= share.Length || share[a] < 0.5f || share[b] < 0.5f || share[c] < 0.5f) continue;
                     var A = Cell(undo * (body.transform.position + body.transform.rotation * at[a] - chest.position) - lo, span, Grid);
                     var B = Cell(undo * (body.transform.position + body.transform.rotation * at[b] - chest.position) - lo, span, Grid);
                     var C = Cell(undo * (body.transform.position + body.transform.rotation * at[c] - chest.position) - lo, span, Grid);
@@ -233,7 +231,7 @@ namespace AvatarBridge
                 }
                 volume[side] = front.Sum(z => Mathf.Max(z - baseZ, 0f)) * (span.x / Grid) * (span.y / Grid);
             }
-            float kilos = 950f * 0.5f * (volume[0] + volume[1]);
+            float kilos = 950f * volume.Average();
             // The same tissue at another size: about 2 Hz at half a kilogram, going as one over the
             // size, the cube root of the mass; damped at a quarter of critical; the heavier, the less
             // of a hand's push moves the whole. ponytail: one reference breast, not measured flesh;
@@ -266,20 +264,20 @@ namespace AvatarBridge
             var n = new Vector3Int(Mathf.Max(3, Mathf.CeilToInt(size.x / cell) + 1), Mathf.Max(3, Mathf.CeilToInt(size.y / cell) + 1), Mathf.Max(3, Mathf.CeilToInt(size.z / cell) + 1));
             float spacing = Mathf.Max(size.x / (n.x - 1), size.y / (n.y - 1), size.z / (n.z - 1));
 
-            var core = Core(into, shaders, n, spacing, regions: 2, sleeps: false, withRider: false, offFar: true, lift: 1f);
+            var core = Core(into, shaders, n, spacing, regions: sides, sleeps: false, withRider: false, offFar: true, lift: 1f);
             if (core == null) return "The jelly did not build; the console says why.";
             float radius = (size.x + size.y + size.z) / 6f - 0.01f;
             // How far each breast's own skin reaches toward the other off its centre: where the two
             // actually meet, for the draw's last guard. The box's half width sits past the skin, 7 cm
             // into the other's box on one avatar.
-            var across = new Vector3(0.5f * (los[1].x + his[1].x - los[0].x - his[0].x), 0.5f * (los[1].y + his[1].y - los[0].y - his[0].y), los[1].z - los[0].z).normalized;
             var skinReach = new float[2];
-            for (int side = 0; side < 2; side++)
+            var across = sides == 2 ? new Vector3(0.5f * (los[1].x + his[1].x - los[0].x - his[0].x), 0.5f * (los[1].y + his[1].y - los[0].y - his[0].y), los[1].z - los[0].z).normalized : Vector3.zero;
+            for (int side = 0; side < sides && sides == 2; side++)
             {
                 var c = new Vector3(0.5f * (los[side].x + his[side].x), 0.5f * (los[side].y + his[side].y), los[side].z + 0.5f * (n.z - 1) * spacing);
                 var way = side == 0 ? across : -across;
-                for (int v = 0; v < Mathf.Min(at.Length, shares.Length); v++)
-                    if (shares[v][2 * pair + side] >= 0.5f)
+                for (int v = 0; v < Mathf.Min(at.Length, shares[side].Length); v++)
+                    if (shares[side][v] >= 0.5f)
                         skinReach[side] = Mathf.Max(skinReach[side], Vector3.Dot(undo * (body.transform.position + body.transform.rotation * at[v] - chest.position) - c, way));
             }
             // The squash's stretch in motion, as the conversion set it; none for a pair no cloth of its
@@ -299,19 +297,20 @@ namespace AvatarBridge
                 mat.SetFloat("_MassRadius", radius);
                 // A little more pillow: the tissue's pull to its rest 2.4 a second, from 3.
                 mat.SetFloat("_Hz", 2.4f);
-                mat.SetFloat("_Pair", 1f);
-                var apart = new Vector3(0.5f * (los[1].x + his[1].x - los[0].x - his[0].x), 0.5f * (los[1].y + his[1].y - los[0].y - his[0].y), los[1].z - los[0].z);
+                // A part alone has no partner to meet.
+                mat.SetFloat("_Pair", sides == 2 ? 1f : 0f);
+                var apart = sides == 2 ? new Vector3(0.5f * (los[1].x + his[1].x - los[0].x - his[0].x), 0.5f * (los[1].y + his[1].y - los[0].y - his[0].y), los[1].z - los[0].z) : Vector3.zero;
                 mat.SetVector("_PairOffset", apart);
                 // Each one's half width across, and any gap between them as built: where the plane
                 // they meet at starts to press.
-                float wide0 = 0.5f * (his[0].x - los[0].x), wide1 = 0.5f * (his[1].x - los[1].x);
+                float wide0 = 0.5f * (his[0].x - los[0].x), wide1 = sides == 2 ? 0.5f * (his[1].x - los[1].x) : 0f;
                 // Without the plane, for telling its doing from the rest's.
-                bool plane = o.plane;
+                bool plane = o.plane && sides == 2;
                 mat.SetVector("_PairReach", plane ? new Vector4(wide0, wide1, Mathf.Max(apart.magnitude - wide0 - wide1, 0f), 0f) : Vector4.zero);
                 mat.SetVector("_PairSkin", plane ? new Vector4(skinReach[0], skinReach[1], 0f, 0f) : Vector4.zero);
                 // Each breast's skin on its region's frame, what the own capsules and hands are kept
                 // in reach of: the lattice is the larger's box, past the smaller's skin.
-                for (int side = 0; side < 2; side++)
+                for (int side = 0; side < sides; side++)
                     mat.SetVector($"_JellyBox{side}", new Vector4(0.5f * (his[side].x - los[side].x), 0.5f * (his[side].y - los[side].y), his[side].z - los[side].z, 0f));
                 mat.SetVector("_JellyOffsetAt0", Vector4.zero);
                 mat.SetVector("_JellyOffsetAt1", Vector4.zero);
@@ -331,24 +330,32 @@ namespace AvatarBridge
             int stale = Unworn(root, names[pair]);
             var made = core.root;
             made.name = WornName(names[pair]);
+            // A part alone gets a region of its own too, placed as a pair's are: the core's single
+            // region is its root.
+            if (sides == 1)
+            {
+                var lone = new GameObject("Jelly Region 0").transform;
+                lone.SetParent(made.transform, false);
+                core.provider.transforms = new[] { lone };
+            }
             made.transform.SetParent(chest, false);
             made.transform.SetPositionAndRotation(chest.position, turn);
             made.transform.localScale = Vector3.one / Mathf.Max(chest.lossyScale.x, 1e-6f);
-            for (int side = 0; side < 2; side++)
+            for (int side = 0; side < sides; side++)
                 made.transform.Find($"Jelly Region {side}").SetPositionAndRotation(chest.position + turn * new Vector3(0.5f * (los[side].x + his[side].x), 0.5f * (los[side].y + his[side].y), los[side].z), turn);
             Undo.RegisterCreatedObjectUndo(made, "Put the breasts on the jelly");
             // Each region rides the bone that carries most of its breast's skin, which the cloth
             // swings: the anchor handed the bone, the region's place on it in the step's materials.
             // The region stays out of the bone's tree, where the cloth would take it for a bone of
             // its own and bend the chain toward it.
-            var carriers = new string[2];
+            var carriers = new string[sides];
             if (cloth)
             {
                 var provider = made.GetComponentInChildren<CVRMaterialDataProvider>(true);
                 Undo.RecordObject(provider, "Put the breasts on the jelly");
-                for (int side = 0; side < 2; side++)
+                for (int side = 0; side < sides; side++)
                 {
-                    var bone = Carrier(body, shares, 2 * pair + side, chest, skeleton, clothed);
+                    var bone = Carrier(body, shares[side], chest, skeleton, clothed);
                     if (bone == null) continue;
                     var region = made.transform.Find($"Jelly Region {side}");
                     var placed = bone.InverseTransformPoint(region.position);
@@ -369,8 +376,8 @@ namespace AvatarBridge
                 }
                 // And each region held still where it hangs on the chest, for how far the cloth has
                 // swung it: the step stretches it by that, as the squash does.
-                var hangs = new Transform[2];
-                for (int side = 0; side < 2; side++)
+                var hangs = new Transform[sides];
+                for (int side = 0; side < sides; side++)
                 {
                     var region = made.transform.Find($"Jelly Region {side}");
                     hangs[side] = new GameObject($"Jelly Hang {side}").transform;
@@ -380,7 +387,8 @@ namespace AvatarBridge
                     hangs[side].localScale = region.localScale;
                     Undo.RegisterCreatedObjectUndo(hangs[side].gameObject, "Put the breasts on the jelly");
                 }
-                provider.transforms = new[] { provider.transforms[0], provider.transforms[1], hangs[0], hangs[1] };
+                // A part alone fills the second region's slots with its own, as the helper reads both.
+                provider.transforms = new[] { provider.transforms[0], provider.transforms[sides - 1], hangs[0], hangs[sides - 1] };
                 // Probes: MagicaCloth's colliders, other players' among them, as presses. The
                 // client adds every other player's colliders to every MagicaCloth an avatar carries
                 // (CVRDynamicBoneManager.UpdateComponents), hands only unless the viewer chose more,
@@ -392,12 +400,12 @@ namespace AvatarBridge
                 // saw nothing more, and dented a quarter less for the same press.
                 // Feeling the world: half the probes physics balls instead.
                 bool world = o.world, probing = o.probes || world;
-                var spotsOf = new List<Vector3>[2];
+                var spotsOf = new List<Vector3>[sides];
                 if (probing)
-                    for (int side = 0; side < 2; side++)
+                    for (int side = 0; side < sides; side++)
                     {
                         var region = made.transform.Find($"Jelly Region {side}");
-                        var front = Enumerable.Range(0, Mathf.Min(at.Length, shares.Length)).Where(v => shares[v][2 * pair + side] >= 0.5f)
+                        var front = Enumerable.Range(0, Mathf.Min(at.Length, shares[side].Length)).Where(v => shares[side][v] >= 0.5f)
                             .Select(v => body.transform.position + body.transform.rotation * at[v]).ToList();
                         float deepest = front.Max(w => region.InverseTransformPoint(w).z);
                         front = front.Where(w => region.InverseTransformPoint(w).z >= 0.5f * deepest).ToList();
@@ -460,7 +468,7 @@ namespace AvatarBridge
                 if (!(ownRadii[c] > 0f)) continue;
                 Vector3 a = ownBones[s0].position, s = ownBones[s0 + 1].position - a;
                 float was = ownRadii[c];
-                for (int side = 0; side < 2; side++)
+                for (int side = 0; side < sides; side++)
                 {
                     var region = made.transform.Find($"Jelly Region {side}");
                     var centre = region.TransformPoint(0f, 0f, 0.5f * (n.z - 1) * spacing);
@@ -516,7 +524,7 @@ namespace AvatarBridge
             Undo.RecordObject(anchors, "Put the breasts on the jelly");
             var handed = anchors.transforms.ToList();
             // Without the cloth the hang slots are never read; the regions fill them.
-            while (handed.Count < 4) handed.Add(handed[handed.Count - 2]);
+            while (handed.Count < 4) handed.Add(handed[Mathf.Max(handed.Count - 2, 0)]);
             handed.AddRange(ownBones.Select(b => b != null ? b : chest));
             handed.AddRange(colEnds);
             Transform twitch = null;
@@ -565,8 +573,6 @@ namespace AvatarBridge
             string wired = !o.wire ? "the menu and animator left alone" : Wired(root.GetComponent<CVRAvatar>(), tells, squashed != null ? squashed.twitchSize : 0.02f, folder);
 
             var state = core.state;
-            // Each part names its region, one past its index; the other pair's kept while its jelly is on.
-            bool otherOn = names.Count > 1 && root.GetComponentsInChildren<Transform>(true).Any(t => t.name == WornName(names[1 - pair]));
             var left = new List<string>();
             int patched = 0;
             foreach (var m in mats)
@@ -579,14 +585,10 @@ namespace AvatarBridge
                 }
                 Undo.RecordObject(m, "Put the breasts on the jelly");
                 YapsShaderPatcher.Wear(m, shader);
-                m.SetTexture(pair == 0 ? "_YAPS_JellyState" : "_YAPS_JellyState2", state);
-                m.SetVector(pair == 0 ? "_YAPS_JellyLattice" : "_YAPS_JellyLattice2", new Vector4(n.x, n.y, n.z, spacing));
-                if (!otherOn) m.SetVector(pair == 0 ? "_YAPS_JellyLattice2" : "_YAPS_JellyLattice", Vector4.zero);
+                m.SetTexture(StateOf(pair), state);
+                m.SetVector(LatticeOf(pair), new Vector4(n.x, n.y, n.z, spacing));
                 m.SetVector("_YAPS_JellySlap", Slapped);
-                var parts = otherOn ? m.GetVector("_YAPS_JellyParts") : Vector4.zero;
-                parts[2 * pair] = 1f;
-                parts[2 * pair + 1] = 2f;
-                m.SetVector("_YAPS_JellyParts", parts);
+                Carried(m, root, names, dented);
                 EditorUtility.SetDirty(m);
                 patched++;
             }
@@ -594,14 +596,36 @@ namespace AvatarBridge
             // Off with the mass; with the cloth carrying it, left as it was: switched on here, a
             // physics toggle off by default came on with it.
             var off = cloth ? restored : PairPhysics(root, part, on: false);
-            return $"On {root.name}: {names[pair]} on two lattices of {n.x}x{n.y}x{n.z} ({n.x * n.y * n.z} particles each, {100f * spacing:0.0} cm apart, " +
+            string each = sides == 2 ? " each" : "", litres = string.Join(" and ", volume.Select(x => $"{1000f * x:0.0}")) + " litres";
+            return $"On {root.name}: {names[pair]} on {(sides == 2 ? "two lattices" : "a lattice")} of {n.x}x{n.y}x{n.z} ({n.x * n.y * n.z} particles{each}, {100f * spacing:0.0} cm apart, " +
                    $"{100f * (n.x - 1) * spacing:0} x {100f * (n.y - 1) * spacing:0} x {100f * (n.z - 1) * spacing:0} cm) under {chest.name}; " +
-                   (cloth ? $"{1000f * volume[0]:0.0} and {1000f * volume[1]:0.0} litres, riding {carriers[0] ?? "nothing"} and {carriers[1] ?? "nothing"}{(clothed ? ", which the cloth swings" : ", which no cloth swings")}, a hand moving the whole by {give:0.00} of its press; "
-                       : $"{1000f * volume[0]:0.0} and {1000f * volume[1]:0.0} litres, {kilos:0.0} kg each, so it swings at {hz:0.00} Hz and a hand moves the whole by {give:0.00} of its push; ") +
+                   (cloth ? $"{litres}, riding {string.Join(" and ", carriers.Select(x => x ?? "nothing"))}{(clothed ? ", which the cloth swings" : ", which no cloth swings")}, a hand moving the whole by {give:0.00} of its press; "
+                       : $"{litres}, {kilos:0.0} kg{each}, so it swings at {hz:0.00} Hz and a hand moves the whole by {give:0.00} of its push; ") +
                    $"{patched} of {mats.Count} squash materials read it{(left.Count > 0 ? " (left as they were: " + string.Join(", ", left) + ")" : "")}; " +
                    (cloth ? (off.Count > 0 ? "switched back on: " + string.Join(", ", off) : clothed ? "its cloth left on" : "no cloth on it")
                        : off.Count > 0 ? "switched off: " + string.Join(", ", off) : "no cloth or dynamic bones found on the pair, so if anything else swings it, switch that off") +
                    $"; {collided}; {(thinned.Count > 0 ? "thinned to clear it as built: " + string.Join(", ", thinned) : "none of the wearer's limbs reaching it as built")}; {wired}; {stale} earlier jelly taken off.";
+        }
+
+        // Slot s's state and lattice on the body's materials: the first part's, then the second's.
+        internal static string StateOf(int s) => s == 0 ? "_YAPS_JellyState" : "_YAPS_JellyState" + (s + 1);
+        internal static string LatticeOf(int s) => s == 0 ? "_YAPS_JellyLattice" : "_YAPS_JellyLattice" + (s + 1);
+
+        // A slot's lattice kept only while its part's jelly is on; and each of the squash's own parts
+        // the jelly carries named for the dent to leave, by its part and side as _YAPS_JellyOwn names
+        // them (2 part + side, plus one).
+        static void Carried(Material m, Transform root, List<string> names, List<string> dented)
+        {
+            var worn = new HashSet<string>(root.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith(Worn + " ")).Select(t => t.name.Substring(Worn.Length + 1)));
+            for (int s = 0; s < YapsSquash.JellySlots; s++)
+                if (s >= names.Count || !worn.Contains(names[s])) m.SetVector(LatticeOf(s), Vector4.zero);
+            var parts = Vector4.zero;
+            for (int c = 0; c < 4 && c / 2 < dented.Count; c++)
+            {
+                int i = names.IndexOf(dented[c / 2]);
+                if (i >= 0 && i < YapsSquash.JellySlots && worn.Contains(names[i])) parts[c] = 2 * i + c % 2 + 1;
+            }
+            m.SetVector("_YAPS_JellyParts", parts);
         }
 
         // The folder for an avatar's jelly beside the squash's in folder: the one its last jelly was
@@ -613,7 +637,7 @@ namespace AvatarBridge
             string Of(string name, string suffix) => mats.Where(m => m.HasProperty(name)).Select(m => m.GetTexture(name)).Where(t => t != null)
                 .Select(t => Path.GetDirectoryName(AssetDatabase.GetAssetPath(t)).Replace('\\', '/')).Where(d => d.EndsWith(suffix))
                 .Select(d => d.Substring(0, d.Length - suffix.Length)).FirstOrDefault();
-            return Of("_YAPS_JellyState", "") ?? Of("_YAPS_JellyState2", "_2")
+            return Enumerable.Range(0, YapsSquash.JellySlots).Select(s => Of(StateOf(s), s > 0 ? "_" + (s + 1) : "")).FirstOrDefault(d => d != null)
                    ?? AssetDatabase.GenerateUniqueAssetPath(folder + "/" + YapsNativeBuilder.Sanitise(root.name) + " Jelly");
         }
 
@@ -623,20 +647,17 @@ namespace AvatarBridge
         {
             var on = new List<string>();
             var refused = new List<string>();
-            var painted = YapsSquash.RegionsOf(root, out _);
-            List<string> names = painted?.pairs.Take(2).Select(x => x.name).ToList();
-            var body = painted == null ? YapsSquash.NamedBody(root) : null;
-            if (body != null) YapsSquash.NamedShares(root, body, out names, out _);
-            foreach (var name in names ?? new List<string>())
+            var found = YapsSquash.PartsOf(root, out _);
+            foreach (var (name, _) in found?.parts ?? new List<(string, int)>())
             {
-                string said = PairOn(root, new Regex("^" + Regex.Escape(name) + "$", RegexOptions.IgnoreCase), into, Shaders, new Options(), report);
+                string said = PairOn(root, new Regex("^" + Regex.Escape(name) + "$", RegexOptions.IgnoreCase), into, Shaders, new Options(), report, found);
                 Debug.Log("[YAPS] Jelly: " + said);
                 (said.StartsWith("On ") ? on : refused).Add(said);
             }
             return (on, refused);
         }
 
-        // Every pair's jelly off, the squash materials back on the squash alone. What was done.
+        // Every part's jelly off, the squash materials back on the squash alone. What was done.
         internal static string Off(Transform picked)
         {
             var root = AvatarOf(picked);
@@ -644,10 +665,11 @@ namespace AvatarBridge
             int cleared = 0;
             foreach (var m in YapsSquash.Materials(root))
             {
-                if (!m.HasProperty("_YAPS_JellyLattice") || m.GetVector("_YAPS_JellyParts") == Vector4.zero) continue;
+                if (!m.HasProperty("_YAPS_JellyLattice") || m.GetVector("_YAPS_JellyParts") == Vector4.zero
+                    && Enumerable.Range(0, YapsSquash.JellySlots).All(s => !m.HasProperty(LatticeOf(s)) || m.GetVector(LatticeOf(s)) == Vector4.zero)) continue;
                 Undo.RecordObject(m, "Take the breasts off the jelly");
-                m.SetVector("_YAPS_JellyLattice", Vector4.zero);
-                m.SetVector("_YAPS_JellyLattice2", Vector4.zero);
+                for (int s = 0; s < YapsSquash.JellySlots; s++)
+                    if (m.HasProperty(LatticeOf(s))) m.SetVector(LatticeOf(s), Vector4.zero);
                 m.SetVector("_YAPS_JellyParts", Vector4.zero);
                 EditorUtility.SetDirty(m);
                 cleared++;
@@ -905,18 +927,19 @@ namespace AvatarBridge
             return Vector3.Distance(p, a + s * Mathf.Clamp01(Vector3.Dot(p - a, s) / Mathf.Max(s.sqrMagnitude, 1e-12f)));
         }
 
-        // The bone carrying most of part k's skin, as the squash's follow rides it: of the bones
+        // The bone carrying most of a side's skin, share its share of each vertex, as the squash's
+        // follow rides it: of the bones
         // below the chest and off the skeleton, when they carry a quarter of it or more; else the
         // most weighted bone of all, the trunk itself when it carries most (a breast painted on a
         // body with no bones of its own rode the shoulder at 5%).
-        static Transform Carrier(SkinnedMeshRenderer body, Vector4[] shares, int k, Transform chest, ICollection<Transform> skeleton, bool clothed = true)
+        static Transform Carrier(SkinnedMeshRenderer body, float[] share, Transform chest, ICollection<Transform> skeleton, bool clothed = true)
         {
             var weights = body.sharedMesh.boneWeights;
             var bones = body.bones;
             var sum = new float[bones.Length];
-            for (int v = 0; v < weights.Length && v < shares.Length; v++)
+            for (int v = 0; v < weights.Length && v < share.Length; v++)
             {
-                if (shares[v][k] < 0.5f) continue;
+                if (share[v] < 0.5f) continue;
                 var w = weights[v];
                 sum[w.boneIndex0] += w.weight0;
                 sum[w.boneIndex1] += w.weight1;
@@ -948,7 +971,7 @@ namespace AvatarBridge
         // Region r's probes (spots[r], none for null) and the skinned helper the step reads the regions'
         // frames and the probes through: each region carried by provider.transforms[r], held still by
         // hangs[r], depth its lattice's middle off its anchor; a collider felt reach off the skin.
-        // Its assets in folder.
+        // One hang for a part alone, its frame read for both. Its assets in folder.
         internal static void AddSkin(GameObject made, CVRMaterialDataProvider provider, Transform[] hangs, List<Vector3>[] spots, float depth, string undo, string folder, float reach, bool[] solid = null, int solidFrom = 0)
         {
             var probes = new List<Transform>[] { new List<Transform>(), new List<Transform>() };
@@ -1000,7 +1023,7 @@ namespace AvatarBridge
             List<Transform> Bones()
             {
                 var bases = new List<Transform>();
-                for (int side = 0; side < 2; side++)
+                for (int side = 0; side < hangs.Length; side++)
                 {
                     var region = made.transform.Find($"Jelly Region {side}");
                     var mid = region.TransformPoint(0f, 0f, depth);
@@ -1076,20 +1099,20 @@ namespace AvatarBridge
             var points = new List<Vector3>();
             var skinWeights = new List<BoneWeight>();
             for (int side = 0; side < 2; side++)
-                foreach (var on in new[] { provider.transforms[side], hangs[side] })
+                foreach (var on in new[] { provider.transforms[side], hangs[Mathf.Min(side, hangs.Length - 1)] })
                 {
                     int b = skinBones.IndexOf(on);
                     if (b < 0) { b = skinBones.Count; skinBones.Add(on); }
                     foreach (var p in new[] { Vector3.zero, Vector3.right * 0.1f, Vector3.up * 0.1f, Vector3.forward * 0.1f })
                     {
-                        points.Add(skin.transform.InverseTransformPoint(hangs[side].TransformPoint(p)));
+                        points.Add(skin.transform.InverseTransformPoint(hangs[Mathf.Min(side, hangs.Length - 1)].TransformPoint(p)));
                         skinWeights.Add(new BoneWeight { boneIndex0 = b, weight0 = 1f });
                     }
                 }
             // Then each probe twice, on itself and at its rest on the hang, from 16: a region's
             // pairs after the last's.
-            int probed = Mathf.Min(probes[0].Count, probes[1].Count);
-            for (int side = 0; side < 2; side++)
+            int probed = hangs.Length > 1 ? Mathf.Min(probes[0].Count, probes[1].Count) : probes[0].Count;
+            for (int side = 0; side < hangs.Length; side++)
                 for (int k = 0; k < probed; k++)
                     foreach (var on in new[] { probes[side][k], hangs[side] })
                     {
@@ -1121,7 +1144,7 @@ namespace AvatarBridge
             // A world probe's face reaches half again as far as the probes sit apart, so a pane's
             // faces overlap and leave no gap for the skin to show through.
             float patch = 0f;
-            for (int ps = 0; ps < 2; ps++)
+            for (int ps = 0; ps < hangs.Length; ps++)
                 if (solid != null && solid[ps] && spots != null && spots[ps].Count > solidFrom + 1)
                 {
                     var balls = spots[ps].Take(spots[ps].Count - solidFrom).ToList();

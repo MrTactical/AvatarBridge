@@ -183,24 +183,26 @@ namespace AvatarBridge
             }
 
             _pair = Mathf.Clamp(_pair, 0, Mathf.Max(pairs - 1, 0));
+            if (Single(_pair)) _side = 0;
 
             // One pick and one button in sight; the rest folds away. All at one level it read
             // like a cockpit.
-            var names = regions.pairs.Select((p, i) => $"{i + 1}. {p.name}").ToArray();
-            into.Add(BridgeElements.Popup("Pair", "Two parts that press against each other, named after the bones they start from.", names, _pair, i => { _pair = i; Recolour(); Changed?.Invoke(); Rebuild(); }));
+            var names = regions.pairs.Select((p, i) => $"{i + 1}. {p.name}{(Single(i) ? " (one side)" : "")}").ToArray();
+            into.Add(BridgeElements.Popup("Part", "A pair that presses against each other, or one part alone, named after the bones they start from.", names, _pair, i => { _pair = i; if (Single(i)) _side = 0; Recolour(); Changed?.Invoke(); Rebuild(); }));
             // The brush's own controls sit in the Scene view beside the work, not here.
             var paint = BridgeElements.Btn(_painting ? "Stop painting" : "Paint in the Scene view", () => SetPainting(!_painting),
                 "The brush, its side and its tools open in the Scene view, over the avatar.");
             paint.SetEnabled(!playing || _painting);
             into.Add(BridgeElements.ButtonRow(paint));
-            // Greyed out at the cap: a warning on press read as "two is too many".
-            var addPair = BridgeElements.Btn("Add a pair", AddPair, "Two at most: the shader has room for four parts.");
-            addPair.SetEnabled(pairs < 2);
-            into.Add(BridgeElements.ButtonRow(addPair, BridgeElements.Btn("Remove this pair", RemovePair)));
-            // The tooltip alone left a greyed-out button with no reason in sight.
-            if (pairs >= 2) into.Add(BridgeElements.Hint("Two pairs is the most: the shader has room for four parts."));
+            into.Add(BridgeElements.ButtonRow(
+                BridgeElements.Btn("Add a pair", () => AddPair(false), "Two sides that press against each other: cheeks, thighs."),
+                BridgeElements.Btn("Add a part alone", () => AddPair(true), "One side only, with no partner: a belly, a tail, the back."),
+                BridgeElements.Btn("Remove this part", RemovePair)));
+            // Said where it is painted: past them, what is painted stays as it is.
+            if (pairs > YapsSquash.JellySlots)
+                into.Add(BridgeElements.Hint($"The live tissue takes the first {YapsSquash.JellySlots} parts, the squash the first two pairs: {string.Join(", ", regions.pairs.Skip(YapsSquash.JellySlots).Select(p => p.name))} stay as they are."));
 
-            var more = new BridgeElements.Card("More for this pair", "name, fill from a bone or shape key, clear", false).Nested();
+            var more = new BridgeElements.Card(Single(_pair) ? "More for this part" : "More for this pair", "name, fill from a bone or shape key, clear", false).Nested();
             into.Add(more);
             more.Body.Add(BridgeElements.Text("Name", "For the report.", regions.pairs[_pair].name, v =>
             {
@@ -208,8 +210,8 @@ namespace AvatarBridge
                 regions.pairs[_pair].name = v;
                 EditorUtility.SetDirty(regions);
             }));
-            more.Body.Add(SideChoice(() => Changed?.Invoke()));
-            more.Section("Fill this side from");
+            if (!Single(_pair)) more.Body.Add(SideChoice(() => Changed?.Invoke()));
+            more.Section(Single(_pair) ? "Fill it from" : "Fill this side from");
             // A picker and not the Hierarchy selection: selecting a bone closes this inspector.
             more.Body.Add(BridgeElements.ObjectPicker<Transform>("Bone", _bone, t => _bone = t, "The bone whose skin, with the bones under it, fills this side."));
             more.Body.Add(BridgeElements.ButtonRow(
@@ -220,7 +222,7 @@ namespace AvatarBridge
             {
                 _shape = Mathf.Clamp(_shape, 0, shapes.Length - 1);
                 more.Body.Add(BridgeElements.Popup("Shape key", "A size or shape slider for the part: the skin it moves.", shapes, _shape, i => _shape = i));
-                more.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("The shape key", FromShape, "The skin that shape key moves, split down the avatar's middle into this pair.")));
+                more.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("The shape key", FromShape, Single(_pair) ? "The skin that shape key moves, onto this part." : "The skin that shape key moves, split down the avatar's middle into this pair.")));
             }
             more.Body.Add(BridgeElements.ButtonRow(
                 BridgeElements.Btn("Clear this side", () => Each((w, c) => System.Array.Clear(w, 0, w.Length)), null, ButtonKind.Danger)));
@@ -276,14 +278,16 @@ namespace AvatarBridge
             // The brush and three tools. Wider and Narrower read as the radius again, and Clear
             // lives in the window, away from the strokes.
             into.Add(BridgeElements.Hint($"Painting {regions.pairs[_pair].name}. Drag over the body. Ctrl erases, Ctrl+Z undoes a stroke, Esc stops."));
-            into.Add(SideChoice(() => { if (_refresh != null) _refresh(); else rootVisualElement.schedule.Execute(Rebuild); }));
+            if (!Single(_pair)) into.Add(SideChoice(() => { if (_refresh != null) _refresh(); else rootVisualElement.schedule.Execute(Rebuild); }));
             into.Add(BridgeElements.SliderField("Radius (cm)", "How far the brush spreads over the skin.", 1f, 20f, _radius * 100f, v => _radius = v / 100f));
             into.Add(BridgeElements.SliderField("Strength", "How much one stroke paints. Strokes never paint past it.", 0.05f, 1f, _strength, v => _strength = v));
+            var mirror = BridgeElements.Btn("Copy to other side", Mirror, "This side onto its partner, across the avatar's middle.");
+            mirror.SetEnabled(!Single(_pair));
             into.Add(BridgeElements.ButtonRow(
                 BridgeElements.Btn("Soften edge", () => Each(Smooth), "So the squash fades out instead of tearing."),
-                BridgeElements.Btn("Copy to other side", Mirror, "This side onto its partner, across the avatar's middle."),
+                mirror,
                 BridgeElements.Btn("Stop", () => SetPainting(false))));
-            into.Add(BridgeElements.Hint("<color=#ff5050>■</color> this side   <color=#5080ff>■</color> its partner   <color=#40cc40>■</color> the other pair"));
+            into.Add(BridgeElements.Hint("<color=#ff5050>■</color> this side   <color=#5080ff>■</color> its partner   <color=#40cc40>■</color> every other part"));
         }
 
         // --- weights ----------------------------------------------------------------
@@ -298,7 +302,7 @@ namespace AvatarBridge
             // overlay still drew the stroke.
             _colours = null;
             if (_body == null || _body.sharedMesh == null) return;
-            var shares = YapsSquash.NamedShares(_avatar.transform, _body, out var named, out _);
+            var shares = YapsSquash.NamedChannels(_avatar.transform, _body, out var named, out _);
             if (shares != null) _named = named;
             var mesh = _body.sharedMesh;
             int n = mesh.vertexCount;
@@ -316,8 +320,10 @@ namespace AvatarBridge
                     (near[b] ??= new HashSet<int>()).Add(a);
                 }
             _near = near.Select(x => x?.ToArray() ?? new int[0]).ToArray();
-            _w = Enumerable.Range(0, 4).Select(_ => new float[n]).ToArray();
             var regions = Regions;
+            // Two channels a part, a pair's sides; a part alone uses the first.
+            int parts = Mathf.Max(regions != null && regions.body == _body ? regions.pairs.Count : 0, shares != null ? shares.Length / 2 : 0, 2);
+            _w = Enumerable.Range(0, 2 * parts).Select(_ => new float[n]).ToArray();
             if (regions != null && regions.body == _body)
             {
                 // Read against a mesh that changed, every weight would sit on the wrong vertex.
@@ -327,7 +333,7 @@ namespace AvatarBridge
                     _tone = Tone.Warn;
                 }
                 else
-                    for (int k = 0; k < Mathf.Min(regions.pairs.Count, 2); k++)
+                    for (int k = 0; k < regions.pairs.Count; k++)
                         for (int v = 0; v < n; v++)
                         {
                             _w[2 * k][v] = v < regions.pairs[k].a.Length ? regions.pairs[k].a[v] / 255f : 0f;
@@ -338,8 +344,8 @@ namespace AvatarBridge
             // shows what squashes before anything is touched.
             bool painted = regions != null && regions.body == _body && regions.pairs.Count > 0;
             if (!painted && shares != null && (regions == null || regions.partBones.Count == 0))
-                for (int c = 0; c < 4; c++)
-                    for (int v = 0; v < n; v++) _w[c][v] = shares[v][c];
+                for (int c = 0; c < shares.Length; c++)
+                    for (int v = 0; v < n; v++) _w[c][v] = shares[c][v];
             Bake();
         }
 
@@ -360,10 +366,12 @@ namespace AvatarBridge
             var mesh = _body.sharedMesh;
             regions.vertexCount = mesh.vertexCount;
             regions.fingerprint = YapsSquash.Fingerprint(mesh);
-            foreach (var (pair, k) in regions.pairs.Select((p, k) => (p, k)).Take(2))
+            Fit();
+            foreach (var (pair, k) in regions.pairs.Select((p, k) => (p, k)))
             {
+                bool single = Single(k);
                 pair.a = Bytes(_w[2 * k]);
-                pair.b = Bytes(_w[2 * k + 1]);
+                pair.b = single ? new byte[0] : Bytes(_w[2 * k + 1]);
             }
             EditorUtility.SetDirty(regions);
             // So the status says at once that the build no longer matches.
@@ -374,10 +382,25 @@ namespace AvatarBridge
 
         int Channel => 2 * _pair + _side;
 
+        // The working weights two channels a part, and the part picked one that is there: an undo or
+        // a start over changes the parts under them.
+        void Fit()
+        {
+            if (_w == null) return;
+            int parts = Mathf.Max(Regions != null ? Regions.pairs.Count : 0, 2);
+            if (_w.Length < 2 * parts) _w = _w.Concat(Enumerable.Range(0, 2 * parts - _w.Length).Select(_ => new float[_w[0].Length])).ToArray();
+            _pair = Mathf.Clamp(_pair, 0, parts - 1);
+            if (Single(_pair)) _side = 0;
+        }
+
+        // A part painted on one side alone: its second side empty and its first not.
+        bool Single(int k) => Regions != null && k >= 0 && k < Regions.pairs.Count && Regions.pairs[k].b.Length == 0 && Regions.pairs[k].a.Length > 0;
+
         // Each op on the side being painted, then kept.
         void Each(System.Action<float[], int> op)
         {
             if (Regions == null || Regions.pairs.Count == 0) return;
+            Fit();
             op(_w[Channel], Channel);
             Settle(Channel, null);
             Save("Edit squash region");
@@ -397,14 +420,14 @@ namespace AvatarBridge
         void Settle(int c, IEnumerable<int> touched)
         {
             foreach (int v in touched ?? Enumerable.Range(0, _w[c].Length))
-                for (int o = 0; o < 4; o++)
+                for (int o = 0; o < _w.Length; o++)
                     if (o != c) _w[o][v] = Mathf.Min(_w[o][v], 1f - _w[c][v]);
         }
 
         // This side onto its partner, across the avatar's middle.
         void Mirror()
         {
-            if (Regions == null || Regions.pairs.Count == 0) return;
+            if (Regions == null || Regions.pairs.Count == 0 || Single(_pair)) return;
             Bake();
             var root = _avatar.transform;
             var local = _at.Select(p => root.InverseTransformPoint(p)).ToArray();
@@ -432,14 +455,22 @@ namespace AvatarBridge
             Recolour();
         }
 
-        void AddPair()
+        // A pair, or with alone one side only. Its weights start empty.
+        void AddPair(bool alone)
         {
             if (_w == null) return;
-            if (Regions != null && Regions.pairs.Count >= 2) return;
             Save("Add squash pair");
             var regions = Regions;
-            regions.pairs.Add(new YapsSquashSettings.Pair { name = regions.pairs.Count == 0 ? "Chest" : "Seat" });
-            _pair = regions.pairs.Count - 1;
+            int count = regions.pairs.Count;
+            string name = alone ? $"Part {count + 1}" : count == 0 ? "Chest" : count == 1 ? "Seat" : $"Pair {count + 1}";
+            for (int k = 2; regions.pairs.Any(p => string.Equals(p.name, name, System.StringComparison.OrdinalIgnoreCase)); k++)
+                name = (alone ? "Part " : count == 0 ? "Chest " : count == 1 ? "Seat " : "Pair ") + (count + k);
+            // Its first side made now, so it reads as one side alone.
+            regions.pairs.Add(new YapsSquashSettings.Pair { name = name, a = alone ? new byte[_w[0].Length] : new byte[0] });
+            if (_w.Length < 2 * (count + 1)) _w = _w.Concat(Enumerable.Range(0, 2 * (count + 1) - _w.Length).Select(_ => new float[_w[0].Length])).ToArray();
+            for (int c = 2 * count; c < 2 * count + 2; c++) System.Array.Clear(_w[c], 0, _w[c].Length);
+            _pair = count;
+            _side = 0;
             Save("Add squash pair");
             Rebuild();
         }
@@ -450,10 +481,8 @@ namespace AvatarBridge
             if (regions == null || regions.pairs.Count == 0) return;
             Undo.RecordObject(regions, "Remove squash pair");
             regions.pairs.RemoveAt(_pair);
-            // The pair after it moves up a slot, weights and all.
-            if (_pair == 0) { _w[0] = _w[2]; _w[1] = _w[3]; }
-            _w[2] = new float[_w[2].Length];
-            _w[3] = new float[_w[3].Length];
+            // The parts after it move up a slot, weights and all.
+            _w = _w.Where((w, c) => c / 2 != _pair).Concat(new[] { new float[_w[0].Length], new float[_w[0].Length] }).ToArray();
             _pair = 0;
             Save("Remove squash pair");
             Recolour();
@@ -462,10 +491,9 @@ namespace AvatarBridge
 
         bool FromNames()
         {
-            var shares = YapsSquash.NamedShares(_avatar.transform, _body, out var names, out string none);
+            var shares = YapsSquash.NamedChannels(_avatar.transform, _body, out var names, out string none);
             if (shares == null) { Say(none ?? "None of the parts found by name are on this mesh.", Tone.Warn); return false; }
-            for (int c = 0; c < 4; c++)
-                for (int v = 0; v < shares.Length; v++) _w[c][v] = shares[v][c];
+            _w = Enumerable.Range(0, Mathf.Max(shares.Length, 4)).Select(c => c < shares.Length ? (float[]) shares[c].Clone() : new float[_w[0].Length]).ToArray();
             // A point's copies can carry different weights; the first copy's stands for all.
             Save("Squash regions from bone names");
             var regions = Regions;
@@ -481,7 +509,7 @@ namespace AvatarBridge
 
         void StartPair()
         {
-            AddPair();
+            AddPair(false);
             if (Regions != null && Regions.pairs.Count > 0) SetPainting(true);
         }
 
@@ -528,19 +556,20 @@ namespace AvatarBridge
             Bake();
             var root = _avatar.transform;
             int a = 2 * _pair;
+            bool single = Single(_pair);
             for (int v = 0; v < delta.Length; v++)
             {
                 // Twice the share, so the skin the slider moves most is whole and only the edge fades.
                 float w = Mathf.Clamp01(2f * delta[v].magnitude / most);
-                bool left = root.InverseTransformPoint(_at[v]).x < 0f;
+                bool left = single || root.InverseTransformPoint(_at[v]).x < 0f;
                 _w[a][v] = left ? w : 0f;
                 _w[a + 1][v] = left ? 0f : w;
             }
             Settle(a, null);
-            Settle(a + 1, null);
+            if (!single) Settle(a + 1, null);
             Save("Squash regions from a shape key");
             Recolour();
-            Say($"This pair is now the skin \"{mesh.GetBlendShapeName(_shape)}\" moves, split down the middle.", Tone.Good);
+            Say(single ? $"This part is now the skin \"{mesh.GetBlendShapeName(_shape)}\" moves." : $"This pair is now the skin \"{mesh.GetBlendShapeName(_shape)}\" moves, split down the middle.", Tone.Good);
         }
 
         // --- the scene view ----------------------------------------------------------
@@ -571,13 +600,16 @@ namespace AvatarBridge
         void Recolour()
         {
             if (_baked == null || _w == null) return;
+            Fit();
             int n = _baked.vertexCount;
             if (_colours == null || _colours.Length != n) _colours = new Color[n];
-            int c = Channel, partner = c ^ 1, other = c < 2 ? 2 : 0;
+            int c = Channel, partner = c ^ 1;
             for (int v = 0; v < n; v++)
             {
                 int r = _rep[v];
-                float on = _w[c][r], with = _w[partner][r], rest = Mathf.Max(_w[other][r], _w[other + 1][r]);
+                float on = _w[c][r], with = _w[partner][r], rest = 0f;
+                for (int o = 0; o < _w.Length; o++)
+                    if (o != c && o != partner) rest = Mathf.Max(rest, _w[o][r]);
                 _colours[v] = new Color(on, rest * 0.8f, with, Mathf.Clamp01(Mathf.Max(on, with, rest) * 0.75f));
             }
             _baked.colors = _colours;

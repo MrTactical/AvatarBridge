@@ -163,8 +163,13 @@ namespace AvatarBridge
         _YAPS_SquashPlug (""YAPS squash plug press gain"", Range(0,2)) = 1
         [NoScaleOffset] _YAPS_JellyState (""YAPS live tissue state"", 2D) = ""black"" {}
         _YAPS_JellyLattice (""YAPS live tissue: particles across, up, deep; spacing"", Vector) = (0,0,0,0)
-        [NoScaleOffset] _YAPS_JellyState2 (""YAPS live tissue state, the second pair"", 2D) = ""black"" {}
-        _YAPS_JellyLattice2 (""YAPS live tissue: the second pair's lattice"", Vector) = (0,0,0,0)
+        [NoScaleOffset] _YAPS_JellyState2 (""YAPS live tissue state, the second part"", 2D) = ""black"" {}
+        _YAPS_JellyLattice2 (""YAPS live tissue: the second part's lattice"", Vector) = (0,0,0,0)
+        [NoScaleOffset] _YAPS_JellyState3 (""YAPS live tissue state, the third part"", 2D) = ""black"" {}
+        _YAPS_JellyLattice3 (""YAPS live tissue: the third part's lattice"", Vector) = (0,0,0,0)
+        [NoScaleOffset] _YAPS_JellyState4 (""YAPS live tissue state, the fourth part"", 2D) = ""black"" {}
+        _YAPS_JellyLattice4 (""YAPS live tissue: the fourth part's lattice"", Vector) = (0,0,0,0)
+        [NoScaleOffset] _YAPS_JellyOwn (""YAPS live tissue parts, per vertex"", 2D) = ""black"" {}
         _YAPS_JellyParts (""YAPS live tissue: the parts it carries"", Vector) = (0,0,0,0)
         _YAPS_JellySlap (""YAPS live tissue: a slap's ring, how much (0 none), speed, wavelength, fade"", Vector) = (0,1,0.1,0.4)
         [NoScaleOffset] _YAPS_SoftRow (""YAPS soft body rows, per vertex"", 2D) = ""black"" {}

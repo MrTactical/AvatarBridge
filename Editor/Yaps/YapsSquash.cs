@@ -9,8 +9,9 @@
 // Three ways to say where the parts are. Regions painted with the squash region tool, when the
 // avatar carries them; else bones picked on the component, two to a pair; else bones found by
 // name (breast, boob, butt, booty, glute, one each side). With bones, each vertex's share is the
-// skin weight its part's bones carry. Two pairs at most any way. Materials listed as left alone
-// are never copied. Measured at rest, in edit mode. A shader the patcher refuses is reported and its layer
+// skin weight its part's bones carry. The squash's own dent takes the first two pairs; the jelly
+// put on over it takes any part, a pair or one side alone, four a body. Materials listed as left
+// alone are never copied. Measured at rest, in edit mode. A shader the patcher refuses is reported and its layer
 // left as it was.
 #if CVR_CCK_EXISTS
 using System;
@@ -44,7 +45,7 @@ namespace AvatarBridge
             "_YAPS_SquashHands", "_YAPS_SquashMotion", "_YAPS_SquashPlug", "_YAPS_DentSpill",
             "_YAPS_SquashHangToward", "_YAPS_SquashHangOut", "_YAPS_SquashHangAcross", "_YAPS_SquashSurface",
             "_YAPS_SquashSurfaceOn", "_YAPS_SoftRow", "_YAPS_SoftTable", "_YAPS_SoftDepth", "_YAPS_SoftOut", "_YAPS_SoftIn",
-            "_YAPS_SoftFront", "_YAPS_SoftSideA", "_YAPS_SoftSideB", "_YAPS_SoftBelow",
+            "_YAPS_SoftFront", "_YAPS_SoftSideA", "_YAPS_SoftSideB", "_YAPS_SoftBelow", "_YAPS_JellyOwn",
         };
 
         sealed class Part
@@ -98,7 +99,6 @@ namespace AvatarBridge
         {
             none = picked.Any(t => t == null) ? "a picked part bone is empty"
                 : picked.Count % 2 != 0 ? "picked part bones come in pairs, one each side, and one is alone"
-                : picked.Count > 4 ? "two pairs of picked part bones at most"
                 : picked.Distinct().Count() != picked.Count ? "a part bone is picked twice"
                 : picked.FirstOrDefault(t => !t.IsChildOf(root)) is Transform away ? $"picked part bone \"{away.name}\" is not on this avatar"
                 : null;
@@ -265,7 +265,7 @@ namespace AvatarBridge
             if (!built) return said.Trim();
             // The measurements stay in the Console: on a card they were a wall nobody read.
             return $"Squash built on {BridgeElements.Count(Materials(root).Count, "material", "materials")}, parts {PartsFrom(SettingsOf(root))}, " +
-                   $"{BridgeElements.Count(jelly.on.Count, "pair", "pairs")} on the jelly{(jelly.refused.Count > 0 ? ", " + jelly.refused.Count + " kept the squash" : "")}. The measurements are in the Console.";
+                   $"{BridgeElements.Count(jelly.on.Count, "part", "parts")} on the jelly{(jelly.refused.Count > 0 ? ", " + jelly.refused.Count + " not on it" : "")}. The measurements are in the Console.";
         }
 
         // Where the build takes its parts from, in the order Add tries them.
@@ -339,7 +339,7 @@ namespace AvatarBridge
             else if (!regions.body.transform.IsChildOf(root)) refusal = "the squash regions' body mesh is not on this avatar";
             else if (mesh.vertexCount != regions.vertexCount || Fingerprint(mesh) != regions.fingerprint)
                 refusal = $"\"{mesh.name}\" changed since its squash regions were painted, so every weight would land on the wrong vertex. Paint them again";
-            else if (regions.pairs.Any(p => p.a.Length != mesh.vertexCount || p.b.Length != mesh.vertexCount))
+            else if (regions.pairs.Any(p => p.a.Length != mesh.vertexCount || p.b.Length != mesh.vertexCount && p.b.Length != 0))
                 refusal = "a squash region pair is missing weights";
             return refusal == null ? regions : null;
         }
@@ -398,7 +398,9 @@ namespace AvatarBridge
                 }
 
             var skins = Skins(root);
-            int pairCount = Mathf.Min(regions != null ? regions.pairs.Count : found.Count, 2);
+            // The dent takes the first two pairs; a part painted on one side alone is the jelly's.
+            var dentPairs = regions?.pairs.Where(p => p.b.Length > 0).ToList();
+            int pairCount = Mathf.Min(regions != null ? dentPairs.Count : found.Count, 2);
             Skin named = null;
             if (regions == null)
             {
@@ -415,8 +417,8 @@ namespace AvatarBridge
                 for (int k = 0; k < pairCount; k++)
                     for (int v = 0; v < body.at.Length; v++)
                     {
-                        body.share[v][2 * k] = regions.pairs[k].a[v] / 255f;
-                        body.share[v][2 * k + 1] = regions.pairs[k].b[v] / 255f;
+                        body.share[v][2 * k] = dentPairs[k].a[v] / 255f;
+                        body.share[v][2 * k + 1] = dentPairs[k].b[v] / 255f;
                     }
                 // One weight per point, whatever was painted on each copy of it.
                 foreach (var weld in Welds(regions.body.sharedMesh))
@@ -434,6 +436,9 @@ namespace AvatarBridge
             var sockets = root.GetComponentsInChildren<YapsSocket>(true).Select(x => x.transform).ToList();
             var between = new List<Transform>();
             var kept = new List<int>();
+            // The pairs the dent carries, in its slot order, by their place among every part, for the
+            // jelly to take them from it by the names it gives them.
+            var dented = new List<int>();
             var log = new List<string>();
             var reach = Vector4.zero;
             // The other five reaches of each part, in the frame the shader builds: away from the
@@ -459,11 +464,12 @@ namespace AvatarBridge
             var pair = new Vector4(0f, 0.5f, 0f, 0.5f);
             for (int k = 0; k < pairCount; k++)
             {
-                string label = regions != null ? regions.pairs[k].name : $"{found[k][0].name}/{found[k][1].name}";
+                string label = regions != null ? dentPairs[k].name : $"{found[k][0].name}/{found[k][1].name}";
                 var measured = Measure(skins, k, regions != null ? null : found[k], humanoid,
-                    regions != null ? new[] { regions.pairs[k].name + " A", regions.pairs[k].name + " B" } : null);
+                    regions != null ? new[] { dentPairs[k].name + " A", dentPairs[k].name + " B" } : null);
                 if (measured == null) { log.Add($"{label}: too little skin"); continue; }
                 kept.Add(k);
+                dented.Add(regions != null ? regions.pairs.IndexOf(dentPairs[k]) : k);
                 var (a, b) = (measured[0], measured[1]);
                 var axis = (b.centre - a.centre).normalized;
                 a.reach = Reach(a, axis);
@@ -531,7 +537,15 @@ namespace AvatarBridge
                 log.Add($"{label} on {a.follow.parent.name}/{b.follow.parent.name}: start {start * 100f:0.0} cm, reach {a.reach * 100f:0.0} + {b.reach * 100f:0.0}, " +
                         $"out {outward[i] * Unit(a.follow) * 100f:0.0}, in {inward[i] * Unit(a.follow) * 100f:0.0}, share {share:0.00}");
             }
-            if (parts.Count == 0) return string.Join("; ", log);
+            // Every part the jelly can take, the squash's own among them: a layer over any of them is
+            // copied, so the jelly finds a material to draw on. With no pair of its own the squash
+            // still builds for parts the jelly alone takes.
+            var jelly = PartsOf(root, out _);
+            var jellyOwn = new Dictionary<SkinnedMeshRenderer, Texture2D>();
+            if (jelly != null)
+                foreach (var kv in jelly.shares)
+                    if (JellyMoves(kv.Key.sharedMesh, -1, kv.Value)) jellyOwn[kv.Key] = JellyOwn(kv.Value, folder, $"{root.name} {kv.Key.name} jelly parts.asset");
+            if (parts.Count == 0 && jellyOwn.Count == 0) return string.Join("; ", log);
             Lap("Measure");
             if (MeasuredForTest != null) return string.Join("; ", log);
             var surface = surfaces.Any(x => x != null) ? SurfaceTexture(surfaces, folder, $"{root.name} surface.asset") : null;
@@ -570,7 +584,7 @@ namespace AvatarBridge
             var still = new HashSet<int>();
             var bodySkin = regions != null ? skins.First(s => s.smr == regions.body) : named;
             Lap("Arms");
-            var shared = Shares(skins, bodySkin, root.name, folder);
+            var shared = Shares(skins, bodySkin, root.name, folder, jellyOwn.ContainsKey);
             var swings = Swings(shared, skins, bodySkin, parts, root.name, folder, log);
             Lap("Shares");
             var soft = SoftBody(bodySkin, shared, skins, parts, towards, units, reachesOf, surfaces, outs, root, folder, log);
@@ -581,9 +595,12 @@ namespace AvatarBridge
             var leave = LeftAlone(root);
             Hold();
             YapsShaderPatcher.Prewrite(shared.SelectMany(x => x.smr.sharedMaterials
-                    .Where((m, slot) => m != null && !leave.Contains(m) && !YapsMarks.IsBakedMaterial(m) && Moves(x.smr.sharedMesh, slot, x.shares)))
+                    .Where((m, slot) => m != null && !leave.Contains(m) && !YapsMarks.IsBakedMaterial(m) && Takes(x.smr, slot, x.shares)))
                 .Where(m => !m.HasProperty("_YAPS_DentOwn")), YapsShaderPatcher.Roles.Squash);
             Lap("Prewrite");
+            // A slot moves for the dent or for the jelly.
+            bool Takes(SkinnedMeshRenderer smr, int slot, Vector4[] shares) => Moves(smr.sharedMesh, slot, shares) ||
+                jelly != null && jellyOwn.ContainsKey(smr) && JellyMoves(smr.sharedMesh, slot, jelly.shares[smr]);
             var shaderFor = new System.Diagnostics.Stopwatch();
             var saving = new System.Diagnostics.Stopwatch();
             // The two laps above summed to a second an avatar while the loop took minutes, so the
@@ -598,7 +615,7 @@ namespace AvatarBridge
                 for (int slot = 0; slot < mats.Length; slot++)
                 {
                     var source = mats[slot];
-                    if (source == null || leave.Contains(source) || YapsMarks.IsBakedMaterial(source) || !Moves(smr.sharedMesh, slot, shares)) continue;
+                    if (source == null || leave.Contains(source) || YapsMarks.IsBakedMaterial(source) || !Takes(smr, slot, shares)) continue;
                     if (!patched.TryGetValue(source, out var shader))
                     {
                         shaderFor.Start();
@@ -624,6 +641,7 @@ namespace AvatarBridge
                     copy.SetFloat("_YAPS_DentPower", 1f);
                     copy.SetTexture("_YAPS_DentOwn", own);
                     copy.SetTexture("_YAPS_DentSwing", swings[smr]);
+                    copy.SetTexture("_YAPS_JellyOwn", jellyOwn.TryGetValue(smr, out var parted) ? parted : null);
                     copy.SetVector("_YAPS_SquashReach", reach);
                     copy.SetVector("_YAPS_SquashAway", away);
                     copy.SetVector("_YAPS_SquashOut", outward);
@@ -730,6 +748,7 @@ namespace AvatarBridge
             var knobs = SettingsOf(root);
             if (knobs == null) knobs = HomeFor(root).gameObject.AddComponent<YapsSquashSettings>();
             knobs.builtFrom = RegionsHash(knobs);
+            knobs.dented = jelly != null ? dented.Where(i => i < jelly.parts.Count).Select(i => jelly.parts[i].name).ToList() : new List<string>();
             EditorUtility.SetDirty(knobs);
             Flush();
             Lap("Flush");
@@ -744,6 +763,7 @@ namespace AvatarBridge
             return $"{BridgeElements.Count(parts.Count / 2, "pair", "pairs")} {PartsFrom(SettingsOf(root))} on {root.name}, {BridgeElements.Count(copies.Count, "material", "materials")} in {folder}: " + string.Join("; ", log);
         }
 
+        // The first two pairs' four sides, each every bone of its chain.
         static List<HashSet<Transform>> Sets(List<List<Transform>> found) =>
             found.Take(2).SelectMany(p => p).Select(b => new HashSet<Transform>(b.GetComponentsInChildren<Transform>(true))).ToList();
 
@@ -847,14 +867,155 @@ namespace AvatarBridge
         // What the name search would give one renderer, for the region tool to start from.
         public static Vector4[] NamedShares(Transform root, SkinnedMeshRenderer body, out List<string> names, out string none)
         {
+            var all = NamedChannels(root, body, out names, out none);
+            if (all == null) return null;
+            names = names.Take(2).ToList();
+            return Enumerable.Range(0, all[0].Length).Select(v => new Vector4(all[0][v], all[1][v], all.Length > 2 ? all[2][v] : 0f, all.Length > 3 ? all[3][v] : 0f)).ToArray();
+        }
+
+        // Every pair the name search finds, two channels each as NamedShares gives the first two.
+        public static float[][] NamedChannels(Transform root, SkinnedMeshRenderer body, out List<string> names, out string none)
+        {
             var found = Pairs(root, out none);
-            names = found.Take(2).Select(p => Side.Replace(p[0].name, "").Trim('.', '_', ' ')).ToList();
+            names = found.Select(Named).ToList();
             var skin = none == null ? Skins(root).FirstOrDefault(s => s.smr == body) : null;
             if (skin == null) return null;
-            NameShares(skin, Sets(found));
-            Soften(skin);
-            Peak(new List<Skin> { skin }, skin);
-            return skin.share;
+            var all = new float[2 * found.Count][];
+            for (int g = 0; g < found.Count; g += 2)
+            {
+                skin.share = new Vector4[skin.at.Length];
+                NameShares(skin, Sets(found.Skip(g).ToList()));
+                Soften(skin);
+                Peak(new List<Skin> { skin }, skin);
+                for (int c = 0; c < 4 && 2 * g + c < all.Length; c++) all[2 * g + c] = skin.share.Select(x => x[c]).ToArray();
+            }
+            return all;
+        }
+
+        static string Named(List<Transform> pair) => Side.Replace(pair[0].name, "").Trim('.', '_', ' ');
+
+        // The parts the jelly takes, every one found, in order: painted, picked or by name, each a pair
+        // or one side alone, and every skin's share of each side, the layers' as the squash spreads
+        // them from the body's. Part i side s is channel 2 i + s; one side alone leaves 2 i + 1 null.
+        internal sealed class SoftParts
+        {
+            public readonly List<(string name, int sides)> parts = new List<(string, int)>();
+            public readonly Dictionary<SkinnedMeshRenderer, float[][]> shares = new Dictionary<SkinnedMeshRenderer, float[][]>();
+            public SkinnedMeshRenderer body;
+        }
+
+        // Null when there is none, none saying why.
+        internal static SoftParts PartsOf(Transform root, out string none)
+        {
+            var regions = RegionsOf(root, out none);
+            if (none != null) return null;
+            List<List<Transform>> found = null;
+            if (regions == null)
+            {
+                found = Pairs(root, out none);
+                if (none != null) return null;
+            }
+            var result = new SoftParts();
+            if (regions != null)
+                foreach (var p in regions.pairs) result.parts.Add((p.name, p.b.Length > 0 ? 2 : 1));
+            else
+                foreach (var p in found) result.parts.Add((Named(p), 2));
+            // Two names alike, in any case, would put two jellies under one name.
+            for (int i = 1; i < result.parts.Count; i++)
+                while (result.parts.Take(i).Any(q => string.Equals(q.name, result.parts[i].name, StringComparison.OrdinalIgnoreCase)))
+                    result.parts[i] = ($"{result.parts[i].name} {i + 1}", result.parts[i].sides);
+            var skins = Skins(root);
+            Skin body = regions != null ? skins.FirstOrDefault(s => s.smr == regions.body) : null;
+            var welds = regions != null ? Welds(regions.body.sharedMesh) : null;
+            foreach (var s in skins) result.shares[s.smr] = new float[2 * result.parts.Count][];
+            // Two parts at a time, the four channels a skin's shares hold, each as the squash's own.
+            for (int g = 0; g < result.parts.Count; g += 2)
+            {
+                foreach (var s in skins) s.share = new Vector4[s.at.Length];
+                if (regions != null)
+                {
+                    for (int k = g; k < g + 2 && k < regions.pairs.Count; k++)
+                        for (int v = 0; v < body.at.Length; v++)
+                        {
+                            body.share[v][2 * (k - g)] = regions.pairs[k].a[v] / 255f;
+                            body.share[v][2 * (k - g) + 1] = regions.pairs[k].b.Length > 0 ? regions.pairs[k].b[v] / 255f : 0f;
+                        }
+                    foreach (var weld in welds)
+                    {
+                        var mean = weld.Aggregate(Vector4.zero, (sum, v) => sum + body.share[v]) / weld.Length;
+                        foreach (int v in weld) body.share[v] = mean;
+                    }
+                }
+                else
+                {
+                    var sets = Sets(found.Skip(g).ToList());
+                    foreach (var s in skins) NameShares(s, sets);
+                    // The body picked on the first two, as the squash picks it.
+                    if (g == 0) body = Body(skins);
+                    Soften(body);
+                    Peak(skins, body);
+                }
+                Spread(skins, body);
+                foreach (var s in skins)
+                    for (int k = g; k < g + 2 && k < result.parts.Count; k++)
+                        for (int side = 0; side < result.parts[k].sides; side++)
+                        {
+                            int c = 2 * (k - g) + side;
+                            result.shares[s.smr][2 * k + side] = s.share.Select(x => x[c]).ToArray();
+                        }
+            }
+            result.body = body?.smr;
+            return body == null ? null : result;
+        }
+
+        // The jelly draws the first four parts, a slot each.
+        internal const int JellySlots = 4;
+
+        // Whether any vertex of the slot (any slot for -1) carries a jelly share worth drawing.
+        static bool JellyMoves(Mesh mesh, int slot, float[][] channels)
+        {
+            if (mesh == null || mesh.subMeshCount == 0) return false;
+            var near = slot < 0 ? Enumerable.Range(0, mesh.vertexCount) : mesh.GetIndices(Mathf.Min(slot, mesh.subMeshCount - 1));
+            foreach (int v in near)
+                for (int c = 0; c < channels.Length && c < 2 * JellySlots; c++)
+                    if (channels[c] != null && v < channels[c].Length && (int)(channels[c][v] * 255f + 0.5f) >= MinShare) return true;
+            return false;
+        }
+
+        // A renderer's jelly parts as the draw reads them: per vertex its two strongest of the parts
+        // the slots hold, each as 2 part + side plus one and its share, the shares of all of them
+        // together at most whole.
+        static Texture2D JellyOwn(float[][] channels, string folder, string file)
+        {
+            int count = channels.FirstOrDefault(c => c != null)?.Length ?? 0;
+            int width = 1024, height = Mathf.Max(1, (count + width - 1) / width);
+            var pixels = new Color32[width * height];
+            int used = Mathf.Min(channels.Length, 2 * JellySlots);
+            for (int v = 0; v < count; v++)
+            {
+                float total = 0f;
+                int best = -1, next = -1;
+                for (int c = 0; c < used; c++)
+                {
+                    float s = channels[c] != null ? channels[c][v] : 0f;
+                    if (s <= 0f) continue;
+                    total += s;
+                    if (best < 0 || s > channels[best][v]) { next = best; best = c; }
+                    else if (next < 0 || s > channels[next][v]) next = c;
+                }
+                float scale = 1f / Mathf.Max(total, 1f);
+                byte Of(int c) => c < 0 ? (byte)0 : (byte)(channels[c][v] * scale * 255f + 0.5f);
+                pixels[v] = new Color32((byte)(best + 1), Of(best), (byte)(next + 1), Of(next));
+            }
+            var tex = new Texture2D(width, height, TextureFormat.RGBA32, false, true) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
+            tex.SetPixels32(pixels);
+            tex.Apply(false);
+            tex = Asset(folder, tex, file);
+            var flags = new SerializedObject(tex);
+            flags.FindProperty("m_IsReadable").boolValue = false;
+            flags.FindProperty("m_StreamingMipmaps").boolValue = true;
+            flags.ApplyModifiedPropertiesWithoutUndo();
+            return tex;
         }
 
         // A material already carrying YAPS gains the squash on its own shader; anything else is
@@ -1069,7 +1230,7 @@ namespace AvatarBridge
         static void Carry(Material from, Material to, string name)
         {
             if (!from.HasProperty(name) || !to.HasProperty(name)) return;
-            if (name == "_YAPS_DentOwn" || name == "_YAPS_DentSwing" || name == "_YAPS_SquashSurface" || name == "_YAPS_SoftRow" || name == "_YAPS_SoftTable")
+            if (name == "_YAPS_DentOwn" || name == "_YAPS_DentSwing" || name == "_YAPS_SquashSurface" || name == "_YAPS_SoftRow" || name == "_YAPS_SoftTable" || name == "_YAPS_JellyOwn")
                 to.SetTexture(name, from.GetTexture(name));
             else if (name == "_YAPS_DentPower" || name == "_YAPS_SquashPulse" || name == "_YAPS_SquashPlug" || name == "_YAPS_DentSpill") to.SetFloat(name, from.GetFloat(name));
             else to.SetVector(name, from.GetVector(name));
@@ -1194,11 +1355,24 @@ namespace AvatarBridge
         // the skin vertices within 3 cm, easing out by 4, or the skin would squash out from under it. Weighted by
         // distance: the nearest one alone gave each layer vertex its own step, and a top came out
         // in facets the skin under it did not have.
-        static List<(SkinnedMeshRenderer smr, Texture2D own, Vector4[] shares)> Shares(List<Skin> skins, Skin painted, string name, string folder)
+        static List<(SkinnedMeshRenderer smr, Texture2D own, Vector4[] shares)> Shares(List<Skin> skins, Skin painted, string name, string folder, Func<SkinnedMeshRenderer, bool> keep = null)
+        {
+            var body = Spread(skins, painted);
+            var result = new List<(SkinnedMeshRenderer, Texture2D, Vector4[])>();
+            // A layer with no share kept when the jelly moves it, its dent still.
+            foreach (var m in skins)
+                if (body != null && m.share.Any(x => x != Vector4.zero) || keep != null && keep(m.smr))
+                    result.Add((m.smr, PerVertex(m.share, folder, $"{name} {m.smr.name} shares.asset"), m.share));
+            return result;
+        }
+
+        // Each layer's share of the skin it lies on, as Shares describes. The skin, or null when it
+        // carries none.
+        static Skin Spread(List<Skin> skins, Skin painted)
         {
             int Owned(Skin s) => s.share.Count(x => Mathf.Max(x.x, x.y, x.z, x.w) >= 0.5f);
             var body = painted ?? Body(skins);
-            if (body == null || Owned(body) == 0) return new List<(SkinnedMeshRenderer, Texture2D, Vector4[])>();
+            if (body == null || Owned(body) == 0) return null;
             const float Cell = 0.02f, Near = 0.03f, Fade = 0.04f, Spread = 0.01f;
             var grid = new Dictionary<Vector3Int, List<int>>();
             Vector3Int Key(Vector3 p) => new Vector3Int(Mathf.FloorToInt(p.x / Cell), Mathf.FloorToInt(p.y / Cell), Mathf.FloorToInt(p.z / Cell));
@@ -1210,7 +1384,6 @@ namespace AvatarBridge
                 if (!grid.TryGetValue(k, out var list)) grid[k] = list = new List<int>();
                 list.Add(v);
             }
-            var result = new List<(SkinnedMeshRenderer, Texture2D, Vector4[])>();
             foreach (var m in skins)
             {
                 if (m != body)
@@ -1238,10 +1411,8 @@ namespace AvatarBridge
                         // top bridging the cleavage stepped from one share to another along a line.
                         if (total > 0f) m.share[v] = Vector4.Lerp(m.share[v], sum / total, Mathf.SmoothStep(0f, 1f, (Fade - Mathf.Sqrt(nearest)) / (Fade - Near)));
                     }
-                if (m.share.All(x => x == Vector4.zero)) continue;
-                result.Add((m.smr, PerVertex(m.share, folder, $"{name} {m.smr.name} shares.asset"), m.share));
             }
-            return result;
+            return body;
         }
 
         // The pairs' soft body for the shader: every answer in one table, only for the skin that
@@ -1275,7 +1446,7 @@ namespace AvatarBridge
         static SoftBake SoftBody(Skin body, List<(SkinnedMeshRenderer smr, Texture2D own, Vector4[] shares)> shared, List<Skin> skins, List<Part> parts,
             List<Vector3> towards, List<float> units, List<float[]> reaches, List<float[]> surfaces, List<Vector3> outs, Transform root, string folder, List<string> log)
         {
-            if (body == null || shared.Count == 0) return null;
+            if (body == null || shared.Count == 0 || parts.Count < 2) return null;
             string name = root.name;
             // Across the avatar's middle, which a symmetric avatar is modelled about.
             Vector3 middle = root.right, origin = root.position;
@@ -1662,7 +1833,7 @@ namespace AvatarBridge
                 .Concat(new UnityEngine.Object[] { skin?.sharedMesh, skin?.sharedMaterial }).Where(o => o != null).ToArray();
             return new HashSet<string>(EditorUtility.CollectDependencies(from)
                 .Where(o => !(o is Material m) || SourceOf(m) != null || (skin != null && o == skin.sharedMaterial)).Select(AssetDatabase.GetAssetPath)
-                .Where(p => p.EndsWith(".mat") || p.EndsWith(" shares.asset") || p.EndsWith(" swings.asset") || p.EndsWith(" surface.asset") || p.EndsWith(" squash skin.asset") || p.EndsWith(" soft.asset") || p.EndsWith(" soft rows.asset")));
+                .Where(p => p.EndsWith(".mat") || p.EndsWith(" shares.asset") || p.EndsWith(" swings.asset") || p.EndsWith(" surface.asset") || p.EndsWith(" squash skin.asset") || p.EndsWith(" soft.asset") || p.EndsWith(" soft rows.asset") || p.EndsWith(" jelly parts.asset")));
         }
 
         // Pair `k` as the skin carries it, posed as it stands: points from the renderer carrying
@@ -1988,7 +2159,7 @@ namespace AvatarBridge
                 Lap("FollowSwaps");
                 var (on, refused) = YapsJelly.On(root, folder + "/" + YapsNativeBuilder.Sanitise(root.name) + " Jelly", ctx.Report);
                 if (on.Count > 0) ctx.Report.Converted(Category, "Soft parts move as live tissue", string.Join(" ", on));
-                foreach (var why in refused) ctx.Report.Warning(Category, "A pair kept the squash alone", why);
+                foreach (var why in refused) ctx.Report.Warning(Category, "A part is not on the jelly", why);
                 Lap("Jelly");
             }
             finally
