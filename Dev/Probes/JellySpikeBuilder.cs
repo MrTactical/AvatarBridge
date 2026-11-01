@@ -2147,6 +2147,15 @@ namespace AvatarBridge.Regression
             return req.GetData<Vector4>().ToArray();
         }
 
+        // The first region's outer side, level: away from its partner, or its own right for a part
+        // alone, whose zero left the slap's parked palm 10 cm in front of it, in reach.
+        static Vector3 Outward()
+        {
+            var o = breastRegions[0] == breastRegions[1] ? breastRegions[0].right : breastRegions[0].position - breastRegions[1].position;
+            o.y = 0f;
+            return o.normalized;
+        }
+
         // The probed jelly's state. A part alone has one region's rows: the partner checks read them twice.
         static Vector4[] ReadState()
         {
@@ -2876,7 +2885,7 @@ namespace AvatarBridge.Regression
         static Vector3 grabFrom, grabMass;
         static int grabAt;
         static float ownShake, ownMost;
-        static float handsApart, handsCloser, handsOuter, handsInner, handsVolume, slapMost, slapLater, solid0;
+        static float handsApart, handsCloser, handsOuter, handsInner, handsVolume, slapMost, slapLater, solid0, pair0;
         static readonly float[] pressShake = new float[3], pressMost = new float[3], pressAnchor = new float[3], pressRise = new float[3];
         static float riseFrom;
         static Vector3[] pressWas;
@@ -3287,9 +3296,7 @@ namespace AvatarBridge.Regression
             if (squeezing >= 0f)
             {
                 float half = 0.5f * (n.x - 1) * breastSpacing - 0.01f, r = 0.05f;
-                var outward = breastRegions[0].position - breastRegions[1].position;
-                outward.y = 0f;
-                outward.Normalize();
+                var outward = Outward();
                 for (int side = 0; side < 2; side++)
                 {
                     var o = side == 0 ? outward : -outward;
@@ -3305,9 +3312,7 @@ namespace AvatarBridge.Regression
             if (frame >= 1060 && squeezing < 0f)
             {
                 float slap = Mathf.Clamp01(1f - Mathf.Abs(frame - 1086) / 5f);
-                var outward = breastRegions[0].position - breastRegions[1].position;
-                outward.y = 0f;
-                outward.Normalize();
+                var outward = Outward();
                 var at = breastRegions[0].position + breastRegions[0].forward * (0.5f * (n.z - 1) * breastSpacing) + outward * (0.5f * (n.x - 1) * breastSpacing - 0.01f);
                 var palm = at + fwd * 0.1f + outward * (0.05f + Mathf.Lerp(0.03f, -0.05f, slap));
                 hand[0] = palm;
@@ -3396,11 +3401,13 @@ namespace AvatarBridge.Regression
             float t = Mathf.Max(frame - 230, 0) / 90f;
             swing.rotation = Quaternion.Euler(0f, 50f * Mathf.Sin(t * Mathf.PI * 2f * 0.7f) * Mathf.Min(t * 3f, 1f) * Mathf.Clamp01((330 - frame) / 30f), 0f);
             var blits = jelly.GetComponentInChildren<CVRRenderController>(true).cvrRenderComponents.OfType<CVRBlitter>().Select(b => b.blitMaterial).ToList();
+            // The pair's contact off for its A/B and back as built: a part alone has none.
+            if (frame == 0) pair0 = blits[0].GetFloat("_Pair");
             if (frame == 580) foreach (var b in blits) b.SetFloat("_Pair", 0f);
-            if (frame == 740) foreach (var b in blits) b.SetFloat("_Pair", 1f);
+            if (frame == 740) foreach (var b in blits) b.SetFloat("_Pair", pair0);
             if (frame == 0) solid0 = blits[0].GetFloat("_Solid");
             if (frame == 1480) foreach (var b in blits) b.SetFloat("_Pair", 0f);
-            if (frame == 1660) foreach (var b in blits) b.SetFloat("_Pair", 1f);
+            if (frame == 1660) foreach (var b in blits) b.SetFloat("_Pair", pair0);
             eye.Render();
             if (frame == 110 || frame == 119 || frame == 160 || frame == 205 || frame == 250 || frame == 262 || frame == 274 || frame == 286 || frame == 599 || frame == 689 || frame == 989)
             {
@@ -3452,6 +3459,15 @@ namespace AvatarBridge.Regression
                 }
                 line.Append($",{1000f * Furthest(s, breastRegions):0.00}");
                 line.Append($",bulk {s[side * 2 * Row + 32].x:0.000} {s[side * 2 * Row + 33].y:0.000} {s[side * 2 * Row + 34].z:0.000} volume {s[side * 2 * Row + 32].w:0.000}");
+                // What pushes the first's mass: the hands its slots hold (distance off its centre @ radius,
+                // h when gripping), its load and strain, and the probes' readings.
+                {
+                    int sr0 = side * 2 * Row;
+                    var held = Enumerable.Range(0, 8).Where(e => s[sr0 + 2 * e + 1].w > 0.5f)
+                        .Select(e => $"{1000f * Vector3.Distance(s[sr0 + 2 * e], s[sr0 + 30]):0}@{1000f * s[sr0 + 2 * e].w:0}{(s[sr0 + 112 + e].w > 0 ? "h" : "")}");
+                    line.Append($",hands [{string.Join(" ", held)}] on {s[sr0 + 1].w:0.0},load {s[sr0 + 86].y:0.0000} strain {s[sr0 + 86].x:0.000}");
+                    line.Append(",probes " + string.Join(" ", Enumerable.Range(0, 12).Select(k => (1000f * s[sr0 + 88 + k].w).ToString("0.0"))));
+                }
                 if (frame < 6)
                 {
                     // What the step was handed against where the regions are, and region 0's particle 0.

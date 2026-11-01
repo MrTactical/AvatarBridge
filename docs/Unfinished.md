@@ -3121,11 +3121,13 @@ layers get a copy at all), `_YAPS_DentOwn` RGBA, the draw's two states and one f
    mode on the painted slots: both step, settle 0.8 mm off rest, and answer a poke, a turn and a
    grab. The thighs (slot 4) fail only the probes' ball and the own hand at the chest, both
    placed for a breast (step 5), on a box 56 x 77 x 56 cm a side (step 4). The belly alone
-   (slot 3) fails eight, most from having no partner (clap, contact) or a breast's approach
-   (squeeze 0.86 before the hand arrives), but two are open: a 2 cm twitch still 17.8 mm off two
-   seconds on (the pairs 0.0), and 149.8 mm off just after the steps wake (the pairs 0.8).
-   Instrument those before step 4 calls the belly done. Then in game. The draw role's compile
-   time unmeasured (step 6).
+   (slot 3) first failed eight, among them a 2 cm twitch still 17.8 mm off two seconds on and
+   149.8 mm off as the steps woke. Both were the probe's: with no partner its "outer side" was
+   zero, so the slap's parked palm sat 10 cm in front of the belly, in a hand slot, holding the
+   mass on its inner clamp (traced: load 0.067 whenever that slot held it, rest whenever empty).
+   Given its own right side, the belly fails only clap and contact, which need a partner, and the
+   same two breast-placed checks as the thighs. Then in game. The draw role's compile time
+   unmeasured (step 6).
 3. **Presets and customisation.** Per-part knobs on the YAPS Squash component, live (Apply writes
    the step materials too, which `Materials` misses today): firmness (`_Hz`, `_Stiff`), settle
    (`_Viscous`), give, swing limit, push back (mass Hz and damping), taut, how deep a press goes,
