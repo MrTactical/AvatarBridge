@@ -1618,7 +1618,13 @@ is synced: each viewer's game steps its own copy. It tells the animator three fl
 to 1 and never synced, for blend shapes or sounds to follow: `#Jelly/<part>/Squeeze`,
 `#Jelly/<part>/Grab` and `#Jelly/<part>/Slap`. **Live tissue** on the **YAPS Squash** component
 adds a **Jelly twitch** menu toggle that kicks the jiggle, and lets a grip slide along the skin with
-the fist; rebuild after changing either. A non-humanoid avatar, a part the jelly cannot fit and
+the fist; rebuild after changing the twitch, while the grip's slide is live. Each part on the jelly
+also has its own feel, under **Tune how it feels ▸ Each part**: a **Preset** (Breasts, Butt, Thighs,
+Belly or Custom), guessed from the part's name or the bone it rides the first time it is built, fills
+eight knobs, **Firmness**, **Settle**, **Give**, **Swing**, **Spring back**, **Taut**, **Press depth**
+and **Slap**, each a share of how the build tunes the part, 1 being the feel the breasts were tuned on.
+Moving one makes the part Custom; all of them are live, no rebuild. The Butt, Thighs and Belly presets
+are first guesses, not yet tuned in game. A non-humanoid avatar, a part the jelly cannot fit and
 any past the fourth keep the squash, where the squash takes them (its first two pairs), and
 otherwise stay as they are; the report says which. **Not yet confirmed in game** on anything but breasts.
 
@@ -1672,7 +1678,8 @@ testing in the Avatar Tester, one place each. Its knobs write straight to the ma
 needs rebuilding: **Tune how it feels** holds how flat a part presses and where the volume goes, whether the
 pair meets (on by default), the stretch in motion, and what presses it (own arms, other players' hands, plugs, and
 the physics' own colliders, off by default). The stretch is real flesh's: a small one, with small swings
-ignored. **Test in the Avatar Tester**, at the top of that step once built, opens the Avatar Tester on the avatar with the
+ignored. With the live tissue on, the knobs only the squash's own dent reads (how flat and how wide,
+the spill and the physics' colliders) are hidden, and each part's feel is under **Each part**. **Test in the Avatar Tester**, at the top of that step once built, opens the Avatar Tester on the avatar with the
 squash preview running under **Interaction lab ▸ Squash**, starting half squeezed outside Play mode so every knob
 shows as it moves there: **Squeeze** is another player's two open hands pushing each pair together from
 outside, so *Other players' hands* scales it, **Bounce** swings each part as a jump would, and **Test hand** puts another player's open hand in
@@ -1688,7 +1695,7 @@ seen giving way; with Squeeze as well, pushed from both sides, both give and mee
 cannot push a part in Play mode: the cloth puts its bones back every frame. Knobs moved in Play mode go back when it ends, as every
 component's do. Each fold under **Tune how it feels** says what it does and how to see it, and its fold
 **Animate it** lists the material properties to key. The last step, **Build**, says whether the
-build is up to date and, if not, why: its parts or the layers left alone changed, the painted body
+build is up to date and, if not, why: its parts, the layers left alone or the twitch changed, the painted body
 changed, or it was built by an older YAPS (the squash code is copied into the build, so an update
 reaches it only through a rebuild). **Rebuild the squash** stands out only then, and a preview
 running in the tester carries on through it. The step also removes the squash (the knobs stay on

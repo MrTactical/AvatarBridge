@@ -3139,6 +3139,20 @@ layers get a copy at all), `_YAPS_DentOwn` RGBA, the draw's two states and one f
    knobs for jellied parts (flattest, widest, spill, collider push) hidden there. The tester: the
    jelly runs in Play mode only (the render controller is a runtime component); add a fist, a
    slap and a twitch, the Squeeze, Grab and Slap bars from one readback, and an edit-mode note.
+   (a) BUILT 2026-11-01: `YapsSquashSettings.feels`, a feel a part by its name: a preset
+   (Breasts, Butt, Thighs, Belly, Custom) filling eight knobs, each a share of what the build
+   writes (firmness `_Hz` and `_Stiff`, settle `_Viscous`, give, swing `_Limit`, spring back the
+   mass's Hz and damping, taut, press depth `_Deepest`, slap `_Slap`), 1 as built. A part's
+   first build guesses its preset from its name, else the bone it rides, and stores it;
+   `YapsJelly.Tune` writes it, at the build and live from `YapsSquash.Apply` (`Retune`), along
+   with the squash knobs the tissue reads (`Live`: hand size, meet, volume kept, grip slides). The
+   inspector's Each part card: Preset and the eight sliders, a slider moved off the preset making
+   it Custom; the dent-only knobs (flattest, widest, spill, cloth push) hidden once jellied; a
+   twitch change now reads as needing a rebuild. Kar, painted: Breast, Belly, Butt and Thighs
+   guessed right (2.40, 2.16, 3.00, 3.60 Hz), one part's firmness at 2 moved its steps alone;
+   breasts PASS with the same numbers. Open: the presets past Breasts are guesses (step 4 tunes
+   them on film and in game), other players' hands and stretch in motion not yet live, and the
+   tester's Play-mode presses (3b).
 4. **The butt and thighs again.** The seat's poke fell from 147.0 mm (run119, 2026-10-29) to 17.8
    (butt1k, 2026-10-31), contact 93.3 to 9.7, both still passing: bisect before tuning. Its three
    failing checks look like the breast-shaped test: hands outer aims from the lattice's width

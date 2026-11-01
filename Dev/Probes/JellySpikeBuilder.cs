@@ -1339,6 +1339,37 @@ namespace AvatarBridge.Regression
                 Debug.Log($"[Jelly] build {round} {(fine ? "ok" : "BAD")}: {said} Worn: {string.Join(", ", worn)}; {reading} of {mats.Count} squash materials read it, " +
                           $"per slot {string.Join("/", slots)}, {owned} with the parts texture, the squash's parts carried as {carried}");
             }
+            // Each part's feel: the preset its first build guessed, its knobs on its own step materials,
+            // and one knob moved live reaching that part alone.
+            {
+                var settings = YapsSquash.SettingsOf(root);
+                var parts = root.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith(Worn + " ")).ToList();
+                List<Material> StepsOf(Transform w) => w.GetComponentsInChildren<CVRMaterialDataProvider>(true).SelectMany(q => q.materials).Where(m => m != null && m.HasProperty("_MassHz")).Distinct().ToList();
+                var said = new List<string>();
+                bool feelOk = parts.Count > 0;
+                foreach (var w in parts)
+                {
+                    string name = w.name.Substring(Worn.Length + 1);
+                    var f = settings.feels.FirstOrDefault(q => q.part == name);
+                    var hz = StepsOf(w).Select(m => m.GetFloat("_Hz")).Distinct().ToList();
+                    bool fits = f != null && hz.Count == 1 && Mathf.Abs(hz[0] - 2.4f * f.firmness) < 1e-4f;
+                    feelOk &= fits;
+                    said.Add($"{name} {(f != null ? f.preset.ToString() : "no feel")} at {string.Join("/", hz.Select(x => x.ToString("0.00")))} Hz{(fits ? "" : " WRONG")}");
+                }
+                var first = settings.feels.First(q => parts.Any(w => w.name == WornName(q.part)));
+                var others = parts.Where(w => w.name != WornName(first.part)).ToDictionary(w => w, w => StepsOf(w).Select(m => m.GetFloat("_Hz")).ToList());
+                float was = first.firmness;
+                first.firmness = 2f;
+                YapsSquash.Apply(root);
+                var moved = StepsOf(parts.First(w => w.name == WornName(first.part))).Select(m => m.GetFloat("_Hz")).Distinct().ToList();
+                bool alone = moved.Count == 1 && Mathf.Abs(moved[0] - 4.8f) < 1e-4f && others.All(kv => StepsOf(kv.Key).Select(m => m.GetFloat("_Hz")).SequenceEqual(kv.Value));
+                feelOk &= alone;
+                first.firmness = was;
+                YapsSquash.Apply(root);
+                ok &= feelOk;
+                Debug.Log($"[Jelly] feel {(feelOk ? "ok" : "BAD")}: {string.Join(", ", said)}; {first.part}'s firmness at 2 put its steps at {string.Join("/", moved.Select(x => x.ToString("0.00")))} Hz, " +
+                          $"the others {(alone ? "unmoved" : "MOVED")}");
+            }
             YapsSquash.Strip(root);
             var left = root.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith("Jelly")).Select(t => t.name).ToList();
             ok &= left.Count == 0;

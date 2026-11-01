@@ -16,6 +16,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using ABI.CCK.Components;
 using ABI.CCK.Scripts;
+using AvatarBridge.Yaps;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -51,6 +52,107 @@ namespace AvatarBridge
             public bool twitch, slide;
             // The menu and animator wired.
             public bool wire = true;
+        }
+
+        // How the build tunes a part its bone carries, before the part's feel scales it. Carried on
+        // the cloth: the mass at 2.5 Hz, critically damped, a hand's press moving 0.35 of the whole,
+        // held within 0.2 of its length. At 0.6 within 0.35 a squeeze from both sides drove a pair
+        // together until their masses met, and the hands' push then took them up toward the chin.
+        internal const float CarriedHz = 2.5f, CarriedZeta = 1f, CarriedGive = 0.35f, CarriedLimit = 0.2f;
+
+        // The presets' knobs in the Feel's order: firmness, settle, give, swing, spring back, taut,
+        // press depth, slap. Breasts are what the build was tuned on; the rest are first guesses
+        // from them, firmer and swinging less where the flesh sits tighter on the bone.
+        internal static readonly string[] FeelKnobs = { "firmness", "settle", "give", "swing", "springBack", "taut", "depth", "slap" };
+        internal static readonly Dictionary<YapsSquashSettings.Preset, float[]> Presets = new Dictionary<YapsSquashSettings.Preset, float[]>
+        {
+            { YapsSquashSettings.Preset.Breasts, new[] { 1f, 1f, 1f, 1f, 1f, 1f, 1f, 1f } },
+            { YapsSquashSettings.Preset.Butt, new[] { 1.25f, 1.2f, 0.85f, 0.75f, 1.2f, 1f, 1f, 1.25f } },
+            { YapsSquashSettings.Preset.Thighs, new[] { 1.5f, 1.4f, 0.6f, 0.5f, 1.4f, 1.25f, 0.8f, 1f } },
+            { YapsSquashSettings.Preset.Belly, new[] { 0.9f, 1.25f, 0.9f, 0.6f, 1f, 1f, 1.2f, 0.8f } },
+        };
+
+        internal static float[] KnobsOf(YapsSquashSettings.Feel f) => new[] { f.firmness, f.settle, f.give, f.swing, f.springBack, f.taut, f.depth, f.slap };
+
+        // A part's preset from its name, else from the bone it rides: legs, then arms and the head
+        // (none), the chest, the spine, and anything else under the hips.
+        internal static YapsSquashSettings.Preset Guess(string name, Transform rides, Animator animator)
+        {
+            if (Regex.IsMatch(name, "breast|boob|chest|pec", RegexOptions.IgnoreCase)) return YapsSquashSettings.Preset.Breasts;
+            if (Regex.IsMatch(name, "thigh|leg", RegexOptions.IgnoreCase)) return YapsSquashSettings.Preset.Thighs;
+            if (Regex.IsMatch(name, @"butt|glute|\bass\b|booty|\bbum|seat", RegexOptions.IgnoreCase)) return YapsSquashSettings.Preset.Butt;
+            if (Regex.IsMatch(name, @"belly|stomach|tummy|\bgut|abdom", RegexOptions.IgnoreCase)) return YapsSquashSettings.Preset.Belly;
+            if (rides == null || animator == null || !animator.isHuman) return YapsSquashSettings.Preset.Custom;
+            bool Under(params HumanBodyBones[] bones) => bones.Select(animator.GetBoneTransform).Any(b => b != null && (rides == b || rides.IsChildOf(b)));
+            if (Under(HumanBodyBones.LeftUpperLeg, HumanBodyBones.RightUpperLeg)) return YapsSquashSettings.Preset.Thighs;
+            if (Under(HumanBodyBones.LeftShoulder, HumanBodyBones.RightShoulder, HumanBodyBones.LeftUpperArm, HumanBodyBones.RightUpperArm, HumanBodyBones.Neck)) return YapsSquashSettings.Preset.Custom;
+            if (Under(HumanBodyBones.Chest, HumanBodyBones.UpperChest)) return YapsSquashSettings.Preset.Breasts;
+            if (Under(HumanBodyBones.Spine)) return YapsSquashSettings.Preset.Belly;
+            return Under(HumanBodyBones.Hips) ? YapsSquashSettings.Preset.Butt : YapsSquashSettings.Preset.Custom;
+        }
+
+        // The part's feel, a guessed preset's added the first time a build meets it.
+        internal static YapsSquashSettings.Feel FeelOf(YapsSquashSettings s, string part, Transform rides, Animator animator)
+        {
+            var f = s?.feels.FirstOrDefault(q => q.part == part);
+            if (f != null) return f;
+            f = new YapsSquashSettings.Feel { part = part, preset = Guess(part, rides, animator) };
+            if (Presets.TryGetValue(f.preset, out var k))
+                (f.firmness, f.settle, f.give, f.swing, f.springBack, f.taut, f.depth, f.slap) = (k[0], k[1], k[2], k[3], k[4], k[5], k[6], k[7]);
+            if (s == null) return f;
+            Undo.RecordObject(s, "Put the breasts on the jelly");
+            s.feels.Add(f);
+            EditorUtility.SetDirty(s);
+            return f;
+        }
+
+        // A part's feel on one of its step materials, each knob a share of what the build gives it:
+        // the mass's rate, damping, give and limit as the build worked them out, the rest the tissue's.
+        internal static void Tune(Material mat, YapsSquashSettings.Feel f, float hz, float zeta, float give, float limit)
+        {
+            // A little more pillow: the tissue's pull to its rest 2.4 a second, from 3.
+            mat.SetFloat("_Hz", 2.4f * f.firmness);
+            mat.SetFloat("_Stiff", Mathf.Clamp01(0.5f * f.firmness));
+            // About 0.7 of critical at the tissue's own 3 Hz: a dent fills back, no wobble.
+            mat.SetFloat("_Viscous", 25f * f.settle);
+            mat.SetFloat("_Give", Mathf.Clamp(give * f.give, 0f, 0.95f));
+            mat.SetFloat("_Limit", limit * f.swing);
+            mat.SetFloat("_MassHz", hz * f.springBack);
+            mat.SetFloat("_MassDamp", 2f * zeta * 2f * Mathf.PI * hz * f.springBack);
+            mat.SetFloat("_Taut", f.taut);
+            mat.SetFloat("_Deepest", 0.05f * f.depth);
+            mat.SetVector("_Slap", new Vector4(1.2f, 0.01f * f.slap, 0.03f * f.slap, 1.5f));
+            EditorUtility.SetDirty(mat);
+        }
+
+        // The squash's own knobs that mean something to the tissue, live like the feel.
+        internal static void Live(Material mat, YapsSquashSettings s, bool slide = false)
+        {
+            mat.SetFloat("_Hand", s != null ? s.handSize : 0.05f);
+            // Solid: the homes take 0.7 of the whole's own squash at constant volume, so a squeeze
+            // bulges it the other ways and it comes back when let go.
+            mat.SetFloat("_Solid", 0.7f * (s != null ? s.volumeKept : 1f));
+            // A part alone has no partner to meet.
+            mat.SetFloat("_Pair", (s == null || s.meet) && mat.GetFloat("_Regions") > 1.5f ? 1f : 0f);
+            // The squash's Grip slides: 2 cm of drag, then the grip goes with the fist.
+            mat.SetFloat("_GripSlip", slide || s != null && s.gripSlides ? 0.02f : 0f);
+            EditorUtility.SetDirty(mat);
+        }
+
+        // A worn part retuned from the component as its knobs move. A mass no cloth carries, a
+        // probe's, keeps its own swing: ponytail, the live knobs know only the carried mass's values.
+        internal static int Retune(Transform worn, YapsSquashSettings s)
+        {
+            string part = worn.name.Substring(Worn.Length + 1);
+            var f = s.feels.FirstOrDefault(q => q.part == part) ?? new YapsSquashSettings.Feel();
+            var mats = worn.GetComponentsInChildren<CVRMaterialDataProvider>(true).SelectMany(p => p.materials ?? new Material[0])
+                .Where(m => m != null && m.HasProperty("_MassHz")).Distinct().ToList();
+            foreach (var m in mats)
+            {
+                if (m.GetFloat("_MassCarried") > 0f) Tune(m, f, CarriedHz, CarriedZeta, CarriedGive, CarriedLimit);
+                Live(m, s);
+            }
+            return mats.Count;
         }
 
         // Each pair's jelly named by its pair, so putting one on takes that one off alone.
@@ -246,21 +348,19 @@ namespace AvatarBridge
             // the cloth's place, the cloth off; noMass leaves the lattices alone, for telling the
             // mass's doing from theirs.
             bool cloth = !o.mass;
-            if (cloth) hz = 2.5f;
+            if (cloth) hz = CarriedHz;
             if (o.noMass) hz = 0f;
             // How much of a held press moves the whole: a tenth, so a hand dents the flesh and the
             // body's own moves swing the mass, as the soft body does. From the tissue's stiffness
             // under a palm against the spring the breast hangs on, it was 0.4 to 0.56, and every
             // press shoved the whole breast: "far too volatile".
-            // Carried on the cloth, 0.35, held within 0.2 of its length. At 0.6 within 0.35 a squeeze
-            // from both sides drove the pair together until their masses met, and the hands' push
-            // then took them up toward the chin.
-            float give = cloth ? 0.35f : 0.1f;
+            // Carried on the cloth, CarriedGive.
+            float give = cloth ? CarriedGive : 0.1f;
             // The whole's damping, 0.6 of critical: heavy flesh settles in about a swing, where at a
             // quarter one hit swung it back and forth for seconds. The options set
             // either, for tuning.
             if (!float.IsNaN(o.give)) give = o.give;
-            float zeta = !float.IsNaN(o.zeta) ? o.zeta : cloth ? 1f : 0.6f;
+            float zeta = !float.IsNaN(o.zeta) ? o.zeta : cloth ? CarriedZeta : 0.6f;
             var n = new Vector3Int(Mathf.Max(3, Mathf.CeilToInt(size.x / cell) + 1), Mathf.Max(3, Mathf.CeilToInt(size.y / cell) + 1), Mathf.Max(3, Mathf.CeilToInt(size.z / cell) + 1));
             float spacing = Mathf.Max(size.x / (n.x - 1), size.y / (n.y - 1), size.z / (n.z - 1));
 
@@ -289,16 +389,9 @@ namespace AvatarBridge
             // The third pass too, which judges the same reach to wake a rest.
             foreach (var mat in core.provider.materials)
             {
-                mat.SetFloat("_MassHz", hz);
-                mat.SetFloat("_MassDamp", 2f * zeta * 2f * Mathf.PI * hz);
-                mat.SetFloat("_Give", give);
+                // The rates, give and limit with the part's feel, once the bone it rides is known.
                 mat.SetFloat("_MassCarried", cloth ? 1f : 0f);
-                mat.SetFloat("_Limit", cloth ? 0.2f : 0.6f);
                 mat.SetFloat("_MassRadius", radius);
-                // A little more pillow: the tissue's pull to its rest 2.4 a second, from 3.
-                mat.SetFloat("_Hz", 2.4f);
-                // A part alone has no partner to meet.
-                mat.SetFloat("_Pair", sides == 2 ? 1f : 0f);
                 var apart = sides == 2 ? new Vector3(0.5f * (los[1].x + his[1].x - los[0].x - his[0].x), 0.5f * (los[1].y + his[1].y - los[0].y - his[0].y), los[1].z - los[0].z) : Vector3.zero;
                 mat.SetVector("_PairOffset", apart);
                 // Each one's half width across, and any gap between them as built: where the plane
@@ -318,11 +411,6 @@ namespace AvatarBridge
                 // Flesh barely changes volume but gives easily in shear, so nearly all of each
                 // neighbourhood's own squash is kept: half kept, it sprang back like rubber.
                 mat.SetFloat("_Squish", 0.9f);
-                // About 0.7 of critical at the tissue's own 3 Hz: a dent fills back, no wobble.
-                mat.SetFloat("_Viscous", 25f);
-                // Solid: the homes take 0.7 of the whole's own squash at constant volume, so a squeeze
-                // bulges it the other ways and it comes back when let go.
-                mat.SetFloat("_Solid", 0.7f);
                 mat.SetVector("_Motion", motion);
                 EditorUtility.SetDirty(mat);
             }
@@ -349,6 +437,7 @@ namespace AvatarBridge
             // The region stays out of the bone's tree, where the cloth would take it for a bone of
             // its own and bend the chain toward it.
             var carriers = new string[sides];
+            Transform rides = chest;
             if (cloth)
             {
                 var provider = made.GetComponentInChildren<CVRMaterialDataProvider>(true);
@@ -373,6 +462,7 @@ namespace AvatarBridge
                     }
                     provider.transforms[side] = bone;
                     carriers[side] = bone.name;
+                    if (side == 0) rides = bone;
                 }
                 // And each region held still where it hangs on the chest, for how far the cloth has
                 // swung it: the step stretches it by that, as the squash does.
@@ -543,9 +633,14 @@ namespace AvatarBridge
                 mat.SetVector("_JellyCol0", new Vector4(colRadii[0], colRadii[1], colRadii[2], colRadii[3]));
                 mat.SetVector("_JellyCol1", new Vector4(colRadii[4], colRadii[5], colRadii[6], colRadii[7]));
                 mat.SetFloat("_JellyTwitch", twitch != null ? handed.Count - 1 : 0);
-                // The squash's Grip slides: 2 cm of drag, then the grip goes with the fist.
-                mat.SetFloat("_GripSlip", o.slide || squashed != null && squashed.gripSlides ? 0.02f : 0f);
                 EditorUtility.SetDirty(mat);
+            }
+            // The part's own feel and the squash's knobs, as the inspector writes them live.
+            var feel = FeelOf(squashed, names[pair], rides, animator);
+            foreach (var mat in core.provider.materials)
+            {
+                Tune(mat, feel, hz, zeta, give, cloth ? CarriedLimit : 0.6f);
+                Live(mat, squashed, o.slide);
             }
             // What the jelly tells the animator: the points strip's feedback through a driver the
             // parser fills.

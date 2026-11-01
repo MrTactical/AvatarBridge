@@ -69,6 +69,22 @@ namespace AvatarBridge.Yaps
                  "Off, a grip stays where the fist closed and lets go when pulled too far.")]
         public bool gripSlides = false;
 
+        // Each part on the live tissue, by the name the build gives it: a preset filling eight knobs,
+        // each a share of how the build tunes that part, 1 as built. A part's first build guesses its
+        // preset from its name or the bone it rides. Drawn by the inspector's own card, live.
+        public enum Preset { Breasts, Butt, Thighs, Belly, Custom }
+
+        [Serializable]
+        public class Feel
+        {
+            public string part = "";
+            public Preset preset = Preset.Custom;
+            public float firmness = 1f, settle = 1f, give = 1f, swing = 1f, springBack = 1f, taut = 1f, depth = 1f, slap = 1f;
+        }
+
+        [HideInInspector]
+        public List<Feel> feels = new List<Feel>();
+
         // Drawn by the inspector's Parts card, not with the knobs: both need a rebuild.
         [Tooltip("Bones picked by hand in place of the name search, two to a pair, one each side, " +
                  "next to each other in the list: cheeks, thighs, anything that comes in two. The squash takes the first two pairs, the live tissue the first four. " +

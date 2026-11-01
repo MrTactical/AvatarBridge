@@ -206,6 +206,10 @@ namespace AvatarBridge
                 WriteKnobs(s, m);
                 EditorUtility.SetDirty(m);
             }
+            // The live tissue's step materials too: each part's feel and the knobs it reads.
+            if (s != null)
+                foreach (var worn in root.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith(YapsJelly.Worn + " ")))
+                    YapsJelly.Retune(worn, s);
             return mats.Count;
         }
 
@@ -304,7 +308,7 @@ namespace AvatarBridge
             if (s != null && s.pairs.Count > 0 && RegionsOf(root, out string refusal) == null && refusal != null)
                 return $"Needs painting again: {refusal}.";
             if (s != null && RegionsHash(s) != s.builtFrom)
-                return "Needs a rebuild: the parts or the layers left alone changed since it was built.";
+                return "Needs a rebuild: the parts, the layers left alone or the twitch changed since it was built.";
             tone = Tone.Good;
             return $"Up to date: built on {on}, parts {PartsFrom(s)}. Knobs need no rebuild.";
         }
@@ -323,6 +327,8 @@ namespace AvatarBridge
                 // nothing, so a build from before them does not read as stale.
                 foreach (var t in s.partBones) foreach (char c in t != null ? t.name : "") h = h * 31 + c;
                 foreach (var m in s.leaveAlone) foreach (char c in m != null ? m.name : "") h = h * 37 + c;
+                // Off adds nothing, so a build from before it does not read as stale.
+                if (s.twitch) h = h * 41 + Mathf.RoundToInt(s.twitchSize * 1000f) + 1;
                 return h;
             }
         }

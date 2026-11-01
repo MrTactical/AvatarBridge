@@ -49,7 +49,7 @@ namespace AvatarBridge
             { "In motion", "As the physics swing a part, it stretches away from where it hangs and squashes back. See it in the Avatar Tester with Bounce, or move the avatar in Play mode." },
             { "What presses it", "What dents the parts besides each other, each with its own strength. See hands in the Avatar Tester with the test hand." },
             { "Live tissue", "Twitch adds a menu toggle whose every flip kicks the jiggle; Grip slides lets a hand that grabs the skin stroke along it, the grip going with the hand. " +
-                             "Rebuild to change either. " +
+                             "Rebuild to change the twitch; Grip slides is live. " +
                              "Whatever is set here, the jelly tells the animator three floats from 0 to 1 a pair, under the pair's name, for blend shapes, particles or anything else to follow: " +
                              "#Jelly/<pair>/Squeeze, how hard it is pressed or pulled; #Jelly/<pair>/Grab, 1 while a hand grips it; #Jelly/<pair>/Slap, how hard the last slap landed, fading. " +
                              "Each viewer works them out on their own machine, so they never sync." },
@@ -57,6 +57,22 @@ namespace AvatarBridge
 
         static readonly string[] HereNotKnobs = { "partBones", "leaveAlone" };
         static readonly string[] JellyOnly = { "twitch", "twitchSize", "gripSlides" };
+        // The squash's dent alone reads these, and every part it dents is on the live tissue once
+        // that is built.
+        static readonly string[] DentOnly = { "flattest", "widest", "spill", "clothPush" };
+
+        static readonly string[] FeelLabels = { "Firmness", "Settle", "Give", "Swing", "Spring back", "Taut", "Press depth", "Slap" };
+        static readonly string[] FeelTips =
+        {
+            "How firm the flesh is: higher fills a dent back sooner and wobbles quicker.",
+            "How soon a wobble dies down: higher settles sooner, lower keeps it jiggling.",
+            "How much of a hand's press moves the whole part rather than denting it.",
+            "How far the whole part may swing off where it rests.",
+            "How quickly the whole part comes back after a push.",
+            "How much it stiffens while it is pressed or pulled.",
+            "How deep a hand sinks in before the skin holds it.",
+            "How deep a slap ripples.",
+        };
 
         const string Animatable =
             "material._YAPS_DentPower        0 off, 1 on\n" +
@@ -166,7 +182,7 @@ namespace AvatarBridge
             bool jellied = settings.GetComponentsInChildren<Transform>(true).Any(t => t.name.StartsWith("Jelly Region"));
             while (it.NextVisible(false))
             {
-                if (HereNotKnobs.Contains(it.name) || !jellied && JellyOnly.Contains(it.name)) continue;
+                if (HereNotKnobs.Contains(it.name) || !jellied && JellyOnly.Contains(it.name) || jellied && DentOnly.Contains(it.name)) continue;
                 var field = typeof(YapsSquashSettings).GetField(it.name);
                 if (field?.GetCustomAttributes(typeof(HeaderAttribute), false).FirstOrDefault() is HeaderAttribute h)
                 {
@@ -177,6 +193,8 @@ namespace AvatarBridge
                 }
                 (fold != null ? fold.Body : feel.Body).Add(YapsInspectorStyle.Field(it.Copy(), field));
             }
+
+            if (jellied) feel.Body.Add(EachPart(settings, root));
 
             var animate = new BridgeElements.Card("Animate it", "turn it off or change it from a toggle", false).Nested();
             feel.Body.Add(animate);
@@ -229,6 +247,61 @@ namespace AvatarBridge
                 YapsSquash.Apply(root);
                 SceneView.RepaintAll();
             });
+        }
+
+        // Each part on the live tissue: a preset and its eight knobs, each a share of how the build
+        // tunes the part. Live like the rest; a knob moved off the preset makes it Custom.
+        BridgeElements.Card EachPart(YapsSquashSettings settings, Transform root)
+        {
+            var worn = root.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith(YapsJelly.Worn + " "))
+                .Select(t => t.name.Substring(YapsJelly.Worn.Length + 1)).ToList();
+            var card = new BridgeElements.Card("Each part", worn.Count == 1 ? "one part, its own preset" : $"{worn.Count} parts, a preset each", false)
+                .Nested().Remember("Yaps.Squash.EachPart");
+            card.Body.Add(BridgeElements.Hint("Each part on the live tissue has its own feel. Pick a preset for what it is, then move any knob off it: 1 is the feel the breasts were tuned on, 2 twice that. " +
+                                              "Live, no rebuild. In Play mode, press it with the Avatar Tester to feel the change."));
+            var feels = serializedObject.FindProperty("feels");
+            foreach (var part in worn)
+            {
+                int i = settings.feels.FindIndex(f => f.part == part);
+                card.Section(part);
+                if (i < 0)
+                {
+                    card.Body.Add(BridgeElements.Hint("Built before parts had a feel of their own: rebuild to give it one."));
+                    continue;
+                }
+                string at = $"feels.Array.data[{i}]";
+                var preset = new EnumField("Preset", settings.feels[i].preset) { bindingPath = at + ".preset",
+                    tooltip = "Fills the knobs below for a breast, a butt, thighs or a belly. Custom keeps them as they are." };
+                preset.AddToClassList("ab-field");
+                preset.RegisterValueChangedCallback(e =>
+                {
+                    if (!(e.newValue is YapsSquashSettings.Preset chosen) || !YapsJelly.Presets.TryGetValue(chosen, out var k)) return;
+                    var f = feels.GetArrayElementAtIndex(i);
+                    for (int q = 0; q < k.Length; q++) f.FindPropertyRelative(YapsJelly.FeelKnobs[q]).floatValue = k[q];
+                    serializedObject.ApplyModifiedProperties();
+                });
+                card.Body.Add(preset);
+                for (int q = 0; q < YapsJelly.FeelKnobs.Length; q++)
+                {
+                    int knob = q;
+                    var slider = BridgeElements.SliderField(FeelLabels[q], FeelTips[q], 0.25f, 3f, YapsJelly.KnobsOf(settings.feels[i])[q], v =>
+                    {
+                        // Off the preset's values, it is the wearer's own. The new value is taken
+                        // from the slider, which may move before the binding writes it.
+                        var f = settings.feels[i];
+                        var now = YapsJelly.KnobsOf(f);
+                        now[knob] = v;
+                        if (YapsJelly.Presets.TryGetValue(f.preset, out var k) && !now.SequenceEqual(k))
+                        {
+                            feels.GetArrayElementAtIndex(i).FindPropertyRelative("preset").enumValueIndex = (int) YapsSquashSettings.Preset.Custom;
+                            serializedObject.ApplyModifiedProperties();
+                        }
+                    });
+                    slider.bindingPath = $"{at}.{YapsJelly.FeelKnobs[q]}";
+                    card.Body.Add(slider);
+                }
+            }
+            return card;
         }
     }
 
