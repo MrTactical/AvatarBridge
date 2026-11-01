@@ -3178,6 +3178,26 @@ layers get a copy at all), `_YAPS_DentOwn` RGBA, the draw's two states and one f
    same: 1.86% then, 1.81% now. So the poke check moves to the skin under the finger and the
    whole's move, off the furthest particle, before the seat is tuned. The contact's fall (93.3 to
    9.7) is not read yet. `-jellyKnobs` sets every part's eight knobs for a run (eight values).
+   (a) BUILT 2026-11-01: the probe pressed every part along the avatar's forward, so a seat was
+   poked, squeezed and slapped from inside the hips: its contact's fall to 9.7 and its hands outer
+   failure were that (75.5 mm and passing along the part's own outward). Every press now comes
+   from off the part along its region's forward, and the poke goes 3 cm past the skin on the
+   part's middle line (the outermost body vertex within 2 cm of it), read as how far the skin
+   under the finger went in (the draw's trilinear over the particles) and the whole with it.
+   Read that way, every part caved: a 3 cm finger took the skin under it 43 to 110 mm in and the
+   whole part to 0.86 to 0.87 of its depth, still sinking while held, its volume to 0.86 to 0.89,
+   41 mm off 30 frames after letting go. The bulk fit is of the particles, which sit on the
+   homes, so `_Solid` took its share of the homes' own squash too: at 0.7 a dent came back 3.3
+   times over, more as it grew (volume kept 0.5 settled at 0.963 by frame 180, 0 left the skin
+   39.2 mm in). Fixed in the step: weighted `_Solid / (1 + _Solid)`, the homes end at `_Solid`
+   of what the hands do. Kar, s4e: breasts PASS, the poke's skin 51.9 mm in (84.0), its bulk
+   settled at 0.953 (0.871), 16 mm off after (41), the wall back to 1.3 mm (5.3), contact 70.3
+   (88.1); seat, thighs and belly settle alike at 0.95. Left failing: the seat's probes (the
+   ball's quick slap rang none, its probes moving 20.8 mm to the breasts' 38.9: the probe reach,
+   above) and own through (68.7 mm with the hand at its deepest; the probe now logs whether the
+   arm reaches); the thighs' probes (the ball never reaches a probe) and own through (47.2); the
+   belly's partner checks and hands outer, 33.6 mm against a threshold set on breasts (it passed
+   at 51.1 on the caving), step 5. In game: a poke now dents and no longer sinks the whole part.
 5. **Tests.** VerifyBreasts made part-agnostic: the region's forward for every press, thresholds
    scaled by the part's size, partner checks skipped for a single part, a thigh check (the film's
    `-jellyThighs` prep in the check). A seeded random-patch generator (pairs over mesh adjacency

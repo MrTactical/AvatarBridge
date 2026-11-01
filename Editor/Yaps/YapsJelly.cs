@@ -2408,6 +2408,10 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // barely changes volume, so squeezed one way it bulges the others, most where nothing holds
             // it, and let go it comes back. A pressure in its place swelled the whole evenly, into the
             // squeezing hands too, as a balloon would. w is the volume the map had, kept for the trace.
+            // The map is of the particles, which sit on the homes, so it holds the homes' own squash:
+            // taking _Solid of it outright, a 3 cm poke flattened the whole part to 0.87 of its depth and
+            // kept sinking while held. Weighted _Solid / (1 + _Solid), the homes end at _Solid of what
+            // the hands do.
             float4 Bulk(int k, float4x4 m, bool distant, uint side)
             {
                 float4 none = float4(k == 0, k == 1, k == 2, 1);
@@ -2450,7 +2454,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 a = 0.5 * (a + transpose(a));
                 float volume = determinant(a);
                 if (!(volume > 0.3 && volume < 3)) return none;
-                float3x3 shape = (1 - _Solid) * float3x3(1, 0, 0, 0, 1, 0, 0, 0, 1) + _Solid * a * pow(volume, -1.0 / 3.0);
+                float share = _Solid / (1 + _Solid);
+                float3x3 shape = (1 - share) * float3x3(1, 0, 0, 0, 1, 0, 0, 0, 1) + share * a * pow(volume, -1.0 / 3.0);
                 return float4(transpose(shape)[k], volume);
             }
 
