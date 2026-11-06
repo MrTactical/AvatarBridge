@@ -3427,6 +3427,11 @@ Not tripping; the probe's numbers since the night films of Oct 31 (night1k, nigh
    no ignore list, so the piercing became the breast's moving tip, the cloth's full radius round it.
    A converter question, every avatar with an ignore at a leaf: keep the ignored child out of the
    chain (reparented and constrained, or an endpoint particle in its place), never silently.
+   There the piercing is the chain's only moving particle, the one that swings the breast, and its
+   ball matches the source's radius. `YAPS squash follow` is not: a second ball of 0.19 m at the
+   breast's middle that VRChat never had, so any hand near the middle drags the breast. To fix:
+   the follow off the bone (a constraint, or the shader taking the mover's matrix and the offset),
+   which touches `YapsSquash` and `yaps_dent.cginc`, both parked mid-work in Joe's project.
 6. **Hands carrying only a MagicaCloth collider dent the jelly, in the editor.** Joe: "we need a
    probe on that, because it may not be working in game". The film's collider-only row
    (`-spMagicaHands -spNoArrays`), traced: the probes read up to 102 mm, both slots fill, and the
@@ -3434,8 +3439,8 @@ Not tripping; the probe's numbers since the night films of Oct 31 (night1k, nigh
    the open hand, 131 the fist, 68 the deep poke, against 51, 63 and 77 with the arrays; the mass
    moves less (2 to 10 mm against 8 to 31), the probes dent, never lean. In game unproven: the
    client gives each hand a MagicaCloth capsule and adds it to the wearer's cloths by the viewer's
-   Dynamic Bone Interaction settings (read in the decompile, never seen on the probes' cloth). Open:
-   a pass or fail line for the collider-only row.
+   Dynamic Bone Interaction settings (read in the decompile, never seen on the probes' cloth). The
+   collider matrix of 7 below is its pass or fail line.
    **BUILT for game: Probe Markers** (YAPS Squash, Live tissue, off by default) adds a **Jelly
    probes (debug)** menu toggle: a marker skinned to each probe tip the step reads, white turning
    red as far as the step read it pushed (a centimetre red), drawn over everything. Moved and red,
@@ -3443,6 +3448,63 @@ Not tripping; the probe's numbers since the night films of Oct 31 (night1k, nigh
    client gave the probes no collider. Checked by `BuildCheck -jellyMarkers` (a marker on every
    probe, hidden as built, the toggle's two clips, taken out with the jelly); `FilmBreasts
    -jellyMarkers` shows them in a film. Next: Joe and a second player in game.
+   **In game, by default, no other player's collider reaches the wearer's cloth at all** (read in
+   the client 2026-11-06): the three Dynamic Bone Interaction relations (from me, for me, global)
+   default to None and the placement to hands, a finger's collider only shared with the placement
+   on hands and fingers or everything. A hand without a collider of its own gets the client's
+   capsule, radius half its wrist to knuckles, twice that long; a hand with any MagicaCloth capsule
+   under it has that one taken as the hand's instead (`ColliderTools`), so a capsule on a finger
+   bone is the hand's. Planes are never shared. Players' hands dent through the arrays regardless.
+7. **MagicaCloth colliders of every shape and size.** Joe, 2026-11-06: "We need to get all the
+   types of colliders working ... people could have the capsule collider ... on their fingers, on
+   the bone of that finger, and I want that to work". Measured with the film probe's collider
+   matrix (`-spColliders -spNoArrays`, the trace's `truth_mm`, `slot_*` and `dent_at_mm`): a palm
+   capsule pointing in and lying flat, finger capsules of 8 and 5 mm pointing in and lying across,
+   spheres of 15 and 30 mm, each alone and slowly 4 cm in, on a cloth probe and where they sit
+   furthest apart, plus a finger drawn across at 2 cm and quick pokes. **As built: 12 cloth probes
+   a breast, on its front alone, up to 11 cm apart** (198 mm over the whole skin a hand reaches):
+   in a gap 85 mm from the nearest probe nothing was felt, the palm included; on a probe all read
+   34 of 40 mm, each as a 5 cm palm. Also found: the film's MagicaCloth hand was 2 radii short of
+   the hand drawn (MagicaCloth's capsule length is end to end, caps and all), a ball at the palm's
+   middle; fixed in the probe. **FIXED on dev:**
+   - The probes spread farthest first over all the skin a hand reaches, all but where it meets the
+     body, as many as leave none of it further than the reach from one, up to the room: 64 a
+     region, the 12 world balls among them, their readout moved to columns of their own past the
+     particles' (the state 192 wide). The reach grows to the gap left: 52 a breast on Kar's, 38 cm
+     across, none of the skin over 6.5 cm from one (117 would be needed for 4 cm). The world's
+     twelve balls stay spread over the front, as before: spread over all the skin they sat on its rim.
+   - Each felt collider sized from the probes round it: the size, from 5 mm to a hand's, whose
+     middle best sits a collider radius and a probe radius from each tip it pushed while clear of
+     the probes it left alone. The depth stays the leader's.
+   Matrix after (`colliders3`): all 11 felt. Radius palm 50, 50 and 40 lying; fingers 5 on a probe,
+   15, 10 lying, 8 for the 5 mm; spheres 10 for 15 mm, 30 for 30 mm. Depth on a probe 32 (palm) and
+   28 (finger) of 40; the palm in a gap 30, lying 22; the 30 mm sphere 18; a finger or the 15 mm
+   sphere in a gap -9 to -19, felt but its slot outside the skin. **Open:** that last row. A probe
+   on the skin slides round a thin collider's side, so how deep it went is not there to read; an
+   offline model of the probes (bones pushed out of an inflated collider) agreed, fingers at 7 to
+   13 mm for 30 even with 96 probes. Options: probes that cannot slide (a bone's tip held to its
+   line), a second layer under the skin, or a thin collider pressing at least its radius. The cost
+   of 128 probes a pair against 48 on a heavy scene is unmeasured, and the seat and thighs rows not
+   yet rerun on it.
+8. **Joe on the full breasts film with the probes spread (r2), 2026-11-06:** one breast lower (0:42),
+   "the titty also violently shakes" in the top and bottom squeeze, the pair "sticky towards each
+   other" after the squeeze (0:54), the markers not moving with the mesh, the test pulse showing
+   nothing. Measured from the trace (`-spMassTrace`, now with each slot, the rings and texel 85):
+   - **Lower: 5 again**, there before the probes changed too (58 mm after the two fingers, held to
+     the test pulse). The trace's hand gap leaves the particle's 190 mm out: 47 to 156 mm through
+     those shots is still inside a ball.
+   - **The shake is the breast's bone**, pinched by the top and bottom capsules through those balls:
+     its velocity -5.5 to +7.1 m/s from one frame to the next (texel 85), the lattice's middle up to
+     11 cm a frame, each jump ringing it as a landing. Three times this morning's flicker only since
+     the film's MagicaCloth hand got its true length; the slots held still (50 mm, 1 mm a frame).
+     Same cure as 5: the cloth's extra balls out of the chain.
+   - **The probes' slap never fires**: it waits for a push of a whole reach, and the push is held
+     to 0.8 of one. A collider only the probes feel never rings. Not yet fixed.
+   - The test pulse drives `_YAPS_SquashPulse`, the squash's own, which nothing draws under the
+     jelly: a stale film shot.
+   - The markers sit on each probe's rest spot, carried by the bone, red when pushed; neither they
+     nor the probes follow the jelly's dent or swing.
+   - Open: the stickiness after the squeeze, not yet measured.
 Open: the breasts beside night2k for Joe. Seen in the state trace, invisible until now: during a
 held press the whole mass slides 5 cm down off the hand in 11 frames (with 5, the bone shoved too),
 and while pushed its steps alternate about 6 and 2 mm frame to frame. Film both and judge; then

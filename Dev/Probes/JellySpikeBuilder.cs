@@ -64,6 +64,8 @@ namespace AvatarBridge.Regression
     [InitializeOnLoad]
     public static class JellySpikeBuilder
     {
+        // A state row's texels: the particles' two halves, then the probes' readout.
+        const int Wide = Readout + ProbesMax;
         // A new folder from 2026-10-27: an editor that rebuilt the old one by delete and remake
         // could no longer load its materials at all, so its assets start again under new GUIDs.
         // The probe prop's in a folder of its own, so building it leaves a worn jelly's assets be. Kept
@@ -577,12 +579,12 @@ namespace AvatarBridge.Regression
             if (film && frame >= 476 && frame <= 512 && frame % 4 == 0 || frame == 270)
             {
                 var rung = Read(state);
-                int rs = (2 * rows + 1) * 2 * Row;
+                int rs = (2 * rows + 1) * Wide;
                 float moved = regions[1].parent.GetComponentsInChildren<Transform>(true).Where(pbx => pbx.name.StartsWith("Jelly Probe Ball 1 "))
                     .Select(pbx => pbx.parent.Find(pbx.name.Replace("Ball", "Rest"))).Where(prr => prr != null)
                     .Max(prr => Vector3.Distance(prr.parent.Find(prr.name.Replace("Rest", "Ball")).position, prr.position));
                 Debug.Log($"[Jelly] slap frame {frame}: rings {Time.timeSinceLevelLoad - rung[rs + 80].w:0.00} s old {1000f * rung[rs + 81].w:0.0} mm, " +
-                          $"{Time.timeSinceLevelLoad - rung[rs + 82].w:0.00} s old {1000f * rung[rs + 83].w:0.0} mm; deepest probe {1000f * Enumerable.Range(0, 24).Max(k => rung[rs + 88 + k].w):0.0} mm, " +
+                          $"{Time.timeSinceLevelLoad - rung[rs + 82].w:0.00} s old {1000f * rung[rs + 83].w:0.0} mm; deepest probe {1000f * Enumerable.Range(0, ProbesMax).Max(k => rung[rs + Readout + k].w):0.0} mm, " +
                           $"furthest ball {1000f * moved:0.0} mm off its rest");
             }
             if (frame == 140) worldRest = Read(state);
@@ -593,7 +595,7 @@ namespace AvatarBridge.Regression
                 float most = 0f;
                 for (int i = 0; i < count; i++)
                 {
-                    int at = (r * (rows + 1) + i / Row) * 2 * Row + i % Row;
+                    int at = (r * (rows + 1) + i / Row) * Wide + i % Row;
                     most = Mathf.Max(most, Vector3.Distance(now[at], worldRest[at]));
                 }
                 return most;
@@ -607,7 +609,7 @@ namespace AvatarBridge.Regression
                     worldDent[1] = Mathf.Max(worldDent[1], Dent(now, 0));
                     // How far its skin stands past the wall's face: pressed flat, none.
                     for (int i = 0; i < count; i++)
-                        worldThrough = Mathf.Max(worldThrough, regions[1].InverseTransformPoint(now[(rows + 1 + i / Row) * 2 * Row + i % Row]).z - (span.z - 0.03f));
+                        worldThrough = Mathf.Max(worldThrough, regions[1].InverseTransformPoint(now[(rows + 1 + i / Row) * Wide + i % Row]).z - (span.z - 0.03f));
                 }
                 else worldDent[2] = Mathf.Max(worldDent[2], Dent(now, 1));
             }
@@ -813,7 +815,7 @@ namespace AvatarBridge.Regression
                 float most = 0f;
                 for (int i = 0; i < count; i++)
                 {
-                    int at = (r * (rows + 1) + i / Row) * 2 * Row + i % Row;
+                    int at = (r * (rows + 1) + i / Row) * Wide + i % Row;
                     most = Mathf.Max(most, Vector3.Distance(now[at], propRest[at]));
                 }
                 return most;
@@ -827,7 +829,7 @@ namespace AvatarBridge.Regression
                 for (int r = 0; r < 2 && frame < 990; r++)
                 {
                     if (bd < 0.02f) continue;
-                    int side = (r * (rows + 1) + rows) * 2 * Row;
+                    int side = (r * (rows + 1) + rows) * Wide;
                     float truth = regions[r].InverseTransformPoint(propBalls[r].transform.position).z - 0.045f;
                     var deep = Enumerable.Range(0, 8).Where(e => now[side + 2 * e + 1].w > 0.5f).Select(e => regions[r].InverseTransformPoint(now[side + 2 * e]).z - hand - truth).ToList();
                     propDragFrames++;
@@ -848,10 +850,10 @@ namespace AvatarBridge.Regression
                 int phase = frame < 300 ? 0 : 2;
                 for (int r = 0; r < 2; r++)
                 {
-                    int side = (r * (rows + 1) + rows) * 2 * Row;
+                    int side = (r * (rows + 1) + rows) * Wide;
                     propDent[phase + r] = Mathf.Max(propDent[phase + r], Dent(now, r));
                     propSlots[phase + r] = Mathf.Max(propSlots[phase + r], Enumerable.Range(0, 8).Count(e => now[side + 2 * e + 1].w > 0.5f));
-                    propPushed[phase + r] = Mathf.Max(propPushed[phase + r], Enumerable.Range(0, ProbesPer).Max(k => now[side + 88 + k].w));
+                    propPushed[phase + r] = Mathf.Max(propPushed[phase + r], Enumerable.Range(0, ProbesPer).Max(k => now[side + Readout + k].w));
                 }
             }
             // Pushed on through: the dent held at the deepest, nothing torn, let go once through.
@@ -860,14 +862,14 @@ namespace AvatarBridge.Regression
                 var now = Read(state);
                 float dent = Dent(now, 0);
                 propThrough[0] = Mathf.Max(propThrough[0], dent);
-                propThrough[1] = Mathf.Max(propThrough[1], Enumerable.Range(0, count).Count(i => Vector3.Distance(now[i / Row * 2 * Row + i % Row], propRest[i / Row * 2 * Row + i % Row]) > 0.1f));
+                propThrough[1] = Mathf.Max(propThrough[1], Enumerable.Range(0, count).Count(i => Vector3.Distance(now[i / Row * Wide + i % Row], propRest[i / Row * Wide + i % Row]) > 0.1f));
                 if (frame >= 1750 && frame < 1810) propThrough[2] = Mathf.Max(propThrough[2], dent);
             }
             // On the blue, which only the probes feel: each ball's nearest slot.
             if (frame >= 1960 && frame < 2010)
             {
                 var now = Read(state);
-                int sd = (2 * rows + 1) * 2 * Row;
+                int sd = (2 * rows + 1) * Wide;
                 var held = Enumerable.Range(0, 8).Where(e => now[sd + 2 * e + 1].w > 0.5f).Select(e => (Vector3) now[sd + 2 * e]).ToList();
                 for (int q = 2; q < 4; q++) propTwo = Mathf.Max(propTwo, held.Count == 0 ? 1f : held.Min(x => Vector3.Distance(x, propBalls[q].transform.position)));
             }
@@ -878,7 +880,7 @@ namespace AvatarBridge.Regression
                 float board = -0.5f * (n.y - 1) * spacing - 0.015f;
                 for (int r = 0; r < 2; r++)
                     for (int i = 0; i < count; i++)
-                        propDropLow = Mathf.Min(propDropLow, regions[r].InverseTransformPoint(now[(r * (rows + 1) + i / Row) * 2 * Row + i % Row]).y - board);
+                        propDropLow = Mathf.Min(propDropLow, regions[r].InverseTransformPoint(now[(r * (rows + 1) + i / Row) * Wide + i % Row]).y - board);
             }
             // A ring fired in the frames since the landing, as deep as a slap at its speed.
             if (frame == 2075)
@@ -886,7 +888,7 @@ namespace AvatarBridge.Regression
                 var now = Read(state);
                 for (int r = 0; r < 2; r++)
                 {
-                    int side = (r * (rows + 1) + rows) * 2 * Row;
+                    int side = (r * (rows + 1) + rows) * Wide;
                     for (int k = 0; k < 2; k++)
                         if (Time.timeSinceLevelLoad - now[side + 80 + 2 * k].w < 0.1f) propDropRing[r] = Mathf.Max(propDropRing[r], now[side + 81 + 2 * k].w);
                 }
@@ -897,7 +899,7 @@ namespace AvatarBridge.Regression
                 var told = Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_Points.renderTexture"));
                 for (int k = 0; k < 3; k++) propTold[k] = Mathf.Max(propTold[k], told[3 + k].x);
                 var now = Read(state);
-                int side = rows * 2 * Row;
+                int side = rows * Wide;
                 if (Enumerable.Range(0, 8).Any(e => now[side + 112 + e].w > 0f)) propGripped++;
                 var mass = regions[0].InverseTransformPoint(now[side + 30]);
                 if (frame == 2295 || frame == 2395) propMassRest = mass;
@@ -1685,7 +1687,7 @@ namespace AvatarBridge.Regression
                 }
             }
 
-            public bool Asleep() => Read(State)[side * 2 * Row + 18].y > 0.5f;
+            public bool Asleep() => Read(State)[side * Wide + 18].y > 0.5f;
 
             public void Anchor(params Matrix4x4[] m)
             {
@@ -1720,11 +1722,11 @@ namespace AvatarBridge.Regression
             public int Kept()
             {
                 var s = Read(State);
-                return Enumerable.Range(0, 8).Count(e => s[side * 2 * Row + 2 * e + 1].w == 1f);
+                return Enumerable.Range(0, 8).Count(e => s[side * Wide + 2 * e + 1].w == 1f);
             }
 
             // The far switch, as the steps left it and as the third pass hands it to the parser.
-            public bool Far() => Read(State)[side * 2 * Row + 18].x > 0.5f;
+            public bool Far() => Read(State)[side * Wide + 18].x > 0.5f;
 
             public bool Run() => Read(Where)[2].x > 0.5f;
 
@@ -2015,7 +2017,7 @@ namespace AvatarBridge.Regression
                 packed.Passes();
                 foreach (var r in apart) r.Passes();
             }
-            int block = (Side(Size) + 1) * 2 * Row, lattice = Side(Size) * 2 * Row;
+            int block = (Side(Size) + 1) * Wide, lattice = Side(Size) * Wide;
             var packedState = Read(packed.State);
             float apartBy = 0f;
             var keptBy = new int[3];
@@ -2227,7 +2229,7 @@ namespace AvatarBridge.Regression
         // shape would put it, and the fastest particle.
         static bool Health(Vector4[] s, Vector3Int n, Matrix4x4 anchor, out string said, out float frontOff)
         {
-            int width = 2 * Row, bad = 0;
+            int width = Wide, bad = 0;
             float held = 0f, fastest = 0f, worst = 0f;
             var worstAt = Vector3Int.zero;
             float spacing = SpacingOf(n);
@@ -2405,7 +2407,7 @@ namespace AvatarBridge.Regression
             // The rider's texels, decoded as the parser's tasks would, against the front centre.
             var where = Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_Points.renderTexture"));
             int front = ((n.z - 1) * n.y + n.y / 2) * n.x + n.x / 2;
-            var frontAt = seen.inverse.MultiplyPoint3x4((Vector3) tissueNow[(front / Row) * 2 * Row + front % Row]);
+            var frontAt = seen.inverse.MultiplyPoint3x4((Vector3) tissueNow[(front / Row) * Wide + front % Row]);
             var read = (Vector3) where[0] - Vector3.one * 0.5f;
             var turn = ((Vector3) where[1] - Vector3.one * 0.5f) * 360f;
             // The viewer here has no head, so the far switch must leave the steps running.
@@ -3077,7 +3079,7 @@ namespace AvatarBridge.Regression
             var front = breastRegions[0].TransformPoint(0f, 0f, box.z);
             var st = ReadState();
             int side = Side(breastN);
-            Vector3 centre = (Vector3) st[side * 2 * Row + 30] - breastRegions[0].TransformPoint(0f, 0f, 0.5f * (breastN.z - 1) * breastSpacing);
+            Vector3 centre = (Vector3) st[side * Wide + 30] - breastRegions[0].TransformPoint(0f, 0f, 0.5f * (breastN.z - 1) * breastSpacing);
             List<UnityEngine.UIElements.ProgressBar> Bars() => testerUi != null ? UnityEngine.UIElements.UQueryExtensions.Query<UnityEngine.UIElements.ProgressBar>(testerUi).ToList() : new List<UnityEngine.UIElements.ProgressBar>();
             UnityEngine.UIElements.ProgressBar Bar(int k) => Bars().ElementAtOrDefault(k);
             if (frame == 60)
@@ -3197,7 +3199,7 @@ namespace AvatarBridge.Regression
         }
 
         // Particle p of region r in a read state, packed a block of rows a region.
-        static Vector4 Particle(Vector4[] s, int r, int p) => s[(r * (Side(breastN) + 1) + p / Row) * 2 * Row + p % Row];
+        static Vector4 Particle(Vector4[] s, int r, int p) => s[(r * (Side(breastN) + 1) + p / Row) * Wide + p % Row];
 
         // How far the furthest particle of any region is from its rest on its anchor, from column x0 up
         // to x1 if given.
@@ -3223,14 +3225,14 @@ namespace AvatarBridge.Regression
         }
 
         // The first region's mass off its region's middle, as the trace reads it.
-        static Vector3 Whole(Vector4[] s) => (Vector3) s[Side(breastN) * 2 * Row + 30] - breastRegions[0].TransformPoint(0f, 0f, 0.5f * (breastN.z - 1) * breastSpacing);
+        static Vector3 Whole(Vector4[] s) => (Vector3) s[Side(breastN) * Wide + 30] - breastRegions[0].TransformPoint(0f, 0f, 0.5f * (breastN.z - 1) * breastSpacing);
 
         // How far a skin point of the first region went in along its outward, as the draw moves it: the
         // eight particles round it, each off its home on the anchor the state was stepped on.
         static float SkinIn(Vector4[] s, Vector3 skin)
         {
             var n = breastN;
-            int sr = Side(n) * 2 * Row;
+            int sr = Side(n) * Wide;
             var on = s[sr + 29].w > 0.5f ? new Matrix4x4((Vector3) s[sr + 26], (Vector3) s[sr + 27], (Vector3) s[sr + 28], s[sr + 29]) : breastRegions[0].localToWorldMatrix;
             var c = on.inverse.MultiplyPoint3x4(skin) / breastSpacing + new Vector3(0.5f * (n.x - 1), 0.5f * (n.y - 1), 0f);
             c = Vector3.Max(Vector3.zero, Vector3.Min(c, (Vector3) (n - Vector3Int.one)));
@@ -3254,7 +3256,7 @@ namespace AvatarBridge.Regression
             {
                 // Off the anchor the state was stepped on (26 to 29), as the draw reads it: between
                 // steps the bones have moved on and the state has not.
-                int sr = (r * (Side(n) + 1) + Side(n)) * 2 * Row;
+                int sr = (r * (Side(n) + 1) + Side(n)) * Wide;
                 var on = s[sr + 29].w > 0.5f ? new Matrix4x4((Vector3) s[sr + 26], (Vector3) s[sr + 27], (Vector3) s[sr + 28], s[sr + 29]) : anchors[r].localToWorldMatrix;
                 for (int k = 0; k < n.z; k++)
                     for (int j = 0; j < n.y; j++)
@@ -3360,7 +3362,7 @@ namespace AvatarBridge.Regression
                     halfFrames++;
                     if (stepping) halfOn++;
                     var st = ReadState();
-                    halfMost = Mathf.Max(halfMost, st[Side(n) * 2 * Row + 25].w);
+                    halfMost = Mathf.Max(halfMost, st[Side(n) * Wide + 25].w);
                 }
                 // Last, another player's collider: a ball of a hand's size put in the probes' cloth and
                 // dynamic bones as the client puts it, from 7 cm off the first breast's frontmost probe to
@@ -3462,24 +3464,24 @@ namespace AvatarBridge.Regression
                     var st = ReadState();
                     // The first breast's rings: a slot's time new since last frame is one fired, unless
                     // under 0.2 s after its last, the same ring deepened.
-                    var rings = new Vector2(st[Side(n) * 2 * Row + 80].w, st[Side(n) * 2 * Row + 82].w);
+                    var rings = new Vector2(st[Side(n) * Wide + 80].w, st[Side(n) * Wide + 82].w);
                     if (v > 360)
                         for (int e = 0; e < 2; e++)
                             if (rings[e] != ringWas[e])
                             {
                                 bool deepened = ringWas[e] > 0 && rings[e] - ringWas[e] < 0.2f;
                                 if (deepened) { } else if (v < 470) ringsSlow++; else if (v < 505) ringsProbe++; else ringsBoth++;
-                                ringSaid.Add($"{v}: {(deepened ? "deepened to " : "")}{1000f * st[Side(n) * 2 * Row + 81 + 2 * e].w:0.0} mm deep, " +
-                                             $"{100f * ((Vector3) st[Side(n) * 2 * Row + 80 + 2 * e] - front).magnitude:0.0} cm off the ball's spot");
+                                ringSaid.Add($"{v}: {(deepened ? "deepened to " : "")}{1000f * st[Side(n) * Wide + 81 + 2 * e].w:0.0} mm deep, " +
+                                             $"{100f * ((Vector3) st[Side(n) * Wide + 80 + 2 * e] - front).magnitude:0.0} cm off the ball's spot");
                             }
                     ringWas = rings;
                     float most = Furthest(st, breastRegions);
                     int slots = 0;
-                    for (int e = 0; e < 8; e++) if (st[Side(n) * 2 * Row + 2 * e + 1].w > 0.5f) slots++;
+                    for (int e = 0; e < 8; e++) if (st[Side(n) * Wide + 2 * e + 1].w > 0.5f) slots++;
                     float moved = probeTs.Select((t, k) => (t.position - probeHang[k].TransformPoint(probeRest[k])).magnitude).Max();
                     // As the step reads them, the first breast's, a frame late through the helper's skin.
                     int mine = probeTs.Count / 2;
-                    var read = Enumerable.Range(0, Mathf.Min(mine, 24)).Select(k => st[Side(n) * 2 * Row + 88 + k].w).ToList();
+                    var read = Enumerable.Range(0, Mathf.Min(mine, ProbesMax)).Select(k => st[Side(n) * Wide + Readout + k].w).ToList();
                     if (v == 365 || v == 410 || v == 450)
                         probeSaid.Add($"{v}: the ball {100f * (0.07f - 0.1f * pressed):0.0} cm off, the probes moved {1000f * moved:0.0} mm, the step reads them " +
                                       $"{string.Join(" ", read.Select(g => $"{1000f * g:0.0}"))} mm, {slots} slots held");
@@ -3646,8 +3648,8 @@ namespace AvatarBridge.Regression
                 {
                     // And what holds the furthest particle there: the hand, or the forearm lying in it.
                     var heldSt = ReadState();
-                    int heldQ = Enumerable.Range(0, n.x * n.y * n.z).OrderByDescending(q => ((Vector3) heldSt[q / Row * 2 * Row + q % Row] - (Vector3) throughBefore[q / Row * 2 * Row + q % Row]).sqrMagnitude).First();
-                    var heldAt = (Vector3) heldSt[heldQ / Row * 2 * Row + heldQ % Row];
+                    int heldQ = Enumerable.Range(0, n.x * n.y * n.z).OrderByDescending(q => ((Vector3) heldSt[q / Row * Wide + q % Row] - (Vector3) throughBefore[q / Row * Wide + q % Row]).sqrMagnitude).First();
+                    var heldAt = (Vector3) heldSt[heldQ / Row * Wide + heldQ % Row];
                     var armAlong = wristBone.position - lowerArm.position;
                     var onArm = lowerArm.position + armAlong * Mathf.Clamp01(Vector3.Dot(heldAt - lowerArm.position, armAlong) / armAlong.sqrMagnitude);
                     ownReach = $"the wrist {100f * Vector3.Distance(wristBone.position, target):0.0} cm off where it was sent, {100f * Vector3.Dot(front - wristBone.position, outward):0.0} cm in from the front; " +
@@ -3711,7 +3713,7 @@ namespace AvatarBridge.Regression
                 for (int r = 0; r < 2; r++)
                 {
                     var placed = breastRegions[r].localToWorldMatrix;
-                    int at = (r * (side + 1) + side) * 2 * Row;
+                    int at = (r * (side + 1) + side) * Wide;
                     for (int c = 0; c < 4; c++)
                         anchorOk &= ((Vector3) s[at + 26 + c] - (Vector3) placed.GetColumn(c)).magnitude < 1e-4f && s[at + 26 + c].w == 1f;
                 }
@@ -3726,11 +3728,11 @@ namespace AvatarBridge.Regression
                 var handed = control.cvrRenderComponents.OfType<CVRBlitter>().First().blitMaterial.GetMatrixArray("_JellyAnchor");
                 Debug.Log($"[Jelly] the step: controller {control.isActiveAndEnabled}, provider {provider.isActiveAndEnabled} with {provider.materials.Length} materials " +
                           $"and {provider.transforms.Length} transforms, {Object.FindObjectsOfType<MonoBehaviour>().Count(b => b.GetType().Name == "LateEventsManager")} late events managers, " +
-                          $"anchor handed {(handed != null ? handed[0].GetColumn(3).ToString("F3") : "none")} against {breastRegions[0].position.ToString("F3")}, particle 0 {s[0].ToString("F3")}, switches {s[side * 2 * Row + 18]}, " +
-                          $"centres {s[side * 2 * Row + 30].ToString("F3")} and {s[(2 * side + 1) * 2 * Row + 30].ToString("F3")}, " +
-                          $"plane (centres apart, as built, gap, scale) {s[side * 2 * Row + 40].ToString("F4")} and {s[(2 * side + 1) * 2 * Row + 40].ToString("F4")}, " +
-                          $"own capsules in reach at rest {(int) s[side * 2 * Row + 41].x} and {(int) s[(2 * side + 1) * 2 * Row + 41].x} (bits), " +
-                          $"the rest's count {s[side * 2 * Row + 35].x:0.000} and {s[(2 * side + 1) * 2 * Row + 35].x:0.000} s");
+                          $"anchor handed {(handed != null ? handed[0].GetColumn(3).ToString("F3") : "none")} against {breastRegions[0].position.ToString("F3")}, particle 0 {s[0].ToString("F3")}, switches {s[side * Wide + 18]}, " +
+                          $"centres {s[side * Wide + 30].ToString("F3")} and {s[(2 * side + 1) * Wide + 30].ToString("F3")}, " +
+                          $"plane (centres apart, as built, gap, scale) {s[side * Wide + 40].ToString("F4")} and {s[(2 * side + 1) * Wide + 40].ToString("F4")}, " +
+                          $"own capsules in reach at rest {(int) s[side * Wide + 41].x} and {(int) s[(2 * side + 1) * Wide + 41].x} (bits), " +
+                          $"the rest's count {s[side * Wide + 35].x:0.000} and {s[(2 * side + 1) * Wide + 35].x:0.000} s");
             }
             {
                 var s = ReadState();
@@ -3739,19 +3741,19 @@ namespace AvatarBridge.Regression
                 var line = new System.Text.StringBuilder($"{frame}");
                 for (int r = 0; r < 2; r++)
                 {
-                    var off = (Vector3) s[(r * (side + 1) + side) * 2 * Row + 30] - breastRegions[r].TransformPoint(0f, 0f, zc);
+                    var off = (Vector3) s[(r * (side + 1) + side) * Wide + 30] - breastRegions[r].TransformPoint(0f, 0f, zc);
                     line.Append($",{1000f * off.x:0.00},{1000f * off.y:0.00},{1000f * off.z:0.00}");
                 }
                 line.Append($",{1000f * Furthest(s, breastRegions):0.00}");
-                line.Append($",bulk {s[side * 2 * Row + 32].x:0.000} {s[side * 2 * Row + 33].y:0.000} {s[side * 2 * Row + 34].z:0.000} volume {s[side * 2 * Row + 32].w:0.000}");
+                line.Append($",bulk {s[side * Wide + 32].x:0.000} {s[side * Wide + 33].y:0.000} {s[side * Wide + 34].z:0.000} volume {s[side * Wide + 32].w:0.000}");
                 // What pushes the first's mass: the hands its slots hold (distance off its centre @ radius,
                 // h when gripping), its load and strain, and the probes' readings.
                 {
-                    int sr0 = side * 2 * Row;
+                    int sr0 = side * Wide;
                     var held = Enumerable.Range(0, 8).Where(e => s[sr0 + 2 * e + 1].w > 0.5f)
                         .Select(e => $"{1000f * Vector3.Distance(s[sr0 + 2 * e], s[sr0 + 30]):0}@{1000f * s[sr0 + 2 * e].w:0}{(s[sr0 + 112 + e].w > 0 ? "h" : "")}");
                     line.Append($",hands [{string.Join(" ", held)}] on {s[sr0 + 1].w:0.0},load {s[sr0 + 86].y:0.0000} strain {s[sr0 + 86].x:0.000}");
-                    line.Append(",probes " + string.Join(" ", Enumerable.Range(0, 12).Select(k => (1000f * s[sr0 + 88 + k].w).ToString("0.0"))));
+                    line.Append(",probes " + string.Join(" ", Enumerable.Range(0, 12).Select(k => (1000f * s[sr0 + Readout + k].w).ToString("0.0"))));
                 }
                 if (frame < 6)
                 {
@@ -3799,14 +3801,14 @@ namespace AvatarBridge.Regression
                     ownShake += shakeStep / 90f;
                     ownMost = Mathf.Max(ownMost, shakeMost);
                 }
-                if (frame == 1299) riseFrom = s[side * 2 * Row + 30].y;
+                if (frame == 1299) riseFrom = s[side * Wide + 30].y;
                 int hold = (frame - 1300) / 180, inHold = (frame - 1300) % 180;
                 if (frame >= 1300 && hold < 3 && inHold >= 60 && inHold < 170)
                 {
                     pressShake[hold] += shakeStep / 110f;
                     pressMost[hold] = Mathf.Max(pressMost[hold], shakeMost);
                     pressAnchor[hold] += anchorStep / 110f;
-                    pressRise[hold] = Mathf.Max(pressRise[hold], s[side * 2 * Row + 30].y - riseFrom);
+                    pressRise[hold] = Mathf.Max(pressRise[hold], s[side * Wide + 30].y - riseFrom);
                 }
                 breastTrace.Add(line.ToString());
             }
@@ -3826,7 +3828,7 @@ namespace AvatarBridge.Regression
                 int torn = 0;
                 for (int q = 0; q < n.x * n.y * n.z; q++)
                 {
-                    int i = q / Row * 2 * Row + q % Row;
+                    int i = q / Row * Wide + q % Row;
                     float d = ((Vector3) st[i] - (Vector3) throughBefore[i]).magnitude;
                     moved = Mathf.Max(moved, d);
                     torn += d > 0.1f ? 1 : 0;
@@ -3845,13 +3847,13 @@ namespace AvatarBridge.Regression
                 {
                     var skins = blits[0].GetVector("_PairSkin");
                     float sized = breastRegions[0].lossyScale.x;
-                    clap[0] = Vector3.Distance(st[sr * 2 * Row + 30], st[(2 * sr + 1) * 2 * Row + 30]) - (skins.x + skins.y) * sized;
+                    clap[0] = Vector3.Distance(st[sr * Wide + 30], st[(2 * sr + 1) * Wide + 30]) - (skins.x + skins.y) * sized;
                     clapCell = blits[0].GetVector("_Lattice").w * sized;
                 }
                 told[4] = Mathf.Max(told[4], Read((RenderTexture) jelly.GetComponentInChildren<CVRTexturePropertyParser>(true).texture)[5].x);
                 for (int r = 0; r < 2; r++)
                 {
-                    int mine = (r * (sr + 1) + sr) * 2 * Row, theirs = ((1 - r) * (sr + 1) + sr) * 2 * Row;
+                    int mine = (r * (sr + 1) + sr) * Wide, theirs = ((1 - r) * (sr + 1) + sr) * Wide;
                     var middle = 0.5f * ((Vector3) st[mine + 30] + (Vector3) st[theirs + 30]);
                     for (int k = 0; k < 2; k++)
                         if (Time.timeSinceLevelLoad - st[mine + 80 + 2 * k].w < 0.05f && Vector3.Distance(st[mine + 80 + 2 * k], middle) < 0.03f)
@@ -3876,7 +3878,7 @@ namespace AvatarBridge.Regression
                     int twSr = Side(n);
                     for (int tr = 0; tr < 2; tr++)
                     {
-                        Vector3 twC = twSt[(tr * (twSr + 1) + twSr) * 2 * Row + 30];
+                        Vector3 twC = twSt[(tr * (twSr + 1) + twSr) * Wide + 30];
                         if (frame == 2749) twitchFrom[tr] = twC;
                         else if (frame > 2749 && frame < 2850) twitched[tr] = Mathf.Max(twitched[tr], Vector3.Distance(twC, twitchFrom[tr]));
                         else if (frame == 2959) twitched[2] = Mathf.Max(twitched[2], Vector3.Distance(twC, twitchFrom[tr]));
@@ -3886,7 +3888,7 @@ namespace AvatarBridge.Regression
             if (frame >= 2445 && frame < 2740)
             {
                 var st = ReadState();
-                int sr = Side(n) * 2 * Row;
+                int sr = Side(n) * Wide;
                 var outward = breastRegions[0].forward;
                 if (frame == 2445)
                 {
@@ -3925,11 +3927,11 @@ namespace AvatarBridge.Regression
             if (frame == 1990)
             {
                 var st = ReadState();
-                int sr = Side(n) * 2 * Row;
+                int sr = Side(n) * Wide;
                 float moved = 0f;
                 for (int q = 0; q < n.x * n.y * n.z; q++)
                 {
-                    int i = q / Row * 2 * Row + q % Row;
+                    int i = q / Row * Wide + q % Row;
                     moved = Mathf.Max(moved, ((Vector3) st[i] - (Vector3) ownBefore[i]).magnitude);
                 }
                 var anchorsHanded = jelly.GetComponentsInChildren<CVRMaterialDataProvider>(true).First(q => q.transforms != null && q.transforms.Length > 0);
@@ -3963,7 +3965,7 @@ namespace AvatarBridge.Regression
             {
                 var st = ReadState();
                 int sideRow = Side(n);
-                float apart = Vector3.Distance(st[sideRow * 2 * Row + 30], st[(2 * sideRow + 1) * 2 * Row + 30]);
+                float apart = Vector3.Distance(st[sideRow * Wide + 30], st[(2 * sideRow + 1) * Wide + 30]);
                 if (frame == 869) { handsApart = apart; handsVolume = Volume(st, 0); }
                 else
                 {
@@ -3975,11 +3977,11 @@ namespace AvatarBridge.Regression
                 }
             }
             // The slap: the first's mass, furthest from its rest after it, and still a second after.
-            if (frame >= 1080 && frame < 1290 && ReadState()[Side(n) * 2 * Row + 30].w > 0)
+            if (frame >= 1080 && frame < 1290 && ReadState()[Side(n) * Wide + 30].w > 0)
             {
                 var st = ReadState();
                 float zcm = 0.5f * (n.z - 1) * breastSpacing;
-                float off = ((Vector3) st[Side(n) * 2 * Row + 30] - breastRegions[0].TransformPoint(0f, 0f, zcm)).magnitude;
+                float off = ((Vector3) st[Side(n) * Wide + 30] - breastRegions[0].TransformPoint(0f, 0f, zcm)).magnitude;
                 slapMost = Mathf.Max(slapMost, off);
                 if (frame >= 1180) slapLater = Mathf.Max(slapLater, off);
             }
@@ -4072,9 +4074,9 @@ namespace AvatarBridge.Regression
                 string regionsNow = string.Join(" and ", Enumerable.Range(0, 2).Select(r =>
                 {
                     int row = r * (sideN + 1) + sideN;
-                    var placeNow = stNow[row * 2 * Row + 29];
-                    var offNow = stNow[row * 2 * Row + 18];
-                    return $"placed {placeNow.w:0}, far {offNow.x:0}, resting {offNow.y:0}, stepped {Time.timeSinceLevelLoad - stNow[r * (sideN + 1) * 2 * Row].w:0.000} s ago";
+                    var placeNow = stNow[row * Wide + 29];
+                    var offNow = stNow[row * Wide + 18];
+                    return $"placed {placeNow.w:0}, far {offNow.x:0}, resting {offNow.y:0}, stepped {Time.timeSinceLevelLoad - stNow[r * (sideN + 1) * Wide].w:0.000} s ago";
                 }));
                 var m0 = drawn.FirstOrDefault();
                 var reaches = m0 != null ? m0.GetVector("_YAPS_SquashReach") : Vector4.zero;
@@ -4217,7 +4219,7 @@ namespace AvatarBridge.Regression
                 {
                     for (int r = 0; r < 2; r++)
                     {
-                        var p0 = at0[r * (Side(n) + 1) * 2 * Row];
+                        var p0 = at0[r * (Side(n) + 1) * Wide];
                         stamp.SetPixel(0, 0, new Color(p0.x, p0.y, p0.z, Time.timeSinceLevelLoad - (on ? 1f / 90f : 0f)));
                         stamp.Apply();
                         Graphics.CopyTexture(stamp, 0, 0, 0, 0, 1, 1, read, 0, 0, 0, r * (Side(n) + 1));

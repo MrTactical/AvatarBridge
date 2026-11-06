@@ -1612,8 +1612,9 @@ it, letting go when pulled too far; a slap rings out from where it lands; the pa
 each other, and the wearer's own arms and legs press it too. The cloth still swings each part and
 the tissue rides it. The avatar's own MagicaCloth and Dynamic Bone colliders that a pair's cloth
 collides with press the skin instead of moving the bones. With MagicaCloth installed, a net of
-probes on the skin also feels other players' MagicaCloth colliders and the world's solid surfaces:
-walls, tables, dropped props. Past 6 m from a viewer it stops stepping and holds its shape. Nothing
+probes spread over the skin also feels other players' MagicaCloth colliders, any shape, each
+pressing at about its own size, a fingertip's to a palm's, and the world's solid surfaces: walls,
+tables, dropped props. Past 6 m from a viewer it stops stepping and holds its shape. Nothing
 is synced: each viewer's game steps its own copy. It tells the animator three floats a part, from 0
 to 1 and never synced, for blend shapes or sounds to follow: `#Jelly/<part>/Squeeze`,
 `#Jelly/<part>/Grab` and `#Jelly/<part>/Slap`. **Live tissue** on the **YAPS Squash** component
@@ -2338,7 +2339,10 @@ Bipeds are unaffected by any of it.
   faces, so a fist is guessed from the wrist and arm: another player's grip in VR can land about
   5 cm off their hand. A head is handed as its bone alone, so it presses as a ball over where the
   skull sits, whatever its hair or ears. Other players' MagicaCloth colliders press it only for a viewer whose own
-  Dynamic Bone interaction settings take them in, since each viewer runs the cloth with their own.
+  Dynamic Bone interaction settings take them in, since each viewer runs the cloth with their own;
+  the game's defaults take in none, and colliders on fingers only once the placement takes in
+  fingers. Players' hands press it either way. A thin collider, a finger's, pressed in between two
+  of the probes reads shallower than it went: a probe on the skin slides round its side.
   Feeling the world's surfaces (a pane of glass, say) is not reliable yet. What a viewer with the
   **Cameras** content filter off or **Shader Filtering** on sees of it has not been checked in game.
   It takes four parts on one avatar, a jelly each, and two parts do not press each other: the

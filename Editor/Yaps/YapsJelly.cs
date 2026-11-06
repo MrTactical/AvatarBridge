@@ -44,9 +44,10 @@ namespace AvatarBridge
             public bool plane = true;
             // MagicaCloth's colliders, other players' among them, felt as presses.
             public bool probes = true;
-            // Half the probes physics balls the world's colliders push.
+            // Twelve physics balls besides the probes, which the world's colliders push.
             public bool world = true;
-            // How far off the skin a collider pushes a probe.
+            // How far off the skin a collider pushes a probe, the least: spread too thin for it to cover
+            // the skin, it grows to the gap.
             public float probeReach = 0.04f;
             // On whatever the squash component says.
             public bool twitch, slide;
@@ -164,6 +165,9 @@ namespace AvatarBridge
         internal const string Worn = "Jelly_Spike";
         internal static string WornName(string pair) => $"{Worn} {pair}";
         internal const int Row = 64, Passes = 2, ProbesPer = 24;
+        // The most probes a region takes, world balls among them, and where their readout starts on
+        // its side row: columns of their own past the particles'.
+        internal const int ProbesMax = 64, Readout = 2 * Row;
 
 
         // Any earlier one on the avatar goes, only that pair's when named; how many. An instance is
@@ -442,6 +446,8 @@ namespace AvatarBridge
             // The region stays out of the bone's tree, where the cloth would take it for a bone of
             // its own and bend the chain toward it.
             var carriers = new string[sides];
+            int probes = 0;
+            string probed = "";
             Transform rides = chest;
             if (cloth)
             {
@@ -493,38 +499,68 @@ namespace AvatarBridge
                 // there the breast's own cloth would take each for a bone of its chain.
                 // MagicaCloth only: the same hand gets a DynamicBone collider too, so DynamicBone probes
                 // saw nothing more, and dented a quarter less for the same press.
-                // Feeling the world: half the probes physics balls instead.
+                // Feeling the world: twelve physics balls besides, spread over the front, which a wall or
+                // a pane meets first. Spread over all the skin, farthest first, they sat on its rim.
                 bool world = o.world, probing = o.probes || world;
                 var spotsOf = new List<Vector3>[sides];
+                float reach = o.probeReach;
                 if (probing)
+                {
+                    // Over all the skin a hand reaches, all but where it meets the body, spread farthest
+                    // first from its frontmost, every side as many, until none of it is further than a
+                    // probe's reach from one or the room runs out. A collider anywhere on it is then in
+                    // some probe's reach: on the front alone, twelve a breast left 11 cm between them,
+                    // and a finger's collider, or a 3 cm ball, pressed 4 cm into a gap was never felt.
+                    // ponytail: the room's 52 leave a 6 cm gap on a breast 38 cm across (117 for 4 cm),
+                    // so the reach grows to the gap; past it a press sits nearer one probe than the next.
+                    int room = ProbesMax - (world ? ProbesPer / 2 : 0);
+                    var picks = new List<Vector3>[sides];
+                    var balls = new List<Vector3>[sides];
+                    var gaps = new List<float>[sides];
+                    // Farthest first from the frontmost of from, up to count, the largest gap left after each.
+                    List<Vector3> Spread(List<Vector3> from, Transform region, int count, List<float> left)
+                    {
+                        int first = Enumerable.Range(0, from.Count).OrderByDescending(i => region.InverseTransformPoint(from[i]).z).First();
+                        var got = new List<Vector3> { from[first] };
+                        var near = from.Select(w => (w - from[first]).magnitude).ToArray();
+                        while (got.Count < Mathf.Min(count, from.Count))
+                        {
+                            int far = 0;
+                            for (int i = 1; i < near.Length; i++) if (near[i] > near[far]) far = i;
+                            left?.Add(near[far]);
+                            got.Add(from[far]);
+                            for (int i = 0; i < near.Length; i++) near[i] = Mathf.Min(near[i], (from[i] - from[far]).magnitude);
+                        }
+                        left?.Add(near.Max());
+                        return got;
+                    }
                     for (int side = 0; side < sides; side++)
                     {
                         var region = made.transform.Find($"Jelly Region {side}");
-                        var front = Enumerable.Range(0, Mathf.Min(at.Length, shares[side].Length)).Where(v => shares[side][v] >= 0.5f)
+                        var skin = Enumerable.Range(0, Mathf.Min(at.Length, shares[side].Length)).Where(v => shares[side][v] >= 0.5f)
                             .Select(v => body.transform.position + body.transform.rotation * at[v]).ToList();
-                        float deepest = front.Max(w => region.InverseTransformPoint(w).z);
-                        front = front.Where(w => region.InverseTransformPoint(w).z >= 0.5f * deepest).ToList();
-                        // ponytail: twenty-four a breast, the state row's room, spread farthest first from
-                        // its frontmost skin. At eight a palm passed between them, at sixteen a 4.5 cm ball
-                        // 3 cm in; a finger's collider still can.
-                        var spots = new List<Vector3> { front.OrderByDescending(w => region.InverseTransformPoint(w).z).First() };
-                        while (spots.Count < ProbesPer && spots.Count < front.Count)
-                            spots.Add(front.OrderByDescending(w => spots.Min(q => (q - w).sqrMagnitude)).First());
-                        spotsOf[side] = spots;
+                        float deepest = skin.Max(w => region.InverseTransformPoint(w).z);
+                        gaps[side] = new List<float>();
+                        picks[side] = Spread(skin.Where(w => region.InverseTransformPoint(w).z >= 0.15f * deepest).ToList(), region, room, gaps[side]);
+                        if (world) balls[side] = Spread(skin.Where(w => region.InverseTransformPoint(w).z >= 0.5f * deepest).ToList(), region, ProbesPer / 2, null);
                     }
-                // Feeling the world, half of each one's probes are balls, each on a cloth probe's spot:
-                // the first half, spread farthest first over the whole front, so players' colliders and
-                // the world both press it at that spread.
-                // Spread over a part's whole front, the probes sit further apart the bigger it is, so
-                // their reach grows with the gap: at 4 cm a 4.5 cm ball 3 cm in between two of a seat's,
-                // 14.5 cm apart, pushed them half as far as a breast's at 12.7, and passed untouched
-                // between a thigh's at 17.6. The cloth ones, which colliders push: with world balls
-                // on, the first half.
-                float reach = o.probeReach;
-                var nets = probing ? spotsOf.Select(net => world ? net.Take(ProbesPer / 2).ToList() : net).Where(net => net.Count > 1).ToList() : null;
-                if (nets != null && nets.Count > 0)
-                    reach = Mathf.Max(reach, 0.315f * nets.Average(net => net.Average(pa => net.Where(pb => pb != pa).Min(pb => (pa - pb).magnitude))));
-                AddSkin(made, provider, hangs, probing ? spotsOf : null, 0.5f * (n.z - 1) * spacing, "Put the breasts on the jelly", into, reach, world ? new[] { true, true } : null, ProbesPer / 2);
+                    // The gap n probes leave on a side is gaps[side][n - 1].
+                    int most = picks.Min(q => q.Count);
+                    probes = Enumerable.Range(1, most).FirstOrDefault(c => gaps.All(g => g[c - 1] <= o.probeReach));
+                    if (probes == 0) probes = most;
+                    reach = Mathf.Max(o.probeReach, gaps.Max(g => g[probes - 1]));
+#if AVATARBRIDGE_MAGICA
+                    // Without MagicaCloth AddSkin makes no probes, so nothing to report.
+                    probed = $"MagicaCloth colliders felt through {probes} probes{(sides == 2 ? " each" : "")}, none of the skin further than {100f * reach:0.0} cm from one; ";
+#endif
+                    for (int side = 0; side < sides; side++)
+                    {
+                        spotsOf[side] = picks[side].Take(probes).ToList();
+                        // The balls' places after the cloth's, which AddSkin reads as spots from the first.
+                        if (world) spotsOf[side].AddRange(balls[side]);
+                    }
+                }
+                AddSkin(made, provider, hangs, probing ? spotsOf : null, 0.5f * (n.z - 1) * spacing, "Put the breasts on the jelly", into, reach, world ? new[] { true, true } : null, probes);
                 if (probing && YapsSquash.SettingsOf(root)?.probeMarkers == true)
                     Markers(made, core.state, n, Mathf.RoundToInt(provider.materials[0].GetFloat("_JellyProbes")), into, shaders);
             }
@@ -712,7 +748,7 @@ namespace AvatarBridge
                    $"{100f * (n.x - 1) * spacing:0} x {100f * (n.y - 1) * spacing:0} x {100f * (n.z - 1) * spacing:0} cm) under {chest.name}; " +
                    (cloth ? $"{litres}, riding {string.Join(" and ", carriers.Select(x => x ?? "nothing"))}{(clothed ? ", which the cloth swings" : ", which no cloth swings")}, a hand moving the whole by {give:0.00} of its press; "
                        : $"{litres}, {kilos:0.0} kg{each}, so it swings at {hz:0.00} Hz and a hand moves the whole by {give:0.00} of its push; ") +
-                   $"{patched} of {mats.Count} squash materials read it{(left.Count > 0 ? " (left as they were: " + string.Join(", ", left) + ")" : "")}; " +
+                   probed + $"{patched} of {mats.Count} squash materials read it{(left.Count > 0 ? " (left as they were: " + string.Join(", ", left) + ")" : "")}; " +
                    (cloth ? (off.Count > 0 ? "switched back on: " + string.Join(", ", off) : clothed ? "its cloth left on" : "no cloth on it")
                        : off.Count > 0 ? "switched off: " + string.Join(", ", off) : "no cloth or dynamic bones found on the pair, so if anything else swings it, switch that off") +
                    $"; {collided}; {(thinned.Count > 0 ? "thinned to clear it as built: " + string.Join(", ", thinned) : "none of the wearer's limbs reaching it as built")}; {wired}; {stale} earlier jelly taken off.";
@@ -1215,7 +1251,7 @@ namespace AvatarBridge
                         along.Normalize();
                         var b = new GameObject($"Jelly Probe Base {side} {k}").transform;
                         b.SetParent(hangs[side], false);
-                        b.position = w - along * 0.1f;
+                        b.position = w - along * Mathf.Max(0.1f, 2f * reach);
                         var tip = new GameObject($"Jelly Probe Tip {side} {k}").transform;
                         tip.SetParent(b, false);
                         tip.position = w;
@@ -1377,8 +1413,8 @@ namespace AvatarBridge
                 foreach (var c in corners)
                 {
                     points.Add(markers.transform.InverseTransformPoint(tips[i].t.position + c * r));
-                    // The probe's readout texel: 88 on, on its region's side row.
-                    at.Add(new Vector2(88 + k, side * (rows + 1) + rows));
+                    // The probe's readout texel, on its region's side row.
+                    at.Add(new Vector2(Readout + k, side * (rows + 1) + rows));
                     weights.Add(new BoneWeight { boneIndex0 = i, weight0 = 1f });
                 }
             }
@@ -1587,7 +1623,7 @@ Shader ""Hidden/YAPS/Jelly Probe Marker""
         internal static RenderTexture State(Vector3Int n, int regions = 1)
         {
             // Float, so positions keep their digits; point and no mips, so a texel is only ever itself.
-            return new RenderTexture(2 * Row, (Side(n) + 1) * regions, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear)
+            return new RenderTexture(Readout + ProbesMax, (Side(n) + 1) * regions, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear)
             {
                 filterMode = FilterMode.Point,
                 wrapMode = TextureWrapMode.Clamp,
@@ -1776,8 +1812,10 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             float _JellySkinStride, _JellyProbes, _JellyProbeReach, _Deepest, _GripSlip, _JellySolid, _JellySolidFrom, _JellyProbePatch;
             float4 _JellyArrays;
             float4 _Floor;
-            // The most probes a region has: its state row's readout, 88 on, has room for no more.
-            #define PROBES 24
+            // The most probes a region has, YapsJelly.ProbesMax, and their readout's first column on
+            // the side row, YapsJelly.Readout: columns of their own past the particles'.
+            #define PROBES 64
+            #define READOUT 128
             // A world probe's ball radius, as the builder's Solid() makes it.
             #define BALL 0.01
 
@@ -1850,7 +1888,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             bool Pushed(uint side)
             {
                 bool any = false;
-                [loop] for (uint k = 0; k < (uint) _JellyProbes && k < PROBES && !any; k++) any = _MainTex.Load(int3(88 + k, side, 0)).w > 0.002;
+                [loop] for (uint k = 0; k < (uint) _JellyProbes && k < PROBES && !any; k++) any = _MainTex.Load(int3(READOUT + k, side, 0)).w > 0.002;
                 return any;
             }
 
@@ -1886,95 +1924,142 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // A select, not a branch: per probe and unrolled, the branches timed the compiler out.
                 float3 mid = mul(_JellyAnchor[2 + r], float4(0, 0, 0.5 * (Count().z - 1) * _Lattice.w, 1)).xyz;
                 if (sided && k >= WorldFrom(r) && !(dot(way, mid - (at - d)) > 0)) gone = 0;
-                return any((rp & 0x7f800000) == 0x7f800000) || any((rr & 0x7f800000) == 0x7f800000) || !(gone < 0.2) ? 0 : gone;
+                return any((rp & 0x7f800000) == 0x7f800000) || any((rr & 0x7f800000) == 0x7f800000) || !(gone < 2 * _JellyProbeReach + 0.1) ? 0 : gone;
             }
 
-            // Region r's probes as colliders: each one's ball and rest, and how far it was pushed, 0
-            // for none and for any but the two leaders below, so a slot and a ring are each a
-            // collider's, not a probe's: within two hands,
-            // two probes 8 cm apart took two slots, and the one a collider met slantwise swings
-            // along its bone twice as fast as it came, a slow press read as a slap. ponytail: each
-            // against its neighbours, not whole clusters, so a capsule longer than two balls can
-            // still take two.
-            void Felt(uint r, uint upto, float4x4 back, out float3 balls[PROBES], out float3 rests[PROBES], out float deep[PROBES])
+            // A collider the probes felt: its ball and radius, where on the skin it pressed (its probes'
+            // rests weighted by their pushes), how far its leading probe was pushed (0 for none), and
+            // which probe that was.
+            struct Press { float3 ball; float radius; float3 rest; float deep; uint k; };
+
+            // Probe k of region r's push as Felt reads it, 0 under 2 mm, its tip and its rest. Pushed
+            // past most of a reach is swept along by a sliding collider, round its side and out past
+            // it, not pressed: one read 12 cm for a ball 3 cm in and rebuilt it 5 cm too deep in a
+            // frame. Held to 0.8 of a reach, a press reads at most about 3 cm deep. Solving from where
+            // the tips sit instead jumped up to 8 cm a frame as roots flipped.
+            float Push(uint r, uint k, float4x4 back, float reach, out float3 tip, out float3 rest)
+            {
+                float3 way;
+                float g = Probe(r, k, back, tip, way);
+                rest = tip - way * g;
+                return g > 0.002 ? min(g, 0.8 * reach) : 0;
+            }
+
+            // The sizes a felt collider is tried at, a fingertip's to a hand's.
+            static const float Sizes[8] = { 0.005, 0.0075, 0.01, 0.015, 0.02, 0.03, 0.04, 0.05 };
+            #define MEMBERS 8
+            #define FREES 16
+
+            // Region r's probes as at most two colliders, so a slot and a ring are each a collider's,
+            // not a probe's: within two hands, two probes 8 cm apart took two slots, and the one a
+            // collider met slantwise swings along its bone twice as fast as it came, a slow press
+            // read as a slap. The furthest pushed leads, and the furthest pushed whose rest is past
+            // 1.25 reaches of its rest leads a second; each takes the pushed probes resting within
+            // 1.2 reaches of its own. ponytail: two colliders a region; a third reads as one of those.
+            // Each one's place over the rests of its probes, weighted by their pushes, a reach less
+            // its leader's push out along the skin: a probe pushed g had the collider's skin, a probe
+            // radius out from it, come g past its rest. By the tips, which a collider sweeps round it,
+            // two balls 12 cm apart shared the probes and each slot sat 3 to 5 cm off its ball; by
+            // the rests, 1.5 cm. Put out along one probe's normal, a ball over a face's middle sat 4 cm
+            // too far out to dent at all.
+            // Its size from the probes round it: each it pushed has its tip a collider radius and a
+            // probe radius from the collider's middle, each it left alone at least that far from its
+            // rest. Tried at each of Sizes, the middle settled on the pushed tips, the size that fits
+            // them best keeping clear of the rest. Every collider was a hand's 5 cm ball before, a
+            // finger's dent as wide as a palm's; modelled offline, fingers came out 10 to 15 mm, 15 and
+            // 30 mm balls their own size, palms 40. A thin collider's depth between probes is not
+            // there to read: a probe on the skin slides round its side, so the depth is the leader's.
+            void Felt(uint r, uint upto, float4x4 back, out Press p[2])
             {
                 // Out of the body from the middle of the lattice at rest, through each probe's rest.
                 float3 mid = mul(_JellyAnchor[2 + r], float4(0, 0, 0.5 * (Count().z - 1) * _Lattice.w, 1)).xyz;
                 float reach = _Hand + _JellyProbeReach;
-                float gone[PROBES];
-                bool any = false;
-                // Every loop here rolled, so the probes are written out once, not 24 times at each
-                // caller. Cleared first: Shader Filtering cuts a rolled loop short.
-                [unroll] for (uint z = 0; z < PROBES; z++) { balls[z] = 0; rests[z] = 0; deep[z] = 0; gone[z] = 0; }
-                [loop] for (uint k = 0; k < min(min((uint) _JellyProbes, upto), (uint) PROBES); k++)
+                uint n = min(min((uint) _JellyProbes, upto), (uint) PROBES);
+                p[0] = (Press) 0;
+                p[1] = (Press) 0;
+                float best = 0, next = 0;
+                float3 from = 0, from2 = 0;
+                uint k0 = 0, k1 = 0;
+                [loop] for (uint k = 0; k < n; k++)
                 {
-                    float3 at, way;
-                    float g = Probe(r, k, back, at, way);
-                    rests[k] = at - way * g;
-                    // The tip for now; a leader's becomes its collider's centre below.
-                    balls[k] = at;
-                    // Pushed past most of a reach is swept along by a sliding collider, round its side
-                    // and out past it, not pressed: one read 12 cm for a ball 3 cm in and rebuilt it 5 cm
-                    // too deep in a frame. Held to 0.8 of a reach, a press reads at most about 3 cm deep.
-                    // Solving from where the tips sit instead jumped up to 8 cm a frame as roots flipped.
-                    gone[k] = k < (uint) _JellyProbes && k < upto && g > 0.002 ? min(g, 0.8 * reach) : 0;
-                    deep[k] = 0;
-                    any = any || gone[k] > 0;
+                    float3 tip, rest;
+                    float g = Push(r, k, back, reach, tip, rest);
+                    bool more = g > best;
+                    from = more ? rest : from;
+                    k0 = more ? k : k0;
+                    best = max(best, g);
                 }
                 // Untouched, as nearly always, none of this is looked at: the slaps run it every frame.
-                [branch] if (any)
+                [branch] if (best > 0)
                 {
-                    // The furthest pushed leads, and the furthest pushed whose rest is past 1.25 reaches
-                    // of its rest leads a second; each takes the probes resting within 1.2 reaches of
-                    // its own. By the tips, which a collider sweeps round it, two balls 12 cm apart
-                    // shared the probes between them and each slot sat 3 to 5 cm off its ball, drawn
-                    // toward the other; by the rests, 1.5 cm. Scored offline on dumped probes first: a
-                    // lone ball dragged still rebuilds as well, and the second slot it now and then
-                    // takes sits 5 cm shallower than it, outside the skin. Each against each, 24 by 24
-                    // unrolled at the scan and the slaps, timed the shader compiler out. ponytail: two
-                    // colliders a region; a third reads as one of those.
-                    float best = 0, next = 0;
-                    float3 lead = 0, lead2 = 0, from = 0, from2 = 0;
-                    [loop] for (uint k = 0; k < PROBES; k++)
+                    [loop] for (uint k = 0; k < n; k++)
                     {
-                        bool more = gone[k] > best;
-                        lead = more ? balls[k] : lead;
-                        from = more ? rests[k] : from;
-                        best = max(best, gone[k]);
+                        float3 tip, rest;
+                        float g = Push(r, k, back, reach, tip, rest);
+                        bool far = g > next && distance(rest, from) >= 1.25 * reach;
+                        from2 = far ? rest : from2;
+                        k1 = far ? k : k1;
+                        next = far ? g : next;
                     }
-                    [loop] for (uint k = 0; k < PROBES; k++)
+                    [loop] for (uint i = 0; i < 2; i++)
                     {
-                        bool far = gone[k] > next && distance(rests[k], from) >= 1.25 * reach;
-                        lead2 = far ? balls[k] : lead2;
-                        from2 = far ? rests[k] : from2;
-                        next = far ? gone[k] : next;
-                    }
-                    // Each one's collider over the rests of the probes it pushed, weighted by their
-                    // pushes, a reach less its own push out along the skin: a probe pushed g had the
-                    // collider's skin, a reach out from it, come g past its rest. A probe says how far,
-                    // never where along the skin, so put out along one probe's normal through its tip,
-                    // a ball over a face's middle, which pushes the probes round it sideways, sat 4 cm
-                    // too far out to dent at all; through the tips' middle, a 5 mm error in the
-                    // collider's size still moved it 3 cm.
-                    float w = 0, w2 = 0;
-                    float3 rest = 0, rest2 = 0;
-                    [loop] for (uint k = 0; k < PROBES; k++)
-                    {
-                        float g = distance(rests[k], from) < 1.2 * reach ? gone[k] : 0, g2 = next > 0 && distance(rests[k], from2) < 1.2 * reach ? gone[k] : 0;
-                        w += g;
-                        rest += rests[k] * g;
-                        w2 += g2;
-                        rest2 += rests[k] * g2;
-                    }
-                    rest /= max(w, 1e-6);
-                    rest2 /= max(w2, 1e-6);
-                    float3 ball = rest + normalize(rest - mid) * (reach - best), ball2 = rest2 + normalize(rest2 - mid) * (reach - next);
-                    [loop] for (uint k = 0; k < PROBES; k++)
-                    {
-                        bool one = gone[k] == best && all(balls[k] == lead), two = next > 0 && gone[k] == next && all(balls[k] == lead2);
-                        deep[k] = one || two ? gone[k] : 0;
-                        rests[k] = one ? rest : two ? rest2 : rests[k];
-                        balls[k] = one ? ball : two ? ball2 : balls[k];
+                        float lg = i == 0 ? best : next;
+                        float3 lead = i == 0 ? from : from2;
+                        [branch] if (lg > 0)
+                        {
+                            // ponytail: the first MEMBERS pushed in probe order and FREES untouched,
+                            // enough for a hand's; a bigger press sizes from those.
+                            float3 tips[MEMBERS], frees[FREES];
+                            float pull[MEMBERS];
+                            uint held = 0, open = 0;
+                            float w = 0;
+                            float3 rest = 0;
+                            [loop] for (uint k = 0; k < n; k++)
+                            {
+                                float3 tip, kr;
+                                float g = Push(r, k, back, reach, tip, kr);
+                                float apart = distance(kr, lead);
+                                [branch] if (g > 0 && apart < 1.2 * reach)
+                                {
+                                    w += g;
+                                    rest += kr * g;
+                                    [branch] if (held < MEMBERS) { tips[held] = tip; pull[held] = g * g; held++; }
+                                }
+                                else if (g == 0 && apart < 2 * reach && open < FREES) { frees[open] = kr; open++; }
+                            }
+                            rest /= max(w, 1e-6);
+                            float3 outward = normalize(rest - mid), centre = 0;
+                            float sum = 0;
+                            [loop] for (uint q = 0; q < held; q++) { centre += tips[q] * pull[q]; sum += pull[q]; }
+                            centre /= max(sum, 1e-12);
+                            float size = _Hand, least = 1e9;
+                            [loop] for (uint s = 0; s < 8; s++)
+                            {
+                                float tried = min(Sizes[s], _Hand), d = tried + _JellyProbeReach;
+                                float3 c = centre + outward * d;
+                                [loop] for (uint it = 0; it < 6; it++)
+                                {
+                                    float3 to = 0;
+                                    [loop] for (uint q = 0; q < held; q++)
+                                    {
+                                        float3 v = c - tips[q];
+                                        to += (tips[q] + v * (d / max(length(v), 1e-6))) * pull[q];
+                                    }
+                                    c = to / max(sum, 1e-12);
+                                }
+                                float miss = 0, into = 0, worst = 0;
+                                [loop] for (uint q = 0; q < held; q++) { float e = distance(c, tips[q]) - d; miss += e * e; }
+                                [loop] for (uint q = 0; q < open; q++) { float h = max(0, d - distance(c, frees[q])); into += h * h; worst = max(worst, h); }
+                                float cost = miss / max(held, 1) + 4 * into / max(open, 1) + 4 * worst * worst;
+                                size = cost < least ? tried : size;
+                                least = min(least, cost);
+                            }
+                            p[i].ball = rest + outward * (size + _JellyProbeReach - lg);
+                            p[i].radius = size;
+                            p[i].rest = rest;
+                            p[i].deep = lg;
+                            p[i].k = i == 0 ? k0 : k1;
+                        }
                     }
                 }
             }
@@ -2317,7 +2402,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // Hand slot texel x of the eight, two texels each, (wrist, radius) then (an open hand's
             // tip, 10 plus the gesture), an empty one 0. Each looks through every player's hands and keeps the one it is due, so a
             // pass reads eight however many players there are.
-            float4 Scan(int x, float4x4 m, float scale, uint side, bool felt, float3 balls[PROBES], float deep[PROBES])
+            float4 Scan(int x, float4x4 m, float scale, uint side, bool felt, Press presses[2])
             {
                 int slot = x >> 1;
                 int3 n = Count();
@@ -2401,25 +2486,20 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // last skinned, put on the hang as it is now. Felt before the dispatch.
                 [branch] if (felt)
                 {
-                    // Felt leaves two pressing at most, its leaders: those two, in probe order, are
-                    // all that is tested. Each of the 24 tested in turn timed the compiler out.
-                    float3 led[2] = { (float3) 0, (float3) 0 };
-                    bool on[2] = { false, false };
-                    [loop] for (uint k = 0; k < PROBES; k++)
+                    // Felt leaves two pressing at most, taken in their leaders' probe order so two
+                    // presses alike never swap slots frame to frame. Every probe tested in turn
+                    // timed the compiler out.
+                    uint first = presses[1].deep > 0 && presses[1].k < presses[0].k ? 1 : 0;
+                    [loop] for (uint j = 0; j < 2; j++)
                     {
-                        bool second = deep[k] > 0 && on[0] && !on[1];
-                        led[1] = second ? balls[k] : led[1];
-                        on[1] = on[1] || second;
-                        led[0] = deep[k] > 0 && !on[0] ? balls[k] : led[0];
-                        on[0] = on[0] || deep[k] > 0;
-                    }
-                    [loop] for (uint i = 0; i < 2; i++)
-                    {
+                        uint i = j ^ first;
                         bool hit = false;
-                        [branch] if (on[i])
+                        float3 led = presses[i].ball;
+                        float rad = presses[i].radius;
+                        [branch] if (presses[i].deep > 0)
                         {
                             // A point, so its two ends do.
-                            hit = InReach(led[i], led[i], _Hand, m, scale, side, 1);
+                            hit = InReach(led, led, rad, m, scale, side, 1);
                             // A collider on a hand the arrays gave last frame is that hand, which has
                             // its slot: the client puts a capsule on every player's hands. The ball
                             // sits up to a reach out from the collider, the way its probe was pushed.
@@ -2427,11 +2507,11 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             {
                                 float4 ha = _MainTex.Load(int3(2 * e, side, 0)), hb = _MainTex.Load(int3(2 * e + 1, side, 0));
                                 float3 seg = hb.xyz - ha.xyz;
-                                float3 p = ha.xyz + seg * saturate(dot(led[i] - ha.xyz, seg) / max(dot(seg, seg), 1e-12));
-                                hit = hit && !(hb.w > 0.5 && dot(seg, seg) > 1e-12 && distance(led[i], p) < ha.w + _Hand + _JellyProbeReach);
+                                float3 p = ha.xyz + seg * saturate(dot(led - ha.xyz, seg) / max(dot(seg, seg), 1e-12));
+                                hit = hit && !(hb.w > 0.5 && dot(seg, seg) > 1e-12 && distance(led, p) < ha.w + rad + _JellyProbeReach);
                             }
                         }
-                        kept = hit && found == slot ? ((x & 1) == 0 ? float4(led[i], _Hand) : float4(led[i], 10)) : kept;
+                        kept = hit && found == slot ? ((x & 1) == 0 ? float4(led, rad) : float4(led, 10)) : kept;
                         found += hit;
                     }
                 }
@@ -3152,7 +3232,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 return at.w > 0 ? (m._m03_m13_m23 - at.xyz) / max(dt, 1e-4) : 0;
             }
 
-            float4 Slap(int x, float4x4 m, float scale, float dt, bool distant, uint side, bool felt, float3 rests[PROBES], float deep[PROBES])
+            float4 Slap(int x, float4x4 m, float scale, float dt, bool distant, uint side, bool felt, Press presses[2])
             {
                 float4 box = Region == 0 ? _JellyBox0 : _JellyBox1;
                 float3 half = box.z > 0 ? float3(box.xy, 0.5 * box.z) : 0.5 * (float3) (Count() - 1) * _Lattice.w, mid = float3(0, 0, half.z);
@@ -3190,7 +3270,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // A collider only the probes know of: a probe's push crossing its reach, the collider
                 // reaching the skin, timed over the frame as a palm's crossing of the box is. Measured
                 // from the skin itself, the slap's end, a film's slap read a third as fast. Last
-                // frame's push is the readout's, from 88. A ring under 0.2 s old within two reaches
+                // frame's push is the readout's. A ring under 0.2 s old within two reaches
                 // is the same collider's: a hand carrying one as well rang through the arrays a few
                 // frames before the probes, and as a palm goes in the probe furthest in changes and
                 // crosses faster. Such a one deepens that ring and never adds a second.
@@ -3202,12 +3282,12 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     // a hand's speed: a ball slapped in at 3 m/s read 1.05.
                     speed = 0.4 * _Slap.x;
                     float skin = max(_JellyProbeReach, 0.002);
-                    [loop] for (uint k = 0; k < PROBES; k++)
-                    [branch] if (deep[k] >= skin)
+                    [loop] for (uint i = 0; i < 2; i++)
+                    [branch] if (presses[i].deep >= skin)
                     {
-                        float gone = deep[k], was = _MainTex.Load(int3(88 + k, side, 0)).w;
+                        float gone = presses[i].deep, was = _MainTex.Load(int3(READOUT + presses[i].k, side, 0)).w;
                         float rate = (gone - was) / max(dt, 1e-4);
-                        float3 rest = rests[k];
+                        float3 rest = presses[i].rest;
                         float apart = 2 * (_Hand + _JellyProbeReach);
                         int same = _Time.y - r0.w < 0.2 && distance(r0.xyz, rest) < apart ? 0 : _Time.y - r1.w < 0.2 && distance(r1.xyz, rest) < apart ? 1 : -1;
                         float had = same == 0 ? s0.w : same == 1 ? s1.w : 0;
@@ -3315,6 +3395,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 side += Base;
                 // The rows padding the region out, before any work.
                 if ((uint) px.y != side && (uint) px.x % Row + ((uint) px.y - Base) * Row >= count) return 0;
+                // The probes' readout columns hold nothing on the particles' rows.
+                if ((uint) px.x >= 2 * Row && (uint) px.y != side) return 0;
                 Region = region;
                 MineOf = region;
                 Mine = AnchorOf(region);
@@ -3411,21 +3493,22 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         if (px.x == 25) return float4(held, smooth, _Time.y, frames);
                         // The probes as Felt has them, for the scan's texels and the slaps': one copy of
                         // it between them, as a copy each took the compiler past its time limit. The
-                        // scan's only once a cloth probe was pushed last frame, as the readout from 88
+                        // scan's only once a cloth probe was pushed last frame, as the readout
                         // has it: a collider is felt a reach off the skin, so the frame this starts late
                         // by is still short of it, and at rest this is most of the step's cost. World
                         // probes press as flat faces in the step, never as hands, so the scan takes the
                         // cloth's alone. The slaps' while their last frame was timed. Each test
                         // branched: `&&` works out both sides.
-                        float3 balls[PROBES], rests[PROBES];
-                        float deep[PROBES];
+                        Press presses[2];
+                        presses[0] = (Press) 0;
+                        presses[1] = (Press) 0;
                         bool feel = false, felt = false;
                         uint upto = PROBES;
 #ifdef JELLY_SCAN
                         [branch] if (px.x < 16 && !distant)
                         {
                             upto = min((uint) _JellyProbes, WorldFrom(Region));
-                            [loop] for (uint k = 0; k < upto && k < PROBES && !feel; k++) feel = _MainTex.Load(int3(88 + k, side, 0)).w > 0.001;
+                            [loop] for (uint k = 0; k < upto && k < PROBES && !feel; k++) feel = _MainTex.Load(int3(READOUT + k, side, 0)).w > 0.001;
                         }
 #endif
                         [branch] if (px.x >= 80 && px.x < 84 && !distant)
@@ -3435,14 +3518,14 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         }
                         [branch] if (feel && Probed)
                         {
-                            Felt(Region, upto, Back, balls, rests, deep);
+                            Felt(Region, upto, Back, presses);
                             felt = true;
                         }
 #ifdef JELLY_SCAN
                         [branch] if (px.x < 16)
                         {
                             if (distant) return 0;
-                            return Scan(px.x, m, scale, side, felt, balls, deep);
+                            return Scan(px.x, m, scale, side, felt, presses);
                         }
 #endif
                         [branch] if (px.x >= 32 && px.x <= 34 && _Solid > 0) return Bulk(px.x - 32, m, distant, side);
@@ -3502,14 +3585,14 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             uint side0 = side - Base;
                             return Mass(px.x, m, scale, dt, distant, side, region, (region ^ 1) * (side0 + 1) + side0);
                         }
-                        if (px.x >= 80 && px.x <= 84) return Slap(px.x, m, scale, dt, distant, side, felt, rests, deep);
+                        if (px.x >= 80 && px.x <= 84) return Slap(px.x, m, scale, dt, distant, side, felt, presses);
                         if (px.x == 85) return float4(AnchorVelocity(m, dt, side), _Time.y);
                         // Each hand slot's grip (112 to 119), as Pulled reads it: a fist closed on the
                         // skin grips it where it closed, or where Slid takes it, until it opens or has
                         // pulled twice as far as the skin follows; a fist closed off the skin, or that
                         // came in closed, never grips, as a punch is no grab. Its pull (120 to 127) kept
                         // for the ring when it lets go.
-                        [branch] if (px.x >= 112)
+                        [branch] if (px.x >= 112 && px.x < READOUT)
                         {
                             uint e = ((uint) px.x - 112) & 7;
                             float4 a = _MainTex.Load(int3(2 * e, side, 0)), b = _MainTex.Load(int3(2 * e + 1, side, 0)), was = _MainTex.Load(int3(112 + e, side, 0));
@@ -3526,10 +3609,10 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         }
                         // Each probe as the scan reads it, where it is and how far pushed: the slaps' last
                         // frame, and a readout for the verify.
-                        [branch] if (px.x >= 88 && px.x < 88 + PROBES)
+                        [branch] if (px.x >= READOUT && px.x < READOUT + PROBES)
                         {
                             float3 at, way;
-                            float gone = Probed ? Probe(Region, px.x - 88, Back, at, way) : -1;
+                            float gone = Probed ? Probe(Region, px.x - READOUT, Back, at, way) : -1;
                             return float4(at, gone);
                         }
                         return here;
