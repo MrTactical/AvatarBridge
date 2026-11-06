@@ -3937,6 +3937,11 @@ plugs alone: toggles, Full Controllers, Armature Links, SPS, gestures, whatever 
 The stand-in route below covers that by design, since Fury bakes the accessory on the stand-in as
 it would on any avatar, and the converter's passes then run unchanged. What it cannot cover is
 whatever Fury itself refuses to bake there; the spike lists those.
+Joe, the same day: "add on the idea of more then one object". Several accessories in one pass:
+pick any number, all go onto the one stand-in and convert together, so their menus, parameters
+and Fury features meet once, as they would on a VRChat avatar wearing them all. Clashes between
+them (a parameter or menu path two accessories both use, the 3200-bit budget summed over all of
+them) are reported before anything is written to the target.
 
 Joe, 2026-10-24: "what if we can also throw them through the convertor? like lets say, a piece of
 clothing that I want to put on an already converted avatar, but attach it myself manually after?
