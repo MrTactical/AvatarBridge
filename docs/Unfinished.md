@@ -3519,6 +3519,15 @@ Not tripping; the probe's numbers since the night films of Oct 31 (night1k, nigh
      **Decided, Joe 2026-11-06: the jelly takes the touch.** A jellied part's cloth stops feeling
      hands, as the wearer's own colliders already stop (`PairCollide`), and still swings with the
      body. Other players' colliders reach it at runtime, past any list, so the lever is its radius.
+     **Done 2026-11-06:** `PairShrink` cuts the part's cloth and dynamic bones' balls to 1 mm (not a
+     cloth rooted inside another's chain: a piercing's still feels a hand), each old size kept in a
+     `Jelly radius` mark under the jelly that `Unworn` puts back. Film's copy, every cloth given the
+     hands: 0 mm down, rings 2, no flicker, dents and probe readout the same as with the hands kept off
+     the breast cloths; taken off, 0.191 back and no marks left. A MagicaCloth push limit of 0 was the
+     other lever and is wrong: it snaps a BoneSpring to its rest whenever a collider is near. Open:
+     colliders left in the cloth as touching the breasts at rest no longer reach the shrunk balls, so
+     a cleavage sphere does nothing now; none on the avatars measured. Joe in game with a second
+     player who shares colliders, to see the bone stay put under a hand.
    - ~~**The probes' slap never fires**: it waits for a push of a whole reach, and the push is held
      to 0.8 of one.~~ **WITHDRAWN**: the push is held to 0.8 of the hand's radius plus the reach
      (`Felt`'s own `reach`), past the slap's line. The collider-only row's slaps rang 9 times.

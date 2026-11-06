@@ -11,6 +11,7 @@
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -191,6 +192,9 @@ namespace AvatarBridge
             var stale = avatar.GetComponentsInChildren<Transform>(true)
                 .Where(t => t.name == Worn || t.name == "Jelly Spike" || (only == null ? t.name.StartsWith(Worn + " ") || t.name.StartsWith("Jelly Region") : t.name == WornName(only)))
                 .Select(t => t.gameObject).ToList();
+            // The cloth's balls back to their size, from the marks the jelly kept.
+            foreach (var mark in stale.Where(o => o != null).SelectMany(o => o.GetComponentsInChildren<Transform>(true)).Where(t => t.name.StartsWith(RadiusMark)).ToList())
+                Unshrink(avatar, mark.name);
             foreach (var old in stale)
                 if (old != null) Undo.DestroyObjectImmediate(old);
             return stale.Count;
@@ -646,6 +650,12 @@ namespace AvatarBridge
                 else if (pressing.Count < (twitching ? 7 : 8)) pressing.Add((c, ca, cb, cr));
             }
             PairCollide(root, part, pressing.Select(p => p.c), with: false);
+            // And every other collider, other players' among them: the client adds theirs to every
+            // cloth at runtime, past any list, and the cloth's balls, the source's size, moved the
+            // bones under each hand the tissue was denting. One touch answered twice: a breast shoved
+            // down and held, a squeeze shaking it. Shrunk, the tissue takes every touch and the cloth
+            // only swings.
+            var shrunk = PairShrink(root, part, made.transform);
             var colRadii = new float[8];
             var colEnds = new List<Transform>();
             for (int i = 0; i < pressing.Count; i++)
@@ -661,7 +671,8 @@ namespace AvatarBridge
                 colRadii[i] = pressing[i].r;
             }
             string collided = (pressing.Count > 0 ? $"{pressing.Count} of its colliders pressing instead of moving the bones ({string.Join(", ", pressing.Select(p => p.c.name))})" : "none of its colliders pressing") +
-                              (touching.Count > 0 ? $", {touching.Count} left in the cloth as touching the breasts at rest ({string.Join(", ", touching)})" : "");
+                              (touching.Count > 0 ? $", {touching.Count} left in the cloth as touching the breasts at rest ({string.Join(", ", touching)})" : "") +
+                              (shrunk.Count > 0 ? $", the cloth's balls shrunk to {1000f * Shrunk:0} mm so the tissue takes every touch ({string.Join(", ", shrunk)})" : "");
             var anchors = made.GetComponentsInChildren<CVRMaterialDataProvider>(true).First(q => q.transforms != null && q.transforms.Length > 0);
             Undo.RecordObject(anchors, "Put the breasts on the jelly");
             var handed = anchors.transforms.ToList();
@@ -1037,18 +1048,23 @@ namespace AvatarBridge
             {
                 string type = b != null ? b.GetType().Name : "";
                 if (type != "MagicaCloth" && type != "DynamicBone") continue;
-                var so = new SerializedObject(b);
-                var roots = new List<Transform>();
-                foreach (var path in new[] { "serializeData.rootBones", "m_Roots" })
-                {
-                    var list = so.FindProperty(path);
-                    if (list != null && list.isArray)
-                        for (int i = 0; i < list.arraySize; i++) roots.Add(list.GetArrayElementAtIndex(i).objectReferenceValue as Transform);
-                }
-                if (so.FindProperty("m_Root")?.objectReferenceValue is Transform one) roots.Add(one);
-                if (roots.Any(t => t != null && chains.Contains(t))) found.Add(b);
+                if (RootsOf(b).Any(t => t != null && chains.Contains(t))) found.Add(b);
             }
             return found;
+        }
+
+        static List<Transform> RootsOf(Behaviour b)
+        {
+            var so = new SerializedObject(b);
+            var roots = new List<Transform>();
+            foreach (var path in new[] { "serializeData.rootBones", "m_Roots" })
+            {
+                var list = so.FindProperty(path);
+                if (list != null && list.isArray)
+                    for (int i = 0; i < list.arraySize; i++) roots.Add(list.GetArrayElementAtIndex(i).objectReferenceValue as Transform);
+            }
+            if (so.FindProperty("m_Root")?.objectReferenceValue is Transform one) roots.Add(one);
+            return roots;
         }
 
         static bool IsCollider(Component c) => c != null && (c.GetType().Name == "MagicaCapsuleCollider" || c.GetType().Name == "MagicaSphereCollider" || c.GetType().Name == "DynamicBoneCollider");
@@ -1086,6 +1102,51 @@ namespace AvatarBridge
                 for (int i = 0; i < want.Count; i++) list.GetArrayElementAtIndex(i).objectReferenceValue = want[i];
                 so.ApplyModifiedProperties();
             }
+        }
+
+        // A jellied part's cloth balls, MagicaCloth's least.
+        internal const float Shrunk = 0.001f;
+        const string RadiusMark = "Jelly radius ";
+        static string RadiusOf(string type) => type == "MagicaCloth" ? "serializeData.radius.value" : "m_Radius";
+
+        // The pair's cloth and dynamic bones' balls cut to Shrunk, each old size kept in a mark under
+        // the jelly, "Jelly radius <size> <type> <nth of its type there> <path>"; what was cut. Not one
+        // rooted inside another's chain: a piercing's cloth hanging off the part still feels a hand.
+        static List<string> PairShrink(Transform root, Regex part, Transform under)
+        {
+            var said = new List<string>();
+            var cloths = PairCloth(root, part).Select(b => (b, roots: RootsOf(b).Where(t => t != null).ToList())).ToList();
+            foreach (var (b, roots) in cloths.Where(c => !c.roots.Any(t => cloths.Any(o => o.b != c.b && o.roots.Any(r => r != t && t.IsChildOf(r))))).ToList())
+            {
+                string type = b.GetType().Name;
+                var so = new SerializedObject(b);
+                var r = so.FindProperty(RadiusOf(type));
+                if (r == null || r.floatValue <= Shrunk) continue;
+                int nth = Array.IndexOf(b.GetComponents<Behaviour>().Where(x => x != null && x.GetType().Name == type).ToArray(), b);
+                var mark = new GameObject($"{RadiusMark}{r.floatValue.ToString("R", CultureInfo.InvariantCulture)} {type} {nth} {AnimationUtility.CalculateTransformPath(b.transform, root)}");
+                Undo.RegisterCreatedObjectUndo(mark, "Put the breasts on the jelly");
+                mark.transform.SetParent(under, false);
+                said.Add($"{b.name} from {1000f * r.floatValue:0} mm");
+                r.floatValue = Shrunk;
+                so.ApplyModifiedProperties();
+            }
+            return said;
+        }
+
+        // A mark's ball back to the size it keeps.
+        static void Unshrink(Transform root, string mark)
+        {
+            var bits = mark.Substring(RadiusMark.Length).Split(new[] { ' ' }, 4);
+            if (bits.Length < 4 || !float.TryParse(bits[0], NumberStyles.Float, CultureInfo.InvariantCulture, out float size) || !int.TryParse(bits[2], out int nth)) return;
+            // By path, not Find: a slash in a name reads as missing to Find.
+            var at = root.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => AnimationUtility.CalculateTransformPath(t, root) == bits[3]);
+            var b = at != null ? at.GetComponents<Behaviour>().Where(x => x != null && x.GetType().Name == bits[1]).ElementAtOrDefault(nth) : null;
+            if (b == null) return;
+            var so = new SerializedObject(b);
+            var r = so.FindProperty(RadiusOf(bits[1]));
+            if (r == null) return;
+            r.floatValue = size;
+            so.ApplyModifiedProperties();
         }
 
         // A collider as a capsule in the world, its ends and radius: MagicaCloth's spheres and

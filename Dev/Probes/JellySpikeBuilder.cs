@@ -2729,6 +2729,13 @@ namespace AvatarBridge.Regression
                 Debug.Log($"[Jelly] film: kept out of {cloth.name}: {string.Join(", ", keep.Select(k => k.name))}; roots now {string.Join(", ", sd.rootBones.Where(r => r).Select(r => r.name))}; " +
                           $"{sel.attributes.Count(a => a.IsFixed())} fixed, {sel.attributes.Count(a => a.IsMove())} moving, {sel.attributes.Count(a => a.IsInvalid())} kept out");
             }
+            // -jellyOffCheck: the jelly taken off, each breast cloth's radius read again; it films bare.
+            if (args.Contains("-jellyOffCheck"))
+            {
+                Debug.Log($"[Jelly] film: off check: {YapsJelly.Off(made.transform)}");
+                foreach (var c in made.GetComponentsInChildren<MagicaCloth2.MagicaCloth>(true).Where(c => c.name.IndexOf("breast", StringComparison.OrdinalIgnoreCase) >= 0))
+                    Debug.Log($"[Jelly] film: off check: {c.name} radius {c.SerializeData.radius.value:0.###}, marks left {made.GetComponentsInChildren<Transform>(true).Count(t => t.name.StartsWith("Jelly radius "))}");
+            }
 #endif
             string path = $"{Film}/{made.name} {(bare ? "squash" : "jelly")}.prefab";
             var saved = PrefabUtility.SaveAsPrefabAsset(made, path);

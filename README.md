@@ -1611,8 +1611,10 @@ jelly is a lattice of flesh the graphics card steps every frame in each viewer's
 same body shader. Any player's hand or head dents it, the dent shaded as a hollow, and it fills back; a fist grips the skin and pulls
 it, letting go when pulled too far; a slap rings out from where it lands; the pair press against
 each other, and the wearer's own arms and legs press it too. The cloth still swings each part and
-the tissue rides it. The avatar's own MagicaCloth and Dynamic Bone colliders that a pair's cloth
-collides with press the skin instead of moving the bones. With MagicaCloth installed, a net of
+the tissue rides it, but the touch is the tissue's alone: each part's cloth and Dynamic Bones drop
+to a millimetre of collision size, so a hand, the wearer's or another player's, dents the skin
+without also shoving the bone, and the avatar's own MagicaCloth and Dynamic Bone colliders that a
+pair's cloth collides with press the skin instead. Taking a part off the jelly puts the size back. With MagicaCloth installed, a net of
 probes spread over the skin also feels other players' MagicaCloth colliders, any shape, each
 pressing at about its own size, a fingertip's to a palm's, and the world's solid surfaces: walls,
 tables, dropped props. Past 6 m from a viewer it stops stepping and holds its shape. Nothing
