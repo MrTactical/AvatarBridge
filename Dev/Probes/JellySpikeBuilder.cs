@@ -2556,22 +2556,25 @@ namespace AvatarBridge.Regression
             // step's materials.
             foreach (var other in Object.FindObjectsOfType<Animator>()) other.gameObject.SetActive(false);
             var made = (GameObject) PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(args[from + 1]), scene);
-            // -jellyPick <left bone>,<right bone> or -jellyThighs: the squash rebuilt on this copy with
-            // that pair alone, picked or the thighs painted, so it is the first pair, the one the squash
-            // probe films.
+            // The squash rebuilt on this copy, as the squash's Build does before the jelly goes on: one
+            // patched before the jelly had parts binds its lattice but draws none of it. -jellyPick
+            // <left bone>,<right bone> or -jellyThighs: with that pair alone, picked or the thighs
+            // painted, so it is the first pair, the one the squash probe films.
             int pick = Array.IndexOf(args, "-jellyPick");
             bool thighs = args.Contains("-jellyThighs");
-            PrefabUtility.UnpackPrefabInstance(made, pick >= 0 || thighs ? PrefabUnpackMode.Completely : PrefabUnpackMode.OutermostRoot, InteractionMode.AutomatedAction);
+            PrefabUtility.UnpackPrefabInstance(made, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
             const string Film = "Assets/__JellyFilm";
             if (!AssetDatabase.IsValidFolder(Film)) AssetDatabase.CreateFolder("Assets", "__JellyFilm");
-            if (pick >= 0 || thighs)
             {
                 var avatar = made.GetComponentInChildren<CVRAvatar>(true).transform;
                 var settings = YapsSquash.SettingsOf(avatar) ?? avatar.gameObject.AddComponent<Yaps.YapsSquashSettings>();
-                settings.partBones.Clear();
-                settings.pairs.Clear();
-                if (thighs) PaintThighs(avatar, settings);
-                else settings.partBones.AddRange(args[pick + 1].Split(',').Select(x => avatar.GetComponentsInChildren<Transform>(true).First(t => t.name == x)));
+                if (pick >= 0 || thighs)
+                {
+                    settings.partBones.Clear();
+                    settings.pairs.Clear();
+                    if (thighs) PaintThighs(avatar, settings);
+                    else settings.partBones.AddRange(args[pick + 1].Split(',').Select(x => avatar.GetComponentsInChildren<Transform>(true).First(t => t.name == x)));
+                }
                 if (!AssetDatabase.IsValidFolder(Film + "/Squash")) AssetDatabase.CreateFolder(Film, "Squash");
                 string squash = YapsSquash.Add(avatar, Film + "/Squash", out bool built);
                 YapsShaderPatcher.EndPass(null, null);
@@ -2603,6 +2606,17 @@ namespace AvatarBridge.Regression
                 EditorApplication.Exit(1);
                 return;
             }
+            // Drawn only where a material names its parts: without, the squash's own dent filmed in
+            // the jelly's place and passed for it.
+            var drawing = YapsSquash.Materials(made.GetComponentInChildren<CVRAvatar>(true).transform)
+                .Where(m => m.HasProperty("_YAPS_JellyOwn") && m.GetTexture("_YAPS_JellyOwn") != null && m.GetVector("_YAPS_JellyParts") != Vector4.zero).Select(m => m.name).ToList();
+            Debug.Log($"[Jelly] film: the jelly drawn on {(drawing.Count > 0 ? string.Join(", ", drawing) : "nothing")}");
+            if (!bare && drawing.Count == 0)
+            {
+                Debug.Log("[Jelly] FAIL film: no material carries the jelly's parts, so the squash would be filmed instead");
+                EditorApplication.Exit(1);
+                return;
+            }
             // -jellyKept: the squash's volume kept, as the check takes it, so a film can stand beside
             // an older share (3.33 is the homes' share before 9d50b37).
             int keptAt = Array.IndexOf(args, "-jellyKept");
@@ -2627,8 +2641,12 @@ namespace AvatarBridge.Regression
                     var nv = kv.Split(':');
                     var v = nv[1].Split(',').Select(x => float.Parse(x, CultureInfo.InvariantCulture)).ToArray();
                     foreach (var m in steps)
+                    {
                         if (v.Length == 1) m.SetFloat(nv[0], v[0]);
                         else m.SetVector(nv[0], new Vector4(v[0], v[1], v.Length > 2 ? v[2] : 0f, v.Length > 3 ? v[3] : 0f));
+                        // Not dirty, SaveAssets passed it over and the film stepped on the built values.
+                        EditorUtility.SetDirty(m);
+                    }
                     Debug.Log($"[Jelly] film: {nv[0]} = {nv[1]} on {steps.Count} step materials");
                 }
                 AssetDatabase.SaveAssets();

@@ -3346,6 +3346,8 @@ in. Ranked by worth for what it costs. Suspected defects of ours first:
    again: the push's own slope does stand straight up at the hand's outline, and the review found a
    2.5 % step at an own limb's edge and a pinch on the hand's axis in the rounding. The plug's press
    still lights as flat skin.
+   **The withdrawal is void too:** lit-off filmed the squash, not the jelly (item 31, point 4), so
+   whether the slope drew a ring is unproven either way. Film the light again.
 5. **A soft shadow as a hand nears.** The strongest cue of a touch about to land. A darkening per
    vertex from the hand slots and own capsules the draw already reads, multiplied into the host's
    colour: needs a colour hook per shader family in `YapsShaderPatcher`, which patches the vertex
@@ -3388,13 +3390,29 @@ Not tripping; the probe's numbers since the night films of Oct 31 (night1k, nigh
    skin under it instead of sinking the whole, on purpose.
 2. **The whole swings a little less.** Turning, 111.2 mm then, 103.9 since the step runs every
    frame near (8c9c690, as it runs in game); a 2 cm twitch 13.8 then, 12.9 now.
-3. **A dark ring round every dent** in the breasts film, there with the dent's light off too, so
+3. ~~**A dark ring round every dent** in the breasts film, there with the dent's light off too, so
    the crater's shape: a steep wall where the skin sits ahead of the hand. Joe: "you can physically
    see the distance". Being filmed as now against the share before 9d50b37 (`-jellyKept 3.33` in
-   the film prep gives the old 0.7).
-Open: what "fluid" is for Joe (the whole swinging, or the skin stretching and rippling under a
-hand); then win the stretch back without the seat caving again (`-jellyKept`, `-jellyKnobs`, the
-share's form), each with a film beside night2k.
+   the film prep gives the old 0.7).~~ **WITHDRAWN 2026-11-06: those films were of the squash**, see 4.
+4. **FOUND 2026-11-06: every breasts film from 71bc4c6 (11-01) filmed the squash, not the jelly.**
+   Joe, on them: "its not just the snap but in general ... when you press the finger in it, it
+   "snaps" downwards? not smooth". `FilmBreasts` put the jelly on Kar's squash as built on 10-31,
+   before 71bc4c6 gave the jelly its parts texture: the lattice bound, `_YAPS_JellyOwn` empty and
+   `_YAPS_JellyParts` zero, so `YapsJellyDeform` returned at its first read and the squash's own
+   dent drew the breasts, on as a hand arrived and off in one frame as it left (the snap). Proven
+   with the jelly's draw deleted from the shader: the film unchanged to JPEG noise, as it was with
+   the hand push or the between-steps carry deleted. Void with it: s4-breasts, the light tests
+   (lit-off, lit-bowl), the now-vs-old share A/B Joe chose from, and the snap, shove and carry
+   knob tests. The seat and thighs films rebuilt the squash first and stand, as do 1 and 2, which
+   read the state, not the picture. Not in the product: the squash's Build and the conversion both
+   rebuild the squash before the jelly goes on. **Fixed in the probe:** the film prep always
+   rebuilds the squash and refuses to film when no material carries the jelly's parts. The open
+   hand filmed so: no jump, the largest change between frames 1.9 against 4.3 and 7.4.
+Open: the share's A/B again with the jelly drawn, and the breasts beside night2k for Joe. Seen in
+the state trace (the film probe's `-spMassTrace`), invisible until now: during a held press the
+whole mass slides 5 cm down off the hand in 11 frames, and while pushed its steps alternate about
+6 and 2 mm frame to frame. Film both and judge; then what "fluid" is for Joe, and the stretch won
+back without the seat caving (`-jellyKept`, `-jellyKnobs`, the share's form).
 
 ### 15. Moved out of 5.0.0 (Joe, 2026-10-22)
 
