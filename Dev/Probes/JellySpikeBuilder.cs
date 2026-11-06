@@ -2658,14 +2658,21 @@ namespace AvatarBridge.Regression
                 return;
             }
             // -jellyKept: the squash's volume kept, as the check takes it, so a film can stand beside
-            // an older share (3.33 is the homes' share before 9d50b37).
-            int keptAt = Array.IndexOf(args, "-jellyKept");
-            var keptIn = keptAt >= 0 && keptAt + 1 < args.Length ? YapsSquash.SettingsOf(made.GetComponentInChildren<CVRAvatar>(true).transform) : null;
+            // an older share (3.33 is the homes' share before 9d50b37). -jellyKnobs: every part's eight
+            // feel knobs, comma separated, as the inspector sets them.
+            int keptAt = Array.IndexOf(args, "-jellyKept"), knobsAt = Array.IndexOf(args, "-jellyKnobs");
+            var keptIn = keptAt >= 0 && keptAt + 1 < args.Length || knobsAt >= 0 && knobsAt + 1 < args.Length ? YapsSquash.SettingsOf(made.GetComponentInChildren<CVRAvatar>(true).transform) : null;
             if (keptIn != null)
             {
-                keptIn.volumeKept = float.Parse(args[keptAt + 1], CultureInfo.InvariantCulture);
+                if (keptAt >= 0) keptIn.volumeKept = float.Parse(args[keptAt + 1], CultureInfo.InvariantCulture);
+                if (knobsAt >= 0)
+                {
+                    var k = args[knobsAt + 1].Split(',').Select(v => float.Parse(v, CultureInfo.InvariantCulture)).ToArray();
+                    foreach (var f in keptIn.feels)
+                        (f.firmness, f.settle, f.give, f.swing, f.springBack, f.taut, f.depth, f.slap) = (k[0], k[1], k[2], k[3], k[4], k[5], k[6], k[7]);
+                }
                 foreach (var worn in made.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith(YapsJelly.Worn + " ")))
-                    Debug.Log($"[Jelly] film: volume kept {keptIn.volumeKept} on {worn.name}: {YapsJelly.Retune(worn, keptIn)} materials");
+                    Debug.Log($"[Jelly] film: volume kept {keptIn.volumeKept}, knobs {(knobsAt >= 0 ? args[knobsAt + 1] : "as built")} on {worn.name}: {YapsJelly.Retune(worn, keptIn)} materials");
                 // Retuned only in memory, the film's session loaded the materials as built.
                 AssetDatabase.SaveAssets();
             }

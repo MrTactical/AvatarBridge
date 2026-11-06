@@ -3535,6 +3535,19 @@ Not tripping; the probe's numbers since the night films of Oct 31 (night1k, nigh
      jelly: a stale film shot, left out of r3.
    - **r3, the breasts refilmed with the cloth shrunk** (both rows, every shot but the pulse): no
      shot drops or shakes the bone; it moves only hopping and under the plug, as the body does.
+9. **The squeeze stopped short once the cloth kept out of the touch.** Joe on r3: "its only going so
+   deep before it doesn't care". Three limits the cloth's shove had hidden: a dent held at
+   `_Deepest` (5 cm), the whole moving 0.35 of a press (Give), and its swing held to 0.2 of its
+   length (Swing), which capped Give: at Give 1.5 and 2 the whole stopped at 54 mm either way. The
+   film's `-jellyKnobs` swept them (hand row; squeeze, grab, deep poke, open hand, both hands,
+   hopping): at Give 1.5, Swing 1.5, Press depth 1.6 the whole moves 57 to 73 mm against 44 to 50
+   and the open hand dents 170 against 78, hopping the same. Joe picked it. **Then it rode up out
+   of the squeeze**, 54 mm (77 at Swing 2): the pair held apart stops each 30 mm in, and the palms'
+   slight upward slant slides it round the limit's sphere, as `CarriedLimit`'s comment had warned at
+   0.6 within 0.35. **Done 2026-11-06:** `CarriedGive` 0.525, `CarriedLimit` 0.3 across the body,
+   `CarriedLimitUp` 0.15 up and down it (`_LimitUp`), `Deepest` 0.08, so the knobs stay at 1. The
+   six shots: whole 57 to 72 mm, squeeze dent 240, rising 31 mm as before. A lift from below is
+   held to 0.15 too. Open: Joe in game.
    - The markers sit on each probe's rest spot, carried by the bone, red when pushed; neither they
      nor the probes follow the jelly's dent or swing.
    - **Sticky after the squeeze: the shot's**, filmed alone with the pair's plane traced (58, 59):
