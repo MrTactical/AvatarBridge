@@ -3565,7 +3565,8 @@ Not tripping; the probe's numbers since the night films of Oct 31 (night1k, nigh
    far a hand is in) against the dent. Rows with a hand over 10 mm ahead of the dent, squeeze, both
    hands, deep poke, one hand pushing, grab: Press depth 1, 210 209 136 119 3; 1.25, 177 144 131
    113 13; 1.5, 127 134 93 113 15. At 1.5 the squeeze dent reaches the hands at the peak, 124 mm
-   against 122 (85 at 1). **Done:** `Deepest` 0.12, the knobs at 1; the default refilmed matches the 1.5 run to the digit.
+   against 122 (85 at 1). **Done:** `Deepest` 0.12, the knobs at 1; the default refilmed matches the 1.5 run to the digit. Joe on the film,
+   2026-11-06: "thats better, I like that".
    **WITHDRAWN as a measure:** the probe's palm-capsule count (`clip_mm`) reads 42 to 52 mm on
    every shot at every depth; it counts the lattice's margin outside the skin, not the skin.
    - The markers sit on each probe's rest spot, carried by the bone, red when pushed; neither they
