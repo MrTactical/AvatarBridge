@@ -3489,22 +3489,30 @@ Not tripping; the probe's numbers since the night films of Oct 31 (night1k, nigh
 8. **Joe on the full breasts film with the probes spread (r2), 2026-11-06:** one breast lower (0:42),
    "the titty also violently shakes" in the top and bottom squeeze, the pair "sticky towards each
    other" after the squeeze (0:54), the markers not moving with the mesh, the test pulse showing
-   nothing. Measured from the trace (`-spMassTrace`, now with each slot, the rings and texel 85):
-   - **Lower: 5 again**, there before the probes changed too (58 mm after the two fingers, held to
-     the test pulse). The trace's hand gap leaves the particle's 190 mm out: 47 to 156 mm through
-     those shots is still inside a ball.
+   nothing. Measured from the trace (`-spMassTrace`, now with each slot, the rings and texel 85).
+   **The trace counts game frames, twice the film's**: `segments.tsv` is in film frames, so a shot
+   starts at twice its listed frame in `mass.tsv`. Read the first way, the shots were misnamed.
+   - **Lower: 5 again**, there before the probes changed too: 56 mm down after the open hand (40
+     before), held 14 to 49 mm through every shot to the two-hand squeeze, which frees it. The
+     trace's hand gap leaves the particle's 190 mm out: 47 to 156 mm in those shots is still inside
+     a ball.
    - **The shake is the breast's bone**, pinched by the top and bottom capsules through those balls:
      its velocity -5.5 to +7.1 m/s from one frame to the next (texel 85), the lattice's middle up to
-     11 cm a frame, each jump ringing it as a landing. Three times this morning's flicker only since
+     11 cm a frame, each jump ringing it as a landing: 63 rings in the shot. A slap rings two or three
+     times too, the bone jolted 3.5 m/s through the balls. Three times this morning's flicker only since
      the film's MagicaCloth hand got its true length; the slots held still (50 mm, 1 mm a frame).
      Same cure as 5: the cloth's extra balls out of the chain.
-   - **The probes' slap never fires**: it waits for a push of a whole reach, and the push is held
-     to 0.8 of one. A collider only the probes feel never rings. Not yet fixed.
+   - ~~**The probes' slap never fires**: it waits for a push of a whole reach, and the push is held
+     to 0.8 of one.~~ **WITHDRAWN**: the push is held to 0.8 of the hand's radius plus the reach
+     (`Felt`'s own `reach`), past the slap's line. The collider-only row's slaps rang 9 times.
    - The test pulse drives `_YAPS_SquashPulse`, the squash's own, which nothing draws under the
      jelly: a stale film shot.
    - The markers sit on each probe's rest spot, carried by the bone, red when pushed; neither they
      nor the probes follow the jelly's dent or swing.
-   - Open: the stickiness after the squeeze, not yet measured.
+   - **Sticky after the squeeze: the shot's**, filmed alone with the pair's plane traced (58, 59):
+     the hands never leave, from touching to 16 cm in and slowly back, and while the pair looks held
+     together (film frames 60 to 76) each hand is still 2 to 11 cm in; the seam opens at 80. Open: a
+     squeeze whose hands let go entirely, to judge the jelly's own return.
 Open: the breasts beside night2k for Joe. Seen in the state trace, invisible until now: during a
 held press the whole mass slides 5 cm down off the hand in 11 frames (with 5, the bone shoved too),
 and while pushed its steps alternate about 6 and 2 mm frame to frame. Film both and judge; then
