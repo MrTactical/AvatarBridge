@@ -3354,6 +3354,13 @@ in. Ranked by worth for what it costs. Suspected defects of ours first:
    still lights as flat skin.
    **The withdrawal is void too:** lit-off filmed the squash, not the jelly (item 31, point 4), so
    whether the slope drew a ring is unproven either way. Film the light again.
+   **Filmed again 2026-11-06, on the jelly:** the joined push's slope off (`bend` left at rest) against
+   on, a player's open hand, fist, finger, pokes and a deep poke, on Kar's own skin and again drawn
+   white through the renderers' property blocks (the film probe's `-spWhite`, the assets untouched).
+   No ring either way. On the dark skin the slope moves a highlight inside the dent, a few levels,
+   seen only amplified 5 to 6 times; drawn white the difference is all but nothing, the toon ramp
+   flattening it. So the ring Joe saw was not the light. Kept: it costs only the draw, and a shader
+   with a smooth ramp may show it. Open: a smooth-shaded avatar to see it on.
 5. **A soft shadow as a hand nears.** The strongest cue of a touch about to land. A darkening per
    vertex from the hand slots and own capsules the draw already reads, multiplied into the host's
    colour: needs a colour hook per shader family in `YapsShaderPatcher`, which patches the vertex
