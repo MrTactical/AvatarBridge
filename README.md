@@ -557,12 +557,13 @@ this conversion alone, in place; see [ChilloutVR Toolkit](#chilloutvr-toolkit).
 
 **Structure transfers:** which bone the chain hangs from, which colliders it collides with (whole
 bones against them, as VRChat does, rather than only the joints), which transforms to leave out,
-whether it started enabled. Two things can't cross exactly: MagicaCloth2
-leaves a bone out only by rooting the cloth below it, so where that would leave too little of the
-chain to move, the excluded bones simulate with the rest; and an *inside bounds* collider has no
-equivalent. The report names each. For the same reason a PhysBone nested inside another's chain,
-which VRChat leaves to the inner one when **Ignore Other PhysBones** is on, is moved by both
-cloths; the report names those too. DynamicBone excludes it exactly.
+whether it started enabled. A left-out bone is usually kept out by starting the cloth below it;
+where that would leave too little of the chain to move, the cloth starts at the chain's own root
+instead and marks the left-out bones for MagicaCloth2 to leave alone, so they ride their parents
+as in VRChat. One thing can't cross exactly: an *inside bounds* collider has no equivalent, and
+the report names it. A PhysBone nested inside another's chain, which VRChat leaves to the inner
+one when **Ignore Other PhysBones** is on, is moved by both cloths; the report names those too.
+DynamicBone excludes it exactly.
 
 **A breast is not a chain of hanging bones.** Chains read as a breast, butt, belly or thigh are
 written as MagicaCloth2's **Bone Spring**: a volume anchored to a bone and held near its rest

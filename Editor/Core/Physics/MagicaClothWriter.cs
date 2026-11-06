@@ -184,6 +184,7 @@ namespace AvatarBridge
                     "pin bones this chain moves.");
             }
 
+            bool keptOut = false;
             if (data.Ignores.Count == 0 && !ignoreBranching)
             {
                 // Chains folded in by the grouping pass are roots in the same
@@ -196,7 +197,7 @@ namespace AvatarBridge
             }
             else
             {
-                WriteRootsExcluding(ctx, sdata, data);   // with no ignores, that roots each child, of every merged root too
+                keptOut = WriteRootsExcluding(ctx, sdata, data, ignoreBranching);   // with no ignores, that roots each child, of every merged root too
             }
 
             // Endpoint Position appends a virtual bone to every leaf.
@@ -214,6 +215,8 @@ namespace AvatarBridge
                         $"{data.EndpointPosition.z:0.###}) realised as {BridgeElements.Count(tips, "\"_End\" bone", "\"_End\" bones")}, so the tip can move.");
                 }
             }
+            // Once the tips exist, so they are listed as moving.
+            if (keptOut) MagicaClothKeepOut.KeepOut(cloth, data.Ignores);
 
             if (data.Colliders.Count > 0)
             {
@@ -377,7 +380,9 @@ namespace AvatarBridge
             return added;
         }
 
-        static void WriteRootsExcluding(BridgeContext ctx, ClothSerializeData sdata, PhysBoneChainData data)
+        // True when it rooted where the PhysBone is and the ignored bones are to be kept out by
+        // attribute, once the hierarchy under the roots is final.
+        static bool WriteRootsExcluding(BridgeContext ctx, ClothSerializeData sdata, PhysBoneChainData data, bool ignoreBranching)
         {
             var ignored = new HashSet<Transform>(data.Ignores.Where(t => t != null));
 
@@ -487,7 +492,7 @@ namespace AvatarBridge
             bool costsTooMuch = wholeChain > 0 && kept * 2 < wholeChain
                                 && data.HumanoidExclusions.Count == 0;
 
-            if (sdata.rootBones.Count > deadRoots.Count && !costsTooMuch)
+            if (sdata.rootBones.Count > deadRoots.Count && !costsTooMuch && unhonouredBranches.Count == 0)
             {
                 // At least one branch still moves: keep those, drop the statues.
                 foreach (var dead in deadRoots)
@@ -500,13 +505,26 @@ namespace AvatarBridge
                     $"{BridgeElements.Count(sdata.rootBones.Count, "branch", "branches")} instead: {string.Join(", ", names)}" +
                     $"{(sdata.rootBones.Count > names.Count ? ", …" : "")}. Each branch bends from its second " +
                     "joint, so it may feel stiff at the base." +
-                    (deadRoots.Count > 0 ? $" {BridgeElements.Count(deadRoots.Count, "childless branch", "childless branches")} dropped." : "") +
-                    (unhonouredBranches.Count > 0
-                        ? $" {BridgeElements.Count(unhonouredBranches.Count, "branch simulates its", "branches simulate their")} excluded bones, or nothing of " +
-                          $"them would move: {string.Join(", ", unhonouredBranches.Select(b => b.name).Take(4))}" +
-                          $"{(unhonouredBranches.Count > 4 ? ", …" : "")}."
-                        : ""));
-                return;
+                    (deadRoots.Count > 0 ? $" {BridgeElements.Count(deadRoots.Count, "childless branch", "childless branches")} dropped." : ""));
+                return false;
+            }
+
+            // Rooting around the ignores would give one up, simulate too little of the chain or
+            // leave nothing to move. Rooted where the PhysBone is, as VRChat roots it, the ignored
+            // bones kept out by attribute instead: the whole chain moves, they ride their bones.
+            // Not under Multi Child Type Ignore, whose branching root the cloth must not turn.
+            if (wholeChain > 0 && !ignoreBranching)
+            {
+                sdata.rootBones.Clear();
+                foreach (var root in data.AllRoots)
+                {
+                    sdata.rootBones.Add(root);
+                }
+                ctx.Report.Converted(Category, data.Label,
+                    $"{BridgeElements.Count(data.Ignores.Count, "Ignore Transform", "Ignore Transforms")} kept out of the simulation as in VRChat: " +
+                    $"the cloth starts at \"{data.Root.name}\" and they ride their bones" +
+                    (unhonouredBranches.Count > 0 ? $", {string.Join(", ", unhonouredBranches.Select(b => b.name).Take(4))}{(unhonouredBranches.Count > 4 ? ", …" : "")} moving with the rest." : "."));
+                return true;
             }
 
             // Nothing movable survives the decomposition. Honouring the
@@ -522,7 +540,7 @@ namespace AvatarBridge
                     $"This cloth CANNOT move: honouring the {BridgeElements.Count(data.Ignores.Count, "excluded transform", "excluded transforms")} " +
                     $"(including {BridgeElements.Count(data.HumanoidExclusions.Count, "humanoid bone", "humanoid bones")}) leaves nothing to move. Kept " +
                     "for inspection; delete it or fix the source PhysBone.");
-                return;
+                return false;
             }
 
             sdata.rootBones.Clear();
@@ -537,6 +555,7 @@ namespace AvatarBridge
                     ? $"that would simulate only {kept} of {BridgeElements.Count(wholeChain, "bone", "bones")}. "
                     : "that would leave nothing to move. ") +
                 $"The whole tree simulates from \"{data.Root.name}\", so those bones jiggle where VRChat held them.");
+            return false;
         }
 
         static void ReportSourceSettings(BridgeContext ctx, PhysBoneChainData data, string preset,
@@ -1993,39 +2012,8 @@ namespace AvatarBridge
             var refused = new List<string>();
             foreach (var cloth in ctx.Target.GetComponentsInChildren<MagicaCloth>(true))
             {
-                var sdata = cloth.SerializeData;
-                if (!sdata.IsValid())
-                {
-                    refused.Add(cloth.name);
-                    continue;
-                }
-                RenderSetupData setup = null;
-                try
-                {
-                    setup = sdata.clothType == ClothProcess.ClothType.BoneSpring
-                        ? new RenderSetupData(null, RenderSetupData.SetupType.BoneSpring, cloth.ClothTransform, sdata.rootBones,
-                            sdata.colliderCollisionConstraint.collisionBones, RenderSetupData.BoneConnectionMode.Line, cloth.name)
-                        : new RenderSetupData(null, RenderSetupData.SetupType.BoneCloth, cloth.ClothTransform, sdata.rootBones,
-                            null, sdata.connectionMode, cloth.name);
-                    if (setup.IsFaild())
-                    {
-                        refused.Add(cloth.name);
-                        continue;
-                    }
-                    var normal = sdata.normalAlignmentSetting.adjustmentTransform
-                        ? sdata.normalAlignmentSetting.adjustmentTransform
-                        : cloth.ClothTransform;
-                    var init = new ClothInitSerializeData();
-                    init.Serialize(sdata, new TransformRecord(cloth.ClothTransform, read: true),
-                        new TransformRecord(normal, read: true), new List<RenderSetupData> { setup });
-                    cloth.GetSerializeData2().initData = init;
-                    EditorUtility.SetDirty(cloth);
-                    pinned++;
-                }
-                finally
-                {
-                    setup?.Dispose();
-                }
+                if (MagicaClothKeepOut.Pin(cloth)) pinned++;
+                else refused.Add(cloth.name);
             }
             if (pinned > 0)
             {

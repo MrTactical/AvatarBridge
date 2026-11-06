@@ -2691,6 +2691,45 @@ namespace AvatarBridge.Regression
                 }
                 AssetDatabase.SaveAssets();
             }
+#if AVATARBRIDGE_MAGICA
+            // Each breast cloth as it reads, and -jellyKeepOut: what a conversion now writes over an
+            // avatar converted before it, the ignored piercings and the squash's points kept out by
+            // attribute, a root with nothing else under it moved up to its parent as the PhysBone's.
+            foreach (var cloth in made.GetComponentsInChildren<MagicaCloth2.MagicaCloth>(true)
+                         .Where(c => c.SerializeData.rootBones.Any(r => r != null && r.name.IndexOf("breast", StringComparison.OrdinalIgnoreCase) >= 0)))
+            {
+                var sd = cloth.SerializeData;
+                List<Transform> Under() => sd.rootBones.Where(r => r).SelectMany(r => r.GetComponentsInChildren<Transform>(true)).Distinct().ToList();
+                Debug.Log($"[Jelly] film: cloth {cloth.name}, radius {sd.radius.value:0.###}, roots {string.Join(", ", sd.rootBones.Where(r => r).Select(r => r.name))}, under them {string.Join(", ", Under().Select(t => t.name + " < " + (t.parent ? t.parent.name : "-")))}; " +
+                          $"collides {sd.colliderCollisionConstraint.mode} with {string.Join(", ", sd.colliderCollisionConstraint.colliderList.Select(c => c ? c.name + " < " + (c.transform.parent ? c.transform.parent.name : "-") : "null"))}");
+                // -jellyNoCloth: the cloth only swings, the jelly taking every touch.
+                if (args.Contains("-jellyNoCloth"))
+                {
+                    sd.colliderCollisionConstraint.mode = MagicaCloth2.ColliderCollisionConstraint.Mode.None;
+                    EditorUtility.SetDirty(cloth);
+                    // MagicaCloth2 collides a BoneSpring by points whatever this says: -spClothNoHands instead.
+                    Debug.Log($"[Jelly] film: {cloth.name} collides with nothing" + (sd.clothType == MagicaCloth2.ClothProcess.ClothType.BoneSpring ? ", IGNORED: a BoneSpring collides by points" : ""));
+                }
+                // -jellyClothOff: the cloth off, so whatever else moves the bone shows alone.
+                if (args.Contains("-jellyClothOff"))
+                {
+                    cloth.enabled = false;
+                    EditorUtility.SetDirty(cloth);
+                    Debug.Log($"[Jelly] film: {cloth.name} off");
+                }
+                if (!args.Contains("-jellyKeepOut")) continue;
+                var keep = Under().Where(t => t.name.StartsWith("Piercings_") || t.name.StartsWith("YAPS squash ")).ToList();
+                for (int i = 0; i < sd.rootBones.Count; i++)
+                {
+                    var r = sd.rootBones[i];
+                    if (r && r.parent && r.GetComponentsInChildren<Transform>(true).All(t => t == r || keep.Any(k => t == k || t.IsChildOf(k)))) sd.rootBones[i] = r.parent;
+                }
+                MagicaClothKeepOut.KeepOut(cloth, keep);
+                var sel = cloth.GetSerializeData2().selectionData;
+                Debug.Log($"[Jelly] film: kept out of {cloth.name}: {string.Join(", ", keep.Select(k => k.name))}; roots now {string.Join(", ", sd.rootBones.Where(r => r).Select(r => r.name))}; " +
+                          $"{sel.attributes.Count(a => a.IsFixed())} fixed, {sel.attributes.Count(a => a.IsMove())} moving, {sel.attributes.Count(a => a.IsInvalid())} kept out");
+            }
+#endif
             string path = $"{Film}/{made.name} {(bare ? "squash" : "jelly")}.prefab";
             var saved = PrefabUtility.SaveAsPrefabAsset(made, path);
             Object.DestroyImmediate(made);

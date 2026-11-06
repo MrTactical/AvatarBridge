@@ -3432,6 +3432,11 @@ Not tripping; the probe's numbers since the night films of Oct 31 (night1k, nigh
    breast's middle that VRChat never had, so any hand near the middle drags the breast. To fix:
    the follow off the bone (a constraint, or the shader taking the mover's matrix and the offset),
    which touches `YapsSquash` and `yaps_dent.cginc`, both parked mid-work in Joe's project.
+   **Done 2026-11-06, another way:** both kept out by MagicaCloth's per-bone attributes
+   (`MagicaClothKeepOut`): an invalid bone neither moves nor writes, so it rides its parent, a
+   PhysBone's ignore. The converter roots such a chain where the PhysBone does and keeps its ignores
+   out once the hierarchy is final; `YapsSquash` keeps its points out of any cloth they fall under.
+   It was not what held the breast down (8).
 6. **Hands carrying only a MagicaCloth collider dent the jelly, in the editor.** Joe: "we need a
    probe on that, because it may not be working in game". The film's collider-only row
    (`-spMagicaHands -spNoArrays`), traced: the probes read up to 102 mm, both slots fill, and the
@@ -3502,6 +3507,18 @@ Not tripping; the probe's numbers since the night films of Oct 31 (night1k, nigh
      times too, the bone jolted 3.5 m/s through the balls. Three times this morning's flicker only since
      the film's MagicaCloth hand got its true length; the slots held still (50 mm, 1 mm a frame).
      Same cure as 5: the cloth's extra balls out of the chain.
+   - **Kept out, and the real cause** (the film's copy, these three shots). With the extra balls kept
+     out (5): 50 mm down instead of 56, the shake unchanged. ~~`-jellyNoCloth` (collision None)
+     changed nothing, so the collisions are not it~~ **WITHDRAWN**: MagicaCloth2 collides a
+     BoneSpring by points whatever its mode says (`ColliderCollisionConstraint`), and both breast
+     cloths are BoneSpring, so that run never turned them off. Nothing touching: still. The film's
+     hand colliders kept off the breast cloths alone (`-spClothNoHands`): 0 mm down, rings 62 to 2,
+     frames flickering 88 to 0, the probes' readout the same (peaks 181, 70 and 110 mm). The bone's
+     own balls, the source's radius, are pushed by every hand while the jelly dents for it: one
+     touch answered twice. In game only for a viewer who shares colliders (6).
+     **Decided, Joe 2026-11-06: the jelly takes the touch.** A jellied part's cloth stops feeling
+     hands, as the wearer's own colliders already stop (`PairCollide`), and still swings with the
+     body. Other players' colliders reach it at runtime, past any list, so the lever is its radius.
    - ~~**The probes' slap never fires**: it waits for a push of a whole reach, and the push is held
      to 0.8 of one.~~ **WITHDRAWN**: the push is held to 0.8 of the hand's radius plus the reach
      (`Felt`'s own `reach`), past the slap's line. The collider-only row's slaps rang 9 times.

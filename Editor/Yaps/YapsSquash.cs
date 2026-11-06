@@ -766,6 +766,13 @@ namespace AvatarBridge
             EditorUtility.SetDirty(root.gameObject);
             if (root.gameObject.scene.IsValid()) EditorSceneManager.MarkSceneDirty(root.gameObject.scene);
             if (report != null) Debug.Log("[AvatarBridge] Squash build steps (ms): " + string.Join(", ", times));
+#if AVATARBRIDGE_MAGICA
+            // Its points ride their bones. Under a cloth's roots each was a particle of the cloth's
+            // radius: a follow at a breast's middle, a ball as wide as the breast, held a hand off it.
+            int outOf = MagicaClothKeepOut.KeepOut(root, root.GetComponentsInChildren<Transform>(true)
+                .Where(t => t.name == FollowName || t.name == RestName || t.name == BackName).ToList());
+            if (outOf > 0) log.Add($"its points kept out of {BridgeElements.Count(outOf, "cloth", "cloths")}");
+#endif
             built = true;
             return $"{BridgeElements.Count(parts.Count / 2, "pair", "pairs")} {PartsFrom(SettingsOf(root))} on {root.name}, {BridgeElements.Count(copies.Count, "material", "materials")} in {folder}: " + string.Join("; ", log);
         }
