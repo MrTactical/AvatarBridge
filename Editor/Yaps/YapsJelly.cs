@@ -510,7 +510,16 @@ namespace AvatarBridge
                 // Feeling the world, half of each one's probes are balls, each on a cloth probe's spot:
                 // the first half, spread farthest first over the whole front, so players' colliders and
                 // the world both press it at that spread.
-                AddSkin(made, provider, hangs, probing ? spotsOf : null, 0.5f * (n.z - 1) * spacing, "Put the breasts on the jelly", into, o.probeReach, world ? new[] { true, true } : null, ProbesPer / 2);
+                // Spread over a part's whole front, the probes sit further apart the bigger it is, so
+                // their reach grows with the gap: at 4 cm a 4.5 cm ball 3 cm in between two of a seat's,
+                // 14.5 cm apart, pushed them half as far as a breast's at 12.7, and passed untouched
+                // between a thigh's at 17.6. The cloth ones, which colliders push: with world balls
+                // on, the first half.
+                float reach = o.probeReach;
+                var nets = probing ? spotsOf.Select(net => world ? net.Take(ProbesPer / 2).ToList() : net).Where(net => net.Count > 1).ToList() : null;
+                if (nets != null && nets.Count > 0)
+                    reach = Mathf.Max(reach, 0.315f * nets.Average(net => net.Average(pa => net.Where(pb => pb != pa).Min(pb => (pa - pb).magnitude))));
+                AddSkin(made, provider, hangs, probing ? spotsOf : null, 0.5f * (n.z - 1) * spacing, "Put the breasts on the jelly", into, reach, world ? new[] { true, true } : null, ProbesPer / 2);
             }
 
             // The wearer's own arms, hands and thighs press the breasts as other players' hands do:
@@ -2410,8 +2419,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // squeezing hands too, as a balloon would. w is the volume the map had, kept for the trace.
             // The map is of the particles, which sit on the homes, so it holds the homes' own squash:
             // taking _Solid of it outright, a 3 cm poke flattened the whole part to 0.87 of its depth and
-            // kept sinking while held. Weighted _Solid / (1 + _Solid), the homes end at _Solid of what
-            // the hands do.
+            // kept sinking while held. Weighted _Solid / (1 + _Solid), the homes end near _Solid of what
+            // the hands do: about 0.9 of it at 0.7, as the homes' squash ramps in with depth and the fit
+            // sees part of it.
             float4 Bulk(int k, float4x4 m, bool distant, uint side)
             {
                 float4 none = float4(k == 0, k == 1, k == 2, 1);

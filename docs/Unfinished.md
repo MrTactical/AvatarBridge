@@ -3205,6 +3205,26 @@ layers get a copy at all), `_YAPS_DentOwn` RGBA, the draw's two states and one f
    stays in and holds. Both are the breast's "through to the chest" asked where no arm goes (step
    5). Next: that run (breasts, seat, thighs, which also logs each part's probe spacing, for a
    probe reach scaled to it), then films of the seat and thighs for Joe.
+   Review 2026-11-06 (two readers, each finding checked against the code): fixed in the probe, a
+   painted-only avatar's skin line finding no body by bone names (it threw every frame from frame
+   119 and never finished), and the poke read clamped onto the far corner particle when no skin lay
+   on the line (the press fell back to the lattice front, the read did not). Open, older than the
+   fix: a part swinging with nothing on it shears its homes a little, as the bulk fit reads the
+   homes' depth-weighted swing (HomeOn turns a home by w = l.z / (n.z - 1)) as squash, about
+   -0.045 yz at a 0.3 rad swing (-0.112 at the old weight); the cure is fitting the particles
+   against the swung homes, not Rest(l). And the fixed point is near, not exact: the homes reach
+   about 0.9 of `_Solid` at 0.7, less across than in depth, their own squash ramping in with depth.
+   Own through read, s4h: the seat's furthest held particle is 6.6 cm off the forearm and 21.2 cm
+   off the wrist, so the forearm, reaching behind the body, lies through the cheek and pushes it;
+   the thighs' 8.1 cm off a wrist stuck 21.3 cm short. The jelly is right in both: step 5 asks an
+   own hand only where an arm goes. Probe spacing: the 24 cloth probes spread farthest-first sit
+   12.7 cm apart on the breasts, 14.5 on the seat, 17.6 on the thighs, with a fixed 4 cm reach,
+   so a 4.5 cm ball midway between two (8.5 cm off each centre to touch) grazed the seat's
+   (7.25) and missed the thighs' (8.8). BUILT: the reach is 0.315 of the average spacing, at
+   least the 4 cm (`PairOn`); s4i: breasts 4.1 cm and PASS, the seat 4.6 (the ball's press moved
+   its probes 25.4 mm, from 19.5), the thighs 5.6 (12.0 mm, from 0.2). Still no ring from a quick
+   slap by another player's collider on the seat or thighs: 24 probes over a big front leave room
+   for a ball; more for a bigger part needs room in the state row (texels 88 to 111 hold 24).
 5. **Tests.** VerifyBreasts made part-agnostic: the region's forward for every press, thresholds
    scaled by the part's size, partner checks skipped for a single part, a thigh check (the film's
    `-jellyThighs` prep in the check). A seeded random-patch generator (pairs over mesh adjacency
@@ -3280,6 +3300,46 @@ stays, as Unity only shows `GameObject/` items there. Four finished probes went:
 root motion, bake orientation, the MagicaCloth stacking repro (git keeps them). Other projects
 keep the old names until their next deploy.
 - **Release notes:** one line, "YAPS moved: *Tools ▸ YAPS* is now *Tools ▸ Avatar Bridge ▸ YAPS*."
+
+### 30. Pointers for the live tissue from a VRChat skin-touch module. 2026-11-06, Joe: "can we take any pointers from it?"
+
+DocMe Skin Touch 1.1.0 (free, Booth), a Poiyomi module whose dents come from VRChat contacts. Read
+2026-11-06 for ideas only: its licence bars its code, or a rewrite of it, in ours, so none goes
+in. Ranked by worth for what it costs; nothing started. Suspected defects of ours first:
+
+1. **The wearer's own hand may press twice.** The step's hand scan takes every player in the
+   arrays, player 0 the viewer, so on the wearer's machine their hands press as generic array
+   hands as well as through the measured own capsules, and the presses add. Skip the array entry
+   whose hands sit within a few centimetres of the own hand anchors. Unverified: batch Play mode
+   writes the arrays itself, so check in game first.
+2. **Presses add where they overlap.** The palm and finger capsules of one hand overlap at the
+   knuckle, an own forearm and hand share the wrist, two hands can cover one patch, and the draw
+   sums every `YapsJellyPress`, pushing skin past either surface. Take the largest (or a smooth
+   largest) within one hand or limb chain, and blend between largest and sum across hands.
+3. **A press pushes the far side of a thin part.** `YapsJellyPress` moves any vertex within two
+   radii of a hand, whichever way the skin faces; on an arm, a calf or a belly's side the far side
+   would be shoved. Ease the rim by whether the vertex normal faces the hand. Instrument first.
+4. **Light the press.** The presses add to the skin's move but never its normal, so a finger's
+   dent keeps the resting normal and shows in silhouette alone. Each press also returns the slope
+   of its push, added to `bend` as the lattice's own gradient is; draw only.
+5. **A soft shadow as a hand nears.** The strongest cue of a touch about to land. A darkening per
+   vertex from the hand slots and own capsules the draw already reads, multiplied into the host's
+   colour: needs a colour hook per shader family in `YapsShaderPatcher`, which patches the vertex
+   stage only today. Large.
+6. **Heads press too.** Each player's head from `_CVR_PlayerHeadPositions` as a head-sized ball,
+   scaled by its player's height, the wearer's own skipped (a head in a lap). Feet do not port:
+   the client hands a root, not feet.
+7. **The Avatar Tester's hand put on the skin by a click** in the Scene view (bake the body, ray,
+   back off along the normal by the palm), and its controls in a Scene view panel.
+8. **Presets named by feel, and a Firm one.** Custom at 1 is the breasts' tune, so an arm or a
+   neck feels like a breast: add Firm (and maybe Thin) after Custom (the enum serialises by
+   index), guessed for arms, neck and calves. Saving a part's feel to a small file to share.
+9. Smaller: every problem at the top of the component with its fix; a line saying what the build
+   adds; a cost measured on the user's own card; a pile-up ring round a deep press, draw-only; a
+   dent whose rim grows with the press.
+Already ours, and further: cost by distance and view (the far switch, half rate), round and
+hollow skin (the lattice is volumetric), clothes moving with the skin, a hand through the body
+held and let go, nothing synced and no contacts.
 
 ### 15. Moved out of 5.0.0 (Joe, 2026-10-22)
 

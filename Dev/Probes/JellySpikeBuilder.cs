@@ -3118,7 +3118,8 @@ namespace AvatarBridge.Regression
         // 2 cm of that line, inside the lattice, so a press goes into skin and not the lattice's air.
         static float SkinOut()
         {
-            var body = YapsSquash.NamedBody(swing);
+            // A painted part has no bone names to find its body by: the biggest skin, as PaintThighs.
+            var body = YapsSquash.NamedBody(swing) ?? swing.GetComponentsInChildren<SkinnedMeshRenderer>(true).Where(q => q.sharedMesh != null).OrderByDescending(q => q.sharedMesh.vertexCount).First();
             var baked = new Mesh();
             body.BakeMesh(baked);
             var at = baked.vertices;
@@ -3359,7 +3360,8 @@ namespace AvatarBridge.Regression
 #endif
                         probeSaid.Add($"{string.Join(" and ", nets.Select(c => c.GetType().Name))}, {probeTs.Count} probes, the frontmost " +
                                       $"{100f * Vector3.Dot(probeTs[0].position - breastRegions[0].position, breastRegions[0].forward):0.0} cm out on its region, " +
-                                      $"{100f * probeTs.Take(probeTs.Count / 2).Average(pa => probeTs.Take(probeTs.Count / 2).Where(pq => pq != pa).Min(pq => (pa.position - pq.position).magnitude)):0.0} cm from its nearest on average");
+                                      $"{100f * probeTs.Take(probeTs.Count / 2).Average(pa => probeTs.Take(probeTs.Count / 2).Where(pq => pq != pa).Min(pq => (pa.position - pq.position).magnitude)):0.0} cm from its nearest on average, reaching " +
+                                      $"{100f * jelly.GetComponentsInChildren<CVRMaterialDataProvider>(true).First(pv => pv.transforms != null && pv.transforms.Length > 0).materials[0].GetFloat("_JellyProbeReach"):0.0} cm");
                     }
                     var front = 0.5f * (probeHang[0].TransformPoint(probeRest[0]) + probeHang[probePair].TransformPoint(probeRest[probePair]));
                     // The second slap from 15 cm off, the hand with it: from 7 cm a palm already
@@ -3434,9 +3436,11 @@ namespace AvatarBridge.Regression
             if (frame == 119)
             {
                 skinOut = SkinOut();
+                // No skin on the line: the lattice's front less its centimetre, for the press and the read.
+                if (float.IsNaN(skinOut)) skinOut = (n.z - 1) * breastSpacing - 0.01f;
                 wholeFrom = Whole(ReadState());
             }
-            var spot = breastRegions[0].position + fwd * (float.IsNaN(skinOut) ? (n.z - 1) * breastSpacing - 0.01f : skinOut);
+            var spot = breastRegions[0].position + fwd * skinOut;
             float into = frame < 120 || frame >= 210 ? -1f : Mathf.Min((frame - 120) / 30f, 1f);
             var hand = Enumerable.Repeat(new Vector4(50f, 50f, 50f, 0f), 255).ToArray();
             var far = (Vector4[]) hand.Clone();
