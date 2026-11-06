@@ -1618,7 +1618,11 @@ is synced: each viewer's game steps its own copy. It tells the animator three fl
 to 1 and never synced, for blend shapes or sounds to follow: `#Jelly/<part>/Squeeze`,
 `#Jelly/<part>/Grab` and `#Jelly/<part>/Slap`. **Live tissue** on the **YAPS Squash** component
 adds a **Jelly twitch** menu toggle that kicks the jiggle, and lets a grip slide along the skin with
-the fist; rebuild after changing the twitch, while the grip's slide is live. Each part on the jelly
+the fist; rebuild after changing the twitch, while the grip's slide is live. **Probe Markers**
+adds a **Jelly probes (debug)** menu toggle for testing other players' MagicaCloth colliders in game:
+a marker on each probe, white at rest and red where the tissue felt a collider push it in. A marker
+that moves but stays white means the tissue never heard of the push; one that never moves means the
+game gave the probes no collider. Rebuild after changing it. Each part on the jelly
 also has its own feel, under **Tune how it feels ▸ Each part**: a **Preset** (Breasts, Butt, Thighs,
 Belly, Firm or Custom), guessed from the part's name or the bone it rides the first time it is built
 (Firm, for skin close over muscle, on an arm, a calf or the neck), fills

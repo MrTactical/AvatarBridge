@@ -525,6 +525,8 @@ namespace AvatarBridge
                 if (nets != null && nets.Count > 0)
                     reach = Mathf.Max(reach, 0.315f * nets.Average(net => net.Average(pa => net.Where(pb => pb != pa).Min(pb => (pa - pb).magnitude))));
                 AddSkin(made, provider, hangs, probing ? spotsOf : null, 0.5f * (n.z - 1) * spacing, "Put the breasts on the jelly", into, reach, world ? new[] { true, true } : null, ProbesPer / 2);
+                if (probing && YapsSquash.SettingsOf(root)?.probeMarkers == true)
+                    Markers(made, core.state, n, Mathf.RoundToInt(provider.materials[0].GetFloat("_JellyProbes")), into, shaders);
             }
 
             // The wearer's own arms, hands and thighs press the breasts as other players' hands do:
@@ -889,8 +891,68 @@ namespace AvatarBridge
                 }
                 menu = $"a \"{TwitchEntry}\" toggle kicking {100f * size:0.0} cm" + (YapsAasAnimator.Wire(avatar, entry) != null ? ", its layer written" : "");
             }
+            menu += "; " + MarkersWired(avatar, folder);
             AssetDatabase.SaveAssets();
             return $"{menu}; {(tells != null ? string.Join(", ", tells) + " declared" : "every #Jelly/ parameter taken out")} in {controllers.Count} controller(s)";
+        }
+
+        internal const string MarkersEntry = "Jelly probes (debug)";
+
+        // With any part's probe markers, a menu toggle showing them all, off by default; with none, the
+        // toggle taken out. Its two clips in folder, kept in place.
+        static string MarkersWired(CVRAvatar avatar, string folder)
+        {
+            var settings = avatar.avatarSettings?.settings;
+            var entry = settings?.FirstOrDefault(e => e != null && e.name == MarkersEntry);
+            var markers = avatar.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith(MarkersName)).ToList();
+            if (markers.Count == 0)
+            {
+                if (entry == null) return "no probe markers";
+                Undo.RecordObject(avatar, "Take the breasts off the jelly");
+                settings.Remove(entry);
+                YapsAasAnimator.Unwire(avatar, entry.machineName);
+                EditorUtility.SetDirty(avatar);
+                return "the probe markers' toggle taken out";
+            }
+            AnimationClip Clip(AnimationClip had, string name, float on)
+            {
+                var clip = had != null ? had : AssetDatabase.LoadAssetAtPath<AnimationClip>(folder + name);
+                if (clip == null)
+                {
+                    clip = new AnimationClip();
+                    YapsNativeBuilder.EnsureFolderPublic(folder);
+                    AssetDatabase.CreateAsset(clip, folder + name);
+                }
+                clip.ClearCurves();
+                foreach (var m in markers)
+                    clip.SetCurve(AnimationUtility.CalculateTransformPath(m, avatar.transform), typeof(GameObject), "m_IsActive", AnimationCurve.Constant(0f, 1f / 60f, on));
+                EditorUtility.SetDirty(clip);
+                return clip;
+            }
+            var shown = Clip(entry?.toggleSettings?.animationClip, "/Jelly_Probes_On.anim", 1f);
+            var hidden = Clip(entry?.toggleSettings?.offAnimationClip, "/Jelly_Probes_Off.anim", 0f);
+            if (entry == null)
+            {
+                Undo.RecordObject(avatar, "Put the breasts on the jelly");
+                if (avatar.avatarSettings == null) avatar.avatarSettings = new CVRAdvancedAvatarSettings { settings = new List<CVRAdvancedSettingsEntry>(), initialized = true };
+                avatar.avatarUsesAdvancedSettings = true;
+                entry = new CVRAdvancedSettingsEntry
+                {
+                    name = MarkersEntry,
+                    machineName = "JellyProbes",
+                    type = CVRAdvancedSettingsEntry.SettingsType.Toggle,
+                    toggleSettings = new CVRAdvancesAvatarSettingGameObjectToggle
+                    {
+                        usedType = CVRAdvancesAvatarSettingBase.ParameterType.Bool,
+                        useAnimationClip = true,
+                        animationClip = shown,
+                        offAnimationClip = hidden,
+                    },
+                };
+                avatar.avatarSettings.settings.Add(entry);
+                EditorUtility.SetDirty(avatar);
+            }
+            return $"a \"{MarkersEntry}\" toggle showing {markers.Count} part(s)' probes" + (YapsAasAnimator.Wire(avatar, entry) != null ? ", its layer written" : "");
         }
 
         // The cloth and dynamic bones whose roots are on the pair's bone chains, switched on or off;
@@ -1282,6 +1344,109 @@ namespace AvatarBridge
             Undo.RecordObject(renders, undo);
             renders.cvrRenderComponents.Insert(renders.cvrRenderComponents.IndexOf(provider) + 1, skinned);
         }
+
+        internal const string MarkersName = "Jelly Probe Markers";
+
+        // A marker on each probe the step reads, for testing in game: skinned to its tip, so a
+        // collider that moves the probe moves it, white turning red as far as the step read it pushed
+        // in, a centimetre red. Off until the menu shows it. "[FPR]" for the skin's reason: the
+        // first-person copy would freeze it.
+        static void Markers(GameObject made, RenderTexture state, Vector3Int n, int probed, string folder, string shaders)
+        {
+            if (Write(shaders + "/JellyProbeMarker.shader", MarkerShader)) AssetDatabase.Refresh();
+            var shader = AssetDatabase.LoadAssetAtPath<Shader>(shaders + "/JellyProbeMarker.shader");
+            if (shader == null) return;
+            var tips = made.GetComponentsInChildren<Transform>(true).Select(t => (t, at: t.name.StartsWith("Jelly Probe Tip ") ? t.name.Substring(16).Split(' ') : null))
+                .Where(x => x.at != null && x.at.Length == 2 && int.Parse(x.at[1]) < probed).ToList();
+            if (tips.Count == 0) return;
+            var markers = new GameObject(MarkersName + " [FPR]").AddComponent<SkinnedMeshRenderer>();
+            markers.transform.SetParent(made.transform, false);
+            Undo.RegisterCreatedObjectUndo(markers.gameObject, "Put the breasts on the jelly");
+            const float r = 0.006f;
+            var corners = new[] { Vector3.right, Vector3.left, Vector3.up, Vector3.down, Vector3.forward, Vector3.back };
+            int[] faces = { 0, 2, 4, 2, 1, 4, 1, 3, 4, 3, 0, 4, 2, 0, 5, 1, 2, 5, 3, 1, 5, 0, 3, 5 };
+            var points = new List<Vector3>();
+            var at = new List<Vector2>();
+            var weights = new List<BoneWeight>();
+            var triangles = new List<int>();
+            int rows = Side(n);
+            for (int i = 0; i < tips.Count; i++)
+            {
+                int side = int.Parse(tips[i].at[0]), k = int.Parse(tips[i].at[1]);
+                foreach (int f in faces) triangles.Add(points.Count + f);
+                foreach (var c in corners)
+                {
+                    points.Add(markers.transform.InverseTransformPoint(tips[i].t.position + c * r));
+                    // The probe's readout texel: 88 on, on its region's side row.
+                    at.Add(new Vector2(88 + k, side * (rows + 1) + rows));
+                    weights.Add(new BoneWeight { boneIndex0 = i, weight0 = 1f });
+                }
+            }
+            // Kept in place when it exists: remade at the same path, scene copies read it Missing.
+            var mesh = AssetDatabase.LoadAssetAtPath<Mesh>(folder + "/Jelly_Probe_Markers.asset");
+            if (mesh == null)
+            {
+                mesh = new Mesh();
+                AssetDatabase.CreateAsset(mesh, folder + "/Jelly_Probe_Markers.asset");
+            }
+            mesh.Clear();
+            mesh.name = "Jelly probe markers";
+            mesh.vertices = points.ToArray();
+            mesh.SetUVs(1, at);
+            mesh.boneWeights = weights.ToArray();
+            mesh.bindposes = tips.Select(x => x.t.worldToLocalMatrix * markers.transform.localToWorldMatrix).ToArray();
+            mesh.triangles = triangles.ToArray();
+            mesh.RecalculateBounds();
+            EditorUtility.SetDirty(mesh);
+            markers.sharedMesh = mesh;
+            markers.bones = tips.Select(x => x.t).ToArray();
+            var mat = Save(new Material(shader), folder + "/Jelly_Probe_Markers.mat");
+            mat.SetTexture("_MainTex", state);
+            EditorUtility.SetDirty(mat);
+            markers.sharedMaterial = mat;
+            markers.updateWhenOffscreen = true;
+            markers.shadowCastingMode = ShadowCastingMode.Off;
+            markers.receiveShadows = false;
+            markers.gameObject.SetActive(false);
+        }
+
+        internal const string MarkerShader = @"// The jelly's probe markers, for testing. Written by YAPS; edits here are overwritten.
+Shader ""Hidden/YAPS/Jelly Probe Marker""
+{
+    Properties { _MainTex (""The jelly's state"", 2D) = ""black"" {} }
+    SubShader
+    {
+        // Over everything, so a probe the body hides still shows.
+        Tags { ""Queue"" = ""Overlay"" ""RenderType"" = ""Overlay"" ""IgnoreProjector"" = ""True"" }
+        ZTest Always ZWrite Off Cull Off
+        Pass
+        {
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #pragma target 4.5
+            #include ""UnityCG.cginc""
+            Texture2D<float4> _MainTex;
+            struct appdata { float4 vertex : POSITION; float2 at : TEXCOORD1; UNITY_VERTEX_INPUT_INSTANCE_ID };
+            struct v2f { float4 pos : SV_POSITION; fixed4 colour : COLOR; UNITY_VERTEX_OUTPUT_STEREO };
+            v2f vert(appdata v)
+            {
+                v2f o;
+                UNITY_SETUP_INSTANCE_ID(v);
+                UNITY_INITIALIZE_OUTPUT(v2f, o);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
+                o.pos = UnityObjectToClipPos(v.vertex);
+                // How far the step read this probe pushed in, metres.
+                float pushed = _MainTex.Load(int3((int2) v.at, 0)).w;
+                o.colour = lerp(fixed4(1, 1, 1, 1), fixed4(1, 0, 0, 1), saturate(pushed / 0.01));
+                return o;
+            }
+            fixed4 frag(v2f i) : SV_Target { return i.colour; }
+            ENDCG
+        }
+    }
+}
+";
 
         // One jelly's textures and passes, its scene objects unsaved: an anchor a region on a root,
         // two steps into a twin and back, and with a rider or the far switch a third pass and the

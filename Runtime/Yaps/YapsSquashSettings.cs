@@ -68,6 +68,10 @@ namespace AvatarBridge.Yaps
         [Tooltip("A fist stroking along the skin takes its grip with it, the skin dragging a little behind. " +
                  "Off, a grip stays where the fist closed and lets go when pulled too far.")]
         public bool gripSlides = false;
+        [Tooltip("Adds a Jelly probes (debug) toggle to the menu, for testing other players' MagicaCloth colliders in game: " +
+                 "a marker on each probe, white at rest, red where the tissue felt a collider push it in. " +
+                 "Moved but still white, the tissue never heard of it; never moved, the game gave the probes no collider.")]
+        public bool probeMarkers = false;
 
         // Each part on the live tissue, by the name the build gives it: a preset filling eight knobs,
         // each a share of how the build tunes that part, 1 as built. A part's first build guesses its

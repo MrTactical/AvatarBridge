@@ -329,6 +329,7 @@ namespace AvatarBridge
                 foreach (var m in s.leaveAlone) foreach (char c in m != null ? m.name : "") h = h * 37 + c;
                 // Off adds nothing, so a build from before it does not read as stale.
                 if (s.twitch) h = h * 41 + Mathf.RoundToInt(s.twitchSize * 1000f) + 1;
+                if (s.probeMarkers) h = h * 43 + 1;
                 return h;
             }
         }

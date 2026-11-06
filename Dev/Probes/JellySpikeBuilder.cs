@@ -1322,6 +1322,9 @@ namespace AvatarBridge.Regression
             var root = made.GetComponentInChildren<CVRAvatar>(true).transform;
             bool paint = args.Contains("-jellyPaint");
             if (paint) PaintTest(root);
+            // -jellyMarkers: the probe markers built too, and checked.
+            bool marking = args.Contains("-jellyMarkers");
+            if (marking) (YapsSquash.SettingsOf(root) ?? root.gameObject.AddComponent<Yaps.YapsSquashSettings>()).probeMarkers = true;
             bool ok = true;
             for (int round = 1; round <= 2; round++)
             {
@@ -1370,7 +1373,33 @@ namespace AvatarBridge.Regression
                 Debug.Log($"[Jelly] feel {(feelOk ? "ok" : "BAD")}: {string.Join(", ", said)}; {first.part}'s firmness at 2 put its steps at {string.Join("/", moved.Select(x => x.ToString("0.00")))} Hz, " +
                           $"the others {(alone ? "unmoved" : "MOVED")}");
             }
+            // A marker on every probe a step reads, hidden until the menu shows them, the menu's
+            // toggle playing a clip that shows each and one that hides each.
+            CVRAdvancedSettingsEntry MarkersEntry() => root.GetComponent<CVRAvatar>().avatarSettings?.settings?.FirstOrDefault(e => e != null && e.name == YapsJelly.MarkersEntry);
+            if (marking)
+            {
+                var shown = root.GetComponentsInChildren<SkinnedMeshRenderer>(true).Where(r => r.name.StartsWith(YapsJelly.MarkersName)).ToList();
+                int probed = shown.Sum(r => r.bones.Length);
+                var entry = MarkersEntry();
+                var on = entry?.toggleSettings?.animationClip;
+                var off = entry?.toggleSettings?.offAnimationClip;
+                bool fine = shown.Count > 0 && shown.All(r => !r.gameObject.activeSelf && r.sharedMesh != null && r.sharedMesh.vertexCount == 6 * r.bones.Length
+                                                              && r.bones.All(b => b != null && b.name.StartsWith("Jelly Probe Tip "))
+                                                              && r.sharedMaterial != null && r.sharedMaterial.shader.name == "Hidden/YAPS/Jelly Probe Marker" && !ShaderUtil.ShaderHasError(r.sharedMaterial.shader)
+                                                              && r.sharedMaterial.GetTexture("_MainTex") is RenderTexture)
+                            && on != null && off != null && on != off
+                            && AnimationUtility.GetCurveBindings(on).Length == shown.Count && AnimationUtility.GetCurveBindings(off).Length == shown.Count;
+                ok &= fine;
+                Debug.Log($"[Jelly] markers {(fine ? "ok" : "BAD")}: {shown.Count} renderer(s), {probed} probes marked, " +
+                          $"{(shown.All(r => !r.gameObject.activeSelf) ? "hidden" : "SHOWN")} as built; the menu's toggle {(entry == null ? "MISSING" : $"with {(on != null ? AnimationUtility.GetCurveBindings(on).Length : 0)} shown and {(off != null ? AnimationUtility.GetCurveBindings(off).Length : 0)} hidden")}");
+            }
             YapsSquash.Strip(root);
+            if (marking)
+            {
+                bool gone = MarkersEntry() == null;
+                ok &= gone;
+                Debug.Log($"[Jelly] markers {(gone ? "ok" : "BAD")}: the menu's toggle {(gone ? "taken out" : "LEFT")} with the jelly");
+            }
             var left = root.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith("Jelly")).Select(t => t.name).ToList();
             ok &= left.Count == 0;
             Debug.Log($"[Jelly] {(ok ? "PASS" : "FAIL")} build route: stripped, {(left.Count == 0 ? "nothing of the jelly left" : "left: " + string.Join(", ", left))}");
@@ -2598,6 +2627,9 @@ namespace AvatarBridge.Regression
             // the squash alone.
             int pairAt = Array.IndexOf(args, "-jellyPair");
             bool bare = args.Contains("-jellyNone");
+            // -jellyMarkers: the probe markers built and shown, as the menu's toggle shows them.
+            bool marking = args.Contains("-jellyMarkers");
+            if (marking) (YapsSquash.SettingsOf(made.GetComponentInChildren<CVRAvatar>(true).transform) ?? made.GetComponentInChildren<CVRAvatar>(true).gameObject.AddComponent<Yaps.YapsSquashSettings>()).probeMarkers = true;
             string said = bare ? "On the squash alone" : PairOn(made.transform, pairAt >= 0 && pairAt + 1 < args.Length ? new Regex(args[pairAt + 1], RegexOptions.IgnoreCase) : Breast);
             if (hands == "before") HandColliders();
             Debug.Log("[Jelly] film: " + said);
@@ -2611,6 +2643,12 @@ namespace AvatarBridge.Regression
             var drawing = YapsSquash.Materials(made.GetComponentInChildren<CVRAvatar>(true).transform)
                 .Where(m => m.HasProperty("_YAPS_JellyOwn") && m.GetTexture("_YAPS_JellyOwn") != null && m.GetVector("_YAPS_JellyParts") != Vector4.zero).Select(m => m.name).ToList();
             Debug.Log($"[Jelly] film: the jelly drawn on {(drawing.Count > 0 ? string.Join(", ", drawing) : "nothing")}");
+            if (marking)
+            {
+                var shown = made.GetComponentsInChildren<SkinnedMeshRenderer>(true).Where(r => r.name.StartsWith(YapsJelly.MarkersName)).ToList();
+                foreach (var r in shown) r.gameObject.SetActive(true);
+                Debug.Log($"[Jelly] film: {shown.Sum(r => r.bones.Length)} probe markers shown");
+            }
             if (!bare && drawing.Count == 0)
             {
                 Debug.Log("[Jelly] FAIL film: no material carries the jelly's parts, so the squash would be filmed instead");

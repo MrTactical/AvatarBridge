@@ -58,7 +58,7 @@ namespace AvatarBridge
         };
 
         static readonly string[] HereNotKnobs = { "partBones", "leaveAlone" };
-        static readonly string[] JellyOnly = { "twitch", "twitchSize", "gripSlides" };
+        static readonly string[] JellyOnly = { "twitch", "twitchSize", "gripSlides", "probeMarkers" };
         // The squash's dent alone reads these, and every part it dents is on the live tissue once
         // that is built.
         static readonly string[] DentOnly = { "flattest", "widest", "spill", "clothPush" };

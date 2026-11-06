@@ -3418,10 +3418,15 @@ Not tripping; the probe's numbers since the night films of Oct 31 (night1k, nigh
    `GameObject`, and ours, `YAPS squash follow` (`YapsSquash`, made a child of the part's mover so
    it rides the bone). A hand parked 15 to 20 cm out is still inside the piercing's ball and holds
    the breast down. Open: keep YAPS objects out of cloth chains (ride the bone without being its
-   child); whether the source PhysBone ignored the piercing, and if the converter should keep such
-   children out of the MagicaCloth chain; whether the radius should taper to the tip, as a PhysBone
-   radius curve might. Measured with the film probe's `-spMassTrace` (the cloth bone nearest the
-   hand collider, its gap).
+   child); whether the radius should taper to the tip, as a PhysBone radius curve might. Measured
+   with the film probe's `-spMassTrace` (the cloth bone nearest the hand collider, its gap).
+   **The source PhysBones ignore the piercings** (`Breast_L` and `Breast_R`, radius 0.15, each
+   ignoring its `Piercings_` child), so in VRChat they never collide. `WriteRootsExcluding` found
+   the piercing the only child under `Breast1_L`, nothing rootable below, and rooted the chain at the
+   branch head giving its ignore up ("a few bones jiggling beats losing the chain"): MagicaCloth has
+   no ignore list, so the piercing became the breast's moving tip, the cloth's full radius round it.
+   A converter question, every avatar with an ignore at a leaf: keep the ignored child out of the
+   chain (reparented and constrained, or an endpoint particle in its place), never silently.
 6. **Hands carrying only a MagicaCloth collider dent the jelly, in the editor.** Joe: "we need a
    probe on that, because it may not be working in game". The film's collider-only row
    (`-spMagicaHands -spNoArrays`), traced: the probes read up to 102 mm, both slots fill, and the
@@ -3430,8 +3435,14 @@ Not tripping; the probe's numbers since the night films of Oct 31 (night1k, nigh
    moves less (2 to 10 mm against 8 to 31), the probes dent, never lean. In game unproven: the
    client gives each hand a MagicaCloth capsule and adds it to the wearer's cloths by the viewer's
    Dynamic Bone Interaction settings (read in the decompile, never seen on the probes' cloth). Open:
-   a pass or fail line for the collider-only row; for game, a debug toggle lighting the skin where a
-   probe feels a collider, tried with a second player.
+   a pass or fail line for the collider-only row.
+   **BUILT for game: Probe Markers** (YAPS Squash, Live tissue, off by default) adds a **Jelly
+   probes (debug)** menu toggle: a marker skinned to each probe tip the step reads, white turning
+   red as far as the step read it pushed (a centimetre red), drawn over everything. Moved and red,
+   the whole chain works; moved and white, the tip moved but the step never read it; unmoved, the
+   client gave the probes no collider. Checked by `BuildCheck -jellyMarkers` (a marker on every
+   probe, hidden as built, the toggle's two clips, taken out with the jelly); `FilmBreasts
+   -jellyMarkers` shows them in a film. Next: Joe and a second player in game.
 Open: the breasts beside night2k for Joe. Seen in the state trace, invisible until now: during a
 held press the whole mass slides 5 cm down off the hand in 11 frames (with 5, the bone shoved too),
 and while pushed its steps alternate about 6 and 2 mm frame to frame. Film both and judge; then
