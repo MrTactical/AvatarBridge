@@ -3532,13 +3532,15 @@ Not tripping; the probe's numbers since the night films of Oct 31 (night1k, nigh
      to 0.8 of one.~~ **WITHDRAWN**: the push is held to 0.8 of the hand's radius plus the reach
      (`Felt`'s own `reach`), past the slap's line. The collider-only row's slaps rang 9 times.
    - The test pulse drives `_YAPS_SquashPulse`, the squash's own, which nothing draws under the
-     jelly: a stale film shot.
+     jelly: a stale film shot, left out of r3.
+   - **r3, the breasts refilmed with the cloth shrunk** (both rows, every shot but the pulse): no
+     shot drops or shakes the bone; it moves only hopping and under the plug, as the body does.
    - The markers sit on each probe's rest spot, carried by the bone, red when pushed; neither they
      nor the probes follow the jelly's dent or swing.
    - **Sticky after the squeeze: the shot's**, filmed alone with the pair's plane traced (58, 59):
      the hands never leave, from touching to 16 cm in and slowly back, and while the pair looks held
-     together (film frames 60 to 76) each hand is still 2 to 11 cm in; the seam opens at 80. Open: a
-     squeeze whose hands let go entirely, to judge the jelly's own return.
+     together (film frames 60 to 76) each hand is still 2 to 11 cm in; the seam opens at 80. Refilmed
+     (r3) with the hands 15 cm clear for the last 40% of each squeeze: the pair parts as they clear.
 Open: the breasts beside night2k for Joe. Seen in the state trace, invisible until now: during a
 held press the whole mass slides 5 cm down off the hand in 11 frames (with 5, the bone shoved too),
 and while pushed its steps alternate about 6 and 2 mm frame to frame. Film both and judge; then
