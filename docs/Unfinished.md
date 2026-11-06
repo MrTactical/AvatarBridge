@@ -3929,7 +3929,14 @@ checklist and a friend with time. A chamber that sets each check up makes it rep
 **First step, after 5.0.0:** a spike. One lounge room and one chamber in a fresh CCK world project,
 uploaded privately, to learn the world CCK's limits before designing the rest.
 
-### A VRChat accessory onto a ChilloutVR avatar: find and attach. Joe's idea 2026-10-24. PLAN ONLY, after 5.0.0
+### A VRChat accessory onto a ChilloutVR avatar: find and attach. Joe's idea 2026-10-24. ACCELERATED 2026-11-06: next after the jelly's final approval
+
+Joe, 2026-11-06: "accelerate timeline for idea, attaching VRCFury objects to already converted
+avatars, and I mean any and all objects". So the scope is every VRCFury object, not clothing and
+plugs alone: toggles, Full Controllers, Armature Links, SPS, gestures, whatever a prefab carries.
+The stand-in route below covers that by design, since Fury bakes the accessory on the stand-in as
+it would on any avatar, and the converter's passes then run unchanged. What it cannot cover is
+whatever Fury itself refuses to bake there; the spike lists those.
 
 Joe, 2026-10-24: "what if we can also throw them through the convertor? like lets say, a piece of
 clothing that I want to put on an already converted avatar, but attach it myself manually after?
