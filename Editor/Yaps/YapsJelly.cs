@@ -2288,15 +2288,22 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // tissue torn, and again as it was pulled back out. hold is how far the skin keeps it
             // short of where it is, which the whole still feels (Unheld): skin that stops a hand is
             // pushed along by it, and with the mass held too a squeeze no longer met in the middle.
-            void Held(inout float3 wrist, inout float3 tip, float r, bool other, float4x4 m, float scale, out float hold)
+            // The face is judged with the hand at from: for another player's, where the same hand was
+            // held a step before, just past the face it came in by however deep it goes. Judged where
+            // it was, a finger pushed in deep from behind read as in by the top once past the middle,
+            // was held 8.6 cm up and dented the skin above it, none under it. The tip has its own
+            // radius rTip, a finger's when one is out: by the palm's, a finger 2.6 cm into a seat read
+            // as at its 7.9 cm and was held there, the rest of a poke sinking into the skin.
+            void Held(inout float3 wrist, inout float3 tip, float r, float rTip, bool other, float3 fromWrist, float3 fromTip, float4x4 m, float scale, out float hold)
             {
                 float3 mid;
                 float across;
-                float3 face = Facing(wrist, tip, r, other, m, scale, mid, across);
+                float3 face = Facing(fromWrist, fromTip, r, other, m, scale, mid, across);
                 hold = 0;
                 if (!any(face) || !(r > 0)) return;
-                float deep = (across - min(dot(Into(m, wrist) - mid, face), dot(Into(m, tip) - mid, face))) * scale + r;
-                float most = min(_Deepest * scale, 2 * across * scale / 3), go = saturate((deep - r - across * scale) / r);
+                float inW = (across - dot(Into(m, wrist) - mid, face)) * scale, inT = (across - dot(Into(m, tip) - mid, face)) * scale;
+                float deep = max(inW + r, inT + rTip);
+                float most = min(_Deepest * scale, 2 * across * scale / 3), go = saturate((max(inW, inT) - across * scale) / r);
                 float back = max(deep - most, 0) + most * go;
                 hold = back - deep * go;
                 float3 out_ = normalize(mul((float3x3) m, face));
@@ -2564,7 +2571,12 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     // only if the frame it closed on caught it still in.
                     Hand(kw, kt, pb, fa, fb, rf);
                     float3 reach = rf > 0 ? fb : pb, was = w;
-                    Held(w, reach, kw.w, true, m, scale, hold);
+                    // The slot's hand a step before, if it is this one: within its hold and a step's
+                    // move of where it was held.
+                    float4 pw = _MainTex.Load(int3(2 * slot, side, 0)), pt = _MainTex.Load(int3(2 * slot + 1, side, 0));
+                    bool same = pt.w > 0.5 && distance(w, pw.xyz) < floor((pt.w - 10) / 10) / 1000 + 0.15 * scale;
+                    float3 fw = same ? pw.xyz : w;
+                    Held(w, reach, kw.w, rf > 0 ? rf : kw.w, true, fw, fw + reach - w, m, scale, hold);
                     t += w - was;
                     // How far it is held back rides on the gesture, 10 a millimetre: 10 + gesture + 10 k.
                     kept = (x & 1) == 0 ? float4(w, kw.w) : float4(t, kt.w + 10 * round(1000 * hold));
@@ -2983,7 +2995,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             float r;
                             Own(k, scale, a, b, r);
                             float hold;
-                            Held(a, b, r, false, m, scale, hold);
+                            Held(a, b, r, r, false, a, b, m, scale, hold);
                             Unheld(a, b, r, false, hold, m, scale);
                             float3 leaned = Lean(rest, a, b, r, radius, c);
                             pushed += leaned;
@@ -3189,7 +3201,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             float r;
                             Own(c, scale, a, b, r);
                             float hold;
-                            if (c == 2 || c == 6) Held(a, b, r, false, m, scale, hold);
+                            if (c == 2 || c == 6) Held(a, b, r, r, false, a, b, m, scale, hold);
                             next = Out(next, a, b, r, centre);
                         }
                     }
@@ -3650,7 +3662,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             bool reach = false;
                             [branch] if ((px.x & 1) && r > 0) reach = InReach(a, b, r, m, scale, side);
                             float hold;
-                            [branch] if (c == 2 || c == 6) Held(a, b, r, false, m, scale, hold);
+                            [branch] if (c == 2 || c == 6) Held(a, b, r, r, false, a, b, m, scale, hold);
                             return (px.x & 1) == 0 ? float4(a, r) : float4(b, reach);
                         }
                         // The draw's last guard: the plane midway between the two skins where they reach

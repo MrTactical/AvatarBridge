@@ -3233,6 +3233,28 @@ layers get a copy at all), `_YAPS_DentOwn` RGBA, the draw's two states and one f
    13 cm in: the masses 40 mm together, the probes 12 to 13 cm. From the cameras behind, the hands
    look partly inside the cheeks at the deepest; a side dent faces sideways. Open: a camera from
    above, then Joe.
+   **No dent on the seat** (Joe 2026-11-06: "why does the ass have no jelly dent?"). Filmed with
+   the tissue out of the draw (`-spNoJelly`, every lattice 0 in the property blocks) against in:
+   in, the cheek gave way as one piece, 58 mm (its swing limit), with no hollow at the finger.
+   Two faults in `Held`. **The face:** a finger pushed in deep from behind read as in by the top
+   once past the middle (the back face fails its "radius short of the middle" test, the top just
+   passes it), so its slot was held 86 mm up and the dent made above the finger. **Done:** for
+   another player's hand the face is judged where the same slot held it a step before (the same
+   hand if within its hold and 15 cm of it), just past the face it came in by however deep it
+   goes; the slot now stays level through the poke. **The tip:** the depth added the palm's 5.3 cm
+   radius to the reach as drawn even with a finger out, so a finger 2.6 cm in read as at the
+   seat's 7.9 cm (`2 across / 3`) and was held, the rest of every poke sinking into the skin.
+   **Done:** the tip takes its own radius, a finger's when one is out; quick pokes are followed
+   all the way (held 2.4 cm short before), a deep poke 4.2 cm deeper. Breasts: every shot's mass
+   identical, finger pokes round it dent 67 mm against 21; check PASS, own through 6 torn and 7.4
+   mm. Left as built: a poke past 7.9 cm on the seat still sinks, the skin holding a hand at a
+   third of the tissue. The crossed legs (Joe: "the crossed legs don't cross right ... it clips
+   into itself"): the film probe lowered the crossing thigh 4 cm into the other, never checked
+   the other knee, and hung the shin straight down off a thigh raised up to 64 degrees, the foot
+   folded up by the hip. Now it rests on the other leg, thigh or knee, its shin as near straight
+   down as clears it and never folded back, with a 45 degree camera on the lap. Thighs this thick
+   still ride 38 degrees up to clear each other: a lower, real cross needs the other leg's
+   capsule (above). Open: Joe on the films.
 5. **Tests.** VerifyBreasts made part-agnostic: the region's forward for every press, thresholds
    scaled by the part's size, partner checks skipped for a single part, a thigh check (the film's
    `-jellyThighs` prep in the check). A seeded random-patch generator (pairs over mesh adjacency
