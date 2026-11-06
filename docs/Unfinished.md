@@ -3547,7 +3547,15 @@ Not tripping; the probe's numbers since the night films of Oct 31 (night1k, nigh
    0.6 within 0.35. **Done 2026-11-06:** `CarriedGive` 0.525, `CarriedLimit` 0.3 across the body,
    `CarriedLimitUp` 0.15 up and down it (`_LimitUp`), `Deepest` 0.08, so the knobs stay at 1. The
    six shots: whole 57 to 72 mm, squeeze dent 240, rising 31 mm as before. A lift from below is
-   held to 0.15 too. Open: Joe in game.
+   held to 0.15 too.
+   **Then the hands at the middle** (Joe: "move the hands to get a good squish"): the film's
+   squeeze raised 15 mm to each region's rest centre (scratch probe). Level at first, then the pair
+   sheared, one 31 mm up and the other 31 mm down: kept apart along the line between their centres,
+   two balls pressed together slip past each other. **Done:** kept apart across the seam they rested
+   at (`_PairOffset` turned by the anchor) and free along it: ±4 mm, pressed flat at the cleavage.
+   A hand pushed in between, slapped together and both hands unchanged; one pushing one into the
+   other rises 23 mm against 26. Seen in both runs, not from the change: the second region slides
+   20 to 30 mm along z in the squeeze, the first under 15. Open: Joe in game.
    - The markers sit on each probe's rest spot, carried by the bone, red when pushed; neither they
      nor the probes follow the jelly's dent or swing.
    - **Sticky after the squeeze: the shot's**, filmed alone with the pair's plane traced (58, 59):

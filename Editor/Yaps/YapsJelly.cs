@@ -3006,10 +3006,13 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     float4 other = _MainTex.Load(int3(30, partnerSide, 0));
                     // As far apart as they sat as built: from where the anchors are now, two breasts
                     // the cloth swung together read as resting that close.
+                    // Kept apart across the seam they rested at and free along it: kept apart along
+                    // the line between their centres, a squeeze at their middles sheared them past
+                    // each other, one up and one down, as two balls pressed together slip.
                     float keep = _PairKeep * length(_PairOffset.xyz) * scale;
-                    float3 apart = next - other.xyz;
-                    float d = length(apart);
-                    if (other.w > 0 && abs(_Time.y - other.w) < 0.1 && d < keep && d > 1e-6) next += apart * (0.5 * (keep - d) / d);
+                    float3 seam = normalize(mul((float3x3) m, _PairOffset.xyz));
+                    float s = dot(next - other.xyz, seam), side_ = s < 0 ? -1 : 1;
+                    if (other.w > 0 && abs(_Time.y - other.w) < 0.1 && abs(s) < keep) next += seam * (0.5 * (side_ * keep - s));
                 }
                 float len0 = zc * scale;
                 float3 off = next - root;
