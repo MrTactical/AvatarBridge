@@ -42,17 +42,68 @@ void YapsJellyHand(float4 a, float4 b, out float3 pb, out float3 fa, out float3 
 }
 
 // How far a capsule from a to b of radius r pushes skin at at on, toward centre: out of it, and
-// with rim the crater's rim eased out to twice its radius, further the nearer the axis.
-float3 YapsJellyPress(float3 at, float3 a, float3 b, float r, float3 centre, float rim)
+// with rim the crater's rim eased out to twice its radius, further the nearer the axis. Returned as
+// the push's size along way, with in grad how that size changes with at, so a dent's own slope can
+// turn the skin's normal as the lattice's does: pushed but not turned, a finger's dent lit as flat
+// skin and showed in silhouette alone. Inside the hand the rim and the push out of it are rounded
+// together over a tenth of the radius, or the light drew their join as a ring.
+float YapsJellyPush(float3 at, float3 a, float3 b, float r, float3 centre, float rim, out float3 way, out float3 grad)
 {
+    way = 0;
+    grad = 0;
     float3 seg = b - a, in_ = centre - (a + 0.5 * seg);
     if (!(dot(in_, in_) > 1e-8) || !(r > 0)) return 0;
-    float3 way = normalize(in_);
-    float3 off = at - (a + seg * saturate(dot(at - a, seg) / max(dot(seg, seg), 1e-9)));
-    float d2 = dot(off, off), along = dot(off, way);
-    float ease = saturate(1 - sqrt(d2) / (2 * r));
-    float through = d2 < r * r ? sqrt(max(along * along - d2 + r * r, 0)) - along : 0;
-    return way * max(through, rim * r * ease * ease);
+    way = normalize(in_);
+    float ss = dot(seg, seg), u = dot(at - a, seg) / max(ss, 1e-9);
+    float3 off = at - (a + seg * saturate(u));
+    float d2 = dot(off, off), d = sqrt(d2), along = dot(off, way);
+    float ease = saturate(1 - d / (2 * r));
+    float f = rim * r * ease * ease;
+    float3 g = -rim * ease * (d > 1e-9 ? off / d : 0);
+    if (d2 < r * r)
+    {
+        float q = sqrt(max(along * along - d2 + r * r, 1e-12)), through = q - along;
+        float3 gt = (along * way - off) / q - way;
+        float k = 0.1 * r, h = saturate(1 - abs(through - f) / k), wt = through > f ? 1 - 0.5 * h : 0.5 * h;
+        g = wt * gt + (1 - wt) * g;
+        f = max(through, f) + 0.25 * k * h * h;
+    }
+    // Along the segment's middle the nearest point slides with at, so nothing changes that way.
+    float3 s = ss > 1e-9 && u > 0 && u < 1 ? seg * rsqrt(ss) : 0;
+    grad = g - s * dot(g, s);
+    return f;
+}
+
+float3 YapsJellyPress(float3 at, float3 a, float3 b, float r, float3 centre, float rim)
+{
+    float3 way, grad;
+    float f = YapsJellyPush(at, a, b, r, centre, rim, way, grad);
+    return way * f;
+}
+
+// Pushes that cover the same skin, joined: each one's size to the fourth summed, so where one acts
+// it stands, and where several overlap the deepest leads and the rest add a little. Summed outright,
+// the palm and finger at the knuckle, or a forearm and hand at the wrist, pushed skin past both.
+// Its way leans toward the deeper; its slope is each one's by its share.
+struct YapsJellyPushes { float s; float3 way, grad; };
+
+void YapsJellyAdd(inout YapsJellyPushes p, float f, float3 way, float3 grad)
+{
+    float f2 = f * f, f4 = f2 * f2;
+    p.s += f4;
+    p.way += way * f4;
+    p.grad += grad * (f2 * f);
+}
+
+// The joined push, and into bend its slope through the normal nw, across the skin only.
+float3 YapsJellyJoined(YapsJellyPushes p, float3 nw, inout float3 bend)
+{
+    if (!(p.s > 1e-20) || !(dot(p.way, p.way) > 1e-30)) return 0;
+    float f = sqrt(sqrt(p.s));
+    float3 way = normalize(p.way), grad = p.grad / (f * f * f);
+    grad -= nw * dot(grad, nw);
+    bend += grad * dot(way, nw);
+    return way * f;
 }
 
 // How far region r's lattice round world has moved off its rest, and in bend how the surface there
@@ -160,18 +211,25 @@ float3 YapsJellyRegion(Texture2D<float4> state, float4 lattice, int m, uint r, f
         float3 at = world + move;
         float4 mass = state.Load(int3(30, side, 0));
         float3 centre = mass.w > 0 ? mass.xyz : place.xyz + az * (0.5 * (n.z - 1) * spacing);
+        YapsJellyPushes hands = (YapsJellyPushes) 0;
         [unroll] for (int e = 0; e < 8; e++)
         {
             float4 a = state.Load(int3(2 * e, side, 0)), b = state.Load(int3(2 * e + 1, side, 0));
             if (!(b.w > 0.5)) continue;
             // A hand gripping the skin holds it out, and dents nothing.
             if (state.Load(int3(112 + e, side, 0)).w > 0) continue;
-            float3 pb, fa, fb;
+            float3 pb, fa, fb, way, grad;
             float rf;
             YapsJellyHand(a, b, pb, fa, fb, rf);
-            move += YapsJellyPress(at, a.xyz, pb, a.w, centre, 1);
-            if (rf > 0) move += YapsJellyPress(at, fa, fb, rf, centre, 1);
+            float f = YapsJellyPush(at, a.xyz, pb, a.w, centre, 1, way, grad);
+            YapsJellyAdd(hands, f, way, grad);
+            if (rf > 0)
+            {
+                f = YapsJellyPush(at, fa, fb, rf, centre, 1, way, grad);
+                YapsJellyAdd(hands, f, way, grad);
+            }
         }
+        move += YapsJellyJoined(hands, nw, bend);
     }
     // The wearer's own arms, hands and thighs, with no rim: an arm resting at the side would dent
     // it from a hand's width off.
@@ -181,15 +239,19 @@ float3 YapsJellyRegion(Texture2D<float4> state, float4 lattice, int m, uint r, f
         float3 at = world + move;
         float4 mass = state.Load(int3(30, side, 0));
         float3 centre = mass.w > 0 ? mass.xyz : place.xyz + az * (0.5 * (n.z - 1) * spacing);
+        YapsJellyPushes limbs = (YapsJellyPushes) 0;
         [unroll] for (uint c = 0; c < 16; c++)
         {
             [branch] if (own & (1u << c))
             {
                 uint t = c < 8 ? 42 + 2 * c : 48 + 2 * c;
                 float4 a = state.Load(int3(t, side, 0)), b = state.Load(int3(t + 1, side, 0));
-                move += YapsJellyPress(at, a.xyz, b.xyz, a.w, centre, 0);
+                float3 way, grad;
+                float f = YapsJellyPush(at, a.xyz, b.xyz, a.w, centre, 0, way, grad);
+                YapsJellyAdd(limbs, f, way, grad);
             }
         }
+        move += YapsJellyJoined(limbs, nw, bend);
     }
     // A plug in the pair's socket parts it as it parts the squash (yaps_dent.cginc's YapsSource):
     // from the base its light gives, through the socket, for its length, eased out over its last

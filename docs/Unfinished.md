@@ -3301,11 +3301,11 @@ root motion, bake orientation, the MagicaCloth stacking repro (git keeps them). 
 keep the old names until their next deploy.
 - **Release notes:** one line, "YAPS moved: *Tools ▸ YAPS* is now *Tools ▸ Avatar Bridge ▸ YAPS*."
 
-### 30. Pointers for the live tissue from a VRChat skin-touch module. 2026-11-06, Joe: "can we take any pointers from it?"
+### 30. Pointers for the live tissue from a VRChat skin-touch module. 2026-11-06, Joe: "can we take any pointers from it?" APPROVED by Joe 2026-11-06: "well we can take those improvements".
 
 DocMe Skin Touch 1.1.0 (free, Booth), a Poiyomi module whose dents come from VRChat contacts. Read
 2026-11-06 for ideas only: its licence bars its code, or a rewrite of it, in ours, so none goes
-in. Ranked by worth for what it costs; nothing started. Suspected defects of ours first:
+in. Ranked by worth for what it costs. Suspected defects of ours first:
 
 1. **The wearer's own hand may press twice.** The step's hand scan takes every player in the
    arrays, player 0 the viewer, so on the wearer's machine their hands press as generic array
@@ -3316,12 +3316,20 @@ in. Ranked by worth for what it costs; nothing started. Suspected defects of our
    knuckle, an own forearm and hand share the wrist, two hands can cover one patch, and the draw
    sums every `YapsJellyPress`, pushing skin past either surface. Take the largest (or a smooth
    largest) within one hand or limb chain, and blend between largest and sum across hands.
+   **BUILT (draw).** The other players' hands are one group and the own capsules another; each
+   group joins as the fourth root of its pushes' fourth powers, so where one acts it stands and
+   where several overlap the deepest leads and the rest add a little. One rule covers the knuckle,
+   the wrist and two hands on one patch. The plug press stays apart. The probe's own copy of the
+   press for its test prop still sums, so a probe reading of the prop's draw is the old rule.
 3. **A press pushes the far side of a thin part.** `YapsJellyPress` moves any vertex within two
    radii of a hand, whichever way the skin faces; on an arm, a calf or a belly's side the far side
    would be shoved. Ease the rim by whether the vertex normal faces the hand. Instrument first.
 4. **Light the press.** The presses add to the skin's move but never its normal, so a finger's
    dent keeps the resting normal and shows in silhouette alone. Each press also returns the slope
    of its push, added to `bend` as the lattice's own gradient is; draw only.
+   **BUILT.** `YapsJellyPush` returns the size and its slope; the joined slope goes into `bend`
+   through the normal, across the skin only. Inside the hand the rim and the push out of it are
+   rounded together over a tenth of the radius, or the light drew their join as a ring.
 5. **A soft shadow as a hand nears.** The strongest cue of a touch about to land. A darkening per
    vertex from the hand slots and own capsules the draw already reads, multiplied into the host's
    colour: needs a colour hook per shader family in `YapsShaderPatcher`, which patches the vertex

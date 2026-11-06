@@ -1607,7 +1607,7 @@ do, as far as real flesh would.
 **Live tissue.** On a humanoid avatar, building the squash also puts each of its parts on the
 jelly, up to four on one avatar: a pair, or a part painted on one side alone (a belly, a tail). The
 jelly is a lattice of flesh the graphics card steps every frame in each viewer's game, drawn by the
-same body shader. Any player's hand dents it and it fills back; a fist grips the skin and pulls
+same body shader. Any player's hand dents it, the dent shaded by its own slope, and it fills back; a fist grips the skin and pulls
 it, letting go when pulled too far; a slap rings out from where it lands; the pair press against
 each other, and the wearer's own arms and legs press it too. The cloth still swings each part and
 the tissue rides it. The avatar's own MagicaCloth and Dynamic Bone colliders that a pair's cloth
