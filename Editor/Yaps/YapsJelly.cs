@@ -62,7 +62,8 @@ namespace AvatarBridge
 
         // The presets' knobs in the Feel's order: firmness, settle, give, swing, spring back, taut,
         // press depth, slap. Breasts are what the build was tuned on; the rest are first guesses
-        // from them, firmer and swinging less where the flesh sits tighter on the bone.
+        // from them, firmer and swinging less where the flesh sits tighter on the bone. Firm is
+        // for skin close over muscle, an arm, a calf or a neck, which would otherwise feel like a breast.
         internal static readonly string[] FeelKnobs = { "firmness", "settle", "give", "swing", "springBack", "taut", "depth", "slap" };
         internal static readonly Dictionary<YapsSquashSettings.Preset, float[]> Presets = new Dictionary<YapsSquashSettings.Preset, float[]>
         {
@@ -70,22 +71,26 @@ namespace AvatarBridge
             { YapsSquashSettings.Preset.Butt, new[] { 1.25f, 1.2f, 0.85f, 0.75f, 1.2f, 1f, 1f, 1.25f } },
             { YapsSquashSettings.Preset.Thighs, new[] { 1.5f, 1.4f, 0.6f, 0.5f, 1.4f, 1.25f, 0.8f, 1f } },
             { YapsSquashSettings.Preset.Belly, new[] { 0.9f, 1.25f, 0.9f, 0.6f, 1f, 1f, 1.2f, 0.8f } },
+            { YapsSquashSettings.Preset.Firm, new[] { 2f, 1.6f, 0.4f, 0.3f, 1.6f, 1.5f, 0.6f, 0.6f } },
         };
 
         internal static float[] KnobsOf(YapsSquashSettings.Feel f) => new[] { f.firmness, f.settle, f.give, f.swing, f.springBack, f.taut, f.depth, f.slap };
 
-        // A part's preset from its name, else from the bone it rides: legs, then arms and the head
-        // (none), the chest, the spine, and anything else under the hips.
+        // A part's preset from its name, else from the bone it rides: calves, thighs, then arms and
+        // the neck (Firm), the chest, the spine, and anything else under the hips.
         internal static YapsSquashSettings.Preset Guess(string name, Transform rides, Animator animator)
         {
             if (Regex.IsMatch(name, "breast|boob|chest|pec", RegexOptions.IgnoreCase)) return YapsSquashSettings.Preset.Breasts;
+            if (Regex.IsMatch(name, @"calf|calves|shin|lower[\W_]*leg|leg[\W_]*lower", RegexOptions.IgnoreCase)) return YapsSquashSettings.Preset.Firm;
             if (Regex.IsMatch(name, "thigh|leg", RegexOptions.IgnoreCase)) return YapsSquashSettings.Preset.Thighs;
             if (Regex.IsMatch(name, @"butt|glute|\bass\b|booty|\bbum|seat", RegexOptions.IgnoreCase)) return YapsSquashSettings.Preset.Butt;
             if (Regex.IsMatch(name, @"belly|stomach|tummy|\bgut|abdom", RegexOptions.IgnoreCase)) return YapsSquashSettings.Preset.Belly;
+            if (Regex.IsMatch(name, @"\barm|upperarm|forearm|bicep|shoulder|neck", RegexOptions.IgnoreCase)) return YapsSquashSettings.Preset.Firm;
             if (rides == null || animator == null || !animator.isHuman) return YapsSquashSettings.Preset.Custom;
             bool Under(params HumanBodyBones[] bones) => bones.Select(animator.GetBoneTransform).Any(b => b != null && (rides == b || rides.IsChildOf(b)));
+            if (Under(HumanBodyBones.LeftLowerLeg, HumanBodyBones.RightLowerLeg)) return YapsSquashSettings.Preset.Firm;
             if (Under(HumanBodyBones.LeftUpperLeg, HumanBodyBones.RightUpperLeg)) return YapsSquashSettings.Preset.Thighs;
-            if (Under(HumanBodyBones.LeftShoulder, HumanBodyBones.RightShoulder, HumanBodyBones.LeftUpperArm, HumanBodyBones.RightUpperArm, HumanBodyBones.Neck)) return YapsSquashSettings.Preset.Custom;
+            if (Under(HumanBodyBones.LeftShoulder, HumanBodyBones.RightShoulder, HumanBodyBones.LeftUpperArm, HumanBodyBones.RightUpperArm, HumanBodyBones.Neck)) return YapsSquashSettings.Preset.Firm;
             if (Under(HumanBodyBones.Chest, HumanBodyBones.UpperChest)) return YapsSquashSettings.Preset.Breasts;
             if (Under(HumanBodyBones.Spine)) return YapsSquashSettings.Preset.Belly;
             return Under(HumanBodyBones.Hips) ? YapsSquashSettings.Preset.Butt : YapsSquashSettings.Preset.Custom;
@@ -2057,8 +2062,13 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 return most;
             }
 
+#if defined(JELLY_SCAN) || defined(JELLY_POINTS)
+            // The client's first is the local player's head, then the others': heads press as hands do.
+            float4 _CVR_PlayerHeadPositions[64];
+#else
             // The client's first is the local player's head; only it is read.
             float4 _CVR_PlayerHeadPositions[1];
+#endif
 
             // The client's rendering buffer: where the local player's camera is and how it is turned,
             // a frame late. Unbound, as in the editor or on a client without it, it reads zeros and
@@ -2119,6 +2129,26 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             float4 _CVR_PlayerRootPositions[64];
             float4 CVRGlobalParams1;
 
+            // Player who's head as a ball: the client gives the head bone, at the skull's base, so its
+            // middle is put up from it, away from their chest. w 0 with no head.
+            float4 HeadOf(int who, float tall)
+            {
+                float3 h = _CVR_PlayerHeadPositions[who].xyz, c = _CVR_PlayerChestPositions[who].xyz;
+                // An avatar with no chest bone mapped hands a zero there.
+                float3 up = h - (dot(c, c) > 1e-6 ? c : _CVR_PlayerRootPositions[who].xyz);
+                if (!(dot(h, h) >= 1e-6)) return 0;
+                return float4(h + (dot(up, up) > 1e-6 ? normalize(up) : 0) * (0.08 * tall / 1.6), 0.1 * tall / 1.6);
+            }
+
+            // Whether player who is the wearer, both hands where the own hand capsules start: the
+            // wearer is in the arrays too, on every machine, and their hands already press as the own
+            // capsules, rimless. Counted again, a hand of their own pressed twice.
+            bool Wearer(int who)
+            {
+                return distance(_CVR_PlayerLeftHandPositions[who].xyz, _JellyAnchor[6]._m03_m13_m23) < 0.05
+                    && distance(_CVR_PlayerRightHandPositions[who].xyz, _JellyAnchor[12]._m03_m13_m23) < 0.05;
+            }
+
             // Hand slot texel x of the eight, two texels each, (wrist, radius) then (an open hand's
             // tip, 10 plus the gesture), an empty one 0. Each looks through every player's hands and keeps the one it is due, so a
             // pass reads eight however many players there are.
@@ -2136,16 +2166,17 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // player's chest, a ninth of their viewpoint height. Rolled: written out for all 64,
                 // the hands were a fifth of a step every player's driver took seconds to build the
                 // first time it saw one. Shader Filtering cuts a rolled loop short, but player 0 is
-                // the viewer, so their own hands always count. Most players are passed over on where
-                // they stand, since a hand is never further from its player's feet than half as much
-                // again as their height.
+                // the local player, so a viewer's own hands always count (on the wearer's machine it is
+                // the wearer, skipped as Wearer). Most players are passed over on where they stand,
+                // since a hand is never further from its player's feet than half as much again as
+                // their height.
                 [loop] for (int who = 0; who < players; who++)
                 {
                     float4 root = _CVR_PlayerRootPositions[who];
                     float tall = root.w > 0.1 ? root.w : 1.6;
                     float3 to = centre - root.xyz;
                     float around = reach + 1.5 * tall + 0.5;
-                    [branch] if (dot(to, to) < around * around)
+                    [branch] if (dot(to, to) < around * around && !Wearer(who))
                     {
                         float r = _Hand * tall / 1.6;
                         float3 chest = _CVR_PlayerChestPositions[who].xyz;
@@ -2164,6 +2195,24 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             kt = hit && found == slot ? float4(tip, 10 + clamp(held.w, 0, 9.9)) : kt;
                             found += hit;
                         }
+                    }
+                }
+                // Then the heads, after every hand: slots go by order, and a grip lives in its slot, so
+                // a head coming into reach among the hands moved a later hand to another slot and broke
+                // its grip. Each is kept as an open hand of no length, a ball, which never grips.
+                [loop] for (int who = 0; who < players; who++)
+                {
+                    float4 root = _CVR_PlayerRootPositions[who];
+                    float tall = root.w > 0.1 ? root.w : 1.6;
+                    float3 to = centre - root.xyz;
+                    float around = reach + tall + 0.5;
+                    [branch] if (dot(to, to) < around * around && !Wearer(who))
+                    {
+                        float4 head = HeadOf(who, tall);
+                        bool hit = head.w > 0 && InReach(head.xyz, head.xyz, 2 * head.w, m, scale, side, 1);
+                        kw = hit && found == slot ? head : kw;
+                        kt = hit && found == slot ? float4(head.xyz, 10) : kt;
+                        found += hit;
                     }
                 }
                 // Held once, for the hand this slot keeps: inside the loop it was 128 copies, too many to unroll.
@@ -2292,14 +2341,15 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 }
                 float reach = (length(float3(Count() - 1)) * _Lattice.w + 0.3) * scales[0];
                 bool near = false;
-                // Rolled, as the scan's: player 0, the viewer, always counts.
+                // Rolled, as the scan's: player 0, the local player, always counts (the wearer, on
+                // their own machine, skipped as Wearer).
                 [loop] for (int who = 0; who < players; who++)
                 {
                     float4 root = _CVR_PlayerRootPositions[who];
                     float tall = root.w > 0.1 ? root.w : 1.6;
                     float3 to = mid - root.xyz;
                     float around = reach + 1.5 * tall + 0.5;
-                    [branch] if (dot(to, to) < around * around)
+                    [branch] if (dot(to, to) < around * around && !Wearer(who))
                     {
                         float hr = _Hand * tall / 1.6;
                         float3 chest = _CVR_PlayerChestPositions[who].xyz;
@@ -2313,6 +2363,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                                 near = near || dot(wrist, wrist) >= 1e-6 && gap < 2 * hr + 0.08 * scales[r];
                             }
                         }
+                        float4 head = HeadOf(who, tall);
+                        [unroll] for (uint q = 0; q < 2; q++)
+                            near = near || head.w > 0 && BoxGap(head.xyz, on[q], scales[q], q) < 2 * head.w + 0.08 * scales[q];
                     }
                 }
                 // Or a probe pushed, a collider's press.

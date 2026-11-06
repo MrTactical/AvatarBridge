@@ -43,10 +43,10 @@ void YapsJellyHand(float4 a, float4 b, out float3 pb, out float3 fa, out float3 
 
 // How far a capsule from a to b of radius r pushes skin at at on, toward centre: out of it, and
 // with rim the crater's rim eased out to twice its radius, further the nearer the axis. Returned as
-// the push's size along way, with in grad how that size changes with at, so a dent's own slope can
-// turn the skin's normal as the lattice's does: pushed but not turned, a finger's dent lit as flat
-// skin and showed in silhouette alone. Inside the hand the rim and the push out of it are rounded
-// together over a tenth of the radius, or the light drew their join as a ring.
+// the push's size along way, with in grad a slope to turn the skin's normal by, so a finger's dent
+// is lit and not only seen in silhouette. The slope is the rim's bowl, its middle rounded off over
+// half the radius, not the push's own: that stands straight up at the hand's outline, and lit so it
+// drew a hard ring round every dent.
 float YapsJellyPush(float3 at, float3 a, float3 b, float r, float3 centre, float rim, out float3 way, out float3 grad)
 {
     way = 0;
@@ -58,20 +58,12 @@ float YapsJellyPush(float3 at, float3 a, float3 b, float r, float3 centre, float
     float3 off = at - (a + seg * saturate(u));
     float d2 = dot(off, off), d = sqrt(d2), along = dot(off, way);
     float ease = saturate(1 - d / (2 * r));
-    float f = rim * r * ease * ease;
-    float3 g = -rim * ease * (d > 1e-9 ? off / d : 0);
-    if (d2 < r * r)
-    {
-        float q = sqrt(max(along * along - d2 + r * r, 1e-12)), through = q - along;
-        float3 gt = (along * way - off) / q - way;
-        float k = 0.1 * r, h = saturate(1 - abs(through - f) / k), wt = through > f ? 1 - 0.5 * h : 0.5 * h;
-        g = wt * gt + (1 - wt) * g;
-        f = max(through, f) + 0.25 * k * h * h;
-    }
+    float through = d2 < r * r ? sqrt(max(along * along - d2 + r * r, 0)) - along : 0;
+    float3 g = -rim * ease * off / max(d, 0.5 * r);
     // Along the segment's middle the nearest point slides with at, so nothing changes that way.
     float3 s = ss > 1e-9 && u > 0 && u < 1 ? seg * rsqrt(ss) : 0;
     grad = g - s * dot(g, s);
-    return f;
+    return max(through, rim * r * ease * ease);
 }
 
 float3 YapsJellyPress(float3 at, float3 a, float3 b, float r, float3 centre, float rim)
@@ -84,7 +76,7 @@ float3 YapsJellyPress(float3 at, float3 a, float3 b, float r, float3 centre, flo
 // Pushes that cover the same skin, joined: each one's size to the fourth summed, so where one acts
 // it stands, and where several overlap the deepest leads and the rest add a little. Summed outright,
 // the palm and finger at the knuckle, or a forearm and hand at the wrist, pushed skin past both.
-// Its way leans toward the deeper; its slope is each one's by its share.
+// Its way is their mean by the same shares, its slope each one's by its share.
 struct YapsJellyPushes { float s; float3 way, grad; };
 
 void YapsJellyAdd(inout YapsJellyPushes p, float f, float3 way, float3 grad)
@@ -98,9 +90,11 @@ void YapsJellyAdd(inout YapsJellyPushes p, float f, float3 way, float3 grad)
 // The joined push, and into bend its slope through the normal nw, across the skin only.
 float3 YapsJellyJoined(YapsJellyPushes p, float3 nw, inout float3 bend)
 {
-    if (!(p.s > 1e-20) || !(dot(p.way, p.way) > 1e-30)) return 0;
+    if (!(p.s > 1e-20)) return 0;
     float f = sqrt(sqrt(p.s));
-    float3 way = normalize(p.way), grad = p.grad / (f * f * f);
+    // Not normalized: two hands pressing from either side balance to nothing between them, where a
+    // normalized way flipped from one to the other and tore the skin.
+    float3 way = p.way / p.s, grad = p.grad / (f * f * f);
     grad -= nw * dot(grad, nw);
     bend += grad * dot(way, nw);
     return way * f;

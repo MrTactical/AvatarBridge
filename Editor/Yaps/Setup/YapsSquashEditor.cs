@@ -273,7 +273,7 @@ namespace AvatarBridge
                 }
                 string at = $"feels.Array.data[{i}]";
                 var preset = new EnumField("Preset", settings.feels[i].preset) { bindingPath = at + ".preset",
-                    tooltip = "Fills the knobs below for a breast, a butt, thighs or a belly. Custom keeps them as they are." };
+                    tooltip = "Fills the knobs below for a breast, a butt, thighs, a belly, or Firm for skin close over muscle (an arm, a calf, the neck). Custom keeps them as they are." };
                 preset.AddToClassList("ab-field");
                 preset.RegisterValueChangedCallback(e =>
                 {

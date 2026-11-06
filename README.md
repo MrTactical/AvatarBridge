@@ -1607,7 +1607,7 @@ do, as far as real flesh would.
 **Live tissue.** On a humanoid avatar, building the squash also puts each of its parts on the
 jelly, up to four on one avatar: a pair, or a part painted on one side alone (a belly, a tail). The
 jelly is a lattice of flesh the graphics card steps every frame in each viewer's game, drawn by the
-same body shader. Any player's hand dents it, the dent shaded by its own slope, and it fills back; a fist grips the skin and pulls
+same body shader. Any player's hand or head dents it, the dent shaded as a hollow, and it fills back; a fist grips the skin and pulls
 it, letting go when pulled too far; a slap rings out from where it lands; the pair press against
 each other, and the wearer's own arms and legs press it too. The cloth still swings each part and
 the tissue rides it. The avatar's own MagicaCloth and Dynamic Bone colliders that a pair's cloth
@@ -1620,10 +1620,11 @@ to 1 and never synced, for blend shapes or sounds to follow: `#Jelly/<part>/Sque
 adds a **Jelly twitch** menu toggle that kicks the jiggle, and lets a grip slide along the skin with
 the fist; rebuild after changing the twitch, while the grip's slide is live. Each part on the jelly
 also has its own feel, under **Tune how it feels ▸ Each part**: a **Preset** (Breasts, Butt, Thighs,
-Belly or Custom), guessed from the part's name or the bone it rides the first time it is built, fills
+Belly, Firm or Custom), guessed from the part's name or the bone it rides the first time it is built
+(Firm, for skin close over muscle, on an arm, a calf or the neck), fills
 eight knobs, **Firmness**, **Settle**, **Give**, **Swing**, **Spring back**, **Taut**, **Press depth**
 and **Slap**, each a share of how the build tunes the part, 1 being the feel the breasts were tuned on.
-Moving one makes the part Custom; all of them are live, no rebuild. The Butt, Thighs and Belly presets
+Moving one makes the part Custom; all of them are live, no rebuild. The Butt, Thighs, Belly and Firm presets
 are first guesses, not yet tuned in game. A non-humanoid avatar, a part the jelly cannot fit and
 any past the fourth keep the squash, where the squash takes them (its first two pairs), and
 otherwise stay as they are; the report says which. **Not yet confirmed in game** on anything but breasts.
@@ -2331,7 +2332,8 @@ Bipeds are unaffected by any of it.
   the editor preview's bounce is a stand-in.
 - **Live tissue (YAPS).** ChilloutVR hands a shader each player's hand position but not which way it
   faces, so a fist is guessed from the wrist and arm: another player's grip in VR can land about
-  5 cm off their hand. Other players' MagicaCloth colliders press it only for a viewer whose own
+  5 cm off their hand. A head is handed as its bone alone, so it presses as a ball over where the
+  skull sits, whatever its hair or ears. Other players' MagicaCloth colliders press it only for a viewer whose own
   Dynamic Bone interaction settings take them in, since each viewer runs the cloth with their own.
   Feeling the world's surfaces (a pane of glass, say) is not reliable yet. What a viewer with the
   **Cameras** content filter off or **Shader Filtering** on sees of it has not been checked in game.

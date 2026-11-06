@@ -71,8 +71,9 @@ namespace AvatarBridge.Yaps
 
         // Each part on the live tissue, by the name the build gives it: a preset filling eight knobs,
         // each a share of how the build tunes that part, 1 as built. A part's first build guesses its
-        // preset from its name or the bone it rides. Drawn by the inspector's own card, live.
-        public enum Preset { Breasts, Butt, Thighs, Belly, Custom }
+        // preset from its name or the bone it rides. Drawn by the inspector's own card, live. New
+        // presets go after Custom: the enum is saved by its index.
+        public enum Preset { Breasts, Butt, Thighs, Belly, Custom, Firm }
 
         [Serializable]
         public class Feel

@@ -2603,6 +2603,36 @@ namespace AvatarBridge.Regression
                 EditorApplication.Exit(1);
                 return;
             }
+            // -jellyKept: the squash's volume kept, as the check takes it, so a film can stand beside
+            // an older share (3.33 is the homes' share before 9d50b37).
+            int keptAt = Array.IndexOf(args, "-jellyKept");
+            var keptIn = keptAt >= 0 && keptAt + 1 < args.Length ? YapsSquash.SettingsOf(made.GetComponentInChildren<CVRAvatar>(true).transform) : null;
+            if (keptIn != null)
+            {
+                keptIn.volumeKept = float.Parse(args[keptAt + 1], CultureInfo.InvariantCulture);
+                foreach (var worn in made.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith(YapsJelly.Worn + " ")))
+                    Debug.Log($"[Jelly] film: volume kept {keptIn.volumeKept} on {worn.name}: {YapsJelly.Retune(worn, keptIn)} materials");
+                // Retuned only in memory, the film's session loaded the materials as built.
+                AssetDatabase.SaveAssets();
+            }
+            // -jellyStepSet name:v[,v,v,v]+...: the step's own values on this copy, to film an older one (no = or ;,
+            // which the film's cmd start splits on).
+            int setAt = Array.IndexOf(args, "-jellyStepSet");
+            if (setAt >= 0 && setAt + 1 < args.Length)
+            {
+                var steps = made.GetComponentsInChildren<CVRMaterialDataProvider>(true).SelectMany(p => p.materials ?? new Material[0])
+                    .Where(m => m != null && m.HasProperty("_MassHz")).Distinct().ToList();
+                foreach (var kv in args[setAt + 1].Split('+'))
+                {
+                    var nv = kv.Split(':');
+                    var v = nv[1].Split(',').Select(x => float.Parse(x, CultureInfo.InvariantCulture)).ToArray();
+                    foreach (var m in steps)
+                        if (v.Length == 1) m.SetFloat(nv[0], v[0]);
+                        else m.SetVector(nv[0], new Vector4(v[0], v[1], v.Length > 2 ? v[2] : 0f, v.Length > 3 ? v[3] : 0f));
+                    Debug.Log($"[Jelly] film: {nv[0]} = {nv[1]} on {steps.Count} step materials");
+                }
+                AssetDatabase.SaveAssets();
+            }
             string path = $"{Film}/{made.name} {(bare ? "squash" : "jelly")}.prefab";
             var saved = PrefabUtility.SaveAsPrefabAsset(made, path);
             Object.DestroyImmediate(made);
@@ -2913,6 +2943,7 @@ namespace AvatarBridge.Regression
         // the finger went in and the whole with it, and where the whole was before.
         static float skinOut = float.NaN, pokeDent, pokeWhole;
         static Vector3 wholeFrom;
+        static readonly bool headPoke = Environment.GetCommandLineArgs().Contains("-jellyHeadPoke");
         // Whether the squash still moves anything the jelly draws: the picture with the squash on
         // against the same frame with it off, the jelly on in both; and the same picture twice.
         static readonly List<string> squashOver = new List<string>();
@@ -3446,12 +3477,20 @@ namespace AvatarBridge.Regression
             var far = (Vector4[]) hand.Clone();
             var chestAt = (Vector4[]) hand.Clone();
             var root = Enumerable.Repeat(new Vector4(50f, 0f, 50f, 1.6f), 255).ToArray();
+            var headAt = Vector4.zero;
             if (into >= 0f)
             {
                 // The tip reaches 0.126 m past the wrist, away from the chest given here.
                 var wrist = spot + fwd * (0.126f + 0.15f - 0.18f * into);
-                hand[0] = wrist;
+                hand[0] = headPoke ? hand[0] : (Vector4) wrist;
                 chestAt[0] = wrist + fwd * 0.45f;
+                // -jellyHeadPoke: a head in the hand's place, its ball's front where the hand's was. The
+                // step puts the ball's middle 8 cm off the head bone away from the chest, its radius 10.
+                if (headPoke)
+                {
+                    headAt = wrist + fwd * 0.004f;
+                    chestAt[0] = headAt + (Vector4) (fwd * 0.3f);
+                }
                 root[0] = new Vector4(wrist.x, swing.position.y, wrist.z, 1.6f) + (Vector4) (fwd * 0.45f);
             }
             Shader.SetGlobalVectorArray("_CVR_PlayerLeftHandPositions", hand);
@@ -3460,6 +3499,7 @@ namespace AvatarBridge.Regression
             Shader.SetGlobalVectorArray("_CVR_PlayerRootPositions", root);
             var heads = new Vector4[255];
             if (frame >= BreastFrames - ViewFrames + 260 && frame < BreastFrames - ViewFrames + 360) heads[0] = 0.5f * (breastRegions[0].position + breastRegions[1].position) + swing.forward * 3f;
+            if (headPoke && into >= 0f) heads[0] = headAt;
             Shader.SetGlobalVectorArray("_CVR_PlayerHeadPositions", heads);
             // Then, once the turn has rung out, the film's squeeze twice, the pair's contact off for the
             // first: two players, a hand each on the pair's outer sides, pointing back at the chest,
@@ -4218,7 +4258,7 @@ namespace AvatarBridge.Regression
             File.WriteAllBytes(Path.Combine(dir, "breasts.png"), sheet.EncodeToPNG());
             File.WriteAllLines(Path.Combine(dir, "centres.csv"), new[] { "frame,c0x,c0y,c0z,c1x,c1y,c1z,furthest (mm)" }.Concat(breastTrace));
             Debug.Log($"[Jelly] {(ok ? "PASS" : "FAIL")} breasts after {frame} frames with the CCK's render controller: the step's anchor {(anchorOk ? "is" : "is NOT")} the rig's; " +
-                      $"settled, the furthest particle {1000f * restMost:0.0} mm off its modelled rest (6 at most); a finger 3 cm into the skin took the skin under it {1000f * pokeDent:0.0} mm in, the whole {1000f * pokeWhole:0.0} mm, " +
+                      $"settled, the furthest particle {1000f * restMost:0.0} mm off its modelled rest (6 at most); {(headPoke ? "a head" : "a finger")} 3 cm into the skin took the skin under it {1000f * pokeDent:0.0} mm in, the whole {1000f * pokeWhole:0.0} mm, " +
                       $"and {100f * poked:0.00}% of the picture's pixels against {100f * noise:0.00}% frame to frame; turning, {1000f * swingMost:0.0} mm; " +
                       $"squeezed together, the pair's contact held the side facing the other {1000f * bodies:0.0} mm further off than without");
             Debug.Log($"[Jelly] the steps switched by the parser: {(restSaid.Count > 0 ? string.Join(", ", restSaid) : "never")}");

@@ -3312,6 +3312,11 @@ in. Ranked by worth for what it costs. Suspected defects of ours first:
    hands as well as through the measured own capsules, and the presses add. Skip the array entry
    whose hands sit within a few centimetres of the own hand anchors. Unverified: batch Play mode
    writes the arrays itself, so check in game first.
+   **BUILT, check in game.** The client's own source shows the wearer in the arrays on every
+   machine (player 0 on their own, a network slot on everyone else's), the hands as the hand bones
+   themselves. The scan and the points pass skip a player whose both hands sit within 5 cm of the
+   own hand capsules' starts (`Wearer`); their head goes with them. Batch cannot show it: no probe
+   puts the wearer in the arrays.
 2. **Presses add where they overlap.** The palm and finger capsules of one hand overlap at the
    knuckle, an own forearm and hand share the wrist, two hands can cover one patch, and the draw
    sums every `YapsJellyPress`, pushing skin past either surface. Take the largest (or a smooth
@@ -3321,6 +3326,9 @@ in. Ranked by worth for what it costs. Suspected defects of ours first:
    where several overlap the deepest leads and the rest add a little. One rule covers the knuckle,
    the wrist and two hands on one patch. The plug press stays apart. The probe's own copy of the
    press for its test prop still sums, so a probe reading of the prop's draw is the old rule.
+   Review 2026-11-06: the joined way was normalized, so two hands pressing from either side flipped
+   it from one to the other where they balanced and tore the skin between them; now their mean,
+   which shrinks to nothing there, as the plain sum did.
 3. **A press pushes the far side of a thin part.** `YapsJellyPress` moves any vertex within two
    radii of a hand, whichever way the skin faces; on an arm, a calf or a belly's side the far side
    would be shoved. Ease the rim by whether the vertex normal faces the hand. Instrument first.
@@ -3330,24 +3338,63 @@ in. Ranked by worth for what it costs. Suspected defects of ours first:
    **BUILT.** `YapsJellyPush` returns the size and its slope; the joined slope goes into `bend`
    through the normal, across the skin only. Inside the hand the rim and the push out of it are
    rounded together over a tenth of the radius, or the light drew their join as a ring.
+   **Joe 2026-11-06, on the breasts film: "that looks like the previous implementation?"** ~~The
+   push's own slope stands straight up at the hand's outline, so the light drew a hard dark ring
+   round every dent.~~ **WITHDRAWN the same hour:** filmed with the slope off (lit-off) the ring is
+   still there, so it is the crater's own shape, not its light; see item 31. The slope is still the
+   rim's bowl now, its middle rounded off over half the radius, and the push the plain largest
+   again: the push's own slope does stand straight up at the hand's outline, and the review found a
+   2.5 % step at an own limb's edge and a pinch on the hand's axis in the rounding. The plug's press
+   still lights as flat skin.
 5. **A soft shadow as a hand nears.** The strongest cue of a touch about to land. A darkening per
    vertex from the hand slots and own capsules the draw already reads, multiplied into the host's
    colour: needs a colour hook per shader family in `YapsShaderPatcher`, which patches the vertex
    stage only today. Large.
 6. **Heads press too.** Each player's head from `_CVR_PlayerHeadPositions` as a head-sized ball,
-   scaled by its player's height, the wearer's own skipped (a head in a lap). Feet do not port:
-   the client hands a root, not feet.
+   scaled by its player's height, the wearer's own skipped (a head in a lap). ~~Feet do not port:
+   the client hands a root, not feet.~~ **WITHDRAWN 2026-11-06:** the client hands every player's
+   hips, chest, head, hands and feet (`_CVR_PlayerLeftFootPositions`, `_CVR_PlayerRightFootPositions`
+   and `_CVR_PlayerHipPositions`), each the bone's position. Feet not built: the foot's direction is
+   not handed, so only an ankle ball would press.
+   **BUILT.** The head is the head bone, at the skull's base, so `HeadOf` puts the ball's middle
+   8 cm up from it, away from the chest, radius 10 cm, both by the player's height over 1.6 m. It
+   takes a hand slot as an open hand of no length, so the draw, the press, the far switch's wake and
+   the slots need nothing new, and an open gesture never grips. Proven by `-jellyHeadPoke`, the
+   poke done by a head. Review 2026-11-06: the heads are scanned after every player's hands, since
+   slots go by order and a grip lives in its slot (a head coming into reach among the hands moved a
+   later hand's grip); a player with no chest bone has their head put up from the root instead. A
+   head never rings: the slap skips a slot of no length, as it does a probe's ball.
 7. **The Avatar Tester's hand put on the skin by a click** in the Scene view (bake the body, ray,
    back off along the normal by the palm), and its controls in a Scene view panel.
 8. **Presets named by feel, and a Firm one.** Custom at 1 is the breasts' tune, so an arm or a
    neck feels like a breast: add Firm (and maybe Thin) after Custom (the enum serialises by
    index), guessed for arms, neck and calves. Saving a part's feel to a small file to share.
+   **BUILT: Firm,** after Custom, guessed from a name (an arm, a shoulder, a calf, a shin, the neck)
+   or from riding an arm, a shoulder, the neck or a lower leg, for skin close over muscle: firmer,
+   settling sooner, a third of the swing, three fifths of the press depth. A first guess, untuned.
+   Presets still named by part, not by feel, and no saving a feel to a file.
 9. Smaller: every problem at the top of the component with its fix; a line saying what the build
    adds; a cost measured on the user's own card; a pile-up ring round a deep press, draw-only; a
    dent whose rim grows with the press.
 Already ours, and further: cost by distance and view (the far switch, half rate), round and
 hollow skin (the lattice is volumetric), clothes moving with the skin, a hand through the body
 held and let go, nothing synced and no contacts.
+
+### 31. The breasts are less fluid than the Oct 31 films. 2026-11-06, Joe: "the jelly was a lot more "fluid" right? am I tripping?"
+
+Not tripping; the probe's numbers since the night films of Oct 31 (night1k, night2k):
+1. **A pull follows less.** A fist pulling 8 cm out drags the skin it holds 74.4 mm, against 101.6
+   before the homes' share fix (9d50b37, the seat's caving): 27 % less stretch. The poke dents the
+   skin under it instead of sinking the whole, on purpose.
+2. **The whole swings a little less.** Turning, 111.2 mm then, 103.9 since the step runs every
+   frame near (8c9c690, as it runs in game); a 2 cm twitch 13.8 then, 12.9 now.
+3. **A dark ring round every dent** in the breasts film, there with the dent's light off too, so
+   the crater's shape: a steep wall where the skin sits ahead of the hand. Joe: "you can physically
+   see the distance". Being filmed as now against the share before 9d50b37 (`-jellyKept 3.33` in
+   the film prep gives the old 0.7).
+Open: what "fluid" is for Joe (the whole swinging, or the skin stretching and rippling under a
+hand); then win the stretch back without the seat caving again (`-jellyKept`, `-jellyKnobs`, the
+share's form), each with a film beside night2k.
 
 ### 15. Moved out of 5.0.0 (Joe, 2026-10-22)
 
