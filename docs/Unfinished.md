@@ -3408,11 +3408,35 @@ Not tripping; the probe's numbers since the night films of Oct 31 (night1k, nigh
    rebuild the squash before the jelly goes on. **Fixed in the probe:** the film prep always
    rebuilds the squash and refuses to film when no material carries the jelly's parts. The open
    hand filmed so: no jump, the largest change between frames 1.9 against 4.3 and 7.4.
-Open: the share's A/B again with the jelly drawn, and the breasts beside night2k for Joe. Seen in
-the state trace (the film probe's `-spMassTrace`), invisible until now: during a held press the
-whole mass slides 5 cm down off the hand in 11 frames, and while pushed its steps alternate about
-6 and 2 mm frame to frame. Film both and judge; then what "fluid" is for Joe, and the stretch won
-back without the seat caving (`-jellyKept`, `-jellyKnobs`, the share's form).
+   **The share's A/B again with the jelly drawn: Joe 2026-11-06 picked "top", today's share.**
+5. **The breast stuck low from the first press to the grab.** Joe, on the A/B: "titty is stuck in
+   the test until the grab and pull". The bone the cloth swings, not the jelly: the open hand shoves
+   it 55 mm down and it stays 35 to 60 mm down through every shot after, the jelly riding it, until
+   the grab parks the hand at 0.97 m instead of 0.64 and it springs back within a few frames. Every
+   particle of the breast cloth is a ball of the converted PhysBone's radius, 0.19 m, and objects
+   parented under the breast bone joined its chain: the avatar's own nipple piercing, an unnamed
+   `GameObject`, and ours, `YAPS squash follow` (`YapsSquash`, made a child of the part's mover so
+   it rides the bone). A hand parked 15 to 20 cm out is still inside the piercing's ball and holds
+   the breast down. Open: keep YAPS objects out of cloth chains (ride the bone without being its
+   child); whether the source PhysBone ignored the piercing, and if the converter should keep such
+   children out of the MagicaCloth chain; whether the radius should taper to the tip, as a PhysBone
+   radius curve might. Measured with the film probe's `-spMassTrace` (the cloth bone nearest the
+   hand collider, its gap).
+6. **Hands carrying only a MagicaCloth collider dent the jelly, in the editor.** Joe: "we need a
+   probe on that, because it may not be working in game". The film's collider-only row
+   (`-spMagicaHands -spNoArrays`), traced: the probes read up to 102 mm, both slots fill, and the
+   local dent (the particle furthest off its home past the lattice's mean move) reaches 124 mm for
+   the open hand, 131 the fist, 68 the deep poke, against 51, 63 and 77 with the arrays; the mass
+   moves less (2 to 10 mm against 8 to 31), the probes dent, never lean. In game unproven: the
+   client gives each hand a MagicaCloth capsule and adds it to the wearer's cloths by the viewer's
+   Dynamic Bone Interaction settings (read in the decompile, never seen on the probes' cloth). Open:
+   a pass or fail line for the collider-only row; for game, a debug toggle lighting the skin where a
+   probe feels a collider, tried with a second player.
+Open: the breasts beside night2k for Joe. Seen in the state trace, invisible until now: during a
+held press the whole mass slides 5 cm down off the hand in 11 frames (with 5, the bone shoved too),
+and while pushed its steps alternate about 6 and 2 mm frame to frame. Film both and judge; then
+what "fluid" is for Joe, and the stretch won back without the seat caving (`-jellyKept`,
+`-jellyKnobs`, the share's form).
 
 ### 15. Moved out of 5.0.0 (Joe, 2026-10-22)
 
