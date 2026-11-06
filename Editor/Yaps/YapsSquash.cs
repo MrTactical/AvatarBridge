@@ -1300,16 +1300,25 @@ namespace AvatarBridge
         }
 
         // Every skinned renderer posed as it stands, its blend shapes on, shares still empty.
+        static bool InJelly(Transform t, Transform root)
+        {
+            for (; t != null && t != root; t = t.parent)
+                if (t.name == YapsJelly.Worn || t.name.StartsWith(YapsJelly.Worn + " ")) return true;
+            return false;
+        }
+
         static List<Skin> Skins(Transform root)
         {
             var list = new List<Skin>();
             // Never the last build's own skin: one vertex on each part's bone, it carries every
-            // part and won Body's pick, so the painter painted twenty vertices of nothing.
+            // part and won Body's pick, so the painter painted twenty vertices of nothing. Nor the
+            // jelly's, skinned to each part's bone and every probe: it won the seat's pick, and the
+            // film aimed every press at it and missed.
             var built = root.Find(ShaderHostName);
             foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
                 var mesh = smr.sharedMesh;
-                if (mesh == null || (built != null && smr.transform.IsChildOf(built))) continue;
+                if (mesh == null || (built != null && smr.transform.IsChildOf(built)) || InJelly(smr.transform, root)) continue;
                 var rb = smr.bones;
                 var weights = mesh.boneWeights;
                 var verts = Shaped(smr);

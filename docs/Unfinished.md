@@ -3225,6 +3225,14 @@ layers get a copy at all), `_YAPS_DentOwn` RGBA, the draw's two states and one f
    its probes 25.4 mm, from 19.5), the thighs 5.6 (12.0 mm, from 0.2). Still no ring from a quick
    slap by another player's collider on the seat or thighs: 24 probes over a big front leave room
    for a ball; more for a bigger part needs room in the state row (texels 88 to 111 hold 24).
+   **The seat's squeeze** (Joe 2026-11-06: "hands squeezing ass together is broken"). The
+   squash's body pick (`YapsSquash.Body`: the renderer carrying every part with the most distinct
+   bones) took the jelly's own skin once a jelly was built, skinned to each part's bone and every
+   probe; the film aimed every press at it and missed. **Done:** the jelly's skin is never a body
+   (the film probe's pick the same). Refilmed (s5b), the hands on each cheek's widest outer side,
+   13 cm in: the masses 40 mm together, the probes 12 to 13 cm. From the cameras behind, the hands
+   look partly inside the cheeks at the deepest; a side dent faces sideways. Open: a camera from
+   above, then Joe.
 5. **Tests.** VerifyBreasts made part-agnostic: the region's forward for every press, thresholds
    scaled by the part's size, partner checks skipped for a single part, a thigh check (the film's
    `-jellyThighs` prep in the check). A seeded random-patch generator (pairs over mesh adjacency
@@ -3597,6 +3605,20 @@ Not tripping; the probe's numbers since the night films of Oct 31 (night1k, nigh
    the swing held to 0.3 any way: the squeeze rises 16 mm, both alike, and settles; a lift from
    below rises 59 mm against 31; a deep front poke lifts 48 (it lands below the centre); hopping
    unchanged.
+   **Then a review of both, 2026-11-06.** Two faults. **The wearer's own hand tore through:** 6
+   particles over 10 cm at 4844e15, 330 at 77b20c9 (bisected). Facing's least deep read a hand
+   pushed straight in past the middle as in by a side and held it 15 cm out to it. **Done:** the
+   least deep counts only a face the hand's deeper end stays a radius short of the middle of, and
+   only for another player's hand; the wearer's own keep the point 30 cm back along the arm, the
+   elbow being where the hand came from (by the least deep, one pushed in from the front was held
+   there and swung the whole 29.2 mm with the hand at the chest, against 20). Own through PASS: 6
+   torn, 7.4 mm at the chest; every other player's shot identical to the digit. **The push fed
+   back:** taken where the mass was, at give / (1 - give), past a give of a half two hands
+   squeezing buzzed at 37 frames a second or fewer. **Done:** every push is give of its overlap
+   with the mass at rest, so nothing feeds back and a press settles in the same place. Against the
+   last film: the squeeze 37 to 31 mm across and 16 to 10 up, its dent 132 to 143, both alike; an
+   open hand 35 to 17 up, a deep poke 48 to 21, the grab top and bottom 36 to 19 across; lifts and
+   hopping unchanged.
    - The markers sit on each probe's rest spot, carried by the bone, red when pushed; neither they
      nor the probes follow the jelly's dent or swing.
    - **Sticky after the squeeze: the shot's**, filmed alone with the pair's plane traced (58, 59):

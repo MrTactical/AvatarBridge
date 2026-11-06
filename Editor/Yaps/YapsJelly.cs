@@ -2247,18 +2247,21 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             }
 
             // The face of the tissue a hand came in by, a local axis, and the tissue's half thickness
-            // across it: the face the wrist is over while it is outside, else the one the hand lies
-            // least deep past, of those not facing away from its arm (its player's chest or the
-            // wearer's elbow). By the wrist alone, a hand through to the back read as pressing in
-            // from behind; by a point 30 cm back along the arm, a palm flat on a breast's side, its
-            // arm from the front, read as in by the front and was held 18 cm out in front of it.
-            float3 Facing(float3 wrist, float3 tip, float4x4 m, float scale, out float3 mid, out float across)
+            // across it: the face the wrist is over while it is outside; inside, for another player's
+            // hand, the one it lies least deep past, of those not facing away from its arm (its
+            // player's chest) with its deeper end a radius r short of the middle; else the face a
+            // point 30 cm back along the arm is over. That point alone read a player's palm flat on a
+            // breast's side, the arm from the front, as in by the front and held it 18 cm out in
+            // front; the least deep alone read a hand pushed straight in past the middle as in by a
+            // side, held it 15 cm out to it and tore 330 particles. The wearer's own hands keep the
+            // point, the wearer's elbow being where the hand came from: by the least deep, a hand
+            // pushed in from the front was held there and swung the whole 2 cm back and 2 cm out.
+            float3 Facing(float3 wrist, float3 tip, float r, bool other, float4x4 m, float scale, out float3 mid, out float across)
             {
                 float4 box = Region == 0 ? _JellyBox0 : _JellyBox1;
                 float3 half = box.z > 0 ? float3(box.xy, 0.5 * box.z) : 0.5 * (float3) (Count() - 1) * _Lattice.w;
                 mid = float3(0, 0, half.z);
-                float3 wl = Into(m, wrist), tl = Into(m, tip), q = (wl - mid) / half;
-                float3 face = abs(q.x) >= abs(q.y) && abs(q.x) >= abs(q.z) ? float3(sign(q.x), 0, 0) : abs(q.y) >= abs(q.z) ? float3(0, sign(q.y), 0) : float3(0, 0, sign(q.z));
+                float3 wl = Into(m, wrist), tl = Into(m, tip), q = (wl - mid) / half, least = 1e9, way = 1;
                 if (max(abs(q.x), max(abs(q.y), abs(q.z))) < 1 && dot(wl - tl, wl - tl) > 1e-12)
                 {
                     // How far the deeper end lies past each face, a face more than 60 degrees off
@@ -2266,9 +2269,14 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     float3 arm = normalize(wl - tl);
                     float3 inPlus = arm < -0.5 ? 1e9 : half - (min(wl, tl) - mid);
                     float3 inMinus = arm > 0.5 ? 1e9 : half + (max(wl, tl) - mid);
-                    float3 least = min(inPlus, inMinus), way = inPlus <= inMinus ? 1 : -1;
-                    face = least.x <= least.y && least.x <= least.z ? float3(way.x, 0, 0) : least.y <= least.z ? float3(0, way.y, 0) : float3(0, 0, way.z);
+                    least = min(inPlus, inMinus);
+                    way = inPlus <= inMinus ? 1 : -1;
+                    least = other && least <= half - r / scale ? least : 1e9;
+                    q = (Into(m, wrist + normalize(wrist - tip) * 0.3 * scale) - mid) / half;
                 }
+                float3 face = min(least.x, min(least.y, least.z)) < 1e8
+                    ? (least.x <= least.y && least.x <= least.z ? float3(way.x, 0, 0) : least.y <= least.z ? float3(0, way.y, 0) : float3(0, 0, way.z))
+                    : (abs(q.x) >= abs(q.y) && abs(q.x) >= abs(q.z) ? float3(sign(q.x), 0, 0) : abs(q.y) >= abs(q.z) ? float3(0, sign(q.y), 0) : float3(0, 0, sign(q.z)));
                 across = dot(abs(face), half);
                 return face;
             }
@@ -2280,11 +2288,11 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // tissue torn, and again as it was pulled back out. hold is how far the skin keeps it
             // short of where it is, which the whole still feels (Unheld): skin that stops a hand is
             // pushed along by it, and with the mass held too a squeeze no longer met in the middle.
-            void Held(inout float3 wrist, inout float3 tip, float r, float4x4 m, float scale, out float hold)
+            void Held(inout float3 wrist, inout float3 tip, float r, bool other, float4x4 m, float scale, out float hold)
             {
                 float3 mid;
                 float across;
-                float3 face = Facing(wrist, tip, m, scale, mid, across);
+                float3 face = Facing(wrist, tip, r, other, m, scale, mid, across);
                 hold = 0;
                 if (!any(face) || !(r > 0)) return;
                 float deep = (across - min(dot(Into(m, wrist) - mid, face), dot(Into(m, tip) - mid, face))) * scale + r;
@@ -2297,11 +2305,11 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             }
 
             // A held hand back where it is, less only its letting go: what moves the whole.
-            void Unheld(inout float3 wrist, inout float3 tip, float hold, float4x4 m, float scale)
+            void Unheld(inout float3 wrist, inout float3 tip, float r, bool other, float hold, float4x4 m, float scale)
             {
                 float3 mid;
                 float across;
-                float3 face = Facing(wrist, tip, m, scale, mid, across);
+                float3 face = Facing(wrist, tip, r, other, m, scale, mid, across);
                 float3 in_ = any(face) ? normalize(mul((float3x3) m, face)) * hold : 0;
                 wrist -= in_;
                 tip -= in_;
@@ -2331,19 +2339,16 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 return smoothstep(0.5736, 0.7660, 0.5 * (t - 1));
             }
 
-            // How far a capsule from a to b of radius r leans the mass's spring target at p: c of its
-            // overlap with the mass's radius, out the way the capsule lies from home, the centre at
-            // rest. Out from p, a squeeze with its fingertips level with a centre tipped it back a few
-            // millimetres, which turned the push further back, until it sat 25 mm into the chest.
-            float3 Lean(float3 p, float3 home, float3 a, float3 b, float r, float radius, float c)
+            // How far a capsule from a to b of radius r leans the mass's spring target: c of its
+            // overlap with the mass at rest, centred on p, out of the hand, fading to nothing within a
+            // quarter of the reach of a hand lying through the centre, which pushes no way more than
+            // another.
+            float3 Lean(float3 p, float3 a, float3 b, float r, float radius, float c)
             {
                 float3 seg = b - a;
-                float k = max(dot(seg, seg), 1e-9);
-                float3 off = p - (a + seg * saturate(dot(p - a, seg) / k));
-                float3 way = home - (a + seg * saturate(dot(home - a, seg) / k));
+                float3 off = p - (a + seg * saturate(dot(p - a, seg) / max(dot(seg, seg), 1e-9)));
                 float d = length(off);
-                way = dot(way, off) > 0 && dot(way, way) > 1e-12 ? normalize(way) : off / max(d, 1e-6);
-                return d < r + radius && d > 1e-6 ? way * (c * (r + radius - d)) : 0;
+                return d < r + radius ? off * (c * (r + radius - d) / max(d, 0.25 * (r + radius))) : 0;
             }
 
             // How far a capsule from a to b of radius r is off the skin: off its box on the anchor (the
@@ -2559,7 +2564,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     // only if the frame it closed on caught it still in.
                     Hand(kw, kt, pb, fa, fb, rf);
                     float3 reach = rf > 0 ? fb : pb, was = w;
-                    Held(w, reach, kw.w, m, scale, hold);
+                    Held(w, reach, kw.w, true, m, scale, hold);
                     t += w - was;
                     // How far it is held back rides on the gesture, 10 a millimetre: 10 + gesture + 10 k.
                     kept = (x & 1) == 0 ? float4(w, kw.w) : float4(t, kt.w + 10 * round(1000 * hold));
@@ -2926,7 +2931,10 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float load = 0;
                 // The hands move where the spring holds it, a force, not the mass itself: pushed out
                 // a share of the way each frame, it left any hand within a few frames and the
-                // particles nothing to dent.
+                // particles nothing to dent. Each takes give of its overlap with the mass at rest,
+                // where it settles. Taken where the mass was, at give / (1 - give), it settled the
+                // same but fed back: past a give of a half two hands squeezing buzzed at 37 frames a
+                // second or fewer, and fingertips level with a centre tipped one back 25 mm.
                 float radius = _MassRadius * scale;
                 float3 pushed = 0;
                 [branch] if (_MainTex.Load(int3(1, side, 0)).w > 0.5)
@@ -2937,16 +2945,15 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         if (!(b.w > 0.5)) continue;
                         if (_MainTex.Load(int3(112 + e, side, 0)).w > 0) continue;
                         float3 ua = a.xyz, ub = b.xyz;
-                        Unheld(ua, ub, floor((b.w - 10) / 10) / 1000, m, scale);
+                        Unheld(ua, ub, a.w, true, floor((b.w - 10) / 10) / 1000, m, scale);
                         a.xyz = ua;
                         b.xyz = ub;
-                        // Shifted by give / (1 - give) of its overlap where it is, it settles at give of
-                        // the overlap where it was. A finger out leans by as much less as it is thinner,
-                        // as the tissue's stiffness under a contact goes with its radius.
+                        // A finger out leans by as much less as it is thinner, as the tissue's stiffness
+                        // under a contact goes with its radius.
                         float3 pb, fa, fb;
-                        float rf, c = min(_Give, 0.95) / (1 - min(_Give, 0.95));
+                        float rf, c = min(_Give, 0.95);
                         Hand(a, b, pb, fa, fb, rf);
-                        float3 leaned = Lean(tip.xyz, rest, a.xyz, pb, a.w, radius, c) + (rf > 0 ? Lean(tip.xyz, rest, fa, fb, rf, radius, c * rf / a.w) : 0);
+                        float3 leaned = Lean(rest, a.xyz, pb, a.w, radius, c) + (rf > 0 ? Lean(rest, fa, fb, rf, radius, c * rf / a.w) : 0);
                         pushed += leaned;
                         load += length(leaned);
                     }
@@ -2967,7 +2974,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 uint own = (uint) _MainTex.Load(int3(41, side, 0)).x & 0x44u;
                 [branch] if (own != 0)
                 {
-                    float c = min(_Give, 0.95) / (1 - min(_Give, 0.95));
+                    float c = min(_Give, 0.95);
                     [loop] for (uint k = 2; k < 8; k += 4)
                     {
                         [branch] if (own & (1u << k))
@@ -2976,9 +2983,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             float r;
                             Own(k, scale, a, b, r);
                             float hold;
-                            Held(a, b, r, m, scale, hold);
-                            Unheld(a, b, hold, m, scale);
-                            float3 leaned = Lean(tip.xyz, rest, a, b, r, radius, c);
+                            Held(a, b, r, false, m, scale, hold);
+                            Unheld(a, b, r, false, hold, m, scale);
+                            float3 leaned = Lean(rest, a, b, r, radius, c);
                             pushed += leaned;
                             load += length(leaned);
                         }
@@ -2990,7 +2997,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 [branch] if (SolidRegion(region) && Probed)
                 [branch] if (Pushed(side))
                 {
-                    float c = min(_Give, 0.95) / (1 - min(_Give, 0.95)), deepest = 0;
+                    float c = min(_Give, 0.95), deepest = 0;
                     float3 along = 0, smid = mul(_JellyAnchor[2 + region], float4(0, 0, zc, 1)).xyz;
                     [loop] for (uint fk = WorldFrom(region); fk < (uint) _JellyProbes && fk < PROBES; fk++)
                     {
@@ -2999,7 +3006,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         [branch] if (fg > 0.02)
                         {
                             float3 face = fat + normalize(fat - fway * fg - smid) * (_JellyProbeReach - BALL) - fway * BALL;
-                            float over = radius - dot(tip.xyz - face, fway);
+                            float over = radius - dot(rest - face, fway);
                             if (over > deepest) { deepest = over; along = fway; }
                         }
                     }
@@ -3182,7 +3189,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             float r;
                             Own(c, scale, a, b, r);
                             float hold;
-                            if (c == 2 || c == 6) Held(a, b, r, m, scale, hold);
+                            if (c == 2 || c == 6) Held(a, b, r, false, m, scale, hold);
                             next = Out(next, a, b, r, centre);
                         }
                     }
@@ -3643,7 +3650,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             bool reach = false;
                             [branch] if ((px.x & 1) && r > 0) reach = InReach(a, b, r, m, scale, side);
                             float hold;
-                            [branch] if (c == 2 || c == 6) Held(a, b, r, m, scale, hold);
+                            [branch] if (c == 2 || c == 6) Held(a, b, r, false, m, scale, hold);
                             return (px.x & 1) == 0 ? float4(a, r) : float4(b, reach);
                         }
                         // The draw's last guard: the plane midway between the two skins where they reach
