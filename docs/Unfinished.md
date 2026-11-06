@@ -3332,6 +3332,12 @@ in. Ranked by worth for what it costs. Suspected defects of ours first:
 3. **A press pushes the far side of a thin part.** `YapsJellyPress` moves any vertex within two
    radii of a hand, whichever way the skin faces; on an arm, a calf or a belly's side the far side
    would be shoved. Ease the rim by whether the vertex normal faces the hand. Instrument first.
+   **Measured 2026-11-06, NOT BUILT:** `YapsJellyPush` ported and run on a limb 8 cm and 12 cm
+   thick, a palm side-on and a finger end-on and side-on. The far side never moves; skin facing away
+   is pushed only just past the flank, by a palm deep in: on 8 cm, 0.8 mm at 2 cm in, 2.3 at 3, 4.4
+   at 4 (the near side 24, 32, 40); on 12 cm under 1 mm to 6 cm in. `Held` stops a hand at
+   two thirds of the part's half breadth, about 2.7 cm on 8 cm, so at most about 2 mm. Build it only
+   if a limb's flank is seen to bulge in game.
 4. **Light the press.** The presses add to the skin's move but never its normal, so a finger's
    dent keeps the resting normal and shows in silhouette alone. Each press also returns the slope
    of its push, added to `bend` as the lattice's own gradient is; draw only.
@@ -3555,7 +3561,8 @@ Not tripping; the probe's numbers since the night films of Oct 31 (night1k, nigh
    at (`_PairOffset` turned by the anchor) and free along it: ±4 mm, pressed flat at the cleavage.
    A hand pushed in between, slapped together and both hands unchanged; one pushing one into the
    other rises 23 mm against 26. Seen in both runs, not from the change: the second region slides
-   20 to 30 mm along z in the squeeze, the first under 15. Open: Joe in game.
+   20 to 30 mm along z in the squeeze, the first under 15 (fixed below: back into the chest, from
+   `Lean`). Open: Joe in game.
    **Then the hands sat in the skin** (Joe: "allow for more squish, just a little more so that the
    breast mesh doesn't clip into the test hands"). Two causes. **Facing picked the wrong face:** it
    judged the way in from a point 30 cm back along the arm, so a palm flat on a breast's side with
@@ -3569,6 +3576,20 @@ Not tripping; the probe's numbers since the night films of Oct 31 (night1k, nigh
    2026-11-06: "thats better, I like that".
    **WITHDRAWN as a measure:** the probe's palm-capsule count (`clip_mm`) reads 42 to 52 mm on
    every shot at every depth; it counts the lattice's margin outside the skin, not the skin.
+   **The second region's slide** was back into the chest, not forward: 25 mm, the first 3. Joe
+   2026-11-06: "the breasts can be pushed up forward and down, any direction where nothing is
+   pushing on it". Not the probes: with the hands' MagicaCloth colliders off (arrays only) it slid
+   the same 25 mm. **The cause:** `Lean` pushed the mass out of a hand from where the mass was, and
+   the squeeze's fingertips sat level with the centres: tipped back a few millimetres, the push
+   turned further back, and it ran on to 25 mm; the first started 6 mm nearer its hand's wrist and
+   never tipped. **Done:** the push goes the way the hand lies from the centre at rest, its size
+   still the overlap where the mass is. Over 14 shots against HEAD: the squeeze 25 to 5 mm back
+   (the first 3); a lift from below 39 to 16 mm sideways, the grab top and bottom 60 to 35; front
+   pokes 5 mm less; slaps, pokes, between and the own hand unchanged. **Then up and down freed**:
+   the 0.15 cap (`_LimitUp`) was for a squeeze riding up 54 mm, which was this same push. Removed,
+   the swing held to 0.3 any way: the squeeze rises 16 mm, both alike, and settles; a lift from
+   below rises 59 mm against 31; a deep front poke lifts 48 (it lands below the centre); hopping
+   unchanged.
    - The markers sit on each probe's rest spot, carried by the bone, red when pushed; neither they
      nor the probes follow the jelly's dent or swing.
    - **Sticky after the squeeze: the shot's**, filmed alone with the pair's plane traced (58, 59):

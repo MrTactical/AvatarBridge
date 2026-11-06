@@ -58,12 +58,13 @@ namespace AvatarBridge
 
         // How the build tunes a part its bone carries, before the part's feel scales it. Carried on
         // the cloth: the mass at 2.5 Hz, critically damped, a hand's press moving 0.525 of the whole,
-        // held within 0.3 of its length across the body and 0.15 up or down it. 0.35 within 0.2 was
-        // tuned while a hand also shoved the cloth's bone; with the cloth kept out of the touch it
-        // stopped a squeeze short. At 0.6 within 0.35 a squeeze from both sides drove a pair
-        // together until their masses met, and the hands' push then took them up toward the chin:
-        // with its pair held apart, a squeeze rides up the limit, so up and down is held to 0.15.
-        internal const float CarriedHz = 2.5f, CarriedZeta = 1f, CarriedGive = 0.525f, CarriedLimit = 0.3f, CarriedLimitUp = 0.15f;
+        // held within 0.3 of its length any way, up and down too: a squeezed part goes where nothing
+        // presses. 0.35 within 0.2 was tuned while a hand also shoved the cloth's bone; with the cloth
+        // kept out of the touch it stopped a squeeze short. At 0.6 within 0.35 a squeeze from both
+        // sides drove a pair together until their masses met, and the hands' push then took them
+        // up toward the chin; held to 0.15 up and down, it rose 54 mm at 0.3 across, a hand's push
+        // then turned by where the mass was (Lean). Leaned from its rest, it rises 16 mm and back.
+        internal const float CarriedHz = 2.5f, CarriedZeta = 1f, CarriedGive = 0.525f, CarriedLimit = 0.3f;
         // How deep a hand presses before the skin holds it, metres, before Press depth scales it.
         // At 0.08 a squeeze from both sides stopped denting 4 cm short of hands 12 cm in.
         internal const float Deepest = 0.12f;
@@ -121,7 +122,7 @@ namespace AvatarBridge
 
         // A part's feel on one of its step materials, each knob a share of what the build gives it:
         // the mass's rate, damping, give and limit as the build worked them out, the rest the tissue's.
-        internal static void Tune(Material mat, YapsSquashSettings.Feel f, float hz, float zeta, float give, float limit, float limitUp)
+        internal static void Tune(Material mat, YapsSquashSettings.Feel f, float hz, float zeta, float give, float limit)
         {
             // A little more pillow: the tissue's pull to its rest 2.4 a second, from 3.
             mat.SetFloat("_Hz", 2.4f * f.firmness);
@@ -130,7 +131,6 @@ namespace AvatarBridge
             mat.SetFloat("_Viscous", 25f * f.settle);
             mat.SetFloat("_Give", Mathf.Clamp(give * f.give, 0f, 0.95f));
             mat.SetFloat("_Limit", limit * f.swing);
-            mat.SetFloat("_LimitUp", limitUp * f.swing);
             mat.SetFloat("_MassHz", hz * f.springBack);
             mat.SetFloat("_MassDamp", 2f * zeta * 2f * Mathf.PI * hz * f.springBack);
             mat.SetFloat("_Taut", f.taut);
@@ -163,7 +163,7 @@ namespace AvatarBridge
                 .Where(m => m != null && m.HasProperty("_MassHz")).Distinct().ToList();
             foreach (var m in mats)
             {
-                if (m.GetFloat("_MassCarried") > 0f) Tune(m, f, CarriedHz, CarriedZeta, CarriedGive, CarriedLimit, CarriedLimitUp);
+                if (m.GetFloat("_MassCarried") > 0f) Tune(m, f, CarriedHz, CarriedZeta, CarriedGive, CarriedLimit);
                 Live(m, s);
             }
             return mats.Count;
@@ -709,7 +709,7 @@ namespace AvatarBridge
             var feel = FeelOf(squashed, names[pair], rides, animator);
             foreach (var mat in core.provider.materials)
             {
-                Tune(mat, feel, hz, zeta, give, cloth ? CarriedLimit : 0.6f, cloth ? CarriedLimitUp : 0.6f);
+                Tune(mat, feel, hz, zeta, give, cloth ? CarriedLimit : 0.6f);
                 Live(mat, squashed, o.slide);
             }
             // What the jelly tells the animator: the points strip's feedback through a driver the
@@ -1812,7 +1812,6 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _Give (""Share of how far a hand reaches into it that moves the whole; the particles dent the rest"", Range(0, 1)) = 0.5
         _MassRadius (""Its radius against hands, in the anchor's metres"", Float) = 0.1
         _Limit (""Furthest its centre swings off its rest, as a share of its length from the root"", Float) = 0.6
-        _LimitUp (""Furthest its centre swings up or down the body off its rest, the same share"", Float) = 0.6
         _Taut (""How much a loaded region's swing stiffens and damps: fully strained, the spring 1 + _Taut times as stiff, the damping 1 + 3 _Taut times"", Float) = 1
         _JellyTwitch (""Which handed transform the animator moves off the first hang to kick the mass; 0 none"", Float) = 0
         _Motion (""Stretch in motion, the squash's own: x per reach of swing, y swing ignored below this share of the reach, z longest stretch; x 0 none"", Vector) = (0, 0, 1, 0)
@@ -1869,7 +1868,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             #include ""JellyCommon.cginc""
 
             float _Stiff, _Hz, _Hand, _Far, _Behind, _Near, _Half, _Pass, _FixedDt, _Stress, _Sleep, _Lift, _Rider, _Rest, _Regions;
-            float _MassHz, _MassCarried, _MassDamp, _Give, _MassRadius, _Limit, _LimitUp, _Pair, _PairKeep, _Squish, _Viscous, _Solid, _Taut, _JellyTwitch;
+            float _MassHz, _MassCarried, _MassDamp, _Give, _MassRadius, _Limit, _Pair, _PairKeep, _Squish, _Viscous, _Solid, _Taut, _JellyTwitch;
             float4 _Slap, _Rate;
             float _Landing;
             // The frame's time, for how fast the homes move.
@@ -2333,13 +2332,18 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             }
 
             // How far a capsule from a to b of radius r leans the mass's spring target at p: c of its
-            // overlap with the mass's radius.
-            float3 Lean(float3 p, float3 a, float3 b, float r, float radius, float c)
+            // overlap with the mass's radius, out the way the capsule lies from home, the centre at
+            // rest. Out from p, a squeeze with its fingertips level with a centre tipped it back a few
+            // millimetres, which turned the push further back, until it sat 25 mm into the chest.
+            float3 Lean(float3 p, float3 home, float3 a, float3 b, float r, float radius, float c)
             {
                 float3 seg = b - a;
-                float3 off = p - (a + seg * saturate(dot(p - a, seg) / max(dot(seg, seg), 1e-9)));
+                float k = max(dot(seg, seg), 1e-9);
+                float3 off = p - (a + seg * saturate(dot(p - a, seg) / k));
+                float3 way = home - (a + seg * saturate(dot(home - a, seg) / k));
                 float d = length(off);
-                return d < r + radius && d > 1e-6 ? off * (c * (r + radius - d) / d) : 0;
+                way = dot(way, off) > 0 && dot(way, way) > 1e-12 ? normalize(way) : off / max(d, 1e-6);
+                return d < r + radius && d > 1e-6 ? way * (c * (r + radius - d)) : 0;
             }
 
             // How far a capsule from a to b of radius r is off the skin: off its box on the anchor (the
@@ -2886,8 +2890,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // gravity; a spring of _MassHz toward its rest, held up by the sag gravity gives when the
             // tissue was modelled hanging; pushed out of the hands in reach by _Give of how far they
             // reach into it, the particles left to dent the rest; kept off its partner's centre, each
-            // taking half; its swing held within _Limit of its length, up and down the body within
-            // _LimitUp, in and out within a tenth.
+            // taking half; its swing held within _Limit of its length, in and out within a tenth.
             // The hands are the slots the last frame's scan kept.
             float4 Mass(int x, float4x4 m, float scale, float dt, bool distant, uint side, uint region, uint partnerSide)
             {
@@ -2943,7 +2946,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         float3 pb, fa, fb;
                         float rf, c = min(_Give, 0.95) / (1 - min(_Give, 0.95));
                         Hand(a, b, pb, fa, fb, rf);
-                        float3 leaned = Lean(tip.xyz, a.xyz, pb, a.w, radius, c) + (rf > 0 ? Lean(tip.xyz, fa, fb, rf, radius, c * rf / a.w) : 0);
+                        float3 leaned = Lean(tip.xyz, rest, a.xyz, pb, a.w, radius, c) + (rf > 0 ? Lean(tip.xyz, rest, fa, fb, rf, radius, c * rf / a.w) : 0);
                         pushed += leaned;
                         load += length(leaned);
                     }
@@ -2975,7 +2978,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             float hold;
                             Held(a, b, r, m, scale, hold);
                             Unheld(a, b, hold, m, scale);
-                            float3 leaned = Lean(tip.xyz, a, b, r, radius, c);
+                            float3 leaned = Lean(tip.xyz, rest, a, b, r, radius, c);
                             pushed += leaned;
                             load += length(leaned);
                         }
@@ -3031,15 +3034,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float len = max(length(off), 1e-6);
                 next = root + off * (clamp(len, 0.9 * len0, 1.1 * len0) / len);
                 float3 swung = next - rest;
-                // Up and down the body held nearer than across it, as flesh hanging from the chest
-                // resists lifting: a squeeze from both sides, its pair held apart, slid up the
-                // limit's sphere out of the hands.
-                float3 up = normalize(m._m01_m11_m21);
-                float rise = dot(swung, up), high = _LimitUp * len0;
-                if (abs(rise) > high) swung -= up * (rise - sign(rise) * high);
                 float most = _Limit * len0;
-                if (dot(swung, swung) > most * most) swung *= most / length(swung);
-                next = rest + swung;
+                if (dot(swung, swung) > most * most) next = rest + swung * (most / length(swung));
                 return float4(next, _Time.y);
             }
 
