@@ -3556,6 +3556,18 @@ Not tripping; the probe's numbers since the night films of Oct 31 (night1k, nigh
    A hand pushed in between, slapped together and both hands unchanged; one pushing one into the
    other rises 23 mm against 26. Seen in both runs, not from the change: the second region slides
    20 to 30 mm along z in the squeeze, the first under 15. Open: Joe in game.
+   **Then the hands sat in the skin** (Joe: "allow for more squish, just a little more so that the
+   breast mesh doesn't clip into the test hands"). Two causes. **Facing picked the wrong face:** it
+   judged the way in from a point 30 cm back along the arm, so a palm flat on a breast's side with
+   its arm from the front read as in by the front and was held 18 cm out in front of it. Now the
+   face is the one wrist and tip together cross least to get in. Squeeze rings 12 to 4, one hand
+   pushing 9 to 3; every front-on shot identical. **Then the depth:** the trace's deepest probe (how
+   far a hand is in) against the dent. Rows with a hand over 10 mm ahead of the dent, squeeze, both
+   hands, deep poke, one hand pushing, grab: Press depth 1, 210 209 136 119 3; 1.25, 177 144 131
+   113 13; 1.5, 127 134 93 113 15. At 1.5 the squeeze dent reaches the hands at the peak, 124 mm
+   against 122 (85 at 1). **Done:** `Deepest` 0.12, the knobs at 1; the default refilmed matches the 1.5 run to the digit.
+   **WITHDRAWN as a measure:** the probe's palm-capsule count (`clip_mm`) reads 42 to 52 mm on
+   every shot at every depth; it counts the lattice's margin outside the skin, not the skin.
    - The markers sit on each probe's rest spot, carried by the bone, red when pushed; neither they
      nor the probes follow the jelly's dent or swing.
    - **Sticky after the squeeze: the shot's**, filmed alone with the pair's plane traced (58, 59):

@@ -65,7 +65,8 @@ namespace AvatarBridge
         // with its pair held apart, a squeeze rides up the limit, so up and down is held to 0.15.
         internal const float CarriedHz = 2.5f, CarriedZeta = 1f, CarriedGive = 0.525f, CarriedLimit = 0.3f, CarriedLimitUp = 0.15f;
         // How deep a hand presses before the skin holds it, metres, before Press depth scales it.
-        internal const float Deepest = 0.08f;
+        // At 0.08 a squeeze from both sides stopped denting 4 cm short of hands 12 cm in.
+        internal const float Deepest = 0.12f;
 
         // The presets' knobs in the Feel's order: firmness, settle, give, swing, spring back, taut,
         // press depth, slap. Breasts are what the build was tuned on; the rest are first guesses
@@ -1837,7 +1838,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _JellySolid (""Regions whose probes are balls the world's solids push, a bit each: felt as flat faces, not hands"", Float) = 0
         _JellySolidFrom (""In those regions, the first probe that is a ball; the ones before it the cloth's"", Float) = 0
         _JellyProbePatch (""How far across a world probe's face reaches, metres"", Float) = 0
-        _Deepest (""How deep a hand presses before the skin holds it, metres; past the tissue's middle it lets go"", Float) = 0.08
+        _Deepest (""How deep a hand presses before the skin holds it, metres; past the tissue's middle it lets go"", Float) = 0.12
         _GripSlip (""How far a gripped spot drags behind a fist stroking along the skin before it slides with it, metres; 0 it never slides"", Float) = 0
         _JellyArrays (""A component a region: 0 leaves the player arrays' hands out, its probes alone"", Vector) = (1, 1, 1, 1)
         _Floor (""A board under the tissue on its anchor: x 1 for one, y its height there in metres"", Vector) = (0, 0, 0, 0)
@@ -2247,17 +2248,28 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             }
 
             // The face of the tissue a hand came in by, a local axis, and the tissue's half thickness
-            // across it: the face the wrist is over while it is outside, else the one a point 30 cm
-            // back along the hand is over, toward its player's chest or the wearer's elbow. By the
-            // wrist alone, a hand through to the back read as pressing in from behind.
+            // across it: the face the wrist is over while it is outside, else the one the hand lies
+            // least deep past, of those not facing away from its arm (its player's chest or the
+            // wearer's elbow). By the wrist alone, a hand through to the back read as pressing in
+            // from behind; by a point 30 cm back along the arm, a palm flat on a breast's side, its
+            // arm from the front, read as in by the front and was held 18 cm out in front of it.
             float3 Facing(float3 wrist, float3 tip, float4x4 m, float scale, out float3 mid, out float across)
             {
                 float4 box = Region == 0 ? _JellyBox0 : _JellyBox1;
                 float3 half = box.z > 0 ? float3(box.xy, 0.5 * box.z) : 0.5 * (float3) (Count() - 1) * _Lattice.w;
                 mid = float3(0, 0, half.z);
-                float3 way = tip - wrist, q = (Into(m, wrist) - mid) / half;
-                if (max(abs(q.x), max(abs(q.y), abs(q.z))) < 1 && dot(way, way) > 1e-12) q = (Into(m, wrist - normalize(way) * 0.3 * scale) - mid) / half;
+                float3 wl = Into(m, wrist), tl = Into(m, tip), q = (wl - mid) / half;
                 float3 face = abs(q.x) >= abs(q.y) && abs(q.x) >= abs(q.z) ? float3(sign(q.x), 0, 0) : abs(q.y) >= abs(q.z) ? float3(0, sign(q.y), 0) : float3(0, 0, sign(q.z));
+                if (max(abs(q.x), max(abs(q.y), abs(q.z))) < 1 && dot(wl - tl, wl - tl) > 1e-12)
+                {
+                    // How far the deeper end lies past each face, a face more than 60 degrees off
+                    // the arm left out.
+                    float3 arm = normalize(wl - tl);
+                    float3 inPlus = arm < -0.5 ? 1e9 : half - (min(wl, tl) - mid);
+                    float3 inMinus = arm > 0.5 ? 1e9 : half + (max(wl, tl) - mid);
+                    float3 least = min(inPlus, inMinus), way = inPlus <= inMinus ? 1 : -1;
+                    face = least.x <= least.y && least.x <= least.z ? float3(way.x, 0, 0) : least.y <= least.z ? float3(0, way.y, 0) : float3(0, 0, way.z);
+                }
                 across = dot(abs(face), half);
                 return face;
             }
